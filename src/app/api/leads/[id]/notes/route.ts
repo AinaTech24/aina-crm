@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
+import { withIdempotentMutation } from "@/lib/api/idempotent-mutation";
 import { requireSession } from "@/lib/auth/session";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { leads, eventsOutbox } from "@/db/schema";
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body" }, { status: 400 });
 
-    const result = await withTenant(session.tenantId, async (tx) => {
+    const result = await withIdempotentMutation(session, req, parse.data, async (tx) => {
       const lead = await loadEditableLead(tx, session, id);
 
       const ts = new Date();

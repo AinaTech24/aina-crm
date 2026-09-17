@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { notify } from "@/components/ui/Toast";
 import { useRouter } from "next/navigation";
 import {
   Save,
@@ -27,6 +28,7 @@ import { formatINR, formatDate } from "@/lib/utils";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
 import { DownloadButton } from "@/components/common/SecureLinkButtons";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 
 const DEPARTMENTS = [
   { value: "sales", label: "Sales" },
@@ -215,14 +217,14 @@ export function EmployeeEditForm({
       };
       setDocsList((prev) => [...prev, newDoc]);
     } catch (err: any) {
-      alert(`Upload failed: ${err.message}`);
+      notify.error(`Upload failed: ${err.message}`);
     } finally {
       setUploadingField(null);
     }
   }
 
   async function handleFileDelete(docId: string) {
-    if (!confirm("Are you sure you want to delete this document?")) return;
+    if (!(await confirmDialog({ title: "Delete this document?", message: "It will be removed from the employee's file.", confirmLabel: "Delete", tone: "danger" }))) return;
     try {
       const res = await fetch(`/api/compliance/documents?id=${docId}`, {
         method: "DELETE",
@@ -233,7 +235,7 @@ export function EmployeeEditForm({
       }
       setDocsList((prev) => prev.filter((d) => d.id !== docId));
     } catch (err: any) {
-      alert(`Delete failed: ${err.message}`);
+      notify.error(`Delete failed: ${err.message}`);
     }
   }
 
@@ -449,7 +451,7 @@ export function EmployeeEditForm({
             <div>
               <div className="text-xs font-semibold flex items-center justify-between">
                 <span>Annual AUM Target</span>
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-2xs text-muted-foreground">
                   {formatINR(myAumVal)} / {annualTargetVal > 0 ? formatINR(annualTargetVal) : "No target set"}
                 </span>
               </div>
@@ -461,7 +463,7 @@ export function EmployeeEditForm({
                       style={{ width: `${Math.min(100, aumProgressPercent)}%` }}
                     />
                   </div>
-                  <div className="text-[10px] font-bold text-right">
+                  <div className="text-2xs font-bold text-right">
                     <span className={aumProgressColor.split(" ")[1]}>{aumProgressPercent}% Completed</span>
                   </div>
                 </div>
@@ -473,7 +475,7 @@ export function EmployeeEditForm({
             <div>
               <div className="text-xs font-semibold flex items-center justify-between">
                 <span>Monthly SIP Target</span>
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-2xs text-muted-foreground">
                   {formatINR(mySipVal)} / {sipMonthlyTargetVal > 0 ? formatINR(sipMonthlyTargetVal) : "No target set"}
                 </span>
               </div>
@@ -485,7 +487,7 @@ export function EmployeeEditForm({
                       style={{ width: `${Math.min(100, sipProgressPercent)}%` }}
                     />
                   </div>
-                  <div className="text-[10px] font-bold text-right">
+                  <div className="text-2xs font-bold text-right">
                     <span className={sipProgressColor.split(" ")[1]}>{sipProgressPercent}% Completed</span>
                   </div>
                 </div>
@@ -497,7 +499,7 @@ export function EmployeeEditForm({
 
           {/* Roles */}
           <div>
-            <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1.5">Roles</div>
+            <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground mb-1.5">Roles</div>
             <div className="grid grid-cols-2 gap-1.5 md:grid-cols-3">
               {ROLES.map((r) => (
                 <label key={r.key} className="flex items-center gap-1.5 border rounded-md p-1.5 cursor-pointer hover:bg-secondary/40 text-xs">
@@ -513,7 +515,7 @@ export function EmployeeEditForm({
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-xs font-semibold">Customize Access Permissions</div>
-                <div className="text-[11px] text-muted-foreground mt-0.5">
+                <div className="text-2xs text-muted-foreground mt-0.5">
                   Override default role-based capabilities and dashboard/report access.
                 </div>
               </div>
@@ -545,7 +547,7 @@ export function EmployeeEditForm({
               <div className="space-y-4 max-h-[300px] overflow-y-auto border rounded-md p-3 bg-card scrollbar-thin">
                 {ALL_CAPABILITIES.map((grp) => (
                   <div key={grp.group} className="space-y-1.5">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-b pb-0.5">
+                    <div className="text-2xs font-bold uppercase tracking-wider text-muted-foreground border-b pb-0.5">
                       {grp.group}
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
@@ -554,7 +556,7 @@ export function EmployeeEditForm({
                         return (
                           <label
                             key={item.key}
-                            className="flex items-center gap-2 border rounded p-1.5 hover:bg-secondary/40 text-[11px] cursor-pointer"
+                            className="flex items-center gap-2 border rounded p-1.5 hover:bg-secondary/40 text-2xs cursor-pointer"
                           >
                             <input
                               type="checkbox"
@@ -564,7 +566,7 @@ export function EmployeeEditForm({
                             <span className="min-w-0">
                               {item.label}
                               {item.hint && (
-                                <span className="block text-[10px] text-muted-foreground">{item.hint}</span>
+                                <span className="block text-2xs text-muted-foreground">{item.hint}</span>
                               )}
                             </span>
                           </label>
@@ -577,7 +579,7 @@ export function EmployeeEditForm({
             )}
 
             {!customActive && (
-              <div className="text-[11px] text-muted-foreground bg-secondary/30 p-2.5 rounded border">
+              <div className="text-2xs text-muted-foreground bg-secondary/30 p-2.5 rounded border">
                 Using default permissions determined by selected roles:{" "}
                 <strong className="text-foreground">{v.roles.join(", ")}</strong>. Check "Customize" to set granular access overrides.
               </div>
@@ -589,7 +591,7 @@ export function EmployeeEditForm({
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-xs font-semibold">Sidebar Access</div>
-                <div className="text-[11px] text-muted-foreground mt-0.5">
+                <div className="text-2xs text-muted-foreground mt-0.5">
                   Choose which sidebar items this team member can open — limited to what your firm has.
                 </div>
               </div>
@@ -612,22 +614,22 @@ export function EmployeeEditForm({
             </div>
 
             {isOwnerRole ? (
-              <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 p-2.5 rounded">
+              <div className="text-2xs text-amber-700 bg-amber-50 border border-amber-100 p-2.5 rounded">
                 Owners always have full access to every sidebar item your firm has — limits don&apos;t apply to owner
                 accounts.
               </div>
             ) : !moduleAccessActive ? (
-              <div className="text-[11px] text-muted-foreground bg-secondary/30 p-2.5 rounded border">
+              <div className="text-2xs text-muted-foreground bg-secondary/30 p-2.5 rounded border">
                 Full access to all {tenantNavKeys.length} sidebar item{tenantNavKeys.length === 1 ? "" : "s"} your firm
                 has. Check &quot;Limit access&quot; to restrict this team member.
               </div>
             ) : accessibleNavGroups.length === 0 ? (
-              <div className="text-[11px] text-muted-foreground bg-secondary/30 p-2.5 rounded border">
+              <div className="text-2xs text-muted-foreground bg-secondary/30 p-2.5 rounded border">
                 Your firm has no sidebar items enabled yet.
               </div>
             ) : (
               <div className="space-y-3 max-h-[340px] overflow-y-auto border rounded-md p-3 bg-card scrollbar-thin">
-                <div className="flex gap-3 text-[11px] font-medium">
+                <div className="flex gap-3 text-2xs font-medium">
                   <button
                     type="button"
                     onClick={() => { setV((p) => ({ ...p, enabledModules: [...tenantNavKeys] })); setSaved(false); }}
@@ -652,7 +654,7 @@ export function EmployeeEditForm({
                   return (
                   <div key={grp.title} className="space-y-1.5">
                     <div className="flex items-center justify-between border-b pb-0.5">
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      <div className="text-2xs font-bold uppercase tracking-wider text-muted-foreground">
                         {grp.title}
                       </div>
                       <button
@@ -664,7 +666,7 @@ export function EmployeeEditForm({
                             return { ...p, enabledModules: next };
                           })
                         }
-                        className="text-[10px] font-medium text-primary hover:underline"
+                        className="text-2xs font-medium text-primary hover:underline"
                       >
                         {allOn ? "Disable all" : "Enable all"}
                       </button>
@@ -673,7 +675,7 @@ export function EmployeeEditForm({
                       {grp.items.map((item) => (
                         <label
                           key={item.key}
-                          className="flex items-center gap-2 border rounded p-1.5 hover:bg-secondary/40 text-[11px] cursor-pointer"
+                          className="flex items-center gap-2 border rounded p-1.5 hover:bg-secondary/40 text-2xs cursor-pointer"
                         >
                           <input
                             type="checkbox"
@@ -755,7 +757,7 @@ export function EmployeeEditForm({
           <div className="border rounded-lg p-4 bg-secondary/10 space-y-3">
             <div>
               <div className="text-xs font-semibold">Custom Leave Entitlements & Comp-offs</div>
-              <div className="text-[11px] text-muted-foreground mt-0.5">
+              <div className="text-2xs text-muted-foreground mt-0.5">
                 Override global default policies for this employee's annual leave allowances.
               </div>
             </div>
@@ -880,7 +882,7 @@ export function EmployeeEditForm({
             </div>
 
             {/* NISM block */}
-            <div className="mt-4 mb-1 text-[10px] uppercase tracking-wide text-muted-foreground font-semibold border-b pb-0.5">
+            <div className="mt-4 mb-1 text-2xs uppercase tracking-wide text-muted-foreground font-semibold border-b pb-0.5">
               NISM
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -919,7 +921,7 @@ export function EmployeeEditForm({
             {renderUploadField("nism", "NISM Certificate")}
 
             {/* ARN block */}
-            <div className="mt-4 mb-1 text-[10px] uppercase tracking-wide text-muted-foreground font-semibold border-b pb-0.5">
+            <div className="mt-4 mb-1 text-2xs uppercase tracking-wide text-muted-foreground font-semibold border-b pb-0.5">
               Personal ARN (only for sub-distributors / individual MFDs)
             </div>
             <div className="grid grid-cols-3 gap-3">
@@ -953,7 +955,7 @@ export function EmployeeEditForm({
             {renderUploadField("arn", "Personal ARN Document")}
 
             {/* EUIN block */}
-            <div className="mt-4 mb-1 text-[10px] uppercase tracking-wide text-muted-foreground font-semibold border-b pb-0.5">
+            <div className="mt-4 mb-1 text-2xs uppercase tracking-wide text-muted-foreground font-semibold border-b pb-0.5">
               EUIN
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -977,7 +979,7 @@ export function EmployeeEditForm({
             {renderUploadField("euin", "EUIN Card")}
 
             {/* DSC block */}
-            <div className="mt-4 mb-1 text-[10px] uppercase tracking-wide text-muted-foreground font-semibold border-b pb-0.5">
+            <div className="mt-4 mb-1 text-2xs uppercase tracking-wide text-muted-foreground font-semibold border-b pb-0.5">
               DSC (Digital Signature Certificate)
             </div>
             <div className="grid grid-cols-3 gap-3">
@@ -1057,7 +1059,7 @@ export function EmployeeEditForm({
                     <div key={t.id} className="flex items-center justify-between border rounded-md p-3 text-xs bg-card hover:bg-secondary/10 transition-all">
                       <div>
                         <div className="font-semibold text-foreground">{t.title}</div>
-                        {t.dueAt && <div className="text-[10px] text-muted-foreground mt-0.5">Due: {formatDate(t.dueAt)}</div>}
+                        {t.dueAt && <div className="text-2xs text-muted-foreground mt-0.5">Due: {formatDate(t.dueAt)}</div>}
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         {t.status === "completed" ? (
@@ -1096,7 +1098,7 @@ export function EmployeeEditForm({
                 <div className="border rounded-md p-3 bg-rose-50/15 border-rose-100 flex items-center justify-between text-xs">
                   <div>
                     <div className="font-semibold text-rose-900">IT Account & Access Security</div>
-                    <div className="text-[10px] text-rose-700/80 mt-0.5">Sessions terminated. Login rejected from the next request onwards.</div>
+                    <div className="text-2xs text-rose-700/80 mt-0.5">Sessions terminated. Login rejected from the next request onwards.</div>
                   </div>
                   <span className="chip bg-rose-50 text-rose-700 font-bold">Revoked</span>
                 </div>
@@ -1112,7 +1114,7 @@ export function EmployeeEditForm({
                       <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
                         <div className="h-full rounded-full bg-rose-500" style={{ width: "30%" }} />
                       </div>
-                      <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                      <div className="text-2xs text-muted-foreground flex items-center gap-1">
                         <AlertTriangle className="size-3.5 text-amber-500" /> Reassignment task is open. Redistribute active clients to ensure uninterrupted service.
                       </div>
                     </div>
@@ -1137,10 +1139,10 @@ export function EmployeeEditForm({
                       <div key={t.id} className="flex items-center justify-between border rounded p-2 text-xs bg-card">
                         <span className="font-medium text-foreground truncate max-w-[70%]">{t.title}</span>
                         <div className="flex items-center gap-2">
-                          <span className={`chip text-[9px] font-bold ${
+                          <span className={`chip text-2xs font-bold ${
                             t.priority === 'urgent' ? 'bg-rose-50 text-rose-700' : t.priority === 'high' ? 'bg-amber-50 text-amber-700' : 'bg-slate-50 text-slate-700'
                           }`}>{t.priority}</span>
-                          <span className="text-[10px] font-mono text-muted-foreground">{t.dueAt ? formatDate(t.dueAt) : 'No due date'}</span>
+                          <span className="text-2xs font-mono text-muted-foreground">{t.dueAt ? formatDate(t.dueAt) : 'No due date'}</span>
                         </div>
                       </div>
                     ))}
@@ -1161,9 +1163,9 @@ export function EmployeeEditForm({
                       <div key={m.id} className="flex items-center justify-between border rounded p-2 text-xs bg-card">
                         <div>
                           <div className="font-medium text-foreground">{m.subject || m.meetingType.replace(/_/g, ' ')}</div>
-                          {m.meetingDate && <div className="text-[10px] text-muted-foreground mt-0.5">Scheduled: {formatDate(m.meetingDate)}</div>}
+                          {m.meetingDate && <div className="text-2xs text-muted-foreground mt-0.5">Scheduled: {formatDate(m.meetingDate)}</div>}
                         </div>
-                        <span className="chip bg-blue-50 text-blue-700 text-[10px] font-bold capitalize">{m.status}</span>
+                        <span className="chip bg-blue-50 text-blue-700 text-2xs font-bold capitalize">{m.status}</span>
                       </div>
                     ))}
                   </div>
@@ -1202,16 +1204,16 @@ export function EmployeeEditForm({
                         <span className="font-bold capitalize text-foreground">
                           {log.action.replace("employee.", "Profile ").replace("_", " ")}
                         </span>
-                        <span className="text-[10px] text-muted-foreground font-mono tabular-nums">
+                        <span className="text-2xs text-muted-foreground font-mono tabular-nums">
                           {formatDate(atDate)} at {atDate.toLocaleTimeString()}
                         </span>
                       </div>
-                      <div className="text-muted-foreground text-[11px]">
+                      <div className="text-muted-foreground text-2xs">
                         Changed by <strong className="text-foreground">{isSystem ? "System" : log.actor_name}</strong>
                       </div>
                       {/* Detailed difference formatter */}
                       {log.action === "employee.update" && log.before && log.after && (
-                        <div className="bg-secondary/25 border rounded p-2 mt-1.5 space-y-1 text-[11px] font-mono scrollbar-thin overflow-x-auto">
+                        <div className="bg-secondary/25 border rounded p-2 mt-1.5 space-y-1 text-2xs font-mono scrollbar-thin overflow-x-auto">
                           {Object.keys(log.after).map((key) => {
                             const bVal = log.before[key];
                             const aVal = log.after[key];
@@ -1242,9 +1244,9 @@ export function EmployeeEditForm({
 function Field({ label, children, note }: { label: string; children: React.ReactNode; note?: string }) {
   return (
     <label className="block">
-      <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1 flex items-center justify-between">
+      <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground mb-1 flex items-center justify-between">
         <span>{label}</span>
-        {note && <span className="text-[9px] text-muted-foreground font-normal normal-case">{note}</span>}
+        {note && <span className="text-2xs text-muted-foreground font-normal normal-case">{note}</span>}
       </div>
       {children}
     </label>

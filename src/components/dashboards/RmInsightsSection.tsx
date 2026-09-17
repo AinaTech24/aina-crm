@@ -290,8 +290,8 @@ export async function RmInsightsSection({
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-semibold truncate">{a.title}</div>
-                        <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 mt-0.5">
-                          <span className={`chip text-[10px] py-0.5 px-1.5 ${kindBg}`}>
+                        <div className="text-2xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                          <span className={`chip text-2xs py-0.5 px-1.5 ${kindBg}`}>
                             {a.kind}
                           </span>
                           <span className="truncate">{a.subtitle}</span>
@@ -304,7 +304,7 @@ export async function RmInsightsSection({
                       </div>
                       <div className="text-right">
                         {a.when_at && (
-                          <div className={`text-[11px] ${urgent ? "text-rose-600 font-semibold" : "text-muted-foreground"}`}>
+                          <div className={`text-2xs ${urgent ? "text-rose-600 font-semibold" : "text-muted-foreground"}`}>
                             {formatRelative(a.when_at)}
                           </div>
                         )}
@@ -346,9 +346,9 @@ export async function RmInsightsSection({
                     className="hover:underline flex-1"
                   >
                     <div className="font-medium">{c.name}</div>
-                    <div className="text-[11px] text-muted-foreground">
+                    <div className="text-2xs text-muted-foreground">
                       {c.service_tier && (
-                        <span className="chip bg-violet-50 text-violet-700 text-[10px] py-0.5 px-1.5 mr-1">
+                        <span className="chip bg-violet-50 text-violet-700 text-2xs py-0.5 px-1.5 mr-1">
                           Tier {c.service_tier}
                         </span>
                       )}
@@ -359,7 +359,7 @@ export async function RmInsightsSection({
                     <div className="text-xs text-rose-600 font-semibold tabular-nums">
                       {c.days_silent}d
                     </div>
-                    <div className="text-[10px] text-muted-foreground">silent</div>
+                    <div className="text-2xs text-muted-foreground">silent</div>
                   </div>
                 </li>
               ))}
@@ -397,14 +397,14 @@ export async function RmInsightsSection({
                           {g.name}
                         </span>
                         <span
-                          className={`text-[10px] font-semibold ${
+                          className={`text-2xs font-semibold ${
                             offTrack ? "text-rose-600" : "text-emerald-700"
                           }`}
                         >
                           {pct.toFixed(0)}%
                         </span>
                       </div>
-                      <div className="text-[11px] text-muted-foreground mt-0.5 flex items-center justify-between">
+                      <div className="text-2xs text-muted-foreground mt-0.5 flex items-center justify-between">
                         <span className="truncate">{g.investor_name}</span>
                         <span>due {formatDate(g.target_date)}</span>
                       </div>
@@ -450,13 +450,13 @@ export async function RmInsightsSection({
                     className="hover:underline flex-1"
                   >
                     <div className="font-medium truncate">{f.investor_name}</div>
-                    <div className="text-[11px] text-muted-foreground truncate">
+                    <div className="text-2xs text-muted-foreground truncate">
                       {f.amc_name} · folio {f.folio_number}
                     </div>
                   </Link>
                   <div className="text-right">
                     <span
-                      className={`chip text-[10px] py-0.5 px-1.5 ${
+                      className={`chip text-2xs py-0.5 px-1.5 ${
                         f.event_kind === "elss_unlock"
                           ? "bg-emerald-50 text-emerald-700"
                           : "bg-amber-50 text-amber-700"
@@ -494,11 +494,11 @@ export async function RmInsightsSection({
                     className="hover:underline"
                   >
                     <div className="font-medium">{c.name}</div>
-                    <div className="text-[11px] text-muted-foreground">
+                    <div className="text-2xs text-muted-foreground">
                       {c.segment_tag} · AUM {formatINR(Number(c.aum))}
                     </div>
                   </Link>
-                  <span className="chip bg-violet-50 text-violet-700 text-[10px] py-0.5 px-1.5">
+                  <span className="chip bg-violet-50 text-violet-700 text-2xs py-0.5 px-1.5">
                     Pitch SIP
                   </span>
                 </li>
@@ -533,7 +533,7 @@ export async function RmInsightsSection({
                     className="hover:underline"
                   >
                     <div className="font-medium">{e.investor_name}</div>
-                    <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                    <div className="text-2xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
                       {e.channel === "whatsapp" ? (
                         <PhoneCall className="size-3 text-emerald-600" />
                       ) : (
@@ -571,9 +571,9 @@ export async function RmInsightsSection({
                     className="hover:underline flex-1"
                   >
                     <div className="font-medium">{t.name}</div>
-                    <div className="text-[11px] text-muted-foreground">
+                    <div className="text-2xs text-muted-foreground">
                       <span
-                        className={`chip text-[10px] py-0.5 px-1.5 mr-1 ${
+                        className={`chip text-2xs py-0.5 px-1.5 mr-1 ${
                           t.kind === "birthday"
                             ? "bg-rose-50 text-rose-700"
                             : "bg-emerald-50 text-emerald-700"

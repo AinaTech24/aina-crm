@@ -167,9 +167,10 @@ export default async function SipsPage({
     <div className="space-y-6 max-w-7xl">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <TrendingUp className="size-6 text-brand-cyan" /> SIP Book
+          <h1 className="page-title">
+            <TrendingUp className="size-6 text-muted-foreground" /> SIP Book
           </h1>
+          <p className="page-subtitle mt-1">Every live SIP, what it is worth each month, and which ones are at risk.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {can(session.roles, "transactions.execute", session.permissions) && (
@@ -307,7 +308,7 @@ export default async function SipsPage({
                         <div>
                           <div className="font-mono text-muted-foreground truncate max-w-[100px]">{mandateRef}</div>
                           <span
-                            className={`text-[10px] ${mandateStatus === "active" ? "text-emerald-600" : "text-rose-600"
+                            className={`text-2xs ${mandateStatus === "active" ? "text-emerald-600" : "text-rose-600"
                               }`}
                           >
                             {mandateStatus ?? "—"}

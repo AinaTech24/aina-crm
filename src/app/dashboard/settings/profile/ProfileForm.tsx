@@ -17,6 +17,7 @@ function pwStrength(pw: string): 0 | 1 | 2 | 3 {
 import { useToast } from "@/components/ui/Toast";
 import { PasswordInput } from "@/components/ui/PasswordInput";
 import { DeviceSessions } from "@/components/settings/DeviceSessions";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 
 export default function ProfileForm({
   initialName,
@@ -186,7 +187,7 @@ export default function ProfileForm({
   }
 
   async function signOutEverywhere() {
-    if (!confirm("Sign out of all devices, including this one? You'll need to log in again.")) return;
+    if (!(await confirmDialog({ title: "Sign out of all devices, including this one?", message: "You'll need to log in again.", confirmLabel: "Sign out", tone: "danger" }))) return;
     try {
       const res = await fetch("/api/me/sign-out-everywhere", { method: "POST" });
       if (res.ok) {
@@ -504,7 +505,7 @@ export default function ProfileForm({
                         <div key={i} className={`h-1 flex-1 rounded-full ${i <= score ? meta.color : "bg-secondary"}`} />
                       ))}
                     </div>
-                    <div className={`text-[10px] mt-0.5 ${meta.text}`}>{meta.label} · 8+ chars with a mix of cases, a number &amp; a symbol is best.</div>
+                    <div className={`text-2xs mt-0.5 ${meta.text}`}>{meta.label} · 8+ chars with a mix of cases, a number &amp; a symbol is best.</div>
                   </div>
                 );
               })()}
@@ -533,7 +534,7 @@ export default function ProfileForm({
               >
                 <LogOut className="size-3.5" /> Sign out of all devices
               </button>
-              <p className="text-[11px] text-muted-foreground mt-1.5">Revokes every active session, including this one — use if a device was lost.</p>
+              <p className="text-2xs text-muted-foreground mt-1.5">Revokes every active session, including this one — use if a device was lost.</p>
             </div>
           </div>
         </div>

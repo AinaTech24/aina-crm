@@ -176,14 +176,14 @@ export default async function ProductOfferingsListPage({
 
     if (bad) {
       return (
-        <span title={title} className={`chip text-[10px] inline-flex items-center gap-1 ${active ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-500"}`}>
+        <span title={title} className={`chip text-2xs inline-flex items-center gap-1 ${active ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-500"}`}>
           <ShieldAlert className="size-3" /> Risk
         </span>
       );
     }
     if (warn) {
       return (
-        <span title={title} className="chip text-[10px] inline-flex items-center gap-1 bg-amber-100 text-amber-700">
+        <span title={title} className="chip text-2xs inline-flex items-center gap-1 bg-amber-100 text-amber-700">
           <AlertTriangle className="size-3" /> Check
         </span>
       );
@@ -191,7 +191,7 @@ export default async function ProductOfferingsListPage({
     // Only affirm when there's something verifiable to affirm.
     if (health.licenses.length > 0 || health.requires.nism || health.requires.arn || health.requires.euin) {
       return (
-        <span title={title} className="chip text-[10px] inline-flex items-center gap-1 bg-emerald-50 text-emerald-700">
+        <span title={title} className="chip text-2xs inline-flex items-center gap-1 bg-emerald-50 text-emerald-700">
           <ShieldCheck className="size-3" /> Ready
         </span>
       );
@@ -203,7 +203,8 @@ export default async function ProductOfferingsListPage({
     <div className="space-y-5">
       <div className="flex items-end justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Products &amp; services offered</h1>
+          <h1 className="page-title">Products &amp; services offered</h1>
+          <p className="page-subtitle mt-1">The products and services your firm sells, and who is allowed to sell them.</p>
         </div>
         {canEdit && (
           <Link
@@ -264,7 +265,7 @@ export default async function ProductOfferingsListPage({
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="font-medium">{r.name}</div>
-                  <div className="text-[11px] text-muted-foreground">
+                  <div className="text-2xs text-muted-foreground">
                     {CATEGORY_LABELS[r.category] ?? r.category} ·{" "}
                     {r.regulator}
                   </div>
@@ -272,7 +273,7 @@ export default async function ProductOfferingsListPage({
                 <div className="flex items-center gap-1.5 shrink-0">
                   <HealthBadge health={healthById.get(r.id)} active={r.status === "active"} />
                   <span
-                    className={`chip text-[10px] ${STATUS_TONE[r.status] ?? "bg-slate-100"
+                    className={`chip text-2xs ${STATUS_TONE[r.status] ?? "bg-slate-100"
                       }`}
                   >
                     {r.status}
@@ -285,22 +286,22 @@ export default async function ProductOfferingsListPage({
                   {((r.providers as string[]) ?? []).slice(0, 5).map((p) => (
                     <span
                       key={p}
-                      className="chip bg-slate-100 text-slate-700 text-[10px]"
+                      className="chip bg-slate-100 text-slate-700 text-2xs"
                     >
                       {p}
                     </span>
                   ))}
                   {((r.providers as string[]) ?? []).length > 5 && (
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="text-2xs text-muted-foreground">
                       +{((r.providers as string[]) ?? []).length - 5}
                     </span>
                   )}
                 </div>
               )}
 
-              <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+              <div className="mt-3 grid grid-cols-2 gap-2 text-2xs">
                 <div className="text-muted-foreground">
-                  <div className="font-semibold text-[10px] uppercase tracking-wide">
+                  <div className="font-semibold text-2xs uppercase tracking-wide">
                     Licenses
                   </div>
                   <div className="mt-0.5 truncate">
@@ -311,7 +312,7 @@ export default async function ProductOfferingsListPage({
                   </div>
                 </div>
                 <div className="text-muted-foreground">
-                  <div className="font-semibold text-[10px] uppercase tracking-wide flex items-center gap-1">
+                  <div className="font-semibold text-2xs uppercase tracking-wide flex items-center gap-1">
                     <UsersIcon className="size-2.5" /> Team
                   </div>
                   <div className="mt-0.5 truncate">
@@ -324,7 +325,7 @@ export default async function ProductOfferingsListPage({
               </div>
 
               {((r.documents as any[]) ?? []).length > 0 && (
-                <div className="mt-2 text-[10px] text-violet-700 inline-flex items-center gap-1">
+                <div className="mt-2 text-2xs text-violet-700 inline-flex items-center gap-1">
                   <FileText className="size-2.5" />
                   {((r.documents as any[]) ?? []).length} document
                   {((r.documents as any[]) ?? []).length === 1 ? "" : "s"}

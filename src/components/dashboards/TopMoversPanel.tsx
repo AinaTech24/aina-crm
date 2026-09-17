@@ -201,7 +201,7 @@ function MoverColumn({
 }) {
   return (
     <div>
-      <div className="flex items-center gap-1.5 mb-2 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+      <div className="flex items-center gap-1.5 mb-2 text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
         {icon}
         {title}
       </div>
@@ -250,7 +250,7 @@ function MoverRow({
             <ArrowUpRight className="size-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
           {tag && (
-            <div className="text-[10px] text-muted-foreground truncate">{tag}</div>
+            <div className="text-2xs text-muted-foreground truncate">{tag}</div>
           )}
         </div>
         <span className={`text-xs font-bold tabular-nums whitespace-nowrap ${toneCls}`}>

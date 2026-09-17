@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { notify } from "@/components/ui/Toast";
 import { useRouter } from "next/navigation";
 import { Loader2, Check } from "lucide-react";
 
@@ -13,7 +14,7 @@ export function RetentionSettingForm({ current }: { current: number }) {
   async function save() {
     const n = Number(days);
     if (!Number.isFinite(n) || n < 1 || n > 3650) {
-      alert("Enter 1–3650 days");
+      notify.warning("Enter 1–3650 days");
       return;
     }
     setState("saving");
@@ -25,7 +26,7 @@ export function RetentionSettingForm({ current }: { current: number }) {
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        alert(j.error ?? "Failed to save");
+        notify.error(j.error ?? "Failed to save");
         setState("idle");
         return;
       }

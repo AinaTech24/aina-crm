@@ -1,3 +1,4 @@
+import { assertInvestorAccess } from "@/lib/investors/access";
 import Link from "next/link";
 import { and, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
@@ -16,6 +17,7 @@ export default async function CapitalGainsPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const session = await requireSession();
+    await assertInvestorAccess(session, (await params).id);
   const { id } = await params;
   const sp = await searchParams;
   const cur = currentFyStartYear();
@@ -85,7 +87,7 @@ export default async function CapitalGainsPage({
       <div className="card-surface overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b">
+            <tr className="text-left text-2xs uppercase tracking-wider text-muted-foreground border-b">
               <th className="px-3 py-2">Scheme</th>
               <th className="px-3 py-2">Bought</th>
               <th className="px-3 py-2">Sold</th>
@@ -115,14 +117,14 @@ export default async function CapitalGainsPage({
                 <td className={`px-3 py-2 text-right tabular-nums font-medium ${r.gain >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
                   {formatINR(r.gain)}
                 </td>
-                <td className="px-3 py-2 uppercase text-[11px] font-semibold">{r.term}</td>
+                <td className="px-3 py-2 uppercase text-2xs font-semibold">{r.term}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      <p className="text-[11px] text-muted-foreground leading-relaxed">
+      <p className="text-2xs text-muted-foreground leading-relaxed">
         {tenant?.legalName ?? tenant?.displayName} · ARN {tenant?.arn ?? "—"}. Indicative statement computed by FIFO lot matching
         on recorded transactions priced at transaction NAV; equity holding-period rules applied (&gt;12 months = long term).
         Grandfathering (NAV as on 31-Jan-2018) and the equity-vs-debt distinction are not applied — please reconcile against your
@@ -136,7 +138,7 @@ function Kpi({ label, value, tone }: { label: string; value: string; tone?: "eme
   const color = tone === "emerald" ? "text-emerald-600" : tone === "rose" ? "text-rose-600" : "";
   return (
     <div className="card-surface p-3">
-      <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-2xs uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className={`text-lg font-bold ${color}`}>{value}</div>
     </div>
   );

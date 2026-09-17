@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { notify } from "@/components/ui/Toast";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -73,7 +74,7 @@ export default function ReportViewPage() {
     const r = await fetch(`/api/reports/saved/${id}/clone`, { method: "POST" });
     const j = await r.json();
     if (r.ok && j.id) router.push(`/dashboard/reports/custom/new?edit=${j.id}`);
-    else alert(j.error ?? "Clone failed");
+    else notify.error(j.error ?? "Clone failed");
   }
 
   return (
@@ -87,7 +88,7 @@ export default function ReportViewPage() {
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="page-title">
-            <BarChart3 className="size-6 text-brand-cyan print:hidden" /> {meta?.name ?? "Report"}
+            <BarChart3 className="size-6 text-muted-foreground print:hidden" /> {meta?.name ?? "Report"}
           </h1>
           {meta?.description && <p className="page-subtitle">{meta.description}</p>}
         </div>
@@ -257,7 +258,7 @@ function SummaryTable({ r }: { r: Summary }) {
     out.push(
       <tr key={`g-${path}`} className={`border-b ${depth === 0 ? "bg-secondary/40 font-semibold" : "bg-secondary/20 font-medium"}`}>
         <td className="px-3 py-2 whitespace-nowrap" style={{ paddingLeft: 12 + depth * 18 }}>
-          {node.key} <span className="text-[10px] font-normal text-muted-foreground">· {num(node.count)} rec</span>
+          {node.key} <span className="text-2xs font-normal text-muted-foreground">· {num(node.count)} rec</span>
         </td>
         <td className="px-3 py-2 text-right tabular-nums text-xs text-muted-foreground">{num(node.count)}</td>
         {node.aggregates.map((v, i) => <td key={i} className="px-3 py-2 text-right tabular-nums">{num(v)}</td>)}
@@ -271,7 +272,7 @@ function SummaryTable({ r }: { r: Summary }) {
           <td colSpan={span} className="px-0 py-0">
             <div className="overflow-x-auto bg-card" style={{ paddingLeft: 12 + (depth + 1) * 18 }}>
               <table className="w-full text-xs">
-                <thead className="text-[11px] text-muted-foreground">
+                <thead className="text-2xs text-muted-foreground">
                   <tr>{r.detailColumns.map((c) => <th key={c.key} className="text-left px-3 py-1.5 font-medium whitespace-nowrap">{c.label}</th>)}</tr>
                 </thead>
                 <tbody>

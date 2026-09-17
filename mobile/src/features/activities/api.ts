@@ -8,7 +8,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
-import { queuedPost } from "../../lib/offlineQueue";
+import { queuedPost, queuedPatch } from "../../lib/offlineQueue";
 import type { Tone } from "../../theme";
 
 export interface Activity {
@@ -90,7 +90,7 @@ export function useLogActivity() {
 export function useUpdateActivity(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: Record<string, any>) => api.patch(`/api/activities/${id}`, body),
+    mutationFn: (body: Record<string, any>) => queuedPatch(`/api/activities/${id}`, body, "Activity update"),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["activities"] });
       qc.invalidateQueries({ queryKey: ["activity", id] });

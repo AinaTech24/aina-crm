@@ -193,7 +193,7 @@ export function CommsList({ rows }: { rows: CommRow[] }) {
                     <Ch className="size-3.5 text-muted-foreground shrink-0" />
                     <span className="font-medium truncate max-w-[180px]">{r.recipient}</span>
                     {r.direction === "inbound" && (
-                      <span className="text-[10px] bg-blue-50 text-blue-700 px-1 rounded">in</span>
+                      <span className="text-2xs bg-blue-50 text-blue-700 px-1 rounded">in</span>
                     )}
                   </div>
                 </td>

@@ -162,33 +162,33 @@ export async function TrailIncomeTile({ session }: { session: SessionUser }) {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {/* Net received (hero) */}
           <div className="md:col-span-1 bg-emerald-50/60 border border-emerald-100 rounded-lg p-3">
-            <div className="text-[10px] uppercase tracking-wider text-emerald-800 font-semibold">
+            <div className="text-2xs uppercase tracking-wider text-emerald-800 font-semibold">
               Net received
             </div>
             <div className="text-2xl font-bold text-emerald-800 mt-1 tabular-nums">
               {formatINR(data.netReceived)}
             </div>
-            <div className="text-[10px] text-emerald-700/80 mt-0.5">
+            <div className="text-2xs text-emerald-700/80 mt-0.5">
               TDS deducted: {formatINR(data.tdsDeducted)}
             </div>
           </div>
 
           {/* Expected */}
           <div className="bg-white/70 rounded-lg p-3">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
               Expected
             </div>
             <div className="text-xl font-bold mt-1 tabular-nums">
               {formatINR(data.totalExpected)}
             </div>
-            <div className="text-[10px] text-muted-foreground mt-0.5">
+            <div className="text-2xs text-muted-foreground mt-0.5">
               from commission records
             </div>
           </div>
 
           {/* Collection efficiency */}
           <div className="bg-white/70 rounded-lg p-3">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
               Collection %
             </div>
             <div
@@ -204,7 +204,7 @@ export async function TrailIncomeTile({ session }: { session: SessionUser }) {
             >
               {data.efficiency != null ? `${data.efficiency.toFixed(1)}%` : "—"}
             </div>
-            <div className="text-[10px] text-muted-foreground mt-0.5">
+            <div className="text-2xs text-muted-foreground mt-0.5">
               {data.amcCount} AMC{data.amcCount === 1 ? "" : "s"}
             </div>
           </div>
@@ -217,7 +217,7 @@ export async function TrailIncomeTile({ session }: { session: SessionUser }) {
                 : "bg-white/70"
             }`}
           >
-            <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+            <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
               Anomalies
             </div>
             <div
@@ -232,7 +232,7 @@ export async function TrailIncomeTile({ session }: { session: SessionUser }) {
               )}
               {data.anomalyCount}
             </div>
-            <div className="text-[10px] text-muted-foreground mt-0.5">
+            <div className="text-2xs text-muted-foreground mt-0.5">
               {data.anomalyCount > 0 ? "need investigation" : "all matched"}
             </div>
           </div>
@@ -241,7 +241,7 @@ export async function TrailIncomeTile({ session }: { session: SessionUser }) {
         {/* 3-month sparkline bars + MoM delta */}
         <div className="mt-4 flex items-end justify-between">
           <div className="flex items-end gap-2">
-            <span className="text-[10px] text-muted-foreground font-medium">3-month:</span>
+            <span className="text-2xs text-muted-foreground font-medium">3-month:</span>
             {data.trendValues.map((v, i) => {
               const max = Math.max(...data.trendValues, 1);
               const h = Math.round((v / max) * 32);

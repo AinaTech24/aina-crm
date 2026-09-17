@@ -148,11 +148,11 @@ export async function SipPersistencyTile({ session }: { session: SessionUser }) 
     if (pct === null || cohortSize === 0) {
       return (
         <div className="text-center">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+          <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
             {label}
           </div>
           <div className="text-xl font-bold text-muted-foreground mt-1">—</div>
-          <div className="text-[10px] text-muted-foreground">no cohort yet</div>
+          <div className="text-2xs text-muted-foreground">no cohort yet</div>
         </div>
       );
     }
@@ -161,7 +161,7 @@ export async function SipPersistencyTile({ session }: { session: SessionUser }) 
     const bgBar = beats ? "bg-emerald-500" : pct >= benchmark - 10 ? "bg-amber-500" : "bg-rose-500";
     return (
       <div>
-        <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+        <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold mb-1">
           {label}
         </div>
         <div className={`text-2xl font-bold tabular-nums ${color}`}>
@@ -173,7 +173,7 @@ export async function SipPersistencyTile({ session }: { session: SessionUser }) 
             style={{ width: `${Math.min(100, pct)}%` }}
           />
         </div>
-        <div className="text-[10px] text-muted-foreground mt-1">
+        <div className="text-2xs text-muted-foreground mt-1">
           benchmark {benchmark}% · cohort {cohortSize}
         </div>
       </div>
@@ -235,18 +235,18 @@ export async function SipPersistencyTile({ session }: { session: SessionUser }) 
 
           {/* Book health */}
           <div className="p-3 rounded-lg bg-white/70 space-y-2">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
               Active SIP book
             </div>
             <div className="text-xl font-bold tabular-nums">
               {formatINR(data.activeBook)}
               <span className="text-xs font-normal text-muted-foreground">/mo</span>
             </div>
-            <div className="text-[10px] text-muted-foreground">
+            <div className="text-2xs text-muted-foreground">
               {data.activeCount.toLocaleString("en-IN")} active SIPs
             </div>
             <div
-              className={`text-[10px] font-semibold flex items-center gap-1 ${
+              className={`text-2xs font-semibold flex items-center gap-1 ${
                 data.bookDelta >= 0 ? "text-emerald-700" : "text-rose-700"
               }`}
             >
@@ -257,7 +257,7 @@ export async function SipPersistencyTile({ session }: { session: SessionUser }) 
 
           {/* MTD SIP flow + rejection reasons */}
           <div className="p-3 rounded-lg bg-white/70">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+            <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold mb-2">
               MTD flow
             </div>
             <div className="space-y-1 text-xs mb-3">
@@ -272,10 +272,10 @@ export async function SipPersistencyTile({ session }: { session: SessionUser }) 
             </div>
             {data.rejectionReasons.length > 0 && (
               <>
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+                <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold mb-1">
                   Top rejection reasons
                 </div>
-                <ul className="space-y-0.5 text-[10px]">
+                <ul className="space-y-0.5 text-2xs">
                   {data.rejectionReasons.slice(0, 3).map((r) => (
                     <li key={r.reason} className="flex justify-between capitalize">
                       <span className="truncate text-muted-foreground">{r.reason}</span>
@@ -288,7 +288,7 @@ export async function SipPersistencyTile({ session }: { session: SessionUser }) 
           </div>
         </div>
 
-        <p className="text-[10px] text-muted-foreground mt-3 leading-relaxed">
+        <p className="text-2xs text-muted-foreground mt-3 leading-relaxed">
           Industry benchmark: 1-year ≥ 70%, 3-year ≥ 60%. Persistency above benchmark = clients
           trust your advice; below = onboarding is ahead of relationship quality.
         </p>

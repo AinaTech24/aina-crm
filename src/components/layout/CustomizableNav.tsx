@@ -84,7 +84,12 @@ export type NavItemData = {
 type Group = { id: string; title: string; items: string[] /* hrefs */ };
 type SavedLayout = { v: number; groups: Group[] };
 
-const VERSION = 2;
+// Bumped 2 -> 3 when the sidebar was regrouped from six groups into nine.
+// reconcile() keeps a saved layout's group structure and only appends NEW
+// hrefs, so a pure regrouping of existing items would never reach anyone who
+// had already used the app. Bumping discards saved layouts and rebuilds from
+// NAV -- which also resets any personal customisation, the accepted cost.
+const VERSION = 3;
 
 function slug(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "group";
@@ -385,10 +390,10 @@ export function CustomizableNav({
         </div>
         {editing && (
           <div className="flex items-center gap-1">
-            <button type="button" onClick={openAddGroup} className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md text-brand-cyan-deep hover:bg-brand-cyan-light/60" title="Add a group">
+            <button type="button" onClick={openAddGroup} className="inline-flex items-center gap-1 text-2xs font-medium px-2 py-1 rounded-md text-brand-cyan-deep hover:bg-brand-cyan-light/60" title="Add a group">
               <Plus className="size-3.5" /> Group
             </button>
-            <button type="button" onClick={resetLayout} className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md text-muted-foreground hover:bg-secondary" title="Reset to default">
+            <button type="button" onClick={resetLayout} className="inline-flex items-center gap-1 text-2xs font-medium px-2 py-1 rounded-md text-muted-foreground hover:bg-secondary" title="Reset to default">
               <RotateCcw className="size-3" /> Reset
             </button>
           </div>
@@ -404,7 +409,7 @@ export function CustomizableNav({
           <div>
             <div className="sidebar-section-title px-2 mb-2.5 flex items-center gap-1.5">
               <Star className="size-3 fill-amber-400 text-amber-400 shrink-0" />
-              <span className="flex-1 truncate text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground/70">Pinned</span>
+              <span className="flex-1 truncate text-2xs font-bold uppercase tracking-[0.1em] text-muted-foreground/70">Pinned</span>
             </div>
             <div className="space-y-1">
               {pinnedItems.map((it) => (
@@ -492,7 +497,7 @@ export function CustomizableNav({
                       value={g.title}
                       onChange={(e) => renameGroup(g.id, e.target.value)}
                       placeholder="Group name"
-                      className="flex-1 min-w-0 bg-transparent text-[10px] font-bold uppercase tracking-[0.1em] text-foreground/70 border-b border-dashed border-border focus:outline-none focus:ring-0 focus:border-brand-cyan"
+                      className="flex-1 min-w-0 bg-transparent text-2xs font-bold uppercase tracking-[0.1em] text-foreground/70 border-b border-dashed border-border focus:outline-none focus:ring-0 focus:border-brand-cyan"
                     />
                     {layout.length > 1 && (
                       <>
@@ -517,11 +522,11 @@ export function CustomizableNav({
                   >
                     {/* Folder icon — open when expanded, closed when collapsed. */}
                     {isCollapsed ? (
-                      <Folder className="size-[18px] shrink-0 text-brand-cyan" />
+                      <Folder className="size-[18px] shrink-0 text-muted-foreground/70" />
                     ) : (
-                      <FolderOpen className="size-[18px] shrink-0 text-brand-cyan" />
+                      <FolderOpen className="size-[18px] shrink-0 text-muted-foreground/70" />
                     )}
-                    <span className={`flex-1 truncate text-[11px] font-bold tracking-wide transition-colors ${groupActive ? "text-brand-navy" : "text-foreground"}`}>
+                    <span className={`flex-1 truncate text-2xs font-bold uppercase tracking-wider transition-colors ${groupActive ? "text-primary" : "text-muted-foreground"}`}>
                       {g.title}
                     </span>
                     {/* A small dot when a collapsed folder holds the current page. */}
@@ -556,7 +561,7 @@ export function CustomizableNav({
                     );
                   })}
                   {editing && g.items.length === 0 && (
-                    <div className="text-[10px] text-muted-foreground/60 italic px-2 py-2 border border-dashed border-border rounded-lg text-center">Drop modules here</div>
+                    <div className="text-2xs text-muted-foreground/60 italic px-2 py-2 border border-dashed border-border rounded-lg text-center">Drop modules here</div>
                   )}
                 </div>
               </div>
@@ -567,7 +572,7 @@ export function CustomizableNav({
           <button
             type="button"
             onClick={openAddGroup}
-            className="w-full mt-1 flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-border text-[11px] font-semibold text-muted-foreground hover:text-brand-cyan-deep hover:border-brand-cyan/50 hover:bg-brand-cyan-light/30 py-2.5 transition-colors"
+            className="w-full mt-1 flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-border text-2xs font-semibold text-muted-foreground hover:text-brand-cyan-deep hover:border-brand-cyan/50 hover:bg-brand-cyan-light/30 py-2.5 transition-colors"
           >
             <Plus className="size-3.5" /> Add new group
           </button>
@@ -610,12 +615,12 @@ function NavRow({
       <IconCmp className="nav-link-icon" />
       <span className="truncate">{item.label}</span>
       {item.beta ? (
-        <span className="nav-link-beta shrink-0 rounded bg-amber-100 text-amber-700 px-1 text-[9px] font-bold uppercase leading-[1.3] tracking-wide">
+        <span className="nav-link-beta shrink-0 rounded bg-amber-100 text-amber-700 px-1 text-2xs font-bold uppercase leading-[1.3] tracking-wide">
           Beta
         </span>
       ) : null}
       {!editing && item.badge ? (
-        <span className="nav-link-badge ml-auto shrink-0 rounded-full bg-rose-500 px-1.5 min-w-[1.1rem] text-center text-[10px] font-semibold leading-[1.1rem] text-white">
+        <span className="nav-link-badge ml-auto shrink-0 rounded-full bg-rose-500 px-1.5 min-w-[1.1rem] text-center text-2xs font-semibold leading-[1.1rem] text-white">
           {item.badge > 99 ? "99+" : item.badge}
         </span>
       ) : null}
@@ -672,6 +677,9 @@ function NavRow({
       role="link"
       tabIndex={0}
       aria-current={active ? "page" : undefined}
+      // In the collapsed icon rail the label is hidden, so without this the row
+      // is an unlabelled glyph — hovering now names it.
+      title={item.label}
       onClick={go}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } }}
       className={`group nav-link cursor-pointer ${active ? "nav-link-active" : ""}`}
@@ -713,7 +721,7 @@ function AddGroupForm({
         placeholder="New group name"
         className="w-full rounded-md border border-border bg-card px-2 py-1.5 text-xs focus:outline-none focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/15"
       />
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground px-0.5">
+      <div className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground px-0.5">
         Add modules{selected.size > 0 ? ` · ${selected.size} selected` : ""}
       </div>
       <div className="max-h-48 overflow-y-auto scrollbar-thin space-y-0.5 rounded-md border border-border bg-card p-1">

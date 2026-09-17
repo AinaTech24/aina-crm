@@ -79,11 +79,11 @@ export function TrailProjectionChart({
             return <rect key={i} x={x} y={H - 16 - h} width={bw} height={h} rx={2} fill="#0891b2" opacity={0.85} />;
           })}
         </svg>
-        <div className="flex justify-between text-[10px] text-muted-foreground px-1">
+        <div className="flex justify-between text-2xs text-muted-foreground px-1">
           {months.map((m, i) => <span key={i}>{m}</span>)}
         </div>
       </div>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         Each month grows AUM by your healthy SIP inflow + the market assumption, then earns trail at your blended {weightedTrailPct.toFixed(2)}% p.a.
         Set growth to 0% for a pure-inflow, market-neutral view.
       </p>
@@ -94,9 +94,9 @@ export function TrailProjectionChart({
 function Stat({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: boolean }) {
   return (
     <div className={`rounded-lg border p-3 ${accent ? "border-brand-cyan/30 bg-brand-cyan-light/20" : "border-border bg-card"}`}>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-2xs uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className={`text-xl font-bold tabular-nums ${accent ? "text-brand-cyan-deep" : ""}`}>{value}</div>
-      {sub && <div className="text-[11px] text-muted-foreground">{sub}</div>}
+      {sub && <div className="text-2xs text-muted-foreground">{sub}</div>}
     </div>
   );
 }

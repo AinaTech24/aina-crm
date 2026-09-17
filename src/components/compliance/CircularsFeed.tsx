@@ -43,9 +43,9 @@ function safeHref(url?: string | null): string | null {
 }
 
 const SEVERITY = {
-  critical: { icon: AlertOctagon, chip: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900/50", label: "Critical" },
-  action_required: { icon: AlertTriangle, chip: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/50", label: "Action required" },
-  info: { icon: Info, chip: "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-900 dark:text-slate-400 dark:border-slate-800", label: "Info" },
+  critical: { icon: AlertOctagon, chip: "bg-rose-50 text-rose-700 border-rose-200", label: "Critical" },
+  action_required: { icon: AlertTriangle, chip: "bg-amber-50 text-amber-700 border-amber-200", label: "Action required" },
+  info: { icon: Info, chip: "bg-slate-50 text-slate-700 border-slate-200", label: "Info" },
 } as const;
 
 export function CircularsFeed({
@@ -145,10 +145,10 @@ export function CircularsFeed({
                       <span className={`chip border ${sev.chip} inline-flex items-center gap-1`}>
                         <SevIcon className="size-3" /> {sev.label}
                       </span>
-                      {c.issuer && <span className="chip bg-secondary text-[10px] uppercase">{c.issuer}</span>}
-                      {c.category && <span className="chip bg-secondary text-[10px]">{c.category}</span>}
+                      {c.issuer && <span className="chip bg-secondary text-2xs uppercase">{c.issuer}</span>}
+                      {c.category && <span className="chip bg-secondary text-2xs">{c.category}</span>}
                       {c.publishedOn && (
-                        <span className="text-[11px] text-muted-foreground">{new Date(c.publishedOn).toLocaleDateString("en-IN")}</span>
+                        <span className="text-2xs text-muted-foreground">{new Date(c.publishedOn).toLocaleDateString("en-IN")}</span>
                       )}
                     </div>
                     {canDraft && <DeleteCircularButton id={c.id} />}
@@ -157,7 +157,7 @@ export function CircularsFeed({
                   <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{c.summary}</p>
                   {actions.length > 0 && (
                     <div className="mt-3 rounded-lg bg-secondary/50 border border-border/60 p-3">
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+                      <div className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
                         What you must do
                       </div>
                       <ul className="space-y-1">
@@ -171,7 +171,7 @@ export function CircularsFeed({
                     </div>
                   )}
                   {safeHref(c.sourceUrl) && (
-                    <div className="mt-3 text-[11px]">
+                    <div className="mt-3 text-2xs">
                       <a href={safeHref(c.sourceUrl)!} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-brand-cyan hover:underline">
                         Official source <ExternalLink className="size-3" />
                       </a>
@@ -207,10 +207,10 @@ export function CircularsFeed({
                         <span className={`chip border ${sev.chip} inline-flex items-center gap-1`}>
                           <SevIcon className="size-3" /> {sev.label}
                         </span>
-                        <span className="chip bg-secondary text-[10px] uppercase">{c.issuer}</span>
-                        {c.category && <span className="chip bg-secondary text-[10px]">{c.category}</span>}
+                        <span className="chip bg-secondary text-2xs uppercase">{c.issuer}</span>
+                        {c.category && <span className="chip bg-secondary text-2xs">{c.category}</span>}
                         {c.publishedOn && (
-                          <span className="text-[11px] text-muted-foreground">{new Date(c.publishedOn).toLocaleDateString("en-IN")}</span>
+                          <span className="text-2xs text-muted-foreground">{new Date(c.publishedOn).toLocaleDateString("en-IN")}</span>
                         )}
                       </div>
                       <h3 className="font-semibold mt-2">{c.title}</h3>
@@ -219,7 +219,7 @@ export function CircularsFeed({
                   <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{c.summary}</p>
                   {actions.length > 0 && (
                     <div className="mt-3 rounded-lg bg-secondary/50 border border-border/60 p-3">
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+                      <div className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
                         What you must do
                       </div>
                       <ul className="space-y-1">
@@ -232,7 +232,7 @@ export function CircularsFeed({
                       </ul>
                     </div>
                   )}
-                  <div className="mt-3 flex items-center gap-3 text-[11px] text-muted-foreground">
+                  <div className="mt-3 flex items-center gap-3 text-2xs text-muted-foreground">
                     {safeHref(c.sourceUrl) && (
                       <a href={safeHref(c.sourceUrl)!} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-brand-cyan hover:underline">
                         Official source <ExternalLink className="size-3" />

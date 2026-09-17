@@ -227,7 +227,7 @@ export function BulkSendDrawer({ open, onClose, assetId, assetType }: BulkSendDr
                 {" · "}
                 <span className="text-rose-600 font-semibold">Failed {result.failed}</span>
               </p>
-              <p className="text-[11px] text-muted-foreground">of {result.total} recipients</p>
+              <p className="text-2xs text-muted-foreground">of {result.total} recipients</p>
             </div>
 
             {result.errors.length > 0 && (
@@ -243,7 +243,7 @@ export function BulkSendDrawer({ open, onClose, assetId, assetType }: BulkSendDr
                 {errorsOpen && (
                   <ul className="mt-2 space-y-1 max-h-56 overflow-y-auto scrollbar-thin">
                     {result.errors.map((e, i) => (
-                      <li key={`${e.id}-${i}`} className="text-[11px] font-mono text-muted-foreground border-t border-dashed pt-1">
+                      <li key={`${e.id}-${i}`} className="text-2xs font-mono text-muted-foreground border-t border-dashed pt-1">
                         <span className="text-foreground">{e.id}</span>: {e.reason}
                       </li>
                     ))}
@@ -323,7 +323,7 @@ export function BulkSendDrawer({ open, onClose, assetId, assetType }: BulkSendDr
                     {picked.map((r) => (
                       <span
                         key={`${r.type}-${r.id}`}
-                        className="chip text-[11px] bg-brand-cyan-light/40 text-foreground flex items-center gap-1"
+                        className="chip text-2xs bg-brand-cyan-light/40 text-foreground flex items-center gap-1"
                       >
                         {r.name}
                         <button
@@ -368,13 +368,13 @@ export function BulkSendDrawer({ open, onClose, assetId, assetType }: BulkSendDr
                               onClick={() => addRecipient(r)}
                               className="w-full text-left flex items-center gap-2.5 px-3 py-2 hover:bg-brand-cyan-light/30 transition-colors"
                             >
-                              <div className="size-7 rounded-full brand-gradient text-white grid place-items-center text-[10px] font-bold shrink-0 shadow-sm">
+                              <div className="size-7 rounded-full brand-gradient text-white grid place-items-center text-2xs font-bold shrink-0 shadow-sm">
                                 {r.name.slice(0, 2).toUpperCase()}
                               </div>
                               <div className="min-w-0 flex-1">
                                 <div className="font-semibold text-xs truncate">{r.name}</div>
                                 {r.details && (
-                                  <div className="text-[10px] text-muted-foreground truncate font-mono mt-0.5">
+                                  <div className="text-2xs text-muted-foreground truncate font-mono mt-0.5">
                                     {r.details}
                                   </div>
                                 )}

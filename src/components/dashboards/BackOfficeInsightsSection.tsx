@@ -262,19 +262,19 @@ export async function BackOfficeInsightsSection({ session }: { session: SessionU
           </div>
           <div className="space-y-3">
             <div className="bg-emerald-50/50 border border-emerald-100 rounded-lg p-3">
-              <div className="text-[10px] uppercase tracking-wider text-emerald-800 font-semibold">
+              <div className="text-2xs uppercase tracking-wider text-emerald-800 font-semibold">
                 Workflow-assisted
               </div>
               <div className="text-2xl font-bold text-emerald-800 mt-1 tabular-nums">
                 {autoPct.toFixed(0)}%
               </div>
-              <div className="text-[11px] text-emerald-800/80 mt-0.5">
+              <div className="text-2xs text-emerald-800/80 mt-0.5">
                 {data.autoVsManual.autoAssisted} of{" "}
                 {data.autoVsManual.totalResolved} resolved tickets had
                 automated comms
               </div>
             </div>
-            <p className="text-[10px] text-muted-foreground leading-relaxed">
+            <p className="text-2xs text-muted-foreground leading-relaxed">
               Counts tickets where a workflow-triggered comm went out during
               the open window — a proxy for "we acted before the customer
               had to chase".
@@ -298,7 +298,7 @@ export async function BackOfficeInsightsSection({ session }: { session: SessionU
             </span>
           </div>
           <div className="bg-brand-cyan-light/40 rounded-lg p-3 mb-3">
-            <div className="text-[10px] uppercase tracking-wider text-brand-cyan-deep font-semibold">
+            <div className="text-2xs uppercase tracking-wider text-brand-cyan-deep font-semibold">
               Avg checklist completion
             </div>
             <div className="text-2xl font-bold text-brand-cyan-deep mt-1 tabular-nums">
@@ -344,7 +344,7 @@ export async function BackOfficeInsightsSection({ session }: { session: SessionU
               tone="rose"
             />
           </div>
-          <p className="text-[10px] text-muted-foreground mt-3 leading-relaxed">
+          <p className="text-2xs text-muted-foreground mt-3 leading-relaxed">
             SEBI mandates periodic risk-profile refresh. An expired profile
             invalidates advisory and can stop new investments.
           </p>
@@ -373,11 +373,11 @@ function ImpactCard({
       : "border-amber-100 bg-amber-50/40 text-amber-700";
   return (
     <div className={`p-3 rounded-lg border ${cls}`}>
-      <div className="text-[10px] uppercase tracking-wider font-semibold opacity-80">
+      <div className="text-2xs uppercase tracking-wider font-semibold opacity-80">
         {label}
       </div>
       <div className="text-xl font-bold mt-1 tabular-nums">{value}</div>
-      <div className="text-[10px] mt-0.5 opacity-80">{sub}</div>
+      <div className="text-2xs mt-0.5 opacity-80">{sub}</div>
     </div>
   );
 }
@@ -420,7 +420,7 @@ function RpTile({
       : "border-amber-100 bg-amber-50/40 text-amber-700";
   return (
     <div className={`p-2.5 rounded-lg border ${cls}`}>
-      <div className="text-[10px] uppercase tracking-wider font-semibold opacity-80">
+      <div className="text-2xs uppercase tracking-wider font-semibold opacity-80">
         {label}
       </div>
       <div className="text-xl font-bold mt-1 tabular-nums">{value}</div>

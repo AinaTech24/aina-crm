@@ -49,7 +49,7 @@ export default async function BranchesPage() {
           <ArrowLeft className="size-3.5" /> Back to firm profile
         </Link>
         <h1 className="text-xl font-semibold mt-2">Branches &amp; offices</h1>
-        <p className="text-sm text-muted-foreground">
+        <p className="page-subtitle mt-1">
           Your registered HQ plus any branch offices. Assign a branch head and
           keep the addresses current for SEBI / AMFI records.
         </p>

@@ -147,7 +147,7 @@ export default async function ClaimDetailPage({ params }: { params: Promise<{ id
         <div className="brand-mesh px-6 py-5 text-white">
           <div className="flex items-end justify-between flex-wrap gap-3">
             <div>
-              <div className="text-[11px] uppercase tracking-[0.18em] text-white/70 font-semibold">
+              <div className="text-2xs uppercase tracking-[0.18em] text-white/70 font-semibold">
                 Insurance Claim
               </div>
               <h1 className="text-2xl font-bold tracking-tight mt-1">{c.proposerName}</h1>
@@ -222,7 +222,7 @@ export default async function ClaimDetailPage({ params }: { params: Promise<{ id
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-semibold">{s.label}</span>
                     {isCurrent && (
-                      <span className="chip bg-brand-cyan-light/60 text-brand-cyan-deep text-[10px]">
+                      <span className="chip bg-brand-cyan-light/60 text-brand-cyan-deep text-2xs">
                         Current
                       </span>
                     )}
@@ -276,13 +276,13 @@ export default async function ClaimDetailPage({ params }: { params: Promise<{ id
 
         {c.policyDetails && (
           <div className="mt-4">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Policy details</div>
+            <div className="text-2xs uppercase tracking-wider text-muted-foreground mb-1">Policy details</div>
             <p className="text-sm whitespace-pre-line leading-relaxed">{c.policyDetails}</p>
           </div>
         )}
         {c.comments && (
           <div className="mt-4">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Comments</div>
+            <div className="text-2xs uppercase tracking-wider text-muted-foreground mb-1">Comments</div>
             <p className="text-sm whitespace-pre-line leading-relaxed">{c.comments}</p>
           </div>
         )}
@@ -323,7 +323,7 @@ function Tile({
   return (
     <div className="kpi-card">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
+        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
           {label}
         </span>
         <div className={`size-7 rounded-lg grid place-items-center ${bg[accent ?? "muted"]}`}>
@@ -338,7 +338,7 @@ function Tile({
 function KV({ label, value }: { label: string; value: string }) {
   return (
     <div className="bg-secondary/40 rounded-lg px-3 py-2">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-2xs uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className="font-semibold mt-0.5 capitalize">{value}</div>
     </div>
   );

@@ -158,7 +158,7 @@ export function ReconTable({ rows }: { rows: Row[] }) {
       <div className="card-surface table-scroll">
         <table className="w-full text-sm">
           <thead className="sticky top-0 z-10 bg-card">
-            <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b">
+            <tr className="text-left text-2xs uppercase tracking-wider text-muted-foreground border-b">
               <th className="px-3 py-2 w-8">
                 <input type="checkbox" checked={rows.length > 0 && sel.size === rows.length} onChange={toggleAll} aria-label="Select all" />
               </th>
@@ -198,12 +198,12 @@ export function ReconTable({ rows }: { rows: Row[] }) {
                 </td>
                 <td className="px-3 py-2">
                   <div className="font-medium">{r.scheme_name ?? r.scheme_code ?? "—"}</div>
-                  <div className="text-[11px] text-muted-foreground font-mono">
+                  <div className="text-2xs text-muted-foreground font-mono">
                     {r.scheme_code}{r.folio_number ? ` · Folio ${r.folio_number}` : ""}
                   </div>
                 </td>
                 <td className="px-3 py-2">
-                  <span className={`inline-block rounded-md border px-2 py-0.5 text-[11px] ${SEV_TONE[r.severity] ?? SEV_TONE.low}`}>
+                  <span className={`inline-block rounded-md border px-2 py-0.5 text-2xs ${SEV_TONE[r.severity] ?? SEV_TONE.low}`}>
                     {TYPE_LABEL[r.exception_type] ?? r.exception_type}
                   </span>
                 </td>
@@ -211,7 +211,7 @@ export function ReconTable({ rows }: { rows: Row[] }) {
                 <td className="px-3 py-2 text-right tabular-nums">{fmtUnits(r.feed_units)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{fmtUnits(r.delta_units)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{formatINR(Math.abs(Number(r.delta_value ?? 0)))}</td>
-                <td className="px-3 py-2 text-[11px] text-muted-foreground whitespace-nowrap">
+                <td className="px-3 py-2 text-2xs text-muted-foreground whitespace-nowrap">
                   {r.detected_at ? new Date(r.detected_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "—"}
                 </td>
                 <td className="px-3 py-2">
@@ -234,13 +234,13 @@ export function ReconTable({ rows }: { rows: Row[] }) {
                     <button
                       onClick={() => sync(r.id)}
                       disabled={busy === r.id}
-                      className="inline-flex items-center gap-1 rounded-md border border-brand-cyan/40 bg-brand-cyan-light/30 px-2 py-1 text-[11px] font-medium text-brand-cyan-deep hover:bg-brand-cyan-light/60 disabled:opacity-50"
+                      className="inline-flex items-center gap-1 rounded-md border border-brand-cyan/40 bg-brand-cyan-light/30 px-2 py-1 text-2xs font-medium text-brand-cyan-deep hover:bg-brand-cyan-light/60 disabled:opacity-50"
                       title="Post an opening-balance transaction so the CRM matches the feed"
                     >
                       {busy === r.id ? <Loader2 className="size-3 animate-spin" /> : <Wand2 className="size-3" />} Sync to CRM
                     </button>
                   ) : (
-                    <span className="text-[11px] text-muted-foreground">—</span>
+                    <span className="text-2xs text-muted-foreground">—</span>
                   )}
                 </td>
               </tr>

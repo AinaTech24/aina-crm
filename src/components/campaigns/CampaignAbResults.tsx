@@ -74,22 +74,22 @@ export function CampaignAbResults({
                 <div className="font-medium flex items-center gap-1.5">
                   {v.label}
                   {won && <Trophy className="size-3.5 text-emerald-600" />}
-                  {!won && isLeader && <span className="text-[10px] text-emerald-700 font-normal">leading</span>}
+                  {!won && isLeader && <span className="text-2xs text-emerald-700 font-normal">leading</span>}
                 </div>
               </div>
-              {v.templateName && <div className="text-[11px] text-muted-foreground truncate">{v.templateName}</div>}
+              {v.templateName && <div className="text-2xs text-muted-foreground truncate">{v.templateName}</div>}
               <div className="mt-3 grid grid-cols-3 gap-2 text-center">
                 <div>
                   <div className="text-lg font-bold">{v.sent.toLocaleString("en-IN")}</div>
-                  <div className="text-[10px] text-muted-foreground">sent</div>
+                  <div className="text-2xs text-muted-foreground">sent</div>
                 </div>
                 <div>
                   <div className="text-lg font-bold text-blue-600">{rate(v.opened, v.sent)}</div>
-                  <div className="text-[10px] text-muted-foreground">open rate</div>
+                  <div className="text-2xs text-muted-foreground">open rate</div>
                 </div>
                 <div>
                   <div className="text-lg font-bold text-violet-600">{rate(v.clicked, v.sent)}</div>
-                  <div className="text-[10px] text-muted-foreground">click rate</div>
+                  <div className="text-2xs text-muted-foreground">click rate</div>
                 </div>
               </div>
               {canPick && !currentWinner && (
@@ -107,7 +107,7 @@ export function CampaignAbResults({
         })}
       </div>
       {currentWinner && (
-        <p className="text-[11px] text-emerald-700 mt-3">
+        <p className="text-2xs text-emerald-700 mt-3">
           Winner locked to Variant {currentWinner.toUpperCase()} — remaining unsent recipients receive it.
         </p>
       )}

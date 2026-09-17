@@ -26,7 +26,8 @@
  * turning this off does not widen lead visibility.
  */
 
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
+import { withTenant, type Tx } from "@/db/client";
 import { investors } from "@/db/schema";
 import type { SessionUser } from "@/lib/auth/session";
 import { can, requireAny } from "@/lib/auth/rbac";
@@ -59,9 +60,9 @@ export async function isDataScopeRestricted(tx: any, tenantId: string): Promise<
     const r = await tx.execute(sql`
       SELECT restrict_user_data_scope AS on FROM tenants WHERE id = ${tenantId}::uuid LIMIT 1
     `);
-    return (r.rows[0] as { on?: boolean } | undefined)?.on === true;
+    return (r.rows[0] as { on?: boolean } | undefined)?.on !== false;
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -92,4 +93,18 @@ export async function investorScopeSql(tx: any, session: SessionUser, alias = "i
   }
   if (canViewAllInvestors(session)) return sql`TRUE`;
   return sql`${sql.raw(`${alias}.rm_id`)} = ${session.userId}::uuid`;
+}
+
+/** Authorize the parent before returning any child records or private files. */
+export async function loadViewableInvestor(tx: Tx, session: SessionUser, id: string) {
+  const scope = await investorScopeCondition(tx, session);
+  const [row] = await tx.select().from(investors).where(and(
+    eq(investors.id, id), eq(investors.tenantId, session.tenantId), isNull(investors.deletedAt), scope,
+  )).limit(1);
+  return row ?? null;
+}
+
+export async function assertInvestorAccess(session: SessionUser, id: string): Promise<void> {
+  const found = await withTenant(session.tenantId, tx => loadViewableInvestor(tx, session, id));
+  if (!found) throw Object.assign(new Error("Investor not found"), { status: 404 });
 }

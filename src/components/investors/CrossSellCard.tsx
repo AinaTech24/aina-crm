@@ -94,7 +94,7 @@ export function CrossSellCard({
 
       {opps.length > 0 && (
         <div className="mt-4 pt-3 border-t">
-          <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5">
+          <div className="text-2xs uppercase tracking-wide text-muted-foreground mb-1.5">
             Wallet-share opportunities
           </div>
           <div className="flex flex-wrap gap-1.5">

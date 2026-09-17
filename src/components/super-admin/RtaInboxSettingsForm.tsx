@@ -179,7 +179,7 @@ export function RtaInboxSettingsForm({ initial }: { initial: Status }) {
               type="button"
               onClick={revealSaved}
               disabled={busy}
-              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-60"
+              className="inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground disabled:opacity-60"
             >
               {revealing ? <Loader2 className="size-3 animate-spin" /> : <Eye className="size-3" />}
               Reveal saved password
@@ -192,7 +192,7 @@ export function RtaInboxSettingsForm({ initial }: { initial: Status }) {
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Forwarding domain</label>
         <input value={domain} onChange={(e) => setDomain(e.target.value.trim())} placeholder="crm.ainatech.in" className={inputCls} />
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           Each firm gets <code className="bg-background px-1 rounded">rta-&lt;token&gt;@{domain || "crm.ainatech.in"}</code>. A catch-all on this domain must deliver into the mailbox above.
         </p>
       </div>
@@ -208,7 +208,7 @@ export function RtaInboxSettingsForm({ initial }: { initial: Status }) {
           />
           <span>
             <span className="font-medium">Delete forwarded mail once it has been imported</span>
-            <span className="block text-[11px] text-muted-foreground mt-0.5">
+            <span className="block text-2xs text-muted-foreground mt-0.5">
               Keeps the mailbox from filling up with daily RTA ZIPs. Safe because the attachment is already copied to S3
               before the import runs, and the Inbound Mail log keeps the audit trail. Mail is only deleted when every
               import it created actually <strong>finished</strong> — a failed import (wrong ZIP password) keeps its mail
@@ -227,7 +227,7 @@ export function RtaInboxSettingsForm({ initial }: { initial: Status }) {
             />
             <span className="text-sm">days after import</span>
             {retentionDays === "0" && (
-              <span className="text-[11px] text-amber-700">0 = delete at the next hourly sweep — no grace period.</span>
+              <span className="text-2xs text-amber-700">0 = delete at the next hourly sweep — no grace period.</span>
             )}
           </div>
         )}

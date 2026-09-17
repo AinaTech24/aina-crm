@@ -173,7 +173,7 @@ export function FamilyMasterSettings({ canEdit }: { canEdit: boolean }) {
             >
               {CADENCES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
-            <p className="mt-1 text-[10px] text-muted-foreground">
+            <p className="mt-1 text-2xs text-muted-foreground">
               Drives the household&apos;s next review date and the reviews-due queue.
             </p>
           </label>
@@ -191,7 +191,7 @@ export function FamilyMasterSettings({ canEdit }: { canEdit: boolean }) {
                 className="input-base text-sm flex-1 disabled:opacity-60"
               />
             </div>
-            <p className="mt-1 text-[10px] text-muted-foreground">
+            <p className="mt-1 text-2xs text-muted-foreground">
               <code>{"{head}"}</code> becomes the head&apos;s name — e.g. “{(settings?.familyNamePattern ?? "{head} Family").replace(/\{head\}/gi, "Sharma")}”.
             </p>
           </label>
@@ -207,7 +207,7 @@ export function FamilyMasterSettings({ canEdit }: { canEdit: boolean }) {
           />
           <span>
             <span className="font-medium">Require a primary member</span>
-            <span className="block text-[10px] text-muted-foreground">
+            <span className="block text-2xs text-muted-foreground">
               Refuse to create a household without naming its head. Prevents empty groupings that
               never get finished.
             </span>
@@ -225,7 +225,7 @@ export function FamilyMasterSettings({ canEdit }: { canEdit: boolean }) {
             </p>
           </div>
           {!types.some((t) => t.stored) && (
-            <span className="text-[10px] text-muted-foreground border rounded-full px-2 py-0.5 shrink-0">
+            <span className="text-2xs text-muted-foreground border rounded-full px-2 py-0.5 shrink-0">
               Using defaults
             </span>
           )}
@@ -262,7 +262,7 @@ export function FamilyMasterSettings({ canEdit }: { canEdit: boolean }) {
                 ) : (
                   <span className="text-sm font-medium">{t.label}</span>
                 )}
-                <div className="text-[10px] text-muted-foreground font-mono">
+                <div className="text-2xs text-muted-foreground font-mono">
                   {t.key}
                   {t.isSystem ? " · built-in" : ""}
                   {t.isActive ? "" : " · retired"}
@@ -312,7 +312,7 @@ export function FamilyMasterSettings({ canEdit }: { canEdit: boolean }) {
           ))}
         </ul>
 
-        <p className="mt-3 text-[10px] text-muted-foreground">
+        <p className="mt-3 text-2xs text-muted-foreground">
           Relationships are retired, never deleted — a client&apos;s recorded relationship keeps its
           meaning even after the option stops being offered.
         </p>

@@ -9,6 +9,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, X, Plus, Pin, PinOff, Trash2, Megaphone, Save, Edit2, Eye, EyeOff, Check, CheckCheck, ShieldAlert } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 
 type Row = Record<string, any>;
 
@@ -95,7 +96,7 @@ export function AnnouncementBoard({
   }
 
   async function remove(r: Row) {
-    if (!confirm(`Delete announcement "${r.title}"?`)) return;
+    if (!(await confirmDialog({ title: `Delete announcement "${r.title}"?`, confirmLabel: "Delete", tone: "danger" }))) return;
     setBusyId(r.id);
     try {
       await fetch(`/api/announcements/${r.id}`, { method: "DELETE" });
@@ -137,20 +138,20 @@ export function AnnouncementBoard({
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       {r.is_pinned && <Pin className="size-3.5 text-amber-500" />}
-                      <span className={`chip text-[10px] capitalize ${CAT_TONE[r.category] ?? ""}`}>
+                      <span className={`chip text-2xs capitalize ${CAT_TONE[r.category] ?? ""}`}>
                         {r.category}
                       </span>
                       <h3 className="font-semibold">{r.title}</h3>
-                      {draft && <span className="chip text-[10px] bg-slate-100 text-slate-500">draft</span>}
-                      {expired && <span className="chip text-[10px] bg-slate-100 text-slate-500">expired</span>}
+                      {draft && <span className="chip text-2xs bg-slate-100 text-slate-500">draft</span>}
+                      {expired && <span className="chip text-2xs bg-slate-100 text-slate-500">expired</span>}
                       {r.requires_ack && (
-                        <span className="chip text-[10px] bg-amber-50 text-amber-700 inline-flex items-center gap-0.5">
+                        <span className="chip text-2xs bg-amber-50 text-amber-700 inline-flex items-center gap-0.5">
                           <ShieldAlert className="size-3" /> Requires ack
                         </span>
                       )}
                     </div>
                     <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">{r.body}</p>
-                    <div className="text-[11px] text-muted-foreground mt-2 flex flex-wrap items-center gap-1.5">
+                    <div className="text-2xs text-muted-foreground mt-2 flex flex-wrap items-center gap-1.5">
                       {r.created_by_name ? <span>{r.created_by_name}</span> : null}
                       {r.created_by_name ? <span>·</span> : null}
                       <span>
@@ -216,12 +217,12 @@ export function AnnouncementBoard({
 
                     {isManager && (
                       <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                        <span className="chip text-[10px] bg-slate-50 text-slate-600 inline-flex items-center gap-0.5">
+                        <span className="chip text-2xs bg-slate-50 text-slate-600 inline-flex items-center gap-0.5">
                           <Eye className="size-3" /> {r.read_count ?? 0} read
                         </span>
                         {r.requires_ack && (
                           <span
-                            className={`chip text-[10px] inline-flex items-center gap-0.5 ${
+                            className={`chip text-2xs inline-flex items-center gap-0.5 ${
                               (r.read_count ?? 0) > 0 && (r.ack_count ?? 0) >= (r.read_count ?? 0)
                                 ? "bg-emerald-50 text-emerald-700"
                                 : (r.ack_count ?? 0) === 0
@@ -445,7 +446,7 @@ function Composer({
             </select>
           </Field>
           <div>
-            <div className="text-[11px] text-muted-foreground mb-1">Audience (none = everyone)</div>
+            <div className="text-2xs text-muted-foreground mb-1">Audience (none = everyone)</div>
             <div className="flex flex-wrap gap-1.5">
               {ROLE_OPTS.map((r) => (
                 <button
@@ -482,7 +483,7 @@ function Composer({
               />{" "}
               Requires acknowledgement
             </label>
-            <p className="text-[11px] text-muted-foreground mt-0.5 ml-6">
+            <p className="text-2xs text-muted-foreground mt-0.5 ml-6">
               Staff must click “I acknowledge” — for policy/urgent notices.
             </p>
           </div>
@@ -558,7 +559,7 @@ function Composer({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <div className="text-[11px] text-muted-foreground mb-0.5">{label}</div>
+      <div className="text-2xs text-muted-foreground mb-0.5">{label}</div>
       {children}
     </label>
   );

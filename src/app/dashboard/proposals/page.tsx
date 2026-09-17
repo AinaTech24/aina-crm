@@ -139,8 +139,9 @@ export default async function ProposalsPage({
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="page-title">
-            <FileSignature className="size-6 text-brand-cyan" /> Proposals
+            <FileSignature className="size-6 text-muted-foreground" /> Proposals
           </h1>
+          <p className="page-subtitle mt-1">Investment proposals you have sent, and whether the client approved them.</p>
         </div>
         <Link href="/dashboard/proposals/new" className="btn-primary">
           <Plus className="size-4" /> New proposal
@@ -275,7 +276,7 @@ function Stat({
   return (
     <div className="kpi-card">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
+        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
           {label}
         </span>
         {Icon && (

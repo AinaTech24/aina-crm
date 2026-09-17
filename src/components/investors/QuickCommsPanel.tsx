@@ -203,7 +203,7 @@ export function QuickCommsPanel({
                     </SelectField>
                   </label>
                   {selectedTemplate && selectedTemplate.description && (
-                    <p className="text-[11px] text-muted-foreground mt-1.5">
+                    <p className="text-2xs text-muted-foreground mt-1.5">
                       {selectedTemplate.description}
                     </p>
                   )}

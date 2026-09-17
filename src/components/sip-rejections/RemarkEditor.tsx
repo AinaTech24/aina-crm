@@ -7,6 +7,7 @@
  */
 
 import { useState } from "react";
+import { notify } from "@/components/ui/Toast";
 import { useRouter } from "next/navigation";
 import { Pencil, Check, X } from "lucide-react";
 
@@ -32,7 +33,7 @@ export function RemarkEditor({
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        alert(j.error ?? "Save failed");
+        notify.error(j.error ?? "Save failed");
         return;
       }
       setEditing(false);

@@ -70,7 +70,7 @@ export function KycDataViewer({
           <FileText className="size-3.5 text-primary" />
         </div>
         <h3 className="text-sm font-semibold">KYC submission details</h3>
-        <span className="ml-auto text-[11px] text-muted-foreground">{entries.length} fields</span>
+        <span className="ml-auto text-2xs text-muted-foreground">{entries.length} fields</span>
       </div>
 
       <div className="divide-y">
@@ -78,12 +78,12 @@ export function KycDataViewer({
           <div key={key} className="py-4 first:pt-3">
             <div className="flex items-center gap-1.5 mb-2.5">
               <Icon className="size-3.5 text-muted-foreground" />
-              <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</h4>
+              <h4 className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</h4>
             </div>
             <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
               {grouped.get(key)!.map(([k, v]) => (
                 <div key={k} className="min-w-0">
-                  <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">{humanize(k)}</dt>
+                  <dt className="text-2xs uppercase tracking-wide text-muted-foreground">{humanize(k)}</dt>
                   <dd className="text-sm font-medium break-words whitespace-pre-wrap line-clamp-3">{v}</dd>
                 </div>
               ))}

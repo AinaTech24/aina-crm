@@ -132,26 +132,26 @@ export function RecurringExpenses({ initial, currentPeriod }: { initial: Templat
         </div>
       </div>
 
-      {postMsg && <div className="px-4 py-2 text-[11px] text-emerald-700 bg-emerald-50/60 border-b">{postMsg}</div>}
+      {postMsg && <div className="px-4 py-2 text-2xs text-emerald-700 bg-emerald-50/60 border-b">{postMsg}</div>}
 
       {open && (
         <div className="px-4 py-3 border-b bg-secondary/20 grid grid-cols-2 md:grid-cols-6 gap-2 items-end">
           <label className="col-span-2 md:col-span-2 block">
-            <div className="text-[11px] text-muted-foreground mb-1">Description</div>
+            <div className="text-2xs text-muted-foreground mb-1">Description</div>
             <input value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} className="input-base text-sm w-full" placeholder="Office rent" />
           </label>
           <label className="block">
-            <div className="text-[11px] text-muted-foreground mb-1">Category</div>
+            <div className="text-2xs text-muted-foreground mb-1">Category</div>
             <select value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} className="input-base text-sm w-full">
               {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
           </label>
           <label className="block">
-            <div className="text-[11px] text-muted-foreground mb-1">Amount (₹)</div>
+            <div className="text-2xs text-muted-foreground mb-1">Amount (₹)</div>
             <input type="number" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} className="input-base text-sm w-full tabular-nums" />
           </label>
           <label className="block">
-            <div className="text-[11px] text-muted-foreground mb-1">Day of month</div>
+            <div className="text-2xs text-muted-foreground mb-1">Day of month</div>
             <input type="number" min={1} max={31} value={form.dayOfMonth} onChange={(e) => setForm((f) => ({ ...f, dayOfMonth: e.target.value }))} className="input-base text-sm w-full tabular-nums" />
           </label>
           <button onClick={add} disabled={busy} className="btn-primary text-xs h-9">
@@ -171,11 +171,11 @@ export function RecurringExpenses({ initial, currentPeriod }: { initial: Templat
               <tr key={t.id} className={`border-b last:border-0 ${t.active ? "" : "opacity-50"}`}>
                 <td className="px-4 py-2.5">
                   <div className="font-medium">{t.description}</div>
-                  <div className="text-[11px] text-muted-foreground">{CAT_LABEL[t.category] ?? t.category} · day {t.dayOfMonth}</div>
+                  <div className="text-2xs text-muted-foreground">{CAT_LABEL[t.category] ?? t.category} · day {t.dayOfMonth}</div>
                 </td>
                 <td className="py-2.5 text-right tabular-nums font-medium pr-2">{formatINR(Number(t.amount))}</td>
                 <td className="py-2.5 pr-2 text-right">
-                  <button onClick={() => toggle(t)} className={`text-[11px] px-2 py-0.5 rounded-full ${t.active ? "bg-emerald-50 text-emerald-700" : "bg-secondary text-muted-foreground"}`}>
+                  <button onClick={() => toggle(t)} className={`text-2xs px-2 py-0.5 rounded-full ${t.active ? "bg-emerald-50 text-emerald-700" : "bg-secondary text-muted-foreground"}`}>
                     {t.active ? "Active" : "Paused"}
                   </button>
                 </td>

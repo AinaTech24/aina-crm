@@ -202,7 +202,7 @@ export function CompactFilterBar({
           >
             <SlidersHorizontal className="size-4" />
             {activeCount > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 bg-brand-cyan text-white rounded-full min-w-[15px] h-[15px] px-1 text-[9px] font-bold tabular-nums flex items-center justify-center">{activeCount}</span>
+              <span className="absolute -top-1.5 -right-1.5 bg-brand-cyan text-white rounded-full min-w-[15px] h-[15px] px-1 text-2xs font-bold tabular-nums flex items-center justify-center">{activeCount}</span>
             )}
           </button>
 
@@ -224,7 +224,7 @@ export function CompactFilterBar({
                       >
                         {isOpen ? <ChevronDown className="size-3 opacity-60" /> : <ChevronRight className="size-3 opacity-60" />}
                         <span className="font-medium">{f.label}</span>
-                        {summary && <span className="ml-auto text-[10px] text-brand-cyan-deep truncate max-w-[120px]">{summary}</span>}
+                        {summary && <span className="ml-auto text-2xs text-brand-cyan-deep truncate max-w-[120px]">{summary}</span>}
                       </button>
 
                       {isOpen && (
@@ -248,7 +248,7 @@ export function CompactFilterBar({
                                       />
                                       <span className="truncate">{o.label}</span>
                                       {typeof o.count === "number" && (
-                                        <span className="ml-auto tabular-nums text-[10px] text-muted-foreground">{o.count}</span>
+                                        <span className="ml-auto tabular-nums text-2xs text-muted-foreground">{o.count}</span>
                                       )}
                                     </label>
                                   </li>
@@ -257,7 +257,7 @@ export function CompactFilterBar({
                             </ul>
                           ) : f.type === "multi" ? (
                             <ul className="space-y-0.5 max-h-52 overflow-y-auto scrollbar-thin">
-                              {f.options.length === 0 && <li className="text-[11px] text-muted-foreground px-1 py-1">No options</li>}
+                              {f.options.length === 0 && <li className="text-2xs text-muted-foreground px-1 py-1">No options</li>}
                               {f.options.map((o) => {
                                 const cur = values[f.key] as string[];
                                 const checked = cur.includes(o.value);
@@ -320,7 +320,7 @@ export function CompactFilterBar({
                                 type="date"
                                 value={values[`${f.key}_from`]}
                                 onChange={(e) => pushParams({ [`${f.key}_from`]: e.target.value })}
-                                className="input-base h-7 text-[11px] flex-1"
+                                className="input-base h-7 text-2xs flex-1"
                                 aria-label={`${f.label} from`}
                               />
                               <span className="text-muted-foreground text-xs">→</span>
@@ -328,7 +328,7 @@ export function CompactFilterBar({
                                 type="date"
                                 value={values[`${f.key}_to`]}
                                 onChange={(e) => pushParams({ [`${f.key}_to`]: e.target.value })}
-                                className="input-base h-7 text-[11px] flex-1"
+                                className="input-base h-7 text-2xs flex-1"
                                 aria-label={`${f.label} to`}
                               />
                             </div>
@@ -368,7 +368,7 @@ export function CompactFilterBar({
             </button>
             {sortOpen && (
               <div className="absolute right-0 top-full mt-1 z-50 w-52 card-elevated bg-card p-1 animate-scale-in">
-                <div className="px-2 py-1 text-[10px] uppercase font-bold tracking-wide text-muted-foreground">Sort by</div>
+                <div className="px-2 py-1 text-2xs uppercase font-bold tracking-wide text-muted-foreground">Sort by</div>
                 {sort.options.map((o) => {
                   const active = o.value === (sp.get(sort.key) || sort.options[0]?.value || "");
                   return (

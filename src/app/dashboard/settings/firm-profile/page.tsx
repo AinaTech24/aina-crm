@@ -166,7 +166,7 @@ export default async function FirmProfilePage() {
             <div className="absolute inset-0 grid place-items-center">
               <div className="text-center leading-none">
                 <div className={`text-lg font-bold ${ringColor}`}>{readiness.pct}%</div>
-                <div className="text-[9px] text-muted-foreground">ready</div>
+                <div className="text-2xs text-muted-foreground">ready</div>
               </div>
             </div>
           </div>
@@ -188,7 +188,7 @@ export default async function FirmProfilePage() {
                     <Link
                       href={m.href}
                       title={m.hint}
-                      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${
+                      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs ${
                         m.critical ? "border-rose-200 bg-rose-50 text-rose-700" : "border-border bg-secondary text-muted-foreground"
                       } hover:underline`}
                     >
@@ -261,7 +261,7 @@ export default async function FirmProfilePage() {
                     <td className="px-3 py-2 font-medium">
                       {d.name}
                       {d.email && (
-                        <div className="text-[10px] text-muted-foreground">
+                        <div className="text-2xs text-muted-foreground">
                           {d.email}
                         </div>
                       )}
@@ -283,7 +283,7 @@ export default async function FirmProfilePage() {
                     </td>
                     <td className="px-3 py-2">
                       <span
-                        className={`chip text-[10px] ${
+                        className={`chip text-2xs ${
                           d.status === "active"
                             ? "bg-emerald-50 text-emerald-700"
                             : "bg-gray-100 text-gray-600"
@@ -306,7 +306,7 @@ export default async function FirmProfilePage() {
                     </td>
                     <td className="px-3 py-2" colSpan={2}>
                       {shareOff && (
-                        <span className="inline-flex items-center gap-1 text-[10px] text-rose-600">
+                        <span className="inline-flex items-center gap-1 text-2xs text-rose-600">
                           <AlertTriangle className="size-3" /> should total 100%
                         </span>
                       )}
@@ -337,13 +337,13 @@ export default async function FirmProfilePage() {
                 <div className="flex items-center justify-between">
                   <div className="font-medium">{b.name}</div>
                   {(b as any).isHq === "true" && (
-                    <span className="chip bg-violet-50 text-violet-700 text-[10px]">
+                    <span className="chip bg-violet-50 text-violet-700 text-2xs">
                       Registered HQ
                     </span>
                   )}
                 </div>
                 {(b as any).code && (
-                  <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
+                  <div className="text-2xs text-muted-foreground font-mono mt-0.5">
                     {(b as any).code}
                   </div>
                 )}
@@ -455,7 +455,7 @@ function Empty({ msg }: { msg: string }) {
 function Stat({ label, value }: { label: string; value: number | string }) {
   return (
     <div>
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">
         {label}
       </div>
       <div className="text-2xl font-semibold">{value}</div>

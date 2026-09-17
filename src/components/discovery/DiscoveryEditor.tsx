@@ -69,7 +69,7 @@ export function DiscoveryEditor({
           {sharing ? <Loader2 className="size-4 animate-spin" /> : <Link2 className="size-4" />} Share client link
         </button>
         {savedAt && <span className="text-xs text-muted-foreground">Saved {savedAt}</span>}
-        <span className="text-[11px] px-2 py-0.5 rounded-full bg-secondary text-muted-foreground capitalize ml-auto">{status}</span>
+        <span className="text-2xs px-2 py-0.5 rounded-full bg-secondary text-muted-foreground capitalize ml-auto">{status}</span>
       </div>
 
       {shareUrl && (

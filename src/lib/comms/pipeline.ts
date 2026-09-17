@@ -41,6 +41,7 @@ import { resolveEmailSender } from "./sender";
 import { consumeRateLimit } from "./rate-limit";
 import { loadClientLinkTokens, wantsClientLinkTokens } from "@/lib/comms/client-links";
 import { checkMonthlyQuota } from "./usage";
+import { durableDelivery } from "./durable-delivery";
 
 
 export type DispatchChannel = "whatsapp" | "email" | "sms";
@@ -80,7 +81,8 @@ export interface DispatchInput {
 
 export interface DispatchResult {
   communicationId: string;
-  status: "sent" | "queued" | "skipped";
+  status: "sent" | "queued" | "skipped" | "failed";
+  error?: string;
   externalId?: string;
   skipped?: {
     reason: string;
@@ -157,17 +159,7 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
       throw new Error(`Template '${input.templateKey}' (${input.channel}) not found`);
     }
     templateCategory = tmpl.category as DispatchInput["category"];
-    if (tmpl.status !== "approved") {
-      // Email transactional/utility templates have no external approval body
-      // (unlike WhatsApp→Meta or SMS→DLT), and the 11-rule compliance gate runs
-      // on every send regardless — so let the firm's own non-marketing email go
-      // out even as a draft. Marketing email + all WhatsApp/SMS still require an
-      // approved template.
-      const needsApproval = input.channel !== "email" || (templateCategory ?? input.category) === "marketing";
-      if (needsApproval) {
-        return await skip(tx, communicationId, input, "template_not_approved");
-      }
-    }
+    if (tmpl.status !== "approved") return await skip(tx, communicationId, input, "template_not_approved");
     if (!tmpl.currentVersionId) {
       throw new Error(`Template '${input.templateKey}' has no current version`);
     }
@@ -332,24 +324,19 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
   // -----------------------------------------------------------
   // 3. Consent check
   // -----------------------------------------------------------
-  // Free-form WhatsApp replies are customer-initiated (the 24h window only opens
-  // when the client messaged us — enforced in step 4), so the open session IS the
-  // consent. The compliance gate (step 5) still runs fully. Templates still
-  // require explicit consent.
+  // Explicit channel/scope grants are required for client messages. A service
+  // reply within a customer-initiated WhatsApp session and an approved OTP
+  // template have specific, bounded exceptions; callers cannot invent one.
   let consentSnapshot: Consent | null = null;
-  if (input.investorId && !input.bypassConsent && !input.freeformText && input.category !== "authentication") {
-    const scope = input.category === "marketing" ? "marketing" : "transactional";
-    const consentRow = await getConsent(tx, input.tenantId, input.investorId, input.channel, scope);
-    // Consent gate relaxed per firm preference: messages send by DEFAULT (no
-    // explicit opt-in required for any category). The ONLY block is an explicit
-    // opt-out (revoked) — we must never message a client who said "stop", both to
-    // respect their choice and to keep the WhatsApp number from being banned by
-    // Meta for messaging opted-out users. The full compliance gate (step 5) still
-    // runs on every send.
-    if (consentRow && consentRow.status === "revoked") {
-      return await skip(tx, communicationId, input, "skipped_consent", "client has opted out");
+  const effectiveCategory = input.category === "marketing" || templateCategory === "marketing" ? "marketing" : templateCategory ?? input.category;
+  const authentication = templateCategory === "authentication" && input.category === "authentication" && !input.freeformText;
+  const sessionReply = input.channel === "whatsapp" && input.freeformText != null && effectiveCategory !== "marketing";
+  if (input.bypassConsent && !authentication) return skip(tx, communicationId, input, "skipped_consent", "Consent exception is limited to approved authentication templates");
+  if (!authentication) {
+    consentSnapshot = input.investorId ? await getConsent(tx, input.tenantId, input.investorId, input.channel, effectiveCategory === "marketing" ? "marketing" : "transactional") : null;
+    if (consentSnapshot?.status === "revoked" || (!sessionReply && consentSnapshot?.status !== "granted")) {
+      return skip(tx, communicationId, input, "skipped_consent", "A recorded channel and scope consent grant is required");
     }
-    consentSnapshot = consentRow;
   }
 
   // -----------------------------------------------------------
@@ -458,7 +445,7 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
   // Effective compliance class — the template's declared category wins over the
   // caller's hint (a welcome/onboarding template stays transactional even if a
   // rule passed "marketing", so it's never a hard block).
-  const complianceCategory = templateCategory ?? input.category;
+  const complianceCategory = effectiveCategory;
 
   let complianceText = rendered.text;
   if (input.channel === "email") {
@@ -484,16 +471,11 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
     dltTemplateId: input.channel === "sms" ? extractDltId(version) : undefined,
     dltTemplateContent: dltContent,
     whatsappSessionActive: sessionActive,
-    hasMarketingConsent: complianceCategory === "marketing" ? !!consentSnapshot : true,
+    hasMarketingConsent: complianceCategory === "marketing" ? consentSnapshot?.status === "granted" : true,
     amcApprovalRef: (version.body as any)?.amcApprovalRef,
   });
 
-  // WhatsApp TEMPLATE sends are pre-vetted by Meta before they can be sent at all,
-  // so the firm's content rules (AMFI disclaimer / ARN / scheme-specific) would
-  // just re-block an already-approved template. Record the findings for audit, but
-  // don't block. Email / SMS / free-form WhatsApp are still fully gated.
-  const isWhatsappTemplate = input.channel === "whatsapp" && !input.freeformText;
-  if (compliance.blocked && !isWhatsappTemplate) {
+  if (compliance.blocked) {
     return await skip(tx, communicationId, input, "skipped_compliance", JSON.stringify(compliance.findings), compliance);
   }
 
@@ -560,6 +542,9 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
   // 7. Channel dispatch (adapter)
   // -----------------------------------------------------------
   try {
+    const delivered = await durableDelivery(input.tenantId, input.idempotencyKey ?? input.workflowRunStepId ?? communicationId,
+      { communicationId, channel: input.channel, investorId: input.investorId, leadId: input.leadId, campaignId: input.campaignId,
+        workflowRunId: input.workflowRunId, rendered, consent: consentSnapshot, compliance }, async (markSending) => {
     let adapterResult: { externalId: string; status: "sent" | "queued" };
     if (input.channel === "whatsapp") {
       // Provider chosen centrally (see adapters/whatsapp.ts); credentials are
@@ -576,6 +561,7 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
         );
         sentByName = ((r.rows[0] as any)?.name as string | undefined) ?? undefined;
       }
+      await markSending();
       adapterResult = await whatsappAdapter.send({
         sentByName,
         tenantId: input.tenantId,
@@ -594,6 +580,7 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
       // mailbox (SMTP / OAuth) → Resend with the firm's sender identity. OAuth
       // mailboxes get a freshly-minted access token inside resolveEmailSender.
       const sender = await resolveEmailSender(tx, input.tenantId, input.actorUserId);
+      await markSending();
       adapterResult = await emailAdapter.send({
         tenantId: input.tenantId,
         templateVersion: version,
@@ -617,6 +604,7 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
       });
     } else {
       const integration = await getTenantIntegration(tx, input.tenantId, "msg91");
+      await markSending();
       adapterResult = await smsAdapter.send({
         tenantId: input.tenantId,
         templateVersion: version,
@@ -628,19 +616,21 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
         idempotencyKey: input.idempotencyKey ?? input.workflowRunStepId ?? communicationId,
       });
     }
+    return adapterResult;
+    });
     await tx
       .update(communications)
       .set({
-        externalId: adapterResult.externalId,
-        status: adapterResult.status,
+        externalId: delivered.externalId,
+        status: delivered.status,
         sentAt: new Date(),
       })
       .where(eq(communications.id, communicationId));
 
     return {
       communicationId,
-      status: adapterResult.status,
-      externalId: adapterResult.externalId,
+      status: delivered.status,
+      externalId: delivered.externalId,
     };
   } catch (err) {
     await tx
@@ -651,7 +641,7 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
         failedAt: new Date(),
       })
       .where(eq(communications.id, communicationId));
-    throw err;
+    return { communicationId, status: "failed", error: (err as Error).message };
   }
 }
 
@@ -984,7 +974,8 @@ export async function getConsent(
         inArray(consents.scope, [scope, "all"] as any)
       )
     );
-  return rows.find((r) => r.scope === scope) ?? rows.find((r) => r.scope === "all") ?? null;
+  // Blanket or exact opt-out always wins over another scope's grant.
+  return rows.find((r) => r.status === "revoked") ?? rows.find((r) => r.scope === scope) ?? rows.find((r) => r.scope === "all") ?? null;
 }
 export async function hasActiveWhatsappSession(
   tx: Tx,

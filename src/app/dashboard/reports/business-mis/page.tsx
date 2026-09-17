@@ -209,7 +209,7 @@ export default async function BusinessMisPage({
                               style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
                             />
                           </div>
-                          <div className="text-[11px] text-muted-foreground mt-1 tabular-nums">
+                          <div className="text-2xs text-muted-foreground mt-1 tabular-nums">
                             {pct.toFixed(0)}% of plan
                           </div>
                         </div>
@@ -223,7 +223,7 @@ export default async function BusinessMisPage({
         </>
       )}
 
-      <p className="text-[11px] text-muted-foreground flex items-start gap-1.5">
+      <p className="text-2xs text-muted-foreground flex items-start gap-1.5">
         <Info className="size-3.5 shrink-0 mt-px" />
         AUM is sourced from RTA-imported folios (CAMS / Kfintech) and split by scheme category, so
         it reflects mutual-fund holdings. Gross / Redemption / Net Sales are derived from confirmed
@@ -239,7 +239,7 @@ function Headline({ label, value, tone }: { label: string; value: string; tone?:
     tone === "cyan" ? "text-cyan-700" : tone === "rose" ? "text-rose-600" : tone === "emerald" ? "text-emerald-600" : "";
   return (
     <div className="rounded-xl border border-border p-3">
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className={`text-lg font-bold tabular-nums ${toneCls}`}>{value}</div>
     </div>
   );

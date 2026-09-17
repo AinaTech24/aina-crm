@@ -59,13 +59,13 @@ const clientCell = (m: Row) => {
           </Link>
         ) : null}
         {rel ? (
-          <span className={`shrink-0 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${rel.cls}`}>{rel.label}</span>
+          <span className={`shrink-0 text-2xs font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${rel.cls}`}>{rel.label}</span>
         ) : (
-          <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border bg-slate-50 text-slate-500 border-slate-200">Unlinked</span>
+          <span className="shrink-0 text-2xs font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border bg-slate-50 text-slate-500 border-slate-200">Unlinked</span>
         )}
       </div>
       {m.party_kind === "investor" && m.segment_tag ? (
-        <div className="text-[11px] text-muted-foreground truncate">{m.segment_tag}</div>
+        <div className="text-2xs text-muted-foreground truncate">{m.segment_tag}</div>
       ) : null}
     </div>
   );
@@ -160,7 +160,7 @@ export function MeetingsBulkTable({
           <Link href={`/dashboard/review-meetings/${m.id}`} className="font-medium tabular-nums hover:underline">
             {new Date(m.meeting_date).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}
           </Link>
-          <div className="text-[11px] text-muted-foreground">
+          <div className="text-2xs text-muted-foreground">
             in {Math.ceil((new Date(m.meeting_date).getTime() - Date.now()) / (24 * 60 * 60 * 1000))} day(s)
           </div>
         </>
@@ -171,8 +171,8 @@ export function MeetingsBulkTable({
       key: "category", header: "Category", tdClass: "py-3",
       render: (m) => (
         <>
-          <span className={`chip text-[10px] ${CATEGORY_TONE[m.category ?? "review"] ?? ""}`}>{CATEGORY_LABEL[m.category ?? "review"] ?? m.category}</span>
-          {m.parent_meeting_id && <div className="text-[10px] text-muted-foreground mt-0.5">↳ follow-up</div>}
+          <span className={`chip text-2xs ${CATEGORY_TONE[m.category ?? "review"] ?? ""}`}>{CATEGORY_LABEL[m.category ?? "review"] ?? m.category}</span>
+          {m.parent_meeting_id && <div className="text-2xs text-muted-foreground mt-0.5">↳ follow-up</div>}
         </>
       ),
     },
@@ -182,7 +182,7 @@ export function MeetingsBulkTable({
         m.subject ? (
           <>
             <div className="font-medium max-w-[220px] truncate">{m.subject}</div>
-            <div className="text-[11px] text-muted-foreground">{TYPE_LABEL[m.meeting_type] ?? m.meeting_type}</div>
+            <div className="text-2xs text-muted-foreground">{TYPE_LABEL[m.meeting_type] ?? m.meeting_type}</div>
           </>
         ) : (
           TYPE_LABEL[m.meeting_type] ?? m.meeting_type
@@ -200,7 +200,7 @@ export function MeetingsBulkTable({
       render: (m) => (
         <>
           <Link href={`/dashboard/review-meetings/${m.id}`} className="font-medium hover:underline">{formatDate(m.meeting_date)}</Link>
-          <div className="text-[11px] text-muted-foreground">{formatRelative(m.meeting_date)}</div>
+          <div className="text-2xs text-muted-foreground">{formatRelative(m.meeting_date)}</div>
         </>
       ),
     },
@@ -211,7 +211,7 @@ export function MeetingsBulkTable({
         m.subject ? (
           <>
             <div className="font-medium max-w-[220px] truncate">{m.subject}</div>
-            <div className="text-[11px] text-muted-foreground">{TYPE_LABEL[m.meeting_type] ?? m.meeting_type}</div>
+            <div className="text-2xs text-muted-foreground">{TYPE_LABEL[m.meeting_type] ?? m.meeting_type}</div>
           </>
         ) : (
           TYPE_LABEL[m.meeting_type] ?? m.meeting_type
@@ -247,8 +247,8 @@ export function MeetingsBulkTable({
             className={`w-full px-4 py-2.5 font-semibold flex items-center justify-between hover:bg-secondary/30 transition-colors ${upcomingOpen ? "border-b border-border" : ""}`}
           >
             <span className="flex items-center gap-2">
-              <Calendar className="size-4 text-brand-cyan" /> Upcoming meetings
-              <span className="chip bg-brand-cyan-light text-brand-cyan-deep text-[10px]">{upcoming.length}</span>
+              <Calendar className="size-4 text-muted-foreground" /> Upcoming meetings
+              <span className="chip bg-secondary text-muted-foreground text-2xs">{upcoming.length}</span>
             </span>
             <ChevronDown className={`size-4 text-muted-foreground transition-transform duration-300 ${upcomingOpen ? "" : "-rotate-90"}`} />
           </button>
@@ -267,9 +267,31 @@ export function MeetingsBulkTable({
           {toolbar && <div className="flex-1 min-w-[260px] flex justify-end">{toolbar}</div>}
         </div>
         {past.length === 0 ? (
-          <div className="p-12 text-center text-sm text-muted-foreground">
+          /* "No past meetings match." was shown for BOTH an empty book and a
+             filtered-out list, so a firm with no meetings at all was told its
+             filter matched nothing and given no way forward. Split the two. */
+          <div className="p-12 text-center">
             <Calendar className="size-8 mx-auto text-muted-foreground/50" />
-            <div className="mt-2">No past meetings match.</div>
+            {upcoming.length === 0 ? (
+              <>
+                <div className="mt-3 font-semibold">No meetings yet</div>
+                <p className="mt-1 text-sm text-muted-foreground max-w-sm mx-auto leading-relaxed">
+                  Portfolio reviews you schedule show up here — with the prep pack
+                  beforehand and whatever you agreed recorded afterwards.
+                </p>
+                <p className="mt-3 text-2xs text-muted-foreground">
+                  Use <span className="font-semibold text-foreground">Add Meeting</span> above to schedule the first one.
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="mt-3 font-semibold">Nothing completed yet</div>
+                <p className="mt-1 text-sm text-muted-foreground max-w-sm mx-auto leading-relaxed">
+                  {upcoming.length} {upcoming.length === 1 ? "meeting is" : "meetings are"} scheduled.
+                  Once you mark one done it moves here, with its notes.
+                </p>
+              </>
+            )}
           </div>
         ) : (
           <BulkTable rows={past.slice(0, 50)} columns={pastCols} endpoint="/api/review-meetings/bulk" actions={actions} itemLabel="meeting" scrollBody />

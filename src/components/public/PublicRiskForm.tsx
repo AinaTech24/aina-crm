@@ -289,7 +289,7 @@ export function PublicRiskForm({
         >
           <Download className="size-4" /> Download your Risk Profile (PDF)
         </DownloadButton>
-        <p className="text-[11px] text-muted-foreground mt-2">
+        <p className="text-2xs text-muted-foreground mt-2">
           Your answers and risk category, as a PDF you can keep.
         </p>
       </div>
@@ -310,7 +310,7 @@ export function PublicRiskForm({
               </p>
             )}
             {template.description && (
-              <p className="text-[11px] text-muted-foreground mt-1 italic">{template.description}</p>
+              <p className="text-2xs text-muted-foreground mt-1 italic">{template.description}</p>
             )}
           </div>
           {!onReview && (
@@ -441,7 +441,7 @@ export function PublicRiskForm({
                       placeholder="6-digit code"
                       className="border rounded-md px-3 py-2 text-sm w-36 font-mono tracking-widest text-center"
                     />
-                    <div className="text-[10px] text-muted-foreground mt-1">The code is valid for 10 minutes.</div>
+                    <div className="text-2xs text-muted-foreground mt-1">The code is valid for 10 minutes.</div>
                   </div>
                 )}
 
@@ -459,7 +459,7 @@ export function PublicRiskForm({
                 placeholder="e.g. Rajesh Sharma"
                 className="w-full border rounded-lg px-3 py-2 text-sm"
               />
-              <div className="text-[10px] text-muted-foreground mt-1">
+              <div className="text-2xs text-muted-foreground mt-1">
                 By signing, you confirm that the answers above reflect your true financial situation and risk
                 appetite. Mutual fund investments are subject to market risks.
               </div>

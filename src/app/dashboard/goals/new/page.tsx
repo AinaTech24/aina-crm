@@ -92,7 +92,7 @@ export default async function NewGoalPage({
             <Target className="size-6 text-white" />
           </div>
           <div className="flex-1">
-            <div className="text-[11px] uppercase tracking-[0.18em] text-white/70 font-semibold">
+            <div className="text-2xs uppercase tracking-[0.18em] text-white/70 font-semibold">
               New financial goal
             </div>
             <h1 className="text-2xl font-bold tracking-tight mt-0.5">{inv.name}</h1>

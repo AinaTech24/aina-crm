@@ -113,7 +113,7 @@ export async function GettingStartedChecklist({ tenantId }: { tenantId: string }
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold">Getting started</div>
-          <div className="text-[11px] text-white/80">
+          <div className="text-2xs text-white/80">
             {completed} of {steps.length} steps done · {pct}% complete
           </div>
         </div>
@@ -174,7 +174,7 @@ export async function GettingStartedChecklist({ tenantId }: { tenantId: string }
                   {s.title}
                 </div>
                 {!s.done && (
-                  <div className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+                  <div className="text-2xs text-muted-foreground mt-0.5 leading-snug">
                     {s.sub}
                   </div>
                 )}

@@ -1,7 +1,7 @@
 import { commercialLegalReadiness } from "@/lib/legal/company";
 import { providerMode } from "@/lib/platform/runtime-safety";
 
-export type ReadinessStatus = "live" | "configured" | "demo" | "blocked" | "unavailable";
+export type ReadinessStatus = "live" | "configured" | "demo" | "blocked" | "unavailable" | "unknown";
 
 export type ProductReadinessItem = {
   key: string;
@@ -20,6 +20,8 @@ function has(...names: string[]): boolean {
 export function buildProductReadiness(input: {
   tenantProviders: Set<string>;
   workerHealthy: boolean | null;
+  databaseHealthy?: boolean | null;
+  redisHealthy?: boolean | null;
   lastRtaImportAt: Date | null;
 }): ProductReadinessItem[] {
   const legal = commercialLegalReadiness();
@@ -31,9 +33,9 @@ export function buildProductReadiness(input: {
   const rtaLive = input.tenantProviders.has("rta_mailback") || input.lastRtaImportAt != null;
 
   return [
-    { key: "database", category: "Core", label: "Database and tenant isolation", status: "live", detail: "This readiness page was loaded through a tenant-scoped database transaction.", critical: true },
-    { key: "redis", category: "Core", label: "Redis queues", status: has("REDIS_URL") ? "configured" : "blocked", detail: has("REDIS_URL") ? "Queue endpoint is configured. Validate connectivity in deployment health checks." : "REDIS_URL is missing; workflows and background jobs cannot run.", critical: true },
-    { key: "workers", category: "Core", label: "Background workers", status: input.workerHealthy === true ? "live" : input.workerHealthy === false ? "blocked" : "configured", detail: input.workerHealthy === true ? "Scheduler heartbeats are current." : input.workerHealthy === false ? "One or more scheduler heartbeats are stale or failed." : "No scheduler heartbeat could be verified from this web process.", critical: true },
+    { key: "database", category: "Core", label: "Database and tenant isolation", status: input.databaseHealthy === true ? "live" : input.databaseHealthy === false ? "blocked" : "unknown", detail: input.databaseHealthy === true ? "Runtime role cannot bypass RLS; all tenant tables have forced policies and the cross-tenant visibility probe passed." : "Runtime role, tenant policies or cross-tenant visibility could not be verified safely.", critical: true },
+    { key: "redis", category: "Core", label: "Redis queues", status: input.redisHealthy === true ? "live" : input.redisHealthy === false ? "blocked" : "unknown", detail: input.redisHealthy === true ? "Redis responded to a live PING." : "Redis connectivity has not passed its live probe.", critical: true },
+    { key: "workers", category: "Core", label: "Background workers", status: input.workerHealthy === true ? "live" : input.workerHealthy === false ? "blocked" : "unknown", detail: input.workerHealthy === true ? "All required worker loops reported success within five minutes." : input.workerHealthy === false ? "A required worker loop failed or its successful heartbeat is stale." : "One or more required worker loop heartbeats are missing or could not be verified.", critical: true },
     { key: "storage", category: "Core", label: "Encrypted file storage", status: has("S3_BUCKET", "S3_REGION") ? "configured" : "blocked", detail: has("S3_BUCKET", "S3_REGION") ? "S3 storage is configured." : "S3_BUCKET or S3_REGION is missing; document workflows are incomplete.", critical: true },
     { key: "auth", category: "Governance", label: "Authentication and encryption", status: has("NEXTAUTH_SECRET", "ENCRYPTION_KEY") ? "configured" : "blocked", detail: has("NEXTAUTH_SECRET", "ENCRYPTION_KEY") ? "Session signing and field encryption secrets are configured." : "Required session or encryption secret is missing.", critical: true },
     { key: "legal", category: "Governance", label: "Commercial legal identity", status: legal.ready ? "live" : "blocked", detail: legal.ready ? "Registered identity and grievance details are complete." : `${legal.checks.filter((check) => !check.ok).length} required legal details remain incomplete.`, href: "/dashboard/settings/readiness#legal", critical: true },

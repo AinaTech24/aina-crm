@@ -56,7 +56,7 @@ export function FamilyWealthPlan() {
 
       {/* Cashflow → surplus helper */}
       <div className="rounded-lg border border-border bg-secondary/20 p-3">
-        <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium mb-2">
+        <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium mb-2">
           Investable surplus (optional)
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
@@ -64,10 +64,10 @@ export function FamilyWealthPlan() {
           <NumberField label="Living expenses (₹/mo)" value={expenses} setValue={setExpenses} step={2500} />
           <NumberField label="Existing EMIs (₹/mo)" value={emis} setValue={setEmis} step={1000} />
           <div>
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium mb-1">Surplus</div>
+            <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium mb-1">Surplus</div>
             <div className="flex items-center gap-2">
               <div className="text-base font-semibold text-emerald-700">{inr(surplus)}/mo</div>
-              <button type="button" onClick={() => setSip(surplus)} className="btn-ghost text-[11px] whitespace-nowrap">
+              <button type="button" onClick={() => setSip(surplus)} className="btn-ghost text-2xs whitespace-nowrap">
                 Use as SIP
               </button>
             </div>
@@ -88,8 +88,8 @@ export function FamilyWealthPlan() {
       {/* Asset allocation editor */}
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">Asset allocation</div>
-          <div className={`text-[11px] font-medium ${allocOff ? "text-amber-600" : "text-muted-foreground"}`}>
+          <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">Asset allocation</div>
+          <div className={`text-2xs font-medium ${allocOff ? "text-amber-600" : "text-muted-foreground"}`}>
             Total {res.allocationSumPct.toFixed(0)}%{allocOff ? " — normalised to 100%" : ""}
           </div>
         </div>
@@ -127,7 +127,7 @@ export function FamilyWealthPlan() {
       </div>
 
       <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-5 text-center">
-        <div className="text-[11px] uppercase tracking-wider font-semibold text-emerald-700">
+        <div className="text-2xs uppercase tracking-wider font-semibold text-emerald-700">
           Total wealth at age {targetAge}
         </div>
         <div className="text-3xl font-extrabold text-emerald-700 mt-1">{inrShort(res.finalTotal)}</div>
@@ -145,7 +145,7 @@ export function FamilyWealthPlan() {
 
       {/* Final allocation split */}
       <div>
-        <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5">
+        <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium mb-1.5">
           Corpus by asset class at age {targetAge}
         </div>
         <div className="flex h-8 w-full overflow-hidden rounded-md border border-border">
@@ -154,7 +154,7 @@ export function FamilyWealthPlan() {
             return (
               <div
                 key={i}
-                className="h-full flex items-center justify-center text-[10px] font-semibold text-white"
+                className="h-full flex items-center justify-center text-2xs font-semibold text-white"
                 style={{ width: `${Math.max(3, pct)}%`, background: CLASS_COLORS[i] }}
                 title={`${classes[i].name}: ${inrShort(v)}`}
               >
@@ -163,7 +163,7 @@ export function FamilyWealthPlan() {
             );
           })}
         </div>
-        <div className="flex flex-wrap gap-3 mt-2 text-[11px]">
+        <div className="flex flex-wrap gap-3 mt-2 text-2xs">
           {classes.map((c, i) => (
             <span key={i} className="inline-flex items-center gap-1.5">
               <span className="size-2.5 rounded-sm" style={{ background: CLASS_COLORS[i] }} /> {c.name} {inrShort(res.finalByClass[i])}

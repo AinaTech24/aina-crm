@@ -99,7 +99,8 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
     <div className="space-y-5 max-w-7xl">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="page-title"><FileText className="size-6 text-brand-cyan" /> Insurance Claims</h1>
+          <h1 className="page-title"><FileText className="size-6 text-muted-foreground" /> Insurance Claims</h1>
+          <p className="page-subtitle mt-1">Claims your clients have raised, and where each one is stuck.</p>
         </div>
         <div className="flex items-center gap-2">
           <Link href="/dashboard/insurance-claims/scorecard" className="btn-secondary"><Clock className="size-4" /> Settlement scorecard</Link>
@@ -164,13 +165,13 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
                           <Avatar src={investorAvatarUrl && investorId ? `/api/investors/${investorId}/avatar` : null} name={investorName ?? c.proposerName} size={26} />
                           <div>
                             <Link href={`/dashboard/insurance-claims/${c.id}`} className="font-medium hover:underline">{c.proposerName}</Link>
-                            {investorName && <div className="text-[11px] text-muted-foreground">{investorName}</div>}
+                            {investorName && <div className="text-2xs text-muted-foreground">{investorName}</div>}
                           </div>
                         </div>
                       </td>
                       <td className="py-2.5">
                         <div className="text-sm">{c.insurer ?? "—"}</div>
-                        <div className="text-[11px] text-muted-foreground font-mono">{c.policyNumber ?? planName ?? "—"}</div>
+                        <div className="text-2xs text-muted-foreground font-mono">{c.policyNumber ?? planName ?? "—"}</div>
                       </td>
                       <td className="py-2.5 text-right tabular-nums">{formatINR(Number(c.claimedAmount ?? 0))}</td>
                       <td className="py-2.5 text-right tabular-nums">{formatINR(Number(c.settledAmount ?? 0))}</td>
@@ -211,7 +212,7 @@ function Kpi({ label, value, icon: Icon, tone }: { label: string; value: string;
   return (
     <div className="kpi-card">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">{label}</span>
+        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{label}</span>
         <Icon className={`size-4 ${c}`} />
       </div>
       <div className="text-2xl font-bold mt-1.5 tabular-nums">{value}</div>

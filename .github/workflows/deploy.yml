@@ -32,26 +32,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Fail fast BEFORE shipping. The box runs the same typecheck, but only after a
-  # ~20-minute Docker build — and because next.config sets
-  # typescript.ignoreBuildErrors, `next build` happily succeeds on broken types,
-  # so this is the check that actually catches them. Two minutes here beats
-  # twenty on the box, and with auto-deploy nobody is watching the run.
-  #
-  # Deliberately typecheck ONLY. The other CI guards (RBAC, migration numbering,
-  # colour + as-any ratchets) live in ci.yml and are currently red on main;
-  # gating deploys on a style ratchet would block shipping a hotfix.
+  # Run the same safety checks against the exact revision being deployed.
   verify:
-    name: Typecheck
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
-      - run: npx tsc --noEmit
+    uses: ./.github/workflows/ci.yml
 
   deploy:
     needs: verify

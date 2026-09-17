@@ -61,14 +61,14 @@ export function FvAnnualLumpsumPlanner() {
         </Field>
         <Field label="Payment period (years)">
           <input type="number" value={paymentYears} min={0} step={1} onChange={(e) => setPaymentYears(Math.max(0, Number(e.target.value) || 0))} className="input-base text-sm w-full" />
-          <span className="text-[10px] text-muted-foreground">Years you actually invest. After this, the corpus just keeps growing.</span>
+          <span className="text-2xs text-muted-foreground">Years you actually invest. After this, the corpus just keeps growing.</span>
         </Field>
         <Num label="Scenario 1 return (% p.a.)" value={scenario1Pct} setValue={setScenario1Pct} step={0.5} />
         <Num label="Scenario 2 return (% p.a., optional)" value={scenario2Pct} setValue={setScenario2Pct} step={0.5} />
       </div>
 
       {paymentExceeds && (
-        <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+        <div className="text-2xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
           Payment period is longer than the investment period — contributions are capped at the investment period ({investmentYears} years).
         </div>
       )}
@@ -86,7 +86,7 @@ export function FvAnnualLumpsumPlanner() {
       />
 
       {s2 && (
-        <div className="text-[11px] text-muted-foreground">
+        <div className="text-2xs text-muted-foreground">
           Difference between scenarios: <strong>{inr(Math.abs(s2.futureValue - s1.futureValue))}</strong>{" "}
           ({s2.ratePct > s1.ratePct ? "Scenario 2 higher" : "Scenario 1 higher"}).
         </div>
@@ -123,7 +123,7 @@ export function FvAnnualLumpsumPlanner() {
         </details>
       )}
 
-      <p className="text-[10px] text-muted-foreground border-t pt-3">
+      <p className="text-2xs text-muted-foreground border-t pt-3">
         * Illustration only. Each year&apos;s investment is assumed made at the start of the year and compounded annually at the
         assumed return. Figures are approximate; returns are neither indicative nor guaranteed. Not investment advice.
       </p>
@@ -136,7 +136,7 @@ export function FvAnnualLumpsumPlanner() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
+      <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
       {children}
     </label>
   );
@@ -188,7 +188,7 @@ function ResultRow({
                 : "";
         return (
           <div key={i} className={`border rounded-md p-3 ${tone}`}>
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">{c.label}</div>
+            <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">{c.label}</div>
             <div className="text-lg font-semibold mt-0.5">{c.value}</div>
           </div>
         );

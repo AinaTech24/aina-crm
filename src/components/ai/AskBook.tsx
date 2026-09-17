@@ -79,7 +79,7 @@ export function AskBook() {
       <div className="flex items-center gap-2">
         <BookOpen className="size-4 text-brand-cyan" />
         <h2 className="text-sm font-semibold">Ask your book</h2>
-        <span className="text-[11px] text-muted-foreground">— live answers from your client base</span>
+        <span className="text-2xs text-muted-foreground">— live answers from your client base</span>
       </div>
 
       <div className="flex gap-2 mt-3">
@@ -110,7 +110,7 @@ export function AskBook() {
             key={s}
             onClick={() => setQuestion(s)}
             disabled={busy}
-            className="text-[11px] rounded-full border px-2.5 py-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50"
+            className="text-2xs rounded-full border px-2.5 py-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50"
           >
             {s}
           </button>
@@ -142,7 +142,7 @@ export function AskBook() {
             <div className="mt-3 overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground border-b">
+                  <tr className="text-left text-2xs uppercase tracking-wide text-muted-foreground border-b">
                     <th className="py-1.5 pr-3 font-medium">Name</th>
                     <th className="py-1.5 pr-3 font-medium">City</th>
                     <th className="py-1.5 pr-3 font-medium">Status</th>
@@ -161,7 +161,7 @@ export function AskBook() {
                       <td className="py-1.5 pr-3 text-muted-foreground">{r.city ?? "—"}</td>
                       <td className="py-1.5 pr-3">
                         {r.status ? (
-                          <span className={`text-[11px] rounded-full px-2 py-0.5 ${STATUS_TONE[r.status] ?? "text-muted-foreground bg-muted"}`}>
+                          <span className={`text-2xs rounded-full px-2 py-0.5 ${STATUS_TONE[r.status] ?? "text-muted-foreground bg-muted"}`}>
                             {r.status}
                           </span>
                         ) : (
@@ -184,7 +184,7 @@ export function AskBook() {
           {/* Transparency builds trust — show exactly how the question was filtered. */}
           <details className="mt-3">
             <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">How I filtered</summary>
-            <pre className="mt-2 text-[11px] leading-relaxed border rounded-md bg-muted/40 p-3 overflow-auto max-h-64 scrollbar-thin">
+            <pre className="mt-2 text-2xs leading-relaxed border rounded-md bg-muted/40 p-3 overflow-auto max-h-64 scrollbar-thin">
               {JSON.stringify(result.ast, null, 2)}
             </pre>
           </details>

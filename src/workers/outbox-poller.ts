@@ -22,6 +22,7 @@ import { runRulesForEvent, cancelScheduledJobsForSubject } from "@/lib/workflow-
 import { MODULES } from "@/lib/workflow-rules/modules";
 import { handleBlueprintStageEvent } from "@/lib/blueprints/event-consumers";
 import { captureError } from "@/lib/observability/capture";
+import { normalizeWorkflowEvent } from "@/lib/workflow/event-context";
 
 const BATCH_SIZE = 200;
 /** After this many failed attempts an event is dead-lettered: it stays in the
@@ -150,7 +151,7 @@ async function processEvent(event: any) {
     if (trig.criteria) {
       try {
         const pred = compileToPredicate(trig.criteria as any, cfg.subjectType ?? "investor");
-        if (!pred({ ...event.after, ...event.meta, event })) continue;
+        if (!pred({ ...event.after, ...event.meta, event: normalizeWorkflowEvent(event) })) continue;
       } catch (err) {
         console.warn(`[outbox] criteria eval failed for trigger ${trig.id}:`, (err as Error).message);
         continue;
@@ -162,6 +163,7 @@ async function processEvent(event: any) {
       workflowId: trig.workflowId,
       triggeredBy: "event",
       triggerId: trig.id,
+      occurrenceKey: `event:${trig.id}:${event.id}`,
       subjectType: cfg.subjectType ?? event.entity_type,
       subjectId: cfg.subjectIdFrom === "event.entity_id" ? event.entity_id : event.entity_id,
       // correlationId = the outbox event id — lets one client journey be traced
@@ -226,6 +228,9 @@ async function resumeWaitingRuns(tenantId: string, event: any) {
       WHERE tenant_id = ${tenantId}
         AND status = 'paused'
         AND wait_predicate->>'eventKind' = ${event.kind}
+        AND (subject_id IS NULL OR subject_id::text = ${String(event.entity_id ?? "")}
+          OR subject_id::text = ${String(event.after?.investorId ?? event.after?.investor_id ?? event.meta?.investorId ?? "")}
+          OR subject_id::text = ${String(event.after?.leadId ?? event.after?.lead_id ?? "")})
     `);
   });
 
@@ -235,7 +240,7 @@ async function resumeWaitingRuns(tenantId: string, event: any) {
     if (criteria) {
       try {
         const pred = compileToPredicate(criteria, r.subject_type ?? "investor");
-        if (!pred({ ...event.after, ...event.meta, event })) continue;
+        if (!pred({ ...event.after, ...event.meta, event: normalizeWorkflowEvent(event) })) continue;
       } catch {
         continue;
       }
@@ -245,9 +250,13 @@ async function resumeWaitingRuns(tenantId: string, event: any) {
       await tx.execute(sql`
         UPDATE workflow_runs
         SET status = 'queued',
+            resume_handle = 'matched',
             paused_until = NULL,
-            wait_predicate = NULL
-        WHERE id = ${r.id}
+            wait_predicate = NULL,
+            context_snapshot = COALESCE(context_snapshot, '{}'::jsonb) || jsonb_build_object('matchedEvent', ${JSON.stringify(normalizeWorkflowEvent(event))}::jsonb)
+        WHERE id = ${r.id} AND tenant_id = ${tenantId}::uuid AND status = 'paused'
+          AND wait_node_id = ${r.wait_node_id}
+          AND (paused_until IS NULL OR paused_until > now())
       `);
     });
   }

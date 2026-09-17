@@ -53,7 +53,7 @@ export default async function SipExpiryPage({
           <ChevronLeft className="size-3.5" /> Reports &amp; MIS
         </Link>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <CalendarClock className="size-6 text-brand-cyan" /> SIP Expiry
+          <CalendarClock className="size-6 text-muted-foreground" /> SIP Expiry
         </h1>
         <p className="text-muted-foreground text-sm mt-1">
           Active SIPs reaching the end of their term. Renew before the last instalment, not after.
@@ -128,13 +128,13 @@ export default async function SipExpiryPage({
                         <Link href={`/dashboard/investors/${r.investorId}`} className="font-medium hover:underline">
                           {r.investorName}
                         </Link>
-                        <div className="text-[11px] text-muted-foreground tabular-nums">
+                        <div className="text-2xs text-muted-foreground tabular-nums">
                           {[r.pan, r.folioNumber].filter(Boolean).join(" · ") || "—"}
                         </div>
                       </td>
                       <td className="py-2.5 px-4">
                         <div className="text-xs">{r.schemeName ?? "—"}</div>
-                        <div className="text-[11px] text-muted-foreground">
+                        <div className="text-2xs text-muted-foreground">
                           {r.amcName ?? "—"} · {r.frequency}
                           {r.bouncedCount > 0 && (
                             <span className="ml-1.5 text-rose-600">· {r.bouncedCount} bounced</span>
@@ -147,7 +147,7 @@ export default async function SipExpiryPage({
                           <span className="text-xs text-muted-foreground">—</span>
                         ) : (
                           <div className="w-32">
-                            <div className="text-[11px] tabular-nums mb-1">
+                            <div className="text-2xs tabular-nums mb-1">
                               {r.completedInstallments} of {r.totalInstallments}
                               {r.pendingInstallments != null && r.pendingInstallments > 0 && (
                                 <span className="text-muted-foreground"> · {r.pendingInstallments} left</span>
@@ -165,7 +165,7 @@ export default async function SipExpiryPage({
                       <td className="py-2.5 px-4 text-right whitespace-nowrap">
                         <div className="tabular-nums text-xs">{fmtDate(r.endDate)}</div>
                         <span
-                          className={`chip text-[10px] ${
+                          className={`chip text-2xs ${
                             overdue ? "bg-rose-50 text-rose-700" : urgent ? "bg-amber-50 text-amber-700" : "bg-secondary text-muted-foreground"
                           }`}
                         >
@@ -195,7 +195,7 @@ function Kpi({ label, value, sub, tone }: { label: string; value: string; sub?: 
     <div className="rounded-xl border border-border bg-card p-4">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className={`mt-1 text-2xl font-bold tabular-nums ${color}`}>{value}</div>
-      {sub && <div className="mt-0.5 text-[11px] text-muted-foreground">{sub}</div>}
+      {sub && <div className="mt-0.5 text-2xs text-muted-foreground">{sub}</div>}
     </div>
   );
 }

@@ -293,7 +293,7 @@ export function MasterRecordEditor({ investor, flags }: { investor: Investor; fl
                     key={s.key}
                     type="button"
                     onClick={() => setStep(i)}
-                    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium whitespace-nowrap transition-colors ${
+                    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-2xs font-medium whitespace-nowrap transition-colors ${
                       i === step
                         ? "bg-brand-cyan text-white"
                         : i < step
@@ -301,7 +301,7 @@ export function MasterRecordEditor({ investor, flags }: { investor: Investor; fl
                           : "text-muted-foreground hover:bg-secondary"
                     }`}
                   >
-                    <span className={`grid place-items-center size-4 rounded-full text-[9px] font-bold ${i === step ? "bg-white/25" : "bg-secondary"}`}>{i + 1}</span>
+                    <span className={`grid place-items-center size-4 rounded-full text-2xs font-bold ${i === step ? "bg-white/25" : "bg-secondary"}`}>{i + 1}</span>
                     {s.title}
                   </button>
                 ))}
@@ -479,7 +479,7 @@ export function MasterRecordEditor({ investor, flags }: { investor: Investor; fl
                     {flags.showInflow && <RO label="Lifetime inflow" value={formatINR(Number(investor.lifetimeInflow ?? 0))} />}
                     {flags.showInflow && <RO label="Lifetime outflow" value={formatINR(Number(investor.lifetimeOutflow ?? 0))} />}
                   </div>
-                  <p className="text-[11px] text-muted-foreground">AUM & lifetime flows are computed from holdings and transactions — read-only.</p>
+                  <p className="text-2xs text-muted-foreground">AUM & lifetime flows are computed from holdings and transactions — read-only.</p>
                 </Grp>
               )}
 
@@ -505,7 +505,7 @@ export function MasterRecordEditor({ investor, flags }: { investor: Investor; fl
                       <DateField value={f.nextReviewAt} onChange={(e) => set("nextReviewAt", e.target.value)} className="w-full" />
                     </F>
                   </div>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-2xs text-muted-foreground">
                     Setting a last-review date re-derives the next one from the cadence above. Set
                     &ldquo;Next review&rdquo; explicitly to override that.
                   </p>
@@ -517,7 +517,7 @@ export function MasterRecordEditor({ investor, flags }: { investor: Investor; fl
             <div className="px-5 py-3 border-t flex items-center gap-2 bg-muted/30">
               {err && <span className="text-xs text-rose-600 flex-1 truncate">{err}</span>}
               <div className="flex items-center gap-2 ml-auto">
-                <span className="text-[11px] text-muted-foreground mr-1">Step {step + 1} of {steps.length}</span>
+                <span className="text-2xs text-muted-foreground mr-1">Step {step + 1} of {steps.length}</span>
                 <button onClick={() => setOpen(false)} className="btn-secondary text-xs">Cancel</button>
                 {step > 0 && (
                   <button onClick={() => setStep((s) => Math.max(0, s - 1))} className="btn-secondary text-xs inline-flex items-center gap-1">
@@ -555,7 +555,7 @@ function Grp({ title, children }: { title: string; children: React.ReactNode }) 
 function F({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <div className="text-[11px] text-muted-foreground mb-0.5">{label}</div>
+      <div className="text-2xs text-muted-foreground mb-0.5">{label}</div>
       {children}
     </label>
   );
@@ -564,7 +564,7 @@ function F({ label, children }: { label: string; children: React.ReactNode }) {
 function RO({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border bg-secondary/20 px-3 py-2">
-      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <div className="text-2xs text-muted-foreground">{label}</div>
       <div className="text-sm font-medium tabular-nums">{value}</div>
     </div>
   );

@@ -141,9 +141,9 @@ export default async function ComplaintsPage({
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Shield className="size-6 text-brand-cyan" /> Complaint Register
+            <Shield className="size-6 text-muted-foreground" /> Complaint Register
           </h1>
-          <p className="text-muted-foreground text-sm">
+          <p className="page-subtitle mt-1">
             SEBI-format complaint log · 21-day TAT clock · required for DDQ readiness.
           </p>
         </div>
@@ -290,7 +290,7 @@ export default async function ComplaintsPage({
                       ) : (
                         r.investor_name ?? "—"
                       )}
-                      <div className="text-[11px] text-muted-foreground font-mono">{r.investor_pan}</div>
+                      <div className="text-2xs text-muted-foreground font-mono">{r.investor_pan}</div>
                     </td>
                     <td className="py-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
                       {formatDate(r.created_at)}
@@ -298,19 +298,19 @@ export default async function ComplaintsPage({
                     <td className="py-3 text-xs">
                       <div className="font-medium">{CATEGORY_LABEL[r.sebi_category] ?? r.sebi_category ?? "Other"}</div>
                       {r.sebi_sub_category && (
-                        <div className="text-[11px] text-muted-foreground">{r.sebi_sub_category}</div>
+                        <div className="text-2xs text-muted-foreground">{r.sebi_sub_category}</div>
                       )}
                     </td>
                     <td className="py-3 text-xs whitespace-nowrap">
                       {SOURCE_LABEL[r.complaint_source] ?? "—"}
                       {r.scores_ref_no && (
-                        <div className="text-[10px] text-muted-foreground font-mono">{r.scores_ref_no}</div>
+                        <div className="text-2xs text-muted-foreground font-mono">{r.scores_ref_no}</div>
                       )}
                     </td>
                     <td className="py-3 text-xs max-w-[220px]">
                       <div className="font-medium truncate">{r.subject}</div>
                       {r.description && (
-                        <div className="text-[11px] text-muted-foreground line-clamp-2 mt-0.5">
+                        <div className="text-2xs text-muted-foreground line-clamp-2 mt-0.5">
                           {r.description}
                         </div>
                       )}
@@ -352,7 +352,7 @@ export default async function ComplaintsPage({
                         <div>
                           <StatusChip tone="danger">Yes</StatusChip>
                           {r.escalated_to_name && (
-                            <div className="text-[11px] text-muted-foreground mt-0.5">
+                            <div className="text-2xs text-muted-foreground mt-0.5">
                               → {r.escalated_to_name}
                             </div>
                           )}

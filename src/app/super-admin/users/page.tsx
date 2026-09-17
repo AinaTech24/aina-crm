@@ -72,7 +72,7 @@ export default async function PlatformStaffPage() {
                     {(s.roles ?? []).map((r: string) => (
                       <span
                         key={r}
-                        className="mr-1 px-1.5 py-0.5 rounded bg-muted text-[10px] tracking-wide"
+                        className="mr-1 px-1.5 py-0.5 rounded bg-muted text-2xs tracking-wide"
                       >
                         {ROLE_LABELS[r]?.replace(/\s*\(AINA\)$/, "") ?? r}
                       </span>

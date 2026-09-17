@@ -193,7 +193,7 @@ export default function UploadDocumentPage() {
               onClear={() => setClient(null)}
               placeholder="Search client by name, PAN, or mobile…"
             />
-            <div className="text-[11px] text-muted-foreground mt-1">Tag the client this document belongs to, so you can see it in the vault.</div>
+            <div className="text-2xs text-muted-foreground mt-1">Tag the client this document belongs to, so you can see it in the vault.</div>
           </label>
           <label className="block sm:col-span-2 lg:col-span-1">
             <div className="text-xs font-medium mb-1">Notes</div>

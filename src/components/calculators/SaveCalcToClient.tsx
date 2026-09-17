@@ -150,7 +150,7 @@ export function SaveCalcToClient({
             <User className="size-4 text-brand-cyan-deep shrink-0" />
             <div className="min-w-0 flex-1">
               <div className="text-sm font-medium truncate">{selected.name}</div>
-              {selected.pan && <div className="text-[11px] text-muted-foreground font-mono">{selected.pan}</div>}
+              {selected.pan && <div className="text-2xs text-muted-foreground font-mono">{selected.pan}</div>}
             </div>
             <button
               type="button"
@@ -196,7 +196,7 @@ export function SaveCalcToClient({
                           className="w-full text-left px-3 py-1.5 hover:bg-brand-cyan-light/40 transition-colors"
                         >
                           <span className="font-medium text-sm">{h.name}</span>
-                          {h.pan && <span className="text-[11px] text-muted-foreground ml-2 font-mono">{h.pan}</span>}
+                          {h.pan && <span className="text-2xs text-muted-foreground ml-2 font-mono">{h.pan}</span>}
                         </button>
                       </li>
                     ))}

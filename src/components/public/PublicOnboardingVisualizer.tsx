@@ -208,7 +208,7 @@ export function PublicOnboardingVisualizer({
                 style={{ width: `${progressPct}%` }}
               />
             </div>
-            <div className="flex justify-between text-[10px] text-slate-400">
+            <div className="flex justify-between text-2xs text-slate-400">
               <span>{completedCount} stages completed</span>
               <span>{allStages.length - completedCount} pending</span>
             </div>
@@ -333,7 +333,7 @@ export function PublicOnboardingVisualizer({
 
                             <div>
                               {log ? (
-                                <span className={`text-[10px] flex items-center gap-1 font-mono ${
+                                <span className={`text-2xs flex items-center gap-1 font-mono ${
                                   isStageCurrent ? "text-brand-cyan" : "text-slate-500"
                                 }`}>
                                   {isStageDone ? (
@@ -349,7 +349,7 @@ export function PublicOnboardingVisualizer({
                                   )}
                                 </span>
                               ) : (
-                                <span className="text-[10px] text-slate-400 font-mono">Pending</span>
+                                <span className="text-2xs text-slate-400 font-mono">Pending</span>
                               )}
                             </div>
                           </div>

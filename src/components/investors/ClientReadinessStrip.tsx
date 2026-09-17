@@ -58,9 +58,9 @@ export function ClientReadinessStrip({
           <div className="flex items-center gap-2">
             <ShieldCheck className="size-4 text-amber-600" />
             <h3 className="text-sm font-semibold text-amber-900">Onboarding &amp; compliance readiness</h3>
-            <span className="text-[11px] font-medium text-amber-700 tabular-nums">{done}/{items.length} complete</span>
+            <span className="text-2xs font-medium text-amber-700 tabular-nums">{done}/{items.length} complete</span>
           </div>
-          <p className="text-[11px] text-amber-700/90 mt-0.5">
+          <p className="text-2xs text-amber-700/90 mt-0.5">
             {gaps} item{gaps === 1 ? "" : "s"} left before this client is fully transaction-ready (SEBI).
           </p>
         </div>
@@ -86,7 +86,7 @@ export function ClientReadinessStrip({
           return (
             <span
               key={it.key}
-              className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md border ${
+              className={`inline-flex items-center gap-1 text-2xs font-medium px-2 py-1 rounded-md border ${
                 it.ok
                   ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                   : it.urgent

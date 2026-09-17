@@ -75,7 +75,7 @@ export function FireNumberCalculator() {
           Increasing the SIP, the step-up, or the return assumption brings the FI age into reach.
         </Insight>
       )}
-      <p className="text-[10px] text-muted-foreground">SWR rule is a planning heuristic; sequence-of-returns risk and taxes can change outcomes.</p>
+      <p className="text-2xs text-muted-foreground">SWR rule is a planning heuristic; sequence-of-returns risk and taxes can change outcomes.</p>
     </div>
   );
 }

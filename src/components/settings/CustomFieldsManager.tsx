@@ -80,7 +80,7 @@ export function CustomFieldsManager() {
             <div key={d.id} className="flex items-center gap-3 p-3 text-sm">
               <div className="min-w-0 flex-1">
                 <div className="font-medium">{d.label}{d.required && <span className="text-rose-500"> *</span>}</div>
-                <div className="text-[11px] text-muted-foreground">
+                <div className="text-2xs text-muted-foreground">
                   {typeLabel(d.type)}
                   {d.type === "currency" && d.options?.[0] ? ` · ${d.options[0]}` : ""}
                   {CHOICE_TYPES.includes(d.type) && d.options?.length ? ` · ${d.options.join(", ")}` : ""}

@@ -89,13 +89,13 @@ export function BlueprintStageEditor({
         {stages.map((s, i) => (
           <div key={s.id} className="card-surface p-4 space-y-3">
             <div className="flex items-center gap-2">
-              <span className="chip text-[10px] bg-brand-cyan-light text-brand-cyan-deep">{s.stageOrder}</span>
+              <span className="chip text-2xs bg-brand-cyan-light text-brand-cyan-deep">{s.stageOrder}</span>
               <input
                 value={s.stageName}
                 onChange={(e) => update(i, "stageName", e.target.value)}
                 className="input-base text-sm font-semibold flex-1"
               />
-              <span className="text-[10px] text-muted-foreground font-mono">{s.stageKey}</span>
+              <span className="text-2xs text-muted-foreground font-mono">{s.stageKey}</span>
             </div>
             <textarea
               value={s.description}
@@ -172,7 +172,7 @@ export function BlueprintStageEditor({
             </li>
           ))}
         </ul>
-        <p className="text-[10px] text-muted-foreground italic mt-2">
+        <p className="text-2xs text-muted-foreground italic mt-2">
           Transitions are seeded with the default flow. Editing transitions is a Phase-2 capability — for now,
           stage order in the editor dictates the implicit forward flow.
         </p>
@@ -184,7 +184,7 @@ export function BlueprintStageEditor({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">{label}</div>
+      <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground mb-1">{label}</div>
       {children}
     </label>
   );

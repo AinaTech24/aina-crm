@@ -54,7 +54,7 @@ export default async function MfSchemeCatalogPage({
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
           <BookOpen className="size-5 text-brand-cyan" /> MF Scheme Catalog
         </h1>
-        <p className="text-sm text-muted-foreground mt-1">
+        <p className="page-subtitle mt-1">
           Live mutual-fund scheme, AMC &amp; NAV data — shared across the platform, refreshed daily from{" "}
           <span className="font-medium text-foreground">mfapi.in</span>. Used wherever a scheme or AMC is picked.
         </p>

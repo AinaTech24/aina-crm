@@ -286,7 +286,7 @@ export default function NewTaskPage() {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="page-title">
-          <ListChecks className="size-6 text-brand-cyan" /> New task
+          <ListChecks className="size-6 text-muted-foreground" /> New task
         </h1>
         {templates.length > 0 && (
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -327,7 +327,7 @@ export default function NewTaskPage() {
 
         <div className="block">
           <div className="text-xs font-medium mb-1">
-            For client <span className="ml-1 text-[10px] text-muted-foreground font-normal">· optional</span>
+            For client <span className="ml-1 text-2xs text-muted-foreground font-normal">· optional</span>
           </div>
           <InvestorLookup
             value={form.relatedInvestorId || null}
@@ -359,7 +359,7 @@ export default function NewTaskPage() {
                     key={label}
                     type="button"
                     onClick={() => set("dueDate", v)}
-                    className={`rounded-full border px-2 py-0.5 text-[11px] transition ${
+                    className={`rounded-full border px-2 py-0.5 text-2xs transition ${
                       on ? "bg-brand-cyan-light/50 border-brand-cyan/40 text-brand-cyan-deep font-medium" : "bg-card hover:bg-secondary"
                     }`}
                   >
@@ -372,7 +372,7 @@ export default function NewTaskPage() {
 
           <label className="block">
             <div className="text-xs font-medium mb-1">
-              Assign to <span className="ml-1 text-[10px] text-muted-foreground font-normal">· leave blank for yourself</span>
+              Assign to <span className="ml-1 text-2xs text-muted-foreground font-normal">· leave blank for yourself</span>
             </div>
             <RmSelector
               value={form.assigneeId || null}
@@ -412,7 +412,7 @@ export default function NewTaskPage() {
         >
           <span className="flex items-center gap-2 font-medium">
             <SlidersHorizontal className="size-4 text-brand-cyan" /> More options
-            <span className="text-[11px] text-muted-foreground font-normal">
+            <span className="text-2xs text-muted-foreground font-normal">
               · description, type, reminder, repeat, links, sub-tasks
             </span>
           </span>
@@ -496,7 +496,7 @@ export default function NewTaskPage() {
               </label>
               <label className="block">
                 <div className="text-xs font-medium mb-1 flex items-center gap-1">
-                  <Timer className="size-3.5 text-brand-cyan" /> Estimate <span className="text-[10px] text-muted-foreground font-normal">· minutes</span>
+                  <Timer className="size-3.5 text-brand-cyan" /> Estimate <span className="text-2xs text-muted-foreground font-normal">· minutes</span>
                 </div>
                 <input
                   type="number"
@@ -516,7 +516,7 @@ export default function NewTaskPage() {
                 />
                 <span className="text-xs">
                   <span className="font-medium flex items-center gap-1"><ShieldCheck className="size-3.5 text-brand-cyan" /> Needs my approval</span>
-                  <span className="block text-[10px] text-muted-foreground mt-0.5">
+                  <span className="block text-2xs text-muted-foreground mt-0.5">
                     Assignee submits for sign-off instead of closing it.
                   </span>
                 </span>
@@ -529,7 +529,7 @@ export default function NewTaskPage() {
               </div>
               <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1.5 min-h-[38px]">
                 {form.tags.map((tg) => (
-                  <span key={tg} className="chip text-[10px] bg-slate-100 text-slate-600 border border-slate-200 inline-flex items-center gap-1">
+                  <span key={tg} className="chip text-2xs bg-slate-100 text-slate-600 border border-slate-200 inline-flex items-center gap-1">
                     {tg}
                     <button type="button" onClick={() => set("tags", form.tags.filter((x) => x !== tg))} className="hover:text-rose-600" aria-label={`Remove ${tg}`}>
                       <X className="size-2.5" />
@@ -556,7 +556,7 @@ export default function NewTaskPage() {
                   className="size-3.5 rounded"
                 />
                 <span className="text-xs font-medium">Repeat this task</span>
-                <span className="text-[10px] text-muted-foreground">· the next one is created when this is completed</span>
+                <span className="text-2xs text-muted-foreground">· the next one is created when this is completed</span>
               </label>
               {form.recurrence && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
@@ -575,7 +575,7 @@ export default function NewTaskPage() {
                     </SelectField>
                   </label>
                   <label className="block">
-                    <div className="text-xs font-medium mb-1">Until <span className="text-[10px] text-muted-foreground font-normal">· optional</span></div>
+                    <div className="text-xs font-medium mb-1">Until <span className="text-2xs text-muted-foreground font-normal">· optional</span></div>
                     <DateField
                       value={form.recurrenceUntil}
                       onChange={(e) => set("recurrenceUntil", e.target.value)}
@@ -655,7 +655,7 @@ export default function NewTaskPage() {
                 <div className="flex items-center gap-2">
                   <ListChecks className="size-3.5 text-brand-cyan" />
                   <span className="text-xs font-medium">Sub-tasks</span>
-                  <span className="inline-flex items-center rounded-full bg-brand-cyan-light/60 text-brand-cyan-deep text-[10px] font-medium px-2 py-0.5">
+                  <span className="inline-flex items-center rounded-full bg-brand-cyan-light/60 text-brand-cyan-deep text-2xs font-medium px-2 py-0.5">
                     {checklist.length}
                   </span>
                 </div>
@@ -716,7 +716,7 @@ export default function NewTaskPage() {
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-[11px] text-muted-foreground hidden sm:inline">Ctrl + Enter to save</span>
+        <span className="text-2xs text-muted-foreground hidden sm:inline">Ctrl + Enter to save</span>
         <div className="flex gap-2 ml-auto">
           <Link href="/dashboard/tasks" className="btn-secondary">
             Cancel
@@ -819,7 +819,7 @@ function RelatedSearch({
                   >
                     <div className="font-semibold text-sm truncate">{r.label}</div>
                     {r.sub && (
-                      <div className="text-[10px] text-muted-foreground truncate">{r.sub}</div>
+                      <div className="text-2xs text-muted-foreground truncate">{r.sub}</div>
                     )}
                   </button>
                 </li>

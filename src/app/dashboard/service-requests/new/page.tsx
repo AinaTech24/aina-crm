@@ -165,7 +165,7 @@ export default function NewServiceRequestPage() {
           <label className="block">
             <div className="text-xs font-medium mb-1">
               Assign to
-              <span className="ml-1 text-[10px] text-muted-foreground font-normal">
+              <span className="ml-1 text-2xs text-muted-foreground font-normal">
                 · defaults to you
               </span>
             </div>
@@ -203,7 +203,7 @@ export default function NewServiceRequestPage() {
                 </label>
               )}
             </div>
-            <p className="text-[11px] text-amber-700">Complaints carry a 21-day resolution SLA and feed the monthly disclosure statement.</p>
+            <p className="text-2xs text-amber-700">Complaints carry a 21-day resolution SLA and feed the monthly disclosure statement.</p>
           </div>
         )}
         {err && <div className="text-sm text-rose-600">{err}</div>}

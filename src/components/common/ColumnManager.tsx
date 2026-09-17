@@ -204,7 +204,7 @@ export function ColumnManager({
           >
             <Columns3 className="size-3.5" />
             Columns
-            <span className="text-[10px] text-muted-foreground tabular-nums">
+            <span className="text-2xs text-muted-foreground tabular-nums">
               {visibleCount}/{columns.length}
             </span>
           </button>
@@ -217,7 +217,7 @@ export function ColumnManager({
             <div className="px-3 py-2 border-b border-border flex items-center justify-between">
               <div>
                 <div className="text-xs font-semibold">Manage columns</div>
-                <div className="text-[10px] text-muted-foreground">
+                <div className="text-2xs text-muted-foreground">
                   Pick what you want to see in the table.
                 </div>
               </div>
@@ -226,7 +226,7 @@ export function ColumnManager({
                   <button
                     type="button"
                     onClick={saveFirmDefault}
-                    className="text-[10px] text-brand-cyan-deep hover:underline"
+                    className="text-2xs text-brand-cyan-deep hover:underline"
                     title="Make these columns the default for everyone in your firm"
                   >
                     {savedFirm ? "✓ Saved" : "Save as firm default"}
@@ -235,7 +235,7 @@ export function ColumnManager({
                 <button
                   type="button"
                   onClick={reset}
-                  className="text-[10px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                  className="text-2xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
                   title="Reset to defaults"
                 >
                   <RotateCcw className="size-3" /> Reset
@@ -245,7 +245,7 @@ export function ColumnManager({
             {grouped.map(([group, cols]) => (
               <div key={group} className="py-1">
                 {group && (
-                  <div className="px-3 pt-1.5 pb-0.5 text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">
+                  <div className="px-3 pt-1.5 pb-0.5 text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
                     {group}
                   </div>
                 )}
@@ -273,7 +273,7 @@ export function ColumnManager({
                       </span>
                       <span className="flex-1 truncate">{c.label}</span>
                       {c.required && (
-                        <span className="text-[9px] text-muted-foreground italic">
+                        <span className="text-2xs text-muted-foreground italic">
                           required
                         </span>
                       )}

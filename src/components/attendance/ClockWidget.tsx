@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { notify } from "@/components/ui/Toast";
 import { useRouter } from "next/navigation";
 import { Loader2, LogIn, LogOut, CheckCircle2 } from "lucide-react";
 import { fmtMinutes } from "@/lib/attendance/policy";
@@ -44,7 +45,7 @@ export function ClockWidget({ today }: { today: Today }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action, ...(geo ? { lat: geo.lat, lng: geo.lng } : {}) }),
       });
-      if (!res.ok) { const j = await res.json().catch(() => ({})); alert(j.error ?? "Punch failed"); return; }
+      if (!res.ok) { const j = await res.json().catch(() => ({})); notify.error(j.error ?? "Punch failed"); return; }
       router.refresh();
     } finally {
       setBusy(false);

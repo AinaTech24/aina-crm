@@ -98,7 +98,7 @@ export default function HelpPage() {
       {/* Header */}
       <div>
         <h1 className="page-title">
-          <BookOpen className="size-6 text-brand-cyan" /> Help &amp; glossary
+          <BookOpen className="size-6 text-muted-foreground" /> Help &amp; glossary
         </h1>
         <p className="page-subtitle">
           Plain-English explanations for every term, plus quick guides for the

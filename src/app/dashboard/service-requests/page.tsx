@@ -123,9 +123,9 @@ export default async function ServiceRequestsPage({
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <LifeBuoy className="size-6 text-brand-cyan" /> Service Requests
+            <LifeBuoy className="size-6 text-muted-foreground" /> Service Requests
           </h1>
-          <p className="text-muted-foreground text-sm">
+          <p className="page-subtitle mt-1">
             Track every client request and complaint with a deadline — overdue tickets escalate automatically.
           </p>
         </div>

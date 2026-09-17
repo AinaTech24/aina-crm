@@ -99,20 +99,20 @@ export function ChangeLogButton({ entityType, entityId, variant = "secondary" }:
                           <Icon className="size-2 text-brand-cyan" />
                         </span>
                         <div className="text-sm font-medium">{humanize(e.action)}</div>
-                        <div className="text-[11px] text-muted-foreground">
+                        <div className="text-2xs text-muted-foreground">
                           {e.actor_name ?? (e.actor_type === "user" ? "A user" : e.actor_type)} · {new Date(e.at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
                         </div>
                         {fields.length > 0 && (
                           <ul className="mt-1.5 space-y-0.5">
                             {fields.map((f) => (
-                              <li key={f.k} className="text-[11px] text-muted-foreground">
+                              <li key={f.k} className="text-2xs text-muted-foreground">
                                 <span className="font-medium text-foreground">{f.k.replace(/_/g, " ")}</span>{" "}
                                 {e.before ? <><span className="line-through opacity-60">{fmt(f.from)}</span> → <span className="text-foreground">{fmt(f.to)}</span></> : <span className="text-foreground">{fmt(f.to)}</span>}
                               </li>
                             ))}
                           </ul>
                         )}
-                        {e.reason && <div className="text-[11px] italic text-muted-foreground mt-0.5">{e.reason}</div>}
+                        {e.reason && <div className="text-2xs italic text-muted-foreground mt-0.5">{e.reason}</div>}
                       </li>
                     );
                   })}

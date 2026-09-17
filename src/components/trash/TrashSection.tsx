@@ -34,7 +34,7 @@ export function TrashSection({
         {open ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
         {icon}
         <span className="font-semibold text-sm">{title}</span>
-        <span className="chip text-[11px] bg-secondary text-muted-foreground tabular-nums">{count}</span>
+        <span className="chip text-2xs bg-secondary text-muted-foreground tabular-nums">{count}</span>
       </button>
       {open && <div className="border-t">{children}</div>}
     </div>

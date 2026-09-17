@@ -6,6 +6,7 @@
  */
 
 import { useState } from "react";
+import { notify } from "@/components/ui/Toast";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, X, UserCog, PhoneCall, CalendarClock, Ban, Zap, CheckCircle2 } from "lucide-react";
@@ -80,14 +81,14 @@ export function SipRejectionsTable({ rows }: { rows: SipRejectionRow[] }) {
       });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || "Auto-recovery failed");
+        notify.error(data.error || "Auto-recovery failed");
       } else {
         setRecoverySuccess(id);
         setTimeout(() => setRecoverySuccess(null), 3000);
         router.refresh();
       }
     } catch {
-      alert("Network error while triggering auto-recovery");
+      notify.error("Network error while triggering auto-recovery");
     } finally {
       setRecoveringId(null);
     }
@@ -248,14 +249,14 @@ export function SipRejectionsTable({ rows }: { rows: SipRejectionRow[] }) {
                     <td data-col="reason" className="py-3 text-xs max-w-[200px]">
                       {r.reason_category && (
                         <span
-                          className={`inline-block mb-0.5 rounded border px-1.5 py-0.5 text-[10px] font-semibold ${
+                          className={`inline-block mb-0.5 rounded border px-1.5 py-0.5 text-2xs font-semibold ${
                             CAT_TONE[r.reason_category] ?? ""
                           }`}
                         >
                           {CAT_LABEL[r.reason_category] ?? r.reason_category}
                         </span>
                       )}
-                      <div className="font-mono text-[11px] text-muted-foreground truncate">
+                      <div className="font-mono text-2xs text-muted-foreground truncate">
                         {r.rejection_reason ?? "—"}
                       </div>
                     </td>
@@ -265,7 +266,7 @@ export function SipRejectionsTable({ rows }: { rows: SipRejectionRow[] }) {
                     <td data-col="follow_up" className="py-3 text-xs whitespace-nowrap">
                       {r.follow_up_date ? formatDate(r.follow_up_date) : "—"}
                       {r.escalation_overdue && (
-                        <div className="text-[10px] text-rose-600 font-semibold">SLA breached</div>
+                        <div className="text-2xs text-rose-600 font-semibold">SLA breached</div>
                       )}
                     </td>
                     <td data-col="recovery_status" className="py-3 whitespace-nowrap">

@@ -1,5 +1,6 @@
 import { resolveExpression } from "../context";
 import type { ActionHandler } from "./index";
+import { safeWorkflowHttp } from "../safe-http";
 
 export const httpRequestHandler: ActionHandler<any> = {
   type: "http_request",
@@ -24,17 +25,17 @@ export const httpRequestHandler: ActionHandler<any> = {
     // Bound the call — without a timeout a hung endpoint pins the step's DB
     // connection until Postgres' statement_timeout kills the whole transaction.
     const timeoutMs = Number(cfg.timeoutMs) > 0 ? Number(cfg.timeoutMs) : 15_000;
-    const res = await fetch(url, {
+    const res = await safeWorkflowHttp(url, {
       method: cfg.method,
       headers,
       body,
-      signal: AbortSignal.timeout(timeoutMs),
+      timeoutMs,
     });
     let parsed: unknown;
     try {
-      parsed = await res.clone().json();
+      parsed = JSON.parse(res.body);
     } catch {
-      parsed = await res.text();
+      parsed = res.body;
     }
 
     const output = { url, method: cfg.method, status: res.status, body: parsed };

@@ -81,9 +81,9 @@ export default async function ReconciliationPage({
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Scale className="size-6 text-brand-cyan" /> Reconciliation
+            <Scale className="size-6 text-muted-foreground" /> Reconciliation
           </h1>
-          <p className="text-muted-foreground text-sm">
+          <p className="page-subtitle mt-1">
             {data.lastRun?.run_at && (
               <> Last run {new Date(data.lastRun.run_at).toLocaleString("en-IN")}.</>
             )}
@@ -166,7 +166,7 @@ function Kpi({ label, value, tone }: { label: string; value: string | number; to
   const color = tone === "rose" ? "text-rose-600" : tone === "emerald" ? "text-emerald-600" : "";
   return (
     <div className="card-surface p-3">
-      <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-2xs uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className={`text-xl font-bold ${color}`}>{value}</div>
     </div>
   );

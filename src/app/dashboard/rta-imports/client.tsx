@@ -62,7 +62,7 @@ export function RtaMailboxSyncButton() {
         <span>{busy ? "Checking Mailbox…" : "Sync Mailbox Now"}</span>
       </button>
       {msg && (
-        <span className="text-[11px] text-muted-foreground max-w-xs text-right truncate" title={msg}>
+        <span className="text-2xs text-muted-foreground max-w-xs text-right truncate" title={msg}>
           {msg}
         </span>
       )}

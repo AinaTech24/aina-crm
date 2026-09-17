@@ -189,6 +189,11 @@ export const workflowRuns = pgTable(
     pausedUntil: timestamp("paused_until", { withTimezone: true }),
     waitPredicate: jsonb("wait_predicate"),
     waitNodeId: text("wait_node_id"),
+    resumeHandle: text("resume_handle"),
+    leaseToken: uuid("lease_token"),
+    leaseUntil: timestamp("lease_until", { withTimezone: true }),
+    stepSequence: integer("step_sequence").notNull().default(0),
+    occurrenceKey: text("occurrence_key"),
 
     /** Current node — used by the runner to know what to execute next */
     currentNodeId: text("current_node_id"),
@@ -204,6 +209,7 @@ export const workflowRuns = pgTable(
   },
   (t) => ({
     workflowStatusIdx: index("wf_runs_workflow_status_idx").on(t.workflowId, t.status),
+    occurrenceUnique: uniqueIndex("wf_runs_occurrence_unique").on(t.tenantId, t.occurrenceKey),
     subjectIdx: index("wf_runs_subject_idx").on(t.tenantId, t.subjectType, t.subjectId),
     pausedIdx: index("wf_runs_paused_idx").on(t.pausedUntil).where(sql`status = 'paused'`),
     // Monitor (Control Tower): status rollup + recent failures per tenant/window.

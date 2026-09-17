@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
-import { ChevronLeft, Phone, Mail, MessageCircle, MapPin, AlertTriangle, User2, ShieldCheck, Sparkles, ArrowRight, Wallet, Download } from "lucide-react";
+import { ChevronLeft, Phone, Mail, MessageCircle, MapPin, AlertTriangle, User2, ShieldCheck, Sparkles, ArrowRight, Wallet, Download, FileText, Receipt } from "lucide-react";
 import { DownloadButton } from "@/components/common/SecureLinkButtons";
 import { withTenant } from "@/db/client";
 import {
@@ -388,7 +388,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           href="/dashboard/investors"
           className="text-sm text-muted-foreground hover:underline flex items-center gap-1"
         >
-          <ChevronLeft className="size-4" /> Back to investors
+          <ChevronLeft className="size-4" /> Back to clients
         </Link>
         <div className="flex items-center gap-2">
           <RelatedListsManager
@@ -401,15 +401,15 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           />
           <Link
             href={`/dashboard/investors/${inv.id}/review-report`}
-            className="text-xs rounded-md border px-2.5 py-1 hover:bg-accent"
+            className="btn-secondary !px-2.5 !py-1 !text-xs"
           >
-            📄 Quarterly Review Report
+            <FileText className="size-3.5" /> Quarterly Review Report
           </Link>
           <Link
             href={`/dashboard/investors/${inv.id}/statement`}
-            className="text-xs rounded-md border px-2.5 py-1 hover:bg-accent"
+            className="btn-secondary !px-2.5 !py-1 !text-xs"
           >
-            🧾 Account Statement
+            <Receipt className="size-3.5" /> Account Statement
           </Link>
         </div>
       </div>
@@ -429,11 +429,11 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
       <RelatedListsContainer>
       {/* Header */}
       <RelatedListSection moduleKey="investors-detail" sectionKey="header">
-      <div className="border rounded-lg bg-card p-6">
+      <div className="card-surface p-6">
         <div className="flex items-start gap-4">
           <InvestorAvatarEditor investorId={inv.id} name={inv.name} hasAvatar={!!inv.avatarUrl} size={64} />
           <div className="flex-1 min-w-0">
-            <h1 className="text-2xl font-bold tracking-tight">{inv.name}</h1>
+            <h1 className="page-title">{inv.name}</h1>
             <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
               {showPan && inv.pan && <PanReveal pan={inv.pan} />}
               {showSegment && inv.segmentTag && (
@@ -1146,14 +1146,14 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
                       </div>
                       <div className="text-xs text-muted-foreground mt-1 flex justify-between">
                         <span>{pct.toFixed(0)}% · target {formatDate(g.targetDate)} · {g.category.replace(/_/g, " ")}</span>
-                        {sip > 0 && <span className="tabular-nums font-mono text-[10px]">SIP: {formatINR(sip)}/mo</span>}
+                        {sip > 0 && <span className="tabular-nums font-mono text-2xs">SIP: {formatINR(sip)}/mo</span>}
                       </div>
                       {shortfall > 0 && (
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-rose-50 text-rose-700 border border-rose-200">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-rose-50 text-rose-700 border border-rose-200">
                             ⚠️ Shortfall Projected: {formatINR(shortfall)}
                           </span>
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
                             Suggested step-up: +{formatINR(neededIncrease)}/mo
                           </span>
                         </div>
@@ -1307,7 +1307,7 @@ function ClientNpsChip({ requests }: { requests: any[] }) {
       ]
         .filter(Boolean)
         .join("\n")}
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${tone}`}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-2xs font-semibold ${tone}`}
     >
       Feedback {score}/10
       {scored.length > 1 && <span className="font-normal opacity-70">· {scored.length}</span>}
@@ -1348,9 +1348,9 @@ function HeaderKpi({ label, value, primary, tone, sub }: { label: string; value:
   const valueColor = tone === "good" ? "text-emerald-600" : tone === "bad" ? "text-rose-600" : "text-foreground";
   return (
     <div className={`flex-1 rounded-lg border px-4 py-3 ${primary ? "border-brand-cyan/30 bg-brand-cyan-light/20" : "border-border bg-secondary/30"}`}>
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className={`text-xl font-bold tabular-nums mt-0.5 ${valueColor}`}>{value}</div>
-      {sub && <div className="text-[11px] text-muted-foreground mt-0.5">{sub}</div>}
+      {sub && <div className="text-2xs text-muted-foreground mt-0.5">{sub}</div>}
     </div>
   );
 }

@@ -71,7 +71,7 @@ export function YouthBucketStrategy() {
       </div>
 
       <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-5 text-center">
-        <div className="text-[11px] uppercase tracking-wider font-semibold text-emerald-700">
+        <div className="text-2xs uppercase tracking-wider font-semibold text-emerald-700">
           SIP with the 4-bucket strategy
         </div>
         <div className="text-3xl font-extrabold text-emerald-700 mt-1">{inr(Math.round(res.sipBucket))}/mo</div>
@@ -91,7 +91,7 @@ export function YouthBucketStrategy() {
       {/* Allocation across buckets */}
       {activeBuckets.length > 0 && (
         <div>
-          <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5">
+          <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium mb-1.5">
             Corpus split at freedom (age {freedomAge})
           </div>
           <div className="flex h-8 w-full overflow-hidden rounded-md border border-border">
@@ -100,7 +100,7 @@ export function YouthBucketStrategy() {
               return (
                 <div
                   key={i}
-                  className="h-full flex items-center justify-center text-[10px] font-semibold text-white"
+                  className="h-full flex items-center justify-center text-2xs font-semibold text-white"
                   style={{ width: `${Math.max(4, pct)}%`, background: BUCKET_COLORS[res.buckets.indexOf(b)] }}
                   title={`${b.name}: ${pct.toFixed(0)}%`}
                 >

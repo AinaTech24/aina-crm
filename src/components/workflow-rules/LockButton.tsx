@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { notify } from "@/components/ui/Toast";
 import { useRouter } from "next/navigation";
 import { Lock, Unlock } from "lucide-react";
 
@@ -33,7 +34,7 @@ export function LockButton({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action: locked ? "unlock" : "lock", reason }),
       });
-      if (!res.ok) alert("Failed to update lock");
+      if (!res.ok) notify.error("Failed to update lock");
       router.refresh();
     } finally {
       setBusy(false);

@@ -212,7 +212,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
               <div className="text-xs text-muted-foreground">Cost</div>
               <div className="text-2xl font-bold mt-1">{inr(c.campaignCost)}</div>
               {Number(c.clientsConverted ?? 0) > 0 && Number(c.campaignCost ?? 0) > 0 && (
-                <div className="text-[10px] text-muted-foreground mt-0.5">{inr(Number(c.campaignCost) / Number(c.clientsConverted))} / conversion</div>
+                <div className="text-2xs text-muted-foreground mt-0.5">{inr(Number(c.campaignCost) / Number(c.clientsConverted))} / conversion</div>
               )}
             </div>
           </div>
@@ -232,7 +232,7 @@ function Stat({ label, value, tone, sub }: { label: string; value: number; tone?
     <div className="border rounded-lg p-4 bg-card">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className={`text-2xl font-bold mt-1 ${color}`}>{value.toLocaleString("en-IN")}</div>
-      {sub && <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>}
+      {sub && <div className="text-2xs text-muted-foreground mt-0.5">{sub}</div>}
     </div>
   );
 }

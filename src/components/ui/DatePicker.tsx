@@ -190,7 +190,7 @@ export function DatePicker({
             </div>
             <div className="grid grid-cols-7 gap-0.5 text-center">
               {DOW.map((d) => (
-                <div key={d} className="text-[10px] font-semibold text-muted-foreground py-1">{d}</div>
+                <div key={d} className="text-2xs font-semibold text-muted-foreground py-1">{d}</div>
               ))}
               {grid.map((c, i) => {
                 const iso = toISO(c.date);

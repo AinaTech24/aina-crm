@@ -444,7 +444,7 @@ export default function NewProposalPage() {
                 {/* Picked family pill */}
                 <div className="flex items-center gap-2">
                   <div className="flex-1 flex items-center gap-2 rounded-lg border border-brand-cyan/40 bg-brand-cyan-light/40 px-3 py-2">
-                    <div className="size-7 rounded-full brand-gradient text-white grid place-items-center text-[10px] font-bold flex-shrink-0 shadow-sm">
+                    <div className="size-7 rounded-full brand-gradient text-white grid place-items-center text-2xs font-bold flex-shrink-0 shadow-sm">
                       {recipient.name
                         .split(" ")
                         .map((n) => n[0])
@@ -454,7 +454,7 @@ export default function NewProposalPage() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="font-semibold text-sm truncate">{recipient.name}</div>
-                      <div className="text-[11px] text-muted-foreground">
+                      <div className="text-2xs text-muted-foreground">
                         Family group · contact resolves to the head
                       </div>
                     </div>
@@ -476,7 +476,7 @@ export default function NewProposalPage() {
                 {/* Optional: pick a specific family member as the addressee */}
                 {familyMembers.length > 0 && (
                   <div className="rounded-lg border border-border bg-secondary/30 p-3">
-                    <div className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground mb-2">
+                    <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground mb-2">
                       Address proposal to (optional)
                     </div>
                     <div className="grid grid-cols-2 gap-1.5">
@@ -489,7 +489,7 @@ export default function NewProposalPage() {
                           }`}
                       >
                         <div className="font-semibold">Whole family</div>
-                        <div className="text-[10px] text-muted-foreground">
+                        <div className="text-2xs text-muted-foreground">
                           Default · contact = head
                         </div>
                       </button>
@@ -504,7 +504,7 @@ export default function NewProposalPage() {
                             }`}
                         >
                           <div className="font-semibold truncate">{m.name}</div>
-                          <div className="text-[10px] text-muted-foreground">
+                          <div className="text-2xs text-muted-foreground">
                             {m.familyRole ?? m.family_role ?? "Member"}
                             {m.isPrimary || m.is_primary ? " · Head" : ""}
                           </div>
@@ -523,7 +523,7 @@ export default function NewProposalPage() {
                   className="input-base"
                 />
                 {familyOptions.length === 0 ? (
-                  <p className="text-[11px] text-muted-foreground mt-1">
+                  <p className="text-2xs text-muted-foreground mt-1">
                     Loading families…
                   </p>
                 ) : (
@@ -537,7 +537,7 @@ export default function NewProposalPage() {
                             onClick={() => pickFamily(f)}
                             className="w-full text-left px-3 py-2 hover:bg-brand-cyan-light/40 flex items-center gap-2"
                           >
-                            <div className="size-7 rounded-full brand-gradient text-white grid place-items-center text-[10px] font-bold flex-shrink-0 shadow-sm">
+                            <div className="size-7 rounded-full brand-gradient text-white grid place-items-center text-2xs font-bold flex-shrink-0 shadow-sm">
                               {display
                                 .split(" ")
                                 .map((n: string) => n[0])
@@ -548,7 +548,7 @@ export default function NewProposalPage() {
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="font-semibold text-sm truncate">{display}</div>
-                              <div className="text-[11px] text-muted-foreground">
+                              <div className="text-2xs text-muted-foreground">
                                 Head · {f.headName ?? "—"}
                               </div>
                             </div>
@@ -569,7 +569,7 @@ export default function NewProposalPage() {
         ) : recipient?.type === "lead" ? (
           <div className="flex items-center gap-2">
             <div className="flex-1 flex items-center gap-2 rounded-lg border border-brand-cyan/40 bg-brand-cyan-light/40 px-3 py-2">
-              <div className="size-7 rounded-full brand-gradient text-white grid place-items-center text-[10px] font-bold flex-shrink-0 shadow-sm">
+              <div className="size-7 rounded-full brand-gradient text-white grid place-items-center text-2xs font-bold flex-shrink-0 shadow-sm">
                 {recipient.name
                   .split(" ")
                   .map((n) => n[0])
@@ -579,7 +579,7 @@ export default function NewProposalPage() {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="font-semibold text-sm truncate">{recipient.name}</div>
-                <div className="text-[11px] text-muted-foreground">Linked from Leads</div>
+                <div className="text-2xs text-muted-foreground">Linked from Leads</div>
               </div>
             </div>
             <button
@@ -614,7 +614,7 @@ export default function NewProposalPage() {
                         className="w-full text-left px-3 py-2 hover:bg-brand-cyan-light/40"
                       >
                         <div className="font-semibold text-sm">{l.name}</div>
-                        <div className="text-[11px] text-muted-foreground">
+                        <div className="text-2xs text-muted-foreground">
                           {l.phone ?? "—"} · {l.stage} · {l.source}
                         </div>
                       </button>
@@ -736,7 +736,7 @@ export default function NewProposalPage() {
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <span
-                      className={`chip text-[10px] ${it.kind === "mf"
+                      className={`chip text-2xs ${it.kind === "mf"
                           ? "bg-emerald-50 text-emerald-700"
                           : it.kind === "insurance"
                             ? "bg-blue-50 text-blue-700"
@@ -790,13 +790,13 @@ export default function NewProposalPage() {
         {items.length > 0 && (
           <div className="grid grid-cols-2 gap-3 pt-3 border-t border-border">
             <div className="rounded-lg bg-brand-cyan-light/30 border border-brand-cyan/20 p-3">
-              <div className="text-[10px] uppercase tracking-wider font-semibold text-brand-cyan-deep">
+              <div className="text-2xs uppercase tracking-wider font-semibold text-brand-cyan-deep">
                 Total investment
               </div>
               <div className="text-xl font-bold mt-1 tabular-nums">{formatINR(totals.inv)}</div>
             </div>
             <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3">
-              <div className="text-[10px] uppercase tracking-wider font-semibold text-emerald-700">
+              <div className="text-2xs uppercase tracking-wider font-semibold text-emerald-700">
                 Projected corpus
               </div>
               <div className="text-xl font-bold mt-1 tabular-nums text-emerald-700">
@@ -838,7 +838,7 @@ export default function NewProposalPage() {
           rows={3}
           className="input-base text-xs"
         />
-        <p className="text-[11px] text-muted-foreground pt-1">
+        <p className="text-2xs text-muted-foreground pt-1">
           Use <strong>Save proposal</strong> at the top to save &amp; continue to the branded PDF.
         </p>
       </div>
@@ -863,7 +863,7 @@ function NumberInput({
 }) {
   return (
     <label className="block">
-      <div className="text-[11px] font-medium mb-1 text-muted-foreground">
+      <div className="text-2xs font-medium mb-1 text-muted-foreground">
         {label}
         {unit && <span className="opacity-70 ml-1">({unit})</span>}
       </div>
@@ -897,7 +897,7 @@ function TextInput({
 }) {
   return (
     <label className="block">
-      <div className="text-[11px] font-medium mb-1 text-muted-foreground">
+      <div className="text-2xs font-medium mb-1 text-muted-foreground">
         {label}
         {required && <span className="text-rose-600 ml-0.5">*</span>}
       </div>
@@ -960,7 +960,7 @@ function MFRow({ item, onPatch }: { item: MF; onPatch: (p: Partial<MF>) => void 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
       <div className="sm:col-span-2">
-        <div className="text-[11px] font-medium mb-1 text-muted-foreground">
+        <div className="text-2xs font-medium mb-1 text-muted-foreground">
           Scheme name <span className="text-rose-500">*</span>
         </div>
         <SchemeAutocomplete
@@ -986,7 +986,7 @@ function MFRow({ item, onPatch }: { item: MF; onPatch: (p: Partial<MF>) => void 
         placeholder="HDFC AMC"
       />
       <div>
-        <div className="text-[11px] font-medium mb-1 text-muted-foreground">Category</div>
+        <div className="text-2xs font-medium mb-1 text-muted-foreground">Category</div>
         {customCat || (item.category && !MF_CATEGORIES.includes(item.category)) ? (
           <div className="flex items-center gap-1">
             <input
@@ -1057,7 +1057,7 @@ function MFRow({ item, onPatch }: { item: MF; onPatch: (p: Partial<MF>) => void 
         setValue={(n) => onPatch({ projectedCorpus: n })}
       />
       <label className="block">
-        <div className="text-[11px] font-medium mb-1 text-muted-foreground">Risk rating</div>
+        <div className="text-2xs font-medium mb-1 text-muted-foreground">Risk rating</div>
         <SelectField
           value={item.riskRating ?? ""}
           onChange={(e) => onPatch({ riskRating: (e.target.value || undefined) as any })}
@@ -1101,7 +1101,7 @@ function InsRow({ item, onPatch }: { item: Ins; onPatch: (p: Partial<Ins>) => vo
         placeholder="HDFC Life"
       />
       <label className="block">
-        <div className="text-[11px] font-medium mb-1 text-muted-foreground">Policy type</div>
+        <div className="text-2xs font-medium mb-1 text-muted-foreground">Policy type</div>
         <SelectField
           value={item.policyType ?? ""}
           onChange={(e) => onPatch({ policyType: (e.target.value || undefined) as any })}
@@ -1199,7 +1199,7 @@ function PMSRow({ item, onPatch }: { item: PMS; onPatch: (p: Partial<PMS>) => vo
         setValue={(n) => onPatch({ termYears: n })}
       />
       {projectedPMS > 0 && (
-        <div className="sm:col-span-3 text-[11px] text-emerald-600 font-semibold px-1 py-0.5 bg-emerald-50/50 rounded-md">
+        <div className="sm:col-span-3 text-2xs text-emerald-600 font-semibold px-1 py-0.5 bg-emerald-50/50 rounded-md">
           Projected value: {formatINR(projectedPMS)} after {item.termYears} years
         </div>
       )}
@@ -1244,7 +1244,7 @@ function AIFRow({ item, onPatch }: { item: AIF; onPatch: (p: Partial<AIF>) => vo
         placeholder="ICICI Prudential AIF"
       />
       <label className="block">
-        <div className="text-[11px] font-medium mb-1 text-muted-foreground">Category</div>
+        <div className="text-2xs font-medium mb-1 text-muted-foreground">Category</div>
         <SelectField
           value={item.category ?? ""}
           onChange={(e) => onPatch({ category: (e.target.value || undefined) as any })}
@@ -1281,7 +1281,7 @@ function AIFRow({ item, onPatch }: { item: AIF; onPatch: (p: Partial<AIF>) => vo
         setValue={(n) => onPatch({ targetIrr: n })}
       />
       {projectedAIF > 0 && (
-        <div className="sm:col-span-3 text-[11px] text-emerald-600 font-semibold px-1 py-0.5 bg-emerald-50/50 rounded-md">
+        <div className="sm:col-span-3 text-2xs text-emerald-600 font-semibold px-1 py-0.5 bg-emerald-50/50 rounded-md">
           Projected value: {formatINR(projectedAIF)} after {item.lockInYears} years
         </div>
       )}
@@ -1341,7 +1341,7 @@ function OtherRow({ item, onPatch }: { item: Other; onPatch: (p: Partial<Other>)
         setValue={(n) => onPatch({ termYears: n })}
       />
       {projected > 0 && (
-        <div className="sm:col-span-3 text-[11px] text-emerald-600 font-semibold px-1 py-0.5 bg-emerald-50/50 rounded-md">
+        <div className="sm:col-span-3 text-2xs text-emerald-600 font-semibold px-1 py-0.5 bg-emerald-50/50 rounded-md">
           Expected future value: {formatINR(projected)} after {item.termYears} years
         </div>
       )}

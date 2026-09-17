@@ -116,7 +116,7 @@ export function EngageNextGenButton({
     <>
       <button
         onClick={() => setOpen(true)}
-        className="text-[10px] rounded-full font-semibold px-2.5 py-1 bg-violet-600 hover:bg-violet-700 text-white flex items-center gap-1 transition-colors"
+        className="text-2xs rounded-full font-semibold px-2.5 py-1 bg-violet-600 hover:bg-violet-700 text-white flex items-center gap-1 transition-colors"
       >
         <Sparkles className="size-3" />
         Engage
@@ -193,7 +193,7 @@ export function EngageNextGenButton({
                     </ThemeSelect>
                   </label>
                   {selectedTemplate && selectedTemplate.description && (
-                    <p className="text-[11px] text-muted-foreground mt-1.5 font-normal">
+                    <p className="text-2xs text-muted-foreground mt-1.5 font-normal">
                       {selectedTemplate.description}
                     </p>
                   )}

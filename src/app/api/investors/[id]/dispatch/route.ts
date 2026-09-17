@@ -1,3 +1,4 @@
+import { assertInvestorAccess } from "@/lib/investors/access";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
@@ -15,6 +16,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
+    await assertInvestorAccess(session, (await params).id);
     const { id } = await params;
 
     const data = await withTenant(session.tenantId, async (tx) => {
@@ -64,6 +66,7 @@ const PostBody = z.object({
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
+    await assertInvestorAccess(session, (await params).id);
     // Sending an outbound message to a client is a client-facing action —
     // gate it to roles that can act on a client (RM/ops/back-office/etc).
     requireCap(session.roles, "investor.note.add", session.permissions);

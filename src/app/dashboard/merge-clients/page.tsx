@@ -89,7 +89,7 @@ export default async function MergeClientsPage({
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <GitMerge className="size-6 text-primary" /> Merge Clients
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="page-subtitle mt-1">
             One client, one record. Merge duplicates, separate mistakes, and review what the system did on its own.
           </p>
         </div>
@@ -140,7 +140,7 @@ export default async function MergeClientsPage({
                   {data.clusters.map((c) => (
                     <DuplicateGroup key={`${c.kind}-${c.gkey}`} kind={c.kind} gkey={c.gkey} members={c.members} />
                   ))}
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-2xs text-muted-foreground">
                     “Not duplicates” hides a group for good. Merging here is logged as manual and can be separated later.
                   </p>
                 </div>
@@ -217,19 +217,19 @@ function MergedTable({ rows, tab, q, canMerge }: { rows: MergedClient[]; tab: Me
                 <tr key={r.loserId} className="border-b last:border-0 hover:bg-secondary/30">
                   <td className="py-2.5 px-4">
                     <div className="font-medium">{r.loserName}</div>
-                    <div className="text-[11px] text-muted-foreground tabular-nums">
+                    <div className="text-2xs text-muted-foreground tabular-nums">
                       {[r.loserPan, r.loserPhone, r.loserEmail].filter(Boolean).join(" · ") || "no identifiers"}
                     </div>
                   </td>
                   <td className="py-2.5 px-4">
                     <Link href={`/dashboard/investors/${r.survivorId}`} className="font-medium hover:underline">{r.survivorName}</Link>
-                    {r.survivorPan && <div className="text-[11px] text-muted-foreground tabular-nums">{r.survivorPan}</div>}
+                    {r.survivorPan && <div className="text-2xs text-muted-foreground tabular-nums">{r.survivorPan}</div>}
                   </td>
                   <td className="py-2.5 px-4">
-                    <span className={`chip text-[10px] ${r.source === "manual" ? "bg-secondary text-foreground" : "bg-amber-50 text-amber-700"}`}>
+                    <span className={`chip text-2xs ${r.source === "manual" ? "bg-secondary text-foreground" : "bg-amber-50 text-amber-700"}`}>
                       {r.source === "manual" ? "Manual" : "System"}
                     </span>
-                    {r.reason && <span className="ml-2 text-[11px] text-muted-foreground">{r.reason}</span>}
+                    {r.reason && <span className="ml-2 text-2xs text-muted-foreground">{r.reason}</span>}
                   </td>
                   <td className="py-2.5 px-4 text-xs text-muted-foreground">{r.mergedByName ?? (r.source === "manual" ? "—" : "System")}</td>
                   <td className="py-2.5 px-4 text-right tabular-nums">{inr(r.survivorAum)}</td>
@@ -238,7 +238,7 @@ function MergedTable({ rows, tab, q, canMerge }: { rows: MergedClient[]; tab: Me
                     {canMerge && r.mergeId ? (
                       <UnmergeButton mergeId={r.mergeId} reversible={r.reversible} label={tab === "differ" ? "Separate" : "Undo"} />
                     ) : (
-                      <span className="text-[11px] text-muted-foreground" title="Merged before the merge log existed — nothing recorded what moved, so it cannot be separated automatically.">
+                      <span className="text-2xs text-muted-foreground" title="Merged before the merge log existed — nothing recorded what moved, so it cannot be separated automatically.">
                         —
                       </span>
                     )}

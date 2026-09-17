@@ -173,9 +173,10 @@ export default async function CampaignsPage({
     <div className="space-y-6 max-w-7xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Megaphone className="size-6 text-brand-cyan" /> Marketing Campaigns
+          <h1 className="page-title">
+            <Megaphone className="size-6 text-muted-foreground" /> Marketing Campaigns
           </h1>
+          <p className="page-subtitle mt-1">Send a WhatsApp or email campaign to a group of clients and see who opened it.</p>
         </div>
         <div className="flex items-center gap-2">
           <Link href="/dashboard/reports/campaign_conversion" className="btn-secondary text-xs">
@@ -328,7 +329,7 @@ export default async function CampaignsPage({
                           {c.name}
                         </Link>
                         <div className="mt-0.5">
-                          <StatusChip tone={STATUS_TONE[c.status] ?? "neutral"} className="text-[10px]">
+                          <StatusChip tone={STATUS_TONE[c.status] ?? "neutral"} className="text-2xs">
                             {c.status}
                           </StatusChip>
                         </div>
@@ -345,7 +346,7 @@ export default async function CampaignsPage({
                         {c.end_date && (
                           <>
                             <br />
-                            <span className="text-[11px]">→ {formatDate(c.end_date)}</span>
+                            <span className="text-2xs">→ {formatDate(c.end_date)}</span>
                           </>
                         )}
                       </td>
@@ -353,7 +354,7 @@ export default async function CampaignsPage({
                         {c.segment_name ? (
                           <>
                             <div className="font-medium">{c.segment_name}</div>
-                            <div className="text-[11px] text-muted-foreground">
+                            <div className="text-2xs text-muted-foreground">
                               {c.segment_size ?? 0} members
                             </div>
                           </>
@@ -445,7 +446,7 @@ function Stat({
         : "hover:border-slate-300 bg-white"
       }`}>
       <div className="flex items-center justify-between">
-        <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
+        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
           {label}
         </span>
         {Icon && (

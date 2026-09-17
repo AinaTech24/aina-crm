@@ -235,7 +235,7 @@ export function AssistantChat({ insightsHref }: { insightsHref?: string }) {
               <Plus className="size-4" /> New chat
             </button>
           </div>
-          <div className="px-3 pb-2 flex items-center gap-1 text-[11px]">
+          <div className="px-3 pb-2 flex items-center gap-1 text-2xs">
             <button
               onClick={() => setShowArchived(false)}
               className={`px-2 py-1 rounded-md font-medium ${!showArchived ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"}`}
@@ -279,7 +279,7 @@ export function AssistantChat({ insightsHref }: { insightsHref?: string }) {
           </button>
           <div className="flex items-center gap-1.5 font-semibold text-sm">
             <Bot className="size-4 text-brand-cyan ai-icon-animated" /> Aina CRM Copilot
-            <span className="text-[10px] font-normal text-muted-foreground bg-secondary rounded px-1.5 py-0.5">beta</span>
+            <span className="text-2xs font-normal text-muted-foreground bg-secondary rounded px-1.5 py-0.5">beta</span>
           </div>
           {insightsHref && (
             <Link
@@ -344,7 +344,7 @@ export function AssistantChat({ insightsHref }: { insightsHref?: string }) {
               {busy ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
             </button>
           </div>
-          <div className="max-w-3xl mx-auto text-[10px] text-muted-foreground text-center mt-1.5">
+          <div className="max-w-3xl mx-auto text-2xs text-muted-foreground text-center mt-1.5">
             Answers use your live data and can be imperfect · read-only, Aina CRM only.
           </div>
         </div>

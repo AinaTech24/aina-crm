@@ -231,7 +231,7 @@ export function ImportWizard({
 function Step({ label, active, done }: { label: string; active: boolean; done: boolean }) {
   return (
     <li className={`flex items-center gap-1.5 ${done ? "text-emerald-600" : active ? "text-foreground font-medium" : "text-muted-foreground"}`}>
-      <span className={`size-5 rounded-full grid place-items-center text-[10px] ${done ? "bg-emerald-600 text-white" : active ? "bg-foreground text-background" : "bg-muted"}`}>
+      <span className={`size-5 rounded-full grid place-items-center text-2xs ${done ? "bg-emerald-600 text-white" : active ? "bg-foreground text-background" : "bg-muted"}`}>
         {done ? "✓" : ""}
       </span>
       {label}

@@ -105,20 +105,20 @@ export function CampaignRecipients({ campaignId }: { campaignId: string }) {
         <div className="max-h-96 overflow-y-auto scrollbar-thin divide-y divide-border">
           {rows.map((r) => (
             <div key={r.id} className="flex items-center gap-3 px-4 py-2.5">
-              <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border shrink-0 ${chip(r.status)}`}>
+              <span className={`text-2xs font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border shrink-0 ${chip(r.status)}`}>
                 {r.status.startsWith("skipped") ? "Skipped" : r.status}
               </span>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium truncate">{r.name}</div>
-                {r.reason && <div className="text-[11px] text-muted-foreground truncate">{r.reason}</div>}
+                {r.reason && <div className="text-2xs text-muted-foreground truncate">{r.reason}</div>}
               </div>
-              <div className="text-[11px] text-muted-foreground shrink-0">{fmt(r.when)}</div>
+              <div className="text-2xs text-muted-foreground shrink-0">{fmt(r.when)}</div>
             </div>
           ))}
         </div>
       )}
       {rows.length >= 500 && (
-        <div className="px-4 py-2 text-[11px] text-muted-foreground border-t">Showing the first 500 recipients.</div>
+        <div className="px-4 py-2 text-2xs text-muted-foreground border-t">Showing the first 500 recipients.</div>
       )}
     </div>
   );

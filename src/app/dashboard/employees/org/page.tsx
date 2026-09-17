@@ -61,7 +61,7 @@ export default async function OrgChartPage() {
       </Link>
       <div>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <Network className="size-6 text-brand-cyan" /> Org chart
+          <Network className="size-6 text-muted-foreground" /> Org chart
         </h1>
         <p className="text-muted-foreground text-sm">Reporting hierarchy built from each employee&apos;s reporting manager.</p>
       </div>
@@ -89,7 +89,7 @@ function OrgNode({ node, depth }: { node: Node; depth: number }) {
         <Avatar src={node.avatarUrl && /^https?:\/\//.test(node.avatarUrl) ? node.avatarUrl : null} name={node.name} size={32} />
         <div className="min-w-0">
           <div className="text-sm font-medium truncate">{node.name}</div>
-          <div className="text-[11px] text-muted-foreground truncate">
+          <div className="text-2xs text-muted-foreground truncate">
             {node.roles.slice(0, 2).map((r) => ROLE_LABELS[r] ?? r).join(", ")}
             {node.department ? ` · ${node.department.replace(/_/g, " ")}` : ""}
             {node.children.length > 0 ? ` · ${node.children.length} report${node.children.length > 1 ? "s" : ""}` : ""}

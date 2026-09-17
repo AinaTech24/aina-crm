@@ -10,6 +10,7 @@
  */
 
 import { useState } from "react";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 import { useRouter } from "next/navigation";
 import { Save, Loader2, Trash2, Plus, ExternalLink, X } from "lucide-react";
 import { ThemeSelect } from "@/components/ui/ThemeSelect";
@@ -177,9 +178,13 @@ export function LegalRegistrationForm({
   async function surrender() {
     if (!initial?.id) return;
     if (
-      !confirm(
-        "Mark this registration as surrendered? It will stay in the register for audit but no longer count as active."
-      )
+      !(await confirmDialog({
+        title: "Mark this registration as surrendered?",
+        message:
+          "It will stay in the register for audit, but will no longer count as active.",
+        confirmLabel: "Mark surrendered",
+        tone: "danger",
+      }))
     ) {
       return;
     }
@@ -325,7 +330,7 @@ export function LegalRegistrationForm({
 
       {/* Documents */}
       <div className="space-y-2">
-        <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">
+        <div className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold">
           Certificate &amp; supporting documents
         </div>
         {v.documents.length > 0 ? (
@@ -341,7 +346,7 @@ export function LegalRegistrationForm({
                     href={d.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-[11px] text-slate-500 truncate inline-flex items-center gap-1 hover:text-slate-800"
+                    className="text-2xs text-slate-500 truncate inline-flex items-center gap-1 hover:text-slate-800"
                   >
                     {d.url} <ExternalLink className="size-2.5" />
                   </a>
@@ -437,7 +442,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">
+      <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">
         {label}
       </span>
       {children}

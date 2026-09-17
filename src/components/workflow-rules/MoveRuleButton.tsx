@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { notify } from "@/components/ui/Toast";
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp } from "lucide-react";
 
@@ -30,7 +31,7 @@ export function MoveRuleButton({
       if (!r.ok) throw new Error(data?.error ?? "Failed to reorder rule");
       router.refresh();
     } catch (e: any) {
-      alert(e?.message ?? "Failed to reorder rule");
+      notify.error(e?.message ?? "Failed to reorder rule");
     } finally {
       setBusy(false);
     }

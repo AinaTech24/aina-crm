@@ -1,3 +1,4 @@
+import { assertInvestorAccess } from "@/lib/investors/access";
 import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/investors/[id]/verify-contact — mark a client's email / phone as
@@ -26,6 +27,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
+    await assertInvestorAccess(session, (await params).id);
     // Marking a client's email/phone as verified mutates KYC-grade contact
     // state — gate behind client-edit capability, not merely an authenticated
     // session (audit: tenant-scoped but RBAC-ungated mutation).

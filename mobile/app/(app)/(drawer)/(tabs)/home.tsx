@@ -11,6 +11,7 @@ import React from "react";
 import { View, Pressable, Linking, ScrollView, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import Animated, { FadeInUp } from "react-native-reanimated";
 import { Feather } from "@expo/vector-icons";
 import { Screen } from "../../../../src/components/ui/Screen";
@@ -19,7 +20,7 @@ import { Text } from "../../../../src/components/ui/Text";
 import { StatusPill } from "../../../../src/components/ui/StatusPill";
 import { Skeleton } from "../../../../src/components/ui/Skeleton";
 import { useMe } from "../../../../src/api/me";
-import { api } from "../../../../src/api/client";
+import { queuedPatch } from "../../../../src/lib/offlineQueue";
 import { useDashboardHome, useMyDay, useMyPerformance, isoDay, type Kpi, type DayMeeting, type DayFollowup, type DayTask, type Touchpoint, type AgendaDay, type MyPerformance, type PerfKpi } from "../../../../src/features/dashboard/api";
 import { useCommandCenter, toneColor, featherIcon, toMobileRoute, type CommandGroup, type CommandItem } from "../../../../src/features/command-center/api";
 import { useRecentlyViewed } from "../../../../src/state/recentlyViewed";
@@ -65,6 +66,7 @@ const PLAN_COVERS = new Set(["tasks_overdue", "lead_followups", "meetings_today"
 export default function Home() {
   const router = useRouter();
   const qc = useQueryClient();
+  const { t } = useTranslation();
   const me = useMe();
   const dash = useDashboardHome();
   // Today is fixed for the life of the screen; the strip selects a day within it.
@@ -87,7 +89,7 @@ export default function Home() {
   const atRisk = urgent.reduce((sum, g) => sum + g.items.reduce((s, i) => s + (i.amount ?? 0), 0), 0);
 
   const complete = useMutation({
-    mutationFn: (id: string) => api.patch(`/api/tasks/${id}`, { status: "completed" }),
+    mutationFn: (id: string) => queuedPatch(`/api/tasks/${id}`, { status: "completed" }, "Task completion"),
     onSuccess: () => { toast.success("Task completed"); qc.invalidateQueries({ queryKey: ["my-day"] }); qc.invalidateQueries({ queryKey: ["tasks"] }); qc.invalidateQueries({ queryKey: ["dashboard-home"] }); },
   });
 
@@ -116,7 +118,7 @@ export default function Home() {
           <View style={{ gap: spacing.sm }}><Skeleton width="55%" height={26} /><Skeleton width="35%" height={16} /></View>
         ) : (
           <>
-            <Text variant="title">Hi, {firstName(me.data?.user.name)}</Text>
+            <Text variant="title">{t("home.greeting", { name: firstName(me.data?.user.name) })}</Text>
             <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: 6 }}>
               <Text variant="body" tone="muted">{me.data?.user.roleLabel}</Text>
               {me.data?.license?.status ? <StatusPill label={me.data.license.status.replace("_", " ")} tone={LICENSE_TONE[me.data.license.status] ?? "neutral"} size="sm" /> : null}
@@ -129,8 +131,8 @@ export default function Home() {
       <Pressable style={styles.planBanner} onPress={() => router.push("/m/daily" as any)}>
         <View style={styles.planIcon}><Feather name="sun" size={18} color={palette.brand} /></View>
         <View style={{ flex: 1 }}>
-          <Text variant="body" style={{ fontWeight: fontWeight.semibold as any }}>Plan your day</Text>
-          <Text variant="caption" tone="muted">Set today's focus & reflect</Text>
+          <Text variant="body" style={{ fontWeight: fontWeight.semibold as any }}>{t("home.planDay")}</Text>
+          <Text variant="caption" tone="muted">{t("home.planDaySub")}</Text>
         </View>
         <Feather name="chevron-right" size={18} color={palette.faint} />
       </Pressable>
@@ -453,7 +455,7 @@ function FollowupRow({ f, onOpen }: { f: DayFollowup; onOpen: () => void }) {
 function TaskRow({ t, busy, onDone, onOpen }: { t: DayTask; busy: boolean; onDone: () => void; onOpen: () => void }) {
   return (
     <View style={styles.planRow}>
-      <Pressable onPress={onDone} disabled={busy} hitSlop={8}><Feather name="circle" size={22} color={palette.faint} /></Pressable>
+      <Pressable onPress={onDone} disabled={busy} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Mark "${t.title ?? "task"}" done`}><Feather name="circle" size={22} color={palette.faint} /></Pressable>
       <Pressable style={{ flex: 1 }} onPress={onOpen}>
         <Text variant="body" numberOfLines={1}>{t.title ?? "Task"}</Text>
         <Text variant="caption" numberOfLines={1} style={t.overdue ? { color: toneColors("danger").fg } : undefined} tone={t.overdue ? undefined : "muted"}>
@@ -491,8 +493,8 @@ function RowActions({ phone, onCall, subject }: { phone?: string | null; onCall:
   if (!phone) return <Feather name="chevron-right" size={16} color={palette.faint} />;
   return (
     <View style={{ flexDirection: "row", gap: spacing.sm }}>
-      <Pressable onPress={onCall} hitSlop={6} style={styles.iconBtn}><Feather name="phone" size={15} color={palette.brand} /></Pressable>
-      <Pressable onPress={() => openWa(phone, "", subject)} hitSlop={6} style={styles.iconBtn}><Feather name="message-circle" size={15} color={palette.success} /></Pressable>
+      <Pressable onPress={onCall} hitSlop={6} style={styles.iconBtn} accessibilityRole="button" accessibilityLabel={`Call ${subject?.name ?? "client"}`}><Feather name="phone" size={15} color={palette.brand} /></Pressable>
+      <Pressable onPress={() => openWa(phone, "", subject)} hitSlop={6} style={styles.iconBtn} accessibilityRole="button" accessibilityLabel={`WhatsApp ${subject?.name ?? "client"}`}><Feather name="message-circle" size={15} color={palette.success} /></Pressable>
     </View>
   );
 }

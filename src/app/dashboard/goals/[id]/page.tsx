@@ -62,7 +62,7 @@ export default async function GoalDetailPage({ params }: { params: Promise<{ id:
       {/* Header */}
       <div className="card-surface p-6 flex items-start gap-4">
         <div className="size-12 rounded-lg bg-brand-cyan-light grid place-items-center">
-          <Target className="size-6 text-brand-cyan" />
+          <Target className="size-6 text-muted-foreground" />
         </div>
         <div className="flex-1">
           <h1 className="text-2xl font-bold tracking-tight">{data.goal.name}</h1>

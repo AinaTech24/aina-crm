@@ -18,6 +18,7 @@ import { useRouter } from "next/navigation";
 import { Save, Loader2, Trash2, Plus, X, ExternalLink } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 
 const CATEGORIES = [
   { value: "mutual_funds", label: "Mutual Funds" },
@@ -200,7 +201,7 @@ export function ProductOfferingForm({
 
   async function discontinue() {
     if (!initial?.id) return;
-    if (!confirm("Mark this offering as discontinued? It will stay in the catalog for audit but no longer be active.")) return;
+    if (!(await confirmDialog({ title: "Mark this offering as discontinued?", message: "It will stay in the catalog for audit but no longer be active." }))) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/product-offerings/${initial.id}`, {
@@ -339,7 +340,7 @@ export function ProductOfferingForm({
                   }`}
                 >
                   {reg.registrationFor}
-                  <span className="ml-1 text-[9px] opacity-60">
+                  <span className="ml-1 text-2xs opacity-60">
                     {reg.authority}
                   </span>
                 </button>
@@ -391,7 +392,7 @@ export function ProductOfferingForm({
                 >
                   {t.name}
                   {t.roles[0] && (
-                    <span className="ml-1 text-[9px] opacity-60">
+                    <span className="ml-1 text-2xs opacity-60">
                       {t.roles[0]}
                     </span>
                   )}
@@ -417,7 +418,7 @@ export function ProductOfferingForm({
                     href={d.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-[11px] text-slate-500 truncate inline-flex items-center gap-1 hover:text-slate-800"
+                    className="text-2xs text-slate-500 truncate inline-flex items-center gap-1 hover:text-slate-800"
                   >
                     {d.url} <ExternalLink className="size-2.5" />
                   </a>
@@ -580,7 +581,7 @@ function Section({
 }) {
   return (
     <div className="space-y-2">
-      <h3 className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">
+      <h3 className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold">
         {title}
       </h3>
       {children}
@@ -601,7 +602,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">
+      <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">
         {label}
       </span>
       {children}

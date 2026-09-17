@@ -14,8 +14,10 @@ export function inr(value: unknown): string {
   const n = toNumber(value);
   const abs = Math.abs(n);
   const sign = n < 0 ? "-" : "";
-  if (abs >= 1e7) return `${sign}₹${(abs / 1e7).toFixed(2).replace(/\.00$/, "")}Cr`;
-  if (abs >= 1e5) return `${sign}₹${(abs / 1e5).toFixed(2).replace(/\.00$/, "")}L`;
+  // toFixed(2) always yields ".dd", so stripping trailing zeros (and a bare
+  // ".") is safe: 3.40 → 3.4, 1.00 → 1, 1.25 stays.
+  if (abs >= 1e7) return `${sign}₹${(abs / 1e7).toFixed(2).replace(/\.?0+$/, "")}Cr`;
+  if (abs >= 1e5) return `${sign}₹${(abs / 1e5).toFixed(2).replace(/\.?0+$/, "")}L`;
   if (abs >= 1000) return `${sign}₹${Math.round(abs).toLocaleString("en-IN")}`;
   return `${sign}₹${Math.round(abs)}`;
 }

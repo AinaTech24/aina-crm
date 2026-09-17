@@ -89,9 +89,10 @@ export default async function GoalsPage({
     <div className="space-y-6 max-w-7xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Target className="size-6 text-brand-cyan" /> Goal planning
+          <h1 className="page-title">
+            <Target className="size-6 text-muted-foreground" /> Goal planning
           </h1>
+          <p className="page-subtitle mt-1">Client goals — retirement, education, a home — and whether they are on track.</p>
         </div>
         <Link href="/dashboard/goals/new" className="btn-primary">
           <Plus className="size-4" /> Add Goal

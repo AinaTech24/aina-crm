@@ -18,7 +18,7 @@ export default async function RuleLibraryPage() {
       </Link>
       <div>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <BookMarked className="size-6 text-brand-cyan" /> Rule Library
+          <BookMarked className="size-6 text-muted-foreground" /> Rule Library
         </h1>
         <p className="text-muted-foreground text-sm mt-0.5">
           Ready-made automations. Add one to your rules — it&apos;s created <strong>disabled</strong> so you can review it,

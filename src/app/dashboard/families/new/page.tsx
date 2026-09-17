@@ -146,7 +146,7 @@ export default function NewFamilyPage() {
           <label className="block">
             <div className="text-xs font-medium mb-1">
               Relationship Manager
-              <span className="ml-1 text-[10px] text-muted-foreground font-normal">· defaults to you</span>
+              <span className="ml-1 text-2xs text-muted-foreground font-normal">· defaults to you</span>
             </div>
             <RmSelector
               value={form.rmId || null}
@@ -183,7 +183,7 @@ export default function NewFamilyPage() {
             </label>
           </div>
           {form.reviewFrequency && form.firstMeetingDate && (
-            <p className="text-[11px] text-muted-foreground mt-2">
+            <p className="text-2xs text-muted-foreground mt-2">
               The next household review date is computed automatically from this cadence and surfaces
               in the Command Center / Team Dashboard "reviews due".
             </p>

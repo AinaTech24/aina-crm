@@ -37,7 +37,7 @@ export function ThemeSelect({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={`input-base appearance-none pr-9 cursor-pointer dark:[color-scheme:dark] ${className}`}
+        className={`input-base appearance-none pr-9 cursor-pointer ${className}`}
         {...rest}
       >
         {options ? options.map(([k, l]) => <option key={k} value={k}>{l}</option>) : children}

@@ -60,7 +60,7 @@ function GroupEditor({ cat, group, onChange, depth }: { cat: SubjectCatalog; gro
             </button>
           ))}
         </div>
-        <span className="text-[11px] text-muted-foreground">
+        <span className="text-2xs text-muted-foreground">
           {group.op === "AND" ? "all of these match" : "any of these match"}
         </span>
       </div>
@@ -78,7 +78,7 @@ function GroupEditor({ cat, group, onChange, depth }: { cat: SubjectCatalog; gro
             <PredicateEditor key={i} cat={cat} predicate={child} onChange={(p) => setChild(i, p)} onRemove={() => setChild(i, null)} />
           )
         )}
-        {group.children.length === 0 && <div className="text-[11px] text-muted-foreground italic px-1">No conditions — matches everything.</div>}
+        {group.children.length === 0 && <div className="text-2xs text-muted-foreground italic px-1">No conditions — matches everything.</div>}
       </div>
 
       <div className="flex items-center gap-2 pt-1">
@@ -170,7 +170,7 @@ function ValueInput({ field, predicate, onChange }: { field: FieldDef; predicate
       return (
         <span className="flex items-center gap-1">
           <DateField value={String(arr[0] ?? "")} onChange={(e) => set([e.target.value, arr[1]])} size="sm" className="w-32" />
-          <span className="text-[11px] text-muted-foreground">and</span>
+          <span className="text-2xs text-muted-foreground">and</span>
           <DateField value={String(arr[1] ?? "")} onChange={(e) => set([arr[0], e.target.value])} size="sm" className="w-32" />
         </span>
       );
@@ -179,7 +179,7 @@ function ValueInput({ field, predicate, onChange }: { field: FieldDef; predicate
     return (
       <span className="flex items-center gap-1">
         <input type={it} value={String(arr[0] ?? "")} onChange={(e) => set([e.target.value, arr[1]])} className={`${cls} w-28`} />
-        <span className="text-[11px] text-muted-foreground">and</span>
+        <span className="text-2xs text-muted-foreground">and</span>
         <input type={it} value={String(arr[1] ?? "")} onChange={(e) => set([arr[0], e.target.value])} className={`${cls} w-28`} />
       </span>
     );

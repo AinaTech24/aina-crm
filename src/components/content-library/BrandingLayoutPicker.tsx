@@ -66,7 +66,7 @@ export function BrandingLayoutPicker({
       <div>
         <div className="flex items-center gap-2 mb-2">
           <LayoutTemplate className="size-3.5 text-brand-cyan" />
-          <span className="text-[11px] uppercase tracking-wider font-bold text-muted-foreground">
+          <span className="text-2xs uppercase tracking-wider font-bold text-muted-foreground">
             Branding template
           </span>
         </div>
@@ -85,7 +85,7 @@ export function BrandingLayoutPicker({
                 }`}
               >
                 <div className="font-semibold text-[12px]">{o.label}</div>
-                <div className="text-[10px] text-muted-foreground mt-0.5 leading-tight">
+                <div className="text-2xs text-muted-foreground mt-0.5 leading-tight">
                   {o.description}
                 </div>
               </button>
@@ -97,13 +97,13 @@ export function BrandingLayoutPicker({
       {/* Height fine-tune — applies to the main strip (the small top header in
           split mode is fixed compact so it never crowds the image). */}
       <div>
-        <div className="flex items-center justify-between text-[11px] text-muted-foreground mb-1">
+        <div className="flex items-center justify-between text-2xs text-muted-foreground mb-1">
           <span>
             Strip height —{" "}
             <span className="tabular-nums text-foreground font-semibold">{heightPct}%</span>
             <span className="opacity-70"> of image</span>
           </span>
-          <span className="text-[10px] italic">
+          <span className="text-2xs italic">
             {template.image.position === "frame"
               ? "Header & footer band size — creative is never covered"
               : template.image.position === "split"
@@ -129,7 +129,7 @@ export function BrandingLayoutPicker({
       <div>
         <div className="flex items-center gap-2 mb-2">
           <Crop className="size-3.5 text-brand-cyan" />
-          <span className="text-[11px] uppercase tracking-wider font-bold text-muted-foreground">
+          <span className="text-2xs uppercase tracking-wider font-bold text-muted-foreground">
             Output size
           </span>
         </div>
@@ -151,7 +151,7 @@ export function BrandingLayoutPicker({
                 }`}
               >
                 <div className="font-semibold text-[12px]">{s.label}</div>
-                <div className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{s.hint}</div>
+                <div className="text-2xs text-muted-foreground mt-0.5 leading-tight">{s.hint}</div>
               </button>
             );
           })}
@@ -171,7 +171,7 @@ export function BrandingLayoutPicker({
       </div>
 
       <div className="flex items-center justify-between flex-wrap gap-2 pt-2 border-t border-border">
-        <p className="text-[11px] text-muted-foreground italic">
+        <p className="text-2xs text-muted-foreground italic">
           Composited server-side · the raw image is never sent to the browser.
         </p>
         <div className="flex gap-2">

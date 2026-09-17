@@ -116,7 +116,7 @@ export function LeadCaptureFormClient({
           </h1>
           <p className="text-sm text-slate-600">{thankYou}</p>
           {tenant?.arn && (
-            <p className="text-[11px] text-slate-400 mt-6">
+            <p className="text-2xs text-slate-400 mt-6">
               {tenant.displayName} · ARN-{tenant.arn}
             </p>
           )}
@@ -259,7 +259,7 @@ export function LeadCaptureFormClient({
               Submit
             </button>
 
-            <p className="text-[11px] text-slate-400 pt-2">
+            <p className="text-2xs text-slate-400 pt-2">
               By submitting, you agree to be contacted by{" "}
               {tenant?.displayName ?? "this firm"} regarding your enquiry.
               Mutual fund investments are subject to market risks.
@@ -267,7 +267,7 @@ export function LeadCaptureFormClient({
           </form>
 
           {tenant && (
-            <div className="border-t border-slate-100 bg-slate-50 px-8 py-3 text-[11px] text-slate-500">
+            <div className="border-t border-slate-100 bg-slate-50 px-8 py-3 text-2xs text-slate-500">
               {tenant.displayName}
               {tenant.arn && ` · ARN-${tenant.arn}`}
             </div>

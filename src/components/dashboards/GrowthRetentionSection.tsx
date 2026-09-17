@@ -44,7 +44,7 @@ export async function GrowthRetentionSection({ session }: { session: SessionUser
     <div className="space-y-2.5">
       <div className="flex items-center gap-2">
         <div className="h-4 w-1 rounded-full brand-bar" />
-        <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-foreground/70">
+        <h2 className="text-2xs font-bold uppercase tracking-[0.12em] text-foreground/70">
           Growth &amp; retention
         </h2>
       </div>
@@ -93,13 +93,13 @@ function Tile({
     <Link href={href}>
       <div className="kpi-card glass-card">
         <div className="flex items-center justify-between">
-          <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">{label}</span>
+          <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{label}</span>
           <div className={`size-7 rounded-lg grid place-items-center ${iconBg}`}>
             <Icon className="size-3.5" />
           </div>
         </div>
         <div className={`text-xl font-bold mt-2 tabular-nums tracking-tight ${color}`}>{value}</div>
-        {sub && <div className="text-[11px] text-muted-foreground mt-1">{sub}</div>}
+        {sub && <div className="text-2xs text-muted-foreground mt-1">{sub}</div>}
       </div>
     </Link>
   );

@@ -43,6 +43,10 @@ export function Text({ variant = "body", tone, weight, center, style, ...rest }:
   const { brandDark } = useBrand();
   return (
     <RNText
+      // Honour the OS accessibility text size, but cap it: past ~1.35× the
+      // fixed-height rows, tab bar and pills clip or overflow instead of
+      // helping anyone. Callers can still override per-instance.
+      maxFontSizeMultiplier={1.35}
       style={[
         VARIANT[variant],
         tone ? { color: tone === "brand" ? brandDark : COLOR[tone] } : null,

@@ -1,3 +1,4 @@
+import { assertInvestorAccess } from "@/lib/investors/access";
 import { handleApiError } from "@/lib/api/error-handler";
 /**
  * GET /api/investors/[id]/capital-gains?fy=2024
@@ -18,6 +19,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
+    await assertInvestorAccess(session, (await params).id);
     requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
     const { id } = await params;
     const fyParam = Number(req.nextUrl.searchParams.get("fy"));

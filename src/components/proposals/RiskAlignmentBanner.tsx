@@ -55,8 +55,8 @@ export function RiskAlignmentBanner({
               />
               <div className="flex-1">
                 <span className="font-medium">{f.schemeName}</span>
-                {f.schemeRisk && <span className="text-[10px] opacity-70 ml-1.5">({f.schemeRisk}-risk)</span>}
-                <div className="text-[11px] opacity-80">{f.message}</div>
+                {f.schemeRisk && <span className="text-2xs opacity-70 ml-1.5">({f.schemeRisk}-risk)</span>}
+                <div className="text-2xs opacity-80">{f.message}</div>
               </div>
             </li>
           ))}

@@ -118,9 +118,10 @@ export default async function LeaveApplicationsPage({
     <div className="space-y-6 max-w-7xl">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <CalendarOff className="size-6 text-brand-cyan" /> Leave Applications
+          <h1 className="page-title">
+            <CalendarOff className="size-6 text-muted-foreground" /> Leave Applications
           </h1>
+          <p className="page-subtitle mt-1">Apply for leave, and approve what your team has requested.</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1 bg-secondary/30 border border-border p-0.5 rounded-lg text-xs">

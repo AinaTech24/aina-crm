@@ -367,7 +367,7 @@ export function MeetingPrepButton({ meetingId, className }: { meetingId: string;
                           ))}
                         </ul>
                       )}
-                      <p className="text-[10px] text-muted-foreground italic mt-3">
+                      <p className="text-2xs text-muted-foreground italic mt-3">
                         Generated from this client&apos;s data. Review before the meeting — not investment advice.
                       </p>
                     </section>

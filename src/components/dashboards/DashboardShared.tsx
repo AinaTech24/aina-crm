@@ -16,7 +16,7 @@ export function Group({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="h-4 w-1 rounded-full brand-bar" />
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-foreground/70">
+          <h2 className="text-2xs font-bold uppercase tracking-[0.12em] text-foreground/70">
             {title}
           </h2>
         </div>
@@ -63,7 +63,7 @@ export function Kpi({
     const inner = (
       <div className="kpi-hero relative overflow-hidden">
         <div className="flex items-center justify-between">
-          <span className="text-[11px] uppercase tracking-wider font-semibold text-white/80">
+          <span className="text-2xs uppercase tracking-wider font-semibold text-white/80">
             {label}
           </span>
           {Icon && (
@@ -106,7 +106,7 @@ export function Kpi({
   const inner = (
     <div className="kpi-card glass-card">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
+        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
           {label}
         </span>
         {Icon && (
@@ -119,7 +119,7 @@ export function Kpi({
         <div className="text-2xl font-bold tabular-nums tracking-tight">{value}</div>
         {delta && (
           <span
-            className={`inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+            className={`inline-flex items-center gap-0.5 text-2xs font-bold px-1.5 py-0.5 rounded-full ${
               deltaTone === "down"
                 ? "bg-rose-50 text-rose-700"
                 : "bg-emerald-50 text-emerald-700"
@@ -180,7 +180,7 @@ export function Stat({
   const inner = (
     <div className="kpi-card glass-card">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
+        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
           {label}
         </span>
         {Icon && (
@@ -192,7 +192,7 @@ export function Stat({
       <div className={`text-xl font-bold mt-2 tabular-nums tracking-tight ${color}`}>
         {value}
       </div>
-      {sub && <div className="text-[11px] text-muted-foreground mt-1">{sub}</div>}
+      {sub && <div className="text-2xs text-muted-foreground mt-1">{sub}</div>}
     </div>
   );
   return href ? <Link href={href}>{inner}</Link> : inner;

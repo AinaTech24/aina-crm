@@ -10,10 +10,10 @@ import { Megaphone, Pin } from "lucide-react";
 import { withTenant } from "@/db/client";
 
 const CAT_TONE: Record<string, string> = {
-  urgent: "border-rose-200 bg-rose-50/70 text-rose-900 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-200",
-  policy: "border-blue-200 bg-blue-50/70 text-blue-900 dark:border-blue-900 dark:bg-blue-950/50 dark:text-blue-200",
-  event: "border-violet-200 bg-violet-50/70 text-violet-900 dark:border-violet-900 dark:bg-violet-950/50 dark:text-violet-200",
-  system: "border-amber-200 bg-amber-50/70 text-amber-900 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-200",
+  urgent: "border-rose-200 bg-rose-50/70 text-rose-900",
+  policy: "border-blue-200 bg-blue-50/70 text-blue-900",
+  event: "border-violet-200 bg-violet-50/70 text-violet-900",
+  system: "border-amber-200 bg-amber-50/70 text-amber-900",
   general: "border-border bg-secondary/70 text-foreground",
 };
 
@@ -52,7 +52,7 @@ export async function AnnouncementsStrip({ session }: { session: { tenantId: str
           <div className="flex items-center gap-2 font-semibold">
             {a.is_pinned ? <Pin className="size-3.5" /> : <Megaphone className="size-3.5" />}
             {a.title}
-            {a.category === "urgent" && <span className="chip text-[10px] bg-rose-600 text-white">Urgent</span>}
+            {a.category === "urgent" && <span className="chip text-2xs bg-rose-600 text-white">Urgent</span>}
           </div>
           <p className="text-xs opacity-80 mt-0.5 line-clamp-1">{a.body}</p>
         </Link>

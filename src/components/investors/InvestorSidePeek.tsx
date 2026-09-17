@@ -116,7 +116,7 @@ export function InvestorSidePeek({
                       </span>
                     )}
                     {investor.serviceTier && (
-                      <span className="font-bold text-violet-700 bg-violet-50 dark:bg-violet-950/40 px-2 py-0.5 rounded-full">
+                      <span className="font-bold text-violet-700 bg-violet-50 px-2 py-0.5 rounded-full">
                         Tier {investor.serviceTier}
                       </span>
                     )}
@@ -124,8 +124,8 @@ export function InvestorSidePeek({
                       <span
                         className={`px-2 py-0.5 rounded-full font-medium ${
                           investor.kycStatus === "verified"
-                            ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40"
-                            : "bg-amber-50 text-amber-700 dark:bg-amber-950/40"
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-amber-50 text-amber-700"
                         }`}
                       >
                         KYC {investor.kycStatus}
@@ -158,7 +158,7 @@ export function InvestorSidePeek({
                   href={waUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 transition-colors"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
                 >
                   <MessageSquare className="size-3" /> WhatsApp
                 </a>
@@ -183,7 +183,7 @@ export function InvestorSidePeek({
           {/* Quick Metrics Bar */}
           <div className="grid grid-cols-3 gap-2 p-4 bg-secondary/30 border-b border-border text-center">
             <div className="p-2 bg-card rounded-lg border border-border/60">
-              <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">
+              <span className="text-2xs uppercase font-bold text-muted-foreground tracking-wider block">
                 Total AUM
               </span>
               <span className="text-sm font-bold text-foreground tabular-nums">
@@ -191,7 +191,7 @@ export function InvestorSidePeek({
               </span>
             </div>
             <div className="p-2 bg-card rounded-lg border border-border/60">
-              <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">
+              <span className="text-2xs uppercase font-bold text-muted-foreground tracking-wider block">
                 Monthly SIP
               </span>
               <span className="text-sm font-bold text-brand-navy tabular-nums">
@@ -199,7 +199,7 @@ export function InvestorSidePeek({
               </span>
             </div>
             <div className="p-2 bg-card rounded-lg border border-border/60">
-              <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">
+              <span className="text-2xs uppercase font-bold text-muted-foreground tracking-wider block">
                 Health Score
               </span>
               <span className="text-sm font-bold text-emerald-600 tabular-nums">
@@ -261,19 +261,19 @@ export function InvestorSidePeek({
                   </h4>
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
-                      <span className="text-muted-foreground block text-[11px]">RM</span>
+                      <span className="text-muted-foreground block text-2xs">RM</span>
                       <span className="font-medium text-foreground">{details?.rm?.name ?? "Unassigned"}</span>
                     </div>
                     <div>
-                      <span className="text-muted-foreground block text-[11px]">Branch</span>
+                      <span className="text-muted-foreground block text-2xs">Branch</span>
                       <span className="font-medium text-foreground">{details?.branch?.name ?? "Head Office"}</span>
                     </div>
                     <div>
-                      <span className="text-muted-foreground block text-[11px]">Segment</span>
+                      <span className="text-muted-foreground block text-2xs">Segment</span>
                       <span className="font-medium text-foreground">{investor.segmentTag ?? "Retail"}</span>
                     </div>
                     <div>
-                      <span className="text-muted-foreground block text-[11px]">Category</span>
+                      <span className="text-muted-foreground block text-2xs">Category</span>
                       <span className="font-medium text-foreground">
                         {investor.clientCategory ? `Category ${investor.clientCategory}` : "Category A"}
                       </span>
@@ -285,7 +285,7 @@ export function InvestorSidePeek({
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <h4 className="font-semibold text-foreground">Mutual Fund Folios</h4>
-                    <span className="text-[11px] text-muted-foreground">
+                    <span className="text-2xs text-muted-foreground">
                       {details?.folios?.length ?? 0} active folios
                     </span>
                   </div>
@@ -299,7 +299,7 @@ export function InvestorSidePeek({
                         >
                           <div>
                             <span className="font-medium text-foreground block">{f.schemeName ?? f.amcName}</span>
-                            <span className="text-[10px] text-muted-foreground font-mono">Folio: {f.folioNumber}</span>
+                            <span className="text-2xs text-muted-foreground font-mono">Folio: {f.folioNumber}</span>
                           </div>
                           <span className="font-bold tabular-nums text-foreground">
                             {formatINR(f.currentValue ?? 0)}
@@ -328,7 +328,7 @@ export function InvestorSidePeek({
                           <Activity className="size-3.5 text-brand-cyan" />
                           <div>
                             <span className="font-medium text-foreground block capitalize">{t.type}</span>
-                            <span className="text-[10px] text-muted-foreground">
+                            <span className="text-2xs text-muted-foreground">
                               {new Date(t.date).toLocaleDateString("en-IN")}
                             </span>
                           </div>
@@ -365,7 +365,7 @@ export function InvestorSidePeek({
                           <CheckCircle2 className="size-3.5 text-muted-foreground" />
                           <span className="font-medium text-foreground">{t.title}</span>
                         </div>
-                        <span className="text-[10px] text-muted-foreground">
+                        <span className="text-2xs text-muted-foreground">
                           {t.dueAt ? new Date(t.dueAt).toLocaleDateString("en-IN") : "No due date"}
                         </span>
                       </div>

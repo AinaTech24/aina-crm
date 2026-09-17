@@ -150,7 +150,7 @@ export function CustomViews({
           <ListFilter className="size-3.5 text-brand-cyan" />
           <span className="opacity-70">View:</span>
           <span className="font-semibold">{activeLabel}</span>
-          <span className="opacity-60 text-[10px]">▾</span>
+          <span className="opacity-60 text-2xs">▾</span>
         </button>
       )}
 
@@ -184,7 +184,7 @@ export function CustomViews({
             {/* User views */}
             <div className="max-h-64 overflow-y-auto scrollbar-thin">
               {views.length === 0 ? (
-                <div className="p-3 text-[11px] text-muted-foreground text-center">
+                <div className="p-3 text-2xs text-muted-foreground text-center">
                   No saved views yet. Filter the list, then save this view ↓
                 </div>
               ) : (
@@ -286,7 +286,7 @@ function ViewItem({
       <button onClick={onClick} className="flex-1 min-w-0 text-left flex items-center gap-1.5">
         {pinned && <Star className="size-3 text-amber-500 flex-shrink-0 fill-amber-400" />}
         <span className="truncate">{label}</span>
-        {preset && <span className="text-[9px] text-muted-foreground">· preset</span>}
+        {preset && <span className="text-2xs text-muted-foreground">· preset</span>}
       </button>
       {onPin && (
         <button

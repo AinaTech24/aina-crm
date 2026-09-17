@@ -91,7 +91,7 @@ export default async function RuleDetailPage({
           <div>
             <h1 className="page-title">
               {rule.locked && <Lock className="size-5 text-amber-600" />}
-              <Workflow className="size-6 text-brand-cyan" /> {rule.name}
+              <Workflow className="size-6 text-muted-foreground" /> {rule.name}
             </h1>
             <p className="page-subtitle">
               Module: <strong>{mod?.label ?? rule.module}</strong> · {rule.executionCount ?? 0} executions
@@ -227,7 +227,7 @@ export default async function RuleDetailPage({
           <h3 className="font-semibold flex items-center gap-2 text-sm">
             <Workflow className="size-4 text-brand-cyan" /> Condition branches ({branches.length + 1})
           </h3>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             A record falls into the <strong>first</strong> condition that matches — the Conditions/Actions above are
             Condition 1; these follow in order.
           </p>
@@ -238,9 +238,9 @@ export default async function RuleDetailPage({
                 {b.name ? <span className="text-muted-foreground font-normal"> · {b.name}</span> : null}
               </div>
               {(b.criteriaRows ?? []).length === 0 ? (
-                <div className="text-[11px] italic text-muted-foreground">Matches every record that reaches it.</div>
+                <div className="text-2xs italic text-muted-foreground">Matches every record that reaches it.</div>
               ) : (
-                <ol className="space-y-0.5 text-[11px] font-mono">
+                <ol className="space-y-0.5 text-2xs font-mono">
                   {(b.criteriaRows ?? []).map((c: any, j: number) => (
                     <li key={j}>
                       <span className="text-muted-foreground">{j + 1}.</span> {c.field} {c.operator} {String(c.value ?? "")}
@@ -251,12 +251,12 @@ export default async function RuleDetailPage({
               )}
               <div className="flex flex-wrap gap-1.5">
                 {(b.instantActions ?? []).map((a: any, j: number) => (
-                  <span key={`i${j}`} className="chip bg-brand-cyan-light text-brand-cyan-deep text-[10px]">
+                  <span key={`i${j}`} className="chip bg-brand-cyan-light text-brand-cyan-deep text-2xs">
                     {ACTION_LABELS[a.type] ?? a.type}
                   </span>
                 ))}
                 {(b.scheduledActions ?? []).map((a: any, j: number) => (
-                  <span key={`s${j}`} className="chip bg-amber-50 text-amber-700 text-[10px]">
+                  <span key={`s${j}`} className="chip bg-amber-50 text-amber-700 text-2xs">
                     {ACTION_LABELS[a.type] ?? a.type} · after {a.delay?.amount} {a.delay?.unit}(s)
                   </span>
                 ))}
@@ -294,7 +294,7 @@ export default async function RuleDetailPage({
               {scheduledJobs.map((j) => (
                 <tr key={j.id} className="border-b last:border-0 hover:bg-secondary/40">
                   <td className="px-4 py-2 tabular-nums">{formatDate(j.runAt)}</td>
-                  <td className="py-2 font-mono text-[10px]">{j.subjectType}/{(j.subjectId ?? "").slice(0, 8)}</td>
+                  <td className="py-2 font-mono text-2xs">{j.subjectType}/{(j.subjectId ?? "").slice(0, 8)}</td>
                   <td className="py-2">{ACTION_LABELS[j.actionType] ?? j.actionType}</td>
                   <td className="py-2">
                     <span className={`chip ${jobStatusClass(j.status)}`} title={j.lastError ?? j.cancelReason ?? undefined}>
@@ -338,7 +338,7 @@ export default async function RuleDetailPage({
               {execs.map((e) => (
                 <tr key={e.id} className="border-b last:border-0 hover:bg-secondary/40">
                   <td className="px-4 py-2 tabular-nums">{formatDate(e.executedAt)}</td>
-                  <td className="py-2 font-mono text-[10px]">{e.subjectType}/{(e.subjectId ?? "").slice(0, 8)}</td>
+                  <td className="py-2 font-mono text-2xs">{e.subjectType}/{(e.subjectId ?? "").slice(0, 8)}</td>
                   <td className="py-2">
                     <span
                       className={`chip ${
@@ -391,7 +391,7 @@ function Tile({ label, value, tone }: { label: string; value: string; tone?: "ro
     tone === "rose" ? "text-rose-600" : tone === "amber" ? "text-amber-600" : tone === "emerald" ? "text-emerald-600" : "text-foreground";
   return (
     <div className="card-surface p-3">
-      <div className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">{label}</div>
+      <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{label}</div>
       <div className={`text-xl font-bold mt-1 tabular-nums ${color}`}>{value}</div>
     </div>
   );

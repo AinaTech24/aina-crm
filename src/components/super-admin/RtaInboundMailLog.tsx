@@ -126,7 +126,7 @@ function OutcomeChip({ outcome }: { outcome: string }) {
   return (
     <span
       title={o.hint}
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${o.cls}`}
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs font-medium whitespace-nowrap ${o.cls}`}
     >
       <Icon className="size-3" />
       {o.label}
@@ -213,7 +213,7 @@ export function RtaInboundMailLog() {
             </button>
           );
         })}
-        <span className="text-[11px] text-muted-foreground ml-1">last 30 days</span>
+        <span className="text-2xs text-muted-foreground ml-1">last 30 days</span>
       </div>
 
       {/* Search + refresh */}
@@ -321,7 +321,7 @@ export function RtaInboundMailLog() {
                             </div>
                             <div>
                               <span className="text-muted-foreground">Message-ID: </span>
-                              <code className="font-mono text-[10px] break-all">{m.messageId ?? "—"}</code>
+                              <code className="font-mono text-2xs break-all">{m.messageId ?? "—"}</code>
                             </div>
                             {m.reason && (
                               <div className="sm:col-span-2">
@@ -343,13 +343,13 @@ export function RtaInboundMailLog() {
                                     </code>
                                     <span className="text-muted-foreground">{fmtSize(a.size)}</span>
                                     {a.source && (
-                                      <span className="uppercase font-semibold text-[10px] text-muted-foreground">
+                                      <span className="uppercase font-semibold text-2xs text-muted-foreground">
                                         {a.source}
                                       </span>
                                     )}
                                     {a.kind && <span className="text-muted-foreground">{a.kind.replace(/_/g, " ")}</span>}
                                     <span
-                                      className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+                                      className={`rounded-full border px-2 py-0.5 text-2xs font-medium ${
                                         ATT_TONE[a.outcome] ?? "bg-muted text-muted-foreground border-border"
                                       }`}
                                     >
@@ -366,7 +366,7 @@ export function RtaInboundMailLog() {
                           {m.bodySnippet && (
                             <div>
                               <div className="text-xs font-medium text-muted-foreground mb-1">Message body (first 2000 chars)</div>
-                              <pre className="text-[11px] bg-background border rounded p-2 max-h-48 overflow-auto whitespace-pre-wrap break-words">
+                              <pre className="text-2xs bg-background border rounded p-2 max-h-48 overflow-auto whitespace-pre-wrap break-words">
                                 {m.bodySnippet}
                               </pre>
                             </div>

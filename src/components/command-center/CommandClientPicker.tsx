@@ -104,7 +104,7 @@ export function CommandClientPicker({
                   className="w-full text-left px-3 py-1.5 hover:bg-brand-cyan-light/40 transition-colors"
                 >
                   <span className="font-medium text-sm">{h.name}</span>
-                  <span className="text-[11px] text-muted-foreground ml-2 font-mono">
+                  <span className="text-2xs text-muted-foreground ml-2 font-mono">
                     {h.pan ?? "—"} · {h.phone ?? "—"}
                   </span>
                 </button>

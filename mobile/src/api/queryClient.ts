@@ -22,7 +22,9 @@ export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 30_000,
-      gcTime: 5 * 60_000,
+      // Must exceed the persisted-cache maxAge (queryPersist.ts), or entries
+      // restored from disk are garbage-collected the moment they arrive.
+      gcTime: 24 * 60 * 60_000,
       refetchOnWindowFocus: false,
       retry: (failureCount, err) => {
         // Don't retry auth/permission failures — only transient ones.

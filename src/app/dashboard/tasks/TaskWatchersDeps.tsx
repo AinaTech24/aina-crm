@@ -131,23 +131,23 @@ export function TaskWatchersDeps({
       {/* Watchers */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <h4 className="text-[10px] uppercase font-bold text-slate-500 flex items-center gap-1.5">
+          <h4 className="text-2xs uppercase font-bold text-slate-500 flex items-center gap-1.5">
             <Eye className="size-3.5" /> Watchers
           </h4>
-          <button type="button" onClick={toggleSelfWatch} className={`text-[11px] inline-flex items-center gap-1 rounded px-1.5 py-0.5 border ${youWatch ? "bg-brand-cyan-light/50 text-brand-cyan-deep border-brand-cyan/20" : "text-slate-500 border-slate-200 hover:bg-slate-50"}`}>
+          <button type="button" onClick={toggleSelfWatch} className={`text-2xs inline-flex items-center gap-1 rounded px-1.5 py-0.5 border ${youWatch ? "bg-brand-cyan-light/50 text-brand-cyan-deep border-brand-cyan/20" : "text-slate-500 border-slate-200 hover:bg-slate-50"}`}>
             {youWatch ? <EyeOff className="size-3" /> : <Eye className="size-3" />} {youWatch ? "Unfollow" : "Follow"}
           </button>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           {watchers.map((w) => (
-            <span key={w.userId} className="group inline-flex items-center gap-1 rounded-full bg-slate-100 pl-1 pr-1.5 py-0.5 text-[11px] text-slate-600" title={w.name ?? ""}>
-              <span className="size-4 rounded-full bg-brand-cyan-light/60 text-brand-cyan-deep text-[8px] font-bold flex items-center justify-center">{initials(w.name)}</span>
+            <span key={w.userId} className="group inline-flex items-center gap-1 rounded-full bg-slate-100 pl-1 pr-1.5 py-0.5 text-2xs text-slate-600" title={w.name ?? ""}>
+              <span className="size-4 rounded-full bg-brand-cyan-light/60 text-brand-cyan-deep text-2xs font-bold flex items-center justify-center">{initials(w.name)}</span>
               {w.userId === currentUserId ? "You" : w.name}
               <button type="button" onClick={() => removeWatcher(w.userId)} className="text-slate-300 hover:text-rose-600" aria-label="Remove watcher"><X className="size-2.5" /></button>
             </span>
           ))}
           <div className="relative">
-            <button type="button" onClick={() => setAddOpen((o) => !o)} className="inline-flex items-center gap-1 rounded-full border border-dashed border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-50">
+            <button type="button" onClick={() => setAddOpen((o) => !o)} className="inline-flex items-center gap-1 rounded-full border border-dashed border-slate-300 px-2 py-0.5 text-2xs text-slate-500 hover:bg-slate-50">
               <Plus className="size-3" /> Add
             </button>
             {addOpen && (
@@ -155,7 +155,7 @@ export function TaskWatchersDeps({
                 {team.filter((e) => !watchers.some((w) => w.userId === e.id)).map((e) => (
                   <li key={e.id}>
                     <button type="button" onClick={() => addWatcher(e.id)} className="w-full text-left rounded px-2 py-1.5 hover:bg-secondary text-xs flex items-center gap-2">
-                      <span className="size-5 rounded-full bg-brand-cyan-light/60 text-brand-cyan-deep text-[9px] font-bold flex items-center justify-center">{initials(e.name)}</span>
+                      <span className="size-5 rounded-full bg-brand-cyan-light/60 text-brand-cyan-deep text-2xs font-bold flex items-center justify-center">{initials(e.name)}</span>
                       {e.name}
                     </button>
                   </li>
@@ -168,14 +168,14 @@ export function TaskWatchersDeps({
 
       {/* Blocked by */}
       <div className="space-y-2" ref={depBox}>
-        <h4 className="text-[10px] uppercase font-bold text-slate-500 flex items-center gap-1.5">
+        <h4 className="text-2xs uppercase font-bold text-slate-500 flex items-center gap-1.5">
           <Link2 className="size-3.5" /> Blocked by
         </h4>
         {blocker ? (
           <div className={`rounded-lg border p-2.5 flex items-center gap-2 ${blockerOpen ? "border-amber-200 bg-amber-50" : "border-emerald-200 bg-emerald-50"}`}>
             {blockerOpen && <AlertTriangle className="size-3.5 text-amber-600 shrink-0" />}
             <span className="text-xs flex-1 min-w-0 truncate">{blocker.title}</span>
-            <span className="text-[10px] uppercase font-semibold text-slate-500">{blocker.status.replace(/_/g, " ")}</span>
+            <span className="text-2xs uppercase font-semibold text-slate-500">{blocker.status.replace(/_/g, " ")}</span>
             <button type="button" onClick={() => setBlockedBy(null)} className="text-slate-400 hover:text-rose-600" aria-label="Clear dependency"><X className="size-3.5" /></button>
           </div>
         ) : (
@@ -189,7 +189,7 @@ export function TaskWatchersDeps({
                   <li key={r.id}>
                     <button type="button" onClick={() => setBlockedBy(r)} className="w-full text-left rounded px-2 py-1.5 hover:bg-secondary text-xs flex items-center justify-between gap-2">
                       <span className="truncate">{r.title}</span>
-                      <span className="text-[10px] uppercase text-slate-400 shrink-0">{r.status.replace(/_/g, " ")}</span>
+                      <span className="text-2xs uppercase text-slate-400 shrink-0">{r.status.replace(/_/g, " ")}</span>
                     </button>
                   </li>
                 ))}

@@ -13,6 +13,9 @@ import { getDashboardThresholds } from "@/lib/dashboard/thresholds";
 import { Sparkline } from "./Sparkline";
 import { FirmPulseStrip } from "./FirmPulseStrip";
 import { FirmChartsSection, FirmChartsSkeleton } from "./FirmChartsSection";
+import { FirmTrackerSections } from "./FirmTrackerSections";
+import { loadFirmTracker } from "@/lib/dashboard/firm-tracker";
+import { ClientMomentsStrip } from "./ClientMomentsStrip";
 import { loadFirmPulse, loadActivityTiles, type ActivityRange } from "@/lib/dashboard/firm-pulse";
 import { loadTenantLicense } from "@/lib/auth/license";
 import { isDashboardWidgetVisible } from "@/config/dashboard-widgets";
@@ -69,6 +72,7 @@ export async function OwnerCockpit({
   customFrom,
   customTo,
   activityDays = 7,
+  branchId = null,
 }: {
   session: SessionUser;
   period?: Period;
@@ -77,6 +81,8 @@ export async function OwnerCockpit({
   customTo?: string;
   /** Window for the activity tiles (the ?act= chips). */
   activityDays?: ActivityRange;
+  /** Branch filter from `?branch=`; null means the whole firm. */
+  branchId?: string | null;
 }) {
   const now = new Date();
   const today = now.toLocaleDateString("en-IN", {
@@ -88,21 +94,19 @@ export async function OwnerCockpit({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      {/* Hero — renders immediately so the date filter is responsive even while
-          the body below is still resolving its queries. */}
-      <div className="card-elevated overflow-hidden">
-        <div className="brand-mesh px-6 py-5 text-white">
-          <div className="flex items-end justify-between flex-wrap gap-3">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">
-                Welcome back, {session.name.split(" ")[0]}
-              </h1>
-              <p className="text-white/80 text-sm mt-1">
-                Showing Data For : <span className="font-semibold">{today}</span>
-              </p>
-            </div>
-          </div>
-        </div>
+      {/* Page header. This used to be a full-width red gradient slab carrying
+          nothing but a greeting and today's date — the loudest thing on the
+          landing page, in the colour the rest of the app reserves for "needs
+          attention", and it pushed the numbers people actually open this page
+          for below the fold. Same words, same information, as an ordinary
+          page header like every other screen. */}
+      <div>
+        <h1 className="page-title">
+          Welcome back, {session.name.split(" ")[0]}
+        </h1>
+        <p className="page-subtitle mt-1">
+          Your firm at a glance, as of <span className="font-medium text-foreground">{today}</span>.
+        </p>
       </div>
 
       {/* First-run setup checklist — data-verified steps; vanishes when done. */}
@@ -117,8 +121,17 @@ export async function OwnerCockpit({
         <FirmPulse tenantId={session.tenantId} session={session} days={activityDays} />
       </Suspense>
 
-      {/* Analytics band — AUM breakup / client mix / compliance gaps, then SIP
-          business and monthly flows. Separate boundary again: five aggregate
+      {/* Client moments — the only forward-looking, client-FACING panel on this
+          page. Everything else reports what already happened; this is the week's
+          birthdays, anniversaries and reviews, firm-wide. Placed directly under
+          the pulse so the first two things an owner sees are "how is the firm"
+          and "who should we reach out to". */}
+      <Suspense fallback={null}>
+        <ClientMomentsStrip session={session} />
+      </Suspense>
+
+      {/* Analytics band — AUM breakup / client mix, then SIP business and
+          monthly flows. Separate boundary again: five aggregate
           queries shouldn't hold up the pulse strip above them. */}
       <Suspense fallback={<FirmChartsSkeleton />}>
         <FirmChartsSection session={session} />
@@ -126,6 +139,13 @@ export async function OwnerCockpit({
 
       <Suspense fallback={<CockpitBodySkeleton />}>
         <OwnerCockpitBody session={session} period={period} customStart={customStart} customFrom={customFrom} customTo={customTo} />
+      </Suspense>
+
+      {/* Firm tracker — every figure the firm asked to be able to track, under
+          the Date / Branch / Team-member filters. Its own boundary so ~25
+          aggregate queries never hold up anything above it. */}
+      <Suspense fallback={<CardSkeleton />}>
+        <FirmTracker session={session} period={period} customStart={customStart} customFrom={customFrom} customTo={customTo} branchId={branchId} />
       </Suspense>
     </div>
   );
@@ -543,6 +563,15 @@ async function OwnerCockpitBody({
   return (
     <div className="space-y-6">
       {/* ---------- 1. Headline KPIs — hero tiles (with period trajectory) ---------- */}
+      {/* These tiles count `status = 'active'` clients only, while the Firm Pulse
+          strip above counts every ALIVE client (not deleted, not closed, not
+          merged) — the definition the nightly firm snapshot uses. On a book with
+          dormant or pending clients the two legitimately differ; on the demo
+          tenant it is 19 vs 22 clients and Rs 10.78 Cr vs Rs 16.23 Cr.
+          Both were previously labelled just "AUM", 34% apart, on one screen.
+          The sub-labels below name the population so the figures can be told
+          apart. Do NOT "fix" this by making the numbers match — they answer
+          different questions; change the LABELS if the wording is unclear. */}
       {anyHeadline && (
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {show("kpi.total_clients") && <Kpi
@@ -550,7 +579,7 @@ async function OwnerCockpitBody({
           icon={Users}
           label="Total Clients"
           value={String(data.totalClients)}
-          sub={formatINR(data.totalAum) + " AUM"}
+          sub="with an active status"
           delta={data.newClientsPeriod > 0 ? `+${data.newClientsPeriod} ${period.toUpperCase()}` : undefined}
           deltaTone="up"
           accent="cyan"
@@ -568,7 +597,7 @@ async function OwnerCockpitBody({
           icon={TrendingUp}
           label="Active SIP Book"
           value={formatINR(data.sipBook)}
-          sub="per month"
+          sub="per month · active clients"
           delta={
             data.newSipsPeriod - data.stoppedSipsPeriod !== 0
               ? `${data.newSipsPeriod - data.stoppedSipsPeriod >= 0 ? "+" : ""}${data.newSipsPeriod - data.stoppedSipsPeriod} net SIPs`
@@ -654,7 +683,7 @@ function Group({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="h-4 w-1 rounded-full brand-bar" />
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-foreground/70">
+          <h2 className="text-2xs font-bold uppercase tracking-[0.12em] text-foreground/70">
             {title}
           </h2>
         </div>
@@ -711,7 +740,7 @@ function Kpi({
     const inner = (
       <div className="kpi-hero relative overflow-hidden">
         <div className="flex items-center justify-between">
-          <span className="text-[11px] uppercase tracking-wider font-semibold text-white/80">
+          <span className="text-2xs uppercase tracking-wider font-semibold text-white/80">
             {label}
           </span>
           {Icon && (
@@ -759,7 +788,7 @@ function Kpi({
   const inner = (
     <div className="kpi-card glass-card">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
+        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
           {label}
         </span>
         {Icon && (
@@ -772,7 +801,7 @@ function Kpi({
         <div className="text-2xl font-bold tabular-nums tracking-tight">{value}</div>
         {delta && (
           <span
-            className={`inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+            className={`inline-flex items-center gap-0.5 text-2xs font-bold px-1.5 py-0.5 rounded-full ${
               deltaTone === "down"
                 ? "bg-rose-50 text-rose-700"
                 : "bg-emerald-50 text-emerald-700"
@@ -843,7 +872,7 @@ function Stat({
   const inner = (
     <div className="kpi-card glass-card">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
+        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
           {label}
         </span>
         {Icon && (
@@ -855,8 +884,45 @@ function Stat({
       <div className={`text-xl font-bold mt-2 tabular-nums tracking-tight ${color}`}>
         {value}
       </div>
-      {sub && <div className="text-[11px] text-muted-foreground mt-1">{sub}</div>}
+      {sub && <div className="text-2xs text-muted-foreground mt-1">{sub}</div>}
     </div>
   );
   return href ? <Link href={href}>{inner}</Link> : inner;
+}
+
+/**
+ * Firm tracker loader. Resolves the same period the rest of the cockpit uses so
+ * the window label on the tiles matches the header's period chip exactly.
+ */
+async function FirmTracker({
+  session,
+  period,
+  customStart,
+  customFrom,
+  customTo,
+  branchId,
+}: {
+  session: SessionUser;
+  period: Period;
+  customStart?: string;
+  customFrom?: string;
+  customTo?: string;
+  branchId?: string | null;
+}) {
+  const range = resolvePeriodRange(period, new Date(), {
+    customStart,
+    from: customFrom,
+    to: customTo,
+  });
+  const data = await withTenant(
+    session.tenantId,
+    (tx) =>
+      loadFirmTracker(tx, {
+        from: new Date(range.fromISO),
+        to: new Date(range.toISO),
+        branchId: branchId ?? null,
+      }),
+    { userId: session.userId, branchId: session.branchId, roles: session.roles }
+  );
+  return <FirmTrackerSections data={data} periodLabel={range.label} />;
 }

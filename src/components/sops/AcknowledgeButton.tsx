@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { notify } from "@/components/ui/Toast";
 import { useRouter } from "next/navigation";
 import { Check, Loader2, ScrollText } from "lucide-react";
 import { formatDate } from "@/lib/utils";
@@ -26,11 +27,11 @@ export function AcknowledgeButton({
       if (res.ok) {
         router.refresh();
       } else {
-        alert("Failed to record acknowledgement.");
+        notify.error("Failed to record acknowledgement.");
       }
     } catch (err) {
       console.error(err);
-      alert("Error saving acknowledgement.");
+      notify.error("Error saving acknowledgement.");
     } finally {
       setBusy(false);
     }
@@ -41,7 +42,7 @@ export function AcknowledgeButton({
       <div className="flex items-center gap-2">
         <button
           disabled
-          className="inline-flex items-center gap-1.5 rounded-md border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/50 cursor-not-allowed"
+          className="inline-flex items-center gap-1.5 rounded-md border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800 cursor-not-allowed"
         >
           <Check className="size-4" /> Acknowledged
         </button>

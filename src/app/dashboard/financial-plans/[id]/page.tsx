@@ -218,10 +218,10 @@ export default async function FinancialPlanDetailPage({
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-bold text-foreground">{client?.name ?? "—"}</h1>
                 {data.isLead && (
-                  <span className="chip text-[10px] uppercase font-bold bg-amber-100 text-amber-700 border border-amber-200">Lead</span>
+                  <span className="chip text-2xs uppercase font-bold bg-amber-100 text-amber-700 border border-amber-200">Lead</span>
                 )}
                 <span
-                  className={`chip text-[10px] uppercase font-bold ${
+                  className={`chip text-2xs uppercase font-bold ${
                     plan.status === "finalized"
                       ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                       : "bg-slate-100 text-slate-700"
@@ -267,14 +267,14 @@ export default async function FinancialPlanDetailPage({
         {/* Wealth Health Score Card */}
         <div className={`card-surface p-4 border flex flex-col justify-between items-center text-center ${healthScoreColor}`}>
           <div className="w-full flex justify-between items-center border-b pb-1.5 mb-1">
-            <span className="text-[10px] uppercase tracking-wider font-extrabold opacity-75">Wealth Health Score</span>
-            <span className="text-[9px] uppercase font-bold px-2 py-0.5 rounded bg-white/60 border border-current leading-none">
+            <span className="text-2xs uppercase tracking-wider font-extrabold opacity-75">Wealth Health Score</span>
+            <span className="text-2xs uppercase font-bold px-2 py-0.5 rounded bg-white/60 border border-current leading-none">
               {healthScoreStatus}
             </span>
           </div>
           <div className="flex items-baseline justify-center gap-1 my-1">
             <span className="text-3xl font-extrabold tabular-nums leading-none">{healthScoreTotal}</span>
-            <span className="text-[10px] font-semibold opacity-75">/100</span>
+            <span className="text-2xs font-semibold opacity-75">/100</span>
           </div>
           <div className="w-full bg-slate-200/50 h-2 rounded-full overflow-hidden mt-1 mb-2">
             <div
@@ -284,7 +284,7 @@ export default async function FinancialPlanDetailPage({
               }`}
             />
           </div>
-          <p className="text-[9px] text-slate-500 leading-tight">
+          <p className="text-2xs text-slate-500 leading-tight">
             Covers Savings, Debt, Emergency Fund, Life and Health insurance adequacy.
           </p>
         </div>
@@ -315,7 +315,7 @@ export default async function FinancialPlanDetailPage({
             <div className="text-2xl font-extrabold tabular-nums leading-none">
               {feasibility.utilizationPct >= 999 ? "∞" : `${feasibility.utilizationPct}%`}
             </div>
-            <div className="text-[10px] uppercase tracking-wider opacity-75">of surplus used</div>
+            <div className="text-2xs uppercase tracking-wider opacity-75">of surplus used</div>
           </div>
         </div>
       )}
@@ -370,7 +370,7 @@ export default async function FinancialPlanDetailPage({
               <span className="tabular-nums text-sm">{formatINR(surplus)}</span>
             </div>
             {plan.savingsRate && (
-              <div className="flex justify-between text-[11px] pt-1">
+              <div className="flex justify-between text-2xs pt-1">
                 <span className="text-muted-foreground">Savings Rate:</span>
                 <span className={`font-bold ${Number(plan.savingsRate) >= 30 ? "text-emerald-700" : Number(plan.savingsRate) >= 15 ? "text-amber-600" : "text-rose-600"}`}>
                   {plan.savingsRate}% ({Number(plan.savingsRate) >= 30 ? "Excellent" : Number(plan.savingsRate) >= 15 ? "Average" : "Low"})
@@ -399,7 +399,7 @@ export default async function FinancialPlanDetailPage({
               <span className="tabular-nums text-sm">{formatINR(netWorth)}</span>
             </div>
             {plan.emiToIncomePct && (
-              <div className="flex justify-between text-[11px] pt-1">
+              <div className="flex justify-between text-2xs pt-1">
                 <span className="text-muted-foreground">Debt-to-Income:</span>
                 <span className={`font-bold ${Number(plan.emiToIncomePct) > 45 ? "text-rose-600" : Number(plan.emiToIncomePct) >= 30 ? "text-amber-600" : "text-emerald-700"}`}>
                   {plan.emiToIncomePct}% ({Number(plan.emiToIncomePct) > 45 ? "Critical" : Number(plan.emiToIncomePct) >= 30 ? "Moderate" : "Safe"})
@@ -428,7 +428,7 @@ export default async function FinancialPlanDetailPage({
               </span>
             </div>
             {lifeCover.additional > 0 && (
-              <div className="flex justify-between text-[11px] text-rose-700">
+              <div className="flex justify-between text-2xs text-rose-700">
                 <span>Additional term cover needed:</span>
                 <span className="font-semibold tabular-nums">{formatINR(Math.round(lifeCover.additional))}</span>
               </div>
@@ -457,7 +457,7 @@ export default async function FinancialPlanDetailPage({
                   <div key={i} className="flex justify-between items-center text-xs p-2 bg-secondary/20 rounded">
                     <div>
                       <span className="font-medium text-foreground">{a.name || "Unnamed"}</span>
-                      <span className="text-[10px] text-muted-foreground block capitalize">{a.category}</span>
+                      <span className="text-2xs text-muted-foreground block capitalize">{a.category}</span>
                     </div>
                     <span className="font-semibold tabular-nums">{formatINR(Number(a.value || 0))}</span>
                   </div>
@@ -477,7 +477,7 @@ export default async function FinancialPlanDetailPage({
                     <div>
                       <span className="font-medium text-foreground">{l.name || "Unnamed"}</span>
                       {l.monthlyEmi && (
-                        <span className="text-[10px] text-muted-foreground block">EMI: {formatINR(l.monthlyEmi)}/mo</span>
+                        <span className="text-2xs text-muted-foreground block">EMI: {formatINR(l.monthlyEmi)}/mo</span>
                       )}
                     </div>
                     <span className="font-semibold tabular-nums text-rose-600">{formatINR(Number(l.value || 0))}</span>
@@ -560,7 +560,7 @@ export default async function FinancialPlanDetailPage({
                         <span className={`size-2.5 rounded ${a.color} inline-block`} />
                         {a.name}
                       </span>
-                      <span className="text-[10px] text-muted-foreground">
+                      <span className="text-2xs text-muted-foreground">
                         {a.curr}% vs <strong className="text-foreground">{a.rec}%</strong>
                         {a.name !== "Others" && (
                           <span className={`ml-1 font-bold ${deviation > 0 ? "text-emerald-600" : deviation < 0 ? "text-rose-600" : "text-slate-500"}`}>
@@ -596,10 +596,10 @@ export default async function FinancialPlanDetailPage({
                 {recommendations.map((r, i) => (
                   <div key={i} className="bg-secondary/15 border p-2.5 rounded text-xs space-y-1">
                     <div className="flex justify-between items-center">
-                      <span className="chip text-[9px] uppercase font-bold bg-brand-cyan-light text-brand-cyan-deep">
+                      <span className="chip text-2xs uppercase font-bold bg-brand-cyan-light text-brand-cyan-deep">
                         {r.category}
                       </span>
-                      <span className={`text-[9px] font-bold uppercase ${
+                      <span className={`text-2xs font-bold uppercase ${
                         r.priority === "high"
                           ? "text-rose-600"
                           : r.priority === "medium"
@@ -610,7 +610,7 @@ export default async function FinancialPlanDetailPage({
                       </span>
                     </div>
                     <p className="font-semibold text-foreground leading-snug">{r.action}</p>
-                    {r.notes && <p className="text-[10px] text-muted-foreground">{r.notes}</p>}
+                    {r.notes && <p className="text-2xs text-muted-foreground">{r.notes}</p>}
                   </div>
                 ))}
               </div>
@@ -650,9 +650,9 @@ function Ratio({
         : "text-rose-600";
   return (
     <div className="card-surface p-3">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">{label}</div>
+      <div className="text-2xs uppercase tracking-wider text-muted-foreground font-medium">{label}</div>
       <div className={`text-lg font-bold tabular-nums mt-0.5 ${toneCls}`}>{value}</div>
-      {hint && <div className="text-[10px] text-muted-foreground/80">{hint}</div>}
+      {hint && <div className="text-2xs text-muted-foreground/80">{hint}</div>}
     </div>
   );
 }

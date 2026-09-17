@@ -192,7 +192,7 @@ export default async function ShortlistedSchemesPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <h2 className="text-lg font-semibold">{amc.amcName}</h2>
-                    <div className="text-[11px] text-muted-foreground">
+                    <div className="text-2xs text-muted-foreground">
                       {amc.amcCode}
                       {amc.distributorCode && ` · ${amc.distributorCode}`}
                     </div>
@@ -203,7 +203,7 @@ export default async function ShortlistedSchemesPage() {
                     </span>
                     <Link
                       href={`/dashboard/amc-empanelments/${amc.id}`}
-                      className="text-[11px] text-violet-600 hover:underline"
+                      className="text-2xs text-violet-600 hover:underline"
                     >
                       Manage →
                     </Link>
@@ -254,7 +254,7 @@ export default async function ShortlistedSchemesPage() {
                             key={cat}
                             className={`border rounded-md p-3 ${COARSE_TONE[cat]}`}
                           >
-                            <div className="text-[10px] uppercase tracking-wide font-semibold mb-1.5">
+                            <div className="text-2xs uppercase tracking-wide font-semibold mb-1.5">
                               {COARSE_LABELS[cat]} · {list.length} scheme
                               {list.length === 1 ? "" : "s"}
                             </div>
@@ -268,17 +268,17 @@ export default async function ShortlistedSchemesPage() {
                                     {s.schemeName}
                                   </span>
                                   {s.category && (
-                                    <span className="text-[10px] opacity-70 ml-1">
+                                    <span className="text-2xs opacity-70 ml-1">
                                       ({s.category})
                                     </span>
                                   )}
                                   {s.shortlistRationale && (
-                                    <div className="text-[11px] opacity-80 mt-0.5 italic">
+                                    <div className="text-2xs opacity-80 mt-0.5 italic">
                                       “{s.shortlistRationale}”
                                     </div>
                                   )}
                                   {s.shortlistedBy && (
-                                    <div className="text-[10px] opacity-60 mt-0.5 print:hidden">
+                                    <div className="text-2xs opacity-60 mt-0.5 print:hidden">
                                       Approved by{" "}
                                       {data.userMap.get(s.shortlistedBy) ?? "—"}
                                       {s.shortlistedAt &&
@@ -302,7 +302,7 @@ export default async function ShortlistedSchemesPage() {
                 )}
 
                 {amc.remarks && (
-                  <div className="text-[11px] text-muted-foreground italic pt-1 border-t border-slate-100">
+                  <div className="text-2xs text-muted-foreground italic pt-1 border-t border-slate-100">
                     Remarks: {amc.remarks}
                   </div>
                 )}
@@ -333,7 +333,7 @@ function DueDiligenceCell({
   return (
     <div className="text-xs">
       <div
-        className={`text-[10px] uppercase tracking-wide font-semibold mb-0.5 ${headerTone}`}
+        className={`text-2xs uppercase tracking-wide font-semibold mb-0.5 ${headerTone}`}
       >
         {label}
       </div>
@@ -359,7 +359,7 @@ function Tile({
         : "";
   return (
     <div className={`card-surface p-3 ${cardTone}`}>
-      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <div className="text-2xs text-muted-foreground">{label}</div>
       <div className="text-lg font-semibold">{value}</div>
     </div>
   );

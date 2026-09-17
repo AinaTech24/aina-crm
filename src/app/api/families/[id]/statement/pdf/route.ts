@@ -13,7 +13,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireAny, can } from "@/lib/auth/rbac";
 import { investors, families, tenants } from "@/db/schema";
-import { valueInvestor, type InvestorValuation } from "@/lib/finance/valuation";
+import { computeInvestorValuation, loadValuationRows } from "@/lib/finance/valuation";
 import { renderValuationStatementPdf } from "@/lib/finance/valuation-pdf";
 
 export const dynamic = "force-dynamic";
@@ -41,25 +41,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         .from(investors)
         .where(and(eq(investors.familyId, id), eq(investors.tenantId, session.tenantId)));
 
-      // Aggregate each member's live valuation into one household valuation.
-      const agg: InvestorValuation = {
-        currentValue: 0, investedNet: 0, pricedInvested: 0, unpricedInvested: 0,
-        gain: 0, absoluteReturn: null, xirr: null, asOf: null, holdings: [], unpricedSchemes: 0,
-      };
-      for (const m of members) {
-        const v = await valueInvestor(tx, m.id);
-        agg.currentValue += v.currentValue;
-        agg.investedNet += v.investedNet;
-        agg.pricedInvested += v.pricedInvested;
-        agg.unpricedInvested += v.unpricedInvested;
-        agg.gain += v.gain;
-        agg.unpricedSchemes += v.unpricedSchemes;
-        agg.holdings.push(...v.holdings);
-        if (v.asOf && (!agg.asOf || v.asOf > agg.asOf)) agg.asOf = v.asOf;
-      }
-      agg.absoluteReturn = agg.pricedInvested > 0 ? agg.gain / agg.pricedInvested : null;
-      agg.holdings.sort((a, b) => (b.currentValue ?? 0) - (a.currentValue ?? 0));
-
+      // Combine raw account rows before computing returns. This preserves each
+      // member's folio identity and avoids averaging incompatible percentages.
+      const rows = await loadValuationRows(tx, members.map((m) => m.id));
+      const agg = computeInvestorValuation(rows.transactions, rows.snapshots);
       const [t] = await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1);
       const famName = fam.familyName ?? `${fam.headName} Family`;
       const pdf = await renderValuationStatementPdf({
@@ -90,3 +75,4 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return handleApiError(err);
   }
 }
+

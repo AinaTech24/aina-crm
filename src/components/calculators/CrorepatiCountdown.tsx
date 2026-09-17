@@ -66,7 +66,7 @@ export function CrorepatiCountdown() {
       {reached ? (
         <>
           <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-5 text-center">
-            <div className="text-[11px] uppercase tracking-wider font-semibold text-emerald-700">
+            <div className="text-2xs uppercase tracking-wider font-semibold text-emerald-700">
               {clientName ? `${clientName} becomes a ${inrShort(targetNum)}-aire in` : `You hit ${inrShort(targetNum)} in`}
             </div>
             <div className="text-3xl font-extrabold text-emerald-700 mt-1">{date!.label}</div>

@@ -55,7 +55,7 @@ export function AuthPanelLayout({
         </Link>
 
         <div className="auth-swap relative z-10 max-w-md">
-          <span className="inline-block text-[11px] font-bold uppercase tracking-[0.22em] text-white/80">
+          <span className="inline-block text-2xs font-bold uppercase tracking-[0.22em] text-white/80">
             {eyebrow}
           </span>
           <h2 className="mt-4 text-[2.6rem] leading-[1.08] font-extrabold tracking-tight">{title}</h2>

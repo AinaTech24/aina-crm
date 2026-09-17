@@ -196,7 +196,7 @@ export function DiscoveryForm({
               </F>
             ))}
           </Grid>
-          <p className="text-[10px] text-muted-foreground">Age, annual income &amp; net worth are taken automatically from the fact-find above — no need to re-enter.</p>
+          <p className="text-2xs text-muted-foreground">Age, annual income &amp; net worth are taken automatically from the fact-find above — no need to re-enter.</p>
         </Section>
 
         {/* 11 · Advisor assessment — internal only */}
@@ -240,7 +240,7 @@ function Section({ title, subtitle, children }: { title: string; subtitle?: stri
     <section className="card-surface p-5 space-y-3">
       <div>
         <h2 className="font-semibold text-sm">{title}</h2>
-        {subtitle && <p className="text-[11px] text-muted-foreground mt-0.5 tabular-nums">{subtitle}</p>}
+        {subtitle && <p className="text-2xs text-muted-foreground mt-0.5 tabular-nums">{subtitle}</p>}
       </div>
       {children}
     </section>
@@ -252,7 +252,7 @@ function Grid({ children }: { children: React.ReactNode }) {
 function F({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <div className="text-[11px] font-medium text-muted-foreground mb-1">{label}</div>
+      <div className="text-2xs font-medium text-muted-foreground mb-1">{label}</div>
       {children}
     </label>
   );
@@ -281,7 +281,7 @@ function Repeat({ rows, on, cols, addLabel }: { rows: any[]; on: (rows: any[]) =
     <div className="space-y-2">
       <div className="overflow-x-auto">
         <div className="min-w-[36rem]">
-          <div className="grid gap-2 text-[10px] uppercase tracking-wider text-muted-foreground px-1" style={{ gridTemplateColumns: template }}>
+          <div className="grid gap-2 text-2xs uppercase tracking-wider text-muted-foreground px-1" style={{ gridTemplateColumns: template }}>
             {cols.map((cc) => <div key={cc.key}>{cc.label}</div>)}
             <div />
           </div>

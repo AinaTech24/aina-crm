@@ -151,7 +151,7 @@ export default async function PnlPage({
           </tbody>
         </table>
         {grossIncome === 0 && (
-          <div className="px-4 py-2 text-[11px] text-muted-foreground border-t">
+          <div className="px-4 py-2 text-2xs text-muted-foreground border-t">
             No commission payouts recorded for FY {fy}. Import a CAMS/KFin statement under{" "}
             <Link href="/dashboard/commission-reconciliation" className="text-brand-cyan-deep hover:underline">
               Commission Reconciliation
@@ -160,7 +160,7 @@ export default async function PnlPage({
           </div>
         )}
         {showGap && (
-          <div className="px-4 py-2.5 border-t bg-amber-50/60 text-[11px] text-amber-800 flex items-start gap-2">
+          <div className="px-4 py-2.5 border-t bg-amber-50/60 text-2xs text-amber-800 flex items-start gap-2">
             <AlertTriangle className="size-3.5 mt-0.5 shrink-0" />
             <span>
               Your live book should generate about <strong>{formatINR(Math.round(expected))}</strong> of annual
@@ -248,10 +248,10 @@ function Card({
   const good = delta != null && (invertDelta ? delta <= 0 : delta >= 0);
   return (
     <div className="card-surface glass-card p-4">
-      <div className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">{label}</div>
+      <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{label}</div>
       <div className={`text-xl font-bold mt-1 tabular-nums ${cls}`}>{value}</div>
       {delta != null && (
-        <div className={`text-[11px] mt-0.5 inline-flex items-center gap-0.5 ${good ? "text-emerald-600" : "text-rose-600"}`}>
+        <div className={`text-2xs mt-0.5 inline-flex items-center gap-0.5 ${good ? "text-emerald-600" : "text-rose-600"}`}>
           {delta >= 0 ? <ArrowUpRight className="size-3" /> : <ArrowDownRight className="size-3" />}
           {Math.abs(delta).toFixed(0)}% vs last FY
         </div>

@@ -6,6 +6,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
+import { queuedPatch } from "../../lib/offlineQueue";
 
 export type Severity = "now" | "today" | "soon";
 export type Tone = "rose" | "amber" | "sky" | "violet" | "emerald";
@@ -66,7 +67,7 @@ export function useCommandSnooze() {
 export function useMarkTaskDone() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (taskId: string) => api.patch(`/api/tasks/${taskId}`, { status: "completed" }),
+    mutationFn: (taskId: string) => queuedPatch(`/api/tasks/${taskId}`, { status: "completed" }, "Task completion"),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["command-center"] });
       qc.invalidateQueries({ queryKey: ["tasks"] });

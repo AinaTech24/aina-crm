@@ -444,7 +444,7 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
               href="/dashboard/investors?health=red"
             />
           </div>
-          <p className="text-[10px] text-muted-foreground mt-3 leading-relaxed">
+          <p className="text-2xs text-muted-foreground mt-3 leading-relaxed">
             Score blends last-contact, review cadence, KYC hygiene, nominee, redemption-risk
             flag and open SR SLA breaches.
           </p>
@@ -549,24 +549,24 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
                     className="hover:underline flex-1"
                   >
                     <div className="font-medium">{r.name}</div>
-                    <div className="text-[11px] text-muted-foreground flex flex-wrap gap-1.5 mt-0.5">
+                    <div className="text-2xs text-muted-foreground flex flex-wrap gap-1.5 mt-0.5">
                       {r.segment_tag && (
-                        <span className="chip bg-secondary text-[10px] py-0.5 px-1.5">
+                        <span className="chip bg-secondary text-2xs py-0.5 px-1.5">
                           {r.segment_tag}
                         </span>
                       )}
                       {r.redemption_flagged && (
-                        <span className="chip bg-rose-50 text-rose-700 text-[10px] py-0.5 px-1.5">
+                        <span className="chip bg-rose-50 text-rose-700 text-2xs py-0.5 px-1.5">
                           Redemption risk
                         </span>
                       )}
                       {r.has_complaint && (
-                        <span className="chip bg-amber-50 text-amber-700 text-[10px] py-0.5 px-1.5">
+                        <span className="chip bg-amber-50 text-amber-700 text-2xs py-0.5 px-1.5">
                           Recent complaint
                         </span>
                       )}
                       {Number(r.recent_outflow) > 0 && (
-                        <span className="chip bg-rose-50 text-rose-700 text-[10px] py-0.5 px-1.5">
+                        <span className="chip bg-rose-50 text-rose-700 text-2xs py-0.5 px-1.5">
                           Withdrew {formatINR(Number(r.recent_outflow))}
                         </span>
                       )}
@@ -576,7 +576,7 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
                     <div className="text-xs font-semibold tabular-nums">
                       {formatINR(Number(r.aum))}
                     </div>
-                    <div className="text-[10px] text-muted-foreground">AUM</div>
+                    <div className="text-2xs text-muted-foreground">AUM</div>
                   </div>
                 </li>
               ))}
@@ -592,13 +592,13 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
           </h2>
           <div className="space-y-3">
             <div className="bg-rose-50/60 border border-rose-100 rounded-lg p-3">
-              <div className="text-[10px] uppercase tracking-wider text-rose-700 font-semibold">
+              <div className="text-2xs uppercase tracking-wider text-rose-700 font-semibold">
                 Net lost from full exits
               </div>
               <div className="text-2xl font-bold text-rose-700 mt-1 tabular-nums">
                 {formatINR(data.lostAum.netLost)}
               </div>
-              <div className="text-[11px] text-rose-700/80 mt-0.5">
+              <div className="text-2xs text-rose-700/80 mt-0.5">
                 {data.lostAum.exitCount} client{data.lostAum.exitCount === 1 ? "" : "s"} closed
               </div>
             </div>
@@ -608,10 +608,10 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
             >
               Open exit analysis →
             </Link>
-            <p className="text-[10px] text-muted-foreground leading-relaxed">
+            <p className="text-2xs text-muted-foreground leading-relaxed">
               Tracks `lifetime_inflow − lifetime_outflow` for investors moved to
-              <code className="text-[10px]"> closed</code> /
-              <code className="text-[10px]"> exited</code> in the last 30 days.
+              <code className="text-2xs"> closed</code> /
+              <code className="text-2xs"> exited</code> in the last 30 days.
             </p>
           </div>
         </div>
@@ -681,13 +681,13 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
             Forward SIP visibility
           </h2>
           <div className="bg-emerald-50/40 border border-emerald-100 rounded-lg p-4">
-            <div className="text-[10px] uppercase tracking-wider text-emerald-800 font-semibold">
+            <div className="text-2xs uppercase tracking-wider text-emerald-800 font-semibold">
               Expected next month
             </div>
             <div className="text-2xl font-bold text-emerald-800 mt-1 tabular-nums">
               {formatINR(data.sipProjection.monthly)}
             </div>
-            <div className="text-[11px] text-emerald-800/80 mt-0.5">
+            <div className="text-2xs text-emerald-800/80 mt-0.5">
               from {data.sipProjection.count.toLocaleString("en-IN")} active SIPs
             </div>
           </div>
@@ -718,7 +718,7 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
             </p>
           ) : (
             <table className="w-full text-xs">
-              <thead className="text-[10px] text-muted-foreground uppercase tracking-wider">
+              <thead className="text-2xs text-muted-foreground uppercase tracking-wider">
                 <tr>
                   <th className="text-left pb-2">RM</th>
                   <th className="text-right pb-2">Silent</th>
@@ -845,14 +845,14 @@ function AutomationStat({
     tone === "emerald" ? "text-emerald-700" : hero ? "text-brand-cyan-deep" : "text-foreground";
   return (
     <div className={`p-3 rounded-lg ${hero ? "bg-white/90 ring-1 ring-brand-cyan/30" : "bg-white/70"}`}>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+      <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
         {label}
       </div>
       <div className={`text-xl font-bold mt-1 tabular-nums tracking-tight ${color}`}>
         {value}
       </div>
       {sub && (
-        <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>
+        <div className="text-2xs text-muted-foreground mt-0.5">{sub}</div>
       )}
     </div>
   );
@@ -879,13 +879,13 @@ function PromiseGauge({
       : "text-rose-700";
   return (
     <div className={`p-3 rounded-lg border ${hero ? "bg-emerald-50/50 border-emerald-100" : "bg-secondary/40 border-border/40"}`}>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+      <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
         {label}
       </div>
       <div className={`mt-1 tabular-nums font-bold ${hero ? "text-2xl" : "text-xl"} ${color}`}>
         {pct != null ? `${pct.toFixed(0)}%` : "—"}
       </div>
-      {sub && <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>}
+      {sub && <div className="text-2xs text-muted-foreground mt-0.5">{sub}</div>}
     </div>
   );
 }
@@ -957,11 +957,11 @@ function ComplianceTile({
       href={href}
       className={`block p-3 rounded-lg border ${border} hover:shadow-sm transition-all`}
     >
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+      <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
         {label}
       </div>
       <div className={`text-xl font-bold mt-1 tabular-nums ${color}`}>{value}</div>
-      {sub && <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>}
+      {sub && <div className="text-2xs text-muted-foreground mt-0.5">{sub}</div>}
     </Link>
   );
 }

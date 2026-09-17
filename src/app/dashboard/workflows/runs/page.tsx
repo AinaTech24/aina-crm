@@ -72,7 +72,7 @@ export default async function AutomationControlTower({
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Activity className="size-6 text-brand-cyan" /> Automation Control Tower
+            <Activity className="size-6 text-muted-foreground" /> Automation Control Tower
           </h1>
         </div>
         <div className="flex items-center gap-2">
@@ -339,11 +339,11 @@ function Tile({ icon: Icon, label, value, sub, tone }: { icon: any; label: strin
   return (
     <div className="card-surface p-4">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">{label}</span>
+        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{label}</span>
         <Icon className="size-4 text-muted-foreground" />
       </div>
       <div className={`text-2xl font-bold mt-1 tabular-nums ${valCls}`}>{value}</div>
-      {sub && <div className="text-[11px] text-muted-foreground mt-0.5">{sub}</div>}
+      {sub && <div className="text-2xs text-muted-foreground mt-0.5">{sub}</div>}
     </div>
   );
 }
@@ -354,7 +354,7 @@ function MiniStat({ label, value, tone }: { label: string; value: number; tone?:
   return (
     <div>
       <div className={`text-xl font-bold tabular-nums ${cls}`}>{value}</div>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-2xs uppercase tracking-wider text-muted-foreground">{label}</div>
     </div>
   );
 }

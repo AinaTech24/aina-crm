@@ -5,6 +5,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
+import { queuedPatch } from "../../lib/offlineQueue";
 import type { Tone } from "../../theme";
 
 export interface Task {
@@ -112,7 +113,7 @@ export function useDeleteTask() {
 export function useUpdateTask(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (patch: Partial<Task>) => api.patch(`/api/tasks/${id}`, patch),
+    mutationFn: (patch: Partial<Task>) => queuedPatch(`/api/tasks/${id}`, patch, "Task update"),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["task", id] }); qc.invalidateQueries({ queryKey: ["tasks"] }); qc.invalidateQueries({ queryKey: ["task-kpis"] }); },
   });
 }

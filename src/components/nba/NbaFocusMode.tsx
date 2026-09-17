@@ -53,15 +53,15 @@ export function NbaFocusMode({ actions }: { actions: FocusAction[] }) {
       </div>
 
       <div className="flex items-center gap-2 flex-wrap mb-1">
-        <span className={`chip text-[10px] ${a.toneChip}`}>{a.label}</span>
-        {a.subjectType === "lead" && <span className="chip text-[10px] bg-amber-50 text-amber-700">Lead</span>}
-        {a.othersCount > 0 && <span className="chip text-[10px] bg-secondary text-muted-foreground">+{a.othersCount} more for this client</span>}
+        <span className={`chip text-2xs ${a.toneChip}`}>{a.label}</span>
+        {a.subjectType === "lead" && <span className="chip text-2xs bg-amber-50 text-amber-700">Lead</span>}
+        {a.othersCount > 0 && <span className="chip text-2xs bg-secondary text-muted-foreground">+{a.othersCount} more for this client</span>}
       </div>
       <Link href={a.href} className="text-xl font-bold hover:underline">{a.subjectName}</Link>
       <p className="text-sm text-muted-foreground mt-1">{a.reason}{a.rmName ? <span className="opacity-60"> · RM {a.rmName}</span> : ""}</p>
       {a.impactLabel && (
         <div className="mt-3 inline-flex items-baseline gap-1.5">
-          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Impact</span>
+          <span className="text-2xs uppercase tracking-wide text-muted-foreground">Impact</span>
           <span className="text-lg font-bold tabular-nums text-emerald-700">{a.impactLabel}</span>
         </div>
       )}

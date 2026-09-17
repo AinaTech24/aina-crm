@@ -25,6 +25,7 @@ import { renderTemplateText } from "./tokens";
 import { getConsent, loadTenant } from "./pipeline";
 import { resolveEmailSender } from "./sender";
 import { emailLogoHeaderHtml } from "./email-logo";
+import { durableDelivery } from "./durable-delivery";
 
 
 const MF_DISCLAIMER =
@@ -131,14 +132,12 @@ async function performEmailSend(
     return { communicationId: args.commId, status: "skipped", reason: `suppressed_${supp.reason}` };
   }
 
-  // 1. Consent (only when we know the client; raw-address sends skip it).
-  //    Marketing needs an explicit opt-in; transactional/utility service email to
-  //    an existing client is allowed unless they've explicitly opted out (revoked).
+  // 1. Client mail requires recorded consent for this channel and scope.
   let consentSnapshot: any = null;
-  if (args.investorId) {
+  {
     const scope = args.category === "marketing" ? "marketing" : "transactional";
-    const c = await getConsent(tx, args.tenantId, args.investorId, "email", scope);
-    const blocked = args.category === "marketing" ? !c || c.status !== "granted" : c?.status === "revoked";
+    const c = args.investorId ? await getConsent(tx, args.tenantId, args.investorId, "email", scope) : null;
+    const blocked = c?.status !== "granted";
     if (blocked) {
       await tx
         .update(communications)
@@ -191,8 +190,11 @@ async function performEmailSend(
 
   // 3. Adapter — prefer the sending RM's own mailbox → the firm mailbox → Resend.
   try {
+    const r = await durableDelivery(args.tenantId, `compose:${args.commId}`,
+      { communicationId: args.commId, rendered: args.rendered, consent: consentSnapshot, compliance }, async (markSending) => {
     const sender = await resolveEmailSender(tx, args.tenantId, args.actorUserId);
-    const r = await emailAdapter.send({
+    await markSending();
+    return emailAdapter.send({
       tenantId: args.tenantId,
       tokens: args.rendered.tokens,
       rendered: args.rendered,
@@ -209,6 +211,7 @@ async function performEmailSend(
       // Stable per-row key → Resend dedupes a re-fired send (retry / scheduled
       // race) provider-side instead of delivering a duplicate.
       idempotencyKey: args.commId,
+    });
     });
     await tx
       .update(communications)
@@ -344,9 +347,10 @@ export async function retryEmail(tx: Tx, commId: string, tenantId?: string): Pro
 
 /** Fire a due scheduled row (called by the worker). Reconstructs from payload
  *  and re-runs the full gate before sending. */
-export async function sendScheduledEmail(tx: Tx, commId: string): Promise<ComposeResult> {
-  const [row] = await tx.select().from(communications).where(eq(communications.id, commId)).limit(1);
+export async function sendScheduledEmail(tx: Tx, commId: string, claimToken?: string): Promise<ComposeResult> {
+  const [row] = await tx.select().from(communications).where(eq(communications.id, commId)).limit(1).for("update");
   if (!row) return { communicationId: commId, status: "failed", reason: "row not found" };
+  if (claimToken && row.claimToken !== claimToken) return { communicationId: commId, status: "skipped", reason: "claim lost" };
   // Accept 'scheduled' (legacy path) OR 'queued' (already atomically claimed by
   // the drain). Anything else (sent/cancelled/…) means another worker handled it.
   if (row.status !== "scheduled" && row.status !== "queued") {

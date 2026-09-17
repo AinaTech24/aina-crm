@@ -1,3 +1,4 @@
+import { assertInvestorAccess } from "@/lib/investors/access";
 /**
  * Quarterly / Annual review report for a single investor.
  *
@@ -46,6 +47,7 @@ export default async function ReviewReportPage({
   const period = sp.period ?? `Q${quarter} FY${now.getFullYear()}`;
 
   const session = await requireSession();
+    await assertInvestorAccess(session, (await params).id);
   const tenant = (await withTenant(session.tenantId, async (tx) =>
     tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1)
   ))[0];

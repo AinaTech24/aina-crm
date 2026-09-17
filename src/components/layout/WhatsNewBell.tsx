@@ -20,7 +20,7 @@ export function WhatsNewBell({ unread }: { unread: number }) {
     >
       <Sparkles className={`size-4 ${unread > 0 ? "text-brand-cyan" : ""}`} />
       {unread > 0 && (
-        <span className="absolute -top-0.5 -right-0.5 grid place-items-center min-w-[16px] h-4 px-1 rounded-full bg-brand-cyan text-white text-[10px] font-bold leading-none tabular-nums">
+        <span className="absolute -top-0.5 -right-0.5 grid place-items-center min-w-[16px] h-4 px-1 rounded-full bg-brand-cyan text-white text-2xs font-bold leading-none tabular-nums">
           {unread > 9 ? "9+" : unread}
         </span>
       )}

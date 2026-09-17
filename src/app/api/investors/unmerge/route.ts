@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
       async (tx) => {
         const row = (await tx.execute(sql`
           SELECT id, survivor_id, loser_id, moved, reversible, reversed_at,
-                 loser_aum, loser_sip_amount, loser_status
+                 loser_aum, loser_sip_amount, loser_status, survivor_before
             FROM investor_merges
            WHERE id = ${mergeId}::uuid AND tenant_id = ${session.tenantId}::uuid
         `)).rows[0] as any;
@@ -88,6 +88,25 @@ export async function POST(req: NextRequest) {
             `);
             restored += (r as any).rowCount ?? 0;
           }
+        }
+
+        // Put the SURVIVOR's own details back. The merge fills the survivor's
+        // blank fields from the loser and may overwrite one the operator picked,
+        // so without this an "undone" merge leaves the surviving client carrying
+        // the other person's email or mobile. Null for merges recorded before
+        // survivor_before existed — those simply skip this step.
+        const before = (row.survivor_before ?? null) as Record<string, string | null> | null;
+        if (before) {
+          await tx.execute(sql`
+            UPDATE investors
+               SET name = COALESCE(${before.name ?? null}, name),
+                   phone = ${before.phone ?? null},
+                   email = ${before.email ?? null},
+                   whatsapp_phone = ${before.whatsapp_phone ?? null},
+                   dob = ${before.dob ?? null}::date,
+                   updated_at = now()
+             WHERE id = ${survivorId}::uuid AND tenant_id = ${session.tenantId}::uuid
+          `);
         }
 
         // Bring the loser back, with the figures it had before the merge.

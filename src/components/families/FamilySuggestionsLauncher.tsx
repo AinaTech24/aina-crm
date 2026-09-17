@@ -45,7 +45,7 @@ export function FamilySuggestionsLauncher() {
         <Sparkles className="size-4" />
         AI pairing
         {count !== null && count > 0 && (
-          <span className="ml-0.5 rounded-full bg-violet-600 text-white text-[10px] font-semibold px-1.5 py-0.5 tabular-nums">
+          <span className="ml-0.5 rounded-full bg-violet-600 text-white text-2xs font-semibold px-1.5 py-0.5 tabular-nums">
             {count}
           </span>
         )}

@@ -434,7 +434,7 @@ function NewInsuranceForm() {
 
       <div>
         <h1 className="page-title">
-          <Shield className="size-6 text-brand-cyan" /> {editId ? "Edit insurance policy" : "Add insurance policy"}
+          <Shield className="size-6 text-muted-foreground" /> {editId ? "Edit insurance policy" : "Add insurance policy"}
         </h1>
       </div>
 
@@ -479,7 +479,7 @@ function NewInsuranceForm() {
                 <div className="text-xs text-muted-foreground">
                   Drag &amp; drop a PDF, JPG, or PNG — max 25MB. We read the document and fill the form for you to review.
                 </div>
-                <div className="flex items-center gap-1 text-[11px] text-muted-foreground/80">
+                <div className="flex items-center gap-1 text-2xs text-muted-foreground/80">
                   <Lock className="size-3" /> Reviewed before saving · the file isn’t stored.
                 </div>
               </>
@@ -624,7 +624,7 @@ function NewInsuranceForm() {
             <button
               type="button"
               onClick={autoMaturity}
-              className="text-[10px] text-brand-cyan-deep hover:underline mt-1 text-left"
+              className="text-2xs text-brand-cyan-deep hover:underline mt-1 text-left"
             >
               ⤷ Auto from start + term
             </button>
@@ -651,7 +651,7 @@ function NewInsuranceForm() {
               <option value="od_only">Own-damage only</option>
             </Select>
           </div>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             For motor, the IDV is captured in the “{sumLabel}” field above.
           </p>
         </Section>
@@ -719,7 +719,7 @@ function NewInsuranceForm() {
             rows={rowsOf("nominees")}
             onChange={(r) => setD("nominees", r)}
           />
-          <p className="text-[11px] text-muted-foreground mt-1">
+          <p className="text-2xs text-muted-foreground mt-1">
             Add one row per nominee. The first row is the primary nominee; shares should total 100%.
           </p>
         </Section>
@@ -1026,7 +1026,7 @@ function TableEditor({
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground border-b">
+            <tr className="text-left text-2xs uppercase tracking-wide text-muted-foreground border-b">
               {columns.map((c) => (
                 <th key={c.key} className="px-2 py-1.5 font-medium">{c.label}</th>
               ))}

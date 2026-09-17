@@ -184,7 +184,7 @@ export async function MarketingInsightsSection({ session }: { session: SessionUs
             </span>
           </div>
         </div>
-        <p className="text-[10px] text-muted-foreground mt-3">
+        <p className="text-2xs text-muted-foreground mt-3">
           Total sent (30d): {data.commsSplit.totalSent.toLocaleString("en-IN")}.
           Build trust by leading with service utility before marketing pushes.
         </p>
@@ -295,7 +295,7 @@ export async function MarketingInsightsSection({ session }: { session: SessionUs
               tone={data.templatePipeline.metaRejected > 0 ? "rose" : "muted"}
             />
           </div>
-          <p className="text-[10px] text-muted-foreground mt-3 leading-relaxed">
+          <p className="text-2xs text-muted-foreground mt-3 leading-relaxed">
             WhatsApp marketing depends on Meta-approved templates. Rejections
             often need just a phrasing tweak — chase them early.
           </p>
@@ -321,7 +321,7 @@ export async function MarketingInsightsSection({ session }: { session: SessionUs
           </p>
         ) : (
           <table className="w-full text-xs">
-            <thead className="text-[10px] text-muted-foreground uppercase tracking-wider">
+            <thead className="text-2xs text-muted-foreground uppercase tracking-wider">
               <tr>
                 <th className="text-left pb-2">Source</th>
                 <th className="text-right pb-2">Leads</th>
@@ -411,7 +411,7 @@ function MiniStat({
       : "text-foreground border-border/40 bg-secondary/30";
   return (
     <div className={`p-2 rounded-lg border ${cls}`}>
-      <div className="text-[9px] uppercase tracking-wider font-semibold opacity-80">
+      <div className="text-2xs uppercase tracking-wider font-semibold opacity-80">
         {label}
       </div>
       <div className="text-base font-bold mt-0.5 tabular-nums">{value}</div>
@@ -440,11 +440,11 @@ function PipelineTile({
       : "text-foreground border-border/40 bg-secondary/30";
   return (
     <div className={`p-3 rounded-lg border ${cls}`}>
-      <div className="text-[10px] uppercase tracking-wider font-semibold opacity-80">
+      <div className="text-2xs uppercase tracking-wider font-semibold opacity-80">
         {label}
       </div>
       <div className="text-xl font-bold mt-1 tabular-nums">{value}</div>
-      {sub && <div className="text-[10px] opacity-80 mt-0.5">{sub}</div>}
+      {sub && <div className="text-2xs opacity-80 mt-0.5">{sub}</div>}
     </div>
   );
 }

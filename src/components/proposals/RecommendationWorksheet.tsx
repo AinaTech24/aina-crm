@@ -202,7 +202,7 @@ function SipSection({ rows, updateRow, addRow, removeRow }: SectionProps) {
                       className="input-base text-xs w-full"
                     />
                     {e.row.amc && (
-                      <div className="text-[10px] text-muted-foreground mt-0.5">
+                      <div className="text-2xs text-muted-foreground mt-0.5">
                         {e.row.amc}
                       </div>
                     )}

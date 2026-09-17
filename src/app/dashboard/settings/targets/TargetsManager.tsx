@@ -72,7 +72,7 @@ function Bar({
           style={{ width: `${hasTarget ? percent : 0}%` }}
         />
       </div>
-      <div className="text-[10px] text-muted-foreground mt-0.5 text-right tabular-nums">
+      <div className="text-2xs text-muted-foreground mt-0.5 text-right tabular-nums">
         {hasTarget ? `${percent}% of target` : "no target set"}
       </div>
     </div>
@@ -133,7 +133,7 @@ function MemberCard({
       <div className="flex items-center justify-between">
         <div className="font-semibold flex items-center gap-2">
           {m.name}
-          {isSelf && <span className="chip text-[10px] bg-brand-cyan-light text-brand-cyan-deep">You</span>}
+          {isSelf && <span className="chip text-2xs bg-brand-cyan-light text-brand-cyan-deep">You</span>}
         </div>
       </div>
 

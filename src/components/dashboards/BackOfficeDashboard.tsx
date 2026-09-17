@@ -206,7 +206,7 @@ export async function BackOfficeDashboard({ session }: { session: SessionUser })
                     <td className="py-2.5 px-2 text-right">
                       <Link
                         href={`/dashboard/service-requests`}
-                        className="btn-ghost text-[10px] py-1 px-2.5 border border-border bg-card rounded-md hover:bg-secondary font-semibold"
+                        className="btn-ghost text-2xs py-1 px-2.5 border border-border bg-card rounded-md hover:bg-secondary font-semibold"
                       >
                         Resolve
                       </Link>

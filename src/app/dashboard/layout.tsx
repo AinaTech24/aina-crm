@@ -88,6 +88,7 @@ import ProductTour from "@/components/layout/ProductTour";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { ProfileMenu } from "@/components/layout/ProfileMenu";
 import { ToastProvider } from "@/components/ui/Toast";
+import { ConfirmProvider } from "@/components/ui/ConfirmProvider";
 import { buildTenantThemeCss } from "@/lib/branding/theme";
 
 export const dynamic = "force-dynamic";
@@ -105,32 +106,40 @@ type NavItem = {
 type NavSection = { title: string; items: NavItem[] };
 
 const NAV: NavSection[] = [
+  // Ordered by how often a person opens it, not by how the system is built:
+  // daily work first, configuration last. Every item, href, role gate and module
+  // key below is unchanged from the previous six-group layout — only the
+  // grouping and the order moved.
+  //
+  // NOTE: CustomizableNav caches a per-user layout in localStorage and its
+  // reconcile() only APPENDS newly-available hrefs, keeping the saved group
+  // structure otherwise. Regrouping existing items is therefore invisible to
+  // anyone who has used the app until VERSION is bumped — it was, alongside
+  // this change.
   {
-    title: "",
+    title: "Today",
     items: [
       // Dashboard + My Dashboards are merged into the DashboardNavDropdown
       // rendered at the top of CustomizableNav.
       { href: "/dashboard/command-center", label: "My Day", icon: Inbox,
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
       { href: "/dashboard/tasks", label: "Tasks", icon: ListChecks, module: "tasks" },
+      { href: "/dashboard/review-meetings", label: "Meetings", icon: Presentation, module: "review_meetings",
+        roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
       { href: "/dashboard/service-requests", label: "Service Requests", icon: LifeBuoy, module: "service_requests" },
       // NPS + every response the /f/<token> form collects. The page existed but
       // nothing linked to it, so the feedback being gathered was invisible.
       { href: "/dashboard/support/feedback", label: "Client Feedback", icon: Gauge, module: "service_requests" },
-      { href: "/dashboard/review-meetings", label: "Meetings", icon: Presentation, module: "review_meetings",
-        roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
-      { href: "/dashboard/attendance", label: "Attendance", icon: CalendarCheck },
-      { href: "/dashboard/trash", label: "Trash", icon: Trash2, roles: ["owner", "compliance"] },
-      // Team Dashboard now lives inside the top "Dashboards" dropdown
-      // (see dashboardSubItems below + DashboardNavDropdown).
+      // Attendance moved to People and Trash to "Setup & data" — neither is
+      // daily work, and Trash was sitting two rows under Tasks.
     ],
   },
   {
-    title: "CRM",
+    title: "Clients",
     items: [
       // Leads visible to owner, marketing, rm, branch_head.
-      // Pipeline Board is now reached via the in-page Module switcher on the
-      // Leads page (Leads ⇄ Pipeline Board), not a separate sidebar item.
+      // Pipeline Board is reached via the in-page Module switcher on the Leads
+      // page (Leads / Pipeline Board), not a separate sidebar item.
       { href: "/dashboard/leads", label: "Leads", icon: UserPlus, module: "lead_management",
         roles: ["owner", "marketing", "rm", "branch_head", "back_office", "ops", "compliance"] },
       // Investor data hidden from marketing per spec section 3
@@ -138,24 +147,27 @@ const NAV: NavSection[] = [
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
       { href: "/dashboard/families", label: "Family Mapping", icon: HeartHandshake, module: "family_mapping",
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
-      // Client Onboarding module retired — its 11-stage pipeline is now
-      // covered by the unified 30-stage blueprint engine that owns both
-      // Leads (1-10) and Clients (11-30). Page redirects to /dashboard/leads.
-      { href: "/dashboard/risk-profiles", label: "Risk Profile", icon: Gauge, module: "risk_profile",
-        roles: ["owner", "compliance", "back_office", "ops", "rm"] },
       { href: "/dashboard/discovery", label: "Client Discovery", icon: ClipboardList,
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
+      { href: "/dashboard/risk-profiles", label: "Risk Profile", icon: Gauge, module: "risk_profile",
+        roles: ["owner", "compliance", "back_office", "ops", "rm"] },
+    ],
+  },
+  {
+    // Split out of the old ten-item "CRM" group along the real boundary: who the
+    // client IS (Clients, above) versus what you are advising them to DO (here).
+    title: "Advice",
+    items: [
       { href: "/dashboard/calculators", label: "Calculators", icon: Calculator },
       { href: "/dashboard/goals", label: "Goal Planning", icon: Target, module: "goal_planning",
         roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
-      { href: "/dashboard/proposals", label: "Proposals", icon: FileSignature, module: "proposals",
-        roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
       { href: "/dashboard/financial-plans", label: "Financial Plans", icon: ClipboardList, module: "goal_planning",
+        roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
+      { href: "/dashboard/proposals", label: "Proposals", icon: FileSignature, module: "proposals",
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
       // One Insurance module. Claims / Renewals / Protection-gap / Commission
       // were separate sidebar entries for what is really one domain — they are
-      // now tabs inside the module (see ModuleTabs INSURANCE_TABS), so every
-      // view is still one click away without five nav rows.
+      // now tabs inside the module (see ModuleTabs INSURANCE_TABS).
       { href: "/dashboard/insurance", label: "Insurance", icon: Shield, module: "insurance",
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
     ],
@@ -166,6 +178,11 @@ const NAV: NavSection[] = [
       // Transactions hidden from marketing
       { href: "/dashboard/transactions", label: "MF Transactions", icon: Repeat, module: "transactions",
         roles: ["owner", "back_office", "ops", "rm", "branch_head", "compliance"] },
+      // One SIP module. Rejections + At-risk were separate sidebar entries (and
+      // SIP Rejections additionally existed as a report) — they are now tabs
+      // inside the module (see ModuleTabs SIP_TABS).
+      { href: "/dashboard/sips", label: "SIP Book", icon: TrendingUp, module: "sip_tracker",
+        roles: ["owner", "back_office", "ops", "rm", "branch_head", "compliance"] },
       { href: "/dashboard/business-entries", label: "Business Entries", icon: Briefcase, module: "business_entries",
         roles: ["owner", "branch_head", "rm", "back_office", "ops"] },
       { href: "/dashboard/expected-inflows", label: "Expected Inflows", icon: IndianRupee,
@@ -174,16 +191,22 @@ const NAV: NavSection[] = [
         roles: ["owner", "back_office", "ops", "compliance"] },
       { href: "/dashboard/reconciliation", label: "Reconciliation", icon: Scale, module: "transactions",
         roles: ["owner", "back_office", "ops", "compliance"] },
-      // One SIP module. Rejections + At-risk were separate sidebar entries (and
-      // SIP Rejections additionally existed as a report) — they are now tabs
-      // inside the module (see ModuleTabs SIP_TABS).
-      { href: "/dashboard/sips", label: "SIP Book", icon: TrendingUp, module: "sip_tracker",
-        roles: ["owner", "back_office", "ops", "rm", "branch_head", "compliance"] },
       { href: "/dashboard/activities", label: "Activity Log", icon: PhoneCall,
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
-      // Service Requests, Complaints and Daily Tracker are now their own sidebar
-      // items in the General group (directly under Tasks), each with its own
-      // access gate — no longer bundled into the Tasks page module switcher.
+    ],
+  },
+  {
+    title: "Insights",
+    items: [
+      // NOTE: Trail Forecast / Churn-risk / Tax-Harvesting / Cross-sell (and
+      // Nomination Tracker) were standalone sidebar items that only deep-linked
+      // into /dashboard/reports/* — the identical pages already live in the
+      // Reports & MIS catalog (see reports/page.tsx).
+      { href: "/dashboard/reports", label: "Reports & MIS", icon: BarChart3, module: "reports", roles: ["owner", "branch_head", "compliance"] },
+      { href: "/dashboard/portfolio-intelligence", label: "Portfolio Intelligence", icon: PieChart, roles: ["owner", "branch_head", "compliance", "rm", "back_office", "ops"] },
+      { href: "/dashboard/finances", label: "Practice Finances", icon: Wallet, module: "reports", roles: ["owner", "compliance", "back_office"] },
+      { href: "/dashboard/commission-reconciliation", label: "Commission Reconciliation", icon: CreditCard, module: "reports", roles: ["owner", "compliance", "back_office"] },
+      { href: "/dashboard/ai-assistant", label: "Aina CRM Copilot", icon: Bot, module: "ai_assistant" },
     ],
   },
   {
@@ -194,56 +217,60 @@ const NAV: NavSection[] = [
       { href: "/dashboard/workflows/runs", label: "Automation Monitor", icon: Activity, module: "automation_workflows",
         roles: ["owner", "compliance", "back_office", "ops"] },
       { href: "/dashboard/templates", label: "Templates", icon: LayoutTemplate, module: "broadcasts" },
+      { href: "/dashboard/communications", label: "Communications", icon: MessageSquare, module: "broadcasts" },
       { href: "/dashboard/campaigns", label: "Marketing Campaigns", icon: Megaphone, module: "marketing_campaigns", roles: ["owner", "marketing"] },
       { href: "/dashboard/aina-library", label: "AINA Content Library", icon: Library, roles: ["owner", "marketing", "rm", "branch_head", "back_office", "ops"] },
-      { href: "/dashboard/communications", label: "Communications", icon: MessageSquare, module: "broadcasts" },
     ],
   },
   {
-    title: "Compliance & Team",
+    // Was part of a sixteen-item "Compliance & Team" drawer that also held HR,
+    // record de-duplication and product master data. This group is now only the
+    // regulatory surface. Audit Log joins it from Insights, where it sat beside
+    // revenue reports despite being a compliance artefact.
+    title: "Compliance",
     items: [
       { href: "/dashboard/compliance/command-center", label: "Compliance Center", icon: ShieldCheck, roles: ["owner", "compliance", "branch_head"] },
       { href: "/dashboard/compliance", label: "DDQ Readiness", icon: FileCheck, module: "ddq", roles: ["owner", "compliance"] },
       { href: "/dashboard/compliance/amfi-circulars", label: "Circular Digest", icon: Newspaper, roles: ["owner", "compliance", "back_office", "ops", "rm", "branch_head"] },
+      { href: "/dashboard/sops", label: "SOP Library", icon: ScrollText, roles: ["owner", "compliance"] },
       // Every other item in this group carries a roles list; this one did not,
       // so marketing and team members were shown a link that answered "the
       // document vault is available to the compliance and back-office team".
       { href: "/dashboard/documents", label: "Documents", icon: FolderOpen, module: "documents", roles: ["owner", "compliance", "back_office", "ops", "rm", "branch_head"] },
-      { href: "/dashboard/sops", label: "SOP Library", icon: ScrollText, roles: ["owner", "compliance"] },
-      { href: "/dashboard/announcements", label: "Announcements", icon: BellRing },
-      { href: "/dashboard/duplicates", label: "Find Duplicates", icon: CopyCheck, roles: ["owner", "branch_head"] },
-      { href: "/dashboard/merge-clients", label: "Merge Clients", icon: Copy, roles: ["owner", "branch_head"] },
+      { href: "/dashboard/audit-log", label: "Audit Log", icon: ClipboardCheck, module: "audit_log", roles: ["owner", "compliance"] },
+      { href: "/dashboard/legal-registrations", label: "Legal Registrations", icon: Stamp, roles: ["owner", "compliance"] },
+      { href: "/dashboard/sub-distributors", label: "Sub-Distributors", icon: Network, roles: ["owner", "compliance"] },
+    ],
+  },
+  {
+    // HR was previously split in two: Attendance sat in the daily group while
+    // Employees, Induction and Leave Applications sat in the compliance drawer.
+    title: "People",
+    items: [
       { href: "/dashboard/employees", label: "Employees", icon: UserCog, module: "employees", roles: ["owner", "branch_head"] },
+      { href: "/dashboard/attendance", label: "Attendance", icon: CalendarCheck },
+      { href: "/dashboard/leave-applications", label: "Leave Applications", icon: CalendarOff },
       // Induction is deliberately un-role-gated: it is the member's OWN training.
       { href: "/dashboard/induction", label: "Induction", icon: GraduationCap },
-      { href: "/dashboard/leave-applications", label: "Leave Applications", icon: CalendarOff },
-      { href: "/dashboard/sub-distributors", label: "Sub-Distributors", icon: Network, roles: ["owner", "compliance"] },
-      { href: "/dashboard/legal-registrations", label: "Legal Registrations", icon: Stamp, roles: ["owner", "compliance"] },
-      { href: "/dashboard/amc-empanelments", label: "AMC Empanelments", icon: Building2, roles: ["owner", "compliance", "back_office"] },
+      { href: "/dashboard/announcements", label: "Announcements", icon: BellRing },
+    ],
+  },
+  {
+    // Reference data you configure once, plus the record-hygiene tools. None of
+    // it is daily work, which is why it sits last.
+    title: "Setup & data",
+    items: [
       { href: "/dashboard/schemes", label: "Scheme Master", icon: Boxes, roles: ["owner", "compliance", "back_office", "branch_head", "rm"] },
       { href: "/dashboard/product-offerings", label: "Products & Services", icon: Package, roles: ["owner", "compliance"] },
+      { href: "/dashboard/amc-empanelments", label: "AMC Empanelments", icon: Building2, roles: ["owner", "compliance", "back_office"] },
+      { href: "/dashboard/duplicates", label: "Find Duplicates", icon: CopyCheck, roles: ["owner", "branch_head"] },
+      { href: "/dashboard/merge-clients", label: "Merge Clients", icon: Copy, roles: ["owner", "branch_head"] },
+      { href: "/dashboard/trash", label: "Trash", icon: Trash2, roles: ["owner", "compliance"] },
     ],
   },
   // NB: Billing / Firm Profile / Settings and the Help link intentionally do
   // NOT appear in the sidebar — Billing + Settings + Firm profile live in the
   // profile dropdown; the help shortcut is the "?" icon in the top bar.
-  {
-    title: "Insights",
-    items: [
-      { href: "/dashboard/reports", label: "Reports & MIS", icon: BarChart3, module: "reports", roles: ["owner", "branch_head", "compliance"] },
-      // NOTE: Trail Forecast / Churn-risk / Tax-Harvesting / Cross-sell (and
-      // Nomination Tracker, removed from Compliance below) were standalone sidebar
-      // items that only deep-linked into /dashboard/reports/* — the identical pages
-      // already live in the Reports & MIS catalog (see reports/page.tsx). The
-      // duplicate nav entries are removed; every report is unchanged and still
-      // reachable from Reports & MIS.
-      { href: "/dashboard/portfolio-intelligence", label: "Portfolio Intelligence", icon: PieChart, roles: ["owner", "branch_head", "compliance", "rm", "back_office", "ops"] },
-      { href: "/dashboard/commission-reconciliation", label: "Commission Reconciliation", icon: CreditCard, module: "reports", roles: ["owner", "compliance", "back_office"] },
-      { href: "/dashboard/finances", label: "Practice Finances", icon: Wallet, module: "reports", roles: ["owner", "compliance", "back_office"] },
-      { href: "/dashboard/ai-assistant", label: "Aina CRM Copilot", icon: Bot, module: "ai_assistant" },
-      { href: "/dashboard/audit-log", label: "Audit Log", icon: ClipboardCheck, module: "audit_log", roles: ["owner", "compliance"] },
-    ],
-  },
 ];
 
 function NavBlockedNotice() {
@@ -521,7 +548,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
                   <div className="font-semibold tracking-tight truncate text-sm leading-tight text-foreground">
                     {tenant.displayName ?? "Aina CRM"}
                   </div>
-                  <div className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-muted-foreground font-mono">
+                  <div className="mt-0.5 inline-flex items-center gap-1 text-2xs text-muted-foreground font-mono">
                     <span className="size-1.5 rounded-full bg-emerald-500" />
                     <span className="truncate">{tenant.arn ?? "—"}</span>
                   </div>
@@ -552,6 +579,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <ToastProvider>
+    <ConfirmProvider>
       {/* Per-tenant theme override — re-declares the brand CSS variables on
           :root. Rendered after globals.css in document order, so it wins. */}
       {themeCss && (
@@ -661,6 +689,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           quick-create and notifications so a new user isn't overwhelmed. */}
       {!license.isRestricted && <ProductTour />}
     </div>
+    </ConfirmProvider>
     </ToastProvider>
   );
 }

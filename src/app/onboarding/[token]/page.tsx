@@ -87,7 +87,7 @@ export default async function PublicOnboardingPage({ params }: { params: Promise
             </span>
           </div>
           {arnLabel && (
-            <div className="text-[11px] font-mono text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200">
+            <div className="text-2xs font-mono text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200">
               {arnLabel}
             </div>
           )}
@@ -105,7 +105,7 @@ export default async function PublicOnboardingPage({ params }: { params: Promise
       </main>
 
       {/* Footer */}
-      <footer className="max-w-3xl mx-auto w-full px-4 py-6 text-[10px] text-slate-500 text-center relative z-10 border-t border-slate-200">
+      <footer className="max-w-3xl mx-auto w-full px-4 py-6 text-2xs text-slate-500 text-center relative z-10 border-t border-slate-200">
         Mutual fund investments are subject to market risks. Read all scheme related documents carefully.
         {arnLabel ? (
           <>

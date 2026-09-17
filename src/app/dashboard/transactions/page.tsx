@@ -207,16 +207,17 @@ export default async function TransactionsPage({
     <div className="space-y-6 max-w-7xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Repeat className="size-6 text-brand-cyan" /> MF Transactions
+          <h1 className="page-title">
+            <Repeat className="size-6 text-muted-foreground" /> MF Transactions
           </h1>
+          <p className="page-subtitle mt-1">Every mutual-fund purchase, redemption, switch and SIP instalment.</p>
         </div>
         <div className="flex items-center gap-2">
           <a href={exportHref} className="btn-secondary" title="Download the filtered list as Excel">
-            <FileUp className="size-4" /> Export
+            <FileDown className="size-4" /> Export
           </a>
           <Link href="/dashboard/transactions/import" className="btn-secondary">
-            <FileDown className="size-4" /> Import Excel
+            <FileUp className="size-4" /> Import Excel
           </Link>
         </div>
       </div>

@@ -73,7 +73,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ eventI
         </div>
 
         <div className="border-t pt-4">
-          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Billed to</div>
+          <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold mb-1">Billed to</div>
           <div className="font-medium">{data.tenant.legalName}</div>
           {buyerAddr && <div className="text-xs text-muted-foreground">{buyerAddr}</div>}
           <div className="text-xs text-muted-foreground">ARN: {data.tenant.arn}{data.tenant.gstNumber ? ` · GSTIN: ${data.tenant.gstNumber}` : ""}</div>
@@ -81,7 +81,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ eventI
 
         <table className="w-full border-t">
           <thead>
-            <tr className="text-[11px] uppercase tracking-wider text-muted-foreground">
+            <tr className="text-2xs uppercase tracking-wider text-muted-foreground">
               <th className="text-left py-2">Description</th>
               <th className="text-right py-2">Amount</th>
             </tr>

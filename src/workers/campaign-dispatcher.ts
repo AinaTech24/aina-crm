@@ -37,7 +37,7 @@ function pickVariant(subjectId: string, splitPctToB: number): "a" | "b" {
 const TICKS_PER_MIN = 4;
 const MAX_BATCH = 200;
 
-type Recipient = { subjectId: string; name: string; contact: string; kind: "investor" | "lead" };
+type Recipient = { subjectId: string; name: string; contact: string; kind: "investor" | "lead"; templateKey: string; variant?: "a" | "b"; variables: Record<string, unknown>; channel: "email" | "whatsapp" | "sms" };
 
 export async function processActiveCampaigns(): Promise<number> {
   const active = await withSystem(async (tx) =>
@@ -117,11 +117,16 @@ async function processOneCampaign(tenantId: string, campaignId: string): Promise
       .from(communications)
       .where(and(eq(communications.campaignId, campaignId), eq(communications.tenantId, tenantId)));
     const processedIds = new Set(sentComms.map((s) => s.investorId || s.leadId).filter(Boolean));
+    const reserved = await tx.execute(sql`SELECT subject_id FROM campaign_recipients WHERE tenant_id = ${tenantId}::uuid AND campaign_id = ${campaignId}::uuid`);
+    for (const row of reserved.rows as Array<{ subject_id: string }>) processedIds.add(row.subject_id);
 
     const unsent = members.filter((m) => !processedIds.has(m.subjectId));
     if (unsent.length === 0) {
-      await markSent(tx, campaignId, tenantId);
-      return { done: true as const };
+      const pending = await tx.execute(sql`SELECT id FROM campaign_recipients WHERE tenant_id = ${tenantId}::uuid AND campaign_id = ${campaignId}::uuid AND status IN ('pending','sending','retry') LIMIT 1`);
+      if (!pending.rows.length) {
+        await markSent(tx, campaignId, tenantId);
+        return { done: true as const };
+      }
     }
 
     const batchSize = Math.max(1, Math.min(MAX_BATCH, Math.floor(Number(c.throttle_per_minute ?? 60) / TICKS_PER_MIN)));
@@ -153,7 +158,14 @@ async function processOneCampaign(tenantId: string, campaignId: string): Promise
         } as any);
         continue;
       }
-      recipients.push({ subjectId: m.subjectId, name: subj.name ?? "", contact, kind: seg.subjectType as "investor" | "lead" });
+      const variant = variantTpl ? (c.ab_winner ?? pickVariant(m.subjectId, Math.max(0, Math.min(100, Number(c.ab_split_pct ?? 50))))) as "a" | "b" : undefined;
+      const recipient: Recipient = { subjectId: m.subjectId, name: subj.name ?? "", contact, kind: seg.subjectType as "investor" | "lead",
+        templateKey: variant === "b" ? variantTpl.key : tpl.key, variant,
+        variables: { name: subj.name ?? "", ...(overrides[m.subjectId] ?? {}) }, channel: c.channel };
+      await tx.execute(sql`INSERT INTO campaign_recipients (tenant_id, campaign_id, subject_id, subject_type, payload)
+        VALUES (${tenantId}::uuid, ${campaignId}::uuid, ${m.subjectId}::uuid, ${seg.subjectType}, ${JSON.stringify(recipient)}::jsonb)
+        ON CONFLICT (tenant_id, campaign_id, subject_type, subject_id) DO NOTHING`);
+      recipients.push(recipient);
     }
 
     return {
@@ -165,6 +177,7 @@ async function processOneCampaign(tenantId: string, campaignId: string): Promise
       abWinner: (c.ab_winner as "a" | "b" | null) ?? null,
       recipients,
       overrides,
+      batchSize,
     };
   });
 
@@ -174,42 +187,63 @@ async function processOneCampaign(tenantId: string, campaignId: string): Promise
   }
 
   // ── Phase 2: SEND — each recipient in its OWN transaction ─────────────────
-  for (const r of plan.recipients) {
+  for (let i = 0; i < plan.batchSize; i++) {
+    const claimToken = uuid();
+    const claim = await withTenant(tenantId, async (tx) => {
+      await tx.execute(sql`UPDATE campaign_recipients SET status = 'failed', last_error = 'Recipient attempt limit reached', updated_at = now()
+        WHERE tenant_id = ${tenantId}::uuid AND campaign_id = ${campaignId}::uuid AND attempts >= 5 AND status IN ('retry','sending') AND (claim_until IS NULL OR claim_until <= now())`);
+      const rows = await tx.execute(sql`WITH due AS (
+        SELECT id FROM campaign_recipients WHERE tenant_id = ${tenantId}::uuid AND campaign_id = ${campaignId}::uuid
+          AND attempts < 5 AND ((status IN ('pending','retry') AND next_attempt_at <= now()) OR (status = 'sending' AND claim_until <= now()))
+          AND EXISTS (SELECT 1 FROM campaigns WHERE id = ${campaignId}::uuid AND tenant_id = ${tenantId}::uuid AND status = 'sending')
+        ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED
+      ) UPDATE campaign_recipients r SET status = 'sending', claim_token = ${claimToken}::uuid, claim_until = now() + interval '5 minutes', attempts = attempts + 1, updated_at = now()
+      FROM due WHERE r.id = due.id RETURNING r.id, r.payload`);
+      return rows.rows[0] as { id: string; payload: Recipient } | undefined;
+    });
+    if (!claim) break;
+    const r = claim.payload;
     // Resolve which template + variant this recipient gets. A picked winner
     // overrides the split (everyone left gets the winner); otherwise bucket by
     // the deterministic split. With no B template, it's a plain single-variant send.
-    let variant: "a" | "b" | undefined;
-    let templateKey = plan.tplKey;
-    if (plan.tplKeyB) {
-      if (plan.abWinner) {
-        variant = plan.abWinner;
-      } else {
-        variant = pickVariant(r.subjectId, plan.abSplitPct);
-      }
-      templateKey = variant === "b" && plan.tplKeyB ? plan.tplKeyB : plan.tplKey;
-    }
     try {
       await withTenant(tenantId, async (tx) => {
-        await dispatch(tx, {
+        const locked = await tx.execute(sql`SELECT id FROM campaign_recipients WHERE id = ${claim.id}::uuid AND tenant_id = ${tenantId}::uuid AND status = 'sending' AND claim_token = ${claimToken}::uuid FOR UPDATE`);
+        if (!locked.rows.length) return;
+        const result = await dispatch(tx, {
           tenantId,
-          channel: plan.channel as any,
-          templateKey,
+          channel: r.channel,
+          templateKey: r.templateKey,
           recipient: r.contact,
-          variables: { name: r.name, ...(plan.overrides[r.subjectId] ?? {}) },
+          variables: r.variables,
           category: "marketing",
           ...(r.kind === "investor" ? { investorId: r.subjectId } : { leadId: r.subjectId }),
           campaignId,
-          ...(variant ? { variant } : {}),
-        } as any);
+          idempotencyKey: `campaign:${campaignId}:${r.kind}:${r.subjectId}`,
+          ...(r.variant ? { variant: r.variant } : {}),
+        });
+        if (result.status === "failed") {
+          await retryRecipient(tx, tenantId, claim.id, claimToken, result.error ?? "Delivery failed");
+        } else {
+          await tx.execute(sql`UPDATE campaign_recipients SET status = ${result.status === "skipped" ? "skipped" : "sent"}, communication_id = ${result.communicationId}::uuid, claim_until = NULL, updated_at = now() WHERE id = ${claim.id}::uuid AND tenant_id = ${tenantId}::uuid AND claim_token = ${claimToken}::uuid`);
+        }
       });
     } catch (e: any) {
       console.error(`[campaign-dispatcher] send failed for ${r.kind} ${r.subjectId}:`, e?.message);
+      await withTenant(tenantId, (tx) => retryRecipient(tx, tenantId, claim.id, claimToken, e?.message ?? "Delivery failed"));
     }
   }
 
   // ── Phase 3: RECONCILE counters ──────────────────────────────────────────
   await recomputeCounters(tenantId, campaignId);
   return false; // batch processed; more likely remain
+}
+
+async function retryRecipient(tx: import("@/db/client").Tx, tenantId: string, id: string, token: string, error: string) {
+  await tx.execute(sql`UPDATE campaign_recipients SET
+    status = CASE WHEN EXISTS (SELECT 1 FROM communication_deliveries d WHERE d.tenant_id = ${tenantId}::uuid AND d.delivery_key = 'campaign:' || campaign_id || ':' || subject_type || ':' || subject_id AND d.state = 'unknown') THEN 'unknown' WHEN attempts >= 5 THEN 'failed' ELSE 'retry' END,
+    last_error = ${error}, claim_until = NULL, next_attempt_at = now() + interval '1 minute' * power(2, attempts), updated_at = now()
+    WHERE id = ${id}::uuid AND tenant_id = ${tenantId}::uuid AND claim_token = ${token}::uuid`);
 }
 
 /**

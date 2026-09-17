@@ -126,7 +126,7 @@ export function EmiSipRecoveryPlanner() {
         <strong>{inr(result.totalRepayment)}</strong> by the end of the tenure and effectively <strong>recover your entire EMI outgo</strong>.
       </div>
 
-      <p className="text-[10px] text-muted-foreground border-t pt-3">
+      <p className="text-2xs text-muted-foreground border-t pt-3">
         * Illustration only. Interest on the loan is assumed compounded monthly with the EMI at month end; the SIP earns the
         assumed return monthly. Mutual fund returns are not guaranteed and subject to market risk. Not investment advice.
       </p>
@@ -139,7 +139,7 @@ export function EmiSipRecoveryPlanner() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
+      <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
       {children}
     </label>
   );
@@ -177,7 +177,7 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: "am
   const t = tone === "amber" ? "border-amber-200 bg-amber-50/50" : tone === "rose" ? "border-rose-200 bg-rose-50/50" : "border-slate-200";
   return (
     <div className={`border rounded-md p-3 ${t}`}>
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">{label}</div>
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">{label}</div>
       <div className="text-sm font-semibold mt-0.5">{value}</div>
     </div>
   );
@@ -201,7 +201,7 @@ function ResultRow({
                 : "";
         return (
           <div key={i} className={`border rounded-md p-3 ${tone}`}>
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">{c.label}</div>
+            <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">{c.label}</div>
             <div className="text-lg font-semibold mt-0.5">{c.value}</div>
           </div>
         );

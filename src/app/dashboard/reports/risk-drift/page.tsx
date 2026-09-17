@@ -94,7 +94,7 @@ export default async function RiskDriftPage() {
                       <Link href={`/dashboard/investors/${r.investorId}`} className="font-medium hover:underline">
                         {r.name}
                       </Link>
-                      <div className="text-[10px] text-muted-foreground">
+                      <div className="text-2xs text-muted-foreground">
                         {r.direction === "too_aggressive" ? "More equity than the profile allows" : "Less equity than the profile targets"}
                       </div>
                     </td>
@@ -134,7 +134,7 @@ export default async function RiskDriftPage() {
         )}
       </div>
 
-      <p className="text-[11px] text-muted-foreground italic">
+      <p className="text-2xs text-muted-foreground italic">
         Methodology: schemes are classified equity / debt / hybrid from the imported category (name
         fallback); hybrid counts as 65% equity. Target bands — Conservative 0&ndash;30%, Moderate
         30&ndash;60%, Aggressive 55&ndash;85%, Very aggressive 70&ndash;100% equity. Top 500 clients
@@ -154,7 +154,7 @@ function Stat({ icon: Icon, label, value, tone }: { icon: any; label: string; va
   return (
     <div className="kpi-card">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">{label}</span>
+        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{label}</span>
         <Icon className="size-3.5 text-muted-foreground" />
       </div>
       <div

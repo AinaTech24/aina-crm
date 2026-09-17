@@ -148,7 +148,7 @@ export function FollowThroughTable({ rows, canSend }: { rows: FollowThroughRow[]
                       ) : (
                         <span className="font-medium">{r.name}</span>
                       )}
-                      {r.rmName && <div className="text-[11px] text-muted-foreground">RM {r.rmName}</div>}
+                      {r.rmName && <div className="text-2xs text-muted-foreground">RM {r.rmName}</div>}
                     </td>
                     <td className="py-2.5 px-3 text-xs text-muted-foreground">{meta?.label ?? r.templateKey}</td>
                     <td className="py-2.5 px-3 text-xs text-muted-foreground whitespace-nowrap">{fmt(r.sentAt)}</td>
@@ -169,11 +169,11 @@ export function FollowThroughTable({ rows, canSend }: { rows: FollowThroughRow[]
                       )}
                     </td>
                     <td className="py-2.5 px-3">
-                      <span className={`inline-flex items-center gap-1 text-[11px] font-medium rounded-full border px-2 py-0.5 ${st.cls}`}>
+                      <span className={`inline-flex items-center gap-1 text-2xs font-medium rounded-full border px-2 py-0.5 ${st.cls}`}>
                         <Icon className="size-3" />
                         {r.actedAt ? (meta?.action ?? "Done") : st.label}
                       </span>
-                      {r.actedAt && <span className="ml-1.5 text-[11px] text-muted-foreground">{fmt(r.actedAt)}</span>}
+                      {r.actedAt && <span className="ml-1.5 text-2xs text-muted-foreground">{fmt(r.actedAt)}</span>}
                     </td>
                   </tr>
                 );
@@ -183,7 +183,7 @@ export function FollowThroughTable({ rows, canSend }: { rows: FollowThroughRow[]
         </div>
       </div>
 
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         &ldquo;Opened&rdquo; relies on the mail client loading a tracking pixel, so it under-reports — a client who tapped the
         link but shows as unopened simply blocked images. &ldquo;Tapped the link&rdquo; and the result are recorded by us and
         are exact.

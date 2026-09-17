@@ -70,7 +70,7 @@ export function ClientHealthCard({
           <div className="absolute inset-0 grid place-items-center text-center">
             <div>
               <div className="text-2xl font-bold tabular-nums">{health.score}</div>
-              <div className="text-[9px] uppercase tracking-wider text-muted-foreground">
+              <div className="text-2xs uppercase tracking-wider text-muted-foreground">
                 / 100
               </div>
             </div>
@@ -95,7 +95,7 @@ export function ClientHealthCard({
                     <div className="font-medium text-foreground/90 truncate">
                       {f.label}
                     </div>
-                    <div className="text-[10px] text-muted-foreground truncate">
+                    <div className="text-2xs text-muted-foreground truncate">
                       {f.why}
                     </div>
                   </div>
@@ -105,7 +105,7 @@ export function ClientHealthCard({
                 </li>
               ))}
               {health.factors.length > 5 && (
-                <li className="text-[10px] text-muted-foreground italic">
+                <li className="text-2xs text-muted-foreground italic">
                   + {health.factors.length - 5} more
                 </li>
               )}
@@ -114,7 +114,7 @@ export function ClientHealthCard({
         </div>
       </div>
 
-      <p className="text-[10px] text-muted-foreground mt-3 leading-relaxed border-t border-border/40 pt-3">
+      <p className="text-2xs text-muted-foreground mt-3 leading-relaxed border-t border-border/40 pt-3">
         Score starts at 100 and loses points for stale contact, missed reviews,
         KYC / nominee gaps and overdue service requests — fix an item above to
         recover its points.

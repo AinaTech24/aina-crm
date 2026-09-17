@@ -277,7 +277,7 @@ export function SendToClientDrawer({
                     </div>
                     <div className="min-w-0">
                       <div className="font-semibold text-sm truncate">{selectedRecipient.name}</div>
-                      <div className="text-[10px] text-muted-foreground truncate font-mono">
+                      <div className="text-2xs text-muted-foreground truncate font-mono">
                         {channel === "email" ? selectedRecipient.email : (selectedRecipient.whatsappPhone ?? selectedRecipient.phone ?? "—")}
                       </div>
                     </div>
@@ -327,13 +327,13 @@ export function SendToClientDrawer({
                             }}
                             className="w-full text-left flex items-center gap-2.5 px-3 py-2 hover:bg-brand-cyan-light/30 transition-colors"
                           >
-                            <div className="size-7 rounded-full brand-gradient text-white grid place-items-center text-[10px] font-bold shrink-0 shadow-sm">
+                            <div className="size-7 rounded-full brand-gradient text-white grid place-items-center text-2xs font-bold shrink-0 shadow-sm">
                               {r.name.slice(0, 2).toUpperCase()}
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="font-semibold text-xs truncate">{r.name}</div>
                               {r.details && (
-                                <div className="text-[10px] text-muted-foreground truncate font-mono mt-0.5">
+                                <div className="text-2xs text-muted-foreground truncate font-mono mt-0.5">
                                   {r.details}
                                 </div>
                               )}
@@ -405,7 +405,7 @@ export function SendToClientDrawer({
 
             {/* 5. Live Preview Block */}
             <div className="card-surface p-3.5 space-y-2 border-brand-cyan/20 bg-brand-cyan-light/5">
-              <span className="text-[10px] font-bold text-brand-cyan uppercase tracking-wider">
+              <span className="text-2xs font-bold text-brand-cyan uppercase tracking-wider">
                 Message Preview
               </span>
               <div className="text-xs space-y-1.5 text-foreground leading-relaxed">
@@ -417,7 +417,7 @@ export function SendToClientDrawer({
                   <strong className="text-muted-foreground">Subject: </strong> 
                   {channel === "email" ? `Shared Update: ${assetTitle}` : "—"}
                 </div>
-                <div className="border-t border-dashed my-2 pt-2 text-[11px] font-mono whitespace-pre-wrap text-muted-foreground bg-white/70 p-2 rounded border">
+                <div className="border-t border-dashed my-2 pt-2 text-2xs font-mono whitespace-pre-wrap text-muted-foreground bg-white/70 p-2 rounded border">
                   {`Hi ${selectedRecipient ? selectedRecipient.name : "[Client]"},
 
 ${customNote || "[Custom Note]"}

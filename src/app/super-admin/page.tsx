@@ -137,7 +137,7 @@ function HeroStat({ label, value, alert }: { label: string; value: number; alert
   return (
     <div className="text-right">
       <div className={`text-2xl font-bold tabular-nums ${alert ? "text-amber-200" : ""}`}>{value}</div>
-      <div className="text-[11px] uppercase tracking-wider text-white/70">{label}</div>
+      <div className="text-2xs uppercase tracking-wider text-white/70">{label}</div>
     </div>
   );
 }

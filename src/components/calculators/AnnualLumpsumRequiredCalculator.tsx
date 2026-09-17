@@ -54,7 +54,7 @@ export function AnnualLumpsumRequiredCalculator() {
         <div className="flex flex-col justify-end gap-1">
           <label className="flex items-center gap-2 cursor-pointer select-none">
             <input type="checkbox" checked={useScenario2} onChange={(e) => setUseScenario2(e.target.checked)} className="size-4 rounded border-border accent-primary" />
-            <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">Compare scenario 2</span>
+            <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">Compare scenario 2</span>
           </label>
           {useScenario2 && <NumberField label="Scenario 2 return (%)" value={scenario2Pct} setValue={setScenario2Pct} step={0.5} />}
         </div>

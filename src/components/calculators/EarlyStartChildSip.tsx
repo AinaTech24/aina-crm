@@ -81,7 +81,7 @@ export function EarlyStartChildSip() {
         />
       </Section>
 
-      <p className="text-[10px] text-muted-foreground border-t pt-3">
+      <p className="text-2xs text-muted-foreground border-t pt-3">
         * Illustration only. The SIP accumulates at the assumed return (compounded monthly, contributions at month start);
         after the investing period the corpus compounds annually at the same return. Returns are not guaranteed and vary with
         markets. Not investment advice — mutual fund investments are subject to market risks.

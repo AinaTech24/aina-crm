@@ -54,7 +54,7 @@ export default function GlobalSearch() {
     <View style={{ flex: 1, backgroundColor: palette.surfaceAlt }}>
       {/* Header: back + live search field */}
       <View style={[styles.bar, { paddingTop: insets.top + spacing.sm }]}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
+        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn} accessibilityRole="button" accessibilityLabel="Back">
           <Feather name="chevron-left" size={26} color={palette.ink} />
         </Pressable>
         <View style={{ flex: 1 }}>
@@ -186,11 +186,11 @@ function SipRow({ it, last, onOpen }: { it: SearchSip; last: boolean; onOpen: ()
 
 // ── Bits ──
 function Actions({ phone, onCall, onOpen, subject }: { phone?: string | null; onCall: () => void; onOpen: () => void; subject?: { type: "investor" | "lead"; id: string; name?: string | null } }) {
-  if (!phone) return <Pressable onPress={onOpen} hitSlop={6}><Feather name="chevron-right" size={16} color={palette.faint} /></Pressable>;
+  if (!phone) return <Pressable onPress={onOpen} hitSlop={6} accessibilityRole="button" accessibilityLabel="Open"><Feather name="chevron-right" size={16} color={palette.faint} /></Pressable>;
   return (
     <View style={{ flexDirection: "row", gap: spacing.sm }}>
-      <Pressable onPress={onCall} hitSlop={6} style={styles.iconBtn}><Feather name="phone" size={15} color={palette.brand} /></Pressable>
-      <Pressable onPress={() => openWa(phone, subject)} hitSlop={6} style={styles.iconBtn}><Feather name="message-circle" size={15} color={palette.success} /></Pressable>
+      <Pressable onPress={onCall} hitSlop={6} style={styles.iconBtn} accessibilityRole="button" accessibilityLabel={`Call ${subject?.name ?? ""}`.trim()}><Feather name="phone" size={15} color={palette.brand} /></Pressable>
+      <Pressable onPress={() => openWa(phone, subject)} hitSlop={6} style={styles.iconBtn} accessibilityRole="button" accessibilityLabel={`WhatsApp ${subject?.name ?? ""}`.trim()}><Feather name="message-circle" size={15} color={palette.success} /></Pressable>
     </View>
   );
 }

@@ -382,7 +382,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
             <h3 className="font-bold text-sm text-slate-800 uppercase tracking-wider">
               Task Details
             </h3>
-            <span className="text-[10px] text-muted-foreground font-mono">ID: {task.id.slice(0, 8)}</span>
+            <span className="text-2xs text-muted-foreground font-mono">ID: {task.id.slice(0, 8)}</span>
           </div>
           <button
             type="button"
@@ -419,7 +419,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
             />
             
             <div>
-              <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Description</label>
+              <label className="text-2xs uppercase font-bold text-slate-500 block mb-1">Description</label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
@@ -435,7 +435,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
           {/* Quick Stats Grid */}
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div>
-              <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Status</label>
+              <label className="text-2xs uppercase font-bold text-slate-500 block mb-1">Status</label>
               <SelectField
                 value={status}
                 onChange={(e) => setStatus(e.target.value as any)}
@@ -451,7 +451,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
             </div>
 
             <div>
-              <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Priority</label>
+              <label className="text-2xs uppercase font-bold text-slate-500 block mb-1">Priority</label>
               <SelectField
                 value={priority}
                 onChange={(e) => setPriority(e.target.value as any)}
@@ -466,7 +466,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
             </div>
 
             <div>
-              <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Due Date</label>
+              <label className="text-2xs uppercase font-bold text-slate-500 block mb-1">Due Date</label>
               <DateField
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
@@ -474,13 +474,13 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
                 className="w-full"
               />
               <div className="mt-1 flex items-center gap-1">
-                <span className="text-[9px] uppercase text-slate-400 font-semibold">Snooze</span>
+                <span className="text-2xs uppercase text-slate-400 font-semibold">Snooze</span>
                 {[["+1d", 1], ["+1w", 7], ["+1m", 30]].map(([label, days]) => (
                   <button
                     key={label as string}
                     type="button"
                     onClick={() => quickReschedule(days as number)}
-                    className="text-[10px] px-1.5 py-0.5 rounded border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                    className="text-2xs px-1.5 py-0.5 rounded border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
                   >
                     {label}
                   </button>
@@ -489,7 +489,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
             </div>
 
             <div>
-              <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">SLA Due Date</label>
+              <label className="text-2xs uppercase font-bold text-slate-500 block mb-1">SLA Due Date</label>
               <DateField
                 value={slaDate}
                 onChange={(e) => setSlaDate(e.target.value)}
@@ -499,7 +499,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
             </div>
 
             <div className="col-span-2">
-              <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Department</label>
+              <label className="text-2xs uppercase font-bold text-slate-500 block mb-1">Department</label>
               <SelectField
                 value={department}
                 onChange={(e) => setDepartment(e.target.value)}
@@ -514,7 +514,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
             </div>
 
             <div className="col-span-2">
-              <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 flex items-center gap-1">
+              <label className="text-2xs uppercase font-bold text-slate-500 mb-1 flex items-center gap-1">
                 <Bell className="size-3" /> Reminder <span className="normal-case font-medium text-slate-400">— pings the assignee</span>
               </label>
               <SelectField
@@ -541,19 +541,19 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
                 />
               )}
               {task.remindAt && !reminderDirty && (
-                <p className="text-[10px] text-slate-400 mt-1">
+                <p className="text-2xs text-slate-400 mt-1">
                   Reminds {new Date(task.remindAt).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
                   {task.reminderFiredAt ? " · sent" : ""}.
                 </p>
               )}
               {reminderDirty && reminderMode !== "none" && (
-                <p className="text-[10px] text-slate-400 mt-1">Saved when you click “Save Changes”.</p>
+                <p className="text-2xs text-slate-400 mt-1">Saved when you click “Save Changes”.</p>
               )}
             </div>
           </div>
 
           <div>
-            <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Assigned To</label>
+            <label className="text-2xs uppercase font-bold text-slate-500 block mb-1">Assigned To</label>
             <RmSelector
               value={assigneeId || null}
               onChange={(id) => setAssigneeId(id ?? "")}
@@ -566,11 +566,11 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
           {/* Approval / verification loop */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
-              <h4 className="text-[10px] uppercase font-bold text-slate-500 flex items-center gap-1.5">
+              <h4 className="text-2xs uppercase font-bold text-slate-500 flex items-center gap-1.5">
                 <ShieldCheck className="size-3.5" /> Approval
               </h4>
               {isApprover && (
-                <label className="flex items-center gap-1.5 text-[11px] text-slate-600 cursor-pointer">
+                <label className="flex items-center gap-1.5 text-2xs text-slate-600 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={requiresApproval}
@@ -585,22 +585,22 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
             {requiresApproval ? (
               <>
                 {approvalStatus === "pending" ? (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[11px] text-amber-800 flex items-center gap-1.5">
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-2xs text-amber-800 flex items-center gap-1.5">
                     <Clock3 className="size-3.5 shrink-0" /> Submitted — awaiting sign-off.
                   </div>
                 ) : approvalStatus === "approved" ? (
-                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 text-[11px] text-emerald-800 flex items-center gap-1.5">
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 text-2xs text-emerald-800 flex items-center gap-1.5">
                     <ShieldCheck className="size-3.5 shrink-0" /> Approved.
                   </div>
                 ) : approvalStatus === "rejected" ? (
-                  <div className="rounded-lg border border-rose-200 bg-rose-50 p-2.5 text-[11px] text-rose-800">
+                  <div className="rounded-lg border border-rose-200 bg-rose-50 p-2.5 text-2xs text-rose-800">
                     <div className="flex items-center gap-1.5 font-semibold">
                       <RotateCcw className="size-3.5 shrink-0" /> Reopened for changes
                     </div>
                     {approvalNoteShown && <div className="mt-1 text-rose-700">“{approvalNoteShown}”</div>}
                   </div>
                 ) : (
-                  <div className="text-[11px] text-slate-500">Needs an approver's sign-off before it can be completed.</div>
+                  <div className="text-2xs text-slate-500">Needs an approver's sign-off before it can be completed.</div>
                 )}
 
                 {approvalStatus === "pending" && isApprover ? (
@@ -660,7 +660,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
               </>
             ) : (
               isApprover && (
-                <p className="text-[11px] text-slate-400">
+                <p className="text-2xs text-slate-400">
                   Turn on sign-off to require an approver to verify this task before it's marked complete.
                 </p>
               )
@@ -671,7 +671,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
 
           {/* Related Entities Card Links */}
           <div className="space-y-2.5">
-            <h4 className="text-[10px] uppercase font-bold text-slate-500">Related Entities</h4>
+            <h4 className="text-2xs uppercase font-bold text-slate-500">Related Entities</h4>
             
             <div className="grid grid-cols-1 gap-2">
               {task.relatedInvestorId && (
@@ -685,7 +685,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
                       {task.investorName ?? "Client Profile"}
                     </div>
                   </div>
-                  <span className="text-[9px] uppercase font-semibold text-brand-cyan-deep bg-brand-cyan-light/40 px-1.5 py-0.5 rounded">
+                  <span className="text-2xs uppercase font-semibold text-brand-cyan-deep bg-brand-cyan-light/40 px-1.5 py-0.5 rounded">
                     Client
                   </span>
                 </Link>
@@ -702,7 +702,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
                       {task.leadName ?? "Lead Details"}
                     </div>
                   </div>
-                  <span className="text-[9px] uppercase font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                  <span className="text-2xs uppercase font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
                     Lead
                   </span>
                 </Link>
@@ -718,7 +718,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
                       Service Ticket
                     </div>
                   </div>
-                  <span className="text-[9px] uppercase font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
+                  <span className="text-2xs uppercase font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
                     Service Req
                   </span>
                 </div>
@@ -735,7 +735,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
                       Review Meeting File
                     </div>
                   </div>
-                  <span className="text-[9px] uppercase font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
+                  <span className="text-2xs uppercase font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
                     Meeting
                   </span>
                 </Link>
@@ -754,7 +754,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
           {/* Action points (checklist) — the sub-steps to complete this task. */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h4 className="text-[10px] uppercase font-bold text-slate-500 flex items-center gap-1.5">
+              <h4 className="text-2xs uppercase font-bold text-slate-500 flex items-center gap-1.5">
                 <ListChecks className="size-3.5" /> Sub-tasks
                 {checklist.length > 0 && (
                   <span className="text-slate-400 normal-case font-semibold">· {doneCount}/{checklist.length} done</span>
@@ -788,7 +788,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
                         type="button"
                         onClick={() => cycleStatus(c.id)}
                         title="Click to advance status"
-                        className={`shrink-0 inline-flex items-center gap-1.5 rounded-full bg-white border border-slate-200 px-2 py-0.5 text-[10px] font-semibold ${meta.text}`}
+                        className={`shrink-0 inline-flex items-center gap-1.5 rounded-full bg-white border border-slate-200 px-2 py-0.5 text-2xs font-semibold ${meta.text}`}
                       >
                         <span className={`size-2 rounded-full ${meta.dot}`} /> {meta.label}
                       </button>
@@ -817,14 +817,14 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
                         onChange={(e) => updateLocal(c.id, { remark: e.target.value })}
                         onBlur={(e) => setPointField(c.id, { remark: e.target.value })}
                         placeholder="Remark…"
-                        className="input-base h-7 text-[11px] flex-1 bg-white"
+                        className="input-base h-7 text-2xs flex-1 bg-white"
                         aria-label="Remark"
                       />
                     </div>
                     {/* Delegate this sub-task to a teammate — they're notified and
                         can open + edit this task. */}
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 shrink-0">Assign</span>
+                      <span className="text-2xs uppercase font-bold text-slate-400 shrink-0">Assign</span>
                       <RmSelector
                         value={c.assigneeId ?? null}
                         onChange={(uid) =>
@@ -909,10 +909,10 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
 
           {/* Tags */}
           <div className="space-y-2">
-            <h4 className="text-[10px] uppercase font-bold text-slate-500">Tags</h4>
+            <h4 className="text-2xs uppercase font-bold text-slate-500">Tags</h4>
             <div className="flex flex-wrap items-center gap-1.5">
               {tags.map((tg) => (
-                <span key={tg} className="chip text-[10px] bg-slate-100 text-slate-600 border border-slate-200 inline-flex items-center gap-1">
+                <span key={tg} className="chip text-2xs bg-slate-100 text-slate-600 border border-slate-200 inline-flex items-center gap-1">
                   {tg}
                   <button type="button" onClick={() => setTags((t) => t.filter((x) => x !== tg))} className="hover:text-rose-600" aria-label={`Remove ${tg}`}>
                     <X className="size-2.5" />
@@ -925,23 +925,23 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addTag(tagInput); } }}
                 onBlur={() => tagInput.trim() && addTag(tagInput)}
                 placeholder="Add tag…"
-                className="input-base h-7 text-[11px] w-24 bg-white"
+                className="input-base h-7 text-2xs w-24 bg-white"
               />
             </div>
-            <p className="text-[10px] text-slate-400">Saved with the task.</p>
+            <p className="text-2xs text-slate-400">Saved with the task.</p>
           </div>
 
           <hr className="border-slate-100" />
 
           {/* Comments — real threaded log with author + @mentions. */}
           <div className="space-y-3">
-            <h4 className="text-[10px] uppercase font-bold text-slate-500">Comments</h4>
+            <h4 className="text-2xs uppercase font-bold text-slate-500">Comments</h4>
             <TaskComments taskId={task.id} currentUserId={currentUserId} />
 
             {/* Legacy prepend-only remarks (pre-comments) — read-only, collapsed. */}
             {remarksHistory && (
               <details className="mt-1">
-                <summary className="text-[10px] uppercase font-bold text-slate-400 cursor-pointer">Earlier notes (legacy log)</summary>
+                <summary className="text-2xs uppercase font-bold text-slate-400 cursor-pointer">Earlier notes (legacy log)</summary>
                 <div className="space-y-3 max-h-48 overflow-y-auto pr-1 scrollbar-thin mt-2">
                   {remarksHistory.split("\n\n").map((chunk, idx) => {
                     const match = chunk.match(/^\[(.*?)\]\s*([\s\S]*)$/);
@@ -949,11 +949,11 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
                     const content = match ? match[2] : chunk;
                     return (
                       <div key={idx} className="flex gap-2.5 items-start">
-                        <div className="w-6 h-6 rounded-full bg-slate-100 border text-[10px] font-bold text-slate-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <div className="w-6 h-6 rounded-full bg-slate-100 border text-2xs font-bold text-slate-600 flex items-center justify-center flex-shrink-0 mt-0.5">
                           💬
                         </div>
                         <div className="flex-1 min-w-0 bg-slate-50 border border-slate-100 rounded-lg p-2.5">
-                          {timestamp && <div className="text-[10px] text-slate-400 font-semibold mb-1">{timestamp}</div>}
+                          {timestamp && <div className="text-2xs text-slate-400 font-semibold mb-1">{timestamp}</div>}
                           <div className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">{content}</div>
                         </div>
                       </div>

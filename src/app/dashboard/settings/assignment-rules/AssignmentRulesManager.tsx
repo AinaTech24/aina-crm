@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, Plus, Trash2, GitBranch } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 
 type TeamMember = { id: string; name: string };
 type Rule = {
@@ -72,7 +73,7 @@ export default function AssignmentRulesManager({ team }: { team: TeamMember[] })
     load();
   }
   async function remove(r: Rule) {
-    if (!confirm(`Delete rule "${r.name}"?`)) return;
+    if (!(await confirmDialog({ title: `Delete rule "${r.name}"?`, confirmLabel: "Delete", tone: "danger" }))) return;
     await fetch(`/api/assignment-rules/${r.id}`, { method: "DELETE" });
     load();
   }

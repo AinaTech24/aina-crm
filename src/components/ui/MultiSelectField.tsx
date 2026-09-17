@@ -152,7 +152,7 @@ export function MultiSelectField({
             })}
           </ul>
           {max != null && (
-            <div className="px-2.5 pt-1 mt-1 border-t border-border text-[10px] text-muted-foreground">
+            <div className="px-2.5 pt-1 mt-1 border-t border-border text-2xs text-muted-foreground">
               {values.length}/{max} selected
             </div>
           )}

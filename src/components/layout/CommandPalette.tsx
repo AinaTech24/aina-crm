@@ -31,9 +31,11 @@ import {
   FolderSync,
   AlertTriangle,
   ArrowRight,
+  BarChart3,
   type LucideIcon,
 } from "lucide-react";
 import { ICONS } from "./CustomizableNav";
+import { ALL_REPORTS, reportHaystack } from "@/lib/reports/catalog";
 
 type PaletteNavItem = {
   href: string;
@@ -43,6 +45,19 @@ type PaletteNavItem = {
 };
 
 const RECENT_STORAGE_KEY = "aina_recent_records";
+
+/**
+ * The 90-odd canned reports, indexed for the palette.
+ *
+ * Reports used to be reachable only by opening Reports & MIS and knowing which
+ * of 18 groups to expand — so typing "capital gains" here returned clients, and
+ * the report read as missing. That is the single most common complaint levelled
+ * at the incumbent back offices: a feature that exists but cannot be found.
+ *
+ * `reportHaystack` folds in each report's description and its aliases, so a
+ * firm migrating from another back office can search in its old vocabulary.
+ */
+const REPORT_INDEX = ALL_REPORTS.map((r) => ({ ...r, haystack: reportHaystack(r) }));
 
 type RecentRecord = {
   id: string;
@@ -167,7 +182,7 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
   }, [q, open]);
 
   const saveRecent = (row: Row) => {
-    if (row.key.startsWith("act:") || row.key.startsWith("nav:")) return;
+    if (row.key.startsWith("act:") || row.key.startsWith("nav:") || row.key.startsWith("report:")) return;
     try {
       const rec: RecentRecord = {
         id: row.key,
@@ -224,6 +239,21 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
         icon: ICONS[n.iconName] ?? Circle,
       }));
 
+    // Reports are a static list, so they match locally — no round-trip, no
+    // debounce, results land on the keystroke.
+    const reportRows: Row[] = cleanNeedle.length < 2
+      ? []
+      : REPORT_INDEX.filter((r) => r.haystack.includes(cleanNeedle))
+          .slice(0, 6)
+          .map((r): Row => ({
+            key: `report:${r.key}`,
+            href: r.href,
+            title: r.label,
+            sub: r.desc,
+            suffix: r.group,
+            icon: ICONS[r.icon] ?? BarChart3,
+          }));
+
     const recordRows: Row[] = [
       ...(results.investors ?? []).map((r): Row => ({
         key: `inv:${r.id}`,
@@ -276,6 +306,9 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
     }
     if (recordRows.length > 0) {
       out.push({ id: "records", label: "Matching Records", icon: Search, rows: recordRows });
+    }
+    if (reportRows.length > 0) {
+      out.push({ id: "reports", label: "Reports & MIS", icon: BarChart3, rows: reportRows });
     }
     if (navRows.length > 0) {
       out.push({ id: "nav", label: "Navigation", icon: ArrowRight, rows: navRows });
@@ -341,7 +374,7 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
           {busy ? (
             <Loader2 className="size-4 animate-spin text-brand-cyan shrink-0" />
           ) : (
-            <span className="text-[10px] uppercase font-bold text-muted-foreground px-1.5 py-0.5 rounded bg-muted">
+            <span className="text-2xs uppercase font-bold text-muted-foreground px-1.5 py-0.5 rounded bg-muted">
               ESC
             </span>
           )}
@@ -357,7 +390,7 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
           ) : (
             sections.map((section) => (
               <div key={section.id} className="space-y-1">
-                <div className="px-3 py-1 text-[11px] font-bold tracking-wider uppercase text-muted-foreground flex items-center gap-1.5">
+                <div className="px-3 py-1 text-2xs font-bold tracking-wider uppercase text-muted-foreground flex items-center gap-1.5">
                   <section.icon className="size-3 text-brand-navy" />
                   <span>{section.label}</span>
                 </div>
@@ -389,7 +422,7 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
                           <span className="truncate">{row.title}</span>
                           {row.suffix && (
                             <span
-                              className={`text-[10px] px-1.5 py-0.2 rounded font-normal ${
+                              className={`text-2xs px-1.5 py-0.2 rounded font-normal ${
                                 isCurrent ? "bg-white/20 text-white" : "text-muted-foreground bg-muted"
                               }`}
                             >
@@ -398,7 +431,7 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
                           )}
                           {row.chip && (
                             <span
-                              className={`text-[10px] px-1.5 py-0.2 rounded font-semibold ml-auto shrink-0 ${
+                              className={`text-2xs px-1.5 py-0.2 rounded font-semibold ml-auto shrink-0 ${
                                 isCurrent ? "bg-white/20 text-white" : "bg-brand-cyan-light text-brand-cyan-deep"
                               }`}
                             >
@@ -408,7 +441,7 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
                         </div>
                         {row.sub && (
                           <div
-                            className={`text-[11px] truncate mt-0.5 ${
+                            className={`text-2xs truncate mt-0.5 ${
                               isCurrent ? "text-white/80" : "text-muted-foreground"
                             }`}
                           >
@@ -425,7 +458,7 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
         </div>
 
         {/* Footer shortcuts */}
-        <div className="flex items-center justify-between px-4 py-2 bg-muted/40 border-t border-border text-[11px] text-muted-foreground">
+        <div className="flex items-center justify-between px-4 py-2 bg-muted/40 border-t border-border text-2xs text-muted-foreground">
           <div className="flex items-center gap-3">
             <span>
               <kbd className="px-1 py-0.5 rounded bg-card border font-mono">↑</kbd> <kbd className="px-1 py-0.5 rounded bg-card border font-mono">↓</kbd> Navigate

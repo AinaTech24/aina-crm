@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { Save, Loader2, Trash2 } from "lucide-react";
 import { ThemeSelect } from "@/components/ui/ThemeSelect";
 import { ThemeDate } from "@/components/ui/ThemeDate";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 
 const ASSOCIATIONS: Array<{ value: string; label: string }> = [
   { value: "individual", label: "Individual" },
@@ -149,7 +150,7 @@ export function SubDistributorForm({
 
   async function terminate() {
     if (!initial?.id) return;
-    if (!confirm("Mark this sub-distributor as terminated? Commission history is preserved.")) return;
+    if (!(await confirmDialog({ title: "Mark this sub-distributor as terminated?", message: "Commission history is preserved." }))) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/sub-distributors/${initial.id}`, {
@@ -469,7 +470,7 @@ function Section({
 }) {
   return (
     <div className="space-y-2">
-      <h3 className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">
+      <h3 className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold">
         {title}
       </h3>
       {children}
@@ -490,7 +491,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">
+      <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">
         {label}
       </span>
       {children}

@@ -1,3 +1,4 @@
+import { assertInvestorAccess } from "@/lib/investors/access";
 /**
  * Per-client Minutes of Meeting (MOM) tracker — Network FP "2.5 MOM
  * Tracker" parity.
@@ -74,6 +75,7 @@ export default async function InvestorMomPage({
   params: Promise<{ id: string }>;
 }) {
   const session = await requireSession();
+    await assertInvestorAccess(session, (await params).id);
   const { id } = await params;
 
   const data = await withTenant(session.tenantId, async (tx) => {
@@ -132,7 +134,7 @@ export default async function InvestorMomPage({
       </div>
 
       <div className="card-surface p-5 space-y-1">
-        <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">
+        <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">
           Client
         </div>
         <h2 className="text-xl font-semibold">{data.investor.name}</h2>
@@ -180,7 +182,7 @@ export default async function InvestorMomPage({
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+                    <div className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold">
                       Meeting #{data.meetings.length - idx}
                     </div>
                     <h3 className="text-base font-semibold mt-0.5">
@@ -200,7 +202,7 @@ export default async function InvestorMomPage({
                   </div>
                   <div className="flex items-center gap-2 print:hidden">
                     <span
-                      className={`chip text-[10px] ${
+                      className={`chip text-2xs ${
                         STATUS_TONE[m.status] ?? "bg-slate-100"
                       }`}
                     >
@@ -208,7 +210,7 @@ export default async function InvestorMomPage({
                     </span>
                     <Link
                       href={`/dashboard/review-meetings/${m.id}`}
-                      className="text-[11px] text-violet-600 hover:underline"
+                      className="text-2xs text-violet-600 hover:underline"
                     >
                       Open →
                     </Link>
@@ -219,7 +221,7 @@ export default async function InvestorMomPage({
                   <Cell label="Place">
                     {MODE_LABELS[m.meetingMode] ?? m.meetingMode}
                     {m.locationOrLink && (
-                      <div className="text-[11px] text-muted-foreground mt-0.5">
+                      <div className="text-2xs text-muted-foreground mt-0.5">
                         {m.locationOrLink}
                       </div>
                     )}
@@ -238,14 +240,14 @@ export default async function InvestorMomPage({
                 {/* Attendees */}
                 {attendees.length > 0 && (
                   <div>
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-1">
+                    <div className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold mb-1">
                       Attendees
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {attendees.map((a, i) => (
                         <span
                           key={i}
-                          className={`chip text-[11px] ${
+                          className={`chip text-2xs ${
                             a.isExternal
                               ? "bg-violet-50 text-violet-800"
                               : "bg-cyan-50 text-cyan-800"
@@ -275,7 +277,7 @@ export default async function InvestorMomPage({
                 {/* Action items */}
                 {actionItems.length > 0 && (
                   <div>
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-1">
+                    <div className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold mb-1">
                       Next steps for action
                     </div>
                     <ol className="list-decimal ml-5 text-xs space-y-1">
@@ -299,7 +301,7 @@ export default async function InvestorMomPage({
                 )}
 
                 {m.outcome && (
-                  <div className="text-[11px] text-muted-foreground italic">
+                  <div className="text-2xs text-muted-foreground italic">
                     Outcome: {m.outcome.replace("_", " ")}
                     {m.outcomeNotes && ` — ${m.outcomeNotes}`}
                   </div>
@@ -322,7 +324,7 @@ function Cell({
 }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">
         {label}
       </div>
       <div className="text-xs mt-0.5">{children}</div>
@@ -339,7 +341,7 @@ function Field({
 }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-1">
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold mb-1">
         {label}
       </div>
       <div className="text-xs whitespace-pre-wrap text-foreground">

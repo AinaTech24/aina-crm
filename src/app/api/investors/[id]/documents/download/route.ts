@@ -1,3 +1,4 @@
+import { assertInvestorAccess } from "@/lib/investors/access";
 import { handleApiError } from "@/lib/api/error-handler";
 /**
  * GET /api/investors/[id]/documents/download?docId=…
@@ -35,6 +36,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   try {
     const session = await requireSession();
+    await assertInvestorAccess(session, (await params).id);
     requireCap(session.roles, "document.view", session.permissions);
     const sp = new URL(req.url).searchParams;
     const docId = sp.get("docId");

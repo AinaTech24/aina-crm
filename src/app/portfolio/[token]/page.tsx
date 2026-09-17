@@ -84,12 +84,13 @@ export default async function PublicPortfolioPage({ params }: { params: Promise<
           </div>
           <div style={{ fontSize: 30, fontWeight: 800, color: "#0f172a", marginTop: 2 }}>{formatINR(v.currentValue)}</div>
           <div style={{ display: "flex", gap: 18, marginTop: 12, flexWrap: "wrap" }}>
-            <Metric label="Invested" value={formatINR(v.pricedInvested)} />
-            <Metric label="Gain" value={`${gainPositive ? "+" : ""}${formatINR(v.gain)}`} color={gainPositive ? "#059669" : "#dc2626"} />
+            <Metric label="Net contributed" value={v.pricedInvested == null ? "Unknown" : formatINR(v.pricedInvested)} />
+            <Metric label="Account gain" value={v.gain == null ? "Unknown" : `${gainPositive ? "+" : ""}${formatINR(v.gain)}`} color={gainPositive ? "#059669" : "#dc2626"} />
             {v.xirr != null && (
               <Metric label="XIRR p.a." value={`${v.xirr >= 0 ? "+" : ""}${(v.xirr * 100).toFixed(1)}%`} color={v.xirr >= 0 ? "#059669" : "#dc2626"} />
             )}
           </div>
+          <p className="text-xs text-muted-foreground">{v.dataQuality.pricedHoldings}/{v.dataQuality.openHoldings} holdings priced; {v.dataQuality.unknownCostHoldings} have unknown cost. Account returns include closed positions when transaction history is complete.</p>
           {v.asOf && <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 10 }}>As of {new Date(v.asOf).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</div>}
         </div>
 
@@ -156,3 +157,4 @@ function ErrorScreen({ message }: { message: string }) {
     </div>
   );
 }
+

@@ -129,7 +129,7 @@ export function BudgetVsActual({
                       />
                     </div>
                     {budget > 0 && (
-                      <div className={`text-[10px] mt-0.5 ${over ? "text-rose-600" : "text-muted-foreground"}`}>
+                      <div className={`text-2xs mt-0.5 ${over ? "text-rose-600" : "text-muted-foreground"}`}>
                         {pct.toFixed(0)}% used{over ? ` · over by ${formatINR(actual - budget)}` : ` · ${formatINR(Math.max(0, budget - actual))} left`}
                       </div>
                     )}

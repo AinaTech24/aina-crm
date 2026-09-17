@@ -137,7 +137,7 @@ export function PublicFeedbackForm({
             style={{ width: `${(answered / FEEDBACK_QUESTIONS.length) * 100}%` }}
           />
         </div>
-        <span className="text-[11px] text-slate-500 tabular-nums shrink-0">
+        <span className="text-2xs text-slate-500 tabular-nums shrink-0">
           {answered} of {FEEDBACK_QUESTIONS.length}
         </span>
       </div>
@@ -174,7 +174,7 @@ export function PublicFeedbackForm({
               })}
             </div>
             {qi === 0 && (
-              <div className="flex justify-between text-[11px] text-slate-500 mt-1.5">
+              <div className="flex justify-between text-2xs text-slate-500 mt-1.5">
                 <span>Not at all</span>
                 <span>Completely</span>
               </div>
@@ -219,7 +219,7 @@ export function PublicFeedbackForm({
         {busy ? "Sending…" : "Submit feedback"}
       </button>
 
-      <p className="mt-3 text-[11px] text-slate-500 text-center">
+      <p className="mt-3 text-2xs text-slate-500 text-center">
         This link is personal to you and can be used once.
       </p>
     </div>

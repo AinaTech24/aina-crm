@@ -119,7 +119,7 @@ export function CallOutcomeForm({ leadId }: { leadId: string }) {
       </div>
 
       <div>
-        <label className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Outcome *</label>
+        <label className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">Outcome *</label>
         <div className="grid grid-cols-2 gap-1.5 mt-1">
           {OUTCOMES.map((o) => (
             <button
@@ -139,7 +139,7 @@ export function CallOutcomeForm({ leadId }: { leadId: string }) {
       </div>
 
       <div>
-        <label className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Notes</label>
+        <label className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">Notes</label>
         <textarea
           rows={2}
           value={notes}
@@ -219,7 +219,7 @@ export function CallOutcomeForm({ leadId }: { leadId: string }) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">{label}</div>
+      <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground mb-1">{label}</div>
       {children}
     </label>
   );

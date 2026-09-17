@@ -39,7 +39,7 @@ export default async function BlueprintEditPage({ params }: { params: Promise<{ 
           <ChevronLeft className="size-3" /> Back to blueprints
         </Link>
         <h1 className="page-title mt-2">
-          <Workflow className="size-6 text-brand-cyan" /> {data.def.blueprintName}
+          <Workflow className="size-6 text-muted-foreground" /> {data.def.blueprintName}
         </h1>
         <p className="page-subtitle">
           Edit stages, SLA days, required fields, and on-enter automations.

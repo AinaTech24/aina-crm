@@ -1,136 +1,134 @@
-/**
- * Offline write queue — field reality: RMs log calls in basements, lifts and
- * client offices with no signal. Before this, a write that hit a dead network
- * threw and the work was simply lost.
- *
- * Now: writes wrapped in `queuedPost` / `queuedPatch` are persisted to disk when
- * the network is down and replayed, in order, as soon as a request succeeds
- * again. Only explicit call-sites opt in — reads and auth must never be queued.
- *
- * Deliberately simple: FIFO, capped, at-least-once. A replayed write can in
- * principle duplicate if the original actually reached the server before the
- * connection dropped; that's the accepted trade for never losing a call log.
- */
-
+/** Account-bound durable writes. Attempts share one server deduplication key. */
 import { create } from "zustand";
 import { api, ApiError } from "../api/client";
 import { storageGet, storageSet } from "./storage";
+import { getAccountScope, onAccountChange } from "./accountScope";
 import { useConnectivity } from "../state/connectivity";
 import { toast } from "./toast";
 
-const KEY = "offline_queue_v1";
 const MAX = 100;
-
-export interface QueuedWrite {
-  id: string;
-  method: "POST" | "PATCH";
-  path: string;
-  body: unknown;
-  /** Shown to the user, e.g. "Call log". */
-  label: string;
-  at: number;
-}
-
-interface QueueState {
-  items: QueuedWrite[];
-  flushing: boolean;
-  hydrate: () => Promise<void>;
-  enqueue: (w: Omit<QueuedWrite, "id" | "at">) => void;
-  flush: () => Promise<void>;
-  clear: () => Promise<void>;
-}
-
-const persist = (items: QueuedWrite[]) => { storageSet(KEY, JSON.stringify(items)).catch(() => {}); };
-// No Math.random/Date collision worry — a counter plus timestamp is enough here.
+const key = (owner: string) => `offline_queue_v2.${owner}`;
 let seq = 0;
-const nextId = () => `${Date.now().toString(36)}-${(seq++).toString(36)}`;
-
-export const useOfflineQueue = create<QueueState>((set, get) => ({
-  items: [],
-  flushing: false,
-
-  hydrate: async () => {
-    try {
-      const raw = await storageGet(KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) set({ items: parsed.filter((w: any) => w?.path && w?.method) });
-    } catch {
-      /* corrupt payload — start clean rather than crash the shell */
-    }
-  },
-
-  enqueue: (w) => {
-    const items = [...get().items, { ...w, id: nextId(), at: Date.now() }].slice(-MAX);
-    set({ items });
-    persist(items);
-  },
-
-  flush: async () => {
-    if (get().flushing) return;
-    const queued = get().items;
-    if (queued.length === 0) return;
-    set({ flushing: true });
-
-    const remaining: QueuedWrite[] = [];
-    let sent = 0;
-    for (let i = 0; i < queued.length; i++) {
-      const w = queued[i];
-      try {
-        if (w.method === "POST") await api.post(w.path, w.body);
-        else await api.patch(w.path, w.body);
-        sent++;
-      } catch (e: any) {
-        const err = e as ApiError;
-        if (err?.kind === "network" || err?.kind === "timeout") {
-          // Still offline — keep this and everything after it, order intact.
-          remaining.push(...queued.slice(i));
-          break;
-        }
-        // A real server rejection (400/403/409…) will never succeed on replay —
-        // drop it rather than retry forever.
-      }
-    }
-
-    set({ items: remaining, flushing: false });
-    persist(remaining);
-    if (sent > 0) toast.success(`Synced ${sent} offline ${sent === 1 ? "change" : "changes"}`);
-  },
-
-  clear: async () => { set({ items: [] }); await storageSet(KEY, "[]").catch(() => {}); },
-}));
-
-/** POST that survives a dead network. Returns null when it was queued. */
-export async function queuedPost<T = any>(path: string, body: unknown, label: string): Promise<T | null> {
-  try {
-    return await api.post<T>(path, body);
-  } catch (e: any) {
-    if (e?.kind === "network" || e?.kind === "timeout") {
-      useOfflineQueue.getState().enqueue({ method: "POST", path, body, label });
-      toast.info(`${label} saved — will sync when you're back online`);
-      return null;
-    }
-    throw e;
-  }
+const nextId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${seq++}`;
+export interface QueuedWrite {
+  id: string; method: "POST" | "PATCH"; path: string; body: unknown; label: string; at: number;
+  attempts: number; status: "pending" | "failed"; nextAttemptAt: number; error?: string;
 }
-
-/** PATCH that survives a dead network. Returns null when it was queued. */
-export async function queuedPatch<T = any>(path: string, body: unknown, label: string): Promise<T | null> {
-  try {
-    return await api.patch<T>(path, body);
-  } catch (e: any) {
-    if (e?.kind === "network" || e?.kind === "timeout") {
-      useOfflineQueue.getState().enqueue({ method: "PATCH", path, body, label });
-      toast.info(`${label} saved — will sync when you're back online`);
-      return null;
-    }
-    throw e;
-  }
+type Input = Pick<QueuedWrite, "method" | "path" | "body" | "label">;
+type Outcome = { value?: unknown; error?: Error };
+interface QueueState {
+  items: QueuedWrite[]; flushing: boolean; hydrated: boolean; legacyPending: boolean; storageError: string | null;
+  hydrate: () => Promise<void>; enqueue: (w: Input) => Promise<QueuedWrite>;
+  flush: () => Promise<Map<string, Outcome>>;
+  retry: (id: string) => Promise<void>; discard: (id: string) => Promise<void>; clear: () => Promise<void>;
 }
-
-/** Flush whenever connectivity flips back on. Call once, near the app root. */
-export function watchConnectivityAndFlush(): () => void {
-  return useConnectivity.subscribe((state, prev) => {
-    if (state.online && !prev.online) useOfflineQueue.getState().flush();
+export function retryable(error: unknown): boolean {
+  return error instanceof ApiError && (error.kind !== "http" || [408, 425, 429].includes(error.status) || error.status >= 500);
+}
+function supported(w: Input): boolean {
+  return w.method === "POST" ? /^\/api\/(activities|leads\/[a-f\d-]+\/notes)$/.test(w.path)
+    : /^\/api\/(activities|tasks|investors)\/[a-f\d-]+$/.test(w.path);
+}
+let writes: Promise<unknown> = Promise.resolve();
+function serial<T>(fn: () => Promise<T>): Promise<T> {
+  const result = writes.then(fn, fn); writes = result.catch(() => {}); return result;
+}
+let activeFlush: { generation: number; promise: Promise<Map<string, Outcome>> } | null = null;
+export const useOfflineQueue = create<QueueState>((set, get) => {
+  const update = (generation: number, change: (items: QueuedWrite[]) => QueuedWrite[]) => serial(async () => {
+    const scope = getAccountScope();
+    if (!scope.owner || scope.generation !== generation) throw new Error("Account changed. Sign in to the original account to sync this change.");
+    const items = change(get().items);
+    try { await storageSet(key(scope.owner), JSON.stringify(items)); }
+    catch { set({ storageError: "Device storage could not save your changes. Free space and try again." }); throw new Error("Unable to save offline change to device storage"); }
+    if (getAccountScope().generation === generation) set({ items, storageError: null });
   });
+  return {
+    items: [], flushing: false, hydrated: false, legacyPending: false, storageError: null,
+    hydrate: () => serial(async () => {
+      const scope = getAccountScope();
+      if (!scope.owner || get().hydrated) return;
+      try {
+        const raw = await storageGet(key(scope.owner));
+        const parsed: unknown = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(parsed) || !parsed.every((w) => w && typeof w.id === "string" && typeof w.at === "number" && supported(w) && ["pending", "failed"].includes(w.status))) throw new Error("Stored changes need recovery");
+        const legacy = await storageGet("offline_queue_v1");
+        if (getAccountScope().generation === scope.generation) set({ items: parsed, hydrated: true, legacyPending: !!legacy && legacy !== "[]", storageError: null });
+      } catch (error) {
+        if (getAccountScope().generation === scope.generation) set({ storageError: "Saved changes could not be loaded. Nothing has been deleted." });
+        throw error;
+      }
+    }),
+    enqueue: async (input) => {
+      const scope = getAccountScope();
+      if (!scope.owner || !supported(input)) throw new Error("This change cannot be saved offline");
+      await get().hydrate();
+      const item: QueuedWrite = { ...input, id: nextId(), at: Date.now(), attempts: 0, status: "pending", nextAttemptAt: 0 };
+      await update(scope.generation, (items) => {
+        if (items.length >= MAX) throw new Error("Your sync queue is full. Sync or review existing changes before saving more.");
+        return [...items, item];
+      });
+      return item;
+    },
+    flush: () => {
+      const scope = getAccountScope();
+      if (activeFlush?.generation === scope.generation) return activeFlush.promise;
+      const promise = (async () => {
+        const outcomes = new Map<string, Outcome>();
+        if (!scope.owner) return outcomes;
+        await get().hydrate();
+        if (getAccountScope().generation !== scope.generation) return outcomes;
+        set({ flushing: true });
+        try {
+          while (getAccountScope().generation === scope.generation) {
+            const item = get().items.find((w) => w.status === "pending");
+            if (!item || item.nextAttemptAt > Date.now()) break;
+            let value: unknown;
+            try {
+              const options = { headers: { "Idempotency-Key": item.id } };
+              value = item.method === "POST" ? await api.post(item.path, item.body, options) : await api.patch(item.path, item.body, options);
+            } catch (error) {
+              if (getAccountScope().generation !== scope.generation) break;
+              const transient = retryable(error), attempts = item.attempts + 1;
+              await update(scope.generation, (items) => items.map((w) => w.id !== item.id ? w : { ...w, attempts,
+                status: transient ? "pending" : "failed", error: error instanceof Error ? error.message : "Sync failed",
+                nextAttemptAt: Date.now() + Math.min(300_000, 1000 * 2 ** Math.min(attempts, 9)) }));
+              outcomes.set(item.id, { error: error instanceof Error ? error : new Error("Sync failed") });
+              if (transient) break;
+              continue;
+            }
+            if (getAccountScope().generation !== scope.generation) break;
+            await update(scope.generation, (items) => items.filter((w) => w.id !== item.id));
+            outcomes.set(item.id, { value });
+          }
+        } finally { if (getAccountScope().generation === scope.generation) set({ flushing: false }); }
+        return outcomes;
+      })();
+      activeFlush = { generation: scope.generation, promise };
+      void promise.finally(() => { if (activeFlush?.promise === promise) activeFlush = null; }).catch(() => {});
+      return promise;
+    },
+    retry: async (id) => { await update(getAccountScope().generation, (items) => items.map((w) => w.id === id ? { ...w, status: "pending", nextAttemptAt: 0, error: undefined } : w)); await get().flush(); },
+    discard: (id) => update(getAccountScope().generation, (items) => items.filter((w) => w.id !== id)),
+    clear: () => update(getAccountScope().generation, () => []),
+  };
+});
+onAccountChange(() => useOfflineQueue.setState({ items: [], flushing: false, hydrated: false, legacyPending: false, storageError: null }));
+
+async function queuedWrite<T>(input: Input): Promise<T | null> {
+  const item = await useOfflineQueue.getState().enqueue(input);
+  const outcomes = await useOfflineQueue.getState().flush();
+  const outcome = outcomes.get(item.id);
+  if (outcome && !outcome.error) return outcome.value as T;
+  if (outcome?.error && !retryable(outcome.error)) throw outcome.error;
+  toast.info(`${input.label} saved on this device. View Sync to check progress.`);
+  return null;
+}
+export const queuedPost = <T = unknown>(path: string, body: unknown, label: string) => queuedWrite<T>({ method: "POST", path, body, label });
+export const queuedPatch = <T = unknown>(path: string, body: unknown, label: string) => queuedWrite<T>({ method: "PATCH", path, body, label });
+export function watchConnectivityAndFlush(): () => void {
+  const flush = () => { void useOfflineQueue.getState().flush().catch(() => {}); };
+  const unsubscribe = useConnectivity.subscribe((state, prev) => { if (state.online && !prev.online) flush(); });
+  const timer = setInterval(flush, 15_000);
+  return () => { unsubscribe(); clearInterval(timer); };
 }

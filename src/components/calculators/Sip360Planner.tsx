@@ -106,7 +106,7 @@ export function Sip360Planner() {
 
       {/* ─────────── Optional comparisons ─────────── */}
       <div className="rounded-lg border border-border/70 p-4 space-y-4 bg-secondary/20 print:bg-transparent">
-        <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+        <div className="text-2xs font-bold uppercase tracking-wider text-muted-foreground">
           Optional comparisons
         </div>
 
@@ -143,7 +143,7 @@ export function Sip360Planner() {
               </div>
             )}
             {limitedEnabled && (
-              <p className="text-[10px] text-muted-foreground">Each must be shorter than the {years}-year horizon.</p>
+              <p className="text-2xs text-muted-foreground">Each must be shorter than the {years}-year horizon.</p>
             )}
           </div>
 
@@ -175,7 +175,7 @@ export function Sip360Planner() {
             onSelect={(s) => setSchemes(schemes ? `${schemes}, ${s.schemeName}` : s.schemeName)}
           />
           {schemes && (
-            <div className="mt-1 flex items-start gap-1.5 text-[10px] text-muted-foreground">
+            <div className="mt-1 flex items-start gap-1.5 text-2xs text-muted-foreground">
               <span className="flex-1">{schemes}</span>
               <button type="button" onClick={() => setSchemes("")} className="text-rose-600 hover:underline shrink-0">clear</button>
             </div>
@@ -275,13 +275,13 @@ export function Sip360Planner() {
         <div className="grid md:grid-cols-2 gap-3 text-sm border-t pt-3">
           {schemes && (
             <div>
-              <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mb-0.5">Suggested schemes</div>
+              <div className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold mb-0.5">Suggested schemes</div>
               <div>{schemes}</div>
             </div>
           )}
           {comments && (
             <div>
-              <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mb-0.5">Comments</div>
+              <div className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold mb-0.5">Comments</div>
               <div>{comments}</div>
             </div>
           )}

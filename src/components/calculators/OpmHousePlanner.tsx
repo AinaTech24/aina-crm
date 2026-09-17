@@ -124,7 +124,7 @@ function OpmChart({
 
   return (
     <div className="border rounded-md p-3">
-      <div className="flex items-center gap-4 mb-2 text-[11px]">
+      <div className="flex items-center gap-4 mb-2 text-2xs">
         <span className="inline-flex items-center gap-1.5">
           <span className="size-2.5 rounded-sm bg-rose-500" /> Loan outstanding
         </span>

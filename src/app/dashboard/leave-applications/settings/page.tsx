@@ -27,7 +27,7 @@ export default async function LeavePolicyPage() {
         <ChevronLeft className="size-4" /> Back to leave applications
       </Link>
       <div className="flex items-center gap-2">
-        <CalendarCog className="size-6 text-brand-cyan" />
+        <CalendarCog className="size-6 text-muted-foreground" />
         <h1 className="text-2xl font-bold tracking-tight">Leave policy</h1>
       </div>
       <p className="text-sm text-muted-foreground">

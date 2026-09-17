@@ -43,7 +43,7 @@ export default async function HolidaysPage() {
         </Link>
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <CalendarOff className="size-6 text-brand-cyan" /> Holiday Master
+            <CalendarOff className="size-6 text-muted-foreground" /> Holiday Master
           </h1>
           <p className="text-muted-foreground text-sm">
             Per-firm non-working days · attendance auto-marks these for every active employee.

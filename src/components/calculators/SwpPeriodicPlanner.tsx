@@ -94,7 +94,7 @@ export function SwpPeriodicPlanner() {
 
       {/* Investment mode */}
       <div>
-        <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">Investment mode</span>
+        <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">Investment mode</span>
         <div className="flex flex-wrap gap-3">
           {MODES.map((m) => (
             <label key={m.value} className="flex items-center gap-1.5 text-sm cursor-pointer">
@@ -116,8 +116,8 @@ export function SwpPeriodicPlanner() {
       <div className="grid md:grid-cols-2 gap-4">
         <section className="border border-slate-200 rounded-lg p-4 space-y-2">
           <div className="flex items-center justify-between">
-            <div className="text-[11px] uppercase tracking-wider font-semibold text-primary">Asset allocation</div>
-            <div className={`text-[11px] font-semibold ${allocTotal === 100 ? "text-emerald-600" : "text-rose-600"}`}>Total {allocTotal}%</div>
+            <div className="text-2xs uppercase tracking-wider font-semibold text-primary">Asset allocation</div>
+            <div className={`text-2xs font-semibold ${allocTotal === 100 ? "text-emerald-600" : "text-rose-600"}`}>Total {allocTotal}%</div>
           </div>
           <div className="grid grid-cols-3 gap-2">
             <Num label="Debt %" value={alloc.debt} setValue={(v) => setAlloc((a) => ({ ...a, debt: v }))} step={5} />
@@ -127,8 +127,8 @@ export function SwpPeriodicPlanner() {
         </section>
         <section className="border border-slate-200 rounded-lg p-4 space-y-2">
           <div className="flex items-center justify-between">
-            <div className="text-[11px] uppercase tracking-wider font-semibold text-emerald-700">Assumed return per class</div>
-            <div className="text-[11px] font-semibold text-emerald-700">Avg {result.averageReturnPct.toFixed(2)}%</div>
+            <div className="text-2xs uppercase tracking-wider font-semibold text-emerald-700">Assumed return per class</div>
+            <div className="text-2xs font-semibold text-emerald-700">Avg {result.averageReturnPct.toFixed(2)}%</div>
           </div>
           <div className="grid grid-cols-3 gap-2">
             <Num label="Debt %" value={returns.debt} setValue={(v) => setReturns((r) => ({ ...r, debt: v }))} step={0.5} />
@@ -142,7 +142,7 @@ export function SwpPeriodicPlanner() {
       <div className="grid md:grid-cols-2 gap-4">
         <section className="border border-slate-200 rounded-lg p-4 space-y-3">
           <div className="flex items-center gap-4">
-            <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">Deferment required?</span>
+            <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">Deferment required?</span>
             <label className="flex items-center gap-1.5 text-sm cursor-pointer"><input type="radio" checked={!defermentRequired} onChange={() => setDefermentRequired(false)} /> No</label>
             <label className="flex items-center gap-1.5 text-sm cursor-pointer"><input type="radio" checked={defermentRequired} onChange={() => setDefermentRequired(true)} /> Yes</label>
           </div>
@@ -154,7 +154,7 @@ export function SwpPeriodicPlanner() {
           )}
         </section>
         <section className="border border-slate-200 rounded-lg p-4 space-y-3">
-          <div className="text-[11px] uppercase tracking-wider font-semibold text-amber-700">Periodic withdrawals</div>
+          <div className="text-2xs uppercase tracking-wider font-semibold text-amber-700">Periodic withdrawals</div>
           <div className="grid grid-cols-3 gap-3">
             <Num label="Every N years" value={withdrawalIntervalYears} setValue={setWithdrawalIntervalYears} step={1} />
             <Num label="No. of installments" value={numInstallments} setValue={setNumInstallments} step={1} />
@@ -174,7 +174,7 @@ export function SwpPeriodicPlanner() {
       />
 
       {result.corpusDepleted && (
-        <div className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-3 py-2">
+        <div className="text-2xs text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-3 py-2">
           ⚠️ The corpus runs out before all withdrawals are made. Reduce the withdrawal amount, lower the number of installments, or invest more.
         </div>
       )}
@@ -210,7 +210,7 @@ export function SwpPeriodicPlanner() {
         </details>
       )}
 
-      <p className="text-[10px] text-muted-foreground border-t pt-3">
+      <p className="text-2xs text-muted-foreground border-t pt-3">
         * Illustration only, on the assumptions you enter. The year&apos;s SIP earns its year-end value at the assumed return;
         withdrawals are taken at year end. Actual results vary with market performance. Not investment advice.
       </p>
@@ -223,7 +223,7 @@ export function SwpPeriodicPlanner() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
+      <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
       {children}
     </label>
   );
@@ -275,7 +275,7 @@ function ResultRow({
                 : "";
         return (
           <div key={i} className={`border rounded-md p-3 ${tone}`}>
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">{c.label}</div>
+            <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">{c.label}</div>
             <div className="text-lg font-semibold mt-0.5">{c.value}</div>
           </div>
         );

@@ -175,7 +175,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="page-title">
-            <UserCog className="size-6 text-brand-cyan" /> {emp.name}
+            <UserCog className="size-6 text-muted-foreground" /> {emp.name}
           </h1>
           <p className="page-subtitle">
             {emp.email}
@@ -224,11 +224,11 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
         <Tile icon={CheckCircle2} label="Leave balance (FY)" value={String(totalLeaveBalance)} accent="emerald" />
         <Tile icon={AlertTriangle} label="Pending leave" value={String(data.pendingLeave)} accent={data.pendingLeave > 0 ? "amber" : "muted"} />
         <div className="card-surface p-3">
-          <div className="flex items-center justify-between text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+          <div className="flex items-center justify-between text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
             <span>Leave used (FY)</span>
             <Calendar className="size-3 text-muted-foreground" />
           </div>
-          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]">
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-2xs">
             {leaveBalance.map((l) => (
               <span key={l.type} className="tabular-nums">
                 <span className="capitalize text-muted-foreground">{l.type}</span>{" "}
@@ -311,7 +311,7 @@ function Tile({ icon: Icon, label, value, accent }: { icon: any; label: string; 
     accent === "emerald" ? "text-emerald-600" : accent === "rose" ? "text-rose-600" : accent === "amber" ? "text-amber-600" : "text-foreground";
   return (
     <div className="card-surface p-3">
-      <div className="flex items-center justify-between text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+      <div className="flex items-center justify-between text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
         <span>{label}</span>
         <Icon className="size-3 text-muted-foreground" />
       </div>
@@ -325,7 +325,7 @@ function SummaryRow({ icon: Icon, label, value }: { icon: any; label: string; va
     <div className="card-surface p-3 flex items-center gap-3">
       <Icon className="size-4 text-brand-cyan" />
       <div>
-        <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">{label}</div>
+        <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{label}</div>
         <div className="text-sm font-medium">{value}</div>
       </div>
     </div>

@@ -242,10 +242,10 @@ function actorLabel(a: string | null): string {
 /** Colour for the timeline dot + the to-status chip. */
 function eventTone(t: string): { dot: string; chip: string } {
   if (["reactivated", "payment_succeeded", "license_extended", "created", "renewed"].includes(t))
-    return { dot: "bg-emerald-500", chip: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" };
+    return { dot: "bg-emerald-500", chip: "bg-emerald-100 text-emerald-700" };
   if (["suspended", "cancelled", "payment_failed"].includes(t))
-    return { dot: "bg-rose-500", chip: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" };
-  return { dot: "bg-sky-500", chip: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300" };
+    return { dot: "bg-rose-500", chip: "bg-rose-100 text-rose-700" };
+  return { dot: "bg-sky-500", chip: "bg-sky-100 text-sky-700" };
 }
 
 function Kpi({ label, value, icon: Icon }: { label: string; value: number; icon?: any }) {

@@ -13,7 +13,7 @@ import bcrypt from "bcryptjs";
 import { withSystem } from "@/db/client";
 import { sign2faChallenge } from "@/lib/auth/jwt";
 import { attachSessionCookie } from "@/lib/auth/issue-session";
-import { enforce } from "@/lib/rate-limit";
+import { reserveLoginAttempt } from "@/lib/auth/login-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +29,8 @@ export async function POST(req: NextRequest) {
   // We rate-limit only FAILED attempts (below). Successful sign-ins never
   // consume the budget, so normal use — even repeated clicks or many staff on
   // one office IP — is never blocked; only password-guessing is.
-  const recordFailure = () => enforce(req, "auth.login", { limit: 15, windowSec: 15 * 60 }, email);
+  const attempt = await reserveLoginAttempt(email);
+  if (!attempt.allowed) return attempt.response;
 
   const userRow = await withSystem(async (tx) => {
     const r = await tx.execute(sql`
@@ -49,9 +50,9 @@ export async function POST(req: NextRequest) {
 
   if (!userRow || !userRow.password_hash) {
     // Generic message — don't leak which leg failed.
-    return recordFailure() ?? NextResponse.json({ error: "invalid credentials" }, { status: 401 });
+    return NextResponse.json({ error: "invalid credentials" }, { status: 401 });
   }
-  if (userRow.status === "suspended" || userRow.status === "offboarded") {
+  if (userRow.status !== "active") {
     return NextResponse.json({ error: "account inactive" }, { status: 403 });
   }
   // A trashed (soft-deleted) employee can't sign in until an admin restores them.
@@ -65,8 +66,10 @@ export async function POST(req: NextRequest) {
 
   const ok = await bcrypt.compare(password, userRow.password_hash);
   if (!ok) {
-    return recordFailure() ?? NextResponse.json({ error: "invalid credentials" }, { status: 401 });
+    return NextResponse.json({ error: "invalid credentials" }, { status: 401 });
   }
+
+  await attempt.succeeded();
 
   // Second factor gate. Password is verified, but if 2FA is on we do NOT issue
   // a session yet — instead hand back a short-lived challenge the client

@@ -40,12 +40,12 @@ export function HealthSnapshot({ c, sticky }: { c: DiscoveryComputed; sticky?: b
           <div className="absolute inset-0 grid place-items-center">
             <div className="text-center leading-none">
               <div className="text-xl font-bold" style={{ color: ringStroke }}>{c.healthScore}</div>
-              <div className="text-[8px] text-muted-foreground">/ 100</div>
+              <div className="text-2xs text-muted-foreground">/ 100</div>
             </div>
           </div>
         </div>
         <div>
-          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Financial health</div>
+          <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">Financial health</div>
           <div className={`text-lg font-bold ${bandColor}`}>{c.healthBand}</div>
         </div>
       </div>
@@ -54,7 +54,7 @@ export function HealthSnapshot({ c, sticky }: { c: DiscoveryComputed; sticky?: b
       <div className="space-y-1.5">
         {c.scoreParts.map((p) => (
           <div key={p.label}>
-            <div className="flex items-center justify-between text-[11px]">
+            <div className="flex items-center justify-between text-2xs">
               <span className="text-muted-foreground">{p.label}</span>
               <span className="tabular-nums font-medium">{p.score}/{p.max}</span>
             </div>
@@ -94,34 +94,34 @@ export function HealthSnapshot({ c, sticky }: { c: DiscoveryComputed; sticky?: b
         <div className="space-y-2.5 pt-3 border-t border-border">
           <div className="flex items-end justify-between">
             <div>
-              <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Risk profile</div>
+              <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">Risk profile</div>
               <div className="text-base font-bold leading-tight" style={{ color: c.risk.bandColor }}>{c.risk.bandLabel}</div>
             </div>
             <div className="text-right leading-tight">
               <div className="text-lg font-bold tabular-nums" style={{ color: c.risk.bandColor }}>
-                {c.risk.score}<span className="text-[10px] text-muted-foreground">/{c.risk.max}</span>
+                {c.risk.score}<span className="text-2xs text-muted-foreground">/{c.risk.max}</span>
               </div>
-              <div className="text-[10px] text-muted-foreground">{c.risk.answered}/{c.risk.total} parameters</div>
+              <div className="text-2xs text-muted-foreground">{c.risk.answered}/{c.risk.total} parameters</div>
             </div>
           </div>
           <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
             <div className="h-full rounded-full" style={{ width: `${(c.risk.score / c.risk.max) * 100}%`, background: c.risk.bandColor }} />
           </div>
 
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold pt-0.5">Product suitability</div>
+          <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold pt-0.5">Product suitability</div>
           <div className="grid grid-cols-2 gap-1.5">
             {PRODUCTS.map((p) => {
               const cell = c.risk.suitability[p];
               const vrd = VERDICT[cell.overall];
               return (
                 <div key={p} className="flex items-center justify-between rounded-md border border-border bg-card px-2 py-1">
-                  <span className="text-[11px] truncate">{PRODUCT_LABELS[p]}</span>
+                  <span className="text-2xs truncate">{PRODUCT_LABELS[p]}</span>
                   <span className={`text-xs ${vrd.cls}`} title={`risk ${cell.risk} · horizon ${cell.horizon} · surplus ${cell.surplus} · liquidity ${cell.liquidity}`}>{vrd.mark}</span>
                 </div>
               );
             })}
           </div>
-          <div className="text-[9px] text-muted-foreground">✅ suitable · ⚠ conditional · ❌ not suitable · — needs more inputs</div>
+          <div className="text-2xs text-muted-foreground">✅ suitable · ⚠ conditional · ❌ not suitable · — needs more inputs</div>
         </div>
       )}
     </div>
@@ -132,9 +132,9 @@ function Metric({ icon: Icon, label, value, sub, tone }: { icon: any; label: str
   const cls = tone === "emerald" ? "text-emerald-700" : tone === "rose" ? "text-rose-700" : "text-foreground";
   return (
     <div className="rounded-lg border border-border bg-card p-2.5">
-      <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground"><Icon className="size-3" /> {label}</div>
+      <div className="flex items-center gap-1 text-2xs uppercase tracking-wider text-muted-foreground"><Icon className="size-3" /> {label}</div>
       <div className={`text-sm font-bold tabular-nums mt-0.5 ${cls}`}>{value}</div>
-      {sub && <div className="text-[10px] text-muted-foreground">{sub}</div>}
+      {sub && <div className="text-2xs text-muted-foreground">{sub}</div>}
     </div>
   );
 }

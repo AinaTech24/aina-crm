@@ -1,5 +1,6 @@
 import { type FilterAST, type Predicate, isGroup, isPredicate, type FieldRef } from "./ast";
 import { getCatalog, getField, type FieldDef } from "./catalog";
+import { getRuntimeField, validateRuntimeFilter } from "./event-fields";
 
 /**
  * Compiles a FilterAST into a JavaScript predicate `(row) => boolean` for
@@ -14,7 +15,7 @@ export function compileToPredicate(
   ast: FilterAST,
   subject: string
 ): (row: Record<string, any>) => boolean {
-  const cat = getCatalog(subject);
+  validateRuntimeFilter(ast, subject);
   return (row) => evalNode(ast, row, subject);
 
   function evalNode(node: FilterAST, row: Record<string, any>, subj: string): boolean {
@@ -54,7 +55,7 @@ function evalPredicate(node: Predicate, row: Record<string, any>, subject: strin
     }
   }
 
-  const def = getField(subject, fieldKey(node.field));
+  const def = getRuntimeField(subject, fieldKey(node.field));
   const value = getValueByField(row, node.field, def, subject);
 
   switch (node.op) {
@@ -161,7 +162,7 @@ function getValueByField(row: Record<string, any>, field: FieldRef, _def: FieldD
     // catalog.field key 'aum' looks at row.aum first, then row.<subject>.aum.
     const direct = getPath(row, field.path);
     if (direct !== undefined) return direct;
-    return getPath(row, field.path); // simple — extend later
+    return getPath(row, field.path.replace(/^subject\./, "")) ?? getPath(row, `${_subject}.${field.path}`);
   }
   if (field.kind === "computed") {
     // Provide handy computed fallbacks. For everything else, the SQL path
@@ -183,7 +184,7 @@ function getValueByField(row: Record<string, any>, field: FieldRef, _def: FieldD
 }
 
 function getPath(obj: any, path: string): any {
-  return path.split(".").reduce((acc, k) => (acc == null ? acc : acc[k]), obj);
+  return path.split(".").reduce((acc, k) => (acc == null || ["__proto__", "constructor", "prototype"].includes(k) ? undefined : acc[k] ?? acc[k.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase())]), obj);
 }
 
 function looseEq(a: unknown, b: unknown): boolean {

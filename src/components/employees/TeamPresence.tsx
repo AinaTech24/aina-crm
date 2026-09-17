@@ -41,7 +41,7 @@ export function TeamPresence({ members }: { members: { id: string; name: string 
       </span>
       {open && count > 0 && (
         <div className="absolute right-0 z-30 mt-1 w-52 rounded-lg border border-border bg-card p-2 shadow-lg">
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Online now</div>
+          <div className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Online now</div>
           <ul className="space-y-0.5 max-h-56 overflow-y-auto">
             {onlineMembers.map((m) => (
               <li key={m.id} className="flex items-center gap-2 text-xs">

@@ -41,10 +41,9 @@ export function resolveTokens(
   if (!Array.isArray(variables)) return resolved;
   for (const v of variables) {
     const value = resolveOne(v, ctx);
-    // Don't hard-fail the whole send when a field can't be resolved — render it
-    // blank. Blocking an entire email because one optional field is empty is the
-    // wrong trade-off; the compliance gate + the author's review are the safety
-    // net, and the designer preview still flags unfilled fields.
+    if (v.required && (value === null || value === undefined || String(value).trim() === "")) throw new TokenResolutionError(`Required variable '${v.key}' is missing`);
+    if (value != null && ["number", "currency"].includes(v.type) && !Number.isFinite(Number(value))) throw new TokenResolutionError(`Variable '${v.key}' must be a number`);
+    if (value != null && v.type === "date" && !Number.isFinite(new Date(value as string | number | Date).getTime())) throw new TokenResolutionError(`Variable '${v.key}' must be a valid date`);
     resolved[v.key] = formatValue(value, v);
   }
   return resolved;

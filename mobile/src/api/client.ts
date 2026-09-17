@@ -16,6 +16,7 @@ import { API_BASE_URL } from "../config";
 import { useSession } from "../state/session";
 import { useConnectivity } from "../state/connectivity";
 import { refreshToken } from "../api";
+import { getAccountScope } from "../lib/accountScope";
 
 export class ApiError extends Error {
   constructor(
@@ -43,6 +44,7 @@ export function absUrl(path?: string | null): string | null {
 }
 
 interface RequestOptions {
+  headers?: Record<string, string>;
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
   body?: unknown;
   /** Query params; undefined/null values are dropped. */
@@ -52,7 +54,7 @@ interface RequestOptions {
   form?: FormData;
 }
 
-let refreshInFlight: Promise<string | null> | null = null;
+const refreshes = new Map<string, Promise<string | null>>();
 
 function buildUrl(path: string, params?: RequestOptions["params"]): string {
   const url = path.startsWith("http") ? path : `${API_BASE_URL}${path}`;
@@ -68,7 +70,7 @@ async function rawFetch(path: string, opts: RequestOptions, token: string | null
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts.timeout ?? DEFAULT_TIMEOUT);
   try {
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = { ...opts.headers };
     if (token) headers.Authorization = `Bearer ${token}`;
     let body: BodyInit | undefined;
     if (opts.form) {
@@ -90,6 +92,10 @@ async function rawFetch(path: string, opts: RequestOptions, token: string | null
 
 export async function apiRequest<T = any>(path: string, opts: RequestOptions = {}): Promise<T> {
   const session = useSession.getState();
+  const scope = getAccountScope();
+  const assertSameAccount = () => {
+    if (getAccountScope().generation !== scope.generation) throw new ApiError(401, "Account changed during request");
+  };
   let token = session.token;
 
   let res: Response;
@@ -102,11 +108,15 @@ export async function apiRequest<T = any>(path: string, opts: RequestOptions = {
   }
 
   // 401 → refresh once + retry, else sign out.
+  assertSameAccount();
   if (res.status === 401 && token) {
-    if (!refreshInFlight) refreshInFlight = refreshToken(token).finally(() => (refreshInFlight = null));
-    const fresh = await refreshInFlight;
+    const oldToken = token;
+    if (!refreshes.has(oldToken)) refreshes.set(oldToken, refreshToken(oldToken).finally(() => refreshes.delete(oldToken)));
+    const fresh = await refreshes.get(oldToken);
+    assertSameAccount();
     if (fresh) {
       await useSession.getState().setToken(fresh);
+      assertSameAccount();
       token = fresh;
       try {
         res = await rawFetch(path, opts, token);
@@ -115,6 +125,7 @@ export async function apiRequest<T = any>(path: string, opts: RequestOptions = {
       }
     }
     if (res.status === 401) {
+      assertSameAccount();
       await useSession.getState().signOut();
       throw new ApiError(401, "Your session has expired. Please sign in again.");
     }
@@ -124,6 +135,7 @@ export async function apiRequest<T = any>(path: string, opts: RequestOptions = {
   useConnectivity.getState().setOnline(true);
 
   const text = await res.text();
+  assertSameAccount();
   const data = text ? safeJson(text) : null;
 
   if (!res.ok) {
@@ -143,8 +155,8 @@ function safeJson(text: string): any {
 
 export const api = {
   get: <T = any>(path: string, params?: RequestOptions["params"]) => apiRequest<T>(path, { method: "GET", params }),
-  post: <T = any>(path: string, body?: unknown) => apiRequest<T>(path, { method: "POST", body }),
-  patch: <T = any>(path: string, body?: unknown) => apiRequest<T>(path, { method: "PATCH", body }),
+  post: <T = any>(path: string, body?: unknown, opts?: Pick<RequestOptions, "headers">) => apiRequest<T>(path, { ...opts, method: "POST", body }),
+  patch: <T = any>(path: string, body?: unknown, opts?: Pick<RequestOptions, "headers">) => apiRequest<T>(path, { ...opts, method: "PATCH", body }),
   put: <T = any>(path: string, body?: unknown) => apiRequest<T>(path, { method: "PUT", body }),
   del: <T = any>(path: string, body?: unknown) => apiRequest<T>(path, { method: "DELETE", body }),
   upload: <T = any>(path: string, form: FormData) => apiRequest<T>(path, { method: "POST", form, timeout: 60_000 }),

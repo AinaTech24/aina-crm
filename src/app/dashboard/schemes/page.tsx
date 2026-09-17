@@ -82,9 +82,10 @@ export default async function SchemesPage({
     <div className="space-y-6 max-w-7xl">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Boxes className="size-6 text-brand-cyan" /> Scheme Master
+          <h1 className="page-title">
+            <Boxes className="size-6 text-muted-foreground" /> Scheme Master
           </h1>
+          <p className="page-subtitle mt-1">The scheme master — every fund you can transact in, with its details.</p>
         </div>
         {canManage && <SyncSchemesButton />}
       </div>

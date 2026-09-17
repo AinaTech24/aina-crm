@@ -68,7 +68,7 @@ export function StpComprehensivePlanner() {
       {/* Transfer mode */}
       <div className="grid md:grid-cols-2 gap-4">
         <div>
-          <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">Transfer mode</span>
+          <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">Transfer mode</span>
           <div className="flex flex-wrap gap-3">
             <label className="flex items-center gap-1.5 text-sm cursor-pointer">
               <input type="radio" checked={transferMode === "appreciation"} onChange={() => setTransferMode("appreciation")} /> Capital Appreciation
@@ -77,7 +77,7 @@ export function StpComprehensivePlanner() {
               <input type="radio" checked={transferMode === "fixed"} onChange={() => setTransferMode("fixed")} /> Fixed Amount
             </label>
           </div>
-          <p className="text-[10px] text-muted-foreground mt-1">
+          <p className="text-2xs text-muted-foreground mt-1">
             {transferMode === "appreciation"
               ? "Only the debt fund's gains move to equity — the principal stays in debt."
               : "A fixed ₹ amount moves to equity each period, for the chosen number of installments."}
@@ -154,7 +154,7 @@ export function StpComprehensivePlanner() {
           { label: "Annualised return", value: `${result.annualisedReturnPct.toFixed(2)}%`, tone: "emerald" },
         ]}
       />
-      <div className="text-[11px] text-muted-foreground">
+      <div className="text-2xs text-muted-foreground">
         Total transferred to equity: <strong>{inr(result.totalTransferred)}</strong> over {result.totalPeriods}{" "}
         {STP_FREQUENCIES.find((f) => f.value === frequency)?.label.toLowerCase()} period(s).
       </div>
@@ -194,7 +194,7 @@ export function StpComprehensivePlanner() {
         </details>
       )}
 
-      <p className="text-[10px] text-muted-foreground border-t pt-3">
+      <p className="text-2xs text-muted-foreground border-t pt-3">
         * Illustration only, on the assumptions you enter. The plan is simulated at the transfer frequency (effective rate);
         actual results vary with market performance. Not investment advice.
       </p>
@@ -207,7 +207,7 @@ export function StpComprehensivePlanner() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
+      <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
       {children}
     </label>
   );
@@ -259,7 +259,7 @@ function ResultRow({
                 : "";
         return (
           <div key={i} className={`border rounded-md p-3 ${tone}`}>
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">{c.label}</div>
+            <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">{c.label}</div>
             <div className="text-lg font-semibold mt-0.5">{c.value}</div>
           </div>
         );

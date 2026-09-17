@@ -194,7 +194,7 @@ export function MoneyPersonalityQuiz() {
                     : "border-emerald-200 bg-emerald-50/60"
             }`}
           >
-            <div className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
+            <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
               {clientName ? `${clientName} is` : "You are"}
             </div>
             <div className="text-2xl font-extrabold mt-1">{profile.name}</div>
@@ -208,19 +208,19 @@ export function MoneyPersonalityQuiz() {
           </div>
 
           <div>
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5">Suggested starting mix</div>
+            <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium mb-1.5">Suggested starting mix</div>
             <div className="flex h-8 w-full overflow-hidden rounded-md border border-border">
               {alloc.map((a, i) => (
                 <div
                   key={i}
-                  className="h-full flex items-center justify-center text-[10px] font-semibold text-white"
+                  className="h-full flex items-center justify-center text-2xs font-semibold text-white"
                   style={{ width: `${a.pct}%`, background: a.color }}
                 >
                   {a.pct}%
                 </div>
               ))}
             </div>
-            <div className="flex gap-4 mt-2 text-[11px]">
+            <div className="flex gap-4 mt-2 text-2xs">
               {alloc.map((a, i) => (
                 <span key={i} className="inline-flex items-center gap-1.5">
                   <span className="size-2.5 rounded-sm" style={{ background: a.color }} /> {a.label} {a.pct}%

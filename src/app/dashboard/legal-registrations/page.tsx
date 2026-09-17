@@ -89,7 +89,8 @@ export default async function LegalRegistrationsPage({
     <div className="space-y-5">
       <div className="flex items-end justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Legal registrations</h1>
+          <h1 className="page-title">Legal registrations</h1>
+          <p className="page-subtitle mt-1">ARN, EUIN, GST and your other registrations, with renewal reminders.</p>
         </div>
         <Link
           href="/dashboard/legal-registrations/new"
@@ -220,7 +221,7 @@ export default async function LegalRegistrationsPage({
                       const eff = effectiveStatus(r);
                       return (
                         <span
-                          className={`chip text-[10px] ${STATUS_TONE[eff] ?? "bg-slate-100"}`}
+                          className={`chip text-2xs ${STATUS_TONE[eff] ?? "bg-slate-100"}`}
                           title={eff !== r.status ? `Marked "${r.status}", but lapsed by date` : undefined}
                         >
                           {eff.replace("_", " ")}
@@ -257,7 +258,7 @@ function Tile({
           : "";
   return (
     <div className={`card-surface p-3 ${cardTone}`}>
-      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <div className="text-2xs text-muted-foreground">{label}</div>
       <div className="text-lg font-semibold">{value}</div>
     </div>
   );
@@ -266,8 +267,8 @@ function Tile({
 function ExpiryBadge({ date, perpetual }: { date: string | null; perpetual?: boolean }) {
   // A perpetual license never expires — show a neutral chip, never a red alarm,
   // even if an expiry date was entered by mistake.
-  if (perpetual) return <span className="chip bg-slate-100 text-[10px]">Perpetual</span>;
-  if (!date) return <span className="chip bg-slate-100 text-[10px]">Perpetual</span>;
+  if (perpetual) return <span className="chip bg-slate-100 text-2xs">Perpetual</span>;
+  if (!date) return <span className="chip bg-slate-100 text-2xs">Perpetual</span>;
   const d = new Date(date);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -281,12 +282,12 @@ function ExpiryBadge({ date, perpetual }: { date: string | null; perpetual?: boo
           ? "bg-amber-50 text-amber-700"
           : "bg-emerald-50 text-emerald-700";
   return (
-    <span className={`chip text-[10px] ${tone}`} title={date}>
+    <span className={`chip text-2xs ${tone}`} title={date}>
       {fmt(date)}
       {days >= 0 ? (
-        <span className="ml-1 text-[9px] opacity-70">{days}d</span>
+        <span className="ml-1 text-2xs opacity-70">{days}d</span>
       ) : (
-        <span className="ml-1 text-[9px] opacity-70">expired</span>
+        <span className="ml-1 text-2xs opacity-70">expired</span>
       )}
     </span>
   );

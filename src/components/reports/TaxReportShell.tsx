@@ -79,7 +79,7 @@ export function TaxReportShell({
 
       {children}
 
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         Indicative working from recorded transactions (FIFO lot matching, equity rules, ₹1.25 L LTCG exemption). Grandfathering
         and the exact equity / debt classification need AMC data — confirm against the RTA capital-gains statement before filing.
       </p>
@@ -91,7 +91,7 @@ export function Stat({ icon: Icon, label, value, tone }: { icon?: LucideIcon; la
   const color = tone === "good" ? "text-emerald-700" : tone === "bad" ? "text-rose-700" : tone === "muted" ? "text-muted-foreground" : "text-foreground";
   return (
     <div className="card-surface p-4">
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
         {Icon && <Icon className="size-3.5" />} {label}
       </div>
       <div className={`mt-1.5 text-xl font-semibold tabular-nums ${color}`}>{value}</div>

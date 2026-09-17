@@ -110,7 +110,7 @@ export function ProsperityMultiplier() {
           fmtY={(v) => inrShort(v)}
           lines={[{ label: "Corpus", color: "#B71A20", values: res.series.map((p) => p.value) }]}
         />
-        <p className="text-[10px] text-muted-foreground mt-1">
+        <p className="text-2xs text-muted-foreground mt-1">
           Years 1–{investYears} are the SIP phase; from year {investYears + 1} the corpus pays the monthly income.
         </p>
       </Section>
@@ -143,7 +143,7 @@ export function ProsperityMultiplier() {
         />
       </Section>
 
-      <p className="text-[10px] text-muted-foreground border-t pt-3">
+      <p className="text-2xs text-muted-foreground border-t pt-3">
         * Illustration only. Accumulation: opening balance compounds annually and each year&apos;s SIP is grown to year-end
         (monthly compounding), with the chosen annual step-up. Distribution: the corpus earns the chosen return each year and
         the income rises with inflation. Returns are not guaranteed and vary with markets; taxes and exit loads are not

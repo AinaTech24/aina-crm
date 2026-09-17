@@ -169,7 +169,7 @@ export function FamilySuggestionsPanel({ onCountChange }: { onCountChange?: (n: 
       <div className="p-10 text-center">
         <HeartHandshake className="size-6 text-muted-foreground/40 mx-auto mb-2" />
         <h3 className="text-xs font-semibold text-muted-foreground">No pending pairings</h3>
-        <p className="text-[11px] text-muted-foreground mt-1">
+        <p className="text-2xs text-muted-foreground mt-1">
           All unlinked investors appear to be independent clients.
         </p>
       </div>
@@ -186,12 +186,12 @@ export function FamilySuggestionsPanel({ onCountChange }: { onCountChange?: (n: 
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <h3 className="font-semibold text-sm truncate">{s.investor.name}</h3>
-                  <div className="text-[11px] text-muted-foreground font-mono mt-0.5 break-all">
+                  <div className="text-2xs text-muted-foreground font-mono mt-0.5 break-all">
                     PAN: {s.investor.pan} · AUM: {formatINR(s.investor.aum)}
                   </div>
                 </div>
                 <span
-                  className={`flex-shrink-0 text-[9px] uppercase px-1.5 py-0.5 rounded-full font-bold border ${
+                  className={`flex-shrink-0 text-2xs uppercase px-1.5 py-0.5 rounded-full font-bold border ${
                     s.confidence === "high"
                       ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                       : "bg-amber-50 text-amber-700 border-amber-200"
@@ -237,14 +237,14 @@ export function FamilySuggestionsPanel({ onCountChange }: { onCountChange?: (n: 
                         <li key={p.id} className="flex items-center justify-between gap-2 text-xs border rounded p-1.5 bg-background">
                           <div className="min-w-0">
                             <span className="font-semibold">{p.name}</span>
-                            <span className="text-muted-foreground font-mono text-[10px] ml-1.5">({p.pan})</span>
+                            <span className="text-muted-foreground font-mono text-2xs ml-1.5">({p.pan})</span>
                           </div>
                           <ThemeSelect
                             value={roles[p.id] || "spouse"}
                             onChange={(v) => setRoles((prev) => ({ ...prev, [p.id]: v }))}
                             options={RELATIONSHIPS.map((r) => [r.key, r.label] as [string, string])}
                             wrapperClassName="flex-shrink-0"
-                            className="text-[10px] py-0.5 pr-7"
+                            className="text-2xs py-0.5 pr-7"
                           />
                         </li>
                       ))}

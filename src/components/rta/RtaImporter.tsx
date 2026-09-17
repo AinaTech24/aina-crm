@@ -333,7 +333,7 @@ export function RtaImporter() {
               style={{ width: `${Math.min(100, Math.max(2, progress.pct))}%` }}
             />
           </div>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             Importing in the background — you can keep this open to watch progress, or close it and check the imports list later.
           </p>
         </div>
@@ -430,11 +430,11 @@ function Step({ n, label, disabled, children }: { n: number; label: string; disa
 function Stat({ label, value, sub, tone }: { label: string; value: number; sub?: string; tone?: "amber" | "muted" }) {
   return (
     <div className="rounded-lg border border-border bg-card p-3">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-2xs uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className={`text-2xl font-bold tabular-nums ${tone === "amber" ? "text-amber-600" : ""}`}>
         {value.toLocaleString("en-IN")}
       </div>
-      {sub && <div className="text-[11px] text-muted-foreground mt-0.5">{sub}</div>}
+      {sub && <div className="text-2xs text-muted-foreground mt-0.5">{sub}</div>}
     </div>
   );
 }

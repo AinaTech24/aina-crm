@@ -351,7 +351,7 @@ export function RuleBuilder({
                   <option key={m.key} value={m.key}>{m.label}</option>
                 ))}
               </SelectField>
-              <p className="text-[11px] text-muted-foreground mt-1">
+              <p className="text-2xs text-muted-foreground mt-1">
                 This rule will apply to records in the selected module.
               </p>
             </div>
@@ -385,7 +385,7 @@ export function RuleBuilder({
                 placeholder="Unlimited"
                 className="input-base mt-1 w-full max-w-[200px]"
               />
-              <p className="text-[11px] text-muted-foreground mt-1">
+              <p className="text-2xs text-muted-foreground mt-1">
                 Optional safety cap — skips extra firings within an hour (protects your message quota).
               </p>
             </div>
@@ -562,7 +562,7 @@ function TriggerStep({
                 placeholder="Any field change — tick fields to narrow…"
                 className="mt-1 w-full max-w-lg"
               />
-              <p className="text-[11px] text-muted-foreground mt-1">
+              <p className="text-2xs text-muted-foreground mt-1">
                 Leave empty to fire on <strong>any</strong> field change. Tick the fields to watch.
               </p>
             </div>
@@ -695,7 +695,7 @@ function TriggerStep({
             className="input-base mt-1 w-full font-mono"
             placeholder="0 9 * * 1   (every Mon 9:00am)"
           />
-          <p className="text-[11px] text-muted-foreground mt-1">
+          <p className="text-2xs text-muted-foreground mt-1">
             Standard cron format: minute hour day-of-month month day-of-week
           </p>
         </div>
@@ -732,7 +732,7 @@ function RadioCard({
         />
         {title}
       </div>
-      <p className="text-[11px] text-muted-foreground mt-1 pl-5">{desc}</p>
+      <p className="text-2xs text-muted-foreground mt-1 pl-5">{desc}</p>
     </button>
   );
 }
@@ -802,7 +802,7 @@ function SearchableFieldSelect({
                 </li>
               ))}
               {filtered.length === 0 && (
-                <li className="px-3 py-2 text-[11px] text-muted-foreground">No fields match.</li>
+                <li className="px-3 py-2 text-2xs text-muted-foreground">No fields match.</li>
               )}
             </ul>
           </div>
@@ -921,7 +921,7 @@ function CriteriaStep({
             return (
               <Fragment key={i}>
                 <div className="flex items-center gap-2">
-                  <span className="grid place-items-center size-6 rounded-full bg-secondary text-[11px] font-semibold text-muted-foreground shrink-0">
+                  <span className="grid place-items-center size-6 rounded-full bg-secondary text-2xs font-semibold text-muted-foreground shrink-0">
                     {i + 1}
                   </span>
                   <SearchableFieldSelect
@@ -963,7 +963,7 @@ function CriteriaStep({
                           key={op}
                           type="button"
                           onClick={() => setJoiner(i, op)}
-                          className={`text-[11px] font-semibold rounded-md px-2.5 py-1 border transition-colors ${isActive
+                          className={`text-2xs font-semibold rounded-md px-2.5 py-1 border transition-colors ${isActive
                               ? "bg-brand-cyan text-white border-brand-cyan"
                               : "bg-secondary/40 text-muted-foreground border-border hover:bg-secondary"
                             }`}
@@ -993,7 +993,7 @@ function CriteriaStep({
                 placeholder={`e.g. 1 AND (2 OR 3)`}
                 className="input-base text-xs mt-1 w-full max-w-md font-mono"
               />
-              <p className="text-[11px] text-muted-foreground mt-1">
+              <p className="text-2xs text-muted-foreground mt-1">
                 Use AND, OR, NOT and parentheses with the row numbers. Empty defaults to AND of all rows.
               </p>
             </div>
@@ -1076,7 +1076,7 @@ function ActionsStep({
         <div className="flex items-center justify-between mb-2">
           <div>
             <h3 className="font-semibold text-sm">Instant Actions</h3>
-            <p className="text-[11px] text-muted-foreground">Fire immediately when the rule matches.</p>
+            <p className="text-2xs text-muted-foreground">Fire immediately when the rule matches.</p>
           </div>
           <ActionTypePicker onPick={addInstant} />
         </div>
@@ -1104,7 +1104,7 @@ function ActionsStep({
         <div className="flex items-center justify-between mb-2">
           <div>
             <h3 className="font-semibold text-sm">Scheduled Actions</h3>
-            <p className="text-[11px] text-muted-foreground">Fire after a delay relative to the trigger.</p>
+            <p className="text-2xs text-muted-foreground">Fire after a delay relative to the trigger.</p>
           </div>
           <ActionTypePicker onPick={addScheduled} excludeKeys={["convert_lead"]} />
         </div>
@@ -1258,7 +1258,7 @@ function ScheduledActionRow({
 
       <div className="grid grid-cols-4 gap-2 items-end">
         <div className="col-span-1">
-          <label className="text-[10px] text-muted-foreground">Delay amount</label>
+          <label className="text-2xs text-muted-foreground">Delay amount</label>
           <input
             type="number"
             min={1}
@@ -1270,7 +1270,7 @@ function ScheduledActionRow({
           />
         </div>
         <div className="col-span-1">
-          <label className="text-[10px] text-muted-foreground">Unit</label>
+          <label className="text-2xs text-muted-foreground">Unit</label>
           <SelectField
             value={action.delay.unit}
             onChange={(e) => onChange({ ...action, delay: { ...action.delay, unit: e.target.value as any } })}
@@ -1283,7 +1283,7 @@ function ScheduledActionRow({
           </SelectField>
         </div>
         <div className="col-span-2">
-          <label className="text-[10px] text-muted-foreground">Anchor</label>
+          <label className="text-2xs text-muted-foreground">Anchor</label>
           <SelectField
             value={action.delay.anchor}
             onChange={(e) =>
@@ -1297,7 +1297,7 @@ function ScheduledActionRow({
         </div>
         {action.delay.anchor === "date_field" && (
           <div className="col-span-4">
-            <label className="text-[10px] text-muted-foreground">Date field</label>
+            <label className="text-2xs text-muted-foreground">Date field</label>
             <SelectField
               value={action.delay.anchorField ?? dateFields[0]?.key ?? ""}
               onChange={(e) =>
@@ -1358,7 +1358,7 @@ function ActionConfigEditor({
             <div className="space-y-2">
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[10px] text-muted-foreground">Template</label>
+                  <label className="text-2xs text-muted-foreground">Template</label>
                   <SelectField
                     value={chosen}
                     onChange={(e) => set({ templateKey: e.target.value })}
@@ -1374,7 +1374,7 @@ function ActionConfigEditor({
                   </SelectField>
                 </div>
                 <div>
-                  <label className="text-[10px] text-muted-foreground">Category</label>
+                  <label className="text-2xs text-muted-foreground">Category</label>
                   <SelectField
                     value={String(c.category ?? "transactional")}
                     onChange={(e) => set({ category: e.target.value })}
@@ -1387,7 +1387,7 @@ function ActionConfigEditor({
                 </div>
               </div>
               <div>
-                <label className="text-[10px] text-muted-foreground">Send to</label>
+                <label className="text-2xs text-muted-foreground">Send to</label>
                 <SelectField
                   value={String(c.recipient ?? "subject")}
                   onChange={(e) => set({ recipient: e.target.value })}
@@ -1397,7 +1397,7 @@ function ActionConfigEditor({
                   <option value="referrer">Referring client (Referred-by) — for Lead rules</option>
                 </SelectField>
                 {String(c.recipient ?? "subject") === "referrer" && (
-                  <p className="text-[10px] text-muted-foreground mt-1">
+                  <p className="text-2xs text-muted-foreground mt-1">
                     Sends to the client linked in the lead&apos;s &ldquo;Referred by&rdquo; field. The new lead&apos;s name is
                     available in your template as <code>{"{{referred_lead_name}}"}</code>. Skipped if the lead has no linked
                     referring client or they have no {channel} on file.
@@ -1406,7 +1406,7 @@ function ActionConfigEditor({
               </div>
               {action.type === "send_email" && (
                 <div>
-                  <label className="text-[10px] text-muted-foreground">Send from</label>
+                  <label className="text-2xs text-muted-foreground">Send from</label>
                   <SelectField
                     value={String(c.fromAddress ?? "organization")}
                     onChange={(e) => set({ fromAddress: e.target.value })}
@@ -1417,7 +1417,7 @@ function ActionConfigEditor({
                   </SelectField>
                 </div>
               )}
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-2xs text-muted-foreground">
                 {opts.length === 0
                   ? "Create a template under Templates → New (channel: " + channel + ") — it'll appear in this list."
                   : "Pick a template your firm created. It must be Approved to actually send."}
@@ -1516,7 +1516,7 @@ function ActionConfigEditor({
             rows={2}
             className="input-base text-xs w-full"
           />
-          <label className="flex items-center gap-2 text-[11px]">
+          <label className="flex items-center gap-2 text-2xs">
             <input
               type="checkbox"
               checked={!!(c.audience as any)?.subjectRm}
@@ -1528,7 +1528,7 @@ function ActionConfigEditor({
             />
             Notify subject's RM
           </label>
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             Tokens like <code>{"{{name}}"}</code> render the client/lead name. If you use none, the
             name is appended to the title automatically, and the alert links to the record.
           </p>
@@ -1536,7 +1536,7 @@ function ActionConfigEditor({
       );
     default:
       return (
-        <div className="text-[11px] text-muted-foreground italic">
+        <div className="text-2xs text-muted-foreground italic">
           Default config — edit JSON via the rule's detail page after save.
         </div>
       );
@@ -1573,7 +1573,7 @@ function UpdateFieldEditor({
   }
   return (
     <div className="space-y-1">
-      {entries.length === 0 && <div className="text-[11px] text-muted-foreground italic">No field updates yet.</div>}
+      {entries.length === 0 && <div className="text-2xs text-muted-foreground italic">No field updates yet.</div>}
       {entries.map(([k, v]) => {
         const field = writable.find((f) => f.key === k);
         return (
@@ -1599,7 +1599,7 @@ function UpdateFieldEditor({
           </div>
         );
       })}
-      <button onClick={addBlank} className="btn-ghost text-[11px]" disabled={!writable.length}>
+      <button onClick={addBlank} className="btn-ghost text-2xs" disabled={!writable.length}>
         <Plus className="size-3" /> Add field update
       </button>
     </div>
@@ -1678,13 +1678,13 @@ function BranchesSection({
     <div className="pt-5 border-t border-border space-y-4">
       <div>
         <div className="text-sm font-semibold">Condition branches <span className="text-muted-foreground font-normal">(optional)</span></div>
-        <p className="text-[11px] text-muted-foreground mt-0.5">
+        <p className="text-2xs text-muted-foreground mt-0.5">
           The Conditions + Actions above are <strong>Condition 1</strong>. Add more branches and a record
           falls into the <strong>first</strong> branch (top-down) whose conditions match — e.g. “Hot lead → call task,
           Cold lead → nurture email” in one rule.
         </p>
         {branches.length > 0 && !mainHasCriteria && (
-          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5 mt-2">
+          <p className="text-2xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5 mt-2">
             Condition 1 has no criteria, so it matches <strong>every</strong> record and the branches below
             will never be reached. Add criteria to Condition 1 (step 3), ordering specific → general.
           </p>
@@ -1694,7 +1694,7 @@ function BranchesSection({
       {branches.map((b, i) => (
         <div key={i} className="rounded-xl border border-border bg-secondary/20 p-4 space-y-4">
           <div className="flex items-center gap-2">
-            <span className="chip bg-brand-cyan-light text-brand-cyan-deep text-[10px] font-bold shrink-0">
+            <span className="chip bg-brand-cyan-light text-brand-cyan-deep text-2xs font-bold shrink-0">
               Condition {i + 2}
             </span>
             <input

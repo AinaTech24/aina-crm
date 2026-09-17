@@ -17,6 +17,7 @@ import { sql } from "drizzle-orm";
 import { withSystem } from "@/db/client";
 import { executeStep } from "@/lib/workflow/runner";
 import { captureError } from "@/lib/observability/capture";
+import { randomUUID } from "node:crypto";
 
 /**
  * Reap runs stuck in 'running'. If the worker dies between claiming a run
@@ -31,24 +32,20 @@ import { captureError } from "@/lib/observability/capture";
 export async function reapStalledRuns(): Promise<number> {
   const reaped = await withSystem(async (tx) => {
     const rows = await tx.execute(sql`
+      WITH expired AS (
+        SELECT id FROM workflow_runs WHERE status = 'running'
+        AND COALESCE(lease_until, updated_at + interval '15 minutes') <= now()
+        FOR UPDATE SKIP LOCKED
+      )
       UPDATE workflow_runs r
-      SET status = 'failed',
-          error = 'stalled — worker died mid-step (auto-reaped)',
-          completed_at = now()
-      WHERE r.status = 'running'
-        AND COALESCE(
-              (SELECT max(GREATEST(s.started_at, COALESCE(s.completed_at, s.started_at)))
-                 FROM workflow_run_steps s
-                WHERE s.run_id = r.id),
-              r.started_at,
-              r.created_at
-            ) < now() - interval '15 minutes'
+      SET status = 'queued', lease_token = NULL, lease_until = NULL, updated_at = now()
+      FROM expired WHERE r.id = expired.id
       RETURNING r.id, r.tenant_id, r.workflow_id;
     `);
     return rows.rows as Array<{ id: string; tenant_id: string; workflow_id: string }>;
   });
   for (const r of reaped) {
-    captureError("[wf-runner] run reaped as stalled", null, {
+    console.info("[wf-runner] expired lease recovered", {
       runId: r.id,
       tenantId: r.tenant_id,
       workflowId: r.workflow_id,
@@ -61,6 +58,7 @@ export async function runNextBatch(): Promise<{ processed: number; failed: numbe
   let processed = 0;
   let failed = 0;
 
+  const leaseToken = randomUUID();
   const claimable = await withSystem(async (tx) => {
     // Atomically claim up to N runs by transitioning queued/awakened paused runs.
     const rows = await tx.execute(sql`
@@ -70,11 +68,15 @@ export async function runNextBatch(): Promise<{ processed: number; failed: numbe
           status = 'queued'
           OR (status = 'paused' AND paused_until IS NOT NULL AND paused_until <= now())
         ORDER BY created_at
-        LIMIT ${Number(process.env.WORKFLOW_RUNNER_BATCH ?? 50)}
+        LIMIT 1
         FOR UPDATE SKIP LOCKED
       )
       UPDATE workflow_runs r
-      SET status = 'running'
+      SET status = 'running', lease_token = ${leaseToken}::uuid,
+          lease_until = now() + interval '5 minutes', started_at = COALESCE(started_at, now()),
+          resume_handle = CASE WHEN r.status = 'paused' THEN
+            CASE WHEN r.wait_predicate IS NOT NULL THEN 'timeout' ELSE '__continue' END
+            ELSE r.resume_handle END
       FROM cte
       WHERE r.id = cte.id
       RETURNING r.id, r.tenant_id;
@@ -84,12 +86,15 @@ export async function runNextBatch(): Promise<{ processed: number; failed: numbe
 
   for (const r of claimable) {
     try {
-      let next = await executeStep({ tenantId: r.tenant_id, runId: r.id });
+      let next = await executeStep({ tenantId: r.tenant_id, runId: r.id, leaseToken });
       let safety = 0;
       // Walk forward while the run can continue immediately. Bail at delay/pause/end.
       while (next.status === "running" && safety < 25) {
         safety++;
-        next = await executeStep({ tenantId: r.tenant_id, runId: r.id });
+        next = await executeStep({ tenantId: r.tenant_id, runId: r.id, leaseToken });
+      }
+      if (next.status === "running") {
+        await withSystem((tx) => tx.execute(sql`UPDATE workflow_runs SET status = 'queued', lease_token = NULL, lease_until = NULL, updated_at = now() WHERE id = ${r.id}::uuid AND status = 'running' AND lease_token = ${leaseToken}::uuid`));
       }
       processed++;
     } catch (err) {

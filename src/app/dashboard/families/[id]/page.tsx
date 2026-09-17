@@ -262,7 +262,7 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
                             {m.name}
                           </Link>
                           {isPrimary && (
-                            <span className="ml-2 text-[10px] uppercase font-semibold text-primary">
+                            <span className="ml-2 text-2xs uppercase font-semibold text-primary">
                               primary
                             </span>
                           )}
@@ -361,14 +361,14 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
                       <span>
                         {pct.toFixed(0)}% · target {g.target_date ? formatDate(g.target_date) : "—"} · {g.category.replace(/_/g, " ")}
                       </span>
-                      {sip > 0 && <span className="tabular-nums font-mono text-[10px]">SIP: {formatINR(sip)}/mo</span>}
+                      {sip > 0 && <span className="tabular-nums font-mono text-2xs">SIP: {formatINR(sip)}/mo</span>}
                     </div>
                     {shortfall > 0 && (
                       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-rose-50 text-rose-700 border border-rose-200">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-rose-50 text-rose-700 border border-rose-200">
                           ⚠️ Shortfall Projected: {formatINR(shortfall)}
                         </span>
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
                           Suggested step-up: +{formatINR(neededIncrease)}/mo
                         </span>
                       </div>

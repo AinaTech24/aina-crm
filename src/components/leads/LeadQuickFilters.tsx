@@ -112,7 +112,7 @@ export async function LeadQuickFilters({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mr-1">
+      <span className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold mr-1">
         Quick filters:
       </span>
       {chips.map((c) => {

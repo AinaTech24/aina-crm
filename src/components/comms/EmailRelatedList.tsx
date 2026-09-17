@@ -171,10 +171,10 @@ export function EmailRelatedList({
                   className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left hover:bg-secondary/40 transition-colors"
                 >
                   {inbound ? <ArrowDownLeft className="size-4 shrink-0 text-sky-600" /> : <ArrowUpRight className="size-4 shrink-0 text-emerald-600" />}
-                  <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border shrink-0 ${chip.cls}`}>{chip.label}</span>
+                  <span className={`text-2xs font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border shrink-0 ${chip.cls}`}>{chip.label}</span>
                   <span className="flex-1 min-w-0">
                     <span className="block text-sm font-medium truncate">{e.subject}</span>
-                    <span className="block text-[11px] text-muted-foreground truncate">
+                    <span className="block text-2xs text-muted-foreground truncate">
                       {inbound && e.from ? `from ${e.from} · ` : ""}
                       {fmtWhen(e.sentAt || e.createdAt)}
                       {e.templateKey ? ` · ${e.templateKey}` : ""}
@@ -188,7 +188,7 @@ export function EmailRelatedList({
                     <div className="rounded-lg bg-secondary/40 border border-border p-3 text-xs whitespace-pre-wrap break-words text-foreground/80 max-h-72 overflow-y-auto scrollbar-thin">
                       {e.text || <span className="text-muted-foreground italic">No content captured for this message.</span>}
                     </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-2xs text-muted-foreground">
                       <span>Status: <span className="font-medium text-foreground">{e.status}</span></span>
                       {e.deliveredAt && <span>Delivered: {fmtWhen(e.deliveredAt)}</span>}
                       {e.failedAt && <span className="text-rose-600">Failed: {fmtWhen(e.failedAt)}</span>}
@@ -321,7 +321,7 @@ function FreeComposeModal({
             <div className="text-xs font-medium mb-1">Message</div>
             <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={8} className="input-base resize-y" placeholder="Write your message…" />
           </label>
-          <p className="text-[11px] text-muted-foreground">The mandatory MF risk disclaimer + your ARN signature are added automatically, and the message passes the compliance + consent gate before sending.</p>
+          <p className="text-2xs text-muted-foreground">The mandatory MF risk disclaimer + your ARN signature are added automatically, and the message passes the compliance + consent gate before sending.</p>
           {err && <div className="rounded-lg border border-rose-200 bg-rose-50 text-rose-700 text-xs px-3 py-2">{err}</div>}
         </div>
         <div className="border-t border-border px-5 py-3 flex justify-end gap-2">
@@ -422,12 +422,12 @@ function ComposeModal({
             ) : (
               <Select value={selectedKey} onChange={setSelectedKey} placeholder="Select a template…" options={templates.map((t) => ({ value: t.key, label: t.name }))} />
             )}
-            {selected?.description && <p className="text-[11px] text-muted-foreground mt-1.5">{selected.description}</p>}
+            {selected?.description && <p className="text-2xs text-muted-foreground mt-1.5">{selected.description}</p>}
           </div>
           {selected && (selected.variables ?? []).filter(needsInput).length > 0 && (
             <div className="space-y-2">
               <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Custom fields</div>
-              <p className="text-[11px] text-muted-foreground -mt-1">
+              <p className="text-2xs text-muted-foreground -mt-1">
                 Client, firm and transaction details fill in automatically from the record.
                 Only these custom fields need a value.
               </p>
@@ -436,7 +436,7 @@ function ComposeModal({
                   <div className="text-xs font-medium mb-1 capitalize">
                     {prettyVarLabel(v.key)}{v.required && <span className="text-rose-600"> *</span>}
                     {v.key.includes(".") && (
-                      <span className="ml-1.5 text-[10px] font-normal text-muted-foreground lowercase">· {v.key.split(".")[0]}</span>
+                      <span className="ml-1.5 text-2xs font-normal text-muted-foreground lowercase">· {v.key.split(".")[0]}</span>
                     )}
                   </div>
                   <input value={vars[v.key] ?? ""} onChange={(e) => setVars((s) => ({ ...s, [v.key]: e.target.value }))} placeholder={v.type ? `(${v.type})` : ""} className="input-base" />

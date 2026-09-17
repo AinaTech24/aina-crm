@@ -17,6 +17,7 @@ import { v4 as uuid } from "uuid";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
+import { withIdempotentMutation } from "@/lib/api/idempotent-mutation";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
@@ -125,9 +126,7 @@ export async function POST(req: NextRequest) {
     const seesAllInvestors = can(session.roles, "investor.view.all", session.permissions);
     const seesAllLeads = can(session.roles, "lead.view.all", session.permissions);
 
-    const result = await withTenant(
-      session.tenantId,
-      async (tx) => {
+    const result = await withIdempotentMutation(session, req, parse.data, async (tx) => {
         // Verify the subject exists in this tenant + capture denormalised name/phone.
         const subj = await tx.execute(subjectLookupSql(b.subjectType, b.subjectId));
         const sr = subj.rows[0] as any;

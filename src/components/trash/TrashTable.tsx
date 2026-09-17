@@ -243,7 +243,7 @@ export function TrashTable({
           {open ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
           {icon}
           <span className="font-semibold text-sm truncate">{title}</span>
-          <span className="chip text-[11px] bg-secondary text-muted-foreground tabular-nums">{count.toLocaleString("en-IN")}</span>
+          <span className="chip text-2xs bg-secondary text-muted-foreground tabular-nums">{count.toLocaleString("en-IN")}</span>
         </button>
 
         <div className="ml-auto flex items-center gap-2">
@@ -313,7 +313,7 @@ export function TrashTable({
                         </div>
                       ) : c.kind === "chip" ? (
                         <span
-                          className={`chip text-[11px] font-medium border ${
+                          className={`chip text-2xs font-medium border ${
                             r[c.toneField ?? ""] === "rose"
                               ? "bg-rose-50 text-rose-700 border-rose-200"
                               : "bg-amber-50 text-amber-700 border-amber-200"

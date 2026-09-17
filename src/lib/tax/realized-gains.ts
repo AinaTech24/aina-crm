@@ -19,8 +19,12 @@
 
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
+import { positionKey, type PositionIdentity } from "@/lib/finance/position-key";
 
 export type RealizedRow = {
+  folioId: string | null;
+  folioNumber: string | null;
+  amcCode: string | null;
   schemeName: string | null;
   schemeCode: string | null;
   buyDate: string;
@@ -43,12 +47,14 @@ export type RealizedGains = {
   totalProceeds: number;
   totalCost: number;
   rows: RealizedRow[];
+  unmatched: Array<{ folioId: string | null; folioNumber: string | null; schemeCode: string | null; sellDate: string; units: number; proceeds: number }>;
+  unmatchedRedemptionUnits: number;
 };
 
 const SELL_TYPES = new Set(["redemption", "switch", "swp", "stp", "redemption_payout"]);
 const LTCG_EXEMPTION = 125000;
 
-export type TxRow = {
+export type TxRow = PositionIdentity & {
   scheme_code: string | null;
   scheme_name: string | null;
   type: string | null;
@@ -70,7 +76,8 @@ export async function computeRealizedGains(
   fyStartYear: number
 ): Promise<RealizedGains> {
   const res = await tx.execute(sql`
-    SELECT scheme_code, scheme_name, type, direction, units, nav, amount, order_date
+    SELECT investor_id, folio_id, folio_number, amc_code, amc_name,
+           scheme_code, scheme_name, type, direction, units, nav, amount, order_date
     FROM transactions
     WHERE investor_id = ${investorId}
       AND status IN ('processed','successful')
@@ -92,11 +99,12 @@ export function fifoRealizedGains(rows: TxRow[], fyStartYear: number): RealizedG
   // Per-scheme FIFO lot queues.
   const lots = new Map<string, Array<{ date: string; units: number; nav: number }>>();
   const realized: RealizedRow[] = [];
+  const unmatched: RealizedGains["unmatched"] = [];
 
   for (const r of rows) {
-    const key = r.scheme_code ?? r.scheme_name ?? "unknown";
+    const key = positionKey(r);
     const units = num(r.units);
-    if (units <= 0) continue;
+    if (units <= 0 || !r.order_date || r.type === "dividend_payout") continue;
     const nav = navOf(r);
     // Classify by DIRECTION first — a `switch` has two legs (switch-out =
     // outflow = sell in the source scheme; switch-in = inflow = BUY in the
@@ -120,6 +128,9 @@ export function fifoRealizedGains(rows: TxRow[], fyStartYear: number): RealizedG
         const gain = (nav - lot.nav) * matched;
         const term: "stcg" | "ltcg" = holdingDays(lot.date, r.order_date!) > 365 ? "ltcg" : "stcg";
         realized.push({
+          folioId: r.folio_id ?? null,
+          folioNumber: r.folio_number ?? null,
+          amcCode: r.amc_code ?? null,
           schemeName: r.scheme_name,
           schemeCode: r.scheme_code,
           buyDate: lot.date,
@@ -135,6 +146,10 @@ export function fifoRealizedGains(rows: TxRow[], fyStartYear: number): RealizedG
         if (lot.units <= 0.0005) q.shift();
       }
       lots.set(key, q);
+      if (toSell > 0.0005 && r.order_date >= fyStart && r.order_date <= fyEnd) {
+        unmatched.push({ folioId: r.folio_id ?? null, folioNumber: r.folio_number ?? null,
+          schemeCode: r.scheme_code, sellDate: r.order_date, units: round4(toSell), proceeds: round2(toSell * nav) });
+      }
     }
   }
 
@@ -163,10 +178,12 @@ export function fifoRealizedGains(rows: TxRow[], fyStartYear: number): RealizedG
     totalProceeds: round2(proceeds),
     totalCost: round2(cost),
     rows: inFy.sort((a, b) => (a.sellDate < b.sellDate ? 1 : -1)),
+    unmatched,
+    unmatchedRedemptionUnits: round4(unmatched.reduce((n, r) => n + r.units, 0)),
   };
 }
 
-export type OpenLot = { schemeCode: string | null; schemeName: string | null; date: string; units: number; nav: number };
+export type OpenLot = { folioId: string | null; folioNumber: string | null; amcCode: string | null; schemeCode: string | null; schemeName: string | null; date: string; units: number; nav: number };
 
 /**
  * FIFO over the same rows, but returns the REMAINING (unsold) open lots — the
@@ -175,22 +192,24 @@ export type OpenLot = { schemeCode: string | null; schemeName: string | null; da
  * lots to count only genuinely long-term units, and the realised LTCG to shrink
  * the remaining ₹1.25 L exemption. Rows must be ordered by date.
  */
-export function fifoOpenLots(rows: TxRow[], fyStartYear: number): { open: OpenLot[]; realizedLtcgThisFy: number } {
+export function fifoOpenLots(rows: TxRow[], fyStartYear: number): { open: OpenLot[]; realizedLtcgThisFy: number; unmatchedRedemptionUnits: number } {
   const fyStart = `${fyStartYear}-04-01`;
   const fyEnd = `${fyStartYear + 1}-03-31`;
-  const lots = new Map<string, { schemeCode: string | null; schemeName: string | null; queue: Array<{ date: string; units: number; nav: number }> }>();
+  const lots = new Map<string, { identity: Pick<OpenLot, "folioId" | "folioNumber" | "amcCode" | "schemeCode" | "schemeName">; queue: Array<{ date: string; units: number; nav: number }> }>();
   let realizedLtcgThisFy = 0;
+  let unmatchedRedemptionUnits = 0;
 
   for (const r of rows) {
-    const key = r.scheme_code ?? r.scheme_name ?? "unknown";
+    const key = positionKey(r);
     const units = num(r.units);
-    if (units <= 0 || !r.order_date) continue;
+    if (units <= 0 || !r.order_date || r.type === "dividend_payout") continue;
     const nav = navOf(r);
     const dir = (r.direction ?? "").toLowerCase();
     const isSell = dir === "outflow" || (!dir && SELL_TYPES.has(r.type ?? ""));
     const isBuy = dir === "inflow" || (!dir && !SELL_TYPES.has(r.type ?? ""));
     let entry = lots.get(key);
-    if (!entry) { entry = { schemeCode: r.scheme_code, schemeName: r.scheme_name, queue: [] }; lots.set(key, entry); }
+    if (!entry) { entry = { identity: { folioId: r.folio_id ?? null, folioNumber: r.folio_number ?? null,
+      amcCode: r.amc_code ?? null, schemeCode: r.scheme_code, schemeName: r.scheme_name }, queue: [] }; lots.set(key, entry); }
     if (isBuy) {
       entry.queue.push({ date: r.order_date, units, nav });
     } else if (isSell) {
@@ -206,16 +225,17 @@ export function fifoOpenLots(rows: TxRow[], fyStartYear: number): { open: OpenLo
         toSell -= matched;
         if (lot.units <= 0.0005) q.shift();
       }
+      unmatchedRedemptionUnits += toSell;
     }
   }
 
   const open: OpenLot[] = [];
   for (const [, e] of lots) {
     for (const l of e.queue) {
-      if (l.units > 0.0005) open.push({ schemeCode: e.schemeCode, schemeName: e.schemeName, date: l.date, units: l.units, nav: l.nav });
+      if (l.units > 0.0005) open.push({ ...e.identity, date: l.date, units: l.units, nav: l.nav });
     }
   }
-  return { open, realizedLtcgThisFy };
+  return { open, realizedLtcgThisFy, unmatchedRedemptionUnits };
 }
 
 function num(s: string | null): number {

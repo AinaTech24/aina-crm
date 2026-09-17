@@ -92,7 +92,7 @@ export default async function ReferralsPage({
     <div className="space-y-6 max-w-7xl">
       <div>
         <h1 className="page-title">
-          <Heart className="size-6 text-brand-cyan" /> Referral Tracking
+          <Heart className="size-6 text-muted-foreground" /> Referral Tracking
         </h1>
         <p className="page-subtitle">
           Which clients are referring new business — and how much of it converts. Use this list to schedule
@@ -147,7 +147,7 @@ export default async function ReferralsPage({
                   <Link href={`/dashboard/investors/${a.id}`} className="font-medium text-sm hover:underline truncate block">
                     {a.name}
                   </Link>
-                  <div className="text-[11px] text-muted-foreground">
+                  <div className="text-2xs text-muted-foreground">
                     {Number(a.aum) > 0 ? formatINR(Number(a.aum)) : "—"}
                     {a.service_tier ? ` · Tier ${a.service_tier}` : ""}
                   </div>
@@ -211,7 +211,7 @@ export default async function ReferralsPage({
                       <Link href={`/dashboard/investors/${r.referrer_id}`} className="font-medium hover:underline">
                         {r.referrer_name}
                       </Link>
-                      <div className="text-[10px] text-muted-foreground">{r.referrer_phone ?? "—"}</div>
+                      <div className="text-2xs text-muted-foreground">{r.referrer_phone ?? "—"}</div>
                     </td>
                     <td className="py-3 text-xs">
                       {r.segment_tag ? <span className="chip bg-violet-50 text-violet-700 mr-1">{r.segment_tag}</span> : null}
@@ -245,7 +245,7 @@ export default async function ReferralsPage({
         )}
       </div>
 
-      <p className="text-[11px] text-muted-foreground italic">
+      <p className="text-2xs text-muted-foreground italic">
         Per SEBI MFD guidelines, do not run a paid gift / incentive program for referrals without prior compliance
         approval. This page is for tracking and recognition only.
       </p>
@@ -257,7 +257,7 @@ function Stat({ icon: Icon, label, value, tone }: { icon: any; label: string; va
   return (
     <div className="kpi-card">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">{label}</span>
+        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{label}</span>
         <Icon className="size-3.5 text-muted-foreground" />
       </div>
       <div

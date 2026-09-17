@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, X, Save, Loader2 } from "lucide-react";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 
 type Value = {
   id: string;
@@ -68,7 +69,7 @@ export function MasterValuesEditor({
   }
 
   async function deleteValue(v: Value) {
-    if (!confirm(v.isSystemDefault ? "Deactivate this system default?" : `Delete "${v.label}"?`)) return;
+    if (!(await confirmDialog(v.isSystemDefault ? "Deactivate this system default?" : `Delete "${v.label}"?`))) return;
     setBusy(true);
     try {
       await fetch(`/api/masters/${masterType}?key=${v.key}`, { method: "DELETE" });

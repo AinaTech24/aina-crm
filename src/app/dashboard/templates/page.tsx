@@ -108,9 +108,10 @@ export default async function TemplatesPage({
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <FileText className="size-6 text-brand-cyan" /> Message templates
+          <h1 className="page-title">
+            <FileText className="size-6 text-muted-foreground" /> Message templates
           </h1>
+          <p className="page-subtitle mt-1">Reusable WhatsApp, email and SMS messages — approved and ready to send.</p>
         </div>
         <div className="flex items-center gap-2">
           <FetchWhatsappTemplatesButton />
@@ -147,7 +148,7 @@ export default async function TemplatesPage({
                   <Icon className="size-3.5" />
                   {c.label}
                   <span
-                    className={`tabular-nums text-[10px] font-semibold rounded-full px-1.5 ${active ? "bg-brand-cyan-light text-brand-cyan-deep" : "bg-secondary text-muted-foreground"
+                    className={`tabular-nums text-2xs font-semibold rounded-full px-1.5 ${active ? "bg-brand-cyan-light text-brand-cyan-deep" : "bg-secondary text-muted-foreground"
                       }`}
                   >
                     {channelCount(c.key)}
@@ -254,7 +255,7 @@ export default async function TemplatesPage({
                         <span className="capitalize text-xs text-muted-foreground">{cm.label}</span>
                       </td>
                       <td className="py-3">
-                        <span className="text-[11px] uppercase font-semibold tracking-wide text-muted-foreground bg-secondary/60 border border-border/60 rounded px-1.5 py-0.5">
+                        <span className="text-2xs uppercase font-semibold tracking-wide text-muted-foreground bg-secondary/60 border border-border/60 rounded px-1.5 py-0.5">
                           {tpl.category}
                         </span>
                       </td>

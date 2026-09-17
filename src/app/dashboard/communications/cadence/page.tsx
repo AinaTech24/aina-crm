@@ -71,18 +71,18 @@ export default async function CommunicationCadencePage() {
                   <td className="px-4 py-3">
                     <div className="font-medium">{r.purpose}</div>
                     {r.note && (
-                      <div className="text-[11px] text-muted-foreground mt-0.5">{r.note}</div>
+                      <div className="text-2xs text-muted-foreground mt-0.5">{r.note}</div>
                     )}
                   </td>
                   <td className="py-3 text-xs">{r.frequency}</td>
                   <td className="py-3 text-xs">{r.channel}</td>
                   <td className="py-3 pr-4">
                     {r.automatable ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      <span className="inline-flex items-center gap-1 text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
                         <Zap className="size-3" /> Automatable
                       </span>
                     ) : (
-                      <span className="text-[11px] text-muted-foreground">Manual / scheduled</span>
+                      <span className="text-2xs text-muted-foreground">Manual / scheduled</span>
                     )}
                   </td>
                 </tr>
@@ -115,13 +115,13 @@ export default async function CommunicationCadencePage() {
             {KEY_FOCUS_AREAS.map((a) => (
               <span
                 key={a}
-                className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-secondary border border-border/60"
+                className="text-2xs font-medium px-2 py-0.5 rounded-full bg-secondary border border-border/60"
               >
                 {a}
               </span>
             ))}
           </div>
-          <p className="text-[11px] text-muted-foreground mt-3 leading-relaxed">{TAILORING_NOTE}</p>
+          <p className="text-2xs text-muted-foreground mt-3 leading-relaxed">{TAILORING_NOTE}</p>
         </div>
       </div>
 
@@ -133,7 +133,7 @@ export default async function CommunicationCadencePage() {
         </div>
       </div>
 
-      <p className="text-[11px] text-muted-foreground border-t pt-3">
+      <p className="text-2xs text-muted-foreground border-t pt-3">
         Adapted from the Network FP "5.5 Client Communication Checklist". Use it as the
         baseline cadence; the workflow engine automates the rows marked Automatable.
       </p>

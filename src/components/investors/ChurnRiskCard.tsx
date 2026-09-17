@@ -124,7 +124,7 @@ export function ChurnRiskCard({
               </div>
               {play.talkingPoints.length > 0 && (
                 <div>
-                  <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Talking points</div>
+                  <div className="text-2xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Talking points</div>
                   <ul className="space-y-1">
                     {play.talkingPoints.map((t, i) => (
                       <li key={i} className="flex items-start gap-2 text-xs">
@@ -137,7 +137,7 @@ export function ChurnRiskCard({
               )}
               {play.actions.length > 0 && (
                 <div>
-                  <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Next steps</div>
+                  <div className="text-2xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Next steps</div>
                   <ul className="space-y-1">
                     {play.actions.map((a, i) => (
                       <li key={i} className="flex items-start gap-2 text-xs">
@@ -148,7 +148,7 @@ export function ChurnRiskCard({
                   </ul>
                 </div>
               )}
-              <p className="text-[10px] text-muted-foreground italic">AI suggestion — review before acting. No assured returns / inducements (SEBI).</p>
+              <p className="text-2xs text-muted-foreground italic">AI suggestion — review before acting. No assured returns / inducements (SEBI).</p>
             </div>
           )}
         </div>

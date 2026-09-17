@@ -71,18 +71,18 @@ export function PortfolioDrillBar({
       {open && (
         <div className="mt-1.5 ml-4 pl-2 border-l border-border space-y-1">
           {loading ? (
-            <div className="text-[11px] text-muted-foreground inline-flex items-center gap-1 py-1"><Loader2 className="size-3 animate-spin" /> Loading…</div>
+            <div className="text-2xs text-muted-foreground inline-flex items-center gap-1 py-1"><Loader2 className="size-3 animate-spin" /> Loading…</div>
           ) : err ? (
-            <div className="text-[11px] text-rose-600 py-1">{err}</div>
+            <div className="text-2xs text-rose-600 py-1">{err}</div>
           ) : holders && holders.length > 0 ? (
             holders.map((h) => (
-              <Link key={h.investorId} href={`/dashboard/investors/${h.investorId}`} className="flex items-center justify-between text-[11px] hover:text-brand-cyan">
+              <Link key={h.investorId} href={`/dashboard/investors/${h.investorId}`} className="flex items-center justify-between text-2xs hover:text-brand-cyan">
                 <span className="truncate">{h.name}</span>
                 <span className="tabular-nums text-muted-foreground">{inr(h.value)} · {h.pct}%</span>
               </Link>
             ))
           ) : (
-            <div className="text-[11px] text-muted-foreground py-1">No clients found.</div>
+            <div className="text-2xs text-muted-foreground py-1">No clients found.</div>
           )}
         </div>
       )}

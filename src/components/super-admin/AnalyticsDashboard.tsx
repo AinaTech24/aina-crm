@@ -340,7 +340,7 @@ function DistributionChart({ data, type, total }: { data: { name: string; value:
         </ResponsiveContainer>
         {type === "donut" && (
           <div className="absolute top-[42%] left-1/2 -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Total</div>
+            <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">Total</div>
             <div className="text-lg font-bold">{total.toLocaleString("en-IN")}</div>
           </div>
         )}

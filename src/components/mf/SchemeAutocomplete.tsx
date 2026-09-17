@@ -124,12 +124,12 @@ export function SchemeAutocomplete({
                   <Check className="size-3 text-brand-cyan shrink-0 opacity-0" />
                   <span className="truncate">{s.schemeName}</span>
                   {s.risk && (
-                    <span className={`shrink-0 chip text-[9px] leading-none px-1.5 py-0.5 border ${s.risk.tone}`} title={`Risk: ${s.risk.label}`}>
+                    <span className={`shrink-0 chip text-2xs leading-none px-1.5 py-0.5 border ${s.risk.tone}`} title={`Risk: ${s.risk.label}`}>
                       {s.risk.label}
                     </span>
                   )}
                 </div>
-                <div className="text-[10px] text-muted-foreground pl-[1.125rem] flex items-center gap-2">
+                <div className="text-2xs text-muted-foreground pl-[1.125rem] flex items-center gap-2">
                   {s.amc && <span className="truncate">{s.amc}</span>}
                   {s.category && <span className="truncate">· {s.category}</span>}
                   {s.nav != null && <span className="tabular-nums shrink-0">· NAV ₹{s.nav.toFixed(2)}</span>}

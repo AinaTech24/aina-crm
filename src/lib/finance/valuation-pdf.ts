@@ -112,7 +112,7 @@ export async function renderValuationStatementPdf(args: RenderStatementArgs): Pr
     logo,
     firmName: brand.legalName ?? brand.displayName,
     title: "PORTFOLIO STATEMENT",
-    subtitles: [`As of ${fmtDate(v.asOf ?? args.generatedAt)}`],
+    subtitles: [`Generated ${fmtDate(args.generatedAt)}; latest NAV ${v.asOf ? fmtDate(v.asOf) : "date unknown"}`],
     arn: brand.arn,
     primary,
     secondary,
@@ -129,12 +129,12 @@ export async function renderValuationStatementPdf(args: RenderStatementArgs): Pr
 
   // ── Summary cards ─────────────────────────────────────────────────────
   const money = (n: number | null | undefined) =>
-    n == null || !isFinite(n) ? `${rupee}0` : rupee + Math.round(n).toLocaleString("en-IN");
+    n == null || !isFinite(n) ? "Unknown" : rupee + Math.round(n).toLocaleString("en-IN");
   const gainPositive = (v.gain ?? 0) >= 0;
   const cards: Array<{ label: string; value: string; tone?: RGB }> = [
     { label: "Current value", value: money(v.currentValue) },
-    { label: "Net invested", value: money(v.pricedInvested) },
-    { label: "Total gain", value: `${gainPositive ? "+" : ""}${money(v.gain)}`, tone: gainPositive ? GREEN : RED },
+    { label: "Net contributed", value: money(v.pricedInvested) },
+    { label: "Account gain", value: `${v.gain != null && gainPositive ? "+" : ""}${money(v.gain)}`, tone: gainPositive ? GREEN : RED },
     {
       label: "Absolute return",
       value: v.absoluteReturn != null ? pct(v.absoluteReturn) : "—",
@@ -157,6 +157,11 @@ export async function renderValuationStatementPdf(args: RenderStatementArgs): Pr
     page.drawText(san(c.value), { x: x + 8, y: y - 38, size: vs, font: bold, color: c.tone ?? INK });
   });
   y -= cardH + 30;
+
+  page.drawText(ascii(`Coverage: ${v.dataQuality.pricedHoldings}/${v.dataQuality.openHoldings} holdings priced; ${v.dataQuality.unknownCostHoldings} unknown costs; ${v.dataQuality.undatedPrices} undated prices.`), { x: margin, y, size: 8, font: helv, color: MUTED });
+  y -= 14;
+  page.drawText(ascii(`Account returns include ${v.dataQuality.closedPositions} closed positions; unavailable when history or pricing is incomplete.`), { x: margin, y, size: 8, font: helv, color: MUTED });
+  y -= 20;
 
   // ── Holdings table ────────────────────────────────────────────────────
   page.drawText("HOLDINGS", { x: margin, y, size: 9, font: bold, color: primary });
@@ -361,3 +366,4 @@ function hexToRgb(hex: string | null | undefined): RGB {
   const [r, g, b] = parts.map((x) => parseInt(x, 16) / 255);
   return rgb(r, g, b);
 }
+

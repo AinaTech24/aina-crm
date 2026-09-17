@@ -36,13 +36,13 @@ export type AssetRow = {
 
 const TYPE_ICON: Record<string, any> = { image: ImageIcon, pdf: FileText, article: FileText, presentation: Presentation, video: Video, audio: Music, other: File };
 const TYPE_TONE: Record<string, string> = {
-  image: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
-  pdf: "bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
-  article: "bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
-  presentation: "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
-  video: "bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
-  audio: "bg-cyan-50 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300",
-  other: "bg-gray-100 text-gray-600 dark:bg-gray-500/15 dark:text-gray-300",
+  image: "bg-emerald-50 text-emerald-700",
+  pdf: "bg-rose-50 text-rose-700",
+  article: "bg-blue-50 text-blue-700",
+  presentation: "bg-amber-50 text-amber-700",
+  video: "bg-violet-50 text-violet-700",
+  audio: "bg-cyan-50 text-cyan-700",
+  other: "bg-gray-100 text-gray-600",
 };
 
 const CATEGORIES = ["festive", "market_update", "investor_education", "scheme_recommendation", "tax_planning", "retirement", "child_education", "wealth_creation", "sebi_compliance", "general"];
@@ -50,10 +50,10 @@ const TYPES = ["image", "pdf", "article", "presentation", "video", "audio", "oth
 
 function statusOf(a: AssetRow): { label: string; tone: string } {
   const now = Date.now();
-  if (!a.isActive) return { label: "Inactive", tone: "bg-gray-100 text-gray-600 dark:bg-gray-500/15 dark:text-gray-300" };
-  if (a.expireAt && new Date(a.expireAt).getTime() <= now) return { label: "Expired", tone: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" };
-  if (a.publishAt && new Date(a.publishAt).getTime() > now) return { label: "Scheduled", tone: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300" };
-  return { label: "Live", tone: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" };
+  if (!a.isActive) return { label: "Inactive", tone: "bg-gray-100 text-gray-600" };
+  if (a.expireAt && new Date(a.expireAt).getTime() <= now) return { label: "Expired", tone: "bg-rose-100 text-rose-700" };
+  if (a.publishAt && new Date(a.publishAt).getTime() > now) return { label: "Scheduled", tone: "bg-amber-100 text-amber-700" };
+  return { label: "Live", tone: "bg-emerald-100 text-emerald-700" };
 }
 
 function fmtDate(d: string | null) {
@@ -145,7 +145,7 @@ export function ContentLibraryManager({ assets }: { assets: AssetRow[] }) {
                   ) : (
                     <Icon className="size-10 text-muted-foreground/50" />
                   )}
-                  <span className={`absolute top-2 left-2 chip text-[10px] font-medium ${st.tone}`}>{st.label}</span>
+                  <span className={`absolute top-2 left-2 chip text-2xs font-medium ${st.tone}`}>{st.label}</span>
                   {/* Hover actions */}
                   <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <Link href={`/super-admin/content-library/${a.id}/edit`} title="Edit" className="size-7 grid place-items-center rounded-md bg-card/90 backdrop-blur shadow hover:bg-card text-foreground"><Pencil className="size-3.5" /></Link>
@@ -157,13 +157,13 @@ export function ContentLibraryManager({ assets }: { assets: AssetRow[] }) {
                 </div>
                 <div className="p-3 space-y-1.5 flex-1 flex flex-col">
                   <div className="flex items-center justify-between gap-2">
-                    <span className={`chip text-[10px] ${TYPE_TONE[a.type] ?? ""}`}>{a.type}</span>
-                    <span className="text-[10px] text-muted-foreground tabular-nums">{fmtDate(a.createdAt)}</span>
+                    <span className={`chip text-2xs ${TYPE_TONE[a.type] ?? ""}`}>{a.type}</span>
+                    <span className="text-2xs text-muted-foreground tabular-nums">{fmtDate(a.createdAt)}</span>
                   </div>
                   <div className="font-semibold text-sm leading-tight">{a.title ?? "Untitled"}</div>
-                  <div className="text-[10px] text-muted-foreground capitalize">{(a.category ?? "general").replace(/_/g, " ")}</div>
+                  <div className="text-2xs text-muted-foreground capitalize">{(a.category ?? "general").replace(/_/g, " ")}</div>
                   {/* Usage */}
-                  <div className="mt-auto flex items-center gap-3 pt-1.5 text-[11px] text-muted-foreground border-t border-border/60">
+                  <div className="mt-auto flex items-center gap-3 pt-1.5 text-2xs text-muted-foreground border-t border-border/60">
                     <span className="inline-flex items-center gap-1" title="Co-brands"><Sparkles className="size-3" /> {a.cobrands}</span>
                     <span className="inline-flex items-center gap-1" title="Downloads"><Download className="size-3" /> {a.downloads}</span>
                     <span className="inline-flex items-center gap-1" title="Sends"><Share2 className="size-3" /> {a.sends}</span>

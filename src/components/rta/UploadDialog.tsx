@@ -290,7 +290,7 @@ export function UploadDialog({
                     <a
                       href={def.sampleFiles[source]}
                       download
-                      className="text-[11px] inline-flex items-center gap-1 text-brand-cyan-deep hover:underline"
+                      className="text-2xs inline-flex items-center gap-1 text-brand-cyan-deep hover:underline"
                       title="Download a synthetic sample wired to your demo investors — use it to verify the upload pipeline end-to-end."
                     >
                       <Download className="size-3" /> Download sample
@@ -326,7 +326,7 @@ export function UploadDialog({
                       <div className="text-xs text-muted-foreground mt-0.5">
                         CSV, TXT, XLS, or password-protected ZIP — <strong>any size</strong>.
                       </div>
-                      <div className="text-[11px] text-muted-foreground/80 mt-0.5">
+                      <div className="text-2xs text-muted-foreground/80 mt-0.5">
                         Very large .xls/.xlsx/.dbf files are the one exception — ask the
                         registrar for CSV, which imports at any size.
                       </div>
@@ -500,7 +500,7 @@ function Stat({ label, value, tone }: { label: string; value: number; tone: "eme
   return (
     <div className={`rounded-lg px-3 py-2 text-center ${toneCls}`}>
       <div className="text-lg font-bold">{value}</div>
-      <div className="text-[10px] uppercase tracking-wider">{label}</div>
+      <div className="text-2xs uppercase tracking-wider">{label}</div>
     </div>
   );
 }

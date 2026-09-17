@@ -96,7 +96,7 @@ export function FloatingBulkBar({
       )}
 
       {/* Main floating pill bar */}
-      <div className="pointer-events-auto flex items-center gap-2 sm:gap-3 bg-card/95 dark:bg-card/90 backdrop-blur-xl border border-border/80 text-foreground px-4 py-2.5 rounded-2xl shadow-2xl animate-slide-up max-w-4xl flex-wrap justify-center ring-1 ring-black/5">
+      <div className="pointer-events-auto flex items-center gap-2 sm:gap-3 bg-card/95 backdrop-blur-xl border border-border/80 text-foreground px-4 py-2.5 rounded-2xl shadow-2xl animate-slide-up max-w-4xl flex-wrap justify-center ring-1 ring-black/5">
         <div className="flex items-center gap-2 pr-2 border-r border-border">
           <span className="flex size-6 items-center justify-center rounded-full bg-brand-navy text-white text-xs font-bold">
             {selectedCount}
@@ -169,7 +169,7 @@ export function FloatingBulkBar({
           <button
             type="button"
             onClick={() => setActiveModal("delete")}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/15 dark:bg-rose-950/40 dark:text-rose-300 transition-colors"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/15 transition-colors"
             title="Delete selected"
           >
             <Trash2 className="size-3.5" />

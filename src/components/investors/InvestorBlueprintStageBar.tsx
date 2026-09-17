@@ -82,7 +82,7 @@ export function InvestorBlueprintStageBar({ investorId }: { investorId: string }
             Direct entry · marked as Active Client
           </span>
         </div>
-        <span className="chip bg-emerald-50 text-emerald-700 text-[10px] inline-flex items-center gap-1">
+        <span className="chip bg-emerald-50 text-emerald-700 text-2xs inline-flex items-center gap-1">
           <CheckCircle2 className="size-3" /> Active
         </span>
       </div>
@@ -93,7 +93,7 @@ export function InvestorBlueprintStageBar({ investorId }: { investorId: string }
             <li key={s.key} className="flex items-center">
               <div className="flex flex-col items-center min-w-[80px]">
                 <div
-                  className={`size-7 rounded-full grid place-items-center text-[10px] font-bold ${
+                  className={`size-7 rounded-full grid place-items-center text-2xs font-bold ${
                     s.status === "done"
                       ? "bg-emerald-500 text-white"
                       : s.status === "current"
@@ -105,7 +105,7 @@ export function InvestorBlueprintStageBar({ investorId }: { investorId: string }
                   {s.status === "done" ? "✓" : s.order}
                 </div>
                 <span
-                  className={`mt-1 text-[10px] text-center leading-tight max-w-[90px] ${
+                  className={`mt-1 text-2xs text-center leading-tight max-w-[90px] ${
                     s.status === "current" ? "font-semibold" : "text-muted-foreground"
                   }`}
                 >

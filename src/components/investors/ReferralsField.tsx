@@ -37,7 +37,7 @@ export function ReferralsField({
       {value.map((n, i) => (
         <div key={i} className="rounded-lg border border-border p-3 space-y-2.5 bg-background/40">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <span className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
               Referral {i + 1}
             </span>
             <button

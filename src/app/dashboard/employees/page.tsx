@@ -79,9 +79,10 @@ export default async function EmployeesPage({
     <div className="space-y-6 max-w-7xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <UserCog className="size-6 text-brand-cyan" /> Employees / Team
+          <h1 className="page-title">
+            <UserCog className="size-6 text-muted-foreground" /> Employees / Team
           </h1>
+          <p className="page-subtitle mt-1">Your team — roles, joining details, documents and what each person can open.</p>
         </div>
         <div className="flex items-center gap-2">
           <TeamPresence members={data.map((e) => ({ id: e.id, name: e.name }))} />
@@ -182,8 +183,8 @@ export default async function EmployeesPage({
                         <Link href={`/dashboard/employees/${e.id}`} className="font-medium hover:underline">
                           {e.name}
                         </Link>
-                        <div className="text-[11px] text-muted-foreground">{e.email}</div>
-                        {e.phone && <div className="text-[10px] text-muted-foreground font-mono">{e.phone}</div>}
+                        <div className="text-2xs text-muted-foreground">{e.email}</div>
+                        {e.phone && <div className="text-2xs text-muted-foreground font-mono">{e.phone}</div>}
                       </td>
                       <td className="py-3 text-xs capitalize">
                         {e.department ? e.department.replace(/_/g, " ") : ""}
@@ -218,7 +219,7 @@ export default async function EmployeesPage({
                                     style={{ width: `${Math.min(100, progress)}%` }}
                                   />
                                 </div>
-                                <span className={`text-[9px] font-bold tabular-nums ${progressColor.split(" ")[1]}`}>
+                                <span className={`text-2xs font-bold tabular-nums ${progressColor.split(" ")[1]}`}>
                                   {progress}%
                                 </span>
                               </div>
@@ -277,7 +278,7 @@ function Stat({ icon: Icon, label, value, tone }: { icon: any; label: string; va
   return (
     <div className="kpi-card">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">{label}</span>
+        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{label}</span>
         <Icon className="size-3.5 text-muted-foreground" />
       </div>
       <div className={`text-2xl font-bold mt-1 tabular-nums ${color}`}>{value}</div>

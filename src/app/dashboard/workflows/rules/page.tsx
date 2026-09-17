@@ -94,7 +94,7 @@ export default async function WorkflowRulesPage({
         <div>
           <div className="flex items-center gap-1.5">
             <h1 className="page-title">
-              <Workflow className="size-6 text-brand-cyan" /> Workflow Rules
+              <Workflow className="size-6 text-muted-foreground" /> Workflow Rules
             </h1>
             <HelpTip title="What are automations?">
               Automations do repetitive work for you — send a WhatsApp when a SIP
@@ -122,7 +122,7 @@ export default async function WorkflowRulesPage({
               <BookMarked className="size-4" /> Start from a recipe
             </Link>
           </div>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             New here? Start from a recipe — the blank builder is only for power users.
           </p>
         </div>
@@ -132,7 +132,7 @@ export default async function WorkflowRulesPage({
       <div className="flex flex-wrap gap-1.5">
         <Link
           href="/dashboard/workflows/rules"
-          className={`chip text-[11px] ${!moduleFilter ? "bg-brand-cyan text-white" : "bg-secondary text-foreground"}`}
+          className={`chip text-2xs ${!moduleFilter ? "bg-brand-cyan text-white" : "bg-secondary text-foreground"}`}
         >
           All modules · {rules.length}
         </Link>
@@ -143,7 +143,7 @@ export default async function WorkflowRulesPage({
             <Link
               key={mod.key}
               href={`/dashboard/workflows/rules?module=${mod.key}`}
-              className={`chip text-[11px] ${moduleFilter === mod.key
+              className={`chip text-2xs ${moduleFilter === mod.key
                   ? "bg-brand-cyan text-white"
                   : "bg-secondary text-foreground hover:bg-brand-cyan-light"
                 }`}
@@ -226,7 +226,7 @@ export default async function WorkflowRulesPage({
                               </Link>
                             </div>
                             {r.description && (
-                              <div className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5">
+                              <div className="text-2xs text-muted-foreground line-clamp-1 mt-0.5">
                                 {r.description}
                               </div>
                             )}
@@ -261,7 +261,7 @@ export default async function WorkflowRulesPage({
                             <div className="flex items-center justify-center gap-1.5">
                               <span className="text-muted-foreground">Fired {r.executionCount ?? 0}</span>
                               {(failedByRule.get(r.id) ?? 0) > 0 && (
-                                <span className="chip text-[10px] bg-rose-100 text-rose-700">
+                                <span className="chip text-2xs bg-rose-100 text-rose-700">
                                   {failedByRule.get(r.id)} failed
                                 </span>
                               )}
@@ -270,7 +270,7 @@ export default async function WorkflowRulesPage({
                           <td className="py-3 text-center">
                             <RuleToggle id={r.id} enabled={r.enabled} locked={r.locked} />
                           </td>
-                          <td className="py-3 text-right pr-4 text-[11px] text-muted-foreground">
+                          <td className="py-3 text-right pr-4 text-2xs text-muted-foreground">
                             {r.lastExecutedAt ? `last ${formatRelative(r.lastExecutedAt)}` : "—"}
                           </td>
                         </ClickableRow>

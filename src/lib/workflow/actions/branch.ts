@@ -12,6 +12,7 @@ export const branchHandler: ActionHandler<any> = {
     const cases: Array<{ label: string; criteria: any }> = node.config.cases;
     const row = {
       ...(ctx.subject ?? {}),
+      subject: ctx.subject,
       vars: ctx.vars,
       event: ctx.event,
       tenant: ctx.tenant,
@@ -19,7 +20,6 @@ export const branchHandler: ActionHandler<any> = {
     const subject = ctx.subjectType ?? "investor";
     for (let i = 0; i < cases.length; i++) {
       const pred = compileToPredicate(cases[i].criteria, subject);
-      try {
         if (pred(row)) {
           ctx.log(`branch matched case_${i} (${cases[i].label})`);
           return {
@@ -28,9 +28,6 @@ export const branchHandler: ActionHandler<any> = {
             output: { matched: i, label: cases[i].label },
           };
         }
-      } catch (err) {
-        ctx.log(`branch case_${i} eval error: ${(err as Error).message}`);
-      }
     }
     return { kind: "continue", sourceHandle: "default", output: { matched: -1 } };
   },

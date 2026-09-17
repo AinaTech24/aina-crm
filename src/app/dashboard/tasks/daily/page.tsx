@@ -85,7 +85,7 @@ export default async function DailyTrackerPage({
             </h1>
             <p className="text-muted-foreground text-sm mt-1.5">
               {isSelf ? "Your day" : <><span className="font-medium text-foreground">{name}</span>'s day</>} · {dateLabel}
-              {isToday && <span className="ml-2 inline-flex items-center rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 text-[10px] font-semibold">Today</span>}
+              {isToday && <span className="ml-2 inline-flex items-center rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 text-2xs font-semibold">Today</span>}
             </p>
           </div>
           {/* Date navigation */}
@@ -121,7 +121,7 @@ export default async function DailyTrackerPage({
             <div className="mt-2 h-2 rounded-full bg-secondary overflow-hidden">
               <div className={`h-full ${barTone} transition-all`} style={{ width: `${pct}%` }} />
             </div>
-            <div className="text-[11px] text-muted-foreground mt-1.5">completed vs carried over</div>
+            <div className="text-2xs text-muted-foreground mt-1.5">completed vs carried over</div>
           </div>
           <MiniStat icon={CheckCircle2} label="Completed yesterday" value={data.completedYesterday.length} tone="emerald" />
           <MiniStat icon={AlertCircle} label="Carried over" value={data.incompleteCarried.length} tone={data.incompleteCarried.length ? "amber" : "muted"} />
@@ -191,7 +191,7 @@ function MiniStat({
       </span>
       <div className="min-w-0">
         <div className={`text-2xl font-bold tabular-nums leading-none ${num}`}>{value}</div>
-        <div className="text-[11px] text-muted-foreground mt-1 truncate">{label}</div>
+        <div className="text-2xs text-muted-foreground mt-1 truncate">{label}</div>
       </div>
     </div>
   );
@@ -224,7 +224,7 @@ function WorkList({
           <Icon className="size-4" /> {title}
           <span className="text-xs font-normal text-muted-foreground">· {subtitle}</span>
         </h3>
-        <span className={`text-[11px] font-bold tabular-nums px-1.5 py-0.5 rounded-full ${badge} min-w-[1.4rem] text-center`}>{count}</span>
+        <span className={`text-2xs font-bold tabular-nums px-1.5 py-0.5 rounded-full ${badge} min-w-[1.4rem] text-center`}>{count}</span>
       </div>
       {items.length === 0 ? (
         <p className="text-xs text-muted-foreground py-2">{empty}</p>
@@ -235,9 +235,9 @@ function WorkList({
               <span className={`absolute left-0 top-1.5 bottom-1.5 w-1 rounded-full ${bar}`} aria-hidden />
               <span className="text-sm truncate">{t.title}</span>
               {t.rightBadge ? (
-                <span className={`text-[10px] shrink-0 capitalize px-1.5 py-0.5 rounded ${PRIORITY_TONE[t.rightBadge] ?? "bg-slate-100 text-slate-600"}`}>{t.rightBadge}</span>
+                <span className={`text-2xs shrink-0 capitalize px-1.5 py-0.5 rounded ${PRIORITY_TONE[t.rightBadge] ?? "bg-slate-100 text-slate-600"}`}>{t.rightBadge}</span>
               ) : t.right ? (
-                <span className="text-[11px] text-muted-foreground shrink-0 truncate max-w-[40%]">{t.right}</span>
+                <span className="text-2xs text-muted-foreground shrink-0 truncate max-w-[40%]">{t.right}</span>
               ) : null}
             </li>
           ))}

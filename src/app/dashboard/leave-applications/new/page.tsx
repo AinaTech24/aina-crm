@@ -38,7 +38,7 @@ export default async function NewLeavePage() {
       </Link>
       <div className="card-surface p-6 flex items-start gap-4">
         <div className="size-12 rounded-lg bg-brand-cyan-light grid place-items-center">
-          <CalendarOff className="size-6 text-brand-cyan" />
+          <CalendarOff className="size-6 text-muted-foreground" />
         </div>
         <div>
           <h1 className="text-2xl font-bold tracking-tight">File a leave request</h1>

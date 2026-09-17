@@ -5,8 +5,10 @@
  */
 
 import React from "react";
-import { View, Pressable, StyleSheet } from "react-native";
+import { View, Pressable, Platform, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
+import Constants from "expo-constants";
+import { useTranslation } from "react-i18next";
 import { Feather } from "@expo/vector-icons";
 import { Screen } from "../../../../src/components/ui/Screen";
 import { Card } from "../../../../src/components/ui/Card";
@@ -21,6 +23,7 @@ type Section = { icon: FeatherName; title: string; desc: string; route: string }
 
 // Same sections/order/copy as the web settings hub.
 const SECTIONS: Section[] = [
+  { icon: "refresh-cw", title: "Sync", desc: "Review pending and failed changes saved on this device.", route: "/sync" },
   // My profile + Organisation profile live in the drawer's profile menu now.
   { icon: "smartphone", title: "App preferences", desc: "Auto-log calls, and how this device behaves for you.", route: "/m/settings-preferences" },
   { icon: "droplet", title: "Appearance & theme", desc: "Re-skin the CRM to your brand — colours, font & density, and your white-label URL.", route: "/m/settings-appearance" },
@@ -41,11 +44,12 @@ const SECTIONS: Section[] = [
 export default function Settings() {
   const router = useRouter();
   const signOut = useSession((s) => s.signOut);
+  const { t } = useTranslation();
 
   return (
     <Screen scroll padded contentStyle={{ paddingTop: spacing.lg, paddingBottom: spacing["3xl"] }}>
       <Text variant="label" tone="muted" style={{ marginBottom: spacing.sm }}>
-        SETTINGS
+        {t("settings.title")}
       </Text>
       <Card flat style={{ padding: 0, overflow: "hidden" }}>
         {SECTIONS.map((s, i) => (
@@ -65,15 +69,25 @@ export default function Settings() {
 
       <View style={{ marginTop: spacing.xl }}>
         <Button
-          label="Sign out"
+          label={t("settings.signOut")}
           variant="secondary"
           icon={<Feather name="log-out" size={16} color={palette.danger} />}
-          onPress={() => confirmDelete({ title: "Sign out?", message: "You'll need to log in again.", confirmLabel: "Sign out" }, () => signOut())}
+          onPress={() => confirmDelete({ title: t("settings.signOutQ"), message: t("settings.signOutMsg"), confirmLabel: t("settings.signOut") }, () => signOut())}
         />
       </View>
+
+      {/* The first thing support asks for — keep it where the user can read it out. */}
+      <Text variant="caption" tone="faint" center style={{ marginTop: spacing.xl }}>
+        Aina CRM v{APP_VERSION} ({BUILD}) · {Platform.OS === "ios" ? "iOS" : Platform.OS === "android" ? "Android" : "Web"}
+      </Text>
     </Screen>
   );
 }
+
+const APP_VERSION = Constants.expoConfig?.version ?? "1.0.0";
+const BUILD = String(
+  (Platform.OS === "ios" ? Constants.expoConfig?.ios?.buildNumber : Constants.expoConfig?.android?.versionCode) ?? "dev"
+);
 
 const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.lg },

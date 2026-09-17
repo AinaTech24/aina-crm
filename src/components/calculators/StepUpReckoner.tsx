@@ -83,14 +83,14 @@ export function StepUpReckoner() {
 
       {/* Periods */}
       <div>
-        <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5">
+        <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium mb-1.5">
           Timeframes to compare (years)
         </div>
         <div className="flex flex-wrap items-end gap-2">
           {periods.map((p, i) => (
             <div key={i} className="flex items-end gap-1">
               <label className="block">
-                <span className="text-[10px] text-muted-foreground block mb-0.5">#{i + 1}</span>
+                <span className="text-2xs text-muted-foreground block mb-0.5">#{i + 1}</span>
                 <input
                   type="number"
                   value={p}
@@ -118,7 +118,7 @@ export function StepUpReckoner() {
             </button>
           )}
         </div>
-        <p className="text-[10px] text-muted-foreground mt-1">
+        <p className="text-2xs text-muted-foreground mt-1">
           Set step-up % or step-up ₹ to 0 to hide that column.
         </p>
       </div>

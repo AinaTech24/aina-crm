@@ -114,7 +114,7 @@ export function AssetAllocationFvPlanner() {
         </details>
       )}
 
-      <p className="text-[10px] text-muted-foreground border-t pt-3">
+      <p className="text-2xs text-muted-foreground border-t pt-3">
         * Illustration only. Each asset class is assumed to grow at its own annual return; the portfolio is the sum of the
         sleeves. Actual returns vary with market performance and are not guaranteed. Not investment advice.
       </p>
@@ -144,14 +144,14 @@ function ScenarioEditor({
   return (
     <section className="border border-slate-200 rounded-lg p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <div className={`text-[11px] uppercase tracking-wider font-semibold ${toneClass}`}>{title}</div>
-        <div className={`text-[11px] font-semibold ${result.totalAllocationPct === 100 ? "text-emerald-600" : "text-rose-600"}`}>
+        <div className={`text-2xs uppercase tracking-wider font-semibold ${toneClass}`}>{title}</div>
+        <div className={`text-2xs font-semibold ${result.totalAllocationPct === 100 ? "text-emerald-600" : "text-rose-600"}`}>
           Total allocation {result.totalAllocationPct}%
         </div>
       </div>
 
       <div className="space-y-2">
-        <div className="hidden md:grid grid-cols-[1fr_120px_120px_40px] gap-2 text-[10px] uppercase tracking-wide text-muted-foreground font-medium px-1">
+        <div className="hidden md:grid grid-cols-[1fr_120px_120px_40px] gap-2 text-2xs uppercase tracking-wide text-muted-foreground font-medium px-1">
           <div>Asset class</div>
           <div>Assumed rate %</div>
           <div>Allocation %</div>
@@ -200,7 +200,7 @@ function ScenarioEditor({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
+      <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
       {children}
     </label>
   );
@@ -227,7 +227,7 @@ function Num({ label, value, setValue, step = 1000 }: { label: string; value: nu
 function Mini({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
     <div className="border border-slate-200 rounded-md p-2.5">
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">{label}</div>
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">{label}</div>
       <div className={`mt-0.5 ${strong ? "text-sm font-semibold" : "text-sm font-medium"}`}>{value}</div>
     </div>
   );

@@ -1,3 +1,4 @@
+import { issueSessionToken } from "@/lib/auth/issue-session";
 import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/auth/reset  Body: { token, password }
@@ -11,7 +12,7 @@ import bcrypt from "bcryptjs";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { withSystem } from "@/db/client";
-import { signSession, SESSION_TTL_SECONDS } from "@/lib/auth/session";
+import { SESSION_TTL_SECONDS } from "@/lib/auth/session";
 import { sessionCookieForRoles } from "@/lib/auth/jwt";
 import { clearSessionRevocationCache } from "@/lib/auth/revocation";
 import { enforce } from "@/lib/rate-limit";
@@ -82,7 +83,7 @@ export async function POST(req: NextRequest) {
     // effect immediately across this process (older sessions die at once).
     clearSessionRevocationCache(session.userId);
 
-    const token = await signSession(session);
+    const token = await issueSessionToken(session);
     const res = NextResponse.json({ ok: true });
     res.cookies.set(sessionCookieForRoles(session.roles), token, {
       httpOnly: true,

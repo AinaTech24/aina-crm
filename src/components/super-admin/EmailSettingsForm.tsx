@@ -154,7 +154,7 @@ export function EmailSettingsForm({ initial }: { initial: Status }) {
       <div className="space-y-1.5">
         <label className="text-sm font-medium">From address</label>
         <input value={from} onChange={(e) => setFrom(e.target.value)} placeholder="Aina CRM <connect@ainatech.in>" className={inputCls} />
-        <p className="text-[11px] text-muted-foreground">Many providers require the From to match the authenticated mailbox/domain.</p>
+        <p className="text-2xs text-muted-foreground">Many providers require the From to match the authenticated mailbox/domain.</p>
       </div>
 
       {msg && (

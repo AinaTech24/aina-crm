@@ -189,19 +189,19 @@ export function InvestorsTable({
               onClick={() => setSidePeekInvestor(i)}
               className="w-full text-left px-4 py-3 flex items-center gap-3 active:bg-secondary/60"
             >
-              <div className="size-9 shrink-0 rounded-full bg-secondary grid place-items-center text-[11px] font-bold text-muted-foreground">
+              <div className="size-9 shrink-0 rounded-full bg-secondary grid place-items-center text-2xs font-bold text-muted-foreground">
                 {i.name.split(" ").map((w: string) => w[0]).slice(0, 2).join("").toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium truncate">{i.name}</div>
-                <div className="text-[11px] text-muted-foreground truncate">
+                <div className="text-2xs text-muted-foreground truncate">
                   {i.sip > 0 ? `SIP ${formatINR(i.sip)}/mo` : "No active SIP"}
                   {i.status && i.status !== "active" ? ` · ${i.status}` : ""}
                 </div>
               </div>
               <div className="shrink-0 text-right">
                 <div className="text-sm font-semibold tabular-nums">{formatINR(i.aum)}</div>
-                <div className="text-[10px] text-muted-foreground">AUM</div>
+                <div className="text-2xs text-muted-foreground">AUM</div>
               </div>
             </button>
           </li>
@@ -248,13 +248,26 @@ export function InvestorsTable({
                 </th>
               )}
               {flags.showKyc && <th data-col="kyc" className={`text-left ${isCompact ? "py-1.5" : "py-2.5"} font-medium pl-4`}>KYC</th>}
-              <th data-col="health" className={`text-left ${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>
+              {/* Both of these columns are bare numbers with no unit, so say
+                  what they measure on hover — otherwise "100/100" and "13%"
+                  mean nothing to someone opening this list for the first time. */}
+              <th
+                data-col="health"
+                className={`text-left ${isCompact ? "py-1.5" : "py-2.5"} font-medium`}
+                title="Relationship health, 0–100. Drops when you haven't been in touch, a review is overdue, KYC/FATCA is expiring, or a nominee, bank or risk profile is missing."
+              >
                 <button onClick={() => setSort("health")} className="inline-flex items-center gap-1 hover:text-foreground">
                   Health <ArrowUpDown className="size-3" />
                   {arrow("health")}
                 </button>
               </th>
-              <th data-col="complete" className={`text-left ${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>Profile</th>
+              <th
+                data-col="complete"
+                className={`text-left ${isCompact ? "py-1.5" : "py-2.5"} font-medium`}
+                title="How much of the client record is filled in — PAN, date of birth, email, mobile, address, KYC, nominee, bank and risk profile."
+              >
+                Profile %
+              </th>
               {flags.showStatus && <th data-col="status" className={`text-left ${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>Status</th>}
               <th data-col="actions" className={`px-4 ${isCompact ? "py-1.5" : "py-2.5"} text-right font-medium`}>Actions</th>
             </tr>
@@ -295,7 +308,7 @@ export function InvestorsTable({
                     </div>
                   </td>
                   {flags.showPan && (
-                    <td data-col="pan" className={`${isCompact ? "py-1.5" : "py-2.5"} font-mono text-muted-foreground ${isCompact ? "text-[11px]" : "text-xs"}`}>
+                    <td data-col="pan" className={`${isCompact ? "py-1.5" : "py-2.5"} font-mono text-muted-foreground ${isCompact ? "text-2xs" : "text-xs"}`}>
                       {i.pan}
                     </td>
                   )}
@@ -380,7 +393,7 @@ export function InvestorsTable({
                           style={{ width: `${i.completeness}%` }}
                         />
                       </div>
-                      <span className="text-[11px] text-muted-foreground tabular-nums">{i.completeness}%</span>
+                      <span className="text-2xs text-muted-foreground tabular-nums">{i.completeness}%</span>
                     </div>
                   </td>
                   {flags.showStatus && (

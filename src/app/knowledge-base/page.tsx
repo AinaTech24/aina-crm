@@ -71,12 +71,12 @@ export default async function KnowledgeBasePage() {
                 className="group glass-card rounded-2xl border border-border/60 p-6 flex flex-col hover:border-brand-cyan/50 hover:shadow-md transition-all"
               >
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-primary bg-primary/10 px-2 py-1 rounded-full">
+                  <span className="text-2xs font-bold uppercase tracking-widest text-primary bg-primary/10 px-2 py-1 rounded-full">
                     {c.series}
                     {c.episodeNo != null ? ` #${c.episodeNo}` : ""}
                   </span>
                   {c.readMinutes ? (
-                    <span className="text-[11px] text-muted-foreground inline-flex items-center gap-1">
+                    <span className="text-2xs text-muted-foreground inline-flex items-center gap-1">
                       <Clock className="size-3" /> {c.readMinutes} min
                     </span>
                   ) : null}
@@ -96,7 +96,7 @@ export default async function KnowledgeBasePage() {
                       </li>
                     ))}
                     {c.questions.length > 3 && (
-                      <li className="text-[11px] text-muted-foreground/70 pl-5">
+                      <li className="text-2xs text-muted-foreground/70 pl-5">
                         +{c.questions.length - 3} more
                       </li>
                     )}
@@ -106,7 +106,7 @@ export default async function KnowledgeBasePage() {
                 {c.modules.length > 0 && (
                   <div className="mt-4 flex flex-wrap gap-1.5">
                     {c.modules.slice(0, 4).map((m) => (
-                      <span key={m} className="text-[10px] rounded-full border border-border/60 bg-secondary/40 px-2 py-0.5 text-muted-foreground">
+                      <span key={m} className="text-2xs rounded-full border border-border/60 bg-secondary/40 px-2 py-0.5 text-muted-foreground">
                         {m}
                       </span>
                     ))}

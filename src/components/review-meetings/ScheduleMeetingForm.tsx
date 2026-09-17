@@ -251,7 +251,7 @@ export function ScheduleMeetingForm({
             placeholder="Search a lead by name or phone…"
           />
           {leads.length === 0 && (
-            <div className="text-[11px] text-muted-foreground mt-1.5">
+            <div className="text-2xs text-muted-foreground mt-1.5">
               No open leads. Add one from{" "}
               <a href="/dashboard/leads/new" className="text-brand-cyan hover:underline">Leads → New</a>.
             </div>
@@ -267,7 +267,7 @@ export function ScheduleMeetingForm({
             placeholder="Search a family group…"
           />
           {families.length === 0 && (
-            <div className="text-[11px] text-muted-foreground mt-1.5">
+            <div className="text-2xs text-muted-foreground mt-1.5">
               No families with a primary client set. Link one from{" "}
               <a href="/dashboard/families" className="text-brand-cyan hover:underline">Families</a>.
             </div>
@@ -337,7 +337,7 @@ export function ScheduleMeetingForm({
             href={form.locationOrLink}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[11px] text-brand-cyan hover:underline mt-1 inline-block break-all"
+            className="text-2xs text-brand-cyan hover:underline mt-1 inline-block break-all"
           >
             {form.locationOrLink}
           </a>
@@ -359,11 +359,11 @@ export function ScheduleMeetingForm({
       )}
 
       {conflicts && conflicts.length > 0 && (
-        <div className="border border-amber-300 bg-amber-50 dark:bg-amber-500/10 dark:border-amber-500/30 rounded-lg px-3 py-2.5 text-sm">
-          <div className="flex items-center gap-1.5 font-medium text-amber-700 dark:text-amber-300">
+        <div className="border border-amber-300 bg-amber-50 rounded-lg px-3 py-2.5 text-sm">
+          <div className="flex items-center gap-1.5 font-medium text-amber-700">
             <AlertTriangle className="size-4" /> This RM is already booked at that time
           </div>
-          <ul className="mt-1.5 space-y-1 text-xs text-amber-800 dark:text-amber-200/90">
+          <ul className="mt-1.5 space-y-1 text-xs text-amber-800">
             {conflicts.map((c) => (
               <li key={c.id}>
                 • {c.subject || labelType(c.meeting_type)}
@@ -398,7 +398,7 @@ export function ScheduleMeetingForm({
         </button>
       </div>
 
-      <p className="text-[11px] text-muted-foreground leading-relaxed pt-2 border-t border-border flex items-start gap-1.5">
+      <p className="text-2xs text-muted-foreground leading-relaxed pt-2 border-t border-border flex items-start gap-1.5">
         <Calendar className="size-3.5 mt-0.5 flex-shrink-0" />
         A reminder task auto-fires the day before. After completion, action items become tasks and the{" "}
         {subjectKind === "lead" ? "lead's last-contact date" : "client's next review date"} gets updated.
@@ -483,7 +483,7 @@ function SearchSelect({
             ))}
           </ul>
           {options.length > 50 && (
-            <div className="px-3 py-1.5 text-[11px] text-muted-foreground border-t border-border">Showing 50 — refine your search.</div>
+            <div className="px-3 py-1.5 text-2xs text-muted-foreground border-t border-border">Showing 50 — refine your search.</div>
           )}
         </div>
       )}

@@ -54,7 +54,7 @@ export default async function KbArticlesPage() {
                 className={`flex items-center gap-4 border rounded-lg bg-card px-4 py-3 hover:border-primary/40 hover:shadow-sm transition ${a.published ? "" : "opacity-60"}`}
               >
                 <div className="w-16 shrink-0 text-center">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-primary">{a.series}</div>
+                  <div className="text-2xs font-bold uppercase tracking-wider text-primary">{a.series}</div>
                   <div className="text-sm font-mono tabular-nums">{a.episodeNo != null ? `#${a.episodeNo}` : "—"}</div>
                 </div>
                 <div className="min-w-0 flex-1">
@@ -64,7 +64,7 @@ export default async function KbArticlesPage() {
                     {a.hook ? ` · ${a.hook}` : ""}
                   </div>
                 </div>
-                <div className="shrink-0 flex items-center gap-3 text-[11px] text-muted-foreground">
+                <div className="shrink-0 flex items-center gap-3 text-2xs text-muted-foreground">
                   <span className="inline-flex items-center gap-1" title={`${qs} questions`}>
                     <HelpCircle className="size-3.5" /> {qs}
                   </span>

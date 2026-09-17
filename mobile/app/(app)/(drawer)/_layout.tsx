@@ -10,8 +10,13 @@ import React from "react";
 import { Drawer } from "expo-router/drawer";
 import type { DrawerContentComponentProps } from "@react-navigation/drawer";
 import { CustomDrawer } from "../../../src/navigation/CustomDrawer";
+import { useMe } from "../../../src/api/me";
+import { setSentryUser } from "../../../src/lib/sentry";
 
 export default function DrawerLayout() {
+  // Only mounted once signed in — tag crash reports with the (opaque) user id.
+  const userId = useMe().data?.user.id ?? null;
+  React.useEffect(() => { setSentryUser(userId); }, [userId]);
   return (
     <Drawer
       drawerContent={(props: DrawerContentComponentProps) => <CustomDrawer {...props} />}

@@ -31,7 +31,7 @@ export function fmtPct(n: number): string {
 export function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
+      <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
       {children}
     </label>
   );
@@ -76,7 +76,7 @@ export function Segmented<T extends string>({
   return (
     <div>
       {label && (
-        <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
+        <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
       )}
       {/* data-calc-seg + data-active let the scenario save/restore snapshot the
           selected mode generically (see ScenarioControls). */}
@@ -110,7 +110,7 @@ export function SmallNum({
 }: { label: string; value: number; onChange: (v: number) => void }) {
   return (
     <label className="block">
-      <span className="text-[10px] text-muted-foreground block mb-0.5">{label}</span>
+      <span className="text-2xs text-muted-foreground block mb-0.5">{label}</span>
       <input
         type="number"
         value={value}
@@ -134,7 +134,7 @@ export function Toggle({
         onChange={(e) => onChange(e.target.checked)}
         className="size-4 rounded border-border accent-primary"
       />
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">{label}</span>
+      <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">{label}</span>
     </label>
   );
 }
@@ -143,7 +143,7 @@ export function Section({ n, title, children }: { n: number | string; title: str
   return (
     <div className="space-y-2 break-inside-avoid">
       <h3 data-pdf="section" data-pdf-title={title} className="text-sm font-semibold flex items-center gap-2">
-        <span className="inline-grid place-items-center size-5 rounded-md bg-primary/10 text-primary text-[11px] font-bold">{n}</span>
+        <span className="inline-grid place-items-center size-5 rounded-md bg-primary/10 text-primary text-2xs font-bold">{n}</span>
         {title}
       </h3>
       {children}
@@ -160,7 +160,7 @@ export function Stat({ label, value, tone }: { label: string; value: string; ton
             : "";
   return (
     <div data-pdf="stat" data-pdf-label={label} data-pdf-value={value} className={`border rounded-md p-3 ${t}`}>
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">{label}</div>
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">{label}</div>
       <div className="text-lg font-semibold mt-0.5">{value}</div>
     </div>
   );
@@ -183,7 +183,7 @@ export function Table({
             {head.map((h, i) => (
               <th
                 key={i}
-                className={`py-1.5 px-3 text-[11px] uppercase tracking-wide font-semibold border-b border-border ${i > 0 ? "text-right" : ""} ${highlightCol === i ? "text-emerald-700" : "text-muted-foreground"}`}
+                className={`py-1.5 px-3 text-2xs uppercase tracking-wide font-semibold border-b border-border ${i > 0 ? "text-right" : ""} ${highlightCol === i ? "text-emerald-700" : "text-muted-foreground"}`}
               >
                 {h}
               </th>

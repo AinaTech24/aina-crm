@@ -21,7 +21,7 @@ const TONE_CLS: Record<Tone, string> = {
   danger: "bg-destructive/10 text-destructive border-destructive/25",
   info: "bg-info/10 text-info-foreground border-info/25",
   brand:
-    "bg-brand-cyan-light text-brand-cyan-deep border-brand-cyan/20 dark:bg-brand-cyan/15 dark:text-brand-cyan",
+    "bg-brand-cyan-light text-brand-cyan-deep border-brand-cyan/20",
 };
 
 export function StatusChip({
@@ -35,7 +35,7 @@ export function StatusChip({
 }) {
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${TONE_CLS[tone]} ${className}`}
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs font-medium ${TONE_CLS[tone]} ${className}`}
     >
       {children}
     </span>

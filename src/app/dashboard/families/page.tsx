@@ -202,7 +202,8 @@ export default async function FamiliesPage({
     <div className="space-y-6 max-w-7xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Family mapping</h1>
+          <h1 className="page-title">Family mapping</h1>
+          <p className="page-subtitle mt-1">Group clients into households to see a family&apos;s whole portfolio together.</p>
         </div>
         <div className="flex gap-2">
           <FamilySuggestionsLauncher />
@@ -308,7 +309,7 @@ export default async function FamiliesPage({
                           {(() => {
                             const wb = wealthBand(Number(f.family_aum ?? 0));
                             return wb !== "empty" ? (
-                              <span className={`ml-2 text-[10px] font-semibold px-1.5 py-0.5 rounded ${BAND_BADGE[wb]}`}>
+                              <span className={`ml-2 text-2xs font-semibold px-1.5 py-0.5 rounded ${BAND_BADGE[wb]}`}>
                                 {WEALTH_BAND_META[wb].label}
                               </span>
                             ) : null;
@@ -327,19 +328,19 @@ export default async function FamiliesPage({
                         <td className="py-3 pl-4">
                           <div className="flex flex-col gap-1">
                             <span
-                              className={`w-fit text-[10px] px-1.5 py-0.5 rounded-full border ${healthBandClasses((f.health_band as HealthBand) ?? "green").chip}`}
+                              className={`w-fit text-2xs px-1.5 py-0.5 rounded-full border ${healthBandClasses((f.health_band as HealthBand) ?? "green").chip}`}
                               title="Persisted family-health score (0–100)"
                             >
                               {healthBandClasses((f.health_band as HealthBand) ?? "green").label} · {f.health_score ?? 100}
                             </span>
                             {flags.length === 0 ? (
-                              <span className="text-[10px] text-emerald-700">✓ no data gaps</span>
+                              <span className="text-2xs text-emerald-700">✓ no data gaps</span>
                             ) : (
                               <div className="flex flex-wrap gap-1">
                                 {flags.slice(0, 3).map((fl, i) => (
                                   <span
                                     key={i}
-                                    className={`text-[10px] px-1.5 py-0.5 rounded-full ${fl.tone === "rose"
+                                    className={`text-2xs px-1.5 py-0.5 rounded-full ${fl.tone === "rose"
                                         ? "bg-rose-50 text-rose-700"
                                         : "bg-amber-50 text-amber-700"
                                       }`}
@@ -348,7 +349,7 @@ export default async function FamiliesPage({
                                   </span>
                                 ))}
                                 {flags.length > 3 && (
-                                  <span className="text-[10px] text-muted-foreground">
+                                  <span className="text-2xs text-muted-foreground">
                                     +{flags.length - 3}
                                   </span>
                                 )}

@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
+import { withIdempotentMutation } from "@/lib/api/idempotent-mutation";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
@@ -64,9 +65,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!parse.success) return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
     const meta = clientMetaFromHeaders(req.headers);
 
-    const result = await withTenant(
-      session.tenantId,
-      async (tx) => {
+    const result = await withIdempotentMutation(session, req, parse.data, async (tx) => {
         const before = (
           await tx.select().from(activities).where(and(eq(activities.id, id), eq(activities.tenantId, session.tenantId))).limit(1)
         )[0];

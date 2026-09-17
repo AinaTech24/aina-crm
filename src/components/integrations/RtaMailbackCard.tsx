@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { PasswordInput } from "@/components/ui/PasswordInput";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 
 /** A saved password's label only — the plaintext never leaves the server. */
 type PwLabel = { label: string };
@@ -173,7 +174,7 @@ export function RtaMailbackCard() {
 
   /** Remove one saved password by index (0-based, matching display order). */
   async function removePassword(source: "cams" | "kfintech", index: number) {
-    if (!confirm("Remove this password? Files that only that subscription can open will start showing as “not ours”.")) return;
+    if (!(await confirmDialog({ title: "Remove this password?", message: "Files that only that subscription can open will start showing as “not ours”.", confirmLabel: "Remove", tone: "danger" }))) return;
     setSaving(source);
     try {
       const key = source === "cams" ? "camsPasswordsRemoveIndex" : "kfintechPasswordsRemoveIndex";
@@ -197,7 +198,7 @@ export function RtaMailbackCard() {
   }
 
   async function regenerate() {
-    if (!confirm("Rotate to a new forwarding address? You'll need to update the auto-forward rule in your mailbox.")) return;
+    if (!(await confirmDialog({ title: "Rotate to a new forwarding address?", message: "You'll need to update the auto-forward rule in your mailbox." }))) return;
     setRotating(true);
     try {
       const r = await fetch("/api/integrations/rta-mailback/regenerate", { method: "POST" });
@@ -213,11 +214,11 @@ export function RtaMailbackCard() {
   const verifiedChip = loading ? (
     <Loader2 className="size-4 animate-spin text-muted-foreground" />
   ) : status?.verifiedAt ? (
-    <span className="chip text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1">
+    <span className="chip text-2xs bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1">
       <CheckCircle2 className="size-3" /> Receiving mail
     </span>
   ) : (
-    <span className="chip text-[11px] bg-amber-50 text-amber-700 border border-amber-200">Awaiting first forward</span>
+    <span className="chip text-2xs bg-amber-50 text-amber-700 border border-amber-200">Awaiting first forward</span>
   );
 
   return (
@@ -281,7 +282,7 @@ export function RtaMailbackCard() {
                 {copied === "own" ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
               </button>
             </div>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               Unique to your firm — routes on its own, nothing else to set up.
             </p>
           </div>
@@ -297,7 +298,7 @@ export function RtaMailbackCard() {
                 {copied === "shared" ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
               </button>
             </div>
-            <label className="text-[11px] text-muted-foreground block pt-1">
+            <label className="text-2xs text-muted-foreground block pt-1">
               To use it, register the mailbox(es) you forward <strong>from</strong> — that&apos;s how we know the mail is
               yours. Comma-separated.
             </label>
@@ -318,7 +319,7 @@ export function RtaMailbackCard() {
               )}
             </div>
             {status.sourceAddresses?.length > 0 && !sourcesDirty && (
-              <p className="text-[11px] text-emerald-700">
+              <p className="text-2xs text-emerald-700">
                 {status.sourceAddresses.length} mailbox{status.sourceAddresses.length > 1 ? "es" : ""} registered — the
                 shared address will route mail from {status.sourceAddresses.length > 1 ? "them" : "it"}.
               </p>
@@ -326,12 +327,12 @@ export function RtaMailbackCard() {
           </form>
 
           <div className="flex items-center justify-between">
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               {status.lastReceivedAt
                 ? `Last mail received ${new Date(status.lastReceivedAt).toLocaleString("en-IN")}`
                 : "No mail received yet."}
             </p>
-            <button onClick={regenerate} disabled={rotating} className="btn-ghost text-[11px] disabled:opacity-60">
+            <button onClick={regenerate} disabled={rotating} className="btn-ghost text-2xs disabled:opacity-60">
               {rotating ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />} Rotate
             </button>
           </div>
@@ -399,12 +400,12 @@ export function RtaMailbackCard() {
           <div className="text-xs font-medium text-muted-foreground mb-1.5">Recent auto-imports</div>
           <ul className="space-y-1">
             {status.recent.map((r) => (
-              <li key={r.id} className="flex items-center justify-between gap-2 text-[11px]">
+              <li key={r.id} className="flex items-center justify-between gap-2 text-2xs">
                 <span className="truncate flex-1">
                   <span className="font-mono">{r.source.toUpperCase()}</span> · {r.kind.replace(/_/g, " ")} · <span className="text-muted-foreground">{r.fileName}</span>
                 </span>
                 <span
-                  className={`chip text-[10px] shrink-0 ${
+                  className={`chip text-2xs shrink-0 ${
                     r.status === "completed"
                       ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                       : r.status === "partial"
@@ -475,7 +476,7 @@ function PasswordManager({
           <button
             type="button"
             onClick={() => setAdding(true)}
-            className="text-[11px] text-brand-cyan-deep hover:underline inline-flex items-center gap-1"
+            className="text-2xs text-brand-cyan-deep hover:underline inline-flex items-center gap-1"
           >
             <Plus className="size-3" /> {entries.length ? "Add another (e.g. a second ARN)" : "Add password"}
           </button>
@@ -492,7 +493,7 @@ function PasswordManager({
               <span className="text-xs flex items-center gap-1.5 min-w-0">
                 <KeyRound className="size-3 text-muted-foreground shrink-0" />
                 <span className="truncate">{e.label}</span>
-                <span className="chip text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">saved</span>
+                <span className="chip text-2xs bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">saved</span>
               </span>
               <button
                 type="button"
@@ -509,13 +510,13 @@ function PasswordManager({
       )}
 
       {entries.length === 0 && !adding && (
-        <p className="text-[11px] text-muted-foreground">No password saved yet.</p>
+        <p className="text-2xs text-muted-foreground">No password saved yet.</p>
       )}
 
       {adding && (
         <form onSubmit={submit} className="flex items-end gap-2 flex-wrap">
           <div className="flex-1 min-w-[140px]">
-            <label className="text-[10px] text-muted-foreground">Label (optional)</label>
+            <label className="text-2xs text-muted-foreground">Label (optional)</label>
             <input
               value={label}
               onChange={(ev) => setLabel(ev.target.value)}
@@ -525,7 +526,7 @@ function PasswordManager({
             />
           </div>
           <div className="flex-1 min-w-[160px]">
-            <label className="text-[10px] text-muted-foreground">{title} ZIP password</label>
+            <label className="text-2xs text-muted-foreground">{title} ZIP password</label>
             <PasswordInput
               value={password}
               onChange={(ev) => setPassword(ev.target.value)}

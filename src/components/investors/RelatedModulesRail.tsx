@@ -47,7 +47,7 @@ export function RelatedModulesRail({ items }: { items: RelatedModuleItem[] }) {
         title="Related modules"
         aria-label="Related modules"
       >
-        <span className="text-[11px] font-semibold tracking-wide">Related Modules</span>
+        <span className="text-2xs font-semibold tracking-wide">Related Modules</span>
       </button>
 
       {open && typeof document !== "undefined" && createPortal(
@@ -108,7 +108,7 @@ export function RelatedModulesRail({ items }: { items: RelatedModuleItem[] }) {
               })}
             </ul>
 
-            <div className="px-4 py-2.5 border-t bg-card text-[11px] text-muted-foreground">
+            <div className="px-4 py-2.5 border-t bg-card text-2xs text-muted-foreground">
               {total} related record{total === 1 ? "" : "s"} across {items.length} modules
             </div>
           </div>

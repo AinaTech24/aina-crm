@@ -76,38 +76,38 @@ export default async function NominationTrackerPage() {
     <div className="space-y-6 max-w-6xl">
       <div>
         <h1 className="page-title">
-          <ShieldCheck className="size-6 text-brand-cyan" /> Nomination Compliance
+          <ShieldCheck className="size-6 text-muted-foreground" /> Nomination Compliance
         </h1>
       </div>
 
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="kpi-card">
-          <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Clients</div>
+          <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">Clients</div>
           <div className="text-2xl font-bold mt-1.5 tabular-nums">{total}</div>
         </div>
         <div className="kpi-card">
-          <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Coverage</div>
+          <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">Coverage</div>
           <div
             className={`text-2xl font-bold mt-1.5 tabular-nums ${coverage >= 95 ? "text-emerald-700" : coverage >= 80 ? "text-amber-700" : "text-rose-700"
               }`}
           >
             {coverage.toFixed(0)}%
           </div>
-          <div className="text-[11px] mt-0.5 text-muted-foreground">{withNominee} with nominee</div>
+          <div className="text-2xs mt-0.5 text-muted-foreground">{withNominee} with nominee</div>
         </div>
         <div className="kpi-card">
-          <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground flex items-center gap-1.5">
+          <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground flex items-center gap-1.5">
             <UserX className="size-4" /> Missing nominee
           </div>
           <div className="text-2xl font-bold mt-1.5 tabular-nums text-rose-700">{missingCount}</div>
         </div>
         <div className="kpi-card">
-          <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground flex items-center gap-1.5">
+          <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground flex items-center gap-1.5">
             <IndianRupee className="size-4" /> AUM exposed
           </div>
           <div className="text-2xl font-bold mt-1.5 tabular-nums">{formatCr(aumMissing)}</div>
-          <div className="text-[11px] mt-0.5 text-muted-foreground">no nominee on record</div>
+          <div className="text-2xs mt-0.5 text-muted-foreground">no nominee on record</div>
         </div>
       </div>
 
@@ -144,7 +144,7 @@ export default async function NominationTrackerPage() {
                     </td>
                     <td className="px-4 py-2.5 text-xs text-muted-foreground">{m.segment ?? "—"}</td>
                     <td className="px-4 py-2.5">
-                      <span className="text-[11px] capitalize text-muted-foreground">
+                      <span className="text-2xs capitalize text-muted-foreground">
                         {(m.kyc ?? "—").replace(/_/g, " ")}
                       </span>
                     </td>

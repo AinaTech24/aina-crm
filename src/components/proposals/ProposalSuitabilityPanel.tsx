@@ -60,7 +60,7 @@ export function ProposalSuitabilityPanel({
 
       {schemes.length > 0 && (
         <div className="space-y-2">
-          <div className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
+          <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
             Risk Profile Suitability Check
           </div>
           <RiskAlignmentBanner
@@ -83,7 +83,7 @@ export function ProposalSuitabilityPanel({
             placeholder="Describe why this portfolio structure aligns with the client's goals and risk profile..."
             className="input-base text-xs font-sans leading-relaxed"
           />
-          <div className="text-[10px] text-muted-foreground leading-normal">
+          <div className="text-2xs text-muted-foreground leading-normal">
             Must detail the recommendations' alignment with client goals (e.g. tax planning, wealth creation).
           </div>
         </label>
@@ -100,7 +100,7 @@ export function ProposalSuitabilityPanel({
             placeholder="Owner justification for bypassing suitability check warning..."
             className="input-base text-xs font-sans leading-relaxed border-amber-200 focus:border-amber-400 focus:ring-amber-200"
           />
-          <div className="text-[10px] text-amber-600 leading-normal">
+          <div className="text-2xs text-amber-600 leading-normal">
             Required only if suitability note is missing and you have owner rights to override compliance warning.
           </div>
         </label>

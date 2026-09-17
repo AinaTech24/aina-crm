@@ -94,7 +94,7 @@ export function ManualSipForm({ members, currentUserId }: { members: { id: strin
             onSelect={(s) => { setSchemeName(s.schemeName); setSchemeCode(s.schemeCode); setAmcName(s.amc ?? ""); }}
             placeholder="Search catalog or type a scheme name…"
           />
-          {amcName && <div className="text-[10px] text-muted-foreground mt-1 truncate"><span className="font-medium text-foreground/70">AMC:</span> {amcName}</div>}
+          {amcName && <div className="text-2xs text-muted-foreground mt-1 truncate"><span className="font-medium text-foreground/70">AMC:</span> {amcName}</div>}
         </div>
         <div>
           <Label>SIP amount (₹) *</Label>

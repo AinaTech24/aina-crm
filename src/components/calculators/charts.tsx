@@ -45,7 +45,7 @@ export function LinesChart({
 
   return (
     <div className="border rounded-md p-3">
-      <div className="flex items-center gap-4 mb-2 text-[11px] flex-wrap">
+      <div className="flex items-center gap-4 mb-2 text-2xs flex-wrap">
         {lines.map((l, i) => (
           <span key={i} className="inline-flex items-center gap-1.5">
             <span className="size-2.5 rounded-sm" style={{ background: l.color }} /> {l.label}
@@ -114,13 +114,13 @@ export function BarsChart({
           <div className="w-28 shrink-0 text-right font-medium truncate">{b.label}</div>
           <div className="flex-1 bg-secondary/40 rounded h-6 relative overflow-hidden">
             <div
-              className="h-full rounded flex items-center justify-end px-2 text-[10px] font-semibold text-white whitespace-nowrap"
+              className="h-full rounded flex items-center justify-end px-2 text-2xs font-semibold text-white whitespace-nowrap"
               style={{ width: `${Math.max(8, (b.value / max) * 100)}%`, background: b.color ?? accent }}
             >
               {b.display ?? fV(b.value)}
             </div>
           </div>
-          {b.caption && <div className="w-20 shrink-0 text-[10px] text-muted-foreground">{b.caption}</div>}
+          {b.caption && <div className="w-20 shrink-0 text-2xs text-muted-foreground">{b.caption}</div>}
         </div>
       ))}
     </div>

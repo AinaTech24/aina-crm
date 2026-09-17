@@ -167,7 +167,7 @@ export default async function Home() {
         <div className="max-w-7xl mx-auto px-6 grid lg:grid-cols-12 gap-12 lg:gap-8 items-center">
           {/* Copy */}
           <div className="lg:col-span-7 flex flex-col items-start text-left">
-            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/5 px-3.5 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400 mb-6">
+            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/5 px-3.5 py-1.5 text-xs font-semibold text-emerald-700 mb-6">
               <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
               Built only for Indian MFDs · AMFI & SEBI-aware · DPDP-ready data isolation
             </span>
@@ -190,7 +190,7 @@ export default async function Home() {
                 "No more last-minute DDQ stress",
               ].map((t) => (
                 <li key={t} className="flex items-start gap-2">
-                  <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
+                  <CheckCircle2 className="size-4 text-emerald-600 mt-0.5 shrink-0" />
                   {t}
                 </li>
               ))}
@@ -228,8 +228,8 @@ export default async function Home() {
                 <CheckCircle2 className="size-4 text-emerald-600" />
               </span>
               <div className="leading-tight">
-                <div className="text-[11px] font-bold text-foreground">Sharma family review ready</div>
-                <div className="text-[10px] text-muted-foreground">Branded PDF · 16.9% family XIRR</div>
+                <div className="text-2xs font-bold text-foreground">Sharma family review ready</div>
+                <div className="text-2xs text-muted-foreground">Branded PDF · 16.9% family XIRR</div>
               </div>
             </div>
 
@@ -237,9 +237,9 @@ export default async function Home() {
               <div className="flex items-center justify-between border-b border-border/40 pb-3">
                 <div className="flex items-center gap-2">
                   <span className="pulse-dot" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Your practice, live</span>
+                  <span className="text-2xs font-bold uppercase tracking-wider text-muted-foreground">Your practice, live</span>
                 </div>
-                <span className="text-[10px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20">
+                <span className="text-2xs font-medium bg-emerald-500/10 text-emerald-600 px-2 py-0.5 rounded border border-emerald-500/20">
                   AMFI NAVs synced
                 </span>
               </div>
@@ -249,7 +249,7 @@ export default async function Home() {
                 <div className="text-3xl sm:text-4xl font-extrabold tabular-nums tracking-tight mt-1 text-foreground">
                   ₹4,28,16,500
                 </div>
-                <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-semibold mt-1">
+                <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-semibold mt-1">
                   <TrendingUp className="size-3.5" />
                   <span>▲ ₹58.4L unrealised gain · 16.42% family XIRR</span>
                 </div>
@@ -285,9 +285,9 @@ export default async function Home() {
                     <span className="pulse-warning-dot" />
                   </div>
                   <div className="mt-3">
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Churn Radar</span>
+                    <span className="text-2xs font-bold text-muted-foreground uppercase tracking-wider block">Churn Radar</span>
                     <span className="text-xs font-bold text-foreground mt-0.5 block leading-tight">3 at-risk clients</span>
-                    <span className="text-[9px] text-muted-foreground block mt-0.5">Retention scripts ready</span>
+                    <span className="text-2xs text-muted-foreground block mt-0.5">Retention scripts ready</span>
                   </div>
                 </div>
                 <div className="rounded-xl border border-border/50 bg-secondary/35 p-3 flex flex-col justify-between hover-glow-cyan transition-all">
@@ -296,21 +296,21 @@ export default async function Home() {
                     <span className="size-2 rounded-full bg-emerald-500" />
                   </div>
                   <div className="mt-3">
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Compliance Gate</span>
+                    <span className="text-2xs font-bold text-muted-foreground uppercase tracking-wider block">Compliance Gate</span>
                     <span className="text-xs font-bold text-foreground mt-0.5 block leading-tight">100% compliant</span>
-                    <span className="text-[9px] text-muted-foreground block mt-0.5">ARN on every message</span>
+                    <span className="text-2xs text-muted-foreground block mt-0.5">ARN on every message</span>
                   </div>
                 </div>
               </div>
 
-              <div className="rounded-xl bg-brand-navy-light/70 dark:bg-brand-navy/15 border border-brand-navy/15 p-3 flex items-start gap-2.5">
+              <div className="rounded-xl bg-brand-navy-light/70 border border-brand-navy/15 p-3 flex items-start gap-2.5">
                 <ShieldAlert className="size-4.5 text-brand-navy shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-brand-navy-deep dark:text-foreground uppercase tracking-wider">SIP bounce caught</span>
-                    <span className="text-[8px] bg-brand-navy text-white px-1.5 py-0.5 rounded font-bold uppercase">Auto-recovery</span>
+                    <span className="text-2xs font-bold text-brand-navy-deep uppercase tracking-wider">SIP bounce caught</span>
+                    <span className="text-2xs bg-brand-navy text-white px-1.5 py-0.5 rounded font-bold uppercase">Auto-recovery</span>
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug">
+                  <p className="text-2xs text-muted-foreground mt-0.5 leading-snug">
                     Mandate failed for <strong className="text-foreground">Sharma family</strong> — compliant WhatsApp reminder already queued.
                   </p>
                 </div>
@@ -323,7 +323,7 @@ export default async function Home() {
       {/* ───────────────────── Stats strip ───────────────────── */}
       <section className="border-y border-border/40 bg-secondary/20 relative z-10 py-12">
         <div className="max-w-7xl mx-auto px-6">
-          <p className="text-center text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-8">
+          <p className="text-center text-2xs font-bold uppercase tracking-[0.2em] text-muted-foreground mb-8">
             Purpose-built for the Indian MFD practice
           </p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-y-8 md:divide-x md:divide-border/50">
@@ -361,12 +361,12 @@ export default async function Home() {
                   <h3 className="font-bold mt-4 text-[15px] text-foreground flex items-center gap-2">
                     {f.title}
                     {f.badge && (
-                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${f.badgeBg} ${f.badgeFg}`}>{f.badge}</span>
+                      <span className={`text-2xs font-bold px-2 py-0.5 rounded-full ${f.badgeBg} ${f.badgeFg}`}>{f.badge}</span>
                     )}
                   </h3>
                   <p className="text-xs text-muted-foreground mt-2 leading-relaxed">{f.benefit}</p>
                 </div>
-                <div className="mt-4 pt-3 border-t border-border/30 flex items-center justify-between text-[11px] font-bold text-muted-foreground">
+                <div className="mt-4 pt-3 border-t border-border/30 flex items-center justify-between text-2xs font-bold text-muted-foreground">
                   <span>Impact: <strong className="text-foreground">{f.impact}</strong></span>
                   <ChevronRight className="size-3.5 text-muted-foreground" />
                 </div>
@@ -398,12 +398,12 @@ export default async function Home() {
               ["Old vs New Regime", "Save ₹89,700 this year"],
               ["FIRE Number", "Financially free at 50"],
             ].map(([name, hook]) => (
-              <div key={name} className="rounded-xl border border-border/50 bg-background/80 dark:bg-card p-3 shadow-sm">
+              <div key={name} className="rounded-xl border border-border/50 bg-background/80 p-3 shadow-sm">
                 <div className="flex items-center gap-1.5">
                   <Calculator className="size-3.5 text-primary shrink-0" />
-                  <span className="text-[11px] font-bold text-foreground leading-tight">{name}</span>
+                  <span className="text-2xs font-bold text-foreground leading-tight">{name}</span>
                 </div>
-                <p className="text-[10px] text-muted-foreground mt-1 leading-snug">{hook}</p>
+                <p className="text-2xs text-muted-foreground mt-1 leading-snug">{hook}</p>
               </div>
             ))}
           </div>
@@ -458,7 +458,7 @@ export default async function Home() {
       {/* ───────────────────────── Pricing ───────────────────────── */}
       <section id="pricing" className="py-20 lg:py-28 relative z-10 max-w-6xl mx-auto px-6">
         <div className="text-center max-w-2xl mx-auto">
-          <span className="chip bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+          <span className="chip bg-amber-500/10 text-amber-700 border border-amber-500/20">
             Founding member pricing
           </span>
           <h2 className="mt-4 text-3xl sm:text-4xl font-extrabold tracking-tight text-foreground">
@@ -480,7 +480,7 @@ export default async function Home() {
               </div>
               <div>
                 <h3 className="font-extrabold text-lg text-foreground leading-tight">RTA Data Import</h3>
-                <p className="text-[11px] text-muted-foreground font-semibold mt-0.5">One-time onboarding add-on</p>
+                <p className="text-2xs text-muted-foreground font-semibold mt-0.5">One-time onboarding add-on</p>
               </div>
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed sm:flex-1">
@@ -489,13 +489,13 @@ export default async function Home() {
             </p>
             <div className="grid grid-cols-2 gap-3 sm:min-w-[300px]">
               <div className="rounded-xl border border-border/60 bg-background/60 px-4 py-3 text-center">
-                <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                <div className="inline-flex items-center gap-1.5 text-2xs font-bold uppercase tracking-wide text-muted-foreground">
                   <User className="size-3.5 text-primary" /> Individual ARN
                 </div>
                 <div className="mt-1 text-2xl font-extrabold text-foreground tabular-nums">₹10,000</div>
               </div>
               <div className="rounded-xl border border-border/60 bg-background/60 px-4 py-3 text-center">
-                <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                <div className="inline-flex items-center gap-1.5 text-2xs font-bold uppercase tracking-wide text-muted-foreground">
                   <Building2 className="size-3.5 text-primary" /> Corporate ARN
                 </div>
                 <div className="mt-1 text-2xl font-extrabold text-foreground tabular-nums">₹20,000</div>
@@ -505,7 +505,7 @@ export default async function Home() {
         </div>
 
         <div className="mt-10 rounded-2xl border border-border/50 bg-secondary/20 px-6 py-5 max-w-4xl mx-auto">
-          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground text-center mb-3.5">
+          <div className="text-2xs font-bold uppercase tracking-[0.18em] text-muted-foreground text-center mb-3.5">
             Every plan includes
           </div>
           <div className="flex flex-wrap justify-center gap-x-7 gap-y-2.5 text-xs font-semibold text-foreground/80">
@@ -631,7 +631,7 @@ export default async function Home() {
             <FooterCol title="Trust & compliance" links={[["AMFI/SEBI compliance gate", "#features"], ["Data security (DPDP)", "#faq"], ["FAQs", "#faq"]]} />
           </div>
 
-          <div className="mt-14 pt-8 border-t border-border/40 flex flex-col lg:flex-row justify-between gap-4 text-[11px] text-muted-foreground leading-relaxed">
+          <div className="mt-14 pt-8 border-t border-border/40 flex flex-col lg:flex-row justify-between gap-4 text-2xs text-muted-foreground leading-relaxed">
             <span>
               © {new Date().getFullYear()}{" "}
               <a
@@ -666,7 +666,7 @@ const CORE_FEATURES = [
     title: "Compliance & DDQ readiness",
     benefit: "DDQ files, consents, registers and risk records stay organised all year — not assembled the night before an audit.",
     bg: "bg-emerald-500/10",
-    fg: "text-emerald-600 dark:text-emerald-400",
+    fg: "text-emerald-600",
     impact: "Audit-ready, always",
   },
   {
@@ -682,7 +682,7 @@ const CORE_FEATURES = [
     title: "Servicing on autopilot",
     benefit: "SIP-bounce recovery, review reminders and renewal trackers run themselves — every message compliance-checked.",
     bg: "bg-amber-500/10",
-    fg: "text-amber-600 dark:text-amber-400",
+    fg: "text-amber-600",
     impact: "Less manual chasing",
   },
   {
@@ -709,7 +709,7 @@ const CORE_FEATURES = [
     fg: "text-rose-500",
     badge: "AI-powered",
     badgeBg: "bg-rose-500/15",
-    badgeFg: "text-rose-700 dark:text-rose-300",
+    badgeFg: "text-rose-700",
     impact: "Work smarter",
   },
 ];
@@ -780,7 +780,7 @@ function Spotlight({
         <ul className="mt-6 flex flex-col gap-3">
           {points.map((pt) => (
             <li key={pt} className="flex items-start gap-2.5 text-sm font-medium text-foreground/85">
-              <CheckCircle2 className="size-4.5 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
+              <CheckCircle2 className="size-4.5 text-emerald-600 mt-0.5 shrink-0" />
               {pt}
             </li>
           ))}

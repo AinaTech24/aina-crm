@@ -79,18 +79,18 @@ export async function FamilySnapshot({
 
       <div className="grid grid-cols-3 gap-3 mb-4">
         <div className="bg-secondary/40 rounded-lg p-3">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+          <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
             Members
           </div>
           <div className="text-xl font-bold mt-1 tabular-nums">
             {members.length}{" "}
-            <span className="text-[10px] text-muted-foreground font-normal">
+            <span className="text-2xs text-muted-foreground font-normal">
               ({activeCount} active)
             </span>
           </div>
         </div>
         <div className="bg-emerald-50/50 rounded-lg p-3">
-          <div className="text-[10px] uppercase tracking-wider text-emerald-700 font-semibold">
+          <div className="text-2xs uppercase tracking-wider text-emerald-700 font-semibold">
             Combined AUM
           </div>
           <div className="text-xl font-bold text-emerald-700 mt-1 tabular-nums">
@@ -98,7 +98,7 @@ export async function FamilySnapshot({
           </div>
         </div>
         <div className="bg-violet-50/50 rounded-lg p-3">
-          <div className="text-[10px] uppercase tracking-wider text-violet-700 font-semibold">
+          <div className="text-2xs uppercase tracking-wider text-violet-700 font-semibold">
             Combined monthly SIP
           </div>
           <div className="text-xl font-bold text-violet-700 mt-1 tabular-nums">
@@ -130,39 +130,39 @@ export async function FamilySnapshot({
                     {m.name}
                   </Link>
                 )}
-                <div className="text-[11px] text-muted-foreground flex flex-wrap items-center gap-1.5 mt-0.5">
+                <div className="text-2xs text-muted-foreground flex flex-wrap items-center gap-1.5 mt-0.5">
                   {m.family_role && (
-                    <span className="chip bg-secondary text-[10px] py-0.5 px-1.5 capitalize">
+                    <span className="chip bg-secondary text-2xs py-0.5 px-1.5 capitalize">
                       {m.family_role}
                     </span>
                   )}
                   {m.segment_tag && (
-                    <span className="chip bg-violet-50 text-violet-700 text-[10px] py-0.5 px-1.5">
+                    <span className="chip bg-violet-50 text-violet-700 text-2xs py-0.5 px-1.5">
                       {m.segment_tag}
                     </span>
                   )}
                   {m.service_tier && (
-                    <span className="chip bg-emerald-50 text-emerald-700 text-[10px] py-0.5 px-1.5">
+                    <span className="chip bg-emerald-50 text-emerald-700 text-2xs py-0.5 px-1.5">
                       Tier {m.service_tier}
                     </span>
                   )}
                   {m.status && m.status !== "active" && (
-                    <span className="chip bg-rose-50 text-rose-700 text-[10px] py-0.5 px-1.5 capitalize">
+                    <span className="chip bg-rose-50 text-rose-700 text-2xs py-0.5 px-1.5 capitalize">
                       {m.status}
                     </span>
                   )}
                   {hasKycGaps && (
-                    <span className="chip bg-rose-50 text-rose-700 border border-rose-200 text-[10px] py-0.5 px-1.5 rounded-full font-medium">
+                    <span className="chip bg-rose-50 text-rose-700 border border-rose-200 text-2xs py-0.5 px-1.5 rounded-full font-medium">
                       ⚠️ KYC Gaps
                     </span>
                   )}
                   {hasNomineeGaps && (
-                    <span className="chip bg-rose-50 text-rose-700 border border-rose-200 text-[10px] py-0.5 px-1.5 rounded-full font-medium">
+                    <span className="chip bg-rose-50 text-rose-700 border border-rose-200 text-2xs py-0.5 px-1.5 rounded-full font-medium">
                       ⚠️ Missing Nominee
                     </span>
                   )}
                   {isSelf && (
-                    <span className="chip bg-brand-cyan text-white text-[10px] py-0.5 px-1.5 font-semibold">
+                    <span className="chip bg-brand-cyan text-white text-2xs py-0.5 px-1.5 font-semibold">
                       You
                     </span>
                   )}
@@ -173,7 +173,7 @@ export async function FamilySnapshot({
                   {formatINR(Number(m.aum))}
                 </div>
                 {Number(m.active_sip) > 0 && (
-                  <div className="text-[10px] text-muted-foreground tabular-nums">
+                  <div className="text-2xs text-muted-foreground tabular-nums">
                     SIP {formatINR(Number(m.active_sip))}
                   </div>
                 )}
@@ -184,7 +184,7 @@ export async function FamilySnapshot({
       </ul>
 
       {members.length === 1 && (
-        <p className="text-[11px] text-muted-foreground mt-3 italic">
+        <p className="text-2xs text-muted-foreground mt-3 italic">
           Only one member captured — onboarding spouse/children is one of the
           fastest wallet-share wins.
         </p>

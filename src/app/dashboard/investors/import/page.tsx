@@ -369,7 +369,7 @@ function Step({ label, active, done }: { label: string; active: boolean; done: b
       }`}
     >
       <span
-        className={`size-5 rounded-full grid place-items-center text-[10px] ${
+        className={`size-5 rounded-full grid place-items-center text-2xs ${
           done ? "bg-emerald-600 text-white" : active ? "bg-foreground text-background" : "bg-muted"
         }`}
       >

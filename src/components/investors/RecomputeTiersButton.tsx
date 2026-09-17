@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Layers, Loader2 } from "lucide-react";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 
 export function RecomputeTiersButton() {
   const router = useRouter();
@@ -10,7 +11,7 @@ export function RecomputeTiersButton() {
   const [result, setResult] = useState<{ counts?: Record<string, number>; recomputed?: number } | null>(null);
 
   async function go() {
-    if (!confirm("Recompute service tiers (A/B/C) for all active investors?")) return;
+    if (!(await confirmDialog({ title: "Recompute service tiers for every active client?", message: "Each client is re-graded A, B or C from their current AUM and SIP. Tiers you set by hand will be overwritten.", confirmLabel: "Recompute" }))) return;
     setBusy(true);
     try {
       const res = await fetch("/api/investors/recompute-tiers", { method: "POST" });

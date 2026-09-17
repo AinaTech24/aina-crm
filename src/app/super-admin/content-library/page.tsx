@@ -114,7 +114,7 @@ function Stat({ icon: Icon, label, value, sub, tone }: { icon: any; label: strin
         <span className={`size-7 rounded-lg grid place-items-center ${tones[tone]}`}><Icon className="size-4" /></span>
       </div>
       <div className="text-xl font-bold mt-2">{value}</div>
-      <div className="text-[11px] text-muted-foreground">{sub}</div>
+      <div className="text-2xs text-muted-foreground">{sub}</div>
     </div>
   );
 }

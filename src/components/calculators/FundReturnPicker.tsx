@@ -48,7 +48,7 @@ export function FundReturnPicker({ onPick }: { onPick: (pct: number) => void }) 
         ))}
       </select>
       {chosen && (
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           Typical long-term assumption for {chosen.label} ({chosen.pct}%) — illustrative, not a guarantee.
         </p>
       )}

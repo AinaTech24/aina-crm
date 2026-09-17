@@ -82,7 +82,7 @@ export default async function MfSelectionCriteriaPage() {
                     {benchmarkChips(cat.benchmark).map((chip) => (
                       <span
                         key={chip}
-                        className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-secondary border border-border/60 text-foreground/80 tabular-nums"
+                        className="text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-secondary border border-border/60 text-foreground/80 tabular-nums"
                       >
                         {chip}
                       </span>
@@ -110,7 +110,7 @@ export default async function MfSelectionCriteriaPage() {
         );
       })}
 
-      <p className="text-[11px] text-muted-foreground border-t pt-3">
+      <p className="text-2xs text-muted-foreground border-t pt-3">
         Adapted from the Network FP "3.3 MF Selection" framework. Schemes and AMCs
         are illustrative; criteria are educational, not investment advice. The IC
         always has final say over a scheme's verdict.

@@ -61,7 +61,7 @@ export function PropertyYieldCalculator() {
       <div className="grid md:grid-cols-2 gap-4">
         {/* Property */}
         <section className="border border-slate-200 rounded-lg p-4 space-y-3">
-          <div className="text-[11px] uppercase tracking-wider font-semibold text-primary">① The property</div>
+          <div className="text-2xs uppercase tracking-wider font-semibold text-primary">① The property</div>
           <div className="grid grid-cols-2 gap-3">
             <Num label="Current market value (₹)" value={marketValue} setValue={setMarketValue} />
             <Num label="Expected appreciation (% p.a.)" value={appreciationPct} setValue={setAppreciationPct} step={0.5} />
@@ -74,12 +74,12 @@ export function PropertyYieldCalculator() {
 
         {/* Reinvestment */}
         <section className="border border-slate-200 rounded-lg p-4 space-y-3">
-          <div className="text-[11px] uppercase tracking-wider font-semibold text-emerald-700">② Reinvest the surplus</div>
+          <div className="text-2xs uppercase tracking-wider font-semibold text-emerald-700">② Reinvest the surplus</div>
           <div className="grid grid-cols-2 gap-3">
             <Num label="Starting monthly investible surplus (₹)" value={investibleSurplus} setValue={setInvestibleSurplus} />
             <Num label="Assumed return on SIP (% p.a.)" value={sipReturnPct} setValue={setSipReturnPct} step={0.5} />
           </div>
-          <div className="text-[11px] text-muted-foreground flex items-center gap-2 flex-wrap">
+          <div className="text-2xs text-muted-foreground flex items-center gap-2 flex-wrap">
             <span>Net surplus = rent − maintenance = <strong>{inr(netSurplus)}</strong>/mo.</span>
             {investibleSurplus !== netSurplus && (
               <button type="button" onClick={() => setInvestibleSurplus(netSurplus)} className="text-primary hover:underline font-medium">
@@ -87,7 +87,7 @@ export function PropertyYieldCalculator() {
               </button>
             )}
           </div>
-          <p className="text-[10px] text-muted-foreground">The reinvested surplus steps up each year by the rent/expense increment, as rent rises.</p>
+          <p className="text-2xs text-muted-foreground">The reinvested surplus steps up each year by the rent/expense increment, as rent rises.</p>
         </section>
       </div>
 
@@ -110,7 +110,7 @@ export function PropertyYieldCalculator() {
       </div>
 
       {/* The "reframe" insight */}
-      <div className="text-[11px] bg-emerald-50/60 border border-emerald-200 rounded-md px-3 py-2 text-emerald-900">
+      <div className="text-2xs bg-emerald-50/60 border border-emerald-200 rounded-md px-3 py-2 text-emerald-900">
         Property alone grows to <strong>{inr(result.futurePropertyValue)}</strong> (~{result.propertyOnlyCagrPct.toFixed(1)}%).
         Reinvesting the rent lifts the blended yield to <strong>{result.overallYieldPct.toFixed(2)}%</strong> — property + disciplined
         reinvestment beats property alone.
@@ -149,7 +149,7 @@ export function PropertyYieldCalculator() {
         </details>
       )}
 
-      <p className="text-[10px] text-muted-foreground border-t pt-3">
+      <p className="text-2xs text-muted-foreground border-t pt-3">
         * Illustration only. A fictional scenario for education — figures assume constant appreciation, rent growth and SIP
         return, which vary in reality. Not investment advice; consult scheme documents before investing.
       </p>
@@ -162,7 +162,7 @@ export function PropertyYieldCalculator() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
+      <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
       {children}
     </label>
   );
@@ -199,7 +199,7 @@ function Num({
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="border border-slate-200 rounded-md p-3">
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">{label}</div>
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">{label}</div>
       <div className="text-sm font-semibold mt-0.5">{value}</div>
     </div>
   );
@@ -223,7 +223,7 @@ function ResultRow({
                 : "";
         return (
           <div key={i} className={`border rounded-md p-3 ${tone}`}>
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">{c.label}</div>
+            <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">{c.label}</div>
             <div className="text-lg font-semibold mt-0.5">{c.value}</div>
           </div>
         );

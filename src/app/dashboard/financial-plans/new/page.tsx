@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, Suspense } from "react";
+import { notify } from "@/components/ui/Toast";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -523,18 +524,18 @@ function PlanFormContent() {
       <div className="flex items-end justify-between flex-wrap gap-3">
         <div>
           <h1 className="page-title">
-            <ScrollText className="size-6 text-brand-cyan" /> {editId ? "Edit" : "New"} Financial Plan
+            <ScrollText className="size-6 text-muted-foreground" /> {editId ? "Edit" : "New"} Financial Plan
           </h1>
         </div>
         <div className="flex items-center gap-3">
           {/* Real-time Health Score Badge */}
           <div className="flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-brand-navy-light/10 to-secondary/30 border border-brand-cyan/20 rounded-lg text-xs">
-            <span className="text-[10px] text-muted-foreground uppercase font-bold">Health Score:</span>
+            <span className="text-2xs text-muted-foreground uppercase font-bold">Health Score:</span>
             <span className={`font-extrabold text-sm tabular-nums ${healthScore >= 85 ? "text-emerald-600" : healthScore >= 60 ? "text-amber-500" : "text-rose-600"
               }`}>
               {healthScore}
             </span>
-            <span className="text-[9px] text-muted-foreground">/100</span>
+            <span className="text-2xs text-muted-foreground">/100</span>
           </div>
 
           <SelectField
@@ -729,7 +730,7 @@ function PlanFormContent() {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="bg-emerald-50 border border-emerald-200/50 rounded-xl p-3.5 flex flex-col justify-between text-emerald-800">
-                <span className="text-[10px] uppercase font-bold text-emerald-700/80">Monthly Surplus</span>
+                <span className="text-2xs uppercase font-bold text-emerald-700/80">Monthly Surplus</span>
                 <span className="text-base font-extrabold tabular-nums mt-1">{formatINR(surplus)}</span>
               </div>
               <div className={`border rounded-xl p-3.5 flex flex-col justify-between ${savingsRate >= 30
@@ -738,9 +739,9 @@ function PlanFormContent() {
                     ? "bg-amber-50 border-amber-200/50 text-amber-800"
                     : "bg-rose-50 border-rose-200/50 text-rose-800"
                 }`}>
-                <span className="text-[10px] uppercase font-bold opacity-80">Savings Rate</span>
+                <span className="text-2xs uppercase font-bold opacity-80">Savings Rate</span>
                 <span className="text-base font-extrabold tabular-nums mt-1">{savingsRate}%
-                  <span className="text-[10px] font-normal ml-1">
+                  <span className="text-2xs font-normal ml-1">
                     ({savingsRate >= 30 ? "Excellent" : savingsRate >= 15 ? "Average" : "Low"})
                   </span>
                 </span>
@@ -751,9 +752,9 @@ function PlanFormContent() {
                     ? "bg-amber-50 border-amber-200/50 text-amber-800"
                     : "bg-emerald-50 border-emerald-200/50 text-emerald-800"
                 }`}>
-                <span className="text-[10px] uppercase font-bold opacity-80">Debt-to-Income (EMI Ratio)</span>
+                <span className="text-2xs uppercase font-bold opacity-80">Debt-to-Income (EMI Ratio)</span>
                 <span className="text-base font-extrabold tabular-nums mt-1">{emiToIncomePct}%
-                  <span className="text-[10px] font-normal ml-1">
+                  <span className="text-2xs font-normal ml-1">
                     ({emiToIncomePct > 45 ? "Critical" : emiToIncomePct >= 30 ? "Moderate" : "Safe"})
                   </span>
                 </span>
@@ -898,7 +899,7 @@ function PlanFormContent() {
           {/* Current Asset Allocation Mix Panel */}
           {totalAssets > 0 && (
             <div className="card-surface p-4 space-y-3">
-              <div className="text-[10px] uppercase font-bold text-muted-foreground pb-1 border-b">
+              <div className="text-2xs uppercase font-bold text-muted-foreground pb-1 border-b">
                 Current Asset Allocation Mix
               </div>
               <div className="h-3 rounded-full bg-secondary overflow-hidden flex">
@@ -924,7 +925,7 @@ function PlanFormContent() {
                   );
                 })()}
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[10px]">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-2xs">
                 {(() => {
                   const eq = assets.filter(a => a.category === 'equity').reduce((s, a) => s + (a.value || 0), 0);
                   const dt = assets.filter(a => a.category === 'debt').reduce((s, a) => s + (a.value || 0), 0);
@@ -963,7 +964,7 @@ function PlanFormContent() {
           {/* Net Worth Summary Panel */}
           <div className="card-surface p-4 bg-gradient-to-r from-brand-navy-light to-secondary/30 border border-brand-navy/10 flex items-center justify-between">
             <div>
-              <div className="text-[10px] uppercase font-bold text-muted-foreground">Estimated Net Worth</div>
+              <div className="text-2xs uppercase font-bold text-muted-foreground">Estimated Net Worth</div>
               <p className="text-xs text-muted-foreground">Total Assets minus Total Liabilities</p>
             </div>
             <div className={`text-xl font-bold tabular-nums ${netWorth >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
@@ -1025,7 +1026,7 @@ function PlanFormContent() {
               </div>
               {requiredEmergency > 0 && (
                 <div className="md:col-span-2 space-y-1 mt-1 border-t pt-2">
-                  <div className="flex justify-between text-[10px]">
+                  <div className="flex justify-between text-2xs">
                     <span className="text-muted-foreground">Buffer Adequacy:</span>
                     <span className="font-bold tabular-nums">
                       {Math.min(100, Math.round((emergencyFundCurrentValue / requiredEmergency) * 100))}%
@@ -1055,7 +1056,7 @@ function PlanFormContent() {
               <div className="space-y-3">
                 <h3 className="text-xs font-bold text-brand-navy border-b pb-1">Life Insurance (Term Policy)</h3>
                 <label className="block">
-                  <div className="text-[11px] text-muted-foreground mb-1">Current Sum Assured</div>
+                  <div className="text-2xs text-muted-foreground mb-1">Current Sum Assured</div>
                   <input
                     type="number"
                     value={lifeInsuranceSumAssured ?? ""}
@@ -1065,7 +1066,7 @@ function PlanFormContent() {
                   />
                 </label>
                 <label className="block">
-                  <div className="text-[11px] text-muted-foreground mb-1">Annual Premium</div>
+                  <div className="text-2xs text-muted-foreground mb-1">Annual Premium</div>
                   <input
                     type="number"
                     value={lifeInsuranceAnnualPremium ?? ""}
@@ -1074,13 +1075,13 @@ function PlanFormContent() {
                     placeholder="₹ Annual Premium paid"
                   />
                 </label>
-                <div className="bg-secondary/30 p-2.5 rounded-lg border text-[11px] flex justify-between">
+                <div className="bg-secondary/30 p-2.5 rounded-lg border text-2xs flex justify-between">
                   <span className="text-muted-foreground">Adequacy Goal (10x income + debt):</span>
                   <span className="font-bold tabular-nums">{formatINR(requiredLifeInsurance)}</span>
                 </div>
                 {requiredLifeInsurance > 0 && lifeInsuranceSumAssured !== undefined && (
                   <div className="space-y-1 mt-2">
-                    <div className="flex justify-between text-[10px]">
+                    <div className="flex justify-between text-2xs">
                       <span className="text-muted-foreground">Coverage Adequacy:</span>
                       <span className="font-bold tabular-nums">
                         {Math.min(100, Math.round((lifeInsuranceSumAssured / requiredLifeInsurance) * 100))}%
@@ -1101,7 +1102,7 @@ function PlanFormContent() {
               <div className="space-y-3">
                 <h3 className="text-xs font-bold text-brand-navy border-b pb-1">Health Insurance (Family Floater)</h3>
                 <label className="block">
-                  <div className="text-[11px] text-muted-foreground mb-1">Current Sum Assured</div>
+                  <div className="text-2xs text-muted-foreground mb-1">Current Sum Assured</div>
                   <input
                     type="number"
                     value={healthInsuranceSumAssured ?? ""}
@@ -1111,7 +1112,7 @@ function PlanFormContent() {
                   />
                 </label>
                 <label className="block">
-                  <div className="text-[11px] text-muted-foreground mb-1">Annual Premium</div>
+                  <div className="text-2xs text-muted-foreground mb-1">Annual Premium</div>
                   <input
                     type="number"
                     value={healthInsuranceAnnualPremium ?? ""}
@@ -1120,13 +1121,13 @@ function PlanFormContent() {
                     placeholder="₹ Annual Premium paid"
                   />
                 </label>
-                <div className="bg-secondary/30 p-2.5 rounded-lg border text-[11px] flex justify-between">
+                <div className="bg-secondary/30 p-2.5 rounded-lg border text-2xs flex justify-between">
                   <span className="text-muted-foreground">Suggested Minimum:</span>
                   <span className="font-bold">₹ 5,00,000 - ₹ 10,000,000</span>
                 </div>
                 {healthInsuranceSumAssured !== undefined && (
                   <div className="space-y-1 mt-2">
-                    <div className="flex justify-between text-[10px]">
+                    <div className="flex justify-between text-2xs">
                       <span className="text-muted-foreground">Coverage Adequacy:</span>
                       <span className="font-bold tabular-nums">
                         {Math.min(100, Math.round((healthInsuranceSumAssured / 500000) * 100))}%
@@ -1206,7 +1207,7 @@ function PlanFormContent() {
 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                       <label className="block">
-                        <span className="text-[10px] text-muted-foreground">Current Cost (₹)</span>
+                        <span className="text-2xs text-muted-foreground">Current Cost (₹)</span>
                         <input
                           type="number"
                           value={g.targetAmount || ""}
@@ -1215,7 +1216,7 @@ function PlanFormContent() {
                         />
                       </label>
                       <label className="block">
-                        <span className="text-[10px] text-muted-foreground">Years to Goal</span>
+                        <span className="text-2xs text-muted-foreground">Years to Goal</span>
                         <input
                           type="number"
                           value={g.targetYears || ""}
@@ -1224,7 +1225,7 @@ function PlanFormContent() {
                         />
                       </label>
                       <label className="block">
-                        <span className="text-[10px] text-muted-foreground">Inflation Rate (%)</span>
+                        <span className="text-2xs text-muted-foreground">Inflation Rate (%)</span>
                         <input
                           type="number"
                           value={g.inflationRate || ""}
@@ -1233,7 +1234,7 @@ function PlanFormContent() {
                         />
                       </label>
                       <label className="block">
-                        <span className="text-[10px] text-muted-foreground">Exp. Return (%)</span>
+                        <span className="text-2xs text-muted-foreground">Exp. Return (%)</span>
                         <input
                           type="number"
                           value={g.expectedReturn || ""}
@@ -1245,7 +1246,7 @@ function PlanFormContent() {
 
                     <div className="grid grid-cols-2 gap-3 text-xs">
                       <label className="block">
-                        <span className="text-[10px] text-muted-foreground">Already saved for this goal (₹)</span>
+                        <span className="text-2xs text-muted-foreground">Already saved for this goal (₹)</span>
                         <input
                           type="number"
                           value={g.currentValue || ""}
@@ -1255,7 +1256,7 @@ function PlanFormContent() {
                         />
                       </label>
                       <label className="block">
-                        <span className="text-[10px] text-muted-foreground">Existing SIP for this goal (₹/mo)</span>
+                        <span className="text-2xs text-muted-foreground">Existing SIP for this goal (₹/mo)</span>
                         <input
                           type="number"
                           value={g.existingMonthlySip || ""}
@@ -1274,7 +1275,7 @@ function PlanFormContent() {
                             type="button"
                             onClick={() => {
                               if (!clientAge || !monthlyExpenses) {
-                                alert("Please ensure 'Client Age' (Step 1) and 'Monthly Outflow (Expenses)' (Step 2) are filled out before syncing with profile.");
+                                notify.warning("Please ensure 'Client Age' (Step 1) and 'Monthly Outflow (Expenses)' (Step 2) are filled out before syncing with profile.");
                                 return;
                               }
                               const def = getRetirementDefaults(clientAge, monthlyExpenses, g.inflationRate);
@@ -1284,24 +1285,24 @@ function PlanFormContent() {
                                 inflationRate: def.inflationRate,
                               });
                             }}
-                            className="px-2 py-0.5 bg-brand-cyan-deep text-white rounded text-[10px] hover:bg-brand-cyan-deep/80 transition-colors font-bold"
+                            className="px-2 py-0.5 bg-brand-cyan-deep text-white rounded text-2xs hover:bg-brand-cyan-deep/80 transition-colors font-bold"
                           >
                             Sync with Profile
                           </button>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-slate-700">
                           <div>
-                            <span className="text-[10px] text-muted-foreground block">Monthly Expense Today:</span>
+                            <span className="text-2xs text-muted-foreground block">Monthly Expense Today:</span>
                             <span className="font-semibold">{formatINR(monthlyExpenses || 0)}</span>
                           </div>
                           <div>
-                            <span className="text-[10px] text-muted-foreground block">Expense at Retirement:</span>
+                            <span className="text-2xs text-muted-foreground block">Expense at Retirement:</span>
                             <span className="font-semibold">
                               {formatINR(Math.round((monthlyExpenses || 0) * Math.pow(1 + (g.inflationRate || 6) / 100, g.targetYears)))}/mo
                             </span>
                           </div>
                           <div>
-                            <span className="text-[10px] text-muted-foreground block">Suggested Corpus Today:</span>
+                            <span className="text-2xs text-muted-foreground block">Suggested Corpus Today:</span>
                             <span className="font-semibold text-emerald-700">
                               {formatINR(Math.round((monthlyExpenses || 0) * 12 * (
                                 (() => {
@@ -1313,7 +1314,7 @@ function PlanFormContent() {
                             </span>
                           </div>
                         </div>
-                        <p className="text-[10px] text-slate-500 leading-normal">
+                        <p className="text-2xs text-slate-500 leading-normal">
                           *Assumptions: retirement at 60, life expectancy 85 (25 years in retirement), post-retirement return 8% p.a., inflation {g.inflationRate || 6}%.
                         </p>
                       </div>
@@ -1322,19 +1323,19 @@ function PlanFormContent() {
                     {/* Result outputs for the goal */}
                     <div className="grid grid-cols-3 gap-3 bg-card border border-border/40 p-2.5 rounded-lg text-xs">
                       <div>
-                        <div className="text-[10px] text-muted-foreground">Future Cost (Inflation Adjusted):</div>
+                        <div className="text-2xs text-muted-foreground">Future Cost (Inflation Adjusted):</div>
                         <div className="font-bold text-brand-navy tabular-nums mt-0.5">
                           {formatINR(processed.futureValue || 0)}
                         </div>
                       </div>
                       <div>
-                        <div className="text-[10px] text-muted-foreground">New SIP needed:</div>
+                        <div className="text-2xs text-muted-foreground">New SIP needed:</div>
                         <div className="font-bold text-emerald-700 tabular-nums mt-0.5">
                           {formatINR(processed.additionalMonthlySip || 0)} /mo
                         </div>
                       </div>
                       <div>
-                        <div className="text-[10px] text-muted-foreground">Total required (gross):</div>
+                        <div className="text-2xs text-muted-foreground">Total required (gross):</div>
                         <div className="font-semibold text-muted-foreground tabular-nums mt-0.5">
                           {formatINR(processed.requiredMonthlySip || 0)} /mo
                         </div>
@@ -1439,7 +1440,7 @@ function PlanFormContent() {
             {/* Visual Recommended Allocation Mix Bar */}
             {(recommendedEquity > 0 || recommendedDebt > 0 || recommendedGold > 0 || recommendedCash > 0) && (
               <div className="space-y-2 pt-2 border-t">
-                <div className="text-[10px] uppercase font-bold text-muted-foreground">
+                <div className="text-2xs uppercase font-bold text-muted-foreground">
                   Recommended Allocation Preview
                 </div>
                 <div className="h-3 rounded-full bg-secondary overflow-hidden flex">
@@ -1448,7 +1449,7 @@ function PlanFormContent() {
                   {recommendedGold > 0 && <div style={{ width: `${recommendedGold}%` }} className="bg-amber-500 h-full transition-all" title={`Gold: ${recommendedGold}%`} />}
                   {recommendedCash > 0 && <div style={{ width: `${recommendedCash}%` }} className="bg-slate-500 h-full transition-all" title={`Cash: ${recommendedCash}%`} />}
                 </div>
-                <div className="flex flex-wrap gap-3 text-[10px] text-muted-foreground mt-1">
+                <div className="flex flex-wrap gap-3 text-2xs text-muted-foreground mt-1">
                   {recommendedEquity > 0 && <div className="flex items-center gap-1"><span className="size-2 rounded bg-emerald-500 inline-block" /><span>Equity: <strong>{recommendedEquity}%</strong></span></div>}
                   {recommendedDebt > 0 && <div className="flex items-center gap-1"><span className="size-2 rounded bg-blue-500 inline-block" /><span>Debt: <strong>{recommendedDebt}%</strong></span></div>}
                   {recommendedGold > 0 && <div className="flex items-center gap-1"><span className="size-2 rounded bg-amber-500 inline-block" /><span>Gold: <strong>{recommendedGold}%</strong></span></div>}
@@ -1562,7 +1563,7 @@ function PlanFormContent() {
               <Shield className="size-4 text-brand-cyan-deep" />
               <h3 className="text-xs font-bold text-brand-cyan-deep">Advisor's Alpha Value Statement</h3>
             </div>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               Explain the value of investing with you as an MFD. This appears prominently in the client's PDF roadmap report to demonstrate your wealth compounding alpha.
             </p>
             <textarea

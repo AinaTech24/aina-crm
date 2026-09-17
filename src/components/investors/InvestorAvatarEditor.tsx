@@ -116,7 +116,7 @@ export function InvestorAvatarEditor({
         )}
       </div>
       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onPick} />
-      {err && <div className="text-[10px] text-rose-600 text-center max-w-[120px]">{err}</div>}
+      {err && <div className="text-2xs text-rose-600 text-center max-w-[120px]">{err}</div>}
     </div>
   );
 }

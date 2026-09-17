@@ -115,7 +115,7 @@ export default function NewTenantPage() {
             </div>
           </Section>
 
-          {err && <div className="rounded-lg border border-rose-300 bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-300 px-3 py-2 text-sm">{err}</div>}
+          {err && <div className="rounded-lg border border-rose-300 bg-rose-50 text-rose-700 px-3 py-2 text-sm">{err}</div>}
 
           <div className="flex justify-end gap-2 pt-2 border-t">
             <Link href="/super-admin/tenants" className="rounded-lg border px-4 py-2 text-sm hover:bg-accent transition">Cancel</Link>

@@ -26,7 +26,7 @@ export type Holding = {
   folioNumber: string | null;
   folioNumbers: string[];
   netUnits: number;
-  investedNet: number;
+  investedNet: number | null;
   latestNav: number | null;
   navDate: string | null;
   currentValue: number | null;
@@ -103,9 +103,9 @@ export function HoldingsTable({
   const rows = useMemo(
     () =>
       holdings.map((h, i) => {
-        const avgNav = h.netUnits > 0 && h.investedNet > 0 ? h.investedNet / h.netUnits : null;
+        const avgNav = h.netUnits > 0 && h.investedNet != null && h.investedNet > 0 ? h.investedNet / h.netUnits : null;
         const weight = totalCurrent > 0 && h.currentValue ? (h.currentValue / totalCurrent) * 100 : null;
-        const absRet = h.investedNet > 0 && h.gain != null ? (h.gain / h.investedNet) * 100 : null;
+        const absRet = h.investedNet != null && h.investedNet > 0 && h.gain != null ? (h.gain / h.investedNet) * 100 : null;
         return { h, i, avgNav, weight, absRet };
       }),
     [holdings, totalCurrent]
@@ -128,17 +128,17 @@ export function HoldingsTable({
     const priced = src.filter((h) => h.priced);
     const sum = (f: (h: Holding) => number | null | undefined) =>
       src.reduce((s, h) => s + (Number(f(h)) || 0), 0);
-    const invested = sum((h) => h.investedNet);
+    const invested = src.some((h) => h.investedNet == null) ? null : sum((h) => h.investedNet);
     const current = priced.reduce((s, h) => s + (h.currentValue || 0), 0);
-    const unrealised = priced.reduce((s, h) => s + (h.gain || 0), 0);
+    const unrealised = priced.some((h) => h.gain == null) ? null : priced.reduce((s, h) => s + (h.gain || 0), 0);
     const realised = sum((h) => h.realisedGain);
     const dividend = sum((h) => h.dividend);
     const units = sum((h) => h.netUnits);
-    const absRet = invested > 0 ? (unrealised / invested) * 100 : null;
+    const absRet = invested != null && invested > 0 && unrealised != null ? (unrealised / invested) * 100 : null;
     return { invested, current, unrealised, realised, dividend, units, absRet };
   }, [visibleRows]);
 
-  const th = "px-2.5 py-2 font-semibold text-[11px] uppercase tracking-wide whitespace-nowrap";
+  const th = "px-2.5 py-2 font-semibold text-2xs uppercase tracking-wide whitespace-nowrap";
   const td = "px-2.5 py-2.5 align-top tabular-nums whitespace-nowrap";
 
   return (
@@ -165,7 +165,7 @@ export function HoldingsTable({
           <div className="text-right">
             {asOf && <span className="text-xs text-muted-foreground">As of {fmtDate(asOf)}</span>}
             {unpricedSchemes > 0 && (
-              <div className="text-[11px] text-amber-700 flex items-center justify-end gap-1 mt-0.5">
+              <div className="text-2xs text-amber-700 flex items-center justify-end gap-1 mt-0.5">
                 <AlertTriangle className="size-3" />
                 {unpricedSchemes} scheme{unpricedSchemes > 1 ? "s" : ""} not priced
               </div>
@@ -229,15 +229,15 @@ export function HoldingsTable({
                     />
                   </td>
                   <td className={`${td} text-muted-foreground`}>{i + 1}</td>
-                  <td className={`${td} text-left font-mono text-[11px] text-muted-foreground`}>
+                  <td className={`${td} text-left font-mono text-2xs text-muted-foreground`}>
                     {(h.folioNumbers.length ? h.folioNumbers : h.folioNumber ? [h.folioNumber] : ["—"]).join(", ")}
                   </td>
                   <td className="px-2.5 py-2.5 align-top max-w-[240px]">
                     <div className="font-medium text-brand-cyan-deep truncate">{h.schemeName ?? "Unknown scheme"}</div>
                     <div className="flex items-center gap-1.5 mt-0.5">
-                      {h.amcName && <span className="text-[10px] text-muted-foreground truncate">{h.amcName}</span>}
+                      {h.amcName && <span className="text-2xs text-muted-foreground truncate">{h.amcName}</span>}
                       {h.kind === "sip" && (
-                        <span className="text-[9px] font-semibold px-1 py-0.5 rounded bg-sky-50 text-sky-700">SIP</span>
+                        <span className="text-2xs font-semibold px-1 py-0.5 rounded bg-sky-50 text-sky-700">SIP</span>
                       )}
                     </div>
                   </td>
@@ -275,7 +275,7 @@ export function HoldingsTable({
                 <td className="px-2.5 py-3" colSpan={2} />
                 <td className="px-2.5 py-3 text-right tabular-nums">{fmtMoney(t.current)}</td>
                 <td className="px-2.5 py-3 text-right tabular-nums">
-                  {t.invested ? (t.unrealised >= 0 ? "+" : "−") + "₹" + Math.round(Math.abs(t.unrealised)).toLocaleString("en-IN") : "—"}
+                  {t.unrealised != null ? (t.unrealised >= 0 ? "+" : "−") + "₹" + Math.round(Math.abs(t.unrealised)).toLocaleString("en-IN") : "—"}
                 </td>
                 <td className="px-2.5 py-3 text-right tabular-nums">{t.realised ? "₹" + Math.round(t.realised).toLocaleString("en-IN") : "—"}</td>
                 <td className="px-2.5 py-3 text-right tabular-nums">100.00</td>
@@ -288,7 +288,7 @@ export function HoldingsTable({
         </div>
       )}
 
-      <p className="mt-3 text-[11px] text-muted-foreground">
+      <p className="mt-3 text-2xs text-muted-foreground">
         Cost, gains, dividend, XIRR, start date &amp; avg days come from the <strong>transaction history</strong> (CAMS
         WBR2 / KFintech MFSD307). Columns show <span className="font-mono">—</span> until that feed is imported; units,
         NAV, current value &amp; weight come straight from the holdings file.
@@ -296,3 +296,4 @@ export function HoldingsTable({
     </div>
   );
 }
+

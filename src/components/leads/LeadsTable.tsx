@@ -203,7 +203,7 @@ export function LeadsTable({ rows, sort, dir = "desc" }: { rows: Row[]; sort: st
                       <div>
                         <span className="hover:text-brand-navy hover:underline">{l.name}</span>
                         {(l.phone || l.email) && (
-                          <div className="text-[11px] text-muted-foreground mt-0.5 space-x-2 font-mono">
+                          <div className="text-2xs text-muted-foreground mt-0.5 space-x-2 font-mono">
                             {l.phone && <span>{l.phone}</span>}
                             {l.phone && l.email && <span>·</span>}
                             {l.email && <span>{l.email}</span>}

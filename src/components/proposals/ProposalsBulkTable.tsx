@@ -47,7 +47,7 @@ export function ProposalsBulkTable({ rows }: { rows: Row[] }) {
       render: (p) => (
         <>
           <div className="font-medium text-foreground">{p.title}</div>
-          {p.risk_rating && <div className="text-[10px] text-muted-foreground capitalize">Risk · {p.risk_rating}</div>}
+          {p.risk_rating && <div className="text-2xs text-muted-foreground capitalize">Risk · {p.risk_rating}</div>}
         </>
       ),
     },
@@ -66,7 +66,7 @@ export function ProposalsBulkTable({ rows }: { rows: Row[] }) {
             />
             <div>
               <div className="font-medium">{p.recipient_name}</div>
-              <div className="text-[10px] text-muted-foreground capitalize">{p.recipient_type}</div>
+              <div className="text-2xs text-muted-foreground capitalize">{p.recipient_type}</div>
             </div>
           </div>
         );
@@ -74,7 +74,7 @@ export function ProposalsBulkTable({ rows }: { rows: Row[] }) {
     },
     {
       key: "type", colKey: "type", header: "Type", tdClass: "py-3",
-      render: (p) => <span className={`chip ${TYPE_TONE[p.type] ?? ""} text-[10px]`}>{TYPE_LABEL[p.type] ?? p.type}</span>,
+      render: (p) => <span className={`chip ${TYPE_TONE[p.type] ?? ""} text-2xs`}>{TYPE_LABEL[p.type] ?? p.type}</span>,
     },
     {
       key: "invest", colKey: "invest", header: "Invest ₹", thClass: "text-right py-2 font-medium", tdClass: "py-3 text-right tabular-nums text-xs whitespace-nowrap",

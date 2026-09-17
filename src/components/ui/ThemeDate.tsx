@@ -32,7 +32,7 @@ export function ThemeDate({
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={`input-base pr-9 dark:[color-scheme:dark]
+        className={`input-base pr-9
           [&::-webkit-calendar-picker-indicator]:absolute
           [&::-webkit-calendar-picker-indicator]:right-0
           [&::-webkit-calendar-picker-indicator]:top-0

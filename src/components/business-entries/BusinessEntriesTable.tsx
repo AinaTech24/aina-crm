@@ -73,7 +73,7 @@ export function BusinessEntriesTable({ rows, rmOptions }: { rows: Row[]; rmOptio
       header: "Status",
       thClass: "text-left py-2 font-medium pr-4",
       tdClass: "py-2.5 pr-4",
-      render: (r) => <span className={`chip text-[10px] capitalize ${STATUS_TONE[r.status] ?? ""}`}>{r.status}</span>,
+      render: (r) => <span className={`chip text-2xs capitalize ${STATUS_TONE[r.status] ?? ""}`}>{r.status}</span>,
     },
   ];
 

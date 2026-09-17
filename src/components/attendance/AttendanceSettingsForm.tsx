@@ -152,7 +152,7 @@ export function AttendanceSettingsForm({
             );
           })}
         </div>
-        <p className="text-[11px] text-muted-foreground mt-1.5">
+        <p className="text-2xs text-muted-foreground mt-1.5">
           Selected days are treated as weekly offs in the attendance grid.
         </p>
       </div>

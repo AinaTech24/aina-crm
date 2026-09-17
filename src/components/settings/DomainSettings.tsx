@@ -76,7 +76,7 @@ export function DomainSettings() {
             </a>
           )}
         </div>
-        <p className="text-[11px] text-muted-foreground">3–40 letters, numbers or hyphens. Available once DNS is configured for <span className="font-mono">*.{base}</span>.</p>
+        <p className="text-2xs text-muted-foreground">3–40 letters, numbers or hyphens. Available once DNS is configured for <span className="font-mono">*.{base}</span>.</p>
       </div>
 
       {/* Custom domain */}
@@ -84,8 +84,8 @@ export function DomainSettings() {
         <div className="flex items-center gap-2">
           <div className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Your own domain</div>
           {d.customDomain && (d.customDomainVerified
-            ? <span className="chip text-[10px] bg-emerald-50 text-emerald-700 inline-flex items-center gap-1"><ShieldCheck className="size-3" /> Verified</span>
-            : <span className="chip text-[10px] bg-amber-100 text-amber-700">Pending DNS</span>)}
+            ? <span className="chip text-2xs bg-emerald-50 text-emerald-700 inline-flex items-center gap-1"><ShieldCheck className="size-3" /> Verified</span>
+            : <span className="chip text-2xs bg-amber-100 text-amber-700">Pending DNS</span>)}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <input value={dom} onChange={(e) => setDom(e.target.value.toLowerCase())} placeholder="crm.yourfirm.in" className="input-base w-64" />
@@ -99,7 +99,7 @@ export function DomainSettings() {
           )}
         </div>
         {d.customDomain && (
-          <div className="text-[11px] text-muted-foreground bg-muted/40 rounded-md p-3 space-y-1">
+          <div className="text-2xs text-muted-foreground bg-muted/40 rounded-md p-3 space-y-1">
             <div className="font-semibold text-foreground">DNS setup</div>
             <div>At your domain registrar, add a <span className="font-mono">CNAME</span> record:</div>
             <div className="flex items-center gap-2 font-mono">

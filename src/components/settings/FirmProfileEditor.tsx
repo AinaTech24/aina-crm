@@ -620,7 +620,7 @@ function Section({
 }) {
   return (
     <div className="space-y-2">
-      <h3 className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">
+      <h3 className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold">
         {title}
       </h3>
       {children}
@@ -641,7 +641,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">
+      <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">
         {label}
       </span>
       {children}
@@ -660,7 +660,7 @@ function Read({
 }) {
   return (
     <div>
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">
         {label}
       </div>
       <div className={`text-sm ${mono ? "font-mono" : ""}`}>{value}</div>

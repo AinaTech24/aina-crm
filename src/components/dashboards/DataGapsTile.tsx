@@ -134,7 +134,7 @@ export function DataGapsTile() {
           </div>
           <div>
             <div className="text-sm font-semibold">Client master — data gaps</div>
-            <div className="text-[11px] text-muted-foreground mt-0.5">
+            <div className="text-2xs text-muted-foreground mt-0.5">
               {totalGaps.toLocaleString("en-IN")} fixes across {data.total.toLocaleString("en-IN")} clients.
               Click a chip to inspect, or click the <Send className="inline size-2.5 mx-0.5" /> icon to bulk-remind.
             </div>
@@ -142,7 +142,7 @@ export function DataGapsTile() {
         </div>
         <Link
           href="/dashboard/investors"
-          className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-0.5"
+          className="text-2xs text-muted-foreground hover:text-foreground inline-flex items-center gap-0.5"
         >
           All clients <ArrowUpRight className="size-3" />
         </Link>
@@ -150,7 +150,7 @@ export function DataGapsTile() {
 
       {highSev.length > 0 && (
         <div>
-          <div className="text-[10px] font-bold uppercase tracking-wider text-rose-700 mb-1.5">
+          <div className="text-2xs font-bold uppercase tracking-wider text-rose-700 mb-1.5">
             Compliance-impacting
           </div>
           <div className="flex flex-wrap gap-2">
@@ -163,7 +163,7 @@ export function DataGapsTile() {
 
       {medSev.length > 0 && (
         <div>
-          <div className="text-[10px] font-bold uppercase tracking-wider text-amber-700 mb-1.5">
+          <div className="text-2xs font-bold uppercase tracking-wider text-amber-700 mb-1.5">
             Engagement-impacting
           </div>
           <div className="flex flex-wrap gap-2">
@@ -176,7 +176,7 @@ export function DataGapsTile() {
 
       {/* Bulk Notification Confirm Modal */}
       {activeGap && (
-        <div className="absolute inset-0 bg-white/95 dark:bg-slate-900/95 flex flex-col justify-center p-5 z-20 transition-all duration-300 animate-in fade-in">
+        <div className="absolute inset-0 bg-white/95 flex flex-col justify-center p-5 z-20 transition-all duration-300 animate-in fade-in">
           <button
             onClick={() => setActiveGap(null)}
             className="absolute top-3 right-3 text-muted-foreground hover:text-foreground"
@@ -245,8 +245,8 @@ function GapChip({
 }) {
   const cls =
     tone === "rose"
-      ? "border-rose-200 bg-rose-50/60 text-rose-900 hover:bg-rose-100 dark:border-rose-950/40 dark:bg-rose-950/20 dark:text-rose-200"
-      : "border-amber-200 bg-amber-50/60 text-amber-900 hover:bg-amber-100 dark:border-amber-950/40 dark:bg-amber-950/20 dark:text-amber-200";
+      ? "border-rose-200 bg-rose-50/60 text-rose-900 hover:bg-rose-100"
+      : "border-amber-200 bg-amber-50/60 text-amber-900 hover:bg-amber-100";
 
   return (
     <div className="inline-flex items-stretch rounded-md shadow-sm">
@@ -261,7 +261,7 @@ function GapChip({
       <button
         onClick={() => onNotify(gap)}
         title={`Queue automated notifications for missing ${gap.label}`}
-        className={`flex items-center justify-center rounded-r-md border px-2 text-xs transition-colors hover:bg-brand-cyan-light dark:hover:bg-cyan-950/40 hover:text-brand-cyan-deep ${cls}`}
+        className={`flex items-center justify-center rounded-r-md border px-2 text-xs transition-colors hover:bg-brand-cyan-light hover:text-brand-cyan-deep ${cls}`}
       >
         <Send className="size-3" />
       </button>

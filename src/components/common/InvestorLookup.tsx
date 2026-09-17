@@ -99,7 +99,7 @@ export function InvestorLookup({
     return (
       <div className="flex items-center gap-2">
         <div className="flex-1 flex items-center gap-2 rounded-lg border border-brand-cyan/40 bg-brand-cyan-light/40 px-3 py-2">
-          <div className="size-7 rounded-full brand-gradient text-white grid place-items-center text-[10px] font-bold flex-shrink-0 shadow-sm">
+          <div className="size-7 rounded-full brand-gradient text-white grid place-items-center text-2xs font-bold flex-shrink-0 shadow-sm">
             {displayName
               .split(" ")
               .map((n) => n[0])
@@ -110,7 +110,7 @@ export function InvestorLookup({
           </div>
           <div className="min-w-0 flex-1">
             <div className="font-semibold text-sm truncate">{displayName}</div>
-            <div className="text-[11px] text-muted-foreground">{displayKind === "lead" ? "Linked from Leads" : "Linked from Clients"}</div>
+            <div className="text-2xs text-muted-foreground">{displayKind === "lead" ? "Linked from Leads" : "Linked from Clients"}</div>
           </div>
           <Check className="size-4 text-emerald-600 flex-shrink-0" />
         </div>
@@ -154,7 +154,7 @@ export function InvestorLookup({
             <div className="p-4 text-center text-xs text-muted-foreground">
               <UserCircle2 className="size-6 mx-auto opacity-40 mb-1" />
               No {includeLeads ? "clients or leads" : "clients"} match "{q}".
-              <div className="mt-1 text-[10px]">
+              <div className="mt-1 text-2xs">
                 Try searching by PAN, mobile, or email.
               </div>
             </div>
@@ -172,7 +172,7 @@ export function InvestorLookup({
                     }}
                     className="w-full text-left flex items-center gap-2.5 px-3 py-2 hover:bg-brand-cyan-light/40 transition-colors"
                   >
-                    <div className="size-7 rounded-full brand-gradient text-white grid place-items-center text-[10px] font-bold flex-shrink-0 shadow-sm">
+                    <div className="size-7 rounded-full brand-gradient text-white grid place-items-center text-2xs font-bold flex-shrink-0 shadow-sm">
                       {r.name
                         .split(" ")
                         .map((n) => n[0])
@@ -185,14 +185,14 @@ export function InvestorLookup({
                       <div className="font-semibold text-sm truncate flex items-center gap-1.5">
                         {r.name}
                         {r.kind === "lead" ? (
-                          <span className="chip text-[9px] bg-amber-100 text-amber-700">Lead</span>
+                          <span className="chip text-2xs bg-amber-100 text-amber-700">Lead</span>
                         ) : r.segment_tag ? (
-                          <span className="chip text-[9px] bg-brand-cyan-light text-brand-cyan-deep">
+                          <span className="chip text-2xs bg-brand-cyan-light text-brand-cyan-deep">
                             {r.segment_tag}
                           </span>
                         ) : null}
                       </div>
-                      <div className="text-[11px] text-muted-foreground truncate font-mono">
+                      <div className="text-2xs text-muted-foreground truncate font-mono">
                         {r.kind === "lead"
                           ? `${r.stage ? r.stage.replace(/_/g, " ") : "lead"} · ${r.phone ?? "—"}`
                           : `${r.pan ?? "—"} · ${r.phone ?? "—"}`}

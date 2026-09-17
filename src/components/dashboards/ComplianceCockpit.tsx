@@ -164,7 +164,7 @@ export async function ComplianceCockpit({
         <div className="brand-mesh px-6 py-5 text-white bg-gradient-to-r from-amber-900 to-amber-950">
           <div className="flex items-end justify-between flex-wrap gap-3">
             <div>
-              <div className="text-[11px] uppercase tracking-[0.18em] text-amber-300 font-bold">
+              <div className="text-2xs uppercase tracking-[0.18em] text-amber-300 font-bold">
                 Compliance Engine
               </div>
               <h1 className="text-2xl font-bold tracking-tight mt-1">
@@ -249,7 +249,7 @@ export async function ComplianceCockpit({
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold text-sm tracking-tight text-foreground/90 flex items-center gap-2">
                 <Activity className="size-4 text-amber-600" /> Audit Log Trail
-                <span className="text-[10px] font-medium text-muted-foreground normal-case">· {range.label}</span>
+                <span className="text-2xs font-medium text-muted-foreground normal-case">· {range.label}</span>
               </h2>
               <Link href="/dashboard/audit-log" className="text-xs text-amber-700 hover:underline font-semibold">
                 Open full audit register →
@@ -278,7 +278,7 @@ export async function ComplianceCockpit({
                       <tr key={log.id}>
                         <td className="py-2 px-2 text-muted-foreground">{formatRelative(log.at)}</td>
                         <td className="py-2 px-2 font-medium">{log.actor_name ?? "System"}</td>
-                        <td className="py-2 px-2 font-mono text-amber-800 dark:text-amber-400">{log.action}</td>
+                        <td className="py-2 px-2 font-mono text-amber-800">{log.action}</td>
                         <td className="py-2 px-2 capitalize text-muted-foreground">{log.actor_type}</td>
                       </tr>
                     ))}
@@ -321,11 +321,11 @@ export async function ComplianceCockpit({
             ) : (
               <div className="grid grid-cols-2 gap-3 text-center">
                 <div className="p-3 bg-secondary/30 rounded border border-border/40">
-                  <div className="text-[10px] uppercase font-bold text-muted-foreground">Pending Meta</div>
+                  <div className="text-2xs uppercase font-bold text-muted-foreground">Pending Meta</div>
                   <div className="text-xl font-bold mt-1 text-amber-600">{tpl.meta_pending ?? 0}</div>
                 </div>
                 <div className="p-3 bg-secondary/30 rounded border border-border/40">
-                  <div className="text-[10px] uppercase font-bold text-muted-foreground">Rejected Meta</div>
+                  <div className="text-2xs uppercase font-bold text-muted-foreground">Rejected Meta</div>
                   <div className="text-xl font-bold mt-1 text-rose-600">{tpl.meta_rejected ?? 0}</div>
                 </div>
               </div>
@@ -357,12 +357,12 @@ export async function ComplianceCockpit({
                       href={c.source_url ?? "#"}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="font-medium hover:underline text-amber-800 dark:text-amber-400 flex items-start gap-1"
+                      className="font-medium hover:underline text-amber-800 flex items-start gap-1"
                     >
                       <span className="flex-1 leading-snug">{c.title}</span>
                       <ExternalLink className="size-3 flex-shrink-0 mt-0.5" />
                     </a>
-                    <div className="text-[10px] text-muted-foreground flex justify-between">
+                    <div className="text-2xs text-muted-foreground flex justify-between">
                       <span>No: {c.circular_no ?? "AMFI-2026"}</span>
                       <span>{formatDate(c.issued_at)}</span>
                     </div>
@@ -396,7 +396,7 @@ function ExpiryRow({
   return (
     <Link href={href} className="flex justify-between items-center py-1.5 border-b last:border-0 border-border/40 hover:bg-secondary/20 rounded px-1 transition-colors">
       <span className="text-muted-foreground font-medium">{label}</span>
-      <span className={`chip border ${badgeCls} text-[10px] font-bold px-1.5 py-0.5`}>
+      <span className={`chip border ${badgeCls} text-2xs font-bold px-1.5 py-0.5`}>
         {count}
       </span>
     </Link>

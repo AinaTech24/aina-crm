@@ -452,22 +452,22 @@ export function ReviewMeetingDetailEditor({
           <CalendarClock className="size-4 text-brand-cyan" />
           <h3 className="font-semibold">Schedule</h3>
           {Number(meeting.rescheduleCount ?? 0) > 0 && (
-            <span className="chip bg-amber-50 text-amber-700 text-[10px]">
+            <span className="chip bg-amber-50 text-amber-700 text-2xs">
               rescheduled {meeting.rescheduleCount}×
             </span>
           )}
         </div>
         <div className="grid sm:grid-cols-2 gap-3">
           <label className="block">
-            <div className="text-[11px] text-muted-foreground mb-0.5">Date</div>
+            <div className="text-2xs text-muted-foreground mb-0.5">Date</div>
             <DateField value={meetingDay} onChange={(e) => setMeetingDay(e.target.value)} size="sm" className="w-full" />
           </label>
           <label className="block">
-            <div className="text-[11px] text-muted-foreground mb-0.5">Time</div>
+            <div className="text-2xs text-muted-foreground mb-0.5">Time</div>
             <SelectField value={meetingTime} onChange={(e) => setMeetingTime(e.target.value)} options={TIME_SLOTS} size="sm" className="w-full" />
           </label>
           <label className="block">
-            <div className="text-[11px] text-muted-foreground mb-0.5">Mode</div>
+            <div className="text-2xs text-muted-foreground mb-0.5">Mode</div>
             <SelectField value={meetingMode} onChange={(e) => setMeetingMode(e.target.value)} size="sm" className="w-full">
               {MODES.map(([k, l]) => (
                 <option key={k} value={k}>{l}</option>
@@ -475,7 +475,7 @@ export function ReviewMeetingDetailEditor({
             </SelectField>
           </label>
           <label className="block">
-            <div className="text-[11px] text-muted-foreground mb-0.5">Location / link</div>
+            <div className="text-2xs text-muted-foreground mb-0.5">Location / link</div>
             <input
               value={location}
               onChange={(e) => setLocation(e.target.value)}
@@ -486,14 +486,14 @@ export function ReviewMeetingDetailEditor({
         </div>
         {dateMoved && (
           <label className="block">
-            <div className="text-[11px] text-amber-700 mb-0.5 font-medium">Reschedule reason</div>
+            <div className="text-2xs text-amber-700 mb-0.5 font-medium">Reschedule reason</div>
             <input
               value={rescheduleReason}
               onChange={(e) => setRescheduleReason(e.target.value)}
               placeholder="Why is this being moved? (optional)"
               className="input-base"
             />
-            <p className="text-[11px] text-amber-600 mt-1">
+            <p className="text-2xs text-amber-600 mt-1">
               Saving moves the T-1 reminder task to the new date and logs a reschedule.
             </p>
           </label>
@@ -518,7 +518,7 @@ export function ReviewMeetingDetailEditor({
               >
                 <div className="min-w-0 flex items-center gap-3">
                   <span
-                    className={`chip text-[10px] ${
+                    className={`chip text-2xs ${
                       a.isExternal
                         ? "bg-violet-50 text-violet-700"
                         : "bg-cyan-50 text-cyan-700"
@@ -528,7 +528,7 @@ export function ReviewMeetingDetailEditor({
                   </span>
                   <span className="text-sm font-medium">{a.name}</span>
                   {a.notes && (
-                    <span className="text-[11px] text-muted-foreground truncate">
+                    <span className="text-2xs text-muted-foreground truncate">
                       · {a.notes}
                     </span>
                   )}
@@ -654,7 +654,7 @@ export function ReviewMeetingDetailEditor({
           placeholder="What was actually discussed, decisions made, mood of the client, follow-up needed…"
           className="input-base"
         />
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           When you mark this meeting completed without notes, a 24-hour high-priority "write up your notes"
           task is auto-created.
         </p>
@@ -687,7 +687,7 @@ export function ReviewMeetingDetailEditor({
               <p className="text-foreground">{aiPreview.summary}</p>
               {aiPreview.keyPoints.length > 0 && (
                 <div>
-                  <div className="text-[11px] uppercase tracking-wide text-violet-700 font-medium mt-2">
+                  <div className="text-2xs uppercase tracking-wide text-violet-700 font-medium mt-2">
                     Key points
                   </div>
                   <ul className="list-disc ml-5 text-foreground">
@@ -699,7 +699,7 @@ export function ReviewMeetingDetailEditor({
               )}
               {aiPreview.decisions.length > 0 && (
                 <div>
-                  <div className="text-[11px] uppercase tracking-wide text-violet-700 font-medium mt-2">
+                  <div className="text-2xs uppercase tracking-wide text-violet-700 font-medium mt-2">
                     Decisions
                   </div>
                   <ul className="list-disc ml-5 text-foreground">
@@ -711,7 +711,7 @@ export function ReviewMeetingDetailEditor({
               )}
               {aiPreview.actionItems.length > 0 && (
                 <div>
-                  <div className="text-[11px] uppercase tracking-wide text-violet-700 font-medium mt-2">
+                  <div className="text-2xs uppercase tracking-wide text-violet-700 font-medium mt-2">
                     Action items — will be appended below
                   </div>
                   <ul className="list-disc ml-5 text-foreground">
@@ -731,7 +731,7 @@ export function ReviewMeetingDetailEditor({
               )}
               {aiPreview.nextSteps.length > 0 && (
                 <div>
-                  <div className="text-[11px] uppercase tracking-wide text-violet-700 font-medium mt-2">
+                  <div className="text-2xs uppercase tracking-wide text-violet-700 font-medium mt-2">
                     Next steps
                   </div>
                   <ul className="list-disc ml-5 text-foreground">
@@ -742,7 +742,7 @@ export function ReviewMeetingDetailEditor({
                 </div>
               )}
             </div>
-            <p className="text-[11px] text-violet-700">
+            <p className="text-2xs text-violet-700">
               AI is advisory. Edit the draft after applying — nothing saves until you hit Save above.
             </p>
           </div>
@@ -757,7 +757,7 @@ export function ReviewMeetingDetailEditor({
         </div>
         <div className="grid sm:grid-cols-2 gap-3">
           <label className="block">
-            <div className="text-[11px] text-muted-foreground mb-0.5">Result</div>
+            <div className="text-2xs text-muted-foreground mb-0.5">Result</div>
             <SelectField value={outcome} onChange={(e) => setOutcome(e.target.value)} size="sm" className="w-full">
               {OUTCOMES.map(([k, l]) => (
                 <option key={k} value={k}>{l}</option>
@@ -765,7 +765,7 @@ export function ReviewMeetingDetailEditor({
             </SelectField>
           </label>
           <label className="block">
-            <div className="text-[11px] text-muted-foreground mb-0.5">Outcome notes</div>
+            <div className="text-2xs text-muted-foreground mb-0.5">Outcome notes</div>
             <input
               value={outcomeNotes}
               onChange={(e) => setOutcomeNotes(e.target.value)}
@@ -774,7 +774,7 @@ export function ReviewMeetingDetailEditor({
             />
           </label>
         </div>
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           For lead meetings the outcome moves the journey forward — <b>Ready</b> → won, <b>Not interested</b> →
           closed, <b>Wants more info / Not ready</b> → re-nurture in 7 days.
         </p>
@@ -814,7 +814,7 @@ export function ReviewMeetingDetailEditor({
                   className="w-40"
                 />
                 {it.taskId ? (
-                  <span className="chip bg-emerald-50 text-emerald-700 text-[10px]">task ✓</span>
+                  <span className="chip bg-emerald-50 text-emerald-700 text-2xs">task ✓</span>
                 ) : (
                   <button
                     onClick={() => removeItem(i)}
@@ -878,7 +878,7 @@ export function ReviewMeetingDetailEditor({
           size="sm"
           className="w-60"
         />
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           On completion, the client's <code>nextReviewAt</code> is set to this date and the
           per-tier auto-cadence recipe takes over.
         </p>

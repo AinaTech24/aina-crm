@@ -684,7 +684,7 @@ function ReportTray({
           <ul className="max-h-56 overflow-y-auto scrollbar-thin p-1.5">
             {report.map((it, i) => (
               <li key={i} className="flex items-center gap-2 px-2 py-1.5 text-xs">
-                <span className="size-5 grid place-items-center rounded bg-secondary text-[10px] font-bold shrink-0">{i + 1}</span>
+                <span className="size-5 grid place-items-center rounded bg-secondary text-2xs font-bold shrink-0">{i + 1}</span>
                 <span className="flex-1 truncate">{it.calcName}</span>
                 <button onClick={() => setReport((r) => r.filter((_, idx) => idx !== i))} className="text-muted-foreground hover:text-rose-600 shrink-0" aria-label="Remove">
                   <Trash2 className="size-3.5" />
@@ -693,11 +693,11 @@ function ReportTray({
             ))}
           </ul>
           <div className="border-t border-border p-2 space-y-1.5">
-            {!clientName && <p className="text-[10px] text-amber-600 px-1">Tip: set a client name (top bar) — it prints on the cover.</p>}
+            {!clientName && <p className="text-2xs text-amber-600 px-1">Tip: set a client name (top bar) — it prints on the cover.</p>}
             <button onClick={onDownload} disabled={busy} className="btn-primary w-full text-xs justify-center disabled:opacity-60">
               {busy ? "Building…" : "Download combined PDF"}
             </button>
-            <button onClick={() => setReport([])} className="btn-ghost w-full text-[11px] justify-center text-muted-foreground">Clear all</button>
+            <button onClick={() => setReport([])} className="btn-ghost w-full text-2xs justify-center text-muted-foreground">Clear all</button>
           </div>
         </div>
       ) : (
@@ -975,7 +975,7 @@ function DelayColumn({
 }) {
   return (
     <div className="border border-slate-200 rounded-md p-3 space-y-1.5">
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold">
         {label}
       </div>
       <Row k="Years invested" v={body.years.toString()} />
@@ -1081,7 +1081,7 @@ function SwpCalc() {
         ]}
       />
       {res.monthsBeforeDepletion != null && (
-        <div className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-3 py-2 mt-2">
+        <div className="text-2xs text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-3 py-2 mt-2">
           ⚠️ Corpus depletes after {Math.floor(res.monthsBeforeDepletion / 12)}{" "}
           years {res.monthsBeforeDepletion % 12} months.
         </div>
@@ -1178,7 +1178,7 @@ function GrowingSipCalc() {
           </tbody>
         </table>
       </div>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         Profit % = (corpus − amount invested) ÷ amount invested. The growing SIP invests more over time, so its
         corpus is far larger; a flat SIP can show a higher profit-% only because its cost base is smaller.
       </p>
@@ -1209,7 +1209,7 @@ function SipFvChart({
 
   return (
     <div className="border rounded-md p-3">
-      <div className="flex items-center gap-4 mb-2 text-[11px]">
+      <div className="flex items-center gap-4 mb-2 text-2xs">
         <span className="inline-flex items-center gap-1.5">
           <span className="size-2.5 rounded-sm bg-slate-400" /> Regular SIP
         </span>
@@ -1308,14 +1308,14 @@ function VacationPlannerCalc() {
 
       <div className="grid grid-cols-2 gap-3 text-xs">
         <div className="border rounded-md p-3 space-y-1">
-          <div className="font-semibold text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+          <div className="font-semibold text-2xs uppercase tracking-wider text-muted-foreground mb-1">
             First vacation
           </div>
           <Row k="Year 1 cost" v={inr(res.drawdown[0]?.cost ?? vacationCost)} />
           <Row k="Growth-adjusted rate" v={`${res.realRatePct.toFixed(2)}%`} />
         </div>
         <div className="border rounded-md p-3 space-y-1">
-          <div className="font-semibold text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+          <div className="font-semibold text-2xs uppercase tracking-wider text-muted-foreground mb-1">
             Final vacation (#{numVacations})
           </div>
           <Row k={`Year ${numVacations} cost`} v={inr(last?.cost ?? 0)} />
@@ -1323,7 +1323,7 @@ function VacationPlannerCalc() {
         </div>
       </div>
 
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         The corpus is the present value (one year out) of {numVacations} annual vacations — each escalating {inflationPct}% and
         withdrawn at the start of the year, with the remaining balance earning {returnPct}%. The growing SIP steps up {growthPct}%
         every year for {sipYears} years. The SIP figures grow the actual initial investment by one year (the workbook’s monthly
@@ -1354,7 +1354,7 @@ function VacationDrawdownChart({
 
   return (
     <div className="border rounded-md p-3">
-      <div className="flex items-center gap-4 mb-2 text-[11px]">
+      <div className="flex items-center gap-4 mb-2 text-2xs">
         <span className="inline-flex items-center gap-1.5">
           <span className="size-2.5 rounded-sm bg-cyan-600" /> Corpus balance
         </span>
@@ -1413,7 +1413,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">
+      <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">
         {label}
       </span>
       {children}
@@ -1481,7 +1481,7 @@ function ResultRow({
             key={i}
             className={`border rounded-md p-3 ${cardTone}`}
           >
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">
+            <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">
               {c.label}
             </div>
             <div className="text-lg font-semibold mt-0.5">{c.value}</div>
@@ -1557,31 +1557,31 @@ function StpCalc() {
 
       <div className="grid grid-cols-3 gap-3 mt-3">
         <div className="border border-slate-200 rounded-md p-3 space-y-1.5">
-          <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+          <div className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold">
             Debt fund remaining
           </div>
           <div className="text-base font-semibold">{inr(res.sourceFinalValue)}</div>
-          <p className="text-[10px] text-muted-foreground">Un-transferred balance earning {sourceReturn}%</p>
+          <p className="text-2xs text-muted-foreground">Un-transferred balance earning {sourceReturn}%</p>
         </div>
         <div className="border border-slate-200 rounded-md p-3 space-y-1.5">
-          <div className="text-[10px] uppercase tracking-wide text-primary font-semibold">
+          <div className="text-2xs uppercase tracking-wide text-primary font-semibold">
             Equity fund value
           </div>
           <div className="text-base font-semibold">{inr(res.targetFinalValue)}</div>
-          <p className="text-[10px] text-muted-foreground">Transferred installments compounding at {targetReturn}%</p>
+          <p className="text-2xs text-muted-foreground">Transferred installments compounding at {targetReturn}%</p>
         </div>
         <div className="border border-slate-200 rounded-md p-3 space-y-1.5 bg-emerald-50/20 border-emerald-100">
-          <div className="text-[10px] uppercase tracking-wide text-emerald-700 font-semibold">
+          <div className="text-2xs uppercase tracking-wide text-emerald-700 font-semibold">
             Total STP value
           </div>
           <div className="text-base font-semibold text-emerald-700">{inr(res.totalFinalValue)}</div>
-          <p className="text-[10px] text-emerald-600">Combined maturity corpus</p>
+          <p className="text-2xs text-emerald-600">Combined maturity corpus</p>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 mt-3">
         <div className="border border-slate-100 rounded-md p-3 space-y-1 text-xs">
-          <div className="font-semibold text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+          <div className="font-semibold text-2xs uppercase tracking-wider text-muted-foreground mb-1">
             STP vs Lumpsum Debt (Low risk)
           </div>
           <Row k="Total STP Value" v={inr(res.totalFinalValue)} />
@@ -1592,7 +1592,7 @@ function StpCalc() {
           </div>
         </div>
         <div className="border border-slate-100 rounded-md p-3 space-y-1 text-xs">
-          <div className="font-semibold text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+          <div className="font-semibold text-2xs uppercase tracking-wider text-muted-foreground mb-1">
             STP vs Lumpsum Equity (High risk)
           </div>
           <Row k="Lumpsum in Equity Only" v={inr(targetOnlyFV)} />

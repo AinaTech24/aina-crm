@@ -99,12 +99,12 @@ export function DeviceSessions() {
                   <div className="text-sm font-medium truncate flex items-center gap-1.5">
                     {d.deviceName || "Unknown device"}
                     {d.current && (
-                      <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1 py-0.5">
+                      <span className="inline-flex items-center gap-0.5 text-2xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1 py-0.5">
                         <ShieldCheck className="size-2.5" /> This device
                       </span>
                     )}
                   </div>
-                  <div className="text-[11px] text-muted-foreground truncate">
+                  <div className="text-2xs text-muted-foreground truncate">
                     {d.ipAddress || "IP unknown"} · {online ? "online now" : `last active ${relTime(d.lastSeenAt)}`}
                   </div>
                 </div>

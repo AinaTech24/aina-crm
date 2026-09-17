@@ -109,7 +109,7 @@ export function AuditList({ rows }: { rows: AuditRow[] }) {
 
                 {r.piiFields.length > 0 && (
                   <div>
-                    <div className="text-[10px] uppercase tracking-wider text-amber-700 font-semibold mb-1">PII fields accessed</div>
+                    <div className="text-2xs uppercase tracking-wider text-amber-700 font-semibold mb-1">PII fields accessed</div>
                     <div className="flex flex-wrap gap-1">
                       {r.piiFields.map((f) => (
                         <span key={f} className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-mono">{f}</span>
@@ -120,10 +120,10 @@ export function AuditList({ rows }: { rows: AuditRow[] }) {
 
                 {changes.length > 0 && (
                   <div>
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Changes ({changes.length})</div>
+                    <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold mb-1">Changes ({changes.length})</div>
                     <table className="w-full font-mono">
                       <thead>
-                        <tr className="text-[10px] text-muted-foreground">
+                        <tr className="text-2xs text-muted-foreground">
                           <th className="text-left font-medium py-0.5 w-1/4">Field</th>
                           <th className="text-left font-medium py-0.5">Before</th>
                           <th className="text-left font-medium py-0.5">After</th>
@@ -144,8 +144,8 @@ export function AuditList({ rows }: { rows: AuditRow[] }) {
 
                 {r.meta && Object.keys(r.meta).length > 0 && (
                   <div>
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Metadata</div>
-                    <pre className="bg-card border rounded p-2 overflow-x-auto text-[11px]">{JSON.stringify(r.meta, null, 2)}</pre>
+                    <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold mb-1">Metadata</div>
+                    <pre className="bg-card border rounded p-2 overflow-x-auto text-2xs">{JSON.stringify(r.meta, null, 2)}</pre>
                   </div>
                 )}
               </div>
@@ -160,7 +160,7 @@ export function AuditList({ rows }: { rows: AuditRow[] }) {
 function Meta({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="min-w-0">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{label}</div>
+      <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">{label}</div>
       <div className={`truncate ${mono ? "font-mono" : ""}`} title={value}>{value}</div>
     </div>
   );

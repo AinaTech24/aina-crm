@@ -79,7 +79,7 @@ export default async function InsuranceCommissionPage() {
     <div className="space-y-6 max-w-5xl">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><IndianRupee className="size-6 text-brand-cyan" /> Insurance Commission</h1>
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><IndianRupee className="size-6 text-muted-foreground" /> Insurance Commission</h1>
         </div>
         <div className="flex items-center gap-2">
           <AddCommissionEntry />
@@ -121,7 +121,7 @@ export default async function InsuranceCommissionPage() {
         <CommissionLedger entries={data.entries as any} canDelete={canWrite} />
       </div>
 
-      <p className="text-[11px] text-muted-foreground italic">
+      <p className="text-2xs text-muted-foreground italic">
         <strong>Recorded on policies</strong> is the commission captured per policy at entry (an estimate). <strong>Commission received</strong> is the
         actual payouts you log above — net of TDS. Renewal income is an estimate at {Math.round(RENEWAL_RATE * 100)}% of active annual premium; actual rates vary by line and insurer.
       </p>

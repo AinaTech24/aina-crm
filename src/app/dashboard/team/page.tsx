@@ -138,9 +138,9 @@ export default async function TeamDashboardPage({
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Users2 className="size-6 text-brand-cyan" /> Team Dashboard
+            <Users2 className="size-6 text-muted-foreground" /> Team Dashboard
           </h1>
-          <p className="text-muted-foreground text-sm mt-0.5">
+          <p className="page-subtitle mt-0.5">
             {selectedMember
               ? `Open workload, today's activity, and results — scoped to ${selectedMember.name}.`
               : "Open workload, today's activity, and results — firm-wide, with who's accountable."}
@@ -258,7 +258,7 @@ export default async function TeamDashboardPage({
                     <td className="py-2.5 text-right tabular-nums text-violet-700">{inrCompact(r.openLeadsAmt)}</td>
                     <td className="py-2.5 text-right tabular-nums">{r.completedTasks}</td>
                     <td className="py-2.5 text-right tabular-nums pr-4 text-emerald-700">
-                      {r.convertedLeads} <span className="text-[11px] text-muted-foreground">/ {inrCompact(r.convertedAmt)}</span>
+                      {r.convertedLeads} <span className="text-2xs text-muted-foreground">/ {inrCompact(r.convertedAmt)}</span>
                     </td>
                   </tr>
                 ))}
@@ -285,7 +285,7 @@ function Column({
         <h2 className="text-sm font-bold uppercase tracking-wide flex items-center gap-1.5">
           <Icon className="size-4" /> {title}
         </h2>
-        <span className="text-[11px] text-muted-foreground">{sub}</span>
+        <span className="text-2xs text-muted-foreground">{sub}</span>
       </div>
       <div className="space-y-2">
         {metrics.map((m) => (
@@ -297,7 +297,7 @@ function Column({
             <div className="min-w-0">
               <div className="text-sm font-medium truncate">{m.label}</div>
               {m.amount != null && m.amount > 0 && (
-                <div className="text-[11px] text-muted-foreground">{inrCompact(m.amount)}</div>
+                <div className="text-2xs text-muted-foreground">{inrCompact(m.amount)}</div>
               )}
             </div>
             <div className="flex items-center gap-2 shrink-0">

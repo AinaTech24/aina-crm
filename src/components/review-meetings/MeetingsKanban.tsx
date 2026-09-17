@@ -123,7 +123,7 @@ export function MeetingsKanban({ meetings }: { meetings: Row[] }) {
           >
             <div className="flex items-center justify-between px-1.5 py-1.5">
               <span className="text-xs font-semibold">{col.label}</span>
-              <span className="chip bg-card text-[10px] text-muted-foreground">{items.length}</span>
+              <span className="chip bg-card text-2xs text-muted-foreground">{items.length}</span>
             </div>
             <div className="space-y-2 min-h-[60px]">
               {items.map((m) => (
@@ -151,7 +151,7 @@ export function MeetingsKanban({ meetings }: { meetings: Row[] }) {
                       />
                       <div className="text-sm font-medium truncate">{m.party_name ?? "—"}</div>
                       <span
-                        className={`shrink-0 ml-auto text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${
+                        className={`shrink-0 ml-auto text-2xs font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${
                           m.party_kind === "lead"
                             ? "bg-violet-50 text-violet-700 border-violet-200"
                             : m.party_kind === "investor"
@@ -165,20 +165,20 @@ export function MeetingsKanban({ meetings }: { meetings: Row[] }) {
                     <div className="mt-1.5 text-xs text-muted-foreground truncate">
                       {m.subject || TYPE_LABEL[m.meeting_type] || m.meeting_type}
                     </div>
-                    <div className="mt-1.5 flex items-center justify-between text-[11px] text-muted-foreground">
+                    <div className="mt-1.5 flex items-center justify-between text-2xs text-muted-foreground">
                       <span className="tabular-nums">
                         {new Date(m.meeting_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
                         {" · "}
                         {new Date(m.meeting_date).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}
                       </span>
-                      <span className="chip bg-secondary text-[10px]">{MODE_LABEL[m.meeting_mode] ?? m.meeting_mode}</span>
+                      <span className="chip bg-secondary text-2xs">{MODE_LABEL[m.meeting_mode] ?? m.meeting_mode}</span>
                     </div>
-                    {m.rm_name && <div className="mt-1 text-[10px] text-muted-foreground truncate">RM: {m.rm_name}</div>}
+                    {m.rm_name && <div className="mt-1 text-2xs text-muted-foreground truncate">RM: {m.rm_name}</div>}
                   </Link>
                 </div>
               ))}
               {items.length === 0 && (
-                <div className="rounded-lg border border-dashed border-border/60 py-6 text-center text-[11px] text-muted-foreground">
+                <div className="rounded-lg border border-dashed border-border/60 py-6 text-center text-2xs text-muted-foreground">
                   Drop here
                 </div>
               )}

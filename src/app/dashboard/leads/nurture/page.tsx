@@ -59,7 +59,7 @@ export default async function LeadNurturePage() {
     <div className="space-y-6 max-w-7xl">
       <div>
         <h1 className="page-title">
-          <Heart className="size-6 text-brand-cyan" /> Lead Nurturing
+          <Heart className="size-6 text-muted-foreground" /> Lead Nurturing
         </h1>
         <p className="page-subtitle">
           Leads that aren't quite ready yet — keep them warm with periodic content + check-ins. Once they're ready, push them through to the proposal stage.
@@ -116,7 +116,7 @@ function Section({
                   <Link href={`/dashboard/leads/${r.id}`} className="font-medium hover:underline">
                     {r.name}
                   </Link>
-                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
+                  <div className="flex items-center gap-2 text-2xs text-muted-foreground mt-0.5">
                     {r.phone && <span><Phone className="inline size-2.5 mr-0.5" />{r.phone}</span>}
                   </div>
                 </td>

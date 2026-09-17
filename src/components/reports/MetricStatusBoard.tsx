@@ -388,7 +388,7 @@ function Mom({ value, prev }: { value: number; prev: number | null }) {
       <span className="inline-flex items-center justify-end gap-0.5">
         <Icon className="size-3" />
         {fmt(Math.abs(delta))}
-        {pct != null && <span className="text-[11px] opacity-80">({pct.toFixed(1)}%)</span>}
+        {pct != null && <span className="text-2xs opacity-80">({pct.toFixed(1)}%)</span>}
       </span>
     </Td>
   );

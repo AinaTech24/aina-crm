@@ -81,7 +81,7 @@ export function SetupChecklistCard({ steps }: { steps: SetupStep[] }) {
                 <Circle className="size-4 text-muted-foreground/50 mt-0.5 shrink-0" />
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium">{s.label}</div>
-                  <div className="text-[11px] text-muted-foreground mt-0.5">{s.hint}</div>
+                  <div className="text-2xs text-muted-foreground mt-0.5">{s.hint}</div>
                 </div>
                 <ChevronRight className="size-4 text-muted-foreground/40 mt-0.5 shrink-0 group-hover:text-foreground transition-colors" />
               </Link>

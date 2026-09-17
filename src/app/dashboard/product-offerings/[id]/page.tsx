@@ -184,7 +184,7 @@ function ReadinessPanel({
 
       {/* Licences */}
       <div>
-        <div className="text-[10px] uppercase tracking-wide font-semibold text-muted-foreground mb-1">Authorising licences</div>
+        <div className="text-2xs uppercase tracking-wide font-semibold text-muted-foreground mb-1">Authorising licences</div>
         {health.licenses.length === 0 ? (
           <p className="text-xs text-muted-foreground">No licence linked. {active ? "Link the registration that authorises this offering." : ""}</p>
         ) : (
@@ -204,13 +204,13 @@ function ReadinessPanel({
           </ul>
         )}
         {active && health.license === "expired" && (
-          <p className="text-[11px] text-rose-700 mt-1">⚠ This offering is active but its authorising licence has lapsed — a SEBI-inspection risk.</p>
+          <p className="text-2xs text-rose-700 mt-1">⚠ This offering is active but its authorising licence has lapsed — a SEBI-inspection risk.</p>
         )}
       </div>
 
       {/* Team readiness */}
       <div>
-        <div className="text-[10px] uppercase tracking-wide font-semibold text-muted-foreground mb-1">
+        <div className="text-2xs uppercase tracking-wide font-semibold text-muted-foreground mb-1">
           Team readiness{reqLabels.length ? ` · requires ${reqLabels.join(" + ")}` : ""}
         </div>
         {teamMemberIds.length === 0 ? (
@@ -244,7 +244,7 @@ function ReadinessPanel({
           </ul>
         )}
         {health.unverifiable.length > 0 && (
-          <p className="text-[11px] text-muted-foreground mt-1">Also requires (not auto-verified): {health.unverifiable.join(", ")}</p>
+          <p className="text-2xs text-muted-foreground mt-1">Also requires (not auto-verified): {health.unverifiable.join(", ")}</p>
         )}
       </div>
     </div>
@@ -271,7 +271,7 @@ function ReadOnlyOffering({
       <Field label="Required exams" value={exams.join(", ") || "—"} />
       <Field label="Team" value={(team as string[]).join(", ") || "—"} />
       {row.remarks && <Field label="Remarks" value={row.remarks} />}
-      <p className="text-[11px] text-muted-foreground pt-1 border-t">Read-only — editing offerings is restricted to the compliance/owner team.</p>
+      <p className="text-2xs text-muted-foreground pt-1 border-t">Read-only — editing offerings is restricted to the compliance/owner team.</p>
     </div>
   );
 }
@@ -279,7 +279,7 @@ function ReadOnlyOffering({
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid grid-cols-[140px_1fr] gap-2">
-      <div className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground">{label}</div>
+      <div className="text-2xs uppercase tracking-wide font-semibold text-muted-foreground">{label}</div>
       <div>{value}</div>
     </div>
   );

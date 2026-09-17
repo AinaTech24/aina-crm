@@ -65,16 +65,15 @@ export const getSession = cache(async (): Promise<SessionUser | null> => {
   if (revoked) return null;
 
   // Per-device revocation ("log out this device") + last-seen touch for presence.
-  const deviceRevoked = await isDeviceSessionRevoked({ sid: session.sid, tenantId: session.tenantId });
+  const deviceRevoked = await isDeviceSessionRevoked({ sid: session.sid, tenantId: session.tenantId, userId: session.userId });
   if (deviceRevoked) return null;
 
   return session;
 });
 
 /**
- * Reads + decodes the session without the revocation check. Prefers the
- * middleware-decoded header (cheap — middleware already verified the JWT),
- * falls back to verifying the cookie directly.
+ * Verify the actual credential on every Node request. Internal identity headers
+ * are never credentials, including on routes that bypass Edge authentication.
  */
 async function readSession(): Promise<SessionUser | null> {
   // Pick the cookie that matches the current surface (admin console vs MFD app)
@@ -83,10 +82,6 @@ async function readSession(): Promise<SessionUser | null> {
   let cookieName = SESSION_COOKIE;
   try {
     const h = await headers();
-    const headerPayload = h.get("x-mfd-session");
-    if (headerPayload) {
-      return JSON.parse(headerPayload) as SessionUser;
-    }
     // Mobile Bearer fallback: routes under a PUBLIC middleware prefix (/api/auth/*)
     // don't get x-mfd-session injected and the app has no cookie jar — so verify
     // the Authorization: Bearer <jwt> here. Same signed session, just a different
@@ -105,8 +100,13 @@ async function readSession(): Promise<SessionUser | null> {
   try {
     const c = await cookies();
     const token = c.get(cookieName)?.value;
-    if (!token) return null;
-    return await verifySession(token);
+    if (token) return await verifySession(token);
+    const h = await headers();
+    if (h.get("x-pathname")?.startsWith("/api/content-library")) {
+      const alternate = c.get(ADMIN_SESSION_COOKIE)?.value;
+      if (alternate) return await verifySession(alternate);
+    }
+    return null;
   } catch {
     return null;
   }

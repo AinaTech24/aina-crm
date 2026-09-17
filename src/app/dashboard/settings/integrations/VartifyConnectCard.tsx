@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Check, AlertCircle, Loader2, MessageCircle, RefreshCw } from "lucide-react";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 
 type Status = {
   connected: boolean;
@@ -95,7 +96,7 @@ export default function VartifyConnectCard() {
   }
 
   async function disconnect() {
-    if (!confirm("Disconnect Vartify? WhatsApp sends will stop until you add a key again.")) return;
+    if (!(await confirmDialog({ title: "Disconnect Vartify?", message: "WhatsApp sends will stop until you add a key again.", confirmLabel: "Disconnect", tone: "danger" }))) return;
     setSaving(true);
     setMsg(null);
     try {

@@ -25,7 +25,7 @@ export default async function MarketingAssetsPage() {
             </Link>
           </div>
           <h1 className="text-2xl font-semibold flex items-center gap-2">
-            <Megaphone className="size-6 text-brand-cyan" /> Marketing assets & trust builders
+            <Megaphone className="size-6 text-muted-foreground" /> Marketing assets & trust builders
           </h1>
           <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
             The brand, trust and lead-generation assets a scaling MFD should have in place. Use it as
@@ -54,7 +54,7 @@ export default async function MarketingAssetsPage() {
                   {item.href && (
                     <Link
                       href={item.href}
-                      className="inline-flex items-center gap-0.5 text-[11px] text-brand-cyan-deep hover:underline font-medium whitespace-nowrap print:hidden"
+                      className="inline-flex items-center gap-0.5 text-2xs text-brand-cyan-deep hover:underline font-medium whitespace-nowrap print:hidden"
                     >
                       Open <ArrowUpRight className="size-3" />
                     </Link>
@@ -66,7 +66,7 @@ export default async function MarketingAssetsPage() {
         ))}
       </div>
 
-      <p className="text-[11px] text-muted-foreground border-t pt-3">
+      <p className="text-2xs text-muted-foreground border-t pt-3">
         Adapted from the Network FP "Marketing Assets" template. Items with a link are produced inside
         the platform; the rest are assets you create and store.
       </p>

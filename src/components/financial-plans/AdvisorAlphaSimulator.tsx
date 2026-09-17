@@ -66,10 +66,10 @@ export function AdvisorAlphaSimulator({
           <Shield className="size-5 text-brand-cyan-deep" />
           <div>
             <h3 className="text-sm font-extrabold text-brand-navy">Interactive Advisor's Alpha Compounding Simulator</h3>
-            <p className="text-[10px] text-muted-foreground">See the long-term wealth value of investing through a professional MFD partner</p>
+            <p className="text-2xs text-muted-foreground">See the long-term wealth value of investing through a professional MFD partner</p>
           </div>
         </div>
-        <span className="text-[10px] bg-brand-cyan-deep text-white font-bold px-2 py-0.5 rounded">
+        <span className="text-2xs bg-brand-cyan-deep text-white font-bold px-2 py-0.5 rounded">
           +3.00% p.a. Alpha
         </span>
       </div>
@@ -78,7 +78,7 @@ export function AdvisorAlphaSimulator({
         {/* Controls */}
         <div className="space-y-4 text-xs">
           <div>
-            <span className="text-[11px] font-bold text-muted-foreground block mb-2">Investment Mode</span>
+            <span className="text-2xs font-bold text-muted-foreground block mb-2">Investment Mode</span>
             <div className="grid grid-cols-2 gap-2 p-1 bg-secondary/30 rounded-lg">
               <button
                 type="button"
@@ -119,7 +119,7 @@ export function AdvisorAlphaSimulator({
               onChange={(e) => setAmount(Number(e.target.value))}
               className="w-full accent-brand-cyan"
             />
-            <div className="flex justify-between text-[10px] text-muted-foreground">
+            <div className="flex justify-between text-2xs text-muted-foreground">
               <span>{formatINR(mode === "sip" ? 5000 : 50000)}</span>
               <span>{formatINR(mode === "sip" ? 250000 : 5000000)}</span>
             </div>
@@ -139,7 +139,7 @@ export function AdvisorAlphaSimulator({
               onChange={(e) => setYears(Number(e.target.value))}
               className="w-full accent-brand-cyan"
             />
-            <div className="flex justify-between text-[10px] text-muted-foreground">
+            <div className="flex justify-between text-2xs text-muted-foreground">
               <span>1 Year</span>
               <span>30 Years</span>
             </div>
@@ -149,33 +149,33 @@ export function AdvisorAlphaSimulator({
         {/* Results Visual */}
         <div className="flex flex-col justify-between bg-card p-4 rounded-xl border border-border/60">
           <div className="space-y-3">
-            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Projected Future Wealth</div>
+            <div className="text-2xs font-bold text-slate-500 uppercase tracking-wide">Projected Future Wealth</div>
             
             <div className="grid grid-cols-2 gap-4 text-xs">
               <div className="space-y-1 p-2 rounded bg-secondary/10">
-                <span className="text-muted-foreground block text-[10px]">DIY Investing (8.5% p.a.)</span>
+                <span className="text-muted-foreground block text-2xs">DIY Investing (8.5% p.a.)</span>
                 <span className="font-semibold text-slate-700 tabular-nums">{formatINR(result.diyFV)}</span>
               </div>
               <div className="space-y-1 p-2 rounded bg-brand-cyan-light/10 border border-brand-cyan/20">
-                <span className="text-brand-cyan-deep block text-[10px]">MFD Partnered (11.5% p.a.)</span>
+                <span className="text-brand-cyan-deep block text-2xs">MFD Partnered (11.5% p.a.)</span>
                 <span className="font-bold text-brand-navy tabular-nums">{formatINR(result.mfdFV)}</span>
               </div>
             </div>
           </div>
 
           <div className="border-t pt-3 mt-3 flex flex-col justify-end">
-            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block mb-1">
+            <div className="text-2xs font-bold text-slate-500 uppercase tracking-wide block mb-1">
               MFD Wealth Value-Add Gap
             </div>
             <div className="flex items-baseline gap-1.5">
               <span className="text-2xl font-extrabold text-emerald-600 leading-none tabular-nums">
                 {formatINR(result.valueGap)}
               </span>
-              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+              <span className="text-2xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
                 Extra Wealth Generated
               </span>
             </div>
-            <p className="text-[10px] text-muted-foreground mt-1.5 leading-normal">
+            <p className="text-2xs text-muted-foreground mt-1.5 leading-normal">
               By partner-investing with an MFD, the compounding benefit of behavioral guidance, rebalancing, and professional allocation yields a massive gap in your favor.
             </p>
           </div>
@@ -184,7 +184,7 @@ export function AdvisorAlphaSimulator({
 
       {/* The 7 Components Grid */}
       <div className="border-t pt-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[10px]">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-2xs">
           <div className="p-2.5 bg-white border rounded-lg space-y-1 shadow-sm">
             <span className="font-bold text-brand-navy block">Behavioral Coaching</span>
             <span className="text-emerald-700 font-extrabold block text-xs">+1.50% p.a.</span>

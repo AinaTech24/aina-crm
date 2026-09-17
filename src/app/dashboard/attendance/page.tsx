@@ -98,9 +98,10 @@ export default async function AttendancePage({
     <div className="space-y-6 max-w-7xl">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <CalendarCheck className="size-6 text-brand-cyan" /> Attendance
+          <h1 className="page-title">
+            <CalendarCheck className="size-6 text-muted-foreground" /> Attendance
           </h1>
+          <p className="page-subtitle mt-1">Daily check-in and check-out for your team, with a month-at-a-glance grid.</p>
         </div>
         <div className="flex items-center gap-1.5 flex-wrap">
           <Link href="/dashboard/attendance/regularizations" className="btn-secondary text-xs">

@@ -14,6 +14,8 @@ import {
 import { type WorkflowGraph, type WorkflowNode, WorkflowGraphSchema } from "./schema";
 import { handlers } from "./actions";
 import type { RunContext } from "./context";
+import { normalizeWorkflowEvent } from "./event-context";
+import { pickNextNode, pauseResumeHandle } from "./transitions";
 
 export interface StartRunInput {
   tenantId: string;
@@ -26,6 +28,7 @@ export interface StartRunInput {
   contextSnapshot?: Record<string, any>;
   event?: Record<string, any>;
   triggeredByUserId?: string;
+  occurrenceKey?: string;
 }
 
 /**
@@ -48,9 +51,14 @@ export async function startRun(input: StartRunInput): Promise<{ runId: string; c
     // by returning the existing active run (the failed INSERT aborted our tx,
     // so the lookup runs in a fresh transaction).
     const pg = (err?.cause ?? err) as any;
+    const isOccurrenceDup = pg?.code === "23505" && String(pg?.constraint ?? "").includes("wf_runs_occurrence_unique");
+    if (isOccurrenceDup && input.occurrenceKey) {
+      const [existing] = await withTenant(input.tenantId, (tx) => tx.select().from(workflowRuns).where(and(eq(workflowRuns.tenantId, input.tenantId), eq(workflowRuns.occurrenceKey, input.occurrenceKey!))).limit(1));
+      if (existing) return { runId: existing.id, created: false };
+    }
     const isActiveDup =
       pg?.code === "23505" &&
-      String(pg?.constraint ?? pg?.message ?? "").includes("workflow_runs_active_subject_uniq");
+      /(?:workflow_runs_active_subject_uniq|wf_runs_active_subject_unique)/.test(String(pg?.constraint ?? pg?.message ?? ""));
     if (isActiveDup && input.subjectId && input.subjectType) {
       const existing = await withTenant(input.tenantId, async (tx) => {
         const [r] = await tx
@@ -76,7 +84,15 @@ export async function startRun(input: StartRunInput): Promise<{ runId: string; c
 }
 
 async function startRunInner(input: StartRunInput): Promise<{ runId: string; created: boolean }> {
-  return withTenant(input.tenantId, async (tx) => {
+  return withTenant(input.tenantId, (tx) => startRunInTransaction(tx, input), { userId: input.triggeredByUserId });
+}
+
+/** Schedulers call this inside the same transaction as their occurrence claim. */
+export async function startRunInTransaction(tx: Tx, input: StartRunInput): Promise<{ runId: string; created: boolean }> {
+    if (input.occurrenceKey) {
+      const [existing] = await tx.select().from(workflowRuns).where(and(eq(workflowRuns.tenantId, input.tenantId), eq(workflowRuns.occurrenceKey, input.occurrenceKey))).limit(1);
+      if (existing) return { runId: existing.id, created: false };
+    }
     const [wf] = await tx
       .select()
       .from(workflowsTable)
@@ -140,7 +156,8 @@ async function startRunInner(input: StartRunInput): Promise<{ runId: string; cre
       subjectType: input.subjectType,
       subjectId: input.subjectId,
       variables: input.variables ?? {},
-      contextSnapshot: input.contextSnapshot,
+      contextSnapshot: normalizeWorkflowEvent(input.event ?? input.contextSnapshot),
+      occurrenceKey: input.occurrenceKey,
       status: "queued",
       currentNodeId: graph.startNodeId,
       triggeredByUserId: input.triggeredByUserId,
@@ -150,7 +167,6 @@ async function startRunInner(input: StartRunInput): Promise<{ runId: string; cre
     // The worker picks up queued runs in a tight loop. For now we let the
     // worker discover it; in production we also push to BullMQ for low-latency.
     return { runId, created: true };
-  }, { userId: input.triggeredByUserId });
 }
 
 function recurrenceWindow(policy: string): string | null {
@@ -175,18 +191,22 @@ function recurrenceWindow(policy: string): string | null {
 export async function executeStep(input: {
   tenantId: string;
   runId: string;
+  leaseToken?: string;
 }): Promise<{ status: "completed" | "paused" | "failed" | "running"; nextNodeId?: string }> {
   const { tenantId, runId } = input;
   return withTenant(tenantId, async (tx) => {
     const [run] = await tx
       .select()
       .from(workflowRuns)
-      .where(and(eq(workflowRuns.id, runId), eq(workflowRuns.tenantId, tenantId)));
+      .where(and(eq(workflowRuns.id, runId), eq(workflowRuns.tenantId, tenantId)))
+      .for("update");
     if (!run) throw new Error(`Run ${runId} not found`);
+    if (input.leaseToken && run.leaseToken !== input.leaseToken) return { status: "paused" };
+    if (!input.leaseToken && run.leaseToken && run.leaseUntil && run.leaseUntil > new Date()) return { status: "paused" };
     if (run.status === "completed" || run.status === "failed" || run.status === "cancelled") {
       return { status: run.status as any };
     }
-    if (run.status === "paused" && run.pausedUntil && run.pausedUntil > new Date()) {
+    if (run.status === "paused" && (!run.pausedUntil || run.pausedUntil > new Date())) {
       return { status: "paused" };
     }
 
@@ -204,10 +224,30 @@ export async function executeStep(input: {
       return { status: "failed" };
     }
 
+    // A durable resume marker consumes the pause without running its handler
+    // again. Both event and timeout claimers contend on this same locked row.
+    const resume = run.resumeHandle ?? (run.status === "paused" ? pauseResumeHandle(run.waitPredicate) : null);
+    if (resume) {
+      try {
+        const nextNodeId = pickNextNode(graph, nodeId, resume === "__continue" ? undefined : resume);
+        await tx.update(workflowRuns).set({
+          status: nextNodeId ? "running" : "completed", currentNodeId: nextNodeId,
+          resumeHandle: null, waitNodeId: null, waitPredicate: null, pausedUntil: null,
+          completedAt: nextNodeId ? null : new Date(),
+          leaseUntil: nextNodeId ? new Date(Date.now() + 300_000) : null,
+          leaseToken: nextNodeId ? run.leaseToken : null,
+        }).where(eq(workflowRuns.id, run.id));
+        return nextNodeId ? { status: "running", nextNodeId } : { status: "completed" };
+      } catch (error) {
+        await markRunFailed(tx, run.id, tenantId, (error as Error).message);
+        return { status: "failed" };
+      }
+    }
+
     if (run.status === "queued") {
       await tx
         .update(workflowRuns)
-        .set({ status: "running", startedAt: new Date(), currentNodeId: nodeId })
+        .set({ status: "running", startedAt: run.startedAt ?? new Date(), currentNodeId: nodeId })
         .where(and(eq(workflowRuns.id, run.id), eq(workflowRuns.tenantId, tenantId)));
     }
 
@@ -237,6 +277,7 @@ export async function executeStep(input: {
 
       ctx.stepId = stepId;
       const result = await handler.execute(ctx, node as any, tx);
+      await tx.update(workflowRuns).set({ stepSequence: run.stepSequence + 1, leaseUntil: new Date(Date.now() + 300_000) }).where(eq(workflowRuns.id, run.id));
       const latencyMs = Date.now() - start;
 
       await tx
@@ -262,7 +303,7 @@ export async function executeStep(input: {
       if (result.kind === "end") {
         await tx
           .update(workflowRuns)
-          .set({ status: "completed", completedAt: new Date(), currentNodeId: null })
+          .set({ status: "completed", completedAt: new Date(), currentNodeId: null, leaseToken: null, leaseUntil: null })
           .where(and(eq(workflowRuns.id, run.id), eq(workflowRuns.tenantId, tenantId)));
         return { status: "completed" };
       }
@@ -276,6 +317,9 @@ export async function executeStep(input: {
             waitPredicate: result.waitPredicate ?? null,
             waitNodeId: result.waitNodeId ?? node.id,
             currentNodeId: result.waitNodeId ?? node.id,
+            resumeHandle: null,
+            leaseToken: null,
+            leaseUntil: null,
           })
           .where(and(eq(workflowRuns.id, run.id), eq(workflowRuns.tenantId, tenantId)));
         return { status: "paused" };
@@ -287,7 +331,7 @@ export async function executeStep(input: {
         // Implicit end
         await tx
           .update(workflowRuns)
-          .set({ status: "completed", completedAt: new Date(), currentNodeId: null })
+          .set({ status: "completed", completedAt: new Date(), currentNodeId: null, leaseToken: null, leaseUntil: null })
           .where(and(eq(workflowRuns.id, run.id), eq(workflowRuns.tenantId, tenantId)));
         return { status: "completed" };
       }
@@ -309,22 +353,10 @@ export async function executeStep(input: {
   });
 }
 
-function pickNextNode(graph: WorkflowGraph, fromId: string, sourceHandle?: string): string | null {
-  const edges = graph.edges.filter((e) => e.source === fromId);
-  if (edges.length === 0) return null;
-  if (sourceHandle) {
-    const exact = edges.find((e) => e.sourceHandle === sourceHandle);
-    if (exact) return exact.target;
-  }
-  // Default: first edge without a source handle, else first edge
-  const def = edges.find((e) => !e.sourceHandle) ?? edges[0];
-  return def?.target ?? null;
-}
-
 async function markRunFailed(tx: Tx, runId: string, tenantId: string, error: string) {
   await tx
     .update(workflowRuns)
-    .set({ status: "failed", error, completedAt: new Date() })
+    .set({ status: "failed", error, completedAt: new Date(), leaseToken: null, leaseUntil: null })
     .where(and(eq(workflowRuns.id, runId), eq(workflowRuns.tenantId, tenantId)));
 }
 
@@ -346,13 +378,14 @@ async function buildContext(
     runId: run.id,
     versionId: version.id,
     stepId: "", // populated when handler is invoked
+    stepSequence: run.stepSequence,
     workflowId: run.workflowId,
     subjectType: run.subjectType,
     subjectId: run.subjectId,
     subject,
     tenant: tenant ?? {},
     vars: (run.variables as Record<string, any>) ?? {},
-    event: (run.contextSnapshot as Record<string, any>) ?? null,
+    event: normalizeWorkflowEvent(run.contextSnapshot as Record<string, unknown>),
     log: (msg, meta) => {
       // eslint-disable-next-line no-console
       console.log(`[wf:${run.id}] ${msg}`, meta ?? "");

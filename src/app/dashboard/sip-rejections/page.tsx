@@ -165,9 +165,10 @@ export default async function SipRejectionsPage({
     <div className="space-y-6 max-w-7xl">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <XOctagon className="size-6 text-brand-cyan" /> SIP Rejections
+          <h1 className="page-title">
+            <XOctagon className="size-6 text-muted-foreground" /> SIP Rejections
           </h1>
+          <p className="page-subtitle mt-1">SIPs that bounced — chase the client and get the mandate working again.</p>
         </div>
         <div className="flex items-center gap-2">
           <NewSipRejectionButton />
@@ -230,7 +231,7 @@ export default async function SipRejectionsPage({
             <ReasonRow label="Technical" hint="Auto-retry next cycle" value={data.reasonMix.technical} cat="technical" active={reasonCat} tone="slate" />
           </div>
           {reasonCat && (
-            <Link href="/dashboard/sip-rejections" className="text-[11px] text-brand-cyan hover:underline mt-2 inline-block">
+            <Link href="/dashboard/sip-rejections" className="text-2xs text-brand-cyan hover:underline mt-2 inline-block">
               Clear reason filter
             </Link>
           )}
@@ -243,7 +244,7 @@ export default async function SipRejectionsPage({
             <AgeBucket label="3–7 days" value={data.aging.a3_7} tone="amber" />
             <AgeBucket label="> 7 days" value={data.aging.a7p} tone="rose" />
           </div>
-          <p className="text-[11px] text-muted-foreground mt-3">
+          <p className="text-2xs text-muted-foreground mt-3">
             Past 2 days breaches SLA — the daily scanner pings the RM &amp; branch head and bumps the task to urgent.
           </p>
         </div>
@@ -259,7 +260,7 @@ export default async function SipRejectionsPage({
                   <span className="truncate">{r.rm_name}</span>
                   <span className="flex items-center gap-1.5 shrink-0">
                     {Number(r.overdue_count) > 0 && (
-                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700">
+                      <span className="text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700">
                         {r.overdue_count} overdue
                       </span>
                     )}
@@ -342,7 +343,7 @@ function ReasonRow({
       <span className="flex items-center gap-2 min-w-0">
         <span className={`size-2 rounded-full shrink-0 ${dot}`} />
         <span className="truncate">{label}</span>
-        <span className="text-[11px] text-muted-foreground truncate hidden sm:inline">· {hint}</span>
+        <span className="text-2xs text-muted-foreground truncate hidden sm:inline">· {hint}</span>
       </span>
       <span className="text-sm font-bold tabular-nums shrink-0">{value}</span>
     </Link>
@@ -355,7 +356,7 @@ function AgeBucket({ label, value, tone }: { label: string; value: number; tone:
   return (
     <div className="rounded-md bg-secondary/40 py-2">
       <div className={`text-xl font-bold tabular-nums ${value > 0 ? color : "text-muted-foreground"}`}>{value}</div>
-      <div className="text-[11px] text-muted-foreground mt-0.5">{label}</div>
+      <div className="text-2xs text-muted-foreground mt-0.5">{label}</div>
     </div>
   );
 }

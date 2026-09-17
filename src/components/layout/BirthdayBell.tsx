@@ -75,7 +75,7 @@ export function BirthdayBell() {
       >
         <Cake className="size-4" />
         {todayCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 size-4 grid place-items-center rounded-full bg-rose-500 text-white text-[10px] font-semibold">
+          <span className="absolute -top-0.5 -right-0.5 size-4 grid place-items-center rounded-full bg-rose-500 text-white text-2xs font-semibold">
             {todayCount > 9 ? "9+" : todayCount}
           </span>
         )}
@@ -127,7 +127,7 @@ export function BirthdayBell() {
                     </span>
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium truncate">{it.name}</div>
-                      <div className="text-[11px] text-muted-foreground">
+                      <div className="text-2xs text-muted-foreground">
                         {tab === "today"
                           ? it.turning ? `Turns ${it.turning} today 🎉` : "Birthday today 🎉"
                           : tab === "tomorrow"

@@ -60,7 +60,7 @@ export default async function NotificationTemplatesPage() {
           <ChevronLeft className="size-3" /> Back to settings
         </Link>
         <h1 className="page-title mt-2">
-          <Mail className="size-6 text-brand-cyan" /> Notification Templates
+          <Mail className="size-6 text-muted-foreground" /> Notification Templates
         </h1>
         <p className="page-subtitle">
           The 14 templates that drive every automated message in the lead-to-client journey. Each gets a
@@ -86,7 +86,7 @@ export default async function NotificationTemplatesPage() {
                 <tr key={t.key} className="border-b last:border-0 hover:bg-secondary/40">
                   <td className="px-4 py-3">
                     <div className="font-medium">{t.label}</div>
-                    <div className="text-[10px] text-muted-foreground font-mono">{t.key}</div>
+                    <div className="text-2xs text-muted-foreground font-mono">{t.key}</div>
                   </td>
                   <td className="py-3 text-xs text-muted-foreground">{t.stage}</td>
                   <td className="py-3 text-center">
@@ -96,7 +96,7 @@ export default async function NotificationTemplatesPage() {
                     {t.channels.includes("whatsapp") ? (
                       <StatusChip status={lkp.whatsapp?.status} channel="whatsapp" />
                     ) : (
-                      <span className="text-[10px] text-muted-foreground">—</span>
+                      <span className="text-2xs text-muted-foreground">—</span>
                     )}
                   </td>
                   <td className="py-3 pr-4 text-right">
@@ -118,7 +118,7 @@ export default async function NotificationTemplatesPage() {
         </table>
       </div>
 
-      <p className="text-[11px] text-muted-foreground italic">
+      <p className="text-2xs text-muted-foreground italic">
         Templates use the Email Designer (block-based) for email and Meta-approved WhatsApp templates. Each one supports
         merge fields like <code className="bg-secondary px-1 rounded">{`{{lead_name}}`}</code>,{" "}
         <code className="bg-secondary px-1 rounded">{`{{rm_name}}`}</code>,{" "}
@@ -132,7 +132,7 @@ export default async function NotificationTemplatesPage() {
 function StatusChip({ status, channel }: { status: string | undefined; channel: "email" | "whatsapp" }) {
   if (!status) {
     return (
-      <span className="chip text-[10px] bg-secondary text-muted-foreground inline-flex items-center gap-1">
+      <span className="chip text-2xs bg-secondary text-muted-foreground inline-flex items-center gap-1">
         <Plus className="size-3" /> Not created
       </span>
     );
@@ -144,7 +144,7 @@ function StatusChip({ status, channel }: { status: string | undefined; channel: 
         ? "bg-amber-50 text-amber-700"
         : "bg-rose-50 text-rose-700";
   return (
-    <span className={`chip text-[10px] ${tone} inline-flex items-center gap-1`}>
+    <span className={`chip text-2xs ${tone} inline-flex items-center gap-1`}>
       {channel === "email" ? <Mail className="size-3" /> : <MessageCircle className="size-3" />}
       {status.replace(/_/g, " ")}
     </span>

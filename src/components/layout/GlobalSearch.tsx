@@ -24,6 +24,8 @@ export function GlobalSearch() {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Results>({});
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
   // Guard: readOnly until first focus defeats Chrome autofilling a saved email
   // into the search box (Chrome ignores autoComplete="off" on its own).
   const [roGuard, setRoGuard] = useState(true);
@@ -55,22 +57,29 @@ export function GlobalSearch() {
 
   // Debounced search.
   useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    setError(null);
+    setResults({});
     if (q.trim().length < 2) {
-      setResults({});
+      setBusy(false);
       return;
     }
+    setBusy(true);
     const t = setTimeout(async () => {
-      setBusy(true);
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q.trim())}`, { signal: controller.signal });
+        if (!res.ok) throw new Error(res.status === 403 ? "You do not have access to these results." : "Search is unavailable. Please try again.");
         const j = await res.json();
-        setResults(j);
+        if (active) setResults(j);
+      } catch (err) {
+        if (active) setError(err instanceof Error ? err.message : "Search failed.");
       } finally {
-        setBusy(false);
+        if (active) setBusy(false);
       }
     }, 250);
-    return () => clearTimeout(t);
-  }, [q]);
+    return () => { active = false; controller.abort(); clearTimeout(t); };
+  }, [q, retry]);
 
   const total =
     (results.investors?.length ?? 0) +
@@ -84,7 +93,16 @@ export function GlobalSearch() {
   const showPanel = open && q.trim().length >= 1;
 
   return (
-    <div ref={wrapRef} className="relative min-w-0 max-w-md flex-1">
+    <div ref={wrapRef} className="relative min-w-0 max-w-md flex-1" onKeyDown={(event) => {
+      if (!open || !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+      if ((event.key === "Home" || event.key === "End") && event.target === inputRef.current) return;
+      const links = Array.from(wrapRef.current?.querySelectorAll<HTMLAnchorElement>("a[data-search-result]") ?? []);
+      if (!links.length) return;
+      event.preventDefault();
+      const current = links.indexOf(document.activeElement as HTMLAnchorElement);
+      const next = event.key === "Home" ? 0 : event.key === "End" ? links.length - 1 : event.key === "ArrowDown" ? (current + 1) % links.length : current <= 0 ? links.length - 1 : current - 1;
+      links[next]?.focus();
+    }}>
       {/* Input shell — styled like a search field, focus-within highlights it */}
       <div
         className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-sm
@@ -114,6 +132,8 @@ export function GlobalSearch() {
           placeholder="Search clients, leads, folios…"
           className="flex-1 min-w-0 bg-transparent text-sm outline-none focus:ring-0 focus-visible:ring-0 focus:shadow-none placeholder:text-muted-foreground"
           aria-label="Global search"
+          aria-expanded={showPanel}
+          aria-controls="global-search-results"
         />
         {busy ? (
           <Loader2 className="size-3.5 animate-spin text-brand-cyan shrink-0" />
@@ -134,14 +154,17 @@ export function GlobalSearch() {
 
       {/* Results popover — anchored directly under the input */}
       {showPanel && (
-        <div className="absolute left-0 right-0 top-full mt-2 z-50 origin-top animate-scale-in">
+        <div id="global-search-results" aria-label="Search results" className="absolute left-0 right-0 top-full mt-2 z-50 origin-top animate-scale-in">
+          <span role="status" className="sr-only">{busy ? "Searching" : error ?? `${total} results`}</span>
           <div className="card-elevated max-h-[min(70vh,30rem)] overflow-hidden flex flex-col">
             <div className="flex-1 overflow-y-auto p-2 text-sm scrollbar-thin">
               {q.trim().length < 2 ? (
                 <div className="p-6 text-center text-xs text-muted-foreground">
                   Type at least 2 characters. Try a name, PAN, mobile, folio number, or ticket #.
                 </div>
-              ) : total === 0 && !busy ? (
+              ) : error ? (
+                <div className="p-6 text-center text-xs text-muted-foreground"><p role="alert">{error}</p><button className="mt-2 underline" onClick={() => setRetry((n) => n + 1)}>Try again</button></div>
+              ) : busy ? <div className="p-6 text-center text-xs text-muted-foreground">Searching…</div> : total === 0 ? (
                 <div className="p-6 text-center text-xs text-muted-foreground">No results for &ldquo;{q}&rdquo;.</div>
               ) : (
                 <div className="space-y-3">
@@ -205,7 +228,7 @@ function Group({
   if (items.length === 0) return null;
   return (
     <div>
-      <div className="px-2 py-1.5 text-[10px] uppercase tracking-[0.1em] font-bold text-muted-foreground/80 flex items-center gap-1.5">
+      <div className="px-2 py-1.5 text-2xs uppercase tracking-[0.1em] font-bold text-muted-foreground/80 flex items-center gap-1.5">
         <Icon className="size-3 text-brand-cyan" /> {label}
         <span className="ml-auto text-muted-foreground/50 normal-case font-medium">{items.length}</span>
       </div>
@@ -213,6 +236,7 @@ function Group({
         {items.map((r) => (
           <li key={r.id}>
             <Link
+              data-search-result
               href={href(r)}
               onClick={onPick}
               className="block px-2.5 py-2 rounded-lg hover:bg-brand-cyan-light/40 hover:translate-x-0.5 transition-all duration-100"

@@ -38,14 +38,15 @@ export default async function DiscoveryListPage() {
     <div className="space-y-6 max-w-6xl">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <ClipboardList className="size-6 text-brand-cyan" /> Discovery &amp; Suitability
+          <h1 className="page-title">
+            <ClipboardList className="size-6 text-muted-foreground" /> Discovery &amp; Suitability
             <HelpTip title="Discovery & Suitability">
               A guided fact-find you fill with (or send to) a client before advising — goals,
               income, risk appetite. It produces a suitability view so your recommendations are
               documented and defensible.
             </HelpTip>
           </h1>
+          <p className="page-subtitle mt-1">A guided fact-find you complete with the client before recommending anything.</p>
         </div>
         <NewDiscoveryDialog />
       </div>
@@ -81,11 +82,11 @@ export default async function DiscoveryListPage() {
                     <Link href={`/dashboard/discovery/${r.id}`} className="font-medium text-brand-cyan-deep hover:underline">
                       {r.title || "Untitled discovery"}
                     </Link>
-                    {r.reviewType && <div className="text-[11px] text-muted-foreground">{r.reviewType}</div>}
+                    {r.reviewType && <div className="text-2xs text-muted-foreground">{r.reviewType}</div>}
                   </td>
                   <td className="py-2.5 text-xs capitalize text-muted-foreground">{r.subjectType}</td>
                   <td className="py-2.5">
-                    <span className={`text-[11px] px-2 py-0.5 rounded-full capitalize ${STATUS_STYLE[r.status] ?? "bg-secondary"}`}>{r.status}</span>
+                    <span className={`text-2xs px-2 py-0.5 rounded-full capitalize ${STATUS_STYLE[r.status] ?? "bg-secondary"}`}>{r.status}</span>
                   </td>
                   <td className="py-2.5 text-right tabular-nums">
                     {r.healthScore != null ? (

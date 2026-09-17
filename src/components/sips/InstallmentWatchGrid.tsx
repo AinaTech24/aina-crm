@@ -60,13 +60,13 @@ function Cell({ sipId, cell }: { sipId: string; cell: InstallmentCell }) {
       >
         <Icon className={`size-3.5 ${busy ? "animate-spin" : ""}`} />
       </button>
-      <div className="text-[9px] text-center text-muted-foreground mt-0.5 tabular-nums">{cell.dueLabel}</div>
+      <div className="text-2xs text-center text-muted-foreground mt-0.5 tabular-nums">{cell.dueLabel}</div>
 
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <div className="absolute z-20 top-8 left-0 w-36 card-surface p-1 shadow-lg text-xs">
-            <div className="px-2 py-1 text-[10px] text-muted-foreground">Mark installment #{cell.no}</div>
+            <div className="px-2 py-1 text-2xs text-muted-foreground">Mark installment #{cell.no}</div>
             <MenuItem onClick={() => mark("deducted")} icon={Check} cls="text-emerald-700">Deducted</MenuItem>
             <MenuItem onClick={() => mark("bounced")} icon={X} cls="text-rose-700">Bounced</MenuItem>
             <MenuItem onClick={() => mark("pending")} icon={Circle} cls="text-muted-foreground">Pending</MenuItem>

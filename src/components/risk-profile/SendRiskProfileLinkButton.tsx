@@ -195,7 +195,7 @@ export function SendRiskProfileLinkButton({
           style={{ position: "fixed", top: pos.top, left: pos.left, width: 320 }}
           className="z-[70] card-elevated bg-card p-3 space-y-2.5">
           <div className="text-xs font-semibold text-foreground">{cfg.title}</div>
-          <p className="text-[11px] text-muted-foreground leading-snug">{cfg.blurb}</p>
+          <p className="text-2xs text-muted-foreground leading-snug">{cfg.blurb}</p>
 
           {busy && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
@@ -206,7 +206,7 @@ export function SendRiskProfileLinkButton({
 
           {info && !busy && (
             <>
-              <div className="text-[11px] font-mono bg-secondary/50 rounded px-2 py-1.5 truncate" title={info.url}>
+              <div className="text-2xs font-mono bg-secondary/50 rounded px-2 py-1.5 truncate" title={info.url}>
                 {info.url}
               </div>
 
@@ -255,7 +255,7 @@ export function SendRiskProfileLinkButton({
                   {copied ? "Copied" : "Copy link"}
                 </button>
               </div>
-              <p className="text-[10px] text-muted-foreground">{cfg.expiry}</p>
+              <p className="text-2xs text-muted-foreground">{cfg.expiry}</p>
             </>
           )}
         </div>,

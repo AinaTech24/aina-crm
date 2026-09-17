@@ -126,7 +126,7 @@ export function SubDistributorLookup({
               className="w-full text-left px-3 py-2 hover:bg-muted border-b last:border-b-0"
             >
               <div className="text-sm font-medium">{r.name}</div>
-              <div className="text-[10px] text-muted-foreground flex items-center gap-2">
+              <div className="text-2xs text-muted-foreground flex items-center gap-2">
                 {r.code && <span className="font-mono">{r.code}</span>}
                 {r.arnNumber && (
                   <span className="font-mono">ARN: {r.arnNumber}</span>

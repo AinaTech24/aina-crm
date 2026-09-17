@@ -60,7 +60,7 @@ export function RealReturnCalculator() {
           <thead>
             <tr className="text-left">
               {["Instrument", "Nominal %", "Tax %", "Post-tax %", "Real return %", `Real value in ${years}y`, ""].map((h, i) => (
-                <th key={i} className={`py-1.5 px-2 text-[11px] uppercase tracking-wide text-muted-foreground font-semibold border-b border-border ${i >= 1 && i <= 5 ? "text-right" : ""}`}>{h}</th>
+                <th key={i} className={`py-1.5 px-2 text-2xs uppercase tracking-wide text-muted-foreground font-semibold border-b border-border ${i >= 1 && i <= 5 ? "text-right" : ""}`}>{h}</th>
               ))}
             </tr>
           </thead>

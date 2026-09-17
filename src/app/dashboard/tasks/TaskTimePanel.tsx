@@ -121,10 +121,10 @@ export function TaskTimePanel({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h4 className="text-[10px] uppercase font-bold text-slate-500 flex items-center gap-1.5">
+        <h4 className="text-2xs uppercase font-bold text-slate-500 flex items-center gap-1.5">
           <Timer className="size-3.5" /> Time
         </h4>
-        <div className="text-[11px] text-slate-500">
+        <div className="text-2xs text-slate-500">
           <span className={`font-semibold ${over ? "text-rose-600" : "text-slate-700"}`}>{fmtMinutes(spent)}</span>
           {est != null && <span> / {fmtMinutes(est)} est</span>}
         </div>
@@ -132,7 +132,7 @@ export function TaskTimePanel({
 
       <div className="grid grid-cols-2 gap-2 items-end">
         <label className="block">
-          <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Estimate (min)</span>
+          <span className="text-2xs uppercase font-bold text-slate-500 block mb-1">Estimate (min)</span>
           <input
             type="number"
             min={0}
@@ -191,7 +191,7 @@ export function TaskTimePanel({
       {logs.length > 0 && (
         <ul className="space-y-1 max-h-40 overflow-y-auto pr-1 scrollbar-thin">
           {logs.map((l) => (
-            <li key={l.id} className="text-[11px] text-slate-600 flex items-center gap-2 border-b border-slate-50 pb-1">
+            <li key={l.id} className="text-2xs text-slate-600 flex items-center gap-2 border-b border-slate-50 pb-1">
               <span className="font-semibold text-slate-700 tabular-nums w-12 shrink-0">{fmtMinutes(l.minutes)}</span>
               <span className="truncate flex-1">{l.note || <span className="text-slate-400">—</span>}</span>
               <span className="text-slate-400 shrink-0">{l.userName ?? ""}</span>

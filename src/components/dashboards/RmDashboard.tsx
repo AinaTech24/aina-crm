@@ -282,14 +282,14 @@ export async function RmDashboard({
         {/* Sales Quota Ring — driven by users.annual_target / 12 */}
         {data.monthlyTarget > 0 ? (
           <div className="card-surface glass-card p-4 flex flex-col items-center justify-center text-center">
-            <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-2">MTD Sales Quota</div>
+            <div className="text-2xs text-muted-foreground font-bold uppercase tracking-wider mb-2">MTD Sales Quota</div>
             <div className="relative size-16 flex items-center justify-center">
               <svg className="size-full transform -rotate-90">
                 <circle
                   cx="32"
                   cy="32"
                   r="26"
-                  className="stroke-slate-100 dark:stroke-slate-800 fill-none"
+                  className="stroke-slate-100 fill-none"
                   strokeWidth="5"
                 />
                 <circle
@@ -317,11 +317,11 @@ export async function RmDashboard({
                 </span>
               </div>
             </div>
-            <div className="text-[9px] text-muted-foreground mt-2 font-medium">
+            <div className="text-2xs text-muted-foreground mt-2 font-medium">
               Target {formatINR(data.monthlyTarget)} · Got {formatINR(data.netMtd)}
             </div>
             {data.sipMonthlyTarget > 0 && (
-              <div className="text-[9px] text-muted-foreground mt-1">
+              <div className="text-2xs text-muted-foreground mt-1">
                 SIP target: {formatINR(data.sipMonthlyTarget)}/mo
               </div>
             )}
@@ -331,11 +331,11 @@ export async function RmDashboard({
             href="/dashboard/settings/targets"
             className="card-surface glass-card p-4 flex flex-col items-center justify-center text-center hover:bg-accent/40 transition-colors"
           >
-            <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-2">MTD Quota</div>
+            <div className="text-2xs text-muted-foreground font-bold uppercase tracking-wider mb-2">MTD Quota</div>
             <div className="size-16 rounded-full border-2 border-dashed border-border flex items-center justify-center">
               <span className="text-xl text-muted-foreground/40">—</span>
             </div>
-            <div className="text-[9px] text-brand-cyan-deep mt-2 font-semibold">
+            <div className="text-2xs text-brand-cyan-deep mt-2 font-semibold">
               Set your target →
             </div>
           </Link>

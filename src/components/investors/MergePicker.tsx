@@ -171,13 +171,13 @@ export function MergePicker() {
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-medium truncate">{c.name}</span>
-                  <span className="block text-[11px] text-muted-foreground truncate tabular-nums">
+                  <span className="block text-2xs text-muted-foreground truncate tabular-nums">
                     {[c.pan, c.phone, c.email, c.city].filter(Boolean).join(" · ") || "no identifiers"}
                   </span>
                 </span>
                 <span className="text-right shrink-0">
                   <span className="block text-xs font-medium tabular-nums">{inr(c.aum)}</span>
-                  <span className="block text-[11px] text-muted-foreground">{c.folios} folio{c.folios === 1 ? "" : "s"}</span>
+                  <span className="block text-2xs text-muted-foreground">{c.folios} folio{c.folios === 1 ? "" : "s"}</span>
                 </span>
               </button>
             );
@@ -189,7 +189,7 @@ export function MergePicker() {
         <div className="rounded-lg border border-border bg-secondary/20 p-3 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold">Selected ({picked.length} of 2)</span>
-            <button onClick={() => { setPicked([]); setSurvivorId(null); }} className="text-[11px] text-muted-foreground hover:underline">
+            <button onClick={() => { setPicked([]); setSurvivorId(null); }} className="text-2xs text-muted-foreground hover:underline">
               Clear
             </button>
           </div>
@@ -213,7 +213,7 @@ export function MergePicker() {
                   <span className="text-xs font-semibold">{survivorId === c.id ? "Keep this one" : "Merge away"}</span>
                 </span>
                 <span className="block mt-1.5 text-sm font-medium truncate">{c.name}</span>
-                <span className="block text-[11px] text-muted-foreground tabular-nums">
+                <span className="block text-2xs text-muted-foreground tabular-nums">
                   {inr(c.aum)} · {c.folios} folio{c.folios === 1 ? "" : "s"} · {c.pan ?? "no PAN"}
                 </span>
               </label>
@@ -223,9 +223,9 @@ export function MergePicker() {
           {picked.length === 2 && survivor && loser && (
             <>
               <div className="text-xs flex items-center gap-2 flex-wrap">
-                <span className="chip text-[10px] bg-rose-50 text-rose-700">{loser.name}</span>
+                <span className="chip text-2xs bg-rose-50 text-rose-700">{loser.name}</span>
                 <ArrowRight className="size-3.5 text-muted-foreground" />
-                <span className="chip text-[10px] bg-emerald-50 text-emerald-700">{survivor.name}</span>
+                <span className="chip text-2xs bg-emerald-50 text-emerald-700">{survivor.name}</span>
                 <span className="text-muted-foreground">
                   — {loser.folios} folio{loser.folios === 1 ? "" : "s"} and all history move across; the merged record is retired.
                 </span>
@@ -267,7 +267,7 @@ export function UnmergeButton({ mergeId, reversible, label = "Undo" }: { mergeId
   if (!reversible) {
     return (
       <span
-        className="text-[11px] text-muted-foreground"
+        className="text-2xs text-muted-foreground"
         title="This merge moved more rows than could be logged individually, so it cannot be undone automatically."
       >
         not reversible
@@ -300,7 +300,7 @@ export function UnmergeButton({ mergeId, reversible, label = "Undo" }: { mergeId
 
   return confirming ? (
     <span className="inline-flex items-center gap-1.5">
-      <button onClick={run} disabled={busy} className="text-[11px] font-medium text-rose-600 hover:underline disabled:opacity-60">
+      <button onClick={run} disabled={busy} className="text-2xs font-medium text-rose-600 hover:underline disabled:opacity-60">
         {busy ? "Undoing…" : "Confirm"}
       </button>
       <button onClick={() => setConfirming(false)} className="text-muted-foreground hover:text-foreground">
@@ -308,7 +308,7 @@ export function UnmergeButton({ mergeId, reversible, label = "Undo" }: { mergeId
       </button>
     </span>
   ) : (
-    <button onClick={() => setConfirming(true)} className="text-[11px] text-primary hover:underline">
+    <button onClick={() => setConfirming(true)} className="text-2xs text-primary hover:underline">
       {label}
     </button>
   );

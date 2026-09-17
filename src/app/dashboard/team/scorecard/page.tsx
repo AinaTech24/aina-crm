@@ -78,7 +78,7 @@ export default async function ScorecardPage({
             <ArrowLeft className="size-3" /> Team
           </Link>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Trophy className="size-6 text-brand-cyan" /> Team Scorecard
+            <Trophy className="size-6 text-muted-foreground" /> Team Scorecard
           </h1>
           <p className="text-muted-foreground text-sm mt-0.5">KRA performance · {label}</p>
         </div>
@@ -117,7 +117,7 @@ export default async function ScorecardPage({
         ]}
       />
 
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         KRA score is a weighted blend of each KPI. Business is split by product — MF &amp; Other from business entries,
         Insurance from booked policy premium. When a per-person target is set (Set targets), that KPI scores actual vs the
         pro-rated target; otherwise count KPIs rank against the team&apos;s top performer, %-KPIs (SLA, attendance) score on
@@ -180,7 +180,7 @@ function ScoreTable({
                     return (
                       <td key={c.key} className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
                         {fmt(k)}
-                        {k?.target ? <span className="text-[10px] text-muted-foreground"> / {fmtVal(k.target, k.unit)}</span> : null}
+                        {k?.target ? <span className="text-2xs text-muted-foreground"> / {fmtVal(k.target, k.unit)}</span> : null}
                       </td>
                     );
                   })}

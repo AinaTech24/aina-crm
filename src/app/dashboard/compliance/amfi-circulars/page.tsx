@@ -42,7 +42,7 @@ export default async function AmfiCircularsPage() {
     <div className="space-y-6 max-w-4xl">
       <div>
         <h1 className="page-title flex items-center gap-2">
-          <ScrollText className="size-6 text-brand-cyan" /> Regulatory circular digest
+          <ScrollText className="size-6 text-muted-foreground" /> Regulatory circular digest
         </h1>
       </div>
 

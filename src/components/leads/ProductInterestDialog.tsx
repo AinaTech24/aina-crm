@@ -84,7 +84,7 @@ export function ProductInterestDialog({
 
         {/* Product multi-select */}
         <div>
-          <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5">Products of interest</div>
+          <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium mb-1.5">Products of interest</div>
           <div className="flex flex-wrap gap-2">
             {LEAD_PRODUCTS.map((p) => {
               const on = selected.includes(p.value);
@@ -108,7 +108,7 @@ export function ProductInterestDialog({
         {/* Primary product */}
         {selected.length > 0 && (
           <div>
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5">Primary product (drives the flow)</div>
+            <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium mb-1.5">Primary product (drives the flow)</div>
             <div className="flex flex-wrap gap-3">
               {selected.map((v) => {
                 const meta = LEAD_PRODUCTS.find((p) => p.value === v);
@@ -121,7 +121,7 @@ export function ProductInterestDialog({
               })}
             </div>
             {primaryMeta && (
-              <p className="text-[11px] text-muted-foreground mt-1.5">
+              <p className="text-2xs text-muted-foreground mt-1.5">
                 Next:{" "}
                 <strong>
                   {primaryMeta.pipeline === "insurance"
@@ -136,7 +136,7 @@ export function ProductInterestDialog({
 
         {/* Qualification basis — how the lead was qualified (for win analytics). */}
         <div>
-          <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium mb-1">How was this lead qualified?</div>
+          <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium mb-1">How was this lead qualified?</div>
           <select value={basis} onChange={(e) => setBasis(e.target.value)} className="input-base text-sm w-full">
             <option value="">— optional —</option>
             <option value="Met in person">Met in person</option>
@@ -150,7 +150,7 @@ export function ProductInterestDialog({
 
         {/* Notes */}
         <div>
-          <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium mb-1">Notes (optional)</div>
+          <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium mb-1">Notes (optional)</div>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}

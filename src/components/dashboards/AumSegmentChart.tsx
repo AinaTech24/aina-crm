@@ -63,8 +63,11 @@ export function AumSegmentChart({ data }: { data: SegmentData[] }) {
         </PieChart>
       </ResponsiveContainer>
       <div className="absolute top-[40%] left-1/2 -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
-        <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-          Total AUM
+        {/* "Total AUM" here is the ACTIVE-client total this donut segments, which
+            is a smaller figure than the Firm Pulse headline (every live client,
+            including dormant). Both were labelled "Total AUM" on one screen. */}
+        <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
+          Active AUM
         </div>
         <div className="text-xs font-bold text-foreground truncate max-w-[100px]">
           {formatINR(totalAum)}

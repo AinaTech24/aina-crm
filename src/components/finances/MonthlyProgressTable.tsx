@@ -71,7 +71,7 @@ export function MonthlyProgressTable({
               <th className="text-right py-2 font-medium">Pending</th>
               <th className="text-left py-2 font-medium pl-3 w-32">Progress</th>
               {FY_MONTHS.map((m) => (
-                <th key={m.key} className="text-right py-2 font-medium px-1 text-[10px]">{m.label}</th>
+                <th key={m.key} className="text-right py-2 font-medium px-1 text-2xs">{m.label}</th>
               ))}
             </tr>
           </thead>
@@ -104,13 +104,13 @@ export function MonthlyProgressTable({
                       <div className="h-1.5 flex-1 rounded-full bg-secondary overflow-hidden">
                         <div className={`h-full rounded-full ${bar}`} style={{ width: `${pct}%` }} />
                       </div>
-                      <span className="text-[10px] tabular-nums text-muted-foreground w-8 text-right">{pct.toFixed(0)}%</span>
+                      <span className="text-2xs tabular-nums text-muted-foreground w-8 text-right">{pct.toFixed(0)}%</span>
                     </div>
                   </td>
                   {FY_MONTHS.map((m) => {
                     const v = r.byMonth[m.key] ?? 0;
                     return (
-                      <td key={m.key} className="py-2.5 px-1 text-right text-[10px] tabular-nums text-muted-foreground">
+                      <td key={m.key} className="py-2.5 px-1 text-right text-2xs tabular-nums text-muted-foreground">
                         {v ? (r.kind === "currency" ? compact(v) : v) : "·"}
                       </td>
                     );
@@ -121,7 +121,7 @@ export function MonthlyProgressTable({
           </tbody>
         </table>
       </div>
-      <div className="px-4 py-2 text-[11px] text-muted-foreground border-t">
+      <div className="px-4 py-2 text-2xs text-muted-foreground border-t">
         Actuals are computed live from your clients, leads, meetings and transactions. Edit a target
         and it saves automatically.
       </div>

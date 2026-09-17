@@ -391,14 +391,14 @@ export function EditTemplateForm({ initialTemplate, initialVersion }: EditTempla
         <div className="card-surface p-4 space-y-3 bg-slate-50/50">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-xs text-slate-800">Auto-Detected Variables ({declaredVars.length})</h3>
-            <span className="text-[10px] text-muted-foreground font-mono">Use {"{{variable_name}}"} in text to add more</span>
+            <span className="text-2xs text-muted-foreground font-mono">Use {"{{variable_name}}"} in text to add more</span>
           </div>
           <div className="border rounded-md divide-y bg-background overflow-hidden">
             {declaredVars.map((v, idx) => (
               <div key={v.key} className="p-3 grid grid-cols-1 md:grid-cols-4 gap-3 items-center text-xs">
                 <div className="font-mono font-semibold text-slate-700 truncate">{v.key}</div>
                 <div>
-                  <label className="text-[9px] text-muted-foreground block font-medium uppercase tracking-wider mb-0.5">Type</label>
+                  <label className="text-2xs text-muted-foreground block font-medium uppercase tracking-wider mb-0.5">Type</label>
                   <SelectField
                     value={v.type}
                     onChange={(e) => {
@@ -419,7 +419,7 @@ export function EditTemplateForm({ initialTemplate, initialVersion }: EditTempla
                   </SelectField>
                 </div>
                 <div>
-                  <label className="text-[9px] text-muted-foreground block font-medium uppercase tracking-wider mb-0.5">Source path</label>
+                  <label className="text-2xs text-muted-foreground block font-medium uppercase tracking-wider mb-0.5">Source path</label>
                   <input
                     value={v.source ?? ""}
                     onChange={(e) => {

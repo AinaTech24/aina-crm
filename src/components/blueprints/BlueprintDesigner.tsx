@@ -31,6 +31,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 import {
   AlertCircle,
   ArrowRight,
@@ -308,7 +309,7 @@ export function BlueprintDesigner({
           placeholder="What does this blueprint govern? (visible to your team in Settings)"
           className="input-base text-sm w-full"
         />
-        <div className="text-[11px] text-muted-foreground flex items-center gap-2">
+        <div className="text-2xs text-muted-foreground flex items-center gap-2">
           <Workflow className="size-3" /> Module: <code className="font-mono">{moduleName}</code>
         </div>
       </div>
@@ -392,7 +393,7 @@ export function BlueprintDesigner({
           <div className="text-xs font-semibold text-amber-800 flex items-center gap-1.5 mb-1.5">
             <AlertCircle className="size-3.5" /> Fix these before saving
           </div>
-          <ul className="text-[11px] text-amber-700 list-disc list-inside space-y-0.5">
+          <ul className="text-2xs text-amber-700 list-disc list-inside space-y-0.5">
             {validation.slice(0, 5).map((m, i) => (
               <li key={i}>{m}</li>
             ))}
@@ -480,7 +481,7 @@ function StageCard({
             <ChevronDown className="size-3.5" />
           </button>
         </div>
-        <span className="chip text-[10px] bg-brand-cyan-light text-brand-cyan-deep tabular-nums">
+        <span className="chip text-2xs bg-brand-cyan-light text-brand-cyan-deep tabular-nums">
           {index + 1}
         </span>
         <input
@@ -492,15 +493,15 @@ function StageCard({
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+          className="text-2xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
         >
           {open ? "Collapse" : "Expand"}
           {open ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
         </button>
         <button
           type="button"
-          onClick={() => {
-            if (confirm(`Delete stage "${stage.stageName || stage.stageKey}"?`)) onRemove();
+          onClick={async () => {
+            if (await confirmDialog({ title: `Delete stage "${stage.stageName || stage.stageKey}"?`, confirmLabel: "Delete", tone: "danger" })) onRemove();
           }}
           className="rounded p-1.5 hover:bg-rose-50 text-rose-600"
           title="Delete stage"
@@ -526,7 +527,7 @@ function StageCard({
                 title={isPersisted ? "Stage key locked once saved" : ""}
               />
               {isPersisted && (
-                <div className="text-[10px] text-muted-foreground mt-0.5">
+                <div className="text-2xs text-muted-foreground mt-0.5">
                   Locked — rename = delete + re-add.
                 </div>
               )}
@@ -667,8 +668,8 @@ function TransitionRow({
       />
       <button
         type="button"
-        onClick={() => {
-          if (confirm(`Delete this transition?`)) onRemove();
+        onClick={async () => {
+          if (await confirmDialog({ title: `Delete this transition?`, confirmLabel: "Delete", tone: "danger" })) onRemove();
         }}
         className="rounded p-1.5 hover:bg-rose-50 text-rose-600"
         title="Delete transition"
@@ -695,7 +696,7 @@ function RoleMultiSelect({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="rounded-md border border-border bg-background px-2 py-1 text-[11px] inline-flex items-center gap-1 min-w-[140px]"
+        className="rounded-md border border-border bg-background px-2 py-1 text-2xs inline-flex items-center gap-1 min-w-[140px]"
       >
         <span className="truncate flex-1 text-left">
           {value.length === 0
@@ -747,7 +748,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">
+      <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground mb-1">
         {label}
       </div>
       {children}

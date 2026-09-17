@@ -117,7 +117,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
             placeholder="••••••••"
           />
           <p
-            className={`mt-1.5 text-[11px] inline-flex items-center gap-1 ${
+            className={`mt-1.5 text-2xs inline-flex items-center gap-1 ${
               longEnough ? "text-emerald-600" : "text-muted-foreground"
             }`}
           >
@@ -142,7 +142,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
           />
           {confirm.length > 0 && (
             <p
-              className={`mt-1.5 text-[11px] inline-flex items-center gap-1 ${
+              className={`mt-1.5 text-2xs inline-flex items-center gap-1 ${
                 matches ? "text-emerald-600" : "text-rose-600"
               }`}
             >

@@ -220,7 +220,7 @@ export function BranchesManager({
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{b.name}</span>
                       {b.isHq === "true" && (
-                        <span className="chip bg-violet-50 text-violet-700 text-[10px]">
+                        <span className="chip bg-violet-50 text-violet-700 text-2xs">
                           HQ
                         </span>
                       )}

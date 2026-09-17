@@ -39,7 +39,7 @@ function PdfModal({ profileId, name, onClose }: { profileId: string; name: strin
               </button>
               <button
                 onClick={() => setZoom(1)}
-                className="px-2 py-1 text-[11px] tabular-nums hover:bg-accent w-12 text-center"
+                className="px-2 py-1 text-2xs tabular-nums hover:bg-accent w-12 text-center"
                 title="Reset zoom"
               >
                 {Math.round(zoom * 100)}%

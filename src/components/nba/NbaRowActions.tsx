@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { notify } from "@/components/ui/Toast";
 import { useRouter } from "next/navigation";
 import { Sparkles, Clock, Check, X, Loader2 } from "lucide-react";
 
@@ -55,7 +56,7 @@ export function NbaRowActions({
       const d = await r.json().catch(() => ({}));
       const text: string = d?.text ?? "";
       if (!r.ok || !text) {
-        alert(d?.error ?? "Couldn't draft a message right now.");
+        notify.error(d?.error ?? "Couldn't draft a message right now.");
         return;
       }
       if (phone) {
@@ -65,7 +66,7 @@ export function NbaRowActions({
         window.open(`mailto:${email}?body=${encodeURIComponent(text)}`, "_blank");
       } else {
         await navigator.clipboard.writeText(text).catch(() => {});
-        alert("Drafted message copied to clipboard.");
+        notify.success("Drafted message copied to clipboard.");
       }
     } finally {
       setBusy(null);

@@ -150,6 +150,11 @@ async function signedInDestination(req: NextRequest): Promise<string | null> {
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.delete("x-mfd-session");
+  requestHeaders.delete("x-pathname");
+  requestHeaders.set("x-pathname", pathname);
+  const passThrough = () => NextResponse.next({ request: { headers: requestHeaders } });
 
   // Correlation id — one per request; surfaced on the response and (via the
   // middleware header-merge) readable by route handlers through headers(), so
@@ -190,18 +195,18 @@ export async function middleware(req: NextRequest) {
         if (dest) return tag(NextResponse.redirect(new URL(dest, req.url)));
       }
     }
-    return tag(NextResponse.next());
+    return tag(passThrough());
   }
   // Public form routes — clients click WA/email links without logging in
-  if (PUBLIC_PATH_PREFIXES.some((p) => pathname.startsWith(p))) return tag(NextResponse.next());
-  if (PUBLIC_API_PREFIXES.some((p) => pathname.startsWith(p))) return tag(NextResponse.next());
+  if (PUBLIC_PATH_PREFIXES.some((p) => pathname.startsWith(p))) return tag(passThrough());
+  if (PUBLIC_API_PREFIXES.some((p) => pathname.startsWith(p))) return tag(passThrough());
 
   // Dev escape hatch — set NO_AUTH=1 to bypass and inject the demo session.
   // Useful for previewing the UI before a real auth wiring lands.
   // HARD-DISABLED in production builds: an accidentally-set env var would
   // hand any unauthenticated visitor an owner+rm+compliance session.
   if (process.env.NO_AUTH === "1" && process.env.NODE_ENV !== "production") {
-    const res = tag(NextResponse.next());
+    const res = tag(passThrough());
     // Point the demo session at the seeded demo owner (tenant that actually
     // holds the demo book) so every tenant-scoped page renders populated.
     // Overridable via DEMO_* env vars for a reseeded DB with fresh ids.
@@ -296,10 +301,9 @@ export async function middleware(req: NextRequest) {
   // gating). This MUST be set on the REQUEST headers — `headers()` in an RSC
   // reads the incoming request, so a response-only header never reaches it
   // (which silently disabled the restricted-license + nav enforcement).
-  const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-pathname", pathname);
   const res = tag(NextResponse.next({ request: { headers: requestHeaders } }));
-  res.headers.set("x-mfd-session", JSON.stringify(session));
+
   res.headers.set("x-pathname", pathname);
   return res;
 }

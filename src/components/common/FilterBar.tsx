@@ -296,7 +296,7 @@ function MultiSelectChip({
         <FilterIcon className="size-3" />
         <span>{label}</span>
         {active && (
-          <span className="bg-brand-cyan text-white rounded-full px-1.5 text-[10px] font-bold tabular-nums">
+          <span className="bg-brand-cyan text-white rounded-full px-1.5 text-2xs font-bold tabular-nums">
             {value.length}
           </span>
         )}
@@ -305,7 +305,7 @@ function MultiSelectChip({
       {open && (
         <div className={`absolute top-full ${alignRight ? "right-0" : "left-0"} mt-1 z-50 card-elevated bg-card p-1.5 min-w-[200px] max-h-64 overflow-y-auto scrollbar-thin`}>
           {options.length === 0 ? (
-            <div className="text-[11px] text-muted-foreground p-2">No options</div>
+            <div className="text-2xs text-muted-foreground p-2">No options</div>
           ) : (
             <ul className="space-y-0.5">
               {options.map((o) => {

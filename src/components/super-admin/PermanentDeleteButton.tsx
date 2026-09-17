@@ -40,7 +40,7 @@ export function PermanentDeleteButton({ tenantId, tenantName }: { tenantId: stri
         onClick={() => { setErr(null); setOpen(true); }}
         title="Permanently delete"
         aria-label="Permanently delete tenant"
-        className="size-8 grid place-items-center rounded-lg text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/15 transition-colors"
+        className="size-8 grid place-items-center rounded-lg text-rose-600 hover:bg-rose-50 transition-colors"
       >
         <Trash2 className="size-4" />
       </button>
@@ -56,7 +56,7 @@ export function PermanentDeleteButton({ tenantId, tenantName }: { tenantId: stri
         onConfirm={purge}
         onCancel={() => setOpen(false)}
       />
-      {err && <span className="block text-[11px] text-rose-600 mt-1">{err}</span>}
+      {err && <span className="block text-2xs text-rose-600 mt-1">{err}</span>}
     </>
   );
 }

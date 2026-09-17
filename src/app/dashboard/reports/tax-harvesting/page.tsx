@@ -119,7 +119,7 @@ export default async function TaxHarvestingPage() {
                   <td className="py-3">
                     <div className="flex flex-wrap gap-1 max-w-md">
                       {r.holdings.slice(0, 3).map((h, i) => (
-                        <span key={i} className="chip bg-secondary text-[10px]">
+                        <span key={i} className="chip bg-secondary text-2xs">
                           {h.schemeName} · {formatINR(Math.round(h.longTermGain))}
                         </span>
                       ))}
@@ -181,7 +181,7 @@ export default async function TaxHarvestingPage() {
                     <td className="py-3">
                       <div className="flex flex-wrap gap-1 max-w-md">
                         {r.holdings.slice(0, 3).map((h, i) => (
-                          <span key={i} className="chip bg-rose-50 text-rose-700 text-[10px]">
+                          <span key={i} className="chip bg-rose-50 text-rose-700 text-2xs">
                             {h.schemeName} · −{formatINR(Math.round(h.loss))}
                           </span>
                         ))}
@@ -195,7 +195,7 @@ export default async function TaxHarvestingPage() {
               </tbody>
             </table>
           </div>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             Booking a loss sets it off against realised capital gains this year (short-term losses offset both
             ST &amp; LT gains; long-term losses offset only LT gains), and unused losses carry forward 8 years.
             Re-buy after the loss is booked to keep the client&apos;s allocation intact.
@@ -203,7 +203,7 @@ export default async function TaxHarvestingPage() {
         </div>
       )}
 
-      <p className="text-[11px] text-muted-foreground italic">
+      <p className="text-2xs text-muted-foreground italic">
         Estimate for planning only — FIFO cost basis from imported transactions, excludes exit load / STT and
         pre-1-Feb-2018 grandfathering. Confirm exact figures from the client&apos;s CAS before transacting.
       </p>
@@ -215,13 +215,13 @@ function Stat({ icon: Icon, label, value, tone, sub }: { icon: any; label: strin
   return (
     <div className="kpi-card">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">{label}</span>
+        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{label}</span>
         <Icon className="size-3.5 text-muted-foreground" />
       </div>
       <div className={`text-2xl font-bold mt-1 tabular-nums ${tone === "emerald" ? "text-emerald-600" : tone === "amber" ? "text-amber-600" : "text-foreground"}`}>
         {value}
       </div>
-      {sub && <div className="text-[11px] text-muted-foreground mt-0.5">{sub}</div>}
+      {sub && <div className="text-2xs text-muted-foreground mt-0.5">{sub}</div>}
     </div>
   );
 }

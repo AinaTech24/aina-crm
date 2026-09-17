@@ -114,7 +114,7 @@ export function CampaignAudienceBuilder({
         <Check className="size-4 text-emerald-600 flex-shrink-0" />
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold text-emerald-900 truncate">{selected.label}</div>
-          <div className="text-[11px] text-emerald-700">{Number(selected.count).toLocaleString("en-IN")} recipient{selected.count === 1 ? "" : "s"} will receive this</div>
+          <div className="text-2xs text-emerald-700">{Number(selected.count).toLocaleString("en-IN")} recipient{selected.count === 1 ? "" : "s"} will receive this</div>
         </div>
         <button type="button" onClick={() => onSelect(null)} className="text-xs font-medium text-emerald-800 hover:underline">
           Change
@@ -191,7 +191,7 @@ export function CampaignAudienceBuilder({
             ))}
           </div>
           <FilterBuilder subject={subject} value={group} onChange={setGroup} />
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             No conditions = everyone in {subject === "lead" ? "Leads" : "Clients"}. Add conditions to narrow it (e.g. segment,
             city, AUM, stage…).
           </p>
@@ -218,7 +218,7 @@ export function CampaignAudienceBuilder({
         {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
         {busy ? "Building audience…" : "Set audience"}
       </button>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         Recipients without a valid contact or consent are skipped automatically (and audited).
       </p>
     </div>

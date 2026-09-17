@@ -166,7 +166,7 @@ export function MailboxForm({
           </p>
         </div>
         {(initial.connected || oauth) && (
-          <span className="text-[11px] rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 font-semibold whitespace-nowrap">
+          <span className="text-2xs rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 font-semibold whitespace-nowrap">
             ● Connected
           </span>
         )}
@@ -206,7 +206,7 @@ export function MailboxForm({
                 </NavButton>
               )}
             </div>
-            <p className="text-[11px] text-muted-foreground">Or set up SMTP / IMAP manually below.</p>
+            <p className="text-2xs text-muted-foreground">Or set up SMTP / IMAP manually below.</p>
           </div>
         )
       )}
@@ -223,7 +223,7 @@ export function MailboxForm({
           ))}
         </select>
         {PRESETS[preset].note && (
-          <div className="mt-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 leading-relaxed">
+          <div className="mt-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-2xs text-amber-800 leading-relaxed">
             {PRESETS[preset].note}
             {PRESETS[preset].appPwUrl && (
               <>
@@ -355,7 +355,7 @@ function ServerBlock({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
-      <label className="text-[11px] font-medium text-muted-foreground">{label}</label>
+      <label className="text-2xs font-medium text-muted-foreground">{label}</label>
       {children}
     </div>
   );

@@ -91,9 +91,10 @@ export default async function FinancesHubPage() {
     <div className="space-y-6 max-w-5xl">
       <div className="flex items-end justify-between flex-wrap gap-2">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Wallet className="size-6 text-brand-cyan" /> Practice finances
+          <h1 className="page-title">
+            <Wallet className="size-6 text-muted-foreground" /> Practice finances
           </h1>
+          <p className="page-subtitle mt-1">Your practice&apos;s own money — revenue, expenses and profit.</p>
         </div>
         <span className="text-xs text-muted-foreground">FY {fy}</span>
       </div>
@@ -158,15 +159,15 @@ function Kpi({
   const cls = tone === "emerald" ? "text-emerald-700" : tone === "rose" ? "text-rose-700" : "text-brand-cyan-deep";
   return (
     <div className="card-surface glass-card p-4">
-      <div className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">{label}</div>
+      <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{label}</div>
       <div className={`text-xl font-bold mt-1 tabular-nums ${cls}`}>{value}</div>
       {delta != null && (
-        <div className={`text-[11px] mt-0.5 inline-flex items-center gap-0.5 ${delta >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+        <div className={`text-2xs mt-0.5 inline-flex items-center gap-0.5 ${delta >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
           {delta >= 0 ? <ArrowUpRight className="size-3" /> : <ArrowDownRight className="size-3" />}
           {Math.abs(delta).toFixed(0)}% {deltaLabel}
         </div>
       )}
-      {sub && <div className="text-[11px] text-muted-foreground mt-0.5">{sub}</div>}
+      {sub && <div className="text-2xs text-muted-foreground mt-0.5">{sub}</div>}
     </div>
   );
 }

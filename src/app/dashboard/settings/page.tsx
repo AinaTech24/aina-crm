@@ -159,7 +159,7 @@ export default function SettingsPage() {
         if (cards.length === 0) return null;
         return (
           <section key={g}>
-            <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground mb-2">{g}</h2>
+            <h2 className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted-foreground mb-2">{g}</h2>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {cards.map((s) => {
                 const Icon = s.icon;

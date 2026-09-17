@@ -43,9 +43,9 @@ export default async function TechStackPage() {
     <div className="space-y-5 max-w-5xl">
       <div>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <Server className="size-6 text-brand-cyan" /> MFD Tech Stack
+          <Server className="size-6 text-muted-foreground" /> MFD Tech Stack
         </h1>
-        <p className="text-muted-foreground text-sm mt-1">
+        <p className="page-subtitle mt-1">
           A single register of the platforms and software your firm uses — purpose, access, cost and
           renewals. Doubles as your AMFI DDQ evidence for "platform used" and "software/apps list".
         </p>

@@ -62,8 +62,8 @@ export default async function WhatsNewPage() {
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
-        <h1 className="page-title"><Sparkles className="size-6 text-brand-cyan" /> What&apos;s new</h1>
-        <p className="text-sm text-muted-foreground mt-1">
+        <h1 className="page-title"><Sparkles className="size-6 text-muted-foreground" /> What&apos;s new</h1>
+        <p className="page-subtitle mt-1">
           Everything we&apos;ve shipped to your CRM, newest first.
         </p>
       </div>
@@ -75,16 +75,16 @@ export default async function WhatsNewPage() {
       ) : (
         [...groups.entries()].map(([month, items]) => (
           <section key={month} className="space-y-3">
-            <h2 className="text-[11px] font-bold uppercase tracking-[0.1em] text-muted-foreground">{month}</h2>
+            <h2 className="text-2xs font-bold uppercase tracking-[0.1em] text-muted-foreground">{month}</h2>
             {items.map((n) => {
               const cat = CATEGORY_STYLE[n.category] ?? CATEGORY_STYLE.feature;
               return (
                 <article key={n.id} className="card-surface p-4">
                   <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                    <span className={`chip text-[11px] ${cat.cls}`}>{cat.label}</span>
-                    {n.module && <span className="text-[11px] text-muted-foreground">{n.module}</span>}
-                    {n.version && <span className="text-[11px] text-muted-foreground">· {n.version}</span>}
-                    <span className="text-[11px] text-muted-foreground ml-auto">
+                    <span className={`chip text-2xs ${cat.cls}`}>{cat.label}</span>
+                    {n.module && <span className="text-2xs text-muted-foreground">{n.module}</span>}
+                    {n.version && <span className="text-2xs text-muted-foreground">· {n.version}</span>}
+                    <span className="text-2xs text-muted-foreground ml-auto">
                       {new Date(n.published_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
                     </span>
                   </div>

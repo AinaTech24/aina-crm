@@ -212,11 +212,11 @@ export function TenantAccessControl({
             return (
               <div key={f.key} className="flex items-center gap-3 p-3">
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium">{f.label} <span className="text-[10px] text-muted-foreground font-mono">{f.key}</span></div>
-                  <div className="text-[11px] text-muted-foreground">{f.description}</div>
+                  <div className="text-sm font-medium">{f.label} <span className="text-2xs text-muted-foreground font-mono">{f.key}</span></div>
+                  <div className="text-2xs text-muted-foreground">{f.description}</div>
                 </div>
                 {f.type === "boolean" ? (
-                  <div className="flex gap-1 text-[11px] font-medium shrink-0">
+                  <div className="flex gap-1 text-2xs font-medium shrink-0">
                     {([["inherit", undefined], ["on", true], ["off", false]] as const).map(([lbl, val]) => {
                       const active = val === undefined ? !has : has && flags[f.key] === val;
                       return (
@@ -266,7 +266,7 @@ export function TenantAccessControl({
             </div>
           ) : (
             <div className="space-y-3 max-h-[440px] overflow-y-auto border rounded-md p-4 bg-secondary/10 scrollbar-thin">
-              <div className="flex gap-3 text-[11px] font-medium">
+              <div className="flex gap-3 text-2xs font-medium">
                 <button type="button" onClick={() => { setNav(ALL_NAV_KEYS); setSaved(false); }} className="text-primary hover:underline">
                   Select all
                 </button>
@@ -284,7 +284,7 @@ export function TenantAccessControl({
                 return (
                 <div key={grp.title} className="space-y-1.5">
                   <div className="flex items-center justify-between border-b pb-0.5">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    <div className="text-2xs font-bold uppercase tracking-wider text-muted-foreground">
                       {grp.title}
                     </div>
                     <button
@@ -293,7 +293,7 @@ export function TenantAccessControl({
                         setNav((prev) => (allOn ? prev.filter((k) => !groupKeys.includes(k)) : [...new Set([...prev, ...groupKeys])]));
                         setSaved(false);
                       }}
-                      className="text-[10px] font-medium text-primary hover:underline"
+                      className="text-2xs font-medium text-primary hover:underline"
                     >
                       {allOn ? "Disable all" : "Enable all"}
                     </button>
@@ -304,7 +304,7 @@ export function TenantAccessControl({
                         key={m.key}
                         type="button"
                         onClick={() => toggleNav(m.key)}
-                        className="flex items-center gap-2 border rounded p-1.5 bg-card hover:bg-secondary/40 text-[11px] text-left w-full"
+                        className="flex items-center gap-2 border rounded p-1.5 bg-card hover:bg-secondary/40 text-2xs text-left w-full"
                       >
                         <ToggleVisual on={nav.includes(m.key)} />
                         <span>{m.label}</span>
@@ -338,7 +338,7 @@ export function TenantAccessControl({
             <div className="space-y-4 max-h-[350px] overflow-y-auto border rounded-md p-4 bg-secondary/10 scrollbar-thin">
               {Object.entries(AVAILABLE_FIELDS).map(([subject, fields]) => (
                 <div key={subject} className="space-y-2">
-                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-b pb-1">
+                  <h4 className="text-2xs font-bold uppercase tracking-wider text-muted-foreground border-b pb-1">
                     {subject} fields
                   </h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
@@ -349,7 +349,7 @@ export function TenantAccessControl({
                           key={fqName}
                           type="button"
                           onClick={() => toggleField(fqName)}
-                          className="flex items-center gap-2 border rounded p-1.5 bg-card hover:bg-secondary/40 text-[11px] text-left w-full"
+                          className="flex items-center gap-2 border rounded p-1.5 bg-card hover:bg-secondary/40 text-2xs text-left w-full"
                         >
                           <ToggleVisual on={allowedFields.includes(fqName) || allowedFields.includes(f.key)} />
                           <span>{f.label}</span>
@@ -369,7 +369,7 @@ export function TenantAccessControl({
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-semibold">Dashboard Widgets</h3>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
+            <p className="text-2xs text-muted-foreground mt-0.5">
               Choose which cards &amp; sections appear on this firm&apos;s Dashboard home (KPIs,
               business breakdown, charts, insights).
             </p>
@@ -394,7 +394,7 @@ export function TenantAccessControl({
           </div>
         ) : (
           <div className="space-y-3 max-h-[440px] overflow-y-auto border rounded-md p-4 bg-secondary/10 scrollbar-thin">
-            <div className="flex gap-3 text-[11px] font-medium">
+            <div className="flex gap-3 text-2xs font-medium">
               <button type="button" onClick={() => { setWidgets(ALL_WIDGET_KEYS); setSaved(false); }} className="text-primary hover:underline">
                 Select all
               </button>
@@ -405,7 +405,7 @@ export function TenantAccessControl({
             </div>
             {DASHBOARD_WIDGET_GROUPS.map((grp) => (
               <div key={grp.title} className="space-y-1.5">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-b pb-0.5">
+                <div className="text-2xs font-bold uppercase tracking-wider text-muted-foreground border-b pb-0.5">
                   {grp.title}
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
@@ -414,7 +414,7 @@ export function TenantAccessControl({
                       key={w.key}
                       type="button"
                       onClick={() => toggleWidget(w.key)}
-                      className="flex items-center gap-2 border rounded p-1.5 bg-card hover:bg-secondary/40 text-[11px] text-left w-full"
+                      className="flex items-center gap-2 border rounded p-1.5 bg-card hover:bg-secondary/40 text-2xs text-left w-full"
                     >
                       <ToggleVisual on={widgets.includes(w.key)} />
                       <span>{w.label}</span>

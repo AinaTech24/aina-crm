@@ -51,7 +51,7 @@ export function RetirementBucketStrategy() {
           {buckets.map((b, i) => (
             <div
               key={i}
-              className="h-full flex items-center justify-center text-[10px] font-semibold text-white"
+              className="h-full flex items-center justify-center text-2xs font-semibold text-white"
               style={{ width: `${Math.max(3, b.pct * 100)}%`, background: b.color }}
               title={b.name}
             >
@@ -66,10 +66,10 @@ export function RetirementBucketStrategy() {
           <div key={i} className="border rounded-md p-3" style={{ borderColor: `${b.color}55` }}>
             <div className="flex items-center gap-1.5">
               <span className="size-2.5 rounded-sm" style={{ background: b.color }} />
-              <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">{b.name}</div>
+              <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">{b.name}</div>
             </div>
             <div className="text-lg font-semibold mt-1">{inrShort(b.amt)}</div>
-            <div className="text-[10px] text-muted-foreground mt-0.5">{b.sub}</div>
+            <div className="text-2xs text-muted-foreground mt-0.5">{b.sub}</div>
           </div>
         ))}
       </div>

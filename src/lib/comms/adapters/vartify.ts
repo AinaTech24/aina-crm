@@ -369,6 +369,8 @@ export const vartifyWhatsappAdapter = {
     const t = parts.t;
     const v1 = parts.v1;
     if (!t || !v1) return false;
+    if (!/^\d+$/.test(t) || !/^[a-f0-9]{64}$/i.test(v1) ||
+        Math.abs(Date.now() / 1000 - Number(t)) > 300) return false;
 
     const expected = createHmac("sha256", key).update(`${t}.${rawBody}`).digest("hex");
     const a = Buffer.from(expected, "utf8");

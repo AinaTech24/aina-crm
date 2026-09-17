@@ -388,13 +388,13 @@ export function ClientGifts({ investorId, clientName }: { investorId: string; cl
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="inline-flex text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-semibold">
+                      <span className="inline-flex text-2xs uppercase tracking-wide px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-semibold">
                         {cap(g.occasion)}
                       </span>
                       <span className="font-medium text-sm truncate">{g.title}</span>
                       <span className="text-sm font-semibold tabular-nums">₹{inr(g.amount)}</span>
                     </div>
-                    <div className="text-[11px] text-muted-foreground mt-0.5">
+                    <div className="text-2xs text-muted-foreground mt-0.5">
                       {fmtDate(g.givenOn)}
                       {g.notes ? <span className="ml-2 italic">{g.notes}</span> : null}
                     </div>

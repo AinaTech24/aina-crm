@@ -67,7 +67,7 @@ function Menu({ subject, kind }: { subject: Subject; kind: "macro" | "cadence" }
             ))}
         </div>
       )}
-      {msg && <span className="absolute left-0 top-full mt-1 text-[11px] text-emerald-700 whitespace-nowrap">{msg}</span>}
+      {msg && <span className="absolute left-0 top-full mt-1 text-2xs text-emerald-700 whitespace-nowrap">{msg}</span>}
     </span>
   );
 }

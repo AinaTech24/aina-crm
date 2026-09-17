@@ -2,12 +2,17 @@
  * Organisation profile — parity with web /dashboard/settings/organisation.
  * Owner-editable identity/contact/address/business-profile (PATCH /api/tenant);
  * ARN/EUIN/GSTIN/owner/license read-only (AINA-managed). Colours live in the
- * Appearance page. Logo upload is web-only for now.
+ * Appearance page. The firm logo can be changed here (tap it).
  */
 
 import React, { useMemo, useState } from "react";
-import { View, ScrollView, StyleSheet } from "react-native";
+import { View, Pressable, ScrollView, StyleSheet } from "react-native";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
+import * as ImagePicker from "expo-image-picker";
+import { Feather } from "@expo/vector-icons";
+import { api, absUrl } from "../../api/client";
+import { toast } from "../../lib/toast";
 import { ScreenHeader } from "../../components/ui/ScreenHeader";
 import { Card } from "../../components/ui/Card";
 import { Text } from "../../components/ui/Text";
@@ -17,7 +22,7 @@ import { StatusPill } from "../../components/ui/StatusPill";
 import { LoadingState, ErrorState } from "../../components/states";
 import { useMe, hasCap } from "../../api/me";
 import { titleCase } from "../../lib/format";
-import { palette, spacing, fontSize, fontWeight } from "../../theme/tokens";
+import { palette, spacing, radius, fontSize, fontWeight } from "../../theme/tokens";
 import { useTenant, useSaveOrg } from "./api";
 
 const EDITABLE = ["displayName", "legalName", "email", "phone", "website", "addressLine1", "city", "state", "pincode", "aumRange", "sipBookRange", "teamSize", "currentSoftwareUsed"] as const;
@@ -53,6 +58,33 @@ export function OrganisationSettings() {
   const state = form ?? initial;
   const set = (k: string, v: string) => setForm({ ...state, [k]: v });
   const [msg, setMsg] = useState<string | null>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+
+  // Same vault flow as the profile photo ("general" = public asset class, which
+  // the logo must be — it renders on client-facing forms and PDFs).
+  const changeLogo = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) return toast.error("Allow photo access to set a logo.");
+    const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.9, allowsEditing: true, aspect: [1, 1] });
+    if (r.canceled || !r.assets?.length) return;
+    const a = r.assets[0];
+    const mime = a.mimeType ?? "image/png";
+    const ext = mime.split("/")[1] ?? "png";
+    setUploadingLogo(true);
+    try {
+      const form = new FormData();
+      form.append("file", { uri: a.uri, name: `logo.${ext}`, type: mime } as any);
+      form.append("kind", "general");
+      form.append("docType", "logo");
+      const up = await api.upload<{ key: string }>("/api/compliance/upload", form);
+      await save.mutateAsync({ logoUrl: `/api/upload-local/${up.key}` });
+      toast.success("Logo updated");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Could not upload the logo.");
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
 
   if (isLoading) return <View style={styles.screen}><ScreenHeader title="Organisation profile" /><LoadingState /></View>;
   if (isError) return <View style={styles.screen}><ScreenHeader title="Organisation profile" /><ErrorState onRetry={refetch} /></View>;
@@ -84,6 +116,22 @@ export function OrganisationSettings() {
             <Text variant="caption" tone="muted">Only the firm owner can edit these. Shown read-only.</Text>
           </Card>
         ) : null}
+
+        <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+          <Pressable onPress={canEdit ? changeLogo : undefined} disabled={!canEdit || uploadingLogo} accessibilityRole="button" accessibilityLabel="Change firm logo">
+            {absUrl(t.logoUrl) ? (
+              <Image source={{ uri: absUrl(t.logoUrl)! }} style={styles.logo} contentFit="cover" transition={150} />
+            ) : (
+              <View style={[styles.logo, { alignItems: "center", justifyContent: "center" }]}><Feather name="image" size={22} color={palette.faint} /></View>
+            )}
+          </Pressable>
+          <View style={{ flex: 1 }}>
+            <Text variant="subtitle">Firm logo</Text>
+            <Text variant="caption" tone="muted" style={{ marginTop: 2 }}>
+              {uploadingLogo ? "Uploading…" : canEdit ? "Tap the logo to change it. Shown on client forms, PDFs and in the app." : "Shown on client forms, PDFs and in the app."}
+            </Text>
+          </View>
+        </Card>
 
         <Text style={styles.section}>IDENTITY</Text>
         <Card>
@@ -152,6 +200,7 @@ function RO({ label, value, note, last }: { label: string; value: string; note?:
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.surfaceAlt },
   section: { fontSize: fontSize.xs, fontWeight: fontWeight.bold as any, letterSpacing: 0.6, color: palette.muted, marginTop: spacing.xl, marginBottom: spacing.sm },
+  logo: { width: 64, height: 64, borderRadius: radius.md, backgroundColor: palette.surfaceSunken, borderWidth: 1, borderColor: palette.line },
   roRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: spacing.md, paddingHorizontal: spacing.lg, gap: spacing.md },
   divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line },
 });

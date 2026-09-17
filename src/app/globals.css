@@ -10,7 +10,10 @@
        spelling (`--brand-navy` = red, `--brand-cyan` = teal) so the hundreds of
        existing `bg-brand-navy` / `text-brand-cyan` consumers re-theme in place.
        ═══════════════════════════════════════════════════════════════════════ */
-    --background: 195 24% 98.6%;             /* paper-white with a faint teal tint */
+    /* Ground sits ~4% below --card so a card reads as a surface ON the page.
+       It was 98.6% — a 1.4% gap that made every panel dissolve into the page,
+       which is why the app looked flat however much structure was there. */
+    --background: 200 22% 95.5%;             /* cool paper, a step below card */
     --foreground: 200 30% 12%;               /* near-black charcoal-teal */
     --card: 0 0% 100%;
     --card-foreground: 200 30% 12%;
@@ -59,61 +62,19 @@
        white in dark, so it gets its own value below). */
     --nav-active-bg: 358 75% 41%;            /* solid Aina red pill */
     --nav-active-fg: 0 0% 100%;              /* white label + icon on the pill */
+
+    /* Chart ramp — see tailwind.config.ts `colors.chart`. Muted, mutually
+       distinguishable, and sharing no hue with --primary so red keeps meaning
+       "needs attention" inside a chart rather than "series 1". */
+    --chart-1: 199 70% 39%;                  /* blue    #1E7FA8 */
+    --chart-2: 158 62% 30%;                  /* green   #1D7A54 */
+    --chart-3: 37 89% 37%;                   /* amber   #B0700A */
+    --chart-4: 253 27% 50%;                  /* violet  #6B5CA5 */
+    --chart-5: 177 54% 36%;                  /* teal    #2A8F8A */
+    --chart-6: 210 12% 58%;                  /* slate   #8593A0 */
   }
 
-  .dark {
-    --background: 200 30% 7%;
-    --foreground: 200 20% 96%;
-    --card: 200 30% 10%;
-    --card-foreground: 200 20% 96%;
-    --popover: 200 30% 10%;
-    --popover-foreground: 200 20% 96%;
-    --primary: 358 72% 52%;                  /* brighter Aina red (#B71A20) for dark bg */
-    --primary-foreground: 0 0% 100%;
-    --secondary: 200 22% 15%;
-    --secondary-foreground: 200 20% 96%;
-    --muted: 200 22% 15%;
-    --muted-foreground: 200 14% 64%;
-    --accent: 358 24% 22%;                   /* dark red-tinted hover surface */
-    --accent-foreground: 0 0% 98%;
-    --destructive: 4 70% 52%;
-    --destructive-foreground: 0 0% 100%;
-    --success: 151 52% 47%;
-    --success-foreground: 151 70% 82%;
-    --warning: 42 88% 55%;
-    --warning-foreground: 42 90% 84%;
-    --info: 199 72% 58%;
-    --info-foreground: 199 82% 84%;
-    --border: 200 22% 19%;
-    --input: 200 22% 19%;
-    --ring: 358 72% 52%;
-    /* brand aliases for dark mode */
-    --brand-navy: 358 72% 52%;
-    --brand-navy-deep: 358 74% 38%;
-    --brand-cyan: 358 72% 52%;
-    --brand-cyan-deep: 358 74% 38%;
-    --nav-active-bg: 358 72% 52%;
-    --nav-active-fg: 0 0% 100%;
-  }
 
-  /* Dark sidebar — a scoped theme applied to the sidebar shell (desktop aside +
-     mobile drawer). It re-points the neutral + active tokens the nav already
-     consumes to a charcoal/light palette, so the whole rail goes dark without
-     touching any nav component. The rest of the app keeps its own light/dark. */
-  .sidebar-theme {
-    --card: 218 24% 11%;
-    --popover: 218 24% 13%;
-    --secondary: 220 16% 20%;
-    --secondary-foreground: 220 16% 92%;
-    --muted: 220 16% 18%;
-    --muted-foreground: 220 10% 60%;
-    --foreground: 220 18% 91%;
-    --border: 220 14% 22%;
-    --input: 220 14% 24%;
-    --ring: 358 72% 52%;
-    --nav-active-bg: 358 72% 52%;
-    --nav-active-fg: 0 0% 100%;
-  }
 
   * {
     @apply border-border;
@@ -269,11 +230,6 @@
     padding-right: 1.85rem;
   }
 
-  /* Dark mode: the chevron stroke above is hardcoded slate-500, which vanishes
-     on dark surfaces — swap in a slate-400 stroke. */
-  .dark select:not([multiple]) {
-    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
-  }
 
   /* Selection — on-brand cyan tint */
   ::selection {
@@ -304,11 +260,8 @@
     @apply inline-flex items-center justify-center gap-1.5 whitespace-nowrap
            rounded-lg px-4 py-2 text-sm font-medium
            text-white shadow-sm
-           transition-all duration-150
-           hover:shadow-md hover:-translate-y-px
-           active:translate-y-0 active:shadow-sm active:scale-[0.98]
+           transition-colors duration-150
            disabled:opacity-50 disabled:cursor-not-allowed
-           disabled:translate-y-0 disabled:shadow-none
            focus-visible:ring-2 focus-visible:ring-ring/50;
     background-color: hsl(var(--primary));
   }
@@ -319,9 +272,7 @@
     @apply inline-flex items-center justify-center gap-1.5 whitespace-nowrap
            rounded-lg px-4 py-2 text-sm font-semibold
            text-white shadow-sm
-           transition-all duration-150
-           hover:shadow-md hover:-translate-y-px
-           active:translate-y-0 active:shadow-sm active:scale-[0.98]
+           transition-colors duration-150
            disabled:opacity-50 disabled:cursor-not-allowed;
     background-color: hsl(var(--primary));
   }
@@ -332,9 +283,8 @@
     @apply inline-flex items-center justify-center gap-1.5 whitespace-nowrap
            rounded-lg border border-border bg-card text-foreground
            px-4 py-2 text-sm font-medium shadow-sm
-           hover:bg-secondary hover:border-foreground/15 hover:shadow
-           active:scale-[0.98]
-           transition-all duration-150
+           hover:bg-secondary hover:border-foreground/15
+           transition-colors duration-150
            disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
@@ -343,8 +293,7 @@
     @apply inline-flex items-center justify-center gap-1.5 whitespace-nowrap
            rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground
            hover:bg-secondary hover:text-foreground
-           active:scale-[0.98]
-           transition-all duration-150;
+           transition-colors duration-150;
   }
 
   /* Danger (destructive) — for delete actions */
@@ -352,9 +301,8 @@
     @apply inline-flex items-center justify-center gap-1.5 whitespace-nowrap
            rounded-lg px-4 py-2 text-sm font-medium
            bg-destructive text-destructive-foreground shadow-sm
-           hover:bg-destructive/90 hover:shadow
-           active:scale-[0.98]
-           transition-all duration-150
+           hover:bg-destructive/90
+           transition-colors duration-150
            disabled:opacity-50;
   }
 
@@ -371,9 +319,9 @@
 
   /* Card — the workhorse. Soft elevation, subtle gradient overlay. */
   .card-surface {
-    @apply rounded-xl bg-card text-card-foreground shadow-none
+    @apply rounded-xl bg-card text-card-foreground shadow-sm
            border border-border
-           transition-shadow duration-200;
+           transition-colors duration-150;
   }
 
   /* Elevated card — for hero/feature panels */
@@ -396,9 +344,9 @@
      h-full so every tile fills its grid/flex cell → a row of KPI cards is
      always the same height even when one has a longer sub-label. */
   .kpi-card {
-    @apply h-full rounded-xl bg-card border border-border/70 p-4 shadow-sm
-           transition-all duration-200
-           hover:shadow-md hover:-translate-y-0.5 hover:border-brand-cyan/30;
+    @apply h-full rounded-xl bg-card border border-border p-4 shadow-sm
+           transition-colors duration-150
+           hover:border-foreground/20;
   }
 
   /* Opt-in equal-height card for any grid/flex row of cards that should never
@@ -410,8 +358,7 @@
   /* Highlighted KPI — gradient navy → cyan, white text */
   .kpi-hero {
     @apply rounded-xl p-4 text-white shadow-lg
-           transition-all duration-200
-           hover:shadow-xl hover:-translate-y-0.5;
+           transition-colors duration-150;
     background-image: linear-gradient(
       135deg,
       hsl(var(--brand-navy-deep)) 0%,
@@ -442,11 +389,8 @@
   .chip {
     @apply inline-flex items-center gap-1 rounded-full
            px-2.5 py-0.5 text-xs font-semibold;
-    box-shadow: inset 0 0 0 1px currentColor;
-    /* The inset ring uses currentColor at a low alpha via mix-blend; fallback below */
-  }
-  .chip {
-    /* re-declare so the inset ring blends gently */
+    /* One declaration only. This was previously declared twice back-to-back,
+       the second silently overriding a currentColor ring the comment described. */
     box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.06);
   }
 
@@ -566,7 +510,7 @@
 
   /* Apply on <table>. Adds sticky header, gentle row hover, and softer borders. */
   .table-modern thead th {
-    @apply text-[11px] font-semibold uppercase tracking-wider
+    @apply text-2xs font-semibold uppercase tracking-wider
            text-muted-foreground bg-secondary/40
            border-b border-border sticky top-0 z-[1];
   }
@@ -574,7 +518,7 @@
     @apply transition-colors duration-100;
   }
   .table-modern tbody tr:hover {
-    @apply bg-brand-cyan-light/30;
+    @apply bg-secondary/70;
   }
   .table-modern tbody tr + tr {
     @apply border-t border-border/50;
@@ -749,14 +693,7 @@
     box-shadow: 0 8px 32px 0 rgba(31, 61, 59, 0.04);
     transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   }
-  .dark .glass-card {
-    background: rgba(15, 23, 42, 0.45);
-    backdrop-filter: blur(12px) saturate(160%);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
-  }
   .glass-card:hover {
-    transform: translateY(-2px);
     border-color: rgba(42, 128, 121, 0.35);
     box-shadow: 0 12px 40px 0 rgba(42, 128, 121, 0.10);
   }

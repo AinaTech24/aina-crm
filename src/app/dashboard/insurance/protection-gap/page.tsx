@@ -71,7 +71,7 @@ export default async function ProtectionGapPage({ searchParams }: { searchParams
     <div className="space-y-6 max-w-5xl">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><ShieldAlert className="size-6 text-brand-cyan" /> Protection-Gap Radar</h1>
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><ShieldAlert className="size-6 text-muted-foreground" /> Protection-Gap Radar</h1>
         </div>
         {canFirm && (
           <div className="inline-flex rounded-lg border bg-secondary/40 p-0.5 gap-0.5 text-xs">
@@ -96,11 +96,11 @@ export default async function ProtectionGapPage({ searchParams }: { searchParams
                 const first = String(r.name ?? "").split(" ")[0];
                 return (
                   <tr key={r.id} className="border-b last:border-0 hover:bg-secondary/40">
-                    <td className="px-4 py-2.5"><Link href={`/dashboard/investors/${r.id}`} className="font-medium hover:underline">{r.name}</Link>{r.segment_tag && <span className="ml-2 chip text-[10px] bg-violet-50 text-violet-700">{r.segment_tag}</span>}</td>
+                    <td className="px-4 py-2.5"><Link href={`/dashboard/investors/${r.id}`} className="font-medium hover:underline">{r.name}</Link>{r.segment_tag && <span className="ml-2 chip text-2xs bg-violet-50 text-violet-700">{r.segment_tag}</span>}</td>
                     <td className="py-2.5">
                       <div className="flex gap-1">
-                        {r.life_gap && <span className="chip text-[10px] bg-rose-50 text-rose-700">No life</span>}
-                        {r.health_gap && <span className="chip text-[10px] bg-amber-50 text-amber-700">No health</span>}
+                        {r.life_gap && <span className="chip text-2xs bg-rose-50 text-rose-700">No life</span>}
+                        {r.health_gap && <span className="chip text-2xs bg-amber-50 text-amber-700">No health</span>}
                       </div>
                     </td>
                     <td className="py-2.5 text-right tabular-nums font-medium" title="Indicative recommended cover — segment-based estimate">{Number(r.cover_needed) > 0 ? `~${formatINR(Number(r.cover_needed))}` : "—"}</td>
@@ -124,7 +124,7 @@ export default async function ProtectionGapPage({ searchParams }: { searchParams
           </table>
         )}
       </div>
-      <p className="text-[11px] text-muted-foreground italic">A &ldquo;gap&rdquo; means no active or in-progress policy of that type for the client <em>or anyone in their family</em>. &ldquo;Cover needed&rdquo; is an indicative segment-based estimate, not a precise Human Life Value — confirm with a needs analysis. Update the register to clear a gap.</p>
+      <p className="text-2xs text-muted-foreground italic">A &ldquo;gap&rdquo; means no active or in-progress policy of that type for the client <em>or anyone in their family</em>. &ldquo;Cover needed&rdquo; is an indicative segment-based estimate, not a precise Human Life Value — confirm with a needs analysis. Update the register to clear a gap.</p>
     </div>
   );
 }

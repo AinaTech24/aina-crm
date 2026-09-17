@@ -81,7 +81,7 @@ export function ForgotPasswordForm() {
 
         {devLink && (
           <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-amber-800">Dev mode</p>
+            <p className="text-2xs font-bold uppercase tracking-wider text-amber-800">Dev mode</p>
             <Link href={devLink} className="mt-1 block text-xs font-mono break-all text-amber-900 underline">
               {devLink}
             </Link>

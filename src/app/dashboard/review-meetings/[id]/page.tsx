@@ -69,7 +69,7 @@ export default async function ReviewMeetingDetailPage({
 
       <div className="card-surface p-6 flex items-start gap-4">
         <div className="size-12 rounded-lg bg-brand-cyan-light grid place-items-center">
-          <Calendar className="size-6 text-brand-cyan" />
+          <Calendar className="size-6 text-muted-foreground" />
         </div>
         <div className="flex-1">
           <h1 className="text-2xl font-bold tracking-tight">
@@ -82,7 +82,7 @@ export default async function ReviewMeetingDetailPage({
               {subjectName} · {data.meeting.meetingType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
             </div>
           )}
-          <span className="inline-block mt-1 text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
+          <span className="inline-block mt-1 text-2xs uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
             {subjectKind}
           </span>
           <div className="text-sm text-muted-foreground mt-1 flex items-center gap-3 flex-wrap">
@@ -168,7 +168,7 @@ function Prep({
   const color = tone === "rose" ? "text-rose-600" : tone === "amber" ? "text-amber-600" : "text-foreground";
   return (
     <div className="rounded-lg border border-border bg-secondary/30 p-3">
-      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-1.5 text-2xs text-muted-foreground">
         <Icon className="size-3.5" /> {label}
       </div>
       <div className={`mt-1 text-sm font-bold tabular-nums ${color}`}>{value}</div>

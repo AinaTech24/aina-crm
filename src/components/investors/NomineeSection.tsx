@@ -109,11 +109,11 @@ export function NomineeSection({
           {seed.map((n, i) => (
             <div key={i} className="rounded-lg border border-border bg-secondary/20 p-3.5">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+                <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
                   Nominee {i + 1}
                 </span>
                 {n.sharePct != null && (
-                  <span className="text-[10px] font-semibold text-brand-cyan-deep bg-brand-cyan-light/40 rounded px-1.5 py-0.5">
+                  <span className="text-2xs font-semibold text-brand-cyan-deep bg-brand-cyan-light/40 rounded px-1.5 py-0.5">
                     {n.sharePct}%
                   </span>
                 )}
@@ -126,7 +126,7 @@ export function NomineeSection({
                 <NomKV label="Mobile" value={n.mobile} mono />
               </div>
               {n.panDocKey && (
-                <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-emerald-700">
+                <div className="mt-2.5 flex items-center gap-1.5 text-2xs text-emerald-700">
                   <FileText className="size-3.5" /> PAN document on file
                 </div>
               )}
@@ -173,7 +173,7 @@ export function NomineeSection({
 function NomKV({ label, value, cap, mono }: { label: string; value?: string | null; cap?: boolean; mono?: boolean }) {
   return (
     <div>
-      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div className="text-2xs text-muted-foreground">{label}</div>
       <div className={`${mono ? "font-mono" : ""} ${cap ? "capitalize" : ""}`}>{value || "—"}</div>
     </div>
   );

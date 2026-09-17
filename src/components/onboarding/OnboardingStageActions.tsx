@@ -153,7 +153,7 @@ export function OnboardingStageActions({
             ))}
           </div>
         )}
-        <p className="text-[10px] text-muted-foreground mt-1.5">
+        <p className="text-2xs text-muted-foreground mt-1.5">
           Listed documents will fire an in-app alert to back-office users.
         </p>
       </div>
