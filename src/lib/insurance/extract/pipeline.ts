@@ -22,7 +22,7 @@ type Transform = (v: any) => any;
 function field(raw: any, opts: { validate?: Validator; transform?: Transform; max?: number } = {}): Field<any> {
   if (!raw || typeof raw !== "object") return NF();
   let value = raw.value;
-  let confidence = Math.max(0, Math.min(1, Number(raw.confidence) || 0));
+  const confidence = Math.max(0, Math.min(1, Number(raw.confidence) || 0));
   const source = raw.source ? String(raw.source).slice(0, 80) : null;
   const page = Number.isFinite(Number(raw.page)) ? Number(raw.page) : null;
 

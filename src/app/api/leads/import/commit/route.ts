@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
     }
 
     let inserted = 0;
-    let skipped = 0;
+    const skipped = 0;
     const errors: Array<{ rowIndex: number; error: string }> = [];
 
     await withTenant(session.tenantId, async (tx) => {
