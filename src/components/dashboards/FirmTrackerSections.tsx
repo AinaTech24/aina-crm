@@ -226,12 +226,10 @@ export function FirmTrackerSections({ data, periodLabel }: { data: FirmTracker; 
         <Tile label="Equity purchase" href="/dashboard/equity" linkLabel="Equity desk" note={win}>
           <Flow inLabel="Purchase" inValue={business.equityPurchase} outLabel="Redemption" outValue={business.equityRedemption} net={business.equityNet} money />
         </Tile>
-        <Tile label="Total AUM & SIP book" href="/dashboard/reports/growth-mis" linkLabel="Growth MIS" note="current">
-          <div className="flex flex-col gap-1.5">
-            <Big value={formatINR(business.totalAum)} sub="assets under management" />
-            <div className="text-sm tabular-nums font-medium">{formatINR(business.totalSipBook)} <span className="text-2xs font-normal text-muted-foreground">SIP / month</span></div>
-          </div>
-        </Tile>
+        {/* A "Total AUM & SIP book" tile stood here and was a THIRD copy of two
+            figures the Firm Pulse strip already owns. Adding it contradicted this
+            file's own rule — surface the number once, link to its owner. Growth
+            MIS is reachable from the AUM breakdown tiles instead. */}
         <Tile label="AIF · PMS · SIF · Liquid" href="/dashboard/business-entries/dashboard" linkLabel="Business entries" note={win}>
           <Breakdown rows={business.byProduct} money />
         </Tile>

@@ -59,7 +59,8 @@ function withPeriod(href: string, periodQuery: string): string {
  * of waiting for every query to resolve before the page paints.
  *
  * Body renders all 20 cards/charts the spec calls out:
- *   1. Headline (4) — Total Leads, Total Clients, Active SIP Book, Net Business
+ *   1. Headline (3) — Total Leads, Total Clients, Net Business
+ *      (SIP book lives in the Firm Pulse strip above, not here)
  *   2. Monthly business (5) — SIP added, Lumpsum, Redemption, SIP rejected, stopped
  *   3. Attention queues (5) — Reviews due, Pending SR, Open complaints, High-AUM, Dormant
  *   4. Team & health (4) — Team tasks, DDQ score, Data quality score, Campaigns
@@ -592,22 +593,14 @@ async function OwnerCockpitBody({
           sub={`${data.conversionPct.toFixed(1)}% conversion ${period.toUpperCase()}`}
           accent="violet"
         />}
-        {show("kpi.active_sip_book") && <Kpi
-          href={withPeriod("/dashboard/sips", periodQuery)}
-          icon={TrendingUp}
-          label="Active SIP Book"
-          value={formatINR(data.sipBook)}
-          sub="per month · active clients"
-          delta={
-            data.newSipsPeriod - data.stoppedSipsPeriod !== 0
-              ? `${data.newSipsPeriod - data.stoppedSipsPeriod >= 0 ? "+" : ""}${data.newSipsPeriod - data.stoppedSipsPeriod} net SIPs`
-              : undefined
-          }
-          deltaTone={data.newSipsPeriod - data.stoppedSipsPeriod >= 0 ? "up" : "down"}
-          accent="emerald"
-          sparkline={data.sipAddSpark}
-          sparkStrokeClass="text-emerald-500"
-        />}
+        {/* "Active SIP Book" used to sit here. The Firm Pulse strip at the top
+            of this page already shows SIP Book — with a month-on-month delta and
+            the average SIP alongside — so this was the same figure twice on one
+            screen, a few hundred pixels apart. On a firm where every client is
+            active the two are identical to the rupee, which is exactly how it
+            was reported. Pulse owns the metric; this tile is gone.
+            `kpi.active_sip_book` stays in the widget registry so a custom board
+            can still place it deliberately. */}
         {show("kpi.net_business") && <Kpi
           href={withPeriod("/dashboard/reports/net_sales", periodQuery)}
           icon={TrendingUp}

@@ -38,7 +38,8 @@ export type PulseMetric = {
   /** Oldest → newest, for the sparkline. */
   series: number[];
   /** Secondary line for the SIP card — average SIP rather than a Day delta. */
-  footnote?: { label: string; value: number } | null;
+  /** `value: null` = genuinely unknown; render a dash, never a fabricated 0. */
+  footnote?: { label: string; value: number | null; hint?: string } | null;
 };
 
 const num = (v: unknown): number => {
@@ -141,7 +142,15 @@ export async function loadFirmPulse(tx: Tx): Promise<PulseMetric[]> {
       day: null,
       mom: null,
       series: [],
-      footnote: { label: "Unrealised gain", value: aum - num(invested?.v) },
+      // Gain is only meaningful when we actually KNOW what was invested. A firm
+      // that has not imported a transaction ledger has invested = 0, and
+      // `aum - 0` then claims the entire book as unrealised gain — production
+      // showed "Total Investment Rs 0 / Unrealised gain Rs 1.90 Cr", which is
+      // not a gain, it is a missing ledger. Suppress it instead of inventing it.
+      footnote:
+        num(invested?.v) > 0
+          ? { label: "Unrealised gain", value: aum - num(invested?.v) }
+          : { label: "Unrealised gain", value: null, hint: "import transactions to see this" },
     },
     {
       key: "sip_book",

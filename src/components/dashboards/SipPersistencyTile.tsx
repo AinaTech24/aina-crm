@@ -235,8 +235,16 @@ export async function SipPersistencyTile({ session }: { session: SessionUser }) 
 
           {/* Book health */}
           <div className="p-3 rounded-lg bg-white/70 space-y-2">
+            {/* Labelled "SIPs on the register" rather than "Active SIP book".
+                This counts `sips.amount` — the instalment register — while the
+                Firm Pulse strip sums `investors.active_sip_amount`, the rolled-up
+                per-client figure. The two are DIFFERENT sources and can disagree
+                (on the demo book: Rs 2.46 Cr here vs Rs 7.67 L there, because the
+                register was never rolled up — `npm run backfill:active-sip`).
+                Two tiles both saying "Active SIP book" with different numbers is
+                how a firm loses trust in the whole page. */}
             <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
-              Active SIP book
+              SIPs on the register
             </div>
             <div className="text-xl font-bold tabular-nums">
               {formatINR(data.activeBook)}
