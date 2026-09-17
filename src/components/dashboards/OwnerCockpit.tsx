@@ -16,6 +16,8 @@ import { FirmChartsSection, FirmChartsSkeleton } from "./FirmChartsSection";
 import { FirmTrackerSections } from "./FirmTrackerSections";
 import { ExpiryPipeline } from "./ExpiryPipeline";
 import { TargetAchievement } from "./TargetAchievement";
+import { LeadPipeline } from "./LeadPipeline";
+import { loadLeadPipeline } from "@/lib/dashboard/lead-pipeline";
 import { fyElapsedFraction, loadTargetProgress } from "@/lib/dashboard/target-progress";
 import { currentFyLabel, fyStartYear } from "@/lib/finance/fiscal-year";
 import { loadExpiryPipeline } from "@/lib/dashboard/expiry-pipeline";
@@ -149,6 +151,17 @@ export async function OwnerCockpit({
       {tab === "overview" && (
         <Suspense fallback={<CardSkeleton />}>
           <TargetAchievementSection session={session} />
+        </Suspense>
+      )}
+
+      {/* Lead pipeline — stage occupancy NOW, as against the Lead Funnel
+          further down, which is a period flow. Deliberately additive: the
+          funnel answers "how did this month's leads progress", this answers
+          "where is the pipeline stuck today". Neither substitutes for the
+          other, so the funnel stays. */}
+      {tab === "overview" && (
+        <Suspense fallback={<CardSkeleton />}>
+          <LeadPipelineSection session={session} branchId={branchId} />
         </Suspense>
       )}
 
@@ -983,4 +996,20 @@ async function TargetAchievementSection({ session }: { session: SessionUser }) {
   return (
     <TargetAchievement rows={rows} fy={fy} elapsed={fyElapsedFraction(fyStartYear(fy))} />
   );
+}
+
+/** Loader for the lead pipeline — a snapshot, so no date range applies. */
+async function LeadPipelineSection({
+  session,
+  branchId,
+}: {
+  session: SessionUser;
+  branchId?: string | null;
+}) {
+  const data = await withTenant(
+    session.tenantId,
+    (tx) => loadLeadPipeline(tx, { branchId: branchId ?? null }),
+    { userId: session.userId, branchId: session.branchId, roles: session.roles }
+  );
+  return <LeadPipeline data={data} />;
 }
