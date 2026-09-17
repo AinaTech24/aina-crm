@@ -239,7 +239,7 @@ export function BlueprintStageBar({
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          <ShieldCheck className="size-4 text-brand-cyan" />
+          <ShieldCheck className="size-4 text-muted-foreground" />
           <h3 className="font-semibold text-sm">
             {phase === "client" ? "Client Onboarding" : "Lead Journey"}
           </h3>
@@ -262,19 +262,19 @@ export function BlueprintStageBar({
             </span>
           )}
           {slaTone === "overdue" && (
-            <span className="chip bg-rose-50 text-rose-700 inline-flex items-center gap-1 text-2xs">
+            <span className="chip bg-destructive/10 text-destructive inline-flex items-center gap-1 text-2xs">
               <AlertTriangle className="size-3" />
               Overdue by {Math.abs(Math.ceil(current.slaRemainingDays!))}d
             </span>
           )}
           {slaTone === "due-soon" && (
-            <span className="chip bg-amber-50 text-amber-700 inline-flex items-center gap-1 text-2xs">
+            <span className="chip bg-warning/10 text-warning-foreground inline-flex items-center gap-1 text-2xs">
               <Clock className="size-3" />
               Due in {Math.max(0, Math.floor((current.slaRemainingDays ?? 0) * 24))}h
             </span>
           )}
           {slaTone === "ok" && current.slaDays != null && (
-            <span className="chip bg-emerald-50 text-emerald-700 inline-flex items-center gap-1 text-2xs">
+            <span className="chip bg-success/10 text-success inline-flex items-center gap-1 text-2xs">
               <Clock className="size-3" />
               Due in {Math.ceil(current.slaRemainingDays!)}d
             </span>
@@ -418,10 +418,14 @@ export function BlueprintStageBar({
           </span>
         </div>
       ) : (
-      <div className="rounded-lg border border-brand-cyan/30 bg-brand-cyan-light/20 p-3 space-y-3">
+      // Guidance panel, deliberately NEUTRAL. `brand-cyan` resolves to the Aina
+      // red, so this border + tint + heading were three more reds on a card that
+      // already carries a red overdue chip and a red primary action. Colour that
+      // marks everything marks nothing; red stays for what is actually wrong.
+      <div className="rounded-lg border border-border bg-secondary/40 p-3 space-y-3">
         <div className="flex items-center gap-2">
-          <ChevronRight className="size-3.5 text-brand-cyan" />
-          <span className="text-xs font-semibold uppercase tracking-wider text-brand-cyan-deep">
+          <ChevronRight className="size-3.5 text-muted-foreground" />
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             What's next?
           </span>
         </div>
@@ -468,7 +472,7 @@ export function BlueprintStageBar({
         </details>
 
         {error && (
-          <div className="text-xs text-rose-700 bg-rose-50/50 rounded p-1.5 flex items-start gap-1.5">
+          <div className="text-xs text-destructive bg-destructive/10 rounded p-1.5 flex items-start gap-1.5">
             <AlertTriangle className="size-3 mt-0.5" /> {error}
           </div>
         )}
