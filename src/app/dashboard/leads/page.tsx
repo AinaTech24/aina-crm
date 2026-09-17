@@ -151,7 +151,20 @@ export default async function LeadsPage({
       );
     }
     if (stageFilter.length) {
-      conds.push(sql`leads.stage IN (${sql.join(stageFilter.map((v) => sql`${v}`), sql`, `)})`);
+      // Match the canonical key AND the legacy values folded onto it. Without
+      // this, ?stage=call_done returns nothing for a firm whose rows still say
+      // "contacted" — and every link that counts leads by canonical stage (the
+      // dashboard's Lead pipeline, the kanban columns) would show a number the
+      // filtered list then contradicts.
+      const wanted = new Set<string>();
+      for (const s of stageFilter) {
+        wanted.add(s);
+        const col = STAGES.find((c) => c.key === s);
+        for (const a of col?.aliases ?? []) wanted.add(a);
+      }
+      conds.push(
+        sql`leads.stage IN (${sql.join([...wanted].map((v) => sql`${v}`), sql`, `)})`
+      );
     }
     if (sourceFilter.length)
       conds.push(sql`leads.source IN (${sql.join(sourceFilter.map((v) => sql`${v}`), sql`, `)})`);

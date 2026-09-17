@@ -16,6 +16,8 @@ import { FirmChartsSection, FirmChartsSkeleton } from "./FirmChartsSection";
 import { FirmTrackerSections } from "./FirmTrackerSections";
 import { ExpiryPipeline } from "./ExpiryPipeline";
 import { TargetAchievement } from "./TargetAchievement";
+import { LeadPipeline } from "./LeadPipeline";
+import { loadLeadPipeline } from "@/lib/dashboard/lead-pipeline";
 import { fyElapsedFraction, loadTargetProgress } from "@/lib/dashboard/target-progress";
 import { currentFyLabel, fyStartYear } from "@/lib/finance/fiscal-year";
 import { loadExpiryPipeline } from "@/lib/dashboard/expiry-pipeline";
@@ -29,7 +31,8 @@ import { isDashboardWidgetVisible } from "@/config/dashboard-widgets";
 // Async parts streamed via Suspense
 import { GrowthRetentionSection } from "./GrowthRetentionSection";
 import { AttentionQueuesSection } from "./AttentionQueuesSection";
-import { RmLeaderboard } from "./RmLeaderboard";
+import { RmLeaderboardTable } from "./RmLeaderboardTable";
+import { loadRmLeaderboard } from "@/lib/dashboard/rm-leaderboard";
 import { LeadFunnelSection } from "./LeadFunnelSection";
 import { AumSegmentSection } from "./AumSegmentSection";
 import { CardSkeleton, ChartSkeleton, LeaderboardSkeleton } from "./DashboardSkeletons";
@@ -149,6 +152,17 @@ export async function OwnerCockpit({
       {tab === "overview" && (
         <Suspense fallback={<CardSkeleton />}>
           <TargetAchievementSection session={session} />
+        </Suspense>
+      )}
+
+      {/* Lead pipeline — stage occupancy NOW, as against the Lead Funnel
+          further down, which is a period flow. Deliberately additive: the
+          funnel answers "how did this month's leads progress", this answers
+          "where is the pipeline stuck today". Neither substitutes for the
+          other, so the funnel stays. */}
+      {tab === "overview" && (
+        <Suspense fallback={<CardSkeleton />}>
+          <LeadPipelineSection session={session} branchId={branchId} />
         </Suspense>
       )}
 
@@ -682,12 +696,21 @@ async function OwnerCockpitBody({
         </Suspense>
         )}
 
-        {show("section.rm_leaderboard") && (
-        <Suspense fallback={<LeaderboardSkeleton />}>
-          <RmLeaderboard session={session} period={period} periodQuery={periodQuery} />
-        </Suspense>
-        )}
       </div>
+      )}
+
+      {/* RM leaderboard — now period-scoped and eight columns wide, so it gets
+          its own row rather than a third of one. */}
+      {show("section.rm_leaderboard") && (
+      <Suspense fallback={<LeaderboardSkeleton />}>
+        <RmLeaderboardSection
+          session={session}
+          from={range.fromDate}
+          to={range.toDate}
+          periodLabel={periodLabel}
+          periodQuery={periodQuery}
+        />
+      </Suspense>
       )}
 
       {/* ---------- SIP Persistency — franchise health metric ---------- */}
@@ -982,5 +1005,45 @@ async function TargetAchievementSection({ session }: { session: SessionUser }) {
   );
   return (
     <TargetAchievement rows={rows} fy={fy} elapsed={fyElapsedFraction(fyStartYear(fy))} />
+  );
+}
+
+/** Loader for the lead pipeline — a snapshot, so no date range applies. */
+async function LeadPipelineSection({
+  session,
+  branchId,
+}: {
+  session: SessionUser;
+  branchId?: string | null;
+}) {
+  const data = await withTenant(
+    session.tenantId,
+    (tx) => loadLeadPipeline(tx, { branchId: branchId ?? null }),
+    { userId: session.userId, branchId: session.branchId, roles: session.roles }
+  );
+  return <LeadPipeline data={data} />;
+}
+
+/** Loader for the period-scoped RM leaderboard. */
+async function RmLeaderboardSection({
+  session,
+  from,
+  to,
+  periodLabel,
+  periodQuery,
+}: {
+  session: SessionUser;
+  from: Date;
+  to: Date;
+  periodLabel: string;
+  periodQuery?: string;
+}) {
+  const rows = await withTenant(
+    session.tenantId,
+    (tx) => loadRmLeaderboard(tx, { from, to }),
+    { userId: session.userId, branchId: session.branchId, roles: session.roles }
+  );
+  return (
+    <RmLeaderboardTable rows={rows} periodLabel={periodLabel} periodQuery={periodQuery} />
   );
 }
