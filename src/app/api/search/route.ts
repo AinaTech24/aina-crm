@@ -8,12 +8,13 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { investorScopeSql } from "@/lib/investors/access";
 import { leadScopeSql } from "@/lib/leads/access";
+import { captureError } from "@/lib/observability/capture";
 
 export const dynamic = "force-dynamic";
 
@@ -40,61 +41,65 @@ export async function GET(req: NextRequest) {
         (d.related_entity_type = 'investor' AND EXISTS (SELECT 1 FROM investors i
           WHERE i.id = d.related_entity_id AND i.deleted_at IS NULL AND ${invScope})) OR
         (d.related_entity_type = 'lead' AND EXISTS (SELECT 1 FROM leads
-          WHERE leads.id = d.related_entity_id AND leads.deleted_at IS NULL AND ${leadScope})) OR
+          WHERE leads.id = d.related_entity_id AND leads.lost_reason IS DISTINCT FROM '__deleted__' AND ${leadScope})) OR
         (d.related_entity_type IS DISTINCT FROM 'investor' AND d.related_entity_type IS DISTINCT FROM 'lead'
           AND ${cap("compliance.view")})
       )` : sql`FALSE`;
-      const [investors, leads, folios, sips, serviceRequests, documents] = await Promise.all([
-        tx.execute(sql`
+      // One group failing must not take the other five down. Each runs in a
+      // savepoint (nested tx) so a bad statement can't poison the transaction
+      // for the rest, and the failure is captured with the group name — this
+      // route is six hand-written queries the schema guard cannot check.
+      const group = async (name: string, q: SQL): Promise<unknown[]> => {
+        try {
+          return (await tx.transaction(async (sp) => sp.execute(q))).rows;
+        } catch (err) {
+          captureError("search.group_failed", err, { group: name, tenantId: session.tenantId });
+          return [];
+        }
+      };
+
+      const investors = await group("investors", sql`
           SELECT id, name, pan, phone, email, segment_tag
           FROM investors
           WHERE tenant_id = ${session.tenantId}::uuid AND ${listScope} AND deleted_at IS NULL AND (name ILIKE ${like} OR pan ILIKE ${likeUpper}
              OR phone ILIKE ${like} OR email ILIKE ${like})
           LIMIT 5
-        `),
-        tx.execute(sql`
+        `);
+      const leads = await group("leads", sql`
           SELECT id, name, phone, email, stage, source
           FROM leads
-          WHERE tenant_id = ${session.tenantId}::uuid AND ${leadScope} AND deleted_at IS NULL AND (name ILIKE ${like} OR phone ILIKE ${like} OR email ILIKE ${like})
+          WHERE tenant_id = ${session.tenantId}::uuid AND ${leadScope} AND lost_reason IS DISTINCT FROM '__deleted__' AND (name ILIKE ${like} OR phone ILIKE ${like} OR email ILIKE ${like})
             AND converted_investor_id IS NULL
           LIMIT 5
-        `),
-        tx.execute(sql`
+        `);
+      const folios = await group("folios", sql`
           SELECT f.id, f.folio_number, f.amc_name, f.aum, i.name AS investor_name, i.id AS investor_id
           FROM folios f LEFT JOIN investors i ON i.id = f.investor_id
           WHERE f.tenant_id = ${session.tenantId}::uuid AND ${invScope} AND i.deleted_at IS NULL AND f.folio_number ILIKE ${like}
           LIMIT 5
-        `),
-        tx.execute(sql`
+        `);
+      const sips = await group("sips", sql`
           SELECT s.id, s.scheme_name, s.amount, s.status, i.name AS investor_name, i.id AS investor_id
           FROM sips s LEFT JOIN investors i ON i.id = s.investor_id
           WHERE s.tenant_id = ${session.tenantId}::uuid AND ${invScope} AND i.deleted_at IS NULL AND (s.scheme_name ILIKE ${like} OR s.scheme_code ILIKE ${like})
           LIMIT 5
-        `),
-        tx.execute(sql`
+        `);
+      const serviceRequests = await group("serviceRequests", sql`
           SELECT sr.id, sr.ticket_no, sr.subject, sr.type, sr.status, i.name AS investor_name
           FROM service_requests sr LEFT JOIN investors i ON i.id = sr.investor_id
           WHERE sr.tenant_id = ${session.tenantId}::uuid AND ${requestScope}
             AND (sr.investor_id IS NULL OR (${invScope} AND i.deleted_at IS NULL))
             AND (sr.ticket_no ILIKE ${like} OR sr.subject ILIKE ${like})
           LIMIT 5
-        `),
-        tx.execute(sql`
+        `);
+      const documents = await group("documents", sql`
           SELECT d.id, d.name, d.category, d.created_at
           FROM compliance_documents d
           WHERE d.tenant_id = ${session.tenantId}::uuid AND ${docScope} AND d.name ILIKE ${like}
           LIMIT 5
-        `),
-      ]);
+        `);
 
-      return {
-        investors: investors.rows,
-        leads: leads.rows,
-        folios: folios.rows,
-        sips: sips.rows,
-        serviceRequests: serviceRequests.rows,
-        documents: documents.rows,
-      };
+      return { investors, leads, folios, sips, serviceRequests, documents };
     });
 
     return NextResponse.json({ q, ...results });
