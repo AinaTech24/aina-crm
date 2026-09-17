@@ -323,19 +323,17 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
   return (
     <div className="space-y-6">
       {/* ---------- Automation ROI strip ---------- */}
-      <div className="card-surface glass-card p-5 relative overflow-hidden">
+      <div className="card-surface p-5 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-brand-cyan-light/40 via-violet-50/30 to-transparent pointer-events-none" />
         <div className="relative">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-              <div className="size-7 rounded-lg bg-brand-cyan-light grid place-items-center">
-                <Bot className="size-3.5 text-brand-cyan-deep" />
-              </div>
-              Automation pulse — what the bots did for you this month
-            </h2>
+            <h2 className="section-title flex items-center gap-2">
+          <Bot className="size-4 text-muted-foreground" />
+          Automation pulse — what the bots did for you this month
+        </h2>
             <Link
               href="/dashboard/workflows/rules"
-              className="text-xs text-brand-cyan-deep hover:underline font-semibold inline-flex items-center gap-1"
+              className="text-2xs text-muted-foreground hover:text-foreground font-semibold inline-flex items-center gap-1"
             >
               Workflows <ArrowRight className="size-3" />
             </Link>
@@ -375,14 +373,12 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
 
       {/* ---------- Service Promise Adherence + Client Health Bands ---------- */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="md:col-span-2 card-surface glass-card p-5">
+        <div className="md:col-span-2 card-surface p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-              <div className="size-7 rounded-lg bg-emerald-50 grid place-items-center">
-                <ShieldCheck className="size-3.5 text-emerald-700" />
-              </div>
-              Service promise adherence
-            </h2>
+            <h2 className="section-title flex items-center gap-2">
+          <ShieldCheck className="size-4 text-muted-foreground" />
+          Service promise adherence
+        </h2>
             <span className="text-xs text-muted-foreground">Review cadence vs SLA hit-rate</span>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
@@ -414,13 +410,11 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
               : "no SR data"}
           </div>
         </div>
-        <div className="card-surface glass-card p-5">
-          <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90 mb-3">
-            <div className="size-7 rounded-lg bg-rose-50 grid place-items-center">
-              <Activity className="size-3.5 text-rose-600" />
-            </div>
-            Client health radar
-          </h2>
+        <div className="card-surface p-5">
+          <h2 className="section-title flex items-center gap-2">
+          <Activity className="size-4 text-muted-foreground" />
+          Client health radar
+        </h2>
           <div className="space-y-2.5">
             <HealthBand
               tone="emerald"
@@ -452,17 +446,15 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
       </div>
 
       {/* ---------- Compliance Waterfall ---------- */}
-      <div className="card-surface glass-card p-5">
+      <div className="card-surface p-5">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-            <div className="size-7 rounded-lg bg-amber-50 grid place-items-center">
-              <ShieldCheck className="size-3.5 text-amber-700" />
-            </div>
-            Compliance waterfall — expiries & gaps
-          </h2>
+          <h2 className="section-title flex items-center gap-2">
+          <ShieldCheck className="size-4 text-muted-foreground" />
+          Compliance waterfall — expiries & gaps
+        </h2>
           <Link
             href="/dashboard/compliance"
-            className="text-xs text-amber-700 hover:underline font-semibold inline-flex items-center gap-1"
+            className="text-2xs text-muted-foreground hover:text-foreground font-semibold inline-flex items-center gap-1"
           >
             Compliance <ArrowRight className="size-3" />
           </Link>
@@ -524,14 +516,12 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
 
       {/* ---------- Recovery list + Lost AUM watch ---------- */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="md:col-span-2 card-surface glass-card p-5">
+        <div className="md:col-span-2 card-surface p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-              <div className="size-7 rounded-lg bg-rose-50 grid place-items-center">
-                <AlertTriangle className="size-3.5 text-rose-600" />
-              </div>
-              Recovery list — call them today
-            </h2>
+            <h2 className="section-title flex items-center gap-2">
+          <AlertTriangle className="size-4 text-muted-foreground" />
+          Recovery list — call them today
+        </h2>
             <span className="text-xs text-muted-foreground">
               Flagged · complained · partially redeemed
             </span>
@@ -583,13 +573,11 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
             </ul>
           )}
         </div>
-        <div className="card-surface glass-card p-5">
-          <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90 mb-3">
-            <div className="size-7 rounded-lg bg-rose-50 grid place-items-center">
-              <TrendingDown className="size-3.5 text-rose-600" />
-            </div>
-            Lost AUM (30d)
-          </h2>
+        <div className="card-surface p-5">
+          <h2 className="section-title flex items-center gap-2">
+          <TrendingDown className="size-4 text-muted-foreground" />
+          Lost AUM (30d)
+        </h2>
           <div className="space-y-3">
             <div className="bg-rose-50/60 border border-rose-100 rounded-lg p-3">
               <div className="text-2xs uppercase tracking-wider text-rose-700 font-semibold">
@@ -619,14 +607,12 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
 
       {/* ---------- AMC concentration + Forward SIP projection ---------- */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="md:col-span-2 card-surface glass-card p-5">
+        <div className="md:col-span-2 card-surface p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-              <div className="size-7 rounded-lg bg-violet-50 grid place-items-center">
-                <Building2 className="size-3.5 text-violet-600" />
-              </div>
-              AMC concentration risk
-            </h2>
+            <h2 className="section-title flex items-center gap-2">
+          <Building2 className="size-4 text-muted-foreground" />
+          AMC concentration risk
+        </h2>
             <span className="text-xs text-muted-foreground">
               Top 5 by AUM share
             </span>
@@ -673,13 +659,11 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
             </div>
           )}
         </div>
-        <div className="card-surface glass-card p-5">
-          <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90 mb-3">
-            <div className="size-7 rounded-lg bg-emerald-50 grid place-items-center">
-              <Briefcase className="size-3.5 text-emerald-600" />
-            </div>
-            Forward SIP visibility
-          </h2>
+        <div className="card-surface p-5">
+          <h2 className="section-title flex items-center gap-2">
+          <Briefcase className="size-4 text-muted-foreground" />
+          Forward SIP visibility
+        </h2>
           <div className="bg-emerald-50/40 border border-emerald-100 rounded-lg p-4">
             <div className="text-2xs uppercase tracking-wider text-emerald-800 font-semibold">
               Expected next month
@@ -702,14 +686,12 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
 
       {/* ---------- Inactive-RM detector + Review cadence ---------- */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="card-surface glass-card p-5">
+        <div className="card-surface p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-              <div className="size-7 rounded-lg bg-rose-50 grid place-items-center">
-                <UserX className="size-3.5 text-rose-600" />
-              </div>
-              Inactive RM detector
-            </h2>
+            <h2 className="section-title flex items-center gap-2">
+          <UserX className="size-4 text-muted-foreground" />
+          Inactive RM detector
+        </h2>
             <span className="text-xs text-muted-foreground">No contact 60d+</span>
           </div>
           {data.rmActivity.length === 0 ? (
@@ -761,14 +743,12 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
             </table>
           )}
         </div>
-        <div className="card-surface glass-card p-5">
+        <div className="card-surface p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-              <div className="size-7 rounded-lg bg-brand-cyan-light grid place-items-center">
-                <CalendarCheck className="size-3.5 text-brand-cyan-deep" />
-              </div>
-              Review cadence by tier
-            </h2>
+            <h2 className="section-title flex items-center gap-2">
+          <CalendarCheck className="size-4 text-muted-foreground" />
+          Review cadence by tier
+        </h2>
             <span className="text-xs text-muted-foreground">A: 90d · B: 180d · C: 365d</span>
           </div>
           <div className="space-y-3">

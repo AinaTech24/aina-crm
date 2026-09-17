@@ -91,9 +91,9 @@ function Tile({
 
   return (
     <Link href={href}>
-      <div className="kpi-card glass-card">
+      <div className="kpi-card">
         <div className="flex items-center justify-between">
-          <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{label}</span>
+          <span className="text-2xs font-semibold uppercase tracking-wide leading-snug text-muted-foreground">{label}</span>
           <div className={`size-7 rounded-lg grid place-items-center ${iconBg}`}>
             <Icon className="size-3.5" />
           </div>

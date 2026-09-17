@@ -181,16 +181,14 @@ export async function SipPersistencyTile({ session }: { session: SessionUser }) 
   }
 
   return (
-    <div className="card-surface glass-card p-5 relative overflow-hidden">
+    <div className="card-surface p-5 relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-br from-violet-50/40 via-transparent to-transparent pointer-events-none" />
       <div className="relative">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-            <div className="size-7 rounded-lg bg-violet-50 grid place-items-center">
-              <Repeat className="size-3.5 text-violet-700" />
-            </div>
-            SIP persistency — franchise health
-          </h2>
+          <h2 className="section-title flex items-center gap-2">
+          <Repeat className="size-4 text-muted-foreground" />
+          SIP persistency — franchise health
+        </h2>
           <div
             className={`flex items-center gap-1 text-xs font-semibold ${
               netSipChange > 0

@@ -17,7 +17,11 @@ export async function AumSegmentSection({ session }: { session: SessionUser }) {
           COALESCE(SUM(aum::numeric), 0)::numeric AS total_aum
         FROM investors
         WHERE status = 'active' AND deleted_at IS NULL
-        GROUP BY segment_tag
+        -- GROUP BY 1, not segment_tag: grouping by the RAW column while
+        -- selecting the COALESCE'd one puts NULL and 'Retail' in separate
+        -- groups, so the donut drew two different slices both labelled
+        -- "Retail" — which is exactly what the legend was showing.
+        GROUP BY 1
       `);
       return res.rows as any[];
     },
@@ -31,15 +35,13 @@ export async function AumSegmentSection({ session }: { session: SessionUser }) {
   }));
 
   return (
-    <div className="card-surface glass-card p-5">
+    <div className="card-surface p-5">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="font-semibold flex items-center gap-2">
-          <div className="size-7 rounded-lg bg-emerald-50 grid place-items-center">
-            <Users className="size-3.5 text-emerald-600" />
-          </div>
+        <h2 className="section-title flex items-center gap-2">
+          <Users className="size-4 text-muted-foreground" />
           AUM by Client Segment
         </h2>
-        <Link href="/dashboard/investors" className="text-xs text-emerald-700 hover:underline font-medium">
+        <Link href="/dashboard/investors" className="text-2xs text-muted-foreground hover:text-foreground font-medium">
           Clients →
         </Link>
       </div>

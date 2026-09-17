@@ -239,8 +239,8 @@ function CockpitBodySkeleton() {
   return (
     <div className="space-y-6">
       <div className="h-11 rounded-xl bg-card border border-border/50 animate-pulse" />
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {Array.from({ length: 4 }).map((_, i) => (
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        {Array.from({ length: 3 }).map((_, i) => (
           <div key={i} className="h-28 rounded-xl bg-card border border-border/50 animate-pulse" />
         ))}
       </div>
@@ -624,7 +624,7 @@ async function OwnerCockpitBody({
           apart. Do NOT "fix" this by making the numbers match — they answer
           different questions; change the LABELS if the wording is unclear. */}
       {anyHeadline && (
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         {show("kpi.total_clients") && <Kpi
           href={withPeriod("/dashboard/investors", periodQuery)}
           icon={Users}
@@ -658,7 +658,6 @@ async function OwnerCockpitBody({
           value={formatINR(data.netBusiness)}
           sub={`Gross ${formatINR(data.sipAddedAmt + data.lumpsumAmt)}`}
           trend={data.netBusiness >= 0 ? "up" : "down"}
-          hero
           sparkline={data.netBizSpark}
         />}
       </div>
@@ -683,7 +682,7 @@ async function OwnerCockpitBody({
 
       {/* ---------- 5. Conversion + RM-wise + chart (streamed via Suspense) ---------- */}
       {anyAnalytics && (
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {show("section.lead_funnel") && (
         <Suspense fallback={<ChartSkeleton />}>
           <LeadFunnelSection session={session} period={period} />
@@ -742,7 +741,7 @@ function Group({
         {link && (
           <Link
             href={link.href}
-            className="text-xs text-brand-cyan-deep hover:underline font-medium"
+            className="text-2xs text-muted-foreground hover:text-foreground font-medium"
           >
             {link.label} →
           </Link>
@@ -792,7 +791,7 @@ function Kpi({
     const inner = (
       <div className="kpi-hero relative overflow-hidden">
         <div className="flex items-center justify-between">
-          <span className="text-2xs uppercase tracking-wider font-semibold text-white/80">
+          <span className="text-2xs font-semibold uppercase tracking-wide leading-snug text-white/80">
             {label}
           </span>
           {Icon && (
@@ -822,25 +821,23 @@ function Kpi({
     return href ? <Link href={href}>{inner}</Link> : inner;
   }
 
-  const iconBg: Record<string, string> = {
-    cyan: "bg-brand-cyan-light text-brand-cyan-deep",
-    violet: "bg-violet-50 text-violet-600",
-    emerald: "bg-emerald-50 text-emerald-600",
-    amber: "bg-amber-50 text-amber-600",
-    default: "bg-secondary text-foreground",
-  };
-  const bg = iconBg[accent ?? "default"];
+  // `accent` is kept in the signature so existing call sites still typecheck,
+  // but every KPI icon now sits on the same neutral chip. A headline number is
+  // not a severity, and four pastel accents on one row was the single loudest
+  // source of visual noise on this page.
+  const bg = "bg-secondary text-muted-foreground";
+  void accent;
   const trendColor =
     trend === "up"
-      ? "text-emerald-600"
+      ? "text-success"
       : trend === "down"
-      ? "text-rose-600"
-      : "text-muted-foreground";
+        ? "text-destructive"
+        : "text-muted-foreground";
 
   const inner = (
-    <div className="kpi-card glass-card">
+    <div className="kpi-card">
       <div className="flex items-center justify-between">
-        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
+        <span className="text-2xs font-semibold uppercase tracking-wide leading-snug text-muted-foreground">
           {label}
         </span>
         {Icon && (
@@ -855,8 +852,8 @@ function Kpi({
           <span
             className={`inline-flex items-center gap-0.5 text-2xs font-bold px-1.5 py-0.5 rounded-full ${
               deltaTone === "down"
-                ? "bg-rose-50 text-rose-700"
-                : "bg-emerald-50 text-emerald-700"
+                ? "bg-destructive/10 text-destructive"
+                : "bg-success/10 text-success"
             }`}
           >
             {deltaTone === "down" ? (
@@ -922,9 +919,9 @@ function Stat({
       : "bg-brand-cyan-light text-brand-cyan-deep";
 
   const inner = (
-    <div className="kpi-card glass-card">
+    <div className="kpi-card">
       <div className="flex items-center justify-between">
-        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
+        <span className="text-2xs font-semibold uppercase tracking-wide leading-snug text-muted-foreground">
           {label}
         </span>
         {Icon && (

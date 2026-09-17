@@ -59,15 +59,13 @@ export async function LeadFunnelSection({
   ];
 
   return (
-    <div className="card-surface glass-card p-5">
+    <div className="card-surface p-5">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="font-semibold flex items-center gap-2">
-          <div className="size-7 rounded-lg bg-brand-cyan-light grid place-items-center">
-            <Sparkles className="size-3.5 text-brand-cyan-deep" />
-          </div>
+        <h2 className="section-title flex items-center gap-2">
+          <Sparkles className="size-4 text-muted-foreground" />
           Lead Funnel ({period.toUpperCase()})
         </h2>
-        <Link href="/dashboard/leads" className="text-xs text-brand-cyan-deep hover:underline font-medium">
+        <Link href="/dashboard/leads" className="text-2xs text-muted-foreground hover:text-foreground font-medium">
           Pipeline →
         </Link>
       </div>

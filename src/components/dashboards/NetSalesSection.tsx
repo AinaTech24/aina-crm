@@ -34,12 +34,10 @@ export async function NetSalesSection({ session }: { session: SessionUser }) {
   }));
 
   return (
-    <div className="card-surface glass-card p-5">
+    <div className="card-surface p-5">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="font-semibold flex items-center gap-2">
-          <div className="size-7 rounded-lg bg-brand-cyan-light grid place-items-center">
-            <TrendingUp className="size-3.5 text-brand-cyan-deep" />
-          </div>
+        <h2 className="section-title flex items-center gap-2">
+          <TrendingUp className="size-4 text-muted-foreground" />
           Net sales — last 30 days
         </h2>
         <span className="text-xs text-muted-foreground">Daily inflow vs redemption</span>

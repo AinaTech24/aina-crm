@@ -23,7 +23,7 @@ export function Group({
         {link && (
           <Link
             href={link.href}
-            className="text-xs text-brand-cyan-deep hover:underline font-medium"
+            className="text-2xs text-muted-foreground hover:text-foreground font-medium"
           >
             {link.label} →
           </Link>
@@ -63,7 +63,7 @@ export function Kpi({
     const inner = (
       <div className="kpi-hero relative overflow-hidden">
         <div className="flex items-center justify-between">
-          <span className="text-2xs uppercase tracking-wider font-semibold text-white/80">
+          <span className="text-2xs font-semibold uppercase tracking-wide leading-snug text-white/80">
             {label}
           </span>
           {Icon && (
@@ -104,9 +104,9 @@ export function Kpi({
       : "text-muted-foreground";
 
   const inner = (
-    <div className="kpi-card glass-card">
+    <div className="kpi-card">
       <div className="flex items-center justify-between">
-        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
+        <span className="text-2xs font-semibold uppercase tracking-wide leading-snug text-muted-foreground">
           {label}
         </span>
         {Icon && (
@@ -160,34 +160,29 @@ export function Stat({
   sub?: string;
   tone?: "rose" | "amber" | "emerald" | "muted";
 }) {
+  // Semantic tokens, not raw palette. The tones are a severity scale, and a
+  // severity scale that is hard-coded to rose/amber/emerald cannot follow the
+  // theme — nor can `check:colors` tell it apart from a stray hex.
   const color =
     tone === "rose"
-      ? "text-rose-600"
+      ? "text-destructive"
       : tone === "amber"
-      ? "text-amber-600"
-      : tone === "emerald"
-      ? "text-emerald-600"
-      : "text-foreground";
-  const iconBg =
-    tone === "rose"
-      ? "bg-rose-50 text-rose-600"
-      : tone === "amber"
-      ? "bg-amber-50 text-amber-600"
-      : tone === "emerald"
-      ? "bg-emerald-50 text-emerald-600"
-      : "bg-brand-cyan-light text-brand-cyan-deep";
+        ? "text-warning"
+        : tone === "emerald"
+          ? "text-success"
+          : "text-foreground";
 
   const inner = (
-    <div className="kpi-card glass-card">
-      <div className="flex items-center justify-between">
-        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
+    <div className="kpi-card">
+      <div className="flex items-start justify-between gap-2">
+        {/* Sentence case, normal tracking. As `uppercase tracking-wider` these
+            ran to three lines — "PENDING SERVICE REQUESTS" — which made every
+            tile in the row as tall as the longest label and left the grid
+            visibly ragged. */}
+        <span className="text-2xs font-semibold uppercase tracking-wide leading-snug text-muted-foreground">
           {label}
         </span>
-        {Icon && (
-          <div className={`size-7 rounded-lg grid place-items-center ${iconBg}`}>
-            <Icon className="size-3.5" />
-          </div>
-        )}
+        {Icon && <Icon className="size-4 shrink-0 text-muted-foreground/70" />}
       </div>
       <div className={`text-xl font-bold mt-2 tabular-nums tracking-tight ${color}`}>
         {value}
