@@ -88,10 +88,19 @@ export function DashboardHeaderBar({
   period,
   currentLabel,
   variant = "light",
+  children,
 }: {
   period: Period;
   currentLabel: string;
   variant?: "dark" | "light";
+  /**
+   * The scope controls (member, branch, period chips) render INSIDE this bar,
+   * ahead of the period dropdown. They used to sit in a separate flex child at
+   * the far left while the period dropdown sat at the far right — two controls
+   * for the same value at opposite ends of the row, with the row wrapping
+   * between them on anything narrower than a very wide screen.
+   */
+  children?: React.ReactNode;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -200,21 +209,31 @@ export function DashboardHeaderBar({
   const canPortal = typeof document !== "undefined";
 
   return (
-    <div className={`flex items-center gap-2 ${pending ? "opacity-60 pointer-events-none" : ""}`}>
-      {/* ---- View switcher ---- */}
-      <button ref={viewBtnRef} type="button" className={btn} onClick={toggleView} aria-haspopup="menu" aria-expanded={viewOpen}>
-        <LayoutGrid className="size-3.5" /> View <ChevronDown className="size-3.5" />
-      </button>
+    /* One toolbar, read left to right as: what am I looking at (scope) · over
+       what period (time) · and what can I do to this page (actions). */
+    <div
+      className={`flex flex-wrap items-center gap-x-2 gap-y-2 rounded-lg border border-border bg-card px-2.5 py-2 ${
+        pending ? "opacity-60 pointer-events-none" : ""
+      }`}
+    >
+      {children}
 
-      {/* ---- Create board ---- */}
-      <button type="button" className={btn} onClick={() => { setCreateName("My Dashboard"); setCreateOpen(true); }}>
-        <Plus className="size-3.5" /> Create
-      </button>
-
-      {/* ---- Period filter trigger ---- */}
+      {/* ---- Period filter trigger — sits with the chips it shares a value
+               with, and carries the pickers they cannot (a specific month, a
+               specific quarter, since-a-date, a custom range). ---- */}
       <button ref={periodBtnRef} type="button" className={btn} onClick={togglePeriod} aria-haspopup="menu" aria-expanded={periodOpen}>
         <CalendarDays className="size-3.5" /> {currentLabel} <ChevronDown className="size-3.5" />
       </button>
+
+      {/* ---- Page actions, pushed to the far end ---- */}
+      <div className="ml-auto flex items-center gap-2">
+        <button ref={viewBtnRef} type="button" className={btn} onClick={toggleView} aria-haspopup="menu" aria-expanded={viewOpen}>
+          <LayoutGrid className="size-3.5" /> View <ChevronDown className="size-3.5" />
+        </button>
+        <button type="button" className={btn} onClick={() => { setCreateName("My Dashboard"); setCreateOpen(true); }}>
+          <Plus className="size-3.5" /> Create
+        </button>
+      </div>
 
       {/* ---- View menu (portaled, fixed under the trigger) ---- */}
       {canPortal && viewOpen && viewAnchor && createPortal(

@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { withTenant } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
-import { Group, Stat } from "./DashboardShared";
+import { Stat } from "./DashboardShared";
 
 export async function AttentionQueuesSection({ session }: { session: SessionUser }) {
   const dormantCutoff = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString();
@@ -50,8 +50,7 @@ export async function AttentionQueuesSection({ session }: { session: SessionUser
   );
 
   return (
-    <Group title="Needs attention">
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
         <Stat
           href="/dashboard/review-meetings"
           label="Review meetings due"
@@ -101,7 +100,6 @@ export async function AttentionQueuesSection({ session }: { session: SessionUser
           tone="muted"
           icon={Crown}
         />
-      </div>
-    </Group>
+    </div>
   );
 }

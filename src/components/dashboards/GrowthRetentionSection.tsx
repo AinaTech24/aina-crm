@@ -41,14 +41,7 @@ export async function GrowthRetentionSection({ session }: { session: SessionUser
   const circularsToAction = Number((regulatory.rows[0] as { action_required: number })?.action_required ?? 0);
 
   return (
-    <div className="space-y-2.5">
-      <div className="flex items-center gap-2">
-        <div className="h-4 w-1 rounded-full brand-bar" />
-        <h2 className="text-2xs font-bold uppercase tracking-[0.12em] text-foreground/70">
-          Growth &amp; retention
-        </h2>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-2 gap-3">
         <Tile
           href="/dashboard/referrals"
           icon={HeartHandshake}
@@ -65,7 +58,6 @@ export async function GrowthRetentionSection({ session }: { session: SessionUser
           value={String(circularsToAction)}
           sub={circularsToAction > 0 ? "Review in the digest" : "All caught up"}
         />
-      </div>
     </div>
   );
 }

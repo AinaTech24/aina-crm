@@ -34,6 +34,34 @@ export function Group({
   );
 }
 
+/**
+ * A labelled band of the dashboard.
+ *
+ * `Group` above does the same job for a single block of tiles. `Band` wraps
+ * SEVERAL cards under one heading, which is what the cockpit actually needed:
+ * it had fourteen sections and exactly two headings, so the two looked like
+ * mistakes rather than structure. Either every band is labelled or none is.
+ */
+export function Band({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="h-4 w-1 rounded-full brand-bar" />
+        <h2 className="text-2xs font-bold uppercase tracking-[0.12em] text-foreground/70">
+          {title}
+        </h2>
+      </div>
+      <div className="space-y-4">{children}</div>
+    </section>
+  );
+}
+
 export function Kpi({
   href,
   icon: Icon,

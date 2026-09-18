@@ -17,7 +17,7 @@
  */
 
 import Link from "next/link";
-import { ArrowDownRight, ArrowUpRight, ExternalLink, Minus } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, ExternalLink, Minus, Wallet, TrendingUp, Repeat } from "lucide-react";
 import { Sparkline } from "./Sparkline";
 import type { ActivityRange, ActivityTile, Delta, PulseMetric } from "@/lib/dashboard/firm-pulse";
 import { ACTIVITY_RANGES } from "@/lib/dashboard/firm-pulse";
@@ -74,27 +74,32 @@ export function FirmPulseStrip({
   baseHref?: string;
 }) {
   return (
-    <section className="space-y-4">
+    <section className="space-y-5" aria-label="Business snapshot">
       {/* ── Headline KPIs ────────────────────────────────────────────── */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {metrics.map((m) => (
           <div
             key={m.key}
-            className="group relative rounded-xl border border-border bg-card p-4 transition hover:border-brand-cyan/40 hover:shadow-sm"
+            className="group relative rounded-2xl border border-border bg-card p-5 shadow-sm transition-colors hover:border-primary/30"
           >
             <div className="flex items-start justify-between gap-2">
-              <h3 className="text-sm font-semibold text-brand-cyan-deep">{m.label}</h3>
+              <div className="flex items-center gap-2.5">
+                <span className="grid size-9 place-items-center rounded-xl bg-primary/5 text-primary">
+                  {m.key === "aum" ? <Wallet className="size-4" /> : m.key === "invested" ? <TrendingUp className="size-4" /> : <Repeat className="size-4" />}
+                </span>
+                <h3 className="text-sm font-medium text-muted-foreground">{m.label}</h3>
+              </div>
               <Link
                 href={HREF[m.key]}
                 aria-label={`Open ${m.label}`}
-                className="text-muted-foreground/50 hover:text-brand-cyan transition"
+                className="btn-icon text-muted-foreground/60 hover:text-primary"
               >
-                <ExternalLink className="size-3.5" />
+                <ArrowUpRight className="size-4" />
               </Link>
             </div>
 
-            <div className="mt-1.5 flex items-end justify-between gap-3">
-              <div className="text-2xl font-bold tracking-tight tabular-nums">{money(m.value)}</div>
+            <div className="mt-5 flex flex-wrap items-end justify-between gap-3">
+              <div className="font-display text-3xl font-bold tracking-tight tabular-nums">{money(m.value)}</div>
               {m.series.length > 1 && (
                 <Sparkline
                   data={m.series}
@@ -107,7 +112,7 @@ export function FirmPulseStrip({
               )}
             </div>
 
-            <div className="mt-3 space-y-1.5 border-t border-border/60 pt-2.5 text-xs">
+            <div className="mt-5 space-y-2 border-t border-border/60 pt-3.5 text-xs">
               {m.footnote ? (
                 <>
                   <div className="flex items-center justify-between gap-2">
@@ -137,7 +142,7 @@ export function FirmPulseStrip({
       </div>
 
       {/* ── Activity ─────────────────────────────────────────────────── */}
-      <div className="rounded-xl border border-border bg-card p-4">
+      <div className="card-surface p-5">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
           <div className="inline-flex rounded-lg border border-border bg-secondary/40 p-0.5 gap-0.5 text-xs">
             {ACTIVITY_RANGES.map((d) => (
