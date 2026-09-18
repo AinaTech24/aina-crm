@@ -142,7 +142,7 @@ export async function loadClientLinkTokens(
         ORDER BY COALESCE(signed_at, created_at) DESC
         LIMIT 1
       `);
-      const row = (r.rows?.[0] ?? null) as
+      let row = (r.rows?.[0] ?? null) as
         | {
             final_category: string | null;
             total_score: number | string | null;
@@ -152,7 +152,33 @@ export async function loadClientLinkTokens(
           }
         | null;
 
-      if (row) {
+      // No response row (or one with no category)? Fall back to the CANONICAL
+      // profile cached on the investor.
+      //
+      // The two can legitimately disagree. `investors.risk_profile` is what the
+      // rest of the app treats as the client's profile — suitability keys off
+      // it, the client 360 displays it — and it survives merges and re-imports
+      // that a child `risk_profile_responses` row may not. Reading only the
+      // response table meant a client with a perfectly good profile resolved to
+      // an empty `risk.category`, which the required-variable gate turned into
+      // a hard "Email blocked" the user had no way to diagnose.
+      if (!row?.final_category && subjectType === "investor") {
+        const cached = await resolveCanonicalProfile(tx, tenantId, subjectId);
+        if (cached.category) {
+          row = {
+            final_category: cached.category,
+            total_score: cached.score,
+            profile_date: null,
+            next_review_at: null,
+            signed_at: cached.signedAt,
+          };
+        }
+      }
+
+      // No category anywhere = genuinely unprofiled. Leave the risk.* tokens
+      // UNSET rather than writing empty strings, so a template that declares
+      // its own `fallback` for them can still use it.
+      if (row?.final_category) {
         // The band label / max score / description live on the tenant's active
         // questionnaire template, not on the response row.
         let bandLabel = row.final_category ? titleCase(row.final_category) : "";
@@ -164,11 +190,27 @@ export async function loadClientLinkTokens(
           if (tpl) {
             maxScore = tpl.questions.reduce((s, q) => s + Math.max(...q.options.map((o) => o.score)), 0);
             const score = row.total_score != null ? Number(row.total_score) : null;
+            // Match on the CATEGORY first, score only as a fallback. A category
+            // set directly (applyRiskCategory — bulk age assignment, RM entry,
+            // spreadsheet) stores a SYNTHETIC score from SCORE_BY_CATEGORY, not
+            // a questionnaire total, so the score ranges can disagree with the
+            // category the client was actually given. Worst case: a client
+            // assigned `very_aggressive` (score 40) matched the default
+            // template's `aggressive` band (30-40) — because the stock template
+            // ships only three bands and has no very_aggressive — and the
+            // result email told them the wrong risk category.
+            // For a real questionnaire the two agree, because final_category
+            // was itself derived from that score.
             const band =
-              (score != null ? tpl.bands.find((b) => score >= b.minScore && score <= b.maxScore) : null) ??
-              tpl.bands.find((b) => b.id === row.final_category);
+              tpl.bands.find((b) => b.id === row.final_category) ??
+              (score != null ? tpl.bands.find((b) => score >= b.minScore && score <= b.maxScore) : null);
             if (band) {
-              bandLabel = band.label;
+              // Never let a blank band label erase the fallback: `bands` is read
+              // back as raw jsonb and is NOT re-validated, so a hand-edited
+              // template can carry a label BandSchema would have rejected.
+              // Blanking it here made `risk.category` empty, which the required-
+              // variable gate turned into a hard "Email blocked" at send time.
+              bandLabel = (band.label ?? "").trim() || bandLabel;
               bandDescription = band.description ?? "";
             }
           }
@@ -177,7 +219,10 @@ export async function loadClientLinkTokens(
         }
 
         const score = row.total_score != null ? Number(row.total_score) : null;
-        out["risk.category"] = bandLabel;
+        // Last guard. A client who HAS a category must never be blocked from
+        // receiving their own result because the tenant's questionnaire
+        // template is missing, unreadable or mis-banded.
+        out["risk.category"] = bandLabel || titleCase(row.final_category ?? "");
         out["risk.score"] = score != null ? String(score) : "";
         out["risk.max_score"] = maxScore != null ? String(maxScore) : "";
         out["risk.score_display"] = score != null ? (maxScore ? `${score} / ${maxScore}` : String(score)) : "";
@@ -206,7 +251,7 @@ export async function loadClientLinkTokens(
       const exposure = assetClassExposure(folioRows as any);
       // assessSuitability keys off the canonical `investors.risk_profile` enum,
       // not the (firm-customisable) band label shown to the client.
-      const riskProfile = await resolveCanonicalProfile(tx, tenantId, subjectId);
+      const { category: riskProfile } = await resolveCanonicalProfile(tx, tenantId, subjectId);
       const s = assessSuitability(riskProfile, exposure.equityPct, exposure.classifiedPct);
 
       out["suitability.status"] = s.severity;
@@ -271,11 +316,33 @@ export async function loadClientLinkTokens(
   return out;
 }
 
-/** The canonical `investors.risk_profile` enum value (what the bands key off). */
-async function resolveCanonicalProfile(tx: Tx, tenantId: string, investorId: string): Promise<string | null> {
+/**
+ * The canonical risk profile cached on `investors` — the enum the bands key
+ * off, plus the score and signing date that sit beside it. This row is what the
+ * rest of the app shows as the client's profile, so it is also the fallback
+ * when no `risk_profile_responses` row survives.
+ */
+async function resolveCanonicalProfile(
+  tx: Tx,
+  tenantId: string,
+  investorId: string
+): Promise<{ category: string | null; score: number | null; signedAt: string | null }> {
   const r = await tx.execute(sql`
-    SELECT risk_profile FROM investors
+    SELECT risk_profile, risk_profile_score, risk_profile_signed_at
+    FROM investors
     WHERE id = ${investorId}::uuid AND tenant_id = ${tenantId}::uuid LIMIT 1
   `);
-  return ((r.rows?.[0] as { risk_profile?: string } | undefined)?.risk_profile as string) ?? null;
+  const row = r.rows?.[0] as
+    | {
+        risk_profile?: string | null;
+        risk_profile_score?: number | null;
+        risk_profile_signed_at?: string | Date | null;
+      }
+    | undefined;
+  const signedAt = row?.risk_profile_signed_at;
+  return {
+    category: row?.risk_profile ?? null,
+    score: row?.risk_profile_score ?? null,
+    signedAt: signedAt ? new Date(signedAt).toISOString() : null,
+  };
 }
