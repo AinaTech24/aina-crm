@@ -90,7 +90,7 @@ function Tile({
             <Icon className="size-3.5" />
           </div>
         </div>
-        <div className={`text-xl font-bold mt-2 tabular-nums tracking-tight ${color}`}>{value}</div>
+        <div className={`font-display text-2xl font-extrabold mt-2 leading-none tabular-nums tracking-tight ${color}`}>{value}</div>
         {sub && <div className="text-2xs text-muted-foreground mt-1">{sub}</div>}
       </div>
     </Link>

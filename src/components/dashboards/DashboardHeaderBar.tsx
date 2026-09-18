@@ -225,8 +225,8 @@ export function DashboardHeaderBar({
         <CalendarDays className="size-3.5" /> {currentLabel} <ChevronDown className="size-3.5" />
       </button>
 
-      {/* ---- Page actions, pushed to the far end ---- */}
-      <div className="ml-auto flex items-center gap-2">
+      {/* ---- Page actions ---- */}
+      <div className="flex items-center gap-2">
         <button ref={viewBtnRef} type="button" className={btn} onClick={toggleView} aria-haspopup="menu" aria-expanded={viewOpen}>
           <LayoutGrid className="size-3.5" /> View <ChevronDown className="size-3.5" />
         </button>

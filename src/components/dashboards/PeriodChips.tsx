@@ -20,14 +20,20 @@ import { useTransition } from "react";
 
 import type { Period } from "@/lib/dashboard/period";
 
-/** Ordered the way a firm reads time: now first, then the step back. */
+/**
+ * Ordered the way a firm reads time. Six, not eight.
+ *
+ * All eight ranges still exist — "Last week" and "Last quarter" live in the
+ * period dropdown immediately to the right, alongside the pickers chips could
+ * never carry. Eight chips plus two dropdowns plus two page actions did not fit
+ * one row at 1280px, so the toolbar silently wrapped onto two, which is the
+ * kind of thing that reads as unfinished rather than as a decision.
+ */
 const CHIPS: Array<{ key: Period; label: string }> = [
   { key: "tw", label: "This week" },
-  { key: "lw", label: "Last week" },
   { key: "mtd", label: "This month" },
   { key: "lm", label: "Last month" },
   { key: "qtd", label: "This quarter" },
-  { key: "lq", label: "Last quarter" },
   { key: "fytd", label: "This FY" },
   { key: "ly", label: "Last FY" },
 ];
@@ -50,8 +56,14 @@ export function PeriodChips({ current }: { current: Period }) {
   }
 
   return (
+    /* A segmented control, not eight loose pills. One recessed track with the
+       active segment raised out of it reads as a single control with one value
+       — which is what it is — and is the difference between looking assembled
+       and looking scattered. */
     <div
-      className={`inline-flex flex-wrap items-center gap-1 ${pending ? "opacity-60" : ""}`}
+      className={`inline-flex items-center rounded-lg bg-secondary p-0.5 ${
+        pending ? "opacity-60" : ""
+      }`}
       role="group"
       aria-label="Date range"
     >
@@ -63,10 +75,10 @@ export function PeriodChips({ current }: { current: Period }) {
             type="button"
             onClick={() => pick(c.key)}
             aria-pressed={active}
-            className={`rounded-md px-2.5 py-1 text-2xs font-medium transition-colors ${
+            className={`rounded-md px-2.5 py-1 text-2xs font-semibold whitespace-nowrap transition-colors ${
               active
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             {c.label}

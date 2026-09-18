@@ -212,10 +212,15 @@ export function Stat({
         </span>
         {Icon && <Icon className="size-4 shrink-0 text-muted-foreground/70" />}
       </div>
-      <div className={`text-xl font-bold mt-2 tabular-nums tracking-tight ${color}`}>
+      {/* Manrope, 24px, extrabold. The figure people open the page for was
+          set in the body face at almost the label's size — which is the main
+          reason these tiles read as plain rather than premium. */}
+      <div
+        className={`font-display text-2xl font-extrabold mt-2 leading-none tabular-nums tracking-tight ${color}`}
+      >
         {value}
       </div>
-      {sub && <div className="text-2xs text-muted-foreground mt-1">{sub}</div>}
+      {sub && <div className="text-2xs text-muted-foreground mt-2">{sub}</div>}
     </div>
   );
   return href ? <Link href={href}>{inner}</Link> : inner;

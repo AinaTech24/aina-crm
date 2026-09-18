@@ -151,7 +151,7 @@ export async function SipPersistencyTile({ session }: { session: SessionUser }) 
           <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
             {label}
           </div>
-          <div className="text-xl font-bold text-muted-foreground mt-1">—</div>
+          <div className="font-display text-xl font-extrabold text-muted-foreground mt-1 leading-none">—</div>
           <div className="text-2xs text-muted-foreground">no cohort yet</div>
         </div>
       );
@@ -164,7 +164,7 @@ export async function SipPersistencyTile({ session }: { session: SessionUser }) 
         <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold mb-1">
           {label}
         </div>
-        <div className={`text-2xl font-bold tabular-nums ${color}`}>
+        <div className={`font-display text-2xl font-extrabold leading-none tabular-nums tracking-tight ${color}`}>
           {pct.toFixed(1)}%
         </div>
         <div className="h-1.5 rounded-full bg-secondary overflow-hidden mt-1.5">
@@ -244,7 +244,7 @@ export async function SipPersistencyTile({ session }: { session: SessionUser }) 
             <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
               SIPs on the register
             </div>
-            <div className="text-xl font-bold tabular-nums">
+            <div className="font-display text-xl font-extrabold leading-none tabular-nums tracking-tight">
               {formatINR(data.activeBook)}
               <span className="text-xs font-normal text-muted-foreground">/mo</span>
             </div>

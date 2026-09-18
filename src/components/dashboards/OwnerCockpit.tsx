@@ -2,7 +2,7 @@ import React, { Suspense } from "react";
 import { SetupChecklist } from "./SetupChecklist";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { ArrowDownRight, ArrowUpRight, TrendingUp, Users, UserPlus, CalendarDays } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, TrendingUp, Users, UserPlus } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { formatINR } from "@/lib/utils";
 import type { SessionUser } from "@/lib/auth/session";
@@ -115,16 +115,11 @@ export async function OwnerCockpit({
           attention", and it pushed the numbers people actually open this page
           for below the fold. Same words, same information, as an ordinary
           page header like every other screen. */}
-      <div className="flex flex-wrap items-end justify-between gap-4 border-b border-border/70 pb-6">
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Your practice, in focus</p>
-          <h1 className="page-title">Welcome back, {session.name.split(" ")[0]}</h1>
-          <p className="page-subtitle mt-2">A clear view of your business. More time for your clients.</p>
-        </div>
-        <div className="flex items-center gap-2.5 rounded-xl border border-border/70 bg-card px-3.5 py-2.5 text-xs text-muted-foreground">
-          <CalendarDays className="size-4 text-primary" />
-          <span>{today}</span>
-        </div>
+      <div>
+        <h1 className="page-title">Welcome back, {session.name.split(" ")[0]}</h1>
+        <p className="page-subtitle mt-1">
+          Your firm as of <span className="text-foreground font-medium">{today}</span>.
+        </p>
       </div>
 
       {/* First-run setup checklist — data-verified steps; vanishes when done. */}
@@ -854,8 +849,10 @@ function Kpi({
           </div>
         )}
       </div>
-      <div className="flex items-baseline gap-2 mt-2 flex-wrap">
-        <div className="text-2xl font-bold tabular-nums tracking-tight">{value}</div>
+      <div className="flex items-baseline gap-2 mt-2.5 flex-wrap">
+        <div className="font-display text-[1.75rem] font-extrabold leading-none tabular-nums tracking-tight">
+          {value}
+        </div>
         {delta && (
           <span
             className={`inline-flex items-center gap-0.5 text-2xs font-bold px-1.5 py-0.5 rounded-full ${
