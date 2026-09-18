@@ -76,14 +76,36 @@ function hiddenNav(url: string, download: boolean): void {
  * Disposition) or a sensible fallback.
  */
 export async function downloadFile(url: string, fallbackName?: string): Promise<void> {
+  let apiMessage: string | null = null;
   try {
     const res = await fetch(url, { credentials: "same-origin" });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      // A JSON body on a failed download is the API explaining itself — e.g.
+      // "this filter matches more than 50,000 clients". Navigating to the URL
+      // (the fallback below) would just save that JSON as a file, so the user
+      // gets a broken download instead of the sentence telling them what to do.
+      // Surface it; keep the navigation fallback for genuine transport errors.
+      if ((res.headers.get("content-type") ?? "").includes("application/json")) {
+        const j = await res.json().catch(() => null);
+        const msg = j && typeof j === "object" ? (j as { error?: string }).error : null;
+        if (msg) apiMessage = msg;
+      }
+      throw new Error(`HTTP ${res.status}`);
+    }
     const blob = await res.blob();
     const name = filenameFromDisposition(res.headers.get("content-disposition")) || fallbackName || inferName(url);
     saveBlob(blob, name);
   } catch {
+    if (apiMessage) throw new DownloadError(apiMessage);
     hiddenNav(url, true);
+  }
+}
+
+/** A download the server refused, carrying a message meant for the user. */
+export class DownloadError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DownloadError";
   }
 }
 

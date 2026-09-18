@@ -27,7 +27,35 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
-const MAX_ROWS = 5000;
+/**
+ * Safety ceiling, NOT a page size — an export must never come back partial.
+ *
+ * It was 5,000, silently applied as `.limit(5000)`. The largest book on the
+ * platform is 20,554 clients, so that firm's "full export" quietly dropped
+ * 15,554 of them with nothing on screen to say so — and this file is used for
+ * RTA/AMC reconciliation, where a silently short list is worse than no list.
+ *
+ * 50,000 covers every tenant today (40,091 clients across the WHOLE platform)
+ * with 2.4x headroom on the biggest single book, and stays inside the
+ * container's 3 GB heap: the sheet is built in memory, and ~50k rows x ~55
+ * columns is the point where that stops being comfortable.
+ *
+ * Past the ceiling we now FAIL LOUDLY with a filter hint instead of truncating.
+ */
+const MAX_ROWS = 50_000;
+
+/**
+ * 413 so handleApiError passes the message straight through to the user — it
+ * forwards 4xx text verbatim and masks only 5xx. The message must therefore say
+ * what to DO, not just that something failed.
+ */
+class ExportTooLargeError extends Error {
+  status = 413;
+  constructor(message: string) {
+    super(message);
+    this.name = "ExportTooLargeError";
+  }
+}
 
 function ymd(v: unknown): string {
   if (!v) return "";
@@ -89,13 +117,23 @@ export async function GET(req: NextRequest) {
         const scope = await investorScopeCondition(tx, session);
         const filters = buildInvestorWhere(sp, session.userId);
         const where = scope ? and(filters as any, scope) : filters;
+        // Fetch ONE more than the ceiling. If that extra row comes back we know
+        // the filter matches more than we can safely build, without paying for a
+        // separate COUNT — and we can refuse rather than hand over a short file
+        // the user would reasonably assume was complete.
         const r = await tx
           .select({ inv: investors, rmName: users.name })
           .from(investors)
           .leftJoin(users, eq(users.id, investors.rmId))
           .where(where as any)
           .orderBy(desc(investors.aum))
-          .limit(MAX_ROWS);
+          .limit(MAX_ROWS + 1);
+        if (r.length > MAX_ROWS) {
+          throw new ExportTooLargeError(
+            `This filter matches more than ${MAX_ROWS.toLocaleString("en-IN")} clients, which is too many for one spreadsheet. ` +
+              `Narrow it down — by branch, RM, segment, tier or status — and export in parts.`
+          );
+        }
         // DPDP: bulk PII reads must leave an access trail (which sensitive
         // fields, how many records, under what filter).
         await recordAudit(tx, {

@@ -21,6 +21,7 @@
 
 import type { ReactNode } from "react";
 import { downloadFile, openInNewTab, goTo } from "@/lib/secure-download";
+import { notify } from "@/components/ui/Toast";
 
 type Props = {
   url: string;
@@ -38,7 +39,14 @@ export function DownloadButton({ url, filename, className, title, ariaLabel, dis
   return (
     <button
       type="button"
-      onClick={() => downloadFile(url, filename)}
+      // downloadFile throws only when the server refused with a message worth
+      // reading; everything else still falls back to a plain navigation inside
+      // it, so this catch cannot swallow a working download.
+      onClick={() => {
+        downloadFile(url, filename).catch((e) =>
+          notify.error(e?.message ?? "Could not download the file")
+        );
+      }}
       className={className}
       title={title}
       aria-label={ariaLabel}
