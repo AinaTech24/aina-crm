@@ -87,11 +87,9 @@ export async function TopMoversPanel({
 
   if (empty) {
     return (
-      <div className="card-surface glass-card p-5">
-        <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90 mb-2">
-          <div className="size-7 rounded-lg bg-brand-cyan-light grid place-items-center">
-            <TrendingUp className="size-3.5 text-brand-cyan-deep" />
-          </div>
+      <div className="card-surface p-5">
+        <h2 className="section-title flex items-center gap-2">
+          <TrendingUp className="size-4 text-muted-foreground" />
           Top movers — {periodLabel}
         </h2>
         <p className="text-sm text-muted-foreground py-6 text-center">
@@ -102,12 +100,10 @@ export async function TopMoversPanel({
   }
 
   return (
-    <div className="card-surface glass-card p-5">
+    <div className="card-surface p-5">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-          <div className="size-7 rounded-lg bg-brand-cyan-light grid place-items-center">
-            <TrendingUp className="size-3.5 text-brand-cyan-deep" />
-          </div>
+        <h2 className="section-title flex items-center gap-2">
+          <TrendingUp className="size-4 text-muted-foreground" />
           Top movers — {periodLabel}
         </h2>
         <span className="text-xs text-muted-foreground">The clients behind the numbers</span>
@@ -201,7 +197,7 @@ function MoverColumn({
 }) {
   return (
     <div>
-      <div className="flex items-center gap-1.5 mb-2 text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
+      <div className="flex items-center gap-1.5 mb-2 text-2xs font-semibold uppercase tracking-wide leading-snug text-muted-foreground">
         {icon}
         {title}
       </div>

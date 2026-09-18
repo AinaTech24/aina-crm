@@ -20,7 +20,11 @@ function StageBar({ b, max }: { b: LeadStageBucket; max: number }) {
   return (
     <Link
       href={`/dashboard/leads?stage=${encodeURIComponent(b.key)}`}
-      className="group grid grid-cols-[minmax(0,9rem)_1fr_auto] items-center gap-3 rounded-md px-1.5 py-1 hover:bg-secondary"
+      // The bar column is capped rather than fluid. Stretched across a full-
+      // width card, five long bars are the loudest thing on the dashboard —
+      // and a bar's job here is to show relative size, which it does just as
+      // well in 20rem as in 60.
+      className="group grid grid-cols-[minmax(0,9rem)_minmax(0,20rem)_auto] items-center gap-3 rounded-md px-1.5 py-1 hover:bg-secondary"
       title={
         b.slaDays != null
           ? `${b.name} — SLA ${b.slaDays} day${b.slaDays === 1 ? "" : "s"}`
@@ -34,8 +38,12 @@ function StageBar({ b, max }: { b: LeadStageBucket; max: number }) {
         {/* Zero draws nothing. A minimum-width stub would say a stage holds
             leads when it holds none. */}
         {b.count > 0 && (
+          // Muted, not the full accent. These bars are a magnitude, not an
+          // alarm; at full strength red they shout louder than the "late"
+          // counts beside them, which are the part that actually needs
+          // someone to do something.
           <span
-            className="block h-full rounded-full bg-primary"
+            className="block h-full rounded-full bg-primary/40"
             style={{ width: `${Math.max(3, pctWidth)}%` }}
           />
         )}

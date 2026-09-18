@@ -2,7 +2,7 @@ import React from "react";
 
 export function CardSkeleton() {
   return (
-    <div className="card-surface glass-card p-5 animate-pulse min-h-[140px] flex flex-col justify-between">
+    <div className="card-surface p-5 animate-pulse min-h-[140px] flex flex-col justify-between">
       <div className="space-y-2">
         <div className="h-3 w-1/3 bg-slate-200 rounded" />
         <div className="h-6 w-1/2 bg-slate-300 rounded mt-2" />
@@ -14,7 +14,7 @@ export function CardSkeleton() {
 
 export function ChartSkeleton({ height = "h-56" }: { height?: string }) {
   return (
-    <div className="card-surface glass-card p-5 animate-pulse flex flex-col">
+    <div className="card-surface p-5 animate-pulse flex flex-col">
       <div className="flex justify-between items-center mb-4">
         <div className="h-4 w-1/4 bg-slate-200 rounded" />
         <div className="h-3 w-16 bg-slate-200 rounded" />
@@ -52,7 +52,7 @@ export function DashboardPageSkeleton() {
 
 export function LeaderboardSkeleton() {
   return (
-    <div className="card-surface glass-card p-5 animate-pulse flex flex-col">
+    <div className="card-surface p-5 animate-pulse flex flex-col">
       <div className="flex justify-between items-center mb-4">
         <div className="h-4 w-1/3 bg-slate-200 rounded" />
         <div className="h-3 w-16 bg-slate-200 rounded" />

@@ -6,6 +6,7 @@ import { withTenant } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
 import { Avatar } from "@/components/ui/Avatar";
 import { formatINR } from "@/lib/utils";
+import { EmptySection } from "./EmptySection";
 
 /**
  * Client moments — the next seven days of reasons to contact a client for a
@@ -145,14 +146,13 @@ export async function ClientMomentsStrip({ session }: { session: SessionUser }) 
 
   if (!rows.length) {
     return (
-      <div className="card-surface p-4">
-        <Header count={0} />
-        <p className="text-sm text-muted-foreground mt-2 max-w-xl leading-relaxed">
-          Nothing in the next seven days. Birthdays, anniversaries and review dates appear here
-          as soon as those dates are on the client record &mdash; a quick win is filling the
-          missing dates flagged in <span className="text-foreground font-medium">Action centre &mdash; data hygiene</span> below.
-        </p>
-      </div>
+      <EmptySection
+        icon={Cake}
+        title="Client moments"
+        note="No birthdays, anniversaries or reviews in the next 7 days."
+        href="/dashboard/calendar"
+        linkLabel="Calendar"
+      />
     );
   }
 

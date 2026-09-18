@@ -281,7 +281,7 @@ export async function RmDashboard({
         <Kpi label="Open leads" value={String(data.openLeads)} sub={`${data.convertedMtd} converted · ${periodLabel}`} />
         {/* Sales Quota Ring — driven by users.annual_target / 12 */}
         {data.monthlyTarget > 0 ? (
-          <div className="card-surface glass-card p-4 flex flex-col items-center justify-center text-center">
+          <div className="card-surface p-4 flex flex-col items-center justify-center text-center">
             <div className="text-2xs text-muted-foreground font-bold uppercase tracking-wider mb-2">MTD Sales Quota</div>
             <div className="relative size-16 flex items-center justify-center">
               <svg className="size-full transform -rotate-90">
@@ -329,7 +329,7 @@ export async function RmDashboard({
         ) : (
           <Link
             href="/dashboard/settings/targets"
-            className="card-surface glass-card p-4 flex flex-col items-center justify-center text-center hover:bg-accent/40 transition-colors"
+            className="card-surface p-4 flex flex-col items-center justify-center text-center hover:bg-accent/40 transition-colors"
           >
             <div className="text-2xs text-muted-foreground font-bold uppercase tracking-wider mb-2">MTD Quota</div>
             <div className="size-16 rounded-full border-2 border-dashed border-border flex items-center justify-center">
@@ -582,7 +582,7 @@ function Kpi({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="card-surface glass-card p-5 hover-glow-cyan">
+    <div className="card-surface p-5 hover-glow-cyan">
       <div className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">{label}</div>
       <div className="text-2xl font-bold mt-2 tracking-tight text-gradient">{value}</div>
       {sub && <div className="text-xs text-muted-foreground mt-1 font-medium">{sub}</div>}
@@ -593,7 +593,7 @@ function Kpi({
 
 function Section({ title, count, children }: { title: string; count?: number; children: React.ReactNode }) {
   return (
-    <div className="card-surface glass-card p-5">
+    <div className="card-surface p-5">
       <div className="font-semibold flex items-center justify-between mb-3">
         <span className="text-sm font-semibold tracking-tight text-foreground/90">{title}</span>
         {count !== undefined && (

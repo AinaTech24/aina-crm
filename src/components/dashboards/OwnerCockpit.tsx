@@ -36,6 +36,7 @@ import { loadRmLeaderboard } from "@/lib/dashboard/rm-leaderboard";
 import { LeadFunnelSection } from "./LeadFunnelSection";
 import { AumSegmentSection } from "./AumSegmentSection";
 import { CardSkeleton, ChartSkeleton, LeaderboardSkeleton } from "./DashboardSkeletons";
+import { Band } from "./DashboardShared";
 
 /** Build a "?period=…(&pstart=…)" query suffix so drill-down links open scoped
  *  to the same window the cockpit is showing. Returns "" for the default (mtd,
@@ -115,11 +116,9 @@ export async function OwnerCockpit({
           for below the fold. Same words, same information, as an ordinary
           page header like every other screen. */}
       <div>
-        <h1 className="page-title">
-          Welcome back, {session.name.split(" ")[0]}
-        </h1>
+        <h1 className="page-title">Welcome back, {session.name.split(" ")[0]}</h1>
         <p className="page-subtitle mt-1">
-          Your firm at a glance, as of <span className="font-medium text-foreground">{today}</span>.
+          Your firm as of <span className="text-foreground font-medium">{today}</span>.
         </p>
       </div>
 
@@ -128,51 +127,47 @@ export async function OwnerCockpit({
         <SetupChecklist tenantId={session.tenantId} />
       </Suspense>
 
-      {/* Firm pulse — headline AUM / investment / SIP book + what moved in the
-          last N days. Its own Suspense boundary so the heavier cockpit body
-          below never delays the numbers people open this page for. */}
-      <Suspense fallback={<FirmPulseSkeleton />}>
-        <FirmPulse tenantId={session.tenantId} session={session} days={activityDays} />
-      </Suspense>
-
-      {/* Client moments — the only forward-looking, client-FACING panel on this
-          page. Everything else reports what already happened; this is the week's
-          birthdays, anniversaries and reviews, firm-wide. Placed directly under
-          the pulse so the first two things an owner sees are "how is the firm"
-          and "who should we reach out to". */}
-      {tab === "overview" && (
-        <Suspense fallback={null}>
-          <ClientMomentsStrip session={session} />
+      {/* ── Band 1: the state of the firm ─────────────────────────────────
+          Firm pulse keeps its own Suspense boundary so the heavier cockpit
+          body below never delays the numbers people open this page for. */}
+      <Band title="Firm at a glance">
+        <Suspense fallback={<FirmPulseSkeleton />}>
+          <FirmPulse tenantId={session.tenantId} session={session} days={activityDays} />
         </Suspense>
-      )}
 
-      {/* Target achievement — the firm against its own annual targets. The
-          numbers already existed on /dashboard/finances/progress; they were
-          just buried where nobody looked. */}
-      {tab === "overview" && (
-        <Suspense fallback={<CardSkeleton />}>
-          <TargetAchievementSection session={session} />
-        </Suspense>
-      )}
+        {/* The firm against its own annual targets. These numbers already
+            existed on /dashboard/finances/progress; they were just buried
+            where nobody looked. */}
+        {tab === "overview" && (
+          <Suspense fallback={<CardSkeleton />}>
+            <TargetAchievementSection session={session} />
+          </Suspense>
+        )}
 
-      {/* Lead pipeline — stage occupancy NOW, as against the Lead Funnel
-          further down, which is a period flow. Deliberately additive: the
-          funnel answers "how did this month's leads progress", this answers
-          "where is the pipeline stuck today". Neither substitutes for the
-          other, so the funnel stays. */}
-      {tab === "overview" && (
-        <Suspense fallback={<CardSkeleton />}>
-          <LeadPipelineSection session={session} branchId={branchId} />
-        </Suspense>
-      )}
+        {/* Stage occupancy NOW, as against the Lead Funnel in "Book health",
+            which is a period flow. Deliberately additive: the funnel answers
+            "how did this month's leads progress", this answers "where is the
+            pipeline stuck today". */}
+        {tab === "overview" && (
+          <Suspense fallback={<CardSkeleton />}>
+            <LeadPipelineSection session={session} branchId={branchId} />
+          </Suspense>
+        )}
+      </Band>
 
-      {/* Expiry pipeline — the forward-looking counterpart to the Action
-          Centre. That lists what is already wrong; this is what is about to be,
-          while there is still time to act. */}
+      {/* ── Band 2: things that have not happened yet ─────────────────────
+          Split from "Needs attention" on purpose. That band is what is
+          already wrong; this is what is about to be, while there is still
+          time to act on it. */}
       {tab === "overview" && (
-        <Suspense fallback={<CardSkeleton />}>
-          <ExpiryPipelineSection session={session} branchId={branchId} />
-        </Suspense>
+        <Band title="Coming up">
+          <Suspense fallback={null}>
+            <ClientMomentsStrip session={session} />
+          </Suspense>
+          <Suspense fallback={<CardSkeleton />}>
+            <ExpiryPipelineSection session={session} branchId={branchId} />
+          </Suspense>
+        </Band>
       )}
 
       {tab === "overview" && (
@@ -239,8 +234,8 @@ function CockpitBodySkeleton() {
   return (
     <div className="space-y-6">
       <div className="h-11 rounded-xl bg-card border border-border/50 animate-pulse" />
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {Array.from({ length: 4 }).map((_, i) => (
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        {Array.from({ length: 3 }).map((_, i) => (
           <div key={i} className="h-28 rounded-xl bg-card border border-border/50 animate-pulse" />
         ))}
       </div>
@@ -623,8 +618,9 @@ async function OwnerCockpitBody({
           The sub-labels below name the population so the figures can be told
           apart. Do NOT "fix" this by making the numbers match — they answer
           different questions; change the LABELS if the wording is unclear. */}
+      <Band title="Business &amp; team">
       {anyHeadline && (
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         {show("kpi.total_clients") && <Kpi
           href={withPeriod("/dashboard/investors", periodQuery)}
           icon={Users}
@@ -658,32 +654,51 @@ async function OwnerCockpitBody({
           value={formatINR(data.netBusiness)}
           sub={`Gross ${formatINR(data.sipAddedAmt + data.lumpsumAmt)}`}
           trend={data.netBusiness >= 0 ? "up" : "down"}
-          hero
           sparkline={data.netBizSpark}
         />}
       </div>
       )}
 
-      {/* ---------- Growth & retention — churn, tax-harvest, referrals, regulatory (streamed) ---------- */}
+      {/* Referrals and circulars — how the book grows and what keeps it. */}
       {show("section.growth_retention") && (
       <Suspense fallback={<CardSkeleton />}>
         <GrowthRetentionSection session={session} />
       </Suspense>
       )}
 
-      {/* ---------- 2b. Data gaps — fixes from MFD ops checklist ---------- */}
+      {/* RM leaderboard — period-scoped and eight columns wide, so it gets its
+          own row rather than a third of one. */}
+      {show("section.rm_leaderboard") && (
+      <Suspense fallback={<LeaderboardSkeleton />}>
+        <RmLeaderboardSection
+          session={session}
+          from={range.fromDate}
+          to={range.toDate}
+          periodLabel={periodLabel}
+          periodQuery={periodQuery}
+        />
+      </Suspense>
+      )}
+      </Band>
+
+      {/* ── Band 4: what is already wrong ─────────────────────────────────
+          The action centre ranks gaps in the client master; the queues below
+          it are work that has gone past its date. Both are overdue, which is
+          what separates this band from "Coming up". */}
+      <Band title="Needs attention">
       {show("section.data_gaps") && <DataGapsTile />}
 
-      {/* ---------- 3. Attention queues (streamed via Suspense) ---------- */}
       {show("section.attention_queues") && (
       <Suspense fallback={<CardSkeleton />}>
         <AttentionQueuesSection session={session} />
       </Suspense>
       )}
+      </Band>
 
-      {/* ---------- 5. Conversion + RM-wise + chart (streamed via Suspense) ---------- */}
+      {/* ── Band 5: the shape and durability of the book ──────────────────*/}
+      <Band title="Book health">
       {anyAnalytics && (
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
         {show("section.lead_funnel") && (
         <Suspense fallback={<ChartSkeleton />}>
           <LeadFunnelSection session={session} period={period} />
@@ -699,22 +714,9 @@ async function OwnerCockpitBody({
       </div>
       )}
 
-      {/* RM leaderboard — now period-scoped and eight columns wide, so it gets
-          its own row rather than a third of one. */}
-      {show("section.rm_leaderboard") && (
-      <Suspense fallback={<LeaderboardSkeleton />}>
-        <RmLeaderboardSection
-          session={session}
-          from={range.fromDate}
-          to={range.toDate}
-          periodLabel={periodLabel}
-          periodQuery={periodQuery}
-        />
-      </Suspense>
-      )}
-
-      {/* ---------- SIP Persistency — franchise health metric ---------- */}
+      {/* SIP persistency — the franchise-health metric. */}
       {show("section.sip_persistency") && <SipPersistencyTile session={session} />}
+      </Band>
     </div>
   );
 }
@@ -742,7 +744,7 @@ function Group({
         {link && (
           <Link
             href={link.href}
-            className="text-xs text-brand-cyan-deep hover:underline font-medium"
+            className="text-2xs text-muted-foreground hover:text-foreground font-medium"
           >
             {link.label} →
           </Link>
@@ -792,7 +794,7 @@ function Kpi({
     const inner = (
       <div className="kpi-hero relative overflow-hidden">
         <div className="flex items-center justify-between">
-          <span className="text-2xs uppercase tracking-wider font-semibold text-white/80">
+          <span className="text-2xs font-semibold uppercase tracking-wide leading-snug text-white/80">
             {label}
           </span>
           {Icon && (
@@ -822,25 +824,23 @@ function Kpi({
     return href ? <Link href={href}>{inner}</Link> : inner;
   }
 
-  const iconBg: Record<string, string> = {
-    cyan: "bg-brand-cyan-light text-brand-cyan-deep",
-    violet: "bg-violet-50 text-violet-600",
-    emerald: "bg-emerald-50 text-emerald-600",
-    amber: "bg-amber-50 text-amber-600",
-    default: "bg-secondary text-foreground",
-  };
-  const bg = iconBg[accent ?? "default"];
+  // `accent` is kept in the signature so existing call sites still typecheck,
+  // but every KPI icon now sits on the same neutral chip. A headline number is
+  // not a severity, and four pastel accents on one row was the single loudest
+  // source of visual noise on this page.
+  const bg = "bg-secondary text-muted-foreground";
+  void accent;
   const trendColor =
     trend === "up"
-      ? "text-emerald-600"
+      ? "text-success"
       : trend === "down"
-      ? "text-rose-600"
-      : "text-muted-foreground";
+        ? "text-destructive"
+        : "text-muted-foreground";
 
   const inner = (
-    <div className="kpi-card glass-card">
+    <div className="kpi-card">
       <div className="flex items-center justify-between">
-        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
+        <span className="text-2xs font-semibold uppercase tracking-wide leading-snug text-muted-foreground">
           {label}
         </span>
         {Icon && (
@@ -849,14 +849,16 @@ function Kpi({
           </div>
         )}
       </div>
-      <div className="flex items-baseline gap-2 mt-2 flex-wrap">
-        <div className="text-2xl font-bold tabular-nums tracking-tight">{value}</div>
+      <div className="flex items-baseline gap-2 mt-2.5 flex-wrap">
+        <div className="font-display text-[1.75rem] font-extrabold leading-none tabular-nums tracking-tight">
+          {value}
+        </div>
         {delta && (
           <span
             className={`inline-flex items-center gap-0.5 text-2xs font-bold px-1.5 py-0.5 rounded-full ${
               deltaTone === "down"
-                ? "bg-rose-50 text-rose-700"
-                : "bg-emerald-50 text-emerald-700"
+                ? "bg-destructive/10 text-destructive"
+                : "bg-success/10 text-success"
             }`}
           >
             {deltaTone === "down" ? (
@@ -922,9 +924,9 @@ function Stat({
       : "bg-brand-cyan-light text-brand-cyan-deep";
 
   const inner = (
-    <div className="kpi-card glass-card">
+    <div className="kpi-card">
       <div className="flex items-center justify-between">
-        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
+        <span className="text-2xs font-semibold uppercase tracking-wide leading-snug text-muted-foreground">
           {label}
         </span>
         {Icon && (

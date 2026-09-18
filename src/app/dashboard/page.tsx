@@ -143,7 +143,7 @@ export default async function DashboardPage({
       tabsBar = <DashboardTabs current={dashTab} />;
     }
     memberBar = (
-      <div className="flex items-center gap-2 flex-wrap">
+      <>
         <DashboardMemberFilter
           members={members}
           selected={selected ? rmParam : ""}
@@ -151,10 +151,11 @@ export default async function DashboardPage({
           dateTo={dateTo}
         />
         <DashboardBranchFilter branches={branches} selected={selectedBranch} />
+        <span className="h-5 w-px bg-border" aria-hidden />
         {/* Eight one-click ranges in front of the Period dropdown, which keeps
             the richer pickers (specific month / quarter / since / custom). */}
         <PeriodChips current={period} />
-      </div>
+      </>
     );
     dash = selected ? (
       <RmDashboard session={session} targetUserId={selected.id} targetName={selected.name} from={dateFrom} to={dateTo} />
@@ -162,7 +163,11 @@ export default async function DashboardPage({
       <OwnerCockpit session={session} period={period} customStart={pstart} customFrom={pfrom} customTo={pto} activityDays={activityDays} branchId={selectedBranch} tab={dashTab} />
     );
     if (!selected) {
-      headerControls = <DashboardHeaderBar period={period} currentLabel={periodLabel} variant="light" />;
+      headerControls = (
+        <DashboardHeaderBar period={period} currentLabel={periodLabel} variant="light">
+          {memberBar}
+        </DashboardHeaderBar>
+      );
     }
   } else if (can(roles, "dashboard.view.compliance", perms)) {
     dash = <ComplianceCockpit session={session} period={period} customStart={pstart} />;
@@ -186,11 +191,16 @@ export default async function DashboardPage({
       {/* Tabs first, then filters: a tab chooses WHAT you are looking at, the
           filters refine it. Reading order should follow that. */}
       {tabsBar && <div className="mt-1 mb-3">{tabsBar}</div>}
-      {memberBar && (
-        <div className="mb-5 flex items-center justify-between gap-3 flex-wrap">
-          {memberBar}
-          {headerControls}
-        </div>
+      {/* One toolbar. The scope controls render inside the header bar, so the
+          period chips and the period dropdown — the same value — finally sit
+          together instead of at opposite ends of a wrapping row. When there is
+          no header bar (an RM drill-down), the scope controls stand alone. */}
+      {headerControls ? (
+        <div className="mb-5">{headerControls}</div>
+      ) : (
+        memberBar && (
+          <div className="mb-5 flex flex-wrap items-center gap-2">{memberBar}</div>
+        )
       )}
       {/* The role cockpits are async server components doing their own data
           fetching — stream them in behind a skeleton so the shell (sidebar,

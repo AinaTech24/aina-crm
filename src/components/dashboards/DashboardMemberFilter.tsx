@@ -42,16 +42,14 @@ export function DashboardMemberFilter({
   }
 
   return (
-    <div className="flex items-center gap-2 flex-wrap">
-      <span className="text-xs font-medium text-muted-foreground inline-flex items-center gap-1.5">
-        <Users className="size-3.5" /> Viewing
-      </span>
+    <div className="flex items-center gap-1.5">
+      <Users className="size-3.5 shrink-0 text-muted-foreground" />
       <Select
         value={selected ?? ""}
         onChange={onChange}
         options={options}
         size="sm"
-        className="w-56"
+        className="w-44"
         ariaLabel="View dashboard for a team member"
       />
     </div>

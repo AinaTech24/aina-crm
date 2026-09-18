@@ -146,14 +146,12 @@ export async function MarketingInsightsSection({ session }: { session: SessionUs
   return (
     <div className="space-y-6">
       {/* Service vs marketing comm split */}
-      <div className="card-surface glass-card p-5">
+      <div className="card-surface p-5">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-            <div className="size-7 rounded-lg bg-brand-cyan-light grid place-items-center">
-              <MessageCircle className="size-3.5 text-brand-cyan-deep" />
-            </div>
-            Service vs marketing comm mix (30d)
-          </h2>
+          <h2 className="section-title flex items-center gap-2">
+          <MessageCircle className="size-4 text-muted-foreground" />
+          Service vs marketing comm mix (30d)
+        </h2>
           <span className="text-xs text-muted-foreground">
             Healthy MFDs run ~70% service-heavy
           </span>
@@ -192,14 +190,12 @@ export async function MarketingInsightsSection({ session }: { session: SessionUs
 
       {/* Consent health + Template pipeline */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="card-surface glass-card p-5">
+        <div className="card-surface p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-              <div className="size-7 rounded-lg bg-emerald-50 grid place-items-center">
-                <Heart className="size-3.5 text-emerald-600" />
-              </div>
-              Consent base health
-            </h2>
+            <h2 className="section-title flex items-center gap-2">
+          <Heart className="size-4 text-muted-foreground" />
+          Consent base health
+        </h2>
             <span className="text-xs text-muted-foreground">
               {data.consentHealth.totalActive} active
             </span>
@@ -246,17 +242,15 @@ export async function MarketingInsightsSection({ session }: { session: SessionUs
           </div>
         </div>
 
-        <div className="card-surface glass-card p-5">
+        <div className="card-surface p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-              <div className="size-7 rounded-lg bg-amber-50 grid place-items-center">
-                <ListChecks className="size-3.5 text-amber-700" />
-              </div>
-              Template approval pipeline
-            </h2>
+            <h2 className="section-title flex items-center gap-2">
+          <ListChecks className="size-4 text-muted-foreground" />
+          Template approval pipeline
+        </h2>
             <Link
               href="/dashboard/templates"
-              className="text-xs text-amber-700 hover:underline font-semibold"
+              className="text-2xs text-muted-foreground hover:text-foreground font-semibold"
             >
               Templates →
             </Link>
@@ -303,14 +297,12 @@ export async function MarketingInsightsSection({ session }: { session: SessionUs
       </div>
 
       {/* Source conversion */}
-      <div className="card-surface glass-card p-5">
+      <div className="card-surface p-5">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-            <div className="size-7 rounded-lg bg-violet-50 grid place-items-center">
-              <ShieldQuestion className="size-3.5 text-violet-700" />
-            </div>
-            Source conversion (MTD)
-          </h2>
+          <h2 className="section-title flex items-center gap-2">
+          <ShieldQuestion className="size-4 text-muted-foreground" />
+          Source conversion (MTD)
+        </h2>
           <span className="text-xs text-muted-foreground">
             Which channels actually deliver clients
           </span>
@@ -411,7 +403,7 @@ function MiniStat({
       : "text-foreground border-border/40 bg-secondary/30";
   return (
     <div className={`p-2 rounded-lg border ${cls}`}>
-      <div className="text-2xs uppercase tracking-wider font-semibold opacity-80">
+      <div className="text-2xs font-semibold uppercase tracking-wide leading-snug opacity-80">
         {label}
       </div>
       <div className="text-base font-bold mt-0.5 tabular-nums">{value}</div>
@@ -440,7 +432,7 @@ function PipelineTile({
       : "text-foreground border-border/40 bg-secondary/30";
   return (
     <div className={`p-3 rounded-lg border ${cls}`}>
-      <div className="text-2xs uppercase tracking-wider font-semibold opacity-80">
+      <div className="text-2xs font-semibold uppercase tracking-wide leading-snug opacity-80">
         {label}
       </div>
       <div className="text-xl font-bold mt-1 tabular-nums">{value}</div>

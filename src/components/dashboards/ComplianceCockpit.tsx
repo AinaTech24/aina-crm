@@ -225,8 +225,8 @@ export async function ComplianceCockpit({
         {/* Left column (2/3 width on desktop) */}
         <div className="lg:col-span-2 space-y-6">
           {/* DDQ breakdown stats */}
-          <div className="card-surface glass-card p-5">
-            <h2 className="font-semibold text-sm tracking-tight text-foreground/90 mb-4 flex items-center gap-2">
+          <div className="card-surface p-5">
+            <h2 className="section-title mb-4 flex items-center gap-2">
               <ShieldCheck className="size-4 text-amber-600" /> DDQ Breakdown Checklist
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -238,20 +238,20 @@ export async function ComplianceCockpit({
               <BreakdownProgress label="Audit Trail Integrity" score={bd("auditTrailIntegrity")} />
             </div>
             <div className="mt-4 pt-3 border-t text-right">
-              <Link href="/dashboard/compliance" className="text-xs text-amber-700 hover:underline font-semibold inline-flex items-center gap-1">
+              <Link href="/dashboard/compliance" className="text-2xs text-muted-foreground hover:text-foreground font-semibold inline-flex items-center gap-1">
                 View AMFI self-audit questionnaire <ArrowRight className="size-3" />
               </Link>
             </div>
           </div>
 
           {/* Recent Audit log table */}
-          <div className="card-surface glass-card p-5">
+          <div className="card-surface p-5">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-sm tracking-tight text-foreground/90 flex items-center gap-2">
+              <h2 className="section-title flex items-center gap-2">
                 <Activity className="size-4 text-amber-600" /> Audit Log Trail
                 <span className="text-2xs font-medium text-muted-foreground normal-case">· {range.label}</span>
               </h2>
-              <Link href="/dashboard/audit-log" className="text-xs text-amber-700 hover:underline font-semibold">
+              <Link href="/dashboard/audit-log" className="text-2xs text-muted-foreground hover:text-foreground font-semibold">
                 Open full audit register →
               </Link>
             </div>
@@ -292,8 +292,8 @@ export async function ComplianceCockpit({
         {/* Right column (1/3 width on desktop) */}
         <div className="space-y-6">
           {/* Expiries Panel */}
-          <div className="card-surface glass-card p-5">
-            <h2 className="font-semibold text-sm tracking-tight text-foreground/90 mb-3 flex items-center gap-2">
+          <div className="card-surface p-5">
+            <h2 className="section-title mb-3 flex items-center gap-2">
               <Clock className="size-4 text-amber-600" /> Compliance Expiry Funnel
             </h2>
             <div className="space-y-2.5 text-xs">
@@ -307,8 +307,8 @@ export async function ComplianceCockpit({
           </div>
 
           {/* Meta template approvals */}
-          <div className="card-surface glass-card p-5">
-            <h2 className="font-semibold text-sm tracking-tight text-foreground/90 mb-3 flex items-center gap-2">
+          <div className="card-surface p-5">
+            <h2 className="section-title mb-3 flex items-center gap-2">
               <FileText className="size-4 text-amber-600" /> Meta WhatsApp Templates
             </h2>
             {Number(tpl.meta_pending ?? 0) === 0 && Number(tpl.meta_rejected ?? 0) === 0 ? (
@@ -331,15 +331,15 @@ export async function ComplianceCockpit({
               </div>
             )}
             <div className="mt-3 text-right">
-              <Link href="/dashboard/templates" className="text-xs text-amber-700 hover:underline font-semibold">
+              <Link href="/dashboard/templates" className="text-2xs text-muted-foreground hover:text-foreground font-semibold">
                 Manage WhatsApp templates →
               </Link>
             </div>
           </div>
 
           {/* Circulars */}
-          <div className="card-surface glass-card p-5">
-            <h2 className="font-semibold text-sm tracking-tight text-foreground/90 mb-3 flex items-center gap-2">
+          <div className="card-surface p-5">
+            <h2 className="section-title mb-3 flex items-center gap-2">
               <ExternalLink className="size-4 text-amber-600" /> Recent AMFI Circulars
             </h2>
             {data.circulars.length === 0 ? (

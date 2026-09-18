@@ -17,7 +17,7 @@
  */
 
 import Link from "next/link";
-import { ArrowDownRight, ArrowUpRight, ExternalLink, Minus } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, ExternalLink, Minus, Wallet, TrendingUp, Repeat } from "lucide-react";
 import { Sparkline } from "./Sparkline";
 import type { ActivityRange, ActivityTile, Delta, PulseMetric } from "@/lib/dashboard/firm-pulse";
 import { ACTIVITY_RANGES } from "@/lib/dashboard/firm-pulse";
@@ -45,7 +45,7 @@ function DeltaRow({ label, d }: { label: string; d: Delta }) {
     );
   }
   const up = d.abs >= 0;
-  const tone = up ? "text-emerald-600" : "text-rose-600";
+  const tone = up ? "text-success" : "text-destructive";
   const Icon = up ? ArrowUpRight : ArrowDownRight;
   return (
     <div className="flex items-center justify-between gap-2">
@@ -74,27 +74,32 @@ export function FirmPulseStrip({
   baseHref?: string;
 }) {
   return (
-    <section className="space-y-4">
+    <section className="space-y-5" aria-label="Business snapshot">
       {/* ── Headline KPIs ────────────────────────────────────────────── */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {metrics.map((m) => (
           <div
             key={m.key}
-            className="group relative rounded-xl border border-border bg-card p-4 transition hover:border-brand-cyan/40 hover:shadow-sm"
+            className="group relative rounded-2xl border border-border bg-card p-5 shadow-sm transition-colors hover:border-primary/30"
           >
             <div className="flex items-start justify-between gap-2">
-              <h3 className="text-sm font-semibold text-brand-cyan-deep">{m.label}</h3>
+              <div className="flex items-center gap-2.5">
+                <span className="grid size-9 place-items-center rounded-xl bg-primary/5 text-primary">
+                  {m.key === "aum" ? <Wallet className="size-4" /> : m.key === "invested" ? <TrendingUp className="size-4" /> : <Repeat className="size-4" />}
+                </span>
+                <h3 className="text-sm font-medium text-muted-foreground">{m.label}</h3>
+              </div>
               <Link
                 href={HREF[m.key]}
                 aria-label={`Open ${m.label}`}
-                className="text-muted-foreground/50 hover:text-brand-cyan transition"
+                className="btn-icon text-muted-foreground/60 hover:text-primary"
               >
-                <ExternalLink className="size-3.5" />
+                <ArrowUpRight className="size-4" />
               </Link>
             </div>
 
-            <div className="mt-1.5 flex items-end justify-between gap-3">
-              <div className="text-2xl font-bold tracking-tight tabular-nums">{money(m.value)}</div>
+            <div className="mt-5 flex flex-wrap items-end justify-between gap-3">
+              <div className="font-display text-3xl font-bold tracking-tight tabular-nums">{money(m.value)}</div>
               {m.series.length > 1 && (
                 <Sparkline
                   data={m.series}
@@ -107,25 +112,37 @@ export function FirmPulseStrip({
               )}
             </div>
 
-            <div className="mt-3 space-y-1.5 border-t border-border/60 pt-2.5 text-xs">
+            <div className="mt-5 space-y-2 border-t border-border/60 pt-3.5 text-xs">
               {m.footnote ? (
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-muted-foreground">{m.footnote.label}</span>
-                  <span className="tabular-nums font-medium" title={m.footnote.hint}>
-                    {m.footnote.value == null ? "—" : money(m.footnote.value)}
-                  </span>
+                <>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted-foreground">{m.footnote.label}</span>
+                    <span className="tabular-nums font-medium" title={m.footnote.hint}>
+                      {m.footnote.value == null ? "—" : money(m.footnote.value)}
+                    </span>
+                  </div>
+                  {m.mom && <DeltaRow label="MoM" d={m.mom} />}
+                </>
+              ) : !m.day && !m.mom ? (
+                <div
+                  className="text-2xs text-muted-foreground"
+                  title="Day and month-on-month movement fill in once the daily snapshot has run."
+                >
+                  Awaiting first daily snapshot
                 </div>
               ) : (
-                <DeltaRow label="Day" d={m.day} />
+                <>
+                  {m.day && <DeltaRow label="Day" d={m.day} />}
+                  {m.mom && <DeltaRow label="MoM" d={m.mom} />}
+                </>
               )}
-              <DeltaRow label="MoM" d={m.mom} />
             </div>
           </div>
         ))}
       </div>
 
       {/* ── Activity ─────────────────────────────────────────────────── */}
-      <div className="rounded-xl border border-border bg-card p-4">
+      <div className="card-surface p-5">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
           <div className="inline-flex rounded-lg border border-border bg-secondary/40 p-0.5 gap-0.5 text-xs">
             {ACTIVITY_RANGES.map((d) => (
@@ -150,12 +167,8 @@ export function FirmPulseStrip({
             large block of noise that says one thing. Say that one thing instead,
             and keep the link through. */}
         {tiles.every((t) => t.count === 0) ? (
-          <div className="rounded-lg border border-border/60 bg-secondary/20 px-4 py-5 text-center">
-            <div className="text-sm font-medium">No transactions in the last {range} days</div>
-            <p className="text-2xs text-muted-foreground mt-1">
-              Purchases, redemptions, SIP instalments, switches, STP, SWP and rejections all
-              appear here as soon as a feed is imported.
-            </p>
+          <div className="rounded-lg border border-border/60 bg-secondary/20 px-3 py-2 text-2xs text-muted-foreground">
+            No transactions in the last {range} days.
           </div>
         ) : (
         <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
@@ -168,7 +181,7 @@ export function FirmPulseStrip({
                 className={`rounded-lg border p-3 transition hover:shadow-sm ${
                   empty
                     ? "border-border/60 bg-secondary/20 opacity-60 hover:opacity-100"
-                    : "border-border bg-secondary/20 hover:border-brand-cyan/40"
+                    : "border-border bg-secondary/20 hover:border-foreground/25"
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
