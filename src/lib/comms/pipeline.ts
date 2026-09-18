@@ -172,12 +172,62 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
     }
     version = v;
     try {
+      // Client-facing tokens (risk.* / suitability.* / link.*) MUST be resolved
+      // BEFORE resolveTokens, not after.
+      //
+      // resolveTokens enforces the template's `required` flags, and resolveOne
+      // has no `risk` / `suitability` / `link` root in its namespace map — those
+      // namespaces only ever existed as pre-filled values. So a template that
+      // DECLARED `risk.category` as required always threw
+      //   Required variable 'risk.category' is missing
+      // no matter what the client's record held, because the auto-fill that
+      // produces it used to run ~116 lines later. The body rendered fine in
+      // preview (sample data) and the failure only showed on a real send.
+      //
+      // Non-fatal, exactly as it was when it ran later: a query hiccup must not
+      // block a send that has nothing to do with these namespaces.
+      const clientLinkTokens: Record<string, string> = {};
+      try {
+        // Test the declared variable KEYS too, not just the body: a template can
+        // declare `risk.category` while the body renders it only via the subject.
+        const bodyStr =
+          JSON.stringify((v as any).body ?? {}) +
+          JSON.stringify(((v as any).variables ?? []).map((d: any) => d?.key ?? ""));
+        const want = wantsClientLinkTokens(bodyStr);
+        const subjectId = input.investorId ?? input.leadId;
+        const subjectType = input.investorId ? "investor" : "lead";
+        if (subjectId && (want.risk || want.suitability || want.riskLink || want.feedbackLink)) {
+          const auto = await loadClientLinkTokens(tx, {
+            tenantId: input.tenantId,
+            subjectType: subjectType as "investor" | "lead",
+            subjectId,
+            want,
+            createdBy: input.actorUserId ?? undefined,
+          });
+          // Keep only the keys that actually resolved. The loader returns "" for
+          // fields it could not fill, and an empty OVERRIDE would beat a
+          // template's own `fallback` — the old post-resolve merge skipped
+          // blanks (`if (val && …)`), so this keeps that behaviour.
+          for (const [k, val] of Object.entries(auto)) {
+            if (val && String(val).trim() !== "") clientLinkTokens[k] = val;
+          }
+        }
+      } catch (e) {
+        console.warn("[comms] client-link pre-fill skipped:", (e as Error)?.message);
+      }
+
       const tokens = resolveTokens(version.variables as VariableDef[], {
         tenant: tenantRow,
         subject,
         context: input.meta,
-        overrides: input.variables as Record<string, any>,
+        // The RM's own input still wins over anything auto-filled.
+        overrides: { ...clientLinkTokens, ...((input.variables as Record<string, any>) ?? {}) },
       });
+      // Seed the render map as well — the body references these by path and the
+      // declared-variable loop only writes keys it was told about.
+      for (const [k, val] of Object.entries(clientLinkTokens)) {
+        if (val && !(tokens as any)[k]) (tokens as any)[k] = val;
+      }
       // Firm-branding tokens the designer email renderer reads to draw the logo +
       // auto-footer (ARN / address / firm name). These aren't template variables,
       // so they must be injected from the tenant record here.
@@ -277,31 +327,10 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
         console.warn("[comms] transaction auto-fill skipped:", (e as Error)?.message);
       }
 
-      // Auto-fill the CLIENT-FACING tokens: the recipient's risk-profile result
-      // (risk.*), their portfolio-vs-profile suitability (suitability.*), and
-      // login-free action links (link.*). Only runs when the body actually
-      // references them, so a normal send mints no share token. Same precedence
-      // as above — anything already resolved wins.
-      try {
-        const bodyStr = JSON.stringify((version as any).body ?? {});
-        const want = wantsClientLinkTokens(bodyStr);
-        const subjectId = input.investorId ?? input.leadId;
-        const subjectType = input.investorId ? "investor" : "lead";
-        if (subjectId && (want.risk || want.suitability || want.riskLink || want.feedbackLink)) {
-          const auto = await loadClientLinkTokens(tx, {
-            tenantId: input.tenantId,
-            subjectType: subjectType as "investor" | "lead",
-            subjectId,
-            want,
-            createdBy: input.actorUserId ?? undefined,
-          });
-          for (const [k, val] of Object.entries(auto)) {
-            if (val && !(tokens as any)[k]) (tokens as any)[k] = val;
-          }
-        }
-      } catch (e) {
-        console.warn("[comms] client-link auto-fill skipped:", (e as Error)?.message);
-      }
+      // The CLIENT-FACING tokens (risk.* / suitability.* / link.*) are filled
+      // ABOVE, before resolveTokens, so the template's `required` flags can see
+      // them. Filling them here as well would re-run the query and re-mint a
+      // share link for every send.
 
       try {
         rendered = renderBody(input.channel, version, tokens);
