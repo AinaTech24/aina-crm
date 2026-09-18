@@ -17,24 +17,35 @@
  */
 
 import Link from "next/link";
-import { ArrowDownRight, ArrowUpRight, ExternalLink, Minus } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, ExternalLink, Minus, Repeat, TrendingUp, Users, Wallet } from "lucide-react";
+import { MetricTile, type MetricHue } from "./MetricTile";
 import { Sparkline } from "./Sparkline";
 import type { ActivityRange, ActivityTile, Delta, PulseMetric } from "@/lib/dashboard/firm-pulse";
 import { ACTIVITY_RANGES } from "@/lib/dashboard/firm-pulse";
+import { formatINRShort } from "@/lib/utils";
 
-/** Indian-notation short money: ₹1238.64 Cr · ₹71.35 Lakh · ₹3,000. */
-function money(n: number): string {
-  const abs = Math.abs(n);
-  const sign = n < 0 ? "-" : "";
-  if (abs >= 1e7) return `${sign}₹${(abs / 1e7).toFixed(2)} Cr`;
-  if (abs >= 1e5) return `${sign}₹${(abs / 1e5).toFixed(2)} Lakh`;
-  return `${sign}₹${Math.round(abs).toLocaleString("en-IN")}`;
-}
+const money = formatINRShort;
 
 const HREF: Record<PulseMetric["key"], string> = {
   aum: "/dashboard/portfolio-intelligence",
   invested: "/dashboard/transactions",
   sip_book: "/dashboard/sips",
+  clients: "/dashboard/investors",
+};
+
+/** One hue per metric, from the `--metric-*` set. */
+const HUE: Record<PulseMetric["key"], MetricHue> = {
+  aum: "indigo",
+  invested: "emerald",
+  sip_book: "violet",
+  clients: "cyan",
+};
+
+const ICON: Record<PulseMetric["key"], React.ReactNode> = {
+  aum: <TrendingUp className="size-[18px]" />,
+  invested: <Wallet className="size-[18px]" />,
+  sip_book: <Repeat className="size-[18px]" />,
+  clients: <Users className="size-[18px]" />,
 };
 
 function DeltaRow({ label, d }: { label: string; d: Delta }) {
@@ -51,7 +62,7 @@ function DeltaRow({ label, d }: { label: string; d: Delta }) {
     );
   }
   const up = d.abs >= 0;
-  const tone = up ? "text-emerald-600" : "text-rose-600";
+  const tone = up ? "text-success" : "text-destructive";
   const Icon = up ? ArrowUpRight : ArrowDownRight;
   return (
     <div className="flex items-center justify-between gap-2">
@@ -72,66 +83,67 @@ export function FirmPulseStrip({
   tiles,
   range,
   baseHref = "/dashboard",
+  showActivity = true,
 }: {
   metrics: PulseMetric[];
   tiles: ActivityTile[];
   range: ActivityRange;
   /** Where the range chips link back to (query params are appended). */
   baseHref?: string;
+  /**
+   * The transaction-activity strip beneath the KPIs. Off on the Overview tab:
+   * eight tiles of recent transaction volume is real information, but it is
+   * not what an owner opens this page to find out, and the default view is
+   * capped at the handful of sections that are. It renders on Insights.
+   */
+  showActivity?: boolean;
 }) {
   return (
-    <section className="space-y-4">
-      {/* ── Headline KPIs ────────────────────────────────────────────── */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {metrics.map((m) => (
-          <div
-            key={m.key}
-            className="group relative rounded-xl border border-border bg-card p-4 transition hover:border-brand-cyan/40 hover:shadow-sm"
-          >
-            <div className="flex items-start justify-between gap-2">
-              <h3 className="text-sm font-semibold text-brand-cyan-deep">{m.label}</h3>
-              <Link
-                href={HREF[m.key]}
-                aria-label={`Open ${m.label}`}
-                className="text-muted-foreground/50 hover:text-brand-cyan transition"
-              >
-                <ExternalLink className="size-3.5" />
-              </Link>
-            </div>
-
-            <div className="mt-1.5 flex items-end justify-between gap-3">
-              <div className="text-2xl font-bold tracking-tight tabular-nums">{money(m.value)}</div>
-              {m.series.length > 1 && (
-                <Sparkline
-                  data={m.series}
-                  width={96}
-                  height={34}
-                  strokeClass={
-                    m.series[m.series.length - 1] >= m.series[0] ? "text-emerald-500" : "text-rose-500"
-                  }
-                />
-              )}
-            </div>
-
-            <div className="mt-3 space-y-1.5 border-t border-border/60 pt-2.5 text-xs">
-              {m.footnote ? (
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-muted-foreground">{m.footnote.label}</span>
-                  <span className="tabular-nums font-medium" title={m.footnote.hint}>
-                    {m.footnote.value == null ? "—" : money(m.footnote.value)}
-                  </span>
-                </div>
-              ) : (
-                <DeltaRow label="Day" d={m.day} />
-              )}
-              <DeltaRow label="MoM" d={m.mom} />
-            </div>
-          </div>
-        ))}
+    <section className="space-y-5" aria-label="Business snapshot">
+      {/* ── Headline KPIs ──────────────────────────────────────────────
+          Four tiles, each owning a hue from the `--metric-*` set, with AUM
+          leading at a larger size. Every card carries number · delta · trend:
+          a bare figure cannot answer "is this good?", which is what a
+          dashboard is for. */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[1.35fr_repeat(3,minmax(0,1fr))]">
+        {metrics.map((m) => {
+          // Prefer month-on-month: a firm looks at a dashboard to ask how the
+          // month is going, and the day delta is noise at this size.
+          const d = m.mom ?? m.day;
+          const fmt = m.key === "clients" ? (n: number) => Math.round(n).toLocaleString("en-IN") : money;
+          return (
+            <MetricTile
+              key={m.key}
+              hue={HUE[m.key]}
+              lead={m.key === "aum"}
+              icon={ICON[m.key]}
+              label={m.label}
+              value={fmt(m.value)}
+              href={HREF[m.key]}
+              series={m.series}
+              delta={
+                d
+                  ? {
+                      value:
+                        m.key === "clients" || d.pct == null
+                          ? fmt(Math.abs(d.abs))
+                          : `${Math.abs(d.pct * 100).toFixed(1)}%`,
+                      direction: d.abs > 0 ? "up" : d.abs < 0 ? "down" : "flat",
+                      since: "vs last month",
+                    }
+                  : m.footnote && m.footnote.value != null
+                    ? { value: money(m.footnote.value), direction: "flat", since: m.footnote.label }
+                    : undefined
+              }
+            />
+          );
+        })}
       </div>
 
+      {showActivity && (
+      <>
       {/* ── Activity ─────────────────────────────────────────────────── */}
-      <div className="rounded-xl border border-border bg-card p-4">
+      <div className="card-surface p-5">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
           <div className="inline-flex rounded-lg border border-border bg-secondary/40 p-0.5 gap-0.5 text-xs">
             {ACTIVITY_RANGES.map((d) => (
@@ -156,12 +168,8 @@ export function FirmPulseStrip({
             large block of noise that says one thing. Say that one thing instead,
             and keep the link through. */}
         {tiles.every((t) => t.count === 0) ? (
-          <div className="rounded-lg border border-border/60 bg-secondary/20 px-4 py-5 text-center">
-            <div className="text-sm font-medium">No transactions in the last {range} days</div>
-            <p className="text-2xs text-muted-foreground mt-1">
-              Purchases, redemptions, SIP instalments, switches, STP, SWP and rejections all
-              appear here as soon as a feed is imported.
-            </p>
+          <div className="rounded-lg border border-border/60 bg-secondary/20 px-3 py-2 text-2xs text-muted-foreground">
+            No transactions in the last {range} days.
           </div>
         ) : (
         <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
@@ -174,7 +182,7 @@ export function FirmPulseStrip({
                 className={`rounded-lg border p-3 transition hover:shadow-sm ${
                   empty
                     ? "border-border/60 bg-secondary/20 opacity-60 hover:opacity-100"
-                    : "border-border bg-secondary/20 hover:border-brand-cyan/40"
+                    : "border-border bg-secondary/20 hover:border-foreground/25"
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
@@ -203,6 +211,8 @@ export function FirmPulseStrip({
         </div>
         )}
       </div>
+      </>
+      )}
     </section>
   );
 }

@@ -114,7 +114,7 @@ export async function TrailIncomeTile({ session }: { session: SessionUser }) {
   // No data yet — show import prompt
   if (!data.hasData) {
     return (
-      <div className="card-surface glass-card p-5 border-dashed border-2 border-border/50">
+      <div className="card-surface p-5 border-dashed border-2 border-border/50">
         <div className="flex items-start gap-3">
           <div className="size-10 rounded-lg bg-amber-50 grid place-items-center flex-shrink-0">
             <IndianRupee className="size-5 text-amber-700" />
@@ -140,20 +140,18 @@ export async function TrailIncomeTile({ session }: { session: SessionUser }) {
   const trendUp = data.trendDelta >= 0;
 
   return (
-    <div className="card-surface glass-card p-5 relative overflow-hidden">
+    <div className="card-surface p-5 relative overflow-hidden">
       {/* Subtle gradient */}
       <div className="absolute inset-0 bg-gradient-to-br from-emerald-50/60 via-transparent to-transparent pointer-events-none" />
       <div className="relative">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-            <div className="size-7 rounded-lg bg-emerald-50 grid place-items-center">
-              <IndianRupee className="size-3.5 text-emerald-700" />
-            </div>
-            Trail income — {data.currentPeriod}
-          </h2>
+          <h2 className="section-title flex items-center gap-2">
+          <IndianRupee className="size-4 text-muted-foreground" />
+          Trail income — {data.currentPeriod}
+        </h2>
           <Link
             href="/dashboard/commission-reconciliation"
-            className="text-xs text-emerald-700 hover:underline font-semibold"
+            className="text-2xs text-muted-foreground hover:text-foreground font-semibold"
           >
             Full reconciliation →
           </Link>
@@ -217,7 +215,7 @@ export async function TrailIncomeTile({ session }: { session: SessionUser }) {
                 : "bg-white/70"
             }`}
           >
-            <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
+            <div className="text-2xs font-semibold uppercase tracking-wide leading-snug text-muted-foreground">
               Anomalies
             </div>
             <div

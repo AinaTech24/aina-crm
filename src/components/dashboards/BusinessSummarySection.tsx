@@ -99,7 +99,7 @@ export function BusinessSummarySection({
             Business summary — {periodLabel}
           </h2>
         </div>
-        <Link href={reportHref} className="text-xs text-brand-cyan-deep hover:underline font-medium">
+        <Link href={reportHref} className="text-2xs text-muted-foreground hover:text-foreground font-medium">
           Net-sales report →
         </Link>
       </div>

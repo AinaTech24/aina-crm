@@ -99,12 +99,12 @@ export async function MarketingDashboard({
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Campaign ROI visual */}
-        <div className="lg:col-span-2 card-surface glass-card p-5">
+        <div className="lg:col-span-2 card-surface p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
+            <h2 className="section-title flex items-center gap-2">
               <Megaphone className="size-4 text-brand-cyan-deep" /> Campaign ROI Performance
             </h2>
-            <Link href="/dashboard/campaigns" className="text-xs text-brand-cyan-deep hover:underline font-semibold">
+            <Link href="/dashboard/campaigns" className="text-2xs text-muted-foreground hover:text-foreground font-semibold">
               Open all →
             </Link>
           </div>
@@ -121,8 +121,8 @@ export async function MarketingDashboard({
         </div>
 
         {/* Lead sources list */}
-        <div className="card-surface glass-card p-5">
-          <h2 className="font-semibold text-sm tracking-tight text-foreground/90 mb-3">Lead sources · {range.label}</h2>
+        <div className="card-surface p-5">
+          <h2 className="section-title mb-3">Lead sources · {range.label}</h2>
           {data.leadSources.length === 0 ? (
             <DashboardEmptyState
               compact
@@ -144,8 +144,8 @@ export async function MarketingDashboard({
       </div>
 
       {/* Quick Actions */}
-      <div className="card-surface glass-card p-5">
-        <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90 mb-4">
+      <div className="card-surface p-5">
+        <h2 className="section-title flex items-center gap-2 mb-4">
           <Send className="size-4 text-brand-cyan-deep" /> Quick Actions
         </h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -165,7 +165,7 @@ export async function MarketingDashboard({
 function Kpi({ label, value, tone }: { label: string; value: string; tone?: "amber" | "muted" }) {
   const color = tone === "amber" && value !== "0" ? "text-amber-600" : "text-foreground";
   return (
-    <div className="card-surface glass-card p-5 hover-lift">
+    <div className="card-surface p-5 hover-lift">
       <div className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">{label}</div>
       <div className={`text-2xl font-bold mt-2 tracking-tight ${color}`}>{value}</div>
     </div>

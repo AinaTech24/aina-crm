@@ -156,14 +156,12 @@ export async function BackOfficeInsightsSection({ session }: { session: SessionU
   return (
     <div className="space-y-6">
       {/* Client impact strip */}
-      <div className="card-surface glass-card p-5">
+      <div className="card-surface p-5">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-            <div className="size-7 rounded-lg bg-rose-50 grid place-items-center">
-              <Gauge className="size-3.5 text-rose-600" />
-            </div>
-            ₹ at stake in the queues
-          </h2>
+          <h2 className="section-title flex items-center gap-2">
+          <Gauge className="size-4 text-muted-foreground" />
+          ₹ at stake in the queues
+        </h2>
           <span className="text-xs text-muted-foreground">
             Translate counts into client impact
           </span>
@@ -192,14 +190,12 @@ export async function BackOfficeInsightsSection({ session }: { session: SessionU
 
       {/* Time-in-stage + Auto-resolution */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="md:col-span-2 card-surface glass-card p-5">
+        <div className="md:col-span-2 card-surface p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-              <div className="size-7 rounded-lg bg-brand-cyan-light grid place-items-center">
-                <Clock className="size-3.5 text-brand-cyan-deep" />
-              </div>
-              Median time-in-stage (90d)
-            </h2>
+            <h2 className="section-title flex items-center gap-2">
+          <Clock className="size-4 text-muted-foreground" />
+          Median time-in-stage (90d)
+        </h2>
             <span className="text-xs text-muted-foreground">Where the funnel stalls</span>
           </div>
           {data.timeInStage.length === 0 ? (
@@ -251,14 +247,12 @@ export async function BackOfficeInsightsSection({ session }: { session: SessionU
           )}
         </div>
 
-        <div className="card-surface glass-card p-5">
+        <div className="card-surface p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-              <div className="size-7 rounded-lg bg-emerald-50 grid place-items-center">
-                <GitBranch className="size-3.5 text-emerald-600" />
-              </div>
-              SR resolution mix (90d)
-            </h2>
+            <h2 className="section-title flex items-center gap-2">
+          <GitBranch className="size-4 text-muted-foreground" />
+          SR resolution mix (90d)
+        </h2>
           </div>
           <div className="space-y-3">
             <div className="bg-emerald-50/50 border border-emerald-100 rounded-lg p-3">
@@ -285,14 +279,12 @@ export async function BackOfficeInsightsSection({ session }: { session: SessionU
 
       {/* First-90-day playbook + Risk profile renewal */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="card-surface glass-card p-5">
+        <div className="card-surface p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-              <div className="size-7 rounded-lg bg-brand-cyan-light grid place-items-center">
-                <FileCheck2 className="size-3.5 text-brand-cyan-deep" />
-              </div>
-              First-90-day playbook
-            </h2>
+            <h2 className="section-title flex items-center gap-2">
+          <FileCheck2 className="size-4 text-muted-foreground" />
+          First-90-day playbook
+        </h2>
             <span className="text-xs text-muted-foreground">
               {data.playbook.newCount} new clients
             </span>
@@ -312,17 +304,15 @@ export async function BackOfficeInsightsSection({ session }: { session: SessionU
           </div>
         </div>
 
-        <div className="card-surface glass-card p-5">
+        <div className="card-surface p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-              <div className="size-7 rounded-lg bg-amber-50 grid place-items-center">
-                <ShieldCheck className="size-3.5 text-amber-700" />
-              </div>
-              Risk profile renewal queue
-            </h2>
+            <h2 className="section-title flex items-center gap-2">
+          <ShieldCheck className="size-4 text-muted-foreground" />
+          Risk profile renewal queue
+        </h2>
             <Link
               href="/dashboard/risk-profiles"
-              className="text-xs text-amber-700 hover:underline font-semibold"
+              className="text-2xs text-muted-foreground hover:text-foreground font-semibold"
             >
               Open →
             </Link>
@@ -373,7 +363,7 @@ function ImpactCard({
       : "border-amber-100 bg-amber-50/40 text-amber-700";
   return (
     <div className={`p-3 rounded-lg border ${cls}`}>
-      <div className="text-2xs uppercase tracking-wider font-semibold opacity-80">
+      <div className="text-2xs font-semibold uppercase tracking-wide leading-snug opacity-80">
         {label}
       </div>
       <div className="text-xl font-bold mt-1 tabular-nums">{value}</div>
@@ -420,7 +410,7 @@ function RpTile({
       : "border-amber-100 bg-amber-50/40 text-amber-700";
   return (
     <div className={`p-2.5 rounded-lg border ${cls}`}>
-      <div className="text-2xs uppercase tracking-wider font-semibold opacity-80">
+      <div className="text-2xs font-semibold uppercase tracking-wide leading-snug opacity-80">
         {label}
       </div>
       <div className="text-xl font-bold mt-1 tabular-nums">{value}</div>

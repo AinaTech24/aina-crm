@@ -56,6 +56,30 @@
     --brand-cyan-deep: 358 78% 32%;          /* deep red */
     --brand-cyan-light: 358 70% 96%;         /* red tint */
     --brand-violet: 356 60% 55%;
+
+    /* ── Metric accents ────────────────────────────────────────────────
+       A deliberate SIX-hue set, used only by dashboard metric cards to give
+       each figure its own identity — tinted icon chip, sparkline, progress
+       ring. This is a considered exception to the one-accent rule above, not
+       a drift from it: `--primary` stays Aina red and still owns every button,
+       nav pill and focus ring, and severity still speaks through
+       --success / --warning / --destructive.
+
+       The exception exists because the alternative was tested and rejected.
+       With colour spent only on severity, four headline cards sat in a row
+       looking identical and the dashboard read as unfinished however well it
+       was spaced. Identity colour is what the premium dashboards this was
+       benchmarked against all use.
+
+       Rule for anyone extending this: a metric hue may tint a chip, a line or
+       a ring. It may never fill a button or a row — that is severity's job,
+       and a metric hue standing in for "this is wrong" breaks both systems. */
+    --metric-indigo:  243 75% 59%;
+    --metric-emerald: 160 94% 30%;
+    --metric-violet:  263 83% 58%;
+    --metric-cyan:    192 91% 36%;
+    --metric-amber:    32 95% 44%;
+    --metric-rose:    347 77% 50%;
     --brand-mint: 358 75% 41%;              /* re-pointed: = Aina red (one accent) */
     /* Sidebar active-item tint — theme-aware (see .nav-link-active). Soft brand
        red on light; a muted deep red on dark (brand-navy-light would be near
@@ -322,6 +346,12 @@
     @apply rounded-xl bg-card text-card-foreground shadow-sm
            border border-border
            transition-colors duration-150;
+    /* Two layers: a tight contact shadow plus a wide soft one. A single
+       `shadow-sm` draws a box ON the page; this lifts the card OFF it, which
+       is the difference the premium templates trade on. */
+    box-shadow:
+      0 1px 2px hsl(var(--foreground) / .04),
+      0 1px 3px hsl(var(--foreground) / .05);
   }
 
   /* Elevated card — for hero/feature panels */
@@ -988,4 +1018,15 @@ input[type="checkbox"]:not([data-native]):indeterminate::before {
   width: 0.5rem;
   height: 2px;
   border-radius: 1px;
+}
+
+/* ── Dashboard card lift ──────────────────────────────────────────────────
+   Deliberately OUTSIDE @layer components. A bare single-class rule inside that
+   layer has been silently tree-shaken in this project before, with no build
+   error to show for it — see the sidebar icon incident. Plain top-level CSS
+   always ships. */
+.card-raise {
+  box-shadow:
+    0 2px 4px hsl(var(--foreground) / .03),
+    0 8px 24px -6px hsl(var(--foreground) / .10);
 }

@@ -41,14 +41,7 @@ export async function GrowthRetentionSection({ session }: { session: SessionUser
   const circularsToAction = Number((regulatory.rows[0] as { action_required: number })?.action_required ?? 0);
 
   return (
-    <div className="space-y-2.5">
-      <div className="flex items-center gap-2">
-        <div className="h-4 w-1 rounded-full brand-bar" />
-        <h2 className="text-2xs font-bold uppercase tracking-[0.12em] text-foreground/70">
-          Growth &amp; retention
-        </h2>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-2 gap-3">
         <Tile
           href="/dashboard/referrals"
           icon={HeartHandshake}
@@ -65,7 +58,6 @@ export async function GrowthRetentionSection({ session }: { session: SessionUser
           value={String(circularsToAction)}
           sub={circularsToAction > 0 ? "Review in the digest" : "All caught up"}
         />
-      </div>
     </div>
   );
 }
@@ -91,14 +83,14 @@ function Tile({
 
   return (
     <Link href={href}>
-      <div className="kpi-card glass-card">
+      <div className="kpi-card">
         <div className="flex items-center justify-between">
-          <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{label}</span>
+          <span className="text-2xs font-semibold uppercase tracking-wide leading-snug text-muted-foreground">{label}</span>
           <div className={`size-7 rounded-lg grid place-items-center ${iconBg}`}>
             <Icon className="size-3.5" />
           </div>
         </div>
-        <div className={`text-xl font-bold mt-2 tabular-nums tracking-tight ${color}`}>{value}</div>
+        <div className={`font-display text-2xl font-extrabold mt-2 leading-none tabular-nums tracking-tight ${color}`}>{value}</div>
         {sub && <div className="text-2xs text-muted-foreground mt-1">{sub}</div>}
       </div>
     </Link>

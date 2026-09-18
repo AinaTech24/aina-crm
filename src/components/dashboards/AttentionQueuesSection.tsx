@@ -1,9 +1,17 @@
 import React from "react";
 import { sql } from "drizzle-orm";
-import { ClipboardList, AlertOctagon, Crown, ShieldAlert } from "lucide-react";
+import {
+  AlertOctagon,
+  ClipboardList,
+  Crown,
+  Headset,
+  Moon,
+  ShieldAlert,
+  TrendingUp,
+} from "lucide-react";
 import { withTenant } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
-import { Group, Stat } from "./DashboardShared";
+import { Stat } from "./DashboardShared";
 
 export async function AttentionQueuesSection({ session }: { session: SessionUser }) {
   const dormantCutoff = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString();
@@ -42,55 +50,56 @@ export async function AttentionQueuesSection({ session }: { session: SessionUser
   );
 
   return (
-    <Group title="Needs attention">
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
         <Stat
           href="/dashboard/review-meetings"
-          label="Review Meetings Due"
+          label="Review meetings due"
           value={String(data.reviews_due ?? 0)}
           tone={Number(data.reviews_due ?? 0) > 0 ? "amber" : "muted"}
           icon={ClipboardList}
         />
         <Stat
           href="/dashboard/service-requests"
-          label="Pending Service Requests"
+          label="Pending service requests"
           value={String(data.sr_pending ?? 0)}
           tone={Number(data.sr_pending ?? 0) > 0 ? "amber" : "muted"}
+          icon={Headset}
         />
         <Stat
           href="/dashboard/complaints"
-          label="Open Complaints"
+          label="Open complaints"
           value={String(data.complaints_open ?? 0)}
           tone={Number(data.complaints_open ?? 0) > 0 ? "rose" : "muted"}
           icon={AlertOctagon}
         />
         <Stat
           href="/dashboard/reports/high_aum"
-          label="High-AUM Not Reviewed"
+          label="High-AUM not reviewed"
           value={String(data.hni_not_reviewed ?? 0)}
           tone={Number(data.hni_not_reviewed ?? 0) > 0 ? "rose" : "muted"}
+          icon={TrendingUp}
         />
         <Stat
           href="/dashboard/reports/dormant"
-          label="Dormant Clients"
+          label="Dormant clients"
           value={String(data.dormant_clients ?? 0)}
           tone={Number(data.dormant_clients ?? 0) > 0 ? "amber" : "muted"}
+          icon={Moon}
         />
         <Stat
           href="/dashboard/investors"
-          label="KYC Expiring 30d"
+          label="KYC expiring 30d"
           value={String(data.kyc_expiring ?? 0)}
           tone={Number(data.kyc_expiring ?? 0) > 0 ? "amber" : "muted"}
           icon={ShieldAlert}
         />
         <Stat
           href="/dashboard/investors"
-          label="A-Tier Clients"
+          label="A-tier clients"
           value={String(data.tier_a ?? 0)}
           tone="muted"
           icon={Crown}
         />
-      </div>
-    </Group>
+    </div>
   );
 }

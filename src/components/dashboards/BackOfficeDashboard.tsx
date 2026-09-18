@@ -121,15 +121,15 @@ export async function BackOfficeDashboard({ session }: { session: SessionUser })
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 card-surface glass-card p-5">
-          <h2 className="font-semibold text-sm tracking-tight text-foreground/90 mb-2">
+        <div className="lg:col-span-2 card-surface p-5">
+          <h2 className="section-title mb-2">
             Onboarding Bottleneck Funnel
           </h2>
           <OnboardingFunnelChart data={data.funnelData} />
         </div>
-        <div className="card-surface glass-card p-5 flex flex-col justify-between">
+        <div className="card-surface p-5 flex flex-col justify-between">
           <div>
-            <h2 className="font-semibold text-sm tracking-tight text-foreground/90 mb-2">
+            <h2 className="section-title mb-2">
               Onboarding Health
             </h2>
             <p className="text-xs text-muted-foreground leading-relaxed">
@@ -153,12 +153,12 @@ export async function BackOfficeDashboard({ session }: { session: SessionUser })
         </div>
       </div>
 
-      <div className="card-surface glass-card p-5">
+      <div className="card-surface p-5">
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
+          <h2 className="section-title flex items-center gap-2">
             <ClipboardList className="size-4 text-brand-cyan-deep" /> SLA queue (oldest first)
           </h2>
-          <Link href="/dashboard/service-requests" className="text-xs text-brand-cyan-deep hover:underline font-semibold">
+          <Link href="/dashboard/service-requests" className="text-2xs text-muted-foreground hover:text-foreground font-semibold">
             Open all →
           </Link>
         </div>
@@ -240,7 +240,7 @@ function Queue({
   const hasPulse = value > 0 && (tone === "rose" || tone === "amber");
   
   return (
-    <Link href={href} className="card-surface glass-card p-4 hover-lift block">
+    <Link href={href} className="card-surface p-4 hover-lift block">
       <div className="flex items-center justify-between">
         <div className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">{label}</div>
         {hasPulse && (

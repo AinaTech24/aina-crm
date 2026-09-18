@@ -82,7 +82,15 @@ export const LEAD_PHASE_STAGES: CanonicalLeadStage[] = [
   "not_qualified",
 ];
 
-const STAGE_ALIASES: Record<string, CanonicalLeadStage> = {
+/**
+ * Legacy / imported stage vocabularies, folded onto the canonical stage.
+ *
+ * Exported because SQL needs the same mapping: a dashboard that groups by the
+ * raw `stage` column shows "contacted" and "call_done" as two different bars
+ * for the same step, and a firm whose data came from a CSV import sees a
+ * pipeline that does not match the one in the app.
+ */
+export const LEAD_STAGE_ALIASES: Record<string, CanonicalLeadStage> = {
   contacted: "call_done",
   first_call_pending: "call_done",
   follow_up: "contact_in_future",
@@ -122,7 +130,7 @@ export function normalizeLeadStage(
   if (typeof value !== "string") return fallback;
   const key = keyOf(value);
   if ((CANONICAL_LEAD_STAGES as readonly string[]).includes(key)) return key as CanonicalLeadStage;
-  return STAGE_ALIASES[key] ?? fallback;
+  return LEAD_STAGE_ALIASES[key] ?? fallback;
 }
 
 export function normalizePhoneLast10(value: unknown): string | null {

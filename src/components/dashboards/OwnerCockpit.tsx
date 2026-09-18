@@ -14,6 +14,13 @@ import { Sparkline } from "./Sparkline";
 import { FirmPulseStrip } from "./FirmPulseStrip";
 import { FirmChartsSection, FirmChartsSkeleton } from "./FirmChartsSection";
 import { FirmTrackerSections } from "./FirmTrackerSections";
+import { ExpiryPipeline } from "./ExpiryPipeline";
+import { TargetAchievement } from "./TargetAchievement";
+import { LeadPipeline } from "./LeadPipeline";
+import { loadLeadPipeline } from "@/lib/dashboard/lead-pipeline";
+import { fyElapsedFraction, loadTargetProgress } from "@/lib/dashboard/target-progress";
+import { currentFyLabel, fyStartYear } from "@/lib/finance/fiscal-year";
+import { loadExpiryPipeline } from "@/lib/dashboard/expiry-pipeline";
 import type { DashboardTab } from "@/lib/dashboard/tabs";
 import { loadFirmTracker } from "@/lib/dashboard/firm-tracker";
 import { ClientMomentsStrip } from "./ClientMomentsStrip";
@@ -24,7 +31,8 @@ import { isDashboardWidgetVisible } from "@/config/dashboard-widgets";
 // Async parts streamed via Suspense
 import { GrowthRetentionSection } from "./GrowthRetentionSection";
 import { AttentionQueuesSection } from "./AttentionQueuesSection";
-import { RmLeaderboard } from "./RmLeaderboard";
+import { RmLeaderboardTable } from "./RmLeaderboardTable";
+import { loadRmLeaderboard } from "@/lib/dashboard/rm-leaderboard";
 import { LeadFunnelSection } from "./LeadFunnelSection";
 import { AumSegmentSection } from "./AumSegmentSection";
 import { CardSkeleton, ChartSkeleton, LeaderboardSkeleton } from "./DashboardSkeletons";
@@ -107,11 +115,9 @@ export async function OwnerCockpit({
           for below the fold. Same words, same information, as an ordinary
           page header like every other screen. */}
       <div>
-        <h1 className="page-title">
-          Welcome back, {session.name.split(" ")[0]}
-        </h1>
+        <h1 className="page-title">Welcome back, {session.name.split(" ")[0]}</h1>
         <p className="page-subtitle mt-1">
-          Your firm at a glance, as of <span className="font-medium text-foreground">{today}</span>.
+          Your firm as of <span className="text-foreground font-medium">{today}</span>.
         </p>
       </div>
 
@@ -120,28 +126,61 @@ export async function OwnerCockpit({
         <SetupChecklist tenantId={session.tenantId} />
       </Suspense>
 
-      {/* Firm pulse — headline AUM / investment / SIP book + what moved in the
-          last N days. Its own Suspense boundary so the heavier cockpit body
-          below never delays the numbers people open this page for. */}
-      <Suspense fallback={<FirmPulseSkeleton />}>
-        <FirmPulse tenantId={session.tenantId} session={session} days={activityDays} />
-      </Suspense>
+      {/* ════════════════════════════════════════════════════════════════
+          OVERVIEW — five sections.
 
-      {/* Client moments — the only forward-looking, client-FACING panel on this
-          page. Everything else reports what already happened; this is the week's
-          birthdays, anniversaries and reviews, firm-wide. Placed directly under
-          the pulse so the first two things an owner sees are "how is the firm"
-          and "who should we reach out to". */}
-      {tab === "overview" && (
-        <Suspense fallback={null}>
-          <ClientMomentsStrip session={session} />
-        </Suspense>
-      )}
+          It carried fourteen. B2B finance dashboards cap the default view at
+          nine and lead with the one number that answers the reader's first
+          question; for an MFD owner that is AUM, and whether it is growing.
+          The nine that left are on Insights and Tracker — nothing was deleted,
+          and every `show()` gate still applies wherever its section now lives.
+
+            1  metric strip        AUM · investment · SIP book · clients
+            2  needs you           ranked, actionable, worst first
+            3  targets + pipeline
+            4  team
+
+          Firm pulse keeps its own Suspense boundary so the heavier body below
+          never delays the numbers people open this page for.
+          ════════════════════════════════════════════════════════════════ */}
+      <Suspense fallback={<FirmPulseSkeleton />}>
+        <FirmPulse
+          tenantId={session.tenantId}
+          session={session}
+          days={activityDays}
+          showActivity={tab === "insights"}
+        />
+      </Suspense>
 
       {tab === "overview" && (
         <Suspense fallback={<CockpitBodySkeleton />}>
-          <OwnerCockpitBody session={session} period={period} customStart={customStart} customFrom={customFrom} customTo={customTo} />
+          <OwnerCockpitBody session={session} period={period} customStart={customStart} customFrom={customFrom} customTo={customTo} branchId={branchId} />
         </Suspense>
+      )}
+
+      {/* ── Moved off Overview, onto Insights ─────────────────────────────
+          What is coming up, and the shape of the book. Real work, but not
+          what an owner opens the page to find out. */}
+      {tab === "insights" && (
+        <>
+          <Suspense fallback={null}>
+            <ClientMomentsStrip session={session} />
+          </Suspense>
+          <Suspense fallback={<CardSkeleton />}>
+            <ExpiryPipelineSection session={session} branchId={branchId} />
+          </Suspense>
+          <Suspense fallback={<CockpitBodySkeleton />}>
+            <OwnerCockpitBody
+              session={session}
+              period={period}
+              customStart={customStart}
+              customFrom={customFrom}
+              customTo={customTo}
+              branchId={branchId}
+              mode="insights"
+            />
+          </Suspense>
+        </>
       )}
 
       {/* Analytics band — AUM breakup / client mix, then SIP business and
@@ -166,10 +205,12 @@ export async function OwnerCockpit({
 }
 
 async function FirmPulse({
+  showActivity = true,
   tenantId,
   session,
   days,
 }: {
+  showActivity?: boolean;
   tenantId: string;
   session: SessionUser;
   days: ActivityRange;
@@ -182,7 +223,9 @@ async function FirmPulse({
     }),
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
-  return <FirmPulseStrip metrics={metrics} tiles={tiles} range={days} />;
+  return (
+    <FirmPulseStrip metrics={metrics} tiles={tiles} range={days} showActivity={showActivity} />
+  );
 }
 
 function FirmPulseSkeleton() {
@@ -202,8 +245,8 @@ function CockpitBodySkeleton() {
   return (
     <div className="space-y-6">
       <div className="h-11 rounded-xl bg-card border border-border/50 animate-pulse" />
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {Array.from({ length: 4 }).map((_, i) => (
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        {Array.from({ length: 3 }).map((_, i) => (
           <div key={i} className="h-28 rounded-xl bg-card border border-border/50 animate-pulse" />
         ))}
       </div>
@@ -222,12 +265,17 @@ async function OwnerCockpitBody({
   customStart,
   customFrom,
   customTo,
+  branchId = null,
+  mode = "overview",
 }: {
   session: SessionUser;
   period?: Period;
   customStart?: string;
   customFrom?: string;
   customTo?: string;
+  branchId?: string | null;
+  /** Which tab is asking. Both are served from one set of queries. */
+  mode?: "overview" | "insights";
 }) {
   const now = new Date();
   // Resolve period → start/end range. All "MTD" aggregates in the queries below
@@ -574,20 +622,14 @@ async function OwnerCockpitBody({
     show("section.aum_segment") ||
     show("section.rm_leaderboard");
 
-  return (
-    <div className="space-y-6">
-      {/* ---------- 1. Headline KPIs — hero tiles (with period trajectory) ---------- */}
-      {/* These tiles count `status = 'active'` clients only, while the Firm Pulse
-          strip above counts every ALIVE client (not deleted, not closed, not
-          merged) — the definition the nightly firm snapshot uses. On a book with
-          dormant or pending clients the two legitimately differ; on the demo
-          tenant it is 19 vs 22 clients and Rs 10.78 Cr vs Rs 16.23 Cr.
-          Both were previously labelled just "AUM", 34% apart, on one screen.
-          The sub-labels below name the population so the figures can be told
-          apart. Do NOT "fix" this by making the numbers match — they answer
-          different questions; change the LABELS if the wording is unclear. */}
+  // The cockpit body serves BOTH tabs from one set of queries. Splitting it
+  // into two components would have duplicated five sequential aggregates for
+  // the sake of a layout change.
+  if (mode === "insights") {
+    return (
+      <div className="space-y-6">
       {anyHeadline && (
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         {show("kpi.total_clients") && <Kpi
           href={withPeriod("/dashboard/investors", periodQuery)}
           icon={Users}
@@ -621,32 +663,20 @@ async function OwnerCockpitBody({
           value={formatINR(data.netBusiness)}
           sub={`Gross ${formatINR(data.sipAddedAmt + data.lumpsumAmt)}`}
           trend={data.netBusiness >= 0 ? "up" : "down"}
-          hero
           sparkline={data.netBizSpark}
         />}
       </div>
       )}
 
-      {/* ---------- Growth & retention — churn, tax-harvest, referrals, regulatory (streamed) ---------- */}
+      {/* Referrals and circulars — how the book grows and what keeps it. */}
       {show("section.growth_retention") && (
       <Suspense fallback={<CardSkeleton />}>
         <GrowthRetentionSection session={session} />
       </Suspense>
       )}
 
-      {/* ---------- 2b. Data gaps — fixes from MFD ops checklist ---------- */}
-      {show("section.data_gaps") && <DataGapsTile />}
-
-      {/* ---------- 3. Attention queues (streamed via Suspense) ---------- */}
-      {show("section.attention_queues") && (
-      <Suspense fallback={<CardSkeleton />}>
-        <AttentionQueuesSection session={session} />
-      </Suspense>
-      )}
-
-      {/* ---------- 5. Conversion + RM-wise + chart (streamed via Suspense) ---------- */}
       {anyAnalytics && (
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
         {show("section.lead_funnel") && (
         <Suspense fallback={<ChartSkeleton />}>
           <LeadFunnelSection session={session} period={period} />
@@ -659,16 +689,55 @@ async function OwnerCockpitBody({
         </Suspense>
         )}
 
-        {show("section.rm_leaderboard") && (
-        <Suspense fallback={<LeaderboardSkeleton />}>
-          <RmLeaderboard session={session} period={period} periodQuery={periodQuery} />
-        </Suspense>
-        )}
       </div>
       )}
 
-      {/* ---------- SIP Persistency — franchise health metric ---------- */}
+      {/* SIP persistency — the franchise-health metric. */}
       {show("section.sip_persistency") && <SipPersistencyTile session={session} />}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* 2 · NEEDS YOU — ranked, actionable, worst first. */}
+      {show("section.data_gaps") && <DataGapsTile />}
+
+      {show("section.attention_queues") && (
+      <Suspense fallback={<CardSkeleton />}>
+        <AttentionQueuesSection session={session} />
+      </Suspense>
+      )}
+
+      {/* 3 · TARGETS + PIPELINE. 7/5 because the scorecard carries four rings
+             and the pipeline five short rows. */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div className="lg:col-span-7">
+          <Suspense fallback={<CardSkeleton />}>
+            <TargetAchievementSection session={session} />
+          </Suspense>
+        </div>
+        <div className="lg:col-span-5">
+          <Suspense fallback={<CardSkeleton />}>
+            <LeadPipelineSection session={session} branchId={branchId} />
+          </Suspense>
+        </div>
+      </div>
+
+      {/* 4 · TEAM */}
+      {/* RM leaderboard — period-scoped and eight columns wide, so it gets its
+          own row rather than a third of one. */}
+      {show("section.rm_leaderboard") && (
+      <Suspense fallback={<LeaderboardSkeleton />}>
+        <RmLeaderboardSection
+          session={session}
+          from={range.fromDate}
+          to={range.toDate}
+          periodLabel={periodLabel}
+          periodQuery={periodQuery}
+        />
+      </Suspense>
+      )}
     </div>
   );
 }
@@ -696,7 +765,7 @@ function Group({
         {link && (
           <Link
             href={link.href}
-            className="text-xs text-brand-cyan-deep hover:underline font-medium"
+            className="text-2xs text-muted-foreground hover:text-foreground font-medium"
           >
             {link.label} →
           </Link>
@@ -746,7 +815,7 @@ function Kpi({
     const inner = (
       <div className="kpi-hero relative overflow-hidden">
         <div className="flex items-center justify-between">
-          <span className="text-2xs uppercase tracking-wider font-semibold text-white/80">
+          <span className="text-2xs font-semibold uppercase tracking-wide leading-snug text-white/80">
             {label}
           </span>
           {Icon && (
@@ -776,25 +845,23 @@ function Kpi({
     return href ? <Link href={href}>{inner}</Link> : inner;
   }
 
-  const iconBg: Record<string, string> = {
-    cyan: "bg-brand-cyan-light text-brand-cyan-deep",
-    violet: "bg-violet-50 text-violet-600",
-    emerald: "bg-emerald-50 text-emerald-600",
-    amber: "bg-amber-50 text-amber-600",
-    default: "bg-secondary text-foreground",
-  };
-  const bg = iconBg[accent ?? "default"];
+  // `accent` is kept in the signature so existing call sites still typecheck,
+  // but every KPI icon now sits on the same neutral chip. A headline number is
+  // not a severity, and four pastel accents on one row was the single loudest
+  // source of visual noise on this page.
+  const bg = "bg-secondary text-muted-foreground";
+  void accent;
   const trendColor =
     trend === "up"
-      ? "text-emerald-600"
+      ? "text-success"
       : trend === "down"
-      ? "text-rose-600"
-      : "text-muted-foreground";
+        ? "text-destructive"
+        : "text-muted-foreground";
 
   const inner = (
-    <div className="kpi-card glass-card">
+    <div className="kpi-card">
       <div className="flex items-center justify-between">
-        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
+        <span className="text-2xs font-semibold uppercase tracking-wide leading-snug text-muted-foreground">
           {label}
         </span>
         {Icon && (
@@ -803,14 +870,16 @@ function Kpi({
           </div>
         )}
       </div>
-      <div className="flex items-baseline gap-2 mt-2 flex-wrap">
-        <div className="text-2xl font-bold tabular-nums tracking-tight">{value}</div>
+      <div className="flex items-baseline gap-2 mt-2.5 flex-wrap">
+        <div className="font-display text-[1.75rem] font-extrabold leading-none tabular-nums tracking-tight">
+          {value}
+        </div>
         {delta && (
           <span
             className={`inline-flex items-center gap-0.5 text-2xs font-bold px-1.5 py-0.5 rounded-full ${
               deltaTone === "down"
-                ? "bg-rose-50 text-rose-700"
-                : "bg-emerald-50 text-emerald-700"
+                ? "bg-destructive/10 text-destructive"
+                : "bg-success/10 text-success"
             }`}
           >
             {deltaTone === "down" ? (
@@ -876,9 +945,9 @@ function Stat({
       : "bg-brand-cyan-light text-brand-cyan-deep";
 
   const inner = (
-    <div className="kpi-card glass-card">
+    <div className="kpi-card">
       <div className="flex items-center justify-between">
-        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
+        <span className="text-2xs font-semibold uppercase tracking-wide leading-snug text-muted-foreground">
           {label}
         </span>
         {Icon && (
@@ -931,4 +1000,73 @@ async function FirmTracker({
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
   return <FirmTrackerSections data={data} periodLabel={range.label} />;
+}
+
+/** Loader for the expiry pipeline; honours the branch filter like the tracker. */
+async function ExpiryPipelineSection({
+  session,
+  branchId,
+}: {
+  session: SessionUser;
+  branchId?: string | null;
+}) {
+  const rows = await withTenant(
+    session.tenantId,
+    (tx) => loadExpiryPipeline(tx, branchId ?? null),
+    { userId: session.userId, branchId: session.branchId, roles: session.roles }
+  );
+  return <ExpiryPipeline rows={rows} />;
+}
+
+/** Loader for target achievement — current financial year. */
+async function TargetAchievementSection({ session }: { session: SessionUser }) {
+  const fy = currentFyLabel();
+  const rows = await withTenant(
+    session.tenantId,
+    (tx) => loadTargetProgress(tx, session.tenantId, fy, fyStartYear(fy)),
+    { userId: session.userId, branchId: session.branchId, roles: session.roles }
+  );
+  return (
+    <TargetAchievement rows={rows} fy={fy} elapsed={fyElapsedFraction(fyStartYear(fy))} />
+  );
+}
+
+/** Loader for the lead pipeline — a snapshot, so no date range applies. */
+async function LeadPipelineSection({
+  session,
+  branchId,
+}: {
+  session: SessionUser;
+  branchId?: string | null;
+}) {
+  const data = await withTenant(
+    session.tenantId,
+    (tx) => loadLeadPipeline(tx, { branchId: branchId ?? null }),
+    { userId: session.userId, branchId: session.branchId, roles: session.roles }
+  );
+  return <LeadPipeline data={data} />;
+}
+
+/** Loader for the period-scoped RM leaderboard. */
+async function RmLeaderboardSection({
+  session,
+  from,
+  to,
+  periodLabel,
+  periodQuery,
+}: {
+  session: SessionUser;
+  from: Date;
+  to: Date;
+  periodLabel: string;
+  periodQuery?: string;
+}) {
+  const rows = await withTenant(
+    session.tenantId,
+    (tx) => loadRmLeaderboard(tx, { from, to }),
+    { userId: session.userId, branchId: session.branchId, roles: session.roles }
+  );
+  return (
+    <RmLeaderboardTable rows={rows} periodLabel={periodLabel} periodQuery={periodQuery} />
+  );
 }

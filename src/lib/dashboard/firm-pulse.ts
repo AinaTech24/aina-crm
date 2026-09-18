@@ -30,7 +30,7 @@ export type Delta = {
 } | null;
 
 export type PulseMetric = {
-  key: "aum" | "invested" | "sip_book";
+  key: "aum" | "invested" | "sip_book" | "clients";
   label: string;
   value: number;
   day: Delta;
@@ -60,7 +60,8 @@ export async function loadFirmPulse(tx: Tx): Promise<PulseMetric[]> {
     SELECT
       COALESCE(SUM(aum::numeric)              FILTER (WHERE alive), 0) AS aum,
       COALESCE(SUM(active_sip_amount::numeric) FILTER (WHERE alive), 0) AS sip_book,
-      COUNT(*) FILTER (WHERE alive AND active_sip_amount::numeric > 0)::int AS sip_clients
+      COUNT(*) FILTER (WHERE alive AND active_sip_amount::numeric > 0)::int AS sip_clients,
+      COUNT(*) FILTER (WHERE alive)::int AS clients
     FROM (
       SELECT aum, active_sip_amount,
              (deleted_at IS NULL AND status <> 'closed' AND merged_into_id IS NULL) AS alive
@@ -93,11 +94,14 @@ export async function loadFirmPulse(tx: Tx): Promise<PulseMetric[]> {
 
   // 30 days of history in one pass; the sparkline reads it oldest → newest.
   const hist = (await tx.execute(sql`
-    SELECT snapshot_date, total_aum::numeric AS aum, monthly_sip::numeric AS sip
+    SELECT snapshot_date, total_aum::numeric AS aum, monthly_sip::numeric AS sip,
+           active_clients::numeric AS clients
       FROM firm_snapshots
      WHERE snapshot_date >= current_date - interval '35 days'
      ORDER BY snapshot_date ASC
-  `)).rows as Array<{ snapshot_date: string; aum: string; sip: string }>;
+  `)).rows as Array<{
+    snapshot_date: string; aum: string; sip: string; clients: string;
+  }>;
 
   // "Yesterday" is the most recent snapshot STRICTLY before today — not
   // `now - 1 day`. A tenant whose worker missed a night would otherwise show a
@@ -123,6 +127,7 @@ export async function loadFirmPulse(tx: Tx): Promise<PulseMetric[]> {
   const aum = num(live?.aum);
   const sipBook = num(live?.sip_book);
   const sipClients = num(live?.sip_clients);
+  const clients = num(live?.clients);
 
   return [
     {
@@ -160,6 +165,19 @@ export async function loadFirmPulse(tx: Tx): Promise<PulseMetric[]> {
       mom: delta(sipBook, momRow ? num(momRow.sip) : null),
       series: hist.map((h) => num(h.sip)),
       footnote: { label: "Average SIP", value: sipClients > 0 ? sipBook / sipClients : 0 },
+    },
+    {
+      // A fourth headline metric, from a column the snapshot table already
+      // carried — `active_clients` was being written nightly and read by
+      // nothing. The strip needs four to balance, and client count is the one
+      // figure an owner checks alongside the money.
+      key: "clients",
+      label: "Active clients",
+      value: clients,
+      day: delta(clients, prev ? num(prev.clients) : null),
+      mom: delta(clients, momRow ? num(momRow.clients) : null),
+      series: hist.map((h) => num(h.clients)),
+      footnote: null,
     },
   ];
 }

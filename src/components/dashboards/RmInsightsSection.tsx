@@ -239,16 +239,14 @@ export async function RmInsightsSection({
   return (
     <div className="space-y-6">
       {/* ---------- Next 5 actions ---------- */}
-      <div className="card-surface glass-card p-5 relative overflow-hidden">
+      <div className="card-surface p-5 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-violet-50/50 via-brand-cyan-light/30 to-transparent pointer-events-none" />
         <div className="relative">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-              <div className="size-7 rounded-lg bg-violet-100 grid place-items-center">
-                <Sparkles className="size-3.5 text-violet-700" />
-              </div>
-              Your next 5 actions — highest impact first
-            </h2>
+            <h2 className="section-title flex items-center gap-2">
+          <Sparkles className="size-4 text-muted-foreground" />
+          Your next 5 actions — highest impact first
+        </h2>
             <span className="text-xs text-muted-foreground">
               Ranked by urgency × revenue × time-to-act
             </span>
@@ -321,14 +319,12 @@ export async function RmInsightsSection({
 
       {/* ---------- Silent clients + Goal proximity ---------- */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="card-surface glass-card p-5">
+        <div className="card-surface p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-              <div className="size-7 rounded-lg bg-rose-50 grid place-items-center">
-                <Clock className="size-3.5 text-rose-600" />
-              </div>
-              Silent clients (90d+)
-            </h2>
+            <h2 className="section-title flex items-center gap-2">
+          <Clock className="size-4 text-muted-foreground" />
+          Silent clients (90d+)
+        </h2>
             <span className="text-xs text-muted-foreground">
               Top tier first
             </span>
@@ -367,14 +363,12 @@ export async function RmInsightsSection({
           )}
         </div>
 
-        <div className="card-surface glass-card p-5">
+        <div className="card-surface p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-              <div className="size-7 rounded-lg bg-emerald-50 grid place-items-center">
-                <Target className="size-3.5 text-emerald-600" />
-              </div>
-              Goals near maturity (≤18 mo)
-            </h2>
+            <h2 className="section-title flex items-center gap-2">
+          <Target className="size-4 text-muted-foreground" />
+          Goals near maturity (≤18 mo)
+        </h2>
             <span className="text-xs text-muted-foreground">Plan glide-path</span>
           </div>
           {data.goalProximity.length === 0 ? (
@@ -427,14 +421,12 @@ export async function RmInsightsSection({
 
       {/* ---------- Folio lifecycle + Cross-sell ---------- */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="card-surface glass-card p-5">
+        <div className="card-surface p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-              <div className="size-7 rounded-lg bg-amber-50 grid place-items-center">
-                <Layers className="size-3.5 text-amber-700" />
-              </div>
-              Folio lifecycle nudges
-            </h2>
+            <h2 className="section-title flex items-center gap-2">
+          <Layers className="size-4 text-muted-foreground" />
+          Folio lifecycle nudges
+        </h2>
             <span className="text-xs text-muted-foreground">Exit-load · ELSS lock-in</span>
           </div>
           {data.folioLifecycle.length === 0 ? (
@@ -471,14 +463,12 @@ export async function RmInsightsSection({
           )}
         </div>
 
-        <div className="card-surface glass-card p-5">
+        <div className="card-surface p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-              <div className="size-7 rounded-lg bg-violet-50 grid place-items-center">
-                <Repeat className="size-3.5 text-violet-600" />
-              </div>
-              Cross-sell — HNI without SIP
-            </h2>
+            <h2 className="section-title flex items-center gap-2">
+          <Repeat className="size-4 text-muted-foreground" />
+          Cross-sell — HNI without SIP
+        </h2>
             <span className="text-xs text-muted-foreground">Convert lumpsum → SIP</span>
           </div>
           {data.crossSell.length === 0 ? (
@@ -510,14 +500,12 @@ export async function RmInsightsSection({
 
       {/* ---------- Life events + Upcoming touchpoints ---------- */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="card-surface glass-card p-5">
+        <div className="card-surface p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-              <div className="size-7 rounded-lg bg-rose-50 grid place-items-center">
-                <CalendarHeart className="size-3.5 text-rose-600" />
-              </div>
-              Life-event watch (30d inbound)
-            </h2>
+            <h2 className="section-title flex items-center gap-2">
+          <CalendarHeart className="size-4 text-muted-foreground" />
+          Life-event watch (30d inbound)
+        </h2>
             <span className="text-xs text-muted-foreground">Marriage · job · child · move</span>
           </div>
           {data.lifeEvents.length === 0 ? (
@@ -548,14 +536,12 @@ export async function RmInsightsSection({
           )}
         </div>
 
-        <div className="card-surface glass-card p-5">
+        <div className="card-surface p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-              <div className="size-7 rounded-lg bg-emerald-50 grid place-items-center">
-                <CalendarHeart className="size-3.5 text-emerald-600" />
-              </div>
-              Birthdays & anniversaries (30d)
-            </h2>
+            <h2 className="section-title flex items-center gap-2">
+          <CalendarHeart className="size-4 text-muted-foreground" />
+          Birthdays & anniversaries (30d)
+        </h2>
             <span className="text-xs text-muted-foreground">Plan ahead</span>
           </div>
           {data.upcomingTouchpoints.length === 0 ? (

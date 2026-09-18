@@ -13,20 +13,30 @@ import type { SessionUser } from "@/lib/auth/session";
 import {
   loadAumBreakup,
   loadClientStats,
-  loadComplianceGaps,
   loadMonthlyFlows,
   loadSipBusiness,
 } from "@/lib/dashboard/firm-charts";
 import { AumBreakupDonut, MonthlyFlowChart, SipBusinessChart } from "./FirmCharts";
 
-const TONE: Record<string, string> = {
-  emerald: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  cyan: "bg-cyan-50 text-cyan-700 border-cyan-200",
-  violet: "bg-violet-50 text-violet-700 border-violet-200",
-  blue: "bg-blue-50 text-blue-700 border-blue-200",
-  amber: "bg-amber-50 text-amber-700 border-amber-200",
-  rose: "bg-rose-50 text-rose-700 border-rose-200",
+/**
+ * Client-mix tiles were six different pastels — emerald, cyan, violet, blue,
+ * amber, rose — which made "In a family" look as significant as "Redemption
+ * risk" and turned a six-tile grid into a paintbox. Colour now means ONE thing:
+ * this needs attention. Everything else is a neutral fact.
+ */
+const NEEDS_ATTENTION: Record<string, "warning" | "destructive"> = {
+  amber: "warning",
+  rose: "destructive",
 };
+
+function mixTone(tone: string, count: number): string {
+  // A zero is good news for both warning tiles, so it stays neutral — painting
+  // "0 dormant" amber trains people to ignore the colour.
+  const sev = count > 0 ? NEEDS_ATTENTION[tone] : undefined;
+  if (sev === "destructive") return "border-destructive/30 bg-destructive/5 text-destructive";
+  if (sev === "warning") return "border-warning/30 bg-warning/5 text-warning";
+  return "border-border bg-secondary/40 text-foreground";
+}
 
 function Panel({
   title,
@@ -42,13 +52,16 @@ function Panel({
   className?: string;
 }) {
   return (
-    <div className={`rounded-xl border border-border bg-card p-4 ${className}`}>
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <h3 className="text-sm font-semibold flex items-center gap-2">
-          <Icon className="size-4 text-brand-cyan" /> {title}
+    <div className={`card-surface p-4 ${className}`}>
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <h3 className="section-title flex items-center gap-2">
+          <Icon className="size-4 text-muted-foreground" /> {title}
         </h3>
         {href && (
-          <Link href={href} className="text-2xs text-muted-foreground hover:text-brand-cyan hover:underline">
+          <Link
+            href={href}
+            className="text-2xs text-muted-foreground hover:text-foreground shrink-0"
+          >
             View →
           </Link>
         )}
@@ -62,14 +75,17 @@ export async function FirmChartsSection({ session }: { session: SessionUser }) {
   const data = await withTenant(
     session.tenantId,
     async (tx) => {
-      const [aum, clients, compliance, flows, sips] = await Promise.all([
+      // loadComplianceGaps is NOT called: the panel that used it was removed
+      // (see the note below) but the query stayed, so every dashboard load ran
+      // an eleven-way aggregate over the client master and threw the result
+      // away.
+      const [aum, clients, flows, sips] = await Promise.all([
         loadAumBreakup(tx),
         loadClientStats(tx),
-        loadComplianceGaps(tx),
         loadMonthlyFlows(tx, 6),
         loadSipBusiness(tx, 6),
       ]);
-      return { aum, clients, compliance, flows, sips };
+      return { aum, clients, flows, sips };
     },
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
@@ -92,10 +108,10 @@ export async function FirmChartsSection({ session }: { session: SessionUser }) {
               <Link
                 key={c.label}
                 href={c.href}
-                className={`rounded-lg border p-3 transition hover:shadow-sm ${TONE[c.tone] ?? TONE.cyan}`}
+                className={`rounded-lg border p-3 transition-colors hover:border-foreground/25 ${mixTone(c.tone, c.count)}`}
               >
                 <div className="text-xl font-bold tabular-nums leading-none">{c.count.toLocaleString("en-IN")}</div>
-                <div className="mt-1 text-2xs font-medium opacity-80">{c.label}</div>
+                <div className="mt-1 text-2xs font-medium text-muted-foreground">{c.label}</div>
               </Link>
             ))}
           </div>

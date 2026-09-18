@@ -43,17 +43,15 @@ export async function RmLeaderboard({
   const hasSignal = data.some((r) => Number(r.clients) > 0 || Number(r.aum) > 0);
 
   return (
-    <div className="card-surface glass-card p-5">
+    <div className="card-surface p-5">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="font-semibold flex items-center gap-2">
-          <div className="size-7 rounded-lg bg-violet-50 grid place-items-center">
-            <Users className="size-3.5 text-violet-600" />
-          </div>
+        <h2 className="section-title flex items-center gap-2">
+          <Users className="size-4 text-muted-foreground" />
           RM Leaderboard
         </h2>
         <Link
           href={`/dashboard/reports/rm_business${periodQuery}`}
-          className="text-xs text-violet-700 hover:underline font-medium"
+          className="text-2xs text-muted-foreground hover:text-foreground font-medium"
         >
           All RMs →
         </Link>

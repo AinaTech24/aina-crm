@@ -43,8 +43,8 @@ export function DashboardTabs({ current }: { current: DashboardTab }) {
   }
 
   return (
-    <div className="border-b border-border" role="tablist" aria-label="Dashboard sections">
-      <div className="flex items-center gap-1 -mb-px overflow-x-auto scrollbar-none">
+    <nav className="inline-flex max-w-full rounded-xl border border-border/70 bg-secondary/70 p-1" aria-label="Dashboard sections">
+      <div className="flex items-center gap-1 overflow-x-auto scrollbar-none">
         {TABS.map((t) => {
           const active = t.key === current;
           const Icon = t.icon;
@@ -52,13 +52,12 @@ export function DashboardTabs({ current }: { current: DashboardTab }) {
             <Link
               key={t.key}
               href={hrefFor(t.key)}
-              role="tab"
-              aria-selected={active}
+              aria-current={active ? "page" : undefined}
               title={t.hint}
-              className={`inline-flex items-center gap-1.5 whitespace-nowrap px-3 py-2 text-sm border-b-2 transition-colors ${
+              className={`inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm transition-colors ${
                 active
-                  ? "border-primary text-foreground font-semibold"
-                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                  ? "bg-card text-primary font-semibold shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-card/60"
               }`}
             >
               <Icon className="size-4" />
@@ -67,6 +66,6 @@ export function DashboardTabs({ current }: { current: DashboardTab }) {
           );
         })}
       </div>
-    </div>
+    </nav>
   );
 }
