@@ -42,6 +42,28 @@ export function expandStatusFilter(raw: string[]): string[] {
   return out;
 }
 
+/**
+ * Do these filters actually reference the `investors` table?
+ *
+ * Only two do: the free-text search (investors.name) and the RM filter
+ * (investors.rm_id). Everything else is columns on `transactions` alone.
+ *
+ * This matters because the KPI aggregate on /dashboard/transactions selects
+ * nothing from investors, yet LEFT JOINed it unconditionally. With an empty
+ * filter — the default page load — that joined every transaction row to the
+ * client table to compute five counts that never look at it. Once one firm's
+ * since-inception feed landed (0 -> 508,124 rows) the query blew past the 30s
+ * statement timeout, and because each attempt held a pool slot for 30s the
+ * connection pool drained behind it: the page died with "canceling statement
+ * due to statement timeout" and everything ELSE started failing with "timeout
+ * exceeded when trying to connect".
+ *
+ * Keep this in step with buildTransactionConditions below.
+ */
+export function transactionFiltersNeedInvestors(sp: TxListParams): boolean {
+  return Boolean((sp.q ?? "").trim()) || csv(sp.rm).length > 0;
+}
+
 /** Build the array of Drizzle conditions for the transactions list (no cursor). */
 export function buildTransactionConditions(sp: TxListParams): any[] {
   const conds: any[] = [];

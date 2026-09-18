@@ -8,7 +8,7 @@ import { formatINR, formatDate } from "@/lib/utils";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
-import { buildTransactionConditions } from "@/lib/transactions/list-filters";
+import { buildTransactionConditions, transactionFiltersNeedInvestors } from "@/lib/transactions/list-filters";
 
 const TRANSACTIONS_COLUMNS = [
   { key: "date", label: "Date", required: true },
@@ -119,17 +119,25 @@ export default async function TransactionsPage({
     // date range / type / RM updates the headline totals too, and each card
     // links into the rows behind it.
     const statWhere = baseConds.length ? (sql.join(baseConds, sql` AND `) as any) : undefined;
-    const statRows = await tx
-      .select({
-        inflowCount: sql<number>`COUNT(*) FILTER (WHERE ${transactions.direction}='inflow' AND ${transactions.status} IN ('successful','processed'))::int`,
-        inflowAmt: sql<number>`COALESCE(SUM(CASE WHEN ${transactions.direction}='inflow' AND ${transactions.status} IN ('successful','processed') THEN ${transactions.amount}::numeric ELSE 0 END),0)`,
-        outflowAmt: sql<number>`COALESCE(SUM(CASE WHEN ${transactions.direction}='outflow' AND ${transactions.status} IN ('successful','processed') THEN ${transactions.amount}::numeric ELSE 0 END),0)`,
-        rejectedCount: sql<number>`COUNT(*) FILTER (WHERE ${transactions.status} IN ('rejected','failed'))::int`,
-        total: sql<number>`COUNT(*)::int`,
-      })
-      .from(transactions)
-      .leftJoin(investors, eq(investors.id, transactions.investorId))
-      .where(statWhere);
+    const statSelect = {
+      inflowCount: sql<number>`COUNT(*) FILTER (WHERE ${transactions.direction}='inflow' AND ${transactions.status} IN ('successful','processed'))::int`,
+      inflowAmt: sql<number>`COALESCE(SUM(CASE WHEN ${transactions.direction}='inflow' AND ${transactions.status} IN ('successful','processed') THEN ${transactions.amount}::numeric ELSE 0 END),0)`,
+      outflowAmt: sql<number>`COALESCE(SUM(CASE WHEN ${transactions.direction}='outflow' AND ${transactions.status} IN ('successful','processed') THEN ${transactions.amount}::numeric ELSE 0 END),0)`,
+      rejectedCount: sql<number>`COUNT(*) FILTER (WHERE ${transactions.status} IN ('rejected','failed'))::int`,
+      total: sql<number>`COUNT(*)::int`,
+    };
+    // Join investors ONLY when a filter actually references it (search or RM).
+    // These aggregates read nothing from the client table, so on an unfiltered
+    // load the join was joining every transaction row to compute five numbers
+    // that ignore it — which is what pushed this page past the 30s statement
+    // timeout, and drained the pool, once one firm reached half a million rows.
+    const statRows = transactionFiltersNeedInvestors(sp)
+      ? await tx
+          .select(statSelect)
+          .from(transactions)
+          .leftJoin(investors, eq(investors.id, transactions.investorId))
+          .where(statWhere)
+      : await tx.select(statSelect).from(transactions).where(statWhere);
     const s = statRows[0] as any;
 
     const baseQ = tx
