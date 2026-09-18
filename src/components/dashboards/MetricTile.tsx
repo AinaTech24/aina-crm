@@ -57,12 +57,18 @@ export function MetricTile({
         ? "text-destructive bg-destructive/10"
         : "text-muted-foreground bg-secondary";
 
+  // The span belongs on whichever element is the GRID ITEM. With an href this
+  // component renders <Link>{card}</Link>, so the anchor is the grid child and
+  // a col-span on the inner div does nothing at all — which is why the lead
+  // metric never got its extra width at any breakpoint.
+  // Full width at sm, equal at lg (four columns, no room to spare), and
+  // double-width only at xl where five columns actually fit.
+  const span = lead ? "sm:col-span-2 lg:col-span-1 xl:col-span-2" : "";
+
   const inner = (
     <div
       style={style}
-      className={`card-surface card-raise flex h-full flex-col p-6 transition-colors hover:border-foreground/20 ${
-        lead ? "sm:col-span-2 xl:col-span-1" : ""
-      }`}
+      className="card-surface card-raise flex h-full flex-col p-5 transition-colors hover:border-foreground/20 xl:p-6"
     >
       <div className="mb-4 flex items-center gap-3">
         <span
@@ -79,7 +85,7 @@ export function MetricTile({
 
       <div
         className={`font-display font-extrabold leading-none tabular-nums tracking-tight ${
-          lead ? "text-[2.25rem]" : "text-3xl"
+          lead ? "text-4xl" : "text-3xl"
         }`}
       >
         {value}
@@ -114,11 +120,11 @@ export function MetricTile({
   );
 
   return href ? (
-    <Link href={href} className="block h-full">
+    <Link href={href} className={`block h-full ${span}`}>
       {inner}
     </Link>
   ) : (
-    inner
+    <div className={`h-full ${span}`}>{inner}</div>
   );
 }
 
