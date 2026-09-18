@@ -237,6 +237,22 @@ async function processTransactionFeed(
   const resolveFast = (pan?: string, folio?: string): string | null =>
     (pan && panMap.get(pan.toUpperCase())) || (folio && folioMap.get(folio)) || null;
 
+  /**
+   * (amc_code, folio_number) -> folios.id, resolved at most ONCE per folio.
+   *
+   * These feeds carry many rows per folio — a since-inception CAMS WBR2 for one
+   * firm was 512,916 rows over a few thousand folios — and this loop used to run
+   * an `INSERT ... ON CONFLICT ... RETURNING id` for every single row. That is a
+   * round-trip per row on top of the transaction insert and the per-row
+   * SAVEPOINT, which is why one file took hours and blocked every other firm's
+   * imports behind it.
+   *
+   * Caching changes one thing: `updated_at` on an existing folio is now bumped
+   * once per import rather than once per row. Nothing reads it at row
+   * granularity, and the folio's real freshness is its valuation, not this.
+   */
+  const folioIdCache = new Map<string, string>();
+
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     if (!r.folioNumber) {
@@ -330,16 +346,28 @@ async function processTransactionFeed(
 
     const rtaEnumVal = (args.source === "cams" || args.source === "kfintech") ? args.source : "other";
 
+    // Declared outside the try: if this row rolls back, the cache entry it
+    // created has to be evicted too (see the catch).
+    const folioKey = `${r.amcCode}::${r.folioNumber}`;
+    let cachedFolioThisRow = false;
+
     await tx.execute(sql`SAVEPOINT rta_item`);
     try {
-      // Resolve or create folio record
-      const folioRes = await tx.execute(sql`
-        INSERT INTO folios (tenant_id, investor_id, folio_number, amc_code, amc_name, rta)
-        VALUES (${args.tenantId}::uuid, ${investorId}::uuid, ${r.folioNumber}, ${r.amcCode}, ${r.amcCode}, ${rtaEnumVal})
-        ON CONFLICT (tenant_id, amc_code, folio_number) DO UPDATE SET updated_at = now()
-        RETURNING id
-      `);
-      const folioId = (folioRes.rows[0] as any)?.id;
+      // Resolve or create folio record — once per folio, not once per row.
+      let folioId = folioIdCache.get(folioKey);
+      if (!folioId) {
+        const folioRes = await tx.execute(sql`
+          INSERT INTO folios (tenant_id, investor_id, folio_number, amc_code, amc_name, rta)
+          VALUES (${args.tenantId}::uuid, ${investorId}::uuid, ${r.folioNumber}, ${r.amcCode}, ${r.amcCode}, ${rtaEnumVal})
+          ON CONFLICT (tenant_id, amc_code, folio_number) DO UPDATE SET updated_at = now()
+          RETURNING id
+        `);
+        folioId = (folioRes.rows[0] as any)?.id;
+        if (folioId) {
+          folioIdCache.set(folioKey, folioId);
+          cachedFolioThisRow = true;
+        }
+      }
 
       // UPSERT keyed by (tenant_id, order_id) so re-uploads no-op, but updates status/NAV/units.
       await tx.execute(sql`
@@ -371,6 +399,11 @@ async function processTransactionFeed(
     } catch (e: any) {
       await tx.execute(sql`ROLLBACK TO SAVEPOINT rta_item`);
       await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
+      // The rollback undid the folio this row inserted, so the id we cached no
+      // longer exists. Leaving it would make every later row for the same folio
+      // write a transaction pointing at a dead folio_id and fail on the foreign
+      // key — turning one bad row into a bad folio.
+      if (cachedFolioThisRow) folioIdCache.delete(folioKey);
       failed++;
       errors.push({ row: i + 1, reason: e.message ?? "insert failed" });
     }

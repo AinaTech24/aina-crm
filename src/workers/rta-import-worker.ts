@@ -867,6 +867,44 @@ export async function enqueueRejectedRescan(tenantId: string, source: RtaSource)
   );
 }
 
+/**
+ * Hard ceiling on one import job, in minutes. A since-inception CAMS WBR2 is a
+ * 38 MB zip that expands to 326 MB and 512,916 rows, so this has to be generous
+ * — it is a backstop against a WEDGED job, not a performance budget.
+ */
+const JOB_TIMEOUT_MS = Number(process.env.RTA_JOB_TIMEOUT_MIN ?? 180) * 60_000;
+
+/**
+ * Fail a job that has stopped making progress instead of holding the queue.
+ *
+ * With concurrency 1, one job that never settles is a total outage of imports
+ * for every firm — which is exactly what happened: a job hung in an untimed S3
+ * delete for fourteen hours while 140 files queued up behind it across four
+ * tenants, and nothing surfaced it. BullMQ could not help: its stalled-job
+ * detection only fires when the LOCK expires, and the worker was alive and
+ * happily renewing it.
+ *
+ * The underlying promise cannot be cancelled, so the orphaned work may continue
+ * in the background; that is acceptable because the import is upsert-idempotent
+ * and the row is reaped separately. What matters is that the queue moves on.
+ */
+async function withJobTimeout<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      fn(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`${label} exceeded ${JOB_TIMEOUT_MS / 60_000} min and was abandoned so the queue can continue`)),
+          JOB_TIMEOUT_MS
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export function startRtaImportWorker() {
   // BullMQ workers need their own blocking connection (maxRetriesPerRequest:null).
   const connection = new IORedis(process.env.REDIS_URL ?? "redis://localhost:6379", {
@@ -875,7 +913,7 @@ export function startRtaImportWorker() {
 
   const worker = new Worker(
     "rta.import",
-    async (job) => {
+    (job) => withJobTimeout(`[rta-import] job ${job.id}`, async () => {
       const localKey = (job.data as any)?.key as string | undefined;
       // Idempotency: if a worker restart left this job 'stalled' and BullMQ is
       // re-running it after the import already finished, do NOT reprocess — that
@@ -924,7 +962,7 @@ export function startRtaImportWorker() {
           }
         }
       }
-    },
+    }),
     { connection, concurrency: 1 } // one heavy parse at a time — bounds peak memory
   );
 

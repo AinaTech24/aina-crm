@@ -50,6 +50,24 @@ function assertS3OrLocalAllowed(): void {
   }
 }
 
+/**
+ * Socket timeouts, because the SDK has NONE by default and a stalled connection
+ * then hangs the caller for ever.
+ *
+ * That is not hypothetical: an RTA import job finished its work, recorded its
+ * own failure in the database, and then hung in the `finally` block's
+ * `deleteObject()` for FOURTEEN HOURS. BullMQ still held it as the one active
+ * job, and with the import worker at concurrency 1 that stalled 140 queued
+ * imports across four firms until someone restarted the worker.
+ *
+ * `requestTimeout` is socket inactivity, not total duration, so it is safe for
+ * the large multi-hundred-MB registrar files this bucket holds: a healthy
+ * transfer keeps resetting it. `maxAttempts` gives a stalled attempt a retry
+ * rather than failing the whole import on one bad socket.
+ */
+const CONNECT_TIMEOUT_MS = Number(process.env.S3_CONNECT_TIMEOUT_MS ?? 10_000);
+const REQUEST_TIMEOUT_MS = Number(process.env.S3_REQUEST_TIMEOUT_MS ?? 120_000);
+
 function client(): S3Client {
   const akid = accessKeyId();
   return new S3Client({
@@ -60,6 +78,11 @@ function client(): S3Client {
           secretAccessKey: secretAccessKey()!,
         }
       : undefined, // falls back to IAM role on EC2/ECS
+    maxAttempts: 3,
+    requestHandler: {
+      connectionTimeout: CONNECT_TIMEOUT_MS,
+      requestTimeout: REQUEST_TIMEOUT_MS,
+    },
   });
 }
 
