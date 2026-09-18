@@ -29,6 +29,27 @@ export interface ResolveContext {
 
 export class TokenResolutionError extends Error {}
 
+/**
+ * Namespaces the SYSTEM produces and has ALREADY formatted (see
+ * `lib/comms/client-links.ts`). A template may reference these freely, but it
+ * does not get to redeclare their type.
+ *
+ * `risk.category` is a word ("Moderate"). `risk.profiled_on` / `risk.review_due`
+ * are formatted date STRINGS, not Dates. `risk.score_display` is "24 / 40".
+ * Declaring any of them as `date` or `number` — which the template editor
+ * allows — made the type check below throw on every single send of that
+ * template, for every client:
+ *
+ *   Variable 'risk.category' must be a valid date
+ *
+ * The value is correct and already display-ready; the declaration is simply
+ * wrong. Pass it through as the string it is. `required` is still enforced.
+ */
+const SYSTEM_PREFORMATTED_PREFIXES = ["risk.", "suitability.", "link."];
+function isSystemPreformatted(key: string): boolean {
+  return SYSTEM_PREFORMATTED_PREFIXES.some((p) => key.startsWith(p));
+}
+
 export function resolveTokens(
   variables: VariableDef[],
   ctx: ResolveContext
@@ -42,6 +63,13 @@ export function resolveTokens(
   for (const v of variables) {
     const value = resolveOne(v, ctx);
     if (v.required && (value === null || value === undefined || String(value).trim() === "")) throw new TokenResolutionError(`Required variable '${v.key}' is missing`);
+    // System-owned namespaces arrive display-ready — see the note above. Skip
+    // the declared-type coercion entirely rather than validating a formatted
+    // string against a type the template author picked by mistake.
+    if (isSystemPreformatted(v.key)) {
+      resolved[v.key] = value === null || value === undefined ? "" : String(value);
+      continue;
+    }
     if (value != null && ["number", "currency"].includes(v.type) && !Number.isFinite(Number(value))) throw new TokenResolutionError(`Variable '${v.key}' must be a number`);
     if (value != null && v.type === "date" && !Number.isFinite(new Date(value as string | number | Date).getTime())) throw new TokenResolutionError(`Variable '${v.key}' must be a valid date`);
     resolved[v.key] = formatValue(value, v);
