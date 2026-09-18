@@ -17,7 +17,8 @@
  */
 
 import Link from "next/link";
-import { ArrowDownRight, ArrowUpRight, ExternalLink, Minus, Wallet, TrendingUp, Repeat } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, ExternalLink, Minus, Repeat, TrendingUp, Users, Wallet } from "lucide-react";
+import { MetricTile, type MetricHue } from "./MetricTile";
 import { Sparkline } from "./Sparkline";
 import type { ActivityRange, ActivityTile, Delta, PulseMetric } from "@/lib/dashboard/firm-pulse";
 import { ACTIVITY_RANGES } from "@/lib/dashboard/firm-pulse";
@@ -29,6 +30,22 @@ const HREF: Record<PulseMetric["key"], string> = {
   aum: "/dashboard/portfolio-intelligence",
   invested: "/dashboard/transactions",
   sip_book: "/dashboard/sips",
+  clients: "/dashboard/investors",
+};
+
+/** One hue per metric, from the `--metric-*` set. */
+const HUE: Record<PulseMetric["key"], MetricHue> = {
+  aum: "indigo",
+  invested: "emerald",
+  sip_book: "violet",
+  clients: "cyan",
+};
+
+const ICON: Record<PulseMetric["key"], React.ReactNode> = {
+  aum: <TrendingUp className="size-[18px]" />,
+  invested: <Wallet className="size-[18px]" />,
+  sip_book: <Repeat className="size-[18px]" />,
+  clients: <Users className="size-[18px]" />,
 };
 
 function DeltaRow({ label, d }: { label: string; d: Delta }) {
@@ -66,81 +83,65 @@ export function FirmPulseStrip({
   tiles,
   range,
   baseHref = "/dashboard",
+  showActivity = true,
 }: {
   metrics: PulseMetric[];
   tiles: ActivityTile[];
   range: ActivityRange;
   /** Where the range chips link back to (query params are appended). */
   baseHref?: string;
+  /**
+   * The transaction-activity strip beneath the KPIs. Off on the Overview tab:
+   * eight tiles of recent transaction volume is real information, but it is
+   * not what an owner opens this page to find out, and the default view is
+   * capped at the handful of sections that are. It renders on Insights.
+   */
+  showActivity?: boolean;
 }) {
   return (
     <section className="space-y-5" aria-label="Business snapshot">
-      {/* ── Headline KPIs ────────────────────────────────────────────── */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {metrics.map((m) => (
-          <div
-            key={m.key}
-            className="group relative rounded-2xl border border-border bg-card p-5 shadow-sm transition-colors hover:border-primary/30"
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2.5">
-                <span className="grid size-9 place-items-center rounded-xl bg-primary/5 text-primary">
-                  {m.key === "aum" ? <Wallet className="size-4" /> : m.key === "invested" ? <TrendingUp className="size-4" /> : <Repeat className="size-4" />}
-                </span>
-                <h3 className="text-sm font-medium text-muted-foreground">{m.label}</h3>
-              </div>
-              <Link
-                href={HREF[m.key]}
-                aria-label={`Open ${m.label}`}
-                className="btn-icon text-muted-foreground/60 hover:text-primary"
-              >
-                <ArrowUpRight className="size-4" />
-              </Link>
-            </div>
-
-            <div className="mt-5 flex flex-wrap items-end justify-between gap-3">
-              <div className="font-display text-3xl font-bold tracking-tight tabular-nums">{money(m.value)}</div>
-              {m.series.length > 1 && (
-                <Sparkline
-                  data={m.series}
-                  width={96}
-                  height={34}
-                  strokeClass={
-                    m.series[m.series.length - 1] >= m.series[0] ? "text-emerald-500" : "text-rose-500"
-                  }
-                />
-              )}
-            </div>
-
-            <div className="mt-5 space-y-2 border-t border-border/60 pt-3.5 text-xs">
-              {m.footnote ? (
-                <>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-muted-foreground">{m.footnote.label}</span>
-                    <span className="tabular-nums font-medium" title={m.footnote.hint}>
-                      {m.footnote.value == null ? "—" : money(m.footnote.value)}
-                    </span>
-                  </div>
-                  {m.mom && <DeltaRow label="MoM" d={m.mom} />}
-                </>
-              ) : !m.day && !m.mom ? (
-                <div
-                  className="text-2xs text-muted-foreground"
-                  title="Day and month-on-month movement fill in once the daily snapshot has run."
-                >
-                  Awaiting first daily snapshot
-                </div>
-              ) : (
-                <>
-                  {m.day && <DeltaRow label="Day" d={m.day} />}
-                  {m.mom && <DeltaRow label="MoM" d={m.mom} />}
-                </>
-              )}
-            </div>
-          </div>
-        ))}
+      {/* ── Headline KPIs ──────────────────────────────────────────────
+          Four tiles, each owning a hue from the `--metric-*` set, with AUM
+          leading at a larger size. Every card carries number · delta · trend:
+          a bare figure cannot answer "is this good?", which is what a
+          dashboard is for. */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[1.35fr_repeat(3,minmax(0,1fr))]">
+        {metrics.map((m) => {
+          // Prefer month-on-month: a firm looks at a dashboard to ask how the
+          // month is going, and the day delta is noise at this size.
+          const d = m.mom ?? m.day;
+          const fmt = m.key === "clients" ? (n: number) => Math.round(n).toLocaleString("en-IN") : money;
+          return (
+            <MetricTile
+              key={m.key}
+              hue={HUE[m.key]}
+              lead={m.key === "aum"}
+              icon={ICON[m.key]}
+              label={m.label}
+              value={fmt(m.value)}
+              href={HREF[m.key]}
+              series={m.series}
+              delta={
+                d
+                  ? {
+                      value:
+                        m.key === "clients" || d.pct == null
+                          ? fmt(Math.abs(d.abs))
+                          : `${Math.abs(d.pct * 100).toFixed(1)}%`,
+                      direction: d.abs > 0 ? "up" : d.abs < 0 ? "down" : "flat",
+                      since: "vs last month",
+                    }
+                  : m.footnote && m.footnote.value != null
+                    ? { value: money(m.footnote.value), direction: "flat", since: m.footnote.label }
+                    : undefined
+              }
+            />
+          );
+        })}
       </div>
 
+      {showActivity && (
+      <>
       {/* ── Activity ─────────────────────────────────────────────────── */}
       <div className="card-surface p-5">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
@@ -210,6 +211,8 @@ export function FirmPulseStrip({
         </div>
         )}
       </div>
+      </>
+      )}
     </section>
   );
 }

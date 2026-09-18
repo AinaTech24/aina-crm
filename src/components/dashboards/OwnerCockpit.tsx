@@ -36,7 +36,6 @@ import { loadRmLeaderboard } from "@/lib/dashboard/rm-leaderboard";
 import { LeadFunnelSection } from "./LeadFunnelSection";
 import { AumSegmentSection } from "./AumSegmentSection";
 import { CardSkeleton, ChartSkeleton, LeaderboardSkeleton } from "./DashboardSkeletons";
-import { Band } from "./DashboardShared";
 
 /** Build a "?period=…(&pstart=…)" query suffix so drill-down links open scoped
  *  to the same window the cockpit is showing. Returns "" for the default (mtd,
@@ -127,53 +126,61 @@ export async function OwnerCockpit({
         <SetupChecklist tenantId={session.tenantId} />
       </Suspense>
 
-      {/* ── Band 1: the state of the firm ─────────────────────────────────
-          Firm pulse keeps its own Suspense boundary so the heavier cockpit
-          body below never delays the numbers people open this page for. */}
-      <Band title="Firm at a glance">
-        <Suspense fallback={<FirmPulseSkeleton />}>
-          <FirmPulse tenantId={session.tenantId} session={session} days={activityDays} />
-        </Suspense>
+      {/* ════════════════════════════════════════════════════════════════
+          OVERVIEW — five sections.
 
-        {/* The firm against its own annual targets. These numbers already
-            existed on /dashboard/finances/progress; they were just buried
-            where nobody looked. */}
-        {tab === "overview" && (
-          <Suspense fallback={<CardSkeleton />}>
-            <TargetAchievementSection session={session} />
-          </Suspense>
-        )}
+          It carried fourteen. B2B finance dashboards cap the default view at
+          nine and lead with the one number that answers the reader's first
+          question; for an MFD owner that is AUM, and whether it is growing.
+          The nine that left are on Insights and Tracker — nothing was deleted,
+          and every `show()` gate still applies wherever its section now lives.
 
-        {/* Stage occupancy NOW, as against the Lead Funnel in "Book health",
-            which is a period flow. Deliberately additive: the funnel answers
-            "how did this month's leads progress", this answers "where is the
-            pipeline stuck today". */}
-        {tab === "overview" && (
-          <Suspense fallback={<CardSkeleton />}>
-            <LeadPipelineSection session={session} branchId={branchId} />
-          </Suspense>
-        )}
-      </Band>
+            1  metric strip        AUM · investment · SIP book · clients
+            2  needs you           ranked, actionable, worst first
+            3  targets + pipeline
+            4  team
 
-      {/* ── Band 2: things that have not happened yet ─────────────────────
-          Split from "Needs attention" on purpose. That band is what is
-          already wrong; this is what is about to be, while there is still
-          time to act on it. */}
+          Firm pulse keeps its own Suspense boundary so the heavier body below
+          never delays the numbers people open this page for.
+          ════════════════════════════════════════════════════════════════ */}
+      <Suspense fallback={<FirmPulseSkeleton />}>
+        <FirmPulse
+          tenantId={session.tenantId}
+          session={session}
+          days={activityDays}
+          showActivity={tab === "insights"}
+        />
+      </Suspense>
+
       {tab === "overview" && (
-        <Band title="Coming up">
+        <Suspense fallback={<CockpitBodySkeleton />}>
+          <OwnerCockpitBody session={session} period={period} customStart={customStart} customFrom={customFrom} customTo={customTo} branchId={branchId} />
+        </Suspense>
+      )}
+
+      {/* ── Moved off Overview, onto Insights ─────────────────────────────
+          What is coming up, and the shape of the book. Real work, but not
+          what an owner opens the page to find out. */}
+      {tab === "insights" && (
+        <>
           <Suspense fallback={null}>
             <ClientMomentsStrip session={session} />
           </Suspense>
           <Suspense fallback={<CardSkeleton />}>
             <ExpiryPipelineSection session={session} branchId={branchId} />
           </Suspense>
-        </Band>
-      )}
-
-      {tab === "overview" && (
-        <Suspense fallback={<CockpitBodySkeleton />}>
-          <OwnerCockpitBody session={session} period={period} customStart={customStart} customFrom={customFrom} customTo={customTo} />
-        </Suspense>
+          <Suspense fallback={<CockpitBodySkeleton />}>
+            <OwnerCockpitBody
+              session={session}
+              period={period}
+              customStart={customStart}
+              customFrom={customFrom}
+              customTo={customTo}
+              branchId={branchId}
+              mode="insights"
+            />
+          </Suspense>
+        </>
       )}
 
       {/* Analytics band — AUM breakup / client mix, then SIP business and
@@ -198,10 +205,12 @@ export async function OwnerCockpit({
 }
 
 async function FirmPulse({
+  showActivity = true,
   tenantId,
   session,
   days,
 }: {
+  showActivity?: boolean;
   tenantId: string;
   session: SessionUser;
   days: ActivityRange;
@@ -214,7 +223,9 @@ async function FirmPulse({
     }),
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
-  return <FirmPulseStrip metrics={metrics} tiles={tiles} range={days} />;
+  return (
+    <FirmPulseStrip metrics={metrics} tiles={tiles} range={days} showActivity={showActivity} />
+  );
 }
 
 function FirmPulseSkeleton() {
@@ -254,12 +265,17 @@ async function OwnerCockpitBody({
   customStart,
   customFrom,
   customTo,
+  branchId = null,
+  mode = "overview",
 }: {
   session: SessionUser;
   period?: Period;
   customStart?: string;
   customFrom?: string;
   customTo?: string;
+  branchId?: string | null;
+  /** Which tab is asking. Both are served from one set of queries. */
+  mode?: "overview" | "insights";
 }) {
   const now = new Date();
   // Resolve period → start/end range. All "MTD" aggregates in the queries below
@@ -606,19 +622,12 @@ async function OwnerCockpitBody({
     show("section.aum_segment") ||
     show("section.rm_leaderboard");
 
-  return (
-    <div className="space-y-6">
-      {/* ---------- 1. Headline KPIs — hero tiles (with period trajectory) ---------- */}
-      {/* These tiles count `status = 'active'` clients only, while the Firm Pulse
-          strip above counts every ALIVE client (not deleted, not closed, not
-          merged) — the definition the nightly firm snapshot uses. On a book with
-          dormant or pending clients the two legitimately differ; on the demo
-          tenant it is 19 vs 22 clients and Rs 10.78 Cr vs Rs 16.23 Cr.
-          Both were previously labelled just "AUM", 34% apart, on one screen.
-          The sub-labels below name the population so the figures can be told
-          apart. Do NOT "fix" this by making the numbers match — they answer
-          different questions; change the LABELS if the wording is unclear. */}
-      <Band title="Business &amp; team">
+  // The cockpit body serves BOTH tabs from one set of queries. Splitting it
+  // into two components would have duplicated five sequential aggregates for
+  // the sake of a layout change.
+  if (mode === "insights") {
+    return (
+      <div className="space-y-6">
       {anyHeadline && (
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         {show("kpi.total_clients") && <Kpi
@@ -666,37 +675,6 @@ async function OwnerCockpitBody({
       </Suspense>
       )}
 
-      {/* RM leaderboard — period-scoped and eight columns wide, so it gets its
-          own row rather than a third of one. */}
-      {show("section.rm_leaderboard") && (
-      <Suspense fallback={<LeaderboardSkeleton />}>
-        <RmLeaderboardSection
-          session={session}
-          from={range.fromDate}
-          to={range.toDate}
-          periodLabel={periodLabel}
-          periodQuery={periodQuery}
-        />
-      </Suspense>
-      )}
-      </Band>
-
-      {/* ── Band 4: what is already wrong ─────────────────────────────────
-          The action centre ranks gaps in the client master; the queues below
-          it are work that has gone past its date. Both are overdue, which is
-          what separates this band from "Coming up". */}
-      <Band title="Needs attention">
-      {show("section.data_gaps") && <DataGapsTile />}
-
-      {show("section.attention_queues") && (
-      <Suspense fallback={<CardSkeleton />}>
-        <AttentionQueuesSection session={session} />
-      </Suspense>
-      )}
-      </Band>
-
-      {/* ── Band 5: the shape and durability of the book ──────────────────*/}
-      <Band title="Book health">
       {anyAnalytics && (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
         {show("section.lead_funnel") && (
@@ -716,7 +694,50 @@ async function OwnerCockpitBody({
 
       {/* SIP persistency — the franchise-health metric. */}
       {show("section.sip_persistency") && <SipPersistencyTile session={session} />}
-      </Band>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* 2 · NEEDS YOU — ranked, actionable, worst first. */}
+      {show("section.data_gaps") && <DataGapsTile />}
+
+      {show("section.attention_queues") && (
+      <Suspense fallback={<CardSkeleton />}>
+        <AttentionQueuesSection session={session} />
+      </Suspense>
+      )}
+
+      {/* 3 · TARGETS + PIPELINE. 7/5 because the scorecard carries four rings
+             and the pipeline five short rows. */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div className="lg:col-span-7">
+          <Suspense fallback={<CardSkeleton />}>
+            <TargetAchievementSection session={session} />
+          </Suspense>
+        </div>
+        <div className="lg:col-span-5">
+          <Suspense fallback={<CardSkeleton />}>
+            <LeadPipelineSection session={session} branchId={branchId} />
+          </Suspense>
+        </div>
+      </div>
+
+      {/* 4 · TEAM */}
+      {/* RM leaderboard — period-scoped and eight columns wide, so it gets its
+          own row rather than a third of one. */}
+      {show("section.rm_leaderboard") && (
+      <Suspense fallback={<LeaderboardSkeleton />}>
+        <RmLeaderboardSection
+          session={session}
+          from={range.fromDate}
+          to={range.toDate}
+          periodLabel={periodLabel}
+          periodQuery={periodQuery}
+        />
+      </Suspense>
+      )}
     </div>
   );
 }
