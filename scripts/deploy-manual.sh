@@ -35,8 +35,17 @@ cd "$(dirname "$0")/.."
 # A dry run only packages, so it needs no key.
 [ "${DRY_RUN:-}" = "1" ] || [ -r "$DEPLOY_KEY" ] || die "ssh key not found at $DEPLOY_KEY — set DEPLOY_KEY=/path/to/key.pem"
 
-SSH="ssh -i $DEPLOY_KEY -p $DEPLOY_PORT -o StrictHostKeyChecking=accept-new"
-SCP="scp -i $DEPLOY_KEY -P $DEPLOY_PORT -o StrictHostKeyChecking=accept-new"
+# ARRAYS, not strings. A string command expands unquoted at the call site, so a
+# key path containing a space is word-split into separate arguments: on a
+# Windows Git Bash box whose $HOME is "/c/Users/PRITESH THAKOR", `$SCP` became
+# `-i /c/Users/PRITESH` plus a bogus source argument `THAKOR/.ssh/mfd-deploy`,
+# and the deploy died at the copy step with "stat local ... No such file".
+#
+# (Writing `-i ~/.ssh/key` by hand happens to survive this, because tilde
+# expansion is not subject to word splitting — a variable is. That is exactly
+# the sort of difference that makes this bug look like a broken key.)
+SSH=(ssh -i "$DEPLOY_KEY" -p "$DEPLOY_PORT" -o StrictHostKeyChecking=accept-new)
+SCP=(scp -i "$DEPLOY_KEY" -P "$DEPLOY_PORT" -o StrictHostKeyChecking=accept-new)
 TARGET="$DEPLOY_USER@$DEPLOY_HOST"
 
 # ── Warn about anything that isn't committed ────────────────────────────────
@@ -68,20 +77,26 @@ if [ "${DRY_RUN:-}" = "1" ]; then
 fi
 
 say "copying to $TARGET"
-$SCP "$TARBALL" "$TARGET:/tmp/app.tgz"
+"${SCP[@]}" "$TARBALL" "$TARGET:/tmp/app.tgz"
 rm -f "$TARBALL"
 
 say "deploying (blue-green) — this takes several minutes"
 # shellcheck disable=SC2087  # expansion is intentional: values are baked in here.
-$SSH "$TARGET" bash -s <<REMOTE
+"${SSH[@]}" "$TARGET" bash -s <<REMOTE
 set -euo pipefail
 cd "$DEPLOY_APP_DIR"
 
 # A tarball only ADDS files. Anything deleted in git must be deleted here too,
 # or removed code keeps shipping.
+#
+# drizzle/ is pruned as well, matching the workflow. Leaving it out meant a
+# renamed or deleted migration was never removed from the box: renaming
+# 0001_rls_policies.sql -> 0001a_rls_policies.sql left BOTH on disk, recreating
+# the duplicate-0001 collision in production only, and the migrate runner then
+# applied the RLS migration twice.
 tar tzf /tmp/app.tgz | sed 's#/\$##' | sort -u > /tmp/shipped.txt
 tar xzf /tmp/app.tgz -C "$DEPLOY_APP_DIR"
-find src scripts -type f 2>/dev/null | sort -u > /tmp/onbox.txt
+find src scripts drizzle -type f 2>/dev/null | sort -u > /tmp/onbox.txt
 comm -13 /tmp/shipped.txt /tmp/onbox.txt | while read -r stale; do
   [ -n "\$stale" ] && rm -f "\$stale" && echo "removed stale: \$stale"
 done
