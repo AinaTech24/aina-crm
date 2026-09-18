@@ -762,6 +762,22 @@ async function processSipBook(
   let skipped = 0;
   let failed = 0;
 
+  // An unrecognised amount column is INVISIBLE without this. The header lookup
+  // returns only the columns it matched, so an unknown spelling leaves the field
+  // undefined, every row parses to 0, and the import still reports success —
+  // which is how one firm ended up with 5,767 active SIPs worth Rs 0 and no
+  // error to explain it. A whole book at zero is never a real SIP register, so
+  // say so on the row where someone will actually see it.
+  if (rows.length > 0 && rows.every((r) => !r.amount)) {
+    const header = (args.text.split(/\r?\n/)[0] ?? "").slice(0, 300);
+    errors.push({
+      row: 1,
+      reason:
+        `every one of the ${rows.length} rows parsed to amount 0 — the instalment-amount column in this file ` +
+        `was not recognised, so no amount was read. Header: ${header}`,
+    });
+  }
+
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     // The folio + scheme are what actually key a SIP. PAN is NOT required:

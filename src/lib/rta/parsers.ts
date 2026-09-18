@@ -194,9 +194,14 @@ const SIP_BOOK_ALIASES: Record<string, string[]> = {
   folioNumber: ["FOLIO", "FOLIO_NO", "FOLIO_NUM", "FOLIONO", "FOLIO NO", "FOLIO NUM", "FOLIONUM", "FOL_NO"],
   schemeCode: ["SCH_CODE", "SCHEME_CODE", "SCHEME CODE", "PRODUCT_CODE", "PRODUCT CODE", "SCHCOD", "PRODCODE", "SCH_CD"],
   schemeName: ["SCH_NAME", "SCHEME_NAME", "SCHEME NAME", "PRODUCT_NAME", "PRODUCT NAME", "SCHNAME", "PRODNAME"],
-  amount: ["AMOUNT", "AMT", "TXN_AMT", "TXN_AMOUNT", "TRANS_AMT", "SIP_AMOUNT", "INSTALLMENT_AMOUNT"],
-  frequency: ["FREQUENCY", "FREQ", "SIP_FREQ", "SIP_FREQUENCY"],
-  sipDate: ["SIP_DATE", "DATE", "SIP_DAY", "DAY"],
+  // AUTO_AMOUNT / PERIODICITY / PERIOD_DAY are the CAMS WBR49 ("Systematic
+  // Registration") spellings. Without them the header lookup found nothing and
+  // — because resolveHeader returns ONLY what it detected, never merged with the
+  // positional fallback — `cols[undefined]` yielded "" for every row, so
+  // `parseFloat("") || 0` wrote 8,140 SIPs at amount 0 with no error anywhere.
+  amount: ["AMOUNT", "AMT", "TXN_AMT", "TXN_AMOUNT", "TRANS_AMT", "SIP_AMOUNT", "INSTALLMENT_AMOUNT", "AUTO_AMOUNT", "AUTO_AMT"],
+  frequency: ["FREQUENCY", "FREQ", "SIP_FREQ", "SIP_FREQUENCY", "PERIODICITY"],
+  sipDate: ["SIP_DATE", "DATE", "SIP_DAY", "DAY", "PERIOD_DAY"],
   startDate: ["START_DATE", "SIP_START_DATE", "FROM_DATE", "FROM DATE", "START DATE"],
   endDate: ["END_DATE", "SIP_END_DATE", "TO_DATE", "TO DATE", "END DATE"],
   nextInstallmentAt: ["NEXT_DEBIT_DATE", "NEXT_INSTALLMENT_DATE", "NEXT_DUE_DATE", "NEXT_DATE", "NEXT_DEBIT", "NEXT_DT"],
@@ -390,6 +395,16 @@ export function parseSipBook(
   if (!lines.length) return out;
   const delim = getDelimiter(source, lines[0]);
   const { start, indexMap } = resolveHeader(lines[0] ?? "", delim, SIP_BOOK_ALIASES, DEFAULT_SIP_BOOK_MAP);
+
+  // CAMS calls the scheme-name column plainly `SCHEME`, which is too generic to
+  // sit in SIP_BOOK_ALIASES: buildHeaderIndexMap takes the FIRST header matching
+  // any alias, so a file carrying both `SCHEME` (a code) and `SCHEME_NAME` would
+  // pick the wrong one. Resolve it only as a fallback, once the precise aliases
+  // have had their chance.
+  if (indexMap.schemeName === undefined) {
+    const generic = buildHeaderIndexMap(splitLine(lines[0] ?? "", delim), { schemeName: ["SCHEME"] });
+    if (generic.schemeName !== undefined) indexMap.schemeName = generic.schemeName;
+  }
 
   for (let i = start; i < lines.length; i++) {
     const line = lines[i].trim();
