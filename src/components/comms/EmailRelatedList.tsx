@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Mail, Send, Loader2, X, ChevronDown, RefreshCw, Inbox, ArrowDownLeft, ArrowUpRight, Reply, PenLine } from "lucide-react";
+import { Mail, Send, Loader2, X, ChevronDown, RefreshCw, Inbox, ArrowDownLeft, ArrowUpRight, Reply, PenLine, ShieldCheck } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { Select } from "@/components/ui/Select";
 
@@ -103,6 +103,47 @@ export function EmailRelatedList({
   const [composeOpen, setComposeOpen] = useState(false);
   const [freeCompose, setFreeCompose] = useState<ReplySeed | null>(null);
 
+  // A send the pipeline refused for want of consent. Until this existed there
+  // was NO way to record email consent anywhere in the app — the consent API
+  // was only ever called from the WhatsApp list — so every email to every
+  // client was refused permanently and clicking Send again could not help.
+  const [consentBlocked, setConsentBlocked] = useState(false);
+  const [recordingConsent, setRecordingConsent] = useState(false);
+
+  async function recordEmailConsent() {
+    setRecordingConsent(true);
+    try {
+      const res = await fetch("/api/comms/consent", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        // `transactional`, deliberately NOT `all`. This records that the client
+        // agreed to service email — statements, risk-profile results, review
+        // notes. Marketing is a separate, stronger claim under DPDP/TRAI and
+        // must be granted on its own. getConsent() treats an `all` grant as
+        // covering both, which is exactly what we do not want one click to do.
+        body: JSON.stringify({ investorId: entityId, channel: "email", scope: "transactional", status: "granted" }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(j.error ?? "Could not record consent");
+        return;
+      }
+      setConsentBlocked(false);
+      toast.success("Email consent recorded — send again.");
+      load();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Network error");
+    } finally {
+      setRecordingConsent(false);
+    }
+  }
+
+  /** Surface a skip, and offer the fix when the reason is a missing consent. */
+  const handleSkipped = useCallback((msg: string, reason?: string) => {
+    toast.error(msg);
+    if (reason === "skipped_consent" && entityType === "investor") setConsentBlocked(true);
+  }, [toast, entityType]);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -145,6 +186,33 @@ export function EmailRelatedList({
           </button>
         </div>
       </div>
+
+      {consentBlocked && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 flex items-start gap-2.5">
+          <ShieldCheck className="size-4 text-amber-700 shrink-0 mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-amber-900">No email consent on record for this client</p>
+            <p className="text-2xs text-amber-800 mt-0.5">
+              Every outbound email needs a recorded opt-in. Record it here once the client has agreed — verbally or in
+              writing — and the send will go through. This covers service email only; marketing consent is separate.
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={recordEmailConsent}
+              disabled={recordingConsent}
+              className="btn-primary text-2xs px-2.5 py-1.5"
+            >
+              {recordingConsent ? <Loader2 className="size-3 animate-spin" /> : <ShieldCheck className="size-3" />}
+              Record consent
+            </button>
+            <button type="button" onClick={() => setConsentBlocked(false)} className="btn-icon" aria-label="Dismiss">
+              <X className="size-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {error ? (
         <div className="rounded-lg border border-rose-200 bg-rose-50 text-rose-700 text-xs px-3 py-2">{error}</div>
@@ -224,7 +292,7 @@ export function EmailRelatedList({
           templates={templates}
           onClose={() => setComposeOpen(false)}
           onSent={(msg) => { toast.success(msg); setComposeOpen(false); load(); }}
-          onSkipped={(msg) => toast.error(msg)}
+          onSkipped={handleSkipped}
         />
       )}
 
@@ -237,7 +305,7 @@ export function EmailRelatedList({
           seed={freeCompose}
           onClose={() => setFreeCompose(null)}
           onSent={(msg) => { toast.success(msg); setFreeCompose(null); load(); }}
-          onSkipped={(msg) => toast.error(msg)}
+          onSkipped={handleSkipped}
         />
       )}
     </div>
@@ -263,7 +331,7 @@ function FreeComposeModal({
   seed: ReplySeed;
   onClose: () => void;
   onSent: (msg: string) => void;
-  onSkipped: (msg: string) => void;
+  onSkipped: (msg: string, reason?: string) => void;
 }) {
   const isReply = !!seed.inReplyTo || !!seed.threadId;
   const [subject, setSubject] = useState(seed.subject ? (isReply ? `Re: ${seed.subject}` : seed.subject) : "");
@@ -291,7 +359,7 @@ function FreeComposeModal({
       });
       const j = await res.json();
       if (!res.ok) { setErr(j.error ?? "Failed to send"); return; }
-      if (j.status === "skipped") { onSkipped(`Email blocked: ${j.skipped?.detail ?? j.reason ?? "compliance/consent check"}`); return; }
+      if (j.status === "skipped") { onSkipped(`Email blocked: ${j.skipped?.detail ?? j.reason ?? "compliance/consent check"}`, j.skipped?.reason ?? j.reason); return; }
       onSent(j.status === "queued" ? "Email queued." : "Email sent.");
     } catch (e: any) {
       setErr(e?.message ?? "Network error");
@@ -355,7 +423,7 @@ function ComposeModal({
   templates: TemplateInfo[];
   onClose: () => void;
   onSent: (msg: string) => void;
-  onSkipped: (msg: string) => void;
+  onSkipped: (msg: string, reason?: string) => void;
 }) {
   const [selectedKey, setSelectedKey] = useState("");
   const [vars, setVars] = useState<Record<string, string>>({});
@@ -395,7 +463,7 @@ function ComposeModal({
       });
       const j = await res.json();
       if (!res.ok) { setErr(j.error ?? "Failed to send"); return; }
-      if (j.status === "skipped") { onSkipped(`Email blocked: ${j.skipped?.detail ?? j.skipped?.reason ?? "compliance/consent check"}`); return; }
+      if (j.status === "skipped") { onSkipped(`Email blocked: ${j.skipped?.detail ?? j.skipped?.reason ?? "compliance/consent check"}`, j.skipped?.reason); return; }
       onSent(j.status === "queued" ? "Email queued for sending." : "Email sent.");
     } catch (e: any) {
       setErr(e?.message ?? "Network error");
