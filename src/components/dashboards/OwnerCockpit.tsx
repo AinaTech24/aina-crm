@@ -715,13 +715,13 @@ async function OwnerCockpitBody({
     <div className="space-y-6">
       {/* 2 · CHARTS — the reference's "wide chart + narrow donut" row, then a
              full-width second chart. */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 items-start">
-        <div className="lg:col-span-8">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 items-start">
+        <div className="min-w-0 lg:col-span-2">
           <Suspense fallback={<CardSkeleton />}>
             <LeadPipelineSection session={session} branchId={branchId} />
           </Suspense>
         </div>
-        <div className="lg:col-span-4">
+        <div className="min-w-0">
           {show("section.aum_segment") && (
             <Suspense fallback={<ChartSkeleton />}>
               <AumSegmentSection session={session} />
