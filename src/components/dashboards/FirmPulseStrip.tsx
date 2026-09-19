@@ -115,12 +115,10 @@ export function FirmPulseStrip({
             <MetricTile
               key={m.key}
               hue={HUE[m.key]}
-              lead={m.key === "aum"}
               icon={ICON[m.key]}
               label={m.label}
               value={fmt(m.value)}
               href={HREF[m.key]}
-              series={m.series}
               delta={
                 d
                   ? {
@@ -129,11 +127,8 @@ export function FirmPulseStrip({
                           ? fmt(Math.abs(d.abs))
                           : `${Math.abs(d.pct * 100).toFixed(1)}%`,
                       direction: d.abs > 0 ? "up" : d.abs < 0 ? "down" : "flat",
-                      since: "vs last month",
                     }
-                  : m.footnote && m.footnote.value != null
-                    ? { value: money(m.footnote.value), direction: "flat", since: m.footnote.label }
-                    : undefined
+                  : undefined
               }
             />
           );

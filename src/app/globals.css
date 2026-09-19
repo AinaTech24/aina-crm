@@ -5,7 +5,8 @@
 @layer base {
   :root {
     /* ═══════════════════════════════════════════════════════════════════════
-       Aina CRM palette — Aina red primary (#C5202A), dark-teal accent (#1F3D3B).
+       Aina CRM palette — orange primary (#F97316), matching the FlowDesk reference
+       the user asked to reproduce exactly. Was Aina red (#B71A20).
        Derived from the Aina logo. The brand token names below keep their legacy
        spelling (`--brand-navy` = red, `--brand-cyan` = teal) so the hundreds of
        existing `bg-brand-navy` / `text-brand-cyan` consumers re-theme in place.
@@ -20,7 +21,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 200 30% 12%;
 
-    --primary: 358 75% 41%;                  /* Aina red #B71A20 */
+    --primary: 25 95% 53%;                  /* Aina red #B71A20 */
     --primary-foreground: 0 0% 100%;
 
     --secondary: 200 20% 95.5%;              /* soft neutral for hovers / chips */
@@ -29,8 +30,8 @@
     --muted: 200 18% 95%;
     --muted-foreground: 200 12% 44%;
 
-    --accent: 358 70% 96%;                   /* light brand tint — hover surface */
-    --accent-foreground: 358 60% 30%;        /* deep red text on the tint */
+    --accent: 25 95% 96%;                   /* light brand tint — hover surface */
+    --accent-foreground: 21 90% 35%;        /* deep red text on the tint */
 
     --destructive: 4 80% 52%;                /* warmer red, distinct from brand crimson */
     --destructive-foreground: 0 0% 100%;
@@ -43,19 +44,19 @@
 
     --border: 200 20% 90%;
     --input: 200 20% 90%;
-    --ring: 358 75% 41%;                     /* Aina-red focus ring — one accent */
+    --ring: 25 95% 53%;                     /* Aina-red focus ring — one accent */
 
     --radius: 0.75rem;                       /* 12px base; xl utilities give 16/20px */
 
     /* Extended brand tokens (consumed by gradients, badges, hero strips).
        Names are legacy; values are the Aina palette. */
-    --brand-navy: 358 75% 41%;               /* = Aina red #B71A20 */
-    --brand-navy-deep: 358 78% 32%;          /* deep red */
-    --brand-navy-light: 358 70% 96%;         /* red tint */
-    --brand-cyan: 358 75% 41%;               /* re-pointed: = Aina red (one accent) */
-    --brand-cyan-deep: 358 78% 32%;          /* deep red */
-    --brand-cyan-light: 358 70% 96%;         /* red tint */
-    --brand-violet: 356 60% 55%;
+    --brand-navy: 25 95% 53%;               /* = Aina red #B71A20 */
+    --brand-navy-deep: 21 90% 42%;          /* deep red */
+    --brand-navy-light: 25 95% 96%;         /* red tint */
+    --brand-cyan: 25 95% 53%;               /* re-pointed: = Aina red (one accent) */
+    --brand-cyan-deep: 21 90% 42%;          /* deep red */
+    --brand-cyan-light: 25 95% 96%;         /* red tint */
+    --brand-violet: 25 85% 60%;
 
     /* ── Metric accents ────────────────────────────────────────────────
        A deliberate SIX-hue set, used only by dashboard metric cards to give
@@ -80,7 +81,7 @@
     --metric-cyan:    192 91% 36%;
     --metric-amber:    32 95% 44%;
     --metric-rose:    347 77% 50%;
-    --brand-mint: 358 75% 41%;              /* re-pointed: = Aina red (one accent) */
+    --brand-mint: 25 95% 53%;              /* re-pointed: = Aina red (one accent) */
     /* Sidebar active-item tint — theme-aware (see .nav-link-active). Soft brand
        red on light; a muted deep red on dark (brand-navy-light would be near
        white in dark, so it gets its own value below). */
@@ -90,8 +91,8 @@
        A solid red bar is the loudest element on a screen whose whole job is to
        let the eye land somewhere else, and it spends the one accent colour on
        "you are here" — a fact the user already knows. */
-    --nav-active-bg: 358 75% 41%;            /* Aina red, applied at low alpha */
-    --nav-active-fg: 358 72% 38%;            /* brand-red label + icon */
+    --nav-active-bg: 25 95% 53%;            /* Aina red, applied at low alpha */
+    --nav-active-fg: 21 90% 42%;            /* brand-red label + icon */
 
     /* Chart ramp — see tailwind.config.ts `colors.chart`. Muted, mutually
        distinguishable, and sharing no hue with --primary so red keeps meaning
