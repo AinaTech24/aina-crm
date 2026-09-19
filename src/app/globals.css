@@ -84,8 +84,14 @@
     /* Sidebar active-item tint — theme-aware (see .nav-link-active). Soft brand
        red on light; a muted deep red on dark (brand-navy-light would be near
        white in dark, so it gets its own value below). */
-    --nav-active-bg: 358 75% 41%;            /* solid Aina red pill */
-    --nav-active-fg: 0 0% 100%;              /* white label + icon on the pill */
+    /* Soft brand tint, not a solid fill. Both the FlowDesk reference and the
+       current best-practice guidance put the active nav item on ~6-10% alpha of
+       the brand hue with brand-coloured text, rather than a saturated pill.
+       A solid red bar is the loudest element on a screen whose whole job is to
+       let the eye land somewhere else, and it spends the one accent colour on
+       "you are here" — a fact the user already knows. */
+    --nav-active-bg: 358 75% 41%;            /* Aina red, applied at low alpha */
+    --nav-active-fg: 358 72% 38%;            /* brand-red label + icon */
 
     /* Chart ramp — see tailwind.config.ts `colors.chart`. Muted, mutually
        distinguishable, and sharing no hue with --primary so red keeps meaning
@@ -524,8 +530,9 @@
   }
   .nav-link-active,
   .nav-link-active:hover {
-    background-color: hsl(var(--nav-active-bg));
+    background-color: hsl(var(--nav-active-bg) / 0.10);
     color: hsl(var(--nav-active-fg));
+    font-weight: 600;
     font-weight: 600;
   }
   .nav-link-active .nav-link-icon,
@@ -540,8 +547,12 @@
 
   /* Apply on <table>. Adds sticky header, gentle row hover, and softer borders. */
   .table-modern thead th {
+    /* A faint brand tint on the header row, per the reference — enough to
+       separate it from the body at a glance without the weight of a filled
+       bar. `text-foreground/70` rather than muted so the column names stay
+       readable against it. */
     @apply text-2xs font-semibold uppercase tracking-wider
-           text-muted-foreground bg-secondary/40
+           text-foreground/70 bg-primary/[0.06]
            border-b border-border sticky top-0 z-[1];
   }
   .table-modern tbody tr {

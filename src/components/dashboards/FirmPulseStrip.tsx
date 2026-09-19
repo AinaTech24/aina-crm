@@ -105,7 +105,7 @@ export function FirmPulseStrip({
           leading at a larger size. Every card carries number · delta · trend:
           a bare figure cannot answer "is this good?", which is what a
           dashboard is for. */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {metrics.map((m) => {
           // Prefer month-on-month: a firm looks at a dashboard to ask how the
           // month is going, and the day delta is noise at this size.

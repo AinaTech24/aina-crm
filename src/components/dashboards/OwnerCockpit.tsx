@@ -1,5 +1,6 @@
 import React, { Suspense } from "react";
 import { SetupChecklist } from "./SetupChecklist";
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { ArrowDownRight, ArrowUpRight, TrendingUp, Users, UserPlus } from "lucide-react";
@@ -98,6 +99,10 @@ export async function OwnerCockpit({
    *  therefore only its queries run. */
   tab?: DashboardTab;
 }) {
+  // The breadcrumb names the tab, so "Dashboard › Insights" is meaningful
+  // rather than "Dashboard › Dashboard".
+  const tabLabel =
+    tab === "insights" ? "Insights" : tab === "tracker" ? "Tracker" : "Overview";
   const now = new Date();
   const today = now.toLocaleDateString("en-IN", {
     weekday: "long",
@@ -114,12 +119,15 @@ export async function OwnerCockpit({
           attention", and it pushed the numbers people actually open this page
           for below the fold. Same words, same information, as an ordinary
           page header like every other screen. */}
-      <div>
-        <h1 className="page-title">Welcome back, {session.name.split(" ")[0]}</h1>
-        <p className="page-subtitle mt-1">
-          Your firm as of <span className="text-foreground font-medium">{today}</span>.
-        </p>
-      </div>
+      <PageHeaderCard
+        title={`Welcome back, ${session.name.split(" ")[0]}`}
+        subtitle={
+          <>
+            Your firm as of <span className="font-medium text-foreground">{today}</span>.
+          </>
+        }
+        breadcrumb={[{ label: tabLabel }]}
+      />
 
       {/* First-run setup checklist — data-verified steps; vanishes when done. */}
       <Suspense fallback={null}>

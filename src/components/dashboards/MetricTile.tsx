@@ -61,34 +61,58 @@ export function MetricTile({
   // component renders <Link>{card}</Link>, so the anchor is the grid child and
   // a col-span on the inner div does nothing at all — which is why the lead
   // metric never got its extra width at any breakpoint.
-  // Full width at sm, equal at lg (four columns, no room to spare), and
-  // double-width only at xl where five columns actually fit.
-  const span = lead ? "sm:col-span-2 lg:col-span-1 xl:col-span-2" : "";
+  // Equal tiles. The reference takes its hierarchy from ORDER — the metric
+  // that answers the first question comes first — rather than from a
+  // double-width card, which only worked at one breakpoint and squeezed
+  // everything beside it.
+  const span = "";
 
   const inner = (
     <div
       style={style}
-      className="card-surface card-raise flex h-full flex-col p-5 transition-colors hover:border-foreground/20 xl:p-6"
+      className="card-surface card-raise relative flex h-full flex-col overflow-hidden p-5 transition-colors hover:border-foreground/20"
     >
-      <div className="mb-4 flex items-center gap-3">
-        <span
-          className="grid size-10 shrink-0 place-items-center rounded-xl"
-          style={{ background: "color-mix(in srgb, var(--c) 14%, transparent)", color: "var(--c)" }}
-          aria-hidden
-        >
-          {icon}
-        </span>
-        <span className="text-2xs font-bold uppercase leading-tight tracking-wide text-muted-foreground">
-          {label}
-        </span>
-      </div>
-
-      <div
-        className={`font-display font-extrabold leading-none tabular-nums tracking-tight ${
-          lead ? "text-4xl" : "text-3xl"
-        }`}
+      {/* Reference anatomy: tinted chip on the LEFT, figure above its label,
+          and the same icon again as a very faint watermark on the right. The
+          previous order put a small grey label on the top line and the number
+          under it, which buries the one thing the card exists to show. */}
+      {/* The watermark is decorative and ABSOLUTE. In the flow it consumed
+          ~30px of the row, which — with a 44px chip beside it — left too little
+          for the figure and clipped "₹16.23 Cr" to "₹16.23…". */}
+      <span
+        className="pointer-events-none absolute right-4 top-4 opacity-[0.10]"
+        style={{ color: "var(--c)" }}
+        aria-hidden
       >
-        {value}
+        {icon}
+      </span>
+
+      <div className="flex items-start gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <span
+            className="grid size-11 shrink-0 place-items-center rounded-xl"
+            style={{
+              background: "color-mix(in srgb, var(--c) 14%, transparent)",
+              color: "var(--c)",
+            }}
+            aria-hidden
+          >
+            {icon}
+          </span>
+          <div className="min-w-0">
+            {/* nowrap: the figure is the point of the card and must never
+                break across lines. If it outgrows the column the card
+                scrolls it rather than stacking "Lakh" underneath. */}
+            {/* 24px, as the reference sets it. At 30px "₹16.23 Cr" did not fit
+                a quarter-width card beside a 44px chip. */}
+            <div className="whitespace-nowrap font-display text-2xl font-extrabold leading-none tabular-nums tracking-tight">
+              {value}
+            </div>
+            <div className="mt-1.5 text-2xs font-bold uppercase leading-tight tracking-wide text-muted-foreground">
+              {label}
+            </div>
+          </div>
+        </div>
       </div>
 
       {delta && (
