@@ -105,8 +105,8 @@ export function GlobalSearch() {
     }}>
       {/* Input shell — styled like a search field, focus-within highlights it */}
       <div
-        className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-sm
-                   transition-colors duration-150 focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/10"
+        className="flex w-full items-center gap-2 rounded-lg border-0 bg-secondary px-3 py-2
+                   transition-colors duration-150 focus-within:ring-2 focus-within:ring-primary/20"
       >
         <Search className="size-3.5 text-muted-foreground shrink-0" />
         <input
@@ -129,14 +129,14 @@ export function GlobalSearch() {
             if (roGuard) setRoGuard(false);
             setOpen(true);
           }}
-          placeholder="Search clients, leads, folios…"
+          placeholder="Search modules, pages or actions…"
           className="flex-1 min-w-0 bg-transparent text-sm outline-none focus:ring-0 focus-visible:ring-0 focus:shadow-none placeholder:text-muted-foreground"
           aria-label="Global search"
           aria-expanded={showPanel}
           aria-controls="global-search-results"
         />
         {busy ? (
-          <Loader2 className="size-3.5 animate-spin text-brand-cyan shrink-0" />
+          <Loader2 className="size-3.5 animate-spin text-primary shrink-0" />
         ) : q ? (
           <button
             type="button"
@@ -149,7 +149,11 @@ export function GlobalSearch() {
           >
             <X className="size-3.5" />
           </button>
-        ) : null}
+        ) : (
+          <kbd className="hidden sm:inline-flex shrink-0 items-center rounded-md border border-border bg-card px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+            Ctrl K
+          </kbd>
+        )}
       </div>
 
       {/* Results popover — anchored directly under the input */}

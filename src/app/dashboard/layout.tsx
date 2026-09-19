@@ -75,6 +75,7 @@ import { tenantAccessibleNavKeys, isGatableNav, gatedNavKeyForPath } from "@/con
 import { pickLogo } from "@/lib/branding/logo";
 import type { Metadata } from "next";
 import { GlobalSearch } from "@/components/layout/GlobalSearch";
+import { BackButton } from "@/components/layout/BackButton";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { BirthdayBell } from "@/components/layout/BirthdayBell";
 import { WhatsNewBell } from "@/components/layout/WhatsNewBell";
@@ -606,15 +607,18 @@ export default async function DashboardLayout({ children }: { children: React.Re
           pinned inside this pane (not at viewport top). */}
       <main className="flex-1 h-full overflow-y-auto print:overflow-visible print:h-auto">
         {/* Topbar — glass, sticky; hidden when printing */}
-        <div className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-xl backdrop-saturate-150 px-4 sm:px-6 h-16 flex items-center justify-between gap-2 sm:gap-4 print:hidden">
+        <div className="sticky top-0 z-40 border-b border-border bg-card px-4 sm:px-6 h-[72px] flex items-center gap-3 sm:gap-4 print:hidden">
           <div className="flex items-center gap-3 min-w-0">
             {/* Mobile hamburger — opens the nav drawer (shares sidebarInner).
                 Firm name + ARN live in the sidebar header only (no duplication). */}
             <MobileNav>{sidebarInner}</MobileNav>
+            <BackButton />
           </div>
-          <div data-tour="global-search" className="flex-1 min-w-0 flex">
+          {/* Reference: a bounded grey search pill, not a full-width bar. */}
+          <div data-tour="global-search" className="flex-1 min-w-0 flex max-w-md">
             <GlobalSearch />
           </div>
+          <div className="flex-1" />
           <div className="flex items-center gap-2 sm:gap-3 text-sm">
             {/* Convenience icons collapse on phones — everything stays reachable
                 (2FA via Settings, Help via pages, birthdays via My Day). */}

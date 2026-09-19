@@ -369,7 +369,7 @@ export function CustomizableNav({
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search modules…"
               disabled={editing}
-              className="w-full rounded-lg border border-border bg-secondary/40 pl-8 pr-7 py-1.5 text-xs focus:outline-none focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/15 disabled:opacity-50"
+              className="w-full rounded-lg border-0 bg-secondary pl-8 pr-7 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
             />
             {query && (
               <button type="button" onClick={() => setQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" aria-label="Clear">
@@ -383,7 +383,7 @@ export function CustomizableNav({
             onClick={() => { setEditing((e) => !e); setQuery(""); }}
             title={editing ? "Done customizing" : "Customize sidebar"}
             aria-label={editing ? "Done customizing" : "Customize sidebar"}
-            className={`shrink-0 inline-grid place-items-center size-[34px] rounded-lg transition-colors ${editing ? "bg-brand-cyan-light text-brand-cyan-deep" : "text-muted-foreground hover:bg-secondary border border-border"}`}
+            className={`shrink-0 inline-grid place-items-center size-[34px] rounded-lg transition-colors ${editing ? "bg-brand-cyan-light text-brand-cyan-deep" : "text-muted-foreground bg-secondary hover:text-foreground"}`}
           >
             {editing ? <Check className="size-4" /> : <Pencil className="size-4" />}
           </button>
@@ -518,15 +518,12 @@ export function CustomizableNav({
                     type="button"
                     onClick={() => toggleCollapse(g.id)}
                     aria-expanded={!isCollapsed}
-                    className="sidebar-section-title group/sec w-full px-2 py-1.5 mb-0.5 flex items-center gap-2 text-left rounded-md hover:bg-secondary/70 transition-colors"
+                    className="sidebar-section-title group/sec w-full px-3 pt-4 pb-1.5 flex items-center gap-2 text-left rounded-md transition-colors"
                   >
-                    {/* Folder icon — open when expanded, closed when collapsed. */}
-                    {isCollapsed ? (
-                      <Folder className="size-[18px] shrink-0 text-muted-foreground/70" />
-                    ) : (
-                      <FolderOpen className="size-[18px] shrink-0 text-muted-foreground/70" />
-                    )}
-                    <span className={`flex-1 truncate text-2xs font-bold uppercase tracking-wider transition-colors ${groupActive ? "text-primary" : "text-muted-foreground"}`}>
+                    {/* Reference group labels are bare uppercase text — no
+                        folder glyph. The collapse chevron shows on hover so
+                        the affordance survives without cluttering the rail. */}
+                    <span className="flex-1 truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                       {g.title}
                     </span>
                     {/* A small dot when a collapsed folder holds the current page. */}
@@ -534,13 +531,13 @@ export function CustomizableNav({
                       <span className="shrink-0 size-1.5 rounded-full bg-brand-navy" aria-hidden />
                     )}
                     {/* Chevron on the right — ▼ collapsed, ▲ when expanded. */}
-                    <ChevronDown className={`size-3.5 shrink-0 text-muted-foreground/50 transition-transform group-hover/sec:text-muted-foreground ${isCollapsed ? "" : "rotate-180"}`} />
+                    <ChevronDown className={`size-3.5 shrink-0 text-muted-foreground/60 opacity-0 transition-all group-hover/sec:opacity-100 ${isCollapsed ? "" : "rotate-180"}`} />
                   </button>
                 ) : null}
 
                 {/* Items stay mounted; when the section is collapsed we hide them
                     via CSS so the icon-rail still shows every glyph. */}
-                <div className={`nav-sec-body space-y-1 min-h-[8px] ${titled && !editing ? "ml-[17px] pl-2 border-l border-border/60" : ""} ${isCollapsed || dragGroupId === g.id ? "nav-sec-collapsed" : ""}`}>
+                <div className={`nav-sec-body space-y-1 min-h-[8px]  ${isCollapsed || dragGroupId === g.id ? "nav-sec-collapsed" : ""}`}>
                   {visibleItems.map((href) => {
                     const it = itemMap.get(href);
                     if (!it) return null;

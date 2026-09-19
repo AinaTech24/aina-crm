@@ -1,42 +1,48 @@
 "use client";
 
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
-import { formatINR } from "@/lib/utils";
+import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
+import { formatINR, formatINRShort } from "@/lib/utils";
 import { ChartMount } from "./ChartMount";
 
 type SegmentData = { name: string; value: number; count: number };
 
+/** Reference donut palette: indigo, blue, green, amber, slate — flat. */
 const COLORS = [
-  "hsl(199, 89%, 48%)", // Electric Cyan
-  "hsl(256, 70%, 60%)", // Brand Violet
-  "hsl(165, 70%, 45%)", // Brand Mint
-  "hsl(221, 83%, 18%)", // Deep Navy
-  "hsl(36, 100%, 55%)",  // Warm Orange
+  "hsl(var(--chart-1))",
+  "hsl(var(--chart-2))",
+  "hsl(var(--chart-3))",
+  "hsl(var(--chart-4))",
+  "hsl(var(--chart-6))",
 ];
 
+/**
+ * Thick flat donut with a centre label and a dot legend — the reference's
+ * "Project Status" / "Deal Health" treatment.
+ */
 export function AumSegmentChart({ data }: { data: SegmentData[] }) {
   const totalAum = data.reduce((sum, item) => sum + item.value, 0);
 
-  if (!data.some(d => d.value > 0)) {
+  if (!data.some((d) => d.value > 0)) {
     return (
-      <div className="h-48 grid place-items-center text-xs text-muted-foreground">
+      <div className="h-72 grid place-items-center text-xs text-muted-foreground">
         No active client AUM data available.
       </div>
     );
   }
 
   return (
-    <ChartMount className="h-56 w-full relative">
+    <ChartMount className="relative h-72 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
           <Pie
             data={data}
             cx="50%"
-            cy="50%"
-            innerRadius={55}
-            outerRadius={75}
-            paddingAngle={3}
+            cy="46%"
+            innerRadius="58%"
+            outerRadius="92%"
+            paddingAngle={1.5}
             dataKey="value"
+            stroke="none"
           >
             {data.map((entry, index) => (
               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -44,34 +50,27 @@ export function AumSegmentChart({ data }: { data: SegmentData[] }) {
           </Pie>
           <Tooltip
             contentStyle={{
-              fontSize: 11,
-              borderRadius: "0.5rem",
-              border: "1px solid rgba(0,0,0,0.08)",
+              fontSize: 12,
+              borderRadius: 10,
+              border: "1px solid hsl(var(--border))",
+              background: "hsl(var(--card))",
             }}
-            formatter={(value: any, name: any, props: any) => [
-              `${formatINR(Number(value))} (${props.payload.count} clients)`,
-              name,
-            ]}
+            formatter={(value, name, item) => {
+              const count = Number((item as { payload?: { count?: number } }).payload?.count ?? 0);
+              return [`${formatINR(Number(value ?? 0))} (${count} clients)`, String(name ?? "")];
+            }}
           />
           <Legend
             verticalAlign="bottom"
-            height={36}
             iconType="circle"
             iconSize={8}
-            wrapperStyle={{ fontSize: 10 }}
+            wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
           />
         </PieChart>
       </ResponsiveContainer>
-      <div className="absolute top-[40%] left-1/2 -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
-        {/* "Total AUM" here is the ACTIVE-client total this donut segments, which
-            is a smaller figure than the Firm Pulse headline (every live client,
-            including dormant). Both were labelled "Total AUM" on one screen. */}
-        <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
-          Active AUM
-        </div>
-        <div className="text-xs font-bold text-foreground truncate max-w-[100px]">
-          {formatINR(totalAum)}
-        </div>
+      <div className="pointer-events-none absolute left-1/2 top-[46%] -translate-x-1/2 -translate-y-1/2 text-center">
+        <div className="text-sm text-muted-foreground">Active AUM</div>
+        <div className="text-lg font-semibold tabular-nums text-foreground">{formatINRShort(totalAum)}</div>
       </div>
     </ChartMount>
   );

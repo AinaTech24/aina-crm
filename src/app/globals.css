@@ -14,7 +14,7 @@
     /* Ground sits ~4% below --card so a card reads as a surface ON the page.
        It was 98.6% — a 1.4% gap that made every panel dissolve into the page,
        which is why the app looked flat however much structure was there. */
-    --background: 200 22% 95.5%;             /* cool paper, a step below card */
+    --background: 220 20% 97%;               /* #F5F7FA — reference ground */
     --foreground: 200 30% 12%;               /* near-black charcoal-teal */
     --card: 0 0% 100%;
     --card-foreground: 200 30% 12%;
@@ -24,11 +24,11 @@
     --primary: 25 95% 53%;                  /* Aina red #B71A20 */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 200 20% 95.5%;              /* soft neutral for hovers / chips */
+    --secondary: 220 20% 96%;                /* soft neutral for hovers / chips */
     --secondary-foreground: 200 30% 20%;
 
-    --muted: 200 18% 95%;
-    --muted-foreground: 200 12% 44%;
+    --muted: 220 18% 95%;
+    --muted-foreground: 218 11% 50%;        /* #6B7280-ish label grey */
 
     --accent: 25 95% 96%;                   /* light brand tint — hover surface */
     --accent-foreground: 21 90% 35%;        /* deep red text on the tint */
@@ -42,8 +42,8 @@
     --info: 199 74% 45%;
     --info-foreground: 202 72% 28%;
 
-    --border: 200 20% 90%;
-    --input: 200 20% 90%;
+    --border: 220 16% 92%;                   /* hairline, neutral */
+    --input: 220 16% 92%;
     --ring: 25 95% 53%;                     /* Aina-red focus ring — one accent */
 
     --radius: 0.75rem;                       /* 12px base; xl utilities give 16/20px */
@@ -97,12 +97,15 @@
     /* Chart ramp — see tailwind.config.ts `colors.chart`. Muted, mutually
        distinguishable, and sharing no hue with --primary so red keeps meaning
        "needs attention" inside a chart rather than "series 1". */
-    --chart-1: 199 70% 39%;                  /* blue    #1E7FA8 */
-    --chart-2: 158 62% 30%;                  /* green   #1D7A54 */
-    --chart-3: 37 89% 37%;                   /* amber   #B0700A */
-    --chart-4: 253 27% 50%;                  /* violet  #6B5CA5 */
-    --chart-5: 177 54% 36%;                  /* teal    #2A8F8A */
-    --chart-6: 210 12% 58%;                  /* slate   #8593A0 */
+    /* Flat, saturated — the reference's chart set (indigo donut, blue bars,
+       green line, amber, red, slate). Charts sit on white, so these need to
+       be full-strength to read as the reference does. */
+    --chart-1: 239 84% 67%;                  /* indigo  #6366F1 */
+    --chart-2: 217 91% 60%;                  /* blue    #3B82F6 */
+    --chart-3: 142 71% 45%;                  /* green   #22C55E */
+    --chart-4: 38 92% 50%;                   /* amber   #F59E0B */
+    --chart-5: 0 84% 60%;                    /* red     #EF4444 */
+    --chart-6: 215 14% 64%;                  /* slate   #94A3B8 */
   }
 
 
@@ -350,15 +353,12 @@
 
   /* Card — the workhorse. Soft elevation, subtle gradient overlay. */
   .card-surface {
-    @apply rounded-xl bg-card text-card-foreground shadow-sm
+    /* Reference cards: white, 1px neutral hairline, 12px radius, and no
+       visible shadow — the ground/card contrast does the separating. */
+    @apply rounded-xl bg-card text-card-foreground
            border border-border
            transition-colors duration-150;
-    /* Two layers: a tight contact shadow plus a wide soft one. A single
-       `shadow-sm` draws a box ON the page; this lifts the card OFF it, which
-       is the difference the premium templates trade on. */
-    box-shadow:
-      0 1px 2px hsl(var(--foreground) / .04),
-      0 1px 3px hsl(var(--foreground) / .05);
+    box-shadow: none;
   }
 
   /* Elevated card — for hero/feature panels */
@@ -517,8 +517,8 @@
      when stacked with pinned duplicates + red section headers. */
   .nav-link {
     @apply relative flex items-center gap-3 rounded-lg
-           px-3 py-[9px] text-[13px] font-medium
-           text-muted-foreground
+           px-3 py-[9px] text-sm font-medium
+           text-foreground/80
            hover:bg-secondary hover:text-foreground
            transition-colors duration-150;
   }
@@ -1038,7 +1038,6 @@ input[type="checkbox"]:not([data-native]):indeterminate::before {
    error to show for it — see the sidebar icon incident. Plain top-level CSS
    always ships. */
 .card-raise {
-  box-shadow:
-    0 2px 4px hsl(var(--foreground) / .03),
-    0 8px 24px -6px hsl(var(--foreground) / .10);
+  /* Reference has no elevated variant; kept as a no-op so callers survive. */
+  box-shadow: none;
 }

@@ -1,10 +1,10 @@
 import React from "react";
-import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { Users } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { AumSegmentChart } from "./AumSegmentChart";
 import { EmptySection } from "./EmptySection";
+import { FlowChartCard } from "./FlowChartCard";
 import type { SessionUser } from "@/lib/auth/session";
 
 export async function AumSegmentSection({ session }: { session: SessionUser }) {
@@ -48,17 +48,8 @@ export async function AumSegmentSection({ session }: { session: SessionUser }) {
   }
 
   return (
-    <div className="card-surface p-5">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="section-title flex items-center gap-2">
-          <Users className="size-4 text-muted-foreground" />
-          AUM by Client Segment
-        </h2>
-        <Link href="/dashboard/investors" className="text-2xs text-muted-foreground hover:text-foreground font-medium">
-          Clients →
-        </Link>
-      </div>
+    <FlowChartCard title="AUM by Segment" subtitle="Active-client AUM across client categories" href="/dashboard/investors" hrefLabel="Clients">
       <AumSegmentChart data={aumSegments} />
-    </div>
+    </FlowChartCard>
   );
 }

@@ -160,7 +160,24 @@ export default async function DashboardPage({
     dash = selected ? (
       <RmDashboard session={session} targetUserId={selected.id} targetName={selected.name} from={dateFrom} to={dateTo} />
     ) : (
-      <OwnerCockpit session={session} period={period} customStart={pstart} customFrom={pfrom} customTo={pto} activityDays={activityDays} branchId={selectedBranch} tab={dashTab} />
+      <OwnerCockpit
+        session={session}
+        period={period}
+        customStart={pstart}
+        customFrom={pfrom}
+        customTo={pto}
+        activityDays={activityDays}
+        branchId={selectedBranch}
+        tab={dashTab}
+        controls={
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <DashboardTabs current={dashTab} />
+            <DashboardHeaderBar period={period} currentLabel={periodLabel} variant="light">
+              {memberBar}
+            </DashboardHeaderBar>
+          </div>
+        }
+      />
     );
     if (!selected) {
       headerControls = (
@@ -190,17 +207,11 @@ export default async function DashboardPage({
       <AnnouncementsStrip session={session} />
       {/* Tabs first, then filters: a tab chooses WHAT you are looking at, the
           filters refine it. Reading order should follow that. */}
-      {tabsBar && <div className="mt-1 mb-3">{tabsBar}</div>}
-      {/* One toolbar. The scope controls render inside the header bar, so the
-          period chips and the period dropdown — the same value — finally sit
-          together instead of at opposite ends of a wrapping row. When there is
-          no header bar (an RM drill-down), the scope controls stand alone. */}
-      {headerControls ? (
-        <div className="mb-5">{headerControls}</div>
-      ) : (
-        memberBar && (
-          <div className="mb-5 flex flex-wrap items-center gap-2">{memberBar}</div>
-        )
+      {/* Owner cockpit renders its own tabs + toolbar under the header card
+          (reference order). Only the RM drill-down still needs them here. */}
+      {!headerControls && tabsBar && <div className="mt-1 mb-3">{tabsBar}</div>}
+      {!headerControls && memberBar && (
+        <div className="mb-5 flex flex-wrap items-center gap-2">{memberBar}</div>
       )}
       {/* The role cockpits are async server components doing their own data
           fetching — stream them in behind a skeleton so the shell (sidebar,

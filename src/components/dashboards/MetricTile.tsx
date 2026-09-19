@@ -53,10 +53,10 @@ export function MetricTile({
   const inner = (
     <div
       style={style}
-      className="card-surface flex h-full items-center gap-3.5 p-4 transition-colors hover:border-foreground/20"
+      className="card-surface flex h-full items-center gap-3.5 p-5 transition-colors hover:border-foreground/20"
     >
       <span
-        className="grid size-11 shrink-0 place-items-center rounded-xl"
+        className="grid size-10 shrink-0 place-items-center rounded-[10px]"
         style={{ background: "color-mix(in srgb, var(--c) 14%, transparent)", color: "var(--c)" }}
         aria-hidden
       >
@@ -65,11 +65,11 @@ export function MetricTile({
 
       <div className="min-w-0 flex-1">
         {/* The figure never breaks across lines — it is the point of the tile. */}
-        <div className="truncate text-2xl font-bold leading-none tabular-nums tracking-tight">
+        <div className="truncate text-2xl font-semibold leading-none tabular-nums tracking-tight text-foreground">
           {value}
         </div>
         <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2">
-          <span className="text-xs font-medium leading-tight text-muted-foreground">{label}</span>
+          <span className="text-sm leading-tight text-muted-foreground">{label}</span>
           {delta && (
             <span className={`text-2xs font-semibold tabular-nums ${deltaTone}`}>
               {delta.direction === "up" ? "▲" : delta.direction === "down" ? "▼" : "—"} {delta.value}

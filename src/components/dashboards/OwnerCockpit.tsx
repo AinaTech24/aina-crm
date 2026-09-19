@@ -85,6 +85,7 @@ export async function OwnerCockpit({
   activityDays = 7,
   branchId = null,
   tab = "overview",
+  controls,
 }: {
   session: SessionUser;
   period?: Period;
@@ -95,6 +96,9 @@ export async function OwnerCockpit({
   activityDays?: ActivityRange;
   /** Branch filter from `?branch=`; null means the whole firm. */
   branchId?: string | null;
+  /** Tabs + filter toolbar, rendered directly under the header card so the
+   *  page opens the way the reference does: title first, controls second. */
+  controls?: React.ReactNode;
   /** Active tab from `?tab=`. Only this tab's sections are rendered — and
    *  therefore only its queries run. */
   tab?: DashboardTab;
@@ -128,6 +132,7 @@ export async function OwnerCockpit({
         }
         breadcrumb={[{ label: tabLabel }]}
       />
+      {controls}
 
       {/* First-run setup checklist — data-verified steps; vanishes when done. */}
       <Suspense fallback={null}>
@@ -708,7 +713,27 @@ async function OwnerCockpitBody({
 
   return (
     <div className="space-y-6">
-      {/* 2 · NEEDS YOU — ranked, actionable, worst first. */}
+      {/* 2 · CHARTS — the reference's "wide chart + narrow donut" row, then a
+             full-width second chart. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 items-start">
+        <div className="lg:col-span-8">
+          <Suspense fallback={<CardSkeleton />}>
+            <LeadPipelineSection session={session} branchId={branchId} />
+          </Suspense>
+        </div>
+        <div className="lg:col-span-4">
+          {show("section.aum_segment") && (
+            <Suspense fallback={<ChartSkeleton />}>
+              <AumSegmentSection session={session} />
+            </Suspense>
+          )}
+        </div>
+      </div>
+      <Suspense fallback={<CardSkeleton />}>
+        <TargetAchievementSection session={session} />
+      </Suspense>
+
+      {/* 3 · NEEDS YOU — ranked, actionable, worst first. */}
       {show("section.data_gaps") && <DataGapsTile />}
 
       {show("section.attention_queues") && (
@@ -716,21 +741,6 @@ async function OwnerCockpitBody({
         <AttentionQueuesSection session={session} />
       </Suspense>
       )}
-
-      {/* 3 · TARGETS + PIPELINE. 7/5 because the scorecard carries four rings
-             and the pipeline five short rows. */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        <div className="lg:col-span-7">
-          <Suspense fallback={<CardSkeleton />}>
-            <TargetAchievementSection session={session} />
-          </Suspense>
-        </div>
-        <div className="lg:col-span-5">
-          <Suspense fallback={<CardSkeleton />}>
-            <LeadPipelineSection session={session} branchId={branchId} />
-          </Suspense>
-        </div>
-      </div>
 
       {/* 4 · TEAM */}
       {/* RM leaderboard — period-scoped and eight columns wide, so it gets its
