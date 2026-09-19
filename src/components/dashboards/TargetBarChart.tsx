@@ -3,13 +3,13 @@
 import {
   Bar, BarChart, CartesianGrid, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
+import { CHART, CHART_INK, TOOLTIP_STYLE } from "@/lib/dashboard/chart-palette";
 import { ChartMount } from "./ChartMount";
 
 /**
- * Annual targets as a flat bar chart of percent-achieved per metric, with a
- * dashed reference line where the calendar says each bar should have reached.
- * Bars past the line are green, bars within reach are amber, the rest red —
- * the same pace bands the rings used, in the reference's chart language.
+ * Annual targets as flat bars of percent-achieved, with a dashed reference line
+ * where the calendar says each bar should have reached. Green past the line,
+ * amber within reach, red behind. Resolved hex throughout.
  */
 export function TargetBarChart({
   data,
@@ -19,38 +19,27 @@ export function TargetBarChart({
   expectedPct: number;
 }) {
   const tone = (pct: number) => {
-    if (pct >= 100 || expectedPct < 10 || pct / expectedPct >= 0.9) return "hsl(var(--chart-3))";
-    if (pct / expectedPct >= 0.7) return "hsl(var(--chart-4))";
-    return "hsl(var(--chart-5))";
+    if (pct >= 100 || expectedPct < 10 || pct / expectedPct >= 0.9) return CHART.green;
+    if (pct / expectedPct >= 0.7) return CHART.amber;
+    return CHART.red;
   };
   return (
     <ChartMount className="h-72 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }} barCategoryGap="32%">
-          <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeDasharray="3 3" />
-          <XAxis
-            dataKey="name"
-            axisLine={false}
-            tickLine={false}
-            tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
-            interval={0}
-          />
+          <CartesianGrid vertical={false} stroke={CHART_INK.grid} strokeDasharray="3 3" />
+          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: CHART_INK.tick }} interval={0} />
           <YAxis
             domain={[0, 100]}
             ticks={[0, 25, 50, 75, 100]}
             tickFormatter={(v) => `${v}%`}
             axisLine={false}
             tickLine={false}
-            tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+            tick={{ fontSize: 11, fill: CHART_INK.tick }}
           />
           <Tooltip
-            cursor={{ fill: "hsl(var(--secondary))" }}
-            contentStyle={{
-              borderRadius: 10,
-              border: "1px solid hsl(var(--border))",
-              background: "hsl(var(--card))",
-              fontSize: 12,
-            }}
+            cursor={{ fill: CHART_INK.cursor }}
+            contentStyle={TOOLTIP_STYLE}
             formatter={(value, _name, item) => {
               const p = (item as { payload?: { value?: string; target?: string } }).payload;
               return [`${Number(value ?? 0)}% · ${p?.value ?? ""} of ${p?.target ?? ""}`, ""];
@@ -58,15 +47,10 @@ export function TargetBarChart({
           />
           <ReferenceLine
             y={expectedPct}
-            stroke="hsl(var(--foreground))"
-            strokeOpacity={0.45}
+            stroke={CHART_INK.reference}
+            strokeOpacity={0.5}
             strokeDasharray="4 4"
-            label={{
-              value: `${expectedPct}% of year`,
-              position: "insideTopRight",
-              fontSize: 10,
-              fill: "hsl(var(--muted-foreground))",
-            }}
+            label={{ value: `${expectedPct}% of year`, position: "insideTopRight", fontSize: 10, fill: CHART_INK.tick }}
           />
           <Bar dataKey="pct" radius={0} maxBarSize={56}>
             {data.map((d) => (
