@@ -76,17 +76,6 @@ export function MetricTile({
           and the same icon again as a very faint watermark on the right. The
           previous order put a small grey label on the top line and the number
           under it, which buries the one thing the card exists to show. */}
-      {/* The watermark is decorative and ABSOLUTE. In the flow it consumed
-          ~30px of the row, which — with a 44px chip beside it — left too little
-          for the figure and clipped "₹16.23 Cr" to "₹16.23…". */}
-      <span
-        className="pointer-events-none absolute right-4 top-4 opacity-[0.10]"
-        style={{ color: "var(--c)" }}
-        aria-hidden
-      >
-        {icon}
-      </span>
-
       <div className="flex items-start gap-3">
         <div className="flex min-w-0 items-start gap-3">
           <span
