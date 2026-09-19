@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Merge Clients — the de-duplication utility, in five fixed options:
  *
@@ -84,19 +85,9 @@ export default async function MergeClientsPage({
 
   return (
     <div className="space-y-5 max-w-7xl">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <GitMerge className="size-6 text-primary" /> Merge Clients
-          </h1>
-          <p className="page-subtitle mt-1">
-            One client, one record. Merge duplicates, separate mistakes, and review what the system did on its own.
-          </p>
-        </div>
-        <Link href="/dashboard/duplicates?module=family" className="btn-secondary text-xs inline-flex items-center gap-1.5">
+      <PageHeaderCard title={<><GitMerge className="size-6 text-primary" /> Merge Clients</>} subtitle={<>One client, one record. Merge duplicates, separate mistakes, and review what the system did on its own.</>} actions={<><Link href="/dashboard/duplicates?module=family" className="btn-secondary text-xs inline-flex items-center gap-1.5">
           <HeartHandshake className="size-3.5" /> Duplicate families
-        </Link>
-      </div>
+        </Link></>} />
 
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-5 items-start">
         <MergeHubNav active={tab} counts={navCounts} />

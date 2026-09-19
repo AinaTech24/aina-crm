@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Risk-Drift Radar — clients whose ACTUAL portfolio equity allocation has
  * drifted outside the target band implied by their signed risk profile.
@@ -47,11 +48,7 @@ export default async function RiskDriftPage() {
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div>
-        <h1 className="page-title">
-          <Radar className="size-6 text-amber-500" /> Risk-drift radar
-        </h1>
-      </div>
+      <PageHeaderCard title={<><Radar className="size-6 text-amber-500" /> Risk-drift radar</>} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat icon={Users} label="Clients checked" value={String(data.summary.checked)} />

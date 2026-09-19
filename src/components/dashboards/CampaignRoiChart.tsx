@@ -1,6 +1,7 @@
 "use client";
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { CHART, CHART_INK } from "@/lib/dashboard/chart-palette";
 import { ChartMount } from "./ChartMount";
 
 type CampaignRoi = {
@@ -27,8 +28,8 @@ export function CampaignRoiChart({ data }: { data: CampaignRoi[] }) {
           margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
         >
           <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.15} />
-          <XAxis dataKey="name" tick={{ fontSize: 9 }} />
-          <YAxis tick={{ fontSize: 9 }} />
+          <XAxis dataKey="name" tick={{ fontSize: 9, fill: CHART_INK.tick }} />
+          <YAxis tick={{ fontSize: 9, fill: CHART_INK.tick }} />
           <Tooltip
             contentStyle={{
               fontSize: 11,
@@ -37,9 +38,9 @@ export function CampaignRoiChart({ data }: { data: CampaignRoi[] }) {
             }}
           />
           <Legend wrapperStyle={{ fontSize: 10 }} />
-          <Bar dataKey="sent" fill="hsl(221, 83%, 18%)" name="Sent" radius={[3, 3, 0, 0]} />
-          <Bar dataKey="read" fill="hsl(199, 89%, 48%)" name="Read" radius={[3, 3, 0, 0]} />
-          <Bar dataKey="replied" fill="hsl(165, 70%, 45%)" name="Replied" radius={[3, 3, 0, 0]} />
+          <Bar dataKey="sent" fill={CHART.navy} name="Sent" />
+          <Bar dataKey="read" fill={CHART.blue} name="Read" />
+          <Bar dataKey="replied" fill={CHART.green} name="Replied" />
         </BarChart>
       </ResponsiveContainer>
     </ChartMount>

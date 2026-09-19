@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { eq, sql, and, inArray } from "drizzle-orm";
@@ -172,25 +173,9 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
         <ChevronLeft className="size-3" /> Back to employees
       </Link>
 
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="page-title">
-            <UserCog className="size-6 text-muted-foreground" /> {emp.name}
-          </h1>
-          <p className="page-subtitle">
-            {emp.email}
+      <PageHeaderCard title={<><UserCog className="size-6 text-muted-foreground" /> {emp.name}</>} subtitle={<>{emp.email}
             {emp.phone ? <> · {emp.phone}</> : null}
-            {manager ? <> · Reports to <strong>{manager.name}</strong></> : null}
-          </p>
-          <RecordProvenance
-            entityType="user"
-            entityId={emp.id}
-            createdAt={emp.createdAt}
-            updatedAt={emp.updatedAt}
-            className="mt-1.5"
-          />
-        </div>
-        <span
+            {manager ? <> · Reports to <strong>{manager.name}</strong></> : null}</>} actions={<><span
           className={`chip ${
             emp.status === "active"
               ? "bg-emerald-50 text-emerald-700"
@@ -200,8 +185,15 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
           }`}
         >
           {emp.status}
-        </span>
-      </div>
+        </span></>}>
+<RecordProvenance
+            entityType="user"
+            entityId={emp.id}
+            createdAt={emp.createdAt}
+            updatedAt={emp.updatedAt}
+            className="mt-1.5"
+          />
+</PageHeaderCard>
 
       {/* Stats strip */}
       <div className="grid grid-cols-3 md:grid-cols-6 gap-3">

@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ChevronLeft, Droplets, Filter, X } from "lucide-react";
@@ -83,17 +84,9 @@ export default async function BusinessDashboardPage({
       <Link href="/dashboard/business-entries" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
         <ChevronLeft className="size-4" /> Back to entries
       </Link>
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Business Dashboard</h1>
-          <p className="text-muted-foreground text-sm">
-            Booked business for <span className="font-medium text-foreground">{rangeLabel}</span>.
-          </p>
-        </div>
-        <Link href="/dashboard/business-entries/liquid" className="btn-secondary text-sm inline-flex items-center gap-1.5">
+      <PageHeaderCard title={<>Business Dashboard</>} subtitle={<>Booked business for <span className="font-medium text-foreground">{rangeLabel}</span>.</>} actions={<><Link href="/dashboard/business-entries/liquid" className="btn-secondary text-sm inline-flex items-center gap-1.5">
           <Droplets className="size-4" /> Liquid report
-        </Link>
-      </div>
+        </Link></>} />
 
       {/* Filters — server-rendered GET form (no client JS needed). */}
       <form method="get" className="card-surface p-4">

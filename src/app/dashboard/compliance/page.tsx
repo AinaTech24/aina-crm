@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { ShieldCheck, AlertTriangle, FileText, FileCheck, ClipboardCheck, ArrowRight } from "lucide-react";
 import { withTenant } from "@/db/client";
@@ -220,17 +221,11 @@ export default async function CompliancePage() {
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-center gap-2">
-        <div className="min-w-0">
-          <h1 className="page-title">Compliance & DDQ readiness</h1>
-        <p className="page-subtitle mt-1">How ready your firm is for a due-diligence questionnaire, and what is still missing.</p>
-        </div>
-        <HelpTip title="Compliance / DDQ">
+      <PageHeaderCard title={<>Compliance & DDQ readiness</>} subtitle={<>How ready your firm is for a due-diligence questionnaire, and what is still missing.</>} actions={<><HelpTip title="Compliance / DDQ">
           Your firm&apos;s audit-readiness score. It checks the documents and records SEBI/AMFI
           expect in a due-diligence review (DDQ = Due Diligence Questionnaire) and shows what&apos;s
           missing, so you&apos;re always inspection-ready.
-        </HelpTip>
-      </div>
+        </HelpTip></>} />
 
       {/* AMFI DDQ audit checklist */}
       <Link

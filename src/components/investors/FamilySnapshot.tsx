@@ -59,9 +59,7 @@ export async function FamilySnapshot({
     <div className="border rounded-lg bg-card p-5">
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-semibold flex items-center gap-2">
-          <div className="size-7 rounded-lg bg-brand-cyan-light grid place-items-center">
-            <Users2 className="size-3.5 text-brand-cyan-deep" />
-          </div>
+          <Users2 className="size-4 text-muted-foreground" />
           Family snapshot
           {familyName && (
             <span className="text-xs font-normal text-muted-foreground">

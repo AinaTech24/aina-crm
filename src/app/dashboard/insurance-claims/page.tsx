@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { FileText, Plus, IndianRupee, CheckCircle2, XCircle, Clock } from "lucide-react";
@@ -97,16 +98,10 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
 
   return (
     <div className="space-y-5 max-w-7xl">
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="page-title"><FileText className="size-6 text-muted-foreground" /> Insurance Claims</h1>
-          <p className="page-subtitle mt-1">Claims your clients have raised, and where each one is stuck.</p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeaderCard title={<><FileText className="size-6 text-muted-foreground" /> Insurance Claims</>} subtitle={<>Claims your clients have raised, and where each one is stuck.</>} actions={<><div className="flex items-center gap-2">
           <Link href="/dashboard/insurance-claims/scorecard" className="btn-secondary"><Clock className="size-4" /> Settlement scorecard</Link>
           <Link href="/dashboard/insurance-claims/new" className="btn-primary"><Plus className="size-4" /> New claim</Link>
-        </div>
-      </div>
+        </div></>} />
 
       <ModuleTabs tabs={INSURANCE_TABS} />
 

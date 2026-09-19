@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { ChevronLeft, Calendar } from "lucide-react";
@@ -60,12 +61,7 @@ export default async function NewReviewMeetingPage({
         <div className="size-12 rounded-lg bg-brand-cyan-light grid place-items-center">
           <Calendar className="size-6 text-muted-foreground" />
         </div>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Schedule review meeting</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            A reminder task auto-fires the day before. After completion, action items become tasks.
-          </p>
-        </div>
+        <PageHeaderCard title={<>Schedule review meeting</>} subtitle={<>A reminder task auto-fires the day before. After completion, action items become tasks.</>} />
       </div>
 
       <ScheduleMeetingForm

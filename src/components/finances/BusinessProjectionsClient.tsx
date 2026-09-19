@@ -46,7 +46,7 @@ export function BusinessProjectionsClient({
               <ChevronLeft className="size-3" /> Reports
             </Link>
           </div>
-          <h1 className="text-2xl font-semibold flex items-center gap-2">
+          <h1 className="page-title">
             <TrendingUp className="size-6 text-brand-cyan" /> Business projections
           </h1>
         </div>
@@ -183,7 +183,7 @@ function SummaryCard({
         ? "text-violet-700"
         : "text-brand-cyan-deep";
   return (
-    <div className="card-surface glass-card p-4">
+    <div className="card-surface p-4">
       <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
         {label}
       </div>

@@ -15,7 +15,7 @@ export default async function ModuleControlsPage() {
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Module Controls</h1>
+        <h1 className="page-title">Module Controls</h1>
         <p className="text-muted-foreground text-sm">
           Global switches for every product module. <strong>Enabled</strong> = normal.{" "}
           <strong>Beta</strong> = visible with a “Beta” tag in the sidebar. <strong>Disabled</strong> = hidden for

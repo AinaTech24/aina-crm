@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { Plus, HeartHandshake } from "lucide-react";
@@ -266,12 +267,7 @@ export default async function FamiliesPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="page-title">Family mapping</h1>
-          <p className="page-subtitle mt-1">Group clients into households to see a family&apos;s whole portfolio together.</p>
-        </div>
-        <div className="flex gap-2">
+      <PageHeaderCard title={<>Family mapping</>} subtitle={<>Group clients into households to see a family&apos;s whole portfolio together.</>} actions={<><div className="flex gap-2">
           <FamilySuggestionsLauncher />
           <Link
             href="/dashboard/families/at-risk"
@@ -285,8 +281,7 @@ export default async function FamiliesPage({
           >
             <Plus className="size-4" /> New family
           </Link>
-        </div>
-      </div>
+        </div></>} />
 
       {/* Every household tool in one place, with the counts that say which one
           is worth opening. */}

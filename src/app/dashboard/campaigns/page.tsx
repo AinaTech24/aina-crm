@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import {
@@ -171,22 +172,14 @@ export default async function CampaignsPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="page-title">
-            <Megaphone className="size-6 text-muted-foreground" /> Marketing Campaigns
-          </h1>
-          <p className="page-subtitle mt-1">Send a WhatsApp or email campaign to a group of clients and see who opened it.</p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeaderCard title={<><Megaphone className="size-6 text-muted-foreground" /> Marketing Campaigns</>} subtitle={<>Send a WhatsApp or email campaign to a group of clients and see who opened it.</>} actions={<><div className="flex items-center gap-2">
           <Link href="/dashboard/reports/campaign_conversion" className="btn-secondary text-xs">
             <FileText className="size-3.5" /> Conversion report
           </Link>
           <Link href="/dashboard/campaigns/new" className="btn-primary">
             <Plus className="size-4" /> New campaign
           </Link>
-        </div>
-      </div>
+        </div></>} />
 
       {/* KPI strip */}
       <div className="grid grid-cols-6 gap-3">

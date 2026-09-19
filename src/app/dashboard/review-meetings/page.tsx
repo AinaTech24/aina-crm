@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { Calendar, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
@@ -192,14 +193,7 @@ export default async function ReviewMeetingsPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="page-title">
-            <Calendar className="size-6 text-muted-foreground" /> Meetings
-          </h1>
-          <p className="page-subtitle mt-1">Portfolio reviews — schedule them, prepare, and record what you agreed.</p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeaderCard title={<><Calendar className="size-6 text-muted-foreground" /> Meetings</>} subtitle={<>Portfolio reviews — schedule them, prepare, and record what you agreed.</>} actions={<><div className="flex items-center gap-2">
           <div className="inline-flex rounded-lg border border-border overflow-hidden text-xs">
             <Link
               href={viewHref("table")}
@@ -215,8 +209,7 @@ export default async function ReviewMeetingsPage({
             </Link>
           </div>
           <AddMeetingButton />
-        </div>
-      </div>
+        </div></>} />
 
       {todays.length > 0 && (
         <div className="card-surface p-4">

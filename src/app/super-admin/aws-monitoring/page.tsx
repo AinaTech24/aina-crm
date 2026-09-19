@@ -11,7 +11,7 @@ export default async function AwsMonitoringPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">AWS Monitoring</h1>
+        <h1 className="page-title">AWS Monitoring</h1>
         <p className="text-muted-foreground text-sm">
           Real-time host metrics (CPU, memory, disk, network, load) refresh <strong>every second</strong> straight from the
           server; EC2 / RDS / S3 / IAM detail syncs from CloudWatch (which itself updates every 1–5 min). Green / amber / red

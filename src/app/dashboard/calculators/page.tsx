@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * MF Investment Calculators — Network FP "3.5 MF Investment Calculators"
  * parity (extended). Searchable calculator gallery, no DB writes. RM uses
@@ -78,17 +79,9 @@ export default async function CalculatorsPage() {
       </div>
 
       {/* On-screen heading — hidden on print (the letterhead replaces it) */}
-      <div className="print:hidden flex items-start justify-between gap-3">
-        <div>
-          <h1 className="page-title">
-            <Calculator className="size-6" /> MF Investment Calculators
-          </h1>
-          <p className="page-subtitle mt-1">SIP, lumpsum, retirement and goal maths you can run with a client in seconds.</p>
-        </div>
-        <Link href="/dashboard/calculators/settings" className="btn-secondary text-xs shrink-0">
+      <PageHeaderCard title={<><Calculator className="size-6" /> MF Investment Calculators</>} subtitle={<>SIP, lumpsum, retirement and goal maths you can run with a client in seconds.</>} actions={<><Link href="/dashboard/calculators/settings" className="btn-secondary text-xs shrink-0">
           <SlidersHorizontal className="size-3.5" /> Assumptions
-        </Link>
-      </div>
+        </Link></>} />
 
       <CalculatorsApp firmName={firmName} assumptions={assumptions} />
 

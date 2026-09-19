@@ -14,7 +14,7 @@ export default async function PlatformEmailPage() {
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Email</h1>
+        <h1 className="page-title">Email</h1>
         <p className="text-muted-foreground text-sm">
           Configure how the platform sends transactional email — password-reset links, team invites
           and staff alerts. Set the API key once here; no redeploy needed.

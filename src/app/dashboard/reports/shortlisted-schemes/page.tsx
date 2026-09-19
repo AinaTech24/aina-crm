@@ -136,7 +136,7 @@ export default async function ShortlistedSchemesPage() {
               <ChevronLeft className="size-3" /> Reports
             </Link>
           </div>
-          <h1 className="text-2xl font-semibold">AMC scheme shortlist</h1>
+          <h1 className="page-title">AMC scheme shortlist</h1>
           <p className="text-sm text-muted-foreground mt-1">
             The investment-committee buy list — one card per empanelled
             AMC with our philosophy notes and the schemes we recommend.
@@ -146,7 +146,7 @@ export default async function ShortlistedSchemesPage() {
       </div>
 
       <div className="hidden print:block text-center mb-3">
-        <h1 className="text-xl font-bold">AMC Schemes Shortlist</h1>
+        <h1 className="page-title">AMC Schemes Shortlist</h1>
         <p className="text-xs text-slate-500">
           Generated {new Date().toLocaleDateString("en-GB")} · {totalShortlisted}{" "}
           schemes across {byAmc.size} AMCs

@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Team Performance — KRA scorecard. A per-person leaderboard for the Sales and
  * Operations teams: weighted KRA score + RAG, with each KRA's KPIs (target-free
@@ -6,7 +7,7 @@
  */
 
 import Link from "next/link";
-import { Trophy, ArrowLeft, TrendingUp, Headphones, Target } from "lucide-react";
+import { Trophy, TrendingUp, Headphones, Target } from "lucide-react";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { withTenant } from "@/db/client";
@@ -72,17 +73,7 @@ export default async function ScorecardPage({
     <div className="space-y-6 max-w-5xl">
       {/* Leaderboard reflects live activity — keep it current as work lands. */}
       <AutoRefresh intervalMs={60000} />
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <Link href="/dashboard/team" className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1 mb-1">
-            <ArrowLeft className="size-3" /> Team
-          </Link>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Trophy className="size-6 text-muted-foreground" /> Team Scorecard
-          </h1>
-          <p className="text-muted-foreground text-sm mt-0.5">KRA performance · {label}</p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
+      <PageHeaderCard title={<><Trophy className="size-6 text-muted-foreground" /> Team Scorecard</>} subtitle={<>KRA performance · {label}</>} actions={<><div className="flex items-center gap-2 flex-wrap">
           <Link
             href="/dashboard/team/scorecard/targets"
             className="rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 hover:bg-secondary/60"
@@ -90,8 +81,7 @@ export default async function ScorecardPage({
             <Target className="size-4 text-brand-cyan" /> Set targets
           </Link>
           <PeriodSelector current={period} variant="light" />
-        </div>
-      </div>
+        </div></>} />
 
       <ScoreTable
         title="Sales team"

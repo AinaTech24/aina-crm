@@ -1,8 +1,8 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { CampaignAudienceBuilder, type AudienceSelection } from "@/components/campaigns/CampaignAudienceBuilder";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
@@ -167,19 +167,8 @@ export default function NewCampaignPage() {
   }
 
   return (
-    <div className="space-y-4 max-w-4xl">
-      <Link
-        href="/dashboard/campaigns"
-        className="text-sm text-muted-foreground hover:underline flex items-center gap-1"
-      >
-        <ChevronLeft className="size-4" /> Back to campaigns
-      </Link>
-
-      <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-        <Megaphone className="size-6 text-muted-foreground" /> New marketing campaign
-      </h1>
-
-      <div className="card-surface p-5 space-y-5">
+    <PageHeaderCard title={<><Megaphone className="size-6 text-muted-foreground" /> New marketing campaign</>}>
+<div className="card-surface p-5 space-y-5">
         {/* Campaign type */}
         <div>
           <div className="text-xs font-medium mb-2">Campaign type</div>
@@ -463,6 +452,6 @@ export default function NewCampaignPage() {
           )}
         </div>
       </div>
-    </div>
+</PageHeaderCard>
   );
 }

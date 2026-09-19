@@ -116,9 +116,7 @@ export function ClaimDocuments({
   return (
     <div className="card-surface p-5">
       <div className="flex items-center gap-2 mb-3">
-        <div className="size-7 rounded-lg bg-brand-cyan-light grid place-items-center">
-          <Paperclip className="size-3.5 text-brand-cyan-deep" />
-        </div>
+        <Paperclip className="size-4 text-muted-foreground" />
         <h2 className="section-title">Documents</h2>
         <span className="text-xs text-muted-foreground ml-auto">
           {present.size}/{checklist.length} required on file

@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Team Dashboard — the manager's command view (owner / branch head).
  *
@@ -135,18 +136,9 @@ export default async function TeamDashboardPage({
     <div className="space-y-6 max-w-7xl">
       {/* Keep team workload/accountability fresh as actions complete elsewhere. */}
       <AutoRefresh intervalMs={60000} />
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Users2 className="size-6 text-muted-foreground" /> Team Dashboard
-          </h1>
-          <p className="page-subtitle mt-0.5">
-            {selectedMember
+      <PageHeaderCard title={<><Users2 className="size-6 text-muted-foreground" /> Team Dashboard</>} subtitle={<>{selectedMember
               ? `Open workload, today's activity, and results — scoped to ${selectedMember.name}.`
-              : "Open workload, today's activity, and results — firm-wide, with who's accountable."}
-          </p>
-        </div>
-        <div className="flex items-center gap-3 flex-wrap">
+              : "Open workload, today's activity, and results — firm-wide, with who's accountable."}</>} actions={<><div className="flex items-center gap-3 flex-wrap">
           <Link
             href="/dashboard/team/scorecard"
             className="rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 hover:bg-secondary/60"
@@ -176,8 +168,7 @@ export default async function TeamDashboardPage({
             })}
           </div>
           <TeamRangePicker from={data.range.from} to={data.range.to} member={member} />
-        </div>
-      </div>
+        </div></>} />
 
       {/* On-leave coverage */}
       <div className="card-surface p-4">

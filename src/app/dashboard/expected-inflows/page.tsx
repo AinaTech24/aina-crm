@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Expected Inflows — the firm's FUTURE money pipeline.
  *
@@ -95,19 +96,9 @@ export default async function ExpectedInflowsPage() {
 
   return (
     <div className="space-y-5 max-w-6xl">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <IndianRupee className="size-6 text-emerald-600" /> Expected Inflows
-          </h1>
-          <p className="page-subtitle mt-1">
-            Money your clients have told you is coming — FD maturities, bonuses, property sales — with a reminder already set.
-          </p>
-        </div>
-        <Link href="/dashboard/investors" className="btn-secondary text-sm inline-flex items-center gap-1.5">
+      <PageHeaderCard title={<><IndianRupee className="size-6 text-emerald-600" /> Expected Inflows</>} subtitle={<>Money your clients have told you is coming — FD maturities, bonuses, property sales — with a reminder already set.</>} actions={<><Link href="/dashboard/investors" className="btn-secondary text-sm inline-flex items-center gap-1.5">
           <Plus className="size-4" /> Add from a client
-        </Link>
-      </div>
+        </Link></>} />
 
       <CollapsibleKpiStrip storageKey="inflows-kpi" title="Pipeline">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -203,7 +194,7 @@ export default async function ExpectedInflowsPage() {
 function Kpi({ label, value, sub, icon: Icon, tone }: { label: string; value: string; sub?: string; icon: any; tone?: "emerald" | "rose" | "muted" }) {
   const color = tone === "emerald" ? "text-emerald-600" : tone === "rose" ? "text-rose-600" : "text-foreground";
   return (
-    <div className="card-surface glass-card p-4">
+    <div className="card-surface p-4">
       <div className="flex items-center justify-between">
         <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{label}</span>
         <Icon className="size-4 text-muted-foreground" />

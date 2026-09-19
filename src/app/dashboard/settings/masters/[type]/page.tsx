@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, asc, eq } from "drizzle-orm";
@@ -51,12 +52,7 @@ export default async function MasterTypePage({ params }: { params: Promise<{ typ
         <ChevronLeft className="size-4" /> Back to masters
       </Link>
 
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
-        <p className="text-sm text-muted-foreground">
-          {rows.length} values · {rows.filter((r) => r.isSystemDefault).length} system defaults
-        </p>
-      </div>
+      <PageHeaderCard title={<>{title}</>} subtitle={<>{rows.length} values · {rows.filter((r) => r.isSystemDefault).length} system defaults</>} />
 
       <MasterValuesEditor masterType={type} initialValues={JSON.parse(JSON.stringify(rows))} />
     </div>

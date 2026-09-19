@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Sub-distributors list — external channel partners under our ARN.
  *
@@ -74,15 +75,9 @@ export default async function SubDistributorsListPage({
 
   return (
     <div className="space-y-5">
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="page-title">Sub-distributors</h1>
-          <p className="page-subtitle mt-1">Partners who bring business under your ARN, and what they are owed.</p>
-        </div>
-        <Link href="/dashboard/sub-distributors/new" className="btn-primary text-sm">
+      <PageHeaderCard title={<>Sub-distributors</>} subtitle={<>Partners who bring business under your ARN, and what they are owed.</>} actions={<><Link href="/dashboard/sub-distributors/new" className="btn-primary text-sm">
           <Plus className="size-4" /> Add sub-distributor
-        </Link>
-      </div>
+        </Link></>} />
 
       {/* Status filter chips */}
       <div className="flex items-center gap-2 flex-wrap">

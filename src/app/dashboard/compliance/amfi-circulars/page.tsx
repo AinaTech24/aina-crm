@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * AMFI / SEBI circular digest — plain-English summaries of live regulatory
  * requirements + the concrete action each one means for the MFD. Curated
@@ -40,11 +41,7 @@ export default async function AmfiCircularsPage() {
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <div>
-        <h1 className="page-title flex items-center gap-2">
-          <ScrollText className="size-6 text-muted-foreground" /> Regulatory circular digest
-        </h1>
-      </div>
+      <PageHeaderCard title={<><ScrollText className="size-6 text-muted-foreground" /> Regulatory circular digest</>} />
 
       {canDraft && <CircularSummarizer />}
 

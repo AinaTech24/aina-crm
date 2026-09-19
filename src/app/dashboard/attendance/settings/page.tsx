@@ -1,6 +1,6 @@
-import Link from "next/link";
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { eq } from "drizzle-orm";
-import { ArrowLeft, Settings2 } from "lucide-react";
+import { Settings2 } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { attendanceSettings } from "@/db/schema";
@@ -27,21 +27,8 @@ export default async function AttendanceSettingsPage() {
 
   return (
     <div className="space-y-6 max-w-3xl">
-      <div>
-        <Link
-          href="/dashboard/attendance"
-          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="size-3.5" /> Back to attendance
-        </Link>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2 mt-2">
-          <Settings2 className="size-6 text-muted-foreground" /> Attendance settings
-        </h1>
-        <p className="text-muted-foreground text-sm">
-          Work hours, grace period, half/full-day thresholds, and weekly offs. Drives late /
-          early-out flags across the firm.
-        </p>
-      </div>
+      <PageHeaderCard title={<><Settings2 className="size-6 text-muted-foreground" /> Attendance settings</>} subtitle={<>Work hours, grace period, half/full-day thresholds, and weekly offs. Drives late /
+          early-out flags across the firm.</>} />
 
       <AttendanceSettingsForm initial={settings} canManage={canManage} />
     </div>

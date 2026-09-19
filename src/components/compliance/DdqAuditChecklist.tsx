@@ -210,7 +210,7 @@ export function DdqAuditChecklist({
   return (
     <div className="space-y-6">
       {/* Dynamic circular score indicator bar */}
-      <div className="card-surface glass-card p-6 border border-border/60 bg-gradient-to-br from-background to-secondary/10 print:border">
+      <div className="card-surface p-6 border border-border/60 bg-gradient-to-br from-background to-secondary/10 print:border">
         <div className="flex items-center justify-between gap-6 flex-wrap">
           <div className="flex items-center gap-5">
             <div className="relative size-24 grid place-items-center shrink-0">

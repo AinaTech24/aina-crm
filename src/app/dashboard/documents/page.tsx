@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { Upload, ShieldCheck, ScrollText } from "lucide-react";
@@ -128,22 +129,14 @@ export default async function DocumentsPage() {
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="page-title">Documents</h1>
-          <p className="page-subtitle mt-1">
-            {wholeVault
+      <PageHeaderCard title={<>Documents</>} subtitle={<>{wholeVault
               ? "KYC forms, agreements and statements, filed against the right client."
-              : "KYC forms, agreements and statements for the clients you manage."}
-          </p>
-        </div>
-        <Link
+              : "KYC forms, agreements and statements for the clients you manage."}</>} actions={<><Link
           href="/dashboard/documents/upload"
           className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 hover:bg-primary/95 transition-colors print:hidden"
         >
           <Upload className="size-4" /> Upload document
-        </Link>
-      </div>
+        </Link></>} />
 
       <DocumentsFeed initialRows={initialRows} stats={stats} />
     </div>

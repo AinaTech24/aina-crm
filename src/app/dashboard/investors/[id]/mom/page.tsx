@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { assertInvestorAccess } from "@/lib/investors/access";
 /**
  * Per-client Minutes of Meeting (MOM) tracker — Network FP "2.5 MOM
@@ -126,12 +127,11 @@ export default async function InvestorMomPage({
         <PrintButton />
       </div>
 
-      <div className="hidden print:block text-center mb-3">
-        <h1 className="text-xl font-bold">Minutes of Meeting Tracker</h1>
-        <p className="text-xs text-slate-500">
+      <PageHeaderCard title={<>Minutes of Meeting Tracker</>}>
+<p className="text-xs text-slate-500">
           Generated {new Date().toLocaleDateString("en-GB")}
         </p>
-      </div>
+</PageHeaderCard>
 
       <div className="card-surface p-5 space-y-1">
         <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">

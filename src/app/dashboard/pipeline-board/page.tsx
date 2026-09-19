@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { Columns3 } from "lucide-react";
@@ -51,12 +52,7 @@ export default async function PipelineBoardPage({ searchParams }: { searchParams
 
   return (
     <div className="space-y-5 max-w-full">
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><Columns3 className="size-6 text-muted-foreground" /> Pipeline Board</h1>
-          <p className="page-subtitle mt-1">Separate stage flows for each sales process. {mine ? "Your leads." : "Firm-wide."}</p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeaderCard title={<><Columns3 className="size-6 text-muted-foreground" /> Pipeline Board</>} subtitle={<>Separate stage flows for each sales process. {mine ? "Your leads." : "Firm-wide."}</>} actions={<><div className="flex items-center gap-2">
           <WorkSwitcher current="/dashboard/pipeline-board" options={PIPELINE_VIEWS} label="Module" />
           {firmWide && (
             <div className="inline-flex rounded-lg border bg-secondary/40 p-0.5 gap-0.5 text-xs">
@@ -69,8 +65,7 @@ export default async function PipelineBoardPage({ searchParams }: { searchParams
               <Link key={k} href={`/dashboard/pipeline-board?p=${k}${mine ? "&mine=1" : ""}`} className={`px-2.5 py-1 rounded-md font-medium ${p === k ? "bg-card shadow-sm text-foreground" : "text-muted-foreground"}`}>{PIPELINES[k].label}</Link>
             ))}
           </div>
-        </div>
-      </div>
+        </div></>} />
 
       <div className="flex gap-3 overflow-x-auto pb-2">
         {stages.map((s) => (

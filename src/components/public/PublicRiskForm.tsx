@@ -302,7 +302,7 @@ export function PublicRiskForm({
       <div className="bg-white rounded-xl shadow p-6">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
-            <h1 className="text-xl font-bold">{template.name}</h1>
+            <h1 className="page-title">{template.name}</h1>
             {recipientName && (
               <p className="text-sm text-muted-foreground mt-1">
                 Hi <span className="font-medium text-foreground">{displayName}</span> — please answer these in your own

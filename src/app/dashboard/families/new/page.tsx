@@ -1,10 +1,10 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
 import { useState } from "react";
 import { FamilyHeadPicker, familyNameFromHead, type HeadCandidate } from "@/components/families/FamilyHeadPicker";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
 import { RmSelector } from "@/components/common/RmSelector";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
@@ -92,12 +92,8 @@ export default function NewFamilyPage() {
   }
 
   return (
-    <div className="space-y-4 max-w-2xl">
-      <Link href="/dashboard/families" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
-        <ChevronLeft className="size-4" /> Back to families
-      </Link>
-      <h1 className="text-2xl font-bold tracking-tight">New family</h1>
-      <form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-4">
+    <PageHeaderCard title={<>New family</>}>
+<form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-4">
         {/* Head of family first: picking it fills the name below, so the common
             case is one search and a Create click. Optional — a household can
             still be named up front and populated later. */}
@@ -208,6 +204,6 @@ export default function NewFamilyPage() {
           </button>
         </div>
       </form>
-    </div>
+</PageHeaderCard>
   );
 }

@@ -124,7 +124,7 @@ function ErrorScreen({ message }: { message: string }) {
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 size-96 bg-rose-300/15 rounded-full blur-[80px] pointer-events-none" />
       <div className="max-w-md w-full bg-white/90 backdrop-blur-md rounded-2xl border border-slate-200 p-8 text-center shadow-lg relative z-10">
         <AlertCircle className="size-12 text-rose-500 mx-auto animate-pulse" />
-        <h1 className="text-xl font-bold mt-4 text-slate-900">Link Unavailable</h1>
+        <h1 className="page-title mt-4">Link Unavailable</h1>
         <p className="text-sm text-slate-500 mt-2 leading-relaxed">{message}</p>
         <p className="text-xs text-slate-400 mt-6 leading-relaxed">
           Please reach out to your relationship manager or representative for assistance or a new link.

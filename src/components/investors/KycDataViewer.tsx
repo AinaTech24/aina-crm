@@ -66,9 +66,7 @@ export function KycDataViewer({
   return (
     <div className="border rounded-lg bg-card p-5">
       <div className="flex items-center gap-2 mb-1">
-        <div className="size-7 rounded-lg bg-primary/10 grid place-items-center">
-          <FileText className="size-3.5 text-primary" />
-        </div>
+        <FileText className="size-4 text-muted-foreground" />
         <h3 className="text-sm font-semibold">KYC submission details</h3>
         <span className="ml-auto text-2xs text-muted-foreground">{entries.length} fields</span>
       </div>

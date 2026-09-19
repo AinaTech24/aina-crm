@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
 import { useMemo, useState, useEffect, useRef } from "react";
@@ -456,10 +457,8 @@ export default function NewTemplatePage() {
       </Link>
 
       {/* Title + stepper */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight">Create a message template</h1>
-
-        <ol className="mt-4 flex items-center gap-2">
+      <PageHeaderCard title={<>Create a message template</>}>
+<ol className="mt-4 flex items-center gap-2">
           {STEPS.map((s, i) => {
             const state = s.n < step ? "done" : s.n === step ? "current" : "todo";
             return (
@@ -491,7 +490,7 @@ export default function NewTemplatePage() {
             );
           })}
         </ol>
-      </div>
+</PageHeaderCard>
 
       {error && (
         <div className="card-surface p-3 mb-4 text-sm text-rose-700 bg-rose-50/40">{error}</div>

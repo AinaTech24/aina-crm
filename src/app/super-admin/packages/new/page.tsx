@@ -70,7 +70,7 @@ export default function NewPackagePage() {
       <Link href="/super-admin/packages" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
         <ChevronLeft className="size-4" /> Back to packages
       </Link>
-      <h1 className="text-2xl font-bold tracking-tight">New package</h1>
+      <h1 className="page-title">New package</h1>
 
       <form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
@@ -432,9 +433,8 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
       <div className="card-surface p-6">
         <div className="flex items-start gap-4">
           <InvestorAvatarEditor investorId={inv.id} name={inv.name} hasAvatar={!!inv.avatarUrl} size={64} />
-          <div className="flex-1 min-w-0">
-            <h1 className="page-title">{inv.name}</h1>
-            <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
+          <PageHeaderCard title={<>{inv.name}</>}>
+<div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
               {showPan && inv.pan && <PanReveal pan={inv.pan} />}
               {showSegment && inv.segmentTag && (
                 <span className="text-xs px-2 py-0.5 rounded-full bg-violet-50 text-violet-700">
@@ -525,7 +525,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
                 className="basis-full mt-1"
               />
             </div>
-          </div>
+</PageHeaderCard>
           {/* AUM / Active SIP / Lifetime inflow moved out of the header into the
               Portfolio tab (see the "valuation" section) for a simpler profile. */}
         </div>

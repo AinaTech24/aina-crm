@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * A single induction lesson. Enforces the same lock rule as the track page —
  * a member cannot deep-link past a required step they haven't finished.
@@ -81,12 +82,11 @@ export default async function LessonPage({
         <ArrowLeft className="size-4" /> Back to induction
       </Link>
 
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">{data.lesson.title}</h1>
-        {data.lesson.summary && (
+      <PageHeaderCard title={<>{data.lesson.title}</>}>
+{data.lesson.summary && (
           <p className="text-muted-foreground text-sm mt-1">{data.lesson.summary}</p>
         )}
-      </div>
+</PageHeaderCard>
 
       <LessonPlayer
         lesson={{

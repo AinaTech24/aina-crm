@@ -139,7 +139,7 @@ export function LandingPackageForm({ initial }: { initial?: LandingPackageInitia
             <ArrowLeft className="size-5" />
           </Link>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">{editing ? "Edit landing card" : "New landing card"}</h1>
+            <h1 className="page-title">{editing ? "Edit landing card" : "New landing card"}</h1>
             <p className="text-muted-foreground text-sm">The pricing cards shown on the public landing page.</p>
           </div>
         </div>

@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { ArrowLeft, ClipboardCheck, Clock } from "lucide-react";
@@ -57,16 +58,7 @@ export default async function RegularizationsPage() {
         </Link>
       </div>
 
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <ClipboardCheck className="size-6 text-muted-foreground" /> Attendance Corrections
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            Regularization requests · missed punches · wrong-status fixes · approval workflow.
-          </p>
-        </div>
-      </div>
+      <PageHeaderCard title={<><ClipboardCheck className="size-6 text-muted-foreground" /> Attendance Corrections</>} subtitle={<>Regularization requests · missed punches · wrong-status fixes · approval workflow.</>} />
 
       <RegularizationForm
         employees={data.employees}

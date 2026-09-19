@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Churn-risk report — the whole book scored by the attrition scorecard, highest
  * risk first. This is the retention worklist: which clients to call THIS week
@@ -42,11 +43,7 @@ export default async function ChurnRiskPage() {
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div>
-        <h1 className="page-title">
-          <ShieldAlert className="size-6 text-rose-500" /> Churn-risk radar
-        </h1>
-      </div>
+      <PageHeaderCard title={<><ShieldAlert className="size-6 text-rose-500" /> Churn-risk radar</>} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat icon={ShieldAlert} label="High risk" value={String(high.length)} tone="rose" />

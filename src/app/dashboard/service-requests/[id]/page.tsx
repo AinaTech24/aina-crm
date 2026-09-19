@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, eq, sql } from "drizzle-orm";
@@ -54,12 +55,7 @@ export default async function ServiceRequestDetailPage({ params }: { params: Pro
         <div className="size-12 rounded-lg bg-brand-cyan-light grid place-items-center">
           <LifeBuoy className="size-6 text-muted-foreground" />
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-2xl font-bold tracking-tight">{TYPE_LABEL[sr.type] ?? sr.type}</h1>
-            <span className={`chip capitalize ${STATUS_TONE[sr.status] ?? ""}`}>{sr.status.replace(/_/g, " ")}</span>
-          </div>
-          <div className="text-sm text-muted-foreground mt-1 flex items-center gap-3 flex-wrap">
+        <PageHeaderCard title={<>{TYPE_LABEL[sr.type] ?? sr.type}</>} actions={<><div className="text-sm text-muted-foreground mt-1 flex items-center gap-3 flex-wrap">
             <span className="font-mono">{sr.ticketNo}</span>
             <span>·</span>
             {investor ? (
@@ -77,8 +73,9 @@ export default async function ServiceRequestDetailPage({ params }: { params: Pro
             createdAt={sr.createdAt}
             updatedAt={sr.updatedAt}
             className="mt-2"
-          />
-        </div>
+          /></>}>
+<span className={`chip capitalize ${STATUS_TONE[sr.status] ?? ""}`}>{sr.status.replace(/_/g, " ")}</span>
+</PageHeaderCard>
       </div>
 
       <ServiceRequestDetailEditor sr={JSON.parse(JSON.stringify(sr))} userMap={userMap} />

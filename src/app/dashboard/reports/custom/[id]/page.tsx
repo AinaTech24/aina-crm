@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -85,20 +86,14 @@ export default function ReportViewPage() {
         </Link>
       </div>
 
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="page-title">
-            <BarChart3 className="size-6 text-muted-foreground print:hidden" /> {meta?.name ?? "Report"}
-          </h1>
-          {meta?.description && <p className="page-subtitle">{meta.description}</p>}
-        </div>
-        <div className="flex gap-2 print:hidden">
+      <PageHeaderCard title={<><BarChart3 className="size-6 text-muted-foreground print:hidden" /> {meta?.name ?? "Report"}</>} actions={<><div className="flex gap-2 print:hidden">
           <Link href={`/dashboard/reports/custom/new?edit=${id}`} className="btn-secondary text-xs"><Pencil className="size-3.5" /> Edit</Link>
           <button onClick={clone} className="btn-secondary text-xs"><Copy className="size-3.5" /> Clone</button>
           <SendMenu id={id} />
           <ExportMenu id={id} />
-        </div>
-      </div>
+        </div></>}>
+{meta?.description && <p className="page-subtitle">{meta.description}</p>}
+</PageHeaderCard>
 
       {!loading && !err && result?.kind === "matrix" && meta?.chartType && meta.chartType !== "none" && (
         <div className="card-surface p-5">

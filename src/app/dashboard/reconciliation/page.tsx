@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { Scale } from "lucide-react";
@@ -78,19 +79,9 @@ export default async function ReconciliationPage({
 
   return (
     <div className="space-y-5 max-w-6xl">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Scale className="size-6 text-muted-foreground" /> Reconciliation
-          </h1>
-          <p className="page-subtitle mt-1">
-            {data.lastRun?.run_at && (
+      <PageHeaderCard title={<><Scale className="size-6 text-muted-foreground" /> Reconciliation</>} subtitle={<>{data.lastRun?.run_at && (
               <> Last run {new Date(data.lastRun.run_at).toLocaleString("en-IN")}.</>
-            )}
-          </p>
-        </div>
-        <RunReconButton />
-      </div>
+            )}</>} actions={<><RunReconButton /></>} />
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Kpi label="Open breaks" value={data.stats?.open ?? 0} />

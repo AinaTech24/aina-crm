@@ -1,9 +1,10 @@
 import React, { Suspense } from "react";
 import { SetupChecklist } from "./SetupChecklist";
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
+import { MetricTile } from "./MetricTile";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { ArrowDownRight, ArrowUpRight, TrendingUp, Users, UserPlus } from "lucide-react";
+import { TrendingUp, Users, UserPlus } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { formatINR } from "@/lib/utils";
 import type { SessionUser } from "@/lib/auth/session";
@@ -643,41 +644,36 @@ async function OwnerCockpitBody({
       <div className="space-y-6">
       {anyHeadline && (
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        {show("kpi.total_clients") && <Kpi
-          href={withPeriod("/dashboard/investors", periodQuery)}
-          icon={Users}
-          label="Total Clients"
-          value={String(data.totalClients)}
-          sub="with an active status"
-          delta={data.newClientsPeriod > 0 ? `+${data.newClientsPeriod} ${period.toUpperCase()}` : undefined}
-          deltaTone="up"
-          accent="cyan"
-        />}
-        {show("kpi.open_leads") && <Kpi
-          href={withPeriod("/dashboard/leads", periodQuery)}
-          icon={UserPlus}
-          label="Open Leads"
-          value={String(data.totalLeads)}
-          sub={`${data.conversionPct.toFixed(1)}% conversion ${period.toUpperCase()}`}
-          accent="violet"
-        />}
-        {/* "Active SIP Book" used to sit here. The Firm Pulse strip at the top
-            of this page already shows SIP Book — with a month-on-month delta and
-            the average SIP alongside — so this was the same figure twice on one
-            screen, a few hundred pixels apart. On a firm where every client is
-            active the two are identical to the rupee, which is exactly how it
-            was reported. Pulse owns the metric; this tile is gone.
-            `kpi.active_sip_book` stays in the widget registry so a custom board
-            can still place it deliberately. */}
-        {show("kpi.net_business") && <Kpi
-          href={withPeriod("/dashboard/reports/net_sales", periodQuery)}
-          icon={TrendingUp}
-          label={`Net Business ${period.toUpperCase()}`}
-          value={formatINR(data.netBusiness)}
-          sub={`Gross ${formatINR(data.sipAddedAmt + data.lumpsumAmt)}`}
-          trend={data.netBusiness >= 0 ? "up" : "down"}
-          sparkline={data.netBizSpark}
-        />}
+        {show("kpi.total_clients") && (
+          <MetricTile
+            hue="cyan"
+            icon={<Users className="size-[18px]" />}
+            label="Total clients"
+            value={String(data.totalClients)}
+            href={withPeriod("/dashboard/investors", periodQuery)}
+            delta={data.newClientsPeriod > 0 ? { value: `${data.newClientsPeriod} ${period.toUpperCase()}`, direction: "up" } : undefined}
+          />
+        )}
+        {show("kpi.open_leads") && (
+          <MetricTile
+            hue="violet"
+            icon={<UserPlus className="size-[18px]" />}
+            label="Open leads"
+            value={String(data.totalLeads)}
+            href={withPeriod("/dashboard/leads", periodQuery)}
+            delta={{ value: `${data.conversionPct.toFixed(1)}% conv.`, direction: "flat" }}
+          />
+        )}
+        {show("kpi.net_business") && (
+          <MetricTile
+            hue="emerald"
+            icon={<TrendingUp className="size-[18px]" />}
+            label={`Net business ${period.toUpperCase()}`}
+            value={formatINR(data.netBusiness)}
+            href={withPeriod("/dashboard/reports/net_sales", periodQuery)}
+            delta={{ value: `Gross ${formatINR(data.sipAddedAmt + data.lumpsumAmt)}`, direction: data.netBusiness >= 0 ? "up" : "down" }}
+          />
+        )}
       </div>
       )}
 
@@ -792,142 +788,6 @@ function Group({
       {children}
     </div>
   );
-}
-
-function Kpi({
-  href,
-  icon: Icon,
-  label,
-  value,
-  sub,
-  trend,
-  accent,
-  hero,
-  delta,
-  deltaTone,
-  sparkline,
-  sparkStrokeClass,
-}: {
-  href?: string;
-  icon?: any;
-  label: string;
-  value: string;
-  sub?: string;
-  trend?: "up" | "down";
-  accent?: "cyan" | "violet" | "emerald" | "amber";
-  hero?: boolean;
-  /** Small period-trajectory pill, e.g. "+23 MTD". */
-  delta?: string;
-  deltaTone?: "up" | "down";
-  /** Optional per-period trend series; rendered only when it has ≥2 real points. */
-  sparkline?: number[];
-  sparkStrokeClass?: string;
-}) {
-  const TrendIcon = trend === "up" ? ArrowUpRight : trend === "down" ? ArrowDownRight : null;
-  // Only render a sparkline when there's a real, non-flat series to show —
-  // never fabricate a line out of all-zeros.
-  const hasSpark =
-    !!sparkline && sparkline.length >= 2 && sparkline.some((n) => n !== sparkline![0]);
-
-  if (hero) {
-    const inner = (
-      <div className="kpi-hero relative overflow-hidden">
-        <div className="flex items-center justify-between">
-          <span className="text-2xs font-semibold uppercase tracking-wide leading-snug text-white/80">
-            {label}
-          </span>
-          {Icon && (
-            <div className="size-8 rounded-lg bg-white/15 grid place-items-center backdrop-blur-sm">
-              <Icon className="size-4 text-white" />
-            </div>
-          )}
-        </div>
-        <div className="flex items-end justify-between gap-2 mt-2">
-          <div className="text-3xl font-extrabold tabular-nums tracking-tight">{value}</div>
-          {hasSpark && (
-            <Sparkline data={sparkline!} strokeClass="text-white/80" width={72} height={28} />
-          )}
-        </div>
-        {sub && (
-          <div className="text-xs mt-2 flex items-center gap-1 text-white/85">
-            {TrendIcon && (
-              <TrendIcon
-                className={`size-3.5 ${trend === "up" ? "text-emerald-300" : "text-rose-300"}`}
-              />
-            )}
-            <span>{sub}</span>
-          </div>
-        )}
-      </div>
-    );
-    return href ? <Link href={href}>{inner}</Link> : inner;
-  }
-
-  // `accent` is kept in the signature so existing call sites still typecheck,
-  // but every KPI icon now sits on the same neutral chip. A headline number is
-  // not a severity, and four pastel accents on one row was the single loudest
-  // source of visual noise on this page.
-  const bg = "bg-secondary text-muted-foreground";
-  void accent;
-  const trendColor =
-    trend === "up"
-      ? "text-success"
-      : trend === "down"
-        ? "text-destructive"
-        : "text-muted-foreground";
-
-  const inner = (
-    <div className="kpi-card">
-      <div className="flex items-center justify-between">
-        <span className="text-2xs font-semibold uppercase tracking-wide leading-snug text-muted-foreground">
-          {label}
-        </span>
-        {Icon && (
-          <div className={`size-8 rounded-lg grid place-items-center ${bg}`}>
-            <Icon className="size-4" />
-          </div>
-        )}
-      </div>
-      <div className="flex items-baseline gap-2 mt-2.5 flex-wrap">
-        <div className="font-display text-[1.75rem] font-extrabold leading-none tabular-nums tracking-tight">
-          {value}
-        </div>
-        {delta && (
-          <span
-            className={`inline-flex items-center gap-0.5 text-2xs font-bold px-1.5 py-0.5 rounded-full ${
-              deltaTone === "down"
-                ? "bg-destructive/10 text-destructive"
-                : "bg-success/10 text-success"
-            }`}
-          >
-            {deltaTone === "down" ? (
-              <ArrowDownRight className="size-2.5" />
-            ) : (
-              <ArrowUpRight className="size-2.5" />
-            )}
-            {delta}
-          </span>
-        )}
-        {hasSpark && (
-          <div className="ml-auto">
-            <Sparkline
-              data={sparkline!}
-              strokeClass={sparkStrokeClass ?? "text-emerald-500"}
-              width={72}
-              height={24}
-            />
-          </div>
-        )}
-      </div>
-      {sub && (
-        <div className={`text-xs mt-2 flex items-center gap-1 ${trendColor}`}>
-          {TrendIcon && <TrendIcon className="size-3" />}
-          <span>{sub}</span>
-        </div>
-      )}
-    </div>
-  );
-  return href ? <Link href={href}>{inner}</Link> : inner;
 }
 
 function Stat({

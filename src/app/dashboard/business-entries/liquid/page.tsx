@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ChevronLeft, Droplets, TrendingUp } from "lucide-react";
@@ -22,15 +23,8 @@ export default async function LiquidReportPage() {
       <Link href="/dashboard/business-entries" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
         <ChevronLeft className="size-4" /> Back to entries
       </Link>
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <Droplets className="size-6 text-sky-500" /> Liquid-for-switching report
-        </h1>
-        <p className="text-muted-foreground text-sm mt-1 max-w-2xl">
-          Net money each client has parked in <strong>Liquid</strong> funds via booked business (liquid inflows − amounts
-          switched/redeemed out). This is the dry powder ready to deploy into <strong>Equity</strong> on a market dip.
-        </p>
-      </div>
+      <PageHeaderCard title={<><Droplets className="size-6 text-sky-500" /> Liquid-for-switching report</>} subtitle={<>Net money each client has parked in <strong>Liquid</strong> funds via booked business (liquid inflows − amounts
+          switched/redeemed out). This is the dry powder ready to deploy into <strong>Equity</strong> on a market dip.</>} />
 
       <div className="grid sm:grid-cols-2 gap-3">
         <div className="card-surface p-4 bg-sky-50/60">

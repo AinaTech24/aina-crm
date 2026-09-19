@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Daily Job Tracker (DJT) — a per-RM daily reflection + planning ritual,
  * adopted from the MFD's Excel DJT. The "productive & completed" and
@@ -75,20 +76,11 @@ export default async function DailyTrackerPage({
         <Link href="/dashboard/tasks" className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1 mb-2">
           <ArrowLeft className="size-3" /> Back to Tasks
         </Link>
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-              <span className="grid place-items-center size-9 rounded-xl bg-brand-cyan text-white shadow-sm">
+        <PageHeaderCard title={<><span className="grid place-items-center size-9 rounded-xl bg-brand-cyan text-white shadow-sm">
                 <CalendarCheck className="size-5" />
               </span>
-              Daily Job Tracker
-            </h1>
-            <p className="text-muted-foreground text-sm mt-1.5">
-              {isSelf ? "Your day" : <><span className="font-medium text-foreground">{name}</span>'s day</>} · {dateLabel}
-              {isToday && <span className="ml-2 inline-flex items-center rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 text-2xs font-semibold">Today</span>}
-            </p>
-          </div>
-          {/* Date navigation */}
+              Daily Job Tracker</>} subtitle={<>{isSelf ? "Your day" : <><span className="font-medium text-foreground">{name}</span>'s day</>} · {dateLabel}
+              {isToday && <span className="ml-2 inline-flex items-center rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 text-2xs font-semibold">Today</span>}</>} actions={<>{/* Date navigation */}
           <div className="inline-flex items-center gap-1 rounded-lg border border-border bg-card p-1">
             <Link href={`/dashboard/tasks/daily?date=${prevISO}${userQS}`} className="btn-icon size-7" title="Previous day" aria-label="Previous day">
               <ChevronLeft className="size-4" />
@@ -108,8 +100,7 @@ export default async function DailyTrackerPage({
             >
               <ChevronRight className="size-4" />
             </Link>
-          </div>
-        </div>
+          </div></>} />
 
         {/* Productivity hero + counts */}
         <div className="mt-5 grid gap-3 sm:grid-cols-3">

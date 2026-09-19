@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Tax-harvesting report — which clients have unrealised long-term equity gains
  * that can be booked tax-free within this year's ₹1.25L LTCG exemption, AND
@@ -64,11 +65,7 @@ export default async function TaxHarvestingPage() {
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div>
-        <h1 className="page-title">
-          <Sprout className="size-6 text-emerald-600" /> Tax-harvesting opportunities
-        </h1>
-      </div>
+      <PageHeaderCard title={<><Sprout className="size-6 text-emerald-600" /> Tax-harvesting opportunities</>} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat icon={Users} label="Clients with an opportunity" value={String(gains.length)} />

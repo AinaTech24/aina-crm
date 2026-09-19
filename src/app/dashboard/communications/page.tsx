@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { desc, eq, and, or, ilike, inArray, sql } from "drizzle-orm";
@@ -151,14 +152,7 @@ export default async function CommunicationsPage({
 
   return (
     <div className="space-y-5 max-w-6xl">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="page-title">
-            <Mail className="size-6 text-muted-foreground" /> Communications
-          </h1>
-          <p className="page-subtitle mt-1">Every message sent and received, across WhatsApp, email and SMS.</p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeaderCard title={<><Mail className="size-6 text-muted-foreground" /> Communications</>} subtitle={<>Every message sent and received, across WhatsApp, email and SMS.</>} actions={<><div className="flex items-center gap-2">
           <Link href="/dashboard/communications/responses" className="btn-secondary text-xs whitespace-nowrap">
             Client responses →
           </Link>
@@ -168,8 +162,7 @@ export default async function CommunicationsPage({
           <Link href="/dashboard/communications/compose" className="btn-primary text-xs whitespace-nowrap">
             <PenSquare className="size-4" /> Compose
           </Link>
-        </div>
-      </div>
+        </div></>} />
 
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <StatLink label="Scheduled" value={data.counts?.scheduled ?? 0} param="scheduled" />

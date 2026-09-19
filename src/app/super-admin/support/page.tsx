@@ -82,7 +82,7 @@ export default async function SupportTicketsPage({
   return (
     <div className="space-y-6 max-w-7xl">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Support tickets</h1>
+        <h1 className="page-title">Support tickets</h1>
         <p className="text-muted-foreground text-sm">
           All MFD-raised tickets across the platform.
         </p>

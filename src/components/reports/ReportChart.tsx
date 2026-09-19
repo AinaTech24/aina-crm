@@ -13,6 +13,7 @@ import {
   AreaChart, Area,
   XAxis, YAxis, Tooltip, Legend, CartesianGrid,
 } from "recharts";
+import { CHART_INK, CHART_SERIES_WIDE } from "@/lib/dashboard/chart-palette";
 
 type Matrix = {
   groupByLabel: string;
@@ -21,14 +22,7 @@ type Matrix = {
 };
 export type ReportChartType = "bar" | "pie" | "line" | "area" | "donut";
 
-const COLORS = [
-  "hsl(199, 89%, 48%)", // cyan
-  "hsl(256, 70%, 60%)", // violet
-  "hsl(165, 70%, 45%)", // mint
-  "hsl(221, 83%, 35%)", // navy
-  "hsl(36, 100%, 55%)", // orange
-  "hsl(330, 70%, 55%)", // pink
-];
+const COLORS = [...CHART_SERIES_WIDE];
 
 export default function ReportChart({ chartType, matrix }: { chartType: ReportChartType; matrix: Matrix }) {
   const single = matrix.colLabels.length <= 1;
@@ -55,9 +49,9 @@ export default function ReportChart({ chartType, matrix }: { chartType: ReportCh
           </PieChart>
         ) : chartType === "area" ? (
           <AreaChart data={data} margin={{ top: 8, right: 12, bottom: 4, left: -8 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(214 28% 90%)" />
-            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke={CHART_INK.grid} />
+            <XAxis dataKey="name" tick={{ fontSize: 11, fill: CHART_INK.tick }} />
+            <YAxis tick={{ fontSize: 11, fill: CHART_INK.tick }} allowDecimals={false} />
             <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
             {!single && <Legend wrapperStyle={{ fontSize: 11 }} />}
             {series.map((c, i) => (
@@ -66,9 +60,9 @@ export default function ReportChart({ chartType, matrix }: { chartType: ReportCh
           </AreaChart>
         ) : chartType === "line" ? (
           <LineChart data={data} margin={{ top: 8, right: 12, bottom: 4, left: -8 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(214 28% 90%)" />
-            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke={CHART_INK.grid} />
+            <XAxis dataKey="name" tick={{ fontSize: 11, fill: CHART_INK.tick }} />
+            <YAxis tick={{ fontSize: 11, fill: CHART_INK.tick }} allowDecimals={false} />
             <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
             {!single && <Legend wrapperStyle={{ fontSize: 11 }} />}
             {series.map((c, i) => (
@@ -77,13 +71,13 @@ export default function ReportChart({ chartType, matrix }: { chartType: ReportCh
           </LineChart>
         ) : (
           <BarChart data={data} margin={{ top: 8, right: 12, bottom: 4, left: -8 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(214 28% 90%)" />
-            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke={CHART_INK.grid} />
+            <XAxis dataKey="name" tick={{ fontSize: 11, fill: CHART_INK.tick }} />
+            <YAxis tick={{ fontSize: 11, fill: CHART_INK.tick }} allowDecimals={false} />
             <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
             {!single && <Legend wrapperStyle={{ fontSize: 11 }} />}
             {series.map((c, i) => (
-              <Bar key={c} dataKey={c} fill={COLORS[i % COLORS.length]} radius={[4, 4, 0, 0]} />
+              <Bar key={c} dataKey={c} fill={COLORS[i % COLORS.length]} />
             ))}
           </BarChart>
         )}

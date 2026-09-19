@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { and, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import { TrendingUp, AlertTriangle, CheckCircle2, Calendar, ShieldAlert, Plus } from "lucide-react";
@@ -165,14 +166,7 @@ export default async function SipsPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="page-title">
-            <TrendingUp className="size-6 text-muted-foreground" /> SIP Book
-          </h1>
-          <p className="page-subtitle mt-1">Every live SIP, what it is worth each month, and which ones are at risk.</p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
+      <PageHeaderCard title={<><TrendingUp className="size-6 text-muted-foreground" /> SIP Book</>} subtitle={<>Every live SIP, what it is worth each month, and which ones are at risk.</>} actions={<><div className="flex items-center gap-2 flex-wrap">
           {can(session.roles, "transactions.execute", session.permissions) && (
             <Link href="/dashboard/sips/new" className="btn-primary text-sm inline-flex items-center gap-1.5">
               <Plus className="size-4" /> Add SIP
@@ -181,8 +175,7 @@ export default async function SipsPage({
           <Link href="/dashboard/sips/new-watch" className="btn-secondary text-sm inline-flex items-center gap-1.5">
             <ShieldAlert className="size-4" /> SIP payment watch
           </Link>
-        </div>
-      </div>
+        </div></>} />
 
       <ModuleTabs tabs={SIP_TABS} />
 

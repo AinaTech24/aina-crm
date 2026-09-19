@@ -167,7 +167,7 @@ export async function ComplianceCockpit({
               <div className="text-2xs uppercase tracking-[0.18em] text-amber-300 font-bold">
                 Compliance Engine
               </div>
-              <h1 className="text-2xl font-bold tracking-tight mt-1">
+              <h1 className="page-title mt-1">
                 Compliance Cockpit
               </h1>
               <p className="text-amber-100/80 text-sm mt-1">

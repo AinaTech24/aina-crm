@@ -30,7 +30,7 @@ export function LeadPipelineChart({
               return [`${v} lead${v === 1 ? "" : "s"}${overdue ? ` · ${overdue} past SLA` : ""}`, ""];
             }}
           />
-          <Bar dataKey="count" fill={CHART.blue} radius={0} maxBarSize={56} />
+          <Bar dataKey="count" fill={CHART.blue} maxBarSize={56} />
         </BarChart>
       </ResponsiveContainer>
     </ChartMount>

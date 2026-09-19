@@ -1,7 +1,8 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { sql } from "drizzle-orm";
-import { ChevronLeft, Pencil, LayoutDashboard } from "lucide-react";
+import { Pencil, LayoutDashboard } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
@@ -32,21 +33,11 @@ export default async function BoardViewPage({ params }: { params: Promise<{ id: 
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <Link href="/dashboard/boards" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
-            <ChevronLeft className="size-4" /> My Dashboards
-          </Link>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2 mt-1">
-            <LayoutDashboard className="size-5 text-brand-cyan" /> {data.board.name}
-          </h1>
-        </div>
-        {data.editable && (
+      <PageHeaderCard title={<><LayoutDashboard className="size-5 text-brand-cyan" /> {data.board.name}</>} actions={<>{data.editable && (
           <Link href={`/dashboard/boards/${id}/edit`} className="btn-secondary text-sm inline-flex items-center gap-1.5">
             <Pencil className="size-4" /> Edit
           </Link>
-        )}
-      </div>
+        )}</>} />
 
       <DashboardView
         layout={(data.board.layout as PlacedWidget[]) ?? []}

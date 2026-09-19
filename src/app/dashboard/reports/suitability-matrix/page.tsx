@@ -53,7 +53,7 @@ export default async function SuitabilityMatrixPage() {
             <ChevronLeft className="size-3" /> Reports
           </Link>
         </div>
-        <h1 className="text-2xl font-semibold">MF suitability matrix</h1>
+        <h1 className="page-title">MF suitability matrix</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Investment-committee 3×3 grid mapping client risk profile and
           time horizon to recommended scheme categories. Each cell's

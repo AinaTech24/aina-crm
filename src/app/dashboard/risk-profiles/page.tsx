@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { ShieldCheck, AlertTriangle, Plus, ArrowRight } from "lucide-react";
@@ -166,20 +167,12 @@ export default async function RiskProfilesPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="page-title">
-            <ShieldCheck className="size-6 text-muted-foreground" /> Risk profiles
-          </h1>
-          <p className="page-subtitle mt-1">Each client&apos;s risk category, and when it is due to be re-assessed.</p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeaderCard title={<><ShieldCheck className="size-6 text-muted-foreground" /> Risk profiles</>} subtitle={<>Each client&apos;s risk category, and when it is due to be re-assessed.</>} actions={<><div className="flex items-center gap-2">
           {canManage && <BulkAssignByAge initialBands={data.bands} />}
           <Link href="/dashboard/risk-profiles/new" className="btn-primary">
             <Plus className="size-4" /> New Risk Profile
           </Link>
-        </div>
-      </div>
+        </div></>} />
 
       {/* Filter tabs */}
       <div className="flex flex-wrap items-center gap-1.5">

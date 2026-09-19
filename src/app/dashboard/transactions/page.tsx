@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { desc, eq, sql } from "drizzle-orm";
 import { Repeat, FileDown, ArrowDownToLine, TrendingUp, AlertCircle, FileUp } from "lucide-react";
@@ -213,22 +214,14 @@ export default async function TransactionsPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="page-title">
-            <Repeat className="size-6 text-muted-foreground" /> MF Transactions
-          </h1>
-          <p className="page-subtitle mt-1">Every mutual-fund purchase, redemption, switch and SIP instalment.</p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeaderCard title={<><Repeat className="size-6 text-muted-foreground" /> MF Transactions</>} subtitle={<>Every mutual-fund purchase, redemption, switch and SIP instalment.</>} actions={<><div className="flex items-center gap-2">
           <a href={exportHref} className="btn-secondary" title="Download the filtered list as Excel">
             <FileDown className="size-4" /> Export
           </a>
           <Link href="/dashboard/transactions/import" className="btn-secondary">
             <FileUp className="size-4" /> Import Excel
           </Link>
-        </div>
-      </div>
+        </div></>} />
 
       <CompactFilterBar
         totalCount={data.total}

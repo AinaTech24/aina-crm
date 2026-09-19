@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { and, asc, eq } from "drizzle-orm";
@@ -50,27 +51,21 @@ export default async function BusinessEntryDetailPage({ params }: { params: Prom
         <ChevronLeft className="size-4" /> Back to entries
       </Link>
 
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            {entry.clientName}
-            <span className={`chip text-2xs capitalize ${STATUS_TONE[entry.status] ?? ""}`}>{entry.status}</span>
-          </h1>
-          <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mt-1">
-            <span className="inline-flex items-center gap-1"><Briefcase className="size-3.5" /> {PRODUCT_LABEL[entry.productType] ?? entry.productType}</span>
-            <span className="inline-flex items-center gap-1"><Calendar className="size-3.5" /> {dateStr}</span>
-            {data.rmName && <span className="inline-flex items-center gap-1"><User className="size-3.5" /> {data.rmName}</span>}
-          </div>
-        </div>
-        <BusinessEntryActions id={entry.id} status={entry.status} hasEmail={!!data.email} />
+      <PageHeaderCard title={<>{entry.clientName}
+            <span className={`chip text-2xs capitalize ${STATUS_TONE[entry.status] ?? ""}`}>{entry.status}</span></>} actions={<><BusinessEntryActions id={entry.id} status={entry.status} hasEmail={!!data.email} />
         <RecordProvenance
           entityType="business_entry"
           entityId={entry.id}
           createdAt={entry.createdAt}
           updatedAt={entry.updatedAt}
           className="basis-full mt-1"
-        />
-      </div>
+        /></>}>
+<div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mt-1">
+            <span className="inline-flex items-center gap-1"><Briefcase className="size-3.5" /> {PRODUCT_LABEL[entry.productType] ?? entry.productType}</span>
+            <span className="inline-flex items-center gap-1"><Calendar className="size-3.5" /> {dateStr}</span>
+            {data.rmName && <span className="inline-flex items-center gap-1"><User className="size-3.5" /> {data.rmName}</span>}
+          </div>
+</PageHeaderCard>
 
       {/* Summary cards */}
       <div className="grid sm:grid-cols-3 gap-3">

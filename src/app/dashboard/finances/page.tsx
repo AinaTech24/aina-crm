@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Finances hub (Network FP Module 8) — the MFD's own business finances.
  * Live overview (this-FY profit, margin, income, expenses, YoY trend, top
@@ -89,15 +90,7 @@ export default async function FinancesHubPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <div className="flex items-end justify-between flex-wrap gap-2">
-        <div>
-          <h1 className="page-title">
-            <Wallet className="size-6 text-muted-foreground" /> Practice finances
-          </h1>
-          <p className="page-subtitle mt-1">Your practice&apos;s own money — revenue, expenses and profit.</p>
-        </div>
-        <span className="text-xs text-muted-foreground">FY {fy}</span>
-      </div>
+      <PageHeaderCard title={<><Wallet className="size-6 text-muted-foreground" /> Practice finances</>} subtitle={<>Your practice&apos;s own money — revenue, expenses and profit.</>} actions={<><span className="text-xs text-muted-foreground">FY {fy}</span></>} />
 
       {/* Live overview */}
       {hasData ? (
@@ -123,7 +116,7 @@ export default async function FinancesHubPage() {
             <Link
               key={c.href}
               href={c.href}
-              className="card-surface glass-card p-5 hover-lift group flex flex-col"
+              className="card-surface p-5 hover-lift group flex flex-col"
             >
               <div className="size-9 rounded-lg bg-brand-cyan-light grid place-items-center mb-3">
                 <Icon className="size-4.5 text-brand-cyan-deep" />
@@ -158,7 +151,7 @@ function Kpi({
 }) {
   const cls = tone === "emerald" ? "text-emerald-700" : tone === "rose" ? "text-rose-700" : "text-brand-cyan-deep";
   return (
-    <div className="card-surface glass-card p-4">
+    <div className="card-surface p-4">
       <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{label}</div>
       <div className={`text-xl font-bold mt-1 tabular-nums ${cls}`}>{value}</div>
       {delta != null && (

@@ -98,7 +98,7 @@ export default async function ProposalDetailPage({
               <div className="text-2xs uppercase tracking-[0.18em] text-white/70 font-semibold font-mono">
                 {p.proposalNumber}
               </div>
-              <h1 className="text-2xl font-bold tracking-tight mt-1">{p.title}</h1>
+              <h1 className="page-title mt-1">{p.title}</h1>
               <div className="text-white/85 text-sm mt-1 flex items-center gap-3 flex-wrap">
                 <span>{TYPE_LABEL[p.type]}</span>
                 <span className="text-white/40">·</span>
@@ -130,9 +130,7 @@ export default async function ProposalDetailPage({
             <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
               Total investment
             </span>
-            <div className="size-7 rounded-lg bg-brand-cyan-light text-brand-cyan-deep grid place-items-center">
-              <IndianRupee className="size-3.5" />
-            </div>
+            <IndianRupee className="size-4 text-muted-foreground" />
           </div>
           <div className="text-xl font-bold mt-2 tabular-nums">
             {p.totalInvestment ? formatINR(Number(p.totalInvestment)) : "—"}
@@ -143,9 +141,7 @@ export default async function ProposalDetailPage({
             <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
               Projected corpus
             </span>
-            <div className="size-7 rounded-lg bg-emerald-50 text-emerald-600 grid place-items-center">
-              <TrendingUp className="size-3.5" />
-            </div>
+            <TrendingUp className="size-4 text-muted-foreground" />
           </div>
           <div className="text-xl font-bold mt-2 tabular-nums text-emerald-700">
             {p.expectedCorpus ? formatINR(Number(p.expectedCorpus)) : "—"}

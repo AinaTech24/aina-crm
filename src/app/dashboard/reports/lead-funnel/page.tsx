@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Lead Funnel & Conversion report.
  *
@@ -154,14 +155,7 @@ export default async function LeadFunnelReport({
         <ChevronLeft className="size-4" /> Back to reports
       </Link>
 
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Lead Funnel &amp; Conversion</h1>
-          <p className="text-muted-foreground text-sm">
-            Which source is worth your money, which RM actually closes, and whose follow-ups have slipped.
-          </p>
-        </div>
-        <div className="flex items-center gap-1 rounded-lg border border-border bg-card p-1">
+      <PageHeaderCard title={<>Lead Funnel &amp; Conversion</>} subtitle={<>Which source is worth your money, which RM actually closes, and whose follow-ups have slipped.</>} actions={<><div className="flex items-center gap-1 rounded-lg border border-border bg-card p-1">
           {Object.entries(WINDOWS).map(([k, v]) => (
             <Link
               key={k}
@@ -173,8 +167,7 @@ export default async function LeadFunnelReport({
               {v.label}
             </Link>
           ))}
-        </div>
-      </div>
+        </div></>} />
 
       <CollapsibleKpiStrip storageKey="lead-funnel-kpi" title="Summary">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -260,7 +253,7 @@ function Kpi({
   const color =
     tone === "emerald" ? "text-emerald-600" : tone === "rose" ? "text-rose-600" : tone === "amber" ? "text-amber-600" : "text-foreground";
   const inner = (
-    <div className="card-surface glass-card p-4 h-full">
+    <div className="card-surface p-4 h-full">
       <div className="flex items-center justify-between">
         <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{label}</span>
         <Icon className="size-4 text-muted-foreground" />

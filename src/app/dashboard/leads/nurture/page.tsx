@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { Heart, Clock, Calendar, Phone } from "lucide-react";
@@ -57,14 +58,7 @@ export default async function LeadNurturePage() {
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div>
-        <h1 className="page-title">
-          <Heart className="size-6 text-muted-foreground" /> Lead Nurturing
-        </h1>
-        <p className="page-subtitle">
-          Leads that aren't quite ready yet — keep them warm with periodic content + check-ins. Once they're ready, push them through to the proposal stage.
-        </p>
-      </div>
+      <PageHeaderCard title={<><Heart className="size-6 text-muted-foreground" /> Lead Nurturing</>} subtitle={<>Leads that aren't quite ready yet — keep them warm with periodic content + check-ins. Once they're ready, push them through to the proposal stage.</>} />
 
       <Section title="Overdue follow-ups" tone="rose" rows={buckets.overdue} />
       <Section title="Today" tone="amber" rows={buckets.today} />

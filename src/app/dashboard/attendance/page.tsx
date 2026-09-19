@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { CalendarCheck, CheckCircle2, XCircle, CalendarOff, Grid3x3, CalendarDays, Settings, ClipboardCheck, ChevronLeft, ChevronRight } from "lucide-react";
@@ -96,14 +97,7 @@ export default async function AttendancePage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="page-title">
-            <CalendarCheck className="size-6 text-muted-foreground" /> Attendance
-          </h1>
-          <p className="page-subtitle mt-1">Daily check-in and check-out for your team, with a month-at-a-glance grid.</p>
-        </div>
-        <div className="flex items-center gap-1.5 flex-wrap">
+      <PageHeaderCard title={<><CalendarCheck className="size-6 text-muted-foreground" /> Attendance</>} subtitle={<>Daily check-in and check-out for your team, with a month-at-a-glance grid.</>} actions={<><div className="flex items-center gap-1.5 flex-wrap">
           <Link href="/dashboard/attendance/regularizations" className="btn-secondary text-xs">
             <ClipboardCheck className="size-3.5" /> Corrections
           </Link>
@@ -118,8 +112,7 @@ export default async function AttendancePage({
           <Link href="/dashboard/attendance/grid" className="btn-secondary text-xs">
             <Grid3x3 className="size-3.5" /> Monthly grid
           </Link>
-        </div>
-      </div>
+        </div></>} />
 
       <ClockWidget today={data.myToday} />
 

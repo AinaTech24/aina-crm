@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Family Master settings — the "Family Setting" and "Family Relationship
  * Management" tiles from the reference, in one page.
@@ -26,17 +27,9 @@ export default async function FamilySettingsPage() {
 
   return (
     <div className="space-y-4 max-w-4xl">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Family settings</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Defaults for new households and the relationship options your team can choose from.
-          </p>
-        </div>
-        <Link href="/dashboard/families" className="btn-secondary text-sm shrink-0">
+      <PageHeaderCard title={<>Family settings</>} subtitle={<>Defaults for new households and the relationship options your team can choose from.</>} actions={<><Link href="/dashboard/families" className="btn-secondary text-sm shrink-0">
           <HeartHandshake className="size-4" /> Family mapping
-        </Link>
-      </div>
+        </Link></>} />
 
       {!canEdit && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">

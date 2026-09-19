@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { assertInvestorAccess } from "@/lib/investors/access";
 import Link from "next/link";
 import { and, eq } from "drizzle-orm";
@@ -41,14 +42,7 @@ export default async function CapitalGainsPage({
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-5 print:p-0">
-      <div className="flex items-start justify-between gap-3 flex-wrap print:hidden">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Capital Gains Statement</h1>
-          <p className="text-muted-foreground text-sm">
-            Realized STCG/LTCG (FIFO) for {inv.name}. Use Ctrl/Cmd+P to save as PDF.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeaderCard title={<>Capital Gains Statement</>} subtitle={<>Realized STCG/LTCG (FIFO) for {inv.name}. Use Ctrl/Cmd+P to save as PDF.</>} actions={<><div className="flex items-center gap-2">
           {years.map((y) => (
             <Link
               key={y}
@@ -58,8 +52,7 @@ export default async function CapitalGainsPage({
               FY{y}-{String(y + 1).slice(-2)}
             </Link>
           ))}
-        </div>
-      </div>
+        </div></>} />
 
       {/* Print header */}
       <div className="hidden print:block mb-3">

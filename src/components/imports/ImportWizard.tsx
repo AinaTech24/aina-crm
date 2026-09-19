@@ -93,7 +93,7 @@ export function ImportWizard({
         <ChevronLeft className="size-4" /> Back
       </Link>
 
-      <h1 className="text-2xl font-bold tracking-tight">Import {entityLabel} from Excel</h1>
+      <h1 className="page-title">Import {entityLabel} from Excel</h1>
       <p className="text-sm text-muted-foreground">
         Upload a .xlsx or .csv file. Max 5,000 rows, 10MB. We auto-detect known column names.
       </p>

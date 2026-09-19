@@ -14,7 +14,7 @@ export default async function PlatformAiPage() {
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">AI &amp; Models</h1>
+        <h1 className="page-title">AI &amp; Models</h1>
         <p className="text-muted-foreground text-sm">
           Choose the AI engine (Google Gemini or Anthropic Claude), set the model per tier, and
           rotate the API key — applied across every tenant within ~30 seconds, no redeploy.

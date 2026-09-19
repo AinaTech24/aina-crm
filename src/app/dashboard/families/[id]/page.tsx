@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, eq, isNull, sql } from "drizzle-orm";
@@ -132,9 +133,8 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
           <div className="size-12 rounded-lg bg-primary/10 grid place-items-center">
             <HeartHandshake className="size-6 text-primary" />
           </div>
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold tracking-tight">{familyName}</h1>
-            <div className="text-xs text-muted-foreground mt-1 font-mono">
+          <PageHeaderCard title={<>{familyName}</>}>
+<div className="text-xs text-muted-foreground mt-1 font-mono">
               Family ID {data.family.id.slice(0, 8)}…
             </div>
             <DownloadButton
@@ -151,7 +151,7 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
               updatedAt={data.family.updatedAt}
               className="mt-2"
             />
-          </div>
+</PageHeaderCard>
           <div className="grid grid-cols-2 gap-6 text-right">
             <div>
               <div className="text-xs text-muted-foreground">Combined AUM</div>

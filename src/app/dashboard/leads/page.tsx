@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { eq, sql, inArray, isNull } from "drizzle-orm";
 import {
@@ -270,14 +271,7 @@ export default async function LeadsPage({
       {/* Restores the last-used view (kanban/list) when arriving with no ?view param. */}
       <LeadsViewPersist explicitView={sp.view ?? null} />
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="page-title">
-            <UserPlus className="size-6 text-muted-foreground" /> Leads
-          </h1>
-          <p className="page-subtitle mt-1">Prospects you are working on, from first contact through to conversion.</p>
-        </div>
-        <div className="flex gap-2 items-center">
+      <PageHeaderCard title={<><UserPlus className="size-6 text-muted-foreground" /> Leads</>} subtitle={<>Prospects you are working on, from first contact through to conversion.</>} actions={<><div className="flex gap-2 items-center">
           <WorkSwitcher current="/dashboard/leads" options={PIPELINE_VIEWS} label="Module" />
           {/* View toggle — Kanban vs List */}
           <div className="inline-flex rounded-lg border border-border bg-secondary/40 p-0.5 gap-0.5 mr-1">
@@ -309,8 +303,7 @@ export default async function LeadsPage({
           <Link href="/dashboard/leads/new" className="btn-primary">
             <Plus className="size-4" /> New lead
           </Link>
-        </div>
-      </div>
+        </div></>} />
 
       {/* Quick-filter chip strip — server-side counts, deep links into same page */}
       {/* <div className="card-surface p-3">

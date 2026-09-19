@@ -242,7 +242,7 @@ export function PublicDocsForm({
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-xl shadow p-6">
-        <h1 className="text-xl font-bold">Complete your account opening</h1>
+        <h1 className="page-title">Complete your account opening</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Hi{recipientName ? ` ${recipientName}` : ""} — please fill in your details and upload the documents below
           to start your investment account. It only takes a few minutes.

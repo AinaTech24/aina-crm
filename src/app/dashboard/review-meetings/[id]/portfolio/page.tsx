@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Portfolio Review worksheet — Network FP "3.4 Portfolio Review" parity.
  *
@@ -164,10 +165,7 @@ export default async function MeetingPortfolioPage({
         </Link>
       </div>
 
-      <div>
-        <h1 className="text-2xl font-semibold">Portfolio review</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {data.investor?.name && (
+      <PageHeaderCard title={<>Portfolio review</>} subtitle={<>{data.investor?.name && (
             <>
               Client: <span className="font-medium">{data.investor.name}</span>{" "}
               ·{" "}
@@ -179,9 +177,7 @@ export default async function MeetingPortfolioPage({
             month: "short",
             year: "numeric",
           })}{" "}
-          · {folioRows.length} folio{folioRows.length === 1 ? "" : "s"}
-        </p>
-      </div>
+          · {folioRows.length} folio{folioRows.length === 1 ? "" : "s"}</>} />
 
       <PortfolioReviewWorksheet
         meetingId={id}

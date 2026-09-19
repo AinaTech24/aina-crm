@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, eq, desc } from "drizzle-orm";
@@ -87,19 +88,9 @@ export default async function RuleDetailPage({
         <Link href="/dashboard/workflows/rules" className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1">
           <ChevronLeft className="size-3" /> Back to rules
         </Link>
-        <div className="flex items-center justify-between mt-2 flex-wrap gap-3">
-          <div>
-            <h1 className="page-title">
-              {rule.locked && <Lock className="size-5 text-amber-600" />}
-              <Workflow className="size-6 text-muted-foreground" /> {rule.name}
-            </h1>
-            <p className="page-subtitle">
-              Module: <strong>{mod?.label ?? rule.module}</strong> · {rule.executionCount ?? 0} executions
-              {rule.lastExecutedAt && <> · last run {formatRelative(rule.lastExecutedAt)}</>}
-            </p>
-            {rule.description && <p className="text-xs text-muted-foreground mt-1">{rule.description}</p>}
-          </div>
-          <div className="flex items-center gap-2">
+        <PageHeaderCard title={<>{rule.locked && <Lock className="size-5 text-amber-600" />}
+              <Workflow className="size-6 text-muted-foreground" /> {rule.name}</>} subtitle={<>Module: <strong>{mod?.label ?? rule.module}</strong> · {rule.executionCount ?? 0} executions
+              {rule.lastExecutedAt && <> · last run {formatRelative(rule.lastExecutedAt)}</>}</>} actions={<><div className="flex items-center gap-2">
             <RuleToggle id={rule.id} enabled={rule.enabled} locked={rule.locked} />
             <LockButton id={rule.id} locked={rule.locked} lockReason={rule.lockReason} />
             <Link href={`/dashboard/workflows/rules/${rule.id}/edit`} className="btn-secondary text-xs">
@@ -107,8 +98,9 @@ export default async function RuleDetailPage({
             </Link>
             <CloneRuleButton id={rule.id} name={rule.name} />
             <DeleteRuleButton id={rule.id} name={rule.name} />
-          </div>
-        </div>
+          </div></>}>
+{rule.description && <p className="text-xs text-muted-foreground mt-1">{rule.description}</p>}
+</PageHeaderCard>
       </div>
 
       {rule.locked && rule.lockReason && (

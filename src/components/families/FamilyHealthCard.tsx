@@ -29,9 +29,7 @@ export function FamilyHealthCard({
     <div className="border rounded-lg bg-card p-5">
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-semibold flex items-center gap-2">
-          <div className="size-7 rounded-lg bg-emerald-50 grid place-items-center">
-            <Activity className="size-3.5 text-emerald-700" />
-          </div>
+          <Activity className="size-4 text-muted-foreground" />
           Family health
         </h2>
         <span

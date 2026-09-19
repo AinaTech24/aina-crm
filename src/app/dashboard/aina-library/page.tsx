@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { desc, or, isNull, eq } from "drizzle-orm";
 import { Sparkles, Plus } from "lucide-react";
@@ -57,19 +58,11 @@ export default async function AinaLibraryPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="page-title">
-            <Sparkles className="size-6 text-muted-foreground" /> AINA Content Library
-          </h1>
-          <p className="page-subtitle mt-1">Ready-made posts, creatives and client-education material you can share.</p>
-        </div>
-        {canUpload && (
+      <PageHeaderCard title={<><Sparkles className="size-6 text-muted-foreground" /> AINA Content Library</>} subtitle={<>Ready-made posts, creatives and client-education material you can share.</>} actions={<>{canUpload && (
           <Link href="/dashboard/aina-library/new" className="btn-primary flex items-center gap-1 text-xs">
             <Plus className="size-4" /> Upload Custom Creative
           </Link>
-        )}
-      </div>
+        )}</>} />
 
       <CompactFilterBar
         totalCount={rows.length}

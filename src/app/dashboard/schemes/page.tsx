@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { sql } from "drizzle-orm";
 import { Boxes, Star, CheckCircle2, Layers } from "lucide-react";
 import { withTenant } from "@/db/client";
@@ -80,15 +81,7 @@ export default async function SchemesPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="page-title">
-            <Boxes className="size-6 text-muted-foreground" /> Scheme Master
-          </h1>
-          <p className="page-subtitle mt-1">The scheme master — every fund you can transact in, with its details.</p>
-        </div>
-        {canManage && <SyncSchemesButton />}
-      </div>
+      <PageHeaderCard title={<><Boxes className="size-6 text-muted-foreground" /> Scheme Master</>} subtitle={<>The scheme master — every fund you can transact in, with its details.</>} actions={<>{canManage && <SyncSchemesButton />}</>} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat icon={Boxes} label="Schemes (total)" value={s.total ?? 0} />

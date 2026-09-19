@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import {
   Sparkles, Target, IndianRupee, AlertTriangle, TrendingDown, XOctagon,
@@ -104,18 +105,11 @@ export default async function NextBestActionPage({ searchParams }: { searchParam
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="page-title">
-            <Sparkles className="size-6 text-muted-foreground" /> Next Best Action
+      <PageHeaderCard title={<><Sparkles className="size-6 text-muted-foreground" /> Next Best Action
             <HelpTip title="Next Best Action">
               A prioritised, one-at-a-time worklist of the highest-value action for each client
               right now — so nothing slips and your team always knows what to do next.
-            </HelpTip>
-          </h1>
-          <p className="page-subtitle mt-1">The highest-value next action for each client, ranked for you.</p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
+            </HelpTip></>} subtitle={<>The highest-value next action for each client, ranked for you.</>} actions={<><div className="flex items-center gap-2 flex-wrap">
           <div className="inline-flex rounded-lg border border-border bg-card p-0.5 gap-0.5">
             <Link href={hrefWith({ focus: undefined })} className={`px-2.5 py-1 rounded-md text-xs font-medium inline-flex items-center gap-1.5 ${!focusMode ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
               <Rows3 className="size-3" /> List
@@ -125,8 +119,7 @@ export default async function NextBestActionPage({ searchParams }: { searchParam
             </Link>
           </div>
           {canFirm && <NbaUserFilter value={userParam} options={userOptions} />}
-        </div>
-      </div>
+        </div></>} />
 
       <MyDayNav />
 

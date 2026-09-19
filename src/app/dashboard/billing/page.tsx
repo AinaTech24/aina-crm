@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { eq } from "drizzle-orm";
 import { CreditCard, Package, Users, FolderOpen, HardDrive, MessageSquare, Clock, AlertTriangle, FileText } from "lucide-react";
@@ -57,10 +58,7 @@ export default async function BillingPage() {
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Billing & Subscription</h1>
-        <p className="page-subtitle mt-1">Your license, package, and payment history.</p>
-      </div>
+      <PageHeaderCard title={<>Billing & Subscription</>} subtitle={<>Your license, package, and payment history.</>} />
 
       {sub && pkg ? (
         <>

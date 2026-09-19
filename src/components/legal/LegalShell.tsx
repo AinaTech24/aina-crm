@@ -22,7 +22,7 @@ export function LegalShell({ title, intro, children }: { title: string; intro?: 
       </header>
 
       <main className="mx-auto max-w-3xl px-5 py-10">
-        <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+        <h1 className="page-title">{title}</h1>
         <p className="mt-1 text-xs text-muted-foreground">Last updated: {LEGAL.lastUpdated}</p>
         {intro ? <p className="mt-4 text-sm text-muted-foreground leading-relaxed">{intro}</p> : null}
 

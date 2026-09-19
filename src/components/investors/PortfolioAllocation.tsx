@@ -90,9 +90,7 @@ export function PortfolioAllocation({
     <div className="border rounded-lg bg-card p-5">
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-semibold flex items-center gap-2">
-          <div className="size-7 rounded-lg bg-violet-50 grid place-items-center">
-            <PieChartIcon className="size-3.5 text-violet-700" />
-          </div>
+          <PieChartIcon className="size-4 text-muted-foreground" />
           Portfolio allocation
         </h2>
         <span className="text-xs text-muted-foreground">

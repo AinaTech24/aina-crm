@@ -42,7 +42,7 @@ export default async function LeadFormsPage() {
           <span>·</span>
           <span>Public lead forms</span>
         </div>
-        <h1 className="text-2xl font-semibold">Public lead capture forms</h1>
+        <h1 className="page-title">Public lead capture forms</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Build branded forms you can embed on your website or share as a link.
           Every submission lands as a new lead in the pipeline, auto-assigned to

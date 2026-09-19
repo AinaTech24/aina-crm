@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { eq, sql } from "drizzle-orm";
 import { Copy, ShieldCheck, Users, HeartHandshake } from "lucide-react";
@@ -120,10 +121,7 @@ export default async function DuplicatesPage({ searchParams }: { searchParams: P
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <div>
-        <h1 className="page-title"><Copy className="size-6 text-muted-foreground" /> Find Duplicate Records</h1>
-        <p className="page-subtitle mt-1">Client records that look like the same person — review them and merge.</p>
-      </div>
+      <PageHeaderCard title={<><Copy className="size-6 text-muted-foreground" /> Find Duplicate Records</>} subtitle={<>Client records that look like the same person — review them and merge.</>} />
 
       {/* Module toggle */}
       <div className="flex gap-2">

@@ -98,9 +98,7 @@ export function ReviewCadenceEditor({
     <div className="card-surface p-4">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
-          <div className="size-7 rounded-lg bg-brand-cyan-light grid place-items-center">
-            <CalendarClock className="size-3.5 text-brand-cyan-deep" />
-          </div>
+          <CalendarClock className="size-4 text-muted-foreground" />
           <div>
             <h3 className="text-sm font-semibold leading-tight">Review cadence</h3>
             <p className="text-2xs text-muted-foreground">How often to review this client</p>

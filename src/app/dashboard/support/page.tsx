@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
 import { useEffect, useState } from "react";
@@ -36,10 +37,7 @@ export default function SupportPage() {
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Support</h1>
-        <p className="page-subtitle mt-1">Get help from AINA — bugs, billing, feature requests, training.</p>
-      </div>
+      <PageHeaderCard title={<>Support</>} subtitle={<>Get help from AINA — bugs, billing, feature requests, training.</>} />
 
       <div className="grid grid-cols-2 gap-4">
         <form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-3">

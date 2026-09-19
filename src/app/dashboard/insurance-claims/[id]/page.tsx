@@ -150,7 +150,7 @@ export default async function ClaimDetailPage({ params }: { params: Promise<{ id
               <div className="text-2xs uppercase tracking-[0.18em] text-white/70 font-semibold">
                 Insurance Claim
               </div>
-              <h1 className="text-2xl font-bold tracking-tight mt-1">{c.proposerName}</h1>
+              <h1 className="page-title mt-1">{c.proposerName}</h1>
               <div className="text-white/80 text-sm mt-1 flex items-center gap-3 flex-wrap">
                 <span>{c.insurer ?? policy?.insurer ?? "—"}</span>
                 {(c.policyNumber || policy?.policyNumber) && (
@@ -200,9 +200,7 @@ export default async function ClaimDetailPage({ params }: { params: Promise<{ id
       {steps.length > 0 && (
         <div className="card-surface p-5">
           <div className="flex items-center gap-2 mb-4">
-            <div className="size-7 rounded-lg bg-brand-cyan-light grid place-items-center">
-              <Timer className="size-3.5 text-brand-cyan-deep" />
-            </div>
+            <Timer className="size-4 text-muted-foreground" />
             <h2 className="section-title">Status timeline</h2>
           </div>
           <ol className="relative ml-2 border-l border-border/70 space-y-5">
@@ -241,9 +239,7 @@ export default async function ClaimDetailPage({ params }: { params: Promise<{ id
       {/* Details */}
       <div className="card-surface p-5">
         <div className="flex items-center gap-2 mb-3">
-          <div className="size-7 rounded-lg bg-secondary grid place-items-center">
-            <FileText className="size-3.5 text-foreground" />
-          </div>
+          <FileText className="size-4 text-muted-foreground" />
           <h2 className="section-title">Details</h2>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">

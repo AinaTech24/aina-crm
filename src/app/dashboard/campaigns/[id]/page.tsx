@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, eq, sql } from "drizzle-orm";
@@ -107,9 +108,8 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
           <div className="size-12 rounded-lg bg-primary/10 grid place-items-center">
             <Icon className="size-6 text-primary" />
           </div>
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold tracking-tight">{c.name}</h1>
-            <div className="flex items-center gap-3 mt-1 text-sm">
+          <PageHeaderCard title={<>{c.name}</>}>
+<div className="flex items-center gap-3 mt-1 text-sm">
               <span className="capitalize">{c.channel}</span>
               <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[c.status]}`}>{c.status}</span>
               <span className={`text-xs px-2 py-0.5 rounded-full ${c.approvalStatus === "approved" || c.approvalStatus === "not_required" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
@@ -118,7 +118,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
               {c.scheduledAt && <span className="text-muted-foreground">scheduled {formatDate(c.scheduledAt)}</span>}
               {c.startedAt && <span className="text-muted-foreground">sent {formatDate(c.startedAt)}</span>}
             </div>
-          </div>
+</PageHeaderCard>
           <CampaignActions
             id={c.id}
             status={c.status}

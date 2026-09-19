@@ -1,7 +1,6 @@
-import Link from "next/link";
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { notFound, redirect } from "next/navigation";
 import { and, asc, eq, sql } from "drizzle-orm";
-import { ChevronLeft } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { businessEntries, businessEntryLines } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
@@ -35,12 +34,8 @@ export default async function EditBusinessEntryPage({ params }: { params: Promis
 
   const e = data.entry;
   return (
-    <div className="space-y-5 max-w-5xl">
-      <Link href={`/dashboard/business-entries/${id}`} className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
-        <ChevronLeft className="size-4" /> Back to entry
-      </Link>
-      <h1 className="text-2xl font-bold tracking-tight">Edit business entry</h1>
-      <BusinessEntryForm
+    <PageHeaderCard title={<>Edit business entry</>}>
+<BusinessEntryForm
         initial={{
           id: e.id,
           investorId: e.investorId,
@@ -57,6 +52,6 @@ export default async function EditBusinessEntryPage({ params }: { params: Promis
         members={data.members}
         currentUserId={session.userId}
       />
-    </div>
+</PageHeaderCard>
   );
 }

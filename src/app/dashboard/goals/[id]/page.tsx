@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Per-goal detail — calculator-first.
  *
@@ -64,9 +65,8 @@ export default async function GoalDetailPage({ params }: { params: Promise<{ id:
         <div className="size-12 rounded-lg bg-brand-cyan-light grid place-items-center">
           <Target className="size-6 text-muted-foreground" />
         </div>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold tracking-tight">{data.goal.name}</h1>
-          <div className="text-sm text-muted-foreground mt-1 flex items-center gap-3 flex-wrap">
+        <PageHeaderCard title={<>{data.goal.name}</>}>
+<div className="text-sm text-muted-foreground mt-1 flex items-center gap-3 flex-wrap">
             <span>{categoryLabel(data.goal.category)}</span>
             <span>·</span>
             <Link href={`/dashboard/investors/${data.goal.investorId}`} className="hover:underline">
@@ -86,7 +86,7 @@ export default async function GoalDetailPage({ params }: { params: Promise<{ id:
             updatedAt={data.goal.updatedAt}
             className="mt-1"
           />
-        </div>
+</PageHeaderCard>
         <div className="flex items-center gap-2">
           <RecomputeGoalButton goalId={data.goal.id} />
           <Link

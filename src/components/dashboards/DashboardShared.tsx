@@ -1,6 +1,6 @@
 import React from "react";
 import Link from "next/link";
-import { ArrowDownRight, ArrowUpRight } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 
 export function Group({
   title,
@@ -70,7 +70,6 @@ export function Kpi({
   sub,
   trend,
   accent,
-  hero,
   delta,
   deltaTone,
 }: {
@@ -85,92 +84,40 @@ export function Kpi({
   delta?: string;
   deltaTone?: "up" | "down";
 }) {
-  const TrendIcon = trend === "up" ? ArrowUpRight : trend === "down" ? ArrowDownRight : null;
-
-  if (hero) {
-    const inner = (
-      <div className="kpi-hero relative overflow-hidden">
-        <div className="flex items-center justify-between">
-          <span className="text-2xs font-semibold uppercase tracking-wide leading-snug text-white/80">
-            {label}
-          </span>
-          {Icon && (
-            <div className="size-8 rounded-lg bg-white/15 grid place-items-center backdrop-blur-sm">
-              <Icon className="size-4 text-white" />
-            </div>
-          )}
-        </div>
-        <div className="text-3xl font-extrabold mt-2 tabular-nums tracking-tight">{value}</div>
-        {sub && (
-          <div className="text-xs mt-2 flex items-center gap-1 text-white/85">
-            {TrendIcon && (
-              <TrendIcon
-                className={`size-3.5 ${trend === "up" ? "text-emerald-300" : "text-rose-300"}`}
-              />
-            )}
-            <span>{sub}</span>
-          </div>
-        )}
-      </div>
-    );
-    return href ? <Link href={href}>{inner}</Link> : inner;
-  }
-
-  const iconBg: Record<string, string> = {
-    cyan: "bg-brand-cyan-light text-brand-cyan-deep",
-    violet: "bg-violet-50 text-violet-600",
-    emerald: "bg-emerald-50 text-emerald-600",
-    amber: "bg-amber-50 text-amber-600",
-    default: "bg-secondary text-foreground",
-  };
-  const bg = iconBg[accent ?? "default"];
-  const trendColor =
-    trend === "up"
-      ? "text-emerald-600"
-      : trend === "down"
-      ? "text-rose-600"
-      : "text-muted-foreground";
-
+  // Same anatomy as Stat; the chip takes an identity hue from the metric set
+  // instead of a severity tone. `hero` is accepted and ignored — the reference
+  // has no gradient variant.
+  const hue =
+    accent === "violet" ? "--metric-violet"
+    : accent === "emerald" ? "--metric-emerald"
+    : accent === "amber" ? "--metric-amber"
+    : "--metric-indigo";
+  const dir = deltaTone ?? trend;
+  const deltaClass = dir === "up" ? "text-success" : dir === "down" ? "text-destructive" : "text-muted-foreground";
   const inner = (
-    <div className="kpi-card">
-      <div className="flex items-center justify-between">
-        <span className="text-2xs font-semibold uppercase tracking-wide leading-snug text-muted-foreground">
-          {label}
-        </span>
-        {Icon && (
-          <div className={`size-8 rounded-lg grid place-items-center ${bg}`}>
-            <Icon className="size-4" />
-          </div>
-        )}
-      </div>
-      <div className="flex items-baseline gap-2 mt-2 flex-wrap">
-        <div className="text-2xl font-bold tabular-nums tracking-tight">{value}</div>
-        {delta && (
-          <span
-            className={`inline-flex items-center gap-0.5 text-2xs font-bold px-1.5 py-0.5 rounded-full ${
-              deltaTone === "down"
-                ? "bg-rose-50 text-rose-700"
-                : "bg-emerald-50 text-emerald-700"
-            }`}
-          >
-            {deltaTone === "down" ? (
-              <ArrowDownRight className="size-2.5" />
-            ) : (
-              <ArrowUpRight className="size-2.5" />
-            )}
-            {delta}
-          </span>
-        )}
-      </div>
-      {sub && (
-        <div className={`text-xs mt-2 flex items-center gap-1 ${trendColor}`}>
-          {TrendIcon && <TrendIcon className="size-3" />}
-          <span>{sub}</span>
+    <div
+      className="card-surface flex h-full items-center gap-3.5 p-5 transition-colors hover:border-foreground/20"
+      style={{ ["--c" as string]: `hsl(var(${hue}))` }}
+    >
+      <span
+        className="grid size-10 shrink-0 place-items-center rounded-[10px]"
+        style={{ background: "color-mix(in srgb, var(--c) 14%, transparent)", color: "var(--c)" }}
+        aria-hidden
+      >
+        {Icon ? <Icon className="size-[18px]" /> : null}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-2xl font-semibold leading-none tabular-nums tracking-tight text-foreground">{value}</div>
+        <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 text-sm leading-tight text-muted-foreground">
+          <span>{label}</span>
+          {delta && <span className={`text-2xs font-semibold tabular-nums ${deltaClass}`}>{dir === "down" ? "▼" : "▲"} {delta}</span>}
+          {!delta && sub && <span className={`text-2xs ${deltaClass}`}>{sub}</span>}
         </div>
-      )}
+      </div>
+      {href && <ChevronRight className="size-4 shrink-0 text-muted-foreground/50" aria-hidden />}
     </div>
   );
-  return href ? <Link href={href}>{inner}</Link> : inner;
+  return href ? <Link href={href} className="block h-full">{inner}</Link> : inner;
 }
 
 export function Stat({
@@ -188,40 +135,28 @@ export function Stat({
   sub?: string;
   tone?: "rose" | "amber" | "emerald" | "muted";
 }) {
-  // Semantic tokens, not raw palette. The tones are a severity scale, and a
-  // severity scale that is hard-coded to rose/amber/emerald cannot follow the
-  // theme — nor can `check:colors` tell it apart from a stray hex.
-  const color =
-    tone === "rose"
-      ? "text-destructive"
-      : tone === "amber"
-        ? "text-warning"
-        : tone === "emerald"
-          ? "text-success"
-          : "text-foreground";
-
+  // Reference tile anatomy — tinted chip · figure above label · chevron.
+  // The chip carries the severity tone; the figure stays in ink so a row of
+  // tiles reads as numbers first and status second.
+  const chip =
+    tone === "rose" ? "bg-destructive/10 text-destructive"
+    : tone === "amber" ? "bg-warning/10 text-warning"
+    : tone === "emerald" ? "bg-success/10 text-success"
+    : "bg-secondary text-muted-foreground";
   const inner = (
-    <div className="kpi-card">
-      <div className="flex items-start justify-between gap-2">
-        {/* Sentence case, normal tracking. As `uppercase tracking-wider` these
-            ran to three lines — "PENDING SERVICE REQUESTS" — which made every
-            tile in the row as tall as the longest label and left the grid
-            visibly ragged. */}
-        <span className="text-2xs font-semibold uppercase tracking-wide leading-snug text-muted-foreground">
+    <div className="card-surface flex h-full items-center gap-3.5 p-5 transition-colors hover:border-foreground/20">
+      <span className={`grid size-10 shrink-0 place-items-center rounded-[10px] ${chip}`} aria-hidden>
+        {Icon ? <Icon className="size-[18px]" /> : <span className="size-2 rounded-full bg-current" />}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-2xl font-semibold leading-none tabular-nums tracking-tight text-foreground">{value}</div>
+        <div className="mt-1.5 text-sm leading-tight text-muted-foreground">
           {label}
-        </span>
-        {Icon && <Icon className="size-4 shrink-0 text-muted-foreground/70" />}
+          {sub && <span className="ml-2 text-2xs text-muted-foreground/80">{sub}</span>}
+        </div>
       </div>
-      {/* Manrope, 24px, extrabold. The figure people open the page for was
-          set in the body face at almost the label's size — which is the main
-          reason these tiles read as plain rather than premium. */}
-      <div
-        className={`font-display text-2xl font-extrabold mt-2 leading-none tabular-nums tracking-tight ${color}`}
-      >
-        {value}
-      </div>
-      {sub && <div className="text-2xs text-muted-foreground mt-2">{sub}</div>}
+      {href && <ChevronRight className="size-4 shrink-0 text-muted-foreground/50" aria-hidden />}
     </div>
   );
-  return href ? <Link href={href}>{inner}</Link> : inner;
+  return href ? <Link href={href} className="block h-full">{inner}</Link> : inner;
 }

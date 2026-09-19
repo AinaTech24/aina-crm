@@ -52,7 +52,7 @@ export function TargetBarChart({
             strokeDasharray="4 4"
             label={{ value: `${expectedPct}% of year`, position: "insideTopRight", fontSize: 10, fill: CHART_INK.tick }}
           />
-          <Bar dataKey="pct" radius={0} maxBarSize={56}>
+          <Bar dataKey="pct" maxBarSize={56}>
             {data.map((d) => (
               <Cell key={d.name} fill={tone(d.pct)} />
             ))}

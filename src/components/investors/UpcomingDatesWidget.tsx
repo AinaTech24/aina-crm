@@ -25,9 +25,7 @@ export function UpcomingDatesWidget({ items }: { items: UpcomingDate[] }) {
   return (
     <div className="border rounded-lg bg-card p-5">
       <div className="flex items-center gap-2 mb-4">
-        <div className="size-7 rounded-lg bg-rose-50 grid place-items-center">
-          <CalendarHeart className="size-3.5 text-rose-700" />
-        </div>
+        <CalendarHeart className="size-4 text-muted-foreground" />
         <h2 className="font-semibold">Upcoming birthdays &amp; anniversaries</h2>
       </div>
 

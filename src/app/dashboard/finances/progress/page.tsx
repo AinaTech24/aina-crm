@@ -62,7 +62,7 @@ export default async function ProgressPage({
               <ChevronLeft className="size-3" /> Finances
             </Link>
           </div>
-          <h1 className="text-2xl font-semibold">Monthly progress</h1>
+          <h1 className="page-title">Monthly progress</h1>
         </div>
         <div className="inline-flex rounded-lg border border-border bg-secondary/40 p-0.5 gap-0.5">
           {fyOptions.map((y) => (

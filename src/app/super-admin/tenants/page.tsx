@@ -81,7 +81,7 @@ export default async function TenantsListPage({ searchParams }: { searchParams: 
       <AutoRefresh intervalMs={15000} />
       <div className="flex items-end justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">MFD tenants</h1>
+          <h1 className="page-title">MFD tenants</h1>
           <p className="text-muted-foreground text-sm">
             {currentCount} active · {deactivatedCount} deactivated · {deletedCount} soft-deleted MFD organisations on the platform.
           </p>

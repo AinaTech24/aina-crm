@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Product / Services Offered — the firm's offering catalog.
  *
@@ -201,20 +202,14 @@ export default async function ProductOfferingsListPage({
 
   return (
     <div className="space-y-5">
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="page-title">Products &amp; services offered</h1>
-          <p className="page-subtitle mt-1">The products and services your firm sells, and who is allowed to sell them.</p>
-        </div>
-        {canEdit && (
+      <PageHeaderCard title={<>Products &amp; services offered</>} subtitle={<>The products and services your firm sells, and who is allowed to sell them.</>} actions={<>{canEdit && (
           <Link
             href="/dashboard/product-offerings/new"
             className="btn-primary text-sm"
           >
             <Plus className="size-4" /> Add offering
           </Link>
-        )}
-      </div>
+        )}</>} />
 
       <div className="flex items-center gap-2 flex-wrap">
         {[

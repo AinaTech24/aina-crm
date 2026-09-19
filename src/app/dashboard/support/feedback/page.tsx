@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { requireSession } from "@/lib/auth/session";
 import { withTenant } from "@/db/client";
 import { serviceRequests, investors } from "@/db/schema";
@@ -66,17 +67,8 @@ export default async function FeedbackPage() {
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <MessageSquare className="size-6 text-violet-600" />
-            Client Satisfaction & NPS
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            Track Net Promoter Score (NPS) and customer feedback collected via secure public tokens.
-          </p>
-        </div>
-        {/* Branded PDF of the score, its breakdown and every response.
+      <PageHeaderCard title={<><MessageSquare className="size-6 text-violet-600" />
+            Client Satisfaction & NPS</>} subtitle={<>Track Net Promoter Score (NPS) and customer feedback collected via secure public tokens.</>} actions={<>{/* Branded PDF of the score, its breakdown and every response.
             DownloadButton keeps the /api path out of the anchor href. */}
         <DownloadButton
           url="/api/support/feedback/pdf?download=1"
@@ -85,8 +77,7 @@ export default async function FeedbackPage() {
           title="Download the satisfaction report as a PDF"
         >
           <Download className="size-3.5" /> Download PDF
-        </DownloadButton>
-      </div>
+        </DownloadButton></>} />
 
       <div className="grid grid-cols-4 gap-4">
         <div className="border rounded-lg p-5 bg-card relative overflow-hidden">

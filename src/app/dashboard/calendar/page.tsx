@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { Calendar } from "lucide-react";
 import { withTenant } from "@/db/client";
@@ -61,14 +62,7 @@ export default async function CalendarPage({
   return (
     <div className="space-y-6 max-w-7xl">
       <MyDayNav />
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="page-title">
-            <Calendar className="size-6 text-muted-foreground" /> Calendar
-          </h1>
-          <p className="page-subtitle mt-1">Meetings, reviews, follow-ups and SIP dates on one calendar.</p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeaderCard title={<><Calendar className="size-6 text-muted-foreground" /> Calendar</>} subtitle={<>Meetings, reviews, follow-ups and SIP dates on one calendar.</>} actions={<><div className="flex items-center gap-2">
           <Link
             href={`/dashboard/calendar?month=${prevMonth.getFullYear()}-${String(prevMonth.getMonth() + 1).padStart(2, "0")}`}
             className="rounded-md border px-2.5 py-1.5 text-sm hover:bg-accent"
@@ -82,8 +76,7 @@ export default async function CalendarPage({
           >
             {nextMonth.toLocaleDateString("en-IN", { month: "short" })} →
           </Link>
-        </div>
-      </div>
+        </div></>} />
 
       <InteractiveCalendar
         initialItems={items}

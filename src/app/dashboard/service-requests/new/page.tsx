@@ -1,9 +1,9 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
 import { RmSelector } from "@/components/common/RmSelector";
 import { SelectField } from "@/components/ui/SelectField";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
@@ -106,13 +106,8 @@ export default function NewServiceRequestPage() {
   }
 
   return (
-    <div className="space-y-4 max-w-2xl">
-      <Link href="/dashboard/service-requests" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
-        <ChevronLeft className="size-4" /> Back
-      </Link>
-      <h1 className="text-2xl font-bold tracking-tight">New service request</h1>
-
-      <form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-3">
+    <PageHeaderCard title={<>New service request</>}>
+<form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-3">
         <label className="block">
           <div className="text-xs font-medium mb-1">Investor</div>
           {/* Was a <select> of the first 200 clients — unusable at this scale
@@ -214,6 +209,6 @@ export default function NewServiceRequestPage() {
           </button>
         </div>
       </form>
-    </div>
+</PageHeaderCard>
   );
 }

@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { PieChart, Building2, Layers, AlertTriangle, IndianRupee, Boxes, Download, UserX, BadgePercent } from "lucide-react";
 import { withTenant } from "@/db/client";
@@ -31,12 +32,7 @@ export default async function PortfolioIntelligencePage({ searchParams }: { sear
 
   return (
     <div className="space-y-6 max-w-6xl">
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="page-title"><PieChart className="size-6 text-muted-foreground" /> Portfolio Intelligence</h1>
-          <p className="page-subtitle mt-1">How your clients&apos; money is actually invested, and where it is concentrated.</p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeaderCard title={<><PieChart className="size-6 text-muted-foreground" /> Portfolio Intelligence</>} subtitle={<>How your clients&apos; money is actually invested, and where it is concentrated.</>} actions={<><div className="flex items-center gap-2">
           {intel.totalAum > 0 && (
             <DownloadButton url={`/api/portfolio-intelligence/export${mine ? "?mine=1" : ""}`} className="btn-secondary text-xs inline-flex items-center gap-1.5">
               <Download className="size-3.5" /> Export CSV
@@ -48,8 +44,7 @@ export default async function PortfolioIntelligencePage({ searchParams }: { sear
               <Link href={hrefMine("1")} className={`px-2.5 py-1 rounded-md font-medium ${mine ? "bg-card shadow-sm" : "text-muted-foreground"}`}>My book</Link>
             </div>
           )}
-        </div>
-      </div>
+        </div></>} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Kpi icon={IndianRupee} label="Book AUM" value={inr(intel.totalAum)} tone="emerald" />

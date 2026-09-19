@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
@@ -215,9 +216,8 @@ export default async function FinancialPlanDetailPage({
               <ScrollText className="size-6" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold text-foreground">{client?.name ?? "—"}</h1>
-                {data.isLead && (
+              <PageHeaderCard title={<>{client?.name ?? "—"}</>}>
+{data.isLead && (
                   <span className="chip text-2xs uppercase font-bold bg-amber-100 text-amber-700 border border-amber-200">Lead</span>
                 )}
                 <span
@@ -229,7 +229,7 @@ export default async function FinancialPlanDetailPage({
                 >
                   {plan.status}
                 </span>
-              </div>
+</PageHeaderCard>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Financial Plan: <span className="font-semibold text-brand-navy">{plan.planNumber}</span> · Generated {formatDate(plan.preparedAt)}
               </p>

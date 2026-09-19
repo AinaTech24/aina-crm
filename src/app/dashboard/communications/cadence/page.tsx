@@ -35,7 +35,7 @@ export default async function CommunicationCadencePage() {
               <ChevronLeft className="size-3" /> Communications
             </Link>
           </div>
-          <h1 className="text-2xl font-semibold">Client communication cadence</h1>
+          <h1 className="page-title">Client communication cadence</h1>
           <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
             The firm's standard touchpoint policy — what we communicate, how often, on
             which channel — plus response-time SLAs. Strengthen relationships through
@@ -46,7 +46,7 @@ export default async function CommunicationCadencePage() {
       </div>
 
       <div className="hidden print:block text-center mb-3">
-        <h1 className="text-xl font-bold">Client Communication Cadence</h1>
+        <h1 className="page-title">Client Communication Cadence</h1>
         <p className="text-xs text-slate-500">
           Generated {new Date().toLocaleDateString("en-GB")}
         </p>

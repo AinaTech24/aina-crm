@@ -250,7 +250,7 @@ export function RiskProfileWizard({
             <CheckCircle2 className="size-7 text-emerald-600" />
           </div>
           <div>
-            <h1 className="text-xl font-bold">Risk profile saved</h1>
+            <h1 className="page-title">Risk profile saved</h1>
             <p className="text-sm text-muted-foreground mt-1">
               <span className="font-medium text-foreground">{investor.name}</span> is now profiled as{" "}
               <span className="font-semibold" style={{ color: live.band.color ?? undefined }}>{live.band.label}</span>{" "}
@@ -295,7 +295,7 @@ export function RiskProfileWizard({
       <div className="card-surface p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            <h1 className="page-title">
               <ShieldCheck className="size-5 text-brand-cyan" /> {template.name}
             </h1>
             <p className="text-sm text-muted-foreground mt-1">

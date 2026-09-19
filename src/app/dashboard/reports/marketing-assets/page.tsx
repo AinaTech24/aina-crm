@@ -24,7 +24,7 @@ export default async function MarketingAssetsPage() {
               <ChevronLeft className="size-3" /> Reports
             </Link>
           </div>
-          <h1 className="text-2xl font-semibold flex items-center gap-2">
+          <h1 className="page-title">
             <Megaphone className="size-6 text-muted-foreground" /> Marketing assets & trust builders
           </h1>
           <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
@@ -37,7 +37,7 @@ export default async function MarketingAssetsPage() {
       </div>
 
       <div className="hidden print:block text-center mb-3">
-        <h1 className="text-xl font-bold">Marketing Assets & Trust Builders</h1>
+        <h1 className="page-title">Marketing Assets & Trust Builders</h1>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

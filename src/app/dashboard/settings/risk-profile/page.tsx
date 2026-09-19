@@ -1,5 +1,5 @@
-import { ChevronLeft, ShieldCheck } from "lucide-react";
-import Link from "next/link";
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
+import { ShieldCheck } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { loadActiveTemplate } from "@/lib/risk-profile/template";
@@ -13,22 +13,9 @@ export default async function RiskProfileSettingsPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <div>
-        <Link
-          href="/dashboard/settings"
-          className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1"
-        >
-          <ChevronLeft className="size-3" /> Back to settings
-        </Link>
-        <h1 className="page-title mt-2">
-          <ShieldCheck className="size-6 text-muted-foreground" /> Risk Profile Questionnaire
-        </h1>
-        <p className="page-subtitle">
-          Customise the questions, scoring, and risk categories for your firm. The published version
+      <PageHeaderCard title={<><ShieldCheck className="size-6 text-muted-foreground" /> Risk Profile Questionnaire</>} subtitle={<>Customise the questions, scoring, and risk categories for your firm. The published version
           is used for every new risk profile capture. Historical profiles keep the version they were
-          captured with — they're not retroactively re-scored.
-        </p>
-      </div>
+          captured with — they're not retroactively re-scored.</>} />
 
       <RiskTemplateEditor
         initial={{

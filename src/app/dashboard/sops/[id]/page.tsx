@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { eq, desc, and, isNull } from "drizzle-orm";
@@ -69,9 +70,8 @@ export default async function SopDetailPage({ params }: { params: Promise<{ id: 
         <div className="flex items-start gap-4 flex-wrap justify-between">
           <div className="flex items-start gap-4 min-w-0 flex-1">
             <ScrollText className="size-8 text-muted-foreground mt-1 shrink-0" />
-            <div className="min-w-0 flex-1">
-              <h1 className="text-2xl font-bold tracking-tight">{data.sop.title}</h1>
-              <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+            <PageHeaderCard title={<>{data.sop.title}</>}>
+<div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                 <span className="font-mono">{data.sop.key}</span>
                 {data.sop.category && <span>· {data.sop.category}</span>}
                 {data.current && <span>· v{data.current.versionNumber}</span>}
@@ -84,7 +84,7 @@ export default async function SopDetailPage({ params }: { params: Promise<{ id: 
                   ))}
                 </div>
               )}
-            </div>
+</PageHeaderCard>
           </div>
           
           {data.current && (

@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Client account statement — opening balance, transactions, closing balance,
  * grouped by folio × scheme, for a date range.
@@ -68,11 +69,8 @@ export default async function StatementPage({
         <Link href={`/dashboard/investors/${id}`} className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 mb-2">
           <ChevronLeft className="size-3.5" /> Back to client
         </Link>
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <FileText className="size-6 text-muted-foreground" /> Account Statement
-          </h1>
-          <form className="flex items-end gap-2" action={`/dashboard/investors/${id}/statement`}>
+        <PageHeaderCard title={<><FileText className="size-6 text-muted-foreground" /> Account Statement</>}>
+<form className="flex items-end gap-2" action={`/dashboard/investors/${id}/statement`}>
             <label className="text-xs">
               <span className="block text-muted-foreground mb-1">From</span>
               <input type="date" name="from" defaultValue={from} className="input-base h-8 text-xs" />
@@ -83,7 +81,7 @@ export default async function StatementPage({
             </label>
             <button className="btn-secondary text-xs h-8">Apply</button>
           </form>
-        </div>
+</PageHeaderCard>
       </div>
 
       {/* Statement header — the firm, the client, the period. Printed too. */}

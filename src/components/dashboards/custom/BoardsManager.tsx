@@ -69,7 +69,7 @@ export function BoardsManager({ mine, shared, deleted, templates = [] }: { mine:
     <div className="space-y-6 max-w-5xl">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="page-title">
             <LayoutDashboard className="size-6 text-brand-cyan" /> My Dashboards
           </h1>
           <p className="text-muted-foreground text-sm">Build your own dashboards from the widget library. Set one as your home, or share it with the firm.</p>

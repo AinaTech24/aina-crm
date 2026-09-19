@@ -82,7 +82,7 @@ export default async function PnlPage({
               <ChevronLeft className="size-3" /> Finances
             </Link>
           </div>
-          <h1 className="text-2xl font-semibold">P&amp;L statement</h1>
+          <h1 className="page-title">P&amp;L statement</h1>
         </div>
         <div className="flex items-center gap-2">
           <div className="inline-flex rounded-lg border border-border bg-secondary/40 p-0.5 gap-0.5">
@@ -102,7 +102,7 @@ export default async function PnlPage({
       </div>
 
       <div className="hidden print:block text-center mb-3">
-        <h1 className="text-xl font-bold">P&amp;L Statement — FY {fy}</h1>
+        <h1 className="page-title">P&amp;L Statement — FY {fy}</h1>
       </div>
 
       {/* Headline */}
@@ -247,7 +247,7 @@ function Card({
   const cls = tone === "emerald" ? "text-emerald-700" : tone === "rose" ? "text-rose-700" : "text-brand-cyan-deep";
   const good = delta != null && (invertDelta ? delta <= 0 : delta >= 0);
   return (
-    <div className="card-surface glass-card p-4">
+    <div className="card-surface p-4">
       <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{label}</div>
       <div className={`text-xl font-bold mt-1 tabular-nums ${cls}`}>{value}</div>
       {delta != null && (

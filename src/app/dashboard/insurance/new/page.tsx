@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
 /**
@@ -432,11 +433,7 @@ function NewInsuranceForm() {
         <ChevronLeft className="size-4" /> Back to {editId ? "policy details" : "policies"}
       </Link>
 
-      <div>
-        <h1 className="page-title">
-          <Shield className="size-6 text-muted-foreground" /> {editId ? "Edit insurance policy" : "Add insurance policy"}
-        </h1>
-      </div>
+      <PageHeaderCard title={<><Shield className="size-6 text-muted-foreground" /> {editId ? "Edit insurance policy" : "Add insurance policy"}</>} />
 
       {/* 0. Document auto-fill — upload a policy PDF/image → native read + OCR
           fills the fields for review. Available for both new AND edit (it only

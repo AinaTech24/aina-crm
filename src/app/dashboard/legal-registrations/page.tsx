@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Legal registrations list — every statutory + regulatory license / cert
  * the firm holds. SEBI inspection: this is the page the compliance
@@ -87,18 +88,12 @@ export default async function LegalRegistrationsPage({
 
   return (
     <div className="space-y-5">
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="page-title">Legal registrations</h1>
-          <p className="page-subtitle mt-1">ARN, EUIN, GST and your other registrations, with renewal reminders.</p>
-        </div>
-        <Link
+      <PageHeaderCard title={<>Legal registrations</>} subtitle={<>ARN, EUIN, GST and your other registrations, with renewal reminders.</>} actions={<><Link
           href="/dashboard/legal-registrations/new"
           className="btn-primary text-sm"
         >
           <Plus className="size-4" /> Add registration
-        </Link>
-      </div>
+        </Link></>} />
 
       {/* Summary tiles */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">

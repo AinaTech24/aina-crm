@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Automation Control Tower — the runs monitor / trust surface.
  *
@@ -69,13 +70,7 @@ export default async function AutomationControlTower({
   return (
     <div className="space-y-6 max-w-6xl">
       {/* Header + window selector */}
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Activity className="size-6 text-muted-foreground" /> Automation Control Tower
-          </h1>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeaderCard title={<><Activity className="size-6 text-muted-foreground" /> Automation Control Tower</>} actions={<><div className="flex items-center gap-2">
           <div className="inline-flex rounded-lg border border-border bg-secondary/40 p-0.5 gap-0.5">
             {WINDOWS.map((w) => (
               <Link
@@ -89,8 +84,7 @@ export default async function AutomationControlTower({
             ))}
           </div>
           <RefreshButton />
-        </div>
-      </div>
+        </div></>} />
 
       {/* Summary tiles */}
       <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">

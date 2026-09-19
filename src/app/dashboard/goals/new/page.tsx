@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Create-goal page — picks an investor + collects target amount/year + computes
  * Required SIP / Gap live as the user types.
@@ -44,9 +45,7 @@ export default async function NewGoalPage({
         >
           <ChevronLeft className="size-4" /> Back to goals
         </Link>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Add a goal</h1>
-        </div>
+        <PageHeaderCard title={<>Add a goal</>} />
         {/* Limited-height, scrollable picker (hidden scrollbar) so a long book
             doesn't stretch the page. */}
         <div className="card-surface overflow-hidden">
@@ -95,7 +94,7 @@ export default async function NewGoalPage({
             <div className="text-2xs uppercase tracking-[0.18em] text-white/70 font-semibold">
               New financial goal
             </div>
-            <h1 className="text-2xl font-bold tracking-tight mt-0.5">{inv.name}</h1>
+            <h1 className="page-title mt-0.5">{inv.name}</h1>
             <div className="text-white/80 text-sm mt-0.5">
               PAN <span className="font-mono">{inv.pan}</span>
               {inv.segmentTag && (

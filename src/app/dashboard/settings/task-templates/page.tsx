@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Task Templates designer — the firm owner defines predefined tasks with
  * sub-task checklists (SOPs like "New client onboarding" → collect docs →
@@ -65,15 +66,8 @@ export default async function TaskTemplatesPage() {
         <ChevronLeft className="size-4" /> Back to settings
       </Link>
 
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <ListChecks className="size-5" /> Task templates
-        </h1>
-        <p className="text-muted-foreground text-sm">
-          Predefined tasks with sub-task checklists — your team applies them
-          from the New Task form.
-        </p>
-      </div>
+      <PageHeaderCard title={<><ListChecks className="size-5" /> Task templates</>} subtitle={<>Predefined tasks with sub-task checklists — your team applies them
+          from the New Task form.</>} />
 
       <TaskTemplatesManager templates={templates} />
     </div>

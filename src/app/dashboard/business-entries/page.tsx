@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { and, desc, eq, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
@@ -90,16 +91,7 @@ export default async function BusinessEntriesPage({
 
   return (
     <div className="space-y-6 max-w-6xl">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Briefcase className="size-6 text-muted-foreground" /> Business Closing Entries
-          </h1>
-          <p className="page-subtitle mt-1">
-            Log booked business (MF / PMS / AIF / SIF…), email clients, and report.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeaderCard title={<><Briefcase className="size-6 text-muted-foreground" /> Business Closing Entries</>} subtitle={<>Log booked business (MF / PMS / AIF / SIF…), email clients, and report.</>} actions={<><div className="flex items-center gap-2">
           <Link href="/dashboard/business-entries/dashboard" className="btn-secondary text-sm inline-flex items-center gap-1.5">
             <LayoutDashboard className="size-4" /> Dashboard
           </Link>
@@ -109,8 +101,7 @@ export default async function BusinessEntriesPage({
           <Link href="/dashboard/business-entries/new" className="btn-primary text-sm inline-flex items-center gap-1.5">
             <Plus className="size-4" /> New entry
           </Link>
-        </div>
-      </div>
+        </div></>} />
 
       <CompactFilterBar
         totalCount={rows.length}

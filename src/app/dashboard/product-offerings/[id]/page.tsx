@@ -1,6 +1,7 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft, ShieldCheck, ShieldAlert, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { ShieldCheck, ShieldAlert, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { eq, and, inArray } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -90,25 +91,15 @@ export default async function ProductOfferingDetailPage({
 
   return (
     <div className="space-y-5 max-w-3xl">
-      <div>
-        <Link
-          href="/dashboard/product-offerings"
-          className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1"
-        >
-          <ChevronLeft className="size-3" /> Products &amp; services
-        </Link>
-        <h1 className="text-2xl font-semibold mt-1">{row.name}</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {row.category} · {row.regulator} · {row.status}
-        </p>
-        <RecordProvenance
+      <PageHeaderCard title={<>{row.name}</>} subtitle={<>{row.category} · {row.regulator} · {row.status}</>}>
+<RecordProvenance
           entityType="product_offering"
           entityId={row.id}
           createdAt={row.createdAt}
           updatedAt={row.updatedAt}
           className="mt-1"
         />
-      </div>
+</PageHeaderCard>
       {/* Readiness & compliance — licences current + team qualified */}
       <ReadinessPanel
         health={health}

@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { eq, desc, sql, and, or, ilike, inArray } from "drizzle-orm";
 import {
@@ -120,17 +121,9 @@ export default async function FinancialPlansPage({
   return (
     <div className="space-y-6 max-w-7xl">
       {/* Page Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="page-title">
-            <ScrollText className="size-6 text-muted-foreground" /> Financial Plans
-          </h1>
-          <p className="page-subtitle mt-1">Full financial plans with cash-flow, goals and recommendations you can print.</p>
-        </div>
-        <Link href="/dashboard/financial-plans/new" className="btn-primary">
+      <PageHeaderCard title={<><ScrollText className="size-6 text-muted-foreground" /> Financial Plans</>} subtitle={<>Full financial plans with cash-flow, goals and recommendations you can print.</>} actions={<><Link href="/dashboard/financial-plans/new" className="btn-primary">
           <Plus className="size-4" /> Create Financial Plan
-        </Link>
-      </div>
+        </Link></>} />
 
       {/* Filter and Table Container */}
       <div className="space-y-4">

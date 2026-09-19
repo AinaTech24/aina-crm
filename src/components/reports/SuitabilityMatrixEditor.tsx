@@ -226,7 +226,7 @@ export function SuitabilityMatrixEditor({
 
       {/* Print header */}
       <div className="hidden print:block text-center mb-3">
-        <h1 className="text-xl font-bold">MF Suitability Matrix</h1>
+        <h1 className="page-title">MF Suitability Matrix</h1>
         <p className="text-xs text-slate-500">
           Generated {new Date().toLocaleDateString("en-GB")}
         </p>

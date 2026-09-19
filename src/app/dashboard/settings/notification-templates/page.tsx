@@ -1,6 +1,7 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { eq } from "drizzle-orm";
-import { ChevronLeft, Mail, MessageCircle, Plus, Edit3 } from "lucide-react";
+import { Mail, MessageCircle, Plus, Edit3 } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { templates } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
@@ -55,18 +56,8 @@ export default async function NotificationTemplatesPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <div>
-        <Link href="/dashboard/settings" className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1">
-          <ChevronLeft className="size-3" /> Back to settings
-        </Link>
-        <h1 className="page-title mt-2">
-          <Mail className="size-6 text-muted-foreground" /> Notification Templates
-        </h1>
-        <p className="page-subtitle">
-          The 14 templates that drive every automated message in the lead-to-client journey. Each gets a
-          fully-branded designer-mode email + a Meta-approved WhatsApp variant.
-        </p>
-      </div>
+      <PageHeaderCard title={<><Mail className="size-6 text-muted-foreground" /> Notification Templates</>} subtitle={<>The 14 templates that drive every automated message in the lead-to-client journey. Each gets a
+          fully-branded designer-mode email + a Meta-approved WhatsApp variant.</>} />
 
       <div className="card-surface overflow-hidden">
         <table className="w-full text-sm">

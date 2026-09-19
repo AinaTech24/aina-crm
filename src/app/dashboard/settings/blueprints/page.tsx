@@ -1,6 +1,7 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { asc, eq } from "drizzle-orm";
-import { ChevronLeft, Workflow, Plus, ChevronRight } from "lucide-react";
+import { Workflow, Plus, ChevronRight } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { blueprintDefinitions, blueprintStages } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
@@ -37,19 +38,9 @@ export default async function BlueprintsAdminPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <div>
-        <Link href="/dashboard/settings" className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1">
-          <ChevronLeft className="size-3" /> Back to settings
-        </Link>
-        <h1 className="page-title mt-2">
-          <Workflow className="size-6 text-muted-foreground" /> Blueprint Editor
-        </h1>
-        <p className="page-subtitle">
-          Customise the stage machines that drive every journey in the CRM — leads, service requests, complaints,
+      <PageHeaderCard title={<><Workflow className="size-6 text-muted-foreground" /> Blueprint Editor</>} subtitle={<>Customise the stage machines that drive every journey in the CRM — leads, service requests, complaints,
           SIP rejections, client reviews. Each blueprint is a sequence of stages with required fields, SLAs, and
-          automation hooks.
-        </p>
-      </div>
+          automation hooks.</>} />
 
       <div className="space-y-3">
         {blueprints.map(({ def, stages }) => (

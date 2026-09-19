@@ -263,7 +263,7 @@ export function TechStackRegister({ initial }: { initial: Tool[] }) {
 
 function Card({ label, value, tone }: { label: string; value: string; tone?: "emerald" }) {
   return (
-    <div className="card-surface glass-card p-4">
+    <div className="card-surface p-4">
       <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{label}</div>
       <div className={`text-xl font-bold mt-1 tabular-nums ${tone === "emerald" ? "text-emerald-700" : ""}`}>{value}</div>
     </div>

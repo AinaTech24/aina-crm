@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { desc, eq, sql } from "drizzle-orm";
 import { ListChecks, Plus, Workflow, Lock, BookMarked } from "lucide-react";
@@ -92,17 +93,14 @@ export default async function WorkflowRulesPage({
     <div className="space-y-6 max-w-7xl">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <div className="flex items-center gap-1.5">
-            <h1 className="page-title">
-              <Workflow className="size-6 text-muted-foreground" /> Workflow Rules
-            </h1>
-            <HelpTip title="What are automations?">
+          <PageHeaderCard title={<><Workflow className="size-6 text-muted-foreground" /> Workflow Rules</>}>
+<HelpTip title="What are automations?">
               Automations do repetitive work for you — send a WhatsApp when a SIP
               bounces, create a task on a birthday, and more. Start from a
               ready-made recipe; you can tweak it. The blank builder is only for
               advanced custom rules.
             </HelpTip>
-          </div>
+</PageHeaderCard>
         </div>
         <div className="flex flex-col items-end gap-1.5">
           <div className="flex gap-2">

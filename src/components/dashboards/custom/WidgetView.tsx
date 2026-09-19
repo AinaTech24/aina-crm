@@ -12,11 +12,12 @@ import {
   ResponsiveContainer, AreaChart, Area, LineChart, Line, BarChart, Bar,
   PieChart, Pie, Cell, XAxis, YAxis, Tooltip, CartesianGrid,
 } from "recharts";
+import { CHART_INK, CHART_SERIES_WIDE } from "@/lib/dashboard/chart-palette";
 import { Loader2, AlertCircle, Download, RefreshCw } from "lucide-react";
 import { formatINR, formatDate } from "@/lib/utils";
 import { WIDGET_META_BY_KEY } from "@/lib/dashboards/widgets";
 
-const PALETTE = ["#0ea5e9", "#6366f1", "#10b981", "#f59e0b", "#ef4444", "#a855f7", "#14b8a6", "#ec4899"];
+const PALETTE = [...CHART_SERIES_WIDE];
 
 /**
  * Module-level in-memory cache keyed by widgetKey+rm+period. Keeps re-renders
@@ -179,9 +180,9 @@ function Body({ view, rows, chart }: { view: View; rows: any[]; chart?: string }
     const data = rows.map((r) => ({ ...r, ...Object.fromEntries(view.series.map((sv) => [sv.key, Number(r[sv.key] ?? 0)])) }));
     if (!data.length) return <Empty />;
     const axis = <>
-      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eef2f7" />
-      <XAxis dataKey={view.x} tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-      <YAxis tick={{ fontSize: 10 }} width={40} tickFormatter={(v) => compact(Number(v))} />
+      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_INK.grid} />
+      <XAxis dataKey={view.x} tick={{ fontSize: 10, fill: CHART_INK.tick }} interval="preserveStartEnd" />
+      <YAxis tick={{ fontSize: 10, fill: CHART_INK.tick }} width={40} tickFormatter={(v) => compact(Number(v))} />
       <Tooltip formatter={(v: any) => fmt(v, view.format)} />
     </>;
     return (
@@ -189,7 +190,7 @@ function Body({ view, rows, chart }: { view: View; rows: any[]; chart?: string }
         {chart === "bar" ? (
           <BarChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
             {axis}
-            {view.series.map((sv, i) => <Bar key={sv.key} dataKey={sv.key} fill={PALETTE[i % PALETTE.length]} radius={[3, 3, 0, 0]} />)}
+            {view.series.map((sv, i) => <Bar key={sv.key} dataKey={sv.key} fill={PALETTE[i % PALETTE.length]} />)}
           </BarChart>
         ) : chart === "line" ? (
           <LineChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>

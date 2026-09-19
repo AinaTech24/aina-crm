@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { Users, TrendingUp, Heart, CheckCircle2, Clock, Sparkles, Phone } from "lucide-react";
@@ -90,15 +91,8 @@ export default async function ReferralsPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div>
-        <h1 className="page-title">
-          <Heart className="size-6 text-muted-foreground" /> Referral Tracking
-        </h1>
-        <p className="page-subtitle">
-          Which clients are referring new business — and how much of it converts. Use this list to schedule
-          thank-you calls and identify your top advocates.
-        </p>
-      </div>
+      <PageHeaderCard title={<><Heart className="size-6 text-muted-foreground" /> Referral Tracking</>} subtitle={<>Which clients are referring new business — and how much of it converts. Use this list to schedule
+          thank-you calls and identify your top advocates.</>} />
 
       <div className="grid grid-cols-4 gap-3">
         <Stat

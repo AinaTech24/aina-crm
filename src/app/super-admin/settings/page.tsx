@@ -42,7 +42,7 @@ export default async function PlatformSettingsPage() {
   return (
     <div className="space-y-6 max-w-5xl">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Platform settings</h1>
+        <h1 className="page-title">Platform settings</h1>
         <p className="text-muted-foreground text-sm">
           AINA-level configuration, integrations health, and module catalog.
         </p>

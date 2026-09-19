@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -109,16 +110,9 @@ export default function CustomReportsPage() {
         <ChevronLeft className="size-4" /> Back to reports
       </Link>
 
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="page-title">
-            <BarChart3 className="size-6 text-muted-foreground" /> Custom Reports
-          </h1>
-        </div>
-        <Link href="/dashboard/reports/custom/new" className="btn-primary">
+      <PageHeaderCard title={<><BarChart3 className="size-6 text-muted-foreground" /> Custom Reports</>} actions={<><Link href="/dashboard/reports/custom/new" className="btn-primary">
           <Plus className="size-4" /> New report
-        </Link>
-      </div>
+        </Link></>} />
 
       <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4">
         {/* Folder rail */}

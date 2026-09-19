@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
 import { useState } from "react";
@@ -141,11 +142,7 @@ export default function NewCustomAssetPage() {
         <ChevronLeft className="size-4" /> Back to library
       </Link>
 
-      <div>
-        <h1 className="page-title">
-          <ImageIcon className="size-6 text-muted-foreground" /> Upload custom asset
-        </h1>
-      </div>
+      <PageHeaderCard title={<><ImageIcon className="size-6 text-muted-foreground" /> Upload custom asset</>} />
 
       <div className="card-surface p-5 space-y-3">
         <label className="block">

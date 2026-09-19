@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { ChevronLeft, AlertTriangle, Users, Calendar } from "lucide-react";
@@ -94,17 +95,10 @@ export default async function FamiliesAtRiskPage() {
         <ChevronLeft className="size-4" /> Back to families
       </Link>
 
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <AlertTriangle className="size-6 text-amber-600" /> Next-gen pulse
-        </h1>
-        <p className="text-muted-foreground text-sm">
-          Industry research: ~₹45 lakh crore in HNI wealth will transfer to the next generation
+      <PageHeaderCard title={<><AlertTriangle className="size-6 text-amber-600" /> Next-gen pulse</>} subtitle={<>Industry research: ~₹45 lakh crore in HNI wealth will transfer to the next generation
           over the next 20 years. <strong>Retention drops to ~45%</strong> when the relationship is
           single-threaded. Onboarding heirs as their own investors with their own SIPs is the single
-          best predictor of post-transfer retention.
-        </p>
-      </div>
+          best predictor of post-transfer retention.</>} />
 
       <div className="grid grid-cols-3 gap-3">
         <Stat label="Families at risk (AUM ≥ ₹50L)" value={data.length} />

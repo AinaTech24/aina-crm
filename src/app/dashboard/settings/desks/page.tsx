@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { ChevronLeft, Network } from "lucide-react";
 import { DeskManager } from "@/components/settings/DeskManager";
@@ -14,15 +15,8 @@ export default function DesksSettingsPage() {
         <ChevronLeft className="size-4" /> Back to settings
       </Link>
 
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <Network className="size-5" /> Desks (sub-branch teams)
-        </h1>
-        <p className="text-muted-foreground text-sm">
-          Group each branch into desks (e.g. DK, RC, 1) and assign every RM to a desk. The monthly
-          MIS reports roll up RM → desk → branch → firm.
-        </p>
-      </div>
+      <PageHeaderCard title={<><Network className="size-5" /> Desks (sub-branch teams)</>} subtitle={<>Group each branch into desks (e.g. DK, RC, 1) and assign every RM to a desk. The monthly
+          MIS reports roll up RM → desk → branch → firm.</>} />
 
       <DeskManager />
     </div>

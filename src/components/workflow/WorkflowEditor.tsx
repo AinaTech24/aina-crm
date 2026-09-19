@@ -201,7 +201,7 @@ export function WorkflowEditor(props: Props) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">{props.workflow.name}</h1>
+          <h1 className="page-title">{props.workflow.name}</h1>
           <p className="text-sm text-muted-foreground">{props.workflow.description ?? "Workflow editor"}</p>
         </div>
         <div className="flex gap-2">

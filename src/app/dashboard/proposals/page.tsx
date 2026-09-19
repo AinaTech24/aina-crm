@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import {
@@ -136,17 +137,9 @@ export default async function ProposalsPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="page-title">
-            <FileSignature className="size-6 text-muted-foreground" /> Proposals
-          </h1>
-          <p className="page-subtitle mt-1">Investment proposals you have sent, and whether the client approved them.</p>
-        </div>
-        <Link href="/dashboard/proposals/new" className="btn-primary">
+      <PageHeaderCard title={<><FileSignature className="size-6 text-muted-foreground" /> Proposals</>} subtitle={<>Investment proposals you have sent, and whether the client approved them.</>} actions={<><Link href="/dashboard/proposals/new" className="btn-primary">
           <Plus className="size-4" /> New proposal
-        </Link>
-      </div>
+        </Link></>} />
 
       <CompactFilterBar
         totalCount={data.filteredTotal}

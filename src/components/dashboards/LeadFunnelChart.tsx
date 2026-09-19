@@ -1,16 +1,12 @@
 "use client";
 
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell } from "recharts";
+import { CHART_SERIES } from "@/lib/dashboard/chart-palette";
 import { ChartMount } from "./ChartMount";
 
 type FunnelStep = { name: string; value: number; percentage: number };
 
-const COLORS = [
-  "hsl(221, 83%, 18%)", // Deep Navy
-  "hsl(199, 89%, 48%)", // Electric Cyan
-  "hsl(256, 70%, 60%)", // Brand Violet
-  "hsl(165, 70%, 45%)", // Brand Mint
-];
+const COLORS = [...CHART_SERIES];
 
 export function LeadFunnelChart({ data }: { data: FunnelStep[] }) {
   if (!data.some(d => d.value > 0)) {
@@ -49,7 +45,7 @@ export function LeadFunnelChart({ data }: { data: FunnelStep[] }) {
               "Count",
             ]}
           />
-          <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={22}>
+          <Bar dataKey="value" barSize={22}>
             {data.map((entry, index) => (
               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
             ))}

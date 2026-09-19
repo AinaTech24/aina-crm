@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { sql } from "drizzle-orm";
 import { IndianRupee, TrendingUp, FileText, Repeat, Shield, Wallet } from "lucide-react";
 import { withTenant } from "@/db/client";
@@ -77,14 +77,9 @@ export default async function InsuranceCommissionPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><IndianRupee className="size-6 text-muted-foreground" /> Insurance Commission</h1>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeaderCard title={<><IndianRupee className="size-6 text-muted-foreground" /> Insurance Commission</>} actions={<><div className="flex items-center gap-2">
           <AddCommissionEntry />
-        </div>
-      </div>
+        </div></>} />
 
       <ModuleTabs tabs={INSURANCE_TABS} />
 

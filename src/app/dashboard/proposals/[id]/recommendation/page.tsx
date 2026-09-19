@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Product Recommendation worksheet — Network FP "3.6 Product
  * Recommendation" parity.
@@ -106,10 +107,7 @@ export default async function RecommendationPage({
         </Link>
       </div>
 
-      <div>
-        <h1 className="text-2xl font-semibold">Product recommendation</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {data.investor?.name && (
+      <PageHeaderCard title={<>Product recommendation</>} subtitle={<>{data.investor?.name && (
             <>
               Client:{" "}
               <span className="font-medium">{data.investor.name}</span> ·{" "}
@@ -123,9 +121,7 @@ export default async function RecommendationPage({
             day: "2-digit",
             month: "short",
             year: "numeric",
-          })}
-        </p>
-      </div>
+          })}</>} />
 
       <RecommendationWorksheet proposalId={id} initialRows={rows} />
     </div>

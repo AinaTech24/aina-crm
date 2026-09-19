@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Expense Ledger (Network FP 8.2) — firm expense bookkeeping.
  * Gated by reports.commission. FY selectable via ?fy=YYYY-YY.
@@ -91,11 +92,7 @@ export default async function ExpensesPage({
             <ChevronLeft className="size-3" /> Finances
           </Link>
         </div>
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div>
-            <h1 className="text-2xl font-semibold">Expense ledger</h1>
-          </div>
-          <div className="inline-flex rounded-lg border border-border bg-secondary/40 p-0.5 gap-0.5">
+        <PageHeaderCard title={<>Expense ledger</>} actions={<><div className="inline-flex rounded-lg border border-border bg-secondary/40 p-0.5 gap-0.5">
             {fyOptions.map((y) => (
               <Link
                 key={y}
@@ -106,8 +103,7 @@ export default async function ExpensesPage({
                 FY {y}
               </Link>
             ))}
-          </div>
-        </div>
+          </div></>} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

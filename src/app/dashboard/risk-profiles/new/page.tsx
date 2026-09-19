@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Start a new risk profile for an investor.
  *
@@ -56,9 +57,7 @@ export default async function NewRiskProfilePage({
         >
           <ChevronLeft className="size-4" /> Back to risk profiles
         </Link>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Start a new risk profile</h1>
-        </div>
+        <PageHeaderCard title={<>Start a new risk profile</>} />
         <CompactFilterBar
           searchPlaceholder="Search clients by name or PAN…"
           filters={[]}

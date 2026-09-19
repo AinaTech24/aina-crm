@@ -1,9 +1,9 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 
 const ROLES = ["owner", "rm", "back_office", "marketing", "compliance", "branch_head"];
@@ -51,13 +51,8 @@ export default function NewSopPage() {
   }
 
   return (
-    <div className="space-y-4 max-w-3xl">
-      <Link href="/dashboard/sops" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
-        <ChevronLeft className="size-4" /> Back to SOPs
-      </Link>
-      <h1 className="text-2xl font-bold tracking-tight">New SOP</h1>
-
-      <form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-3">
+    <PageHeaderCard title={<>New SOP</>}>
+<form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
             <div className="text-xs font-medium mb-1">Key (lowercase)<span className="text-rose-600">*</span></div>
@@ -115,6 +110,6 @@ export default function NewSopPage() {
           </button>
         </div>
       </form>
-    </div>
+</PageHeaderCard>
   );
 }

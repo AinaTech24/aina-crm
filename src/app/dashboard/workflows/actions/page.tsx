@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import type { ElementType } from "react";
 import { desc, eq } from "drizzle-orm";
@@ -70,21 +71,14 @@ export default async function WorkflowActionsPage() {
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="page-title">
-            <ListChecks className="size-6 text-muted-foreground" /> Workflow Actions
-          </h1>
-        </div>
-        <div className="flex gap-2">
+      <PageHeaderCard title={<><ListChecks className="size-6 text-muted-foreground" /> Workflow Actions</>} actions={<><div className="flex gap-2">
           <Link href="/dashboard/workflows/rules" className="btn-secondary">
             <Workflow className="size-4" /> Rules
           </Link>
           <Link href="/dashboard/workflows/rules/new" className="btn-primary">
             <Zap className="size-4" /> Create Rule
           </Link>
-        </div>
-      </div>
+        </div></>} />
 
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-5">
         <Metric icon={ListChecks} label="Actions" value={actions.length} sub={`${activeActions} on active rules`} />

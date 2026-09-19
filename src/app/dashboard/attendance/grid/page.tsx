@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { ChevronLeft, ChevronRight, Grid3x3, Download } from "lucide-react";
@@ -65,24 +66,14 @@ export default async function AttendanceGridPage({
 
   return (
     <div className="space-y-5 max-w-[1400px]">
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <Link href="/dashboard/attendance" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
-            <ChevronLeft className="size-4" /> Back to attendance
-          </Link>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2 mt-1">
-            <Grid3x3 className="size-6 text-muted-foreground" /> Monthly attendance
-          </h1>
-        </div>
-        <div className="flex items-center gap-3">
+      <PageHeaderCard title={<><Grid3x3 className="size-6 text-muted-foreground" /> Monthly attendance</>} actions={<><div className="flex items-center gap-3">
           <Link href={`/dashboard/attendance/grid?month=${shiftMonth(month, -1)}`} className="btn-ghost text-sm inline-flex items-center gap-1"><ChevronLeft className="size-4" /> {shiftMonth(month, -1)}</Link>
           <span className="font-bold tabular-nums">{label}</span>
           <Link href={`/dashboard/attendance/grid?month=${shiftMonth(month, 1)}`} className="btn-ghost text-sm inline-flex items-center gap-1">{shiftMonth(month, 1)} <ChevronRight className="size-4" /></Link>
           {isManager && (
             <DownloadButton url={`/api/attendance/export?month=${month}`} className="btn-ghost text-sm inline-flex items-center gap-1"><Download className="size-4" /> Export CSV</DownloadButton>
           )}
-        </div>
-      </div>
+        </div></>} />
 
       {/* Legend */}
       <div className="flex flex-wrap gap-2 text-2xs">

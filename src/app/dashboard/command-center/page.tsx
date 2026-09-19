@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Command Center — the single screen an owner or RM opens every morning.
  *
@@ -140,26 +141,18 @@ export default async function CommandCenterPage({
       {/* Triage queue is "act now" — keep it fresh as work completes elsewhere. */}
       <AutoRefresh intervalMs={30000} />
       {/* Header */}
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="page-title">
-            <Inbox className="size-6 text-muted-foreground" /> My Day
+      <PageHeaderCard title={<><Inbox className="size-6 text-muted-foreground" /> My Day
             <HelpTip title="My Day">
               Your single &ldquo;what needs me today&rdquo; screen — overdue tasks, today&apos;s
               meetings, SIP bounces, birthdays and follow-ups, ranked by urgency. Start your day here.
-            </HelpTip>
-          </h1>
-          <p className="page-subtitle mt-1">Everything that needs you today — overdue tasks, follow-ups, reviews and breaches.</p>
-        </div>
-        <div className="flex items-center gap-3 flex-wrap">
+            </HelpTip></>} subtitle={<>Everything that needs you today — overdue tasks, follow-ups, reviews and breaches.</>} actions={<><div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-4 rounded-lg border border-border bg-card px-3 py-1.5">
             <Stat label="Act now" value={nowCount} tone={nowCount ? "rose" : "emerald"} />
             <Stat label="Today" value={todayCount} tone={todayCount ? "amber" : "muted"} />
             <Stat label="This week" value={soonCount} tone="sky" />
             <Stat label="Total" value={totalItems} tone="muted" />
           </div>
-        </div>
-      </div>
+        </div></>} />
 
       <MyDayNav />
 

@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { and, eq, ne } from "drizzle-orm";
 import { ChevronLeft, Network } from "lucide-react";
@@ -59,12 +60,7 @@ export default async function OrgChartPage() {
       <Link href="/dashboard/employees" className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1">
         <ChevronLeft className="size-3" /> Back to employees
       </Link>
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <Network className="size-6 text-muted-foreground" /> Org chart
-        </h1>
-        <p className="text-muted-foreground text-sm">Reporting hierarchy built from each employee&apos;s reporting manager.</p>
-      </div>
+      <PageHeaderCard title={<><Network className="size-6 text-muted-foreground" /> Org chart</>} subtitle={<>Reporting hierarchy built from each employee&apos;s reporting manager.</>} />
 
       {roots.length === 0 ? (
         <div className="card-surface p-12 text-center text-sm text-muted-foreground">No employees yet.</div>

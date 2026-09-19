@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, eq, asc } from "drizzle-orm";
@@ -67,12 +68,11 @@ export default async function WorkflowRunDetailPage({ params }: { params: Promis
       </Link>
 
       <div className="border rounded-lg bg-card p-6">
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">
-              Run for {data.wf?.name ?? "—"}
-            </h1>
-            <div className="flex items-center gap-3 mt-1 text-sm">
+        <PageHeaderCard title={<>Run for {data.wf?.name ?? "—"}</>} actions={<><div className="text-right text-xs text-muted-foreground">
+            Started {data.run.startedAt ? formatRelative(data.run.startedAt) : "—"}<br />
+            Completed {data.run.completedAt ? formatRelative(data.run.completedAt) : "—"}
+          </div></>}>
+<div className="flex items-center gap-3 mt-1 text-sm">
               <span className={`flex items-center gap-1 ${STATUS_COLORS[data.run.status]}`}>
                 <StatusIcon className="size-4" />
                 <span className="capitalize">{data.run.status}</span>
@@ -82,12 +82,7 @@ export default async function WorkflowRunDetailPage({ params }: { params: Promis
             <div className="text-xs text-muted-foreground mt-1 font-mono">
               run: {data.run.id.slice(0, 8)} · {data.run.subjectType ?? "no subject"}
             </div>
-          </div>
-          <div className="text-right text-xs text-muted-foreground">
-            Started {data.run.startedAt ? formatRelative(data.run.startedAt) : "—"}<br />
-            Completed {data.run.completedAt ? formatRelative(data.run.completedAt) : "—"}
-          </div>
-        </div>
+</PageHeaderCard>
         {data.run.error && (
           <div className="mt-4 border-l-4 border-rose-500 bg-rose-50 p-3 text-sm text-rose-900">
             <div className="font-medium">Error</div>

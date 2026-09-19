@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
@@ -24,15 +23,7 @@ export default async function NewAmcEmpanelmentPage() {
 
   return (
     <div className="space-y-5 w-full max-w-3xl">
-      <div>
-        <Link
-          href="/dashboard/amc-empanelments"
-          className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1"
-        >
-          <ChevronLeft className="size-3" /> AMC empanelments
-        </Link>
-        <h1 className="text-2xl font-semibold mt-1">Add an empanelment</h1>
-      </div>
+      <PageHeaderCard title={<>Add an empanelment</>} />
       <AmcEmpanelmentForm mode="create" amcCatalog={amcs} />
     </div>
   );

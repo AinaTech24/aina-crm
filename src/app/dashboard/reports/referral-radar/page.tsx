@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Referral Radar — the referral growth engine, both halves:
  *
@@ -186,15 +187,8 @@ export default async function ReferralRadarPage() {
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div>
-        <h1 className="page-title">
-          <Radar className="size-6 text-emerald-600" /> Referral Radar
-        </h1>
-        <p className="page-subtitle">
-          Referrals are the #1 growth channel for MFDs — this is your ask-worklist: who to ask right now,
-          and who already sends you business.
-        </p>
-      </div>
+      <PageHeaderCard title={<><Radar className="size-6 text-emerald-600" /> Referral Radar</>} subtitle={<>Referrals are the #1 growth channel for MFDs — this is your ask-worklist: who to ask right now,
+          and who already sends you business.</>} />
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

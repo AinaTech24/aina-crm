@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { Fragment } from "react";
 import { sql } from "drizzle-orm";
@@ -124,18 +125,8 @@ export default async function CommissionReconciliationPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Coins className="size-6" /> Brokerage reconciliation
-          </h1>
-          <p className="page-subtitle mt-1 max-w-2xl">
-            Compare what AMCs paid vs what your folios should have earned, scheme by scheme. Trail leakage from
-            wrong-ARN-mapping and missed installments routinely costs 1–2% of regular AUM — easy money to recover.
-          </p>
-        </div>
-        <ReconcileButton period={period} />
-      </div>
+      <PageHeaderCard title={<><Coins className="size-6" /> Brokerage reconciliation</>} subtitle={<>Compare what AMCs paid vs what your folios should have earned, scheme by scheme. Trail leakage from
+            wrong-ARN-mapping and missed installments routinely costs 1–2% of regular AUM — easy money to recover.</>} actions={<><ReconcileButton period={period} /></>} />
 
       <PeriodPicker period={period} options={data.availablePeriods} />
 

@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { desc, and, eq, gte, sql } from "drizzle-orm";
@@ -112,15 +113,9 @@ export default async function AuditLogPage({
 
   return (
     <div className="space-y-6 max-w-6xl">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="page-title">Audit log</h1>
-          <p className="page-subtitle mt-1">Who changed what, and when — the permanent record for audits and disputes.</p>
-        </div>
-        <a href={exportHref} className="inline-flex items-center gap-1.5 rounded-md border bg-card px-3 py-1.5 text-xs font-medium hover:bg-accent">
+      <PageHeaderCard title={<>Audit log</>} subtitle={<>Who changed what, and when — the permanent record for audits and disputes.</>} actions={<><a href={exportHref} className="inline-flex items-center gap-1.5 rounded-md border bg-card px-3 py-1.5 text-xs font-medium hover:bg-accent">
           <Download className="size-3.5" /> Export CSV
-        </a>
-      </div>
+        </a></>} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat label="Total events (window)" value={result.totalEvents.toLocaleString("en-IN")} />

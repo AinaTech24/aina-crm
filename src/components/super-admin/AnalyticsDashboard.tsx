@@ -16,6 +16,7 @@ import {
   RadialBarChart, RadialBar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer,
 } from "recharts";
+import { CHART, CHART_INK, CHART_SERIES_WIDE } from "@/lib/dashboard/chart-palette";
 import {
   Building2, Activity, UserCheck, Users, ShieldAlert, BadgeCheck, CalendarClock,
   PieChart as PieIcon, BarChart3, LineChart as LineIcon, AreaChart as AreaIcon,
@@ -39,16 +40,16 @@ type Gran = "daily" | "weekly" | "monthly" | "quarterly" | "half_yearly" | "annu
 type DistType = "donut" | "pie" | "bar" | "hbar" | "radar" | "radial";
 type TrendType = "area" | "line" | "bar";
 
-const PALETTE = ["#B71A20", "#E0454B", "#F2999C", "#7C3AED", "#0EA5A4", "#F59E0B", "#3B82F6", "#10B981", "#EC4899", "#64748B"];
+const PALETTE = [...CHART_SERIES_WIDE];
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
-  active: { label: "Active", color: "#10B981" },
-  trial: { label: "Trial", color: "#3B82F6" },
-  past_due: { label: "Past due", color: "#F59E0B" },
-  suspended: { label: "Suspended", color: "#B71A20" },
-  expired: { label: "Expired", color: "#EF4444" },
-  cancelled: { label: "Cancelled", color: "#94A3B8" },
-  pending: { label: "Pending", color: "#A855F7" },
+  active: { label: "Active", color: CHART.green },
+  trial: { label: "Trial", color: CHART.blue },
+  past_due: { label: "Past due", color: CHART.amber },
+  suspended: { label: "Suspended", color: CHART.red },
+  expired: { label: "Expired", color: CHART.red },
+  cancelled: { label: "Cancelled", color: CHART.slate },
+  pending: { label: "Pending", color: CHART.purple },
 };
 
 const GRAN_OPTS: { key: Gran; label: string }[] = [
@@ -108,12 +109,12 @@ export function AnalyticsDashboard({ mfds, extendedCount }: { mfds: MfdRow[]; ex
     const licenseDist = Object.keys(STATUS_META)
       .map((k) => ({ name: STATUS_META[k].label, value: live.filter((x) => x.status === k).length, color: STATUS_META[k].color }))
       .filter((d) => d.value > 0);
-    if (softDeleted > 0) licenseDist.push({ name: "Soft-deleted", value: softDeleted, color: "#475569" });
+    if (softDeleted > 0) licenseDist.push({ name: "Soft-deleted", value: softDeleted, color: CHART.ink });
 
     const activeDist = [
-      { name: "Active", value: active, color: "#10B981" },
-      { name: "Inactive", value: inactive, color: "#B71A20" },
-      ...(softDeleted > 0 ? [{ name: "Soft-deleted", value: softDeleted, color: "#475569" }] : []),
+      { name: "Active", value: active, color: CHART.green },
+      { name: "Inactive", value: inactive, color: CHART.red },
+      ...(softDeleted > 0 ? [{ name: "Soft-deleted", value: softDeleted, color: CHART.ink }] : []),
     ];
 
     const pkgCount = new Map<string, number>();
@@ -152,7 +153,7 @@ export function AnalyticsDashboard({ mfds, extendedCount }: { mfds: MfdRow[]; ex
   return (
     <div className="space-y-6 max-w-7xl">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Analytics</h1>
+        <h1 className="page-title">Analytics</h1>
         <p className="text-muted-foreground text-sm">Platform-wide MFD, license and client intelligence — switch any chart's visualization.</p>
       </div>
 
@@ -321,7 +322,7 @@ function DistributionCard({ title, subtitle, data, initial }: { title: string; s
   );
 }
 
-const TOOLTIP_STYLE = { fontSize: 12, borderRadius: "0.6rem", border: "1px solid hsl(var(--border))", background: "hsl(var(--card))", color: "hsl(var(--foreground))", boxShadow: "0 8px 24px rgba(0,0,0,0.12)" } as const;
+const TOOLTIP_STYLE = { fontSize: 12, borderRadius: "0.6rem", border: "1px solid hsl(var(--border))", background: CHART_INK.tooltipBg, color: "#111827", boxShadow: "0 8px 24px rgba(0,0,0,0.12)" } as const;
 
 function DistributionChart({ data, type, total }: { data: { name: string; value: number; color: string }[]; type: DistType; total: number }) {
   if (type === "pie" || type === "donut") {
@@ -332,7 +333,7 @@ function DistributionChart({ data, type, total }: { data: { name: string; value:
             <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%"
               innerRadius={type === "donut" ? 58 : 0} outerRadius={88} paddingAngle={type === "donut" ? 3 : 1}
               animationDuration={900} animationEasing="ease-out">
-              {data.map((d, i) => <Cell key={i} fill={d.color} stroke="hsl(var(--card))" strokeWidth={2} />)}
+              {data.map((d, i) => <Cell key={i} fill={d.color} stroke={CHART_INK.tooltipBg} strokeWidth={2} />)}
             </Pie>
             <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: any, n: any) => [`${Number(v).toLocaleString("en-IN")} (${Math.round((Number(v) / total) * 100)}%)`, n]} />
             <Legend verticalAlign="bottom" height={28} iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
@@ -353,10 +354,10 @@ function DistributionChart({ data, type, total }: { data: { name: string; value:
       <ChartMount className="h-64 w-full">
         <ResponsiveContainer width="100%" height="100%">
           <RadarChart data={data} cx="50%" cy="50%" outerRadius="78%">
-            <PolarGrid stroke="hsl(var(--border))" />
-            <PolarAngleAxis dataKey="name" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
-            <PolarRadiusAxis tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }} />
-            <Radar dataKey="value" stroke="#B71A20" fill="#B71A20" fillOpacity={0.45} animationDuration={900} animationEasing="ease-out" />
+            <PolarGrid stroke={CHART_INK.grid} />
+            <PolarAngleAxis dataKey="name" tick={{ fontSize: 10, fill: CHART_INK.tick }} />
+            <PolarRadiusAxis tick={{ fontSize: 9, fill: CHART_INK.tick }} />
+            <Radar dataKey="value" stroke={CHART.red} fill={CHART.red} fillOpacity={0.45} animationDuration={900} animationEasing="ease-out" />
             <Tooltip contentStyle={TOOLTIP_STYLE} />
           </RadarChart>
         </ResponsiveContainer>
@@ -385,19 +386,19 @@ function DistributionChart({ data, type, total }: { data: { name: string; value:
     <ChartMount className="h-64 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} layout={horizontal ? "vertical" : "horizontal"} margin={{ top: 6, right: 12, bottom: 6, left: horizontal ? 8 : 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} {...(horizontal ? { horizontal: false } : { vertical: false })} />
+          <CartesianGrid strokeDasharray="3 3" stroke={CHART_INK.grid} opacity={0.5} {...(horizontal ? { horizontal: false } : { vertical: false })} />
           {horizontal ? (
             <>
-              <XAxis type="number" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
-              <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
+              <XAxis type="number" tick={{ fontSize: 10, fill: CHART_INK.tick }} />
+              <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 10, fill: CHART_INK.tick }} />
             </>
           ) : (
             <>
-              <XAxis dataKey="name" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} interval={0} angle={-12} textAnchor="end" height={50} />
-              <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} allowDecimals={false} />
+              <XAxis dataKey="name" tick={{ fontSize: 10, fill: CHART_INK.tick }} interval={0} angle={-12} textAnchor="end" height={50} />
+              <YAxis tick={{ fontSize: 10, fill: CHART_INK.tick }} allowDecimals={false} />
             </>
           )}
-          <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: "hsl(var(--muted) / 0.4)" }} />
+          <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: CHART_INK.cursor }} />
           <Bar dataKey="value" radius={horizontal ? [0, 6, 6, 0] : [6, 6, 0, 0]} animationDuration={900} animationEasing="ease-out">
             {data.map((d, i) => <Cell key={i} fill={d.color} />)}
           </Bar>
@@ -417,9 +418,9 @@ const TREND_TYPES: { key: TrendType; icon: any; title: string }[] = [
 function TrendChart({ data }: { data: Record<string, any>[] }) {
   const [type, setType] = useState<TrendType>("area");
   const SERIES = [
-    { key: "New MFDs", color: "#B71A20" },
-    { key: "Total MFDs", color: "#3B82F6" },
-    { key: "New clients", color: "#10B981" },
+    { key: "New MFDs", color: CHART.red },
+    { key: "Total MFDs", color: CHART.blue },
+    { key: "New clients", color: CHART.green },
   ];
 
   return (
@@ -449,9 +450,9 @@ function TrendChart({ data }: { data: Record<string, any>[] }) {
                     </linearGradient>
                   ))}
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} vertical={false} />
-                <XAxis dataKey="period" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
-                <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} allowDecimals={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART_INK.grid} opacity={0.5} vertical={false} />
+                <XAxis dataKey="period" tick={{ fontSize: 10, fill: CHART_INK.tick }} />
+                <YAxis tick={{ fontSize: 10, fill: CHART_INK.tick }} allowDecimals={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} />
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
                 {SERIES.map((s) => (
@@ -460,9 +461,9 @@ function TrendChart({ data }: { data: Record<string, any>[] }) {
               </AreaChart>
             ) : type === "line" ? (
               <LineChart data={data} margin={{ top: 8, right: 12, left: -8, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} vertical={false} />
-                <XAxis dataKey="period" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
-                <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} allowDecimals={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART_INK.grid} opacity={0.5} vertical={false} />
+                <XAxis dataKey="period" tick={{ fontSize: 10, fill: CHART_INK.tick }} />
+                <YAxis tick={{ fontSize: 10, fill: CHART_INK.tick }} allowDecimals={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} />
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
                 {SERIES.map((s) => (
@@ -471,13 +472,13 @@ function TrendChart({ data }: { data: Record<string, any>[] }) {
               </LineChart>
             ) : (
               <BarChart data={data} margin={{ top: 8, right: 12, left: -8, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} vertical={false} />
-                <XAxis dataKey="period" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
-                <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} allowDecimals={false} />
-                <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: "hsl(var(--muted) / 0.4)" }} />
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART_INK.grid} opacity={0.5} vertical={false} />
+                <XAxis dataKey="period" tick={{ fontSize: 10, fill: CHART_INK.tick }} />
+                <YAxis tick={{ fontSize: 10, fill: CHART_INK.tick }} allowDecimals={false} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: CHART_INK.cursor }} />
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
                 {SERIES.map((s) => (
-                  <Bar key={s.key} dataKey={s.key} fill={s.color} radius={[4, 4, 0, 0]} animationDuration={900} animationEasing="ease-out" />
+                  <Bar key={s.key} dataKey={s.key} fill={s.color} animationDuration={900} animationEasing="ease-out" />
                 ))}
               </BarChart>
             )}

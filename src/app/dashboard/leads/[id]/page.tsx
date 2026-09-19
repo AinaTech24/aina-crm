@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, desc, eq, isNull } from "drizzle-orm";
@@ -173,10 +174,18 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       <RelatedListSection moduleKey="leads-detail" sectionKey="header">
       <div className="card-surface p-6 space-y-4">
         {/* Identity row */}
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="page-title">{l.name}</h1>
-            <div className="flex flex-wrap items-center gap-2 mt-1.5 text-sm">
+        <PageHeaderCard title={<>{l.name}</>} actions={<><div className="flex flex-col items-end gap-2 shrink-0">
+            <RowActions
+              deleteUrl={`/api/leads/${l.id}`}
+              itemLabel="lead"
+              itemName={l.name}
+              redirectTo="/dashboard/leads"
+            />
+            <div className="text-right text-xs text-muted-foreground">
+              Last contact {l.lastContactAt ? formatRelative(l.lastContactAt) : "—"}
+            </div>
+          </div></>}>
+<div className="flex flex-wrap items-center gap-2 mt-1.5 text-sm">
               <span className={`text-xs px-2 py-0.5 rounded-full border ${stageBadgeClass(l.stage)}`}>
                 {stageLabel(l.stage)}
               </span>
@@ -189,19 +198,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
               <span className="text-muted-foreground">via {l.source}</span>
               {data.owner && <span className="text-muted-foreground">· owned by {data.owner.name}</span>}
             </div>
-          </div>
-          <div className="flex flex-col items-end gap-2 shrink-0">
-            <RowActions
-              deleteUrl={`/api/leads/${l.id}`}
-              itemLabel="lead"
-              itemName={l.name}
-              redirectTo="/dashboard/leads"
-            />
-            <div className="text-right text-xs text-muted-foreground">
-              Last contact {l.lastContactAt ? formatRelative(l.lastContactAt) : "—"}
-            </div>
-          </div>
-        </div>
+</PageHeaderCard>
 
         {/* Next best step — hoisted directly under the name/badges so "what to do
             now" is the FIRST thing the RM sees, before the stat strip. */}

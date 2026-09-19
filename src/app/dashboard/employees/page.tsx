@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { Plus, UserCog, AlertTriangle, Target, IndianRupee, ShieldCheck, Network, Upload } from "lucide-react";
@@ -77,14 +78,7 @@ export default async function EmployeesPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="page-title">
-            <UserCog className="size-6 text-muted-foreground" /> Employees / Team
-          </h1>
-          <p className="page-subtitle mt-1">Your team — roles, joining details, documents and what each person can open.</p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeaderCard title={<><UserCog className="size-6 text-muted-foreground" /> Employees / Team</>} subtitle={<>Your team — roles, joining details, documents and what each person can open.</>} actions={<><div className="flex items-center gap-2">
           <TeamPresence members={data.map((e) => ({ id: e.id, name: e.name }))} />
           <Link href="/dashboard/employees/org" className="rounded-md border px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 hover:bg-secondary">
             <Network className="size-4" /> Org chart
@@ -101,8 +95,7 @@ export default async function EmployeesPage({
           >
             <Plus className="size-4" /> Invite employee
           </Link>
-        </div>
-      </div>
+        </div></>} />
 
       <CompactFilterBar
         totalCount={data.length}

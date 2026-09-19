@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Admin "Onboarding form fields" settings screen.
  *
@@ -11,8 +12,6 @@
  * schema. See ./route.ts for the matching API.
  */
 
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -48,19 +47,8 @@ export default async function OnboardingFieldsPage() {
 
   return (
     <div className="space-y-6 max-w-3xl">
-      <div>
-        <Link
-          href="/dashboard/settings"
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="size-3.5" /> Settings
-        </Link>
-        <h1 className="text-2xl font-semibold mt-2">Onboarding form fields</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Choose which fields your team must fill on the client account-opening /
-          &ldquo;Confirm documents received&rdquo; form. Changes apply firm-wide.
-        </p>
-      </div>
+      <PageHeaderCard title={<>Onboarding form fields</>} subtitle={<>Choose which fields your team must fill on the client account-opening /
+          &ldquo;Confirm documents received&rdquo; form. Changes apply firm-wide.</>} />
 
       <OnboardingFieldsEditor fields={fields} overrides={overrides} />
     </div>

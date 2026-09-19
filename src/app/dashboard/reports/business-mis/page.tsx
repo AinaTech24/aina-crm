@@ -1,5 +1,5 @@
-import Link from "next/link";
-import { ChevronLeft, Info } from "lucide-react";
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
+import { Info } from "lucide-react";
 import { sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { withTenant } from "@/db/client";
@@ -95,19 +95,8 @@ export default async function BusinessMisPage({
 
   return (
     <div className="space-y-5 max-w-6xl">
-      <div className="print:hidden">
-        <Link
-          href="/dashboard/reports"
-          className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 mb-2"
-        >
-          <ChevronLeft className="size-3.5" /> Reports &amp; MIS
-        </Link>
-        <h1 className="text-2xl font-bold tracking-tight">Results MIS — Business Summary</h1>
-        <p className="text-muted-foreground text-sm">
-          Product × asset-class AUM, Gross Sales, Redemption and Net Sales for the full financial
-          year. Flows come from Business Entries; AUM from your RTA-imported folios.
-        </p>
-      </div>
+      <PageHeaderCard title={<>Results MIS — Business Summary</>} subtitle={<>Product × asset-class AUM, Gross Sales, Redemption and Net Sales for the full financial
+          year. Flows come from Business Entries; AUM from your RTA-imported folios.</>} />
 
       <MisFyPicker fy={fy} options={opts} />
 

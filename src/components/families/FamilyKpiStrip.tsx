@@ -151,7 +151,7 @@ function Kpi({
       ? "text-amber-700"
       : "text-foreground";
   return (
-    <div className="card-surface glass-card p-4">
+    <div className="card-surface p-4">
       <div className="flex items-center justify-between">
         <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
           {label}

@@ -1,9 +1,10 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, Upload, Loader2, X, FileText, Sparkles } from "lucide-react";
+import { Upload, Loader2, X, FileText, Sparkles } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
@@ -128,14 +129,8 @@ export default function UploadDocumentPage() {
   }
 
   return (
-    <div className="space-y-4 max-w-4xl mx-auto">
-      <Link href="/dashboard/documents" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
-        <ChevronLeft className="size-4" /> Back to documents
-      </Link>
-      <h1 className="text-2xl font-bold tracking-tight">Upload document{files.length > 1 ? "s" : ""}</h1>
-      <p className="text-sm text-muted-foreground">Files are stored encrypted in S3 (ap-south-1, DPDP-compliant). Drag &amp; drop multiple files to batch-upload them under one category.</p>
-
-      <form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-4">
+    <PageHeaderCard title={<>Upload document{files.length > 1 ? "s" : ""}</>} subtitle={<>Files are stored encrypted in S3 (ap-south-1, DPDP-compliant). Drag &amp; drop multiple files to batch-upload them under one category.</>}>
+<form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-4">
         <label
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
@@ -210,6 +205,6 @@ export default function UploadDocumentPage() {
           </button>
         </div>
       </form>
-    </div>
+</PageHeaderCard>
   );
 }

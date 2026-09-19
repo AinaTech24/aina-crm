@@ -42,7 +42,7 @@ export default function NewPlatformStaffPage() {
       <Link href="/super-admin/users" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
         <ChevronLeft className="size-4" /> Back to platform staff
       </Link>
-      <h1 className="text-2xl font-bold tracking-tight">Add admin</h1>
+      <h1 className="page-title">Add admin</h1>
       <p className="text-sm text-muted-foreground">
         Admins get full cross-tenant access to the SaaS. Both Admin and Super Admin
         can create other Admins and Super Admins. The email must not already be in use.

@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { and, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { Plus, ListChecks } from "lucide-react";
@@ -199,16 +200,8 @@ export default async function TasksPage({
   return (
     <div className="space-y-6 max-w-6xl">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-4 flex-wrap">
-          <div className="min-w-0">
-            <h1 className="page-title">
-              <ListChecks className="size-6 text-muted-foreground" /> Tasks
-            </h1>
-            <p className="page-subtitle mt-1">Everything your team has to do — assigned, due-dated and tracked to done.</p>
-          </div>
-          {/* View switcher — segmented tabs (list / mine / assigned-by-me / kanban) */}
-          <TaskViewSelect current={view} layout={layout} />
-        </div>
+        <PageHeaderCard title={<><ListChecks className="size-6 text-muted-foreground" /> Tasks</>} subtitle={<>Everything your team has to do — assigned, due-dated and tracked to done.</>} actions={<>{/* View switcher — segmented tabs (list / mine / assigned-by-me / kanban) */}
+          <TaskViewSelect current={view} layout={layout} /></>} />
         <Link
           href="/dashboard/tasks/new"
           className="btn-primary"

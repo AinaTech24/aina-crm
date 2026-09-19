@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import {
@@ -202,20 +203,12 @@ export default async function InsurancePage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="page-title">
-            <Shield className="size-6 text-muted-foreground" /> Insurance Policies
-          </h1>
-          <p className="page-subtitle mt-1">Every policy you service — premium, cover, renewal date and claims.</p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeaderCard title={<><Shield className="size-6 text-muted-foreground" /> Insurance Policies</>} subtitle={<>Every policy you service — premium, cover, renewal date and claims.</>} actions={<><div className="flex items-center gap-2">
           <Link href="/dashboard/insurance/import" className="btn-secondary"><FileUp className="size-4" /> Import</Link>
           <Link href="/dashboard/insurance/new" className="btn-primary">
             <Plus className="size-4" /> New policy
           </Link>
-        </div>
-      </div>
+        </div></>} />
 
       <ModuleTabs tabs={INSURANCE_TABS} />
 

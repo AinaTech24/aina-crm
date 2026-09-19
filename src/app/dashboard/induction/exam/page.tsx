@@ -1,7 +1,6 @@
-import Link from "next/link";
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
-import { ArrowLeft } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { inductionEnrolments } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
@@ -29,15 +28,8 @@ export default async function InductionExamPage() {
   if (!gate.ok) redirect("/dashboard/induction");
 
   return (
-    <div className="max-w-3xl mx-auto space-y-4">
-      <Link
-        href="/dashboard/induction"
-        className="text-sm text-muted-foreground hover:underline inline-flex items-center gap-1"
-      >
-        <ArrowLeft className="size-4" /> Back to induction
-      </Link>
-      <h1 className="text-2xl font-bold tracking-tight">Final assessment</h1>
-      <ExamRunner />
-    </div>
+    <PageHeaderCard title={<>Final assessment</>}>
+<ExamRunner />
+</PageHeaderCard>
   );
 }

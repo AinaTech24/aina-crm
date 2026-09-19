@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
 import { Suspense, useEffect, useMemo, useState } from "react";
@@ -165,11 +166,7 @@ function Builder() {
       <Link href="/dashboard/reports/custom" className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1">
         <ChevronLeft className="size-4" /> Back to custom reports
       </Link>
-      <div>
-        <h1 className="page-title">
-          <BarChart3 className="size-6 text-muted-foreground" /> {editId ? "Edit report" : "New report"}
-        </h1>
-      </div>
+      <PageHeaderCard title={<><BarChart3 className="size-6 text-muted-foreground" /> {editId ? "Edit report" : "New report"}</>} />
 
       {/* 1. Details */}
       <Section title="1. Report details">

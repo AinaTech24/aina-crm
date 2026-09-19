@@ -14,7 +14,7 @@ export default async function PlatformRtaInboxPage() {
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">RTA Mailbox</h1>
+        <h1 className="page-title">RTA Mailbox</h1>
         <p className="text-muted-foreground text-sm">
           The single catch-all mailbox that powers direct RTA mailback auto-import. Every MFD auto-forwards their
           daily CAMS / KFintech mailback email to a unique <code className="bg-muted px-1 rounded">rta-&lt;token&gt;@{status.domain}</code>{" "}

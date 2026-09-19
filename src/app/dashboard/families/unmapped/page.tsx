@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Unmapped clients — the Family Mapping work queue.
  *
@@ -99,18 +100,10 @@ export default async function UnmappedClientsPage({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Unmapped clients</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Clients not linked to any household yet. Map them to see combined AUM, run
-            household reviews and spot next-generation prospects.
-          </p>
-        </div>
-        <Link href="/dashboard/families" className="btn-secondary text-sm shrink-0">
+      <PageHeaderCard title={<>Unmapped clients</>} subtitle={<>Clients not linked to any household yet. Map them to see combined AUM, run
+            household reviews and spot next-generation prospects.</>} actions={<><Link href="/dashboard/families" className="btn-secondary text-sm shrink-0">
           <HeartHandshake className="size-4" /> Family mapping
-        </Link>
-      </div>
+        </Link></>} />
 
       <div className="grid grid-cols-3 gap-3">
         <Kpi label="Unmapped" value={total.toLocaleString("en-IN")} tone="amber" />

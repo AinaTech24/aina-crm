@@ -24,7 +24,7 @@ export default async function NewSipWatchPage() {
     return (
       <div className="max-w-2xl mx-auto mt-12 card-surface p-8 text-center">
         <AlertTriangle className="size-8 text-amber-600 mx-auto" />
-        <h1 className="text-xl font-bold mt-3">Not available for your role</h1>
+        <h1 className="page-title mt-3">Not available for your role</h1>
       </div>
     );
   }
@@ -40,7 +40,7 @@ export default async function NewSipWatchPage() {
       </Link>
 
       <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+        <h1 className="page-title">
           <ShieldAlert className="size-6 text-muted-foreground" /> New-SIP Installment Watch
         </h1>
       </div>

@@ -166,9 +166,7 @@ export function ClientGifts({ investorId, clientName }: { investorId: string; cl
     <div className="card-surface border rounded-lg p-5">
       <div className="flex items-center justify-between mb-4 gap-2">
         <h2 className="font-semibold flex items-center gap-2">
-          <div className="size-7 rounded-lg bg-pink-50 grid place-items-center">
-            <Cake className="size-3.5 text-pink-600" />
-          </div>
+          <Cake className="size-4 text-muted-foreground" />
           Birthday gifts &amp; budget
         </h2>
         {!loading && (

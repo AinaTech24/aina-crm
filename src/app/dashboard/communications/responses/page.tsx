@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Client responses — did the emails that ask for something actually work?
  *
@@ -73,19 +74,9 @@ export default async function ResponsesPage({
 
   return (
     <div className="space-y-5 max-w-7xl">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="page-title">
-            <MailCheck className="size-6 text-primary" /> Client responses
-          </h1>
-          <p className="page-subtitle mt-1">
-            For the emails that ask a client to do something — who opened it, who tapped the link, and who actually finished.
-          </p>
-        </div>
-        <Link href="/dashboard/communications" className="btn-secondary text-xs inline-flex items-center gap-1.5">
+      <PageHeaderCard title={<><MailCheck className="size-6 text-primary" /> Client responses</>} subtitle={<>For the emails that ask a client to do something — who opened it, who tapped the link, and who actually finished.</>} actions={<><Link href="/dashboard/communications" className="btn-secondary text-xs inline-flex items-center gap-1.5">
           <ArrowLeft className="size-3.5" /> All messages
-        </Link>
-      </div>
+        </Link></>} />
 
       {/* Funnel — each number is a share of everything sent in this view. */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

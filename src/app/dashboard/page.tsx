@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Dashboard router. Dispatches to the right variant based on the user's
  * primary role. Owner / Branch Head → Owner cockpit. RM → RM dashboard.
@@ -80,17 +81,14 @@ export default async function DashboardPage({
       return (
         <>
           <AnnouncementsStrip session={session} />
-          <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
-            <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
-              <Star className="size-4 text-amber-500" /> {board.name}
-            </h1>
-            <div className="flex items-center gap-2 text-xs">
+          <PageHeaderCard title={<><Star className="size-4 text-amber-500" /> {board.name}</>}>
+<div className="flex items-center gap-2 text-xs">
               <Link href="/dashboard/boards" className="text-muted-foreground hover:underline inline-flex items-center gap-1">
                 <LayoutDashboard className="size-3.5" /> My Dashboards
               </Link>
               <Link href="/dashboard?std=1" className="text-muted-foreground hover:underline">Standard view</Link>
             </div>
-          </div>
+</PageHeaderCard>
           <DashboardView layout={(board.layout as PlacedWidget[]) ?? []} members={members} initialRm={(board.filters as any)?.rm ?? ""} />
         </>
       );

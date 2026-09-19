@@ -81,7 +81,7 @@ export async function MarketingDashboard({
     <div className="space-y-6 max-w-7xl">
       <div className="flex items-end justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Marketing dashboard</h1>
+          <h1 className="page-title">Marketing dashboard</h1>
           <p className="text-muted-foreground text-sm">
             Campaigns, content, lead flow · <span className="font-medium">{range.label}</span>
           </p>

@@ -38,7 +38,7 @@ function AcceptInviteInner() {
     return (
       <main className="min-h-screen grid place-items-center">
         <div className="max-w-sm text-center">
-          <h1 className="text-xl font-bold">Invalid invite</h1>
+          <h1 className="page-title">Invalid invite</h1>
           <p className="text-sm text-muted-foreground mt-2">No token provided.</p>
           <Link href="/login" className="text-sm text-primary hover:underline mt-4 inline-block">
             Go to sign in
@@ -51,7 +51,7 @@ function AcceptInviteInner() {
   return (
     <main className="min-h-screen grid place-items-center px-4">
       <div className="w-full max-w-sm">
-        <h1 className="text-2xl font-bold tracking-tight">Accept your invitation</h1>
+        <h1 className="page-title">Accept your invitation</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Set a password to join your firm's workspace.
         </p>

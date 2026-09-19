@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Financial Discovery — list of fact-finds across leads & clients, with the
  * health score + status, plus "New discovery". The shareable client form is
@@ -36,20 +37,12 @@ export default async function DiscoveryListPage() {
 
   return (
     <div className="space-y-6 max-w-6xl">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="page-title">
-            <ClipboardList className="size-6 text-muted-foreground" /> Discovery &amp; Suitability
+      <PageHeaderCard title={<><ClipboardList className="size-6 text-muted-foreground" /> Discovery &amp; Suitability
             <HelpTip title="Discovery & Suitability">
               A guided fact-find you fill with (or send to) a client before advising — goals,
               income, risk appetite. It produces a suitability view so your recommendations are
               documented and defensible.
-            </HelpTip>
-          </h1>
-          <p className="page-subtitle mt-1">A guided fact-find you complete with the client before recommending anything.</p>
-        </div>
-        <NewDiscoveryDialog />
-      </div>
+            </HelpTip></>} subtitle={<>A guided fact-find you complete with the client before recommending anything.</>} actions={<><NewDiscoveryDialog /></>} />
 
       {submitted > 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-2 text-sm text-amber-800">

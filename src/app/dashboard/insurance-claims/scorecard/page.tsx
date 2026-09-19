@@ -1,5 +1,5 @@
-import Link from "next/link";
-import { ChevronLeft, Clock, Building2 } from "lucide-react";
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
+import { Clock, Building2 } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
@@ -29,16 +29,7 @@ export default async function ClaimsScorecardPage() {
 
   return (
     <div className="space-y-5 max-w-7xl">
-      <div>
-        <Link
-          href="/dashboard/insurance-claims"
-          className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 mb-2"
-        >
-          <ChevronLeft className="size-3.5" /> Insurance Claims
-        </Link>
-        <h1 className="page-title"><Clock className="size-6 text-muted-foreground" /> Settlement Scorecard</h1>
-        <p className="page-subtitle">Open-claim aging and per-insurer settlement performance (TAT & approval rate).</p>
-      </div>
+      <PageHeaderCard title={<><Clock className="size-6 text-muted-foreground" /> Settlement Scorecard</>} subtitle={<>Open-claim aging and per-insurer settlement performance (TAT & approval rate).</>} />
 
       {/* Aging buckets */}
       <div>

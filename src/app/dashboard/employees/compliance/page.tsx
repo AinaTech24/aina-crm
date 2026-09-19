@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { and, eq, ne } from "drizzle-orm";
 import { ChevronLeft, ShieldCheck, AlertTriangle } from "lucide-react";
@@ -84,12 +85,7 @@ export default async function TeamLicensingPage({ searchParams }: { searchParams
       <Link href="/dashboard/employees" className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1">
         <ChevronLeft className="size-3" /> Back to employees
       </Link>
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <ShieldCheck className="size-6 text-muted-foreground" /> Team licensing &amp; compliance
-        </h1>
-        <p className="text-muted-foreground text-sm">NISM · ARN · EUIN · DSC expiry across the team. Renew certificates from each employee&apos;s profile.</p>
-      </div>
+      <PageHeaderCard title={<><ShieldCheck className="size-6 text-muted-foreground" /> Team licensing &amp; compliance</>} subtitle={<>NISM · ARN · EUIN · DSC expiry across the team. Renew certificates from each employee&apos;s profile.</>} />
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <div className="kpi-card"><div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">Team members</div><div className="text-2xl font-bold mt-1">{enriched.length}</div></div>

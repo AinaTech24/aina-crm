@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
 import { useEffect, useMemo, useState, Suspense } from "react";
@@ -521,13 +522,7 @@ function PlanFormContent() {
         <ChevronLeft className="size-4" /> Back to list
       </Link>
 
-      <div className="flex items-end justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="page-title">
-            <ScrollText className="size-6 text-muted-foreground" /> {editId ? "Edit" : "New"} Financial Plan
-          </h1>
-        </div>
-        <div className="flex items-center gap-3">
+      <PageHeaderCard title={<><ScrollText className="size-6 text-muted-foreground" /> {editId ? "Edit" : "New"} Financial Plan</>} actions={<><div className="flex items-center gap-3">
           {/* Real-time Health Score Badge */}
           <div className="flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-brand-navy-light/10 to-secondary/30 border border-brand-cyan/20 rounded-lg text-xs">
             <span className="text-2xs text-muted-foreground uppercase font-bold">Health Score:</span>
@@ -546,8 +541,7 @@ function PlanFormContent() {
             <option value="draft">Draft Mode</option>
             <option value="finalized">Finalized</option>
           </SelectField>
-        </div>
-      </div>
+        </div></>} />
 
       {/* Step Indicators */}
       <div className="bg-card border border-border/60 rounded-xl p-3 flex items-center justify-between overflow-x-auto gap-4">

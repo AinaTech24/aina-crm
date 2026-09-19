@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
@@ -119,9 +120,7 @@ function ClaimForm() {
   return (
     <div className="space-y-4 max-w-5xl">
       <Link href="/dashboard/insurance-claims" className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"><ChevronLeft className="size-4" /> Back to claims</Link>
-      <div>
-        <h1 className="page-title"><FileText className="size-6 text-muted-foreground" /> {editId ? "Edit claim" : "New claim"}</h1>
-      </div>
+      <PageHeaderCard title={<><FileText className="size-6 text-muted-foreground" /> {editId ? "Edit claim" : "New claim"}</>} />
 
       <Section title="Overview">
         <div className="grid grid-cols-2 gap-3">

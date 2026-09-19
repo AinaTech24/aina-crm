@@ -1,9 +1,9 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { ChevronLeft, Upload, FileSpreadsheet, Loader2, Check, AlertCircle } from "lucide-react";
+import { Upload, FileSpreadsheet, Loader2, Check, AlertCircle } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { useToast } from "@/components/ui/Toast";
 import { MAX_IMPORT_ROWS, IMPORT_COMMIT_CHUNK } from "@/lib/investors/import-limits";
@@ -136,21 +136,9 @@ export default function ImportPage() {
   }
 
   return (
-    <div className="space-y-4 max-w-4xl">
-      <Link
-        href="/dashboard/investors"
-        className="text-sm text-muted-foreground hover:underline flex items-center gap-1"
-      >
-        <ChevronLeft className="size-4" /> Back to investors
-      </Link>
-
-      <h1 className="text-2xl font-bold tracking-tight">Import clients from Excel</h1>
-      <p className="text-sm text-muted-foreground">
-        Upload a .xlsx or .csv file, then choose to <strong>add new</strong> clients, <strong>update existing</strong>{" "}
-        clients, or <strong>both</strong> — matching existing clients on Client ID, Email, PAN or Mobile.
-      </p>
-
-      <ol className="flex items-center gap-4 text-xs">
+    <PageHeaderCard title={<>Import clients from Excel</>} subtitle={<>Upload a .xlsx or .csv file, then choose to <strong>add new</strong> clients, <strong>update existing</strong>{" "}
+        clients, or <strong>both</strong> — matching existing clients on Client ID, Email, PAN or Mobile.</>}>
+<ol className="flex items-center gap-4 text-xs">
         <Step label="Upload file" active={step === "upload"} done={step !== "upload"} />
         <Step label="Map columns" active={step === "map"} done={step === "commit" || step === "done"} />
         <Step label="Commit" active={step === "commit"} done={step === "done"} />
@@ -357,7 +345,7 @@ export default function ImportPage() {
           </button>
         </div>
       )}
-    </div>
+</PageHeaderCard>
   );
 }
 

@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { ChevronLeft, CalendarOff } from "lucide-react";
@@ -40,12 +41,7 @@ export default async function NewLeavePage() {
         <div className="size-12 rounded-lg bg-brand-cyan-light grid place-items-center">
           <CalendarOff className="size-6 text-muted-foreground" />
         </div>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">File a leave request</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Your reporting manager (or an owner) is notified to approve. Balances are shown against this year's policy.
-          </p>
-        </div>
+        <PageHeaderCard title={<>File a leave request</>} subtitle={<>Your reporting manager (or an owner) is notified to approve. Balances are shown against this year's policy.</>} />
       </div>
 
       <LeaveForm

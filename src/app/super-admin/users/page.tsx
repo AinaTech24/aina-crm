@@ -31,7 +31,7 @@ export default async function PlatformStaffPage() {
     <div className="space-y-6 max-w-5xl">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Admins</h1>
+          <h1 className="page-title">Admins</h1>
           <p className="text-muted-foreground text-sm">
             AINA administrators — Super Admin and Admin both have full cross-tenant access.
           </p>

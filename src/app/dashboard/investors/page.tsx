@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { Plus, FileDown, LayoutGrid, List, FileUp } from "lucide-react";
 import { and, asc, desc, sql } from "drizzle-orm";
@@ -301,12 +302,7 @@ export default async function InvestorsPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="page-title">Clients</h1>
-        <p className="page-subtitle mt-1">Your whole client book — AUM, SIPs, KYC and profile health in one list.</p>
-        </div>
-        <div className="flex gap-2 items-center flex-wrap">
+      <PageHeaderCard title={<>Clients</>} subtitle={<>Your whole client book — AUM, SIPs, KYC and profile health in one list.</>} actions={<><div className="flex gap-2 items-center flex-wrap">
           {/* View toggle — Table vs Kanban. Mirrors the leads page pattern.
               `view=kanban` query param drives the server-side query (loads
               blueprint stages too) and which component renders below. */}
@@ -354,8 +350,7 @@ export default async function InvestorsPage({
           >
             <Plus className="size-4" /> Add client
           </Link>
-        </div>
-      </div>
+        </div></>} />
 
       {/* Possible-duplicate nudge — managers can merge from the duplicates tool.
           Especially relevant now the importer allows duplicate PANs on purpose. */}

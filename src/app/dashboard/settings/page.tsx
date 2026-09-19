@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { Activity, Building2, Database, Users, CreditCard, MessageCircle, Mail, Webhook, ShieldCheck, Workflow, KeyRound, Palette, UserCircle, GitBranch, Target, Network, BellRing, ClipboardCheck, SlidersHorizontal } from "lucide-react";
 
@@ -149,10 +150,7 @@ const GROUP_ORDER = ["You", "Workspace", "Clients & onboarding", "Automation", "
 export default function SettingsPage() {
   return (
     <div className="space-y-6 max-w-5xl">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
-        <p className="text-muted-foreground text-sm">Configure your firm's workspace.</p>
-      </div>
+      <PageHeaderCard title={<>Settings</>} subtitle={<>Configure your firm's workspace.</>} />
 
       {GROUP_ORDER.map((g) => {
         const cards = SECTIONS.filter((s) => (s.group ?? "Workspace") === g);

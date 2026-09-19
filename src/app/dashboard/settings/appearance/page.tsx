@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { eq } from "drizzle-orm";
 import { ChevronLeft, Palette } from "lucide-react";
@@ -24,15 +25,8 @@ export default async function AppearanceSettingsPage() {
         <ChevronLeft className="size-4" /> Back to settings
       </Link>
 
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <Palette className="size-5" /> Appearance &amp; theme
-        </h1>
-        <p className="text-muted-foreground text-sm">
-          Re-skin the CRM to your brand. Pick a preset or two custom colours — the change applies to your whole
-          workspace and to the creatives you download.
-        </p>
-      </div>
+      <PageHeaderCard title={<><Palette className="size-5" /> Appearance &amp; theme</>} subtitle={<>Re-skin the CRM to your brand. Pick a preset or two custom colours — the change applies to your whole
+          workspace and to the creatives you download.</>} />
 
       <AppearanceThemeForm tenant={JSON.parse(JSON.stringify(tenant))} />
     </div>

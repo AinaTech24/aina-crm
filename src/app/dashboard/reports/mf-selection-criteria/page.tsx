@@ -43,7 +43,7 @@ export default async function MfSelectionCriteriaPage() {
               <ChevronLeft className="size-3" /> Reports
             </Link>
           </div>
-          <h1 className="text-2xl font-semibold">MF selection criteria</h1>
+          <h1 className="page-title">MF selection criteria</h1>
           <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
             The firm's standardised investment-committee checklist for shortlisting
             schemes, by category. Quantitative benchmarks here are applied automatically
@@ -54,7 +54,7 @@ export default async function MfSelectionCriteriaPage() {
       </div>
 
       <div className="hidden print:block text-center mb-3">
-        <h1 className="text-xl font-bold">MF Selection Criteria</h1>
+        <h1 className="page-title">MF Selection Criteria</h1>
         <p className="text-xs text-slate-500">
           Generated {new Date().toLocaleDateString("en-GB")}
         </p>

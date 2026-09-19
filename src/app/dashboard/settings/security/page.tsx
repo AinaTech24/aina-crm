@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Personal security settings — self-service 2FA enrollment for the logged-in
  * user. Intentionally NOT gated by an org capability: every user manages their
@@ -26,16 +27,9 @@ export default async function SecuritySettingsPage() {
 
   return (
     <div className="space-y-5 max-w-3xl">
-      <div>
-        <h1 className="text-2xl font-semibold flex items-center gap-2">
-          <ShieldCheck className="size-6 text-primary" />
-          Security
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Protect your account with a second factor. Signed in as{" "}
-          <span className="font-medium">{session.email}</span>.
-        </p>
-      </div>
+      <PageHeaderCard title={<><ShieldCheck className="size-6 text-primary" />
+          Security</>} subtitle={<>Protect your account with a second factor. Signed in as{" "}
+          <span className="font-medium">{session.email}</span>.</>} />
 
       <TwoFactorSetup initialEnabled={enabled} />
     </div>

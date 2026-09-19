@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ChevronLeft, BookMarked } from "lucide-react";
@@ -16,15 +17,8 @@ export default async function RuleLibraryPage() {
       <Link href="/dashboard/workflows/rules" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
         <ChevronLeft className="size-4" /> Back to Workflow Rules
       </Link>
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <BookMarked className="size-6 text-muted-foreground" /> Rule Library
-        </h1>
-        <p className="text-muted-foreground text-sm mt-0.5">
-          Ready-made automations. Add one to your rules — it&apos;s created <strong>disabled</strong> so you can review it,
-          pick your message template, then turn it on.
-        </p>
-      </div>
+      <PageHeaderCard title={<><BookMarked className="size-6 text-muted-foreground" /> Rule Library</>} subtitle={<>Ready-made automations. Add one to your rules — it&apos;s created <strong>disabled</strong> so you can review it,
+          pick your message template, then turn it on.</>} />
       <RuleLibraryGrid />
     </div>
   );

@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { GraduationCap } from "lucide-react";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
@@ -20,15 +21,8 @@ export default async function InductionSettingsPage() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <GraduationCap className="size-6 text-muted-foreground" /> Induction
-        </h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Build the training track new team members walk through. Each lesson can unlock the CRM
-          modules it covers, and the final exam issues a confirmation letter on a pass.
-        </p>
-      </div>
+      <PageHeaderCard title={<><GraduationCap className="size-6 text-muted-foreground" /> Induction</>} subtitle={<>Build the training track new team members walk through. Each lesson can unlock the CRM
+          modules it covers, and the final exam issues a confirmation letter on a pass.</>} />
 
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
         <strong>Module unlocking controls what a member SEES, not what they can access.</strong> The

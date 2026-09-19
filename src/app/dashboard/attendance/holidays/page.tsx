@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { and, asc, eq } from "drizzle-orm";
 import { ArrowLeft, CalendarOff } from "lucide-react";
@@ -41,14 +42,7 @@ export default async function HolidaysPage() {
         >
           <ArrowLeft className="size-3.5" /> Back to Attendance
         </Link>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <CalendarOff className="size-6 text-muted-foreground" /> Holiday Master
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            Per-firm non-working days · attendance auto-marks these for every active employee.
-          </p>
-        </div>
+        <PageHeaderCard title={<><CalendarOff className="size-6 text-muted-foreground" /> Holiday Master</>} subtitle={<>Per-firm non-working days · attendance auto-marks these for every active employee.</>} />
       </div>
 
       <HolidayManager holidays={list} canManage={canManage} />

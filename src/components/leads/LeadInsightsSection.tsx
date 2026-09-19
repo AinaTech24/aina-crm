@@ -262,14 +262,12 @@ export async function LeadInsightsSection({ session }: { session: SessionUser })
   return (
     <div className="space-y-4">
       {/* Pipeline forecast strip */}
-      <div className="card-surface glass-card p-5 relative overflow-hidden">
+      <div className="card-surface p-5 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-emerald-50/50 via-brand-cyan-light/30 to-transparent pointer-events-none" />
         <div className="relative">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-              <div className="size-7 rounded-lg bg-emerald-50 grid place-items-center">
-                <TrendingUp className="size-3.5 text-emerald-700" />
-              </div>
+              <TrendingUp className="size-4 text-muted-foreground" />
               Pipeline forecast — ₹ in flight, probability-weighted
             </h2>
             <span className="text-xs text-muted-foreground">
@@ -318,12 +316,10 @@ export async function LeadInsightsSection({ session }: { session: SessionUser })
 
       {/* SLA + Aging */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="card-surface glass-card p-5">
+        <div className="card-surface p-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-              <div className="size-7 rounded-lg bg-rose-50 grid place-items-center">
-                <Flame className="size-3.5 text-rose-600" />
-              </div>
+              <Flame className="size-4 text-muted-foreground" />
               First-response SLA (last 30d)
             </h2>
             <span className="text-xs text-muted-foreground">
@@ -357,12 +353,10 @@ export async function LeadInsightsSection({ session }: { session: SessionUser })
           )}
         </div>
 
-        <div className="card-surface glass-card p-5">
+        <div className="card-surface p-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-              <div className="size-7 rounded-lg bg-amber-50 grid place-items-center">
-                <Clock className="size-3.5 text-amber-700" />
-              </div>
+              <Clock className="size-4 text-muted-foreground" />
               Aging by stage — where it stalls
             </h2>
           </div>
@@ -423,12 +417,10 @@ export async function LeadInsightsSection({ session }: { session: SessionUser })
 
       {/* Source ROI + Lost reasons */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="md:col-span-2 card-surface glass-card p-5">
+        <div className="md:col-span-2 card-surface p-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-              <div className="size-7 rounded-lg bg-violet-50 grid place-items-center">
-                <Target className="size-3.5 text-violet-700" />
-              </div>
+              <Target className="size-4 text-muted-foreground" />
               Source ROI — MTD
             </h2>
             <span className="text-xs text-muted-foreground">
@@ -479,12 +471,10 @@ export async function LeadInsightsSection({ session }: { session: SessionUser })
           )}
         </div>
 
-        <div className="card-surface glass-card p-5">
+        <div className="card-surface p-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-              <div className="size-7 rounded-lg bg-rose-50 grid place-items-center">
-                <AlertTriangle className="size-3.5 text-rose-600" />
-              </div>
+              <AlertTriangle className="size-4 text-muted-foreground" />
               Why we're losing (90d)
             </h2>
           </div>
@@ -520,12 +510,10 @@ export async function LeadInsightsSection({ session }: { session: SessionUser })
       </div>
 
       {/* RM load */}
-      <div className="card-surface glass-card p-5">
+      <div className="card-surface p-5">
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90">
-            <div className="size-7 rounded-lg bg-brand-cyan-light grid place-items-center">
-              <Users className="size-3.5 text-brand-cyan-deep" />
-            </div>
+            <Users className="size-4 text-muted-foreground" />
             RM pipeline load
           </h2>
           <span className="text-xs text-muted-foreground">

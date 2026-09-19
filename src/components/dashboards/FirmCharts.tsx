@@ -28,23 +28,24 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { CHART, CHART_INK } from "@/lib/dashboard/chart-palette";
 import { ChartMount } from "./ChartMount";
 import type { AumSlice, FlowPoint, SipPoint } from "@/lib/dashboard/firm-charts";
 
-const INFLOW = "hsl(165, 70%, 45%)";
-const OUTFLOW = "hsl(350, 72%, 55%)";
-const NET = "hsl(199, 89%, 48%)";
+const INFLOW = CHART.green;
+const OUTFLOW = CHART.red;
+const NET = CHART.blue;
 
 /** Asset classes get FIXED colours, not positional ones — Equity must stay the
  *  same colour when Debt overtakes Hybrid, or month-to-month comparison lies. */
 const CLASS_COLOR: Record<string, string> = {
-  Equity: "hsl(199, 89%, 48%)",
-  Hybrid: "hsl(165, 70%, 45%)",
-  Debt: "hsl(36, 100%, 55%)",
-  Liquid: "hsl(190, 80%, 60%)",
-  Commodity: "hsl(45, 90%, 50%)",
-  International: "hsl(256, 70%, 60%)",
-  Other: "hsl(220, 9%, 65%)",
+  Equity: CHART.blue,
+  Hybrid: CHART.green,
+  Debt: CHART.amber,
+  Liquid: CHART.sky,
+  Commodity: CHART.yellow,
+  International: CHART.indigo,
+  Other: CHART.slate,
 };
 
 const money = (n: number): string => {
@@ -61,7 +62,7 @@ const TOOLTIP_STYLE = {
   contentStyle: {
     borderRadius: 10,
     border: "1px solid hsl(var(--border))",
-    background: "hsl(var(--card))",
+    background: CHART_INK.tooltipBg,
     fontSize: 12,
     boxShadow: "0 6px 24px rgba(0,0,0,.10)",
   },
@@ -135,9 +136,9 @@ export function MonthlyFlowChart({ data }: { data: FlowPoint[] }) {
               <stop offset="100%" stopColor={OUTFLOW} stopOpacity={0.02} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-          <XAxis dataKey="month" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-          <YAxis tickFormatter={axisMoney} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={56} />
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_INK.grid} />
+          <XAxis dataKey="month" tick={{ fontSize: 11, fill: CHART_INK.tick }} tickLine={false} axisLine={false} />
+          <YAxis tickFormatter={axisMoney} tick={{ fontSize: 11, fill: CHART_INK.tick }} tickLine={false} axisLine={false} width={56} />
           <Tooltip {...TOOLTIP_STYLE} formatter={(v: any, n: any) => [money(Number(v)), n]} />
           <Legend iconType="line" wrapperStyle={{ fontSize: 11, paddingTop: 6 }} />
           <Area type="monotone" dataKey="inflow" name="Inflow" stroke={INFLOW} fill="url(#gIn)" strokeWidth={2} />
@@ -159,15 +160,15 @@ export function SipBusinessChart({ data }: { data: SipPoint[] }) {
     <ChartMount className="h-64 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={data} margin={{ top: 8, right: 8, left: 4, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-          <XAxis dataKey="month" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_INK.grid} />
+          <XAxis dataKey="month" tick={{ fontSize: 11, fill: CHART_INK.tick }} tickLine={false} axisLine={false} />
           {/* Two axes because counts of starts/stops (tens) and the running book
               (thousands) cannot share a scale without flattening one of them. */}
-          <YAxis yAxisId="left" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={40} />
-          <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={48} />
+          <YAxis yAxisId="left" tick={{ fontSize: 11, fill: CHART_INK.tick }} tickLine={false} axisLine={false} width={40} />
+          <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: CHART_INK.tick }} tickLine={false} axisLine={false} width={48} />
           <Tooltip {...TOOLTIP_STYLE} />
           <Legend wrapperStyle={{ fontSize: 11, paddingTop: 6 }} />
-          <Bar yAxisId="right" dataKey="running" name="Running book" fill={NET} fillOpacity={0.25} radius={[4, 4, 0, 0]} barSize={26} />
+          <Bar yAxisId="right" dataKey="running" name="Running book" fill={NET} fillOpacity={0.25} barSize={26} />
           <Line yAxisId="left" type="monotone" dataKey="started" name="Started" stroke={INFLOW} strokeWidth={2.5} dot={{ r: 3 }} />
           <Line yAxisId="left" type="monotone" dataKey="closed" name="Closed" stroke={OUTFLOW} strokeWidth={2.5} dot={{ r: 3 }} />
         </ComposedChart>

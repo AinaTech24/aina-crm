@@ -18,10 +18,20 @@ export const CHART = {
   amber: "#F59E0B",
   red: "#EF4444",
   slate: "#94A3B8",
+  // Asset-class / status hues the wider charts need. Same rule: resolved hex.
+  purple: "#A855F7",
+  pink: "#EC4899",
+  teal: "#14B8A6",
+  sky: "#38BDF8",
+  yellow: "#EAB308",
+  navy: "#1D4ED8",
+  ink: "#475569",
 } as const;
 
 /** Ordered series palette for multi-slice charts. */
 export const CHART_SERIES = [CHART.indigo, CHART.blue, CHART.green, CHART.amber, CHART.slate] as const;
+/** Longer run for pies/stacked series with many categories. */
+export const CHART_SERIES_WIDE = [CHART.indigo, CHART.blue, CHART.green, CHART.amber, CHART.red, CHART.purple, CHART.teal, CHART.pink, CHART.sky, CHART.slate] as const;
 
 /** Chrome around the data: gridlines, tick labels, hover cursor, tooltip. */
 export const CHART_INK = {

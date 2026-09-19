@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { and, eq, ne } from "drizzle-orm";
@@ -30,15 +31,8 @@ export default async function AssignmentRulesPage() {
       <Link href="/dashboard/settings" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
         <ChevronLeft className="size-4" /> Back to settings
       </Link>
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <GitBranch className="size-5" /> Auto-assignment rules
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Automatically route new leads &amp; clients to your team — round-robin or to whoever has the lightest load.
-          Lower-priority rules run first.
-        </p>
-      </div>
+      <PageHeaderCard title={<><GitBranch className="size-5" /> Auto-assignment rules</>} subtitle={<>Automatically route new leads &amp; clients to your team — round-robin or to whoever has the lightest load.
+          Lower-priority rules run first.</>} />
 
       <AssignmentRulesManager team={team} />
     </div>

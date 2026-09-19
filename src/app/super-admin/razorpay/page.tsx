@@ -14,7 +14,7 @@ export default async function PlatformRazorpayPage() {
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Razorpay (billing)</h1>
+        <h1 className="page-title">Razorpay (billing)</h1>
         <p className="text-muted-foreground text-sm">
           The Razorpay account you bill MFD subscriptions through. Saved here (encrypted) it applies platform-wide
           within ~30 seconds — no redeploy. If left blank, the platform falls back to the{" "}

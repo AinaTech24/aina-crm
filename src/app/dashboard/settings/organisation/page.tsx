@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { and, eq, sql } from "drizzle-orm";
 import { ChevronLeft, Building2 } from "lucide-react";
@@ -42,14 +43,7 @@ export default async function OrganisationProfilePage() {
         <ChevronLeft className="size-4" /> Back to settings
       </Link>
 
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <Building2 className="size-5" /> Organisation profile
-        </h1>
-        <p className="text-muted-foreground text-sm">
-          Identity, branding, AUM range. ARN, EUIN, package, and license are managed by AINA.
-        </p>
-      </div>
+      <PageHeaderCard title={<><Building2 className="size-5" /> Organisation profile</>} subtitle={<>Identity, branding, AUM range. ARN, EUIN, package, and license are managed by AINA.</>} />
 
       <OrganisationProfileForm
         tenant={JSON.parse(JSON.stringify(tenant))}

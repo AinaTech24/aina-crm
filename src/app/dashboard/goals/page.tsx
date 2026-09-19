@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { Target, Plus } from "lucide-react";
@@ -87,17 +88,9 @@ export default async function GoalsPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="page-title">
-            <Target className="size-6 text-muted-foreground" /> Goal planning
-          </h1>
-          <p className="page-subtitle mt-1">Client goals — retirement, education, a home — and whether they are on track.</p>
-        </div>
-        <Link href="/dashboard/goals/new" className="btn-primary">
+      <PageHeaderCard title={<><Target className="size-6 text-muted-foreground" /> Goal planning</>} subtitle={<>Client goals — retirement, education, a home — and whether they are on track.</>} actions={<><Link href="/dashboard/goals/new" className="btn-primary">
           <Plus className="size-4" /> Add Goal
-        </Link>
-      </div>
+        </Link></>} />
 
       <CompactFilterBar
         totalCount={stats.total}

@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { sql } from "drizzle-orm";
 import { BookOpen } from "lucide-react";
 import { withTenant } from "@/db/client";
@@ -50,15 +51,8 @@ export default async function MfSchemeCatalogPage({
 
   return (
     <div className="space-y-5 max-w-5xl">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <BookOpen className="size-5 text-brand-cyan" /> MF Scheme Catalog
-        </h1>
-        <p className="page-subtitle mt-1">
-          Live mutual-fund scheme, AMC &amp; NAV data — shared across the platform, refreshed daily from{" "}
-          <span className="font-medium text-foreground">mfapi.in</span>. Used wherever a scheme or AMC is picked.
-        </p>
-      </div>
+      <PageHeaderCard title={<><BookOpen className="size-5 text-brand-cyan" /> MF Scheme Catalog</>} subtitle={<>Live mutual-fund scheme, AMC &amp; NAV data — shared across the platform, refreshed daily from{" "}
+          <span className="font-medium text-foreground">mfapi.in</span>. Used wherever a scheme or AMC is picked.</>} />
 
       <div className="flex flex-wrap items-center gap-3 text-xs">
         <span className="chip bg-brand-cyan-light text-brand-cyan-deep">{Number(stats.total).toLocaleString("en-IN")} schemes</span>

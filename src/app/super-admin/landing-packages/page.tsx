@@ -17,7 +17,7 @@ export default async function LandingPackagesPage() {
     <div className="space-y-6 max-w-5xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Landing packages</h1>
+          <h1 className="page-title">Landing packages</h1>
           <p className="text-muted-foreground text-sm">
             The pricing cards shown on the public landing page. Changes go live immediately.
           </p>

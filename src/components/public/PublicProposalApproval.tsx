@@ -82,7 +82,7 @@ export function PublicProposalApproval({
       <div className="bg-white rounded-xl shadow p-6">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
-            <h1 className="text-xl font-bold">{proposal.title}</h1>
+            <h1 className="page-title">{proposal.title}</h1>
             <p className="text-sm text-muted-foreground mt-1">
               For <span className="font-medium text-foreground">{proposal.recipientName}</span>
               {proposal.number ? <> · <span className="font-mono">{proposal.number}</span></> : null}

@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Trash bin — soft-deleted items, grouped into a collapsible section per module
  * (Clients, Tasks, …), recoverable until permanently removed. Clients keep their
@@ -191,15 +192,8 @@ export default async function TrashPage() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="page-title flex items-center gap-2">
-          <Trash2 className="size-5 text-muted-foreground" /> Trash
-        </h1>
-        <p className="page-subtitle">
-          Deleted items are kept here, grouped by module. Restore one to bring it back exactly as it was,
-          or delete it permanently. Clients are auto-removed {retention} days after deletion.
-        </p>
-      </div>
+      <PageHeaderCard title={<><Trash2 className="size-5 text-muted-foreground" /> Trash</>} subtitle={<>Deleted items are kept here, grouped by module. Restore one to bring it back exactly as it was,
+          or delete it permanently. Clients are auto-removed {retention} days after deletion.</>} />
 
       {isEmpty ? (
         <div className="card-surface flex flex-col items-center justify-center gap-2 py-16 text-center">

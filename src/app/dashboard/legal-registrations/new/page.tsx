@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -27,15 +26,7 @@ export default async function NewLegalRegistrationPage() {
 
   return (
     <div className="space-y-5 max-w-3xl">
-      <div>
-        <Link
-          href="/dashboard/legal-registrations"
-          className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1"
-        >
-          <ChevronLeft className="size-3" /> Legal registrations
-        </Link>
-        <h1 className="text-2xl font-semibold mt-1">Add a registration</h1>
-      </div>
+      <PageHeaderCard title={<>Add a registration</>} />
       <LegalRegistrationForm
         mode="create"
         defaultRegisteredInNameOf={tenant?.displayName ?? tenant?.legalName ?? ""}

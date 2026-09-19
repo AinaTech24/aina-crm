@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Firm profile — consolidated view of every regulator-facing data point
  * about the firm. Network FP "1.6 Firm Details" template parity.
@@ -129,16 +130,8 @@ export default async function FirmProfilePage() {
 
   return (
     <div className="space-y-6 max-w-5xl print:max-w-none">
-      <div className="flex items-center justify-between print:hidden">
-        <div>
-          <h1 className="text-2xl font-semibold">Firm profile</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Every regulator-facing data point about the firm in one place.
-            Print this for SEBI inspection or DDQ submission.
-          </p>
-        </div>
-        <PrintButton />
-      </div>
+      <PageHeaderCard title={<>Firm profile</>} subtitle={<>Every regulator-facing data point about the firm in one place.
+            Print this for SEBI inspection or DDQ submission.</>} actions={<><PrintButton /></>} />
 
       {/* Print-only title */}
       <div className="hidden print:block">

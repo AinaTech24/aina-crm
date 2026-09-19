@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
 /**
@@ -69,17 +70,9 @@ export default function NotificationsPage() {
 
   return (
     <div className="space-y-4 max-w-3xl">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="min-w-0">
-          <h1 className="page-title">
-          <Bell className="size-6" /> Notifications
-        </h1>
-        <p className="page-subtitle mt-1">Everything the CRM has told you, newest first.</p>
-        </div>
-        <button onClick={markAllRead} className="btn-secondary text-xs">
+      <PageHeaderCard title={<><Bell className="size-6" /> Notifications</>} subtitle={<>Everything the CRM has told you, newest first.</>} actions={<><button onClick={markAllRead} className="btn-secondary text-xs">
           <Check className="size-3.5" /> Mark all read
-        </button>
-      </div>
+        </button></>} />
 
       <div className="flex items-center gap-2 flex-wrap">
         {SEVERITIES.map((s) => (

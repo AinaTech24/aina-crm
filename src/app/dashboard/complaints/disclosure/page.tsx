@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, Download, FileText } from "lucide-react";
 import { withTenant } from "@/db/client";
@@ -26,22 +27,9 @@ export default async function ComplaintDisclosurePage({
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <Link href="/dashboard/complaints" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
-            <ChevronLeft className="size-4" /> Back to complaint register
-          </Link>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2 mt-1">
-            <FileText className="size-6 text-muted-foreground" /> Monthly complaint disclosure
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            SEBI-format statement — pending, received &amp; resolved for the month, by category &amp; source.
-          </p>
-        </div>
-        <DownloadButton url={`/api/complaints/disclosure/export?month=${d.month}`} className="btn-secondary text-xs">
+      <PageHeaderCard title={<><FileText className="size-6 text-muted-foreground" /> Monthly complaint disclosure</>} subtitle={<>SEBI-format statement — pending, received &amp; resolved for the month, by category &amp; source.</>} actions={<><DownloadButton url={`/api/complaints/disclosure/export?month=${d.month}`} className="btn-secondary text-xs">
           <Download className="size-3.5" /> Export CSV
-        </DownloadButton>
-      </div>
+        </DownloadButton></>} />
 
       {/* Month picker */}
       <div className="flex items-center justify-center gap-4">

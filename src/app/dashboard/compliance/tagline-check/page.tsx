@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
 import { ChevronLeft, ShieldCheck, AlertTriangle, Check } from "lucide-react";
@@ -85,17 +86,10 @@ export default async function TaglineCheckPage() {
         <ChevronLeft className="size-4" /> Back to compliance
       </Link>
 
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <ShieldCheck className="size-6" /> SEBI May 2026 tagline check
-        </h1>
-        <p className="text-muted-foreground text-sm max-w-3xl">
-          AMFI Master Circular requires every outbound communication to display{" "}
+      <PageHeaderCard title={<><ShieldCheck className="size-6" /> SEBI May 2026 tagline check</>} subtitle={<>AMFI Master Circular requires every outbound communication to display{" "}
           <strong>"AMFI Registered Mutual Fund Distributor"</strong>, your firm's <strong>ARN number</strong>,
           and (for marketing) the standard <strong>market-risk disclaimer</strong> — effective May 1, 2026.
-          This page scans every approved template; the live compliance gate also blocks any send that doesn't include these phrases.
-        </p>
-      </div>
+          This page scans every approved template; the live compliance gate also blocks any send that doesn't include these phrases.</>} />
 
       <div className="grid grid-cols-3 gap-3">
         <Stat label="Approved templates" value={audited.length} icon={ShieldCheck} />

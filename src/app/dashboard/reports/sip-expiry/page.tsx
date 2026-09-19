@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * SIP Expiry — the renewal worklist.
  *
@@ -9,7 +10,7 @@
  */
 
 import Link from "next/link";
-import { ChevronLeft, CalendarClock, AlertTriangle } from "lucide-react";
+import { CalendarClock, AlertTriangle } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { loadSipExpiry, loadSipExpirySummary } from "@/lib/finance/sip-lifecycle";
@@ -48,17 +49,7 @@ export default async function SipExpiryPage({
 
   return (
     <div className="space-y-5 max-w-6xl">
-      <div>
-        <Link href="/dashboard/reports" className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 mb-2">
-          <ChevronLeft className="size-3.5" /> Reports &amp; MIS
-        </Link>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <CalendarClock className="size-6 text-muted-foreground" /> SIP Expiry
-        </h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Active SIPs reaching the end of their term. Renew before the last instalment, not after.
-        </p>
-      </div>
+      <PageHeaderCard title={<><CalendarClock className="size-6 text-muted-foreground" /> SIP Expiry</>} subtitle={<>Active SIPs reaching the end of their term. Renew before the last instalment, not after.</>} />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Kpi label="Expiring in 30 days" value={String(summary.expiring30)} sub={inr(summary.amount30) + "/mo at risk"} tone="rose" />

@@ -33,7 +33,7 @@ export default async function TrailForecastPage() {
     return (
       <div className="max-w-2xl mx-auto mt-12 card-surface p-8 text-center">
         <AlertTriangle className="size-8 text-amber-600 mx-auto" />
-        <h1 className="text-xl font-bold mt-3">Not available for your role</h1>
+        <h1 className="page-title mt-3">Not available for your role</h1>
         <p className="text-muted-foreground text-sm mt-1">
           Trail forecasting is visible to owners, branch heads and compliance.
         </p>

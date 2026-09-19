@@ -1,6 +1,5 @@
-import Link from "next/link";
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { notFound } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
 import { eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -32,28 +31,16 @@ export default async function LegalRegistrationDetailPage({
 
   return (
     <div className="space-y-5 max-w-3xl">
-      <div>
-        <Link
-          href="/dashboard/legal-registrations"
-          className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1"
-        >
-          <ChevronLeft className="size-3" /> Legal registrations
-        </Link>
-        <h1 className="text-2xl font-semibold mt-1">
-          {row.registrationFor}
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {row.registeredInNameOf}
-          {row.registrationNumber && ` · ${row.registrationNumber}`} · {row.status}
-        </p>
-        <RecordProvenance
+      <PageHeaderCard title={<>{row.registrationFor}</>} subtitle={<>{row.registeredInNameOf}
+          {row.registrationNumber && ` · ${row.registrationNumber}`} · {row.status}</>}>
+<RecordProvenance
           entityType="legal_registration"
           entityId={row.id}
           createdAt={row.createdAt}
           updatedAt={row.updatedAt}
           className="mt-1"
         />
-      </div>
+</PageHeaderCard>
       <LegalRegistrationForm
         mode="edit"
         initial={{

@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
 import { useEffect, useState } from "react";
@@ -225,11 +226,7 @@ export default function NewLeadPage() {
         <ChevronLeft className="size-4" /> Back to leads
       </Link>
 
-      <div>
-        <h1 className="page-title">
-          <UserPlus className="size-6 text-muted-foreground" /> New lead
-        </h1>
-      </div>
+      <PageHeaderCard title={<><UserPlus className="size-6 text-muted-foreground" /> New lead</>} />
 
       <form onSubmit={submit} className="card-surface p-5 sm:p-6 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4">
         <div className={showAll ? "sm:col-span-2 flex items-center gap-3" : "hidden"}>

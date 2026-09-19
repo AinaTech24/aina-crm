@@ -145,9 +145,7 @@ export function HoldingsTable({
     <div className="border rounded-lg bg-card p-5">
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <h2 className="font-semibold flex items-center gap-2">
-          <div className="size-7 rounded-lg bg-sky-50 grid place-items-center">
-            <Layers className="size-3.5 text-sky-700" />
-          </div>
+          <Layers className="size-4 text-muted-foreground" />
           Portfolio holdings
           <span className="text-xs font-normal text-muted-foreground">({holdings.length} schemes)</span>
         </h2>

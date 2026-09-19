@@ -46,9 +46,7 @@ export function CompletenessCard({
     <div className="border rounded-lg bg-card p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold flex items-center gap-2">
-          <div className="size-7 rounded-lg bg-primary/10 grid place-items-center">
-            <ClipboardCheck className="size-3.5 text-primary" />
-          </div>
+          <ClipboardCheck className="size-4 text-muted-foreground" />
           Profile completeness
         </h3>
         {editHref && (

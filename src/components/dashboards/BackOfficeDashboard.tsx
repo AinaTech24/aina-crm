@@ -100,7 +100,7 @@ export async function BackOfficeDashboard({ session }: { session: SessionUser })
   return (
     <div className="space-y-6 max-w-7xl">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Operations queues</h1>
+        <h1 className="page-title">Operations queues</h1>
         <p className="text-muted-foreground text-sm">All the things waiting on the back office.</p>
       </div>
 

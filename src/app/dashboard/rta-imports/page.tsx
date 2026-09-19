@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * /dashboard/rta-imports — registry feed control room.
  *
@@ -9,7 +10,6 @@
  * Plus a recent-uploads history table and a single + button that opens the
  * upload dialog.
  */
-import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { FileText, CheckCircle2, AlertTriangle, Clock } from "lucide-react";
 import { withTenant } from "@/db/client";
@@ -106,18 +106,10 @@ export default async function RtaImportsPage() {
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-end justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="page-title">
-            <FileText className="size-6 text-muted-foreground" /> RTA file imports
-          </h1>
-          <p className="page-subtitle mt-1">Upload CAMS and KFintech files to bring transactions into the CRM.</p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
+      <PageHeaderCard title={<><FileText className="size-6 text-muted-foreground" /> RTA file imports</>} subtitle={<>Upload CAMS and KFintech files to bring transactions into the CRM.</>} actions={<><div className="flex items-center gap-2 flex-wrap">
           <RtaMailboxSyncButton />
           <RtaUploadButton />
-        </div>
-      </div>
+        </div></>} />
 
       {/* Summary strip */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">

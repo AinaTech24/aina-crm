@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { ShieldAlert, HeartPulse, Umbrella, IndianRupee, Users, FileText } from "lucide-react";
@@ -69,17 +70,12 @@ export default async function ProtectionGapPage({ searchParams }: { searchParams
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><ShieldAlert className="size-6 text-muted-foreground" /> Protection-Gap Radar</h1>
-        </div>
-        {canFirm && (
+      <PageHeaderCard title={<><ShieldAlert className="size-6 text-muted-foreground" /> Protection-Gap Radar</>} actions={<>{canFirm && (
           <div className="inline-flex rounded-lg border bg-secondary/40 p-0.5 gap-0.5 text-xs">
             <Link href="/dashboard/insurance/protection-gap" className={`px-2.5 py-1 rounded-md font-medium ${!mine ? "bg-card shadow-sm" : "text-muted-foreground"}`}>Firm-wide</Link>
             <Link href="/dashboard/insurance/protection-gap?mine=1" className={`px-2.5 py-1 rounded-md font-medium ${mine ? "bg-card shadow-sm" : "text-muted-foreground"}`}>My book</Link>
           </div>
-        )}
-      </div>
+        )}</>} />
 
       <ModuleTabs tabs={INSURANCE_TABS} />
 

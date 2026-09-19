@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { Plus, CalendarOff, Clock, CheckCircle2, CalendarDays, SlidersHorizontal } from "lucide-react";
@@ -116,14 +117,7 @@ export default async function LeaveApplicationsPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="page-title">
-            <CalendarOff className="size-6 text-muted-foreground" /> Leave Applications
-          </h1>
-          <p className="page-subtitle mt-1">Apply for leave, and approve what your team has requested.</p>
-        </div>
-        <div className="flex items-center gap-3">
+      <PageHeaderCard title={<><CalendarOff className="size-6 text-muted-foreground" /> Leave Applications</>} subtitle={<>Apply for leave, and approve what your team has requested.</>} actions={<><div className="flex items-center gap-3">
           <div className="flex items-center gap-1 bg-secondary/30 border border-border p-0.5 rounded-lg text-xs">
             <Link
               href={getToggleUrl("list")}
@@ -152,8 +146,7 @@ export default async function LeaveApplicationsPage({
           <Link href="/dashboard/leave-applications/new" className="btn-primary">
             <Plus className="size-4" /> New request
           </Link>
-        </div>
-      </div>
+        </div></>} />
 
       {view === "timeline" ? (
         <LeaveTimeline

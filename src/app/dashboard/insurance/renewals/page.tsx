@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { sql } from "drizzle-orm";
 import { CalendarClock, AlertTriangle, IndianRupee, ShieldAlert, Shield } from "lucide-react";
 import { withTenant } from "@/db/client";
@@ -73,11 +73,7 @@ export default async function RenewalsPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="space-y-6 max-w-6xl">
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><CalendarClock className="size-6 text-muted-foreground" /> Insurance Renewals</h1>
-        </div>
-      </div>
+      <PageHeaderCard title={<><CalendarClock className="size-6 text-muted-foreground" /> Insurance Renewals</>} />
 
       <ModuleTabs tabs={INSURANCE_TABS} />
 

@@ -53,7 +53,7 @@ export default async function SubscriptionsPage() {
       <AutoRefresh intervalMs={15000} />
 
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Subscriptions</h1>
+        <h1 className="page-title">Subscriptions</h1>
         <p className="text-muted-foreground text-sm">
           All MFD subscriptions across the platform. Filter and drill into any tenant for actions.
         </p>

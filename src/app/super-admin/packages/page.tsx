@@ -18,7 +18,7 @@ export default async function PackagesPage() {
     <div className="space-y-6 max-w-7xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Packages</h1>
+          <h1 className="page-title">Packages</h1>
           <p className="text-muted-foreground text-sm">
             Define what each tier includes. Used at tenant create time and for module gating.
           </p>

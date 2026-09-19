@@ -177,7 +177,7 @@ export function KbArticleForm({ initial }: { initial?: KbInitial }) {
             <ArrowLeft className="size-5" />
           </Link>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">{editing ? "Edit article" : "New KAIZEN article"}</h1>
+            <h1 className="page-title">{editing ? "Edit article" : "New KAIZEN article"}</h1>
             <p className="text-muted-foreground text-sm">
               Scenario + questions are public. The walkthrough + screenshots need a login.
             </p>

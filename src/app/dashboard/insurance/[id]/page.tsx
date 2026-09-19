@@ -102,7 +102,7 @@ export default async function InsuranceDetailPage({
               <div className="text-2xs uppercase tracking-[0.18em] text-white/70 font-semibold">
                 {TYPE_LABEL[p.policyType] ?? p.policyType}
               </div>
-              <h1 className="text-2xl font-bold tracking-tight mt-1">{p.planName}</h1>
+              <h1 className="page-title mt-1">{p.planName}</h1>
               <div className="text-white/80 text-sm mt-1 flex items-center gap-3 flex-wrap">
                 <span>{p.insurer}</span>
                 {p.policyNumber && (
@@ -176,9 +176,7 @@ export default async function InsuranceDetailPage({
       {/* Schedule */}
       <div className="card-surface p-5">
         <div className="flex items-center gap-2 mb-3">
-          <div className="size-7 rounded-lg bg-brand-cyan-light grid place-items-center">
-            <Calendar className="size-3.5 text-brand-cyan-deep" />
-          </div>
+          <Calendar className="size-4 text-muted-foreground" />
           <h2 className="section-title">Schedule</h2>
         </div>
         <div className="grid grid-cols-4 gap-3 text-xs">
@@ -214,9 +212,7 @@ export default async function InsuranceDetailPage({
       {(p.nomineeName || p.nomineeRelation) && (
         <div className="card-surface p-5">
           <div className="flex items-center gap-2 mb-3">
-            <div className="size-7 rounded-lg bg-emerald-50 grid place-items-center">
-              <Users className="size-3.5 text-emerald-600" />
-            </div>
+            <Users className="size-4 text-muted-foreground" />
             <h2 className="section-title">Nominee</h2>
           </div>
           <div className="grid grid-cols-4 gap-3 text-xs">

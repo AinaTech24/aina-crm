@@ -34,7 +34,7 @@ export default async function FinancialChecklistPage() {
               <ChevronLeft className="size-3" /> Reports
             </Link>
           </div>
-          <h1 className="text-2xl font-semibold flex items-center gap-2">
+          <h1 className="page-title">
             <CheckSquare className="size-6 text-muted-foreground" /> Finance management checklist
           </h1>
         </div>
@@ -42,7 +42,7 @@ export default async function FinancialChecklistPage() {
       </div>
 
       <div className="hidden print:block text-center mb-3">
-        <h1 className="text-xl font-bold">Finance Management Checklist</h1>
+        <h1 className="page-title">Finance Management Checklist</h1>
         <p className="text-xs text-slate-500">
           Generated {new Date().toLocaleDateString("en-GB")}
         </p>

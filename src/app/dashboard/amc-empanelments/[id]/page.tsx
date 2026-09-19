@@ -1,6 +1,5 @@
-import Link from "next/link";
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { notFound } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
 import { eq, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -41,27 +40,17 @@ export default async function AmcEmpanelmentDetailPage({
 
   return (
     <div className="space-y-5 max-w-3xl">
-      <div>
-        <Link
-          href="/dashboard/amc-empanelments"
-          className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1"
-        >
-          <ChevronLeft className="size-3" /> AMC empanelments
-        </Link>
-        <h1 className="text-2xl font-semibold mt-1">{row.amcName}</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {row.amcCode}
+      <PageHeaderCard title={<>{row.amcName}</>} subtitle={<>{row.amcCode}
           {row.distributorCode && ` · Distributor: ${row.distributorCode}`} ·{" "}
-          {row.status}
-        </p>
-        <RecordProvenance
+          {row.status}</>}>
+<RecordProvenance
           entityType="amc_empanelment"
           entityId={row.id}
           createdAt={row.createdAt}
           updatedAt={row.updatedAt}
           className="mt-1"
         />
-      </div>
+</PageHeaderCard>
       <AmcEmpanelmentForm
         mode="edit"
         amcCatalog={amcs}

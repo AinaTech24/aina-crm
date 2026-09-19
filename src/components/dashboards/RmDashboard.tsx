@@ -250,7 +250,7 @@ export async function RmDashboard({
     <div className="space-y-6 max-w-7xl">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">
+          <h1 className="page-title">
             {viewingOther ? `${targetName ?? "Team member"}'s day` : "My day"}
           </h1>
           <p className="text-muted-foreground text-sm">

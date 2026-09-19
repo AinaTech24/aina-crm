@@ -1,6 +1,7 @@
 "use client";
 
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { CHART, CHART_INK } from "@/lib/dashboard/chart-palette";
 import { ChartMount } from "./ChartMount";
 import { DashboardEmptyState } from "./DashboardEmptyState";
 
@@ -51,23 +52,23 @@ export function NetSalesChart({
         <AreaChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
           <defs>
             <linearGradient id="gross" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#10b981" stopOpacity={0.4} />
-              <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
+              <stop offset="0%" stopColor={CHART.green} stopOpacity={0.4} />
+              <stop offset="100%" stopColor={CHART.green} stopOpacity={0} />
             </linearGradient>
             <linearGradient id="redemption" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#ef4444" stopOpacity={0.4} />
-              <stop offset="100%" stopColor="#ef4444" stopOpacity={0} />
+              <stop offset="0%" stopColor={CHART.red} stopOpacity={0.4} />
+              <stop offset="100%" stopColor={CHART.red} stopOpacity={0} />
             </linearGradient>
           </defs>
-          <XAxis dataKey="day" tick={{ fontSize: 10 }} tickFormatter={fmtAxis} />
-          <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `₹${(v / 100000).toFixed(0)}L`} />
+          <XAxis dataKey="day" tick={{ fontSize: 10, fill: CHART_INK.tick }} tickFormatter={fmtAxis} />
+          <YAxis tick={{ fontSize: 10, fill: CHART_INK.tick }} tickFormatter={(v) => `₹${(v / 100000).toFixed(0)}L`} />
           <Tooltip
             contentStyle={{ fontSize: 12 }}
             formatter={(v: any) => `₹${Number(v).toLocaleString("en-IN")}`}
             labelFormatter={fmtLabel}
           />
-          <Area type="monotone" dataKey="gross" stroke="#10b981" fill="url(#gross)" strokeWidth={2} name="Gross inflow" />
-          <Area type="monotone" dataKey="redemption" stroke="#ef4444" fill="url(#redemption)" strokeWidth={2} name="Redemption" />
+          <Area type="monotone" dataKey="gross" stroke={CHART.green} fill="url(#gross)" strokeWidth={2} name="Gross inflow" />
+          <Area type="monotone" dataKey="redemption" stroke={CHART.red} fill="url(#redemption)" strokeWidth={2} name="Redemption" />
         </AreaChart>
       </ResponsiveContainer>
     </ChartMount>

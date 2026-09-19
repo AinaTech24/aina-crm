@@ -159,9 +159,7 @@ export function ActivityTimeline({
     <div className="border rounded-lg bg-card p-5">
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-semibold flex items-center gap-2">
-          <div className="size-7 rounded-lg bg-indigo-50 grid place-items-center">
-            <Clock className="size-3.5 text-indigo-700" />
-          </div>
+          <Clock className="size-4 text-muted-foreground" />
           Unified Activity Timeline
         </h2>
         <span className="text-xs text-muted-foreground tabular-nums">

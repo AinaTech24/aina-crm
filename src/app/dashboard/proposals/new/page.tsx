@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
 /**
@@ -344,19 +345,7 @@ export default function NewProposalPage() {
       {/* Sticky header — title on the left, actions pinned on the right so Save
           is always one click away while filling a long form (sits just below
           the app topbar, which is h-16). */}
-      <div className="sticky top-16 z-30 bg-background/95 backdrop-blur border-b border-border/60 py-3 flex items-center justify-between gap-3 flex-wrap">
-        <div className="min-w-0">
-          <Link
-            href="/dashboard/proposals"
-            className="text-xs text-muted-foreground hover:underline hover:text-foreground flex items-center gap-1 mb-0.5 transition-colors"
-          >
-            <ChevronLeft className="size-3.5" /> Back to proposals
-          </Link>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2 text-foreground">
-            <FileSignature className="size-5 text-brand-cyan" /> New proposal
-          </h1>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
+      <PageHeaderCard title={<><FileSignature className="size-5 text-brand-cyan" /> New proposal</>} actions={<><div className="flex items-center gap-2 shrink-0">
           <Link href="/dashboard/proposals" className="btn-secondary text-sm">
             Cancel
           </Link>
@@ -369,8 +358,7 @@ export default function NewProposalPage() {
             {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
             {busy ? "Saving…" : "Save proposal"}
           </button>
-        </div>
-      </div>
+        </div></>} />
 
       {/* Save errors surface here (top) so they're visible from the sticky Save button. */}
       {err && (

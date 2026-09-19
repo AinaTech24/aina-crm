@@ -1,7 +1,7 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import { asc, eq } from "drizzle-orm";
-import { ChevronLeft, Workflow } from "lucide-react";
+import { Workflow } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { blueprintDefinitions, blueprintStages, blueprintTransitions } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
@@ -31,20 +31,7 @@ export default async function BlueprintEditPage({ params }: { params: Promise<{ 
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <div>
-        <Link
-          href="/dashboard/settings/blueprints"
-          className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1"
-        >
-          <ChevronLeft className="size-3" /> Back to blueprints
-        </Link>
-        <h1 className="page-title mt-2">
-          <Workflow className="size-6 text-muted-foreground" /> {data.def.blueprintName}
-        </h1>
-        <p className="page-subtitle">
-          Edit stages, SLA days, required fields, and on-enter automations.
-        </p>
-      </div>
+      <PageHeaderCard title={<><Workflow className="size-6 text-muted-foreground" /> {data.def.blueprintName}</>} subtitle={<>Edit stages, SLA days, required fields, and on-enter automations.</>} />
 
       <BlueprintDesigner
         blueprintId={data.def.id}

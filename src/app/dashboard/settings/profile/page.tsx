@@ -1,6 +1,7 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { eq, sql } from "drizzle-orm";
-import { ChevronLeft, UserCircle, ArrowRight, ShieldCheck, ShieldAlert, History } from "lucide-react";
+import { UserCircle, ArrowRight, ShieldCheck, ShieldAlert, History } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { users } from "@/db/schema";
@@ -69,15 +70,8 @@ export default async function ProfilePage() {
   });
 
   return (
-    <div className="space-y-5 max-w-4xl">
-      <Link href="/dashboard/settings" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
-        <ChevronLeft className="size-4" /> Back to settings
-      </Link>
-      <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-        <UserCircle className="size-5" /> My profile
-      </h1>
-
-      {/* Identity (read-only) — email + verification live in "Your details" below. */}
+    <PageHeaderCard title={<><UserCircle className="size-5" /> My profile</>}>
+{/* Identity (read-only) — email + verification live in "Your details" below. */}
       <div className="border rounded-lg bg-card p-5 grid sm:grid-cols-2 gap-4 text-sm">
         <div>
           <div className="text-xs text-muted-foreground">Role</div>
@@ -172,6 +166,6 @@ export default async function ProfilePage() {
           </ul>
         )}
       </div>
-    </div>
+</PageHeaderCard>
   );
 }

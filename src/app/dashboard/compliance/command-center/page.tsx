@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { ShieldCheck, MessageCircle, Mail, MessageSquare, FileCheck2, ScrollText, Download, ShieldX, BadgeCheck } from "lucide-react";
@@ -56,12 +57,7 @@ export default async function ComplianceCommandCenterPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><ShieldCheck className="size-6 text-muted-foreground" /> Compliance Command Center</h1>
-        </div>
-        <DownloadButton url="/api/compliance/inspection-pack" className="btn-primary text-sm inline-flex items-center gap-1"><Download className="size-4" /> SEBI inspection pack</DownloadButton>
-      </div>
+      <PageHeaderCard title={<><ShieldCheck className="size-6 text-muted-foreground" /> Compliance Command Center</>} actions={<><DownloadButton url="/api/compliance/inspection-pack" className="btn-primary text-sm inline-flex items-center gap-1"><Download className="size-4" /> SEBI inspection pack</DownloadButton></>} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Kpi icon={BadgeCheck} label="Gate pass rate (90d)" value={`${passRate}%`} tone="emerald" />

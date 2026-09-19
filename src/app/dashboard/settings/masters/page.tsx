@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { Database } from "lucide-react";
 
@@ -24,12 +25,7 @@ export const dynamic = "force-dynamic";
 export default function MastersPage() {
   return (
     <div className="space-y-6 max-w-5xl">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Master settings</h1>
-        <p className="text-muted-foreground text-sm">
-          Look-up values used across the app. System defaults are seeded on signup; you can add custom entries.
-        </p>
-      </div>
+      <PageHeaderCard title={<>Master settings</>} subtitle={<>Look-up values used across the app. System defaults are seeded on signup; you can add custom entries.</>} />
 
       <div className="grid grid-cols-2 gap-3">
         {MASTER_TYPES.map((m) => (

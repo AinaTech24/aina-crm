@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
 /**
@@ -96,15 +97,8 @@ export default function HelpPage() {
   return (
     <div className="space-y-6 max-w-5xl">
       {/* Header */}
-      <div>
-        <h1 className="page-title">
-          <BookOpen className="size-6 text-muted-foreground" /> Help &amp; glossary
-        </h1>
-        <p className="page-subtitle">
-          Plain-English explanations for every term, plus quick guides for the
-          most common tasks.
-        </p>
-      </div>
+      <PageHeaderCard title={<><BookOpen className="size-6 text-muted-foreground" /> Help &amp; glossary</>} subtitle={<>Plain-English explanations for every term, plus quick guides for the
+          most common tasks.</>} />
 
       {/* How do I... */}
       <section>

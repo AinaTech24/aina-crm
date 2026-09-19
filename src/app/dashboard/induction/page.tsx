@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * My Induction — the member's track: ordered lessons, progress, lock state.
  *
@@ -67,15 +68,11 @@ export default async function InductionPage() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-5">
-      <div className="rounded-2xl border border-border bg-gradient-to-br from-brand-cyan-light/50 via-card to-card p-5 sm:p-6">
-        <h1 className="page-title">
-          <span className="grid place-items-center size-9 rounded-xl bg-brand-cyan text-white shadow-sm">
+      <PageHeaderCard title={<><span className="grid place-items-center size-9 rounded-xl bg-brand-cyan text-white shadow-sm">
             <GraduationCap className="size-5" />
           </span>
-          {track.name}
-        </h1>
-        <p className="page-subtitle mt-1">Your training modules, and the exam that unlocks full access.</p>
-        {track.description && (
+          {track.name}</>} subtitle={<>Your training modules, and the exam that unlocks full access.</>}>
+{track.description && (
           <p className="text-muted-foreground text-sm mt-2">{track.description}</p>
         )}
 
@@ -93,7 +90,7 @@ export default async function InductionPage() {
             />
           </div>
         </div>
-      </div>
+</PageHeaderCard>
 
       <ul className="card-surface divide-y overflow-hidden">
         {state.lessons.map((s: any, i: number) => {

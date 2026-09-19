@@ -1,6 +1,5 @@
-import Link from "next/link";
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { notFound } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
 import { eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -33,27 +32,17 @@ export default async function SubDistributorDetailPage({
 
   return (
     <div className="space-y-5 max-w-3xl">
-      <div>
-        <Link
-          href="/dashboard/sub-distributors"
-          className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1"
-        >
-          <ChevronLeft className="size-3" /> Sub-distributors
-        </Link>
-        <h1 className="text-2xl font-semibold mt-1">{row.name}</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {row.arnNumber ? `ARN ${row.arnNumber} · ` : ""}
+      <PageHeaderCard title={<>{row.name}</>} subtitle={<>{row.arnNumber ? `ARN ${row.arnNumber} · ` : ""}
           {row.code ? `${row.code} · ` : ""}
-          {row.status}
-        </p>
-        <RecordProvenance
+          {row.status}</>}>
+<RecordProvenance
           entityType="sub_distributor"
           entityId={row.id}
           createdAt={row.createdAt}
           updatedAt={row.updatedAt}
           className="mt-1"
         />
-      </div>
+</PageHeaderCard>
       <SubDistributorForm
         mode="edit"
         initial={{

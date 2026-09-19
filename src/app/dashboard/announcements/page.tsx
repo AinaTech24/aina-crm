@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { sql } from "drizzle-orm";
 import { Megaphone } from "lucide-react";
 import { withTenant } from "@/db/client";
@@ -62,10 +63,7 @@ export default async function AnnouncementsPage() {
 
   return (
     <div className="space-y-6 max-w-3xl">
-      <div>
-        <h1 className="page-title"><Megaphone className="size-6 text-muted-foreground" /> Announcements</h1>
-        <p className="page-subtitle mt-1">Notices your team sees inside the CRM — policy changes, targets and reminders.</p>
-      </div>
+      <PageHeaderCard title={<><Megaphone className="size-6 text-muted-foreground" /> Announcements</>} subtitle={<>Notices your team sees inside the CRM — policy changes, targets and reminders.</>} />
       <AnnouncementBoard rows={rows} branches={branchRows} isManager={manager} />
     </div>
   );

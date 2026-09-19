@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { and, asc, eq, ne } from "drizzle-orm";
 import { ChevronLeft, Target } from "lucide-react";
@@ -55,16 +56,9 @@ export default async function TargetsSettingsPage() {
       <Link href="/dashboard/settings" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
         <ChevronLeft className="size-4" /> Back to settings
       </Link>
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <Target className="size-5 text-brand-cyan" /> Targets &amp; quota
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Set monthly business, new-meeting and renewal-meeting targets{" "}
+      <PageHeaderCard title={<><Target className="size-5 text-brand-cyan" /> Targets &amp; quota</>} subtitle={<>Set monthly business, new-meeting and renewal-meeting targets{" "}
           {manager ? "for your team" : "for yourself"}. Achievement is for{" "}
-          <span className="font-medium text-foreground">{label}</span> (month-to-date).
-        </p>
-      </div>
+          <span className="font-medium text-foreground">{label}</span> (month-to-date).</>} />
 
       <TargetsManager members={members} canEditAll={manager} selfId={session.userId} monthLabel={label} />
     </div>

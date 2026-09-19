@@ -115,7 +115,7 @@ export function ChoosePlanClient({ plans, firmName }: { plans: Plan[]; firmName:
           <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-cyan-deep bg-brand-cyan-light/60 rounded-full px-3 py-1 mb-3">
             <Sparkles className="size-3.5" /> Workspace created
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">Choose your plan</h1>
+          <h1 className="page-title">Choose your plan</h1>
           <p className="text-muted-foreground text-sm mt-1">
             Pick the package that fits {firmName ? `${firmName}` : "your firm"}. You'll confirm, then sign in to your dashboard.
           </p>

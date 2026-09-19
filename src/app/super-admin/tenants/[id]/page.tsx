@@ -79,7 +79,7 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
               <Building2 className="size-6 text-primary" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">{data.tenant.legalName}</h1>
+              <h1 className="page-title">{data.tenant.legalName}</h1>
               <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
                 <span className="font-mono">{data.tenant.arn ?? "No ARN"}</span>
                 {data.subscription && (

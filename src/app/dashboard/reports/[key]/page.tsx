@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { sql } from "drizzle-orm";
@@ -1370,22 +1371,14 @@ export default async function ReportPage({ params }: { params: Promise<{ key: st
         <ChevronLeft className="size-4" /> Back to reports
       </Link>
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <BarChart3 className="size-5" /> {report.title}
-          </h1>
-          <p className="text-muted-foreground text-sm">{report.desc}</p>
-        </div>
-        <div className="flex items-center gap-3">
+      <PageHeaderCard title={<><BarChart3 className="size-5" /> {report.title}</>} subtitle={<>{report.desc}</>} actions={<><div className="flex items-center gap-3">
           <span className="text-xs text-muted-foreground">{rows.length} rows</span>
           <ReportExportButtons
             rows={JSON.parse(JSON.stringify(rows))}
             columns={report.columns.map((c) => ({ key: c.key, label: c.label }))}
             filename={key}
           />
-        </div>
-      </div>
+        </div></>} />
 
       <div className="border rounded-lg bg-card">
         {rows.length === 0 ? (

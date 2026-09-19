@@ -1,6 +1,7 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { eq, sql } from "drizzle-orm";
-import { Activity, AlertTriangle, ArrowLeft, CheckCircle2, CircleDashed, ExternalLink, FlaskConical, ShieldCheck, Wrench } from "lucide-react";
+import { Activity, AlertTriangle, CheckCircle2, CircleDashed, ExternalLink, FlaskConical, ShieldCheck, Wrench } from "lucide-react";
 import { withSystem, withTenant } from "@/db/client";
 import { tenantIntegrations } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
@@ -47,7 +48,9 @@ export default async function ProductReadinessPage() {
 
   return (
     <div className="max-w-6xl space-y-6">
-      <div><Link href="/dashboard/settings" className="mb-2 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="size-3.5" /> Settings</Link><h1 className="page-title"><Activity className="size-6 text-muted-foreground" /> Product readiness</h1><p className="mt-1 text-sm text-muted-foreground">One honest view of what is live, configured, demo-only, blocked or not available.</p></div>
+      <PageHeaderCard title={<><Activity className="size-6 text-muted-foreground" /> Product readiness</>}>
+<p className="mt-1 text-sm text-muted-foreground">One honest view of what is live, configured, demo-only, blocked or not available.</p>
+</PageHeaderCard>
 
       <div className="grid gap-3 sm:grid-cols-3">
         <Summary label="Verified services" value={`${liveOrConfigured} / ${items.length}`} hint="live checks passed" />

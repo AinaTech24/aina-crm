@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * AMC Empanelments list — every AMC the firm distributes for.
  *
@@ -66,15 +67,9 @@ export default async function AmcEmpanelmentsListPage({
 
   return (
     <div className="space-y-5">
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="page-title">AMC empanelments</h1>
-          <p className="page-subtitle mt-1">Which fund houses you are empanelled with, and when each empanelment expires.</p>
-        </div>
-        <Link href="/dashboard/amc-empanelments/new" className="btn-primary text-sm">
+      <PageHeaderCard title={<>AMC empanelments</>} subtitle={<>Which fund houses you are empanelled with, and when each empanelment expires.</>} actions={<><Link href="/dashboard/amc-empanelments/new" className="btn-primary text-sm">
           <Plus className="size-4" /> Add empanelment
-        </Link>
-      </div>
+        </Link></>} />
 
       <div className="flex items-center gap-2 flex-wrap">
         {[

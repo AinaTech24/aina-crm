@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { Plus, ScrollText } from "lucide-react";
@@ -36,20 +37,14 @@ export default async function SopsPage() {
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="page-title">SOP library</h1>
-          <p className="page-subtitle mt-1">The written procedures your team follows, versioned and searchable.</p>
-        </div>
-        {canManage && (
+      <PageHeaderCard title={<>SOP library</>} subtitle={<>The written procedures your team follows, versioned and searchable.</>} actions={<>{canManage && (
           <Link
             href="/dashboard/sops/new"
             className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium flex items-center gap-1.5"
           >
             <Plus className="size-4" /> New SOP
           </Link>
-        )}
-      </div>
+        )}</>} />
 
       <div className="border rounded-lg bg-card">
         {result.length === 0 ? (

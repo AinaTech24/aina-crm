@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
 import {
@@ -106,20 +107,12 @@ export default async function TemplatesPage({
   return (
     <div className="space-y-6 max-w-7xl">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="page-title">
-            <FileText className="size-6 text-muted-foreground" /> Message templates
-          </h1>
-          <p className="page-subtitle mt-1">Reusable WhatsApp, email and SMS messages — approved and ready to send.</p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeaderCard title={<><FileText className="size-6 text-muted-foreground" /> Message templates</>} subtitle={<>Reusable WhatsApp, email and SMS messages — approved and ready to send.</>} actions={<><div className="flex items-center gap-2">
           <FetchWhatsappTemplatesButton />
           <Link href="/dashboard/templates/new" className="btn-primary">
             <Plus className="size-4" /> New template
           </Link>
-        </div>
-      </div>
+        </div></>} />
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
 /**
@@ -88,11 +89,7 @@ export default function ComposePage() {
         <ChevronLeft className="size-4" /> Back to communications
       </Link>
 
-      <div>
-        <h1 className="page-title">
-          <Mail className="size-6 text-muted-foreground" /> Compose email
-        </h1>
-      </div>
+      <PageHeaderCard title={<><Mail className="size-6 text-muted-foreground" /> Compose email</>} />
 
       <div className="card-surface p-5 space-y-4">
         {/* Recipient */}

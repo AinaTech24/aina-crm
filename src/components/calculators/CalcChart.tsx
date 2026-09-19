@@ -7,6 +7,7 @@
  */
 
 import { Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { CHART_INK } from "@/lib/dashboard/chart-palette";
 import { ChartMount } from "../dashboards/ChartMount";
 
 export type ChartSeries = { key: string; name: string; color: string };
@@ -43,8 +44,8 @@ export function CalcChart({
               ))}
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
-            <XAxis dataKey={xKey} tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}`} />
-            <YAxis tick={{ fontSize: 10 }} width={54} tickFormatter={(v) => inrShort(Number(v))} />
+            <XAxis dataKey={xKey} tick={{ fontSize: 10, fill: CHART_INK.tick }} tickFormatter={(v) => `${v}`} />
+            <YAxis tick={{ fontSize: 10, fill: CHART_INK.tick }} width={54} tickFormatter={(v) => inrShort(Number(v))} />
             <Tooltip
               contentStyle={{ fontSize: 12, borderRadius: 8 }}
               formatter={(v: any, n: any) => [inrShort(Number(v)), n]}

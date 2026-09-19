@@ -36,7 +36,7 @@ export default async function DiscoveryDetailPage({ params }: { params: Promise<
             <ChevronLeft className="size-3" /> Discovery &amp; Suitability
           </Link>
         </div>
-        <h1 className="text-2xl font-semibold">{disc.title || "Discovery & Suitability"}</h1>
+        <h1 className="page-title">{disc.title || "Discovery & Suitability"}</h1>
         <p className="text-sm text-muted-foreground mt-1">
           {disc.reviewType ? `${disc.reviewType} · ` : ""}
           <Link href={subjectHref} className="text-brand-cyan-deep hover:underline capitalize">{disc.subjectType} record →</Link>

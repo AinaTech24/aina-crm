@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { Plus, LifeBuoy, FileText } from "lucide-react";
@@ -120,24 +121,14 @@ export default async function ServiceRequestsPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <LifeBuoy className="size-6 text-muted-foreground" /> Service Requests
-          </h1>
-          <p className="page-subtitle mt-1">
-            Track every client request and complaint with a deadline — overdue tickets escalate automatically.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeaderCard title={<><LifeBuoy className="size-6 text-muted-foreground" /> Service Requests</>} subtitle={<>Track every client request and complaint with a deadline — overdue tickets escalate automatically.</>} actions={<><div className="flex items-center gap-2">
           <Link href="/dashboard/complaints/disclosure" className="btn-secondary text-xs">
             <FileText className="size-3.5" /> Complaint disclosure
           </Link>
           <Link href="/dashboard/service-requests/new" className="btn-primary">
             <Plus className="size-4" /> New ticket
           </Link>
-        </div>
-      </div>
+        </div></>} />
 
       <CompactFilterBar
         searchPlaceholder="Search ticket #, subject, or client…"

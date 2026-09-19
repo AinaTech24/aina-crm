@@ -1,12 +1,12 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * KRA targets editor — set each person's annual target per metric. The scorecard
  * pro-rates these to the selected period for actual-vs-target scoring. Owners /
  * branch heads only.
  */
 
-import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { Target, ArrowLeft } from "lucide-react";
+import { Target } from "lucide-react";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { withTenant } from "@/db/client";
@@ -49,18 +49,8 @@ export default async function TargetsPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <div>
-        <Link href="/dashboard/team/scorecard" className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1 mb-1">
-          <ArrowLeft className="size-3" /> Scorecard
-        </Link>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <Target className="size-6 text-muted-foreground" /> KRA targets
-        </h1>
-        <p className="text-muted-foreground text-sm mt-0.5">
-          Annual targets for FY {fy}. The scorecard pro-rates each to the selected period (e.g. month-to-date) and
-          scores actual vs target. Leave blank to keep that KPI on relative (leaderboard) scoring.
-        </p>
-      </div>
+      <PageHeaderCard title={<><Target className="size-6 text-muted-foreground" /> KRA targets</>} subtitle={<>Annual targets for FY {fy}. The scorecard pro-rates each to the selected period (e.g. month-to-date) and
+          scores actual vs target. Leave blank to keep that KPI on relative (leaderboard) scoring.</>} />
 
       <section className="space-y-2">
         <h2 className="text-sm font-bold uppercase tracking-wide">Sales team</h2>

@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { eq, and, sql } from "drizzle-orm";
@@ -71,13 +72,10 @@ export default async function ReviewMeetingDetailPage({
         <div className="size-12 rounded-lg bg-brand-cyan-light grid place-items-center">
           <Calendar className="size-6 text-muted-foreground" />
         </div>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold tracking-tight">
-            {data.meeting.subject
+        <PageHeaderCard title={<>{data.meeting.subject
               ? data.meeting.subject
-              : `${subjectName} · ${data.meeting.meetingType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}`}
-          </h1>
-          {data.meeting.subject && (
+              : `${subjectName} · ${data.meeting.meetingType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}`}</>}>
+{data.meeting.subject && (
             <div className="text-sm text-muted-foreground">
               {subjectName} · {data.meeting.meetingType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
             </div>
@@ -103,7 +101,7 @@ export default async function ReviewMeetingDetailPage({
             updatedAt={data.meeting.updatedAt}
             className="mt-1"
           />
-        </div>
+</PageHeaderCard>
         <MeetingPrepButton meetingId={data.meeting.id} className="shrink-0" />
       </div>
 

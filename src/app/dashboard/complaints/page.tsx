@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { AlertOctagon, Clock, AlertTriangle, CheckCircle2, Shield, FileText } from "lucide-react";
@@ -138,16 +139,7 @@ export default async function ComplaintsPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Shield className="size-6 text-muted-foreground" /> Complaint Register
-          </h1>
-          <p className="page-subtitle mt-1">
-            SEBI-format complaint log · 21-day TAT clock · required for DDQ readiness.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeaderCard title={<><Shield className="size-6 text-muted-foreground" /> Complaint Register</>} subtitle={<>SEBI-format complaint log · 21-day TAT clock · required for DDQ readiness.</>} actions={<><div className="flex items-center gap-2">
           <Link href="/dashboard/complaints/disclosure" className="btn-secondary text-xs">
             <FileText className="size-3.5" /> Monthly disclosure
           </Link>
@@ -157,8 +149,7 @@ export default async function ComplaintsPage({
           <Link href="/dashboard/service-requests/new?type=complaint" className="btn-primary">
             Log complaint
           </Link>
-        </div>
-      </div>
+        </div></>} />
 
       <div className="grid grid-cols-5 gap-3">
         <Stat icon={AlertOctagon} label="Open complaints" value={data.open} tone={data.open > 0 ? "amber" : "muted"} />

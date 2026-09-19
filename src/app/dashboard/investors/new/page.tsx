@@ -1,9 +1,10 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
 import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, HeartHandshake } from "lucide-react";
+import { HeartHandshake } from "lucide-react";
 import { RmSelector } from "@/components/common/RmSelector";
 import { SelectField as UiSelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
@@ -207,17 +208,8 @@ function NewInvestorPageInner() {
   }
 
   return (
-    <div className="space-y-4 max-w-5xl mx-auto w-full">
-      <Link
-        href="/dashboard/investors"
-        className="text-sm text-muted-foreground hover:underline flex items-center gap-1"
-      >
-        <ChevronLeft className="size-4" /> Back to investors
-      </Link>
-
-      <h1 className="text-2xl font-bold tracking-tight">Add client</h1>
-
-      {familyId && (
+    <PageHeaderCard title={<>Add client</>}>
+{familyId && (
         <div className="rounded-md border border-blue-300 bg-blue-50 text-blue-900 px-4 py-3 text-sm flex items-center gap-2">
           <HeartHandshake className="size-4" />
           <span>
@@ -355,7 +347,7 @@ function NewInvestorPageInner() {
           </button>
         </div>
       </form>
-    </div>
+</PageHeaderCard>
   );
 }
 

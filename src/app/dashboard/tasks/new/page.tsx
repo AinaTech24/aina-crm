@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
 /**
@@ -284,11 +285,8 @@ export default function NewTaskPage() {
         <ChevronLeft className="size-4" /> Back to tasks
       </Link>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="page-title">
-          <ListChecks className="size-6 text-muted-foreground" /> New task
-        </h1>
-        {templates.length > 0 && (
+      <PageHeaderCard title={<><ListChecks className="size-6 text-muted-foreground" /> New task</>}>
+{templates.length > 0 && (
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
             <LayoutTemplate className="size-3.5 text-brand-cyan" />
             <SelectField
@@ -305,7 +303,7 @@ export default function NewTaskPage() {
             </SelectField>
           </label>
         )}
-      </div>
+</PageHeaderCard>
 
       {/* ── The three facts that make a task: what, for whom, by when. ── */}
       <div className="card-surface p-5 space-y-4">

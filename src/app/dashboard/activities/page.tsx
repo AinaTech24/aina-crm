@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { Phone, MapPin, StickyNote, Activity as ActivityIcon, MessageCircle } from "lucide-react";
@@ -75,13 +76,7 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="page-title"><ActivityIcon className="size-6 text-muted-foreground" /> Activity Log</h1>
-          <p className="page-subtitle mt-1">Every call, meeting, email and WhatsApp your team logged against a client or lead.</p>
-        </div>
-        <LogActivityButton />
-      </div>
+      <PageHeaderCard title={<><ActivityIcon className="size-6 text-muted-foreground" /> Activity Log</>} subtitle={<>Every call, meeting, email and WhatsApp your team logged against a client or lead.</>} actions={<><LogActivityButton /></>} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat icon={ActivityIcon} label="Activities (total)" value={s?.total ?? 0} />

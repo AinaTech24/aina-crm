@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { sql } from "drizzle-orm";
@@ -26,12 +27,7 @@ export default async function NewSipPage() {
       <Link href="/dashboard/sips" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
         <ChevronLeft className="size-4" /> Back to SIP Tracker
       </Link>
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Register a SIP</h1>
-        <p className="text-muted-foreground text-sm mt-0.5">
-          Manually add a SIP that isn&apos;t in the CAMS/KFintech feed yet. It joins the SIP book immediately.
-        </p>
-      </div>
+      <PageHeaderCard title={<>Register a SIP</>} subtitle={<>Manually add a SIP that isn&apos;t in the CAMS/KFintech feed yet. It joins the SIP book immediately.</>} />
       <ManualSipForm members={members} currentUserId={session.userId} />
     </div>
   );

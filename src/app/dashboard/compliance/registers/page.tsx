@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * AMFI DDQ Compliance Registers.
  *
@@ -13,7 +14,7 @@
 
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { ShieldCheck, FileCheck, AlertTriangle, ScrollText, ArrowLeft } from "lucide-react";
+import { ShieldCheck, FileCheck, AlertTriangle, ScrollText } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireAny, can } from "@/lib/auth/rbac";
@@ -95,15 +96,7 @@ export default async function ComplianceRegistersPage() {
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div>
-        <Link href="/dashboard/compliance" className="text-sm text-muted-foreground hover:underline inline-flex items-center gap-1 mb-2">
-          <ArrowLeft className="size-3.5" /> Back to DDQ Readiness
-        </Link>
-        <h1 className="page-title"><ShieldCheck className="size-6 text-muted-foreground" /> DDQ Compliance Registers</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          The evidence AMFI's Due Diligence Questionnaire asks for. Each block cites its DDQ question.
-        </p>
-      </div>
+      <PageHeaderCard title={<><ShieldCheck className="size-6 text-muted-foreground" /> DDQ Compliance Registers</>} subtitle={<>The evidence AMFI's Due Diligence Questionnaire asks for. Each block cites its DDQ question.</>} />
 
       {/* Firm declarations — 2.1c / 2.4c / 5.8 / 5.9 */}
       <section className="card-surface p-4">

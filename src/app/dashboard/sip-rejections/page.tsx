@@ -1,3 +1,4 @@
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { XOctagon, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
@@ -163,20 +164,12 @@ export default async function SipRejectionsPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="page-title">
-            <XOctagon className="size-6 text-muted-foreground" /> SIP Rejections
-          </h1>
-          <p className="page-subtitle mt-1">SIPs that bounced — chase the client and get the mandate working again.</p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeaderCard title={<><XOctagon className="size-6 text-muted-foreground" /> SIP Rejections</>} subtitle={<>SIPs that bounced — chase the client and get the mandate working again.</>} actions={<><div className="flex items-center gap-2">
           <NewSipRejectionButton />
           <Link href="/dashboard/reports/sip_recovery_monthly" className="btn-secondary text-xs">
             Monthly recovery report →
           </Link>
-        </div>
-      </div>
+        </div></>} />
 
       <ModuleTabs tabs={SIP_TABS} />
 
