@@ -3,7 +3,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import {
-  ChevronLeft,
   Phone,
   Mail,
   MessageCircle,
@@ -18,6 +17,7 @@ import { users, tasks, communications, riskProfileResponses, proposals } from "@
 import { requireSession } from "@/lib/auth/session";
 import { loadViewableLead } from "@/lib/leads/access";
 import { formatDate, formatRelative } from "@/lib/utils";
+import { Stat } from "@/components/dashboards/DashboardShared";
 import { LeadActions } from "@/components/leads/LeadActions";
 import { EmailRelatedList } from "@/components/comms/EmailRelatedList";
 import { WhatsAppRelatedList } from "@/components/comms/WhatsAppRelatedList";
@@ -146,12 +146,6 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   const messageCount = data.relatedComms.length;
   const openTasks = data.relatedTasks.filter((t: any) => !["done", "completed", "cancelled"].includes(String(t.status))).length;
   const next = nextBestStep(l.stage);
-  const statCells = [
-    { label: "Lead score", value: String(l.leadScore ?? 0), sub: bandLabel(scoreBand) },
-    { label: "Days as lead", value: String(daysAsLead) },
-    { label: "Messages", value: messageCount >= 50 ? "50+" : String(messageCount) },
-    { label: "Open tasks", value: String(openTasks) },
-  ];
   // NOTE: there used to be a `snapshot` sentence rendered under the badges.
   // Every clause in it duplicated something already on screen — source, band,
   // score and stage are the badges beside the name; message count is a stat
@@ -159,130 +153,143 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   // the page explaining itself twice, in the most valuable strip of the screen.
 
   return (
-    <div className="max-w-5xl space-y-4">
-      <div className="flex items-center justify-between">
-        <Link
-          href="/dashboard/leads"
-          className="text-sm text-muted-foreground hover:underline flex items-center gap-1"
-        >
-          <ChevronLeft className="size-4" /> Back to leads
-        </Link>
-        <RelatedListsManager moduleKey="leads-detail" sections={LEAD_DETAIL_SECTIONS} />
-      </div>
-
+    <div className="max-w-5xl space-y-5">
       <RelatedListsContainer>
       <RelatedListSection moduleKey="leads-detail" sectionKey="header">
-      <div className="card-surface p-6 space-y-4">
-        {/* Identity row */}
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-<PageHeaderCard title={<>{l.name}</>} />
-<div className="flex flex-wrap items-center gap-2 mt-1.5 text-sm">
-              <span className={`text-xs px-2 py-0.5 rounded-full border ${stageBadgeClass(l.stage)}`}>
-                {stageLabel(l.stage)}
-              </span>
-              <span
-                className={`text-xs px-2 py-0.5 rounded-full border inline-flex items-center gap-1 ${bandBadgeClass(scoreBand)}`}
-                title="Deterministic lead score (0–100)"
-              >
-                <Flame className="size-3" /> {bandLabel(scoreBand)} · {l.leadScore ?? 0}
-              </span>
-              <span className="text-muted-foreground">via {l.source}</span>
-              {data.owner && <span className="text-muted-foreground">· owned by {data.owner.name}</span>}
-            </div>
-</div>
-          <div className="flex flex-col items-end gap-2 shrink-0">
-            <RowActions
-              deleteUrl={`/api/leads/${l.id}`}
-              itemLabel="lead"
-              itemName={l.name}
-              redirectTo="/dashboard/leads"
-            />
-            <div className="text-right text-xs text-muted-foreground">
-              Last contact {l.lastContactAt ? formatRelative(l.lastContactAt) : "—"}
-            </div>
+      <div className="space-y-5">
+        {/* WHO. The heading sits on the page ground like every other screen —
+            it used to be nested inside a card, so this one page framed its
+            breadcrumb and title in a box nothing else had. The trail names the
+            lead instead of saying "Details", which is what the RM needs when
+            three leads are open in three tabs. */}
+        <PageHeaderCard
+          breadcrumb={[{ label: "Leads", href: "/dashboard/leads" }, { label: l.name }]}
+          title={<>{l.name}</>}
+          actions={
+            <>
+              <RelatedListsManager moduleKey="leads-detail" sections={LEAD_DETAIL_SECTIONS} />
+              <RowActions
+                deleteUrl={`/api/leads/${l.id}`}
+                itemLabel="lead"
+                itemName={l.name}
+                redirectTo="/dashboard/leads"
+              />
+            </>
+          }
+        >
+          <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm">
+            <span className={`chip ${stageBadgeClass(l.stage)}`}>{stageLabel(l.stage)}</span>
+            <span className={`chip ${bandBadgeClass(scoreBand)}`} title="Deterministic lead score (0–100)">
+              <Flame className="size-3" /> {bandLabel(scoreBand)} · {l.leadScore ?? 0}
+            </span>
+            <span className="text-muted-foreground">via {l.source}</span>
+            {data.owner && <span className="text-muted-foreground">· owned by {data.owner.name}</span>}
+            <span className="text-muted-foreground">
+              · last contact {l.lastContactAt ? formatRelative(l.lastContactAt) : "never"}
+            </span>
           </div>
-        </div>
+        </PageHeaderCard>
 
-        {/* Next best step — hoisted directly under the name/badges so "what to do
-            now" is the FIRST thing the RM sees, before the stat strip. */}
+        {/* WHAT TO DO NOW — kept directly under the name, ahead of the numbers. */}
         {next && <NextStepBanner label={next.label} hint={next.hint} />}
 
-        {/* Contact chips */}
-        <div className="flex flex-wrap gap-2 text-sm">
-          {l.phone && (
-            <a href={`tel:${l.phone}`} className="btn-secondary !px-2.5 !py-1 !text-sm !font-normal text-muted-foreground hover:text-foreground">
-              <Phone className="size-4" /> {formatPhoneIN(l.phone)}
-            </a>
-          )}
-          {l.email && (
-            <a href={`mailto:${l.email}`} className="btn-secondary !px-2.5 !py-1 !text-sm !font-normal text-muted-foreground hover:text-foreground">
-              <Mail className="size-4" /> {l.email}
-            </a>
-          )}
-          {l.phone && (
-            <a
-              href={`https://wa.me/${l.phone.replace(/[^\d]/g, "")}`}
-              target="_blank"
-              rel="noreferrer"
-              className="btn-secondary !px-2.5 !py-1 !text-sm !font-normal text-muted-foreground hover:text-foreground"
-            >
-              <MessageCircle className="size-4" /> WhatsApp
-            </a>
-          )}
+        {/* HOW IT IS GOING. Four tiles in the same anatomy the rest of the app
+            uses, rather than the bespoke grey strip this page had: the figures
+            were 18px in a tinted bar and read as a toolbar, not as metrics.
+            Tone is earned — amber only when the number is asking for action. */}
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <Stat
+            icon={Flame}
+            label="Lead score"
+            value={String(l.leadScore ?? 0)}
+            sub={bandLabel(scoreBand)}
+            tone={scoreBand === "hot" ? "rose" : scoreBand === "warm" ? "amber" : "muted"}
+          />
+          <Stat
+            icon={CalendarCheck}
+            label="Days as lead"
+            value={String(daysAsLead)}
+            tone={daysAsLead > 30 ? "amber" : "muted"}
+          />
+          <Stat
+            icon={MessageCircle}
+            label="Messages"
+            value={messageCount >= 50 ? "50+" : String(messageCount)}
+            tone="muted"
+          />
+          <Stat
+            icon={ListChecks}
+            label="Open tasks"
+            value={String(openTasks)}
+            tone={openTasks > 0 ? "amber" : "muted"}
+          />
         </div>
 
-        {/* Lead intelligence strip — score + key triage stats + AI score */}
-        <div className="flex flex-wrap items-center gap-1 rounded-lg border bg-muted/30 p-2">
-          {statCells.map((s) => (
-            <div key={s.label} className="px-3 py-1 min-w-[6rem]">
-              <div className="text-2xs uppercase tracking-wide text-muted-foreground">{s.label}</div>
-              <div className="text-lg font-semibold tabular-nums">
-                {s.value}
-                {s.sub && <span className="text-xs font-normal text-muted-foreground ml-1 capitalize">{s.sub}</span>}
-              </div>
+        {/* ACT. Every way to reach or move this lead, in one card. Reaching out
+            and logging the outcome were previously separated by the stat strip,
+            which is the wrong seam — they are the same job. */}
+        <div className="card-surface p-5 space-y-4" data-lead-actions>
+          <div className="flex flex-wrap items-center gap-2">
+            {l.phone && (
+              <a href={`tel:${l.phone}`} className="btn-secondary !px-2.5 !py-1 !text-sm !font-normal text-muted-foreground hover:text-foreground">
+                <Phone className="size-4" /> {formatPhoneIN(l.phone)}
+              </a>
+            )}
+            {l.email && (
+              <a href={`mailto:${l.email}`} className="btn-secondary !px-2.5 !py-1 !text-sm !font-normal text-muted-foreground hover:text-foreground">
+                <Mail className="size-4" /> {l.email}
+              </a>
+            )}
+            {l.phone && (
+              <a
+                href={`https://wa.me/${l.phone.replace(/[^\d]/g, "")}`}
+                target="_blank"
+                rel="noreferrer"
+                className="btn-secondary !px-2.5 !py-1 !text-sm !font-normal text-muted-foreground hover:text-foreground"
+              >
+                <MessageCircle className="size-4" /> WhatsApp
+              </a>
+            )}
+            <div className="ml-auto">
+              <LeadScoreButton
+                name={l.name}
+                source={l.source}
+                stage={l.stage}
+                ageInStageDays={daysAsLead}
+                lastTouchDaysAgo={
+                  l.lastContactAt
+                    ? Math.max(0, Math.floor((Date.now() - new Date(l.lastContactAt as any).getTime()) / 86_400_000))
+                    : null
+                }
+              />
             </div>
-          ))}
-          <div className="ml-auto">
-            <LeadScoreButton
-              name={l.name}
-              source={l.source}
-              stage={l.stage}
-              ageInStageDays={daysAsLead}
-              lastTouchDaysAgo={
-                l.lastContactAt
-                  ? Math.max(0, Math.floor((Date.now() - new Date(l.lastContactAt as any).getTime()) / 86_400_000))
-                  : null
-              }
+          </div>
+
+          <div className="space-y-3 border-t pt-4">
+            <LeadActions
+              leadId={l.id}
+              leadName={l.name}
+              leadEmail={l.email}
+              leadPhone={l.phone}
+              currentStage={l.stage}
+              alreadyConvertedInvestorId={l.convertedInvestorId ?? null}
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <CheckInButton subject={{ type: "lead", id: l.id, name: l.name, phone: l.phone }} />
+              <LogActivityButton subject={{ type: "lead", id: l.id, name: l.name, phone: l.phone }} label="Log call / visit" variant="secondary" />
+              <OverflowMenu>
+                <ChangeLogButton entityType="lead" entityId={l.id} />
+                <RecordAutomations subject={{ type: "lead", id: l.id }} />
+              </OverflowMenu>
+            </div>
+            <RecordProvenance
+              entityType="lead"
+              entityId={l.id}
+              createdAt={l.createdAt}
+              updatedAt={l.updatedAt}
+              className="text-xs"
             />
           </div>
-        </div>
-
-        {/* Actions — primary bar + a tidy secondary row with a "More" menu */}
-        <div className="pt-3 border-t space-y-3" data-lead-actions>
-          <LeadActions
-            leadId={l.id}
-            leadName={l.name}
-            leadEmail={l.email}
-            leadPhone={l.phone}
-            currentStage={l.stage}
-            alreadyConvertedInvestorId={l.convertedInvestorId ?? null}
-          />
-          <div className="flex flex-wrap items-center gap-2">
-            <CheckInButton subject={{ type: "lead", id: l.id, name: l.name, phone: l.phone }} />
-            <LogActivityButton subject={{ type: "lead", id: l.id, name: l.name, phone: l.phone }} label="Log call / visit" variant="secondary" />
-            <OverflowMenu>
-              <ChangeLogButton entityType="lead" entityId={l.id} />
-              <RecordAutomations subject={{ type: "lead", id: l.id }} />
-            </OverflowMenu>
-          </div>
-          <RecordProvenance
-            entityType="lead"
-            entityId={l.id}
-            createdAt={l.createdAt}
-            updatedAt={l.updatedAt}
-            className="text-xs"
-          />
         </div>
       </div>
       </RelatedListSection>

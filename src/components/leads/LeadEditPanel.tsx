@@ -211,7 +211,20 @@ export function LeadEditPanel({ lead }: { lead: any }) {
           </Row>
 
           <Row label="Lead score">
-            <span className="font-medium">{lead.score ?? "—"}</span>
+            {/* `leadScore` is the deterministic 0–100 scorecard and the number
+                the page header shows. `score` beside it in the schema is a
+                legacy free-text field the schema itself flags as "not reliably
+                populated" — reading it here meant Details and the header
+                printed two different numbers under the same label. */}
+            <span className="font-medium tabular-nums">
+              {lead.leadScore ?? 0}
+              {lead.scoreBand && (
+                <span className="ml-2 text-xs font-normal capitalize text-muted-foreground">{lead.scoreBand}</span>
+              )}
+              {!lead.scoredAt && (
+                <span className="ml-2 text-xs font-normal text-muted-foreground">not scored yet</span>
+              )}
+            </span>
           </Row>
 
           <Row label="Intended amount">
