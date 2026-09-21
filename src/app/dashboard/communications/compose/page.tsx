@@ -1,6 +1,6 @@
-import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Compose — ad-hoc 1:1 client email. Goes through the same consent + compliance
  * gate as every other send; nothing here bypasses the moat. Send now or schedule.

@@ -1,6 +1,6 @@
-import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * /dashboard/help — the in-app glossary + quick-start guide.
  *

@@ -1,6 +1,6 @@
-import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { useEffect, useState } from "react";
 import { LifeBuoy, Send, Loader2 } from "lucide-react";
 

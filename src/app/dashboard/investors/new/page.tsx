@@ -1,6 +1,6 @@
-import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";

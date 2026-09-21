@@ -1,6 +1,6 @@
-import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
  * Notification history — the full list behind the topbar bell. Reuses
  * GET /api/notifications (latest 50 + live birthday reminder) and

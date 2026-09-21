@@ -1,6 +1,6 @@
-import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 "use client";
 
+import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { useState } from "react";
 import { FamilyHeadPicker, familyNameFromHead, type HeadCandidate } from "@/components/families/FamilyHeadPicker";
 import { useRouter } from "next/navigation";
