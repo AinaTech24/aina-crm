@@ -68,10 +68,9 @@ export default async function WorkflowRunDetailPage({ params }: { params: Promis
       </Link>
 
       <div className="border rounded-lg bg-card p-6">
-        <PageHeaderCard title={<>Run for {data.wf?.name ?? "—"}</>} actions={<><div className="text-right text-xs text-muted-foreground">
-            Started {data.run.startedAt ? formatRelative(data.run.startedAt) : "—"}<br />
-            Completed {data.run.completedAt ? formatRelative(data.run.completedAt) : "—"}
-          </div></>}>
+        <div className="flex items-start justify-between">
+          <div>
+<PageHeaderCard title={<>Run for {data.wf?.name ?? "—"}</>} />
 <div className="flex items-center gap-3 mt-1 text-sm">
               <span className={`flex items-center gap-1 ${STATUS_COLORS[data.run.status]}`}>
                 <StatusIcon className="size-4" />
@@ -82,7 +81,12 @@ export default async function WorkflowRunDetailPage({ params }: { params: Promis
             <div className="text-xs text-muted-foreground mt-1 font-mono">
               run: {data.run.id.slice(0, 8)} · {data.run.subjectType ?? "no subject"}
             </div>
-</PageHeaderCard>
+</div>
+          <div className="text-right text-xs text-muted-foreground">
+            Started {data.run.startedAt ? formatRelative(data.run.startedAt) : "—"}<br />
+            Completed {data.run.completedAt ? formatRelative(data.run.completedAt) : "—"}
+          </div>
+        </div>
         {data.run.error && (
           <div className="mt-4 border-l-4 border-rose-500 bg-rose-50 p-3 text-sm text-rose-900">
             <div className="font-medium">Error</div>

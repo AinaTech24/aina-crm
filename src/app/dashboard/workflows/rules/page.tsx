@@ -93,14 +93,15 @@ export default async function WorkflowRulesPage({
     <div className="space-y-6 max-w-7xl">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <PageHeaderCard title={<><Workflow className="size-6 text-muted-foreground" /> Workflow Rules</>}>
+          <div className="flex items-center gap-1.5">
+<PageHeaderCard title={<><Workflow className="size-6 text-muted-foreground" /> Workflow Rules</>} />
 <HelpTip title="What are automations?">
               Automations do repetitive work for you — send a WhatsApp when a SIP
               bounces, create a task on a birthday, and more. Start from a
               ready-made recipe; you can tweak it. The blank builder is only for
               advanced custom rules.
             </HelpTip>
-</PageHeaderCard>
+</div>
         </div>
         <div className="flex flex-col items-end gap-1.5">
           <div className="flex gap-2">

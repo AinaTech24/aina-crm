@@ -72,9 +72,10 @@ export default async function ReviewMeetingDetailPage({
         <div className="size-12 rounded-lg bg-brand-cyan-light grid place-items-center">
           <Calendar className="size-6 text-muted-foreground" />
         </div>
-        <PageHeaderCard title={<>{data.meeting.subject
+        <div className="flex-1">
+<PageHeaderCard title={<>{data.meeting.subject
               ? data.meeting.subject
-              : `${subjectName} · ${data.meeting.meetingType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}`}</>}>
+              : `${subjectName} · ${data.meeting.meetingType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}`}</>} />
 {data.meeting.subject && (
             <div className="text-sm text-muted-foreground">
               {subjectName} · {data.meeting.meetingType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
@@ -101,7 +102,7 @@ export default async function ReviewMeetingDetailPage({
             updatedAt={data.meeting.updatedAt}
             className="mt-1"
           />
-</PageHeaderCard>
+</div>
         <MeetingPrepButton meetingId={data.meeting.id} className="shrink-0" />
       </div>
 

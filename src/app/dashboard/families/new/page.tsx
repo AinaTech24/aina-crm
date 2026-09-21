@@ -5,6 +5,7 @@ import { useState } from "react";
 import { FamilyHeadPicker, familyNameFromHead, type HeadCandidate } from "@/components/families/FamilyHeadPicker";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { ChevronLeft } from "lucide-react";
 import { RmSelector } from "@/components/common/RmSelector";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
@@ -92,7 +93,8 @@ export default function NewFamilyPage() {
   }
 
   return (
-    <PageHeaderCard title={<>New family</>}>
+    <div className="space-y-4 max-w-2xl">
+<PageHeaderCard title={<>New family</>} />
 <form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-4">
         {/* Head of family first: picking it fills the name below, so the common
             case is one search and a Create click. Optional — a household can
@@ -204,6 +206,6 @@ export default function NewFamilyPage() {
           </button>
         </div>
       </form>
-</PageHeaderCard>
+</div>
   );
 }

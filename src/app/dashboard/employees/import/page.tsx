@@ -3,7 +3,7 @@ import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 
 import { useState } from "react";
 import Link from "next/link";
-import { Upload, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
+import { ChevronLeft, Upload, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
 
 type ParsedRow = { name: string; email: string; roles: string[] };
 type RowResult = { email: string; status: "invited" | "skipped" | "error"; reason?: string };
@@ -70,9 +70,10 @@ export default function ImportEmployeesPage() {
   }
 
   return (
-    <PageHeaderCard title={<>Bulk-invite employees</>} subtitle={<>Paste one employee per line as <code className="text-xs bg-secondary px-1 rounded">name, email, role</code>. Role defaults to RM; use
+    <div className="space-y-4 max-w-3xl mx-auto">
+<PageHeaderCard title={<>Bulk-invite employees</>} subtitle={<>Paste one employee per line as <code className="text-xs bg-secondary px-1 rounded">name, email, role</code>. Role defaults to RM; use
         multiple roles with <code className="text-xs bg-secondary px-1 rounded">|</code> (e.g. <code className="text-xs bg-secondary px-1 rounded">rm|compliance</code>).
-        Each gets a 7-day invite email. Valid roles: owner, branch_head, rm, ops, back_office, compliance, marketing, team_member.</>}>
+        Each gets a 7-day invite email. Valid roles: owner, branch_head, rm, ops, back_office, compliance, marketing, team_member.</>} />
 {!results && (
         <div className="border rounded-lg bg-card p-5 space-y-3">
           <textarea
@@ -132,6 +133,6 @@ export default function ImportEmployeesPage() {
           </div>
         </div>
       )}
-</PageHeaderCard>
+</div>
   );
 }

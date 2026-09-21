@@ -3,7 +3,8 @@ import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Upload, FileSpreadsheet, Loader2, Check, AlertCircle } from "lucide-react";
+import Link from "next/link";
+import { ChevronLeft, Upload, FileSpreadsheet, Loader2, Check, AlertCircle } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { useToast } from "@/components/ui/Toast";
 import { MAX_IMPORT_ROWS, IMPORT_COMMIT_CHUNK } from "@/lib/investors/import-limits";
@@ -136,8 +137,9 @@ export default function ImportPage() {
   }
 
   return (
-    <PageHeaderCard title={<>Import clients from Excel</>} subtitle={<>Upload a .xlsx or .csv file, then choose to <strong>add new</strong> clients, <strong>update existing</strong>{" "}
-        clients, or <strong>both</strong> — matching existing clients on Client ID, Email, PAN or Mobile.</>}>
+    <div className="space-y-4 max-w-4xl">
+<PageHeaderCard title={<>Import clients from Excel</>} subtitle={<>Upload a .xlsx or .csv file, then choose to <strong>add new</strong> clients, <strong>update existing</strong>{" "}
+        clients, or <strong>both</strong> — matching existing clients on Client ID, Email, PAN or Mobile.</>} />
 <ol className="flex items-center gap-4 text-xs">
         <Step label="Upload file" active={step === "upload"} done={step !== "upload"} />
         <Step label="Map columns" active={step === "map"} done={step === "commit" || step === "done"} />
@@ -345,7 +347,7 @@ export default function ImportPage() {
           </button>
         </div>
       )}
-</PageHeaderCard>
+</div>
   );
 }
 

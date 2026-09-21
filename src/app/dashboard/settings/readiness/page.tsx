@@ -1,7 +1,7 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { eq, sql } from "drizzle-orm";
-import { Activity, AlertTriangle, CheckCircle2, CircleDashed, ExternalLink, FlaskConical, ShieldCheck, Wrench } from "lucide-react";
+import { Activity, AlertTriangle, ArrowLeft, CheckCircle2, CircleDashed, ExternalLink, FlaskConical, ShieldCheck, Wrench } from "lucide-react";
 import { withSystem, withTenant } from "@/db/client";
 import { tenantIntegrations } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";

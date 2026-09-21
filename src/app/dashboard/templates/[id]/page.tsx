@@ -78,17 +78,9 @@ export default async function TemplateDetailPage({
       </Link>
 
       <div className="border rounded-lg bg-card p-6 shadow-sm">
-        <PageHeaderCard title={<>{tpl.name}</>} actions={<><div className="text-right">
-            <div className="text-sm font-semibold text-slate-700">Version {ver?.versionNumber ?? "—"}</div>
-            {ver?.complianceScore && (
-              <div className="flex items-center gap-1.5 mt-1 text-xs justify-end font-mono">
-                <span className="text-slate-500">Compliance Score:</span>
-                <span className={`font-bold ${Number(ver.complianceScore) >= 90 ? "text-emerald-600" : Number(ver.complianceScore) >= 70 ? "text-amber-600" : "text-rose-600"}`}>
-                  {ver.complianceScore}/100
-                </span>
-              </div>
-            )}
-          </div></>}>
+        <div className="flex items-start justify-between flex-wrap gap-4">
+          <div>
+<PageHeaderCard title={<>{tpl.name}</>} />
 <div className="flex items-center gap-3 mt-2 text-sm flex-wrap">
               <span className="font-mono text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded border">{tpl.key}</span>
               <div className="flex items-center gap-1.5 text-slate-600 font-semibold uppercase text-xs">
@@ -100,7 +92,19 @@ export default async function TemplateDetailPage({
                 {tpl.status.replace(/_/g, " ")}
               </span>
             </div>
-</PageHeaderCard>
+</div>
+          <div className="text-right">
+            <div className="text-sm font-semibold text-slate-700">Version {ver?.versionNumber ?? "—"}</div>
+            {ver?.complianceScore && (
+              <div className="flex items-center gap-1.5 mt-1 text-xs justify-end font-mono">
+                <span className="text-slate-500">Compliance Score:</span>
+                <span className={`font-bold ${Number(ver.complianceScore) >= 90 ? "text-emerald-600" : Number(ver.complianceScore) >= 70 ? "text-amber-600" : "text-rose-600"}`}>
+                  {ver.complianceScore}/100
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
 
         {ver && (
           <div className="mt-6 border-t pt-4">

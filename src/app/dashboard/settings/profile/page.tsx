@@ -1,7 +1,7 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { eq, sql } from "drizzle-orm";
-import { UserCircle, ArrowRight, ShieldCheck, ShieldAlert, History } from "lucide-react";
+import { ChevronLeft, UserCircle, ArrowRight, ShieldCheck, ShieldAlert, History } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { users } from "@/db/schema";
@@ -70,7 +70,8 @@ export default async function ProfilePage() {
   });
 
   return (
-    <PageHeaderCard title={<><UserCircle className="size-5" /> My profile</>}>
+    <div className="space-y-5 max-w-4xl">
+<PageHeaderCard title={<><UserCircle className="size-5" /> My profile</>} />
 {/* Identity (read-only) — email + verification live in "Your details" below. */}
       <div className="border rounded-lg bg-card p-5 grid sm:grid-cols-2 gap-4 text-sm">
         <div>
@@ -166,6 +167,6 @@ export default async function ProfilePage() {
           </ul>
         )}
       </div>
-</PageHeaderCard>
+</div>
   );
 }

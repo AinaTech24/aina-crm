@@ -433,7 +433,8 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
       <div className="card-surface p-6">
         <div className="flex items-start gap-4">
           <InvestorAvatarEditor investorId={inv.id} name={inv.name} hasAvatar={!!inv.avatarUrl} size={64} />
-          <PageHeaderCard title={<>{inv.name}</>}>
+          <div className="flex-1 min-w-0">
+<PageHeaderCard title={<>{inv.name}</>} />
 <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
               {showPan && inv.pan && <PanReveal pan={inv.pan} />}
               {showSegment && inv.segmentTag && (
@@ -525,7 +526,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
                 className="basis-full mt-1"
               />
             </div>
-</PageHeaderCard>
+</div>
           {/* AUM / Active SIP / Lifetime inflow moved out of the header into the
               Portfolio tab (see the "valuation" section) for a simpler profile. */}
         </div>

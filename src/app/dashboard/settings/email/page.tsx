@@ -1,6 +1,7 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
+import Link from "next/link";
 import { eq } from "drizzle-orm";
-import { Mail, Check, AlertCircle, User2, Building2 } from "lucide-react";
+import { ChevronLeft, Mail, Check, AlertCircle, User2, Building2 } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { getTenantIntegration, getUserMailbox } from "@/lib/comms/integrations";
@@ -61,7 +62,8 @@ export default async function EmailSettingsPage({
   const usingCustom = !!(resolved?.senderConfig?.fromName || resolved?.senderConfig?.fromEmail || resolved?.senderConfig?.replyTo);
 
   return (
-    <PageHeaderCard title={<><Mail className="size-5" /> Email setup</>}>
+    <div className="space-y-4 max-w-3xl">
+<PageHeaderCard title={<><Mail className="size-5" /> Email setup</>} />
 {connectedProvider && (
         <div className="border rounded-lg p-3 bg-emerald-50 border-emerald-300 text-sm flex items-center gap-2">
           <Check className="size-4 text-emerald-600" />
@@ -152,6 +154,6 @@ export default async function EmailSettingsPage({
         unsubscribe footer is auto-injected. Every send still passes the consent + compliance gate regardless of which
         mailbox it leaves from.
       </div>
-</PageHeaderCard>
+</div>
   );
 }

@@ -3,6 +3,7 @@ import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { CampaignAudienceBuilder, type AudienceSelection } from "@/components/campaigns/CampaignAudienceBuilder";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
@@ -167,7 +168,8 @@ export default function NewCampaignPage() {
   }
 
   return (
-    <PageHeaderCard title={<><Megaphone className="size-6 text-muted-foreground" /> New marketing campaign</>}>
+    <div className="space-y-4 max-w-4xl">
+<PageHeaderCard title={<><Megaphone className="size-6 text-muted-foreground" /> New marketing campaign</>} />
 <div className="card-surface p-5 space-y-5">
         {/* Campaign type */}
         <div>
@@ -452,6 +454,6 @@ export default function NewCampaignPage() {
           )}
         </div>
       </div>
-</PageHeaderCard>
+</div>
   );
 }

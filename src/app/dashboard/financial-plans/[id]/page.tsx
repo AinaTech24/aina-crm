@@ -216,7 +216,8 @@ export default async function FinancialPlanDetailPage({
               <ScrollText className="size-6" />
             </div>
             <div>
-              <PageHeaderCard title={<>{client?.name ?? "—"}</>}>
+              <div className="flex items-center gap-2">
+<PageHeaderCard title={<>{client?.name ?? "—"}</>} />
 {data.isLead && (
                   <span className="chip text-2xs uppercase font-bold bg-amber-100 text-amber-700 border border-amber-200">Lead</span>
                 )}
@@ -229,7 +230,7 @@ export default async function FinancialPlanDetailPage({
                 >
                   {plan.status}
                 </span>
-</PageHeaderCard>
+</div>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Financial Plan: <span className="font-semibold text-brand-navy">{plan.planNumber}</span> · Generated {formatDate(plan.preparedAt)}
               </p>

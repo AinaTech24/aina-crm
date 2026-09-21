@@ -65,7 +65,8 @@ export default async function GoalDetailPage({ params }: { params: Promise<{ id:
         <div className="size-12 rounded-lg bg-brand-cyan-light grid place-items-center">
           <Target className="size-6 text-muted-foreground" />
         </div>
-        <PageHeaderCard title={<>{data.goal.name}</>}>
+        <div className="flex-1">
+<PageHeaderCard title={<>{data.goal.name}</>} />
 <div className="text-sm text-muted-foreground mt-1 flex items-center gap-3 flex-wrap">
             <span>{categoryLabel(data.goal.category)}</span>
             <span>·</span>
@@ -86,7 +87,7 @@ export default async function GoalDetailPage({ params }: { params: Promise<{ id:
             updatedAt={data.goal.updatedAt}
             className="mt-1"
           />
-</PageHeaderCard>
+</div>
         <div className="flex items-center gap-2">
           <RecomputeGoalButton goalId={data.goal.id} />
           <Link

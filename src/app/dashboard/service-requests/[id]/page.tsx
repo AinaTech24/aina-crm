@@ -55,7 +55,11 @@ export default async function ServiceRequestDetailPage({ params }: { params: Pro
         <div className="size-12 rounded-lg bg-brand-cyan-light grid place-items-center">
           <LifeBuoy className="size-6 text-muted-foreground" />
         </div>
-        <PageHeaderCard title={<>{TYPE_LABEL[sr.type] ?? sr.type}</>} actions={<><div className="text-sm text-muted-foreground mt-1 flex items-center gap-3 flex-wrap">
+        <PageHeaderCard
+      title={<>{TYPE_LABEL[sr.type] ?? sr.type}</>}
+      actions={<span className={`chip capitalize ${STATUS_TONE[sr.status] ?? ""}`}>{sr.status.replace(/_/g, " ")}</span>}
+    >
+      <div className="text-sm text-muted-foreground mt-1 flex items-center gap-3 flex-wrap">
             <span className="font-mono">{sr.ticketNo}</span>
             <span>·</span>
             {investor ? (
@@ -73,9 +77,8 @@ export default async function ServiceRequestDetailPage({ params }: { params: Pro
             createdAt={sr.createdAt}
             updatedAt={sr.updatedAt}
             className="mt-2"
-          /></>}>
-<span className={`chip capitalize ${STATUS_TONE[sr.status] ?? ""}`}>{sr.status.replace(/_/g, " ")}</span>
-</PageHeaderCard>
+          />
+    </PageHeaderCard>
       </div>
 
       <ServiceRequestDetailEditor sr={JSON.parse(JSON.stringify(sr))} userMap={userMap} />

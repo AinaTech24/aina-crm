@@ -1,5 +1,7 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
+import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ChevronLeft } from "lucide-react";
 import { eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";

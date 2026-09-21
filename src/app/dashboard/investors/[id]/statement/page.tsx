@@ -69,7 +69,8 @@ export default async function StatementPage({
         <Link href={`/dashboard/investors/${id}`} className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 mb-2">
           <ChevronLeft className="size-3.5" /> Back to client
         </Link>
-        <PageHeaderCard title={<><FileText className="size-6 text-muted-foreground" /> Account Statement</>}>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+<PageHeaderCard title={<><FileText className="size-6 text-muted-foreground" /> Account Statement</>} />
 <form className="flex items-end gap-2" action={`/dashboard/investors/${id}/statement`}>
             <label className="text-xs">
               <span className="block text-muted-foreground mb-1">From</span>
@@ -81,7 +82,7 @@ export default async function StatementPage({
             </label>
             <button className="btn-secondary text-xs h-8">Apply</button>
           </form>
-</PageHeaderCard>
+</div>
       </div>
 
       {/* Statement header — the firm, the client, the period. Printed too. */}

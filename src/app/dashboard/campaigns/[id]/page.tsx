@@ -108,7 +108,8 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
           <div className="size-12 rounded-lg bg-primary/10 grid place-items-center">
             <Icon className="size-6 text-primary" />
           </div>
-          <PageHeaderCard title={<>{c.name}</>}>
+          <div className="flex-1">
+<PageHeaderCard title={<>{c.name}</>} />
 <div className="flex items-center gap-3 mt-1 text-sm">
               <span className="capitalize">{c.channel}</span>
               <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[c.status]}`}>{c.status}</span>
@@ -118,7 +119,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
               {c.scheduledAt && <span className="text-muted-foreground">scheduled {formatDate(c.scheduledAt)}</span>}
               {c.startedAt && <span className="text-muted-foreground">sent {formatDate(c.startedAt)}</span>}
             </div>
-</PageHeaderCard>
+</div>
           <CampaignActions
             id={c.id}
             status={c.status}

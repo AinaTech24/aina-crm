@@ -457,7 +457,8 @@ export default function NewTemplatePage() {
       </Link>
 
       {/* Title + stepper */}
-      <PageHeaderCard title={<>Create a message template</>}>
+      <div className="mb-6">
+<PageHeaderCard title={<>Create a message template</>} />
 <ol className="mt-4 flex items-center gap-2">
           {STEPS.map((s, i) => {
             const state = s.n < step ? "done" : s.n === step ? "current" : "todo";
@@ -490,7 +491,7 @@ export default function NewTemplatePage() {
             );
           })}
         </ol>
-</PageHeaderCard>
+</div>
 
       {error && (
         <div className="card-surface p-3 mb-4 text-sm text-rose-700 bg-rose-50/40">{error}</div>

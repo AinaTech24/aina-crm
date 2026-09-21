@@ -1,7 +1,7 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { Suspense } from "react";
 import Link from "next/link";
-import { Webhook, Check, AlertCircle, ExternalLink } from "lucide-react";
+import { ChevronLeft, Webhook, Check, AlertCircle, ExternalLink } from "lucide-react";
 import VartifyConnectCard from "./VartifyConnectCard";
 import { ZohoIntegrationCard } from "@/components/integrations/ZohoIntegrationCard";
 import { RtaMailbackCard } from "@/components/integrations/RtaMailbackCard";
@@ -44,7 +44,8 @@ export const dynamic = "force-dynamic";
 
 export default function IntegrationsPage() {
   return (
-    <PageHeaderCard title={<><Webhook className="size-5" /> Integrations</>} subtitle={<>Connect external services. Most integrations are configured by AINA on your behalf during onboarding.</>}>
+    <div className="space-y-4 max-w-4xl">
+<PageHeaderCard title={<><Webhook className="size-5" /> Integrations</>} subtitle={<>Connect external services. Most integrations are configured by AINA on your behalf during onboarding.</>} />
 {/* Self-serve: the firm connects its own WhatsApp sender once. */}
       <VartifyConnectCard />
 
@@ -89,6 +90,6 @@ export default function IntegrationsPage() {
       <div className="border rounded-lg bg-card p-5 text-sm text-muted-foreground">
         Need a custom integration? <Link href="/dashboard/support" className="text-primary hover:underline">Open a support ticket</Link>.
       </div>
-</PageHeaderCard>
+</div>
   );
 }

@@ -47,9 +47,17 @@ export function AumSegmentChart({ data }: { data: SegmentData[] }) {
             <Label
               position="center"
               content={({ viewBox }) => {
-                const vb = viewBox as { cx?: number; cy?: number } | undefined;
-                const cx = vb?.cx ?? 0;
-                const cy = vb?.cy ?? 0;
+                // Recharts hands a Label either a POLAR viewBox ({cx, cy, …})
+                // or a CARTESIAN one ({x, y, width, height}) depending on the
+                // parent and the version. Reading only `cx` silently fell back
+                // to 0 and parked the label in the SVG's top-left corner,
+                // half of it outside the card. Accept both shapes.
+                const vb = viewBox as
+                  | { cx?: number; cy?: number; x?: number; y?: number; width?: number; height?: number }
+                  | undefined;
+                const cx = vb?.cx ?? (vb?.x != null && vb?.width != null ? vb.x + vb.width / 2 : 0);
+                const cy = vb?.cy ?? (vb?.y != null && vb?.height != null ? vb.y + vb.height / 2 : 0);
+                if (!cx && !cy) return <g />;
                 return (
                   <g>
                     <text x={cx} y={cy - 10} textAnchor="middle" fontSize={13} fill="#6B7280">

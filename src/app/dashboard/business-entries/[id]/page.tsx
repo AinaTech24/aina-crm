@@ -51,21 +51,25 @@ export default async function BusinessEntryDetailPage({ params }: { params: Prom
         <ChevronLeft className="size-4" /> Back to entries
       </Link>
 
-      <PageHeaderCard title={<>{entry.clientName}
-            <span className={`chip text-2xs capitalize ${STATUS_TONE[entry.status] ?? ""}`}>{entry.status}</span></>} actions={<><BusinessEntryActions id={entry.id} status={entry.status} hasEmail={!!data.email} />
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div>
+<PageHeaderCard title={<>{entry.clientName}
+            <span className={`chip text-2xs capitalize ${STATUS_TONE[entry.status] ?? ""}`}>{entry.status}</span></>} />
+<div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mt-1">
+            <span className="inline-flex items-center gap-1"><Briefcase className="size-3.5" /> {PRODUCT_LABEL[entry.productType] ?? entry.productType}</span>
+            <span className="inline-flex items-center gap-1"><Calendar className="size-3.5" /> {dateStr}</span>
+            {data.rmName && <span className="inline-flex items-center gap-1"><User className="size-3.5" /> {data.rmName}</span>}
+          </div>
+</div>
+        <BusinessEntryActions id={entry.id} status={entry.status} hasEmail={!!data.email} />
         <RecordProvenance
           entityType="business_entry"
           entityId={entry.id}
           createdAt={entry.createdAt}
           updatedAt={entry.updatedAt}
           className="basis-full mt-1"
-        /></>}>
-<div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mt-1">
-            <span className="inline-flex items-center gap-1"><Briefcase className="size-3.5" /> {PRODUCT_LABEL[entry.productType] ?? entry.productType}</span>
-            <span className="inline-flex items-center gap-1"><Calendar className="size-3.5" /> {dateStr}</span>
-            {data.rmName && <span className="inline-flex items-center gap-1"><User className="size-3.5" /> {data.rmName}</span>}
-          </div>
-</PageHeaderCard>
+        />
+      </div>
 
       {/* Summary cards */}
       <div className="grid sm:grid-cols-3 gap-3">

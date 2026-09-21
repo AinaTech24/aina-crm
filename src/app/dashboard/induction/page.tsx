@@ -68,10 +68,11 @@ export default async function InductionPage() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-5">
-      <PageHeaderCard title={<><span className="grid place-items-center size-9 rounded-xl bg-brand-cyan text-white shadow-sm">
+      <div className="rounded-2xl border border-border bg-gradient-to-br from-brand-cyan-light/50 via-card to-card p-5 sm:p-6">
+<PageHeaderCard title={<><span className="grid place-items-center size-9 rounded-xl bg-brand-cyan text-white shadow-sm">
             <GraduationCap className="size-5" />
           </span>
-          {track.name}</>} subtitle={<>Your training modules, and the exam that unlocks full access.</>}>
+          {track.name}</>} subtitle={<>Your training modules, and the exam that unlocks full access.</>} />
 {track.description && (
           <p className="text-muted-foreground text-sm mt-2">{track.description}</p>
         )}
@@ -90,7 +91,7 @@ export default async function InductionPage() {
             />
           </div>
         </div>
-</PageHeaderCard>
+</div>
 
       <ul className="card-surface divide-y overflow-hidden">
         {state.lessons.map((s: any, i: number) => {

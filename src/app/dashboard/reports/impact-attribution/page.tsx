@@ -1,7 +1,7 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
-import { BadgeIndianRupee, CalendarDays, ShieldCheck, TrendingUp, Users } from "lucide-react";
+import { ArrowLeft, BadgeIndianRupee, CalendarDays, ShieldCheck, TrendingUp, Users } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { businessImpacts, investors, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";

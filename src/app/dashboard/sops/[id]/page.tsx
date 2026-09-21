@@ -70,7 +70,8 @@ export default async function SopDetailPage({ params }: { params: Promise<{ id: 
         <div className="flex items-start gap-4 flex-wrap justify-between">
           <div className="flex items-start gap-4 min-w-0 flex-1">
             <ScrollText className="size-8 text-muted-foreground mt-1 shrink-0" />
-            <PageHeaderCard title={<>{data.sop.title}</>}>
+            <div className="min-w-0 flex-1">
+<PageHeaderCard title={<>{data.sop.title}</>} />
 <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                 <span className="font-mono">{data.sop.key}</span>
                 {data.sop.category && <span>· {data.sop.category}</span>}
@@ -84,7 +85,7 @@ export default async function SopDetailPage({ params }: { params: Promise<{ id: 
                   ))}
                 </div>
               )}
-</PageHeaderCard>
+</div>
           </div>
           
           {data.current && (

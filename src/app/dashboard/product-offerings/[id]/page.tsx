@@ -1,7 +1,7 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ShieldCheck, ShieldAlert, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { ChevronLeft, ShieldCheck, ShieldAlert, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { eq, and, inArray } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";

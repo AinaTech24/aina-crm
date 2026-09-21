@@ -4,6 +4,7 @@ import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { ChevronLeft } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 
 const ROLES = ["owner", "rm", "back_office", "marketing", "compliance", "branch_head"];
@@ -51,7 +52,8 @@ export default function NewSopPage() {
   }
 
   return (
-    <PageHeaderCard title={<>New SOP</>}>
+    <div className="space-y-4 max-w-3xl">
+<PageHeaderCard title={<>New SOP</>} />
 <form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
@@ -110,6 +112,6 @@ export default function NewSopPage() {
           </button>
         </div>
       </form>
-</PageHeaderCard>
+</div>
   );
 }

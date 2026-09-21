@@ -1,6 +1,7 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
+import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { MessageCircle, Check } from "lucide-react";
+import { ChevronLeft, MessageCircle, Check } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { getTenantIntegration } from "@/lib/comms/integrations";
@@ -41,7 +42,8 @@ export default async function WhatsAppSettingsPage() {
   const active = !!live?.ok || numbersConnected > 0;
 
   return (
-    <PageHeaderCard title={<><MessageCircle className="size-5" /> WhatsApp connection</>}>
+    <div className="space-y-4 max-w-3xl">
+<PageHeaderCard title={<><MessageCircle className="size-5" /> WhatsApp connection</>} />
 <div className={`border rounded-lg p-5 ${active ? "bg-emerald-50 border-emerald-300" : "bg-card border-border"}`}>
         <div className="flex items-start gap-2">
           {active ? (
@@ -95,7 +97,7 @@ export default async function WhatsAppSettingsPage() {
           Template sync runs every 15 minutes. Templates also go through our internal compliance gate before being submitted to Meta.
         </p>
       </div>
-</PageHeaderCard>
+</div>
   );
 }
 

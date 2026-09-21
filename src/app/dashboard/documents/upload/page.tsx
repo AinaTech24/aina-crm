@@ -4,7 +4,7 @@ import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Upload, Loader2, X, FileText, Sparkles } from "lucide-react";
+import { ChevronLeft, Upload, Loader2, X, FileText, Sparkles } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
@@ -129,7 +129,8 @@ export default function UploadDocumentPage() {
   }
 
   return (
-    <PageHeaderCard title={<>Upload document{files.length > 1 ? "s" : ""}</>} subtitle={<>Files are stored encrypted in S3 (ap-south-1, DPDP-compliant). Drag &amp; drop multiple files to batch-upload them under one category.</>}>
+    <div className="space-y-4 max-w-4xl mx-auto">
+<PageHeaderCard title={<>Upload document{files.length > 1 ? "s" : ""}</>} subtitle={<>Files are stored encrypted in S3 (ap-south-1, DPDP-compliant). Drag &amp; drop multiple files to batch-upload them under one category.</>} />
 <form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-4">
         <label
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -205,6 +206,6 @@ export default function UploadDocumentPage() {
           </button>
         </div>
       </form>
-</PageHeaderCard>
+</div>
   );
 }

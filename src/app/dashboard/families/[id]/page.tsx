@@ -133,7 +133,8 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
           <div className="size-12 rounded-lg bg-primary/10 grid place-items-center">
             <HeartHandshake className="size-6 text-primary" />
           </div>
-          <PageHeaderCard title={<>{familyName}</>}>
+          <div className="flex-1">
+<PageHeaderCard title={<>{familyName}</>} />
 <div className="text-xs text-muted-foreground mt-1 font-mono">
               Family ID {data.family.id.slice(0, 8)}…
             </div>
@@ -151,7 +152,7 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
               updatedAt={data.family.updatedAt}
               className="mt-2"
             />
-</PageHeaderCard>
+</div>
           <div className="grid grid-cols-2 gap-6 text-right">
             <div>
               <div className="text-xs text-muted-foreground">Combined AUM</div>

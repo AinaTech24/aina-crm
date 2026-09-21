@@ -4,7 +4,7 @@ import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Copy } from "lucide-react";
+import { ChevronLeft, Copy } from "lucide-react";
 
 const ROLES = [
   { key: "rm", label: "Relationship Manager" },
@@ -51,7 +51,8 @@ export default function InviteEmployeePage() {
   }
 
   return (
-    <PageHeaderCard title={<>Invite team member</>} subtitle={<>Generates a one-time invite link valid for 7 days. Share it with the invitee — they'll set their own password on accepting.</>}>
+    <div className="space-y-4 max-w-2xl">
+<PageHeaderCard title={<>Invite team member</>} subtitle={<>Generates a one-time invite link valid for 7 days. Share it with the invitee — they'll set their own password on accepting.</>} />
 {!inviteUrl ? (
         <form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-3">
           <label className="block">
@@ -103,6 +104,6 @@ export default function InviteEmployeePage() {
           </div>
         </div>
       )}
-</PageHeaderCard>
+</div>
   );
 }
