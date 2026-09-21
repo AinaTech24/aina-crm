@@ -17,6 +17,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 
 export type QuickAddItem = {
   label: string;
@@ -57,28 +59,24 @@ export function QuickAdd({ items }: { items: QuickAddItem[] }) {
 
   return (
     <div ref={wrapRef} className="relative">
-      <button
-        type="button"
+      <Button
+        variant="primary"
+        size="sm"
         onClick={() => setOpen((v) => !v)}
-        className="btn-primary px-2.5 py-1.5 text-xs sm:px-3"
+        icon={<Plus className="size-4" />}
         aria-haspopup="menu"
         aria-expanded={open}
         title="Create a new record"
       >
-        <Plus className="size-4" />
         <span className="hidden sm:inline">Add</span>
-      </button>
+      </Button>
 
       {open && (
-        <div
-          role="menu"
-          aria-label="Create new"
-          className="absolute right-0 top-full mt-2 z-50 w-60 card-surface shadow-lg p-1.5"
-        >
+        <Card className="absolute right-0 top-full mt-2 z-50 w-60 shadow-lg p-1.5">
           <p className="px-2.5 pt-1 pb-1.5 text-2xs uppercase tracking-wide text-muted-foreground">
             Create new
           </p>
-          <ul className="max-h-[70vh] overflow-y-auto">
+          <ul role="menu" aria-label="Create new" className="max-h-[70vh] overflow-y-auto">
             {items.map((it) => (
               <li key={it.href + it.label}>
                 <Link
@@ -100,7 +98,7 @@ export function QuickAdd({ items }: { items: QuickAddItem[] }) {
               </li>
             ))}
           </ul>
-        </div>
+        </Card>
       )}
     </div>
   );
