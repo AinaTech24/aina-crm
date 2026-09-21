@@ -2,7 +2,7 @@ import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
-import { ChevronLeft, Phone, Mail, MessageCircle, MapPin, AlertTriangle, User2, ShieldCheck, Sparkles, ArrowRight, Wallet, Download, FileText, Receipt } from "lucide-react";
+import { Phone, Mail, MessageCircle, MapPin, AlertTriangle, User2, ShieldCheck, Sparkles, ArrowRight, Wallet, Download, FileText, Receipt } from "lucide-react";
 import { DownloadButton } from "@/components/common/SecureLinkButtons";
 import { withTenant } from "@/db/client";
 import {
@@ -114,14 +114,18 @@ const INVESTOR_DETAIL_SECTIONS: RelatedListDef[] = [
 ];
 
 /** Tab groups for the client-detail page — the header stays pinned above. */
-const INVESTOR_DETAIL_TABS = [
-  { key: "overview", label: "Overview", sections: ["health", "recommended", "summary"] },
-  { key: "portfolio", label: "Portfolio", sections: ["valuation", "holdings", "churn", "allocation", "sip_health", "transactions", "expected_inflows", "cross_sell"] },
-  { key: "profile", label: "KYC & Profile", sections: ["nominees", "referrals", "custom_fields", "master"] },
-  { key: "engagement", label: "Engagement", sections: ["family", "documents", "emails", "whatsapp", "gifts", "blueprint", "related"] },
-  // Rarely-opened detail — tucked behind "More" so the core tabs stay uncluttered.
-  { key: "more", label: "More", sections: ["completeness", "kyc_data", "risk_history"] },
-];
+/** Tab groups for Client 360. Counts come from data the page already loaded,
+ *  so a tab says how much is behind it before you pay a click to find out. */
+function investorDetailTabs(counts: { portfolio: number; engagement: number }) {
+  return [
+    { key: "overview", label: "Overview", sections: ["health", "recommended", "summary"] },
+    { key: "portfolio", label: "Portfolio", sections: ["valuation", "holdings", "churn", "allocation", "sip_health", "transactions", "expected_inflows", "cross_sell"], count: counts.portfolio },
+    { key: "profile", label: "KYC & Profile", sections: ["nominees", "referrals", "custom_fields", "master"] },
+    { key: "engagement", label: "Engagement", sections: ["family", "documents", "emails", "whatsapp", "gifts", "blueprint", "related"], count: counts.engagement },
+    // Rarely-opened detail — tucked behind "More" so the core tabs stay uncluttered.
+    { key: "more", label: "More", sections: ["completeness", "kyc_data", "risk_history"] },
+  ];
+}
 
 export const dynamic = "force-dynamic";
 
@@ -384,13 +388,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
   return (
     <div className="max-w-7xl space-y-4">
       <RelatedModulesRail items={relatedItems} />
-      <div className="flex items-center justify-between">
-        <Link
-          href="/dashboard/investors"
-          className="text-sm text-muted-foreground hover:underline flex items-center gap-1"
-        >
-          <ChevronLeft className="size-4" /> Back to clients
-        </Link>
+      <div className="flex items-center justify-end">
         <div className="flex items-center gap-2">
           <RelatedListsManager
             moduleKey="investors-detail"
@@ -434,7 +432,10 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
         <div className="flex items-start gap-4">
           <InvestorAvatarEditor investorId={inv.id} name={inv.name} hasAvatar={!!inv.avatarUrl} size={64} />
           <div className="flex-1 min-w-0">
-<PageHeaderCard title={<>{inv.name}</>} />
+<PageHeaderCard
+              breadcrumb={[{ label: "Clients", href: "/dashboard/investors" }, { label: inv.name }]}
+              title={<>{inv.name}</>}
+            />
 <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
               {showPan && inv.pan && <PanReveal pan={inv.pan} />}
               {showSegment && inv.segmentTag && (
@@ -552,7 +553,14 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
 
       {/* Category tabs — group the sections so the page shows one clean group at
           a time. Renders right under the header (which stays pinned). */}
-      <InvestorDetailTabs moduleKey="investors-detail" tabs={INVESTOR_DETAIL_TABS} />
+      <InvestorDetailTabs
+        moduleKey="investors-detail"
+        label="Client sections"
+        tabs={investorDetailTabs({
+          portfolio: data.folios.length,
+          engagement: data.communications.length,
+        })}
+      />
 
       {/* Composite health score — derived from existing fields, no extra query */}
       <RelatedListSection moduleKey="investors-detail" sectionKey="health">

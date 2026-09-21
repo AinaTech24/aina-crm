@@ -50,23 +50,29 @@ import {
  */
 const LEAD_DETAIL_SECTIONS: RelatedListDef[] = [
   { key: "header", label: "Lead header & actions", required: true },
-  { key: "signals", label: "Engagement signals" },
+  // Priority order. Status the RM must not miss comes first, then the work to
+  // do, then the context behind it. Engagement signals used to lead this list
+  // and the converted banner used to close it — exactly inverted: the banner
+  // says "this is already a client, stop selling", and signals reads
+  // "none yet" on most leads.
+  { key: "converted_banner", label: "Converted-to-client banner" },
   { key: "blueprint", label: "Blueprint stage tracker" },
   { key: "onboarding", label: "Onboarding actions (risk profile / docs / approval)" },
-  { key: "converted_banner", label: "Converted-to-client banner" },
+  { key: "signals", label: "Engagement signals" },
   { key: "edit_panel", label: "Editable details" },
-  { key: "emails", label: "Emails" },
-  { key: "whatsapp", label: "WhatsApp" },
+  { key: "custom_fields", label: "Custom fields" },
   { key: "activity", label: "Activity timeline" },
+  { key: "whatsapp", label: "WhatsApp" },
+  { key: "emails", label: "Emails" },
 ];
-
 /** Tab groups for the lead-detail page — the header stays pinned above. */
-const LEAD_DETAIL_TABS = [
-  { key: "overview", label: "Overview", sections: ["signals", "blueprint", "onboarding", "converted_banner"] },
-  { key: "details", label: "Details", sections: ["edit_panel"] },
-  { key: "activity", label: "Activity", sections: ["whatsapp", "emails", "activity"] },
-];
-
+function leadDetailTabs({ activityCount }: { activityCount: number }) {
+  return [
+    { key: "overview", label: "Overview", sections: ["converted_banner", "blueprint", "onboarding", "signals"] },
+    { key: "details", label: "Details", sections: ["edit_panel", "custom_fields"] },
+    { key: "activity", label: "Activity", sections: ["activity", "whatsapp", "emails"], count: activityCount },
+  ];
+}
 export const dynamic = "force-dynamic";
 
 /** Format an Indian mobile as "+91 XXXXX XXXXX" (falls back to raw if not 10 digits). */
@@ -295,12 +301,27 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       </RelatedListSection>
 
       {/* Category tabs — group the sections; the header stays pinned above. */}
-      <InvestorDetailTabs moduleKey="leads-detail" tabs={LEAD_DETAIL_TABS} />
+      <InvestorDetailTabs
+        moduleKey="leads-detail"
+        label="Lead sections"
+        tabs={leadDetailTabs({ activityCount: data.relatedComms.length + data.relatedTasks.length })}
+      />
 
-      {/* Behavioural engagement signals (Zoho scoring parity) */}
-      <RelatedListSection moduleKey="leads-detail" sectionKey="signals">
-      <SignalScoreCard session={{ tenantId: session.tenantId, userId: session.userId, branchId: session.branchId, roles: session.roles }} leadId={l.id} />
-      </RelatedListSection>
+
+      {/* Converted banner */}
+      {l.convertedInvestorId && (
+        <RelatedListSection moduleKey="leads-detail" sectionKey="converted_banner">
+          <div className="rounded-md border border-emerald-300 bg-emerald-50 text-emerald-900 px-4 py-3 text-sm flex items-center gap-2">
+            <CheckCircle2 className="size-4" />
+            <span>
+              Converted to client {l.convertedAt && <>on {formatDate(l.convertedAt)}</>}.{" "}
+              <Link href={`/dashboard/investors/${l.convertedInvestorId}`} className="font-medium underline">
+                Open client →
+              </Link>
+            </span>
+          </div>
+        </RelatedListSection>
+      )}
 
       {/* Blueprint stage bar — lead-phase only (stages 1–12, up to Documents
           Received). When the lead reaches docs_received the bar swaps in a
@@ -334,28 +355,42 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         </div>
       </RelatedListSection>
 
-      {/* Converted banner */}
-      {l.convertedInvestorId && (
-        <RelatedListSection moduleKey="leads-detail" sectionKey="converted_banner">
-          <div className="rounded-md border border-emerald-300 bg-emerald-50 text-emerald-900 px-4 py-3 text-sm flex items-center gap-2">
-            <CheckCircle2 className="size-4" />
-            <span>
-              Converted to client {l.convertedAt && <>on {formatDate(l.convertedAt)}</>}.{" "}
-              <Link href={`/dashboard/investors/${l.convertedInvestorId}`} className="font-medium underline">
-                Open client →
-              </Link>
-            </span>
-          </div>
-        </RelatedListSection>
-      )}
+      {/* Behavioural engagement signals (Zoho scoring parity) */}
+      <RelatedListSection moduleKey="leads-detail" sectionKey="signals">
+      <SignalScoreCard session={{ tenantId: session.tenantId, userId: session.userId, branchId: session.branchId, roles: session.roles }} leadId={l.id} />
+      </RelatedListSection>
 
       {/* Editable record — every spec field, inline edit */}
       <RelatedListSection moduleKey="leads-detail" sectionKey="edit_panel">
         <LeadEditPanel lead={JSON.parse(JSON.stringify(l))} />
       </RelatedListSection>
 
-      {/* MFD-defined custom fields (renders only if the firm has defined any). */}
-      <CustomFieldsCard entity="lead" recordId={l.id} initialValues={(l as any).customFields ?? null} />
+      {/* MFD-defined custom fields (renders only if the firm has defined any).
+          Wrapped as a section so it belongs to Details like the rest of the
+          record — unwrapped, it sat outside the tab system and repeated itself
+          under Overview and Activity too. */}
+      <RelatedListSection moduleKey="leads-detail" sectionKey="custom_fields">
+        <CustomFieldsCard entity="lead" recordId={l.id} initialValues={(l as any).customFields ?? null} />
+      </RelatedListSection>
+
+      {/* Activity timeline */}
+      <RelatedListSection moduleKey="leads-detail" sectionKey="activity">
+        <div className="card-surface overflow-hidden">
+          <div className="flex items-center gap-3 border-b border-border px-5 py-4">
+            <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-secondary text-muted-foreground" aria-hidden>
+              <ClipboardList className="size-[18px]" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-semibold text-foreground">Activity timeline</h3>
+              <p className="text-2xs text-muted-foreground">Calls, messages, tasks and notes, newest first</p>
+            </div>
+            <span className="chip bg-secondary text-muted-foreground tabular-nums">
+              {data.relatedTasks.length + data.relatedComms.length}
+            </span>
+          </div>
+          <ActivityTimeline tasks={data.relatedTasks} comms={data.relatedComms} notes={l.followUpNotes ?? ""} />
+        </div>
+      </RelatedListSection>
 
       <RelatedListSection moduleKey="leads-detail" sectionKey="whatsapp">
         <WhatsAppRelatedList entityType="lead" entityId={l.id} entityName={l.name} entityPhone={l.phone} />
@@ -365,15 +400,6 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         <EmailRelatedList entityType="lead" entityId={l.id} entityName={l.name} entityEmail={l.email} />
       </RelatedListSection>
 
-      {/* Activity timeline */}
-      <RelatedListSection moduleKey="leads-detail" sectionKey="activity">
-        <div className="border rounded-lg bg-card">
-          <div className="border-b px-4 py-2.5 font-medium flex items-center gap-2">
-            <ClipboardList className="size-4" /> Activity timeline
-          </div>
-          <ActivityTimeline tasks={data.relatedTasks} comms={data.relatedComms} notes={l.followUpNotes ?? ""} />
-        </div>
-      </RelatedListSection>
       </RelatedListsContainer>
 
     </div>
