@@ -19,7 +19,7 @@ import { PdfModal } from "@/components/common/PdfModal";
 
 const STATUS_TONE: Record<string, string> = {
   draft: "bg-gray-50 text-gray-700", ready: "bg-blue-50 text-blue-700", sent: "bg-amber-50 text-amber-700",
-  viewed: "bg-cyan-50 text-cyan-700", accepted: "bg-emerald-50 text-emerald-700", rejected: "bg-rose-50 text-rose-700", expired: "bg-slate-50 text-slate-700",
+  viewed: "bg-cyan-50 text-cyan-700", accepted: "bg-emerald-50 text-emerald-700", partially_approved: "bg-amber-50 text-amber-700", rejected: "bg-rose-50 text-rose-700", expired: "bg-slate-50 text-slate-700", executed: "bg-emerald-100 text-emerald-800",
 };
 const TYPE_LABEL: Record<string, string> = {
   comprehensive: "Comprehensive", mutual_fund: "Mutual Fund", insurance: "Insurance", pms: "PMS", aif: "AIF", mixed: "Mixed",

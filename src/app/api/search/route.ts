@@ -98,8 +98,45 @@ export async function GET(req: NextRequest) {
           WHERE d.tenant_id = ${session.tenantId}::uuid AND ${docScope} AND d.name ILIKE ${like}
           LIMIT 5
         `);
+      // A family is visible when the caller can see a client inside it — the
+      // same scope the Clients list uses, so search can't reveal a branch or
+      // an RM's book through the family name.
+      const families = await group("families", sql`
+          SELECT f.id, f.family_name, f.family_code, f.head_name, f.family_category
+          FROM families f
+          WHERE f.tenant_id = ${session.tenantId}::uuid
+            AND ${cap("family.view") ? sql`TRUE` : sql`FALSE`}
+            AND EXISTS (
+              SELECT 1 FROM investors i
+              WHERE i.family_id = f.id AND i.deleted_at IS NULL AND ${invScope}
+            )
+            AND (f.family_name ILIKE ${like} OR f.family_code ILIKE ${like} OR f.head_name ILIKE ${like})
+          LIMIT 5
+        `);
+      const policies = await group("policies", sql`
+          SELECT p.id, p.policy_number, p.policy_type, p.insurer, p.status,
+                 i.name AS investor_name, i.id AS investor_id
+          FROM insurance_policies p LEFT JOIN investors i ON i.id = p.investor_id
+          WHERE p.tenant_id = ${session.tenantId}::uuid
+            AND ${cap("insurance.view") ? sql`TRUE` : sql`FALSE`}
+            AND (p.investor_id IS NULL OR (${invScope} AND i.deleted_at IS NULL))
+            AND (p.policy_number ILIKE ${like} OR p.insurer ILIKE ${like} OR p.plan_name ILIKE ${like})
+          LIMIT 5
+        `);
+      const taskScope = cap("task.view.all")
+        ? sql`TRUE`
+        : cap("task.view.assigned")
+          ? sql`(t.assignee_id = ${session.userId} OR t.created_by_id = ${session.userId})`
+          : sql`FALSE`;
+      const tasks = await group("tasks", sql`
+          SELECT t.id, t.title, t.status, t.priority, t.due_at, i.name AS investor_name
+          FROM tasks t LEFT JOIN investors i ON i.id = t.related_investor_id
+          WHERE t.tenant_id = ${session.tenantId}::uuid AND ${taskScope}
+            AND t.deleted_at IS NULL AND t.title ILIKE ${like}
+          LIMIT 5
+        `);
 
-      return { investors, leads, folios, sips, serviceRequests, documents };
+      return { investors, leads, families, folios, sips, policies, tasks, serviceRequests, documents };
     });
 
     return NextResponse.json({ q, ...results });

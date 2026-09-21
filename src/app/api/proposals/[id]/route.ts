@@ -33,7 +33,7 @@ const Patch = z
     expectedCorpus: z.number().optional(),
     riskRating: z.enum(["conservative", "moderate", "aggressive", "mixed"]).optional(),
     status: z
-      .enum(["draft", "ready", "sent", "viewed", "accepted", "rejected", "expired"])
+      .enum(["draft", "ready", "sent", "viewed", "accepted", "partially_approved", "rejected", "expired", "executed"])
       .optional(),
     validUntil: z.string().optional(),
     rejectionReason: z.string().max(500).optional(),
@@ -112,6 +112,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         .set(patch)
         .where(and(eq(proposals.id, id), eq(proposals.tenantId, session.tenantId)))
         .returning();
+
+      // Spec 13: sharing a proposal raises a follow-up for its owner. Only on
+      // the FIRST share (before.sentAt unset) — the helper is idempotent too,
+      // so a resend can't stack duplicates. Never fatal: failing to raise a
+      // reminder must not fail the status change the user actually asked for.
+      if (patch.status === "sent" && before.status !== "sent" && !before.sentAt) {
+        try {
+          const { createProposalSharedTask } = await import("@/lib/proposals/shared-task");
+          await createProposalSharedTask(tx, {
+            tenantId: session.tenantId,
+            proposalId: id,
+            proposalNumber: before.proposalNumber,
+            investorId: before.investorId,
+            leadId: before.leadId,
+            preparedByUserId: (before as any).preparedByUserId,
+            actorUserId: session.userId,
+            proposalCreatedAt: (before as any).createdAt,
+          });
+        } catch (e) {
+          console.warn("[proposals] shared follow-up task skipped:", (e as Error)?.message);
+        }
+      }
 
       await recordAudit(tx, {
         tenantId: session.tenantId,

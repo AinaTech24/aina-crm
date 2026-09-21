@@ -87,7 +87,12 @@ export const proposals = pgTable(
 
     /** Status workflow. */
     status: text("status", {
-      enum: ["draft", "ready", "sent", "viewed", "accepted", "rejected", "expired"],
+      // `partially_approved` = the client took SOME of the recommended schemes;
+      // `executed` = the approved items were actually transacted. Without these
+      // two, a half-accepted proposal had to be logged as fully accepted and a
+      // transacted one stayed "accepted" forever, so conversion reporting could
+      // not tell intent from money actually invested.
+      enum: ["draft", "ready", "sent", "viewed", "accepted", "partially_approved", "rejected", "expired", "executed"],
     })
       .notNull()
       .default("draft"),

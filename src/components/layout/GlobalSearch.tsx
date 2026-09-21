@@ -2,13 +2,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Search, Users, Sparkles, FileText, Repeat, LifeBuoy, FolderArchive, Loader2, X } from "lucide-react";
+import { Search, Users, Sparkles, FileText, Repeat, LifeBuoy, FolderArchive, Loader2, X, HeartHandshake, Shield, ListChecks } from "lucide-react";
 
 type Results = {
   investors?: any[];
   leads?: any[];
+  families?: any[];
   folios?: any[];
   sips?: any[];
+  policies?: any[];
+  tasks?: any[];
   serviceRequests?: any[];
   documents?: any[];
 };
@@ -84,8 +87,11 @@ export function GlobalSearch() {
   const total =
     (results.investors?.length ?? 0) +
     (results.leads?.length ?? 0) +
+    (results.families?.length ?? 0) +
     (results.folios?.length ?? 0) +
     (results.sips?.length ?? 0) +
+    (results.policies?.length ?? 0) +
+    (results.tasks?.length ?? 0) +
     (results.serviceRequests?.length ?? 0) +
     (results.documents?.length ?? 0);
 
@@ -129,7 +135,7 @@ export function GlobalSearch() {
             if (roGuard) setRoGuard(false);
             setOpen(true);
           }}
-          placeholder="Search modules, pages or actions…"
+          placeholder="Search clients, families, folios, policies…"
           className="flex-1 min-w-0 bg-transparent text-sm outline-none focus:ring-0 focus-visible:ring-0 focus:shadow-none placeholder:text-muted-foreground"
           aria-label="Global search"
           aria-expanded={showPanel}
@@ -182,6 +188,11 @@ export function GlobalSearch() {
                     primary={(r) => r.name}
                     secondary={(r) => `${r.stage} · ${r.source}`}
                   />
+                  <Group icon={HeartHandshake} label="Families" items={results.families ?? []} onPick={close}
+                    href={(r) => `/dashboard/families/${r.id}`}
+                    primary={(r) => r.family_name}
+                    secondary={(r) => `${r.head_name ?? "—"} · ${r.family_code ?? "—"}`}
+                  />
                   <Group icon={FileText} label="Folios" items={results.folios ?? []} onPick={close}
                     href={(r) => r.investor_id ? `/dashboard/investors/${r.investor_id}` : `/dashboard/investors`}
                     primary={(r) => `${r.folio_number}`}
@@ -191,6 +202,16 @@ export function GlobalSearch() {
                     href={() => `/dashboard/sips`}
                     primary={(r) => r.scheme_name}
                     secondary={(r) => `₹${r.amount}/mo · ${r.investor_name ?? "—"} · ${r.status}`}
+                  />
+                  <Group icon={Shield} label="Insurance policies" items={results.policies ?? []} onPick={close}
+                    href={(r) => `/dashboard/insurance/${r.id}`}
+                    primary={(r) => r.policy_number ?? "(no number)"}
+                    secondary={(r) => `${r.insurer ?? "—"} · ${r.policy_type ?? "—"} · ${r.investor_name ?? "—"}`}
+                  />
+                  <Group icon={ListChecks} label="Tasks" items={results.tasks ?? []} onPick={close}
+                    href={(r) => `/dashboard/tasks?task=${r.id}`}
+                    primary={(r) => r.title}
+                    secondary={(r) => `${r.status} · ${r.priority ?? "—"}${r.investor_name ? ` · ${r.investor_name}` : ""}`}
                   />
                   <Group icon={LifeBuoy} label="Service requests" items={results.serviceRequests ?? []} onPick={close}
                     href={() => `/dashboard/service-requests`}

@@ -432,6 +432,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         } as any)
         .where(and(eq(proposals.id, id), eq(proposals.tenantId, session.tenantId)));
 
+      // Same follow-up as the manual status change (spec 13). Idempotent, and
+      // non-fatal: the proposal has already gone to the client by this point,
+      // so a task failure must not turn a successful send into an error.
+      try {
+        const { createProposalSharedTask } = await import("@/lib/proposals/shared-task");
+        await createProposalSharedTask(tx, {
+          tenantId: session.tenantId,
+          proposalId: id,
+          proposalNumber: p.proposalNumber,
+          investorId: p.recipientType === "investor" ? p.investorId : null,
+          leadId: p.recipientType === "lead" ? p.leadId : null,
+          preparedByUserId: (p as any).preparedByUserId,
+          actorUserId: session.userId,
+          proposalCreatedAt: (p as any).createdAt,
+        });
+      } catch (e) {
+        console.warn("[proposals] shared follow-up task skipped:", (e as Error)?.message);
+      }
+
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,

@@ -75,6 +75,7 @@ import { tenantAccessibleNavKeys, isGatableNav, gatedNavKeyForPath } from "@/con
 import { pickLogo } from "@/lib/branding/logo";
 import type { Metadata } from "next";
 import { GlobalSearch } from "@/components/layout/GlobalSearch";
+import { QuickAdd, type QuickAddItem } from "@/components/layout/QuickAdd";
 import { BackButton } from "@/components/layout/BackButton";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { BirthdayBell } from "@/components/layout/BirthdayBell";
@@ -402,6 +403,29 @@ export default async function DashboardLayout({ children }: { children: React.Re
   for (const r of firmLayoutRows) (firmLayoutMap[r.moduleKey] ??= {})[r.kind] = r.data;
   const layoutAdmin = can(session.roles, "settings.users", (session as any).permissions);
 
+  // Global "+ Add" (spec 23). Gated here on the SERVER so the capability matrix
+  // never reaches the browser and nobody is offered an action that would 403.
+  const perms = (session as any).permissions;
+  const cap = (c: Parameters<typeof can>[1]) => can(session.roles, c, perms);
+  const quickAddItems: QuickAddItem[] = [
+    { label: "Lead", href: "/dashboard/leads/new", show: cap("lead.edit.all") || cap("lead.edit.assigned") },
+    { label: "Client", href: "/dashboard/investors/new", show: cap("investor.edit.all") || cap("investor.edit.assigned") },
+    { label: "Family", href: "/dashboard/families/new", show: cap("family.create") },
+    { label: "Task", href: "/dashboard/tasks/new", show: cap("task.edit.all") || cap("task.edit.assigned") },
+    { label: "Meeting", href: "/dashboard/review-meetings/new", show: cap("review_meeting.manage.all") || cap("review_meeting.manage.assigned") },
+    { label: "SIP", href: "/dashboard/sips/new", show: cap("transactions.execute") },
+    // There is no manual transaction form — the book is built from registrar
+    // files — so this points at the real entry path rather than a dead link.
+    { label: "Transactions", href: "/dashboard/transactions/import", hint: "Import from an RTA file", show: cap("transactions.execute") },
+    { label: "Proposal", href: "/dashboard/proposals/new", show: cap("proposal.write") },
+    { label: "Insurance policy", href: "/dashboard/insurance/new", show: cap("insurance.write") },
+    { label: "Service query", href: "/dashboard/service-requests/new", show: cap("service_request.manage") },
+    // A note belongs to a client, so it is added from that client's page.
+    { label: "Note", href: "/dashboard/investors", hint: "Pick a client to add a note", show: cap("investor.note.add") },
+  ]
+    .filter((i) => i.show)
+    .map(({ label, href, hint }) => ({ label, href, hint }));
+
   // Sidebar badge uses the square icon variant, falling back to monogram → full
   // logo so a firm that only uploaded a wide logo still gets a sensible badge.
   const sidebarLogo = pickLogo(tenant, "icon");
@@ -620,6 +644,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           </div>
           <div className="flex-1" />
           <div className="flex items-center gap-2 sm:gap-3 text-sm">
+            <QuickAdd items={quickAddItems} />
             {/* Convenience icons collapse on phones — everything stays reachable
                 (2FA via Settings, Help via pages, birthdays via My Day). */}
             <div className="hidden sm:flex items-center gap-3">
