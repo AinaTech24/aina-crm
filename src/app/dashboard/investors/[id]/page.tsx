@@ -388,30 +388,83 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
   return (
     <div className="max-w-7xl space-y-4">
       <RelatedModulesRail items={relatedItems} />
-      <div className="flex items-center justify-end">
-        <div className="flex items-center gap-2">
-          <RelatedListsManager
-            moduleKey="investors-detail"
-            sections={INVESTOR_DETAIL_SECTIONS}
-          />
-          <QuickCommsPanel
-            investorId={inv.id}
-            investorName={inv.name}
-          />
-          <Link
-            href={`/dashboard/investors/${inv.id}/review-report`}
-            className="btn-secondary !px-2.5 !py-1 !text-xs"
-          >
-            <FileText className="size-3.5" /> Quarterly Review Report
-          </Link>
-          <Link
-            href={`/dashboard/investors/${inv.id}/statement`}
-            className="btn-secondary !px-2.5 !py-1 !text-xs"
-          >
-            <Receipt className="size-3.5" /> Account Statement
-          </Link>
+
+      <RelatedListsContainer>
+      {/* Header */}
+      <RelatedListSection moduleKey="investors-detail" sectionKey="header">
+      {/* WHO. The heading sits on the page ground, like every other screen —
+          it used to be nested in a card beside the avatar, which buried the
+          breadcrumb inside a box no other page has. The avatar moves into the
+          title itself, where it reads as identity rather than as a widget
+          parked to one side. The page toolbar was a right-aligned row floating
+          above an unrelated banner; as the heading's actions it now belongs to
+          the record it acts on. */}
+      <PageHeaderCard
+        breadcrumb={[{ label: "Clients", href: "/dashboard/investors" }, { label: inv.name }]}
+        title={
+          <>
+            <InvestorAvatarEditor investorId={inv.id} name={inv.name} hasAvatar={!!inv.avatarUrl} size={44} />
+            {inv.name}
+          </>
+        }
+        actions={
+          <>
+                <RelatedListsManager
+                  moduleKey="investors-detail"
+                  sections={INVESTOR_DETAIL_SECTIONS}
+                />
+                <QuickCommsPanel
+                  investorId={inv.id}
+                  investorName={inv.name}
+                />
+                <Link
+                  href={`/dashboard/investors/${inv.id}/review-report`}
+                  className="btn-secondary !px-2.5 !py-1 !text-xs"
+                >
+                  <FileText className="size-3.5" /> Quarterly Review Report
+                </Link>
+                <Link
+                  href={`/dashboard/investors/${inv.id}/statement`}
+                  className="btn-secondary !px-2.5 !py-1 !text-xs"
+                >
+                  <Receipt className="size-3.5" /> Account Statement
+                </Link>
+          </>
+        }
+      >
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-3 text-sm text-muted-foreground">
+              {showPan && inv.pan && <PanReveal pan={inv.pan} />}
+              {showSegment && inv.segmentTag && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-violet-50 text-violet-700">
+                  {inv.segmentTag}
+                </span>
+              )}
+              {/* KYC status intentionally omitted here — it lives in the
+                  "Onboarding & compliance readiness" strip below (no duplication). */}
+              <span className="text-xs">Onboarded {inv.onboardedAt ? formatDate(inv.onboardedAt) : "—"}</span>
+              <BestTimeBadge session={{ tenantId: session.tenantId, userId: session.userId, branchId: session.branchId, roles: session.roles }} investorId={inv.id} />
         </div>
-      </div>
+      </PageHeaderCard>
+
+      </RelatedListSection>
+
+      {/* Next best action — one prioritised nudge, up top, so the RM knows what
+          to do now without scrolling (parity with the lead page). */}
+      {clientNext && (
+        <div className="flex items-center gap-3 rounded-lg border border-brand-cyan/25 bg-brand-cyan-light/40 px-4 py-2.5">
+          <Sparkles className="size-4 text-brand-cyan-deep shrink-0" />
+          <div className="min-w-0 flex-1 text-sm">
+            <span className="font-semibold text-foreground">Next: {clientNext.label}</span>
+            {clientNext.hint && <span className="text-muted-foreground"> — {clientNext.hint}</span>}
+          </div>
+          {clientNext.href && (
+            <Link href={clientNext.href} className="btn-primary text-xs inline-flex items-center gap-1 shrink-0 whitespace-nowrap">
+              {clientNext.cta} <ArrowRight className="size-3.5" />
+            </Link>
+          )}
+
+        </div>
+      )}
 
       {/* Consolidated onboarding & compliance readiness — replaces the lone risk
           banner + scattered KYC/nominee/bank signals with one gap list. */}
@@ -425,30 +478,10 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
         phoneVerified={inv.phone ? !!inv.phoneVerifiedAt : null}
       />
 
-      <RelatedListsContainer>
-      {/* Header */}
-      <RelatedListSection moduleKey="investors-detail" sectionKey="header">
-      <div className="card-surface p-6">
-        <div className="flex items-start gap-4">
-          <InvestorAvatarEditor investorId={inv.id} name={inv.name} hasAvatar={!!inv.avatarUrl} size={64} />
-          <div className="flex-1 min-w-0">
-<PageHeaderCard
-              breadcrumb={[{ label: "Clients", href: "/dashboard/investors" }, { label: inv.name }]}
-              title={<>{inv.name}</>}
-            />
-<div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-              {showPan && inv.pan && <PanReveal pan={inv.pan} />}
-              {showSegment && inv.segmentTag && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-violet-50 text-violet-700">
-                  {inv.segmentTag}
-                </span>
-              )}
-              {/* KYC status intentionally omitted here — it lives in the
-                  "Onboarding & compliance readiness" strip below (no duplication). */}
-              <span className="text-xs">Onboarded {inv.onboardedAt ? formatDate(inv.onboardedAt) : "—"}</span>
-              <BestTimeBadge session={{ tenantId: session.tenantId, userId: session.userId, branchId: session.branchId, roles: session.roles }} investorId={inv.id} />
-            </div>
-            <div className="flex gap-3 mt-3 text-sm">
+      {/* ACT. Reaching the client and acting on them are the same job, so they
+          share one card instead of being stacked loose under the name. */}
+      <div className="card-surface p-5 space-y-4">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
               {showPhone && inv.phone && (
                 <a href={`tel:${inv.phone}`} className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground">
                   <Phone className="size-4" /> {formatPhone(inv.phone)}
@@ -482,8 +515,9 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
                   <MapPin className="size-4" /> {(inv.address as any).city}, {(inv.address as any).state}
                 </span>
               )}
-            </div>
-            <div className="flex flex-wrap items-center gap-2 mt-3">
+        </div>
+        <div className="border-t pt-4">
+          <div className="flex flex-wrap items-center gap-2">
               {/* Primary action — the thing an RM does most from this page */}
               <LogActivityButton subject={{ type: "investor", id: inv.id, name: inv.name, phone: inv.phone }} label="Log call / visit" variant="primary" />
               <OnboardingWizardButton
@@ -527,29 +561,8 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
                 className="basis-full mt-1"
               />
             </div>
-</div>
-          {/* AUM / Active SIP / Lifetime inflow moved out of the header into the
-              Portfolio tab (see the "valuation" section) for a simpler profile. */}
-        </div>
-      </div>
-      </RelatedListSection>
-
-      {/* Next best action — one prioritised nudge, up top, so the RM knows what
-          to do now without scrolling (parity with the lead page). */}
-      {clientNext && (
-        <div className="flex items-center gap-3 rounded-lg border border-brand-cyan/25 bg-brand-cyan-light/40 px-4 py-2.5">
-          <Sparkles className="size-4 text-brand-cyan-deep shrink-0" />
-          <div className="min-w-0 flex-1 text-sm">
-            <span className="font-semibold text-foreground">Next: {clientNext.label}</span>
-            {clientNext.hint && <span className="text-muted-foreground"> — {clientNext.hint}</span>}
           </div>
-          {clientNext.href && (
-            <Link href={clientNext.href} className="btn-primary text-xs inline-flex items-center gap-1 shrink-0 whitespace-nowrap">
-              {clientNext.cta} <ArrowRight className="size-3.5" />
-            </Link>
-          )}
         </div>
-      )}
 
       {/* Category tabs — group the sections so the page shows one clean group at
           a time. Renders right under the header (which stays pinned). */}
