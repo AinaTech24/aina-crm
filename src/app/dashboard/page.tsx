@@ -27,7 +27,6 @@ import { ComplianceCockpit } from "@/components/dashboards/ComplianceCockpit";
 import { AnnouncementsStrip } from "@/components/announcements/AnnouncementsStrip";
 import { DashboardMemberFilter } from "@/components/dashboards/DashboardMemberFilter";
 import { DashboardBranchFilter } from "@/components/dashboards/DashboardBranchFilter";
-import { PeriodChips } from "@/components/dashboards/PeriodChips";
 import { DashboardTabs } from "@/components/dashboards/DashboardTabs";
 import { parseDashboardTab } from "@/lib/dashboard/tabs";
 import { getDefaultBoard } from "@/lib/dashboards/service";
@@ -95,8 +94,9 @@ export default async function DashboardPage({
     }
   }
 
-  // Owner / Branch Head sees the full cockpit — plus a "Viewing" member
-  // selector that scopes the dashboard to a single team member's RmDashboard.
+  // Owner / Branch Head sees the full cockpit — plus member and branch
+  // selectors that SCOPE that cockpit. Neither swaps the page for a different
+  // dashboard; they narrow the same one.
   let dash: React.ReactNode;
   let memberBar: React.ReactNode = null;
   // View / Create / Period controls — shown on the right of the "Viewing" row,
@@ -134,12 +134,14 @@ export default async function DashboardPage({
     const branchParam = typeof sp.branch === "string" ? sp.branch : undefined;
     const selectedBranch = branchParam && branches.some((b) => b.id === branchParam) ? branchParam : null;
 
+    // Picking a team member FILTERS this cockpit; it does not replace it.
+    // Previously `selected` swapped the whole page to RmDashboard, so choosing
+    // a name changed which dashboard you were looking at — the tabs, the
+    // sections and the layout all changed under you. Now it behaves like the
+    // branch filter next to it: same page, narrower numbers.
     const selected = rmParam ? members.find((m) => m.id === rmParam) : undefined;
-    // Tabs belong to the firm-wide cockpit only — an RM drill-down has its own
-    // layout and is short enough not to need splitting.
-    if (!selected) {
-      tabsBar = <DashboardTabs current={dashTab} />;
-    }
+    const selectedRmId = selected ? selected.id : null;
+    tabsBar = <DashboardTabs current={dashTab} />;
     memberBar = (
       <>
         <DashboardMemberFilter
@@ -149,15 +151,9 @@ export default async function DashboardPage({
           dateTo={dateTo}
         />
         <DashboardBranchFilter branches={branches} selected={selectedBranch} />
-        <span className="h-5 w-px bg-border" aria-hidden />
-        {/* Eight one-click ranges in front of the Period dropdown, which keeps
-            the richer pickers (specific month / quarter / since / custom). */}
-        <PeriodChips current={period} />
       </>
     );
-    dash = selected ? (
-      <RmDashboard session={session} targetUserId={selected.id} targetName={selected.name} from={dateFrom} to={dateTo} />
-    ) : (
+    dash = (
       <OwnerCockpit
         session={session}
         period={period}
@@ -166,9 +162,10 @@ export default async function DashboardPage({
         customTo={pto}
         activityDays={activityDays}
         branchId={selectedBranch}
+        rmId={selectedRmId}
         tab={dashTab}
         controls={
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
             <DashboardTabs current={dashTab} />
             <DashboardHeaderBar period={period} currentLabel={periodLabel} variant="light">
               {memberBar}
@@ -177,13 +174,11 @@ export default async function DashboardPage({
         }
       />
     );
-    if (!selected) {
-      headerControls = (
-        <DashboardHeaderBar period={period} currentLabel={periodLabel} variant="light">
-          {memberBar}
-        </DashboardHeaderBar>
-      );
-    }
+    headerControls = (
+      <DashboardHeaderBar period={period} currentLabel={periodLabel} variant="light">
+        {memberBar}
+      </DashboardHeaderBar>
+    );
   } else if (can(roles, "dashboard.view.compliance", perms)) {
     dash = <ComplianceCockpit session={session} period={period} customStart={pstart} />;
   } else if (can(roles, "dashboard.view.marketing", perms)) {
@@ -218,4 +213,3 @@ export default async function DashboardPage({
     </>
   );
 }
-
