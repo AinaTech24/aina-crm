@@ -4,7 +4,7 @@ import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { MetricTile } from "./MetricTile";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { TrendingUp, Users, UserPlus } from "lucide-react";
+import { TrendingUp, UserPlus } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { formatINR } from "@/lib/utils";
 import type { SessionUser } from "@/lib/auth/session";
@@ -125,13 +125,14 @@ export async function OwnerCockpit({
           for below the fold. Same words, same information, as an ordinary
           page header like every other screen. */}
       <PageHeaderCard
-        title={`Welcome back, ${session.name.split(" ")[0]}`}
+        title={tab === "insights" ? "Business insights" : tab === "tracker" ? "Practice tracker" : "Practice overview"}
         subtitle={
           <>
-            Your firm as of <span className="font-medium text-foreground">{today}</span>.
+            Welcome back, {session.name.split(" ")[0]}. Here’s your practice at a glance.
           </>
         }
         breadcrumb={[{ label: tabLabel }]}
+        actions={<span className="text-xs text-muted-foreground">{today}</span>}
       />
       {controls}
 
@@ -259,7 +260,7 @@ function CockpitBodySkeleton() {
   return (
     <div className="space-y-6">
       <div className="h-11 rounded-xl bg-card border border-border/50 animate-pulse" />
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         {Array.from({ length: 3 }).map((_, i) => (
           <div key={i} className="h-28 rounded-xl bg-card border border-border/50 animate-pulse" />
         ))}
@@ -626,15 +627,11 @@ async function OwnerCockpitBody({
   const allow = license.allowedDashboardWidgets;
   const show = (key: string) => isDashboardWidgetVisible(allow, key);
 
-  const anyHeadline =
-    show("kpi.total_clients") ||
-    show("kpi.open_leads") ||
-    show("kpi.active_sip_book") ||
-    show("kpi.net_business");
-  const anyAnalytics =
-    show("section.lead_funnel") ||
-    show("section.aum_segment") ||
-    show("section.rm_leaderboard");
+  // Only the tiles this branch actually renders may gate the row. It used to
+  // include `kpi.total_clients` and `kpi.active_sip_book`: the first is now the
+  // pulse strip's job, the second never had a tile here at all — so a firm
+  // granted only that widget rendered an empty grid.
+  const anyHeadline = show("kpi.open_leads") || show("kpi.net_business");
 
   // The cockpit body serves BOTH tabs from one set of queries. Splitting it
   // into two components would have duplicated five sequential aggregates for
@@ -643,17 +640,7 @@ async function OwnerCockpitBody({
     return (
       <div className="space-y-6">
       {anyHeadline && (
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        {show("kpi.total_clients") && (
-          <MetricTile
-            hue="cyan"
-            icon={<Users className="size-[18px]" />}
-            label="Total clients"
-            value={String(data.totalClients)}
-            href={withPeriod("/dashboard/investors", periodQuery)}
-            delta={data.newClientsPeriod > 0 ? { value: `${data.newClientsPeriod} ${period.toUpperCase()}`, direction: "up" } : undefined}
-          />
-        )}
+      <div className="grid gap-3 sm:grid-cols-2">
         {show("kpi.open_leads") && (
           <MetricTile
             hue="violet"
@@ -684,21 +671,16 @@ async function OwnerCockpitBody({
       </Suspense>
       )}
 
-      {anyAnalytics && (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-        {show("section.lead_funnel") && (
+      {/* AUM by segment is NOT repeated here. It is the narrow half of
+          Overview's chart row, and Insights already answers the same question
+          twice over with "AUM breakup" (by asset class) and "Client mix" —
+          three cuts of the book on one screen, one of them a second copy of a
+          card the reader passed on the way in. Lead funnel takes the full
+          width it was always cramped out of. */}
+      {show("section.lead_funnel") && (
         <Suspense fallback={<ChartSkeleton />}>
           <LeadFunnelSection session={session} period={period} />
         </Suspense>
-        )}
-
-        {show("section.aum_segment") && (
-        <Suspense fallback={<ChartSkeleton />}>
-          <AumSegmentSection session={session} />
-        </Suspense>
-        )}
-
-      </div>
       )}
 
       {/* SIP persistency — the franchise-health metric. */}
@@ -709,6 +691,11 @@ async function OwnerCockpitBody({
 
   return (
     <div className="space-y-6">
+      {show("section.attention_queues") && (
+      <Suspense fallback={<CardSkeleton />}>
+        <AttentionQueuesSection session={session} />
+      </Suspense>
+      )}
       {/* 2 · CHARTS — the reference's "wide chart + narrow donut" row, then a
              full-width second chart. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 items-start">
@@ -732,11 +719,7 @@ async function OwnerCockpitBody({
       {/* 3 · NEEDS YOU — ranked, actionable, worst first. */}
       {show("section.data_gaps") && <DataGapsTile />}
 
-      {show("section.attention_queues") && (
-      <Suspense fallback={<CardSkeleton />}>
-        <AttentionQueuesSection session={session} />
-      </Suspense>
-      )}
+
 
       {/* 4 · TEAM */}
       {/* RM leaderboard — period-scoped and eight columns wide, so it gets its
@@ -948,3 +931,4 @@ async function RmLeaderboardSection({
     <RmLeaderboardTable rows={rows} periodLabel={periodLabel} periodQuery={periodQuery} />
   );
 }
+

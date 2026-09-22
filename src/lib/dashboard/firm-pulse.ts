@@ -172,7 +172,14 @@ export async function loadFirmPulse(tx: Tx): Promise<PulseMetric[]> {
       // nothing. The strip needs four to balance, and client count is the one
       // figure an owner checks alongside the money.
       key: "clients",
-      label: "Active clients",
+      // "Clients", not "Active clients". This counts the whole LIVE book —
+      // `alive` is "not deleted, not closed, not merged", which includes
+      // dormant and redemption-risk clients — and it has to, because the AUM
+      // and SIP Book tiles beside it sum over exactly that set. Calling it
+      // "Active" put 22 next to Client mix's "Active 19" (status = 'active')
+      // on the same screen, with the missing 3 sitting in that card's own
+      // "Dormant" tile. Two labels, one word, two numbers.
+      label: "Clients",
       value: clients,
       day: delta(clients, prev ? num(prev.clients) : null),
       mom: delta(clients, momRow ? num(momRow.clients) : null),
