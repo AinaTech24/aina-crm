@@ -40,6 +40,9 @@ export async function AttentionQueuesSection({ session }: { session: SessionUser
                 AND (last_transaction_at IS NULL OR last_transaction_at < ${dormantCutoff})) AS dormant_clients,
           (SELECT COUNT(*)::int FROM investors
               WHERE status = 'active' AND deleted_at IS NULL AND service_tier = 'A') AS tier_a,
+          (SELECT COUNT(*)::int FROM transactions
+              WHERE status = 'rejected'
+                AND order_date >= current_date - interval '30 days') AS rejected_txns,
           (SELECT COUNT(*)::int FROM investors
               WHERE status = 'active' AND deleted_at IS NULL
                 AND (
@@ -54,6 +57,10 @@ export async function AttentionQueuesSection({ session }: { session: SessionUser
   );
 
   const queues = [
+    // Rejected transactions lead the list because they are the only queue here
+    // that is money: an instalment the RTA turned back is inflow the book was
+    // counting on and will not receive until someone re-submits it.
+    { label: "Rejected transactions", count: data.rejected_txns, href: "/dashboard/reports/sip-rejection", icon: AlertOctagon, hint: "Turned back in the last 30 days — re-submit" },
     { label: "Reviews due", count: data.reviews_due, href: "/dashboard/review-meetings", icon: ClipboardList, hint: "Schedule a conversation" },
     { label: "Service requests", count: data.sr_pending, href: "/dashboard/service-requests", icon: Headset, hint: "Keep clients moving forward" },
     { label: "Open complaints", count: data.complaints_open, href: "/dashboard/complaints", icon: AlertOctagon, hint: "Resolve outstanding concerns" },

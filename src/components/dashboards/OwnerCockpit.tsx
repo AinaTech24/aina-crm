@@ -16,6 +16,9 @@ import { Sparkline } from "./Sparkline";
 import { FirmPulseStrip } from "./FirmPulseStrip";
 import { FirmChartsSection, FirmChartsSkeleton } from "./FirmChartsSection";
 import { FirmTrackerSections } from "./FirmTrackerSections";
+import { NetSalesSection } from "./NetSalesSection";
+import { TopMoversPanel } from "./TopMoversPanel";
+import { OwnerInsightsSection } from "./OwnerInsightsSection";
 import { ExpiryPipeline } from "./ExpiryPipeline";
 import { TargetAchievement } from "./TargetAchievement";
 import { LeadPipeline } from "./LeadPipeline";
@@ -85,6 +88,7 @@ export async function OwnerCockpit({
   customTo,
   activityDays = 7,
   branchId = null,
+  rmId = null,
   tab = "overview",
   controls,
 }: {
@@ -97,6 +101,10 @@ export async function OwnerCockpit({
   activityDays?: ActivityRange;
   /** Branch filter from `?branch=`; null means the whole firm. */
   branchId?: string | null;
+  /** Team-member filter from `?rm=`; null means the whole firm. Sibling of
+   *  branchId: picking a member FILTERS this cockpit, it does not swap the
+   *  page for a different dashboard. */
+  rmId?: string | null;
   /** Tabs + filter toolbar, rendered directly under the header card so the
    *  page opens the way the reference does: title first, controls second. */
   controls?: React.ReactNode;
@@ -169,7 +177,7 @@ export async function OwnerCockpit({
 
       {tab === "overview" && (
         <Suspense fallback={<CockpitBodySkeleton />}>
-          <OwnerCockpitBody session={session} period={period} customStart={customStart} customFrom={customFrom} customTo={customTo} branchId={branchId} />
+          <OwnerCockpitBody session={session} period={period} customStart={customStart} customFrom={customFrom} customTo={customTo} branchId={branchId} rmId={rmId} />
         </Suspense>
       )}
 
@@ -184,6 +192,11 @@ export async function OwnerCockpit({
           <Suspense fallback={<CardSkeleton />}>
             <ExpiryPipelineSection session={session} branchId={branchId} />
           </Suspense>
+          {/* Churn, compliance and concentration signals. Written, and until
+              now imported by nothing. */}
+          <Suspense fallback={<CardSkeleton />}>
+            <OwnerInsightsSection session={session} />
+          </Suspense>
           <Suspense fallback={<CockpitBodySkeleton />}>
             <OwnerCockpitBody
               session={session}
@@ -192,6 +205,7 @@ export async function OwnerCockpit({
               customFrom={customFrom}
               customTo={customTo}
               branchId={branchId}
+              rmId={rmId}
               mode="insights"
             />
           </Suspense>
@@ -212,7 +226,7 @@ export async function OwnerCockpit({
           aggregate queries never hold up anything above it. */}
       {tab === "tracker" && (
         <Suspense fallback={<CardSkeleton />}>
-          <FirmTracker session={session} period={period} customStart={customStart} customFrom={customFrom} customTo={customTo} branchId={branchId} />
+          <FirmTracker session={session} period={period} customStart={customStart} customFrom={customFrom} customTo={customTo} branchId={branchId} rmId={rmId} />
         </Suspense>
       )}
     </div>
@@ -281,6 +295,7 @@ async function OwnerCockpitBody({
   customFrom,
   customTo,
   branchId = null,
+  rmId = null,
   mode = "overview",
 }: {
   session: SessionUser;
@@ -289,6 +304,7 @@ async function OwnerCockpitBody({
   customFrom?: string;
   customTo?: string;
   branchId?: string | null;
+  rmId?: string | null;
   /** Which tab is asking. Both are served from one set of queries. */
   mode?: "overview" | "insights";
 }) {
@@ -696,12 +712,34 @@ async function OwnerCockpitBody({
         <AttentionQueuesSection session={session} />
       </Suspense>
       )}
-      {/* 2 · CHARTS — the reference's "wide chart + narrow donut" row, then a
-             full-width second chart. */}
+      {/* 2 · DID THE BOOK GROW OR LEAK, AND WHO MOVED IT.
+
+             Every headline tile above is a stock — what the book is worth now.
+             Neither of these is: the chart is the month's flow, and the panel
+             beside it puts names against that flow. Both components were
+             already written and rendered by no page.
+
+             NetSalesSection degrades to an empty chart when no transaction feed
+             has been imported, so this is safe on a book that has not been
+             reconciled yet. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 items-start">
         <div className="min-w-0 lg:col-span-2">
           <Suspense fallback={<CardSkeleton />}>
-            <LeadPipelineSection session={session} branchId={branchId} />
+            <NetSalesSection session={session} />
+          </Suspense>
+        </div>
+        <div className="min-w-0">
+          <Suspense fallback={<CardSkeleton />}>
+            <TopMoversPanel session={session} startISO={range.fromISO} periodLabel={periodLabel} />
+          </Suspense>
+        </div>
+      </div>
+
+      {/* 3 · CHARTS — the reference's "wide chart + narrow donut" row. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 items-start">
+        <div className="min-w-0 lg:col-span-2">
+          <Suspense fallback={<CardSkeleton />}>
+            <LeadPipelineSection session={session} branchId={branchId} rmId={rmId} />
           </Suspense>
         </div>
         <div className="min-w-0">
@@ -716,12 +754,12 @@ async function OwnerCockpitBody({
         <TargetAchievementSection session={session} />
       </Suspense>
 
-      {/* 3 · NEEDS YOU — ranked, actionable, worst first. */}
+      {/* 4 · NEEDS YOU — ranked, actionable, worst first. */}
       {show("section.data_gaps") && <DataGapsTile />}
 
 
 
-      {/* 4 · TEAM */}
+      {/* 5 · TEAM */}
       {/* RM leaderboard — period-scoped and eight columns wide, so it gets its
           own row rather than a third of one. */}
       {show("section.rm_leaderboard") && (
@@ -837,6 +875,7 @@ async function FirmTracker({
   customFrom,
   customTo,
   branchId,
+  rmId,
 }: {
   session: SessionUser;
   period: Period;
@@ -844,6 +883,7 @@ async function FirmTracker({
   customFrom?: string;
   customTo?: string;
   branchId?: string | null;
+  rmId?: string | null;
 }) {
   const range = resolvePeriodRange(period, new Date(), {
     customStart,
@@ -857,6 +897,7 @@ async function FirmTracker({
         from: new Date(range.fromISO),
         to: new Date(range.toISO),
         branchId: branchId ?? null,
+        rmId: rmId ?? null,
       }),
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
@@ -896,13 +937,15 @@ async function TargetAchievementSection({ session }: { session: SessionUser }) {
 async function LeadPipelineSection({
   session,
   branchId,
+  rmId,
 }: {
   session: SessionUser;
   branchId?: string | null;
+  rmId?: string | null;
 }) {
   const data = await withTenant(
     session.tenantId,
-    (tx) => loadLeadPipeline(tx, { branchId: branchId ?? null }),
+    (tx) => loadLeadPipeline(tx, { branchId: branchId ?? null, rmId: rmId ?? null }),
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
   return <LeadPipeline data={data} />;
