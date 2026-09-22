@@ -13,7 +13,11 @@ export async function AumSegmentSection({ session }: { session: SessionUser }) {
     async (tx) => {
       const res = await tx.execute(sql`
         SELECT
-          COALESCE(segment_tag, 'Retail') AS segment,
+          -- 'Unsegmented', not 'Retail'. COALESCE'ing NULL to a real segment
+          -- name reports clients as Retail who were never classified, and the
+          -- tracker's own breakdown of the same column calls them Unsegmented —
+          -- so the two disagreed about which bucket the same clients were in.
+          COALESCE(NULLIF(segment_tag, ''), 'Unsegmented') AS segment,
           COUNT(*)::int AS client_count,
           COALESCE(SUM(aum::numeric), 0)::numeric AS total_aum
         FROM investors

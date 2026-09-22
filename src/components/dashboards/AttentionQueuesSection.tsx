@@ -1,7 +1,7 @@
 import React from "react";
 import { sql } from "drizzle-orm";
 import {
-  AlertOctagon,
+  AlertOctagon, ArrowUpRight,
   ClipboardList,
   Crown,
   Headset,
@@ -11,9 +11,13 @@ import {
 } from "lucide-react";
 import { withTenant } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
-import { Stat } from "./DashboardShared";
+import Link from "next/link";
 
 export async function AttentionQueuesSection({ session }: { session: SessionUser }) {
+  // 180 days with no transaction. Deliberately NOT called "Dormant": the
+  // Client mix card counts status IN ('dormant','inactive'), a different set
+  // with a different number, and one word for both is how 2 and 3 ended up
+  // on screen describing the same clients.
   const dormantCutoff = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString();
 
   const data = await withTenant(
@@ -49,57 +53,44 @@ export async function AttentionQueuesSection({ session }: { session: SessionUser
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
 
+  const queues = [
+    { label: "Reviews due", count: data.reviews_due, href: "/dashboard/review-meetings", icon: ClipboardList, hint: "Schedule a conversation" },
+    { label: "Service requests", count: data.sr_pending, href: "/dashboard/service-requests", icon: Headset, hint: "Keep clients moving forward" },
+    { label: "Open complaints", count: data.complaints_open, href: "/dashboard/complaints", icon: AlertOctagon, hint: "Resolve outstanding concerns" },
+    { label: "KYC attention", count: data.kyc_expiring, href: "/dashboard/investors", icon: ShieldAlert, hint: "Expired or due within 30 days" },
+  ];
+
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-        <Stat
-          href="/dashboard/review-meetings"
-          label="Review meetings due"
-          value={String(data.reviews_due ?? 0)}
-          tone={Number(data.reviews_due ?? 0) > 0 ? "amber" : "muted"}
-          icon={ClipboardList}
-        />
-        <Stat
-          href="/dashboard/service-requests"
-          label="Pending service requests"
-          value={String(data.sr_pending ?? 0)}
-          tone={Number(data.sr_pending ?? 0) > 0 ? "amber" : "muted"}
-          icon={Headset}
-        />
-        <Stat
-          href="/dashboard/complaints"
-          label="Open complaints"
-          value={String(data.complaints_open ?? 0)}
-          tone={Number(data.complaints_open ?? 0) > 0 ? "rose" : "muted"}
-          icon={AlertOctagon}
-        />
-        <Stat
-          href="/dashboard/reports/high_aum"
-          label="High-AUM not reviewed"
-          value={String(data.hni_not_reviewed ?? 0)}
-          tone={Number(data.hni_not_reviewed ?? 0) > 0 ? "rose" : "muted"}
-          icon={TrendingUp}
-        />
-        <Stat
-          href="/dashboard/reports/dormant"
-          label="Dormant clients"
-          value={String(data.dormant_clients ?? 0)}
-          tone={Number(data.dormant_clients ?? 0) > 0 ? "amber" : "muted"}
-          icon={Moon}
-        />
-        <Stat
-          href="/dashboard/investors"
-          label="KYC expiring 30d"
-          value={String(data.kyc_expiring ?? 0)}
-          tone={Number(data.kyc_expiring ?? 0) > 0 ? "amber" : "muted"}
-          icon={ShieldAlert}
-        />
-        <Stat
-          href="/dashboard/investors"
-          label="A-tier clients"
-          value={String(data.tier_a ?? 0)}
-          tone="muted"
-          icon={Crown}
-        />
-    </div>
+    <section aria-labelledby="attention-heading" className="card-surface overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-5 pb-4">
+        <div>
+          <h2 id="attention-heading" className="text-[15px] font-semibold">Your next priorities</h2>
+          <p className="mt-1 text-xs text-muted-foreground">Stay ahead of client follow-ups and service needs.</p>
+        </div>
+        <span className="text-xs text-muted-foreground">Across your practice</span>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 px-3 pb-3 gap-1">
+        {queues.map(({ label, count, href, icon: Icon, hint }) => (
+          <Link key={label} href={href} className="group flex items-start gap-3 rounded-lg px-3 py-3 hover:bg-secondary transition-colors">
+            <span className={`mt-0.5 grid size-9 shrink-0 place-items-center rounded-lg ${Number(count) > 0 ? "bg-warning/10 text-warning-foreground" : "bg-secondary text-muted-foreground"}`}>
+              <Icon className="size-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xl font-semibold tabular-nums">{Number(count ?? 0)}</span>
+                <ArrowUpRight className="size-3.5 text-muted-foreground group-hover:text-primary" />
+              </div>
+              <p className="mt-0.5 text-xs font-medium">{label}</p>
+              <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">{hint}</p>
+            </div>
+          </Link>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-x-6 gap-y-3 border-t border-border bg-secondary/30 px-5 py-3 text-xs text-muted-foreground">
+        <Link href="/dashboard/reports/high_aum" className="inline-flex items-center gap-2 hover:text-primary"><TrendingUp className="size-3.5" /> High-AUM reviews <strong className="font-semibold text-foreground">{Number(data.hni_not_reviewed ?? 0)}</strong></Link>
+        <Link href="/dashboard/reports/dormant" className="inline-flex items-center gap-2 hover:text-primary"><Moon className="size-3.5" /> No activity 180d <strong className="font-semibold text-foreground">{Number(data.dormant_clients ?? 0)}</strong></Link>
+        <Link href="/dashboard/investors" className="inline-flex items-center gap-2 hover:text-primary"><Crown className="size-3.5" /> A-tier clients <strong className="font-semibold text-foreground">{Number(data.tier_a ?? 0)}</strong></Link>
+      </div>
+    </section>
   );
 }

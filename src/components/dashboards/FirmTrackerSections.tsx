@@ -195,9 +195,11 @@ export function FirmTrackerSections({ data, periodLabel }: { data: FirmTracker; 
             sub={`${clients.clientsInFamilies} clients mapped into families`}
           />
         </Tile>
-        <Tile label="Category-wise AUM" href="/dashboard/investors" linkLabel="Clients by segment" note="current">
-          <Breakdown rows={clients.byCategoryAum} money />
-        </Tile>
+        {/* "Category-wise AUM" stood here and was the same GROUP BY segment_tag,
+            SUM(aum) that Overview draws as the "AUM by Segment" donut — the same
+            numbers, one tab apart. Same reason the "Total AUM & SIP book" tile
+            below was removed: surface the number once, link to its owner. The
+            SIP cut stays; nothing else plots it. */}
         <Tile label="Category-wise SIP book" href="/dashboard/sips" linkLabel="SIP book" note="current">
           <Breakdown rows={clients.byCategorySip} money />
         </Tile>

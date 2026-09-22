@@ -261,37 +261,29 @@ export async function SipPersistencyTile({ session }: { session: SessionUser }) 
             </div>
           </div>
 
-          {/* MTD SIP flow + rejection reasons */}
-          <div className="p-3 rounded-lg bg-white/70">
-            <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold mb-2">
-              MTD flow
-            </div>
-            <div className="space-y-1 text-xs mb-3">
-              <div className="flex justify-between">
-                <span className="text-emerald-700 font-medium">+ New</span>
-                <span className="tabular-nums font-bold text-emerald-700">{data.newMtd}</span>
+          {/* Top rejection reasons.
+
+              A "MTD flow · + New / − Stopped/Paused" pair used to lead this
+              block. The "SIP business" chart sits on the SAME tab and plots
+              Started and Closed per month, so those two numbers were its
+              current-month bars written out again a few hundred pixels above.
+              The rejection reasons are not plotted anywhere else, so they stay
+              — and the block now only renders when there are some. */}
+          {data.rejectionReasons.length > 0 && (
+            <div className="p-3 rounded-lg bg-white/70">
+              <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+                Top rejection reasons
               </div>
-              <div className="flex justify-between">
-                <span className="text-rose-700 font-medium">− Stopped/Paused</span>
-                <span className="tabular-nums font-bold text-rose-700">{data.stoppedMtd}</span>
-              </div>
+              <ul className="space-y-0.5 text-2xs">
+                {data.rejectionReasons.slice(0, 3).map((r) => (
+                  <li key={r.reason} className="flex justify-between capitalize">
+                    <span className="truncate text-muted-foreground">{r.reason}</span>
+                    <span className="font-bold text-rose-700 tabular-nums ml-1">{r.count}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
-            {data.rejectionReasons.length > 0 && (
-              <>
-                <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold mb-1">
-                  Top rejection reasons
-                </div>
-                <ul className="space-y-0.5 text-2xs">
-                  {data.rejectionReasons.slice(0, 3).map((r) => (
-                    <li key={r.reason} className="flex justify-between capitalize">
-                      <span className="truncate text-muted-foreground">{r.reason}</span>
-                      <span className="font-bold text-rose-700 tabular-nums ml-1">{r.count}</span>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </div>
+          )}
         </div>
 
         <p className="text-2xs text-muted-foreground mt-3 leading-relaxed">
