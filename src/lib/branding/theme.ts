@@ -184,7 +184,14 @@ export function buildThemeVars(primaryHex: string, accentHex: string): Record<st
     // Active-nav pill follows the tenant brand (was pinned to product red,
     // which made branded tenants render a red pill next to brand-hue buttons).
     "--nav-active-bg": navy,
-    "--nav-active-fg": "0 0% 100%",
+    // NEVER the same value as --nav-active-bg. With fg === bg the label and
+    // icon are the pill's own colour, and whether you can read them depends
+    // entirely on how the CSS paints the background: today's rule tints it at
+    // 10%, so it survives — but a solid pill (the previous design, and what a
+    // stale cached stylesheet still draws) makes "Dashboards" vanish into a
+    // blank bar. navyDeep is also what globals.css already uses for firms
+    // WITHOUT custom branding (--primary-deep), so this aligns the two.
+    "--nav-active-fg": navyDeep,
   };
 }
 
