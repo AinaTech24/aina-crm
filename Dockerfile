@@ -66,6 +66,34 @@ RUN npm run build
 FROM node:20-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000
+# Render every server-side date and time in India time.
+#
+# Without this the container runs in UTC, and every date or time the server
+# formats — which in this app is most of them, since pages render on the
+# server — comes out 5h30m behind. Proven on this exact base image with one
+# timestamp, 2026-09-25T20:00Z (01:30 IST on the 26th):
+#
+#                       no TZ (UTC)        TZ=Asia/Kolkata
+#   formatDate()        25 Sept 2026       26 Sept 2026
+#   getDate()           25                 26
+#   toLocaleTimeString  8:00:00 pm         1:30:00 am
+#
+# So it is not only "dates are off near midnight": every server-rendered TIME
+# is 5h30m early, all day — meeting times, last-contact stamps, and the dates
+# and times inside WhatsApp and email the worker sends. The date slips to the
+# day before only between 00:00 and 05:30 IST, which is why it looked like a
+# rare midnight bug.
+#
+# It never reproduces on a developer's laptop, because that is already set to
+# India time. To see it locally, format with { timeZone: "UTC" }.
+#
+# This image runs web-blue, web-green, the worker AND the one-off tasks, so
+# this one line covers all of them. It is a backstop, not the whole fix: date
+# formatters should still pass timeZone: "Asia/Kolkata" explicitly, so a date
+# comes out right in any container, including one started without this image.
+# tzdata is already in bookworm-slim, so the zone resolves from the OS as well
+# as from Node's own ICU copy.
+ENV TZ=Asia/Kolkata
 # curl for the container healthcheck; run as non-root.
 # fontconfig + DejaVu/Liberation fonts so server-side SVG→PNG branding
 # (sharp/librsvg, used by the content-library co-brand strip) actually renders
