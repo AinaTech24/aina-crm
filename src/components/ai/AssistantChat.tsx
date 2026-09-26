@@ -278,7 +278,7 @@ export function AssistantChat({ insightsHref }: { insightsHref?: string }) {
             {sidebarOpen ? <PanelLeftClose className="size-4" /> : <PanelLeft className="size-4" />}
           </button>
           <div className="flex items-center gap-1.5 font-semibold text-sm">
-            <Bot className="size-4 text-brand-cyan ai-icon-animated" /> Aina CRM Copilot
+            <Bot className="size-4 text-brand-cyan ai-icon-animated" /> Aina Copilot
             <span className="text-2xs font-normal text-muted-foreground bg-secondary rounded px-1.5 py-0.5">beta</span>
           </div>
           {insightsHref && (
@@ -419,7 +419,7 @@ function MessageBubble({
   }
   async function share() {
     try {
-      if (navigator.share) await navigator.share({ text: msg.content, title: "Aina CRM Copilot" });
+      if (navigator.share) await navigator.share({ text: msg.content, title: "Aina Copilot" });
       else { await navigator.clipboard.writeText(msg.content); setShared(true); setTimeout(() => setShared(false), 1500); }
     } catch { }
   }

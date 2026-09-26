@@ -167,7 +167,7 @@ export default async function RiskProfilesPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><ShieldCheck className="size-6 text-muted-foreground" /> Risk profiles</>} subtitle={<>Each client&apos;s risk category, and when it is due to be re-assessed.</>} actions={<><div className="flex items-center gap-2">
+      <PageHeaderCard title={<><ShieldCheck className="size-6 text-muted-foreground" /> Risk Profiles</>} subtitle={<>Each client&apos;s risk category, and when it is due to be re-assessed.</>} actions={<><div className="flex items-center gap-2">
           {canManage && <BulkAssignByAge initialBands={data.bands} />}
           <Link href="/dashboard/risk-profiles/new" className="btn-primary">
             <Plus className="size-4" /> New Risk Profile

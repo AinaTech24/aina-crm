@@ -109,9 +109,12 @@ export default async function AttendancePage({
               <Settings className="size-3.5" /> Settings
             </Link>
           )}
-          <Link href="/dashboard/attendance/grid" className="btn-secondary text-xs">
-            <Grid3x3 className="size-3.5" /> Monthly grid
-          </Link>
+          {/* The grid is every employee's month -- a manager's view, like Settings. */}
+          {canManage && (
+            <Link href="/dashboard/attendance/grid" className="btn-secondary text-xs">
+              <Grid3x3 className="size-3.5" /> Monthly grid
+            </Link>
+          )}
         </div></>} />
 
       <ClockWidget today={data.myToday} />

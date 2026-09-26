@@ -26,8 +26,8 @@ export default function ReportsPage() {
           {/* The help affordance belongs beside the TITLE — hung off the block
               it read as a stray icon floating past the end of the description. */}
           <h1 className="page-title">
-            Reports &amp; MIS
-            <HelpTip title="Reports & MIS">
+            Reports
+            <HelpTip title="Reports">
               Every MIS and analytics report, grouped by area. Business &amp; SIP numbers, team
               performance, retention &amp; tax, and the new Practice Intelligence reports (risk-drift,
               referrals, revenue).

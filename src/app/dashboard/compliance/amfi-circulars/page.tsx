@@ -41,7 +41,7 @@ export default async function AmfiCircularsPage() {
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <PageHeaderCard title={<><ScrollText className="size-6 text-muted-foreground" /> Regulatory circular digest</>} />
+      <PageHeaderCard title={<><ScrollText className="size-6 text-muted-foreground" /> Circulars</>} />
 
       {canDraft && <CircularSummarizer />}
 

@@ -57,7 +57,7 @@ export default async function ComplianceCommandCenterPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <PageHeaderCard title={<><ShieldCheck className="size-6 text-muted-foreground" /> Compliance Command Center</>} actions={<><DownloadButton url="/api/compliance/inspection-pack" className="btn-primary text-sm inline-flex items-center gap-1"><Download className="size-4" /> SEBI inspection pack</DownloadButton></>} />
+      <PageHeaderCard title={<><ShieldCheck className="size-6 text-muted-foreground" /> Compliance Center</>} actions={<><DownloadButton url="/api/compliance/inspection-pack" className="btn-primary text-sm inline-flex items-center gap-1"><Download className="size-4" /> SEBI inspection pack</DownloadButton></>} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Kpi icon={BadgeCheck} label="Gate pass rate (90d)" value={`${passRate}%`} tone="emerald" />

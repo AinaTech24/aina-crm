@@ -5,24 +5,16 @@ import {
   LayoutDashboard,
   Users,
   Workflow,
-  Zap,
   MessageSquare,
   ListChecks,
   ShieldCheck,
   Settings,
-  Sparkles,
-  Send,
-  ClipboardCheck,
-  ScrollText,
   HeartHandshake,
   Target,
   TrendingUp,
   Repeat,
-  Calendar,
   FileSignature,
   Shield,
-  Megaphone,
-  Image as ImageIcon,
   UserCog, GraduationCap,
   CalendarOff,
   CalendarCheck,
@@ -36,16 +28,14 @@ import {
   HelpCircle,
   Briefcase,
   Boxes,
-  Trash2,
   PhoneCall,
-  Copy,
   CopyCheck,
   PieChart,
   Calculator,
   Wallet,
-  Server,
   Inbox,
-  Activity,
+  // palette-only pages (PALETTE_ONLY)
+  Zap, Activity, Megaphone, FileCheck, ScrollText, ClipboardCheck, Stamp, Network, Package, Copy, Trash2,
   // ── unique-icon replacements for the de-duplicated sidebar ──
   UserPlus,
   Presentation,
@@ -53,15 +43,11 @@ import {
   LayoutTemplate,
   Library,
   Gauge,
-  FileCheck,
   ClipboardList,
   Newspaper,
-  Stamp,
   BellRing,
-  Package,
   FolderOpen,
   Building2,
-  Network,
   LifeBuoy,
   IndianRupee,
 } from "lucide-react";
@@ -103,176 +89,191 @@ type NavItem = {
   roles?: string[];
   /** Required module key — gated by tenant package. */
   module?: string;
+  /** Always tag as Beta, regardless of the platform Module Controls setting. */
+  beta?: boolean;
 };
 
 type NavSection = { title: string; items: NavItem[] };
 
+/** "Owner / Admin / Back-office". Owner is the tenant admin; ops is back_office's alias. */
+const DATA_ADMIN_ROLES = ["owner", "back_office", "ops"];
+
 const NAV: NavSection[] = [
-  // Ordered by how often a person opens it, not by how the system is built:
-  // daily work first, configuration last. Every item, href, role gate and module
-  // key below is unchanged from the previous six-group layout — only the
-  // grouping and the order moved.
+  // Ten groups, ordered by how often a person opens them. Two rules hold for
+  // every item below:
+  //   1. The menu label is the page's H1, word for word. A user who clicks
+  //      "Families" must land on a page titled "Families", not "Family mapping".
+  //   2. Every role gate and module key is preserved from the previous layout;
+  //      only Data & Admin is narrowed, to the people who run the back office.
   //
-  // NOTE: CustomizableNav caches a per-user layout in localStorage and its
-  // reconcile() only APPENDS newly-available hrefs, keeping the saved group
-  // structure otherwise. Regrouping existing items is therefore invisible to
-  // anyone who has used the app until VERSION is bumped — it was, alongside
-  // this change.
+  // Some pages are deliberately NOT in the sidebar any more (campaigns, DDQ,
+  // SOPs, audit log, trash, and others). Their routes are untouched and they
+  // are listed in PALETTE_ONLY below, so Ctrl/Cmd+K still finds them behind
+  // the same role and module gates as the menu.
+  //
+  // CustomizableNav caches each user's layout and only APPENDS new hrefs, so a
+  // regroup is invisible to anyone who has used the app until its VERSION is
+  // bumped. It was, alongside this change.
   {
-    title: "Today",
+    title: "Home",
     items: [
-      // Dashboard + My Dashboards are merged into the DashboardNavDropdown
-      // rendered at the top of CustomizableNav.
+      // A plain item now. It used to be a separate DashboardNavDropdown rendered
+      // above the groups; the module kill-switch still hides it, because
+      // moduleControls is checked for every item below.
+      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "/dashboard/command-center", label: "My Day", icon: Inbox,
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
+    ],
+  },
+  {
+    title: "Work",
+    items: [
       { href: "/dashboard/tasks", label: "Tasks", icon: ListChecks, module: "tasks" },
       { href: "/dashboard/review-meetings", label: "Meetings", icon: Presentation, module: "review_meetings",
         roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
       { href: "/dashboard/service-requests", label: "Service Requests", icon: LifeBuoy, module: "service_requests" },
-      // NPS + every response the /f/<token> form collects. The page existed but
-      // nothing linked to it, so the feedback being gathered was invisible.
-      { href: "/dashboard/support/feedback", label: "Client Feedback", icon: Gauge, module: "service_requests" },
-      // Attendance moved to People and Trash to "Setup & data" — neither is
-      // daily work, and Trash was sitting two rows under Tasks.
     ],
   },
   {
     title: "Clients",
     items: [
-      // Leads visible to owner, marketing, rm, branch_head.
-      // Pipeline Board is reached via the in-page Module switcher on the Leads
-      // page (Leads / Pipeline Board), not a separate sidebar item.
       { href: "/dashboard/leads", label: "Leads", icon: UserPlus, module: "lead_management",
         roles: ["owner", "marketing", "rm", "branch_head", "back_office", "ops", "compliance"] },
-      // Investor data hidden from marketing per spec section 3
       { href: "/dashboard/investors", label: "Clients", icon: Users, module: "client_master",
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
-      { href: "/dashboard/families", label: "Family Mapping", icon: HeartHandshake, module: "family_mapping",
+      { href: "/dashboard/families", label: "Families", icon: HeartHandshake, module: "family_mapping",
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
-      { href: "/dashboard/discovery", label: "Client Discovery", icon: ClipboardList,
-        roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
-      { href: "/dashboard/risk-profiles", label: "Risk Profile", icon: Gauge, module: "risk_profile",
+      { href: "/dashboard/risk-profiles", label: "Risk Profiles", icon: Gauge, module: "risk_profile",
         roles: ["owner", "compliance", "back_office", "ops", "rm"] },
+      { href: "/dashboard/discovery", label: "Discovery (Fact-find)", icon: ClipboardList,
+        roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
+      { href: "/dashboard/support/feedback", label: "Client Feedback", icon: MessageSquare, module: "service_requests" },
     ],
   },
   {
-    // Split out of the old ten-item "CRM" group along the real boundary: who the
-    // client IS (Clients, above) versus what you are advising them to DO (here).
     title: "Advice",
     items: [
       { href: "/dashboard/calculators", label: "Calculators", icon: Calculator },
-      { href: "/dashboard/goals", label: "Goal Planning", icon: Target, module: "goal_planning",
+      { href: "/dashboard/goals", label: "Goals", icon: Target, module: "goal_planning",
         roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
       { href: "/dashboard/financial-plans", label: "Financial Plans", icon: ClipboardList, module: "goal_planning",
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
       { href: "/dashboard/proposals", label: "Proposals", icon: FileSignature, module: "proposals",
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
-      // One Insurance module. Claims / Renewals / Protection-gap / Commission
-      // were separate sidebar entries for what is really one domain — they are
-      // now tabs inside the module (see ModuleTabs INSURANCE_TABS).
+      // Claims / Renewals / Protection-gap / Commission are tabs inside this module.
       { href: "/dashboard/insurance", label: "Insurance", icon: Shield, module: "insurance",
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
     ],
   },
   {
-    title: "Operations",
+    title: "Business",
     items: [
-      // Transactions hidden from marketing
-      { href: "/dashboard/transactions", label: "MF Transactions", icon: Repeat, module: "transactions",
-        roles: ["owner", "back_office", "ops", "rm", "branch_head", "compliance"] },
-      // One SIP module. Rejections + At-risk were separate sidebar entries (and
-      // SIP Rejections additionally existed as a report) — they are now tabs
-      // inside the module (see ModuleTabs SIP_TABS).
+      // Rejections + At-risk are tabs inside the SIP module.
       { href: "/dashboard/sips", label: "SIP Book", icon: TrendingUp, module: "sip_tracker",
+        roles: ["owner", "back_office", "ops", "rm", "branch_head", "compliance"] },
+      { href: "/dashboard/transactions", label: "MF Transactions", icon: Repeat, module: "transactions",
         roles: ["owner", "back_office", "ops", "rm", "branch_head", "compliance"] },
       { href: "/dashboard/business-entries", label: "Business Entries", icon: Briefcase, module: "business_entries",
         roles: ["owner", "branch_head", "rm", "back_office", "ops"] },
       { href: "/dashboard/expected-inflows", label: "Expected Inflows", icon: IndianRupee,
         roles: ["owner", "branch_head", "rm", "back_office", "ops"] },
-      { href: "/dashboard/rta-imports", label: "RTA File Imports", icon: FolderArchive, module: "transactions",
-        roles: ["owner", "back_office", "ops", "compliance"] },
-      { href: "/dashboard/reconciliation", label: "Reconciliation", icon: Scale, module: "transactions",
-        roles: ["owner", "back_office", "ops", "compliance"] },
-      { href: "/dashboard/activities", label: "Activity Log", icon: PhoneCall,
-        roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
     ],
   },
   {
     title: "Insights",
     items: [
-      // NOTE: Trail Forecast / Churn-risk / Tax-Harvesting / Cross-sell (and
-      // Nomination Tracker) were standalone sidebar items that only deep-linked
-      // into /dashboard/reports/* — the identical pages already live in the
-      // Reports & MIS catalog (see reports/page.tsx).
-      { href: "/dashboard/reports", label: "Reports & MIS", icon: BarChart3, module: "reports", roles: ["owner", "branch_head", "compliance"] },
-      { href: "/dashboard/portfolio-intelligence", label: "Portfolio Intelligence", icon: PieChart, roles: ["owner", "branch_head", "compliance", "rm", "back_office", "ops"] },
+      { href: "/dashboard/reports", label: "Reports", icon: BarChart3, module: "reports", roles: ["owner", "branch_head", "compliance"] },
+      { href: "/dashboard/portfolio-intelligence", label: "Portfolio Insights", icon: PieChart, roles: ["owner", "branch_head", "compliance", "rm", "back_office", "ops"] },
+      // The firm's own P&L and salary ledger: owner-confidential, never an RM's.
       { href: "/dashboard/finances", label: "Practice Finances", icon: Wallet, module: "reports", roles: ["owner", "compliance", "back_office"] },
-      { href: "/dashboard/commission-reconciliation", label: "Commission Reconciliation", icon: CreditCard, module: "reports", roles: ["owner", "compliance", "back_office"] },
-      { href: "/dashboard/ai-assistant", label: "Aina CRM Copilot", icon: Bot, module: "ai_assistant" },
+      { href: "/dashboard/ai-assistant", label: "Aina Copilot", icon: Bot, module: "ai_assistant", beta: true },
     ],
   },
   {
     title: "Automation",
     items: [
-      { href: "/dashboard/workflows/rules", label: "Workflow Rules", icon: Workflow, module: "automation_workflows" },
-      { href: "/dashboard/workflows/actions", label: "Workflow Actions", icon: Zap, module: "automation_workflows" },
-      { href: "/dashboard/workflows/runs", label: "Automation Monitor", icon: Activity, module: "automation_workflows",
-        roles: ["owner", "compliance", "back_office", "ops"] },
-      { href: "/dashboard/templates", label: "Templates", icon: LayoutTemplate, module: "broadcasts" },
+      // Actions and the run monitor are reached from inside Automations.
+      { href: "/dashboard/workflows/rules", label: "Automations", icon: Workflow, module: "automation_workflows" },
+      { href: "/dashboard/templates", label: "Message Templates", icon: LayoutTemplate, module: "broadcasts" },
       { href: "/dashboard/communications", label: "Communications", icon: MessageSquare, module: "broadcasts" },
-      { href: "/dashboard/campaigns", label: "Marketing Campaigns", icon: Megaphone, module: "marketing_campaigns", roles: ["owner", "marketing"] },
-      { href: "/dashboard/aina-library", label: "AINA Content Library", icon: Library, roles: ["owner", "marketing", "rm", "branch_head", "back_office", "ops"] },
+      { href: "/dashboard/aina-library", label: "Content Library", icon: Library, roles: ["owner", "marketing", "rm", "branch_head", "back_office", "ops"] },
     ],
   },
   {
-    // Was part of a sixteen-item "Compliance & Team" drawer that also held HR,
-    // record de-duplication and product master data. This group is now only the
-    // regulatory surface. Audit Log joins it from Insights, where it sat beside
-    // revenue reports despite being a compliance artefact.
     title: "Compliance",
     items: [
+      // DDQ, SOPs, the audit log, legal registrations and sub-distributors are
+      // in PALETTE_ONLY below: searchable with Ctrl/Cmd+K, not in the menu.
       { href: "/dashboard/compliance/command-center", label: "Compliance Center", icon: ShieldCheck, roles: ["owner", "compliance", "branch_head"] },
-      { href: "/dashboard/compliance", label: "DDQ Readiness", icon: FileCheck, module: "ddq", roles: ["owner", "compliance"] },
-      { href: "/dashboard/compliance/amfi-circulars", label: "Circular Digest", icon: Newspaper, roles: ["owner", "compliance", "back_office", "ops", "rm", "branch_head"] },
-      { href: "/dashboard/sops", label: "SOP Library", icon: ScrollText, roles: ["owner", "compliance"] },
-      // Every other item in this group carries a roles list; this one did not,
-      // so marketing and team members were shown a link that answered "the
-      // document vault is available to the compliance and back-office team".
+      { href: "/dashboard/compliance/amfi-circulars", label: "Circulars", icon: Newspaper, roles: ["owner", "compliance", "back_office", "ops", "rm", "branch_head"] },
       { href: "/dashboard/documents", label: "Documents", icon: FolderOpen, module: "documents", roles: ["owner", "compliance", "back_office", "ops", "rm", "branch_head"] },
-      { href: "/dashboard/audit-log", label: "Audit Log", icon: ClipboardCheck, module: "audit_log", roles: ["owner", "compliance"] },
-      { href: "/dashboard/legal-registrations", label: "Legal Registrations", icon: Stamp, roles: ["owner", "compliance"] },
-      { href: "/dashboard/sub-distributors", label: "Sub-Distributors", icon: Network, roles: ["owner", "compliance"] },
     ],
   },
   {
-    // HR was previously split in two: Attendance sat in the daily group while
-    // Employees, Induction and Leave Applications sat in the compliance drawer.
-    title: "People",
+    title: "Team",
     items: [
-      { href: "/dashboard/employees", label: "Employees", icon: UserCog, module: "employees", roles: ["owner", "branch_head"] },
+      { href: "/dashboard/employees", label: "Team Members", icon: UserCog, module: "employees", roles: ["owner", "branch_head"] },
+      // Attendance and Leave are each person's OWN record, so they stay open to
+      // everyone; the admin views (grid, settings, approvals) are gated in-page.
       { href: "/dashboard/attendance", label: "Attendance", icon: CalendarCheck },
-      { href: "/dashboard/leave-applications", label: "Leave Applications", icon: CalendarOff },
-      // Induction is deliberately un-role-gated: it is the member's OWN training.
+      { href: "/dashboard/leave-applications", label: "Leave", icon: CalendarOff },
       { href: "/dashboard/induction", label: "Induction", icon: GraduationCap },
       { href: "/dashboard/announcements", label: "Announcements", icon: BellRing },
     ],
   },
   {
-    // Reference data you configure once, plus the record-hygiene tools. None of
-    // it is daily work, which is why it sits last.
-    title: "Setup & data",
+    // Configure-once reference data and back-office tooling. Shown only to the
+    // people who run the back office, and collapsed unless you are on one of
+    // its pages. The pages keep their own guards; this only trims the menu.
+    title: "Data & Admin",
     items: [
-      { href: "/dashboard/schemes", label: "Scheme Master", icon: Boxes, roles: ["owner", "compliance", "back_office", "branch_head", "rm"] },
-      { href: "/dashboard/product-offerings", label: "Products & Services", icon: Package, roles: ["owner", "compliance"] },
-      { href: "/dashboard/amc-empanelments", label: "AMC Empanelments", icon: Building2, roles: ["owner", "compliance", "back_office"] },
-      { href: "/dashboard/duplicates", label: "Find Duplicates", icon: CopyCheck, roles: ["owner", "branch_head"] },
+      { href: "/dashboard/rta-imports", label: "RTA File Imports", icon: FolderArchive, module: "transactions", roles: DATA_ADMIN_ROLES },
+      { href: "/dashboard/reconciliation", label: "Holdings Reconciliation", icon: Scale, module: "transactions", roles: DATA_ADMIN_ROLES },
+      { href: "/dashboard/commission-reconciliation", label: "Brokerage Reconciliation", icon: CreditCard, module: "reports", roles: DATA_ADMIN_ROLES },
+      { href: "/dashboard/schemes", label: "Scheme Master", icon: Boxes, roles: DATA_ADMIN_ROLES },
+      { href: "/dashboard/amc-empanelments", label: "AMC Empanelments", icon: Building2, roles: DATA_ADMIN_ROLES },
+      { href: "/dashboard/duplicates", label: "Find Duplicates", icon: CopyCheck, roles: DATA_ADMIN_ROLES },
+      { href: "/dashboard/activities", label: "Activity Log", icon: PhoneCall, roles: DATA_ADMIN_ROLES },
+      // Everyone else still reaches their own profile from the avatar menu.
+      { href: "/dashboard/settings", label: "Settings", icon: Settings, roles: DATA_ADMIN_ROLES },
+    ],
+  },
+];
+
+/**
+ * Pages that left the sidebar in the ten-group layout but must stay findable.
+ * The Ctrl/Cmd+K palette searches these alongside NAV, filtered by exactly the
+ * same rules, so nobody finds a page here that the menu would have hidden.
+ * Labels are the pages' own H1s, which is what a user types.
+ */
+const PALETTE_ONLY: NavSection[] = [
+  {
+    title: "Automation",
+    items: [
+      { href: "/dashboard/workflows/actions", label: "Automation Actions", icon: Zap, module: "automation_workflows" },
+      { href: "/dashboard/workflows/runs", label: "Automation Monitor", icon: Activity, module: "automation_workflows",
+        roles: ["owner", "compliance", "back_office", "ops"] },
+      { href: "/dashboard/campaigns", label: "Marketing Campaigns", icon: Megaphone, module: "marketing_campaigns", roles: ["owner", "marketing"] },
+    ],
+  },
+  {
+    title: "Compliance",
+    items: [
+      { href: "/dashboard/compliance", label: "Compliance & DDQ readiness", icon: FileCheck, module: "ddq", roles: ["owner", "compliance"] },
+      { href: "/dashboard/sops", label: "SOP library", icon: ScrollText, roles: ["owner", "compliance"] },
+      { href: "/dashboard/audit-log", label: "Audit log", icon: ClipboardCheck, module: "audit_log", roles: ["owner", "compliance"] },
+      { href: "/dashboard/legal-registrations", label: "Legal registrations", icon: Stamp, roles: ["owner", "compliance"] },
+      { href: "/dashboard/sub-distributors", label: "Sub-distributors", icon: Network, roles: ["owner", "compliance"] },
+    ],
+  },
+  {
+    title: "Data & Admin",
+    items: [
+      { href: "/dashboard/product-offerings", label: "Products & services offered", icon: Package, roles: ["owner", "compliance"] },
       { href: "/dashboard/merge-clients", label: "Merge Clients", icon: Copy, roles: ["owner", "branch_head"] },
       { href: "/dashboard/trash", label: "Trash", icon: Trash2, roles: ["owner", "compliance"] },
     ],
   },
-  // NB: Billing / Firm Profile / Settings and the Help link intentionally do
-  // NOT appear in the sidebar — Billing + Settings + Firm profile live in the
-  // profile dropdown; the help shortcut is the "?" icon in the top bar.
 ];
 
 function NavBlockedNotice() {
@@ -345,7 +346,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const pathname = reqHeaders.get("x-pathname") ?? "";
   const pathAllowed = isPathAllowedWhenRestricted(pathname);
 
-  const { tenant, userModules, avatarUrl, twoFaEnabled, announcementCount, whatsNewUnread } = await withTenant(session.tenantId, async (tx) => {
+  const { tenant, userModules, avatarUrl, twoFaEnabled, whatsNewUnread, navBadges } = await withTenant(session.tenantId, async (tx) => {
     const [t] = await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1);
     // Per-user sidebar module grant (Module-19). null = inherit all tenant modules.
     const [u] = await tx
@@ -353,22 +354,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
       .from(users)
       .where(eq(users.id, session.userId))
       .limit(1);
-    // Active announcements visible to THIS user — drives the sidebar count badge
-    // (same active filter as GET /api/announcements: published, not expired,
-    // branch + audience-role match).
-    const rolesJson = JSON.stringify(session.roles);
-    const annRes = await tx.execute(sql`
-      SELECT count(*)::int AS n FROM announcements a
-      WHERE a.tenant_id = ${session.tenantId}::uuid
-        AND a.published_at IS NOT NULL AND a.published_at <= now()
-        AND (a.expires_at IS NULL OR a.expires_at > now())
-        AND (a.branch_id IS NULL OR a.branch_id = ${session.branchId ?? null})
-        AND (
-          a.audience_roles IS NULL
-          OR jsonb_array_length(a.audience_roles) = 0
-          OR a.audience_roles ?| array(SELECT jsonb_array_elements_text(${rolesJson}::jsonb))
-        )
-    `);
     const whatsNewRes = await tx.execute(sql`
       SELECT count(*)::int AS n FROM release_notes rn
        WHERE rn.published_at IS NOT NULL AND rn.published_at <= now()
@@ -378,12 +363,56 @@ export default async function DashboardLayout({ children }: { children: React.Re
               AND r.user_id = ${session.userId}::uuid
               AND r.tenant_id = ${session.tenantId}::uuid)
     `);
+    // Sidebar count badges -- ONLY where the reader has something to act on:
+    // their overdue tasks, the service requests waiting on them, and leave
+    // they can approve. Everything else is noise that trains people to ignore
+    // badges. This layout wraps every page, so each count runs in its own
+    // savepoint and falls back to 0 rather than taking the app down.
+    const isLeaveApprover = session.roles.some((r) => r === "owner" || r === "branch_head");
+    const srSeeAll = can(session.roles, "service_request.view.all", session.permissions);
+    const countOf = async (q: ReturnType<typeof sql>): Promise<number> => {
+      try {
+        const r = await tx.transaction(async (sp) => sp.execute(q));
+        return Number((r.rows[0] as { n?: number } | undefined)?.n ?? 0);
+      } catch {
+        return 0;
+      }
+    };
+    const [tasksOverdue, srOpen, leavePending] = await Promise.all([
+      countOf(sql`
+        SELECT count(*)::int AS n FROM tasks
+         WHERE tenant_id = ${session.tenantId}::uuid
+           AND assignee_id = ${session.userId}::uuid
+           AND deleted_at IS NULL
+           AND status IN ('open', 'in_progress', 'blocked')
+           AND due_at < now()`),
+      // waiting_customer is excluded on purpose: the ball is in the client's court.
+      countOf(sql`
+        SELECT count(*)::int AS n FROM service_requests
+         WHERE tenant_id = ${session.tenantId}::uuid
+           AND status IN ('open', 'in_progress', 'escalated')
+           AND ${srSeeAll ? sql`TRUE` : sql`assigned_to_user_id = ${session.userId}::uuid`}`),
+      // Only managers approve leave, and never their own -- so nobody else is
+      // shown a count they can do nothing about.
+      isLeaveApprover
+        ? countOf(sql`
+            SELECT count(*)::int AS n FROM leave_applications
+             WHERE tenant_id = ${session.tenantId}::uuid
+               AND status = 'requested'
+               AND employee_user_id <> ${session.userId}::uuid`)
+        : Promise.resolve(0),
+    ]);
+
     return {
       tenant: t,
       userModules: (u?.enabledModules as string[] | null) ?? null,
       avatarUrl: (u?.avatarUrl as string | null) ?? null,
       twoFaEnabled: !!u?.twoFaEnabled,
-      announcementCount: Number((annRes.rows[0] as any)?.n ?? 0),
+      navBadges: {
+        "/dashboard/tasks": tasksOverdue,
+        "/dashboard/service-requests": srOpen,
+        "/dashboard/leave-applications": leavePending,
+      } as Record<string, number>,
       // Published release notes this user hasn't opened yet — drives the
       // "what's new" sparkle badge so shipped features get discovered.
       whatsNewUnread: Number((whatsNewRes.rows[0] as any)?.n ?? 0),
@@ -401,11 +430,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
   );
   const firmLayoutMap: Record<string, Record<string, any>> = {};
   for (const r of firmLayoutRows) (firmLayoutMap[r.moduleKey] ??= {})[r.kind] = r.data;
-  const layoutAdmin = can(session.roles, "settings.users", (session as any).permissions);
+  const layoutAdmin = can(session.roles, "settings.users", session.permissions);
 
   // Global "+ Add" (spec 23). Gated here on the SERVER so the capability matrix
   // never reaches the browser and nobody is offered an action that would 403.
-  const perms = (session as any).permissions;
+  const perms = session.permissions;
   const cap = (c: Parameters<typeof can>[1]) => can(session.roles, c, perms);
   const quickAddItems: QuickAddItem[] = [
     { label: "Lead", href: "/dashboard/leads/new", show: cap("lead.edit.all") || cap("lead.edit.assigned") },
@@ -460,39 +489,27 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // tenant; 'beta' shows a Beta tag. Loaded from platform_settings('modules').
   const moduleControls = await loadModuleControls();
 
-  // Whether the top Dashboards nav shows at all.
-  //
-  // `/dashboard` is in CORE_HREFS ("never gated — always accessible regardless of
-  // grants") and is where every login lands, so it must ALWAYS be reachable from
-  // the sidebar. Only the platform admin's explicit Module Control kill-switch
-  // may hide it. The sub-items (My Dashboards / Team Dashboard / Team Scorecard)
-  // stay individually gated below via dashSubGated() — when they're all withheld
-  // the nav simply collapses to the single Dashboard link.
-  //
-  // This used to ALSO require `license.enabledModules.includes("dashboards")` and
-  // at least one granted sub-item. Both were wrong: "dashboards" is not a real
-  // module key in the nav catalog (so that clause could never be true once a
-  // tenant had a package with modules), and the core /dashboard was never part of
-  // the group check. Any firm on an explicit nav grant therefore lost the
-  // Dashboard link from the sidebar entirely, while /dashboard remained their
-  // landing page.
-  const showDashboards = moduleControls["/dashboard"] !== "disabled";
+  // /dashboard is where every login lands, so it must ALWAYS be in the sidebar.
+  // It is an ordinary NAV item now, and that still holds: it carries no roles,
+  // and it is not in the nav-access gating catalog, so the only thing that can
+  // hide it is the platform Module Control kill-switch below. (An earlier
+  // version also required a "dashboards" module grant, and every firm on an
+  // explicit nav grant silently lost its Dashboard link.)
 
-  const visible = NAV.map((section) => ({
-    ...section,
-    items: section.items.filter((i) => {
-      // Platform kill-switch — a globally-disabled sidebar item is hidden for everyone.
-      if (moduleControls[i.href] === "disabled") return false;
-      if (i.roles && !session.roles.some((r) => i.roles!.includes(r) || r === "owner")) return false;
-      if (isGatableNav(i.href)) {
-        // Admin → MFD: the firm must have access to this sidebar item.
-        if (!tenantAllowedSet.has(i.href)) return false;
-        // MFD → team: owners see all; others limited to their granted items.
-        if (!isOwnerUser && userModules && !userModules.includes(i.href)) return false;
-      }
-      return true;
-    }),
-  })).filter((s) => s.items.length > 0);
+  const canSee = (i: NavItem) => {
+    // Platform kill-switch — a globally-disabled sidebar item is hidden for everyone.
+    if (moduleControls[i.href] === "disabled") return false;
+    if (i.roles && !session.roles.some((r) => i.roles!.includes(r) || r === "owner")) return false;
+    if (isGatableNav(i.href)) {
+      // Admin → MFD: the firm must have access to this sidebar item.
+      if (!tenantAllowedSet.has(i.href)) return false;
+      // MFD → team: owners see all; others limited to their granted items.
+      if (!isOwnerUser && userModules && !userModules.includes(i.href)) return false;
+    }
+    return true;
+  };
+  const visible = NAV.map((section) => ({ ...section, items: section.items.filter(canSee) }))
+    .filter((s) => s.items.length > 0);
 
   // Flatten the role/module-filtered nav into items the client CustomizableNav
   // can reorder/regroup. Pass the icon by NAME (lucide displayName) — a string —
@@ -504,36 +521,23 @@ export default async function DashboardLayout({ children }: { children: React.Re
       label: item.label,
       iconName: (item.icon?.displayName || item.icon?.name || "") as string,
       defaultGroup: section.title,
-      badge: item.href === "/dashboard/announcements" && announcementCount > 0 ? announcementCount : undefined,
-      beta: moduleControls[item.href] === "beta",
+      badge: navBadges[item.href] > 0 ? navBadges[item.href] : undefined,
+      beta: !!item.beta || moduleControls[item.href] === "beta",
     }))
   );
+  // The palette searches the menu plus the pages that left it.
+  const paletteNavItems: NavItemData[] = [
+    ...flatNavItems,
+    ...PALETTE_ONLY.flatMap((section) =>
+      section.items.filter(canSee).map((item) => ({
+        href: item.href,
+        label: item.label,
+        iconName: (item.icon?.displayName || item.icon?.name || "") as string,
+        defaultGroup: section.title,
+      }))
+    ),
+  ];
 
-  // Sub-items for the top "Dashboards" dropdown. The main /dashboard is the core
-  // landing (always present). The rest (My Dashboards, Team Dashboard, Team
-  // Scorecard) are now gated exactly like main-nav items — a platform Module
-  // Control kill-switch, the per-tenant sidebar grant, and the per-user module
-  // set all apply (so an admin can enable/disable each from Module Controls,
-  // the package/tenant sidebar grant, or a team member's access).
-  const canSeeTeam = session.roles.some((r) => r === "owner" || r === "branch_head");
-  const dashSubGated = (href: string): boolean => {
-    if (moduleControls[href] === "disabled") return false;
-    if (isGatableNav(href)) {
-      if (!tenantAllowedSet.has(href)) return false;
-      if (!isOwnerUser && userModules && !userModules.includes(href)) return false;
-    }
-    return true;
-  };
-  const dashboardSubItems = [
-    { href: "/dashboard", label: "Dashboard" },
-    { href: "/dashboard/boards", label: "My Dashboards" },
-    ...(canSeeTeam
-      ? [
-          { href: "/dashboard/team", label: "Team Dashboard" },
-          { href: "/dashboard/team/scorecard", label: "Team Scorecard" },
-        ]
-      : []),
-  ].filter((it) => it.href === "/dashboard" || dashSubGated(it.href));
 
   const roleLabel = primaryRoleLabel(session.roles);
 
@@ -595,8 +599,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <CustomizableNav
           items={flatNavItems}
           storageKey={`aina:nav:${session.userId}`}
-          dashboardSubItems={dashboardSubItems}
-          showDashboards={showDashboards}
         />
 
     </>
@@ -640,7 +642,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           </div>
           {/* Reference: a bounded grey search pill, not a full-width bar. */}
           <div data-tour="global-search" className="flex-1 min-w-0 flex max-w-md">
-            <GlobalSearch />
+            {!license.isRestricted && <GlobalSearch />}
           </div>
           <div className="flex-1" />
           <div className="flex items-center gap-2 sm:gap-3 text-sm">
@@ -713,7 +715,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       {!license.isRestricted && <QuickCreateFab />}
       {/* Ctrl/⌘-K command palette — jump to any module, quick-create, or search
           records. Gets the same role/license-filtered nav as the sidebar. */}
-      {!license.isRestricted && <CommandPalette navItems={flatNavItems} />}
+      {!license.isRestricted && <CommandPalette navItems={paletteNavItems} />}
       {/* First-run coachmark tour — runs once, spotlighting nav, search, Ctrl+K,
           quick-create and notifications so a new user isn't overwhelmed. */}
       {!license.isRestricted && <ProductTour />}

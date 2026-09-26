@@ -88,7 +88,7 @@ export default async function GoalsPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><Target className="size-6 text-muted-foreground" /> Goal planning</>} subtitle={<>Client goals — retirement, education, a home — and whether they are on track.</>} actions={<><Link href="/dashboard/goals/new" className="btn-primary">
+      <PageHeaderCard title={<><Target className="size-6 text-muted-foreground" /> Goals</>} subtitle={<>Client goals — retirement, education, a home — and whether they are on track.</>} actions={<><Link href="/dashboard/goals/new" className="btn-primary">
           <Plus className="size-4" /> Add Goal
         </Link></>} />
 

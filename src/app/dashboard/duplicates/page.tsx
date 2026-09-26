@@ -121,7 +121,7 @@ export default async function DuplicatesPage({ searchParams }: { searchParams: P
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <PageHeaderCard title={<><Copy className="size-6 text-muted-foreground" /> Find Duplicate Records</>} subtitle={<>Client records that look like the same person — review them and merge.</>} />
+      <PageHeaderCard title={<><Copy className="size-6 text-muted-foreground" /> Find Duplicates</>} subtitle={<>Client records that look like the same person — review them and merge.</>} />
 
       {/* Module toggle */}
       <div className="flex gap-2">

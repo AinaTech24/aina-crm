@@ -37,8 +37,8 @@ export default async function DiscoveryListPage() {
 
   return (
     <div className="space-y-6 max-w-6xl">
-      <PageHeaderCard title={<><ClipboardList className="size-6 text-muted-foreground" /> Discovery &amp; Suitability
-            <HelpTip title="Discovery & Suitability">
+      <PageHeaderCard title={<><ClipboardList className="size-6 text-muted-foreground" /> Discovery (Fact-find)
+            <HelpTip title="Discovery (Fact-find)">
               A guided fact-find you fill with (or send to) a client before advising — goals,
               income, risk appetite. It produces a suitability view so your recommendations are
               documented and defensible.

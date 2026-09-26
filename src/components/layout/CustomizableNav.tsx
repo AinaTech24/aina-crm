@@ -18,9 +18,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { DashboardNavDropdown, type DashboardSubItem } from "./DashboardNavDropdown";
 import {
-  Search, Pencil, Check, Plus, GripVertical, X, RotateCcw, Circle, ChevronDown, ChevronRight, ChevronUp, Star,
+  Pencil, Check, Plus, GripVertical, X, RotateCcw, Circle, ChevronDown, ChevronUp, Star,
   // ── nav module icons (rendered here by name; see ICONS map) ──
   Activity, AlertTriangle, BarChart3, Bot, Boxes, Briefcase, Cake, Calculator,
   Calendar, CalendarCheck, CalendarOff, ClipboardCheck, Copy, CreditCard,
@@ -30,11 +29,13 @@ import {
   UserCog, Users, Users2, Wallet, Workflow, XOctagon,
   // ── unique-icon replacements for the de-duplicated sidebar ──
   UserPlus, Presentation, CalendarClock, ShieldAlert, LayoutTemplate, Library, Gauge,
-  FileCheck, UserCheck, ClipboardList, Newspaper, Stamp, BellRing, Package, Folder, FolderOpen,
+  FileCheck, UserCheck, ClipboardList, Newspaper, Stamp, BellRing, Package, FolderOpen,
   LineChart, Scissors, Shuffle, Building2, TrendingDown, Network, IndianRupee,
   LifeBuoy, MessageSquareWarning, Zap, GraduationCap,
+  CopyCheck, Settings, Trash2,
   type LucideIcon,
 } from "lucide-react";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 
 /**
  * Name → component map for every icon the sidebar nav uses. The server passes a
@@ -54,6 +55,7 @@ const ICON_LIST: LucideIcon[] = [
   FileCheck, UserCheck, ClipboardList, Newspaper, Stamp, BellRing, Package, FolderOpen,
   LineChart, Scissors, Shuffle, Building2, TrendingDown, Network, IndianRupee,
   LifeBuoy, MessageSquareWarning, Zap, GraduationCap,
+  CopyCheck, Settings, Trash2,
 ];
 
 /* Keyed by each icon's lucide `displayName` (the canonical name) — which is
@@ -89,7 +91,14 @@ type SavedLayout = { v: number; groups: Group[] };
 // hrefs, so a pure regrouping of existing items would never reach anyone who
 // had already used the app. Bumping discards saved layouts and rebuilds from
 // NAV -- which also resets any personal customisation, the accepted cost.
-const VERSION = 3;
+// Bumped 3 -> 4 for the ten-group layout (Home / Work / ... / Data & Admin).
+const VERSION = 4;
+
+/** Pinned favourites are shortcuts, not a second sidebar. */
+const MAX_PINNED = 6;
+
+/** The red action-count pill, shared by an item and by its collapsed group. */
+const COUNT_PILL = "rounded-full bg-rose-500 px-1.5 min-w-[1.1rem] text-center text-2xs font-semibold leading-[1.1rem] text-white";
 
 function slug(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "group";
@@ -146,21 +155,15 @@ function reconcile(saved: SavedLayout | null, items: NavItemData[]): Group[] {
 export function CustomizableNav({
   items,
   storageKey,
-  dashboardSubItems,
-  showDashboards = true,
 }: {
   items: NavItemData[];
   storageKey: string;
-  dashboardSubItems?: DashboardSubItem[];
-  /** Platform "dashboards" module — hides the top Dashboards dropdown when off. */
-  showDashboards?: boolean;
 }) {
   const pathname = usePathname() ?? "";
   const itemMap = useMemo(() => new Map(items.map((i) => [i.href, i])), [items]);
 
   const [layout, setLayout] = useState<Group[]>(() => buildDefault(items));
   const [editing, setEditing] = useState(false);
-  const [query, setQuery] = useState("");
   const [dragHref, setDragHref] = useState<string | null>(null);
   // Group drag-to-reorder + the inline "new group" composer (name + modules),
   // replacing the old window.prompt.
@@ -175,7 +178,9 @@ export function CustomizableNav({
   // the 60+ item menu isn't a daily scroll. Persisted per user/device.
   const [pinned, setPinned] = useState<string[]>([]);
   const loadedRef = useRef(false);
-  const collapseKey = `${storageKey}:collapsed`;
+  // :v2 -- the saved open/closed map was keyed by the OLD group ids; reusing it
+  // would carry nine-group choices into the ten-group layout.
+  const collapseKey = `${storageKey}:collapsed:v2`;
   const pinKey = `${storageKey}:pinned`;
 
   // Load saved layout once on mount, reconciled against current access.
@@ -219,15 +224,23 @@ export function CustomizableNav({
     }
   }, [collapsed, collapseKey]);
 
+  // Only the group holding the current page opens by default; every other group
+  // starts closed. The group you are IN always stays open -- collapsing it would
+  // hide where you are -- and any other group you open is remembered per user.
+  function groupHasActive(g: Group) {
+    return g.items.some((h) => !pinnedSet.has(h) && isActive(h));
+  }
   function toggleCollapse(id: string) {
-    setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
+    const group = layout.find((g) => g.id === id);
+    if (!group || groupHasActive(group)) return;
+    setCollapsed((prev) => ({ ...prev, [id]: !(prev[id] ?? true) }));
   }
 
   // Load + persist pinned favourites.
   useEffect(() => {
     try {
       const raw = localStorage.getItem(pinKey);
-      if (raw) setPinned(JSON.parse(raw) as string[]);
+      if (raw) setPinned((JSON.parse(raw) as string[]).slice(0, MAX_PINNED));
     } catch {
       /* ignore */
     }
@@ -242,8 +255,12 @@ export function CustomizableNav({
     }
   }, [pinned, pinKey]);
   function togglePin(href: string) {
-    setPinned((prev) => (prev.includes(href) ? prev.filter((h) => h !== href) : [...prev, href]));
+    setPinned((prev) => {
+      if (prev.includes(href)) return prev.filter((h) => h !== href);
+      return prev.length >= MAX_PINNED ? prev : [...prev, href];
+    });
   }
+  const pinsFull = pinned.length >= MAX_PINNED;
   const pinnedSet = new Set(pinned);
   // Only pinned items the user still has access to, in pin order.
   const pinnedItems = pinned.map((h) => itemMap.get(h)).filter((it): it is NavItemData => !!it);
@@ -342,45 +359,29 @@ export function CustomizableNav({
       return next;
     });
   }
-  function resetLayout() {
+  async function resetLayout() {
     if (
-      typeof window !== "undefined" &&
-      !window.confirm("Reset the sidebar to its default layout? Your custom groups and order will be removed.")
+      !(await confirmDialog({
+        title: "Reset the sidebar to its default layout?",
+        message: "Your custom groups, pinned items and ordering will be removed.",
+        confirmLabel: "Reset sidebar",
+        tone: "danger",
+      }))
     )
       return;
     setLayout(buildDefault(items));
   }
 
-  /* ---------------- search view ---------------- */
-  const q = query.trim().toLowerCase();
-  const searchResults = q
-    ? layout.flatMap((g) => g.items).map((h) => itemMap.get(h)!).filter((it) => it && it.label.toLowerCase().includes(q))
-    : null;
-
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      {/* Search + edit toolbar — hidden when the rail is collapsed to icons */}
+      {/* Customise toolbar -- hidden when the rail is collapsed to icons. The old
+          "Search modules" box lived here; searching pages is now Ctrl/Cmd+K. */}
       <div className="sidebar-when-expanded px-3 pt-3 pb-1 space-y-2">
-        <div className="flex items-center gap-1.5">
-          <div className="relative flex-1 min-w-0">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search modules…"
-              disabled={editing}
-              className="w-full rounded-lg border-0 bg-secondary pl-8 pr-7 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
-            />
-            {query && (
-              <button type="button" onClick={() => setQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" aria-label="Clear">
-                <X className="size-3.5" />
-              </button>
-            )}
-          </div>
+        <div className="flex items-center justify-end gap-1.5">
           {/* Customize toggle — icon only, sits next to the search box. */}
           <button
             type="button"
-            onClick={() => { setEditing((e) => !e); setQuery(""); }}
+            onClick={() => setEditing((e) => !e)}
             title={editing ? "Done customizing" : "Customize sidebar"}
             aria-label={editing ? "Done customizing" : "Customize sidebar"}
             className={`shrink-0 inline-grid place-items-center size-[34px] rounded-lg transition-colors ${editing ? "bg-brand-cyan-light text-brand-cyan-deep" : "text-muted-foreground bg-secondary hover:text-foreground"}`}
@@ -400,12 +401,10 @@ export function CustomizableNav({
         )}
       </div>
 
-      <nav data-tour="sidebar" className="flex-1 overflow-y-auto overflow-x-hidden px-3 pb-4 pt-2 space-y-6 scrollbar-thin">
-        {/* Combined Dashboards dropdown (Dashboard + My Dashboards + Team) — pinned top */}
-        {!searchResults && showDashboards && <DashboardNavDropdown items={dashboardSubItems} />}
+      <nav aria-label="Main navigation" data-tour="sidebar" className="flex-1 overflow-y-auto overflow-x-hidden px-3 pb-4 pt-2 space-y-2 scrollbar-thin">
         {/* ⭐ Pinned favourites — the user's own shortcuts, above every group, so
             the long menu isn't a daily scroll. Hidden while editing/searching. */}
-        {!searchResults && !editing && pinnedItems.length > 0 && (
+        {!editing && pinnedItems.length > 0 && (
           <div>
             <div className="sidebar-section-title px-2 mb-2.5 flex items-center gap-1.5">
               <Star className="size-3 fill-amber-400 text-amber-400 shrink-0" />
@@ -417,7 +416,6 @@ export function CustomizableNav({
                   key={`pin-${it.href}`}
                   item={it}
                   active={isActive(it.href)}
-                  onNavigate={() => setQuery("")}
                   pinned
                   onTogglePin={() => togglePin(it.href)}
                 />
@@ -426,7 +424,7 @@ export function CustomizableNav({
           </div>
         )}
         {/* Inline "new group" composer — name + pick modules; group lands at top. */}
-        {editing && showAddGroup && !searchResults && (
+        {editing && showAddGroup && (
           <AddGroupForm
             name={newGroupName}
             setName={setNewGroupName}
@@ -437,19 +435,7 @@ export function CustomizableNav({
             onCancel={() => setShowAddGroup(false)}
           />
         )}
-        {/* ---- search results (flat) ---- */}
-        {searchResults ? (
-          <div className="space-y-0.5">
-            {searchResults.length === 0 ? (
-              <div className="px-2 py-6 text-center text-xs text-muted-foreground">No modules match “{query}”.</div>
-            ) : (
-              searchResults.map((it) => (
-                <NavRow key={it.href} item={it} active={isActive(it.href)} onNavigate={() => setQuery("")} />
-              ))
-            )}
-          </div>
-        ) : (
-          /* ---- grouped layout ---- */
+        {          /* ---- grouped layout ---- */
           layout.map((g) => {
             // De-duplicate: a pinned item lives in the Pinned section only, not
             // again inside its group (while editing we show everything so the
@@ -459,8 +445,14 @@ export function CustomizableNav({
             const titled = g.title !== "";
             // A titled section is a collapsible dropdown (like Dashboards). The
             // header-less top group + edit mode always show their items.
-            const isCollapsed = !editing && titled && !!collapsed[g.id];
             const groupActive = visibleItems.some((h) => isActive(h));
+            const isCollapsed = !editing && titled && !groupActive && (collapsed[g.id] ?? true);
+            // Groups start closed, so an overdue task inside Work would otherwise
+            // be invisible from every page outside Work. A closed group carries
+            // the total of the counts inside it.
+            const groupBadge = isCollapsed
+              ? visibleItems.reduce((n, h) => n + (itemMap.get(h)?.badge ?? 0), 0)
+              : 0;
             return (
               <div
                 key={g.id}
@@ -518,20 +510,21 @@ export function CustomizableNav({
                     type="button"
                     onClick={() => toggleCollapse(g.id)}
                     aria-expanded={!isCollapsed}
-                    className="sidebar-section-title group/sec w-full px-3 pt-4 pb-1.5 flex items-center gap-2 text-left rounded-md transition-colors"
+                    className="sidebar-section-title group/sec w-full px-3 py-2.5 flex items-center gap-2 text-left rounded-md hover:bg-secondary transition-colors"
                   >
                     {/* Reference group labels are bare uppercase text — no
                         folder glyph. The collapse chevron shows on hover so
                         the affordance survives without cluttering the rail. */}
-                    <span className="flex-1 truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                    <span className="flex-1 truncate text-2xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                       {g.title}
                     </span>
-                    {/* A small dot when a collapsed folder holds the current page. */}
-                    {isCollapsed && groupActive && (
-                      <span className="shrink-0 size-1.5 rounded-full bg-brand-navy" aria-hidden />
+                    {groupBadge > 0 && (
+                      <span className={`shrink-0 ${COUNT_PILL}`} aria-label={`${groupBadge} waiting on you`}>
+                        {groupBadge > 99 ? "99+" : groupBadge}
+                      </span>
                     )}
                     {/* Chevron on the right — ▼ collapsed, ▲ when expanded. */}
-                    <ChevronDown className={`size-3.5 shrink-0 text-muted-foreground/60 opacity-0 transition-all group-hover/sec:opacity-100 ${isCollapsed ? "" : "rotate-180"}`} />
+                    <ChevronDown className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${isCollapsed ? "-rotate-90" : ""}`} />
                   </button>
                 ) : null}
 
@@ -548,12 +541,12 @@ export function CustomizableNav({
                         active={isActive(href)}
                         editing={editing}
                         dragging={dragHref === href}
-                        onNavigate={() => setQuery("")}
                         onDragStart={() => setDragHref(href)}
                         onDragEnd={() => setDragHref(null)}
                         onDropBefore={() => { if (dragHref) moveItem(dragHref, g.id, href); setDragHref(null); }}
                         pinned={pinnedSet.has(href)}
                         onTogglePin={() => togglePin(href)}
+                        pinBlocked={pinsFull && !pinnedSet.has(href)}
                       />
                     );
                   })}
@@ -563,9 +556,8 @@ export function CustomizableNav({
                 </div>
               </div>
             );
-          })
-        )}
-        {editing && !searchResults && (
+          })}
+        {editing && (
           <button
             type="button"
             onClick={openAddGroup}
@@ -592,6 +584,7 @@ function NavRow({
   onDropBefore,
   pinned,
   onTogglePin,
+  pinBlocked,
 }: {
   item: NavItemData;
   active: boolean;
@@ -603,6 +596,8 @@ function NavRow({
   onDropBefore?: () => void;
   pinned?: boolean;
   onTogglePin?: () => void;
+  /** At the pin limit and this row is not pinned: explain instead of acting. */
+  pinBlocked?: boolean;
 }) {
   const router = useRouter();
   const IconCmp = ICONS[item.iconName] ?? Circle;
@@ -610,14 +605,14 @@ function NavRow({
     <>
       {editing && <GripVertical className="size-3.5 shrink-0 text-muted-foreground/60 cursor-grab" />}
       <IconCmp className="nav-link-icon" />
-      <span className="truncate">{item.label}</span>
+      <span className={`truncate ${!editing && onTogglePin && !pinned && !item.badge ? "group-hover:pr-5" : ""}`}>{item.label}</span>
       {item.beta ? (
         <span className="nav-link-beta shrink-0 rounded bg-amber-100 text-amber-700 px-1 text-2xs font-bold uppercase leading-[1.3] tracking-wide">
           Beta
         </span>
       ) : null}
       {!editing && item.badge ? (
-        <span className="nav-link-badge ml-auto shrink-0 rounded-full bg-rose-500 px-1.5 min-w-[1.1rem] text-center text-2xs font-semibold leading-[1.1rem] text-white">
+        <span className={`nav-link-badge ml-auto shrink-0 ${COUNT_PILL}`}>
           {item.badge > 99 ? "99+" : item.badge}
         </span>
       ) : null}
@@ -626,15 +621,27 @@ function NavRow({
           shows nothing at rest and reveals the star on hover (to pin). Keeps the
           resting sidebar clean instead of studding every favourite with a star. */}
       {!editing && onTogglePin ? (
-        <span className={`${item.badge ? "ml-1" : "ml-auto"} shrink-0 relative grid place-items-center size-3.5`}>
+        // The slot is 24px (the hit-target floor). A row with nothing to show at
+        // rest -- not pinned, no badge -- floats it over the right edge instead
+        // of reserving the width, so "Brokerage Reconciliation" fits; the label
+        // makes room for the star only on hover. Otherwise it sits in the flow,
+        // 8px into the row's padding and tucked beside a badge.
+        <span
+          className={
+            pinned || item.badge
+              ? `${item.badge ? "-ml-1.5" : "ml-auto"} -mr-2 shrink-0 relative grid place-items-center size-6 -my-1`
+              : "absolute right-1.5 top-1/2 -translate-y-1/2 grid place-items-center size-6"
+          }
+        >
           {pinned && (
             <span className="size-[5px] rounded-full bg-amber-400 transition-opacity group-hover:opacity-0" aria-hidden />
           )}
           <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); e.preventDefault(); onTogglePin(); }}
-            title={pinned ? "Unpin from top" : "Pin to top"}
-            aria-label={pinned ? "Unpin from favourites" : "Pin to favourites"}
+            onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (!pinBlocked) onTogglePin(); }}
+            aria-disabled={pinBlocked || undefined}
+            title={pinned ? "Unpin from top" : pinBlocked ? `You can pin up to ${MAX_PINNED} items. Unpin one first.` : "Pin to top"}
+            aria-label={pinned ? "Unpin from favourites" : pinBlocked ? `Pin limit of ${MAX_PINNED} reached` : "Pin to favourites"}
             className={`absolute inset-0 grid place-items-center rounded opacity-0 transition-opacity group-hover:opacity-100 ${
               pinned ? "text-amber-500 hover:text-amber-600" : "text-muted-foreground/60 hover:!text-amber-500"
             }`}
@@ -674,6 +681,7 @@ function NavRow({
       role="link"
       tabIndex={0}
       aria-current={active ? "page" : undefined}
+      aria-label={item.label}
       // In the collapsed icon rail the label is hidden, so without this the row
       // is an unlabelled glyph — hovering now names it.
       title={item.label}

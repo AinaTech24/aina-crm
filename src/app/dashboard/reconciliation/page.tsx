@@ -79,7 +79,7 @@ export default async function ReconciliationPage({
 
   return (
     <div className="space-y-5 max-w-6xl">
-      <PageHeaderCard title={<><Scale className="size-6 text-muted-foreground" /> Reconciliation</>} subtitle={<>{data.lastRun?.run_at && (
+      <PageHeaderCard title={<><Scale className="size-6 text-muted-foreground" /> Holdings Reconciliation</>} subtitle={<>{data.lastRun?.run_at && (
               <> Last run {new Date(data.lastRun.run_at).toLocaleString("en-IN")}.</>
             )}</>} actions={<><RunReconButton /></>} />
 

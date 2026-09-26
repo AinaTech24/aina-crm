@@ -58,7 +58,7 @@ export default async function AinaLibraryPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><Sparkles className="size-6 text-muted-foreground" /> AINA Content Library</>} subtitle={<>Ready-made posts, creatives and client-education material you can share.</>} actions={<>{canUpload && (
+      <PageHeaderCard title={<><Sparkles className="size-6 text-muted-foreground" /> Content Library</>} subtitle={<>Ready-made posts, creatives and client-education material you can share.</>} actions={<>{canUpload && (
           <Link href="/dashboard/aina-library/new" className="btn-primary flex items-center gap-1 text-xs">
             <Plus className="size-4" /> Upload Custom Creative
           </Link>

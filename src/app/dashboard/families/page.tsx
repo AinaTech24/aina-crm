@@ -267,7 +267,7 @@ export default async function FamiliesPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<>Family mapping</>} subtitle={<>Group clients into households to see a family&apos;s whole portfolio together.</>} actions={<><div className="flex gap-2">
+      <PageHeaderCard title={<>Families</>} subtitle={<>Group clients into households to see a family&apos;s whole portfolio together.</>} actions={<><div className="flex gap-2">
           <FamilySuggestionsLauncher />
           <Link
             href="/dashboard/families/at-risk"

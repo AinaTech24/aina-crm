@@ -79,7 +79,7 @@ export default async function CalculatorsPage() {
       </div>
 
       {/* On-screen heading — hidden on print (the letterhead replaces it) */}
-      <PageHeaderCard title={<><Calculator className="size-6" /> MF Investment Calculators</>} subtitle={<>SIP, lumpsum, retirement and goal maths you can run with a client in seconds.</>} actions={<><Link href="/dashboard/calculators/settings" className="btn-secondary text-xs shrink-0">
+      <PageHeaderCard title={<><Calculator className="size-6" /> Calculators</>} subtitle={<>SIP, lumpsum, retirement and goal maths you can run with a client in seconds.</>} actions={<><Link href="/dashboard/calculators/settings" className="btn-secondary text-xs shrink-0">
           <SlidersHorizontal className="size-3.5" /> Assumptions
         </Link></>} />
 

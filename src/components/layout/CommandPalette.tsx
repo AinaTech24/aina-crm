@@ -3,6 +3,10 @@
 /**
  * CommandPalette 2.0 — Global Ctrl+K / ⌘K launcher with Omni-actions,
  * Recent records history, deep nav, and live record search.
+ *
+ * It is the app's ONE search. The top-bar field (GlobalSearch) is only a
+ * trigger that opens it, and the sidebar no longer has a filter box: pages,
+ * reports and records are all found here.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -27,11 +31,12 @@ import {
   TrendingUp,
   Calculator,
   ShieldCheck,
-  Building2,
   FolderSync,
   AlertTriangle,
   ArrowRight,
   BarChart3,
+  HeartHandshake,
+  Shield,
   type LucideIcon,
 } from "lucide-react";
 import { ICONS } from "./CustomizableNav";
@@ -45,6 +50,13 @@ type PaletteNavItem = {
 };
 
 const RECENT_STORAGE_KEY = "aina_recent_records";
+
+const OPEN_EVENT = "aina:open-command-palette";
+
+/** Open the palette from anywhere on the client (the top-bar search field). */
+export function openCommandPalette() {
+  window.dispatchEvent(new Event(OPEN_EVENT));
+}
 
 /**
  * The 90-odd canned reports, indexed for the palette.
@@ -67,8 +79,14 @@ type RecentRecord = {
   chip?: string;
 };
 
-/** Quick create actions + common power actions. */
-const QUICK_ACTIONS: Array<{ href: string; label: string; sub: string; icon: LucideIcon }> = [
+/**
+ * Quick create actions + common power actions. `page` names the menu entry an
+ * action belongs to: the action shows only when that page is in navItems, which
+ * the layout has already filtered by role and module. Without it an RM was
+ * offered RTA imports and the DDQ from here while the menu correctly hid them.
+ * (Create actions are guarded by their own pages.)
+ */
+const QUICK_ACTIONS: Array<{ href: string; label: string; sub: string; icon: LucideIcon; page?: string }> = [
   { href: "/dashboard/leads/new", label: "Add Lead", sub: "New prospect (stages 1–10)", icon: Sparkles },
   { href: "/dashboard/investors/new", label: "Add Client", sub: "New investor (after KYC)", icon: Users },
   { href: "/dashboard/sips/new", label: "Register SIP", sub: "Setup new SIP installment", icon: TrendingUp },
@@ -76,18 +94,21 @@ const QUICK_ACTIONS: Array<{ href: string; label: string; sub: string; icon: Luc
   { href: "/dashboard/review-meetings/new", label: "Schedule Review", sub: "Client portfolio review meeting", icon: Calendar },
   { href: "/dashboard/proposals/new", label: "Create Proposal", sub: "Branded scheme proposal PDF", icon: FileSignature },
   { href: "/dashboard/service-requests/new", label: "Log Service Request", sub: "Track investor query / issue", icon: Phone },
-  { href: "/dashboard/calculators", label: "Practice Calculators", sub: "SIP, SWP, Lumpsum, Delay cost", icon: Calculator },
-  { href: "/dashboard/rta-imports", label: "RTA File Imports", sub: "CAMS / KFintech file ingestion", icon: FolderSync },
-  { href: "/dashboard/sips?tab=rejections", label: "View Rejected SIPs", sub: "Bounced / failed SIP recovery", icon: AlertTriangle },
-  { href: "/dashboard/compliance", label: "Compliance & DDQ", sub: "Audit readiness score & register", icon: ShieldCheck },
+  { href: "/dashboard/calculators", label: "Practice Calculators", sub: "SIP, SWP, Lumpsum, Delay cost", icon: Calculator, page: "/dashboard/calculators" },
+  { href: "/dashboard/rta-imports", label: "RTA File Imports", sub: "CAMS / KFintech file ingestion", icon: FolderSync, page: "/dashboard/rta-imports" },
+  { href: "/dashboard/sips?tab=rejections", label: "View Rejected SIPs", sub: "Bounced / failed SIP recovery", icon: AlertTriangle, page: "/dashboard/sips" },
+  { href: "/dashboard/compliance", label: "Compliance & DDQ", sub: "Audit readiness score & register", icon: ShieldCheck, page: "/dashboard/compliance" },
 ];
 
 /** Response shape of GET /api/search */
 type SearchResults = {
   investors?: any[];
   leads?: any[];
+  families?: any[];
   folios?: any[];
   sips?: any[];
+  policies?: any[];
+  tasks?: any[];
   serviceRequests?: any[];
   documents?: any[];
 };
@@ -136,8 +157,15 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
         setOpen(false);
       }
     }
+    function onOpen() {
+      setOpen(true);
+    }
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener(OPEN_EVENT, onOpen);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener(OPEN_EVENT, onOpen);
+    };
   }, []);
 
   // Reset + focus on open; lock body scroll while open.
@@ -204,8 +232,11 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
     const isActionOnly = needle.startsWith(">");
     const cleanNeedle = isActionOnly ? needle.slice(1).trim() : needle;
 
+    const allowedPages = new Set(navItems.map((n) => n.href));
     const actionRows: Row[] = QUICK_ACTIONS.filter(
-      (a) => cleanNeedle === "" || a.label.toLowerCase().includes(cleanNeedle) || a.sub.toLowerCase().includes(cleanNeedle)
+      (a) =>
+        (!a.page || allowedPages.has(a.page)) &&
+        (cleanNeedle === "" || a.label.toLowerCase().includes(cleanNeedle) || a.sub.toLowerCase().includes(cleanNeedle))
     ).map((a) => ({ key: `act:${a.href}`, href: a.href, title: a.label, sub: a.sub, icon: a.icon }));
 
     if (isActionOnly) {
@@ -230,7 +261,7 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
           n.label.toLowerCase().includes(cleanNeedle) ||
           n.defaultGroup.toLowerCase().includes(cleanNeedle)
       )
-      .slice(0, 6)
+      .slice(0, cleanNeedle ? 8 : 6)
       .map((n) => ({
         key: `nav:${n.href}`,
         href: n.href,
@@ -271,6 +302,15 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
         chip: "Lead",
         icon: Sparkles,
       })),
+      ...(results.families ?? []).map((r): Row => ({
+        key: `fam:${r.id}`,
+        href: `/dashboard/families/${r.id}`,
+        // Same fallback as the Families list: many households only have a head name.
+        title: r.family_name || r.head_name || "Unnamed family",
+        sub: [r.family_name ? r.head_name : null, r.family_code].filter(Boolean).join(" · ") || undefined,
+        chip: "Family",
+        icon: HeartHandshake,
+      })),
       ...(results.folios ?? []).map((r): Row => ({
         key: `folio:${r.id}`,
         href: r.investor_id ? `/dashboard/investors/${r.investor_id}` : "/dashboard/investors",
@@ -287,6 +327,22 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
         chip: "SIP",
         icon: Repeat,
       })),
+      ...(results.policies ?? []).map((r): Row => ({
+        key: `pol:${r.id}`,
+        href: `/dashboard/insurance/${r.id}`,
+        title: r.policy_number ?? "(no number)",
+        sub: `${r.insurer ?? "—"} · ${r.policy_type ?? "—"} · ${r.investor_name ?? "—"}`,
+        chip: "Policy",
+        icon: Shield,
+      })),
+      ...(results.tasks ?? []).map((r): Row => ({
+        key: `task:${r.id}`,
+        href: `/dashboard/tasks?task=${r.id}`,
+        title: r.title,
+        sub: `${r.status} · ${r.priority ?? "—"}${r.investor_name ? ` · ${r.investor_name}` : ""}`,
+        chip: "Task",
+        icon: ListChecks,
+      })),
       ...(results.serviceRequests ?? []).map((r): Row => ({
         key: `sr:${r.id}`,
         href: "/dashboard/service-requests",
@@ -294,6 +350,14 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
         sub: `${r.ticket_no} · ${r.investor_name ?? "—"}`,
         chip: "SR",
         icon: LifeBuoy,
+      })),
+      ...(results.documents ?? []).map((r): Row => ({
+        key: `doc:${r.id}`,
+        href: "/dashboard/documents",
+        title: r.name,
+        sub: r.category ?? undefined,
+        chip: "Document",
+        icon: FolderArchive,
       })),
     ];
 
@@ -304,14 +368,14 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
     if (actionRows.length > 0) {
       out.push({ id: "actions", label: "Quick Actions", icon: Zap, rows: actionRows.slice(0, 6) });
     }
+    if (navRows.length > 0) {
+      out.push({ id: "nav", label: "Pages", icon: ArrowRight, rows: navRows });
+    }
     if (recordRows.length > 0) {
       out.push({ id: "records", label: "Matching Records", icon: Search, rows: recordRows });
     }
     if (reportRows.length > 0) {
-      out.push({ id: "reports", label: "Reports & MIS", icon: BarChart3, rows: reportRows });
-    }
-    if (navRows.length > 0) {
-      out.push({ id: "nav", label: "Navigation", icon: ArrowRight, rows: navRows });
+      out.push({ id: "reports", label: "Reports", icon: BarChart3, rows: reportRows });
     }
     return out;
   }, [q, navItems, results, recentRecords]);
@@ -368,7 +432,8 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
               setActive(0);
             }}
             onKeyDown={onKeyDown}
-            placeholder="Type a command, client name, PAN, or folio (use '>' for actions)…"
+            aria-label="Search clients, leads, folios and pages"
+            placeholder="Search clients, leads, folios or pages (type > for actions)…"
             className="w-full bg-transparent border-0 outline-hidden text-sm placeholder:text-muted-foreground focus:ring-0"
           />
           {busy ? (
@@ -385,7 +450,7 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
           {flatRows.length === 0 ? (
             <div className="py-12 text-center text-muted-foreground">
               <p className="text-sm font-medium">No results found for “{q}”</p>
-              <p className="text-xs text-muted-foreground mt-1">Try searching by PAN, Client Name, Folio, or Scheme.</p>
+              <p className="text-xs text-muted-foreground mt-1">Try a client name, PAN, mobile, folio number or a page name.</p>
             </div>
           ) : (
             sections.map((section) => (

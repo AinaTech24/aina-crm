@@ -72,7 +72,7 @@ export default async function InductionPage() {
 <PageHeaderCard title={<><span className="grid place-items-center size-9 rounded-xl bg-brand-cyan text-white shadow-sm">
             <GraduationCap className="size-5" />
           </span>
-          {track.name}</>} subtitle={<>Your training modules, and the exam that unlocks full access.</>} />
+          Induction</>} subtitle={<>{track.name} — your training modules, and the exam that unlocks full access.</>} />
 {track.description && (
           <p className="text-muted-foreground text-sm mt-2">{track.description}</p>
         )}

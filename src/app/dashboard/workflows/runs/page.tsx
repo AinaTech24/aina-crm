@@ -70,7 +70,7 @@ export default async function AutomationControlTower({
   return (
     <div className="space-y-6 max-w-6xl">
       {/* Header + window selector */}
-      <PageHeaderCard title={<><Activity className="size-6 text-muted-foreground" /> Automation Control Tower</>} actions={<><div className="flex items-center gap-2">
+      <PageHeaderCard title={<><Activity className="size-6 text-muted-foreground" /> Automation Monitor</>} actions={<><div className="flex items-center gap-2">
           <div className="inline-flex rounded-lg border border-border bg-secondary/40 p-0.5 gap-0.5">
             {WINDOWS.map((w) => (
               <Link

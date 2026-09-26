@@ -125,7 +125,7 @@ export default async function CommissionReconciliationPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><Coins className="size-6" /> Brokerage reconciliation</>} subtitle={<>Compare what AMCs paid vs what your folios should have earned, scheme by scheme. Trail leakage from
+      <PageHeaderCard title={<><Coins className="size-6" /> Brokerage Reconciliation</>} subtitle={<>Compare what AMCs paid vs what your folios should have earned, scheme by scheme. Trail leakage from
             wrong-ARN-mapping and missed installments routinely costs 1–2% of regular AUM — easy money to recover.</>} actions={<><ReconcileButton period={period} /></>} />
 
       <PeriodPicker period={period} options={data.availablePeriods} />
