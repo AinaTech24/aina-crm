@@ -5,9 +5,9 @@ import { usePathname } from "next/navigation";
 import { CalendarDays, ClipboardCheck, Inbox, Sparkles } from "lucide-react";
 
 const ITEMS = [
-  { href: "/dashboard/command-center", label: "Overview", icon: Inbox },
-  { href: "/dashboard/next-best-action", label: "Prioritized", icon: Sparkles },
-  { href: "/dashboard/tasks/daily", label: "Reflection", icon: ClipboardCheck },
+  { href: "/dashboard/command-center", label: "Today", icon: Inbox },
+  { href: "/dashboard/next-best-action", label: "Priority list", icon: Sparkles },
+  { href: "/dashboard/tasks/daily", label: "End-of-day notes", icon: ClipboardCheck },
   { href: "/dashboard/calendar", label: "Calendar", icon: CalendarDays },
 ];
 

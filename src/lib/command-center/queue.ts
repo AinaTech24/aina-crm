@@ -64,6 +64,21 @@ export type ActionGroup = {
   href: string;
   /** up to 5 preview rows */
   items: ActionItem[];
+  /**
+   * Overdue tasks only: the same count split at 30 days, for My Day. A task
+   * three months late is not today's work the way yesterday's is; the page
+   * lists the recent ones and folds the rest under "Older than 30 days" with a
+   * bulk close / reschedule. `items` and `count` above are unchanged, so the
+   * briefing email and the API read the group exactly as before.
+   */
+  aging?: {
+    recent: ActionItem[];
+    recentCount: number;
+    older: ActionItem[];
+    olderCount: number;
+    /** Every older task id (capped at 500, the bulk endpoint's limit). */
+    olderIds: string[];
+  };
 };
 
 type Tx = { execute: (q: any) => Promise<{ rows: any[] }> };
@@ -85,9 +100,15 @@ function href(base: string, firmWide: boolean, extra = "") {
 
 export async function buildCommandQueue(
   tx: Tx,
-  opts: { userId: string; firmWide: boolean; clientId?: string }
+  opts: {
+    userId: string;
+    firmWide: boolean;
+    clientId?: string;
+    /** False when attendance is not enabled for this user: no clock-in nudge. */
+    includeClockIn?: boolean;
+  }
 ): Promise<ActionGroup[]> {
-  const { userId, firmWide, clientId } = opts;
+  const { userId, firmWide, clientId, includeClockIn = true } = opts;
   const groups: ActionGroup[] = [];
 
   // Per-user snooze/dismiss set — items the user deferred or dismissed are
@@ -310,7 +331,7 @@ export async function buildCommandQueue(
   }
 
   // ── 4d. Clock in (personal) — if you haven't punched today on a workday ──
-  if (!clientId) {
+  if (!clientId && includeClockIn) {
     const r = await tx.execute(sql`
       SELECT
         EXISTS(
@@ -407,22 +428,63 @@ export async function buildCommandQueue(
         }
         return "/dashboard/tasks";
       };
+      const toItem = (x: any): ActionItem => ({
+        id: x.id,
+        title: x.title,
+        detail: `${x.priority} · due ${fmt(x.due_at)}`,
+        href: taskHref(x),
+        date: ymd(x.due_at),
+        actionType: "task" as const,
+      });
+      const total = Number(r.rows[0].total ?? r.rows.length);
+      // The 30-day split. Same predicate as above plus the cut-off, so the two
+      // halves always add up to `total`.
+      const recent = await tx.execute(sql`
+        SELECT id, title, priority, due_at, subject_type, subject_id,
+               related_investor_id, related_lead_id, related_meeting_id, related_service_request_id,
+               count(*) OVER() AS total
+        FROM tasks
+        WHERE status IN ('open','in_progress')
+          AND deleted_at IS NULL
+          AND due_at IS NOT NULL
+          AND due_at < now()
+          AND due_at >= now() - interval '30 days'
+          ${scope("assignee_id", userId, firmWide)}${cscope("related_investor_id")}
+        ORDER BY due_at ASC
+        LIMIT 5
+      `);
+      const recentCount = Number(recent.rows[0]?.total ?? 0);
+      const older =
+        total > recentCount
+          ? await tx.execute(sql`
+              SELECT id, title, priority, due_at, subject_type, subject_id,
+                     related_investor_id, related_lead_id, related_meeting_id, related_service_request_id
+              FROM tasks
+              WHERE status IN ('open','in_progress')
+                AND deleted_at IS NULL
+                AND due_at IS NOT NULL
+                AND due_at < now() - interval '30 days'
+                ${scope("assignee_id", userId, firmWide)}${cscope("related_investor_id")}
+              ORDER BY due_at ASC
+              LIMIT 500
+            `)
+          : { rows: [] as any[] };
       groups.push({
         key: "tasks_overdue",
         label: "Overdue tasks",
         icon: "ListChecks",
         severity: "today",
         tone: "amber",
-        count: Number(r.rows[0].total ?? r.rows.length),
+        count: total,
         href: "/dashboard/tasks",
-        items: r.rows.map((x: any) => ({
-          id: x.id,
-          title: x.title,
-          detail: `${x.priority} · due ${fmt(x.due_at)}`,
-          href: taskHref(x),
-          date: ymd(x.due_at),
-          actionType: "task" as const,
-        })),
+        items: r.rows.map(toItem),
+        aging: {
+          recent: recent.rows.map(toItem),
+          recentCount,
+          older: older.rows.slice(0, 5).map(toItem),
+          olderCount: total - recentCount,
+          olderIds: older.rows.map((x: any) => String(x.id)),
+        },
       });
     }
   }
@@ -772,11 +834,27 @@ export async function buildCommandQueue(
       });
     if (items.length === 0 && removed >= g.count) continue; // wholly snoozed away
     const count = Math.max(g.count - removed, items.length);
+    let aging = g.aging;
+    if (aging) {
+      const prep = (list: ActionItem[]) =>
+        list
+          .map((it) => ({ ...it, itemKey: `${g.key}:${it.id}`, ageDays: it.ageDays ?? ageOf(it.date) }))
+          .filter((it) => !snoozed.has(it.itemKey!));
+      const recent = prep(aging.recent);
+      const olderIds = aging.olderIds.filter((id) => !snoozed.has(`${g.key}:${id}`));
+      aging = {
+        recent,
+        recentCount: Math.max(0, aging.recentCount - (aging.recent.length - recent.length)),
+        older: prep(aging.older),
+        olderCount: Math.max(0, aging.olderCount - (aging.olderIds.length - olderIds.length)),
+        olderIds,
+      };
+    }
     let severity = g.severity;
     const thr = escalateAfterDays[g.key];
     if (thr != null && items.some((it) => (it.ageDays ?? 0) > thr)) severity = "now";
     if (items.some((it) => it.escalate)) severity = "now";
-    processed.push({ ...g, items, count, severity });
+    processed.push({ ...g, items, count, severity, ...(aging ? { aging } : {}) });
   }
 
   // Severity band → ₹ at stake → biggest pile.

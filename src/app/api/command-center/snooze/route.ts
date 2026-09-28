@@ -1,7 +1,11 @@
 import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/command-center/snooze
- * Body: { itemKey: string, action: "1d" | "3d" | "7d" | "dismiss" | "unsnooze" }
+ * Body: { itemKey: string, action: "1d" | "3d" | "7d" | "until" | "dismiss" | "unsnooze", until?: "yyyy-mm-dd" }
+ *
+ * "until" snoozes to the START of that day in India time: My Day's "Tomorrow",
+ * "Next week" and "Pick date" all mean "show it again that morning", which a
+ * rolling 24h from now does not.
  *
  * Per-user snooze / dismiss of a Command Center triage item. Upserts a row keyed
  * by (tenant, user, itemKey). The queue builder excludes dismissed/snoozed keys.
@@ -16,10 +20,13 @@ import { commandCenterSnoozes } from "@/db/schema/command_center";
 
 export const dynamic = "force-dynamic";
 
-const Body = z.object({
-  itemKey: z.string().min(1).max(120),
-  action: z.enum(["1d", "3d", "7d", "dismiss", "unsnooze"]),
-});
+const Body = z
+  .object({
+    itemKey: z.string().min(1).max(120),
+    action: z.enum(["1d", "3d", "7d", "until", "dismiss", "unsnooze"]),
+    until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  })
+  .refine((b) => b.action !== "until" || !!b.until, { message: "until (yyyy-mm-dd) is required" });
 
 function untilFor(action: string): { snoozedUntil: Date | null; dismissed: boolean } {
   const now = Date.now();
@@ -38,8 +45,16 @@ export async function POST(req: NextRequest) {
     const session = await requireSession();
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return NextResponse.json({ error: "invalid body" }, { status: 400 });
-    const { itemKey, action } = parsed.data;
-    const { snoozedUntil, dismissed } = untilFor(action);
+    const { itemKey, action, until } = parsed.data;
+    let { snoozedUntil, dismissed } = untilFor(action);
+    if (action === "until") {
+      const at = new Date(`${until}T00:00:00+05:30`);
+      if (isNaN(at.getTime()) || at.getTime() <= Date.now()) {
+        return NextResponse.json({ error: "Pick a date after today." }, { status: 400 });
+      }
+      snoozedUntil = at;
+      dismissed = false;
+    }
 
     await withTenant(session.tenantId, async (tx) => {
       if (action === "unsnooze") {
