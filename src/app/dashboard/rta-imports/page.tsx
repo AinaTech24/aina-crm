@@ -10,8 +10,9 @@ import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
  * Plus a recent-uploads history table and a single + button that opens the
  * upload dialog.
  */
+import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { FileText, CheckCircle2, AlertTriangle, Clock } from "lucide-react";
+import { FileText, CheckCircle2, AlertTriangle, Clock, ArrowRight } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatDate, formatRelative } from "@/lib/utils";
@@ -22,7 +23,7 @@ import {
   daysLate,
   cadenceLabel,
 } from "@/lib/rta/file-types";
-import { RtaUploadButton, RtaMailboxSyncButton } from "./client";
+import { RtaUploadButton, RtaMailboxSyncButton, RtaUploadStep } from "./client";
 import { RtaImportsTable } from "@/components/rta/RtaImportsTable";
 
 export const dynamic = "force-dynamic";
@@ -104,12 +105,76 @@ export default async function RtaImportsPage() {
   const qualityScore = Math.max(0, 1 - exceptionRate);
   const trustScore = Math.round((freshnessScore * 0.55 + reliabilityScore * 0.25 + qualityScore * 0.2) * 100);
 
+  // "What to do next": late files first (dashboards are already wrong), then
+  // scheduled files never received (in the order the registry lists them,
+  // daily feed first), then the row exceptions. At most four numbered steps;
+  // the file cards below carry the rest.
+  type Step = { key: string; kind?: string; text: string; note?: string; late?: boolean; href?: string };
+  const allSteps: Step[] = [
+    ...tiles
+      .filter((t) => t.last && t.late > 0)
+      .map((t) => ({ key: t.kind, kind: t.kind, text: `Upload ${t.label}`, note: `${t.late} day${t.late === 1 ? "" : "s"} late`, late: true })),
+    ...tiles
+      .filter((t) => !t.last && t.cadence.every !== "adhoc")
+      .map((t) => ({ key: t.kind, kind: t.kind, text: `Upload ${t.label}`, note: "never received" })),
+    ...(exceptionRows > 0
+      ? [{ key: "exceptions", text: `Review ${exceptionRows.toLocaleString("en-IN")} row exceptions`, href: "/dashboard/rta-imports/exceptions" }]
+      : []),
+  ];
+  const MAX_STEPS = 4;
+  // Keep the exceptions step even when uploads fill the list.
+  const exceptionStep = allSteps.find((s) => s.key === "exceptions");
+  const uploadSteps = allSteps.filter((s) => s.key !== "exceptions");
+  const shownUploads = uploadSteps.slice(0, exceptionStep ? MAX_STEPS - 1 : MAX_STEPS);
+  const steps = exceptionStep ? [...shownUploads, exceptionStep] : shownUploads;
+  const moreUploads = uploadSteps.length - shownUploads.length;
+
   return (
     <div className="space-y-6 max-w-7xl">
       <PageHeaderCard title={<><FileText className="size-6 text-muted-foreground" /> RTA File Imports</>} subtitle={<>Upload CAMS and KFintech files to bring transactions into the CRM.</>} actions={<><div className="flex items-center gap-2 flex-wrap">
           <RtaMailboxSyncButton />
           <RtaUploadButton />
         </div></>} />
+
+      {/* What to do next — numbered, in order of consequence. */}
+      <section aria-labelledby="rta-next-steps" className="card-surface p-4">
+        <h2 id="rta-next-steps" className="text-sm font-semibold text-foreground">What to do next</h2>
+        {steps.length === 0 ? (
+          <p className="mt-1 text-sm text-muted-foreground">Nothing to do. Every scheduled file is up to date and no rows need review.</p>
+        ) : (
+          <>
+            <ol className="mt-3 flex flex-wrap gap-x-6 gap-y-3 text-sm">
+              {steps.map((s, i) => (
+                <li key={s.key} className="flex min-w-0 items-start gap-2">
+                  <span
+                    aria-hidden
+                    className="grid size-6 shrink-0 place-items-center rounded-full bg-secondary text-xs font-semibold tabular-nums text-foreground"
+                  >
+                    {i + 1}
+                  </span>
+                  <span className="pt-0.5">
+                    {s.href ? (
+                      <Link href={s.href} className="inline-flex items-center gap-1 font-medium text-foreground hover:underline">
+                        {s.text} <ArrowRight className="size-3.5" aria-hidden />
+                      </Link>
+                    ) : (
+                      <RtaUploadStep kind={s.kind!}>{s.text}</RtaUploadStep>
+                    )}
+                    {s.note && (
+                      <span className={s.late ? "text-rose-700" : "text-muted-foreground"}> ({s.note})</span>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ol>
+            {moreUploads > 0 && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                {moreUploads} more file type{moreUploads === 1 ? "" : "s"} to upload: see the cards below.
+              </p>
+            )}
+          </>
+        )}
+      </section>
 
       {/* Summary strip */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
@@ -139,6 +204,7 @@ export default async function RtaImportsPage() {
         />
         <SummaryTile
           label="Row exceptions"
+          href={exceptionRows > 0 ? "/dashboard/rta-imports/exceptions" : undefined}
           value={exceptionRows.toLocaleString("en-IN")}
           sub={processedRows ? `${(exceptionRate * 100).toFixed(1)}% of ${processedRows.toLocaleString("en-IN")} rows` : "no rows processed yet"}
           tone={exceptionRate > 0.05 ? "rose" : exceptionRows > 0 ? "muted" : "emerald"}
@@ -167,12 +233,15 @@ export default async function RtaImportsPage() {
 function FileKindTile({ t }: { t: (typeof RTA_FILE_TYPES)[number] & { last: any; lastDate: Date | null; nextExpected: Date | null; late: number } }) {
   const status: "fresh" | "late" | "missing" =
     !t.last ? "missing" : t.late > 0 ? "late" : "fresh";
+  // Up to date = success, late = danger. Never received is neutral: nothing
+  // has gone wrong yet, and painting it amber made a new firm's page a wall
+  // of warnings.
   const ringCls =
     status === "fresh"
       ? "border-emerald-200"
       : status === "late"
         ? "border-rose-300"
-        : "border-amber-200";
+        : "border-border";
 
   return (
     <div className={`card-elevated p-4 border ${ringCls}`}>
@@ -215,9 +284,9 @@ function FileKindTile({ t }: { t: (typeof RTA_FILE_TYPES)[number] & { last: any;
         </div>
       )}
       {status === "missing" && t.cadence.every !== "adhoc" && (
-        <div className="mt-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800 flex items-center gap-2">
+        <div className="mt-3 rounded-lg bg-secondary/60 border border-border px-3 py-2 text-xs text-muted-foreground flex items-center gap-2">
           <Clock className="size-3.5 flex-shrink-0" />
-          <span>Not yet received. Upload your first file to populate downstream data.</span>
+          <span>Never received. Upload your first file to populate downstream data.</span>
         </div>
       )}
       {status === "fresh" && (
@@ -260,11 +329,14 @@ function SummaryTile({
   value,
   sub,
   tone,
+  href,
 }: {
   label: string;
   value: string;
   sub: string;
   tone: "muted" | "emerald" | "rose";
+  /** Makes the whole tile a link to where the number can be worked. */
+  href?: string;
 }) {
   const cls =
     tone === "emerald"
@@ -272,12 +344,22 @@ function SummaryTile({
       : tone === "rose"
         ? "bg-rose-50 text-rose-700 border-rose-200"
         : "bg-secondary/40 text-muted-foreground border-border";
-  return (
-    <div className={`card-elevated p-4 border ${cls}`}>
+  const body = (
+    <>
       <div className="text-xs uppercase tracking-wider opacity-80">{label}</div>
       <div className="text-2xl font-bold tabular-nums mt-1">{value}</div>
-      <div className="text-2xs opacity-70 mt-0.5">{sub}</div>
-    </div>
+      <div className="text-2xs opacity-70 mt-0.5">
+        {sub}
+        {href && <span className="ml-1 font-semibold underline-offset-2 group-hover:underline">· see by reason →</span>}
+      </div>
+    </>
+  );
+  return href ? (
+    <Link href={href} className={`group card-elevated block p-4 border transition-shadow hover:shadow-md ${cls}`}>
+      {body}
+    </Link>
+  ) : (
+    <div className={`card-elevated p-4 border ${cls}`}>{body}</div>
   );
 }
 
@@ -291,7 +373,7 @@ function StatusBadge({ status }: { status: string }) {
     // "rejected" is the not-ours case (an archive encrypted with another
     // platform's password). Routine and unactionable, so it reads neutral —
     // showing it in red buried the failures that DO need attention.
-    rejected: "bg-gray-100 text-gray-600",
+    rejected: "bg-secondary text-muted-foreground",
   };
   return (
     <span className={`text-2xs px-2 py-0.5 rounded-full ${map[status] ?? "bg-secondary text-muted-foreground"}`}>

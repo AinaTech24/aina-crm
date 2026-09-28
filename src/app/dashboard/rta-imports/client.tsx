@@ -8,15 +8,30 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Upload, RefreshCw, Loader2, Mail, CheckCircle2 } from "lucide-react";
 import { UploadDialog } from "@/components/rta/UploadDialog";
+import { buttonClass } from "@/components/ui/button-class";
 
+/** The page's one primary action. */
 export function RtaUploadButton() {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button onClick={() => setOpen(true)} className="btn-primary text-xs sm:text-sm inline-flex items-center gap-1.5">
-        <Upload className="size-4" /> Upload RTA file
+      <button type="button" onClick={() => setOpen(true)} className={buttonClass("primary")}>
+        <Upload className="size-4" /> Upload file
       </button>
       <UploadDialog open={open} onClose={() => setOpen(false)} />
+    </>
+  );
+}
+
+/** A "What to do next" step that opens the upload dialog on its file type. */
+export function RtaUploadStep({ kind, children }: { kind: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} className="text-left font-medium text-foreground hover:underline">
+        {children}
+      </button>
+      <UploadDialog open={open} onClose={() => setOpen(false)} defaultKind={kind} />
     </>
   );
 }
@@ -55,10 +70,10 @@ export function RtaMailboxSyncButton() {
         type="button"
         onClick={syncMailbox}
         disabled={busy}
-        className="btn-secondary text-xs sm:text-sm inline-flex items-center gap-1.5"
+        className={buttonClass("secondary")}
         title="Check catch-all mailbox for new CAMS & KFintech mailbacks"
       >
-        {busy ? <Loader2 className="size-3.5 animate-spin text-brand-cyan" /> : <Mail className="size-3.5 text-brand-cyan" />}
+        {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Mail className="size-3.5" />}
         <span>{busy ? "Checking Mailbox…" : "Sync Mailbox Now"}</span>
       </button>
       {msg && (
