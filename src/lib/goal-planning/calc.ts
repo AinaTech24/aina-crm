@@ -650,6 +650,40 @@ export function sensitivitySipRates(
   }));
 }
 
+/* ─────────────────────────── Goal status ─────────────────────────── */
+
+/**
+ * Where a goal stands, from the money and the projection:
+ *
+ *   achieved   what is linked TODAY already covers the target
+ *   on_track   projected value at the target date >= target
+ *   behind     projected at least GOAL_BEHIND_FLOOR_PCT % of the target
+ *   off_track  projected below that (including nothing linked and no SIP)
+ *
+ * "Achieved" used to mean "the projection clears the target", so ₹1 Cr against
+ * a ₹17.7 Cr retirement target read Achieved simply because 12% compounding
+ * over 25+ years gets there. A projection is an assumption, not money: until the
+ * money is there the best a goal can be is On track.
+ */
+export type GoalTier = "achieved" | "on_track" | "behind" | "off_track";
+
+export const GOAL_TIER_LABEL: Record<GoalTier, string> = {
+  achieved: "Achieved",
+  on_track: "On track",
+  behind: "Behind",
+  off_track: "Off track",
+};
+
+/** Below this share of the target (projected), a goal is Off track, not Behind. */
+export const GOAL_BEHIND_FLOOR_PCT = 75;
+
+export function goalTier(currentValue: number, projectedValue: number, target: number): GoalTier {
+  if (target > 0 && currentValue >= target) return "achieved";
+  if (projectedValue >= target) return "on_track";
+  const pct = target > 0 ? (projectedValue / target) * 100 : 0;
+  return pct >= GOAL_BEHIND_FLOOR_PCT ? "behind" : "off_track";
+}
+
 /* ───────────────────────── Combined "compute goal" ───────────────────────── */
 
 export type GoalCalcInput = {
@@ -681,7 +715,12 @@ export type GoalCalcResult = {
   requiredStepUpInitialSip: number;
   requiredLumpsumToday: number;
   additionalMonthlySipNeeded: number;
-  /** Same key the DB enum uses */
+  /** Projected value at the target date as a % of the target (can exceed 100). */
+  projectedPct: number;
+  /** Achieved / On track / Behind / Off track — see goalTier(). */
+  tier: GoalTier;
+  /** Same key the DB enum uses. Derived from `tier`; "behind_track" covers both
+   *  Behind and Off track, and "not_started" is nothing linked and no SIP. */
   status: "not_started" | "on_track" | "behind_track" | "achieved";
 };
 
@@ -711,6 +750,7 @@ export function computeGoal(input: GoalCalcInput & { targetAmount?: number }): G
 
   if (months === 0) {
     const gap = Math.max(0, fT - pv);
+    const tier = goalTier(pv, pv, fT);
     return {
       monthsLeft: 0,
       yearsLeft: 0,
@@ -727,7 +767,9 @@ export function computeGoal(input: GoalCalcInput & { targetAmount?: number }): G
       requiredStepUpInitialSip: 0,
       requiredLumpsumToday: fT,
       additionalMonthlySipNeeded: 0,
-      status: pv >= fT ? "achieved" : "behind_track",
+      projectedPct: fT > 0 ? (pv / fT) * 100 : 0,
+      tier,
+      status: tier === "achieved" ? "achieved" : "behind_track",
     };
   }
 
@@ -745,10 +787,12 @@ export function computeGoal(input: GoalCalcInput & { targetAmount?: number }): G
   const additionalMonthlySipNeeded = Math.max(0, requiredMonthlySipTotal - sip);
   const gapAmount = Math.max(0, fT - projectedTotalFV);
 
+  const tier = goalTier(pv, projectedTotalFV, fT);
   let status: GoalCalcResult["status"];
-  if (pv === 0 && sip === 0) status = "not_started";
-  else if (projectedTotalFV >= fT) status = "achieved";
-  else status = sip >= requiredMonthlySipTotal * 0.9 ? "on_track" : "behind_track";
+  if (tier === "achieved") status = "achieved";
+  else if (pv === 0 && sip === 0) status = "not_started";
+  else if (tier === "on_track") status = "on_track";
+  else status = "behind_track";
 
   return {
     monthsLeft: months,
@@ -766,6 +810,8 @@ export function computeGoal(input: GoalCalcInput & { targetAmount?: number }): G
     requiredStepUpInitialSip,
     requiredLumpsumToday: requiredLumpsumNow,
     additionalMonthlySipNeeded,
+    projectedPct: fT > 0 ? (projectedTotalFV / fT) * 100 : 0,
+    tier,
     status,
   };
 }

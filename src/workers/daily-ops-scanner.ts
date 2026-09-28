@@ -757,7 +757,11 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
           i.rm_id
         FROM goals g
         JOIN investors i ON i.id = g.investor_id AND i.status NOT IN ('closed', 'exited') AND i.deleted_at IS NULL
-        WHERE g.status IN ('not_started', 'on_track', 'behind_track', 'active')
+        -- Not on_track: that now means the projection reaches the target, and
+        -- the nudge tells the client they are behind. The linear drift test
+        -- below ignores compounding, so without this a goal the Goals page
+        -- calls On track could WhatsApp its client that it is behind.
+        WHERE g.status IN ('not_started', 'behind_track', 'active')
           AND g.expected_progress_pct IS NOT NULL
           AND g.progress_pct < g.expected_progress_pct - 10
         ORDER BY g.investor_id, (g.expected_progress_pct - g.progress_pct) DESC

@@ -24,8 +24,8 @@
 import { inArray, eq } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { goals, folios, sips } from "@/db/schema";
-import { computeGoal, monthsBetween } from "./calc";
-import { effectiveGlideReturn } from "./glide-path";
+import { monthsBetween } from "./calc";
+import { computeStoredGoal } from "./stored";
 
 /** Statuses a human owns — the nightly job never overwrites these. */
 const MANUAL_STATUSES = new Set(["on_hold", "abandoned"]);
@@ -134,23 +134,12 @@ async function recomputeGoals(
       );
     }
 
-    const monthsLeft = Math.max(0, monthsBetween(now, new Date(g.targetDate)));
     const futureTarget = Number(g.targetAmount);
 
-    // Glide path tapers the effective return as the target nears — and because
+    // Same computation the Goals list runs live (lib/goal-planning/stored). The
+    // glide path tapers the effective return as the target nears — and because
     // this runs nightly with the CURRENT months-left, goals auto-de-risk over time.
-    const baseReturn = g.expectedReturn != null ? Number(g.expectedReturn) : 12;
-    const effReturn = effectiveGlideReturn(baseReturn, monthsLeft / 12, (g as any).glidePath);
-
-    const calc = computeGoal({
-      futureTarget,
-      currentValue,
-      existingMonthlySip,
-      monthsLeft,
-      expectedReturnPct: effReturn,
-      inflationPct: g.inflationPct != null ? Number(g.inflationPct) : undefined,
-      stepUpPct: g.stepUpPct != null ? Number(g.stepUpPct) : undefined,
-    });
+    const calc = computeStoredGoal(g, { currentValue, existingMonthlySip, now });
 
     const progressPct = futureTarget > 0 ? Math.min(100, (currentValue / futureTarget) * 100) : 0;
     const expProg = expectedProgressPct(g.startedOn, g.createdAt, g.targetDate, now);

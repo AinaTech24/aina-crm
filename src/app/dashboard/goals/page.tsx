@@ -8,8 +8,11 @@ import { requireSession } from "@/lib/auth/session";
 import { requireAny, can } from "@/lib/auth/rbac";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
-import { GoalsBulkTable } from "@/components/goals/GoalsBulkTable";
+import { GoalsBulkTable, type GoalLive } from "@/components/goals/GoalsBulkTable";
 import { Pager } from "@/components/common/Pager";
+import { EmptyState, InlineEmpty } from "@/components/common/EmptyState";
+import { buttonClass } from "@/components/ui/button-class";
+import { computeStoredGoal } from "@/lib/goal-planning/stored";
 
 export const dynamic = "force-dynamic";
 
@@ -72,9 +75,25 @@ export default async function GoalsPage({
       .limit(PAGE_SIZE)
       .offset((page - 1) * PAGE_SIZE);
 
+    const now = new Date();
     return {
-      // Flatten for BulkTable (needs a top-level `id`).
-      rows: r.map(({ goal, investorName, investorAvatarUrl }) => ({ ...goal, investorName, investorAvatarUrl })),
+      // Flatten for BulkTable (needs a top-level `id`). Status, required SIP,
+      // gap and the projection are computed from the goal's own inputs, the
+      // same way the nightly recompute does — never read from that cache,
+      // which is a day behind a rule change or a month ticking over.
+      rows: r.map(({ goal, investorName, investorAvatarUrl }) => {
+        const c = computeStoredGoal(goal, { now });
+        const live: GoalLive = {
+          tier: c.tier,
+          projected: c.projectedTotalFV,
+          projectedPct: c.projectedPct,
+          requiredSip: c.requiredMonthlySipTotal,
+          existingSip: Number(goal.existingMonthlySip ?? goal.monthlyContribution ?? 0),
+          gap: c.gapAmount,
+          expectedReturnPct: Math.round(c.expectedReturnPct * 10) / 10,
+        };
+        return { ...goal, investorName, investorAvatarUrl, live };
+      }),
       stats: {
         total: Number(s.total),
         onTrack: Number(s.on_track),
@@ -88,9 +107,19 @@ export default async function GoalsPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><Target className="size-6 text-muted-foreground" /> Goals</>} subtitle={<>Client goals — retirement, education, a home — and whether they are on track.</>} actions={<><Link href="/dashboard/goals/new" className="btn-primary">
-          <Plus className="size-4" /> Add Goal
-        </Link></>} />
+      {/* With no goals at all the empty state carries the one primary action,
+          so the header does not repeat it. */}
+      <PageHeaderCard
+        title={<><Target className="size-6 text-muted-foreground" /> Goals</>}
+        subtitle={<>Client goals — retirement, education, a home — and whether they are on track.</>}
+        actions={
+          stats.total > 0 ? (
+            <Link href="/dashboard/goals/new" className={buttonClass("primary")}>
+              <Plus className="size-4" /> New goal
+            </Link>
+          ) : undefined
+        }
+      />
 
       <CompactFilterBar
         totalCount={stats.total}
@@ -110,16 +139,17 @@ export default async function GoalsPage({
         ]}
       />
 
+      {stats.total === 0 ? (
+        <EmptyState
+          icon={Target}
+          title="No goals yet"
+          description="Pick a client, then the goal — retirement, a child's education, a home — and see the SIP it needs and whether their investments will get there."
+          primary={{ href: "/dashboard/goals/new", label: "+ New goal" }}
+        />
+      ) : (
       <div className="card-surface">
         {rows.length === 0 ? (
-          <div className="p-12 text-center text-sm text-muted-foreground">
-            <Target className="size-8 mx-auto text-muted-foreground/50" />
-            <div className="mt-2 font-medium">No goals tracked yet.</div>
-            <p className="mt-2 text-xs max-w-md mx-auto">
-              Click <strong>Add Goal</strong> above to start. The wizard computes required SIP and
-              gap analysis live as you type.
-            </p>
-          </div>
+          <InlineEmpty message="No goals on this page." action={{ href: "/dashboard/goals", label: "Back to the first page" }} />
         ) : (
           <GoalsBulkTable rows={rows} />
         )}
@@ -134,6 +164,7 @@ export default async function GoalsPage({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
