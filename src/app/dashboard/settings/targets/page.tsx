@@ -7,6 +7,10 @@ import { requireSession } from "@/lib/auth/session";
 import { users } from "@/db/schema";
 import { getMonthAchievements, currentMonthBounds } from "@/lib/targets/achievement";
 import { TargetsManager, type MemberTarget } from "./TargetsManager";
+import { BranchTargetsManager } from "./BranchTargetsManager";
+import { BRANCH_TARGET_METRICS } from "@/lib/targets/branch-targets";
+import { currentFiscalYear } from "@/lib/business/sif-status";
+import { sql } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
@@ -51,8 +55,31 @@ export default async function TargetsSettingsPage() {
     }));
   });
 
+  // Branch-level FY targets. Only an owner sets these — a branch head setting
+  // their own branch's target is marking their own homework.
+  const fiscalYear = currentFiscalYear();
+  const branchData = session.roles.includes("owner")
+    ? await withTenant(session.tenantId, async (tx) => {
+        const branches = await tx.execute(sql`SELECT id, name FROM branches ORDER BY name`);
+        const targets = await tx.execute(sql`
+          SELECT scope_id, metric_key, target_value
+            FROM annual_targets
+           WHERE fiscal_year = ${fiscalYear} AND scope_type = 'branch'
+        `);
+        const map: Record<string, Record<string, number>> = {};
+        for (const t of targets.rows as any[]) {
+          if (!t.scope_id) continue;
+          (map[String(t.scope_id)] ??= {})[String(t.metric_key)] = Number(t.target_value);
+        }
+        return {
+          branches: (branches.rows as any[]).map((b) => ({ id: String(b.id), name: String(b.name ?? "—") })),
+          targets: map,
+        };
+      })
+    : null;
+
   return (
-    <div className="space-y-5 max-w-4xl">
+    <div className="space-y-5 max-w-5xl">
       <Link href="/dashboard/settings" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
         <ChevronLeft className="size-4" /> Back to settings
       </Link>
@@ -61,6 +88,15 @@ export default async function TargetsSettingsPage() {
           <span className="font-medium text-foreground">{label}</span> (month-to-date).</>} />
 
       <TargetsManager members={members} canEditAll={manager} selfId={session.userId} monthLabel={label} />
+
+      {branchData && (
+        <BranchTargetsManager
+          branches={branchData.branches}
+          metrics={BRANCH_TARGET_METRICS}
+          initial={branchData.targets}
+          fiscalYear={fiscalYear}
+        />
+      )}
     </div>
   );
 }

@@ -1,0 +1,356 @@
+/**
+ * The building blocks the personal cockpit is assembled from.
+ *
+ * Twenty-four sections is a lot of screen, and the only thing that keeps it
+ * readable is that every one of them is made of the SAME four or five pieces.
+ * A section that invents its own header, its own stat tile and its own empty
+ * state adds a paragraph of visual grammar the reader has to learn before they
+ * can read the number.
+ *
+ * ── The rules these encode ──────────────────────────────────────────────────
+ *
+ * · A null is never a zero. `Stat` renders "—" for null with a title
+ *   explaining why, and `Figure` refuses to print ₹0 for an absent figure.
+ * · Colour is a signal. `tone` is the only way to colour a number, there are
+ *   four tones, and "neutral" is the default. A section where everything is
+ *   amber has said nothing.
+ * · Every count is a link. A figure you cannot open is decoration.
+ * · Indian notation throughout, via @/lib/format. Nothing here formats money
+ *   or dates itself.
+ */
+
+import Link from "next/link";
+import type { ReactNode } from "react";
+import { ArrowUpRight, Info } from "lucide-react";
+import { formatCount, formatMoney, formatPercent } from "@/lib/format";
+import { cn } from "@/lib/utils";
+
+/* ────────────────────────────── section shell ────────────────────────────── */
+
+export function Section({
+  title,
+  subtitle,
+  icon,
+  action,
+  children,
+  className,
+  /** Shown top-right as a quiet caveat — how a figure is measured, what it excludes. */
+  note,
+}: {
+  title: string;
+  subtitle?: string;
+  icon?: ReactNode;
+  action?: ReactNode;
+  children: ReactNode;
+  className?: string;
+  note?: string;
+}) {
+  return (
+    <section className={cn("card-surface p-5 sm:p-6", className)} aria-label={title}>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b border-border/60 pb-4">
+        <div className="min-w-0">
+          <h2 className="section-title flex items-center gap-2">
+            {icon && <span className="shrink-0 text-muted-foreground">{icon}</span>}
+            {title}
+          </h2>
+          {subtitle && <p className="section-subtitle mt-1">{subtitle}</p>}
+        </div>
+        {action && <div className="flex shrink-0 items-center gap-2">{action}</div>}
+      </div>
+      {children}
+      {note && (
+        <p className="mt-4 flex items-start gap-1.5 border-t border-border/60 pt-3 text-2xs text-muted-foreground">
+          <Info className="mt-px size-3 shrink-0" aria-hidden />
+          <span>{note}</span>
+        </p>
+      )}
+    </section>
+  );
+}
+
+/**
+ * A right-aligned "open the underlying list" link. Used on nearly every section.
+ *
+ * `min-h-6` is the repo's 24px hit-target floor. A 16px-tall text link is
+ * readable and, on a phone, close to unhittable — measured at 375px, this and
+ * the sort chips were the only real controls on the page under the floor.
+ */
+export function SectionLink({ href, children }: { href: string; children: ReactNode }) {
+  return (
+    <Link
+      href={href}
+      className="inline-flex min-h-6 items-center gap-1 rounded px-1 text-xs font-medium text-primary hover:bg-accent hover:underline"
+    >
+      {children}
+      <ArrowUpRight className="size-3.5" aria-hidden />
+    </Link>
+  );
+}
+
+/* ──────────────────────────────── figures ──────────────────────────────── */
+
+export type Tone = "neutral" | "good" | "warn" | "bad";
+
+const TONE_TEXT: Record<Tone, string> = {
+  neutral: "text-foreground",
+  good: "text-success",
+  warn: "text-warning-foreground",
+  bad: "text-destructive",
+};
+
+/**
+ * A formatted figure that knows the difference between zero and unknown.
+ *
+ * `null` renders an em dash with the reason on hover, never "₹0" or "0%". The
+ * brief's rule — "Never interpret missing data as zero" — is enforced at the
+ * one place every number passes through, rather than trusted to each caller.
+ */
+export function Figure({
+  value,
+  format = "currency",
+  unavailable = "Data unavailable — nothing recorded for this yet.",
+  decimals,
+}: {
+  value: number | null | undefined;
+  format?: "currency" | "count" | "percent";
+  unavailable?: string;
+  decimals?: number;
+}) {
+  if (value == null) {
+    return (
+      <span className="text-muted-foreground" title={unavailable}>
+        —
+      </span>
+    );
+  }
+  if (format === "count") return <>{formatCount(value)}</>;
+  if (format === "percent") return <>{formatPercent(value * 100, decimals ?? 1)}</>;
+  return <>{formatMoney(value, decimals != null ? { decimals } : undefined)}</>;
+}
+
+/** One number in a grid of numbers. The workhorse of the whole page. */
+export function Stat({
+  label,
+  value,
+  format = "count",
+  tone = "neutral",
+  hint,
+  href,
+  unavailable,
+  /** Overrides the formatted value entirely — for a figure already in words. */
+  display,
+}: {
+  label: string;
+  value?: number | null;
+  format?: "currency" | "count" | "percent";
+  tone?: Tone;
+  hint?: string;
+  href?: string;
+  unavailable?: string;
+  display?: ReactNode;
+}) {
+  const body = (
+    <div
+      className={cn(
+        "rounded-lg border border-border bg-card p-3 transition-colors",
+        href && "hover:border-primary/40 hover:bg-accent",
+      )}
+    >
+      <div className={cn("text-xl font-semibold tabular-nums leading-tight", TONE_TEXT[tone])}>
+        {display ?? <Figure value={value} format={format} unavailable={unavailable} />}
+      </div>
+      <div className="mt-1 text-2xs font-medium leading-snug text-foreground">{label}</div>
+      {hint && <div className="text-2xs leading-snug text-muted-foreground">{hint}</div>}
+    </div>
+  );
+  return href ? (
+    <Link href={href} className="block">
+      {body}
+    </Link>
+  ) : (
+    body
+  );
+}
+
+/** A row of stats. Kept here so every section spaces them identically. */
+export function StatGrid({ cols = 4, children }: { cols?: 2 | 3 | 4 | 5 | 6; children: ReactNode }) {
+  const cls =
+    cols === 2 ? "sm:grid-cols-2"
+    : cols === 3 ? "sm:grid-cols-3"
+    : cols === 4 ? "sm:grid-cols-2 lg:grid-cols-4"
+    : cols === 5 ? "sm:grid-cols-3 lg:grid-cols-5"
+    : "sm:grid-cols-3 lg:grid-cols-6";
+  return <div className={cn("grid grid-cols-2 gap-2.5", cls)}>{children}</div>;
+}
+
+/* ──────────────────────────── target meters ──────────────────────────── */
+
+/**
+ * Target · Actual · Gap · Achievement, and the FY pace marker.
+ *
+ * The brief is explicit that a percentage alone is not allowed, and the pace
+ * marker is why: 50% of an annual target is ahead in September and a serious
+ * problem in February. The bar carries a notch at the elapsed fraction so the
+ * reader does not have to do that arithmetic, and the achievement figure is
+ * coloured against the PACE, not against 100%.
+ */
+export function Meter({
+  label,
+  target,
+  actual,
+  format,
+  pace,
+  href,
+  missing = "Not set",
+  behindLabel = "Gap",
+  neutralShortfall = false,
+}: {
+  /** What the shortfall is called — "Gap", or "Remaining" on the RM desk. */
+  behindLabel?: string;
+  /**
+   * The RM desk shows what REMAINS of a target in ink, not red: mid-month,
+   * most of a target is still to come, and red is kept for overdue work.
+   */
+  neutralShortfall?: boolean;
+  label: string;
+  /** null = no target set. Renders "Not set", which is not the same as 0%. */
+  target: number | null;
+  actual: number;
+  format: "currency" | "count";
+  /** NULL for a balance target — no notch, and only "achieved" is coloured. */
+  pace: number | null;
+  href: string;
+  /** Why there is no target: "Not set" (default) or "Not phased". */
+  missing?: string;
+}) {
+  const pct = target && target > 0 ? actual / target : null;
+  const gap = target && target > 0 ? actual - target : null;
+  // Unpaced (a balance): green once achieved, otherwise no judgement at all.
+  const onPace = pct != null && (pace == null ? pct >= 1 : pct >= pace);
+  const judged = pct != null && (pace != null || pct >= 1);
+  const fill = pct == null ? 0 : Math.min(100, Math.max(0, pct * 100));
+
+  return (
+    <Link href={href} className="block rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary/40">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="truncate text-xs font-medium text-foreground">{label}</span>
+        {pct == null ? (
+          <span
+            className="shrink-0 text-2xs text-muted-foreground"
+            title={missing === "Not phased"
+              ? "The firm compares annual targets with FY-to-date only, so a shorter period has no target."
+              : "No annual target has been set for this metric."}
+          >
+            {missing}
+          </span>
+        ) : (
+          <span className={cn("shrink-0 text-sm font-semibold tabular-nums", !judged ? "text-foreground" : onPace ? "text-success" : "text-warning-foreground")}>
+            {formatPercent(pct * 100, 1)}
+          </span>
+        )}
+      </div>
+
+      <div className="relative mt-2.5 h-2 overflow-hidden rounded-full bg-secondary">
+        <div
+          className={cn("h-full rounded-full", pct == null ? "bg-border" : !judged ? "bg-primary/60" : onPace ? "bg-success" : "bg-warning")}
+          style={{ width: `${fill}%` }}
+        />
+        {/* Where the firm SHOULD be by today. Without it a bar is just a bar. */}
+        {target != null && target > 0 && pace != null && (
+          <span
+            aria-hidden
+            className="absolute top-0 h-full w-0.5 bg-foreground/45"
+            style={{ left: `${Math.min(100, pace * 100)}%` }}
+            title={`FY pace today: ${(pace * 100).toFixed(0)}%`}
+          />
+        )}
+      </div>
+
+      <dl className="mt-2.5 grid grid-cols-3 gap-2 text-2xs">
+        <div>
+          <dt className="text-muted-foreground">Target</dt>
+          <dd className="font-medium tabular-nums text-foreground">
+            <Figure value={target} format={format} unavailable={missing} />
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Actual</dt>
+          <dd className="font-medium tabular-nums text-foreground">
+            <Figure value={actual} format={format} />
+          </dd>
+        </div>
+        <div>
+          {/* No target: the shortfall's own name, never "Ahead by" a target that does not exist. */}
+          <dt className="text-muted-foreground">{gap != null && gap >= 0 ? "Ahead by" : behindLabel}</dt>
+          <dd className={cn("font-medium tabular-nums",
+            gap == null ? "text-muted-foreground" : gap >= 0 ? "text-success" : neutralShortfall ? "text-foreground" : "text-destructive")}>
+            {gap == null ? "—" : <Figure value={Math.abs(gap)} format={format} />}
+          </dd>
+        </div>
+      </dl>
+    </Link>
+  );
+}
+
+/* ─────────────────────────────── table shell ─────────────────────────────── */
+
+/**
+ * A plain table. The app shell already styles every `<table>` under
+ * `.dashboard-content` — header, row hover, hairline dividers — so this adds
+ * only the horizontal scroll container and a consistent empty state. Reaching
+ * for `<DataTable>` here would mean handing it a column spec for fifteen
+ * different shapes; this is the honest smaller tool.
+ */
+export function Table({
+  head,
+  children,
+  empty,
+  rows,
+}: {
+  head: ReactNode;
+  children: ReactNode;
+  /** One sentence, ending in a full stop. Shown when `rows` is 0. */
+  empty: string;
+  rows: number;
+}) {
+  if (rows === 0) {
+    return <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-xs text-muted-foreground">{empty}</p>;
+  }
+  return (
+    <div className="table-scroll">
+      <table className="w-full">
+        <thead>
+          <tr>{head}</tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
+    </div>
+  );
+}
+
+/** A right-aligned numeric cell, tabular so columns line up. */
+export function Num({ children, tone = "neutral", className }: { children: ReactNode; tone?: Tone; className?: string }) {
+  return <td className={cn("py-2.5 text-right tabular-nums", TONE_TEXT[tone], className)}>{children}</td>;
+}
+
+/**
+ * Category letter as a quiet marker.
+ *
+ * Deliberately NOT coloured. Client category is taxonomy — what a client IS —
+ * and the repo's badge contract reserves colour for status. An A that glows
+ * green spends the same ink as an overdue warning two columns away.
+ */
+export function CategoryTag({ value }: { value: string | null }) {
+  if (!value) return <span className="text-2xs text-muted-foreground" title="No category set for this client.">Not set</span>;
+  return <span className="chip bg-secondary text-secondary-foreground">{value}</span>;
+}
+
+/** A single explanatory line for a figure the CRM cannot currently produce. */
+export function Unavailable({ children }: { children: ReactNode }) {
+  return (
+    <p className="flex items-start gap-1.5 rounded-lg border border-dashed border-border bg-secondary/40 px-3 py-2.5 text-2xs leading-relaxed text-muted-foreground">
+      <Info className="mt-px size-3 shrink-0" aria-hidden />
+      <span>{children}</span>
+    </p>
+  );
+}

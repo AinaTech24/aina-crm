@@ -166,10 +166,13 @@ export type Capability =
   | "dashboard.view.marketing"
   | "dashboard.view.ops"
   | "dashboard.view.rm"
+  | "dashboard.view.branch"
+  | "dashboard.view.all_branches"
   // Master settings + admin
   | "settings.users"
   | "settings.billing"
   | "settings.masters"
+  | "settings.dashboard"
   | "settings.security"
   | "settings.desks";
 
@@ -307,6 +310,20 @@ const MATRIX: Record<Capability, Role[]> = {
   "dashboard.view.marketing": ["marketing"],
   "dashboard.view.ops": ["back_office", "ops", "service_team"],
   "dashboard.view.rm": ["rm", "insurance_team"],
+  // The branch command centre (?scope=branch), locked to the viewer's own
+  // branch. Branch heads open it by default.
+  "dashboard.view.branch": ["branch_head"],
+  // Lifts that lock: pick ANY branch on the branch command centre, and see the
+  // firm-wide cockpit. Deliberately granted to no role — owner has it through
+  // the hard-case in can(), and anyone else gets it only by an explicit tick in
+  // "Customize access permissions". That is the brief's "do not allow access
+  // to another branch unless explicitly permitted by CRM security".
+  //
+  // It does NOT replace dashboard.view.owner, which ~38 other screens (RTA
+  // import, client merge, team scorecard, command centre…) use to mean
+  // "firm-wide", and which branch_head still holds. Narrowing those is a
+  // separate decision; this key only governs the dashboard page.
+  "dashboard.view.all_branches": [],
 
   // Org admin. User management + billing stay owner-only by design (account
   // ownership boundary) — owner is granted them via the hard-case in can().
@@ -316,6 +333,9 @@ const MATRIX: Record<Capability, Role[]> = {
   "settings.billing": [],
   "settings.masters": ["compliance", "back_office", "ops"],
   "settings.security": ["compliance"],
+  // Dashboard judgement thresholds (target bands, stale-lead days, proposal
+  // ageing…). Firm-wide policy, so owner-only unless explicitly granted.
+  "settings.dashboard": [],
   // Desks are sub-branch team structure (RM → desk → branch rollup). Branch
   // heads own their branch's desks; ops/back-office admins maintain the org
   // chart. Owner is granted via the hard-case in can().

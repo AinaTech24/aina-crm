@@ -42,6 +42,9 @@ export function buildInvestorConditions(
   const status = csv(sp.status);
   const kyc = csv(sp.kyc);
   const rm = csv(sp.rm);
+  // Malformed ids are dropped rather than cast: '…'::uuid on a hand-edited URL
+  // would turn a bad link into a 500.
+  const branch = csv(sp.branch).filter((v) => /^[0-9a-f-]{36}$/i.test(v));
   const gaps = csv(sp.gaps);
   const qf = {
     mine: sp.mine === "1",
@@ -87,7 +90,18 @@ export function buildInvestorConditions(
   // NB: use inArray (not `= ANY(${jsArray})`) — Drizzle expands a JS array
   // passed to sql`` into a `($1,$2,…)` tuple, which is invalid for ANY().
   if (segment.length) conditions.push(inArray(investors.segmentTag, segment as any));
-  if (category.length) conditions.push(inArray(investors.clientCategory, category as any));
+  // `category=none` is the "no category set" bucket the dashboards link to.
+  // Matching it literally found nothing (no client's category is the string
+  // "none"), so the link opened an empty list under a count of twelve.
+  if (category.length) {
+    const named = category.filter((c) => c !== "none");
+    const parts: any[] = [];
+    if (named.length) parts.push(inArray(investors.clientCategory, named as any));
+    if (named.length !== category.length) {
+      parts.push(sql`(${investors.clientCategory} IS NULL OR btrim(${investors.clientCategory}) = '')`);
+    }
+    conditions.push(parts.length === 1 ? parts[0] : or(...parts)!);
+  }
   if (tier.length) conditions.push(inArray(investors.serviceTier, tier as any));
   if (status.length) conditions.push(inArray(investors.status, status as any));
   if (kyc.length) conditions.push(inArray(investors.kycStatus, kyc as any));
@@ -97,6 +111,43 @@ export function buildInvestorConditions(
     conditions.push(
       sql`${investors.rmId} IN (${sql.join(rm.map((v) => sql`${v}::uuid`), sql`, `)})`
     );
+  }
+
+  // Branch filter — the branch command centre's drill-down. It only NARROWS:
+  // the caller's access scope (investorScopeCondition) is ANDed on top, so a
+  // branch id in the URL can never widen what a viewer may see.
+  if (branch.length) {
+    conditions.push(
+      sql`${investors.branchId} IN (${sql.join(branch.map((v) => sql`${v}::uuid`), sql`, `)})`
+    );
+  }
+
+  // Review state, as the dashboards count it: overdue is a review DATE before
+  // today; due is today or earlier. `reviews_due=1` below compares with now(),
+  // which drops a review due at 5pm today from a list opened at 10am.
+  if (sp.review === "overdue") {
+    conditions.push(sql`(${investors.nextReviewAt} IS NOT NULL AND ${investors.nextReviewAt}::date < current_date)`);
+  } else if (sp.review === "due") {
+    conditions.push(sql`(${investors.nextReviewAt} IS NOT NULL AND ${investors.nextReviewAt}::date <= current_date)`);
+  }
+
+  // Investing, but no active SIP in the SIP register — the relationship
+  // opportunity of the same name.
+  if (sp.sip === "none") {
+    conditions.push(sql`(COALESCE(${investors.aum}, 0) > 0 AND NOT EXISTS (
+      SELECT 1 FROM sips s WHERE s.investor_id = ${investors.id} AND s.status = 'active'))`);
+  }
+
+  // A birthday or anniversary within the next N days, by NEXT occurrence —
+  // the action centre's rule, so the week of Christmas does not empty out.
+  const occasionDays = Number(sp.occasion);
+  if (Number.isInteger(occasionDays) && occasionDays > 0 && occasionDays <= 60) {
+    const within = (d: any) => sql`(${d} IS NOT NULL AND (CASE
+        WHEN (${d} + ((EXTRACT(YEAR FROM current_date) - EXTRACT(YEAR FROM ${d}))::int || ' years')::interval)::date >= current_date
+        THEN (${d} + ((EXTRACT(YEAR FROM current_date) - EXTRACT(YEAR FROM ${d}))::int || ' years')::interval)::date
+        ELSE (${d} + ((EXTRACT(YEAR FROM current_date) - EXTRACT(YEAR FROM ${d}))::int + 1 || ' years')::interval)::date
+      END) <= current_date + ${occasionDays}::int)`;
+    conditions.push(sql`(${within(investors.dob)} OR ${within(investors.anniversaryDate)})`);
   }
 
   if (qf.mine) conditions.push(sql`${investors.rmId} = ${userId}`);
@@ -192,6 +243,22 @@ export function buildInvestorConditions(
         break;
       case "rm":
         conditions.push(sql`${investors.rmId} IS NULL`);
+        break;
+      // The data-quality card's gaps, each matching its count exactly.
+      case "kyc":
+        conditions.push(sql`(${investors.kycStatus} IS NULL OR ${investors.kycStatus} NOT IN ('validated','registered','verified'))`);
+        break;
+      case "risk_pending":
+        conditions.push(sql`${investors.riskProfile} IS NULL`);
+        break;
+      case "occupation":
+        conditions.push(sql`(${investors.occupation} IS NULL OR btrim(${investors.occupation}) = '')`);
+        break;
+      case "employer":
+        conditions.push(sql`(${investors.employerName} IS NULL OR btrim(${investors.employerName}) = '')`);
+        break;
+      case "notes":
+        conditions.push(sql`(${investors.notes} IS NULL OR btrim(${investors.notes}) = '')`);
         break;
       case "pan_aadhaar":
         conditions.push(sql`(${investors.panAadhaarLinkStatus} = 'not_linked' OR ${investors.panAadhaarLinkStatus} IS NULL)`);

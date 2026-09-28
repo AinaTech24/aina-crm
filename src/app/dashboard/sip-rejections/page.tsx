@@ -66,6 +66,14 @@ export default async function SipRejectionsPage({
     }
     const dr = dateRangeCond(sp, "rej", "r.rejection_date");
     if (dr) filters.push(dr);
+    // Branch / RM — the branch command centre's "open the exact SIP records".
+    // Both follow the CLIENT (its branch, its RM), which is how the dashboard
+    // counts rejections. Malformed ids are dropped rather than cast.
+    const ids = (v: string | undefined) => (v ?? "").split(",").filter((x) => /^[0-9a-f-]{36}$/i.test(x));
+    const branchIds = ids(sp.branch);
+    const rmIds = ids(sp.rm);
+    if (branchIds.length) filters.push(sql`i.branch_id IN (${sql.join(branchIds.map((v) => sql`${v}::uuid`), sql`, `)})`);
+    if (rmIds.length) filters.push(sql`i.rm_id IN (${sql.join(rmIds.map((v) => sql`${v}::uuid`), sql`, `)})`);
     const whereSql = filters.length ? sql` WHERE ${sql.join(filters, sql` AND `)}` : sql``;
 
     const rows = await tx.execute(sql`

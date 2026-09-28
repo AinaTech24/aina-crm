@@ -13,7 +13,7 @@
 import { useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Loader2, X, Plus, MapPin, Phone, Save } from "lucide-react";
+import { Loader2, X, Plus, MapPin, Phone, Save, NotebookPen } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 
 type Subject = { type: "investor" | "lead" | "family"; id: string; name: string; phone?: string | null };
@@ -26,22 +26,47 @@ const STATUSES = [
   ["busy", "Busy"], ["left_voicemail", "Left voicemail"], ["no_show", "No show"],
 ] as const;
 
-export function LogActivityButton({ subject, label = "Log activity", variant = "primary" }: { subject?: Subject; label?: string; variant?: "primary" | "secondary" }) {
+export function LogActivityButton({
+  subject, label = "Log activity", variant = "primary", iconOnly = false, defaultKind = "call",
+}: {
+  subject?: Subject;
+  label?: string;
+  variant?: "primary" | "secondary";
+  /** A 28px icon button for table rows; `label` becomes its accessible name. */
+  iconOnly?: boolean;
+  /** Which type the drawer opens on — "note" for an "Add note" action. */
+  defaultKind?: (typeof KINDS)[number][0];
+}) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button onClick={() => setOpen(true)} className={`${variant === "primary" ? "btn-primary" : "btn-secondary"} text-sm inline-flex items-center gap-1`}>
-        <Plus className="size-4" /> {label}
-      </button>
-      {open && <LogActivityDrawer subject={subject} onClose={() => setOpen(false)} />}
+      {iconOnly ? (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setOpen(true); }}
+          aria-label={label}
+          title={label}
+          className="inline-grid size-7 place-items-center rounded text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+        >
+          <NotebookPen className="size-3.5" />
+        </button>
+      ) : (
+        <button onClick={() => setOpen(true)} className={`${variant === "primary" ? "btn-primary" : "btn-secondary"} text-sm inline-flex items-center gap-1`}>
+          <Plus className="size-4" /> {label}
+        </button>
+      )}
+      {open && <LogActivityDrawer subject={subject} initialKind={defaultKind} onClose={() => setOpen(false)} />}
     </>
   );
 }
 
-function LogActivityDrawer({ subject: fixed, onClose }: { subject?: Subject; onClose: () => void }) {
+function LogActivityDrawer({ subject: fixed, onClose, initialKind = "call" }: { subject?: Subject; onClose: () => void; initialKind?: string }) {
   const router = useRouter();
   const [subject, setSubject] = useState<Subject | null>(fixed ?? null);
-  const [kind, setKind] = useState<string>("call");
+  const [kind, setKind] = useState<string>(initialKind);
+  // The next follow-up date is what puts this client back on the RM's
+  // worklist on that day (the desk reads activities.next_followup_at).
+  const [nextFollowup, setNextFollowup] = useState("");
   const [direction, setDirection] = useState<string>("outbound");
   const [status, setStatus] = useState<string>("");
   const [subjectLine, setSubjectLine] = useState("");
@@ -57,6 +82,7 @@ function LogActivityDrawer({ subject: fixed, onClose }: { subject?: Subject; onC
       const body: any = {
         subjectType: subject.type, subjectId: subject.id, kind,
         subject: subjectLine || undefined, notes: notes || undefined,
+        nextFollowupAt: nextFollowup ? new Date(nextFollowup).toISOString() : undefined,
       };
       if (kind === "call") {
         body.direction = direction || undefined;
@@ -119,6 +145,7 @@ function LogActivityDrawer({ subject: fixed, onClose }: { subject?: Subject; onC
 
           <Field label="Subject"><input value={subjectLine} onChange={(e) => setSubjectLine(e.target.value)} placeholder="e.g. SIP top-up discussion" className="input-base" /></Field>
           <Field label="Notes / outcome"><textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} className="input-base" placeholder="What was discussed / agreed?" /></Field>
+          <Field label="Next follow-up (optional)"><input type="datetime-local" value={nextFollowup} onChange={(e) => setNextFollowup(e.target.value)} className="input-base" /></Field>
 
           {err && <div className="text-sm text-rose-600">{err}</div>}
         </div>

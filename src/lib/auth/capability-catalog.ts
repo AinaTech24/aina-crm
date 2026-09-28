@@ -138,6 +138,8 @@ export const CAPABILITY_CATALOG: Record<Capability, CapabilityMeta> = {
   "dashboard.view.marketing": { group: "Reports & Dashboards", label: "Marketing dashboard" },
   "dashboard.view.ops": { group: "Reports & Dashboards", label: "Operations dashboard" },
   "dashboard.view.rm": { group: "Reports & Dashboards", label: "RM dashboard" },
+  "dashboard.view.branch": { group: "Reports & Dashboards", label: "Branch dashboard", hint: "Own branch only" },
+  "dashboard.view.all_branches": { group: "Reports & Dashboards", label: "All branches on the dashboard", hint: "Lifts the own-branch lock" },
 
   // ── Settings ────────────────────────────────────────────────────────────
   "settings.users": { group: "Settings", label: "Manage team & permissions", hint: "Lets this member change others' access" },
@@ -145,6 +147,7 @@ export const CAPABILITY_CATALOG: Record<Capability, CapabilityMeta> = {
   "settings.masters": { group: "Settings", label: "Manage master data" },
   "settings.security": { group: "Settings", label: "Manage security settings" },
   "settings.desks": { group: "Settings", label: "Manage desks & assignment" },
+  "settings.dashboard": { group: "Settings", label: "Dashboard thresholds", hint: "Target bands, stale leads, ageing" },
 };
 
 export type CapabilityGroupView = {

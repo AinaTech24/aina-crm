@@ -1,6 +1,6 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
-import { Activity, Building2, Database, Users, CreditCard, MessageCircle, Mail, Webhook, ShieldCheck, Workflow, KeyRound, Palette, UserCircle, GitBranch, Target, Network, BellRing, ClipboardCheck, SlidersHorizontal } from "lucide-react";
+import { Activity, Gauge, Building2, Database, Users, CreditCard, MessageCircle, Mail, Webhook, ShieldCheck, Workflow, KeyRound, Palette, UserCircle, GitBranch, Target, Network, BellRing, ClipboardCheck, SlidersHorizontal } from "lucide-react";
 
 const SECTIONS = [
   {
@@ -99,6 +99,13 @@ const SECTIONS = [
     desc: "Route new leads & clients to your team automatically — round-robin or load-balanced.",
     href: "/dashboard/settings/assignment-rules",
     group: "Automation",
+  },
+  {
+    icon: Gauge,
+    title: "Dashboard thresholds",
+    desc: "Where the dashboards draw their lines — target bands, phasing, stale leads, proposal ageing and SLAs.",
+    href: "/dashboard/settings/dashboard-thresholds",
+    group: "Team",
   },
   {
     icon: Target,

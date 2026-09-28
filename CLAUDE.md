@@ -244,6 +244,174 @@ Idempotency: communications updates are keyed by `(external_id, channel)` — sa
 
 ---
 
+## The dashboards
+
+`/dashboard` serves **three** cockpits, chosen by `?scope=`:
+
+| scope | What it answers | Default period |
+|---|---|---|
+| `firm` (default) | "How is the business doing?" — every branch, every RM | FY to date |
+| `branch` | "Is my branch on target, which RM, what needs me?" — one branch | Month to date |
+| `mine` | "Whom do I contact today, what is pending, how is my business going?" — the RM desk, only the signed-in user's own book. The DEFAULT for an RM | Today for actions, month to date for business |
+
+They are deliberately separate views rather than one page with a filter. A
+director who also carries clients wants both, and merging them makes both
+worse: firm-wide overdue tasks bury the four that are actually theirs, and a
+personal AUM figure inside a firm cockpit reads as the firm's. The switch is
+`DashboardScopeSwitch`, which preserves every other query param except the
+ones that change meaning between views (`rm`, `tab`, the branch view's
+toggles). WHICH scopes a viewer may open is decided in
+[src/app/dashboard/page.tsx](src/app/dashboard/page.tsx), never by the switch.
+
+**What "mine" means is defined once**, in
+[src/lib/dashboard/my/window.ts](src/lib/dashboard/my/window.ts). Everything
+hangs off one spine — clients whose `investors.rm_id` is me — and business,
+transactions, SIPs, queries and insurance are scoped THROUGH that spine, not
+by who keyed the record. Three things are scoped to the user instead, because
+they are their work rather than their book: `leads.owner_id`,
+`tasks.assignee_id`, `proposals.prepared_by_user_id`. Insurance is scoped both
+ways on purpose — premium booked is `sold_by_user_id`, the relationship view is
+my clients' policies whoever sold them.
+
+Loaders live in `src/lib/dashboard/my/` (window · kpis · clients · pipeline ·
+desk); components in `src/components/dashboards/my/` and, for the RM desk's
+action sections, `src/components/dashboards/desk/`. Each band on the page is
+its own `<Suspense>` so My Day paints without waiting for the forty-odd
+aggregates below it — and every band's transaction goes through
+`runLimit(4)` (`lib/dashboard/run-limit.ts`): unbounded, one render held ~17
+of the pool's 20 connections and a few RMs opening their desk together starved
+the rest of the process.
+
+**A task reaches a client through TWO links**, and many rows fill only one:
+`related_investor_id` (task form, meeting follow-ups, SIP defence) or
+`subject_type = 'investor'` + `subject_id` (SIP rejections, onboarding,
+documents). Never read one column alone — use `taskInvestor(alias)`,
+`taskLead(alias)` or `taskIsAbout(alias, investorSql)` from `window.ts`.
+Reading only `related_investor_id` detached every rejection follow-up from its
+client and made redemptions look unfollowed.
+
+### Four rules the personal cockpit encodes
+
+- **Stock vs flow.** AUM and the SIP book are BALANCES; their month-on-month
+  change is mostly the market. Everything else is money that moved in the
+  period. Every tile says which it is, because "My AUM +6.9%" read as sales is
+  the classic error.
+- **A null is not a zero.** `Figure` renders an em dash with a reason on hover
+  and refuses to print ₹0 for an absent value. "No target set" is not 0%; "no
+  ledger imported" is not ₹0 of business.
+- **A blank field is a record gap, not a fact about the client.** The insurance
+  matrix says "No CRM record", never "needs cover"; risk category is never
+  inferred from age or holdings. This is the brief's instruction and the only
+  defensible reading — turning empty columns into sales prompts is how a
+  relationship tool becomes a mis-selling engine.
+- **Severity budget.** Red for overdue and consequential, amber for
+  approaching, neutral for everything else including every empty card. An empty
+  card is never green: "0 SIP rejections" is not an achievement.
+
+### The branch command centre (`?scope=branch`)
+
+The Branch Business Command Centre (`BranchCommandCentre.tsx`) is the
+branch head's view: KPIs, targets, the RM scoreboard and target matrix, SIP /
+redemption / review / task / query desks, the attention centre, weekly and
+monthly review modes and the FY scorecard — 32 sections.
+
+- **The branch lock.** A branch head (`isBranchScoped`: branch head, not owner,
+  with a branch) WITHOUT `dashboard.view.all_branches` is locked to
+  `session.branchId`: the branch view is their default, `?branch=` is
+  ignored, `?rm=` is honoured only for someone in that branch, and
+  `?scope=firm` falls back to the branch. `dashboard.view.all_branches`
+  (owner implicitly; grantable per user) lifts the lock and adds the branch
+  picker. A branch head with no branch gets an explanation, never a silent
+  widening to the firm. `dashboard.view.branch` gates the view itself.
+- **Same loaders, branch scope.** Everything shared with the personal cockpit
+  runs the `lib/dashboard/my/*` loaders with `{ kind: "branch", branchId,
+  rmId? }`. Client facts follow `investors.branch_id`; staff facts follow
+  everyone whose `users.branch_id` is the branch (departed people included —
+  their history happened here).
+- **One RM ledger per request** (`lib/dashboard/branch/rm-ledger.ts`). Every
+  "by RM" table is a projection of it, and two synthetic rows ("Served from
+  other branches", "No RM assigned") make each column sum to the branch figure
+  above it. Staff facts read "—" on those rows, never 0.
+- **Judgement thresholds are firm settings**, not code:
+  `dashboard_settings` (migration 0219), edited at Settings → Dashboard
+  thresholds, read with `loadDashboardThresholds(tx)` — NOT
+  `getDashboardThresholds()`, which returns bare defaults. Target phasing is
+  one of them: `linear` pro-rates annual targets by days, `none` means a
+  month or quarter has no target ("Not phased") and the FY scorecard shows no
+  "expected by today". Bands (achieved / near / short) come from
+  `lib/dashboard/branch/targets.ts`; there is no overall RM score.
+- **Drill-down is branch → RM → client → record.** A KPI tile opens the RM-wise
+  view, an RM name opens the one-on-one view (`?rm=`), client names open the
+  record. List pages read `branch=` (investors, leads, SIP rejections) so a
+  count opens onto the same rows — a filter only ever NARROWS; the viewer's
+  access scope still applies on top. Build list links with `clientsHref` /
+  `leadsHref` from `lib/dashboard/my/window.ts`, never a literal `?mine=1`.
+- **Voice.** Shared sections take a `voice` (`components/dashboards/my/voice.ts`)
+  for their copy and links, so one component says "My client book" or "Branch
+  client book" without knowing which page it is on.
+
+### The RM desk (`?scope=mine`)
+
+"My Client & Business Dashboard" (`MyBusinessDashboard.tsx`) — the RM's work
+desk, client cockpit and target tracker, built from the 40-section RM brief.
+Action before analytics: morning priorities → My Day → Needs my attention →
+KPIs → targets → today's worklist + 7 days → meetings, reviews, book, leads,
+SIP, flows, tasks, queries, relationships → scorecards → FY performance.
+
+- **An RM lands here.** `rmHome` in `app/dashboard/page.tsx`: no firm,
+  compliance, marketing or ops cockpit but `dashboard.view.rm` → scope
+  `mine`, and so do `?scope=firm` and a branch view they may not open. A
+  director or branch head who carries clients opens the same desk from the
+  switch.
+- **Owner is locked to "Me".** There is no owner picker. Client filters
+  (`cat`, `ctype`, `cnew`, `cstatus`, `city`, `src`, `fam` → `BookScope.filter`)
+  narrow CLIENT facts only; the RM's own tasks, leads and meetings are not
+  filtered. They and `day` / `eod` are `MINE_ONLY_PARAMS`, dropped by the
+  scope switch on the way out.
+- **The worklist is the priority.** `loadWorklist` (desk.ts) merges meetings,
+  reviews, lead and client follow-ups, tasks, queries, SIP rejections,
+  proposals and renewals into one list sorted overdue → due today → category
+  → time. Levels are the brief's critical / attention / normal, each row says
+  why, and the morning brief's "Top actions" is simply its head — no score.
+- **Nothing from another RM's book.** A task assigned over a colleague's
+  client shows the name the task already carries and nothing else — no link,
+  AUM, category or contact details ("Not in your book").
+- **Phones get cards.** The worklist renders one card per action below `md`
+  so call / WhatsApp / complete are one tap away; `order-*` classes give the
+  brief's mobile order and `lg:order-none` restores the desktop rows.
+- **An `sr-only` label inside a scrolling table needs a positioned cell**
+  (`<th className="relative">`). `sr-only` is absolutely positioned; in an
+  unpositioned `.table-scroll` it escapes the clip and widened the whole page
+  to 1063px on a phone.
+- **Client 360 summary** (brief §40): `ClientSummaryStrip` +
+  `lib/investors/summary.ts` put family, RM, AUM, SIP, last meeting, next
+  review, risk, open work and insurance at the top of the client page, with
+  the same missing-data wording as the desk.
+
+### Per-RM history (`rm_snapshots`, migration 0217)
+
+"My AUM vs last month" is units × NAV a month ago. It cannot be recomputed —
+it has to have been recorded, and `firm_snapshots` has no RM dimension. The
+nightly `firm-snapshot-recorder` now writes one `rm_snapshots` row per
+(tenant, RM, day) alongside the firm row. Until a month of it exists, the tile
+says so rather than approximating AUM-then as AUM-now minus net flow, which
+would credit the RM with every point the market moved.
+
+### Seeing the authenticated app locally
+
+`NO_AUTH=1` is dead — [src/middleware.ts](src/middleware.ts) explains at length
+why it cannot be revived. Use `node scripts/dev-session.mjs`, which mints a
+session cookie directly (signs the same JWT, writes the `user_sessions` row the
+revocation check requires) with no password anywhere. It refuses to run unless
+`NODE_ENV` is not production **and** `DATABASE_URL` points at localhost, and it
+can only wake a user that already exists in the local database.
+
+```bash
+node scripts/dev-session.mjs            # uses DEMO_USER_ID
+```
+
+---
+
 ## Conventions
 
 - **Tenant id everywhere.** Every domain table has `tenant_id`. Every API call uses `withTenant`.

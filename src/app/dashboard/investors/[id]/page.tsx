@@ -1,7 +1,8 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
+import { Suspense } from "react";
 import { Phone, Mail, MessageCircle, MapPin, AlertTriangle, User2, ShieldCheck, Sparkles, ArrowRight, Wallet, Download, FileText, Receipt } from "lucide-react";
 import { DownloadButton } from "@/components/common/SecureLinkButtons";
 import { withTenant } from "@/db/client";
@@ -69,6 +70,7 @@ import { ReviewCadenceEditor } from "@/components/investors/ReviewCadenceEditor"
 import { PortalAccessButton } from "@/components/investors/PortalAccessButton";
 import { RecordBusinessImpact } from "@/components/investors/RecordBusinessImpact";
 import { ClientReadinessStrip } from "@/components/investors/ClientReadinessStrip";
+import { ClientSummaryStrip } from "@/components/investors/ClientSummaryStrip";
 import { PanReveal } from "@/components/investors/PanReveal";
 import { crossSellOpportunities } from "@/lib/investors/cross-sell";
 import { HoldingsTable } from "@/components/investors/HoldingsTable";
@@ -188,7 +190,10 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
       tx
         .select()
         .from(tasks)
-        .where(and(eq(tasks.subjectId, id), eq(tasks.subjectType, "investor"), isNull(tasks.deletedAt)))
+        .where(and(
+          or(eq(tasks.relatedInvestorId, id), and(eq(tasks.subjectId, id), eq(tasks.subjectType, "investor"))),
+          isNull(tasks.deletedAt),
+        ))
         .limit(20),
       tx.select().from(serviceRequests).where(eq(serviceRequests.investorId, id)).limit(20),
       tx.select().from(consents).where(eq(consents.investorId, id)),
@@ -447,6 +452,21 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
       </PageHeaderCard>
 
       </RelatedListSection>
+
+      {/* The relationship at a glance (RM brief §40) — family, RM, AUM, SIP,
+          last meeting, next review, risk, open work, insurance — above the
+          deeper sections. Streams in on its own. */}
+      <Suspense fallback={<div className="card-surface h-24 animate-pulse" aria-hidden />}>
+        <ClientSummaryStrip
+          session={session}
+          investorId={inv.id}
+          show={{
+            aum: showAum, sip: showSip, risk: showRisk, rm: showRm,
+            // The A–D relationship category, not the investor TYPE behind showCategory.
+            category: isFieldAllowed(license, "investor", "client_category"),
+          }}
+        />
+      </Suspense>
 
       {/* Next best action — one prioritised nudge, up top, so the RM knows what
           to do now without scrolling (parity with the lead page). */}
@@ -1033,7 +1053,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="text-xs text-muted-foreground border-b bg-slate-50/50">
+                <thead className="text-xs text-muted-foreground border-b bg-secondary/50">
                   <tr>
                     <th className="text-left px-4 py-2 font-semibold">Profile Date</th>
                     <th className="text-left px-4 py-2 font-semibold">Category</th>
@@ -1052,7 +1072,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
                       very_aggressive: "bg-rose-50 text-rose-700 border-rose-200",
                     };
                     return (
-                      <tr key={h.id} className="hover:bg-slate-50/40">
+                      <tr key={h.id} className="hover:bg-secondary/40">
                         <td className="px-4 py-3 text-xs font-medium tabular-nums">
                           {h.signedAt ? formatDate(h.signedAt) : formatDate(h.profileDate)}
                         </td>
@@ -1316,7 +1336,7 @@ function ClientNpsChip({ requests }: { requests: any[] }) {
         ? "bg-amber-50 text-amber-700 border-amber-200"
         : "bg-emerald-50 text-emerald-700 border-emerald-200";
   const when = latest.csatAt
-    ? new Date(latest.csatAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
+    ? formatDate(new Date(latest.csatAt))
     : "";
 
   return (

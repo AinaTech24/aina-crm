@@ -20,6 +20,8 @@
  * because every other year figure in this product is FY.
  */
 export type Period =
+  | "today"
+  | "yd"
   | "tw"
   | "lw"
   | "mtd"
@@ -52,6 +54,16 @@ export function resolvePeriodRange(
     const fromDate = new Date(opts.from + "T00:00:00");
     const toDate = opts.to && iso.test(opts.to) ? new Date(opts.to + "T23:59:59") : now;
     return pack(fromDate, toDate, rangeLabel(fromDate, toDate), "custom");
+  }
+  const dayStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const dayEnd = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59);
+
+  if (period === "today") {
+    return pack(dayStart(now), now, "Today", "today");
+  }
+  if (period === "yd") {
+    const y = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    return pack(dayStart(y), dayEnd(y), "Yesterday", "yd");
   }
   // Monday-start week.
   const startOfWeek = (d: Date) => {
@@ -176,4 +188,103 @@ export function resolvePeriodDates(
         label: now.toLocaleDateString("en-IN", { month: "long", year: "numeric" }),
       };
   }
+}
+
+
+/**
+ * The previous corresponding period — what the Director compares against.
+ *
+ * "Corresponding" is not "the previous N days": for a to-date period it is the
+ * SAME SLICE of the previous period, so 1–22 Sep compares against 1–22 Aug, not
+ * against the whole of August. Comparing a part-month against a full one is the
+ * single easiest way to make a healthy month look like a collapse.
+ *
+ *   today  → yesterday            mtd   → 1st–same day of last month
+ *   yd     → the day before       lm    → the month before that
+ *   tw     → same weekdays, last week   qtd → same slice of the previous quarter
+ *   lw     → the week before      fytd  → same slice of the previous FY
+ *   ly     → the FY before that   custom → the equally long window ending the
+ *                                          day before `from`
+ */
+export function resolvePreviousRange(
+  period: Period,
+  now = new Date(),
+  opts?: { customStart?: string; from?: string; to?: string }
+): { fromISO: string; toISO: string; fromDate: Date; toDate: Date; label: string; days: number } {
+  const cur = resolvePeriodRange(period, now, opts);
+  const from = cur.fromDate;
+  const to = cur.toDate;
+
+  const isMonthEnd = (d: Date) =>
+    d.getDate() === new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+
+  // Shift a date back by whole months. Two corrections matter:
+  //   · clamp the day, so 31 Mar → 28/29 Feb instead of rolling into March;
+  //   · if the source date is its own month's LAST day, land on the target
+  //     month's last day — otherwise a quarter ending 30 Jun shifts to 30 Mar
+  //     and silently drops 31 March out of the comparison.
+  const shiftMonths = (d: Date, months: number, snapMonthEnd = false) => {
+    const target = new Date(d.getFullYear(), d.getMonth() - months, 1);
+    const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+    const day = snapMonthEnd && isMonthEnd(d) ? lastDay : Math.min(d.getDate(), lastDay);
+    return new Date(target.getFullYear(), target.getMonth(), day, d.getHours(), d.getMinutes(), d.getSeconds());
+  };
+
+  const shiftDays = (d: Date, days: number) =>
+    new Date(d.getFullYear(), d.getMonth(), d.getDate() - days, d.getHours(), d.getMinutes(), d.getSeconds());
+
+  let pFrom: Date;
+  let pTo: Date;
+
+  if (period === "mtd" || period === "lm") {
+    pFrom = shiftMonths(from, 1);
+    pTo = shiftMonths(to, 1, true);
+  } else if (period === "qtd" || period === "lq") {
+    pFrom = shiftMonths(from, 3);
+    pTo = shiftMonths(to, 3, true);
+  } else if (period === "fytd" || period === "ly") {
+    pFrom = shiftMonths(from, 12);
+    pTo = shiftMonths(to, 12, true);
+  } else if (period === "today" || period === "yd") {
+    pFrom = shiftDays(from, 1);
+    pTo = shiftDays(to, 1);
+  } else if (period === "tw" || period === "lw") {
+    // A whole week back, so the comparison covers the SAME WEEKDAYS. Shifting
+    // by the window's own length instead would compare Mon–Tue against Sat–Sun.
+    pFrom = shiftDays(from, 7);
+    pTo = shiftDays(to, 7);
+  } else {
+    // An arbitrary custom range: the equally long window ending the day before.
+    const span = to.getTime() - from.getTime();
+    pTo = new Date(from.getTime() - 1);
+    pFrom = new Date(pTo.getTime() - span);
+  }
+
+  const days = Math.max(1, Math.round((pTo.getTime() - pFrom.getTime()) / 86_400_000));
+  return {
+    fromISO: pFrom.toISOString(),
+    toISO: pTo.toISOString(),
+    fromDate: pFrom,
+    toDate: pTo,
+    label: rangeLabel(pFrom, pTo),
+    days,
+  };
+}
+
+
+/**
+ * A Date → `yyyy-mm-dd` in LOCAL time.
+ *
+ * `toISOString().slice(0, 10)` is the obvious way to do this and is wrong east
+ * of Greenwich: local midnight on 1 Apr in IST is 2026-03-31T18:30:00Z, so the
+ * string comes back as the PREVIOUS day. Every financial-year boundary on this
+ * dashboard is 1 April, which made the FY window reach a day backwards and
+ * count 31-March registrations as this year's — ₹35 lakh of SIP that had not
+ * happened yet, against a target it was not part of.
+ */
+export function toLocalISODate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
