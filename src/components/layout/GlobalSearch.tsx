@@ -27,13 +27,13 @@ export function GlobalSearch() {
       type="button"
       onClick={openCommandPalette}
       aria-haspopup="dialog"
-      aria-label={`Search clients, leads, folios and pages (${shortcut})`}
+      aria-label={`Search clients, PAN, folio, or pages (${shortcut})`}
       className="flex w-full min-w-0 max-w-md items-center gap-2 rounded-lg bg-secondary px-3 py-2 text-left
                  text-sm text-muted-foreground transition-colors duration-150 hover:bg-secondary/80
                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
     >
       <Search className="size-3.5 shrink-0" />
-      <span className="flex-1 min-w-0 truncate">Search clients, leads, folios, pages…</span>
+      <span className="flex-1 min-w-0 truncate">Search clients, PAN, folio, or pages…</span>
       <kbd className="hidden lg:inline-flex shrink-0 items-center rounded-md border border-border bg-card px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
         {shortcut}
       </kbd>

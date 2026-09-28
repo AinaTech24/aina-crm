@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Bell, AlertTriangle, CheckCircle2, Info, AlertOctagon, Cake } from "lucide-react";
+import { Tooltip } from "@/components/ui/Tooltip";
 
 type Notification = {
   id: string;
@@ -99,37 +100,62 @@ export function NotificationBell() {
     setOpen(false);
   }
 
+  // Today / Earlier, by the reader's calendar day. The birthday reminder is
+  // computed for today, so it always belongs to Today.
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const isToday = (n: Notification) => n.kind === "birthday_today" || new Date(n.createdAt) >= startOfToday;
+  const sections = [
+    { label: "Today", rows: items.filter(isToday) },
+    { label: "Earlier", rows: items.filter((n) => !isToday(n)) },
+  ].filter((s) => s.rows.length > 0);
+
   return (
     <div className="relative" ref={ref}>
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="relative rounded-md p-1.5 hover:bg-accent"
-        aria-label="Notifications"
-      >
-        <Bell className="size-4" />
-        {unread > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 size-4 grid place-items-center rounded-full bg-rose-600 text-white text-2xs font-semibold">
-            {unread > 9 ? "9+" : unread}
-          </span>
-        )}
-      </button>
+      <Tooltip label="Notifications" hidden={open} align="end">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="relative rounded-md p-1.5 hover:bg-accent"
+          aria-label="Notifications"
+          aria-haspopup="dialog"
+          aria-expanded={open}
+        >
+          <Bell className="size-4" />
+          {unread > 0 && (
+            <span className="absolute -top-1 -right-1.5 h-4 min-w-4 px-1 grid place-items-center rounded-full bg-rose-600 text-white text-2xs font-semibold leading-none tabular-nums">
+              {unread > 99 ? "99+" : unread}
+            </span>
+          )}
+        </button>
+      </Tooltip>
 
       {open && (
         <div className="absolute right-0 top-full mt-2 border bg-card rounded-md shadow-lg w-80 max-h-[70vh] z-[60] flex flex-col overflow-hidden">
           <div className="border-b px-3 py-2 flex items-center justify-between flex-shrink-0 bg-card">
             <div className="font-medium text-sm">Notifications</div>
-            {unread > 0 && (
-              <button onClick={markAllRead} className="text-xs text-primary hover:underline">
-                Mark all read
-              </button>
-            )}
+            {/* Always offered, so it is where people look for it; inert when
+                there is nothing to clear. */}
+            <button
+              type="button"
+              onClick={markAllRead}
+              disabled={unread === 0}
+              className="text-xs text-primary hover:underline disabled:text-muted-foreground disabled:no-underline disabled:cursor-default"
+            >
+              Mark all read
+            </button>
           </div>
           <div className="flex-1 overflow-y-auto scrollbar-none">
           {items.length === 0 ? (
             <div className="p-6 text-center text-sm text-muted-foreground">No notifications yet.</div>
           ) : (
+            sections.map((section) => (
+            <div key={section.label}>
+            <div className="sticky top-0 z-10 border-b bg-secondary/80 px-3 py-1 text-2xs font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur-sm">
+              {section.label}
+            </div>
             <ul className="divide-y">
-              {items.map((n) => {
+              {section.rows.map((n) => {
                 // Today's-birthday reminder is a live, pinned nudge — distinct
                 // look (cake + violet wash), a "Today" label, and no unread dot.
                 const isBday = n.kind === "birthday_today";
@@ -144,6 +170,8 @@ export function NotificationBell() {
                       <div className="text-2xs text-muted-foreground mt-1">
                         {isBday
                           ? "Today · tap to wish them"
+                          : section.label === "Today"
+                          ? new Date(n.createdAt).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })
                           : new Date(n.createdAt).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" })}
                       </div>
                     </div>
@@ -161,6 +189,8 @@ export function NotificationBell() {
                 );
               })}
             </ul>
+            </div>
+            ))
           )}
           </div>
           <div className="border-t border-border px-3 py-2 text-center flex-shrink-0 bg-card">

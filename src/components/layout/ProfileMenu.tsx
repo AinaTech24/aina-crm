@@ -4,12 +4,17 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Settings, ShieldCheck, Building2, UserCircle, LogOut, ChevronDown, Loader2, CreditCard } from "lucide-react";
+import { Settings, ShieldCheck, Building2, UserCircle, LogOut, ChevronDown, ChevronRight, Loader2, Check } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 /**
  * Header profile control. Opens on CLICK (toggle) and exposes account links +
  * Log out. Closes on outside-click or Escape.
+ *
+ * Exactly five entries: My profile, Settings, Two-factor authentication,
+ * Switch branch (only for a firm-wide viewer of a multi-branch firm) and Log
+ * out. Firm profile and Billing are one click away in Settings; What's new and
+ * the tour live in the Help menu.
  */
 export function ProfileMenu({
   name,
@@ -20,6 +25,8 @@ export function ProfileMenu({
   packageKey,
   licenseStatus,
   trialEndsLabel,
+  twoFaEnabled = true,
+  branches = null,
 }: {
   name: string;
   email?: string;
@@ -33,10 +40,26 @@ export function ProfileMenu({
   licenseStatus?: string | null;
   /** e.g. "19 Jun" — shown as a "Trial ends" chip inside the menu. */
   trialEndsLabel?: string | null;
+  /** Drives the "Off" chip on the Two-factor entry. */
+  twoFaEnabled?: boolean;
+  /** The firm's branches, passed only when there is more than one AND the viewer
+   *  can see the firm cockpit, which is what a branch is switched on. */
+  branches?: { id: string; name: string }[] | null;
 }) {
   const [open, setOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [branchesOpen, setBranchesOpen] = useState(false);
+  // Which branch the dashboard is showing now. Read when the list opens rather
+  // than subscribed to, so the header needs no search-params boundary.
+  const [currentBranch, setCurrentBranch] = useState<string | null>(null);
+  function toggleBranches() {
+    if (!branchesOpen) {
+      const onDashboard = window.location.pathname === "/dashboard";
+      setCurrentBranch(onDashboard ? new URLSearchParams(window.location.search).get("branch") ?? "" : null);
+    }
+    setBranchesOpen((o) => !o);
+  }
   // Anchor the (portalled) menu to the trigger. Fixed-positioned so no
   // overflow:auto/hidden ancestor — like the scrolling <main> — can clip it.
   const [coords, setCoords] = useState<{ top: number; right: number }>({ top: 0, right: 0 });
@@ -78,6 +101,7 @@ export function ProfileMenu({
 
   function requestLogout() {
     setOpen(false);
+    setBranchesOpen(false);
     setConfirmOpen(true);
   }
 
@@ -111,7 +135,7 @@ export function ProfileMenu({
       <button
         ref={triggerRef}
         type="button"
-        onClick={() => { if (!open) place(); setOpen((o) => !o); }}
+        onClick={() => { if (!open) { place(); setBranchesOpen(false); } setOpen((o) => !o); }}
         className="flex items-center gap-1.5 rounded-full p-0.5 pr-1.5 hover:bg-secondary/70 transition-colors"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -127,7 +151,7 @@ export function ProfileMenu({
         <div
           ref={menuRef}
           style={{ position: "fixed", top: coords.top, right: coords.right }}
-          className="w-64 z-[100] origin-top-right animate-scale-in"
+          className="w-72 z-[100] origin-top-right animate-scale-in"
         >
           {/* Solid theme surface (not card-elevated, which is backdrop-blur-
               translucent and lets busy page content bleed through). bg-card so
@@ -162,10 +186,54 @@ export function ProfileMenu({
 
             <div className="p-1.5">
               <MenuLink href="/dashboard/settings/profile" icon={UserCircle} label="My profile" onClick={() => setOpen(false)} />
-              <MenuLink href="/dashboard/settings/security" icon={ShieldCheck} label="Account & security" onClick={() => setOpen(false)} />
               <MenuLink href="/dashboard/settings" icon={Settings} label="Settings" onClick={() => setOpen(false)} />
-              <MenuLink href="/dashboard/settings/firm-profile" icon={Building2} label="Firm profile" onClick={() => setOpen(false)} />
-              <MenuLink href="/dashboard/billing" icon={CreditCard} label="Billing" onClick={() => setOpen(false)} />
+              <Link
+                href="/dashboard/settings/security"
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium text-foreground/80 hover:bg-secondary hover:text-foreground transition-colors"
+              >
+                <ShieldCheck className="size-4 text-muted-foreground" />
+                <span className="flex-1">Two-factor authentication</span>
+                {/* It was an amber shield in the top bar; the nudge now lives here. */}
+                <span
+                  className={`rounded-full px-1.5 text-2xs font-semibold leading-5 ${
+                    twoFaEnabled ? "bg-secondary text-muted-foreground" : "bg-warning/15 text-warning-foreground"
+                  }`}
+                >
+                  {twoFaEnabled ? "On" : "Off"}
+                </span>
+              </Link>
+              {branches && branches.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={toggleBranches}
+                    aria-expanded={branchesOpen}
+                    className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-foreground/80 hover:bg-secondary hover:text-foreground transition-colors"
+                  >
+                    <Building2 className="size-4 text-muted-foreground" />
+                    <span className="flex-1">Switch branch</span>
+                    <ChevronRight className={`size-3.5 text-muted-foreground transition-transform ${branchesOpen ? "rotate-90" : ""}`} />
+                  </button>
+                  {branchesOpen && (
+                    <div className="ml-6 mb-1 border-l border-border pl-1.5">
+                      <p className="px-2.5 pb-1 pt-0.5 text-2xs text-muted-foreground">Opens the dashboard for one branch.</p>
+                      {[{ id: "", name: "All branches" }, ...branches].map((b) => (
+                        <Link
+                          key={b.id || "all"}
+                          href={b.id ? `/dashboard?branch=${b.id}` : "/dashboard"}
+                          onClick={() => { setOpen(false); setBranchesOpen(false); }}
+                          aria-current={currentBranch === b.id ? "true" : undefined}
+                          className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-foreground/80 hover:bg-secondary hover:text-foreground transition-colors"
+                        >
+                          <span className="flex-1 truncate">{b.name}</span>
+                          {currentBranch === b.id && <Check className="size-3.5 text-primary" />}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
             <div className="border-t border-border p-1.5">
               <button

@@ -25,7 +25,6 @@ import {
   Bot,
   CreditCard,
   AlertTriangle,
-  HelpCircle,
   Briefcase,
   Boxes,
   PhoneCall,
@@ -65,7 +64,8 @@ import { QuickAdd, type QuickAddItem } from "@/components/layout/QuickAdd";
 import { BackButton } from "@/components/layout/BackButton";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { BirthdayBell } from "@/components/layout/BirthdayBell";
-import { WhatsNewBell } from "@/components/layout/WhatsNewBell";
+import { HelpMenu } from "@/components/layout/HelpMenu";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { DesktopSidebar } from "@/components/layout/DesktopSidebar";
 import { SessionRegister } from "@/components/layout/SessionRegister";
 import { CustomizableNav, type NavItemData } from "@/components/layout/CustomizableNav";
@@ -346,7 +346,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const pathname = reqHeaders.get("x-pathname") ?? "";
   const pathAllowed = isPathAllowedWhenRestricted(pathname);
 
-  const { tenant, userModules, avatarUrl, twoFaEnabled, whatsNewUnread, navBadges } = await withTenant(session.tenantId, async (tx) => {
+  const { tenant, userModules, avatarUrl, twoFaEnabled, whatsNewUnread, navBadges, branchList } = await withTenant(session.tenantId, async (tx) => {
     const [t] = await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1);
     // Per-user sidebar module grant (Module-19). null = inherit all tenant modules.
     const [u] = await tx
@@ -403,11 +403,24 @@ export default async function DashboardLayout({ children }: { children: React.Re
         : Promise.resolve(0),
     ]);
 
+    // "Switch branch" opens the firm cockpit for one branch, so only a viewer of
+    // the firm cockpit is offered it. Own savepoint: a failure hides the item,
+    // it never takes the layout down.
+    const branchList: { id: string; name: string }[] = can(session.roles, "dashboard.view.owner", session.permissions)
+      ? await tx
+          .transaction(async (sp) =>
+            sp.execute(sql`SELECT id, name FROM branches WHERE tenant_id = ${session.tenantId}::uuid ORDER BY name`)
+          )
+          .then((r) => (r.rows as { id: string; name: string | null }[]).map((b) => ({ id: String(b.id), name: b.name ?? "—" })))
+          .catch(() => [])
+      : [];
+
     return {
       tenant: t,
       userModules: (u?.enabledModules as string[] | null) ?? null,
       avatarUrl: (u?.avatarUrl as string | null) ?? null,
       twoFaEnabled: !!u?.twoFaEnabled,
+      branchList,
       navBadges: {
         "/dashboard/tasks": tasksOverdue,
         "/dashboard/service-requests": srOpen,
@@ -539,6 +552,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
   ];
 
 
+  // The top bar's shield opens Compliance Center: shown exactly when the
+  // sidebar would show Compliance Center (roles, module controls, nav grants).
+  const canSeeCompliance = flatNavItems.some((i) => i.href === "/dashboard/compliance/command-center");
+  // Only a multi-branch firm has anything to switch between.
+  const profileBranches = branchList.length > 1 ? branchList : null;
+
   const roleLabel = primaryRoleLabel(session.roles);
 
   const initials = session.name
@@ -644,34 +663,28 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <div data-tour="global-search" className="flex-1 min-w-0 flex max-w-md">
             {!license.isRestricted && <GlobalSearch />}
           </div>
-          <div className="flex-1" />
-          <div className="flex items-center gap-2 sm:gap-3 text-sm">
+          <div className="ml-auto flex items-center gap-2 sm:gap-3 text-sm">
             <QuickAdd items={quickAddItems} />
             {/* Convenience icons collapse on phones — everything stays reachable
-                (2FA via Settings, Help via pages, birthdays via My Day). */}
+                (compliance via the sidebar, help via its page, birthdays via My
+                Day, two-factor via the avatar menu). */}
             <div className="hidden sm:flex items-center gap-3">
-            {/* Two-factor authentication — amber nudge when off, calm when on. */}
-            <Link
-              href="/dashboard/settings/security"
-              className={`size-9 rounded-full grid place-items-center transition-colors ${
-                twoFaEnabled
-                  ? "bg-secondary/70 hover:bg-secondary text-muted-foreground hover:text-foreground"
-                  : "bg-amber-100 hover:bg-amber-200 text-amber-700"
-              }`}
-              aria-label="Two-factor authentication"
-              title={twoFaEnabled ? "Two-factor authentication is on" : "Enable two-factor authentication (2FA)"}
-            >
-              {twoFaEnabled ? <ShieldCheck className="size-4" /> : <ShieldAlert className="size-4" />}
-            </Link>
-            <Link
-              href="/dashboard/help"
-              className="size-9 rounded-full bg-secondary/70 hover:bg-secondary text-muted-foreground hover:text-foreground grid place-items-center transition-colors"
-              aria-label="Help and glossary"
-              title="Help & glossary — explanations for ARN, KYC, NAV and more"
-            >
-              <HelpCircle className="size-4" />
-            </Link>
-            <WhatsNewBell unread={whatsNewUnread} />
+            {/* Compliance alerts: Compliance Center, for the people the sidebar
+                shows it to. This slot used to be a two-factor nudge, which now
+                lives in the avatar menu with an On/Off chip. */}
+            {canSeeCompliance && (
+              <Tooltip label="Compliance alerts">
+                <Link
+                  href="/dashboard/compliance/command-center"
+                  aria-label="Compliance alerts"
+                  className="size-9 rounded-full bg-secondary/70 hover:bg-secondary text-muted-foreground hover:text-foreground grid place-items-center transition-colors"
+                >
+                  <ShieldAlert className="size-4" />
+                </Link>
+              </Tooltip>
+            )}
+            {/* "What's new" is inside this menu now: four icons, not five. */}
+            <HelpMenu whatsNewUnread={whatsNewUnread} />
             <BirthdayBell />
             </div>
             <span data-tour="notifications" className="inline-flex">
@@ -679,6 +692,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
             </span>
             <span className="hidden sm:block h-6 w-px bg-border mx-0.5" />
             <ProfileMenu
+              twoFaEnabled={twoFaEnabled}
+              branches={profileBranches}
               name={session.name}
               email={session.email}
               roleLabel={roleLabel}

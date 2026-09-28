@@ -16,7 +16,19 @@ import { can } from "@/lib/auth/rbac";
 
 export const dynamic = "force-dynamic";
 
-type Item = { id: string; name: string; dob: string; turning: number | null };
+type Item = { id: string; name: string; dob: string; turning: number | null; waPhone: string | null };
+
+/**
+ * The mobile in wa.me form, for the header's "Send wish". A bare 10-digit
+ * Indian mobile gets its 91; anything else is passed through as digits. Same
+ * rule as the portfolio-link share.
+ */
+function waPhone(raw: string | null | undefined): string | null {
+  const digits = (raw ?? "").replace(/\D+/g, "");
+  if (!digits) return null;
+  if (digits.length === 10 && /^[6-9]/.test(digits)) return `91${digits}`;
+  return digits;
+}
 
 function turning(dob: string): number | null {
   const d = new Date(dob);
@@ -28,7 +40,7 @@ function turning(dob: string): number | null {
 export async function GET() {
   try {
     const session = await requireSession();
-    const firmWide = can(session.roles, "dashboard.view.owner", (session as any).permissions);
+    const firmWide = can(session.roles, "dashboard.view.owner", session.permissions);
 
     const rows = await withTenant(
       session.tenantId,
@@ -41,6 +53,7 @@ export async function GET() {
                          FROM generate_series(1, 30) g) AS past_md
           )
           SELECT i.id, i.name, i.dob,
+                 COALESCE(NULLIF(i.whatsapp_phone, ''), i.phone) AS phone,
             CASE
               WHEN to_char(i.dob, 'MM-DD') = w.today_md THEN 'today'
               WHEN to_char(i.dob, 'MM-DD') = w.tom_md THEN 'tomorrow'
@@ -59,7 +72,7 @@ export async function GET() {
             ${firmWide ? sql`` : sql` AND i.rm_id = ${session.userId}`}
           ORDER BY to_char(i.dob, 'MM-DD') DESC
         `);
-        return r.rows as Array<{ id: string; name: string; dob: string; bucket: string }>;
+        return r.rows as Array<{ id: string; name: string; dob: string; phone: string | null; bucket: string }>;
       },
       { userId: session.userId, branchId: session.branchId, roles: session.roles }
     );
@@ -68,7 +81,7 @@ export async function GET() {
     const tomorrow: Item[] = [];
     const past: Item[] = [];
     for (const row of rows) {
-      const item: Item = { id: row.id, name: row.name, dob: row.dob, turning: turning(row.dob) };
+      const item: Item = { id: row.id, name: row.name, dob: row.dob, turning: turning(row.dob), waPhone: waPhone(row.phone) };
       if (row.bucket === "today") today.push(item);
       else if (row.bucket === "tomorrow") tomorrow.push(item);
       else past.push(item);

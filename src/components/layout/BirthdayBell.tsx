@@ -7,14 +7,32 @@
  *
  * Data: GET /api/birthdays (role-scoped — firm-wide for owners, own-book for
  * RMs). Polls every 5 min and refreshes when opened.
+ *
+ * Today's rows carry "Send wish": the same WhatsApp click-to-chat and greeting
+ * as My Day, sent from the advisor's own WhatsApp, and it clears the client
+ * from My Day's birthday list too.
  */
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Cake, ArrowRight } from "lucide-react";
+import { Cake, ArrowRight, MessageCircle, Check } from "lucide-react";
+import { Tooltip } from "@/components/ui/Tooltip";
+import { buttonClass } from "@/components/ui/button-class";
 
-type Item = { id: string; name: string; dob: string; turning: number | null };
+type Item = {
+  id: string;
+  name: string;
+  dob: string;
+  turning: number | null;
+  /** Mobile in wa.me form (country code, digits only), or null when none is on file. */
+  waPhone: string | null;
+};
 type Bucket = "past" | "today" | "tomorrow";
+
+/** Same greeting My Day sends (src/app/dashboard/command-center/page.tsx). */
+function wishText(name: string): string {
+  return `Dear ${name}, wishing you a very happy birthday! 🎂 May the year ahead bring you health, happiness and prosperity.`;
+}
 
 export function BirthdayBell() {
   const [open, setOpen] = useState(false);
@@ -24,7 +42,21 @@ export function BirthdayBell() {
     today: [],
     tomorrow: [],
   });
+  // Wished this session — the row confirms instead of offering the button again.
+  const [wished, setWished] = useState<Set<string>>(new Set());
   const ref = useRef<HTMLDivElement>(null);
+
+  function sendWish(it: Item) {
+    if (!it.waPhone) return;
+    window.open(`https://wa.me/${it.waPhone}?text=${encodeURIComponent(wishText(it.name))}`, "_blank", "noopener,noreferrer");
+    setWished((s) => new Set(s).add(it.id));
+    // Drop it from My Day's "Birthdays today" as well, exactly as wishing there does.
+    void fetch("/api/command-center/snooze", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ itemKey: `birthdays_today:${it.id}`, action: "dismiss" }),
+    }).catch(() => {});
+  }
 
   async function load() {
     try {
@@ -67,19 +99,23 @@ export function BirthdayBell() {
 
   return (
     <div className="relative" ref={ref}>
-      <button
-        onClick={() => { setOpen((o) => !o); if (!open) load(); }}
-        className="relative size-9 rounded-full bg-secondary/70 hover:bg-secondary text-muted-foreground hover:text-foreground grid place-items-center transition-colors"
-        aria-label="Birthdays"
-        title="Client birthdays — today, tomorrow & recent"
-      >
-        <Cake className="size-4" />
-        {todayCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 size-4 grid place-items-center rounded-full bg-rose-500 text-white text-2xs font-semibold">
-            {todayCount > 9 ? "9+" : todayCount}
-          </span>
-        )}
-      </button>
+      <Tooltip label="Birthdays today" hidden={open}>
+        <button
+          type="button"
+          onClick={() => { setOpen((o) => !o); if (!open) load(); }}
+          className="relative size-9 rounded-full bg-secondary/70 hover:bg-secondary text-muted-foreground hover:text-foreground grid place-items-center transition-colors"
+          aria-label="Birthdays today"
+          aria-haspopup="dialog"
+          aria-expanded={open}
+        >
+          <Cake className="size-4" />
+          {todayCount > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 size-4 grid place-items-center rounded-full bg-rose-500 text-white text-2xs font-semibold">
+              {todayCount > 9 ? "9+" : todayCount}
+            </span>
+          )}
+        </button>
+      </Tooltip>
 
       {open && (
         <div className="absolute right-0 top-full mt-2 border bg-card rounded-lg shadow-lg w-80 z-40 overflow-hidden">
@@ -116,11 +152,11 @@ export function BirthdayBell() {
           ) : (
             <ul className="divide-y max-h-[50vh] overflow-y-auto">
               {items.map((it) => (
-                <li key={it.id}>
+                <li key={it.id} className="flex items-center gap-2 pr-3 hover:bg-accent transition-colors">
                   <Link
                     href={`/dashboard/investors/${it.id}`}
                     onClick={() => setOpen(false)}
-                    className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-accent transition-colors"
+                    className="flex flex-1 min-w-0 items-center gap-2.5 py-2.5 pl-4"
                   >
                     <span className="size-8 rounded-full bg-violet-50 text-violet-600 grid place-items-center flex-shrink-0">
                       <Cake className="size-4" />
@@ -135,8 +171,26 @@ export function BirthdayBell() {
                           : `Birthday ${fmtDM(it.dob)}`}
                       </div>
                     </div>
-                    <ArrowRight className="size-3.5 text-muted-foreground" />
+                    {tab !== "today" && <ArrowRight className="size-3.5 text-muted-foreground" />}
                   </Link>
+                  {tab === "today" &&
+                    (wished.has(it.id) ? (
+                      <span className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground">
+                        <Check className="size-3.5" /> Wished
+                      </span>
+                    ) : it.waPhone ? (
+                      <button
+                        type="button"
+                        onClick={() => sendWish(it)}
+                        title={`Opens WhatsApp with a birthday greeting for ${it.name}`}
+                        className={buttonClass("secondary", "sm", "shrink-0")}
+                      >
+                        <MessageCircle className="size-3.5" /> Send wish
+                      </button>
+                    ) : (
+                      // A disabled button can't say why; the reason is the label.
+                      <span className="shrink-0 text-xs text-muted-foreground">No mobile</span>
+                    ))}
                 </li>
               ))}
             </ul>
