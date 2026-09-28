@@ -6,11 +6,21 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import { formatRelative, formatDate } from "@/lib/utils";
 import { Heart, MessageSquare, ShieldAlert, AlertCircle, Smile, Frown, Meh, Download } from "lucide-react";
 import { DownloadButton } from "@/components/common/SecureLinkButtons";
+import { can } from "@/lib/auth/rbac";
+import { buttonClass } from "@/components/ui/button-class";
+import { SendNpsSurvey } from "@/components/support/SendNpsSurvey";
+
+/**
+ * Below this many responses the score is not shown. With three answers one
+ * client moves NPS by 33 points, which reads as a trend and is only noise.
+ */
+const NPS_MIN_RESPONSES = 5;
 
 export const dynamic = "force-dynamic";
 
 export default async function FeedbackPage() {
   const session = await requireSession();
+  const canSend = can(session.roles, "communication.send", session.permissions);
 
   const data = await withTenant(session.tenantId, async (tx) => {
     // Fetch all feedback service requests
@@ -68,16 +78,17 @@ export default async function FeedbackPage() {
   return (
     <div className="space-y-6 max-w-7xl">
       <PageHeaderCard title={<><MessageSquare className="size-6 text-violet-600" />
-            Client Feedback</>} subtitle={<>Track Net Promoter Score (NPS) and customer feedback collected via secure public tokens.</>} actions={<>{/* Branded PDF of the score, its breakdown and every response.
+            Client Feedback</>} subtitle={<>Net Promoter Score (NPS) and what your clients say about your service.</>} actions={<div className="flex items-center gap-2">{/* Branded PDF of the score, its breakdown and every response.
             DownloadButton keeps the /api path out of the anchor href. */}
         <DownloadButton
           url="/api/support/feedback/pdf?download=1"
           filename="Client_Feedback_NPS.pdf"
-          className="btn-secondary text-xs shrink-0 inline-flex items-center gap-1.5"
+          className={buttonClass("secondary", "md", "shrink-0")}
           title="Download the satisfaction report as a PDF"
         >
-          <Download className="size-3.5" /> Download PDF
-        </DownloadButton></>} />
+          <Download className="size-4" /> Download PDF
+        </DownloadButton>
+        {canSend && <SendNpsSurvey />}</div>} />
 
       <div className="grid grid-cols-4 gap-4">
         <div className="border rounded-lg p-5 bg-card relative overflow-hidden">
@@ -85,10 +96,12 @@ export default async function FeedbackPage() {
             Net Promoter Score
           </div>
           <div className="text-4xl font-extrabold mt-2 tracking-tight">
-            {data.total > 0 ? `${data.nps > 0 ? "+" : ""}${data.nps}` : "—"}
+            {data.total >= NPS_MIN_RESPONSES ? `${data.nps > 0 ? "+" : ""}${data.nps}` : "—"}
           </div>
           <div className="text-xs text-muted-foreground mt-2">
-            NPS ranges from -100 to +100
+            {data.total >= NPS_MIN_RESPONSES
+              ? "NPS ranges from -100 to +100"
+              : `Needs at least ${NPS_MIN_RESPONSES} responses${data.total > 0 ? ` (${data.total} so far)` : ""}`}
           </div>
           <Heart className="absolute -right-4 -bottom-4 size-16 text-violet-500/10" />
         </div>
@@ -135,8 +148,15 @@ export default async function FeedbackPage() {
           </span>
         </div>
         {data.rows.length === 0 ? (
-          <div className="p-12 text-center text-sm text-muted-foreground">
-            No feedback submissions collected yet. Use client feedback share tokens to collect NPS ratings.
+          <div className="p-12 text-center">
+            <div className="text-sm font-medium text-foreground">
+              No feedback yet — send your first NPS survey to happy clients.
+            </div>
+            {canSend && (
+              <div className="mt-4 flex justify-center">
+                <SendNpsSurvey />
+              </div>
+            )}
           </div>
         ) : (
           <table className="w-full text-sm">
@@ -159,7 +179,7 @@ export default async function FeedbackPage() {
                       {r.csatRating}
                     </span>
                   </td>
-                  <td className="py-3 pl-4 text-slate-600 max-w-lg truncate">
+                  <td className="py-3 pl-4 text-muted-foreground max-w-lg truncate">
                     {r.csatComment ?? <span className="text-muted-foreground italic">No comment provided</span>}
                   </td>
                   <td className="px-4 py-3 text-right text-muted-foreground text-xs font-mono">
