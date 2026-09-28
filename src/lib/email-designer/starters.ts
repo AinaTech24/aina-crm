@@ -231,7 +231,9 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
         b({ type: "logo" } as any),
         b({ type: "heading", text: "Help us tailor your investments", level: "h2", align: "left" } as any),
         b({ type: "text", html: "Dear {{investor.name}},<br><br>Before we recommend any investment, it's important we understand your comfort with risk, your goals, and your time horizon. This helps us build a portfolio that's right for <i>you</i> — never a one-size-fits-all plan.<br><br>Please take 5 minutes to complete your risk-profiling form using the button below. It's quick, simple, and completely confidential.", align: "left" } as any),
-        b({ type: "button", label: "Fill Risk Profile Form", url: "{{system.dashboard_url}}", align: "center", style: "solid", fullWidth: true } as any),
+        // The client's own questionnaire link. Not {{system.dashboard_url}}: that
+        // is the firm's login page, a dead end for a client.
+        b({ type: "button", label: "Fill Risk Profile Form", url: "{{link.risk_profile}}", align: "center", style: "solid", fullWidth: true } as any),
         b({ type: "text", html: "If any question is unclear, just reply to this email or call your advisor — we're happy to help.<br><br>" + SIGNOFF, align: "left" } as any),
         b({ type: "divider", thickness: 1, color: "#e5e7eb" } as any),
         b({ type: "text", html: AMFI_DISCLAIMER, align: "left", variant: "note" } as any),

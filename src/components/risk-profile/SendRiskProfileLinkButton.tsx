@@ -22,6 +22,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link2, MessageCircle, Mail, Copy, Check, Loader2 } from "lucide-react";
+import { buttonClass } from "@/components/ui/button-class";
 
 type LinkInfo = { url: string; investorName: string; phone: string | null; email: string | null };
 
@@ -79,9 +80,14 @@ const KIND_CONFIG: Record<
 export function SendRiskProfileLinkButton({
   investorId,
   kind = "risk_profile",
+  appearance = "link",
 }: {
   investorId: string;
   kind?: SendLinkKind;
+  /** "link" — inline text, for a detail page. "row" — a quiet secondary button
+   *  labelled "Send link", for a table row where it repeats on every line and
+   *  must not outshout the page's one primary action. */
+  appearance?: "link" | "row";
 }) {
   const cfg = KIND_CONFIG[kind];
   const [open, setOpen] = useState(false);
@@ -183,9 +189,13 @@ export function SendRiskProfileLinkButton({
           e.stopPropagation();
           void toggle();
         }}
-        className="text-xs font-semibold text-brand-cyan hover:underline inline-flex items-center gap-1"
+        className={
+          appearance === "row"
+            ? buttonClass("secondary", "sm")
+            : "text-xs font-semibold text-brand-cyan hover:underline inline-flex items-center gap-1"
+        }
       >
-        <Link2 className="size-3.5" /> {cfg.trigger}
+        <Link2 className="size-3.5" /> {appearance === "row" ? "Send link" : cfg.trigger}
       </button>
 
       {mounted && open && pos && createPortal(

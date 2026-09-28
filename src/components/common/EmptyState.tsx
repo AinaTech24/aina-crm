@@ -77,3 +77,42 @@ export function EmptyState({
     </div>
   );
 }
+
+/**
+ * InlineEmpty — the quiet "nothing here" inside a card, panel or table.
+ *
+ * `EmptyState` above is a full-page hero: right when a whole list screen has
+ * zero rows, far too loud for an empty section inside a card. Everything else
+ * was writing its own string, which is how the app ended up with 474 distinct
+ * empty phrasings — "No activity yet." next to "No announcements." next to
+ * "No chart", with punctuation and tone varying per author.
+ *
+ * One sentence, sentence case, full stop, optionally one action. Nothing else.
+ */
+export function InlineEmpty({
+  message,
+  icon: Icon,
+  action,
+  className,
+}: {
+  /** One sentence, ending in a full stop. */
+  message: string;
+  icon?: LucideIcon;
+  /** At most one next step. */
+  action?: { href: string; label: string };
+  className?: string;
+}) {
+  return (
+    <div
+      className={`flex flex-col items-center justify-center gap-2 px-4 py-8 text-center ${className ?? ""}`}
+    >
+      {Icon && <Icon className="size-5 text-muted-foreground/60" aria-hidden />}
+      <p className="text-sm text-muted-foreground">{message}</p>
+      {action && (
+        <Link href={action.href} className="text-sm font-medium text-primary hover:underline">
+          {action.label}
+        </Link>
+      )}
+    </div>
+  );
+}

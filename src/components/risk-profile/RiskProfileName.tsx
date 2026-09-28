@@ -14,6 +14,8 @@
 import { useState } from "react";
 import { X, Download, Eye, ZoomIn, ZoomOut } from "lucide-react";
 import { DownloadButton } from "@/components/common/SecureLinkButtons";
+import { Badge } from "@/components/ui/Badge";
+import { Tooltip } from "@/components/ui/Tooltip";
 
 function PdfModal({ profileId, name, onClose }: { profileId: string; name: string; onClose: () => void }) {
   const [zoom, setZoom] = useState(1);
@@ -83,30 +85,49 @@ export function RiskProfileName({
   name,
   pan,
   profileId,
+  isMinor = false,
+  guardianName = null,
 }: {
   name: string;
+  /** Already MASKED by the server (displayPan) — never the raw column, which
+   *  can hold an import key like MINOR:<guardian PAN>:<NAME>. */
   pan: string | null;
   profileId: string | null;
+  isMinor?: boolean;
+  guardianName?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <>
-      {profileId ? (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="font-medium hover:underline text-left"
-          title="View Risk Profile PDF"
-        >
-          {name}
-        </button>
-      ) : (
-        // Not yet profiled — nothing to open, so the name is plain text.
-        <span className="font-medium text-foreground">{name}</span>
-      )}
+    // One block, so the masked PAN sits UNDER the name rather than beside it
+    // when the parent row is a flex container (the Risk Profiles table is).
+    <div className="min-w-0">
+      <div className="flex items-center gap-1.5">
+        {profileId ? (
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="font-medium hover:underline text-left"
+            title="View Risk Profile PDF"
+          >
+            {name}
+          </button>
+        ) : (
+          // Not yet profiled — nothing to open, so the name is plain text.
+          <span className="font-medium text-foreground">{name}</span>
+        )}
+        {isMinor && (
+          <Tooltip label={guardianName ? `Guardian: ${guardianName}` : "No guardian linked"}>
+            <Badge tone="neutral">
+              Minor
+              {/* The tooltip bubble is aria-hidden; say the same thing to a screen reader. */}
+              <span className="sr-only">{guardianName ? `, guardian ${guardianName}` : ", no guardian linked"}</span>
+            </Badge>
+          </Tooltip>
+        )}
+      </div>
       {pan && <div className="text-xs text-muted-foreground font-mono">{pan}</div>}
       {open && profileId && <PdfModal profileId={profileId} name={name} onClose={() => setOpen(false)} />}
-    </>
+    </div>
   );
 }
 

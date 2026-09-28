@@ -11,6 +11,10 @@ import { RiskProfileName, RiskProfilePdfButtons } from "@/components/risk-profil
 import { SignedFormButton } from "@/components/risk-profile/SignedFormButton";
 import { SendRiskProfileLinkButton } from "@/components/risk-profile/SendRiskProfileLinkButton";
 import { BulkAssignByAge } from "@/components/risk-profile/BulkAssignByAge";
+import { RiskSelectionProvider, RowSelect, SelectAllOnPage, RiskBulkBar } from "@/components/risk-profile/RiskProfileBulkSend";
+import { InlineEmpty } from "@/components/common/EmptyState";
+import { RISK_BUCKETS, parseRiskBucket, riskBucketSql, riskBucketCaseSql, type RiskBucket } from "@/lib/risk-profile/buckets";
+import { displayPan, isMinorKey } from "@/lib/investors/pan-display";
 import { resolveAgeBands } from "@/lib/risk-profile/age-bands";
 import { Avatar } from "@/components/ui/Avatar";
 import { PdfRow } from "@/components/common/ClickableRow";
@@ -24,48 +28,24 @@ const CATEGORY_TONE: Record<string, string> = {
   very_aggressive: "bg-rose-50 text-rose-700",
 };
 
-type FilterKey = "needs_review" | "current" | "not_profiled" | "expired" | "suggested" | "all";
-
-const FILTERS: Array<{ key: FilterKey; label: string }> = [
-  { key: "needs_review", label: "Needs review" },
-  { key: "current", label: "Current" },
-  { key: "not_profiled", label: "Not profiled" },
-  { key: "expired", label: "Expired" },
-  { key: "suggested", label: "Suggested (unconfirmed)" },
-  { key: "all", label: "All active" },
-];
-
 const PAGE_SIZE = 50;
 
-/** Investor-column predicate for each filter (uses the mirror columns on
- *  investors, kept in sync by the capture routes). */
-function filterPredicate(key: FilterKey) {
-  switch (key) {
-    case "current":
-      return sql`risk_profile_signed_at IS NOT NULL AND risk_profile_signed_at >= now() - interval '11 months'`;
-    case "not_profiled":
-      // A provisional category is a suggestion, not a profile — these clients
-      // still need to answer, so they belong in this worklist.
-      return sql`risk_profile IS NULL OR risk_profile_provisional = true`;
-    case "suggested":
-      return sql`risk_profile_provisional = true`;
-    case "expired":
-      return sql`risk_profile_signed_at IS NOT NULL AND risk_profile_signed_at < now() - interval '12 months'`;
-    case "all":
-      return sql`TRUE`;
-    case "needs_review":
-    default:
-      return sql`(risk_profile_signed_at IS NULL OR risk_profile_signed_at < now() - interval '11 months')`;
-  }
+/** Ordering per tab, most actionable first. */
+function orderClause(key: RiskBucket) {
+  if (key === "current") return sql`i.risk_profile_signed_at DESC NULLS LAST`;
+  // Due / expired: the longest-lapsed first.
+  if (key === "due" || key === "expired") return sql`i.risk_profile_signed_at ASC`;
+  return sql`i.name ASC`;
 }
 
-/** Ordering per filter — most-actionable first. */
-function orderClause(key: FilterKey) {
-  if (key === "current") return sql`risk_profile_signed_at DESC NULLS LAST`;
-  if (key === "not_profiled" || key === "all") return sql`name ASC`;
-  // needs_review / expired — never-profiled first, then most overdue.
-  return sql`risk_profile_signed_at ASC NULLS FIRST`;
-}
+/** What an empty tab says. */
+const EMPTY: Record<RiskBucket, string> = {
+  not_profiled: "Every client has a signed risk profile.",
+  due: "No profile falls due for review in the next month.",
+  current: "No client has a current signed profile yet.",
+  expired: "No profile has expired.",
+  awaiting: "No suggested profile is waiting for a client to confirm it.",
+};
 
 export default async function RiskProfilesPage({
   searchParams,
@@ -81,36 +61,35 @@ export default async function RiskProfilesPage({
   // Bulk suggesting labels hundreds of clients at once — same gate as editing a profile.
   const canManage = can(session.roles, "risk_profile.manage", session.permissions);
   const sp = await searchParams;
-  const filter: FilterKey =
-    (FILTERS.find((f) => f.key === sp.filter)?.key as FilterKey) ?? "all";
+  // Default tab: Not profiled. Old ?filter=needs_review / suggested links map
+  // onto the bucket that now holds those clients.
+  const filter = parseRiskBucket(sp.filter);
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
 
   const data = await withTenant(session.tenantId, async (tx) => {
     // Owner slice for non-managers (applied to every query below).
-    const rmScope = canViewAll ? sql`TRUE` : sql`rm_id = ${session.userId}::uuid`;
-    // KPI strip — one aggregate over the active book.
+    const rmScope = canViewAll ? sql`TRUE` : sql`i.rm_id = ${session.userId}::uuid`;
+    // Tab counts — one aggregate over the active book. The buckets are
+    // mutually exclusive, so the tabs add up to the book.
     const stats = await tx.execute(sql`
       SELECT
-        COUNT(*)::int AS total_clients,
-        COUNT(*) FILTER (WHERE risk_profile IS NOT NULL AND risk_profile_provisional = false)::int AS profiled,
-        COUNT(*) FILTER (WHERE risk_profile IS NULL OR risk_profile_provisional = true)::int AS not_profiled,
-        COUNT(*) FILTER (WHERE risk_profile_provisional = true)::int AS provisional,
-        COUNT(*) FILTER (WHERE risk_profile_signed_at IS NOT NULL
-          AND risk_profile_signed_at < now() - interval '1 year')::int AS expired,
-        COUNT(*) FILTER (WHERE risk_profile_signed_at IS NOT NULL
-          AND risk_profile_signed_at >= now() - interval '1 year'
-          AND risk_profile_signed_at < now() - interval '11 months')::int AS due_soon
-      FROM investors WHERE status = 'active' AND deleted_at IS NULL AND ${rmScope}
+        COUNT(*) FILTER (WHERE ${riskBucketSql("not_profiled")})::int AS not_profiled,
+        COUNT(*) FILTER (WHERE ${riskBucketSql("due")})::int AS due,
+        COUNT(*) FILTER (WHERE ${riskBucketSql("current")})::int AS current,
+        COUNT(*) FILTER (WHERE ${riskBucketSql("expired")})::int AS expired,
+        COUNT(*) FILTER (WHERE ${riskBucketSql("awaiting")})::int AS awaiting
+      FROM investors i WHERE i.status = 'active' AND i.deleted_at IS NULL AND ${rmScope}
     `);
-    const s = stats.rows[0] as any;
+    const s = (stats.rows[0] ?? {}) as Partial<Record<RiskBucket, number>>;
+    const counts = Object.fromEntries(RISK_BUCKETS.map((b) => [b.key, Number(s[b.key] ?? 0)])) as Record<RiskBucket, number>;
 
-    const predicate = filterPredicate(filter);
+    const predicate = riskBucketSql(filter);
 
     // Total matching the active filter (drives the pager) — investor-only, no
     // join needed since the filter is on the investor mirror columns.
     const c = await tx.execute(sql`
-      SELECT COUNT(*)::int AS c FROM investors
-      WHERE status = 'active' AND deleted_at IS NULL AND ${predicate} AND ${rmScope}
+      SELECT COUNT(*)::int AS c FROM investors i
+      WHERE i.status = 'active' AND i.deleted_at IS NULL AND ${predicate} AND ${rmScope}
     `);
     const total = Number((c.rows[0] as any)?.c ?? 0);
 
@@ -120,10 +99,12 @@ export default async function RiskProfilesPage({
     const rows = await tx.execute(sql`
       SELECT
         i.id, i.name, i.pan, i.avatar_url, i.risk_profile, i.risk_profile_signed_at, i.risk_profile_score,
-        i.risk_profile_provisional,
+        i.risk_profile_provisional, i.is_minor, g.name AS guardian_name,
+        ${riskBucketCaseSql()} AS bucket,
         rp.id AS profile_id, rp.total_score, rp.next_review_at, rp.signed_at AS latest_signed_at,
         rp.document_url AS signed_doc_key, rp.verification_method
       FROM investors i
+      LEFT JOIN investors g ON g.id = i.guardian_investor_id AND g.tenant_id = i.tenant_id
       LEFT JOIN LATERAL (
         SELECT id, total_score, next_review_at, signed_at, document_url, verification_method
         FROM risk_profile_responses r
@@ -131,20 +112,20 @@ export default async function RiskProfilesPage({
         ORDER BY r.signed_at DESC NULLS LAST
         LIMIT 1
       ) rp ON TRUE
-      WHERE i.status = 'active' AND i.deleted_at IS NULL AND ${predicate}
-        AND ${canViewAll ? sql`TRUE` : sql`i.rm_id = ${session.userId}::uuid`}
+      WHERE i.status = 'active' AND i.deleted_at IS NULL AND ${predicate} AND ${rmScope}
       ORDER BY ${orderClause(filter)}
       LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}
     `);
 
     return {
-      total: Number(s.total_clients),
-      profiled: Number(s.profiled),
-      notProfiled: Number(s.not_profiled),
-      expired: Number(s.expired),
-      dueSoon: Number(s.due_soon),
-      provisional: Number(s.provisional ?? 0),
-      rows: rows.rows as any[],
+      counts,
+      // The raw PAN column never leaves the server: it can hold an import key
+      // (MINOR:<guardian PAN>:<NAME>, NOPAN:…), and a real PAN goes out masked.
+      rows: (rows.rows as any[]).map(({ pan, ...r }) => ({
+        ...r,
+        pan_display: displayPan(pan),
+        is_minor: r.is_minor === true || isMinorKey(pan),
+      })),
       filterTotal: total,
       bands: resolveAgeBands(
         ((await tx.execute(sql`SELECT risk_age_bands FROM tenants WHERE id = ${session.tenantId}::uuid LIMIT 1`)).rows[0] as any)?.risk_age_bands
@@ -152,18 +133,8 @@ export default async function RiskProfilesPage({
     };
   });
 
-  // Tab counts derived from the KPI aggregate (no extra queries).
-  const tabCount: Record<FilterKey, number> = {
-    needs_review: data.notProfiled + data.expired + data.dueSoon,
-    current: Math.max(0, data.profiled - data.expired - data.dueSoon),
-    not_profiled: data.notProfiled,
-    expired: data.expired,
-    suggested: data.provisional,
-    all: data.total,
-  };
-
-  const tabHref = (key: FilterKey) =>
-    key === "all" ? "/dashboard/risk-profiles" : `/dashboard/risk-profiles?filter=${key}`;
+  const tabHref = (key: RiskBucket) =>
+    key === "not_profiled" ? "/dashboard/risk-profiles" : `/dashboard/risk-profiles?filter=${key}`;
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -176,7 +147,7 @@ export default async function RiskProfilesPage({
 
       {/* Filter tabs */}
       <div className="flex flex-wrap items-center gap-1.5">
-        {FILTERS.map((f) => {
+        {RISK_BUCKETS.map((f) => {
           const active = f.key === filter;
           return (
             <Link
@@ -189,7 +160,7 @@ export default async function RiskProfilesPage({
             >
               {f.label}
               <span className={`tabular-nums text-xs font-semibold ${active ? "opacity-90" : "opacity-70"}`}>
-                {tabCount[f.key]}
+                {data.counts[f.key].toLocaleString("en-IN")}
               </span>
             </Link>
           );
@@ -197,23 +168,26 @@ export default async function RiskProfilesPage({
       </div>
 
       {/* Table */}
+      {/* Keyed on tab + page: a selection never carries over to rows you can't see. */}
+      <RiskSelectionProvider key={`${filter}:${page}`} pageIds={data.rows.map((r: any) => String(r.id))}>
       <div className="card-surface">
         <div className="border-b border-border px-4 py-2.5 font-semibold flex items-center justify-between">
-          <span>{FILTERS.find((f) => f.key === filter)?.label} ({data.filterTotal})</span>
+          <span>{RISK_BUCKETS.find((f) => f.key === filter)?.label} ({data.filterTotal.toLocaleString("en-IN")})</span>
         </div>
+        {canManage && <RiskBulkBar notProfiledCount={data.counts.not_profiled} />}
         {data.rows.length === 0 ? (
-          <div className="p-12 text-center text-sm text-muted-foreground">
-            <ShieldCheck className="size-8 mx-auto text-emerald-500" />
-            <div className="mt-2 font-medium">
-              {filter === "needs_review" ? "All profiles current ✓" : "No investors in this view."}
-            </div>
-          </div>
+          <InlineEmpty message={EMPTY[filter]} />
         ) : (
           <>
             <div className="table-scroll">
               <table className="w-full text-sm">
                 <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
                   <tr>
+                    {canManage && (
+                      <th className="w-10 pl-4 py-2">
+                        <SelectAllOnPage />
+                      </th>
+                    )}
                     <th className="text-left px-4 py-2 font-medium">Investor</th>
                     <th className="text-left py-2 font-medium">Category</th>
                     <th className="text-left py-2 font-medium">Score</th>
@@ -226,14 +200,9 @@ export default async function RiskProfilesPage({
                 <tbody>
                   {data.rows.map((r: any) => {
                     const signed = r.risk_profile_signed_at ? new Date(r.risk_profile_signed_at) : null;
-                    const ageMs = signed ? Date.now() - signed.getTime() : null;
-                    const status = !signed
-                      ? "not_profiled"
-                      : ageMs! > 365 * 24 * 60 * 60 * 1000
-                        ? "expired"
-                        : ageMs! > 334 * 24 * 60 * 60 * 1000 // ~11 months
-                          ? "due_soon"
-                          : "current";
+                    // Computed by the same SQL as the tabs, so a row's chip never
+                    // disagrees with the tab it is listed under.
+                    const status = r.bucket as RiskBucket;
                     const score = r.total_score ?? r.risk_profile_score ?? null;
                     return (
                       <PdfRow
@@ -244,13 +213,20 @@ export default async function RiskProfilesPage({
                         disabled={!r.profile_id}
                         className="border-b last:border-0 hover:bg-secondary/40"
                       >
+                        {canManage && (
+                          <td className="pl-4 py-3" data-no-row-nav>
+                            <RowSelect id={String(r.id)} name={r.name} />
+                          </td>
+                        )}
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             <Avatar src={r.avatar_url ? `/api/investors/${r.id}/avatar` : null} name={r.name} size={26} />
                             <RiskProfileName
                               name={r.name}
-                              pan={r.pan}
+                              pan={r.pan_display}
                               profileId={r.profile_id ?? null}
+                              isMinor={r.is_minor}
+                              guardianName={r.guardian_name ?? null}
                             />
                           </div>
                         </td>
@@ -269,26 +245,26 @@ export default async function RiskProfilesPage({
                         </td>
                         <td className="py-3 tabular-nums">{score ?? "—"}</td>
                         <td className="py-3 text-xs text-muted-foreground">
-                          {signed ? formatDate(signed) : "Never"}
+                          {signed ? formatDate(signed) : "Not yet"}
                         </td>
                         <td className="py-3 text-xs text-muted-foreground">
                           {r.next_review_at ? formatDate(r.next_review_at) : "—"}
                         </td>
                         <td className="py-3">
-                          {status === "not_profiled" ? (
-                            <span className="chip bg-amber-50 text-amber-700">
-                              <AlertTriangle className="size-3" /> Not profiled
-                            </span>
-                          ) : r.risk_profile_provisional ? (
+                          {status === "awaiting" ? (
                             /* A suggestion is not a completed profile — saying
                                "Current" here would imply the client had answered. */
                             <span className="chip bg-amber-50 text-amber-700" title="Suggested from age — waiting for the client to confirm">
                               Awaiting confirmation
                             </span>
+                          ) : status === "not_profiled" ? (
+                            <span className="chip bg-amber-50 text-amber-700">
+                              <AlertTriangle className="size-3" /> Not profiled
+                            </span>
                           ) : status === "expired" ? (
                             <span className="chip bg-rose-50 text-rose-700">Expired</span>
-                          ) : status === "due_soon" ? (
-                            <span className="chip bg-amber-50 text-amber-700">Due soon</span>
+                          ) : status === "due" ? (
+                            <span className="chip bg-amber-50 text-amber-700">Due for review</span>
                           ) : (
                             <span className="chip bg-emerald-50 text-emerald-700">Current</span>
                           )}
@@ -299,7 +275,7 @@ export default async function RiskProfilesPage({
                               <SignedFormButton profileId={String(r.profile_id)} />
                             )}
                             <RiskProfilePdfButtons profileId={r.profile_id ?? null} name={r.name} />
-                            <SendRiskProfileLinkButton investorId={String(r.id)} />
+                            <SendRiskProfileLinkButton investorId={String(r.id)} appearance="row" />
                             <Link
                               href={`/dashboard/risk-profiles/new?investorId=${r.id}`}
                               className="btn-accent text-xs px-3 py-1"
@@ -325,6 +301,7 @@ export default async function RiskProfilesPage({
           </>
         )}
       </div>
+      </RiskSelectionProvider>
     </div>
   );
 }

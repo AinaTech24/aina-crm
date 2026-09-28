@@ -23,12 +23,17 @@ import { STARTER_TEMPLATES } from "@/lib/email-designer/starters";
 
 const LOCALE = "en-IN";
 
-/** Keys seeded into every firm. Keep in step with migration 0206. */
+/**
+ * Keys seeded into every firm. The first four were backfilled by migration
+ * 0206; `risk_profile_request` came later and reaches older firms on first use
+ * (the Risk Profiles bulk "Send link" installs before it sends).
+ */
 export const CLIENT_EMAIL_TEMPLATE_KEYS = [
   "risk_profile_result",
   "risk_profile_assigned",
   "feedback_nps",
   "suitability_review",
+  "risk_profile_request",
 ] as const;
 
 export async function installClientEmailTemplates(
