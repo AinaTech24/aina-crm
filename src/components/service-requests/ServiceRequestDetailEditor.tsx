@@ -10,7 +10,7 @@
  * activity timeline + stamps respondedAt/resolvedAt/csatAt server-side.
  */
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Loader2, Save, CheckCircle2, PhoneCall, Plus, Clock, AlertTriangle, Star, MessageSquare, UserCog,
@@ -21,7 +21,7 @@ import { formatRelative } from "@/lib/utils";
 const STATUSES = [
   ["open", "Open"],
   ["in_progress", "In progress"],
-  ["waiting_customer", "Waiting customer"],
+  ["waiting_customer", "Waiting on client"],
   ["resolved", "Resolved"],
   ["closed", "Closed"],
   ["escalated", "Escalated"],
@@ -64,6 +64,7 @@ export function ServiceRequestDetailEditor({
   sr: any;
   userMap: Record<string, string>;
 }) {
+  const uid = useId();
   const router = useRouter();
   const [status, setStatus] = useState<string>(sr.status);
   const [priority, setPriority] = useState<string>(sr.priority);
@@ -133,12 +134,12 @@ export function ServiceRequestDetailEditor({
       {/* Status / actions bar */}
       <div className="card-surface p-4 flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2 flex-wrap">
-          <label className="text-xs font-semibold text-muted-foreground">Status</label>
-          <select value={status} onChange={(e) => setStatus(e.target.value)} className="input-base text-sm w-40">
+          <label htmlFor={`${uid}-status`} className="text-xs font-semibold text-muted-foreground">Status</label>
+          <select id={`${uid}-status`} value={status} onChange={(e) => setStatus(e.target.value)} className="input-base text-sm w-40">
             {STATUSES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
-          <label className="text-xs font-semibold text-muted-foreground ml-2">Priority</label>
-          <select value={priority} onChange={(e) => setPriority(e.target.value)} className="input-base text-sm w-32">
+          <label htmlFor={`${uid}-priority`} className="text-xs font-semibold text-muted-foreground ml-2">Priority</label>
+          <select id={`${uid}-priority`} value={priority} onChange={(e) => setPriority(e.target.value)} className="input-base text-sm w-32">
             {PRIORITIES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
         </div>
@@ -225,7 +226,7 @@ export function ServiceRequestDetailEditor({
           <div className="flex items-center gap-1">
             {[1, 2, 3, 4, 5].map((n) => (
               <button key={n} type="button" onClick={() => setCsat(n)} className="p-0.5" aria-label={`${n} star`}>
-                <Star className={`size-6 ${n <= csat ? "fill-amber-400 text-amber-400" : "text-slate-300"}`} />
+                <Star className={`size-6 ${n <= csat ? "fill-amber-400 text-amber-400" : "text-muted-foreground/30"}`} />
               </button>
             ))}
             {csat > 0 && <span className="text-sm text-muted-foreground ml-2">{csat}/5</span>}
@@ -275,7 +276,7 @@ export function ServiceRequestDetailEditor({
                     <span className="font-medium">{EVENT_LABEL[t.event] ?? t.event}</span>
                     <span className="text-2xs text-muted-foreground">{userMap[t.by] ?? "system"} · {formatRelative(t.at)}</span>
                   </div>
-                  {t.note && <div className="text-muted-foreground text-[13px]">{t.note}</div>}
+                  {t.note && <div className="text-muted-foreground text-xs">{t.note}</div>}
                 </div>
               </li>
             ))}

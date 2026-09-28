@@ -68,10 +68,20 @@ export default function NewServiceRequestPage() {
   const [investorName, setInvestorName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [subjectTouched, setSubjectTouched] = useState(false);
+  // A subject someone else can act on. Six characters is the floor: "ZKZYc",
+  // a real ticket's entire subject, is five.
+  const SUBJECT_MIN = 6;
+  const subjectLen = form.subject.trim().length;
+  const subjectOk = subjectLen >= SUBJECT_MIN;
 
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (!subjectOk) {
+      setSubjectTouched(true);
+      return;
+    }
     setBusy(true);
     setErr(null);
     try {
@@ -81,7 +91,7 @@ export default function NewServiceRequestPage() {
         body: JSON.stringify({
           investorId: form.investorId || undefined,
           type: form.type,
-          subject: form.subject,
+          subject: form.subject.trim(),
           description: form.description,
           priority: form.priority,
           channel: form.channel,
@@ -142,7 +152,22 @@ export default function NewServiceRequestPage() {
         </div>
         <label className="block">
           <div className="text-xs font-medium mb-1">Subject<span className="text-rose-600">*</span></div>
-          <input value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} required className="w-full border rounded-md px-3 py-2 text-sm bg-background" />
+          <input
+            value={form.subject}
+            onChange={(e) => setForm({ ...form, subject: e.target.value })}
+            onBlur={() => setSubjectTouched(true)}
+            required
+            minLength={SUBJECT_MIN}
+            placeholder="e.g. Update bank account on folio 12345"
+            aria-invalid={subjectTouched && !subjectOk}
+            aria-describedby="sr-subject-help"
+            className={`w-full border rounded-md px-3 py-2 text-sm bg-background ${subjectTouched && !subjectOk ? "border-destructive" : ""}`}
+          />
+          <div id="sr-subject-help" className={`mt-1 text-2xs ${subjectTouched && !subjectOk ? "text-destructive" : "text-muted-foreground"}`}>
+            {subjectTouched && !subjectOk
+              ? `Describe the request in at least ${SUBJECT_MIN} characters (${subjectLen} so far).`
+              : "What the client needs, in a few words — this is what the team sees in the list."}
+          </div>
         </label>
         <label className="block">
           <div className="text-xs font-medium mb-1">Description</div>
@@ -206,8 +231,8 @@ export default function NewServiceRequestPage() {
         {err && <div className="text-sm text-rose-600">{err}</div>}
         <div className="flex justify-end gap-2 pt-2 border-t">
           <Link href="/dashboard/service-requests" className="rounded-md border px-4 py-2 text-sm">Cancel</Link>
-          <button disabled={busy || !form.subject} className="rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium disabled:opacity-50">
-            {busy ? "Creating…" : "Create ticket"}
+          <button disabled={busy || !subjectOk} className="rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium disabled:opacity-50">
+            {busy ? "Creating…" : "Create request"}
           </button>
         </div>
       </form>

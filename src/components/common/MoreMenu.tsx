@@ -12,7 +12,13 @@ import { MoreHorizontal } from "lucide-react";
 import { buttonClass } from "@/components/ui/button-class";
 import { Tooltip } from "@/components/ui/Tooltip";
 
-export type MoreMenuItem = { href: string; label: string; description?: string };
+export type MoreMenuItem = {
+  href: string;
+  label: string;
+  description?: string;
+  /** Longer explanation, shown on hover. */
+  tooltip?: string;
+};
 
 export function MoreMenu({ items, label = "More actions" }: { items: readonly MoreMenuItem[]; label?: string }) {
   const [open, setOpen] = useState(false);
@@ -57,6 +63,7 @@ export function MoreMenu({ items, label = "More actions" }: { items: readonly Mo
               key={it.href}
               href={it.href}
               role="menuitem"
+              title={it.tooltip}
               onClick={() => setOpen(false)}
               className="block rounded-lg px-2.5 py-2 text-sm font-medium text-foreground/80 transition-colors hover:bg-secondary hover:text-foreground"
             >

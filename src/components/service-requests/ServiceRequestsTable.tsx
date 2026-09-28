@@ -1,16 +1,17 @@
 "use client";
 
 /**
- * Service-request list table — row selection + bulk actions + inline status,
- * with each ticket linking to its workspace (/[id]).
+ * Service-request list table — row selection + bulk actions, with each ticket
+ * linking to its workspace (/[id]).
  *
  * Bulk (POST /api/service-requests/bulk): assign · set status · close.
- * Inline: a per-row status chip PATCHes status immediately.
+ * Status is a BADGE here. It used to be an inline dropdown that PATCHed on
+ * change, so a stray scroll-wheel or mis-click re-routed a client's ticket;
+ * status now changes on the ticket itself, where the change is deliberate.
  * Preserves data-table / data-col attributes for the ColumnManager.
  */
 
 import { useState } from "react";
-import { notify } from "@/components/ui/Toast";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, X, UserCog, RefreshCw, Ban } from "lucide-react";
@@ -30,16 +31,43 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 const STATUSES = [
-  ["open", "Open"], ["in_progress", "In progress"], ["waiting_customer", "Waiting customer"],
+  ["open", "Open"], ["in_progress", "In progress"], ["waiting_customer", "Waiting on client"],
   ["resolved", "Resolved"], ["closed", "Closed"], ["escalated", "Escalated"],
 ] as const;
+const STATUS_LABEL: Record<string, string> = Object.fromEntries(STATUSES);
+
+/**
+ * The SLA as a countdown: "Due in 2 days", "Due today", "Overdue by 22 days".
+ * Red once it has passed, amber inside the last day, quiet otherwise. A closed
+ * ticket has no deadline left to count.
+ */
+function slaCountdown(sr: any): { text: string; tone: string; title?: string } {
+  if (sr.status === "resolved" || sr.status === "closed") {
+    return { text: sr.resolved_at ? `Done ${formatDate(sr.resolved_at)}` : "Done", tone: "text-muted-foreground" };
+  }
+  if (!sr.sla_resolution_at) return { text: "No SLA", tone: "text-muted-foreground" };
+  const due = new Date(sr.sla_resolution_at);
+  const ms = due.getTime() - Date.now();
+  const title = `Resolve by ${due.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}`;
+  const hours = Math.abs(ms) / 3_600_000;
+  const days = Math.floor(hours / 24);
+  if (ms < 0) {
+    return {
+      text: days >= 1 ? `Overdue by ${days} day${days === 1 ? "" : "s"}` : `Overdue by ${Math.max(1, Math.floor(hours))}h`,
+      tone: "font-semibold text-rose-600",
+      title,
+    };
+  }
+  if (hours < 24) return { text: hours < 1 ? "Due within the hour" : `Due in ${Math.floor(hours)}h`, tone: "font-medium text-amber-700", title };
+  return { text: `Due in ${days} day${days === 1 ? "" : "s"}`, tone: "text-muted-foreground", title };
+}
 
 const STATUS_TONE: Record<string, string> = {
   open: "bg-blue-50 text-blue-700 border-blue-200",
   in_progress: "bg-amber-50 text-amber-700 border-amber-200",
-  waiting_customer: "bg-slate-50 text-slate-700 border-slate-200",
+  waiting_customer: "bg-secondary text-foreground border-border",
   resolved: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  closed: "bg-gray-50 text-gray-700 border-gray-200",
+  closed: "bg-secondary text-foreground border-border",
   escalated: "bg-rose-50 text-rose-700 border-rose-200",
 };
 
@@ -55,25 +83,11 @@ export function ServiceRequestsTable({ rows }: { rows: any[] }) {
   const [err, setErr] = useState<string | null>(null);
   const [assignRm, setAssignRm] = useState<string | null>(null);
   const [statusVal, setStatusVal] = useState("in_progress");
-  const [rowBusy, setRowBusy] = useState<string | null>(null);
-
   const allSelected = rows.length > 0 && selected.size === rows.length;
   function toggle(id: string) {
     setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   }
   function toggleAll() { setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.id))); }
-
-  async function inlineStatus(id: string, status: string) {
-    setRowBusy(id);
-    try {
-      const res = await fetch(`/api/service-requests/${id}`, {
-        method: "PATCH", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-      if (!res.ok) { const j = await res.json().catch(() => ({})); notify.error(j.error ?? "Update failed"); return; }
-      router.refresh();
-    } finally { setRowBusy(null); }
-  }
 
   async function runBulk() {
     if (!bulk) return;
@@ -97,7 +111,7 @@ export function ServiceRequestsTable({ rows }: { rows: any[] }) {
       <div className="card-surface p-12 text-center text-sm text-muted-foreground">
         <div className="font-medium">No service requests match these filters.</div>
         <p className="mt-2 text-xs max-w-md mx-auto">
-          Click <strong>New ticket</strong> to raise a request. Tickets auto-track TAT and escalate to the owner if the SLA breaches.
+          Click <strong>New request</strong> to raise one. Tickets auto-track TAT and escalate to the owner if the SLA breaches.
         </p>
       </div>
     );
@@ -135,15 +149,16 @@ export function ServiceRequestsTable({ rows }: { rows: any[] }) {
         <table className="w-full text-sm" data-table="service-requests">
           <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
             <tr>
-              <th className="px-3 py-2 w-8"><input type="checkbox" checked={allSelected} onChange={toggleAll} className={`size-3.5 rounded transition-opacity ${selected.size > 0 ? "opacity-100" : "opacity-0 group-hover/tbl:opacity-100 focus:opacity-100"}`} aria-label="Select all" /></th>
-              <th data-col="ticket" className="text-left px-1 py-2 font-medium">Ticket</th>
+              <th className="px-3 py-2 w-8"><input type="checkbox" checked={allSelected} onChange={toggleAll} className={`size-4 rounded transition-opacity ${selected.size > 0 ? "opacity-100" : "opacity-0 group-hover/tbl:opacity-100 focus:opacity-100"}`} aria-label="Select all" /></th>
+              <th data-col="ticket" className="text-left px-1 py-2 font-medium">Ticket #</th>
               <th data-col="client" className="text-left py-2 font-medium">Client</th>
-              <th data-col="type" className="text-left py-2 font-medium">Service Type</th>
-              <th data-col="raised" className="text-left py-2 font-medium">Raised</th>
+              <th data-col="type" className="text-left py-2 font-medium">Request type</th>
+              <th data-col="subject" className="text-left py-2 font-medium">Subject</th>
               <th data-col="assignee" className="text-left py-2 font-medium">Assigned to</th>
-              <th data-col="priority" className="text-left py-2 font-medium">Priority</th>
+              <th data-col="due" className="text-left py-2 font-medium" title="Time left before the resolution SLA">Due</th>
               <th data-col="status" className="text-left py-2 font-medium">Status</th>
-              <th data-col="expected" className="text-left py-2 font-medium">Expected</th>
+              <th data-col="raised" className="text-left py-2 font-medium">Raised</th>
+              <th data-col="priority" className="text-left py-2 font-medium">Priority</th>
               <th data-col="tat" className="text-right py-2 font-medium" title="Days since the ticket was raised">Age (days)</th>
               <th data-col="attachments" className="text-right py-2 font-medium pr-4">Att.</th>
               <th data-col="actions" className="px-4 py-2"></th>
@@ -166,23 +181,29 @@ export function ServiceRequestsTable({ rows }: { rows: any[] }) {
                       ) : (<span>{sr.investor_name ?? "—"}</span>)}
                     </div>
                   </td>
-                  <td data-col="type" className="py-3 text-xs">
-                    <Link href={`/dashboard/service-requests/${sr.id}`} className="font-medium hover:underline">{TYPE_LABEL[sr.type] ?? sr.type}</Link>
-                    {sr.subject && <div className="text-2xs text-muted-foreground max-w-[180px] truncate">{sr.subject}</div>}
+                  <td data-col="type" className="py-3 pr-2 text-xs !whitespace-normal">{TYPE_LABEL[sr.type] ?? sr.type}</td>
+                  <td data-col="subject" className="py-3 pr-3 text-sm !whitespace-normal">
+                    {/* Wraps to two lines rather than forcing the table wider
+                        than a laptop screen and pushing Status off the edge. */}
+                    <Link href={`/dashboard/service-requests/${sr.id}`} className="line-clamp-2 font-medium hover:underline" title={sr.subject ?? undefined}>
+                      {sr.subject || <span className="font-normal text-muted-foreground">No subject</span>}
+                    </Link>
+                  </td>
+                  <td data-col="assignee" className="py-3 text-xs whitespace-nowrap">{sr.assignee_name ?? <span className="text-muted-foreground">Unassigned</span>}</td>
+                  <td data-col="due" className="py-3 text-xs whitespace-nowrap tabular-nums">
+                    {(() => {
+                      const c = slaCountdown(sr);
+                      return <span className={c.tone} title={c.title}>{c.text}</span>;
+                    })()}
+                  </td>
+                  <td data-col="status" className="py-3 whitespace-nowrap">
+                    {/* A badge, not a control: change status on the ticket. */}
+                    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${STATUS_TONE[sr.status] ?? ""}`}>
+                      {STATUS_LABEL[sr.status] ?? sr.status}
+                    </span>
                   </td>
                   <td data-col="raised" className="py-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">{formatDate(sr.created_at)}</td>
-                  <td data-col="assignee" className="py-3 text-xs whitespace-nowrap">{sr.assignee_name ?? "—"}</td>
                   <td data-col="priority" className={`py-3 text-xs capitalize ${PRIORITY_TONE[sr.priority]}`}>{sr.priority}</td>
-                  <td data-col="status" className="py-3 whitespace-nowrap">
-                    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${STATUS_TONE[sr.status] ?? ""}`}>
-                      {rowBusy === sr.id && <Loader2 className="size-3 animate-spin" />}
-                      <select value={sr.status} disabled={rowBusy === sr.id} onChange={(e) => inlineStatus(sr.id, e.target.value)} className="bg-transparent border-0 outline-none cursor-pointer text-xs font-medium appearance-none pr-1">
-                        {STATUSES.map(([k, l]) => <option key={k} value={k} className="bg-white text-foreground">{l}</option>)}
-                      </select>
-                    </span>
-                    {sr.escalated_at && <div className="text-2xs text-rose-600 font-semibold mt-0.5">escalated</div>}
-                  </td>
-                  <td data-col="expected" className="py-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">{sr.sla_resolution_at ? formatDate(sr.sla_resolution_at) : "—"}</td>
                   <td data-col="tat" className="py-3 text-right tabular-nums">
                     {sr.breached ? <span className="text-rose-600 font-semibold" title="Past the promised resolution date">{sr.tat_days}</span> : <span className="text-muted-foreground">{sr.tat_days}</span>}
                   </td>

@@ -1,7 +1,7 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { Plus, LifeBuoy, FileText } from "lucide-react";
+import { Plus, LifeBuoy } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { ServiceRequestsTable } from "@/components/service-requests/ServiceRequestsTable";
@@ -9,22 +9,35 @@ import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { dateRangeCond } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
+import { MoreMenu } from "@/components/common/MoreMenu";
+import { buttonClass } from "@/components/ui/button-class";
 
 const SR_COLUMNS = [
-  { key: "ticket", label: "Ticket", required: true },
+  { key: "ticket", label: "Ticket #", required: true },
   { key: "client", label: "Client", required: true },
-  { key: "type", label: "Service Type" },
-  { key: "raised", label: "Raised on" },
+  { key: "type", label: "Request type" },
+  { key: "subject", label: "Subject" },
   { key: "assignee", label: "Assigned to" },
-  { key: "priority", label: "Priority" },
+  { key: "due", label: "Due (SLA)" },
   { key: "status", label: "Status" },
-  { key: "expected", label: "Expected resolution" },
-  { key: "closed", label: "Closed on", defaultHidden: true },
-  { key: "tat", label: "Age (days)" },
-  { key: "remarks", label: "Remarks", defaultHidden: true },
+  { key: "raised", label: "Raised on", defaultHidden: true },
+  { key: "priority", label: "Priority", defaultHidden: true },
+  { key: "tat", label: "Age (days)", defaultHidden: true },
   { key: "attachments", label: "Attachments", defaultHidden: true },
   { key: "actions", label: "Actions", required: true },
 ];
+
+/**
+ * Status tabs. Together they cover every status, so no ticket is ever in none
+ * of them: Open is new + in progress, Closed is resolved + closed.
+ */
+const TABS = [
+  { key: "open", label: "Open", statuses: ["open", "in_progress"] },
+  { key: "escalated", label: "Escalated", statuses: ["escalated"] },
+  { key: "waiting", label: "Waiting on client", statuses: ["waiting_customer"] },
+  { key: "closed", label: "Closed", statuses: ["resolved", "closed"] },
+] as const;
+type TabKey = (typeof TABS)[number]["key"];
 
 const TYPE_LABEL: Record<string, string> = {
   nominee_update: "Nominee Update",
@@ -58,6 +71,11 @@ export default async function ServiceRequestsPage({
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const status = (sp.status ?? "").split(",").filter(Boolean);
+  // A tab picks the statuses, unless an explicit ?status= (an old link or a
+  // saved view) already did — then no tab is highlighted.
+  const tab: TabKey | null = status.length
+    ? null
+    : (TABS.find((t) => t.key === sp.tab)?.key ?? "open");
   const priority = (sp.priority ?? "").split(",").filter(Boolean);
   const srType = (sp.srtype ?? "").split(",").filter(Boolean);
   const breached = sp.breached === "1";
@@ -83,6 +101,12 @@ export default async function ServiceRequestsPage({
   if (breached) conds.push(sql`sr.status NOT IN ('resolved','closed') AND sr.sla_resolution_at < now()`);
   const dr = dateRangeCond(sp, "created", "sr.created_at");
   if (dr) conds.push(dr);
+  // Tab counts are taken over every other filter, before the tab narrows.
+  const countWhere = sql`WHERE ${sql.join(conds, sql` AND `)}`;
+  if (tab) {
+    const st = TABS.find((t) => t.key === tab)!.statuses;
+    conds.push(sql`sr.status IN (${sql.join(st.map((v) => sql`${v}`), sql`, `)})`);
+  }
   const whereClause =
     conds.length === 0 ? sql`` : sql`WHERE ${sql.join(conds, sql` AND `)}`;
 
@@ -109,26 +133,79 @@ export default async function ServiceRequestsPage({
       LIMIT 200
     `);
 
+    const countRows = await tx.execute(sql`
+      SELECT
+        count(*) FILTER (WHERE sr.status IN ('open','in_progress'))::int AS open,
+        count(*) FILTER (WHERE sr.status = 'escalated')::int AS escalated,
+        count(*) FILTER (WHERE sr.status = 'waiting_customer')::int AS waiting,
+        count(*) FILTER (WHERE sr.status IN ('resolved','closed'))::int AS closed
+      FROM service_requests sr
+      LEFT JOIN investors i ON i.id = sr.investor_id
+      LEFT JOIN users u ON u.id = sr.assigned_to_user_id
+      ${countWhere}
+    `);
+
     const rmRows = await tx.execute(sql`
       SELECT id, name FROM users
       WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
       ORDER BY name ASC
     `);
-    return { rows: rows.rows as any[], rms: rmRows.rows as any[] };
+    return { rows: rows.rows as any[], rms: rmRows.rows as any[], counts: (countRows.rows[0] ?? {}) as Record<string, number> };
   });
 
   const rmOptions = (result.rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
+  // A tab keeps every other filter; it replaces status and restarts the page.
+  const tabHref = (key: TabKey) => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(sp)) if (v && k !== "tab" && k !== "status" && k !== "page") p.set(k, v);
+    if (key !== "open") p.set("tab", key);
+    const qs = p.toString();
+    return qs ? `/dashboard/service-requests?${qs}` : "/dashboard/service-requests";
+  };
 
   return (
     <div className="space-y-6 max-w-7xl">
       <PageHeaderCard title={<><LifeBuoy className="size-6 text-muted-foreground" /> Service Requests</>} subtitle={<>Track every client request and complaint with a deadline — overdue tickets escalate automatically.</>} actions={<><div className="flex items-center gap-2">
-          <Link href="/dashboard/complaints/disclosure" className="btn-secondary text-xs">
-            <FileText className="size-3.5" /> Complaint disclosure
-          </Link>
-          <Link href="/dashboard/service-requests/new" className="btn-primary">
-            <Plus className="size-4" /> New ticket
+          <MoreMenu
+            label="More"
+            items={[
+              {
+                href: "/dashboard/complaints/disclosure",
+                label: "SEBI complaint disclosure (monthly)",
+                description: "The complaints statement distributors publish each month",
+                tooltip:
+                  "SEBI requires distributors to publish their complaint data every month: received, resolved and pending, with average resolution time. Built from the complaints logged here.",
+              },
+            ]}
+          />
+          <Link href="/dashboard/service-requests/new" className={buttonClass("primary")}>
+            <Plus className="size-4" /> New request
           </Link>
         </div></>} />
+
+      {/* Status tabs, with counts under the current filters. */}
+      <nav role="tablist" aria-label="Ticket status" className="inline-flex flex-wrap items-center gap-1 rounded-lg border border-border bg-secondary/40 p-1">
+        {TABS.map((t) => {
+          const active = tab === t.key;
+          const n = Number(result.counts[t.key] ?? 0);
+          return (
+            <Link
+              key={t.key}
+              href={tabHref(t.key)}
+              role="tab"
+              aria-selected={active}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                active ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-card/60"
+              }`}
+            >
+              {t.label}
+              <span className={`tabular-nums ${t.key === "escalated" && n > 0 ? "font-semibold text-destructive" : "text-muted-foreground"}`}>
+                {n}
+              </span>
+            </Link>
+          );
+        })}
+      </nav>
 
       <CompactFilterBar
         searchPlaceholder="Search ticket #, subject, or client…"
@@ -141,7 +218,7 @@ export default async function ServiceRequestsPage({
             options: [
               { value: "open", label: "Open" },
               { value: "in_progress", label: "In progress" },
-              { value: "waiting_customer", label: "Waiting customer" },
+              { value: "waiting_customer", label: "Waiting on client" },
               { value: "resolved", label: "Resolved" },
               { value: "closed", label: "Closed" },
               { value: "escalated", label: "Escalated" },
@@ -187,9 +264,9 @@ export default async function ServiceRequestsPage({
             <CustomViews
               viewsKey="views:service-requests"
               presets={[
-                { id: "open", name: "Open + In-progress", params: "status=open,in_progress" },
-                { id: "complaints", name: "Complaints (SEBI register)", params: "srtype=complaint" },
-                { id: "mine", name: "My open tickets", params: "mine=1&status=open,in_progress,waiting_customer" },
+                { id: "open", name: "Open + In-progress", params: "tab=open" },
+                { id: "complaints", name: "Complaints (SEBI register)", params: "srtype=complaint&status=open,in_progress,waiting_customer,escalated,resolved,closed" },
+                { id: "mine", name: "My open tickets", params: "mine=1&status=open,in_progress,waiting_customer,escalated" },
                 { id: "breached", name: "Breached", params: "breached=1" },
                 { id: "urgent", name: "Urgent priority", params: "priority=urgent,high" },
               ]}
