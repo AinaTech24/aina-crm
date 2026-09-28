@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { formatRelative } from "@/lib/utils";
+import Link from "next/link";
 import { RowActions } from "@/components/common/RowActions";
 import { SelectField } from "@/components/ui/SelectField";
 import { RmSelector } from "@/components/common/RmSelector";
@@ -24,15 +24,15 @@ const PRIORITY_ACCENT: Record<string, string> = {
 const PRIORITY_TEXT: Record<string, string> = {
   urgent: "text-rose-700",
   high: "text-amber-700",
-  normal: "text-slate-600",
-  low: "text-slate-400",
+  normal: "text-muted-foreground",
+  low: "text-muted-foreground",
 };
 const STATUS_TEXT: Record<string, string> = {
   open: "text-sky-700",
   in_progress: "text-violet-700",
   blocked: "text-rose-700",
   completed: "text-emerald-700",
-  cancelled: "text-slate-400",
+  cancelled: "text-muted-foreground",
 };
 
 // Due-date buckets for the "Group by due" view — fixed display order.
@@ -40,10 +40,10 @@ const BUCKET_ORDER = ["overdue", "today", "week", "later", "nodate", "done"] as 
 const BUCKET_META: Record<string, { label: string; tone: string }> = {
   overdue: { label: "Overdue", tone: "text-rose-600" },
   today: { label: "Due today", tone: "text-amber-600" },
-  week: { label: "This week", tone: "text-slate-700" },
-  later: { label: "Later", tone: "text-slate-600" },
-  nodate: { label: "No due date", tone: "text-slate-500" },
-  done: { label: "Completed & closed", tone: "text-slate-400" },
+  week: { label: "This week", tone: "text-foreground" },
+  later: { label: "Later", tone: "text-muted-foreground" },
+  nodate: { label: "No due date", tone: "text-muted-foreground" },
+  done: { label: "Completed & closed", tone: "text-muted-foreground" },
 };
 function dueBucketKey(t: { status: string; dueAt: Date | string | null }): string {
   if (t.status === "completed" || t.status === "cancelled") return "done";
@@ -56,13 +56,40 @@ function dueBucketKey(t: { status: string; dueAt: Date | string | null }): strin
   return "later";
 }
 
+/**
+ * "Today", "Tomorrow", "in 3 days", "5 days ago", else the date. A due date is
+ * usually in the future, and the shared formatRelative only speaks the past.
+ */
+function dueRelative(value: Date | string): string {
+  const due = new Date(value);
+  if (isNaN(due.getTime())) return "—";
+  const now = new Date();
+  const dayOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((dayOf(due) - dayOf(now)) / 86_400_000);
+  if (days === 0) return "Today";
+  if (days === 1) return "Tomorrow";
+  if (days === -1) return "Yesterday";
+  if (days > 1 && days < 7) return `in ${days} days`;
+  if (days < -1 && days > -7) return `${-days} days ago`;
+  return due.toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    ...(due.getFullYear() === now.getFullYear() ? {} : { year: "numeric" }),
+  });
+}
+
+const PRIORITY_LABEL: Record<string, string> = { urgent: "Urgent", high: "High", normal: "Normal", low: "Low" };
+
 interface TaskRow {
   task: Task;
   assignee: string | null;
   /** Creator's name ("assigned by"). */
   createdBy?: string | null;
+  /** Resolved from related_investor_id or the older subject link. */
+  investorId?: string | null;
   investorName: string | null;
   investorAvatarUrl?: string | null;
+  leadId?: string | null;
   leadName: string | null;
   leadAvatarUrl?: string | null;
 }
@@ -308,23 +335,16 @@ export function TaskList({ initialRows, currentUserId, canManageAll = false, ini
       {/* Bulk action bar — appears when rows are selected. */}
       {selected.size > 0 && (
         <div className="px-3 py-2 border-b bg-brand-cyan-light/20 flex items-center gap-2 flex-wrap text-xs">
-          <span className="font-semibold text-slate-700">{selected.size} selected</span>
-          <button onClick={() => runBulk("status", "completed")} disabled={bulkBusy} className="btn-secondary text-xs py-1 px-2.5">Complete</button>
-          <div onClick={(e) => e.stopPropagation()}>
-            <SelectField value="" onChange={(e) => e.target.value && runBulk("priority", e.target.value)} size="sm" className="w-32">
-              <option value="">Set priority…</option>
-              <option value="low">Low</option>
-              <option value="normal">Normal</option>
-              <option value="high">High</option>
-              <option value="urgent">Urgent</option>
-            </SelectField>
-          </div>
+          <span className="font-semibold text-foreground">{selected.size} selected</span>
+          {/* The three things a selection is for, first: done, whose, when. */}
+          <button onClick={() => runBulk("status", "completed")} disabled={bulkBusy} className="btn-secondary text-xs py-1 px-2.5 inline-flex items-center gap-1">
+            <Check className="size-3.5" /> Mark done
+          </button>
           <div className="w-44">
             <RmSelector value={null} onChange={(id) => id && runBulk("assign", id)} placeholder="Reassign to…" />
           </div>
-          {/* Bulk reschedule — clear an overdue backlog fast. */}
           <div className="inline-flex items-center gap-1">
-            <span className="text-slate-500">Due:</span>
+            <span className="text-muted-foreground">Change due date:</span>
             <button
               onClick={() => { const d = new Date(); d.setHours(18, 0, 0, 0); runBulk("reschedule", d.toISOString()); }}
               disabled={bulkBusy}
@@ -333,18 +353,35 @@ export function TaskList({ initialRows, currentUserId, canManageAll = false, ini
               Today
             </button>
             <button
+              onClick={() => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(18, 0, 0, 0); runBulk("reschedule", d.toISOString()); }}
+              disabled={bulkBusy}
+              className="btn-ghost text-xs py-1 px-2"
+            >
+              Tomorrow
+            </button>
+            <button
               onClick={() => { const d = new Date(); d.setDate(d.getDate() + 7); d.setHours(18, 0, 0, 0); runBulk("reschedule", d.toISOString()); }}
               disabled={bulkBusy}
               className="btn-ghost text-xs py-1 px-2"
             >
-              +1w
+              Next week
             </button>
             <input
               type="date"
               onChange={(e) => { if (e.target.value) { const d = new Date(e.target.value); d.setHours(18, 0, 0, 0); runBulk("reschedule", d.toISOString()); } }}
               className="input-base h-7 text-xs w-[130px]"
-              aria-label="Reschedule to date"
+              aria-label="Change due date to"
             />
+          </div>
+          <span className="h-4 w-px bg-border" aria-hidden />
+          <div onClick={(e) => e.stopPropagation()}>
+            <SelectField value="" onChange={(e) => e.target.value && runBulk("priority", e.target.value)} size="sm" className="w-32">
+              <option value="">Set priority…</option>
+              <option value="low">Low</option>
+              <option value="normal">Normal</option>
+              <option value="high">High</option>
+              <option value="urgent">Urgent</option>
+            </SelectField>
           </div>
           <button onClick={() => runBulk("cancel")} disabled={bulkBusy} className="btn-ghost text-xs py-1 px-2 text-rose-600">Cancel tasks</button>
           <button onClick={() => setConfirmBulkDelete(true)} disabled={bulkBusy} className="text-xs py-1 px-2.5 rounded-md border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 inline-flex items-center gap-1 font-medium">
@@ -406,15 +443,15 @@ export function TaskList({ initialRows, currentUserId, canManageAll = false, ini
             most of the visual noise in the list. Hidden on the breakpoints
             where those columns themselves are hidden. */}
         {rows.length > 0 && (
-          <div className="hidden md:flex items-center gap-3 px-4 py-1.5 border-b border-border bg-secondary/40 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <div className="hidden md:flex items-center gap-2 px-4 py-1.5 border-b border-border bg-secondary/40 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
             <span className="size-3.5 shrink-0" aria-hidden />
             <span className="size-5 shrink-0" aria-hidden />
             <span className="flex-1 min-w-0">Task</span>
-            <span className="hidden sm:block shrink-0">Due · priority · status</span>
-            <span className="flex items-center gap-5 shrink-0">
-              <span className="w-28">Assigned by</span>
-              <span className="w-28">Assigned to</span>
-            </span>
+            <span className="hidden xl:block w-32 shrink-0">Client / Lead</span>
+            <span className="hidden sm:block w-20 shrink-0">Due</span>
+            <span className="hidden sm:block w-14 shrink-0">Priority</span>
+            <span className="w-32 shrink-0">Assigned to</span>
+            <span className="hidden xl:block w-20 shrink-0">Source</span>
             <span className="w-[68px] shrink-0 text-right">Actions</span>
           </div>
         )}
@@ -462,12 +499,25 @@ export function TaskList({ initialRows, currentUserId, canManageAll = false, ini
             const isCancelled = t.status === "cancelled";
             const isDone = isCompleted || isCancelled;
             const creatorName = row.createdBy ?? "System";
-            const assigneeLabel = row.assignee ? (t.assigneeId === currentUserId ? "Me" : row.assignee) : "Unassigned";
+            // "You", not "Me": the list talks to the reader.
+            const isYou = !!row.assignee && t.assigneeId === currentUserId;
+            const assigneeLabel = row.assignee ? (isYou ? "You" : row.assignee) : "Unassigned";
+            // A workflow stamps its run id; a task with no creator came from the
+            // system too (imports, older automations).
+            const automated = !!t.workflowRunId || !t.createdById;
+            const overdue = !!t.dueAt && !isDone && new Date(t.dueAt).getTime() < Date.now();
+            const investorId = row.investorId ?? t.relatedInvestorId;
+            const leadId = row.leadId ?? t.relatedLeadId;
+            const related = investorId && row.investorName
+              ? { href: `/dashboard/investors/${investorId}`, name: row.investorName, kind: "Client" }
+              : leadId && row.leadName
+                ? { href: `/dashboard/leads/${leadId}`, name: row.leadName, kind: "Lead" }
+                : null;
             return (
               <li
                 key={t.id}
                 onClick={() => setSelectedRow(row)}
-                className={`group/row px-4 py-2.5 flex items-center gap-3 transition-colors cursor-pointer select-none hover:bg-slate-50/70 ${isDone ? "opacity-70" : ""}`}
+                className={`group/row px-4 py-2.5 flex items-center gap-2 transition-colors cursor-pointer select-none hover:bg-secondary/70 ${isDone ? "opacity-70" : ""}`}
               >
                 {/* Bulk-select checkbox — revealed on row hover (or when checked). */}
                 <input
@@ -487,80 +537,99 @@ export function TaskList({ initialRows, currentUserId, canManageAll = false, ini
                   type="button"
                   onClick={(e) => handleToggleComplete(t.id, !isDone, e)}
                   disabled={completingTaskId === t.id}
-                  className={`shrink-0 rounded-full border size-5 flex items-center justify-center transition ${
+                  className={`shrink-0 rounded-full border size-7 flex items-center justify-center transition ${
                     isCompleted
                       ? "bg-emerald-500 border-emerald-500 text-white"
                       : isCancelled
-                        ? "bg-slate-400 border-slate-400 text-white"
-                        : "border-slate-300 text-transparent hover:border-emerald-400 hover:text-emerald-400"
+                        ? "bg-muted-foreground border-muted-foreground text-white"
+                        : "border-border text-transparent hover:border-success hover:text-success"
                   }`}
                   title={isDone ? "Reopen task" : "Mark complete"}
                   aria-label={isDone ? "Reopen task" : "Mark complete"}
                 >
                   {completingTaskId === t.id ? (
-                    <Loader2 className="size-3 animate-spin text-slate-400" />
+                    <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
                   ) : isCancelled ? (
-                    <X className="size-3" />
+                    <X className="size-3.5" />
                   ) : (
-                    <Check className="size-3" />
+                    <Check className="size-3.5" />
                   )}
                 </button>
 
                 {/* Task content */}
-                <span className={`flex-1 min-w-0 text-sm truncate ${isDone ? "line-through text-slate-400 font-normal" : "font-medium text-slate-800"}`}>
+                <span className={`flex-1 min-w-0 text-sm truncate ${isDone ? "line-through text-muted-foreground font-normal" : "font-medium text-foreground"}`}>
                   {t.title}
                 </span>
                 {isCancelled && (
-                  <span className="shrink-0 text-2xs font-semibold uppercase tracking-wide text-slate-500 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5">
+                  <span className="shrink-0 text-2xs font-semibold uppercase tracking-wide text-muted-foreground bg-secondary border border-border rounded px-1.5 py-0.5">
                     Cancelled
                   </span>
                 )}
 
-                {/* Due · priority · status — the facts an RM scans for. Colour
-                    only when it means something (overdue red, urgent/high tint,
-                    blocked rose); everything else stays quiet. */}
-                <div className="hidden sm:flex items-center gap-2 shrink-0">
-                  {t.dueAt && !isDone && (
-                    <span
-                      className={`inline-flex items-center gap-1 text-2xs rounded-md px-1.5 py-0.5 border ${
-                        new Date(t.dueAt).getTime() < Date.now()
-                          ? "text-rose-700 bg-rose-50 border-rose-200 font-semibold"
-                          : "text-slate-600 bg-white border-slate-200"
-                      }`}
-                      title={new Date(t.dueAt).toLocaleString("en-IN")}
+                {(t.status === "in_progress" || t.status === "blocked") && (
+                  <span className={`shrink-0 text-2xs font-medium rounded px-1.5 py-0.5 border ${
+                    t.status === "blocked" ? "text-rose-700 bg-rose-50 border-rose-200" : "text-violet-700 bg-violet-50 border-violet-200"
+                  }`}>
+                    {t.status === "blocked" ? "Blocked" : "In progress"}
+                  </span>
+                )}
+
+                {/* Client / Lead — opens the record, not the task. */}
+                <div className="hidden xl:block w-32 shrink-0 min-w-0 text-xs">
+                  {related ? (
+                    <Link
+                      href={related.href}
+                      onClick={(e) => e.stopPropagation()}
+                      className="block truncate text-foreground hover:underline"
+                      title={`${related.kind}: ${related.name}`}
                     >
-                      <CalendarClock className="size-3" />
-                      {formatRelative(t.dueAt)}
-                    </span>
-                  )}
-                  {(t.priority === "urgent" || t.priority === "high") && !isDone && (
-                    <span className={`text-2xs font-semibold uppercase tracking-wide rounded px-1.5 py-0.5 ${
-                      t.priority === "urgent" ? "text-rose-700 bg-rose-50 border border-rose-200" : "text-amber-700 bg-amber-50 border border-amber-200"
-                    }`}>
-                      {t.priority}
-                    </span>
-                  )}
-                  {(t.status === "in_progress" || t.status === "blocked") && (
-                    <span className={`text-2xs font-medium rounded px-1.5 py-0.5 border ${
-                      t.status === "blocked" ? "text-rose-700 bg-rose-50 border-rose-200" : "text-violet-700 bg-violet-50 border-violet-200"
-                    }`}>
-                      {t.status === "blocked" ? "Blocked" : "In progress"}
-                    </span>
+                      {related.name}
+                    </Link>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
                   )}
                 </div>
 
-                {/* Assigned by / assigned to — the column headings above name
-                    these, so the rows carry values only. */}
-                <div className="hidden md:flex items-center gap-5 shrink-0">
-                  <div
-                    className={`w-28 min-w-0 text-xs truncate ${creatorName === "System" ? "text-slate-400 font-normal" : "text-slate-700 font-medium"}`}
-                    title={creatorName === "System" ? "Created automatically by a workflow" : `Assigned by ${creatorName}`}
-                  >
-                    {creatorName === "System" ? "Automation" : creatorName}
-                  </div>
-                  <div className="w-28 min-w-0 text-xs text-slate-700 font-medium truncate" title={`Assigned to ${assigneeLabel}`}>
-                    {assigneeLabel}
-                  </div>
+                {/* Due — red only when it has passed. */}
+                <div className="hidden sm:block w-20 shrink-0 text-xs">
+                  {t.dueAt ? (
+                    <span
+                      className={`inline-flex items-center gap-1 ${overdue ? "font-semibold text-destructive" : "text-muted-foreground"}`}
+                      title={`${overdue ? "Overdue — was due" : "Due"} ${new Date(t.dueAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}`}
+                    >
+                      <CalendarClock className="size-3" />
+                      {dueRelative(t.dueAt)}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">No date</span>
+                  )}
+                </div>
+
+                {/* Priority — tinted only when it asks for attention. */}
+                <div
+                  className={`hidden sm:block w-14 shrink-0 text-xs ${
+                    isDone ? "text-muted-foreground" : t.priority === "urgent" ? "font-semibold text-rose-700" : t.priority === "high" ? "font-medium text-amber-700" : "text-muted-foreground"
+                  }`}
+                >
+                  {PRIORITY_LABEL[t.priority] ?? t.priority}
+                </div>
+
+                {/* Assigned to — avatar + name. */}
+                <div className="w-32 shrink-0 min-w-0 flex items-center gap-2 text-xs" title={`Assigned to ${assigneeLabel}`}>
+                  {row.assignee ? (
+                    <Avatar name={row.assignee} size={24} className="shrink-0" />
+                  ) : (
+                    <span className="size-6 shrink-0 rounded-full border border-dashed border-border" aria-hidden />
+                  )}
+                  <span className={`truncate ${row.assignee ? "font-medium text-foreground" : "text-muted-foreground"}`}>{assigneeLabel}</span>
+                </div>
+
+                {/* Source — taxonomy, so no colour. */}
+                <div
+                  className="hidden xl:block w-20 shrink-0 text-xs text-muted-foreground"
+                  title={automated ? "Created automatically by a workflow" : `Created by ${creatorName}`}
+                >
+                  {automated ? "Automation" : "Manual"}
                 </div>
 
                 {/* Edit (opens the modal) + delete */}
@@ -568,7 +637,7 @@ export function TaskList({ initialRows, currentUserId, canManageAll = false, ini
                   <button
                     type="button"
                     onClick={() => setSelectedRow(row)}
-                    className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                    className="btn-icon"
                     aria-label="Edit task"
                     title="Edit"
                   >

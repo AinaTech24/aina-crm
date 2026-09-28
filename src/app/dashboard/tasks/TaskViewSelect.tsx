@@ -1,19 +1,33 @@
 "use client";
 
 /**
- * Tasks view controls.
+ * Tasks view controls — three independent axes, all in the URL:
  *
- * SCOPE (?view=) and LAYOUT (?layout=) are separate axes. They used to share
- * one param, which made "Kanban board" a fourth tab and therefore mutually
- * exclusive with the scope tabs — you could not see a kanban of just your own
- * tasks. Now every scope can be viewed as a list or a board.
+ *   ?tab=    ""  (all open) | overdue | today | upcoming | completed
+ *   ?view=   ""  (all)      | to_me   | by_me          — the scope dropdown
+ *   ?layout= ""  (list)     | kanban                   — "List" / "Board"
  *
- * Both preserve the other query params (search, status, priority, sort…) so the
- * controls compose with the active filters instead of resetting the page.
+ * The quick tabs are WHEN (the question people open Tasks to answer); the
+ * scope is WHOSE. They used to be one segmented row of whose-tabs with no
+ * when at all, so an RM with July reminders still open had to build a due
+ * filter by hand to find them. Tabs are a list thing: the board's columns are
+ * already the statuses, so it keeps only the scope and layout controls.
+ *
+ * Every control keeps the other query params (search, priority, sort…) so it
+ * composes with the active filters instead of resetting the page.
  */
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { LayoutGrid, List } from "lucide-react";
+import { SelectField } from "@/components/ui/SelectField";
+
+const TABS = [
+  { value: "", label: "All open" },
+  { value: "overdue", label: "Overdue" },
+  { value: "today", label: "Today" },
+  { value: "upcoming", label: "Upcoming" },
+  { value: "completed", label: "Completed" },
+];
 
 const SCOPES = [
   { value: "", label: "All tasks" },
@@ -21,14 +35,37 @@ const SCOPES = [
   { value: "by_me", label: "Assigned by me" },
 ];
 
-export function TaskViewSelect({ current, layout }: { current: string; layout: string }) {
+export function TaskViewSelect({
+  current,
+  layout,
+  tab,
+  overdueCount,
+}: {
+  current: string;
+  layout: string;
+  tab: string;
+  overdueCount: number;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
   function push(params: URLSearchParams) {
+    params.delete("page"); // any re-scope starts from the first page
     const qs = params.toString();
     router.push(qs ? `${pathname}?${qs}` : pathname);
+  }
+
+  function goTab(v: string) {
+    if (v === tab) return;
+    const params = new URLSearchParams(searchParams.toString());
+    if (v) params.set("tab", v);
+    else params.delete("tab");
+    // A tab decides status and due by itself; a lingering Status / Due filter
+    // from the Filters menu would silently fight it.
+    params.delete("status");
+    params.delete("due");
+    push(params);
   }
 
   function goScope(v: string) {
@@ -36,8 +73,6 @@ export function TaskViewSelect({ current, layout }: { current: string; layout: s
     const params = new URLSearchParams(searchParams.toString());
     if (v) params.set("view", v);
     else params.delete("view");
-    // Re-scoping restarts from the first page of the new result set.
-    params.delete("page");
     push(params);
   }
 
@@ -46,66 +81,80 @@ export function TaskViewSelect({ current, layout }: { current: string; layout: s
     const params = new URLSearchParams(searchParams.toString());
     if (v === "kanban") {
       params.set("layout", "kanban");
-      // The kanban's columns ARE the statuses, so a lingering status/due filter
-      // would collapse the board to one column. Clear those when entering it.
+      // The kanban's columns ARE the statuses, so a lingering status/due/tab
+      // filter would collapse the board to one column. Clear them on the way in.
       params.delete("status");
       params.delete("due");
+      params.delete("tab");
     } else {
       params.delete("layout");
     }
-    params.delete("page");
     push(params);
   }
 
-  return (
-    <div className="inline-flex items-center gap-2">
-      {/* Scope */}
-      <div className="inline-flex items-center gap-1 rounded-lg border border-border bg-secondary/40 p-1">
-        {SCOPES.map((v) => {
-          const active = current === v.value;
-          return (
-            <button
-              key={v.value || "all"}
-              type="button"
-              onClick={() => goScope(v.value)}
-              aria-pressed={active}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                active
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground hover:bg-card/60"
-              }`}
-            >
-              {v.label}
-            </button>
-          );
-        })}
-      </div>
+  const seg = (active: boolean) =>
+    `inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+      active ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-card/60"
+    }`;
 
-      {/* Layout — available in every scope */}
-      <div className="inline-flex items-center gap-1 rounded-lg border border-border bg-secondary/40 p-1">
-        {([
-          ["list", List, "List view"],
-          ["kanban", LayoutGrid, "Kanban board"],
-        ] as const).map(([key, Icon, label]) => {
-          const active = layout === key;
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => goLayout(key)}
-              aria-pressed={active}
-              title={label}
-              aria-label={label}
-              className={`rounded-md p-1.5 transition-colors ${
-                active
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground hover:bg-card/60"
-              }`}
-            >
-              <Icon className="size-4" />
-            </button>
-          );
-        })}
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {layout !== "kanban" && (
+        <div role="tablist" aria-label="Which tasks" className="inline-flex flex-wrap items-center gap-1 rounded-lg border border-border bg-secondary/40 p-1">
+          {TABS.map((t) => {
+            const active = tab === t.value;
+            return (
+              <button
+                key={t.value || "open"}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => goTab(t.value)}
+                className={seg(active)}
+              >
+                {t.label}
+                {t.value === "overdue" && (
+                  // Red only when something is actually late.
+                  <span className={`tabular-nums ${overdueCount > 0 ? "font-semibold text-destructive" : "text-muted-foreground"}`}>
+                    ({overdueCount})
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="ml-auto flex items-center gap-2">
+        {/* Whose tasks — a dropdown now that the tabs above say which. */}
+        <SelectField
+          value={current}
+          onChange={(e) => goScope(e.target.value)}
+          aria-label="Whose tasks"
+          size="sm"
+          className="w-40"
+        >
+          {SCOPES.map((s) => (
+            <option key={s.value || "all"} value={s.value}>
+              {s.label}
+            </option>
+          ))}
+        </SelectField>
+
+        {/* Layout — available in every scope, labelled rather than two bare icons. */}
+        <div role="group" aria-label="Layout" className="inline-flex items-center gap-1 rounded-lg border border-border bg-secondary/40 p-1">
+          {([
+            ["list", List, "List"],
+            ["kanban", LayoutGrid, "Board"],
+          ] as const).map(([key, Icon, label]) => {
+            const active = layout === key;
+            return (
+              <button key={key} type="button" onClick={() => goLayout(key)} aria-pressed={active} className={seg(active)}>
+                <Icon className="size-4" /> {label}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

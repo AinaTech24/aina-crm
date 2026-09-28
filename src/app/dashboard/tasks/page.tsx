@@ -14,11 +14,22 @@ import { CustomViews } from "@/components/common/CustomViews";
 import { TaskViewSelect } from "./TaskViewSelect";
 import { TaskList } from "./TaskList";
 import { TaskKanban } from "./TaskKanban";
+import { buttonClass } from "@/components/ui/button-class";
 
 export const dynamic = "force-dynamic";
 
 // Aliased users join to resolve the task creator's name ("assigned by").
 const taskCreator = alias(users, "task_creator");
+
+/** Statuses that are still somebody's work. */
+const OPEN_STATUSES = ["open", "in_progress", "blocked"] as const;
+type Tab = "" | "overdue" | "today" | "upcoming" | "completed";
+
+// Day boundaries in India time. The database runs in UTC, so a bare
+// current_date turns over at 05:30 IST and a task due at 9am shows as
+// "tomorrow" for the first five and a half hours of the day.
+const IST_TODAY = sql`(now() AT TIME ZONE 'Asia/Kolkata')::date`;
+const DUE_DAY = sql`(${tasks.dueAt} AT TIME ZONE 'Asia/Kolkata')::date`;
 
 export default async function TasksPage({
   searchParams,
@@ -38,6 +49,11 @@ export default async function TasksPage({
   // Due filter — CSV multi-select: today | overdue | sla_risk
   const dueFilter = (sp.due ?? "").split(",").filter(Boolean);
   const approval = sp.approval ?? ""; // '' | 'pending' | 'mine' (awaiting sign-off)
+  // Quick tab — WHEN: overdue (past its due time), today (due later today),
+  // upcoming (due after today), completed. No tab = everything still open.
+  const tab: Tab = (["overdue", "today", "upcoming", "completed"] as const).includes(sp.tab as any)
+    ? (sp.tab as Tab)
+    : "";
   // Scope and layout are independent axes, so a kanban can be scoped to "my
   // tasks" too. They used to share `?view=`, which made kanban a fourth tab and
   // therefore mutually exclusive with the scope tabs.
@@ -51,15 +67,14 @@ export default async function TasksPage({
   const layout = legacyKanban || sp.layout === "kanban" ? "kanban" : "list";
   const isKanban = layout === "kanban";
   // Sort + pagination (list only; the kanban shows a wide unpaged slice).
-  // Default = newest-created first (recently added on top). Users can switch to
-  // due-date or priority via the Sort dropdown.
   // Sort key carries its own direction (asc/desc) so the dropdown can offer both
-  // without a separate dir param. Default = newest-created first.
-  const sortKey = (["created", "created_asc", "due", "due_desc", "priority", "title_asc", "title_desc"] as const).includes(
-    (sp.sort ?? "") as any
-  )
-    ? (sp.sort as "created" | "created_asc" | "due" | "due_desc" | "priority" | "title_asc" | "title_desc")
-    : "created";
+  // without a separate dir param. Default = overdue first, then soonest due:
+  // the order the work has to be done in. (It was newest-created first, which
+  // put this morning's automation reminders above a task three days late.)
+  const SORTS = ["smart", "created", "created_asc", "due", "due_desc", "priority", "title_asc", "title_desc"] as const;
+  const sortKey: (typeof SORTS)[number] = SORTS.includes((sp.sort ?? "") as any)
+    ? (sp.sort as (typeof SORTS)[number])
+    : "smart";
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
   const PAGE_SIZE = 50;
 
@@ -80,17 +95,25 @@ export default async function TasksPage({
     if (view === "to_me") conds.push(eq(tasks.assigneeId, session.userId));
     else if (view === "by_me") conds.push(eq(tasks.createdById, session.userId));
 
-    // Status filtering applies to the LIST only — the KANBAN's columns ARE the
-    // status dimension, so it must show every status (otherwise a lingering
-    // status=open from a stat-card click collapses the board to one column).
-    // List: an explicit filter wins, else default to open.
+    // Status and the quick tabs apply to the LIST only — the KANBAN's columns
+    // ARE the status dimension, so it must show every status (otherwise a
+    // lingering status=open from a stat-card click collapses the board to one
+    // column). The tab conditions are kept apart so the Overdue count can be
+    // taken over everything else the user has filtered by.
+    const tabConds: any[] = [];
     if (!isKanban) {
+      if (tab === "completed") tabConds.push(eq(tasks.status, "completed"));
+      else if (tab) tabConds.push(inArray(tasks.status, [...OPEN_STATUSES]));
+      if (tab === "overdue") tabConds.push(sql`${tasks.dueAt} < now()`);
+      if (tab === "today") tabConds.push(sql`${tasks.dueAt} >= now() AND ${DUE_DAY} = ${IST_TODAY}`);
+      if (tab === "upcoming") tabConds.push(sql`${DUE_DAY} > ${IST_TODAY}`);
       if (statusFilter.length) {
         conds.push(inArray(tasks.status, statusFilter as any));
-      } else if (!approval) {
-        // Default to open — unless filtering by approval, where pending tasks
-        // are usually in_progress and would be hidden by the default-open rule.
-        conds.push(eq(tasks.status, "open"));
+      } else if (!tab && !approval) {
+        // Default: everything still open — in progress and blocked included,
+        // they are work too (this used to mean status = 'open' only). Not when
+        // filtering by approval, where pending tasks are usually in progress.
+        conds.push(inArray(tasks.status, [...OPEN_STATUSES]));
       }
     }
     // Awaiting sign-off. 'pending' = any; 'mine' = ones this user approves.
@@ -126,13 +149,32 @@ export default async function TasksPage({
     const dr = dateRangeCond(sp, "created", "tasks.created_at");
     if (dr) conds.push(dr);
 
+    // Overdue (n) on its tab: every other filter the user set, tab aside.
+    const overdueRow = await tx
+      .select({ c: sql<number>`count(*)::int` })
+      .from(tasks)
+      .leftJoin(users, eq(users.id, tasks.assigneeId))
+      .where(
+        and(
+          ...conds,
+          inArray(tasks.status, [...OPEN_STATUSES]),
+          sql`${tasks.dueAt} < now()`
+        ) as any
+      );
+    const overdueCount = Number(overdueRow[0]?.c ?? 0);
+
+    conds.push(...tabConds);
     const where = conds.length ? and(...conds) : undefined;
 
     // Sort: soonest-due first with undated last (the natural "what's next"), or
     // by priority, or newest-created. Default fixed `due_at DESC` floated undated
     // tasks to the top (Postgres NULLS FIRST) which read backwards.
     const orderByExpr =
-      sortKey === "priority"
+      sortKey === "smart"
+        ? tab === "completed"
+          ? sql`${tasks.completedAt} desc nulls last, ${tasks.updatedAt} desc` // most recently finished first
+          : sql`case when ${tasks.dueAt} < now() and ${tasks.status} in ('open','in_progress','blocked') then 0 else 1 end asc, ${tasks.dueAt} asc nulls last, ${tasks.createdAt} desc`
+        : sortKey === "priority"
         ? sql`case ${tasks.priority} when 'urgent' then 0 when 'high' then 1 when 'normal' then 2 else 3 end asc, ${tasks.dueAt} asc nulls last, ${tasks.createdAt} desc`
         : sortKey === "created"
         ? sql`${tasks.createdAt} desc`
@@ -161,16 +203,26 @@ export default async function TasksPage({
         task: tasks,
         assignee: users.name,
         createdBy: taskCreator.name,
+        // The record the task is about: the explicit related_* link, else the
+        // older subject_type / subject_id pair that workflows still write.
+        investorId: investors.id,
         investorName: investors.name,
         investorAvatarUrl: investors.avatarUrl,
+        leadId: leads.id,
         leadName: leads.name,
         leadAvatarUrl: leads.avatarUrl,
       })
       .from(tasks)
       .leftJoin(users, eq(users.id, tasks.assigneeId))
       .leftJoin(taskCreator, eq(taskCreator.id, tasks.createdById))
-      .leftJoin(investors, eq(investors.id, tasks.relatedInvestorId))
-      .leftJoin(leads, eq(leads.id, tasks.relatedLeadId))
+      .leftJoin(
+        investors,
+        eq(investors.id, sql`coalesce(${tasks.relatedInvestorId}, case when ${tasks.subjectType} = 'investor' then ${tasks.subjectId} end)`)
+      )
+      .leftJoin(
+        leads,
+        eq(leads.id, sql`coalesce(${tasks.relatedLeadId}, case when ${tasks.subjectType} = 'lead' then ${tasks.subjectId} end)`)
+      )
       .where(where as any)
       .orderBy(orderByExpr)
       .limit(isKanban ? 300 : PAGE_SIZE)
@@ -191,7 +243,7 @@ export default async function TasksPage({
       ORDER BY tag ASC
       LIMIT 100
     `);
-    return { rows, rms: rmRows.rows as any[], total, tags: tagRows.rows as any[] };
+    return { rows, rms: rmRows.rows as any[], total, tags: tagRows.rows as any[], overdueCount };
   });
 
   const rmOptions = (result.rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
@@ -199,16 +251,18 @@ export default async function TasksPage({
 
   return (
     <div className="space-y-6 max-w-6xl">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <PageHeaderCard title={<><ListChecks className="size-6 text-muted-foreground" /> Tasks</>} subtitle={<>Everything your team has to do — assigned, due-dated and tracked to done.</>} actions={<>{/* View switcher — segmented tabs (list / mine / assigned-by-me / kanban) */}
-          <TaskViewSelect current={view} layout={layout} /></>} />
-        <Link
-          href="/dashboard/tasks/new"
-          className="btn-primary"
-        >
-          <Plus className="size-4" /> New task
-        </Link>
-      </div>
+      <PageHeaderCard
+        title={<><ListChecks className="size-6 text-muted-foreground" /> Tasks</>}
+        subtitle={<>Everything your team has to do — assigned, due-dated and tracked to done.</>}
+        actions={
+          <Link href="/dashboard/tasks/new" className={buttonClass("primary")}>
+            <Plus className="size-4" /> New task
+          </Link>
+        }
+      />
+
+      {/* When (quick tabs) · whose (dropdown) · how (List / Board). */}
+      <TaskViewSelect current={view} layout={layout} tab={tab} overdueCount={result.overdueCount} />
 
       {/* Search + filter + sort + view — rendered inside the table header (list)
           or above the board (kanban). */}
@@ -222,6 +276,7 @@ export default async function TasksPage({
             ? {
                 key: "sort",
                 options: [
+                  { value: "smart", label: "Overdue first, then due date" },
                   { value: "created", label: "Newest first" },
                   { value: "created_asc", label: "Oldest first" },
                   { value: "title_asc", label: "Title A–Z" },

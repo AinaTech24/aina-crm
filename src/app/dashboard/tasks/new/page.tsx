@@ -114,6 +114,8 @@ export default function NewTaskPage() {
 
   // ── Task templates ──
   const [templates, setTemplates] = useState<TaskTemplate[]>([]);
+  // Known once the fetch settles, so "no templates yet" never flashes first.
+  const [templatesLoaded, setTemplatesLoaded] = useState(false);
   const [templateId, setTemplateId] = useState("");
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [titleTouched, setTitleTouched] = useState(false);
@@ -131,6 +133,8 @@ export default function NewTaskPage() {
         setTemplates(Array.isArray(j.templates) ? j.templates : []);
       } catch {
         /* templates are optional — ignore */
+      } finally {
+        setTemplatesLoaded(true);
       }
     })();
   }, []);
@@ -285,26 +289,60 @@ export default function NewTaskPage() {
         <ChevronLeft className="size-4" /> Back to tasks
       </Link>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-<PageHeaderCard title={<><ListChecks className="size-6 text-muted-foreground" /> New task</>} />
-{templates.length > 0 && (
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            <LayoutTemplate className="size-3.5 text-brand-cyan" />
-            <SelectField
-              value={templateId}
-              onChange={(e) => applyTemplate(e.target.value)}
-              className="w-56"
-            >
-              <option value="">Start from a template…</option>
-              {templates.map((t) => (
-                <option key={t.id} value={t.id}>
+      <PageHeaderCard title={<><ListChecks className="size-6 text-muted-foreground" /> New task</>} />
+
+      {/* Templates up front, as one-click chips: a template fills the title,
+          type, priority, due date and checklist. The picker used to be a small
+          dropdown that rendered nothing at all for a firm with no templates,
+          so nobody learned the feature existed. */}
+      {templatesLoaded &&
+        (templates.length > 0 ? (
+          <div className="card-surface p-3 flex flex-wrap items-center gap-2" role="group" aria-label="Start from a template">
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <LayoutTemplate className="size-3.5" /> Start from a template
+            </span>
+            {templates.slice(0, 8).map((t) => {
+              const on = templateId === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => applyTemplate(on ? "" : t.id)}
+                  className={`inline-flex h-8 items-center rounded-full border px-3 text-xs font-medium transition-colors ${
+                    on ? "border-primary/30 bg-primary/10 text-primary" : "border-border bg-card text-foreground/80 hover:bg-secondary"
+                  }`}
+                >
                   {t.name}
-                </option>
-              ))}
-            </SelectField>
-          </label>
-        )}
-</div>
+                </button>
+              );
+            })}
+            {templates.length > 8 && (
+              <SelectField
+                value={templates.slice(8).some((t) => t.id === templateId) ? templateId : ""}
+                onChange={(e) => applyTemplate(e.target.value)}
+                size="sm"
+                className="w-48"
+                aria-label="More templates"
+              >
+                <option value="">More templates…</option>
+                {templates.slice(8).map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </SelectField>
+            )}
+          </div>
+        ) : (
+          <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+            <LayoutTemplate className="size-3.5" /> No task templates yet.
+            <Link href="/dashboard/settings/task-templates" className="text-brand-cyan-deep hover:underline">
+              Set them up in Settings → Task templates
+            </Link>
+            to start common tasks in one click.
+          </p>
+        ))}
 
       {/* ── The three facts that make a task: what, for whom, by when. ── */}
       <div className="card-surface p-5 space-y-4">
@@ -528,7 +566,7 @@ export default function NewTaskPage() {
               </div>
               <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1.5 min-h-[38px]">
                 {form.tags.map((tg) => (
-                  <span key={tg} className="chip text-2xs bg-slate-100 text-slate-600 border border-slate-200 inline-flex items-center gap-1">
+                  <span key={tg} className="chip text-2xs bg-secondary text-muted-foreground border border-border inline-flex items-center gap-1">
                     {tg}
                     <button type="button" onClick={() => set("tags", form.tags.filter((x) => x !== tg))} className="hover:text-rose-600" aria-label={`Remove ${tg}`}>
                       <X className="size-2.5" />
