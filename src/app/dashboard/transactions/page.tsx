@@ -10,6 +10,7 @@ import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
 import { buildTransactionConditions, transactionFiltersNeedInvestors } from "@/lib/transactions/list-filters";
+import { EmptyState, InlineEmpty } from "@/components/common/EmptyState";
 
 const TRANSACTIONS_COLUMNS = [
   { key: "date", label: "Date", required: true },
@@ -63,7 +64,7 @@ const STATUS_TONE: Record<string, string> = {
   submitted: "bg-blue-50 text-blue-700",
   rejected: "bg-rose-50 text-rose-700",
   failed: "bg-rose-50 text-rose-700",
-  cancelled: "bg-gray-50 text-gray-700",
+  cancelled: "bg-secondary text-foreground",
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -212,6 +213,13 @@ export default async function TransactionsPage({
     { value: "other", label: "Other" },
   ];
 
+  // "No transactions yet" only when the book really is empty — not when the
+  // filters (or a page past the end) match nothing.
+  const filtering =
+    ["q", "date_from", "date_to", "rm", "amc", "source", "txtype", "status"].some((k) => (sp[k] ?? "").trim() !== "") ||
+    Boolean(sp.cursor);
+  const bookEmpty = data.displayRows.length === 0 && !filtering;
+
   return (
     <div className="space-y-6 max-w-7xl">
       <PageHeaderCard title={<><Repeat className="size-6 text-muted-foreground" /> MF Transactions</>} subtitle={<>Every mutual-fund purchase, redemption, switch and SIP instalment.</>} actions={<><div className="flex items-center gap-2">
@@ -219,7 +227,7 @@ export default async function TransactionsPage({
             <FileDown className="size-4" /> Export
           </a>
           <Link href="/dashboard/transactions/import" className="btn-secondary">
-            <FileUp className="size-4" /> Import Excel
+            <FileUp className="size-4" /> Import
           </Link>
         </div></>} />
 
@@ -275,16 +283,18 @@ export default async function TransactionsPage({
         }
       />
 
+      {bookEmpty ? (
+        <EmptyState
+          icon={Repeat}
+          title="No transactions yet"
+          description="Upload a CAMS/KFintech file to bring them in."
+          primary={{ href: "/dashboard/rta-imports", label: "Go to RTA File Imports" }}
+          secondary={{ href: "/dashboard/transactions/import", label: "Import from Excel" }}
+        />
+      ) : (
       <div className="card-surface">
         {data.displayRows.length === 0 ? (
-          <div className="p-12 text-center text-sm text-muted-foreground">
-            <Repeat className="size-8 mx-auto text-muted-foreground/50" />
-            <div className="mt-2 font-medium">No transactions yet.</div>
-            <p className="mt-2 text-xs max-w-md mx-auto">
-              Transactions flow in automatically from CAMS + KFintech feeds once configured.
-              You can also import manually via Excel.
-            </p>
-          </div>
+          <InlineEmpty message="No transactions match these filters." action={{ href: "/dashboard/transactions", label: "Clear filters" }} />
         ) : (
           <>
             <div className="table-scroll">
@@ -392,6 +402,7 @@ export default async function TransactionsPage({
           </>
         )}
       </div>
+      )}
     </div>
   );
 }

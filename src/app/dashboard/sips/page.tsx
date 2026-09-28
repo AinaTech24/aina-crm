@@ -13,6 +13,7 @@ import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
 import { Pager } from "@/components/common/Pager";
 import { ModuleTabs, SIP_TABS } from "@/components/common/ModuleTabs";
+import { sipNextDue, indiaToday } from "@/lib/sips/next-due";
 
 const SIPS_COLUMNS = [
   { key: "investor", label: "Investor", required: true },
@@ -87,6 +88,8 @@ export default async function SipsPage({
     }
   }
 
+  const today = indiaToday();
+
   const data = await withTenant(session.tenantId, async (tx) => {
     // Own-book slice for non-managers: SIPs they own OR for a client they manage.
     const statsScope = seesAll
@@ -95,10 +98,16 @@ export default async function SipsPage({
     const stats = await tx.execute(sql`
       SELECT
         COUNT(*) FILTER (WHERE status = 'active')::int AS active_sips,
-        COALESCE(SUM(CASE WHEN status = 'active' THEN amount::numeric ELSE 0 END), 0) AS active_amount,
+        -- Per month: weekly, fortnightly, quarterly and yearly SIPs are
+        -- converted, so a quarterly 30,000 counts as 10,000 a month.
+        COALESCE(SUM(CASE WHEN status = 'active' THEN amount::numeric * CASE frequency
+          WHEN 'weekly' THEN 52.0 / 12 WHEN 'fortnightly' THEN 26.0 / 12
+          WHEN 'quarterly' THEN 1.0 / 3 WHEN 'yearly' THEN 1.0 / 12 ELSE 1 END
+          ELSE 0 END), 0) AS active_amount,
         COUNT(*) FILTER (WHERE status = 'active' AND created_at >= date_trunc('month', now()))::int AS added_mtd,
         COUNT(*) FILTER (WHERE status IN ('stopped', 'rejected') AND updated_at >= date_trunc('month', now()))::int AS lost_mtd,
         COUNT(*) FILTER (WHERE status = 'active' AND end_date IS NOT NULL
+          AND end_date >= current_date
           AND end_date <= current_date + interval '90 days')::int AS expiring_soon
       FROM sips
       WHERE tenant_id = ${session.tenantId}::uuid
@@ -179,12 +188,18 @@ export default async function SipsPage({
 
       <ModuleTabs tabs={SIP_TABS} />
 
-      <div className="grid grid-cols-5 gap-3">
-        <Stat icon={CheckCircle2} label="Active SIPs" value={String(data.activeSips)} tone="emerald" />
-        <Stat icon={TrendingUp} label="Active book / mo" value={formatINR(data.activeAmount)} />
-        <Stat icon={TrendingUp} label="Added MTD" value={String(data.addedMtd)} tone={data.addedMtd > 0 ? "emerald" : "muted"} />
-        <Stat icon={AlertTriangle} label="Stopped MTD" value={String(data.lostMtd)} tone={data.lostMtd > 0 ? "rose" : "muted"} />
-        <Stat icon={Calendar} label="Expiring (90d)" value={String(data.expiringSoon)} tone={data.expiringSoon > 0 ? "amber" : "muted"} />
+      {/* Neutral ink throughout: these are counts, not statuses. */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <Stat icon={CheckCircle2} label="Active SIPs" value={data.activeSips.toLocaleString("en-IN")} />
+        <Stat
+          icon={TrendingUp}
+          label="Monthly SIP book"
+          value={formatINR(data.activeAmount)}
+          hint="What the active SIPs bring in each month. Weekly, fortnightly, quarterly and yearly SIPs are converted to a monthly amount."
+        />
+        <Stat icon={Plus} label="Added this month" value={data.addedMtd.toLocaleString("en-IN")} hint="Active SIPs added since the 1st of this month." />
+        <Stat icon={AlertTriangle} label="Stopped this month" value={data.lostMtd.toLocaleString("en-IN")} hint="SIPs stopped or rejected since the 1st of this month." />
+        <Stat icon={Calendar} label="Expiring (90 days)" value={data.expiringSoon.toLocaleString("en-IN")} hint="Active SIPs whose end date falls in the next 90 days." />
       </div>
 
       <CompactFilterBar
@@ -264,7 +279,11 @@ export default async function SipsPage({
                 </tr>
               </thead>
               <tbody>
-                {data.rows.map(({ s: sip, investorName, mandateRef, mandateStatus, rmName }) => (
+                {data.rows.map(({ s: sip, investorName, mandateRef, mandateStatus, rmName }) => {
+                  // Never a past date for an active SIP: the stored next date is
+                  // not rolled forward, so derive the next debit (lib/sips/next-due).
+                  const due = sipNextDue(sip, today);
+                  return (
                   <tr key={sip.id} className="border-b last:border-0 hover:bg-secondary/40">
                     <td data-col="investor" className="px-4 py-3 whitespace-nowrap">
                       {investorName ? (
@@ -294,7 +313,15 @@ export default async function SipsPage({
                       {sip.endDate ? formatDate(sip.endDate) : "—"}
                     </td>
                     <td data-col="next_due" className="py-3 text-xs tabular-nums">
-                      {sip.nextInstallmentAt ? formatDate(sip.nextInstallmentAt) : "—"}
+                      {due.date ? (
+                        formatDate(due.date)
+                      ) : due.ended ? (
+                        <span className="text-muted-foreground" title={sip.endDate ? `End date ${formatDate(sip.endDate)}` : undefined}>
+                          Past end date
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground" title="No SIP day or debit date on record">—</span>
+                      )}
                     </td>
                     <td data-col="mandate" className="py-3 text-xs">
                       {mandateRef ? (
@@ -321,7 +348,8 @@ export default async function SipsPage({
                       {sip.remarks ?? "—"}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
             <div className="px-4 pb-3">
@@ -342,29 +370,22 @@ export default async function SipsPage({
 function Stat({
   label,
   value,
-  tone,
+  hint,
   icon: Icon,
 }: {
   label: string;
   value: string;
-  tone?: "rose" | "amber" | "emerald" | "muted";
+  /** What the number counts, on hover. */
+  hint?: string;
   icon?: any;
 }) {
-  const color =
-    tone === "rose"
-      ? "text-rose-600"
-      : tone === "amber"
-        ? "text-amber-600"
-        : tone === "emerald"
-          ? "text-emerald-600"
-          : "text-foreground";
   return (
-    <div className="card-surface p-4">
-      <div className="flex items-center justify-between">
+    <div className="card-surface p-4" title={hint}>
+      <div className="flex items-center justify-between gap-2">
         <span className="text-xs text-muted-foreground">{label}</span>
-        {Icon && <Icon className="size-3.5 text-muted-foreground" />}
+        {Icon && <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />}
       </div>
-      <div className={`text-2xl font-bold mt-1 tabular-nums ${color}`}>{value}</div>
+      <div className="text-2xl font-bold mt-1 tabular-nums text-foreground">{value}</div>
     </div>
   );
 }
