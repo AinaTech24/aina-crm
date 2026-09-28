@@ -1,32 +1,49 @@
 "use client";
 
 /**
- * Remembers the Leads view (kanban / list) across navigation.
+ * Remembers the Leads view (kanban / list).
  *
- * The board defaults to kanban when the URL carries no `view` param — but the
- * sidebar "Leads" link is exactly that param-less URL, so leaving on List and
- * coming back used to snap to Kanban. This persists the last EXPLICIT choice in
- * localStorage and, when the URL has no `view`, restores it. The toggle links
- * always carry an explicit `?view=` so a deliberate switch is never overridden.
+ * With no `view` in the URL the page renders the saved choice, or — when there
+ * is none — List for more than 30 leads and Kanban otherwise. The toggle links
+ * always carry an explicit `?view=`; this records it in a cookie the server
+ * reads next time, so the sidebar's param-less "Leads" link opens the view the
+ * user last chose, with no redirect and no flash of the other one.
+ *
+ * It used to keep the choice in localStorage and bounce to ?view=table after
+ * load. A choice saved that way is carried over once, then the old key goes.
  */
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { LEADS_VIEW_COOKIE, parseLeadsView } from "@/lib/leads/view-pref";
 
-const KEY = "leads:view";
+const LEGACY_KEY = "leads:view";
+const ONE_YEAR = 60 * 60 * 24 * 365;
+
+function saveCookie(view: string) {
+  document.cookie = `${LEADS_VIEW_COOKIE}=${view}; path=/; max-age=${ONE_YEAR}; samesite=lax`;
+}
 
 export function LeadsViewPersist({ explicitView }: { explicitView: string | null }) {
   const router = useRouter();
   useEffect(() => {
-    if (explicitView === "table" || explicitView === "kanban") {
-      try { localStorage.setItem(KEY, explicitView); } catch {}
+    const explicit = parseLeadsView(explicitView);
+    if (explicit) {
+      saveCookie(explicit);
       return;
     }
-    // No explicit view in the URL — restore the saved preference if it differs
-    // from the kanban default.
-    let saved: string | null = null;
-    try { saved = localStorage.getItem(KEY); } catch {}
-    if (saved === "table") {
-      router.replace("/dashboard/leads?view=table");
+    const hasCookie = document.cookie.split("; ").some((c) => c.startsWith(`${LEADS_VIEW_COOKIE}=`));
+    if (hasCookie) return;
+    let legacy: string | null = null;
+    try {
+      legacy = localStorage.getItem(LEGACY_KEY);
+      localStorage.removeItem(LEGACY_KEY);
+    } catch {
+      /* storage unavailable (private mode) — nothing to carry over */
+    }
+    const saved = parseLeadsView(legacy);
+    if (saved) {
+      saveCookie(saved);
+      router.replace(`/dashboard/leads?view=${saved}`);
     }
   }, [explicitView, router]);
   return null;

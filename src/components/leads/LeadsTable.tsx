@@ -20,6 +20,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { TableDensityToggle, useTableDensity } from "@/components/common/TableDensityToggle";
 import { FloatingBulkBar } from "@/components/common/FloatingBulkBar";
 import { LeadSidePeek, type SidePeekLead } from "@/components/leads/LeadSidePeek";
+import { leadSourceLabel } from "@/lib/leads/sources";
 
 type Row = {
   id: string;
@@ -47,7 +48,7 @@ const toneStyles: Record<string, string> = {
   indigo: "bg-indigo-50 text-indigo-700 border-indigo-200",
   emerald: "bg-emerald-50 text-emerald-700 border-emerald-200",
   rose: "bg-rose-50 text-rose-700 border-rose-200",
-  slate: "bg-slate-50 text-slate-700 border-slate-200",
+  slate: "bg-secondary text-foreground border-border",
 };
 const sourceColors: Record<string, string> = {
   website: "bg-blue-50 text-blue-700 border-blue-200",
@@ -57,10 +58,10 @@ const sourceColors: Record<string, string> = {
   google: "bg-amber-50 text-amber-700 border-amber-200",
   cold_call: "bg-brand-cyan-light/50 text-brand-cyan-deep border-brand-cyan/30",
   existing_client: "bg-teal-50 text-teal-700 border-teal-200",
-  manual: "bg-gray-50 text-gray-700 border-gray-200",
+  manual: "bg-secondary text-foreground border-border",
   walk_in: "bg-teal-50 text-teal-700 border-teal-200",
   webinar: "bg-violet-50 text-violet-700 border-violet-200",
-  other: "bg-gray-50 text-gray-700 border-gray-200",
+  other: "bg-secondary text-foreground border-border",
 };
 
 export function LeadsTable({ rows, sort, dir = "desc" }: { rows: Row[]; sort: string; dir?: "asc" | "desc" }) {
@@ -137,9 +138,7 @@ export function LeadsTable({ rows, sort, dir = "desc" }: { rows: Row[]; sort: st
       {/* Table Sub-header with Density Switcher */}
       <div className="flex items-center justify-between px-4 py-2 bg-muted/20 border-b border-border text-xs">
         <div className="flex items-center gap-2">
-          <span className="text-muted-foreground font-medium">
-            Showing <strong className="text-foreground">{rows.length}</strong> leads
-          </span>
+          {/* Count lives in the filter bar above; repeating it here was noise. */}
         </div>
         <div className="flex items-center gap-2">
           <TableDensityToggle density={density} onToggle={toggleDensity} />
@@ -151,7 +150,7 @@ export function LeadsTable({ rows, sort, dir = "desc" }: { rows: Row[]; sort: st
           <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
             <tr>
               <th className={`px-3 ${isCompact ? "py-1.5" : "py-2.5"} w-8`}>
-                <input type="checkbox" checked={allSelected} onChange={toggleAll} className="size-3.5 rounded" aria-label="Select all" />
+                <input type="checkbox" checked={allSelected} onChange={toggleAll} className="size-4 rounded" aria-label="Select all" />
               </th>
               <th data-col="score" className={`${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>
                 <button onClick={() => setSort("score")} className="inline-flex items-center gap-1 hover:text-foreground">
@@ -219,7 +218,7 @@ export function LeadsTable({ rows, sort, dir = "desc" }: { rows: Row[]; sort: st
                     {l.intendedAmount ? formatINR(l.intendedAmount) : "—"}
                   </td>
                   <td data-col="source" className={`${isCompact ? "py-1.5" : "py-2.5"}`}>
-                    <span className={`chip text-xs border ${sourceColors[l.source] ?? "bg-muted"}`}>{l.source.replace(/_/g, " ")}</span>
+                    <span className={`chip text-xs border ${sourceColors[l.source] ?? "bg-muted"}`}>{leadSourceLabel(l.source)}</span>
                   </td>
                   <td data-col="nextFollowUpAt" className={`${isCompact ? "py-1.5" : "py-2.5"} text-xs text-muted-foreground tabular-nums`}>
                     {l.nextFollowUpAt ? formatDate(l.nextFollowUpAt) : "—"}

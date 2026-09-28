@@ -27,6 +27,7 @@ import { sql, type SQL } from "drizzle-orm";
 
 import { LEAD_PHASE_STAGES, LEAD_STAGE_ALIASES } from "@/lib/leads/normalize";
 import { LEAD_TO_CLIENT_STAGES, stageFlavour } from "@/lib/blueprints/lead_to_client";
+import { stageLabel } from "@/lib/leads/stages";
 
 type Tx = Parameters<Parameters<typeof import("@/db/client").withTenant>[1]>[0];
 
@@ -134,7 +135,9 @@ export async function loadLeadPipeline(
     const hit = counts.get(key);
     return {
       key,
-      name: meta?.name ?? key,
+      // The Leads module's label, not the blueprint's formal name ("New Lead
+      // Created", "Won Lead"): one stage, one name, on every screen.
+      name: stageLabel(key),
       count: hit?.count ?? 0,
       overdue: hit?.overdue ?? 0,
       slaDays: meta?.slaDays ?? null,

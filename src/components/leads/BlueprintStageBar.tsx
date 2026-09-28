@@ -14,7 +14,7 @@
  * Data is fetched from /api/leads/[id]/blueprint on mount.
  */
 
-import { useEffect, useState } from "react";
+import { useId, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -27,6 +27,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { GuidedStageActions } from "@/components/leads/GuidedStageActions";
+import { leadPipelineColumn, stageLabel } from "@/lib/leads/stages";
 
 type Stage = {
   key: string;
@@ -123,7 +124,13 @@ export function BlueprintStageBar({
       const r = await fetch(`/api/leads/${leadId}/blueprint`);
       const d = await r.json();
       if (!r.ok) throw new Error(d?.error ?? "Failed to load");
-      setData(d);
+      // Lead-phase stages go by the Leads module's names (src/lib/leads/stages.ts),
+      // not the blueprint's formal ones ("New Lead Created", "Won Lead"), so the
+      // stepper agrees with the kanban and the dashboard. Client-phase stages
+      // keep their blueprint names.
+      const relabel = <T extends { key: string; name: string }>(s: T): T =>
+        leadPipelineColumn(s.key) ? { ...s, name: stageLabel(s.key) } : s;
+      setData({ ...d, current: d.current && relabel(d.current), allStages: (d.allStages ?? []).map(relabel) });
     } catch (e: any) {
       setError(e?.message ?? "Failed to load");
     } finally {
@@ -535,6 +542,7 @@ function ForwardPicker({
   busy: boolean;
   onAdvance: (key: string, remarks?: string) => void;
 }) {
+  const uid = useId();
   const [open, setOpen] = useState(false);
   const [target, setTarget] = useState("");
   const [remarks, setRemarks] = useState("");
@@ -557,8 +565,8 @@ function ForwardPicker({
       {open && (
         <div className="mt-2 space-y-2">
           <div>
-            <label className="text-2xs text-muted-foreground">Move to</label>
-            <select
+            <label htmlFor={`${uid}-move-to`} className="text-2xs text-muted-foreground">Move to</label>
+            <select id={`${uid}-move-to`}
               value={target}
               onChange={(e) => setTarget(e.target.value)}
               className="input-base text-xs w-full mt-1"
@@ -570,8 +578,8 @@ function ForwardPicker({
             </select>
           </div>
           <div>
-            <label className="text-2xs text-muted-foreground">Remarks (optional)</label>
-            <textarea
+            <label htmlFor={`${uid}-remarks-optional`} className="text-2xs text-muted-foreground">Remarks (optional)</label>
+            <textarea id={`${uid}-remarks-optional`}
               value={remarks}
               onChange={(e) => setRemarks(e.target.value)}
               rows={2}
@@ -604,5 +612,5 @@ function humaniseDuration(sec: number): string {
 function scoreBandClasses(band?: string | null): string {
   if (band === "hot") return "bg-rose-50 text-rose-700";
   if (band === "warm") return "bg-amber-50 text-amber-700";
-  return "bg-slate-100 text-slate-600";
+  return "bg-secondary text-muted-foreground";
 }

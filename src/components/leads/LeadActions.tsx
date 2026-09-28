@@ -14,6 +14,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { RmSelector } from "@/components/common/RmSelector";
+import { leadStageDisplay } from "@/lib/leads/stages";
 import { ProductInterestDialog } from "@/components/leads/ProductInterestDialog";
 
 type Props = {
@@ -35,22 +36,23 @@ type Props = {
  * selectable here.
  */
 /**
- * Lead-phase stages — 10 stages from "New Lead Created" through "Not
- * Qualified", with branches for call-back loops. See LEAD_TO_CLIENT_STAGES.
+ * Lead-phase stages — the ten blueprint stages, call-back loops included. Names
+ * come from src/lib/leads/stages.ts, the same source as the kanban and the
+ * dashboard, so a loop reads "Contacted · Call back later" here too.
  * Post-conversion stages (11-30) live in the Clients module.
  */
 const STAGES = [
-  { key: "new", label: "New Lead Created" },
-  { key: "call_done", label: "Call Done" },
-  { key: "call_back_later", label: "Call Back Later" },
-  { key: "call_not_connected", label: "Call Not Connected" },
-  { key: "contact_in_future", label: "Contact in Future" },
-  { key: "meeting_scheduled", label: "Meeting Scheduled" },
-  { key: "meeting_pending", label: "Meeting Pending" },
-  { key: "meeting_done", label: "Meeting Done" },
-  { key: "won_lead", label: "Won Lead" },
-  { key: "not_qualified", label: "Not Qualified" },
-];
+  "new",
+  "call_done",
+  "call_back_later",
+  "call_not_connected",
+  "contact_in_future",
+  "meeting_scheduled",
+  "meeting_pending",
+  "meeting_done",
+  "won_lead",
+  "not_qualified",
+].map((key) => ({ key, label: leadStageDisplay(key) }));
 
 const ACTIVITY_TYPES = [
   { key: "call", label: "Phone call" },

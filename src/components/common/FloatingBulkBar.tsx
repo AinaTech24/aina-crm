@@ -17,6 +17,7 @@ import {
   ArrowRightLeft,
 } from "lucide-react";
 import { RmSelector } from "@/components/common/RmSelector";
+import { LEAD_PIPELINE } from "@/lib/leads/stages";
 
 export type BulkActionType =
   | "assign"
@@ -374,11 +375,11 @@ export function FloatingBulkBar({
                 onChange={(e) => setStageVal(e.target.value)}
                 className="input-base text-xs w-full"
               >
-                <option value="new">New</option>
-                <option value="call_done">Call Done</option>
-                <option value="meeting_scheduled">Meeting Scheduled</option>
-                <option value="meeting_done">Meeting Done</option>
-                <option value="won_lead">Won Lead</option>
+                {/* Same names as the kanban columns. Lost is left out: it needs a
+                    reason, which the kanban's own drop asks for. */}
+                {LEAD_PIPELINE.filter((c) => c.key !== "not_qualified").map((c) => (
+                  <option key={c.key} value={c.key}>{c.label}</option>
+                ))}
               </select>
               <div className="flex justify-end gap-2 pt-2">
                 <button

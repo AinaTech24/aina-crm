@@ -5,8 +5,9 @@
  *
  * The server `LeadsPage` renders the full chrome (header, KPIs, pipeline
  * wrapper) and hands the raw rows to this client component, which:
- *   - groups them by stage (folding legacy aliases into spec keys)
- *   - renders the 8 stage columns as droppable zones
+ *   - groups them by stage (folding loop stages and legacy aliases into the
+ *     six pipeline columns from src/lib/leads/stages.ts)
+ *   - renders those columns as droppable zones
  *   - renders each card as draggable
  *   - on drop, optimistically updates local state and PATCHes
  *     /api/leads/[id] with the new stage; reverts on failure.
@@ -26,16 +27,11 @@ import {
   type DragStartEvent,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import { Loader2, Flame, Clock, AlertCircle, X } from "lucide-react";
+import { Loader2, CalendarClock, PhoneCall } from "lucide-react";
 import { RowActions } from "@/components/common/RowActions";
-import { formatRelative, formatINR } from "@/lib/utils";
-import {
-  leadTemperature,
-  stageAgingDays,
-  followUpOverdue,
-  parseIntendedAmount,
-  temperatureClasses,
-} from "@/lib/leads/scoring";
+import { leadTemperature, stageAgingDays } from "@/lib/leads/scoring";
+import { LEAD_STAGE_TAG, leadPipelineColumn, leadStageSlaDays } from "@/lib/leads/stages";
+import { leadSourceLabel } from "@/lib/leads/sources";
 import { ScheduleMeetingDialog } from "@/components/leads/LeadActions";
 
 type LeadRow = {
@@ -85,25 +81,23 @@ const TONE_STYLES: Record<
   indigo:  { strip: "bg-indigo-500",  bg: "bg-indigo-50/40",  chip: "bg-indigo-50 text-indigo-700",   text: "text-indigo-700",  ring: "ring-indigo-400" },
   emerald: { strip: "bg-emerald-500", bg: "bg-emerald-50/40", chip: "bg-emerald-50 text-emerald-700", text: "text-emerald-700", ring: "ring-emerald-400" },
   rose:    { strip: "bg-rose-500",    bg: "bg-rose-50/40",    chip: "bg-rose-50 text-rose-700",       text: "text-rose-700",    ring: "ring-rose-400" },
-  slate:   { strip: "bg-slate-400",   bg: "bg-slate-50/40",   chip: "bg-slate-50 text-slate-700",     text: "text-slate-700",   ring: "ring-slate-400" },
+  slate:   { strip: "bg-slate-400",   bg: "bg-secondary/40",   chip: "bg-secondary text-foreground",     text: "text-foreground",   ring: "ring-slate-400" },
 };
 
-const sourceColors: Record<string, string> = {
-  website: "bg-blue-50 text-blue-700",
-  referral: "bg-emerald-50 text-emerald-700",
-  social_media: "bg-purple-50 text-purple-700",
-  meta_ads: "bg-purple-50 text-purple-700",
-  google: "bg-amber-50 text-amber-700",
-  google_ads: "bg-amber-50 text-amber-700",
-  cold_call: "bg-brand-cyan-light/50 text-brand-cyan-deep",
-  existing_client: "bg-teal-50 text-teal-700",
-  manual: "bg-gray-50 text-gray-700",
-  walk_in: "bg-teal-50 text-teal-700",
-  event: "bg-pink-50 text-pink-700",
-  seminar: "bg-pink-50 text-pink-700",
-  webinar: "bg-violet-50 text-violet-700",
-  other: "bg-gray-50 text-gray-700",
-};
+/**
+ * Lead source is TAXONOMY — where the lead came from — not a state. It used to
+ * be painted blue / emerald / purple / amber / pink / teal / violet by source,
+ * with the hue chosen arbitrarily, so a card could show "referral" in the same
+ * green as a success chip and "google ads" in the same amber as an SLA warning.
+ * Colour on this card is now reserved for things that need a decision: overdue
+ * (red), stuck in stage (amber), hot (brand), won (green).
+ *
+ * The map is kept as a function so call sites do not change, and so a future
+ * genuinely-semantic source distinction has somewhere to live.
+ */
+function sourceChipClass(_source: string): string {
+  return "bg-secondary text-secondary-foreground";
+}
 
 function initialsOf(name: string) {
   return name
@@ -304,6 +298,10 @@ export function LeadsKanban({
     const dest = stages.find((s) => s.key === targetStage)?.key;
     if (!dest) return;
     if (dest === currentStage) return;
+    // Loop stages live inside a column (a "Call back later" card sits in
+    // Contacted). Dropping a card back into its own column changes nothing.
+    const homeColumn = stages.find((s) => s.key === currentStage || s.aliases.includes(currentStage))?.key;
+    if (homeColumn === dest) return;
 
     // Handle interactive transitions first
     if (dest === "not_qualified") {
@@ -391,8 +389,8 @@ export function LeadsKanban({
             return (
               <DroppableColumn key={s.key} stage={s} tone={tone} count={items.length}>
                 {items.length === 0 ? (
-                  <div className="flex items-center justify-center h-24 text-2xs text-muted-foreground/70 italic">
-                    Drop a lead here
+                  <div className="flex items-center justify-center h-24 text-2xs text-muted-foreground">
+                    No leads here
                   </div>
                 ) : (
                   <>
@@ -425,7 +423,7 @@ export function LeadsKanban({
                   {initialsOf(activeRow.lead.name)}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="font-semibold text-foreground truncate text-[13px]">
+                  <div className="font-semibold text-foreground truncate text-xs">
                     {activeRow.lead.name}
                   </div>
                   <div className="text-2xs text-muted-foreground">moving…</div>
@@ -487,7 +485,7 @@ function DroppableColumn({
   return (
     <div
       ref={setNodeRef}
-      className={`w-72 flex-shrink-0 rounded-xl border ${
+      className={`flex-1 min-w-56 rounded-xl border ${
         isOver ? `${tone.ring} ring-2 ring-offset-1 border-transparent` : "border-border/70"
       } ${tone.bg} flex flex-col transition-shadow duration-150`}
     >
@@ -496,7 +494,7 @@ function DroppableColumn({
         <div className="flex items-center gap-2 min-w-0">
           <span className={`size-2 rounded-full ${tone.strip} flex-shrink-0`} />
           <span
-            className={`text-[12px] font-bold uppercase tracking-wide whitespace-nowrap ${tone.text}`}
+            className={`text-2xs font-bold uppercase tracking-wide whitespace-nowrap ${tone.text}`}
           >
             {stage.label}
           </span>
@@ -569,152 +567,128 @@ function DraggableCard({
         />
       </div>
 
-      {/* Top row — avatar + name + phone */}
-      <div className="flex items-start gap-2 pr-5">
-        <div className="size-8 rounded-full brand-gradient text-white grid place-items-center text-2xs font-bold flex-shrink-0 shadow-sm relative">
-          {initialsOf(l.name)}
-          {/* Temperature dot — top-right corner of the avatar */}
-          <span
-            className={`absolute -top-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-card ${temperatureClasses(leadTemperature(l)).dot}`}
-            title={`${temperatureClasses(leadTemperature(l)).label} lead`}
-          />
-        </div>
-        <div className="min-w-0 flex-1">
-          {/* The link hugs the name (not the full row) and stays draggable: we
-              don't stop pointer-down, so grabbing the name starts a card drag,
-              while a plain click (no movement) still opens the lead. */}
-          <Link
-            href={`/dashboard/leads/${l.id}`}
-            onClick={(e) => e.stopPropagation()}
-            className="font-semibold text-foreground text-[13px] inline-block max-w-full truncate align-bottom hover:underline"
-          >
-            {l.name}
-          </Link>
-          {(l.mobile || l.phone) && (
-            <div className="text-2xs text-muted-foreground font-mono truncate mt-0.5">
-              {l.mobile ?? l.phone}
-            </div>
-          )}
-        </div>
+      {/* Name + phone */}
+      <div className="min-w-0 pr-6">
+        {/* The link hugs the name (not the full row) and stays draggable: we
+            don't stop pointer-down, so grabbing the name starts a card drag,
+            while a plain click (no movement) still opens the lead. */}
+        <Link
+          href={`/dashboard/leads/${l.id}`}
+          onClick={(e) => e.stopPropagation()}
+          className="font-semibold text-foreground text-xs inline-block max-w-full truncate align-bottom hover:underline"
+        >
+          {l.name}
+        </Link>
+        {(l.mobile || l.phone) && (
+          <div className="text-2xs text-muted-foreground tabular-nums truncate mt-0.5">
+            {l.mobile ?? l.phone}
+          </div>
+        )}
       </div>
 
-      {/* Insight chips row — only renders chips that apply */}
-      <CardInsightChips lead={l} />
-
-      {/* Source chip + relative time */}
-      <div className="mt-2 flex items-center justify-between gap-1.5">
-        <span className={`chip text-2xs ${sourceColors[l.source] ?? "bg-muted"}`}>
-          {l.source.replace(/_/g, " ")}
-        </span>
-        <span className="text-2xs text-muted-foreground tabular-nums">
-          {formatRelative(l.updatedAt)}
-        </span>
-      </div>
-
-      {/* Owner */}
-      {owner && (
-        <div className="mt-1.5 pt-1.5 border-t border-border/60 text-2xs text-muted-foreground truncate">
-          <span className="opacity-60">RM ·</span>{" "}
-          <span className="font-medium text-foreground/80">{owner}</span>
+      {/* A loop stage is an outcome of the step, not a step of its own. */}
+      {LEAD_STAGE_TAG[l.stage] && (
+        <div className="mt-1.5">
+          <span className="chip text-2xs inline-flex items-center gap-1 border border-border text-muted-foreground">
+            <PhoneCall className="size-2.5" />
+            {LEAD_STAGE_TAG[l.stage]}
+          </span>
         </div>
       )}
+
+      {/* Source + time in stage */}
+      <div className="mt-2 flex items-center gap-1.5">
+        <span className={`chip text-2xs truncate ${sourceChipClass(l.source)}`}>{leadSourceLabel(l.source)}</span>
+        <TimeInStage lead={l} />
+      </div>
+
+      {/* RM + next action */}
+      <div className="mt-2 pt-2 border-t border-border/60 flex items-center gap-2">
+        <RmAvatar owner={owner} />
+        <NextAction at={l.nextFollowUpAt ?? null} />
+      </div>
     </div>
   );
 }
 
 /**
- * Insight chips strip — surfaces the highest-signal facts on the card:
- *   - intended-amount (₹) if known
- *   - aging-in-stage if stuck >7d
- *   - overdue-follow-up if applicable
- *
- * Renders nothing when none apply, so we don't add empty space to clean cards.
+ * "12d in stage" — muted by default. It turns red only once the lead has sat
+ * past its stage's SLA (the blueprint's slaDays, the same number the
+ * dashboard's "past stage SLA" count uses). It used to go amber at 7 days and
+ * red at 14 whatever the stage, so a lead parked in "Contact in future" (a
+ * 30-day SLA) was red for half of its legitimate wait.
  */
-function CardInsightChips({ lead }: { lead: LeadRow["lead"] }) {
-  const aging = stageAgingDays(lead);
-  const overdue = followUpOverdue(lead);
-  const amt = parseIntendedAmount(lead.intendedAmount);
+function TimeInStage({ lead }: { lead: LeadRow["lead"] }) {
+  const days = stageAgingDays(lead);
+  if (days == null) return null;
+  const sla = leadStageSlaDays(lead.stage);
+  const late = sla != null && days > sla;
+  const stageName = leadPipelineColumn(lead.stage)?.label ?? "this stage";
+  return (
+    <span
+      className={`ml-auto shrink-0 text-2xs tabular-nums ${late ? "font-semibold text-destructive" : "text-muted-foreground"}`}
+      title={
+        sla == null
+          ? `${days} days in ${stageName}. No time limit for this stage.`
+          : late
+          ? `${days} days in ${stageName}: past its ${sla}-day limit`
+          : `${days} days in ${stageName} (limit ${sla} days)`
+      }
+    >
+      {days < 1 ? "<1d" : `${days}d`} in stage
+    </span>
+  );
+}
 
-  const chips: React.ReactNode[] = [];
-  const utmLabel = lead.utmParams?.campaign || lead.utmParams?.source;
-  if (utmLabel) {
-    chips.push(
+/** The RM's initials; the full name on hover and for screen readers. */
+function RmAvatar({ owner }: { owner: string | null }) {
+  if (!owner) {
+    return (
       <span
-        key="utm"
-        className="chip text-2xs inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-200 max-w-[160px] truncate"
-        title={`UTM Campaign/Source: ${utmLabel}`}
+        className="size-6 shrink-0 rounded-full border border-dashed border-border grid place-items-center text-2xs text-muted-foreground"
+        title="No RM assigned"
+        aria-label="No RM assigned"
       >
-        📣 {utmLabel}
+        ?
       </span>
     );
   }
-  if (amt > 0) {
-    chips.push(
-      <span
-        key="amt"
-        className="chip text-2xs bg-emerald-50 text-emerald-700 border border-emerald-200"
-        title="Intended investment amount"
-      >
-        ₹ {formatINR(amt)}
-      </span>
-    );
-  }
-  if (aging != null && aging > 7) {
-    const tone = aging > 14 ? "rose" : "amber";
-    const cls =
-      tone === "rose"
-        ? "bg-rose-50 text-rose-700 border-rose-200"
-        : "bg-amber-50 text-amber-700 border-amber-200";
-    chips.push(
-      <span
-        key="age"
-        className={`chip text-2xs inline-flex items-center gap-1 border ${cls}`}
-        title={`Stuck ${aging} days in current stage`}
-      >
-        <Clock className="size-2.5" />
-        {aging}d in stage
-      </span>
-    );
-  }
-  if (overdue === true) {
-    chips.push(
-      <span
-        key="ovd"
-        className="chip text-2xs inline-flex items-center gap-1 bg-rose-50 text-rose-700 border border-rose-200"
-        title="Next follow-up is overdue"
-      >
-        <AlertCircle className="size-2.5" />
-        Overdue
-      </span>
-    );
-  }
-  // HOT_STAGES badge — only show if lead is meaningfully hot AND we have an amount or recent activity
-  if (leadTemperature(lead) === "hot") {
-    chips.push(
-      <span
-        key="hot"
-        className="chip text-2xs inline-flex items-center gap-1 bg-rose-100 text-rose-700 border border-rose-200 font-semibold"
-        title="Hot lead — late funnel or imminent follow-up"
-      >
-        <Flame className="size-2.5" />
-        Hot
-      </span>
-    );
-  }
-  if (lead.stage === "won_lead") {
-    chips.push(
-      <span
-        key="ready_to_convert"
-        className="chip text-2xs inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold"
-        title="Lead is won and ready to be converted to client"
-      >
-        ✨ Ready to Convert
-      </span>
-    );
-  }
+  return (
+    <span
+      className="size-6 shrink-0 rounded-full bg-secondary text-foreground/80 grid place-items-center text-2xs font-semibold"
+      title={`RM: ${owner}`}
+      aria-label={`RM: ${owner}`}
+    >
+      {initialsOf(owner)}
+    </span>
+  );
+}
 
-  if (chips.length === 0) return null;
-  return <div className="mt-2 flex flex-wrap gap-1">{chips}</div>;
+/** The next follow-up: red once it has passed, muted when none is set. */
+function NextAction({ at }: { at: string | null }) {
+  if (!at) return <span className="ml-auto text-2xs text-muted-foreground">No next action</span>;
+  const when = new Date(at);
+  if (isNaN(when.getTime())) return null;
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfWhen = new Date(when.getFullYear(), when.getMonth(), when.getDate());
+  const dayDiff = Math.round((startOfWhen.getTime() - startOfToday.getTime()) / 86_400_000);
+  const overdue = when.getTime() < now.getTime();
+  const label =
+    dayDiff === 0
+      ? `Today ${when.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}`
+      : dayDiff === 1
+      ? "Tomorrow"
+      : when.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  return (
+    <span
+      className={`ml-auto inline-flex items-center gap-1 text-2xs tabular-nums ${overdue ? "font-semibold text-destructive" : "text-muted-foreground"}`}
+      title={`Next follow-up ${when.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}${overdue ? " (overdue)" : ""}`}
+    >
+      <CalendarClock className="size-3" />
+      {overdue ? `Overdue · ${label}` : label}
+    </span>
+  );
 }
 
 /* ─────────────────────── Lazy Loading Sentinel ─────────────────────── */

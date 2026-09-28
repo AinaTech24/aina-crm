@@ -24,7 +24,7 @@ export function LeadPipeline({ data }: { data: LeadPipelineData }) {
     );
   }
   const rows = [...path, ...loops.filter((b) => b.count > 0)].map((b) => ({
-    name: b.name.replace(/ created$/i, ""),
+    name: b.name,
     count: b.count,
     overdue: b.overdue,
   }));
@@ -32,7 +32,7 @@ export function LeadPipeline({ data }: { data: LeadPipelineData }) {
   const subtitle =
     `${openTotal.toLocaleString("en-IN")} open` +
     (overdueTotal ? ` · ${overdueTotal.toLocaleString("en-IN")} past stage SLA` : "") +
-    (lost ? ` · ${lost} not qualified` : "");
+    (lost ? ` · ${lost} lost` : "");
 
   return (
     <FlowChartCard title="Lead Pipeline" subtitle={subtitle} href="/dashboard/leads" hrefLabel="All leads">

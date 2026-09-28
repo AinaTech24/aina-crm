@@ -14,17 +14,17 @@ import { withTenant } from "@/db/client";
 import { leads, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { requireLeadView, leadScopeSql } from "@/lib/leads/access";
-import { WorkSwitcher } from "@/components/layout/WorkSwitcher";
 
-const PIPELINE_VIEWS = [
-  { value: "/dashboard/leads", label: "Leads" },
-  { value: "/dashboard/pipeline-board", label: "Pipeline Board" },
-  { value: "/dashboard/lifecycle", label: "Lifecycle" },
-];
 import { LeadsKanban } from "@/components/leads/LeadsKanban";
 import { LeadsTable } from "@/components/leads/LeadsTable";
 import { LeadsViewPersist } from "@/components/leads/LeadsViewPersist";
-// import { LeadQuickFilters } from "@/components/leads/LeadQuickFilters";
+import { LeadQuickFilters } from "@/components/leads/LeadQuickFilters";
+import { MoreMenu } from "@/components/common/MoreMenu";
+import { buttonClass } from "@/components/ui/button-class";
+import { cookies } from "next/headers";
+import { LEAD_PIPELINE, LEAD_PIPELINE_STAGE_VALUES, leadPipelineColumn, leadStageDisplay } from "@/lib/leads/stages";
+import { LEAD_SOURCE_OPTIONS } from "@/lib/leads/sources";
+import { LEADS_VIEW_COOKIE, LEADS_LIST_THRESHOLD, parseLeadsView } from "@/lib/leads/view-pref";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { Pager } from "@/components/common/Pager";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
@@ -34,43 +34,26 @@ import { RowActions } from "@/components/common/RowActions";
 import { ColumnManager } from "@/components/common/ColumnManager";
 
 /**
- * Pipeline columns — exact mirror of the 12 lead-phase blueprint stages
- * (stages 1-12 of LEAD_TO_CLIENT_STAGES, before the Convert-to-Client
- * boundary). The platform now speaks a single vocabulary: stage ===
- * blueprint stage. Drag-drop here calls the blueprint advance engine.
- *
- * Aliases fold legacy stage values from before the unification onto the
- * canonical blueprint key.
+ * Kanban columns and stage filter options — the six-step pipeline from
+ * src/lib/leads/stages.ts, the one place stage names are defined (the
+ * dashboard's lead pipeline reads the same file). Each column's `aliases` are
+ * the other stage values folded into it: the call-back loops, and legacy /
+ * imported vocabularies.
  */
-/**
- * Kanban columns — 10 lead-phase blueprint stages. Aliases fold legacy
- * stage values onto the canonical key so historic leads land in the
- * right column.
- */
-const STAGES = [
-  { key: "new", label: "New", tone: "blue", aliases: [] as string[] },
-  { key: "call_done", label: "Call Done", tone: "cyan", aliases: ["contacted", "first_call_pending"] },
-  { key: "call_back_later", label: "Call Back Later", tone: "cyan", aliases: [] },
-  { key: "call_not_connected", label: "Call Not Connected", tone: "slate", aliases: [] },
-  { key: "contact_in_future", label: "Contact in Future", tone: "slate", aliases: ["follow_up"] },
-  { key: "meeting_scheduled", label: "Meeting Scheduled", tone: "amber", aliases: ["appointment_scheduled", "qualified"] },
-  { key: "meeting_pending", label: "Meeting Pending", tone: "amber", aliases: [] },
-  { key: "meeting_done", label: "Meeting Done", tone: "indigo", aliases: ["meeting_done"] },
-  { key: "won_lead", label: "Won Lead", tone: "emerald", aliases: ["converted", "post_meeting_qualified"] },
-  { key: "not_qualified", label: "Not Qualified", tone: "rose", aliases: ["lost", "not_interested", "cold"] },
-] as const;
+const STAGES = LEAD_PIPELINE.map((c) => ({
+  key: c.key,
+  label: c.label,
+  tone: c.tone,
+  aliases: c.members.filter((m) => m !== c.key),
+}));
 
-const LEAD_PHASE_STAGES = [
-  "new",
-  "call_done", "contacted", "first_call_pending",
-  "call_back_later",
-  "call_not_connected",
-  "contact_in_future", "follow_up",
-  "meeting_scheduled", "appointment_scheduled", "qualified",
-  "meeting_pending",
-  "meeting_done",
-  "won_lead", "converted", "post_meeting_qualified",
-  "not_qualified", "lost", "not_interested", "cold"
+const LEAD_PHASE_STAGES = [...LEAD_PIPELINE_STAGE_VALUES];
+
+/** Header "⋯": the other lead views the old "Module" dropdown switched to. */
+const MORE_ITEMS = [
+  { href: "/dashboard/pipeline-board", label: "Pipeline Board", description: "Separate stage flows for each sales process" },
+  { href: "/dashboard/lifecycle", label: "Lead-to-client lifecycle", description: "Each lead's path through to becoming a client" },
+  { href: "/dashboard/leads/nurture", label: "Lead Nurturing", description: "Keep not-yet-ready leads warm" },
 ];
 
 const LEADS_COLUMNS = [
@@ -102,6 +85,7 @@ export default async function LeadsPage({
   const stageFilter = (sp.stage ?? "").split(",").filter(Boolean);
   const sourceFilter = (sp.source ?? "").split(",").filter(Boolean);
   const ownerFilter = (sp.owner ?? "").split(",").filter(Boolean);
+  const branchFilter = (sp.branch ?? "").split(",").filter((v) => /^[0-9a-f-]{36}$/i.test(v));
   // Describes the active narrowing so the empty state can name it.
   const activeFilterLabel = [
     q ? `matching “${q}”` : "",
@@ -110,7 +94,12 @@ export default async function LeadsPage({
   ]
     .filter(Boolean)
     .join(" · ");
-  const view = sp.view === "table" ? "table" : "kanban";
+  // Kanban or List: the URL's choice, else the one this browser saved, else by
+  // size — past LEADS_LIST_THRESHOLD leads a board is columns of scrolling, so
+  // a list is the better first view. (Decided inside the query, once the
+  // count is known.)
+  const requestedView =
+    parseLeadsView(sp.view) ?? parseLeadsView((await cookies()).get(LEADS_VIEW_COOKIE)?.value);
   // Table sort: "score" (default — hottest first) or "recent". Both default to
   // descending; an explicit `dir` (set by re-clicking the column header) flips
   // to ascending so the user can see coldest leads / oldest-created first.
@@ -171,6 +160,15 @@ export default async function LeadsPage({
       conds.push(sql`leads.source IN (${sql.join(sourceFilter.map((v) => sql`${v}`), sql`, `)})`);
     if (ownerFilter.length)
       conds.push(sql`leads.owner_id IN (${sql.join(ownerFilter.map((v) => sql`${v}::uuid`), sql`, `)})`);
+    // Branch — the branch command centre's drill-down, with the same rule its
+    // lead counts use (lib/dashboard/my/window.ts, leadsMatch): captured in the
+    // branch, or — where no capture branch was recorded — owned by someone in
+    // it. Only narrows; leadScopeSql above still applies.
+    if (branchFilter.length) {
+      const ids = sql.join(branchFilter.map((v) => sql`${v}::uuid`), sql`, `);
+      conds.push(sql`(leads.branch_id IN (${ids})
+        OR (leads.branch_id IS NULL AND leads.owner_id IN (SELECT id FROM users WHERE branch_id IN (${ids}))))`);
+    }
 
     // Quick-filter conditions — each adds a constraint; AND-combined.
     if (qf.mine) conds.push(sql`leads.owner_id = ${userId}`);
@@ -199,6 +197,17 @@ export default async function LeadsPage({
     if (dr) conds.push(dr);
 
     const whereClause: any = sql.join(conds, sql` AND `);
+
+    // The size rule looks at the whole book in scope, not the filtered result,
+    // so narrowing a filter never flips the view underneath the user.
+    let view = requestedView;
+    if (!view) {
+      const bookRes = await tx
+        .select({ c: sql<number>`count(*)::int` })
+        .from(leads)
+        .where(sql.join(conds.slice(0, 4), sql` AND `) as any);
+      view = Number(bookRes[0]?.c ?? 0) > LEADS_LIST_THRESHOLD ? "table" : "kanban";
+    }
 
     const baseQuery = tx
       .select({ lead: leads, owner: users.name })
@@ -231,19 +240,25 @@ export default async function LeadsPage({
       WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
       ORDER BY name ASC
     `);
-    return { rows, rms: rmRows.rows as any[], total };
+    return { rows, rms: rmRows.rows as any[], total, view };
   });
 
   const rmOptions = (data.rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
+  const view = data.view;
+  // The view toggle keeps every other filter; only the page resets.
+  const viewHref = (v: "kanban" | "table") => {
+    const p = new URLSearchParams();
+    for (const [k, val] of Object.entries(sp)) if (val && k !== "view" && k !== "page") p.set(k, val);
+    p.set("view", v);
+    return `/dashboard/leads?${p.toString()}`;
+  };
 
   // Enrich rows for the table view with a deterministic priority score, and
   // sort hottest-first by default (or most-recent when ?sort=recent).
   const toIso = (v: any) => (v ? new Date(v as any).toISOString() : null);
   const tableRows = data.rows.map((r) => {
     const l = r.lead as any;
-    const stageObj = STAGES.find(
-      (s) => s.key === l.stage || (s.aliases as readonly string[]).includes(l.stage)
-    );
+    const column = leadPipelineColumn(l.stage);
     return {
       id: l.id,
       name: l.name,
@@ -251,8 +266,8 @@ export default async function LeadsPage({
       phone: l.phone ?? null,
       email: l.email ?? null,
       stage: l.stage,
-      stageLabel: stageObj?.label ?? l.stage,
-      stageTone: stageObj?.tone ?? "slate",
+      stageLabel: leadStageDisplay(l.stage),
+      stageTone: column?.tone ?? "slate",
       source: l.source,
       intendedAmount: l.intendedAmount ?? null,
       nextFollowUpAt: toIso(l.nextFollowUpAt),
@@ -272,45 +287,22 @@ export default async function LeadsPage({
       <LeadsViewPersist explicitView={sp.view ?? null} />
       {/* Header */}
       <PageHeaderCard title={<><UserPlus className="size-6 text-muted-foreground" /> Leads</>} subtitle={<>Prospects you are working on, from first contact through to conversion.</>} actions={<><div className="flex gap-2 items-center">
-          <WorkSwitcher current="/dashboard/leads" options={PIPELINE_VIEWS} label="Module" />
-          {/* View toggle — Kanban vs List */}
-          <div className="inline-flex rounded-lg border border-border bg-secondary/40 p-0.5 gap-0.5 mr-1">
-            <Link
-              href="/dashboard/leads?view=kanban"
-              className={`px-2.5 py-1 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors ${view === "kanban"
-                ? "bg-card shadow-sm text-foreground"
-                : "text-muted-foreground hover:text-foreground"
-                }`}
-            >
-              <LayoutGrid className="size-3.5" /> Kanban
-            </Link>
-            <Link
-              href="/dashboard/leads?view=table"
-              className={`px-2.5 py-1 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors ${view === "table"
-                ? "bg-card shadow-sm text-foreground"
-                : "text-muted-foreground hover:text-foreground"
-                }`}
-            >
-              <List className="size-3.5" /> List
-            </Link>
-          </div>
-
-          {/* Columns + Views moved into the filter toolbar (right side), so every
-              list module carries the same compact icon row as Tasks. */}
-          <Link href="/dashboard/leads/import" className="btn-secondary text-xs">
-            <FileUp className="size-3.5" /> Import Excel
+          {/* One primary action, one secondary, the rest behind ⋯. The old
+              "Module" dropdown (Pipeline Board, Lifecycle) lives in ⋯ now, and
+              the Kanban / List toggle sits with the other view controls in the
+              filter bar. */}
+          <MoreMenu items={MORE_ITEMS} label="More lead views" />
+          <Link href="/dashboard/leads/import" className={buttonClass("secondary")}>
+            <FileUp className="size-4" /> Import
           </Link>
-          <Link href="/dashboard/leads/new" className="btn-primary">
+          <Link href="/dashboard/leads/new" className={buttonClass("primary")}>
             <Plus className="size-4" /> New lead
           </Link>
         </div></>} />
 
-      {/* Quick-filter chip strip — server-side counts, deep links into same page */}
-      {/* <div className="card-surface p-3">
-        <LeadQuickFilters session={session} active={sp as Record<string, string | undefined>} />
-      </div> */}
-
+      <div className="card-surface p-2.5 space-y-2.5 relative z-30">
       <CompactFilterBar
+        bare
         totalCount={data.total}
         searchPlaceholder="Search lead by name, phone, email…"
         filters={[
@@ -324,19 +316,7 @@ export default async function LeadsPage({
             type: "multi",
             key: "source",
             label: "Source",
-            options: [
-              { value: "referral", label: "Client Referral" },
-              { value: "existing_client", label: "Existing Client Reference" },
-              { value: "website", label: "Website" },
-              { value: "social_media", label: "Social Media" },
-              { value: "webinar", label: "Webinar" },
-              { value: "seminar", label: "Seminar" },
-              { value: "walk_in", label: "Walk-in" },
-              { value: "google", label: "Google" },
-              { value: "cold_call", label: "Cold Call" },
-              { value: "manual", label: "Manual entry" },
-              { value: "other", label: "Other" },
-            ],
+            options: [...LEAD_SOURCE_OPTIONS],
           },
           ...(rmOptions.length
             ? [{ type: "multi" as const, key: "owner", label: "Owner (RM)", options: rmOptions }]
@@ -345,6 +325,29 @@ export default async function LeadsPage({
         ]}
         rightSlot={
           <div className="flex items-center gap-2">
+            {/* View toggle — Kanban vs List. The choice is remembered. */}
+            <div className="inline-flex rounded-lg border border-border bg-secondary/40 p-0.5 gap-0.5" role="group" aria-label="View">
+              <Link
+                href={viewHref("kanban")}
+                aria-current={view === "kanban" ? "true" : undefined}
+                className={`px-2.5 py-1 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors ${view === "kanban"
+                  ? "bg-card shadow-sm text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+                  }`}
+              >
+                <LayoutGrid className="size-3.5" /> Kanban
+              </Link>
+              <Link
+                href={viewHref("table")}
+                aria-current={view === "table" ? "true" : undefined}
+                className={`px-2.5 py-1 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors ${view === "table"
+                  ? "bg-card shadow-sm text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+                  }`}
+              >
+                <List className="size-3.5" /> List
+              </Link>
+            </div>
             {view === "table" && (
               <ColumnManager compact moduleKey="leads" columns={LEADS_COLUMNS} />
             )}
@@ -355,16 +358,19 @@ export default async function LeadsPage({
                 {
                   id: "open",
                   name: "All open",
-                  params: "stage=new,call_done,call_back_later,call_not_connected,contact_in_future,meeting_scheduled,meeting_pending,meeting_done,won_lead",
+                  // Column keys: each one also matches the stages folded into it.
+                  params: "stage=new,call_done,meeting_scheduled,meeting_done,won_lead",
                 },
                 { id: "referrals", name: "Referrals only", params: "source=referral,existing_client" },
-                { id: "won", name: "Won leads", params: "stage=won_lead,converted" },
-                { id: "lost", name: "Not qualified / lost", params: "stage=not_qualified,lost,not_interested" },
+                { id: "won", name: "Won", params: "stage=won_lead" },
+                { id: "lost", name: "Lost", params: "stage=not_qualified" },
               ]}
             />
           </div>
         }
       />
+      <LeadQuickFilters sources={LEAD_SOURCE_OPTIONS} rms={rmOptions} />
+      </div>
 
       {/* Kanban — drag-and-drop enabled. Show a friendly empty-state when
           there are no leads yet AND no filters are active, so a brand-new
@@ -373,7 +379,7 @@ export default async function LeadsPage({
         <EmptyState
           icon={Sparkles}
           title="No leads yet — let's add the first one"
-          description="A lead is anyone who's shown interest in your services but hasn't invested yet. The CRM tracks them through 8 stages from First Contact to Converted."
+          description="A lead is anyone who's shown interest in your services but hasn't invested yet. The CRM tracks them from New through Contacted and Meeting to Won."
           tip="Click + at the top right to add manually, or import an Excel file of leads in seconds."
           primary={{ href: "/dashboard/leads/new", label: "+ Add first lead" }}
           secondary={{ href: "/dashboard/leads/import", label: "Import from Excel" }}
