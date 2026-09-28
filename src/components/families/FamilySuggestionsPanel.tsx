@@ -44,7 +44,7 @@ const RELATIONSHIPS = [
 
 /**
  * Renders the pairing list only — no card chrome or header. It lives inside
- * FamilySuggestionsLauncher's dialog, which supplies the title and the frame.
+ * FamiliesMoreMenu's dialog, which supplies the title and the frame.
  * `onCountChange` keeps the launcher's badge in step as suggestions are
  * consumed, so the count never disagrees with the list behind it.
  */

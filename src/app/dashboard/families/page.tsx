@@ -14,7 +14,9 @@ import {
 import { RowActions } from "@/components/common/RowActions";
 import { familyQuickFilterOptions } from "@/components/families/FamilyQuickFilters";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
-import { FamilySuggestionsLauncher } from "@/components/families/FamilySuggestionsLauncher";
+import { FamiliesMoreMenu } from "@/components/families/FamiliesMoreMenu";
+import { CleanupEmptyFamilies } from "@/components/families/CleanupEmptyFamilies";
+import { buttonClass } from "@/components/ui/button-class";
 import { FamilyToolsGrid } from "@/components/families/FamilyToolsGrid";
 import { Pager } from "@/components/common/Pager";
 import { healthBandClasses, type HealthBand } from "@/lib/investors/health";
@@ -42,6 +44,9 @@ export default async function FamiliesPage({
   // show the whole firm's households to any role; "mine" was only opt-in).
   requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
   const canViewAll = can(session.roles, "investor.view.all", session.permissions);
+  // Same gate as deleting a single family.
+  const canCleanup =
+    can(session.roles, "family.delete", session.permissions) || can(session.roles, "investor.edit.all", session.permissions);
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const userId = session.userId;
@@ -70,7 +75,7 @@ export default async function FamiliesPage({
   // Row counts for the quick-filter dropdown (one grouped query).
   const quickFilterOptions = await familyQuickFilterOptions(session);
 
-  const { rows, total, bandCounts } = await withTenant(session.tenantId, async (tx) => {
+  const { rows, total, bandCounts, memberlessCount } = await withTenant(session.tenantId, async (tx) => {
     // Translate quick-filter flags into HAVING / WHERE fragments. We compose
     // additive WHERE conditions on the family row + a HAVING on member-level
     // aggregates after the LEFT JOIN.
@@ -115,10 +120,15 @@ export default async function FamiliesPage({
     if (qf.large) {
       having.push(sql`COUNT(i.id) FILTER (WHERE i.status = 'active') >= 5`);
     }
+    const aumExpr = sql.raw(`COALESCE(SUM(i.aum::numeric) FILTER (WHERE i.status = 'active'), 0)`);
     if (band) {
       const b = bandBounds(band);
-      const aumExpr = sql.raw(`COALESCE(SUM(i.aum::numeric) FILTER (WHERE i.status = 'active'), 0)`);
       having.push(b.max == null ? sql`${aumExpr} >= ${b.min}` : sql`${aumExpr} >= ${b.min} AND ${aumExpr} < ${b.max}`);
+    } else if (!q) {
+      // Families with no AUM are hidden by default: on most books they are the
+      // majority, and a list that is 85% "₹0" buries the households to work
+      // on. A search still finds them, and ?band=empty lists them.
+      having.push(sql`${aumExpr} > 0`);
     }
 
     const whereSql = where.length ? sql`WHERE ${sql.join(where, sql` AND `)}` : sql``;
@@ -164,6 +174,15 @@ export default async function FamiliesPage({
         GROUP BY f.id
         ${havingSql}
       ) sub
+    `);
+
+    // Families with no client linked at all — a narrower set than the "no AUM"
+    // band, which also holds real households whose holdings aren't loaded yet.
+    const memberless = await tx.execute(sql`
+      SELECT COUNT(*)::int AS c FROM families f
+       WHERE f.tenant_id = ${session.tenantId}::uuid
+         ${canViewAll ? sql`` : sql`AND f.rm_id = ${userId}::uuid`}
+         AND NOT EXISTS (SELECT 1 FROM investors i WHERE i.family_id = f.id AND i.deleted_at IS NULL)
     `);
 
     // Wealth-band distribution across ALL families (drives the chips).
@@ -244,15 +263,31 @@ export default async function FamiliesPage({
       rows: scored,
       total: Number((c.rows[0] as any)?.c ?? 0),
       bandCounts: bandCounts.rows as Array<{ band: string; c: number }>,
+      memberlessCount: Number((memberless.rows[0] as { c?: number } | undefined)?.c ?? 0),
     };
   });
 
   const bandCount = (k: string) => bandCounts.find((x) => x.band === k)?.c ?? 0;
+  const emptyCount = bandCount("empty");
   const totalFamilies = bandCounts.reduce((a, x) => a + Number(x.c), 0);
+  // "Empty" is not a chip: it is hidden by default and reached from the note
+  // under the chips, so "All" counts the families actually listed.
   const bandChips: StatusChip[] = [
-    { value: "", label: "All", count: totalFamilies, tone: "slate" },
-    ...WEALTH_BANDS.map((k) => ({ value: k, label: WEALTH_BAND_META[k].label, count: bandCount(k), tone: WEALTH_BAND_META[k].tone })),
+    { value: "", label: "All", count: totalFamilies - emptyCount, tone: "slate" },
+    ...WEALTH_BANDS.filter((k) => k !== "empty").map((k) => ({
+      value: k,
+      label: WEALTH_BAND_META[k].label,
+      count: bandCount(k),
+      tone: WEALTH_BAND_META[k].tone,
+    })),
   ];
+  const bandHref = (value: string) => {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(sp)) if (v && k !== "band" && k !== "page") params.set(k, v as string);
+    if (value) params.set("band", value);
+    const qs = params.toString();
+    return `/dashboard/families${qs ? `?${qs}` : ""}`;
+  };
 
   // Build a sort-toggle href that preserves filters/search and resets paging.
   const sortHref = (key: string) => {
@@ -268,17 +303,11 @@ export default async function FamiliesPage({
   return (
     <div className="space-y-6 max-w-7xl">
       <PageHeaderCard title={<>Families</>} subtitle={<>Group clients into households to see a family&apos;s whole portfolio together.</>} actions={<><div className="flex gap-2">
-          <FamilySuggestionsLauncher />
-          <Link
-            href="/dashboard/families/at-risk"
-            className="rounded-md border border-amber-300 bg-amber-50 text-amber-900 px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 hover:bg-amber-100"
-          >
-            ⚠ Next-gen pulse
-          </Link>
-          <Link
-            href="/dashboard/families/new"
-            className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium flex items-center gap-1.5"
-          >
+          {/* Suggest family links + Next generation view. */}
+          <FamiliesMoreMenu />
+          {/* Secondary: the page's primary action is mapping the unmapped
+              clients, in the Family master cards below. */}
+          <Link href="/dashboard/families/new" className={buttonClass("secondary")}>
             <Plus className="size-4" /> New family
           </Link>
         </div></>} />
@@ -287,8 +316,35 @@ export default async function FamiliesPage({
           is worth opening. */}
       <FamilyToolsGrid session={session} />
 
-      {/* Wealth-band tiers (Sanchay "Family Category" parity) */}
-      <StatusChips basePath="/dashboard/families" paramKey="band" current={band} params={sp} chips={bandChips} />
+      {/* Wealth-band tiers (Sanchay "Family Category" parity), minus "Empty". */}
+      <div className="space-y-1.5">
+        <StatusChips basePath="/dashboard/families" paramKey="band" current={band === "empty" ? "__none" : band} params={sp} chips={bandChips} />
+        {(emptyCount > 0 || memberlessCount > 0) && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
+          <p>
+            {band === "empty" ? (
+              <>
+                Showing the {emptyCount.toLocaleString("en-IN")} families with no AUM
+                {memberlessCount > 0 && <> ({memberlessCount.toLocaleString("en-IN")} of them have no clients linked)</>}.{" "}
+                <Link href={bandHref("")} className="font-medium text-brand-cyan-deep hover:underline">
+                  Back to families with AUM
+                </Link>
+              </>
+            ) : (
+              <>
+                {emptyCount.toLocaleString("en-IN")} families with no AUM are hidden{q ? " (a search still finds them)" : ""}.{" "}
+                <Link href={bandHref("empty")} className="font-medium text-brand-cyan-deep hover:underline">
+                  Show them
+                </Link>
+              </>
+            )}
+          </p>
+          {/* Only the families with NO client linked: the no-AUM band also
+              holds real households whose holdings aren't loaded yet. */}
+          {canCleanup && memberlessCount > 0 && <CleanupEmptyFamilies count={memberlessCount} />}
+          </div>
+        )}
+      </div>
 
       {/* Search + filters — the same control Clients / Leads / Tasks use, so
           the quick filters live behind the filter icon instead of a chip
@@ -395,40 +451,28 @@ export default async function FamiliesPage({
                                 directly beside four real red flags, which is how
                                 a firm learns to distrust the column. Only show a
                                 score once one has actually been computed. */}
-                            <span
-                              className={`w-fit text-2xs px-1.5 py-0.5 rounded-full border ${healthBandClasses(f._health.band).chip}`}
-                              title={
-                                f._health.factors.length
-                                  ? `Scored live, same as the household page - ${f._health.factors
-                                      .map((x: { label: string; deduction: number }) => `${x.label} (-${x.deduction})`)
-                                      .join(", ")}`
-                                  : "Scored live, same as the household page - nothing deducted"
-                              }
-                            >
-                              {healthBandClasses(f._health.band).label} · {f._health.score}
-                            </span>
-                            {/* ONE chip, not four. Every row was rendering up to
-                                three rose/amber gap chips beside the score chip,
-                                and because "no primary" and "no RM" are unset on
-                                most books they fired on EVERY row — colour that
-                                marks everything marks nothing. The worst gap is
-                                named, the rest are counted, and the full list is
-                                on the tooltip and the detail page. */}
-                            {f._health.factors.length === 0 ? (
-                              <span className="text-2xs text-success">No data gaps</span>
-                            ) : (
-                              <span
-                                className="w-fit text-2xs px-1.5 py-0.5 rounded-full bg-destructive/10 text-destructive"
-                                title={f._health.factors
-                                  .map((x: { label: string }) => x.label)
-                                  .join(" · ")}
-                              >
-                                {f._health.factors[0].label}
-                                {f._health.factors.length > 1
-                                  ? ` +${f._health.factors.length - 1}`
-                                  : ""}
-                              </span>
-                            )}
+                            {/* ONE badge: OK or At risk. The reasons (and the
+                                score) are on the tooltip and the household page —
+                                "Family RM not assigned +5" chips on every row said
+                                less than a word, in more space. */}
+                            {(() => {
+                              const ok = f._health.band === "green";
+                              const reasons = f._health.factors.map((x: { label: string }) => x.label);
+                              return (
+                                <span
+                                  className={`w-fit text-2xs font-medium px-1.5 py-0.5 rounded-full border ${
+                                    ok ? "bg-secondary text-muted-foreground border-border" : healthBandClasses(f._health.band).chip
+                                  }`}
+                                  title={
+                                    reasons.length
+                                      ? `Health ${f._health.score}/100. ${reasons.join(" · ")}`
+                                      : `Health ${f._health.score}/100. Nothing to fix.`
+                                  }
+                                >
+                                  {ok ? "OK" : "At risk"}
+                                </span>
+                              );
+                            })()}
                           </div>
                         </td>
                         <td className="py-3 pl-4 text-xs text-muted-foreground">{formatRelative(f.updated_at)}</td>

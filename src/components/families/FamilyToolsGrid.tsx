@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { ArrowRight, GitMerge, Users2, Settings2 } from "lucide-react";
 import { withTenant } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
+import { buttonClass } from "@/components/ui/button-class";
 
 /**
  * Family Master tools — one place that answers "what can I do with households?"
@@ -11,7 +12,8 @@ import type { SessionUser } from "@/lib/auth/session";
  * were scattered across the page header and a dialog, so the only obvious action
  * was "New family". These tiles surface the whole set, and carry the live counts
  * that say which one is worth clicking — the unmapped queue is the one that
- * actually moves coverage, so it leads.
+ * actually moves coverage, so it leads — and it is the page's primary action:
+ * "Map 768 clients →", not a card title with a number beside it.
  */
 export async function FamilyToolsGrid({ session }: { session: SessionUser }) {
   const counts = await withTenant(
@@ -53,9 +55,10 @@ export async function FamilyToolsGrid({ session }: { session: SessionUser }) {
       href: "/dashboard/families/unmapped",
       icon: Users2,
       title: "Unmapped clients",
-      desc: "Clients not in any household yet — start here",
-      badge: counts.unmapped > 0 ? counts.unmapped.toLocaleString("en-IN") : null,
-      tone: "amber" as const,
+      desc: counts.unmapped > 0 ? "Clients not in any household yet" : "Every active client is in a household",
+      badge: null,
+      cta: counts.unmapped > 0 ? `Map ${counts.unmapped.toLocaleString("en-IN")} client${counts.unmapped === 1 ? "" : "s"} →` : null,
+      tone: counts.unmapped > 0 ? ("primary" as const) : ("plain" as const),
     },
     {
       href: "/dashboard/duplicates",
@@ -63,6 +66,7 @@ export async function FamilyToolsGrid({ session }: { session: SessionUser }) {
       title: "Merge duplicates",
       desc: "Combine households created twice",
       badge: null,
+      cta: null,
       tone: "plain" as const,
     },
     {
@@ -71,6 +75,7 @@ export async function FamilyToolsGrid({ session }: { session: SessionUser }) {
       title: "Family settings",
       desc: "Relationship types and defaults for new households",
       badge: null,
+      cta: null,
       tone: "plain" as const,
     },
   ];
@@ -95,12 +100,12 @@ export async function FamilyToolsGrid({ session }: { session: SessionUser }) {
             key={t.href}
             href={t.href}
             className={`group border rounded-lg bg-card p-4 flex items-start gap-3 transition-colors hover:bg-accent/40 ${
-              t.tone === "amber" ? "border-amber-300 bg-amber-50/40" : ""
+              t.tone === "primary" ? "border-primary/30" : ""
             }`}
           >
             <span
               className={`size-9 rounded-lg grid place-items-center shrink-0 ${
-                t.tone === "amber" ? "bg-amber-100 text-amber-700" : "bg-secondary text-foreground/70"
+                t.tone === "primary" ? "bg-primary/10 text-primary" : "bg-secondary text-foreground/70"
               }`}
             >
               <t.icon className="size-4" />
@@ -109,18 +114,18 @@ export async function FamilyToolsGrid({ session }: { session: SessionUser }) {
               <span className="flex items-center gap-2">
                 <span className="font-semibold text-sm">{t.title}</span>
                 {t.badge && (
-                  <span
-                    className={`text-2xs font-bold tabular-nums rounded-full px-1.5 py-0.5 ${
-                      t.tone === "amber" ? "bg-amber-600 text-white" : "bg-secondary text-muted-foreground"
-                    }`}
-                  >
+                  <span className="text-2xs font-bold tabular-nums rounded-full px-1.5 py-0.5 bg-secondary text-muted-foreground">
                     {t.badge}
                   </span>
                 )}
               </span>
               <span className="block text-2xs text-muted-foreground mt-0.5">{t.desc}</span>
+              {/* The page's one primary action: the queue that moves coverage. */}
+              {t.cta && <span className={buttonClass("primary", "sm", "mt-3")}>{t.cta}</span>}
             </span>
-            <ArrowRight className="size-4 text-muted-foreground/50 shrink-0 transition-transform group-hover:translate-x-0.5" />
+            {!t.cta && (
+              <ArrowRight className="size-4 text-muted-foreground/50 shrink-0 transition-transform group-hover:translate-x-0.5" />
+            )}
           </Link>
         ))}
       </div>
