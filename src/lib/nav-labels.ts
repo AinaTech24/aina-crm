@@ -63,9 +63,12 @@ export const NAV_LABELS: Record<string, string> = {
   "/dashboard/templates": "Message Templates",
   "/dashboard/transactions": "MF Transactions",
   "/dashboard/trash": "Trash",
+  "/dashboard/automations": "Automations",
+  "/dashboard/automations/actions": "Actions",
+  "/dashboard/automations/history": "Run history",
   "/dashboard/workflows/actions": "Automation Actions",
   "/dashboard/workflows/rules": "Automations",
-  "/dashboard/workflows/runs": "Automation Monitor",
+  "/dashboard/workflows/runs": "Automation Run History",
 
   // Report pages — titles from src/lib/reports/catalog.ts, so the breadcrumb
   // says "Business MIS", not the slug's "Business Mis".

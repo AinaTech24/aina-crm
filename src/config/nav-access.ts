@@ -103,7 +103,7 @@ export const NAV_ACCESS_GROUPS: NavAccessGroup[] = [
     items: [
       { key: "/dashboard/workflows/rules", label: "Automations", module: "automation_workflows" },
       { key: "/dashboard/workflows/actions", label: "Automation Actions", module: "automation_workflows" },
-      { key: "/dashboard/workflows/runs", label: "Automation Monitor", module: "automation_workflows" },
+      { key: "/dashboard/workflows/runs", label: "Automation Run History", module: "automation_workflows" },
       { key: "/dashboard/templates", label: "Message Templates", module: "broadcasts" },
       { key: "/dashboard/communications", label: "Communications", module: "broadcasts" },
       { key: "/dashboard/communications/responses", label: "Client Responses" },

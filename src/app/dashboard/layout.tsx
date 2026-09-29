@@ -91,6 +91,10 @@ type NavItem = {
   module?: string;
   /** Always tag as Beta, regardless of the platform Module Controls setting. */
   beta?: boolean;
+  /** The key access is granted by, when it differs from `href` — a page that
+   *  moved keeps the key firms' grants, Module Controls and people's module
+   *  lists were stored under (see src/config/nav-access.ts: never change a key). */
+  accessKey?: string;
 };
 
 type NavSection = { title: string; items: NavItem[] };
@@ -192,8 +196,8 @@ const NAV: NavSection[] = [
   {
     title: "Automation",
     items: [
-      // Actions and the run monitor are reached from inside Automations.
-      { href: "/dashboard/workflows/rules", label: "Automations", icon: Workflow, module: "automation_workflows" },
+      // Rules, Actions and Run history are tabs of /dashboard/automations.
+      { href: "/dashboard/automations", accessKey: "/dashboard/workflows/rules", label: "Automations", icon: Workflow, module: "automation_workflows" },
       { href: "/dashboard/templates", label: "Message Templates", icon: LayoutTemplate, module: "broadcasts" },
       { href: "/dashboard/communications", label: "Communications", icon: MessageSquare, module: "broadcasts" },
       { href: "/dashboard/aina-library", label: "Content Library", icon: Library, roles: ["owner", "marketing", "rm", "branch_head", "back_office", "ops"] },
@@ -250,8 +254,8 @@ const PALETTE_ONLY: NavSection[] = [
   {
     title: "Automation",
     items: [
-      { href: "/dashboard/workflows/actions", label: "Automation Actions", icon: Zap, module: "automation_workflows" },
-      { href: "/dashboard/workflows/runs", label: "Automation Monitor", icon: Activity, module: "automation_workflows",
+      { href: "/dashboard/automations/actions", accessKey: "/dashboard/workflows/actions", label: "Automation Actions", icon: Zap, module: "automation_workflows" },
+      { href: "/dashboard/automations/history", accessKey: "/dashboard/workflows/runs", label: "Automation Run History", icon: Activity, module: "automation_workflows",
         roles: ["owner", "compliance", "back_office", "ops"] },
       { href: "/dashboard/campaigns", label: "Marketing Campaigns", icon: Megaphone, module: "marketing_campaigns", roles: ["owner", "marketing"] },
     ],
@@ -510,14 +514,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // explicit nav grant silently lost its Dashboard link.)
 
   const canSee = (i: NavItem) => {
+    const key = i.accessKey ?? i.href;
     // Platform kill-switch — a globally-disabled sidebar item is hidden for everyone.
-    if (moduleControls[i.href] === "disabled") return false;
+    if (moduleControls[key] === "disabled") return false;
     if (i.roles && !session.roles.some((r) => i.roles!.includes(r) || r === "owner")) return false;
-    if (isGatableNav(i.href)) {
+    if (isGatableNav(key)) {
       // Admin → MFD: the firm must have access to this sidebar item.
-      if (!tenantAllowedSet.has(i.href)) return false;
+      if (!tenantAllowedSet.has(key)) return false;
       // MFD → team: owners see all; others limited to their granted items.
-      if (!isOwnerUser && userModules && !userModules.includes(i.href)) return false;
+      if (!isOwnerUser && userModules && !userModules.includes(key)) return false;
     }
     return true;
   };
@@ -535,7 +540,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       iconName: (item.icon?.displayName || item.icon?.name || "") as string,
       defaultGroup: section.title,
       badge: navBadges[item.href] > 0 ? navBadges[item.href] : undefined,
-      beta: !!item.beta || moduleControls[item.href] === "beta",
+      beta: !!item.beta || moduleControls[item.accessKey ?? item.href] === "beta",
     }))
   );
   // The palette searches the menu plus the pages that left it.

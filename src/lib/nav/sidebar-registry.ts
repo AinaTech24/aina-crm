@@ -64,7 +64,7 @@ export const SIDEBAR_REGISTRY: SidebarEntry[] = [
   // Automation
   { group: "Automation", href: "/dashboard/workflows/rules", label: "Automations" },
   { group: "Automation", href: "/dashboard/workflows/actions", label: "Automation Actions" },
-  { group: "Automation", href: "/dashboard/workflows/runs", label: "Automation Monitor" },
+  { group: "Automation", href: "/dashboard/workflows/runs", label: "Automation Run History" },
   { group: "Automation", href: "/dashboard/templates", label: "Message Templates" },
   { group: "Automation", href: "/dashboard/communications", label: "Communications" },
   { group: "Automation", href: "/dashboard/aina-library", label: "Content Library" },

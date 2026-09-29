@@ -6,6 +6,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { WorkflowRuleSchema } from "@/lib/workflow-rules/types";
 import { unsupportedRuleFeature, isDuplicateNameError } from "@/lib/workflow-rules/guard";
+import { ruleNameProblem } from "@/lib/workflow-rules/rule-name";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
@@ -60,9 +61,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       };
       const unsupported = unsupportedRuleFeature(merged as any);
       if (unsupported) return { __validationError: unsupported };
+      // Only when a name is sent: a toggle or reorder never trips it.
+      if (updates.name !== undefined) {
+        const nameIssue = await ruleNameProblem(tx, session.tenantId, updates.name, id);
+        if (nameIssue) return { __validationError: nameIssue };
+      }
 
       const next: any = {};
-      if (updates.name !== undefined) next.name = updates.name;
+      if (updates.name !== undefined) next.name = updates.name.trim();
       if (updates.description !== undefined) next.description = updates.description;
       if (updates.triggerType !== undefined) next.triggerType = updates.triggerType;
       if (updates.triggerConfig !== undefined) next.triggerConfig = updates.triggerConfig;

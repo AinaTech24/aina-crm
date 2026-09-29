@@ -6,6 +6,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { WorkflowRuleSchema } from "@/lib/workflow-rules/types";
 import { unsupportedRuleFeature, isDuplicateNameError } from "@/lib/workflow-rules/guard";
+import { ruleNameProblem } from "@/lib/workflow-rules/rule-name";
 
 export const dynamic = "force-dynamic";
 
@@ -53,12 +54,14 @@ export async function POST(req: NextRequest) {
 
   try {
     const row = await withTenant(session.tenantId, async (tx) => {
+      const nameIssue = await ruleNameProblem(tx, session.tenantId, input.name);
+      if (nameIssue) return { __nameError: nameIssue };
       const [created] = await tx
         .insert(workflowRules)
         .values({
           tenantId: session.tenantId,
           module: input.module as any,
-          name: input.name,
+          name: input.name.trim(),
           description: input.description ?? null,
           triggerType: input.triggerType,
           triggerConfig: input.triggerConfig,
@@ -75,6 +78,7 @@ export async function POST(req: NextRequest) {
         .returning();
       return created;
     });
+    if ("__nameError" in row) return NextResponse.json({ error: row.__nameError }, { status: 400 });
     return NextResponse.json({ rule: row }, { status: 201 });
   } catch (e: any) {
     if (isDuplicateNameError(e)) {

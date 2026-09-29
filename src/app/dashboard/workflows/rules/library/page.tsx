@@ -10,12 +10,12 @@ export const dynamic = "force-dynamic";
 
 export default async function RuleLibraryPage() {
   const session = await requireSession();
-  if (!can(session.roles, "workflow.edit", session.permissions)) redirect("/dashboard/workflows/rules");
+  if (!can(session.roles, "workflow.edit", session.permissions)) redirect("/dashboard/automations");
 
   return (
     <div className="space-y-5 max-w-5xl">
-      <Link href="/dashboard/workflows/rules" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
-        <ChevronLeft className="size-4" /> Back to Workflow Rules
+      <Link href="/dashboard/automations" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
+        <ChevronLeft className="size-4" /> Back to Automations
       </Link>
       <PageHeaderCard title={<><BookMarked className="size-6 text-muted-foreground" /> Rule Library</>} subtitle={<>Ready-made automations. Add one to your rules — it&apos;s created <strong>disabled</strong> so you can review it,
           pick your message template, then turn it on.</>} />
