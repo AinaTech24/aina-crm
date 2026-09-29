@@ -6,12 +6,13 @@ import { useRouter } from "next/navigation";
 import { Loader2, Check, X, Ban } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { LEAVE_TYPE_LABELS, LEAVE_DURATION_LABELS } from "@/lib/leave/policy";
+import { confirmDialog, promptDialog } from "@/components/ui/ConfirmProvider";
 
 const STATUS_TONE: Record<string, string> = {
   requested: "bg-blue-50 text-blue-700",
   approved: "bg-emerald-50 text-emerald-700",
   rejected: "bg-rose-50 text-rose-700",
-  cancelled: "bg-gray-50 text-gray-700",
+  cancelled: "bg-secondary text-foreground",
 };
 
 export type LeaveRow = {
@@ -29,14 +30,27 @@ export type LeaveRow = {
   created_at: string;
 };
 
+/** "0.5 day", "1 day", "1.5 days", "3 days". */
+function daysLabel(v: string | number | null | undefined): string {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "—";
+  const shown = Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10);
+  return `${shown} ${n <= 1 ? "day" : "days"}`;
+}
+
 export function LeaveTable({
   rows,
   canApprove,
   currentUserId,
+  emptyTitle = "No leave applications match.",
+  emptyHint = "File one with “New request”.",
 }: {
   rows: LeaveRow[];
   canApprove: boolean;
   currentUserId: string;
+  /** What an empty list says — differs per tab. */
+  emptyTitle?: string;
+  emptyHint?: string;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
@@ -44,9 +58,28 @@ export function LeaveTable({
   async function act(id: string, action: "approve" | "reject" | "cancel") {
     let decisionNotes: string | undefined;
     if (action === "reject") {
-      decisionNotes = window.prompt("Reason for rejection (optional):") ?? undefined;
+      const reason = await promptDialog({
+        title: "Reject this leave request?",
+        label: "Reason",
+        placeholder: "Shared with the applicant",
+        confirmLabel: "Reject request",
+        multiline: true,
+        optional: true,
+        maxLength: 500,
+      });
+      if (reason === null) return;
+      decisionNotes = reason || undefined;
     }
-    if (action === "cancel" && !window.confirm("Cancel this leave request?")) return;
+    if (
+      action === "cancel" &&
+      !(await confirmDialog({
+        title: "Cancel this leave request?",
+        message: "The applicant is notified and the dates are released.",
+        confirmLabel: "Cancel request",
+        tone: "danger",
+      }))
+    )
+      return;
     setBusy(id);
     try {
       const res = await fetch(`/api/leave-applications/${id}`, {
@@ -64,8 +97,8 @@ export function LeaveTable({
   if (rows.length === 0) {
     return (
       <div className="card-surface p-12 text-center text-sm text-muted-foreground">
-        <div className="font-medium">No leave applications match.</div>
-        <p className="mt-2 text-xs">File one with “New request”.</p>
+        <div className="font-medium">{emptyTitle}</div>
+        {emptyHint && <p className="mt-2 text-xs">{emptyHint}</p>}
       </div>
     );
   }
@@ -78,8 +111,8 @@ export function LeaveTable({
             <th className="text-left px-4 py-2 font-medium">Employee</th>
             <th className="text-left py-2 font-medium">Type</th>
             <th className="text-left py-2 font-medium">From → To</th>
-            <th className="text-right py-2 font-medium">Days</th>
-            <th className="text-left py-2 font-medium">Reason</th>
+            <th className="text-right py-2 pr-4 font-medium">Days</th>
+            <th className="text-left py-2 pl-4 font-medium">Reason</th>
             <th className="text-left py-2 font-medium">Status</th>
             <th className="text-left py-2 font-medium">Approver</th>
             <th className="text-right py-2 font-medium pr-4">Actions</th>
@@ -98,8 +131,8 @@ export function LeaveTable({
                   {r.to_date !== r.from_date ? ` → ${formatDate(r.to_date)}` : ""}
                   {r.duration === "half_day" && <span className="text-2xs text-muted-foreground ml-1">({LEAVE_DURATION_LABELS.half_day})</span>}
                 </td>
-                <td className="py-3 text-right tabular-nums">{r.no_of_days}</td>
-                <td className="py-3 text-xs text-muted-foreground max-w-[220px] truncate">{r.reason ?? "—"}</td>
+                <td className="py-3 pr-4 text-right tabular-nums whitespace-nowrap">{daysLabel(r.no_of_days)}</td>
+                <td className="py-3 pl-4 text-xs text-muted-foreground max-w-[220px] truncate" title={r.reason ?? undefined}>{r.reason ?? "—"}</td>
                 <td className="py-3"><span className={`chip capitalize ${STATUS_TONE[r.status] ?? ""}`}>{r.status}</span></td>
                 <td className="py-3 text-xs whitespace-nowrap">{r.approver_name ?? "—"}</td>
                 <td className="py-3 pr-4 text-right whitespace-nowrap">

@@ -3,7 +3,8 @@ import { handleApiError } from "@/lib/api/error-handler";
  * POST /api/attendance/bulk — set the same status on many attendance rows at
  * once (e.g. mark the whole team Holiday on a festival). Managers only.
  *
- * Body: { ids: uuid[], status }
+ * Body: { ids: uuid[], status, reason } — the reason is required and kept in
+ * the audit row with the ids changed.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -19,6 +20,7 @@ export const dynamic = "force-dynamic";
 const Body = z.object({
   ids: z.array(z.string().uuid()).min(1).max(1000),
   status: z.enum(ATTENDANCE_STATUSES),
+  reason: z.string().trim().min(3, "Say why you are changing these records").max(300),
 });
 
 export async function POST(req: NextRequest) {
@@ -29,7 +31,7 @@ export async function POST(req: NextRequest) {
     }
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
-    const { ids, status } = parse.data;
+    const { ids, status, reason } = parse.data;
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     const count = await withTenant(session.tenantId, async (tx) => {
@@ -45,7 +47,8 @@ export async function POST(req: NextRequest) {
         action: "attendance.bulk_mark",
         entityType: "attendance",
         entityId: session.tenantId,
-        after: { status, count: r.rows.length } as any,
+        after: { status, count: r.rows.length, ids, reason },
+        reason,
         ...clientMeta,
       });
       return r.rows.length;

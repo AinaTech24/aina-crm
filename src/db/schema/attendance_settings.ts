@@ -25,6 +25,9 @@ export const attendanceSettings = pgTable(
     weekOffDays: jsonb("week_off_days").$type<number[]>().notNull().default([0]),
     /** Require a clock-in geolocation (UI hint; not hard-enforced). */
     requireGeo: boolean("require_geo").notNull().default(false),
+    /** Track attendance for owners too. Off: owners are left out of the daily
+     *  "absent until clocked in" seed and the attendance list. Migration 0220. */
+    trackOwners: boolean("track_owners").notNull().default(false),
     ...timestamps,
   },
   (t) => ({

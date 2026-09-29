@@ -1082,6 +1082,12 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
           'auto'
         FROM users u
         WHERE u.tenant_id = ${tenantId}::uuid AND u.status = 'active'
+          -- Owners only when the firm tracks them (Attendance settings, 0220);
+          -- otherwise an owner who never clocks in reads "Absent" every day.
+          AND (
+            NOT ('owner' = ANY(u.roles))
+            OR EXISTS (SELECT 1 FROM attendance_settings s WHERE s.tenant_id = u.tenant_id AND s.track_owners)
+          )
         ON CONFLICT (tenant_id, employee_user_id, attendance_date) DO NOTHING
         RETURNING 1
       `);

@@ -4,7 +4,9 @@ import { handleApiError } from "@/lib/api/error-handler";
  *
  *   GET   /api/attendance   — list (RLS-scoped)
  *   POST  /api/attendance   — upsert a row by (employee, date): set status/note.
- *                             Managers only (owner / branch_head).
+ *                             Managers only (owner / branch_head). A manager's
+ *                             correction needs a reason; the audit row keeps
+ *                             the before and after values with it.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -26,6 +28,8 @@ const Body = z.object({
   // minutes are corrected (e.g. fixing a missed punch).
   clockInAt: z.string().optional(),
   clockOutAt: z.string().optional(),
+  /** Why the record is being corrected — required, kept in the audit trail. */
+  reason: z.string().trim().min(3, "Say why you are correcting this record").max(300),
 });
 
 export async function GET(req: NextRequest) {
@@ -68,12 +72,18 @@ export async function POST(req: NextRequest) {
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     await withTenant(session.tenantId, async (tx) => {
+      const beforeRow = (await tx.execute(sql`
+        SELECT status, clock_in_at, clock_out_at, total_minutes, note, source FROM attendance
+         WHERE tenant_id = ${session.tenantId}::uuid AND employee_user_id = ${employeeUserId}::uuid AND attendance_date = ${date}::date
+         LIMIT 1
+      `)).rows[0] ?? null;
       await tx.execute(sql`
         INSERT INTO attendance (tenant_id, employee_user_id, attendance_date, status, note, clock_in_at, clock_out_at, total_minutes, source)
         VALUES (${session.tenantId}::uuid, ${employeeUserId}::uuid, ${date}::date, ${status}, ${note ?? null},
                 ${clockInIso}::timestamptz, ${clockOutIso}::timestamptz, ${totalMin}, 'manual')
         ON CONFLICT (tenant_id, employee_user_id, attendance_date) DO UPDATE SET
           status = EXCLUDED.status,
+          source = 'manual',
           note = COALESCE(EXCLUDED.note, attendance.note),
           clock_in_at = COALESCE(EXCLUDED.clock_in_at, attendance.clock_in_at),
           clock_out_at = COALESCE(EXCLUDED.clock_out_at, attendance.clock_out_at),
@@ -89,10 +99,12 @@ export async function POST(req: NextRequest) {
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,
-        action: "attendance.mark",
+        action: "attendance.correct",
         entityType: "attendance",
         entityId: session.tenantId,
-        after: { employeeUserId, date, status, clockInIso, clockOutIso } as any,
+        before: beforeRow ? { employeeUserId, date, ...beforeRow } : null,
+        after: { employeeUserId, date, status, clockInIso, clockOutIso, reason: parse.data.reason },
+        reason: parse.data.reason,
         ...clientMeta,
       });
     });

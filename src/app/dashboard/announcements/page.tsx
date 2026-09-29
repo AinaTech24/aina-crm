@@ -62,7 +62,7 @@ export default async function AnnouncementsPage() {
   });
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 max-w-7xl">
       <PageHeaderCard title={<><Megaphone className="size-6 text-muted-foreground" /> Announcements</>} subtitle={<>Notices your team sees inside the CRM — policy changes, targets and reminders.</>} />
       <AnnouncementBoard rows={rows} branches={branchRows} isManager={manager} />
     </div>

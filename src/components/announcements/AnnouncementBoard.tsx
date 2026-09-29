@@ -5,11 +5,12 @@
  * per-card manage actions (pin / edit / publish / delete). Posts to /api/announcements.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, X, Plus, Pin, PinOff, Trash2, Megaphone, Save, Edit2, Eye, EyeOff, Check, CheckCheck, ShieldAlert } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { confirmDialog } from "@/components/ui/ConfirmProvider";
+import { buttonClass } from "@/components/ui/button-class";
 
 type Row = Record<string, any>;
 
@@ -22,7 +23,7 @@ const CATEGORIES = [
 ] as const;
 
 const CAT_TONE: Record<string, string> = {
-  general: "bg-slate-50 text-slate-600",
+  general: "bg-secondary text-muted-foreground",
   policy: "bg-blue-50 text-blue-700",
   event: "bg-violet-50 text-violet-700",
   system: "bg-amber-50 text-amber-700",
@@ -30,6 +31,32 @@ const CAT_TONE: Record<string, string> = {
 };
 
 const ROLE_OPTS = ["owner", "branch_head", "rm", "ops", "back_office", "compliance", "marketing"];
+
+/** Where an announcement stands, for the managers' tabs. */
+type Stage = "live" | "scheduled" | "drafts" | "expired";
+const STAGE_TABS: Array<{ key: Stage; label: string }> = [
+  { key: "live", label: "Live" },
+  { key: "scheduled", label: "Scheduled" },
+  { key: "drafts", label: "Drafts" },
+  { key: "expired", label: "Expired" },
+];
+// The browser clock and the server's can disagree by minutes; only a publish
+// time clearly in the future counts as scheduled.
+const CLOCK_SKEW_MS = 5 * 60_000;
+function stageOf(r: { published_at?: string | null; expires_at?: string | null }, now: number): Stage {
+  if (!r.published_at) return "drafts";
+  if (new Date(r.published_at).getTime() > now + CLOCK_SKEW_MS) return "scheduled";
+  if (r.expires_at && new Date(r.expires_at).getTime() <= now) return "expired";
+  return "live";
+}
+const STAGE_EMPTY: Record<Stage, string> = {
+  live: "Nothing is live right now.",
+  // Honest: the composer publishes now or saves a draft — there is no
+  // publish-at time yet, so this stays empty until that exists.
+  scheduled: "Nothing scheduled. Announcements go out when you publish them, or wait here as drafts — a future publish time isn't available yet.",
+  drafts: "No drafts.",
+  expired: "Nothing has expired.",
+};
 
 export function AnnouncementBoard({
   rows,
@@ -45,6 +72,17 @@ export function AnnouncementBoard({
   const [compose, setCompose] = useState(false);
   const [editingRow, setEditingRow] = useState<Row | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [tab, setTab] = useState<Stage>("live");
+  // Managers see every announcement, split by stage; the team sees only live ones.
+  // Re-read the clock whenever the list refreshes (publish / unpublish).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const now = useMemo(() => Date.now(), [rows]);
+  const counts = useMemo(() => {
+    const c: Record<Stage, number> = { live: 0, scheduled: 0, drafts: 0, expired: 0 };
+    for (const r of rows) c[stageOf(r, now)]++;
+    return c;
+  }, [rows, now]);
+  const shown = isManager ? rows.filter((r) => stageOf(r, now) === tab) : rows;
 
   async function markRead(r: Row, acknowledge: boolean) {
     setBusyId(r.id);
@@ -119,15 +157,38 @@ export function AnnouncementBoard({
         </div>
       )}
 
-      {rows.length === 0 ? (
+      {isManager && (
+        <nav aria-label="Announcements by stage" className="border-b border-border">
+          <ul className="-mb-px flex gap-1 overflow-x-auto" role="tablist">
+            {STAGE_TABS.map((t) => (
+              <li key={t.key} role="presentation">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === t.key}
+                  onClick={() => setTab(t.key)}
+                  className={`inline-flex h-10 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 text-sm font-medium transition-colors ${
+                    tab === t.key ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {t.label}
+                  <span className="tabular-nums text-xs text-muted-foreground">({counts[t.key]})</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )}
+
+      {shown.length === 0 ? (
         <div className="card-surface p-12 text-center text-sm text-muted-foreground">
           <Megaphone className="size-8 mx-auto text-muted-foreground/50" />
-          <div className="mt-2 font-medium">No announcements.</div>
-          {isManager && <p className="mt-1 text-xs">Use “Post announcement” to share a notice with your team.</p>}
+          <div className="mt-2 font-medium">{isManager ? STAGE_EMPTY[tab] : "No announcements."}</div>
+          {isManager && rows.length === 0 && <p className="mt-1 text-xs">Use “Post announcement” to share a notice with your team.</p>}
         </div>
       ) : (
         <div className="space-y-3">
-          {rows.map((r) => {
+          {shown.map((r) => {
             const expired = r.expires_at && new Date(r.expires_at).getTime() < Date.now();
             const draft = !r.published_at;
             const branchName = r.branch_id ? branches.find((b) => b.id === r.branch_id)?.name : null;
@@ -142,8 +203,8 @@ export function AnnouncementBoard({
                         {r.category}
                       </span>
                       <h3 className="font-semibold">{r.title}</h3>
-                      {draft && <span className="chip text-2xs bg-slate-100 text-slate-500">draft</span>}
-                      {expired && <span className="chip text-2xs bg-slate-100 text-slate-500">expired</span>}
+                      {draft && <span className="chip text-2xs bg-secondary text-muted-foreground">draft</span>}
+                      {expired && <span className="chip text-2xs bg-secondary text-muted-foreground">expired</span>}
                       {r.requires_ack && (
                         <span className="chip text-2xs bg-amber-50 text-amber-700 inline-flex items-center gap-0.5">
                           <ShieldAlert className="size-3" /> Requires ack
@@ -217,7 +278,7 @@ export function AnnouncementBoard({
 
                     {isManager && (
                       <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                        <span className="chip text-2xs bg-slate-50 text-slate-600 inline-flex items-center gap-0.5">
+                        <span className="chip text-2xs bg-secondary text-muted-foreground inline-flex items-center gap-0.5">
                           <Eye className="size-3" /> {r.read_count ?? 0} read
                         </span>
                         {r.requires_ack && (
@@ -236,55 +297,41 @@ export function AnnouncementBoard({
                       </div>
                     )}
                   </div>
-                  {isManager && (
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        onClick={() => togglePublish(r)}
-                        disabled={busyId === r.id}
-                        className={`rounded p-1.5 hover:bg-secondary text-muted-foreground`}
-                        title={draft ? "Publish Now" : "Unpublish (Move to Draft)"}
-                      >
-                        {busyId === r.id ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : draft ? (
-                          <Eye className="size-4 text-emerald-600" />
-                        ) : (
-                          <EyeOff className="size-4 text-slate-400" />
-                        )}
-                      </button>
-                      <button
-                        onClick={() => setEditingRow(r)}
-                        disabled={busyId === r.id}
-                        className="rounded p-1.5 hover:bg-secondary text-muted-foreground"
-                        title="Edit"
-                      >
-                        <Edit2 className="size-4" />
-                      </button>
-                      <button
-                        onClick={() => togglePin(r)}
-                        disabled={busyId === r.id}
-                        className="rounded p-1.5 hover:bg-secondary text-muted-foreground"
-                        title={r.is_pinned ? "Unpin" : "Pin"}
-                      >
-                        {busyId === r.id ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : r.is_pinned ? (
-                          <PinOff className="size-4" />
-                        ) : (
-                          <Pin className="size-4" />
-                        )}
-                      </button>
-                      <button
-                        onClick={() => remove(r)}
-                        disabled={busyId === r.id}
-                        className="rounded p-1.5 hover:bg-rose-50 text-rose-500"
-                        title="Delete"
-                      >
-                        <Trash2 className="size-4" />
-                      </button>
-                    </div>
-                  )}
+                  {busyId === r.id && isManager && <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" aria-label="Working" />}
                 </div>
+                {isManager && (
+                  <div className="mt-3 flex flex-wrap items-center gap-1 border-t border-border pt-2">
+                    <button
+                      onClick={() => togglePublish(r)}
+                      disabled={busyId === r.id}
+                      className={buttonClass("ghost", "sm")}
+                      title={draft ? "Publish it to the team now" : "Take it down and keep it as a draft"}
+                    >
+                      {draft ? <Eye className="size-3.5" aria-hidden /> : <EyeOff className="size-3.5" aria-hidden />}
+                      {draft ? "Publish now" : "Move to drafts"}
+                    </button>
+                    <button onClick={() => setEditingRow(r)} disabled={busyId === r.id} className={buttonClass("ghost", "sm")} title="Edit this announcement">
+                      <Edit2 className="size-3.5" aria-hidden /> Edit
+                    </button>
+                    <button
+                      onClick={() => togglePin(r)}
+                      disabled={busyId === r.id}
+                      className={buttonClass("ghost", "sm")}
+                      title={r.is_pinned ? "Stop keeping it at the top" : "Keep it at the top of the list"}
+                    >
+                      {r.is_pinned ? <PinOff className="size-3.5" aria-hidden /> : <Pin className="size-3.5" aria-hidden />}
+                      {r.is_pinned ? "Unpin" : "Pin"}
+                    </button>
+                    <button
+                      onClick={() => remove(r)}
+                      disabled={busyId === r.id}
+                      className={buttonClass("ghost", "sm", "ml-auto text-rose-700 hover:text-rose-700")}
+                      title="Delete this announcement"
+                    >
+                      <Trash2 className="size-3.5" aria-hidden /> Delete
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}

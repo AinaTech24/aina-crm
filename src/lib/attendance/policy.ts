@@ -43,6 +43,8 @@ export type AttendancePolicy = {
   halfDayMinutes: number;
   fullDayMinutes: number;
   weekOffDays: number[];
+  /** Owners are tracked too (else left out of the seed and the list). */
+  trackOwners?: boolean;
 };
 
 export const DEFAULT_ATTENDANCE_POLICY: AttendancePolicy = {
@@ -52,6 +54,7 @@ export const DEFAULT_ATTENDANCE_POLICY: AttendancePolicy = {
   halfDayMinutes: 240,
   fullDayMinutes: 480,
   weekOffDays: [0],
+  trackOwners: false,
 };
 
 /** Is weekday `dow` (0=Sun) a weekly off under this policy? */

@@ -29,6 +29,8 @@ const Body = z.object({
   fullDayMinutes: z.number().int().min(0).max(DAY_MINUTES),
   weekOffDays: z.array(z.number().int().min(0).max(6)),
   requireGeo: z.boolean(),
+  /** Optional so an older client that doesn't send it leaves it unchanged. */
+  trackOwners: z.boolean().optional(),
 });
 
 export async function GET() {

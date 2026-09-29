@@ -29,6 +29,7 @@
 
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { PromptDialog } from "@/components/ui/PromptDialog";
 
 export type ConfirmOptions = {
   title: string;
@@ -40,9 +41,35 @@ export type ConfirmOptions = {
 
 export type ConfirmFn = (options: string | ConfirmOptions) => Promise<boolean>;
 
+/**
+ * One-field ask — the replacement for `window.prompt()`. Resolves to the
+ * trimmed string, or null when cancelled, so a call site reads:
+ *
+ *   const name = await promptDialog({ title: "Name your dashboard" });
+ *   if (name === null) return;
+ */
+export type PromptOptions = {
+  title: string;
+  message?: string;
+  label?: string;
+  placeholder?: string;
+  defaultValue?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  multiline?: boolean;
+  optional?: boolean;
+  maxLength?: number;
+};
+
+export type PromptFn = (options: string | PromptOptions) => Promise<string | null>;
+
 const ConfirmContext = createContext<ConfirmFn | null>(null);
 
 function normalise(options: string | ConfirmOptions): ConfirmOptions {
+  return typeof options === "string" ? { title: options } : options;
+}
+
+function normalisePrompt(options: string | PromptOptions): PromptOptions {
   return typeof options === "string" ? { title: options } : options;
 }
 
@@ -57,6 +84,7 @@ function normalise(options: string | ConfirmOptions): ConfirmOptions {
  * dialog, so the question is never silently skipped.
  */
 let mountedConfirm: ConfirmFn | null = null;
+let mountedPrompt: PromptFn | null = null;
 
 export function confirmDialog(options: string | ConfirmOptions): Promise<boolean> {
   if (mountedConfirm) return mountedConfirm(options);
@@ -64,8 +92,18 @@ export function confirmDialog(options: string | ConfirmOptions): Promise<boolean
   return Promise.resolve(window.confirm(normalise(options).title));
 }
 
+/** Branded `window.prompt()`. Resolves to the trimmed answer, or null if cancelled. */
+export function promptDialog(options: string | PromptOptions): Promise<string | null> {
+  if (mountedPrompt) return mountedPrompt(options);
+  if (typeof window === "undefined") return Promise.resolve(null);
+  const o = normalisePrompt(options);
+  return Promise.resolve(window.prompt(o.title, o.defaultValue ?? "")?.trim() ?? null);
+}
+
 export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<ConfirmOptions | null>(null);
+  const [asking, setAsking] = useState<PromptOptions | null>(null);
+  const answerPromptRef = useRef<((answer: string | null) => void) | null>(null);
   // The resolver for the promise handed to the caller. Held in a ref so
   // answering the dialog never depends on a re-render having flushed.
   const resolveRef = useRef<((answer: boolean) => void) | null>(null);
@@ -87,12 +125,28 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     resolve?.(value);
   }, []);
 
+  const ask = useCallback<PromptFn>((options) => {
+    return new Promise<string | null>((resolve) => {
+      answerPromptRef.current?.(null);
+      answerPromptRef.current = resolve;
+      setAsking(normalisePrompt(options));
+    });
+  }, []);
+
+  const answerPrompt = useCallback((result: string | null) => {
+    const resolve = answerPromptRef.current;
+    answerPromptRef.current = null;
+    setAsking(null);
+    resolve?.(result);
+  }, []);
+
   const value = useMemo(() => confirm, [confirm]);
 
   // Publish for the imperative `confirmDialog()` used by handlers that can't
   // call a hook. Set during render rather than in an effect so a click handler
   // that fires before effects flush still gets the branded dialog.
   mountedConfirm = value;
+  mountedPrompt = ask;
 
   return (
     <ConfirmContext.Provider value={value}>
@@ -106,6 +160,21 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
         tone={pending?.tone ?? "default"}
         onConfirm={() => answer(true)}
         onCancel={() => answer(false)}
+      />
+      <PromptDialog
+        open={asking !== null}
+        title={asking?.title ?? ""}
+        message={asking?.message}
+        label={asking?.label}
+        placeholder={asking?.placeholder}
+        defaultValue={asking?.defaultValue ?? ""}
+        confirmLabel={asking?.confirmLabel ?? "Save"}
+        cancelLabel={asking?.cancelLabel ?? "Cancel"}
+        multiline={asking?.multiline ?? false}
+        optional={asking?.optional ?? false}
+        maxLength={asking?.maxLength}
+        onConfirm={(v) => answerPrompt(v)}
+        onCancel={() => answerPrompt(null)}
       />
     </ConfirmContext.Provider>
   );

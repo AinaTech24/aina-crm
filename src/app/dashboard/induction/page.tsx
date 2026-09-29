@@ -1,18 +1,21 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
- * My Induction — the member's track: ordered lessons, progress, lock state.
- *
- * A lesson unlocks once every previous REQUIRED lesson is complete, so the
- * track is walked in order.
+ * Induction. Everyone sees their own track: ordered lessons, progress, lock
+ * state (a lesson unlocks once every previous REQUIRED lesson is complete, so
+ * the track is walked in order). People who manage induction also see every
+ * training track with how many are enrolled and passed, and "+ New training
+ * track" — building tracks lives at /dashboard/settings/induction.
  */
 
 import Link from "next/link";
-import { eq } from "drizzle-orm";
-import { CheckCircle2, GraduationCap, Lock, PlayCircle, FileText, ExternalLink } from "lucide-react";
+import { eq, sql } from "drizzle-orm";
+import { CheckCircle2, GraduationCap, Lock, PlayCircle, FileText, ExternalLink, Plus } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { inductionEnrolments, inductionTracks } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { loadTrackState } from "@/lib/induction/engine";
+import { can } from "@/lib/auth/rbac";
+import { buttonClass } from "@/components/ui/button-class";
 
 export const dynamic = "force-dynamic";
 
@@ -24,8 +27,79 @@ const KIND_ICON: Record<string, any> = {
   checklist: CheckCircle2,
 };
 
+type TrackRow = { id: string; name: string; status: string; lessons: number; enrolled: number; passed: number };
+
 export default async function InductionPage() {
   const session = await requireSession();
+  const isAdmin = can(session.roles, "induction.manage", session.permissions);
+
+  // Every track with its lesson / enrolment / pass counts — for admins only.
+  const tracks: TrackRow[] = isAdmin
+    ? await withTenant(session.tenantId, async (tx) =>
+        (await tx.execute(sql`
+          SELECT t.id, t.name, t.status,
+                 (SELECT count(*)::int FROM induction_lessons l WHERE l.track_id = t.id) AS lessons,
+                 (SELECT count(*)::int FROM induction_enrolments e WHERE e.track_id = t.id) AS enrolled,
+                 (SELECT count(*)::int FROM induction_enrolments e WHERE e.track_id = t.id AND e.status = 'passed') AS passed
+            FROM induction_tracks t
+           WHERE t.tenant_id = ${session.tenantId}::uuid
+           ORDER BY t.name ASC
+        `)).rows as TrackRow[]
+      )
+    : [];
+
+  const header = (
+    <PageHeaderCard
+      title={<><GraduationCap className="size-6 text-muted-foreground" /> Induction</>}
+      subtitle={<>Training for new team members: lessons to walk through, and an exam that unlocks full access.</>}
+      actions={
+        isAdmin ? (
+          <Link href="/dashboard/settings/induction" className={buttonClass("primary")}>
+            <Plus className="size-4" /> New training track
+          </Link>
+        ) : undefined
+      }
+    />
+  );
+
+  const trackList = isAdmin ? (
+    <section aria-labelledby="tracks" className="card-surface overflow-hidden">
+      <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+        <h2 id="tracks" className="text-sm font-semibold">Training tracks</h2>
+        <Link href="/dashboard/settings/induction" className="text-xs font-medium text-foreground hover:underline">Manage tracks →</Link>
+      </div>
+      {tracks.length === 0 ? (
+        <p className="px-4 py-6 text-sm text-muted-foreground">
+          No training tracks yet. Build one with “New training track”, then enrol new joiners on it.
+        </p>
+      ) : (
+        <div className="table-scroll">
+          <table className="w-full text-sm">
+            <thead className="text-xs text-muted-foreground border-b">
+              <tr>
+                <th className="text-left px-4 py-2 font-medium">Track</th>
+                <th className="text-left py-2 font-medium">Status</th>
+                <th className="text-right py-2 font-medium">Lessons</th>
+                <th className="text-right py-2 font-medium">Enrolled</th>
+                <th className="text-right py-2 pr-4 font-medium">Passed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tracks.map((t) => (
+                <tr key={t.id} className="border-b last:border-0">
+                  <td className="px-4 py-2.5 font-medium">{t.name}</td>
+                  <td className="py-2.5"><span className="chip text-2xs bg-secondary text-foreground capitalize">{t.status}</span></td>
+                  <td className="py-2.5 text-right tabular-nums">{t.lessons}</td>
+                  <td className="py-2.5 text-right tabular-nums">{t.enrolled}</td>
+                  <td className="py-2.5 pr-4 text-right tabular-nums">{t.passed}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  ) : null;
 
   const data = await withTenant(session.tenantId, async (tx) => {
     const [enrolment] = await tx
@@ -47,13 +121,22 @@ export default async function InductionPage() {
   });
 
   if (!data) {
+    if (isAdmin) {
+      return (
+        <div className="max-w-5xl space-y-5">
+          {header}
+          {trackList}
+        </div>
+      );
+    }
     return (
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-3xl mx-auto space-y-5">
+        {header}
         <div className="card-surface p-12 text-center">
           <div className="mx-auto size-12 rounded-full bg-brand-cyan-light/40 flex items-center justify-center mb-3">
             <GraduationCap className="size-6 text-muted-foreground" />
           </div>
-          <div className="text-sm font-semibold text-slate-700">No induction assigned</div>
+          <div className="text-sm font-semibold text-foreground">No induction assigned</div>
           <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
             You haven't been enrolled on a training track. If you've just joined, ask your manager to
             assign one.
@@ -67,13 +150,12 @@ export default async function InductionPage() {
   const passed = enrolment.status === "passed";
 
   return (
-    <div className="max-w-3xl mx-auto space-y-5">
-      <div className="rounded-2xl border border-border bg-gradient-to-br from-brand-cyan-light/50 via-card to-card p-5 sm:p-6">
-<PageHeaderCard title={<><span className="grid place-items-center size-9 rounded-xl bg-brand-cyan text-white shadow-sm">
-            <GraduationCap className="size-5" />
-          </span>
-          Induction</>} subtitle={<>{track.name} — your training modules, and the exam that unlocks full access.</>} />
-{track.description && (
+    <div className={`${isAdmin ? "max-w-5xl" : "max-w-3xl mx-auto"} space-y-5`}>
+      {header}
+      {trackList}
+      <div className="rounded-2xl border border-border bg-card p-5 sm:p-6">
+        <h2 className="text-base font-semibold text-foreground">Your track: {track.name}</h2>
+        {track.description && (
           <p className="text-muted-foreground text-sm mt-2">{track.description}</p>
         )}
 
@@ -103,26 +185,26 @@ export default async function InductionPage() {
                   s.completed
                     ? "bg-emerald-500 text-white"
                     : s.locked
-                      ? "bg-slate-100 text-slate-400"
+                      ? "bg-secondary text-muted-foreground"
                       : "bg-brand-cyan-light/60 text-brand-cyan-deep"
                 }`}
               >
                 {s.completed ? <CheckCircle2 className="size-4" /> : s.locked ? <Lock className="size-3.5" /> : i + 1}
               </span>
               <div className="min-w-0 flex-1">
-                <div className={`text-sm font-medium truncate ${s.locked ? "text-slate-400" : ""}`}>
+                <div className={`text-sm font-medium truncate ${s.locked ? "text-muted-foreground" : ""}`}>
                   {s.lesson.title}
                 </div>
                 {s.lesson.summary && (
                   <div className="text-xs text-muted-foreground truncate mt-0.5">{s.lesson.summary}</div>
                 )}
               </div>
-              <Icon className={`size-4 shrink-0 ${s.locked ? "text-slate-300" : "text-muted-foreground"}`} />
+              <Icon className={`size-4 shrink-0 ${s.locked ? "text-muted-foreground" : "text-muted-foreground"}`} />
             </div>
           );
 
           return (
-            <li key={s.lesson.id} className={s.locked ? "opacity-70" : "hover:bg-slate-50/70"}>
+            <li key={s.lesson.id} className={s.locked ? "opacity-70" : "hover:bg-secondary/70"}>
               {s.locked ? (
                 <div title="Complete the previous step first">{body}</div>
               ) : (

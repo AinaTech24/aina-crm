@@ -13,6 +13,13 @@ import { loadAttendancePolicy } from "@/lib/attendance/settings";
 
 const PAGE_SIZE = 50;
 
+/** India wall clock: today's date (yyyy-mm-dd) and the time (HH:MM). */
+function indiaNow(now = new Date()) {
+  const date = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(now);
+  const time = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(now);
+  return { date, time };
+}
+
 export const dynamic = "force-dynamic";
 
 export default async function AttendancePage({
@@ -29,9 +36,13 @@ export default async function AttendancePage({
   const page = Math.max(1, Number(sp.page) || 1);
   const offset = (page - 1) * PAGE_SIZE;
 
+  const ist = indiaNow();
+
   const data = await withTenant(session.tenantId, async (tx) => {
     const policy = await loadAttendancePolicy(tx, session.tenantId);
-    const conds: any[] = [sql`a.tenant_id = ${session.tenantId}::uuid`];
+    // Owners are left out unless the firm tracks them (Attendance settings).
+    const ownerOut = policy.trackOwners ? sql`TRUE` : sql`NOT ('owner' = ANY(COALESCE(u.roles, ARRAY[]::text[])))`;
+    const conds: any[] = [sql`a.tenant_id = ${session.tenantId}::uuid`, ownerOut];
     if (q) conds.push(sql`u.name ILIKE ${`%${q}%`}`);
     if (statusFilter.length) conds.push(sql`a.status IN (${sql.join(statusFilter.map((v) => sql`${v}`), sql`, `)})`);
     const dr = dateRangeCond(sp, "date", "a.attendance_date");
@@ -55,25 +66,33 @@ export default async function AttendancePage({
       ORDER BY a.attendance_date DESC, u.name ASC
       LIMIT ${PAGE_SIZE} OFFSET ${offset}
     `);
+    // The daily seed marks everyone "absent" until they clock in. Before the
+    // working day ends that is "Not clocked in", not an absence.
+    const dayOver = ist.time >= policy.workEnd;
     // Flag late-in / early-out per row from the tenant's work-hours policy.
     const rows = (rowsRes.rows as any[]).map((r) => {
       const f = computeAttendanceFlags(String(r.attendance_date), r.clock_in_at, r.clock_out_at, policy);
+      const day = String(r.attendance_date).slice(0, 10);
       return {
         ...r,
         is_late: f.isLate,
         late_minutes: f.lateMinutes,
         is_early_out: f.isEarlyOut,
         early_minutes: f.earlyMinutes,
+        pending: !dayOver && day === ist.date && r.status === "absent" && r.source === "auto" && !r.clock_in_at,
       };
     });
 
     const stats = await tx.execute(sql`
       SELECT
-        COUNT(*) FILTER (WHERE attendance_date = current_date AND status = 'present')::int AS present_today,
-        COUNT(*) FILTER (WHERE attendance_date = current_date AND status = 'absent')::int AS absent_today,
-        COUNT(*) FILTER (WHERE attendance_date = current_date AND status = 'on_leave')::int AS on_leave_today,
-        (SELECT COUNT(*)::int FROM users WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active') AS active_employees
-      FROM attendance WHERE tenant_id = ${session.tenantId}::uuid
+        COUNT(*) FILTER (WHERE a.attendance_date = ${ist.date}::date AND a.status = 'present')::int AS present_today,
+        COUNT(*) FILTER (WHERE a.attendance_date = ${ist.date}::date AND a.status = 'absent')::int AS absent_today,
+        COUNT(*) FILTER (WHERE a.attendance_date = ${ist.date}::date AND a.status = 'absent'
+                           AND a.source = 'auto' AND a.clock_in_at IS NULL)::int AS not_clocked_in,
+        COUNT(*) FILTER (WHERE a.attendance_date = ${ist.date}::date AND a.status = 'on_leave')::int AS on_leave_today,
+        (SELECT COUNT(*)::int FROM users u WHERE u.tenant_id = ${session.tenantId}::uuid AND u.status = 'active' AND ${ownerOut}) AS active_employees
+      FROM attendance a LEFT JOIN users u ON u.id = a.employee_user_id
+      WHERE a.tenant_id = ${session.tenantId}::uuid AND ${ownerOut}
     `);
 
     const myToday = await tx.execute(sql`
@@ -82,7 +101,7 @@ export default async function AttendancePage({
       LIMIT 1
     `);
 
-    return { rows, total, stats: stats.rows[0] as any, myToday: (myToday.rows[0] as any) ?? null };
+    return { rows, total, stats: stats.rows[0] as any, myToday: (myToday.rows[0] as any) ?? null, dayOver, workEnd: policy.workEnd };
   });
 
   const s = data.stats;
@@ -121,7 +140,12 @@ export default async function AttendancePage({
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat icon={CheckCircle2} label="Present today" value={`${s.present_today ?? 0} / ${s.active_employees ?? 0}`} tone="emerald" />
-        <Stat icon={XCircle} label="Absent today" value={s.absent_today ?? 0} tone={s.absent_today > 0 ? "rose" : "muted"} />
+        {data.dayOver ? (
+          <Stat icon={XCircle} label="Absent today" value={s.absent_today ?? 0} tone={s.absent_today > 0 ? "rose" : "muted"} />
+        ) : (
+          // Before the day ends nobody is absent yet — just not clocked in.
+          <Stat icon={XCircle} label={`Not clocked in (day ends ${data.workEnd})`} value={s.not_clocked_in ?? 0} tone="muted" />
+        )}
         <Stat icon={CalendarOff} label="On leave today" value={s.on_leave_today ?? 0} tone={s.on_leave_today > 0 ? "amber" : "muted"} />
         <Stat icon={CalendarCheck} label="Active employees" value={s.active_employees ?? 0} />
       </div>

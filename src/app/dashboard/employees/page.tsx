@@ -16,7 +16,7 @@ const STATUS_COLORS: Record<string, string> = {
   invited: "bg-blue-50 text-blue-700",
   suspended: "bg-rose-50 text-rose-700",
   offboarding: "bg-amber-50 text-amber-700",
-  offboarded: "bg-gray-50 text-gray-700",
+  offboarded: "bg-secondary text-foreground",
 };
 
 export const dynamic = "force-dynamic";
@@ -31,8 +31,12 @@ export default async function EmployeesPage({
   const q = (sp.q ?? "").trim();
   const deptFilter = (sp.department ?? "").split(",").filter(Boolean);
   const statusFilter = (sp.status ?? "").split(",").filter(Boolean);
+  // Offboarded people are hidden unless asked for — by the "Show offboarded"
+  // switch, or by filtering on that status directly.
+  const showOffboarded = sp.offboarded === "1" || statusFilter.includes("offboarded");
+  const incompleteOnly = sp.incomplete === "1";
 
-  const data = await withTenant(session.tenantId, async (tx) => {
+  const { rows: data, offboardedCount, incompleteCount } = await withTenant(session.tenantId, async (tx) => {
     // Trashed (soft-deleted) employees live in the Trash bin, not the team list.
     const conds: any[] = [sql`u.deleted_at IS NULL`];
     if (q) {
@@ -50,6 +54,11 @@ export default async function EmployeesPage({
         sql`u.status IN (${sql.join(statusFilter.map((v) => sql`${v}`), sql`, `)})`
       );
     }
+    if (!showOffboarded) conds.push(sql`u.status <> 'offboarded'`);
+    // "Complete team profiles": people missing a department, manager or joining date.
+    if (incompleteOnly) {
+      conds.push(sql`(u.department IS NULL OR u.reporting_manager_id IS NULL OR u.joining_date IS NULL)`);
+    }
     const whereSql = conds.length ? sql` WHERE ${sql.join(conds, sql` AND `)}` : sql``;
 
     const employees = await tx.execute(sql`
@@ -64,7 +73,22 @@ export default async function EmployeesPage({
       ${whereSql}
       ORDER BY u.created_at DESC
     `);
-    return employees.rows as any[];
+    // How many are hidden, for the switch's count and the note under the table.
+    const off = await tx.execute(sql`
+      SELECT COUNT(*)::int AS c FROM users u WHERE u.deleted_at IS NULL AND u.status = 'offboarded'
+    `);
+    // Current (not offboarded) members whose profile lacks a department,
+    // manager or joining date — the reason those columns are empty.
+    const gaps = await tx.execute(sql`
+      SELECT COUNT(*)::int AS c FROM users u
+       WHERE u.deleted_at IS NULL AND u.status <> 'offboarded'
+         AND (u.department IS NULL OR u.reporting_manager_id IS NULL OR u.joining_date IS NULL)
+    `);
+    return {
+      rows: employees.rows as any[],
+      offboardedCount: Number((off.rows[0] as { c?: number } | undefined)?.c ?? 0),
+      incompleteCount: Number((gaps.rows[0] as { c?: number } | undefined)?.c ?? 0),
+    };
   });
 
   const stats = {
@@ -75,6 +99,10 @@ export default async function EmployeesPage({
     ).length,
     targetedRms: data.filter((e) => Number(e.annual_target ?? 0) > 0).length,
   };
+
+  const hasDept = data.some((e: any) => !!e.department);
+  const hasManager = data.some((e: any) => !!e.manager_name);
+  const hasJoined = data.some((e: any) => !!e.joining_date);
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -96,6 +124,28 @@ export default async function EmployeesPage({
             <Plus className="size-4" /> Invite employee
           </Link>
         </div></>} />
+
+      {/* Department / Manager / Joined are hidden while nobody has them filled;
+          this says why and opens exactly the profiles to complete. */}
+      {incompleteCount > 0 && !incompleteOnly && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-secondary/40 px-4 py-2.5 text-sm">
+          <span className="text-foreground">
+            {incompleteCount === 1 ? "1 team member has" : `${incompleteCount} team members have`} no department, manager or
+            joining date{!hasDept || !hasManager || !hasJoined ? ", so those columns are hidden" : ""}.
+          </span>
+          <Link href="/dashboard/employees?incomplete=1" className="font-medium text-foreground underline-offset-2 hover:underline">
+            Complete team profiles →
+          </Link>
+        </div>
+      )}
+      {incompleteOnly && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-secondary/40 px-4 py-2.5 text-sm">
+          <span className="text-foreground">Showing team members missing a department, manager or joining date. Open each to fill them in.</span>
+          <Link href="/dashboard/employees" className="font-medium text-foreground underline-offset-2 hover:underline">
+            Show everyone
+          </Link>
+        </div>
+      )}
 
       <CompactFilterBar
         totalCount={data.length}
@@ -128,6 +178,11 @@ export default async function EmployeesPage({
               { value: "offboarded", label: "Offboarded" },
             ],
           },
+          {
+            type: "flags",
+            label: "Show",
+            options: [{ key: "offboarded", label: "Show offboarded", count: offboardedCount }],
+          },
         ]}
         rightSlot={
           <CustomViews
@@ -146,7 +201,9 @@ export default async function EmployeesPage({
         {data.length === 0 ? (
           <div className="p-12 text-center text-sm text-muted-foreground">
             <UserCog className="size-8 mx-auto text-muted-foreground/50" />
-            <div className="mt-2">No employees match these filters.</div>
+            <div className="mt-2">
+              {incompleteOnly ? "Every team profile is complete." : "No team members match these filters."}
+            </div>
           </div>
         ) : (
           <div className="table-scroll">
@@ -154,9 +211,9 @@ export default async function EmployeesPage({
               <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
                 <tr>
                   <th className="text-left px-4 py-2 font-medium">Employee</th>
-                  <th className="text-left py-2 font-medium">Department</th>
-                  <th className="text-left py-2 font-medium">Manager</th>
-                  <th className="text-left py-2 font-medium">Joined</th>
+                  {hasDept && <th className="text-left py-2 font-medium">Department</th>}
+                  {hasManager && <th className="text-left py-2 font-medium">Manager</th>}
+                  {hasJoined && <th className="text-left py-2 font-medium">Joined</th>}
                   <th className="text-left py-2 font-medium">Roles</th>
                   <th className="text-right py-2 font-medium">Clients</th>
                   <th className="text-right py-2 font-medium">AUM</th>
@@ -179,16 +236,36 @@ export default async function EmployeesPage({
                         <div className="text-2xs text-muted-foreground">{e.email}</div>
                         {e.phone && <div className="text-2xs text-muted-foreground font-mono">{e.phone}</div>}
                       </td>
-                      <td className="py-3 text-xs capitalize">
-                        {e.department ? e.department.replace(/_/g, " ") : ""}
-                      </td>
-                      <td className="py-3 text-xs">{e.manager_name ?? ""}</td>
-                      <td className="py-3 text-xs text-muted-foreground tabular-nums">
-                        {e.joining_date ? formatDate(e.joining_date) : ""}
-                      </td>
+                      {hasDept && (
+                        <td className="py-3 text-xs capitalize">
+                          {e.department ? e.department.replace(/_/g, " ") : ""}
+                        </td>
+                      )}
+                      {hasManager && <td className="py-3 text-xs">{e.manager_name ?? ""}</td>}
+                      {hasJoined && (
+                        <td className="py-3 text-xs text-muted-foreground tabular-nums">
+                          {e.joining_date ? formatDate(e.joining_date) : ""}
+                        </td>
+                      )}
                       <td className="py-3 text-xs">
-                        {(e.roles ?? []).slice(0, 3).map((r: string) => ROLE_LABELS[r] ?? r).join(", ")}
-                        {(e.roles ?? []).length > 3 && <span className="text-muted-foreground"> +{e.roles.length - 3}</span>}
+                        {(() => {
+                          // back_office and ops share a label — show it once.
+                          const labels = [...new Set(((e.roles ?? []) as string[]).map((r) => ROLE_LABELS[r] ?? r))];
+                          const rest = labels.slice(2);
+                          return (
+                            <div className="flex flex-wrap items-center gap-1">
+                              {labels.slice(0, 2).map((l) => (
+                                <span key={l} className="chip text-2xs bg-secondary text-foreground whitespace-nowrap">{l}</span>
+                              ))}
+                              {rest.length > 0 && (
+                                <span className="chip text-2xs bg-secondary text-muted-foreground" title={rest.join(", ")}>
+                                  +{rest.length}
+                                  <span className="sr-only"> more: {rest.join(", ")}</span>
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="py-3 text-right tabular-nums">{e.assigned_clients}</td>
                       <td className="py-3 text-right tabular-nums text-muted-foreground">
@@ -200,7 +277,8 @@ export default async function EmployeesPage({
                             const annualTarget = Number(e.annual_target);
                             const myAum = Number(e.my_aum ?? 0);
                             const progress = Math.round((myAum / annualTarget) * 100);
-                            const progressColor = progress >= 100 ? "bg-emerald-500 text-emerald-600" : progress >= 50 ? "bg-amber-500 text-amber-600" : "bg-rose-500 text-rose-600";
+                            const progressColor =
+                              progress >= 100 ? "bg-emerald-500 text-emerald-700" : progress > 0 ? "bg-foreground/40 text-foreground" : "bg-secondary text-muted-foreground";
                             return (
                               <div className="flex flex-col items-end gap-1">
                                 <span className="font-medium tabular-nums text-foreground">
@@ -212,7 +290,7 @@ export default async function EmployeesPage({
                                     style={{ width: `${Math.min(100, progress)}%` }}
                                   />
                                 </div>
-                                <span className={`text-2xs font-bold tabular-nums ${progressColor.split(" ")[1]}`}>
+                                <span className={`text-2xs font-semibold tabular-nums ${progressColor.split(" ")[1]}`}>
                                   {progress}%
                                 </span>
                               </div>
@@ -262,6 +340,14 @@ export default async function EmployeesPage({
           </div>
         )}
       </div>
+      {!showOffboarded && offboardedCount > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {offboardedCount} offboarded {offboardedCount === 1 ? "person is" : "people are"} hidden.{" "}
+          <Link href="/dashboard/employees?offboarded=1" className="font-medium text-foreground hover:underline">
+            Show offboarded
+          </Link>
+        </p>
+      )}
     </div>
   );
 }

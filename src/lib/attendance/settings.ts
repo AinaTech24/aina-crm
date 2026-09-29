@@ -21,5 +21,6 @@ export async function loadAttendancePolicy(tx: Tx, tenantId: string): Promise<At
     halfDayMinutes: row.halfDayMinutes ?? DEFAULT_ATTENDANCE_POLICY.halfDayMinutes,
     fullDayMinutes: row.fullDayMinutes ?? DEFAULT_ATTENDANCE_POLICY.fullDayMinutes,
     weekOffDays: (row.weekOffDays as number[]) ?? DEFAULT_ATTENDANCE_POLICY.weekOffDays,
+    trackOwners: row.trackOwners ?? false,
   };
 }

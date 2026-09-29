@@ -20,7 +20,9 @@ export default async function LeaveApplicationsPage({
   const session = await requireSession();
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
-  const statusFilter = (sp.status ?? "").split(",").filter(Boolean);
+  // The list opens on Pending: what needs a decision. A status filter (or
+  // another tab) replaces it.
+  const statusFilter = (sp.status ?? "requested").split(",").filter(Boolean);
   const typeFilter = (sp.type ?? "").split(",").filter(Boolean);
   const mine = sp.mine === "1";
   const view = sp.view ?? "list";
@@ -103,6 +105,29 @@ export default async function LeaveApplicationsPage({
 
   const s = data.stats;
 
+  // Pending (n) · Approved · Rejected — each tab is one status; other filters
+  // (search, type, mine) carry across.
+  const TABS = [
+    { status: "requested", label: "Pending", count: Number(s?.pending ?? 0) },
+    { status: "approved", label: "Approved" },
+    { status: "rejected", label: "Rejected" },
+  ] as const;
+  const activeTab = statusFilter.length === 1 ? statusFilter[0] : null;
+  const tabHref = (status: string) => {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (typeFilter.length) params.set("type", typeFilter.join(","));
+    if (mine) params.set("mine", "1");
+    if (status !== "requested") params.set("status", status);
+    const qs = params.toString();
+    return `/dashboard/leave-applications${qs ? `?${qs}` : ""}`;
+  };
+  const EMPTY: Record<string, [string, string]> = {
+    requested: ["Nothing waiting for a decision.", ""],
+    approved: ["No approved leave yet.", ""],
+    rejected: ["No rejected requests.", ""],
+  };
+
   const getToggleUrl = (targetView: string) => {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
@@ -157,6 +182,28 @@ export default async function LeaveApplicationsPage({
         />
       ) : (
         <>
+          <nav aria-label="Leave requests by status" className="border-b border-border">
+            <ul className="-mb-px flex gap-1 overflow-x-auto">
+              {TABS.map((t) => {
+                const active = activeTab === t.status;
+                return (
+                  <li key={t.status}>
+                    <Link
+                      href={tabHref(t.status)}
+                      aria-current={active ? "page" : undefined}
+                      className={`inline-flex h-10 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 text-sm font-medium transition-colors ${
+                        active ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {t.label}
+                      {"count" in t && <span className="tabular-nums text-xs text-muted-foreground">({t.count})</span>}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
+
           <CompactFilterBar
             totalCount={data.rows ? data.rows.length : 0}
             filters={[
@@ -192,7 +239,13 @@ export default async function LeaveApplicationsPage({
             }
           />
 
-          <LeaveTable rows={data.rows || []} canApprove={canApprove} currentUserId={session.userId} />
+          <LeaveTable
+            rows={data.rows || []}
+            canApprove={canApprove}
+            currentUserId={session.userId}
+            emptyTitle={activeTab && EMPTY[activeTab] ? EMPTY[activeTab][0] : undefined}
+            emptyHint={activeTab && EMPTY[activeTab] ? EMPTY[activeTab][1] : undefined}
+          />
         </>
       )}
     </div>

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Save, MapPin } from "lucide-react";
+import { Loader2, Save, MapPin, UserCheck } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 
 type Settings = {
@@ -13,6 +13,7 @@ type Settings = {
   fullDayMinutes: number;
   weekOffDays: number[];
   requireGeo: boolean;
+  trackOwners?: boolean;
 };
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -34,6 +35,7 @@ export function AttendanceSettingsForm({
   const [fullDayMinutes, setFullDayMinutes] = useState(initial.fullDayMinutes);
   const [weekOffDays, setWeekOffDays] = useState<number[]>(initial.weekOffDays ?? []);
   const [requireGeo, setRequireGeo] = useState(initial.requireGeo);
+  const [trackOwners, setTrackOwners] = useState(initial.trackOwners ?? false);
   const [busy, setBusy] = useState(false);
 
   function toggleDay(dow: number) {
@@ -56,6 +58,7 @@ export function AttendanceSettingsForm({
           fullDayMinutes: Number(fullDayMinutes) || 0,
           weekOffDays,
           requireGeo,
+          trackOwners,
         }),
       });
       const j = await res.json().catch(() => ({}));
@@ -175,6 +178,29 @@ export function AttendanceSettingsForm({
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
             Ask employees to share their location when they clock in.
+          </p>
+        </div>
+      </label>
+
+      <label
+        className={`flex items-start gap-3 rounded-md border border-border p-3 ${
+          canManage ? "cursor-pointer" : "opacity-60 cursor-not-allowed"
+        }`}
+      >
+        <input
+          type="checkbox"
+          checked={trackOwners}
+          onChange={(e) => setTrackOwners(e.target.checked)}
+          disabled={!canManage}
+          className="mt-0.5 size-4"
+        />
+        <div>
+          <div className="text-sm font-medium flex items-center gap-1.5">
+            <UserCheck className="size-4 text-muted-foreground" /> Track attendance for owners
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Off: owners aren&apos;t expected to clock in, so they are never marked absent and don&apos;t appear in the
+            attendance list.
           </p>
         </div>
       </label>
