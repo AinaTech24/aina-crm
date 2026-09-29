@@ -16,6 +16,8 @@ import { BULK_FIELDS, BULK_FIELD_BY_KEY, BULK_TEXT_MAX } from "@/lib/investors/b
 
 export type MassUpdateOptions = {
   branches: Array<{ value: string; label: string }>;
+  /** Active people in the firm who can hold a client book. */
+  rms: Array<{ value: string; label: string }>;
   occupations: string[];
   incomeRanges: string[];
 };
@@ -56,8 +58,9 @@ export function MassUpdateDialog({
   const choices = useMemo(() => {
     if (!def) return [];
     if (def.kind === "branch") return options.branches;
+    if (def.kind === "rm") return options.rms;
     return def.options ?? [];
-  }, [def, options.branches]);
+  }, [def, options.branches, options.rms]);
   const suggestions = def?.master === "occupation" ? options.occupations : def?.master === "income_range" ? options.incomeRanges : [];
 
   const clients = `${count.toLocaleString("en-IN")} ${count === 1 ? "client" : "clients"}`;
@@ -71,7 +74,11 @@ export function MassUpdateDialog({
       ? `Add the tag “${shownLabel ?? "…"}” to ${clients}.`
       : def.key === "tagRemove"
         ? `Remove the tag “${shownLabel ?? "…"}” from ${clients}.`
-        : clear
+        : def.key === "rm"
+          ? clear
+            ? `Remove the relationship manager from ${clients} — they will have no RM.`
+            : `Move ${clients} to ${shownLabel ?? "…"}'s book.`
+          : clear
           ? `Clear ${def.label.toLowerCase()} for ${clients}.`
           : `Set ${def.label.toLowerCase()} to “${shownLabel ?? "…"}” for ${clients}.`;
 
@@ -131,7 +138,7 @@ export function MassUpdateDialog({
               <label htmlFor={inputId} className="mb-1 block text-xs font-medium text-foreground">
                 {def.kind === "tag" ? "Tag" : "New value"}
               </label>
-              {def.kind === "enum" || def.kind === "branch" ? (
+              {def.kind === "enum" || def.kind === "branch" || def.kind === "rm" ? (
                 <select
                   id={inputId}
                   value={value}
@@ -171,6 +178,9 @@ export function MassUpdateDialog({
               )}
               {def.kind === "branch" && choices.length === 0 && (
                 <p className="mt-1 text-xs text-muted-foreground">No branches set up yet (Settings → Branches).</p>
+              )}
+              {def.kind === "rm" && choices.length === 0 && (
+                <p className="mt-1 text-xs text-muted-foreground">No active team members to assign.</p>
               )}
               {def.nullable && def.kind !== "tag" && (
                 <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">

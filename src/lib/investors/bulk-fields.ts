@@ -14,7 +14,7 @@
  * Plain module (no DB, no React).
  */
 
-export type BulkFieldKind = "enum" | "text" | "date" | "branch" | "tag";
+export type BulkFieldKind = "enum" | "text" | "date" | "branch" | "rm" | "tag";
 
 export type BulkField = {
   key: string;
@@ -34,6 +34,14 @@ export type BulkField = {
 const o = (pairs: Array<[string, string]>) => pairs.map(([value, label]) => ({ value, label }));
 
 export const BULK_FIELDS: BulkField[] = [
+  {
+    key: "rm",
+    label: "Relationship manager",
+    group: "Relationship",
+    kind: "rm",
+    nullable: true,
+    hint: "The clients move to this person's book. Their open tasks stay with whoever they are assigned to.",
+  },
   { key: "branch", label: "Branch", group: "Relationship", kind: "branch", nullable: true },
   {
     key: "status",

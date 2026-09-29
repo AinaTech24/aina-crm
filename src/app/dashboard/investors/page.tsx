@@ -310,8 +310,15 @@ export default async function InvestorsPage({
            AND master_type IN ('occupation', 'income_range')
          ORDER BY sort_order ASC, label ASC
       `)).rows as Array<{ master_type: string; label: string }>;
+      // Same roster as the "Reassign RM" button: every active person in the firm.
+      const people = (await tx.execute(sql`
+        SELECT id, name FROM users
+         WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
+         ORDER BY name ASC
+      `)).rows as Array<{ id: string; name: string | null }>;
       massUpdate = {
         branches: br.map((b) => ({ value: String(b.id), label: b.name ?? "Unnamed branch" })),
+        rms: people.map((u) => ({ value: String(u.id), label: u.name ?? "Unnamed" })),
         occupations: mv.filter((m) => m.master_type === "occupation").map((m) => m.label),
         incomeRanges: mv.filter((m) => m.master_type === "income_range").map((m) => m.label),
       };

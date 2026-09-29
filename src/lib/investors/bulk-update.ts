@@ -19,6 +19,7 @@ export class BulkFieldError extends Error {
 
 /** Plain columns: registry key → investors column. */
 const COLUMN: Record<string, string> = {
+  rm: "rm_id",
   branch: "branch_id",
   status: "status",
   segment: "segment_tag",
@@ -61,6 +62,16 @@ async function normalise(tx: Tx, tenantId: string, f: BulkField, raw: unknown): 
       if (found.rows.length === 0) throw new BulkFieldError("That branch is not in this firm.");
       return v;
     }
+    case "rm": {
+      // A stranger's uuid would orphan the clients under someone who can't see
+      // them, and an offboarded person has no desk to see them on.
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) throw new BulkFieldError("Choose a relationship manager.");
+      const found = await tx.execute(sql`
+        SELECT 1 FROM users WHERE id = ${v}::uuid AND tenant_id = ${tenantId}::uuid AND status = 'active' LIMIT 1
+      `);
+      if (found.rows.length === 0) throw new BulkFieldError("That person is not an active member of this firm.");
+      return v;
+    }
     case "text":
     case "tag":
       if (!v) throw new BulkFieldError(f.nullable ? `Enter a ${f.label.toLowerCase()}, or choose to clear it.` : "Enter a tag.");
@@ -81,6 +92,7 @@ function currentValueSql(key: string): SQL {
 /** The SET clause for the field. `v` is already validated. */
 function setSql(key: string, v: string | null): SQL {
   if (key === "branch") return sql`branch_id = ${v}::uuid`;
+  if (key === "rm") return sql`rm_id = ${v}::uuid`;
   if (key === "nextReview") return sql`next_review_at = ${v}::date::timestamptz`;
   if (key === "onboardedAt") return sql`onboarded_at = ${v}::date::timestamptz`;
   if (COLUMN[key]) return sql`${sql.raw(COLUMN[key])} = ${v}`;
