@@ -53,7 +53,7 @@ function deriveOption(s: any): string {
 }
 const COARSE_TONE: Record<string, string> = {
   equity: "bg-emerald-50 text-emerald-700", hybrid: "bg-blue-50 text-blue-700", debt: "bg-amber-50 text-amber-700",
-  liquid: "bg-cyan-50 text-cyan-700", commodity: "bg-orange-50 text-orange-700", international: "bg-violet-50 text-violet-700", other: "bg-slate-50 text-slate-600",
+  liquid: "bg-cyan-50 text-cyan-700", commodity: "bg-orange-50 text-orange-700", international: "bg-violet-50 text-violet-700", other: "bg-secondary text-muted-foreground",
 };
 const VERDICT_TONE: Record<string, string> = { pass: "bg-emerald-100 text-emerald-700", watch: "bg-amber-100 text-amber-700", reject: "bg-rose-100 text-rose-700" };
 
@@ -152,7 +152,7 @@ export function SchemesCatalog({ rows, amcs, canManage }: { rows: Scheme[]; amcs
                     {canManage && <td className="px-3 py-2.5"><input type="checkbox" checked={selected.has(s.id)} onChange={() => toggle(s.id)} className="size-3.5 rounded" /></td>}
                     <td className="px-2 py-2.5">
                       <button onClick={() => canManage && toggleShortlist(s)} disabled={!canManage || rowBusy === s.id} title={s.is_shortlisted ? "Shortlisted" : "Add to shortlist"}>
-                        {rowBusy === s.id ? <Loader2 className="size-4 animate-spin" /> : <Star className={`size-4 ${s.is_shortlisted ? "fill-amber-400 text-amber-400" : "text-slate-300"}`} />}
+                        {rowBusy === s.id ? <Loader2 className="size-4 animate-spin" /> : <Star className={`size-4 ${s.is_shortlisted ? "fill-amber-400 text-amber-400" : "text-muted-foreground"}`} />}
                       </button>
                     </td>
                     <td className="py-2.5">
@@ -161,10 +161,22 @@ export function SchemesCatalog({ rows, amcs, canManage }: { rows: Scheme[]; amcs
                     </td>
                     <td className="py-2.5 text-xs whitespace-nowrap">{s.amc_name ?? s.amc_code}</td>
                     <td className="py-2.5 text-xs">
-                      {s.coarse_category && <span className={`chip text-2xs ${COARSE_TONE[s.coarse_category] ?? ""}`}>{s.coarse_category}</span>}
+                      {s.coarse_category && (
+                        <span
+                          className={`chip text-2xs ${COARSE_TONE[s.coarse_category] ?? ""}`}
+                          title={s.coarse_inferred ? "Mapped from the AMFI category and scheme name" : undefined}
+                        >
+                          {s.coarse_category}
+                        </span>
+                      )}
                       <div className="text-2xs text-muted-foreground max-w-[160px] truncate">{s.category ?? ""}</div>
                     </td>
-                    <td className="py-2.5 text-xs capitalize">{s.plan ?? ""}</td>
+                    <td
+                      className={`py-2.5 text-xs capitalize ${s.plan_inferred ? "text-muted-foreground" : ""}`}
+                      title={s.plan_inferred ? "AMFI names no plan for this scheme, and it is not a Direct plan" : !s.plan ? "Exchange-traded: no Direct or Regular plan" : undefined}
+                    >
+                      {s.plan ?? ""}
+                    </td>
                     <td className="py-2.5 text-xs capitalize">{s.risk_category ? String(s.risk_category).replace(/_/g, " ") : ""}</td>
                     <td className="py-2.5">{v ? <span className={`chip capitalize text-2xs ${VERDICT_TONE[v] ?? ""}`}>{v}</span> : null}</td>
                     <td className="py-2.5 pr-4 text-right whitespace-nowrap">
@@ -254,7 +266,7 @@ function SchemeDetailDrawer({
           <div className="flex flex-wrap gap-1.5">
             {s.coarse_category && <span className={`chip text-2xs ${COARSE_TONE[s.coarse_category] ?? ""}`}>{s.coarse_category}</span>}
             {v && <span className={`chip capitalize text-2xs ${VERDICT_TONE[v] ?? ""}`}>IC: {v}</span>}
-            <span className={`chip text-2xs ${s.is_closed ? "bg-rose-50 text-rose-700" : s.is_active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
+            <span className={`chip text-2xs ${s.is_closed ? "bg-rose-50 text-rose-700" : s.is_active ? "bg-emerald-50 text-emerald-700" : "bg-secondary text-muted-foreground"}`}>
               {s.is_closed ? "Closed" : s.is_active ? "Active / open" : "Inactive"}
             </span>
           </div>

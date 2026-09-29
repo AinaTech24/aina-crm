@@ -15,6 +15,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { amcEmpanelments } from "@/db/schema";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,7 @@ const STATUS_TONE: Record<string, string> = {
   empanelled: "bg-emerald-50 text-emerald-700",
   under_review: "bg-amber-50 text-amber-700",
   suspended: "bg-rose-50 text-rose-700",
-  terminated: "bg-gray-100 text-gray-600",
+  terminated: "bg-secondary text-muted-foreground",
 };
 
 export default async function AmcEmpanelmentsListPage({
@@ -94,15 +95,23 @@ export default async function AmcEmpanelmentsListPage({
 
       {rows.length === 0 ? (
         <div className="card-surface p-12 text-center">
-          <p className="text-sm text-muted-foreground">
-            No empanelments with this filter yet.
-          </p>
-          <Link
-            href="/dashboard/amc-empanelments/new"
-            className="btn-primary text-sm mt-4"
-          >
-            <Plus className="size-4" /> Add the first empanelment
-          </Link>
+          {counts.total === 0 ? (
+            <>
+              <p className="text-sm text-muted-foreground">No empanelments yet.</p>
+              {/* The same action as the header button — the one thing to do on an empty page. */}
+              <Link href="/dashboard/amc-empanelments/new" className="btn-primary text-sm mt-4">
+                <Plus className="size-4" /> Add the first empanelment
+              </Link>
+            </>
+          ) : (
+            // Other statuses have rows: offer the way back, not a second "add".
+            <p className="text-sm text-muted-foreground">
+              No empanelments are {statusFilter.replace("_", " ")}.{" "}
+              <Link href="/dashboard/amc-empanelments?status=all" className="font-medium text-foreground hover:underline">
+                Show all {counts.total}
+              </Link>
+            </p>
+          )}
         </div>
       ) : (
         <div className="card-surface table-scroll">
@@ -122,7 +131,7 @@ export default async function AmcEmpanelmentsListPage({
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} className="border-t hover:bg-slate-50/60 align-top">
+                <tr key={r.id} className="border-t hover:bg-secondary/60 align-top">
                   <td className="px-3 py-2">
                     <Link
                       href={`/dashboard/amc-empanelments/${r.id}`}
@@ -139,11 +148,7 @@ export default async function AmcEmpanelmentsListPage({
                   </td>
                   <td className="px-3 py-2">
                     {r.empanelmentDate
-                      ? new Date(r.empanelmentDate).toLocaleDateString("en-GB", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      })
+                      ? formatDate(new Date(r.empanelmentDate))
                       : "—"}
                   </td>
                   <ContactCell
@@ -186,7 +191,7 @@ export default async function AmcEmpanelmentsListPage({
                   </td>
                   <td className="px-3 py-2">
                     <span
-                      className={`chip text-2xs ${STATUS_TONE[r.status] ?? "bg-slate-100"
+                      className={`chip text-2xs ${STATUS_TONE[r.status] ?? "bg-secondary"
                         }`}
                     >
                       {r.status.replace("_", " ")}
@@ -222,7 +227,7 @@ function ContactCell({
       {email && (
         <a
           href={`mailto:${email}`}
-          className="inline-flex items-center gap-1 text-2xs text-slate-600 hover:text-slate-900"
+          className="inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground"
         >
           <Mail className="size-2.5" />
           {email}
@@ -232,7 +237,7 @@ function ContactCell({
         <div>
           <a
             href={`tel:${phone}`}
-            className="inline-flex items-center gap-1 text-2xs text-slate-600 hover:text-slate-900"
+            className="inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground"
           >
             <Phone className="size-2.5" />
             {phone}

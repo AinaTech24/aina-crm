@@ -28,6 +28,7 @@ import { MergeClientTool } from "@/components/investors/MergeClientTool";
 import { AutoMergeButton } from "@/components/investors/AutoMergeButton";
 import { DuplicateGroup } from "@/components/investors/DuplicateMerge";
 import { MergeHubNav, MERGE_HUB_TABS, type MergeHubTab } from "@/components/investors/MergeHubNav";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +38,7 @@ const inr = (n: number) =>
 const fmtDate = (v: string | null) => {
   if (!v) return "—";
   const d = new Date(v);
-  return isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  return isNaN(d.getTime()) ? "—" : formatDate(d);
 };
 
 const TAB_KEYS = MERGE_HUB_TABS.map((t) => t.key);
@@ -115,16 +116,16 @@ export default async function MergeClientsPage({
               {canMerge && <AutoMergeButton panGroups={data.panGroups} />}
               {Object.keys(data.ruleCounts).length > 0 && (
                 <div className="flex flex-wrap gap-2 text-xs">
-                  {["PAN", "Email", "Phone", "Name"].filter((k) => data.ruleCounts[k]).map((k) => (
-                    <span key={k} className="chip bg-secondary">{k}: <strong className="ml-1">{data.ruleCounts[k]}</strong></span>
+                  {([["PAN", "Same PAN"], ["NameDob", "Same name + date of birth"]] as const).filter(([k]) => data.ruleCounts[k]).map(([k, label]) => (
+                    <span key={k} className="chip bg-secondary">{label}: <strong className="ml-1">{data.ruleCounts[k]}</strong></span>
                   ))}
                 </div>
               )}
               {data.clusters.length === 0 ? (
                 <div className="card-surface p-12 text-center">
-                  <ShieldCheck className="size-10 mx-auto text-emerald-500" />
+                  <ShieldCheck className="size-10 mx-auto text-muted-foreground" />
                   <div className="mt-3 font-medium">No duplicate suggestions</div>
-                  <p className="text-sm text-muted-foreground mt-1">Your client book is clean on PAN, phone, email and name.</p>
+                  <p className="text-sm text-muted-foreground mt-1">No two records share a PAN, or a name and date of birth with matching PANs.</p>
                 </div>
               ) : canMerge ? (
                 <div className="space-y-3">

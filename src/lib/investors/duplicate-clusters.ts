@@ -1,12 +1,24 @@
 /**
- * Suspected-duplicate client clusters — the "Unmerged Suggestion List".
+ * Suspected-duplicate client clusters — Find Duplicates and the Merge Clients
+ * "Unmerged Suggestion List" both read this, so the two never disagree.
  * SERVER-ONLY.
  *
- * Groups LIVE clients (not merged away) that share an exact PAN, a normalised
- * mobile, an email, or a normalised name. Pairs the firm has marked "not
- * duplicates" (ignored_duplicates) drop a cluster once every pair in it is
- * ignored. Same rules and ordering as the Find Duplicates page, so the two
- * surfaces never disagree about what is a suggestion.
+ * What counts as a duplicate is deliberately narrow, because a merge moves one
+ * person's money onto another record:
+ *
+ *   • the same valid PAN (a PAN identifies one person), or
+ *   • the same name AND date of birth, provided their PANs don't disagree.
+ *
+ * Two records with DIFFERENT valid PANs are two people, whatever else they
+ * share. A shared phone or email (a family, an HUF and its karta, one office
+ * running several accounts) comes back separately as `shared` — information,
+ * not a merge suggestion.
+ *
+ * Minors are left out of PAN matching: RTA feeds often carry the guardian's PAN
+ * on a minor's folio. Their duplicates still surface on name + date of birth.
+ *
+ * Only LIVE clients (not merged away, not deleted). A cluster drops out once
+ * every pair in it is marked "not duplicates" (ignored_duplicates).
  */
 
 import { sql } from "drizzle-orm";
@@ -16,34 +28,66 @@ export type ClusterMember = {
   id: string;
   name: string;
   pan: string | null;
+  /** The PAN is well-formed (AAAAA9999A) — only these can tell people apart. */
+  pan_valid: boolean;
   phone: string | null;
   email: string | null;
+  dob: string | null;
   aum: number;
+  folios: number;
   rm_name: string | null;
 };
 
-export type DuplicateCluster = { kind: "PAN" | "Phone" | "Email" | "Name"; gkey: string; members: ClusterMember[] };
+export type ClusterKind = "PAN" | "NameDob" | "Phone" | "Email";
+export type DuplicateCluster = { kind: ClusterKind; gkey: string; members: ClusterMember[] };
 
-const RULE_ORDER: Record<string, number> = { PAN: 0, Email: 1, Phone: 2, Name: 3 };
+const VALID_PAN = "^[A-Z]{5}[0-9]{4}[A-Z]$";
+const RULE_ORDER: Record<ClusterKind, number> = { PAN: 0, NameDob: 1, Email: 2, Phone: 3 };
 
 export async function loadClientDuplicateClusters(
   tx: Tx,
   tenantId: string
-): Promise<{ clusters: DuplicateCluster[]; ruleCounts: Record<string, number> }> {
+): Promise<{ clusters: DuplicateCluster[]; shared: DuplicateCluster[]; ruleCounts: Record<string, number> }> {
+  // "\\s" / "\\D" reach Postgres as \s / \D. Phones compare on their last ten
+  // digits so +91 and 0 prefixes still match.
   const r = await tx.execute(sql`
     WITH base AS (
-      SELECT i.id, i.name, i.pan, i.phone, i.email, COALESCE(i.aum,0)::numeric AS aum, u.name AS rm_name
-      FROM investors i LEFT JOIN users u ON u.id = i.rm_id
-      WHERE i.tenant_id = ${tenantId}::uuid AND i.merged_into_id IS NULL AND i.deleted_at IS NULL
+      SELECT i.id, i.name, i.pan, i.phone, i.email, i.dob, COALESCE(i.is_minor, false) AS is_minor,
+             COALESCE(i.aum, 0)::numeric AS aum, u.name AS rm_name,
+             CASE WHEN upper(trim(i.pan)) ~ ${VALID_PAN} THEN upper(trim(i.pan)) END AS vpan,
+             lower(regexp_replace(trim(i.name), '\\s+', ' ', 'g')) AS nkey,
+             right(regexp_replace(COALESCE(i.phone, ''), '\\D', '', 'g'), 10) AS pkey,
+             lower(trim(i.email)) AS ekey
+        FROM investors i LEFT JOIN users u ON u.id = i.rm_id
+       WHERE i.tenant_id = ${tenantId}::uuid AND i.merged_into_id IS NULL AND i.deleted_at IS NULL
     ),
-    pan_g AS (SELECT 'PAN' AS kind, upper(pan) AS gkey, id, name, pan, phone, email, aum, rm_name, count(*) OVER (PARTITION BY upper(pan)) AS grp FROM base WHERE pan IS NOT NULL AND pan <> ''),
-    phone_g AS (SELECT 'Phone' AS kind, regexp_replace(phone,'\D','','g') AS gkey, id, name, pan, phone, email, aum, rm_name, count(*) OVER (PARTITION BY regexp_replace(phone,'\D','','g')) AS grp FROM base WHERE phone IS NOT NULL AND length(regexp_replace(phone,'\D','','g')) >= 10),
-    email_g AS (SELECT 'Email' AS kind, lower(email) AS gkey, id, name, pan, phone, email, aum, rm_name, count(*) OVER (PARTITION BY lower(email)) AS grp FROM base WHERE email IS NOT NULL AND email <> ''),
-    name_g AS (SELECT 'Name' AS kind, lower(trim(name)) AS gkey, id, name, pan, phone, email, aum, rm_name, count(*) OVER (PARTITION BY lower(trim(name))) AS grp FROM base WHERE name IS NOT NULL AND trim(name) <> '')
-    SELECT kind, gkey, id, name, pan, phone, email, aum, rm_name FROM pan_g WHERE grp > 1
-    UNION ALL SELECT kind, gkey, id, name, pan, phone, email, aum, rm_name FROM phone_g WHERE grp > 1
-    UNION ALL SELECT kind, gkey, id, name, pan, phone, email, aum, rm_name FROM email_g WHERE grp > 1
-    UNION ALL SELECT kind, gkey, id, name, pan, phone, email, aum, rm_name FROM name_g WHERE grp > 1
+    pan_keys AS (
+      SELECT vpan FROM base WHERE vpan IS NOT NULL AND NOT is_minor GROUP BY vpan HAVING count(*) > 1
+    ),
+    dob_keys AS (
+      SELECT nkey, dob FROM base
+       WHERE dob IS NOT NULL AND nkey <> ''
+       GROUP BY nkey, dob
+      HAVING count(*) > 1
+         AND count(DISTINCT vpan) <= 1
+         -- Every member already on the one PAN: the PAN group says it.
+         AND NOT (count(vpan) = count(*) AND count(DISTINCT vpan) = 1)
+    ),
+    phone_keys AS (SELECT pkey FROM base WHERE length(pkey) = 10 GROUP BY pkey HAVING count(*) > 1),
+    email_keys AS (SELECT ekey FROM base WHERE ekey LIKE '%@%' GROUP BY ekey HAVING count(*) > 1),
+    hits AS (
+      SELECT 'PAN' AS kind, b.vpan AS gkey, b.id FROM base b JOIN pan_keys k ON k.vpan = b.vpan WHERE NOT b.is_minor
+      UNION ALL
+      SELECT 'NameDob', b.nkey || ' · ' || to_char(b.dob, 'DD Mon YYYY'), b.id FROM base b JOIN dob_keys k ON k.nkey = b.nkey AND k.dob = b.dob
+      UNION ALL
+      SELECT 'Phone', b.pkey, b.id FROM base b JOIN phone_keys k ON k.pkey = b.pkey
+      UNION ALL
+      SELECT 'Email', b.ekey, b.id FROM base b JOIN email_keys k ON k.ekey = b.ekey
+    )
+    SELECT h.kind, h.gkey, b.id, b.name, b.pan, (b.vpan IS NOT NULL) AS pan_valid, b.phone, b.email,
+           to_char(b.dob, 'YYYY-MM-DD') AS dob, b.aum, b.rm_name,
+           (SELECT count(*)::int FROM folios f WHERE f.investor_id = b.id) AS folios
+      FROM hits h JOIN base b ON b.id = h.id
   `);
 
   const ignored = await tx.execute(sql`
@@ -63,7 +107,7 @@ export async function loadClientDuplicateClusters(
     return true;
   };
 
-  const groups = new Map<string, { kind: DuplicateCluster["kind"]; gkey: string; members: Map<string, ClusterMember> }>();
+  const groups = new Map<string, { kind: ClusterKind; gkey: string; members: Map<string, ClusterMember> }>();
   for (const row of r.rows as any[]) {
     const key = `${row.kind}::${row.gkey}`;
     if (!groups.has(key)) groups.set(key, { kind: row.kind, gkey: String(row.gkey), members: new Map() });
@@ -71,16 +115,28 @@ export async function loadClientDuplicateClusters(
       id: String(row.id),
       name: row.name ?? "—",
       pan: row.pan ?? null,
+      pan_valid: !!row.pan_valid,
       phone: row.phone ?? null,
       email: row.email ?? null,
+      dob: row.dob ?? null,
       aum: Number(row.aum ?? 0),
+      folios: Number(row.folios ?? 0),
       rm_name: row.rm_name ?? null,
     });
   }
-  const clusters = [...groups.values()]
+  const all = [...groups.values()]
     .map((g) => ({ kind: g.kind, gkey: g.gkey, members: [...g.members.values()] }))
     .filter((g) => g.members.length > 1 && !clusterIgnored(g.members))
-    .sort((a, b) => (RULE_ORDER[a.kind] ?? 9) - (RULE_ORDER[b.kind] ?? 9) || b.members.length - a.members.length);
+    .sort((a, b) => RULE_ORDER[a.kind] - RULE_ORDER[b.kind] || b.members.length - a.members.length);
+
+  const clusters = all.filter((g) => g.kind === "PAN" || g.kind === "NameDob");
+  // A shared phone / email whose records are already one duplicate group is
+  // not news.
+  const dupSets = clusters.map((g) => new Set(g.members.map((m) => m.id)));
+  const shared = all
+    .filter((g) => g.kind === "Phone" || g.kind === "Email")
+    .filter((g) => !dupSets.some((set) => g.members.every((m) => set.has(m.id))));
+
   const ruleCounts = clusters.reduce((m, c) => ((m[c.kind] = (m[c.kind] ?? 0) + 1), m), {} as Record<string, number>);
-  return { clusters, ruleCounts };
+  return { clusters, shared, ruleCounts };
 }

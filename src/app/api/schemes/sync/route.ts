@@ -18,6 +18,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { fetchNavAll, parseNavAll, type NavRecord } from "@/lib/finance/nav-feed";
+import { planSql, coarseSql } from "@/lib/schemes/classify";
 
 export const dynamic = "force-dynamic";
 // Fetching + parsing the ~8MB AMFI feed and upserting ~12k rows can take a while
@@ -95,8 +96,10 @@ export async function POST() {
 
       // 2. Scheme master — the AMFI universe. Category prefers mfapi's detail but
       //    falls back to the AMFI section-header category (so the WHOLE universe is
-      //    classified, not just the mfapi-matched subset). plan/option are derived
-      //    from the scheme name; is_closed from the AMFI scheme structure.
+      //    classified, not just the mfapi-matched subset). Plan and coarse
+      //    category come from lib/schemes/classify (shared with the Scheme
+      //    Master page); option from the scheme name; is_closed from the AMFI
+      //    scheme structure.
       const res = await tx.execute(sql`
         INSERT INTO scheme_master
           (id, tenant_id, amc_code, scheme_code, scheme_name, category, sub_category,
@@ -106,17 +109,8 @@ export async function POST() {
                sn.scheme_code, sn.scheme_name,
                COALESCE(m.scheme_category, sn.scheme_category),
                sn.scheme_category,
-               CASE
-                 WHEN COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%liquid%' OR COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%overnight%' OR COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%money market%' THEN 'liquid'
-                 WHEN COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%hybrid%' OR COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%balanced%' THEN 'hybrid'
-                 WHEN COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%equity%' OR COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%elss%' OR COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%index%' THEN 'equity'
-                 WHEN COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%debt%' OR COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%bond%' OR COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%gilt%' OR COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%duration%' THEN 'debt'
-                 WHEN COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%gold%' OR COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%silver%' OR COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%commodit%' THEN 'commodity'
-                 WHEN COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%international%' OR COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%global%' THEN 'international'
-                 ELSE 'other'
-               END,
-               CASE WHEN sn.scheme_name ILIKE '%direct%' THEN 'direct'
-                    WHEN sn.scheme_name ILIKE '%regular%' THEN 'regular' ELSE NULL END,
+               ${coarseSql(sql`COALESCE(m.scheme_category, sn.scheme_category, '')`, sql`sn.scheme_name`)},
+               ${planSql(sql`sn.scheme_name`, sql`COALESCE(m.scheme_category, sn.scheme_category)`)},
                CASE WHEN sn.scheme_name ILIKE '%reinvest%' THEN 'idcw_reinvest'
                     WHEN sn.scheme_name ILIKE '%idcw%' OR sn.scheme_name ILIKE '%dividend%' OR sn.scheme_name ILIKE '%payout%' THEN 'idcw_payout'
                     WHEN sn.scheme_name ILIKE '%growth%' THEN 'growth' ELSE NULL END,
@@ -129,8 +123,13 @@ export async function POST() {
           SET scheme_name = EXCLUDED.scheme_name,
               category = COALESCE(EXCLUDED.category, scheme_master.category),
               sub_category = COALESCE(EXCLUDED.sub_category, scheme_master.sub_category),
-              coarse_category = COALESCE(scheme_master.coarse_category, EXCLUDED.coarse_category),
-              plan = COALESCE(EXCLUDED.plan, scheme_master.plan),
+              -- A category someone set by hand is kept; a blank or "other"
+              -- one takes the better mapping.
+              coarse_category = CASE WHEN scheme_master.coarse_category IS NULL OR scheme_master.coarse_category = 'other'
+                                     THEN EXCLUDED.coarse_category ELSE scheme_master.coarse_category END,
+              -- A stored plan wins (named in the scheme, or set by hand); the
+              -- derived one only fills a blank.
+              plan = COALESCE(scheme_master.plan, EXCLUDED.plan),
               "option" = COALESCE(EXCLUDED."option", scheme_master."option"),
               is_closed = EXCLUDED.is_closed,
               updated_at = now()
