@@ -27,6 +27,19 @@ import { countPossibleDuplicates } from "@/lib/investors/duplicates";
 import { clientCompleteness } from "@/lib/investors/completeness";
 import { CopyPlus } from "lucide-react";
 import { DownloadButton } from "@/components/common/SecureLinkButtons";
+import { formatMoney } from "@/lib/format";
+import type { MassUpdateOptions } from "@/components/investors/MassUpdateDialog";
+
+/** AUM bands for the filter: lower bound inclusive, upper exclusive. */
+const AUM_PRESETS = [
+  { label: "No AUM", max: 1 },
+  { label: "Under ₹1 L", min: 1, max: 1e5 },
+  { label: "₹1 L – ₹10 L", min: 1e5, max: 1e6 },
+  { label: "₹10 L – ₹50 L", min: 1e6, max: 5e6 },
+  { label: "₹50 L – ₹1 Cr", min: 5e6, max: 1e7 },
+  { label: "₹1 Cr – ₹5 Cr", min: 1e7, max: 5e7 },
+  { label: "₹5 Cr and above", min: 5e7 },
+];
 
 const INVESTORS_COLUMNS = [
   { key: "name", label: "Name", required: true },
@@ -78,6 +91,13 @@ export default async function InvestorsPage({
   const tier = (sp.tier ?? "").split(",").filter(Boolean);
   const status = (sp.status ?? "").split(",").filter(Boolean);
   const kyc = (sp.kyc ?? "").split(",").filter(Boolean);
+  const aumMin = (sp.aum_min ?? "").trim();
+  const aumMax = (sp.aum_max ?? "").trim();
+  const aumLabel =
+    aumMin || aumMax
+      ? AUM_PRESETS.find((p) => String(p.min ?? "") === aumMin && String(p.max ?? "") === aumMax)?.label ??
+        `AUM ${aumMin ? formatMoney(Number(aumMin), { decimals: 1 }) : "₹0"} – ${aumMax ? formatMoney(Number(aumMax), { decimals: 1 }) : "any"}`
+      : "";
   // Describes the active narrowing so the empty state can name it.
   const activeFilterLabel = [
     q ? `matching “${q}”` : "",
@@ -85,6 +105,7 @@ export default async function InvestorsPage({
     ...tier.map((t) => `tier ${t}`),
     ...status,
     ...kyc.map((k) => `KYC ${k}`),
+    aumLabel ? `AUM: ${aumLabel}` : "",
   ]
     .filter(Boolean)
     .join(" · ");
@@ -95,6 +116,8 @@ export default async function InvestorsPage({
   // investor capability never reach the list (same rule the API enforces).
   requireInvestorView(session);
   const canViewAll = can(session.roles, "investor.view.all", session.permissions);
+  // Same gate as POST /api/investors/bulk.
+  const canBulkEdit = can(session.roles, "investor.edit.all", session.permissions);
 
   // Query string for the Excel export link — carries the current filters so the
   // download matches exactly what's on screen (the export endpoint reuses the
@@ -134,7 +157,7 @@ export default async function InvestorsPage({
   const PAGE_SIZE = 50;
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
 
-  const { rows, total, kanbanRows, rms, allIds, dupCount } = await withTenant(session.tenantId, async (tx) => {
+  const { rows, total, kanbanRows, rms, allIds, dupCount, massUpdate } = await withTenant(session.tenantId, async (tx) => {
     // Filters live in one shared helper so the page and the Excel export apply
     // identical WHERE logic. Tenant isolation is handled by RLS.
     // Row scope: an RM sees only their own book, a branch head only their
@@ -274,7 +297,27 @@ export default async function InvestorsPage({
     // Possible-duplicate count (same PAN / mobile) — surfaced as a banner.
     const dupCount = await countPossibleDuplicates(tx as any, session.tenantId);
 
-    return { rows: r, total: Number(c[0]?.c ?? 0), kanbanRows, rms, allIds, dupCount };
+    // Choices for "Update a field" (branches, and the firm's master lists as
+    // suggestions) — only for people who may bulk-edit.
+    let massUpdate: MassUpdateOptions | undefined;
+    if (canBulkEdit) {
+      const br = (await tx.execute(sql`
+        SELECT id, name FROM branches WHERE tenant_id = ${session.tenantId}::uuid ORDER BY name ASC
+      `)).rows as Array<{ id: string; name: string | null }>;
+      const mv = (await tx.execute(sql`
+        SELECT master_type, label FROM master_values
+         WHERE tenant_id = ${session.tenantId}::uuid AND is_active = true
+           AND master_type IN ('occupation', 'income_range')
+         ORDER BY sort_order ASC, label ASC
+      `)).rows as Array<{ master_type: string; label: string }>;
+      massUpdate = {
+        branches: br.map((b) => ({ value: String(b.id), label: b.name ?? "Unnamed branch" })),
+        occupations: mv.filter((m) => m.master_type === "occupation").map((m) => m.label),
+        incomeRanges: mv.filter((m) => m.master_type === "income_range").map((m) => m.label),
+      };
+    }
+
+    return { rows: r, total: Number(c[0]?.c ?? 0), kanbanRows, rms, allIds, dupCount, massUpdate };
   }, { userId: session.userId, branchId: session.branchId, roles: session.roles });
 
   const rmOptions = (rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
@@ -438,6 +481,7 @@ export default async function InvestorsPage({
           ...(canViewAll && rmOptions.length
             ? [{ type: "multi" as const, key: "rm", label: "RM", options: rmOptions }]
             : []),
+          ...(showAum ? [{ type: "amount_range" as const, key: "aum", label: "AUM", presets: AUM_PRESETS }] : []),
           dateRangeFilter("created", "Added"),
         ]}
         rightSlot={
@@ -484,7 +528,7 @@ export default async function InvestorsPage({
         // Brand-new tenant with zero investors AND no active filter → big friendly EmptyState.
         // Otherwise just a short "no matches" line so the filter UI stays in context.
         <div className="card-surface overflow-hidden">
-          {total === 0 && !q && !segment.length && !tier.length && !status.length && !kyc.length ? (
+          {total === 0 && !q && !segment.length && !tier.length && !status.length && !kyc.length && !aumMin && !aumMax ? (
             <div className="p-6">
               <EmptyState
                 icon={Users}
@@ -528,6 +572,7 @@ export default async function InvestorsPage({
             allIds={allIds}
             total={total}
             flags={{ showPan, showCategory: true, showTier, showSegment, showAum, showSip, showKyc, showStatus }}
+            massUpdate={massUpdate}
           />
           <Pager
             page={page}

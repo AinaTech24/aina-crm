@@ -21,6 +21,13 @@ function csv(v: string | undefined): string[] {
   return (v ?? "").split(",").filter(Boolean);
 }
 
+/** A non-negative rupee amount from the URL, else null (ignored). */
+function rupees(v: string | undefined): number | null {
+  if (v == null || v.trim() === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 && n <= 1e13 ? n : null;
+}
+
 /**
  * Build the array of Drizzle conditions for the investor list. Returns an
  * array (possibly empty) so callers can `and(...conditions)` or skip the
@@ -282,6 +289,15 @@ export function buildInvestorConditions(
   const isDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
   if (isDate(createdFrom)) conditions.push(sql`${investors.createdAt} >= ${createdFrom}::date`);
   if (isDate(createdTo)) conditions.push(sql`${investors.createdAt} < (${createdTo}::date + interval '1 day')`);
+
+  // AUM range in rupees (the filter bar's amount_range emits aum_min / aum_max).
+  // Lower bound inclusive, upper bound exclusive, so adjacent bands such as
+  // "₹1 L – ₹10 L" and "₹10 L – ₹50 L" never both claim a client at exactly
+  // ₹10 L. A client with no AUM recorded counts as ₹0 — the column shows ₹0.
+  const aumMin = rupees(sp.aum_min);
+  const aumMax = rupees(sp.aum_max);
+  if (aumMin != null) conditions.push(sql`COALESCE(${investors.aum}, 0) >= ${aumMin}`);
+  if (aumMax != null) conditions.push(sql`COALESCE(${investors.aum}, 0) < ${aumMax}`);
 
   return conditions;
 }

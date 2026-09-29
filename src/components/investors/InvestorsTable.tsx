@@ -19,6 +19,7 @@ import {
   ArrowUpDown,
   Trash2,
   Eye,
+  PencilLine,
 } from "lucide-react";
 import { RowActions } from "@/components/common/RowActions";
 import { RmSelector } from "@/components/common/RmSelector";
@@ -29,6 +30,8 @@ import { Avatar } from "@/components/ui/Avatar";
 import { TableDensityToggle, useTableDensity } from "@/components/common/TableDensityToggle";
 import { FloatingBulkBar } from "@/components/common/FloatingBulkBar";
 import { InvestorSidePeek, type SidePeekInvestor } from "@/components/investors/InvestorSidePeek";
+import { MassUpdateDialog, type MassUpdateOptions } from "@/components/investors/MassUpdateDialog";
+import { notify } from "@/components/ui/Toast";
 
 export type InvestorTableRow = {
   id: string;
@@ -74,7 +77,7 @@ const tierColors: Record<string, string> = {
 const categoryColors: Record<string, string> = {
   A: "bg-amber-100 text-amber-800 border border-amber-300",
   B: "bg-sky-100 text-sky-800 border border-sky-300",
-  C: "bg-slate-100 text-slate-700 border border-slate-300",
+  C: "bg-secondary text-foreground border border-slate-300",
   D: "bg-rose-50 text-rose-700 border border-rose-200",
 };
 
@@ -85,6 +88,7 @@ export function InvestorsTable({
   flags,
   allIds = [],
   total = 0,
+  massUpdate,
 }: {
   rows: InvestorTableRow[];
   sort: string;
@@ -92,6 +96,8 @@ export function InvestorsTable({
   flags: InvestorTableFlags;
   allIds?: string[];
   total?: number;
+  /** Choices for "Update a field"; omitted for people who can't bulk-edit. */
+  massUpdate?: MassUpdateOptions;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -102,6 +108,36 @@ export function InvestorsTable({
   const [sidePeekInvestor, setSidePeekInvestor] = useState<SidePeekInvestor | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [massOpen, setMassOpen] = useState(false);
+
+  /** "Update a field" — returns an error message for the dialog, or null. */
+  async function applyMassUpdate(field: string, value: string | null): Promise<string | null> {
+    const ids = [...selected];
+    try {
+      const res = await fetch("/api/investors/bulk", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ids, action: "field", field, value }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) return j.error ?? `That didn't go through (${res.status}). Nothing was changed.`;
+      const n = Number(j.updated ?? 0);
+      notify.success(`Updated ${n.toLocaleString("en-IN")} ${n === 1 ? "client" : "clients"}.`);
+      setSelected(new Set());
+      router.refresh();
+      return null;
+    } catch {
+      return "Network error. Nothing was changed.";
+    }
+  }
+
+  // A column the licence PERMITS is not the same as a column the data USES.
+  // Category and Tier were rendering an em dash on every row and still taking
+  // their width. Hide a permitted column when nothing in the current result set
+  // fills it; it comes back by itself as soon as one record does.
+  const hasCategory = rows.some((r) => !!r.clientCategory);
+  const hasTier = rows.some((r) => !!r.serviceTier);
+  const hasSegment = rows.some((r) => !!r.segmentTag);
 
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
   const allMatchingSelected = allIds.length > 0 && selected.size >= allIds.length;
@@ -171,9 +207,15 @@ export function InvestorsTable({
       {/* Table Sub-header with Density Switcher & Selection Summary */}
       <div className="flex items-center justify-between px-4 py-2 bg-muted/20 border-b border-border text-xs">
         <div className="flex items-center gap-2">
-          <span className="text-muted-foreground font-medium">
-            Showing <strong className="text-foreground">{rows.length}</strong> of {total || rows.length} clients
-          </span>
+          {/* The filter bar above already prints the filtered count, so saying
+              "Showing 22 of 22 clients" under "22 results" was the same fact
+              twice. This line now only appears when the list is TRUNCATED,
+              which is the case it exists to warn about. */}
+          {total > rows.length && (
+            <span className="text-muted-foreground font-medium">
+              Showing <strong className="text-foreground">{rows.length}</strong> of {total} clients
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <TableDensityToggle density={density} onToggle={toggleDensity} />
@@ -217,7 +259,7 @@ export function InvestorsTable({
                   type="checkbox"
                   checked={allSelected}
                   onChange={toggleAll}
-                  className="size-3.5 rounded"
+                  className="size-4 rounded"
                   aria-label="Select all"
                 />
               </th>
@@ -228,9 +270,9 @@ export function InvestorsTable({
                 </button>
               </th>
               {flags.showPan && <th data-col="pan" className={`text-left ${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>PAN</th>}
-              {flags.showCategory && <th data-col="category" className={`text-left ${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>Category</th>}
-              {flags.showTier && <th data-col="tier" className={`text-left ${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>Tier</th>}
-              {flags.showSegment && <th data-col="segment" className={`text-left ${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>Segment</th>}
+              {flags.showCategory && hasCategory && <th data-col="category" className={`text-left ${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>Category</th>}
+              {flags.showTier && hasTier && <th data-col="tier" className={`text-left ${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>Tier</th>}
+              {flags.showSegment && hasSegment && <th data-col="segment" className={`text-left ${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>Segment</th>}
               {flags.showAum && (
                 <th data-col="aum" className={`text-right ${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>
                   <button onClick={() => setSort("aum")} className="inline-flex items-center gap-1 hover:text-foreground">
@@ -312,7 +354,7 @@ export function InvestorsTable({
                       {i.pan}
                     </td>
                   )}
-                  {flags.showCategory && (
+                  {flags.showCategory && hasCategory && (
                     <td data-col="category" className={`${isCompact ? "py-1.5" : "py-2.5"}`}>
                       {i.clientCategory ? (
                         <span
@@ -326,7 +368,7 @@ export function InvestorsTable({
                       )}
                     </td>
                   )}
-                  {flags.showTier && (
+                  {flags.showTier && hasTier && (
                     <td data-col="tier" className={`${isCompact ? "py-1.5" : "py-2.5"}`}>
                       {i.serviceTier ? (
                         <span
@@ -346,7 +388,7 @@ export function InvestorsTable({
                       )}
                     </td>
                   )}
-                  {flags.showSegment && (
+                  {flags.showSegment && hasSegment && (
                     <td data-col="segment" className={`${isCompact ? "py-1.5" : "py-2.5"}`}>
                       {i.segmentTag && (
                         <span className={`text-xs px-2 py-0.5 rounded-full ${segmentColors[i.segmentTag] ?? ""}`}>
@@ -404,7 +446,7 @@ export function InvestorsTable({
                             ? "bg-emerald-50 text-emerald-700"
                             : i.status === "dormant"
                             ? "bg-amber-50 text-amber-700"
-                            : "bg-slate-100 text-slate-700"
+                            : "bg-secondary text-foreground"
                         }`}
                       >
                         {i.status ?? "active"}
@@ -423,7 +465,7 @@ export function InvestorsTable({
                       </button>
                       <RowActions
                         items={[
-                          { label: "View Full Profile", href: `/dashboard/investors/${i.id}` },
+                          { label: "Open full profile", href: `/dashboard/investors/${i.id}` },
                           { label: "Create Proposal", href: `/dashboard/proposals/new?investorId=${i.id}` },
                           { label: "Schedule Review", href: `/dashboard/review-meetings/new?investorId=${i.id}` },
                           { label: "Log Service Request", href: `/dashboard/service-requests/new?investorId=${i.id}` },
@@ -449,7 +491,27 @@ export function InvestorsTable({
         onApplyAction={handleBulkApply}
         busy={busy}
         error={err}
+        customActions={
+          massUpdate ? (
+            <button
+              type="button"
+              onClick={() => setMassOpen(true)}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-secondary/80 hover:bg-secondary text-foreground hover:text-brand-cyan transition-colors"
+            >
+              <PencilLine className="size-3.5" /> Update a field
+            </button>
+          ) : undefined
+        }
       />
+      {massUpdate && (
+        <MassUpdateDialog
+          open={massOpen}
+          onOpenChange={setMassOpen}
+          count={selected.size}
+          options={massUpdate}
+          onApply={applyMassUpdate}
+        />
+      )}
 
       {/* Split-Screen Side-Peek Drawer */}
       <InvestorSidePeek investor={sidePeekInvestor} onClose={() => setSidePeekInvestor(null)} />

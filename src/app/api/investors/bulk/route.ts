@@ -9,6 +9,8 @@ import { handleApiError } from "@/lib/api/error-handler";
  *          = "tier"     value = "A" | "B" | "C"          → set service tier
  *          = "segment"  value = segment tag              → set segment
  *          = "category" value = "A" | "B" | "C" | "D"    → set client category
+ *          = "field"    field = a key of lib/investors/bulk-fields, value =
+ *                       the new value (null clears)          → "Update a field"
  *
  * Tenant isolation is enforced by RLS (withTenant sets app.tenant_id) — we
  * scope by id only, exactly like the single-investor and leads/bulk routes.
@@ -25,6 +27,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { investors, users } from "@/db/schema";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { purgeInvestorsChunk, PURGE_REQUEST_MAX, PURGE_TX_CHUNK } from "@/lib/investors/purge";
+import { applyBulkField, BulkFieldError } from "@/lib/investors/bulk-update";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +36,9 @@ const Body = z.object({
   // in the Trash — a firm emptying 25,000 clients should not have to send
   // 25,000 ids the browser had to list first.
   ids: z.array(z.string().uuid()).max(20000).optional(),
-  action: z.enum(["assign", "review", "tier", "segment", "category", "delete", "purge"]),
+  action: z.enum(["assign", "review", "tier", "segment", "category", "delete", "purge", "field"]),
+  /** field only: which registry field to set (lib/investors/bulk-fields). */
+  field: z.string().max(40).optional(),
   /** purge only: "trash" targets every soft-deleted client in the firm. */
   scope: z.literal("trash").optional(),
   value: z.string().nullable().optional(),
@@ -104,6 +109,33 @@ export async function POST(req: NextRequest) {
     }
 
     const meta = clientMetaFromHeaders(req.headers);
+
+    // ── "Update a field": any registry field, validated there ────────────
+    if (action === "field") {
+      if (!parsed.data.field) return NextResponse.json({ error: "field required" }, { status: 400 });
+      try {
+        const result = await withTenant(session.tenantId, async (tx) => {
+          const r = await applyBulkField(tx, { tenantId: session.tenantId, ids: ids ?? [], field: parsed.data.field!, value });
+          await recordAudit(tx, {
+            tenantId: session.tenantId,
+            actorUserId: session.userId,
+            action: "investor.bulk_field",
+            entityType: "investor",
+            entityId: session.tenantId,
+            // Every client's previous value, so a mistaken mass update can be
+            // traced and put back.
+            before: { field: parsed.data.field, values: r.before },
+            after: { field: parsed.data.field, value: r.value, count: r.updated, ids: ids ?? [] },
+            ...meta,
+          });
+          return r;
+        });
+        return NextResponse.json({ ok: true, updated: result.updated });
+      } catch (e) {
+        if (e instanceof BulkFieldError) return NextResponse.json({ error: e.message }, { status: 400 });
+        throw e;
+      }
+    }
 
     const patch: Record<string, any> = { updatedAt: new Date() };
     switch (action) {

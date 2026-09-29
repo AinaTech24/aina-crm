@@ -12,6 +12,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Search, X, ChevronDown, ChevronRight, SlidersHorizontal, Loader2, ArrowDownUp, Check } from "lucide-react";
+import { formatMoney } from "@/lib/format";
 
 /**
  * Accepts the full legacy `FilterDef` union so any page still on the old
@@ -25,6 +26,9 @@ export type CompactFilter =
   | { type: "multi"; key: string; label: string; options: { value: string; label: string }[] }
   | { type: "sort"; key: string; label: string; options: { value: string; label: string }[] }
   | { type: "date_range"; key: string; label: string }
+  /** A rupee range: `${key}_min` (inclusive) and `${key}_max` (exclusive), in
+   *  rupees. Presets are one-click bands; a custom range takes lakh / crore. */
+  | { type: "amount_range"; key: string; label: string; presets?: AmountPreset[] }
   /** A set of INDEPENDENT boolean params (?mine=1&no_rm=1…), each with its
    *  own URL key — what a "quick filters" chip strip really is. */
   | {
@@ -32,6 +36,21 @@ export type CompactFilter =
       label: string;
       options: { key: string; label: string; count?: number }[];
     };
+
+export type AmountPreset = { label: string; min?: number; max?: number };
+
+/** "₹10 L – ₹1 Cr", "₹5 Cr and above", "Under ₹1 L". */
+function amountSummary(min: string, max: string, presets?: AmountPreset[]): string {
+  if (!min && !max) return "";
+  const lo = min ? Number(min) : undefined;
+  const hi = max ? Number(max) : undefined;
+  const preset = presets?.find((p) => p.min === lo && p.max === hi);
+  if (preset) return preset.label;
+  const m = (n: number) => formatMoney(n, { decimals: n % 100000 === 0 ? 0 : 1 }).replace(" Lakh", " L");
+  if (lo != null && hi != null) return `${m(lo)} – ${m(hi)}`;
+  if (lo != null) return `${m(lo)} and above`;
+  return `Under ${m(hi!)}`;
+}
 
 export function CompactFilterBar({
   searchKey: searchKeyProp,
@@ -60,8 +79,8 @@ export function CompactFilterBar({
   const searchDef = allFilters.find((f) => f.type === "search") as Extract<CompactFilter, { type: "search" }> | undefined;
   const sortDef = allFilters.find((f) => f.type === "sort") as Extract<CompactFilter, { type: "sort" }> | undefined;
   const filters = allFilters.filter(
-    (f) => f.type === "multi" || f.type === "select" || f.type === "date_range" || f.type === "flags"
-  ) as Array<Extract<CompactFilter, { type: "multi" | "select" | "date_range" | "flags" }>>;
+    (f) => f.type === "multi" || f.type === "select" || f.type === "date_range" || f.type === "flags" || f.type === "amount_range"
+  ) as Array<Extract<CompactFilter, { type: "multi" | "select" | "date_range" | "flags" | "amount_range" }>>;
   const searchKey = searchKeyProp ?? searchDef?.key ?? "q";
   const searchPlaceholder = searchPlaceholderProp ?? searchDef?.placeholder ?? "Search…";
   const sort = sortProp ?? (sortDef ? { key: sortDef.key, options: sortDef.options } : undefined);
@@ -86,6 +105,9 @@ export function CompactFilterBar({
       } else if (f.type === "date_range") {
         out[`${f.key}_from`] = sp.get(`${f.key}_from`) ?? "";
         out[`${f.key}_to`] = sp.get(`${f.key}_to`) ?? "";
+      } else if (f.type === "amount_range") {
+        out[`${f.key}_min`] = sp.get(`${f.key}_min`) ?? "";
+        out[`${f.key}_max`] = sp.get(`${f.key}_max`) ?? "";
       } else if (f.type === "flags") {
         for (const o of f.options) out[o.key] = sp.get(o.key) === "1";
       }
@@ -129,6 +151,7 @@ export function CompactFilterBar({
     if (f.type === "flags") return n + f.options.filter((o) => values[o.key]).length;
     if (f.type === "multi") return n + ((values[f.key] as string[]).length > 0 ? 1 : 0);
     if (f.type === "select") return n + (values[f.key] ? 1 : 0);
+    if (f.type === "amount_range") return n + (values[`${f.key}_min`] || values[`${f.key}_max`] ? 1 : 0);
     return n + (values[`${f.key}_from`] || values[`${f.key}_to`] ? 1 : 0);
   }, 0);
 
@@ -138,7 +161,10 @@ export function CompactFilterBar({
       if (f.type === "flags") for (const o of f.options) next[o.key] = "";
       else if (f.type === "multi") next[f.key] = [];
       else if (f.type === "select") next[f.key] = "";
-      else {
+      else if (f.type === "amount_range") {
+        next[`${f.key}_min`] = "";
+        next[`${f.key}_max`] = "";
+      } else {
         next[`${f.key}_from`] = "";
         next[`${f.key}_to`] = "";
       }
@@ -163,6 +189,7 @@ export function CompactFilterBar({
       const v = values[f.key] as string;
       return v ? f.options.find((o) => o.value === v)?.label ?? v : "";
     }
+    if (f.type === "amount_range") return amountSummary(values[`${f.key}_min`], values[`${f.key}_max`], f.presets);
     const from = values[`${f.key}_from`];
     const to = values[`${f.key}_to`];
     if (!from && !to) return "";
@@ -314,6 +341,15 @@ export function CompactFilterBar({
                                 );
                               })}
                             </ul>
+                          ) : f.type === "amount_range" ? (
+                            <AmountRangeSection
+                              filterKey={f.key}
+                              label={f.label}
+                              presets={f.presets ?? []}
+                              min={values[`${f.key}_min`]}
+                              max={values[`${f.key}_max`]}
+                              onApply={(min, max) => pushParams({ [`${f.key}_min`]: min, [`${f.key}_max`]: max })}
+                            />
                           ) : (
                             <div className="flex items-center gap-1.5">
                               <input
@@ -403,6 +439,136 @@ export function CompactFilterBar({
           </span>
         )}
         {rightSlot}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Amount range: one-click bands, then a custom "from – to" in lakh or crore.
+ * Nothing is pushed while typing; Apply sends both bounds at once.
+ */
+function AmountRangeSection({
+  filterKey,
+  label,
+  presets,
+  min,
+  max,
+  onApply,
+}: {
+  filterKey: string;
+  label: string;
+  presets: AmountPreset[];
+  min: string;
+  max: string;
+  onApply: (min: string, max: string) => void;
+}) {
+  const [unit, setUnit] = useState<"lakh" | "crore">(() =>
+    [min, max].some((v) => v && Number(v) >= 1e7 && Number(v) % 1e7 === 0) ? "crore" : "lakh"
+  );
+  const scale = unit === "crore" ? 1e7 : 1e5;
+  const toText = (v: string) => (v ? String(Number(v) / scale) : "");
+  const [lo, setLo] = useState(() => toText(min));
+  const [hi, setHi] = useState(() => toText(max));
+  const [err, setErr] = useState<string | null>(null);
+
+  function changeUnit(next: "lakh" | "crore") {
+    const nextScale = next === "crore" ? 1e7 : 1e5;
+    const conv = (t: string) => (t.trim() === "" || Number.isNaN(Number(t)) ? t : String((Number(t) * scale) / nextScale));
+    setLo(conv(lo));
+    setHi(conv(hi));
+    setUnit(next);
+  }
+
+  function apply() {
+    const parse = (t: string) => (t.trim() === "" ? null : Number(t));
+    const a = parse(lo);
+    const b = parse(hi);
+    if ((a != null && (!Number.isFinite(a) || a < 0)) || (b != null && (!Number.isFinite(b) || b < 0))) {
+      setErr("Enter amounts of zero or more.");
+      return;
+    }
+    if (a != null && b != null && a >= b) {
+      setErr("“To” must be more than “From”.");
+      return;
+    }
+    setErr(null);
+    onApply(a == null ? "" : String(Math.round(a * scale)), b == null ? "" : String(Math.round(b * scale)));
+  }
+
+  return (
+    <div className="space-y-2">
+      {presets.length > 0 && (
+        <ul className="space-y-0.5">
+          {presets.map((p) => {
+            const pMin = p.min != null ? String(p.min) : "";
+            const pMax = p.max != null ? String(p.max) : "";
+            const checked = pMin === min && pMax === max && (min !== "" || max !== "");
+            return (
+              <li key={p.label}>
+                <button
+                  type="button"
+                  onClick={() => onApply(checked ? "" : pMin, checked ? "" : pMax)}
+                  className={`w-full text-left flex items-center gap-2 px-2 py-1.5 text-xs rounded transition ${
+                    checked ? "bg-brand-cyan-light/40 text-brand-cyan-deep font-medium" : "hover:bg-secondary/60"
+                  }`}
+                >
+                  {checked ? <Check className="size-3.5 shrink-0" /> : <span className="size-3.5 shrink-0" />}
+                  {p.label}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <div className="rounded border border-border p-2 space-y-1.5">
+        <div className="flex items-center justify-between text-2xs font-medium text-muted-foreground">
+          <span>Custom range</span>
+          <span className="inline-flex overflow-hidden rounded border border-border">
+            {(["lakh", "crore"] as const).map((u) => (
+              <button
+                key={u}
+                type="button"
+                onClick={() => changeUnit(u)}
+                aria-pressed={unit === u}
+                className={`px-1.5 py-0.5 ${unit === u ? "bg-secondary text-foreground" : "hover:bg-secondary/60"}`}
+              >
+                {u === "lakh" ? "₹ Lakh" : "₹ Crore"}
+              </button>
+            ))}
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <input
+            inputMode="decimal"
+            value={lo}
+            onChange={(e) => setLo(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && apply()}
+            placeholder="From"
+            aria-label={`${label} from, in ${unit}`}
+            id={`${filterKey}-min`}
+            className="input-base h-7 text-2xs flex-1 min-w-0"
+          />
+          <span className="text-muted-foreground text-xs">–</span>
+          <input
+            inputMode="decimal"
+            value={hi}
+            onChange={(e) => setHi(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && apply()}
+            placeholder="To"
+            aria-label={`${label} to, in ${unit}`}
+            id={`${filterKey}-max`}
+            className="input-base h-7 text-2xs flex-1 min-w-0"
+          />
+          <button type="button" onClick={apply} className="btn-secondary h-7 px-2 text-2xs">
+            Apply
+          </button>
+        </div>
+        {err ? (
+          <p className="text-2xs text-destructive">{err}</p>
+        ) : (
+          <p className="text-2xs text-muted-foreground">Leave one side empty for “and above” or “under”.</p>
+        )}
       </div>
     </div>
   );
