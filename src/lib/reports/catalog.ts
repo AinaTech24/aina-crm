@@ -31,11 +31,35 @@ export type ReportItem = {
   aliases?: string[];
 };
 
-export type ReportGroup = { group: string; items: ReportItem[] };
+/** How often a group's reports are meant to be run — shown as a tag, never in the name. */
+export type ReportFrequency = "Daily" | "Weekly" | "Monthly" | "Quarterly" | "Yearly";
+
+export type ReportGroup = { group: string; frequency?: ReportFrequency; items: ReportItem[] };
+
+/**
+ * "Most used" on the reports hub counts what each person opens (per device).
+ * Until someone has opened six, these fill the gaps, in order: the reports an
+ * MFD firm runs week in, week out. More than six, so the row stays full after
+ * favourites and hidden reports are left out of it.
+ */
+export const DEFAULT_MOST_USED = [
+  "aum_movement",
+  "active_sip_book",
+  "net_sales",
+  "sip_rejected",
+  "tax_realised",
+  "review_pending",
+  "daily_sip_added",
+  "rm_business",
+  "high_aum",
+  "tax_notional",
+  "sip_expiring",
+  "family_aum",
+] as const;
 
 export const REPORTS: ReportGroup[] = [
   {
-    group: "Growth MIS (Monthly)", items: [
+    group: "Growth MIS", frequency: "Monthly", items: [
       { key: "growth_mis", label: "Growth MIS — Efforts × Results", icon: "BarChart3", href: "/dashboard/reports/growth-mis", desc: "Monthly efforts and results, side by side", aliases: ["MIS", "monthly MIS", "efforts"] },
       { key: "business_mis", label: "Results MIS — Product × Asset (Full FY)", icon: "BarChart3", href: "/dashboard/reports/business-mis", desc: "Full-year business by product and asset class", aliases: ["MIS", "annual MIS", "product wise"] },
     ]
@@ -82,7 +106,7 @@ export const REPORTS: ReportGroup[] = [
     ]
   },
   {
-    group: "Branch & RM Business (Monthly)", items: [
+    group: "Branch & RM Business", frequency: "Monthly", items: [
       { key: "sif_status", label: "SIF Business — Target vs Actual", icon: "TrendingUp", href: "/dashboard/reports/sif-status", desc: "SIF business vs target, monthly" },
       { key: "branch_rm_sip", label: "SIP — Branch & RM-wise", icon: "TrendingUp", href: "/dashboard/reports/branch-rm/sip", desc: "SIP numbers by branch and RM" },
       { key: "branch_rm_equity", label: "Equity Lumpsum — Branch & RM-wise", icon: "BarChart3", href: "/dashboard/reports/branch-rm/equity-lumpsum", desc: "Equity lumpsum by branch and RM" },
@@ -179,7 +203,7 @@ export const REPORTS: ReportGroup[] = [
     ]
   },
   {
-    group: "Back Office (Monthly)", items: [
+    group: "Back Office", frequency: "Monthly", items: [
       { key: "bo_other_services", label: "Other Services (IIN/CAN/KYC…) by Branch", icon: "ListChecks", href: "/dashboard/reports/other-services", desc: "IIN, CAN, KYC and other ops work by branch", aliases: ["IIN", "CAN", "back office", "other services", "non financial", "NFT", "bank change", "name change"] },
       { key: "bo_work", label: "Back-Office Work (Rectifications)", icon: "CheckCircle2", href: "/dashboard/reports/back-office-work", desc: "Rectifications handled by back office", aliases: ["rectification", "back office work", "corrections"] },
     ]

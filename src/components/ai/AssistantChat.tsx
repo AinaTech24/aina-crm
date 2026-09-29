@@ -54,7 +54,12 @@ export function AssistantChat({ insightsHref }: { insightsHref?: string }) {
   const [model, setModel] = useState<"fast" | "reasoning">("reasoning");
   const [models, setModels] = useState<ModelOpt[]>([]);
   const [providerLabel, setProviderLabel] = useState("");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // History panel: null = nobody has toggled it, so follow the default —
+  // open while chats load (most people have some), collapsed once we know
+  // there are none. An empty list is just a wide blank column beside the
+  // suggested questions. After a toggle, the person's choice holds.
+  const [sidebarPref, setSidebarPref] = useState<boolean | null>(null);
+  const [chatsLoaded, setChatsLoaded] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -86,6 +91,9 @@ export function AssistantChat({ insightsHref }: { insightsHref?: string }) {
       const j = await r.json();
       if (Array.isArray(j.chats)) setChats(j.chats);
     } catch { }
+    finally {
+      if (!archived) setChatsLoaded(true);
+    }
   }
 
   async function openChat(id: string) {
@@ -198,11 +206,13 @@ export function AssistantChat({ insightsHref }: { insightsHref?: string }) {
     ? models.map((m) => ({ value: m.tier, label: m.label }))
     : [{ value: "reasoning", label: "Reasoning" }, { value: "fast", label: "Fast" }];
 
+  const sidebarOpen = sidebarPref ?? (!chatsLoaded || chats.length > 0 || showArchived);
+
   return (
     <div className="flex h-[calc(100vh-7rem)] rounded-xl border border-border bg-card overflow-hidden">
       {/* ─────────────── Sidebar: chat history (smooth width animation) ─────────────── */}
       <aside
-        className={`shrink-0 overflow-hidden bg-secondary/20 border-r border-border transition-[width] duration-300 ease-in-out ${sidebarOpen ? "w-64" : "w-12"}`}
+        className={`shrink-0 overflow-hidden bg-secondary/20 border-r border-border ${sidebarPref === null ? "" : "transition-[width] duration-300 ease-in-out"} ${sidebarOpen ? "w-64" : "w-12"}`}
       >
         {!sidebarOpen ? (
           // Collapsed rail — keep New chat + Chats/Archived reachable as icons.
@@ -211,14 +221,14 @@ export function AssistantChat({ insightsHref }: { insightsHref?: string }) {
               <Plus className="size-4" />
             </button>
             <button
-              onClick={() => { setShowArchived(false); setSidebarOpen(true); }}
+              onClick={() => { setShowArchived(false); setSidebarPref(true); }}
               title="Chats"
               className={`size-9 grid place-items-center rounded-lg transition ${!showArchived ? "bg-secondary text-foreground" : "text-muted-foreground hover:bg-secondary/70"}`}
             >
               <MessageSquare className="size-4" />
             </button>
             <button
-              onClick={() => { setShowArchived(true); setSidebarOpen(true); }}
+              onClick={() => { setShowArchived(true); setSidebarPref(true); }}
               title="Archived"
               className={`size-9 grid place-items-center rounded-lg transition ${showArchived ? "bg-secondary text-foreground" : "text-muted-foreground hover:bg-secondary/70"}`}
             >
@@ -274,7 +284,7 @@ export function AssistantChat({ insightsHref }: { insightsHref?: string }) {
       <div className="flex-1 min-w-0 flex flex-col">
         {/* header */}
         <div className="h-12 shrink-0 border-b border-border px-3 flex items-center gap-2">
-          <button onClick={() => setSidebarOpen((o) => !o)} className="size-8 grid place-items-center rounded-md hover:bg-secondary text-muted-foreground" title="Toggle history">
+          <button onClick={() => setSidebarPref(!sidebarOpen)} aria-expanded={sidebarOpen} aria-label={sidebarOpen ? "Hide chat history" : "Show chat history"} className="size-8 grid place-items-center rounded-md hover:bg-secondary text-muted-foreground" title="Toggle history">
             {sidebarOpen ? <PanelLeftClose className="size-4" /> : <PanelLeft className="size-4" />}
           </button>
           <div className="flex items-center gap-1.5 font-semibold text-sm">

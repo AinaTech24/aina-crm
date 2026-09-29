@@ -94,12 +94,14 @@ export default async function FinancesHubPage() {
 
       {/* Live overview */}
       {hasData ? (
+        // Red is for a loss and nothing else. Profit reads green when there is
+        // one; margin, income and expenses are plain numbers, not warnings.
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Kpi label="Net profit" value={formatINR(s.netProfit)} tone={s.netProfit >= 0 ? "emerald" : "rose"}
+          <Kpi label="Net profit" value={formatINR(s.netProfit)} tone={s.netProfit < 0 ? "loss" : s.netProfit > 0 ? "success" : "neutral"}
             delta={profitDelta} deltaLabel="vs last FY" />
-          <Kpi label="Net margin" value={s.margin != null ? `${s.margin.toFixed(1)}%` : "—"} tone="cyan" />
-          <Kpi label="Income (net commission)" value={formatINR(s.income.net)} tone="emerald" />
-          <Kpi label="Expenses" value={formatINR(s.expenses.total)} tone="rose"
+          <Kpi label="Net margin" value={s.margin != null ? `${s.margin.toFixed(1)}%` : "—"} tone={s.margin != null && s.margin < 0 ? "loss" : "neutral"} />
+          <Kpi label="Income (net commission)" value={formatINR(s.income.net)} tone="neutral" />
+          <Kpi label="Expenses" value={formatINR(s.expenses.total)} tone="neutral"
             sub={s.topExpense ? `Top: ${CAT_LABEL[s.topExpense.category] ?? s.topExpense.category}` : undefined} />
         </div>
       ) : (
@@ -118,8 +120,8 @@ export default async function FinancesHubPage() {
               href={c.href}
               className="card-surface p-5 hover-lift group flex flex-col"
             >
-              <div className="size-9 rounded-lg bg-brand-cyan-light grid place-items-center mb-3">
-                <Icon className="size-4.5 text-brand-cyan-deep" />
+              <div className="size-9 rounded-lg bg-secondary grid place-items-center mb-3">
+                <Icon className="size-4.5 text-muted-foreground" />
               </div>
               <div className="font-semibold text-sm flex items-center gap-1">
                 {c.title}
@@ -144,18 +146,19 @@ function Kpi({
 }: {
   label: string;
   value: string;
-  tone: "emerald" | "rose" | "cyan";
+  tone: "success" | "neutral" | "loss";
   delta?: number | null;
   deltaLabel?: string;
   sub?: string;
 }) {
-  const cls = tone === "emerald" ? "text-emerald-700" : tone === "rose" ? "text-rose-700" : "text-brand-cyan-deep";
+  const cls = tone === "success" ? "text-emerald-700" : tone === "loss" ? "text-rose-700" : "text-foreground";
   return (
     <div className="card-surface p-4">
       <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{label}</div>
       <div className={`text-xl font-bold mt-1 tabular-nums ${cls}`}>{value}</div>
       {delta != null && (
-        <div className={`text-2xs mt-0.5 inline-flex items-center gap-0.5 ${delta >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+        // A smaller profit than last year is not a loss: the fall reads neutral.
+        <div className={`text-2xs mt-0.5 inline-flex items-center gap-0.5 ${delta >= 0 ? "text-emerald-600" : "text-muted-foreground"}`}>
           {delta >= 0 ? <ArrowUpRight className="size-3" /> : <ArrowDownRight className="size-3" />}
           {Math.abs(delta).toFixed(0)}% {deltaLabel}
         </div>

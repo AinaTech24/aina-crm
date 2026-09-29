@@ -15,6 +15,9 @@ const CLASS_COLOR: Record<string, string> = {
   Equity: "bg-emerald-500", Debt: "bg-amber-500", Hybrid: "bg-blue-500", Liquid: "bg-cyan-500",
   Commodity: "bg-orange-500", International: "bg-violet-500", Other: "bg-slate-400",
 };
+/** "Other" is what the classifier returns when it cannot place a holding —
+ *  not a kind of asset. Say so. The drill-down still queries the key "Other". */
+const classLabel = (c: string) => (c === "Other" ? "Unclassified" : c);
 
 export default async function PortfolioIntelligencePage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const session = await requireSession();
@@ -87,7 +90,23 @@ export default async function PortfolioIntelligencePage({ searchParams }: { sear
                 <div className="space-y-2.5">
                   <StackedBar slices={intel.byClass} />
                   {intel.byClass.map((c) => (
-                    <PortfolioDrillBar key={c.label} by="class" label={c.label} pct={c.pct} value={c.value} color={CLASS_COLOR[c.label] ?? "bg-slate-400"} mine={mine} />
+                    <div key={c.label}>
+                      <PortfolioDrillBar by="class" label={c.label} displayLabel={classLabel(c.label)} pct={c.pct} value={c.value} color={CLASS_COLOR[c.label] ?? "bg-slate-400"} mine={mine} />
+                      {c.label === "Other" && (
+                        <p className="mt-1 text-2xs text-muted-foreground">
+                          Map {c.pct}% of holdings: their scheme didn&apos;t match the AMFI scheme list when they were
+                          imported, so no asset class could be read.{" "}
+                          <Link href="/dashboard/schemes" className="font-medium text-foreground hover:underline">
+                            Sync the Scheme Master
+                          </Link>
+                          , then{" "}
+                          <Link href="/dashboard/rta-imports" className="font-medium text-foreground hover:underline">
+                            re-import the holdings file
+                          </Link>
+                          .
+                        </p>
+                      )}
+                    </div>
                   ))}
                   {intel.classifiedPct < 100 && (
                     <p className="text-2xs text-muted-foreground pt-1">{intel.classifiedPct}% of measured holdings classified · {intel.coveragePct}% of book AUM has scheme detail.</p>
@@ -143,7 +162,7 @@ export default async function PortfolioIntelligencePage({ searchParams }: { sear
                         <td className="py-2 text-muted-foreground tabular-nums">{i + 1}</td>
                         <td className="py-2 font-medium max-w-[280px] truncate">{s.scheme}</td>
                         <td className="py-2 text-xs">{s.amc ?? "—"}</td>
-                        <td className="py-2"><span className={`chip text-2xs text-white ${CLASS_COLOR[s.klass] ?? "bg-slate-400"}`}>{s.klass}</span></td>
+                        <td className="py-2"><span className={`chip text-2xs text-white ${CLASS_COLOR[s.klass] ?? "bg-slate-400"}`}>{classLabel(s.klass)}</span></td>
                         <td className="py-2 text-right tabular-nums">{inr(s.value)}</td>
                         <td className="py-2 text-right tabular-nums font-semibold">{s.pct}%</td>
                       </tr>
@@ -162,7 +181,7 @@ export default async function PortfolioIntelligencePage({ searchParams }: { sear
 function StackedBar({ slices }: { slices: Slice[] }) {
   return (
     <div className="flex h-3 rounded-full overflow-hidden">
-      {slices.map((s) => <div key={s.label} className={CLASS_COLOR[s.label] ?? "bg-slate-400"} style={{ width: `${s.pct}%` }} title={`${s.label} ${s.pct}%`} />)}
+      {slices.map((s) => <div key={s.label} className={CLASS_COLOR[s.label] ?? "bg-slate-400"} style={{ width: `${s.pct}%` }} title={`${classLabel(s.label)} ${s.pct}%`} />)}
     </div>
   );
 }

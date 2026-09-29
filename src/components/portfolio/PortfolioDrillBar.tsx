@@ -22,9 +22,13 @@ export function PortfolioDrillBar({
   color,
   rank,
   mine,
+  displayLabel,
 }: {
   by: "amc" | "class";
+  /** The key the drill-down queries by (e.g. the asset class "Other"). */
   label: string;
+  /** What to show instead of `label`, when the key is not a good name. */
+  displayLabel?: string;
   pct: number;
   value: number;
   color: string;
@@ -62,7 +66,7 @@ export function PortfolioDrillBar({
         <div className="flex items-center justify-between text-xs mb-0.5">
           <span className="font-medium truncate inline-flex items-center gap-1">
             <ChevronRight className={`size-3 text-muted-foreground transition-transform ${open ? "rotate-90" : ""}`} />
-            {rank ? `${rank}. ` : ""}{label}
+            {rank ? `${rank}. ` : ""}{displayLabel ?? label}
           </span>
           <span className="tabular-nums text-muted-foreground">{inr(value)} · {pct}%</span>
         </div>
