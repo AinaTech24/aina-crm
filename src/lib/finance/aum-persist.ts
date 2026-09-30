@@ -4,8 +4,11 @@ import { refreshActiveSipAmount } from "@/lib/metrics/sip";
 import type { Tx } from "@/db/client";
 import { folios } from "@/db/schema";
 import { computeInvestorValuation, loadValuationRows, invalidateInvestorValuation } from "./valuation";
+import { loadNavIndex, lookupNav } from "./scheme-match";
 
-async function persistBatch(tx: Tx, investorIds: string[]): Promise<number> {
+type BatchStats = { updated: number; skippedUnpriced: number; skippedNoHoldings: number };
+
+async function persistBatch(tx: Tx, investorIds: string[]): Promise<BatchStats> {
   const { transactions, snapshots } = await loadValuationRows(tx, investorIds);
   const byInvestor = <T extends { investor_id?: string | null }>(rows: T[]) => {
     const groups = new Map<string, T[]>();
@@ -14,36 +17,48 @@ async function persistBatch(tx: Tx, investorIds: string[]): Promise<number> {
   };
   const txns = byInvestor(transactions), folioRows = byInvestor(snapshots);
   const updates: ReturnType<typeof sql>[] = [];
+  let skippedUnpriced = 0;
+  let skippedNoHoldings = 0;
   for (const id of investorIds) {
     const value = computeInvestorValuation(txns.get(id) ?? [], folioRows.get(id) ?? []);
     // No basis, or an unpriced position: preserve the last cached total instead
     // of overwriting it with a deceptively complete zero/partial valuation.
-    if (!value.holdings.length || value.unpricedSchemes > 0) continue;
+    //
+    // The skip is right, but it used to be SILENT, and a silent skip is how a
+    // book goes stale without anyone noticing. Count both reasons so the caller
+    // can report them.
+    if (!value.holdings.length) { skippedNoHoldings++; continue; }
+    if (value.unpricedSchemes > 0) { skippedUnpriced++; continue; }
     updates.push(sql`(${id}::uuid, ${value.currentValue}::numeric)`);
     invalidateInvestorValuation(id);
   }
-  if (!updates.length) return 0;
+  if (!updates.length) return { updated: 0, skippedUnpriced, skippedNoHoldings };
   const result = await tx.execute(sql`
     UPDATE investors i SET aum = round(v.aum, 2), updated_at = now()
     FROM (VALUES ${sql.join(updates, sql`, `)}) AS v(id, aum)
     WHERE i.id = v.id AND i.aum IS DISTINCT FROM round(v.aum, 2) RETURNING i.id
   `);
-  return result.rows.length;
+  return { updated: result.rows.length, skippedUnpriced, skippedNoHoldings };
 }
 
-export async function recomputeCombinedAum(tx: Tx): Promise<{ updated: number; totalAum: number }> {
-  let cursor: string | null = null, updated = 0;
+export async function recomputeCombinedAum(
+  tx: Tx
+): Promise<{ updated: number; totalAum: number; skippedUnpriced: number; skippedNoHoldings: number }> {
+  let cursor: string | null = null, updated = 0, skippedUnpriced = 0, skippedNoHoldings = 0;
   for (;;) {
     const batch = (await tx.execute(sql`
       SELECT id FROM investors WHERE deleted_at IS NULL AND merged_into_id IS NULL
       ${cursor ? sql`AND id > ${cursor}::uuid` : sql``} ORDER BY id LIMIT 250
     `)).rows as Array<{ id: string }>;
     if (!batch.length) break;
-    updated += await persistBatch(tx, batch.map((row) => row.id));
+    const stats = await persistBatch(tx, batch.map((row) => row.id));
+    updated += stats.updated;
+    skippedUnpriced += stats.skippedUnpriced;
+    skippedNoHoldings += stats.skippedNoHoldings;
     cursor = batch[batch.length - 1].id;
   }
   const totals = (await tx.execute(sql`SELECT COALESCE(SUM(aum), 0)::numeric AS total FROM investors WHERE deleted_at IS NULL AND merged_into_id IS NULL`)).rows as Array<{ total: string }>;
-  return { updated, totalAum: Number(totals[0]?.total ?? 0) };
+  return { updated, totalAum: Number(totals[0]?.total ?? 0), skippedUnpriced, skippedNoHoldings };
 }
 export const recomputeAllAum = recomputeCombinedAum;
 
@@ -60,28 +75,43 @@ type FolioScheme = {
   value?: number;
 };
 
+export type RevalueStats = {
+  folios: number;
+  /** Legs seen, and how each was priced — the numbers that make a code
+   *  mismatch visible instead of silent. */
+  legs: number;
+  pricedByCode: number;
+  pricedByName: number;
+  unpriced: number;
+  /** Rupee value sitting in legs that could not be priced by either key. */
+  unpricedValue: number;
+};
+
 /**
  * Reprice CAS-sourced folio holdings at live NAV. Units come from the feed and
  * are left as-is; only nav + value are refreshed and the folio aum re-summed. A
  * holding whose scheme has no live NAV keeps its prior value in the rollup (so
  * an un-priceable scheme never silently zeroes a folio).
+ *
+ * Matching is by AMFI scheme code, then by canonical scheme NAME. The name pass
+ * is not a nicety: the holdings importer stores the REGISTRAR's product code
+ * (`Y1035`, `FTI047`), which is not AMFI's, so a code-only lookup missed 87% of
+ * one firm's book by value and left it frozen at its last imported price. See
+ * `./scheme-match.ts` for the measurement.
+ *
+ * The returned counts exist so that failure can never be silent again: a run
+ * that prices nothing by code and everything by name still looks "fine" from
+ * the folio count alone.
  */
 export async function revalueAllFolios(
   tx: Tx,
   batchSize = 500
-): Promise<{ folios: number }> {
-  // One pull of the (platform-shared) NAV master, indexed by scheme code.
-  const navRes = await tx.execute(
-    sql`SELECT scheme_code, nav FROM scheme_nav WHERE nav IS NOT NULL`
-  );
-  const navMap = new Map<string, number>();
-  for (const r of navRes.rows as Array<{ scheme_code: string | null; nav: string | number }>) {
-    if (r.scheme_code != null) {
-      const nav = Number(r.nav);
-      if (isFinite(nav) && nav > 0) navMap.set(String(r.scheme_code), nav);
-    }
-  }
-  if (navMap.size === 0) return { folios: 0 };
+): Promise<RevalueStats> {
+  const navIndex = await loadNavIndex(tx);
+  const stats: RevalueStats = {
+    folios: 0, legs: 0, pricedByCode: 0, pricedByName: 0, unpriced: 0, unpricedValue: 0,
+  };
+  if (navIndex.size === 0) return stats;
 
   let offset = 0;
   let changedFolios = 0;
@@ -109,14 +139,20 @@ export async function revalueAllFolios(
       let changed = false;
       const next = schemes.map((s) => {
         const units = Number(s.units ?? 0);
-        const liveNav = s.schemeCode ? navMap.get(String(s.schemeCode)) : undefined;
-        if (liveNav != null && isFinite(units) && units > 0) {
-          const value = Math.round(units * liveNav * 100) / 100;
-          if (s.nav !== liveNav || s.value !== value) changed = true;
+        stats.legs++;
+        const hit = lookupNav(navIndex, s.schemeCode, s.schemeName);
+        if (hit && isFinite(units) && units > 0) {
+          if (hit.via === "code") stats.pricedByCode++;
+          else stats.pricedByName++;
+          const value = Math.round(units * hit.nav * 100) / 100;
+          if (s.nav !== hit.nav || s.value !== value) changed = true;
           folioAum += value;
-          return { ...s, nav: liveNav, value };
+          return { ...s, nav: hit.nav, value };
         }
-        // Un-priceable scheme — keep whatever value was there.
+        // Un-priceable scheme — keep whatever value was there, and account for
+        // it, because this is exactly the case that hid a stale book.
+        stats.unpriced++;
+        stats.unpricedValue += Number(s.value ?? 0);
         folioAum += Number(s.value ?? 0);
         return s;
       });
@@ -144,6 +180,7 @@ export async function revalueAllFolios(
     offset += batchSize;
   }
 
-  return { folios: changedFolios };
+  stats.folios = changedFolios;
+  return stats;
 }
 

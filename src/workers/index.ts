@@ -34,7 +34,7 @@ import { runFeedIngest } from "./feed-ingest";
 import { runStatementScheduler } from "./statement-scheduler";
 import { refreshNav } from "@/lib/finance/nav-feed";
 import { syncMfSchemeCatalog, enrichMfSchemes } from "@/lib/finance/mfapi";
-import { getLastRun, recordRun } from "./scheduler-state";
+import { describeRun, getLastRun, recordRun } from "./scheduler-state";
 import { recordDailySnapshots } from "./firm-snapshot-recorder";
 import { runDscReminder } from "./dsc-reminder";
 import { runReviewDueReminder } from "./review-due-reminder";
@@ -67,8 +67,12 @@ function scheduleDaily(
 
   const run = async (reason: string) => {
     try {
-      await fn();
-      await recordRun(jobName, "ok", reason);
+      // Read the job's OWN report rather than assuming a returned promise means
+      // success — see describeRun: a swallowed per-tenant failure was being
+      // recorded as "ok" every night.
+      const result = await fn();
+      const { status, detail } = describeRun(result, reason);
+      await recordRun(jobName, status, detail);
     } catch (err) {
       captureError(`[${jobName}] ${reason} run failed`, err);
       await recordRun(jobName, "error", (err as Error)?.message);

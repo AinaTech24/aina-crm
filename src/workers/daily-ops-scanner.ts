@@ -89,6 +89,13 @@ interface ScanResult {
   aumRevalued: number;
   /** Folios whose holdings were repriced at live NAV this run. */
   foliosRevalued: number;
+  /** Holdings that could be priced by neither AMFI code nor scheme name, and
+   *  the rupee value sitting in them. A book can only go stale through this
+   *  number, so it is carried all the way out to scheduler_state. */
+  legsUnpriced: number;
+  legsUnpricedValue: number;
+  /** Clients left at their previous AUM because a holding could not be priced. */
+  aumSkippedUnpriced: number;
   /** `goal.drift` events emitted this run (one per investor with a behind goal). */
   goalDrift: number;
   /** `insurance.premium_due` events emitted (one per investor at a milestone). */
@@ -163,6 +170,9 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
     goalsRecomputed: 0,
     aumRevalued: 0,
     foliosRevalued: 0,
+    legsUnpriced: 0,
+    legsUnpricedValue: 0,
+    aumSkippedUnpriced: 0,
     goalDrift: 0,
     premiumDue: 0,
     policyLapsed: 0,
@@ -674,8 +684,20 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
       // Folios first (so their repriced values are available), then investors.
       const folioVal = await revalueAllFolios(tx);
       result.foliosRevalued = folioVal.folios;
+      result.legsUnpriced = folioVal.unpriced;
+      result.legsUnpricedValue = folioVal.unpricedValue;
       const aumVal = await recomputeCombinedAum(tx);
       result.aumRevalued = aumVal.updated;
+      result.aumSkippedUnpriced = aumVal.skippedUnpriced;
+      // A firm whose holdings cannot be priced is the one failure mode that
+      // looks identical to "nothing changed today". Say so per tenant.
+      if (folioVal.unpriced > 0) {
+        console.warn(
+          `[daily-ops] tenant ${tenantId}: ${folioVal.unpriced} holding(s) could not be priced ` +
+            `(Rs ${Math.round(folioVal.unpricedValue / 100000)} lakh); ` +
+            `priced ${folioVal.pricedByCode} by code, ${folioVal.pricedByName} by name`
+        );
+      }
 
       // ── CS5: AUM "moments that matter" ────────────────────────────────
       // When a client's live AUM crosses a band (₹10L/₹25L/₹50L/₹1Cr/₹2.5Cr/
@@ -1321,6 +1343,9 @@ export async function runDailyOpsScan(): Promise<{
     goalsRecomputed: 0,
     aumRevalued: 0,
     foliosRevalued: 0,
+    legsUnpriced: 0,
+    legsUnpricedValue: 0,
+    aumSkippedUnpriced: 0,
     goalDrift: 0,
     premiumDue: 0,
     policyLapsed: 0,
@@ -1361,6 +1386,9 @@ export async function runDailyOpsScan(): Promise<{
       totals.goalsRecomputed += r.goalsRecomputed;
       totals.aumRevalued += r.aumRevalued;
       totals.foliosRevalued += r.foliosRevalued;
+      totals.legsUnpriced += r.legsUnpriced;
+      totals.legsUnpricedValue += r.legsUnpricedValue;
+      totals.aumSkippedUnpriced += r.aumSkippedUnpriced;
       totals.goalDrift += r.goalDrift;
       totals.premiumDue += r.premiumDue;
       totals.policyLapsed += r.policyLapsed;
