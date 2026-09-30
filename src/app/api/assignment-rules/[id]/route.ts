@@ -29,7 +29,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   try {
     const session = await requireSession();
     if (!isManager(session.roles)) return NextResponse.json({ error: "not allowed" }, { status: 403 });
-    await withTenant(session.tenantId, async (tx) => tx.delete(assignmentRules).where(and(eq(assignmentRules.id, id), eq(assignmentRules.tenantId, session.tenantId))));
+    const gone = await withTenant(session.tenantId, async (tx) => tx.delete(assignmentRules).where(and(eq(assignmentRules.id, id), eq(assignmentRules.tenantId, session.tenantId))).returning({ id: assignmentRules.id }));
+    if (!gone.length) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({ ok: true });
   } catch (err: any) { return handleApiError(err); }
 }

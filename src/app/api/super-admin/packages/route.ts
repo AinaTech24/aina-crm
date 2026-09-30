@@ -1,4 +1,4 @@
-import { handleApiError } from "@/lib/api/error-handler";
+import { handleApiError, isUniqueViolation } from "@/lib/api/error-handler";
 /**
  * Packages CRUD (AINA only).
  *
@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
     });
     return NextResponse.json({ id }, { status: 201 });
   } catch (err: any) {
-    if (String(err?.message ?? "").includes("packages_key_unique")) {
+    if (isUniqueViolation(err, "packages_key_unique")) {
       return NextResponse.json({ error: "package key already exists" }, { status: 409 });
     }
     return handleApiError(err);

@@ -1,4 +1,4 @@
-import { handleApiError } from "@/lib/api/error-handler";
+import { handleApiError, isUniqueViolation } from "@/lib/api/error-handler";
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
 import { eq } from "drizzle-orm";
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
     });
     return NextResponse.json({ id: sopId }, { status: 201 });
   } catch (err: any) {
-    if (String(err?.message ?? "").includes("sops_tenant_key_unique")) {
+    if (isUniqueViolation(err, "sops_tenant_key_unique")) {
       return NextResponse.json({ error: "key already exists" }, { status: 409 });
     }
     return handleApiError(err);

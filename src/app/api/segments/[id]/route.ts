@@ -117,9 +117,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     requireCap(session.roles, "segments.manage", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const clientMeta = clientMetaFromHeaders(req.headers);
-    await withTenant(session.tenantId, async (tx) => {
+    const found = await withTenant(session.tenantId, async (tx) => {
       const before = (await tx.select().from(segments).where(and(eq(segments.id, id), eq(segments.tenantId, session.tenantId))).limit(1))[0];
-      if (!before) return;
+      if (!before) return false;
       await tx.delete(segments).where(and(eq(segments.id, id), eq(segments.tenantId, session.tenantId)));
       await recordAudit(tx, {
         tenantId: session.tenantId,
@@ -130,7 +130,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         before: { name: before.name } as any,
         ...clientMeta,
       });
+      return true;
     });
+    if (!found) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return handleApiError(err);
