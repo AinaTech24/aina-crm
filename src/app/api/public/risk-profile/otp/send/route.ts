@@ -36,7 +36,7 @@ import {
   OTP_RESEND_COOLDOWN_SEC,
   OTP_TTL_MS,
 } from "@/lib/public-otp";
-import { enforce } from "@/lib/rate-limit";
+import { enforce, enforceLinkToken, PUBLIC_LINK_IP_CEILING } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,13 +54,20 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export async function POST(req: NextRequest) {
   try {
     // Coarse abuse cap per IP — the fine-grained 60s per-token cooldown is
-    // enforced below with the contract's retryInSeconds shape.
-    const limited = enforce(req, "public.risk-profile-otp", { limit: 15, windowSec: 60 * 60 });
+    // enforced below with the contract's retryInSeconds shape. Was 15/hour,
+    // which throttled a whole office to fifteen clients however many people
+    // were working.
+    const limited = enforce(req, "public.risk-profile-otp", PUBLIC_LINK_IP_CEILING);
     if (limited) return limited;
 
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
     const { token, email: bodyEmail } = parsed.data;
+
+    // Per-link cap on top of the 60s cooldown: ten codes an hour is far more
+    // than one client needs, and is the number that actually limits abuse.
+    const perToken = enforceLinkToken("public.risk-profile-otp", token, 10);
+    if (perToken) return perToken;
 
     // Step 1: token lookup needs cross-tenant context (no session). Tiny block,
     // mirrors the submit route's validation exactly. Accept either the URL

@@ -15,18 +15,22 @@ import { shareTokens } from "@/db/schema";
 import { renderRiskProfilePdf } from "@/lib/risk-profile/risk-profile-pdf";
 import { loadActiveTemplate } from "@/lib/risk-profile/template";
 import { loadSignatureImage } from "@/lib/risk-profile/signature-image";
-import { enforce } from "@/lib/rate-limit";
+import { enforce, enforceLinkToken, PUBLIC_LINK_IP_CEILING } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    const limited = enforce(req, "public.risk-profile.pdf", { limit: 60, windowSec: 60 * 60 });
+    const limited = enforce(req, "public.risk-profile.pdf", PUBLIC_LINK_IP_CEILING);
     if (limited) return limited;
 
     const tokenId = req.nextUrl.searchParams.get("token") ?? "";
     const download = req.nextUrl.searchParams.get("download") === "1";
     if (!tokenId) return NextResponse.json({ error: "missing token" }, { status: 400 });
+
+    // Generous per link: a client may view then download, and re-download later.
+    const perToken = enforceLinkToken("public.risk-profile.pdf", tokenId, 60);
+    if (perToken) return perToken;
 
     // Resolve the token cross-tenant (no session). usedAt/expiresAt are NOT
     // enforced here — the client downloads after submitting (token already

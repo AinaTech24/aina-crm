@@ -12,18 +12,22 @@ import { eq } from "drizzle-orm";
 import { withSystem, withTenant } from "@/db/client";
 import { serviceRequests, shareTokens, eventsOutbox, investors, leads } from "@/db/schema";
 import { claimShareToken, releaseShareToken, finalizeShareToken } from "@/lib/share-tokens";
-import { enforce } from "@/lib/rate-limit";
+import { enforce, enforceLinkToken, PUBLIC_LINK_IP_CEILING } from "@/lib/rate-limit";
 import { NPS_QUESTION_KEY } from "@/lib/support/feedback-questions";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
-    const limited = enforce(req, "public.feedback", { limit: 10, windowSec: 60 * 60 });
+    // Coarse brake only — see PUBLIC_LINK_IP_CEILING. Ten per IP meant a firm
+    // could collect feedback from ten clients an hour, office-wide.
+    const limited = enforce(req, "public.feedback", PUBLIC_LINK_IP_CEILING);
     if (limited) return limited;
 
     const body = await req.json().catch(() => ({}));
     const tokenId: string | undefined = body.tokenId;
+    const perToken = enforceLinkToken("public.feedback", String(tokenId ?? ""), 10);
+    if (perToken) return perToken;
     const comment: string = String(body.comment ?? "").trim();
     const signatureName: string = String(body.signatureName ?? "").trim();
 

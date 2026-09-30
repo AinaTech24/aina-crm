@@ -25,7 +25,7 @@ import { isAllowedDocType } from "@/lib/storage/file-sniff";
 import { firmFolderName } from "@/lib/storage/firm-folder";
 import { transitionTo } from "@/lib/blueprints/engine";
 import { mapKycFieldsToInvestorUpdate } from "@/lib/onboarding/kyc-fields";
-import { enforce } from "@/lib/rate-limit";
+import { enforce, enforceLinkToken, PUBLIC_LINK_IP_CEILING } from "@/lib/rate-limit";
 import { claimDocumentUpload } from "@/lib/storage/document-upload-grants";
 
 export const dynamic = "force-dynamic";
@@ -43,7 +43,10 @@ type Incoming =
 export async function POST(req: NextRequest) {
   try {
     // 10 submissions per IP per hour (each can carry multiple files).
-    const limited = enforce(req, "public.docs", { limit: 10, windowSec: 60 * 60 });
+    // Coarse brake only. This was TEN uploads per IP per hour — so a firm
+    // collecting documents from its clients was cut off after the tenth,
+    // office-wide, whoever was doing the work. See PUBLIC_LINK_IP_CEILING.
+    const limited = enforce(req, "public.docs", PUBLIC_LINK_IP_CEILING);
     if (limited) return limited;
 
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "";
@@ -122,6 +125,11 @@ export async function POST(req: NextRequest) {
     }
 
     if (!tokenId) return NextResponse.json({ error: "missing tokenId" }, { status: 400 });
+
+    // The real control, per document-request link. Forty covers a long
+    // checklist uploaded one file at a time, with retries.
+    const perToken = enforceLinkToken("public.docs", tokenId, 40);
+    if (perToken) return perToken;
     if (!signatureName) return NextResponse.json({ error: "Signature required" }, { status: 400 });
 
     // DPDP / UIDAI: never persist a full Aadhaar number. Mask any captured value

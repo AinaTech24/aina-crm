@@ -18,7 +18,7 @@ import { grantDocumentUpload } from "@/lib/storage/document-upload-grants";
 import { shareTokens, leads, investors } from "@/db/schema";
 import { presignedPutUrl, vaultKey } from "@/lib/storage/s3";
 import { firmFolderName } from "@/lib/storage/firm-folder";
-import { enforce } from "@/lib/rate-limit";
+import { enforce, enforceLinkToken, PUBLIC_LINK_IP_CEILING } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +26,8 @@ const ALLOWED_MIMES = new Set(["application/pdf", "image/jpeg", "image/png"]);
 
 export async function POST(req: NextRequest) {
   // 30 presign batches per IP per hour — generous (multi-file forms) but bounded.
-  const limited = enforce(req, "public.docs.presign", { limit: 30, windowSec: 60 * 60 });
+  // Coarse brake only — see PUBLIC_LINK_IP_CEILING.
+  const limited = enforce(req, "public.docs.presign", PUBLIC_LINK_IP_CEILING);
   if (limited) return limited;
 
   try {
@@ -38,6 +39,11 @@ export async function POST(req: NextRequest) {
     const files = Array.isArray(body.files) ? body.files.slice(0, 20) : [];
     if (!tokenId) return NextResponse.json({ error: "missing tokenId" }, { status: 400 });
     if (files.length === 0) return NextResponse.json({ error: "no files" }, { status: 400 });
+
+    // Generous per link: one request legitimately covers several documents, and
+    // a client may retry a failed upload.
+    const perToken = enforceLinkToken("public.docs.presign", tokenId, 60);
+    if (perToken) return perToken;
 
     // Validate the token (cross-tenant — no session) without consuming it.
     const tk = await withSystem(async (tx) => {

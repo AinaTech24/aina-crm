@@ -31,20 +31,28 @@ import {
   type RiskTemplate,
 } from "@/lib/risk-profile/template";
 import { transitionTo } from "@/lib/blueprints/engine";
-import { enforce } from "@/lib/rate-limit";
+import { enforce, enforceLinkToken, PUBLIC_LINK_IP_CEILING } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
-    // 20 submissions per IP per hour. Real client clicks "Submit" once;
-    // a bot trying every (tokenId, answers) combo gets blocked fast.
-    const limited = enforce(req, "public.risk-profile", { limit: 20, windowSec: 60 * 60 });
+    // Coarse abuse brake only. This was 20 per IP per hour, which capped how
+    // many CLIENTS a firm could profile in an hour rather than how hard a bot
+    // could try: an RM working through their book, or a branch onboarding day,
+    // all share one address and hit "Too many requests" on the twenty-first.
+    const limited = enforce(req, "public.risk-profile", PUBLIC_LINK_IP_CEILING);
     if (limited) return limited;
 
     const body = await req.json().catch(() => ({}));
     const tokenId: string | undefined = body.tokenId;
     if (!tokenId) return NextResponse.json({ error: "missing tokenId" }, { status: 400 });
+
+    // The real control: one link is one client's questionnaire. Twelve attempts
+    // is generous for a person who mistypes a signature or refreshes, and still
+    // stops a bot grinding answer combinations against a single token.
+    const perToken = enforceLinkToken("public.risk-profile", tokenId, 12);
+    if (perToken) return perToken;
 
     // Bound the untrusted input. The answers object is keyed by question key;
     // cap the number of entries and each value's length so a single submission

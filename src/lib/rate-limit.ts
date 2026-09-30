@@ -164,6 +164,52 @@ export function enforceKeyed(
 }
 
 /* --------------------------------------------------------------------------
+ * Public share links (/r/, /f/, document requests, proposals)
+ * ------------------------------------------------------------------------ */
+
+/**
+ * The coarse per-IP ceiling for a public share link.
+ *
+ * These routes used to be capped at 10-20 per IP per hour, which read as a
+ * sensible anti-bot number and was in fact a cap on how many CLIENTS a firm
+ * could serve in an hour. Every one of these links is per-client, and the
+ * people filling them in routinely share one address: an RM profiling clients
+ * at their desk, a branch running an onboarding drive, a family on one
+ * connection, or simply a corporate NAT. The firm hit "Too many requests" on
+ * the eleventh client and had no way to tell it apart from a real fault.
+ *
+ * So the IP bucket is now only an abuse brake — wide enough that no normal
+ * office reaches it — and the real control moved to the TOKEN, which is what
+ * actually needs protecting. See `enforceLinkToken`.
+ */
+export const PUBLIC_LINK_IP_CEILING = { limit: 300, windowSec: 60 * 60 };
+
+/**
+ * Rate-limit a public link by its OWN token.
+ *
+ * This is the control that matters. One token is one client's form, so a
+ * handful of attempts is generous for a real person (typos, a refresh, a
+ * resend) while brute force against a single link still dies quickly — and a
+ * second client on the same office IP is completely unaffected, which is the
+ * whole point.
+ *
+ * `enforceKeyed`'s own note already warned that keying by IP "shares one bucket
+ * across every user behind a reverse proxy"; the public routes just never got
+ * the treatment.
+ */
+export function enforceLinkToken(
+  scope: string,
+  token: string,
+  limit: number,
+  windowSec = 60 * 60
+): Response | null {
+  // An absent token can't be bucketed; the caller validates it immediately
+  // after, and the IP ceiling has already applied.
+  if (!token) return null;
+  return enforceKeyed(`${scope}.token`, `tok:${token.slice(0, 64)}`, { limit, windowSec });
+}
+
+/* --------------------------------------------------------------------------
  * Move to Redis when the deployment crosses 1 node.
  *
  * The in-memory Map above is correct for a single Node process. As soon as

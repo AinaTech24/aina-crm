@@ -13,18 +13,21 @@ import { withSystem, withTenant } from "@/db/client";
 import { shareTokens, proposals, proposalApprovals, eventsOutbox, leads } from "@/db/schema";
 import { claimShareToken, releaseShareToken, finalizeShareToken } from "@/lib/share-tokens";
 import { transitionTo } from "@/lib/blueprints/engine";
-import { enforce } from "@/lib/rate-limit";
+import { enforce, enforceLinkToken, PUBLIC_LINK_IP_CEILING } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
     // 10 acceptances per IP per hour. A real client clicks "Accept" once.
-    const limited = enforce(req, "public.proposal-accept", { limit: 10, windowSec: 60 * 60 });
+    // Coarse brake only — see PUBLIC_LINK_IP_CEILING.
+    const limited = enforce(req, "public.proposal-accept", PUBLIC_LINK_IP_CEILING);
     if (limited) return limited;
 
     const body = await req.json().catch(() => ({}));
     const tokenId = String(body.tokenId ?? "");
+    const perToken = enforceLinkToken("public.proposal-accept", tokenId, 10);
+    if (perToken) return perToken;
     // Bound the untrusted input — these land in proposal_approvals text columns.
     const signatureName = String(body.signatureName ?? "").trim().slice(0, 120);
     const acceptanceText = String(body.acceptanceText ?? "").trim().slice(0, 5000);
