@@ -36,6 +36,7 @@ import {
   leads,
 } from "@/db/schema";
 import {
+  LEAD_PHASE_LAST_ORDER,
   LEAD_TO_CLIENT_BLUEPRINT_NAME,
   LEAD_TO_CLIENT_STAGES,
   LEAD_TO_CLIENT_TRANSITIONS,
@@ -462,7 +463,7 @@ export interface StageView {
      * Which side of the journey owns this stage. Lead-phase stages (order ≤ 10,
      * "new" … "not_qualified") show in the Leads module; from "Won Lead" the
      * client-phase stages (order ≥ 11: request_documents … add_in_review_sheet)
-     * show in the Clients module instead. Boundary = LEAD_PHASE_LAST_ORDER (10).
+     * show in the Clients module instead. Boundary = LEAD_PHASE_LAST_ORDER.
      */
     phase: "lead" | "client";
     /** Stepper marker: a loop or dead end is NOT a linear step. */
@@ -539,10 +540,10 @@ export async function getStage(tx: Tx, tenantId: string, leadId: string): Promis
       order: s.stageOrder,
       status: i < currentIdx ? "done" : i === currentIdx ? "current" : "upcoming",
       flavour: stageFlavour(s.stageKey),
-      // Cut-over at stage 10 (Not Qualified is the last lead-phase
-      // stage in the new SOP graph; Won Lead at stage 9 is the success
-      // boundary that converts to Client). See LEAD_PHASE_LAST_ORDER.
-      phase: s.stageOrder <= 10 ? "lead" : "client",
+      // Cut-over after Not Qualified, the last lead-phase stage (Won Lead
+      // is the success boundary that converts to Client). See
+      // LEAD_PHASE_LAST_ORDER.
+      phase: s.stageOrder <= LEAD_PHASE_LAST_ORDER ? "lead" : "client",
     })),
     history: history.map((h) => {
       const stage = allDbStages.find((s) => s.stageKey === h.stageKey);

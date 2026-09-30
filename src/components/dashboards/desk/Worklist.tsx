@@ -34,7 +34,7 @@ const ACTIVITIES: Array<{ key: WorkItem["activity"] | "all"; label: string }> = 
   { key: "follow_up", label: "Follow-ups" },
   { key: "proposal", label: "Proposals" },
   { key: "task", label: "Tasks" },
-  { key: "query", label: "Queries" },
+  { key: "query", label: "Service requests" },
   { key: "sip", label: "SIP" },
   { key: "insurance", label: "Renewals" },
 ];

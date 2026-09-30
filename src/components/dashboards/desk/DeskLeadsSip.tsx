@@ -111,7 +111,7 @@ export function SipDebitCheck({ data }: { data: SipDebitHealth }) {
           {(data.dueSoon.length > 0 || data.atRisk.length > 0) && (
             <div className="mt-4 grid gap-4 lg:grid-cols-2">
               <div>
-                <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Debits in the next 3 days</h3>
+                <h3 className="mb-2 text-2xs font-semibold text-muted-foreground">Debits in the next 3 days</h3>
                 <Table rows={data.dueSoon.length} empty="No instalment falls due in the next three days."
                   head={<><th scope="col">Client</th><th scope="col">Scheme</th><th scope="col" className="text-right">Amount</th><th scope="col">Date</th></>}>
                   {data.dueSoon.map((d) => (
@@ -125,7 +125,7 @@ export function SipDebitCheck({ data }: { data: SipDebitHealth }) {
                 </Table>
               </div>
               <div>
-                <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">SIPs at risk</h3>
+                <h3 className="mb-2 text-2xs font-semibold text-muted-foreground">SIPs at risk</h3>
                 <Table rows={data.atRisk.length} empty="No SIP is at risk on the register's rules."
                   head={<><th scope="col">Client</th><th scope="col">Reason</th><th scope="col" className="text-right">Amount</th></>}>
                   {data.atRisk.map((s) => (

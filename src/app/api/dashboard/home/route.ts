@@ -66,8 +66,8 @@ export async function GET() {
       // "Today" — only actionable items; the app hides zero-count rows so Home
       // shows just what needs attention. All deep-link into kept modules.
       worklist: [
-        { key: "tasksOverdue", label: "Overdue tasks", count: data.tasksOverdue, icon: "alert-triangle", tone: "danger", href: "/(app)/(tabs)/tasks" },
-        { key: "tasksToday", label: "Tasks due today", count: data.tasksToday, icon: "check-square", tone: "warning", href: "/(app)/(tabs)/tasks" },
+        { key: "tasksOverdue", label: "Overdue tasks", count: data.tasksOverdue, icon: "alert-triangle", tone: "danger", href: "/(app)/(tabs)/tasks?due=overdue" },
+        { key: "tasksToday", label: "Tasks due today", count: data.tasksToday, icon: "check-square", tone: "warning", href: "/(app)/(tabs)/tasks?due=today" },
         { key: "followupsDue", label: "Follow-ups due", count: data.followupsDue, icon: "corner-up-right", tone: "warning", href: "/m/leads" },
         { key: "meetingsToday", label: "Meetings today", count: data.meetingsToday, icon: "video", tone: "info", href: "/m/review-meetings" },
         { key: "reviewsDue", label: "Client reviews due", count: data.reviewsDue, icon: "calendar", tone: "info", href: "/m/review-meetings" },

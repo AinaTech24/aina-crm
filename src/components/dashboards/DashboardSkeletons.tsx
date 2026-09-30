@@ -19,7 +19,7 @@ export function ChartSkeleton({ height = "h-56" }: { height?: string }) {
         <div className="h-4 w-1/4 bg-slate-200 rounded" />
         <div className="h-3 w-16 bg-slate-200 rounded" />
       </div>
-      <div className={`w-full ${height} bg-slate-100 rounded-lg flex items-end justify-between p-4 gap-2`}>
+      <div className={`w-full ${height} bg-secondary rounded-lg flex items-end justify-between p-4 gap-2`}>
         <div className="h-1/3 w-full bg-slate-200 rounded" />
         <div className="h-2/3 w-full bg-slate-200 rounded" />
         <div className="h-1/2 w-full bg-slate-200 rounded" />

@@ -19,30 +19,21 @@
 
 import { sql, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
-import { humanise } from "@/lib/format";
+import { formatDate, humanise } from "@/lib/format";
 import type { DashboardThresholds } from "@/lib/dashboard/thresholds";
 import {
-  asInList, clientIds, clientsWhere, clientsWhereOn, FINANCIAL_TASK_TYPES, GROSS_TYPES, leadsMatch, num,
+  asInList, clientIds, clientsWhere, clientsWhereOn, clientRecordsWhereOn, FINANCIAL_TASK_TYPES, GROSS_TYPES, leadsMatch, num,
+  onboardedInSql,
   premiumMatch, PROPOSAL_LIVE, REDEMPTION_TYPES, SIP_STOP_TYPES, SR_OPEN_ON_US, staffMatch,
   TASK_DEAD, type MyWindow, type TargetKey,
   taskIsAbout,
 } from "../my/window";
 import { phaseFraction } from "../my/kpis";
 import { NO_RM, OTHER_BRANCH, type RmLedgerRow } from "./rm-ledger";
+import { inOrder } from "@/lib/metrics/in-order";
 
-/**
- * Run queries one after another. Every loader here runs inside ONE
- * transaction, i.e. on one connection: Promise.all over it is not parallel
- * (the queries queue anyway), node-postgres warns that overlapping
- * client.query() calls are deprecated, and pg@9 will reject them outright.
- */
-async function inOrder<T extends readonly (() => Promise<unknown>)[]>(
-  ...thunks: T
-): Promise<{ [K in keyof T]: Awaited<ReturnType<T[K]>> }> {
-  const out: unknown[] = [];
-  for (const t of thunks) out.push(await t());
-  return out as { [K in keyof T]: Awaited<ReturnType<T[K]>> };
-}
+// Every loader here runs inside ONE transaction: queries go one after
+// another (inOrder, lib/metrics/in-order.ts), never Promise.all.
 
 const GROSS_IN = asInList(GROSS_TYPES);
 const RED_IN = asInList(REDEMPTION_TYPES);
@@ -105,8 +96,8 @@ export async function loadWindowMetrics(
       (SELECT COALESCE(SUM(amount::numeric), 0) FROM transactions
         WHERE investor_id IN ${MINE} AND type IN (${RED_IN}) AND status IN ('processed','successful')
           AND order_date BETWEEN ${from}::date AND ${to}::date) AS redemption,
-      (SELECT COUNT(*)::int FROM investors
-        WHERE ${clientsWhere(w.scope)} AND created_at >= ${from}::date AND created_at < (${to}::date + 1)) AS new_clients,
+      (SELECT COUNT(*)::int FROM investors i
+        WHERE ${clientRecordsWhereOn("i", w.scope)} AND ${onboardedInSql({ from, to }, "i")}) AS new_clients,
       (SELECT COUNT(*) FILTER (WHERE category = 'new')::int FROM review_meetings
         WHERE ${staffMatch("rm_id", w)} AND status = 'completed'
           AND meeting_date >= ${from}::date AND meeting_date < (${to}::date + 1)) AS new_meetings,
@@ -742,7 +733,7 @@ export async function loadAttention(
   const renewalsPastDue = renewals.filter((r) => num(r.d) < 0).map((r) => ({ ...r, d: -num(r.d) }));
 
   const cards: AttentionItem[] = [
-    item("sla_queries", "Client queries beyond SLA", "critical", sla, "/dashboard/service-requests?breached=1",
+    item("sla_queries", "Service requests beyond SLA", "critical", sla, "/dashboard/service-requests?breached=1",
       { age: "max", ageLabel: "oldest" }),
     item("large_redemption", "Large redemptions, no follow-up", "critical", largeRed, "/dashboard/reports/redemption",
       { value: true, age: "max", ageLabel: "days since" }),
@@ -902,8 +893,8 @@ export async function loadReviewMode(
         row("riskProfiles", "Risk profiles signed", "count"),
         row("sipRejections", "SIP rejections", "count", null, true),
         row("tasksCompleted", "Tasks completed", "count"),
-        row("queriesReceived", "Queries received", "count", null, true),
-        row("queriesSolved", "Queries solved", "count"),
+        row("queriesReceived", "Service requests received", "count", null, true),
+        row("queriesSolved", "Service requests solved", "count"),
       ];
 
   let products: ReviewMode["products"] = null;
@@ -921,7 +912,7 @@ export async function loadReviewMode(
     }
   }
 
-  const fmt = (s: string) => new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short" }).format(parse(s));
+  const fmt = (s: string) => formatDate(s, "dayMonth");
   return {
     mode,
     currentLabel: `${fmt(curFrom)} – ${fmt(curTo)}`,

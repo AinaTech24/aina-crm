@@ -20,7 +20,7 @@ export function MyTargets({ meters, fyLabel }: { meters: TargetMeter[]; fyLabel:
   return (
     <Section
       title="My targets"
-      subtitle={`Where I stand against my own ${fyLabel} numbers — target, actual and the gap, never a bare percentage.`}
+      subtitle={`Where I stand against my own ${fyLabel} numbers.`}
       icon={<Target className="size-4" />}
       action={<SectionLink href="/dashboard/team/scorecard/targets">Set targets</SectionLink>}
       note={`The notch on each bar marks how far through ${fyLabel} we are — ${(pace * 100).toFixed(0)}% elapsed. Half a target in September is on pace; half in February is not.`}
@@ -50,7 +50,7 @@ export function MyTargets({ meters, fyLabel }: { meters: TargetMeter[]; fyLabel:
 
       {anyTarget && (
         <div className="mt-5">
-          <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <h3 className="mb-2 text-2xs font-semibold text-muted-foreground">
             {fyLabel} scorecard
           </h3>
           <Table

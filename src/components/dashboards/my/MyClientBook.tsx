@@ -71,7 +71,7 @@ export function MyClientBook({ book, voice = MY_VOICE, extra }: {
       </StatGrid>
 
       <div className="mt-5">
-        <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h3 className="mb-2 text-2xs font-semibold text-muted-foreground">
           Category distribution &mdash; by money, not only by headcount
         </h3>
         <Table
@@ -217,8 +217,8 @@ export function MyKeyClients({
                 {c.openQueries + c.pendingTasks === 0 ? (
                   <span className="text-muted-foreground">—</span>
                 ) : (
-                  <span title={`${c.openQueries} query / ${c.pendingTasks} task`}>
-                    {c.openQueries > 0 && `${c.openQueries}Q`}
+                  <span title={`${c.openQueries} open service request${c.openQueries === 1 ? "" : "s"} · ${c.pendingTasks} pending task${c.pendingTasks === 1 ? "" : "s"}`}>
+                    {c.openQueries > 0 && `${c.openQueries}SR`}
                     {c.openQueries > 0 && c.pendingTasks > 0 && " "}
                     {c.pendingTasks > 0 && `${c.pendingTasks}T`}
                   </span>

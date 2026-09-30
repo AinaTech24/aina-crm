@@ -18,6 +18,7 @@ import type { MonthRow } from "@/lib/dashboard/my/kpis";
 import { can, type Capability } from "@/lib/auth/rbac";
 import type { SessionUser } from "@/lib/auth/session";
 import { buttonClass } from "@/components/ui/button-class";
+import { MoreMenu } from "@/components/common/MoreMenu";
 import { Figure, Num, Section, Table } from "@/components/dashboards/my/Shared";
 import { formatPercent } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -154,7 +155,7 @@ export function ReviewModePanel({
 
       {data.mode === "monthly" && (
         <div className="mt-5">
-          <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Business by product (Business Entries)</h3>
+          <h3 className="mb-2 text-2xs font-semibold text-muted-foreground">Business by product (Business Entries)</h3>
           {data.products == null ? (
             <p className="text-xs text-muted-foreground">No business entry was recorded in either window, so there is no product split.</p>
           ) : (
@@ -227,7 +228,7 @@ export function BranchQuickActions({
       caps: ["review_meeting.manage.all", "review_meeting.manage.assigned"] },
     { key: "lead", label: "Add lead", href: "/dashboard/leads/new", icon: UserPlus, caps: ["lead.edit.all", "lead.edit.assigned"] },
     { key: "task", label: "Add task", href: "/dashboard/tasks/new", icon: ListPlus, caps: ["task.edit.all", "task.edit.assigned"] },
-    { key: "query", label: "Add query", href: "/dashboard/service-requests/new", icon: MessageSquarePlus, caps: ["service_request.manage"] },
+    { key: "query", label: "Add service request", href: "/dashboard/service-requests/new", icon: MessageSquarePlus, caps: ["service_request.manage"] },
     { key: "rejections", label: "SIP rejections", href: hrefs.sipRejections, icon: AlertTriangle },
     { key: "reviews", label: "Pending reviews", href: hrefs.pendingReviews, icon: ListChecks,
       caps: ["investor.view.all", "investor.view.assigned"] },
@@ -237,19 +238,23 @@ export function BranchQuickActions({
     { key: "clients", label: "Client list", href: hrefs.clients, icon: Users, caps: ["investor.view.all", "investor.view.assigned"] },
   ];
   const allowed = actions.filter((a) => !a.caps || a.caps.some((c) => can(session.roles, c, session.permissions)));
+  // Two buttons and "More" in the header row. Eleven same-weight buttons in a
+  // card of their own was a toolbar to read before the first number.
+  const ON_BAR = new Set(["meeting", "task"]);
+  const bar = allowed.filter((a) => ON_BAR.has(a.key));
+  const more = allowed.filter((a) => !ON_BAR.has(a.key));
   return (
-    <section className="card-surface p-3" aria-label="Quick actions">
-      <div className="flex flex-wrap items-center gap-2">
-        {allowed.map((a) => {
-          const Icon = a.icon;
-          return (
-            <Link key={a.key} href={a.href} className={buttonClass(a.primary ? "primary" : "secondary", "sm")}>
-              <Icon className="size-3.5" aria-hidden />
-              {a.label}
-            </Link>
-          );
-        })}
-      </div>
-    </section>
+    <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Quick actions">
+      {bar.map((a) => {
+        const Icon = a.icon;
+        return (
+          <Link key={a.key} href={a.href} className={buttonClass(a.primary ? "primary" : "secondary", "md")}>
+            <Icon className="size-4" aria-hidden />
+            {a.label}
+          </Link>
+        );
+      })}
+      <MoreMenu text="More" label="More actions" items={more.map((a) => ({ href: a.href, label: a.label }))} />
+    </div>
   );
 }

@@ -35,7 +35,7 @@ import type { Tx } from "@/db/client";
 import {
   asInList, FINANCIAL_TASK_TYPES, GROSS_TYPES, LEAD_CLOSED_STAGES, num, PROPOSAL_LIVE,
   PROPOSAL_LOST, PROPOSAL_WON, REDEMPTION_TYPES, SIP_STOP_TYPES, SR_OPEN_ON_US,
-  staffMatch, TASK_DEAD, type MyWindow, type TargetKey,
+  staffMatch, TASK_DEAD, type MyWindow, type TargetKey, onboardedInSql,
 } from "../my/window";
 
 export const OTHER_BRANCH = "__other__";
@@ -133,7 +133,8 @@ export type RmLedgerRow = {
 };
 
 /** Client → RM bucket, over the branch's clients. */
-function bucketed(w: MyWindow, branchId: string, rmId: string | null): SQL {
+/** The branch's clients, each in its RM bucket. Live clients; with `records`, every record, whatever its status. */
+function bucketed(w: MyWindow, branchId: string, rmId: string | null, records = false): SQL {
   const staff = w.staff.length
     ? sql.join(w.staff.map((id) => sql`${id}::uuid`), sql`, `)
     : sql`NULL::uuid`;
@@ -145,7 +146,7 @@ function bucketed(w: MyWindow, branchId: string, rmId: string | null): SQL {
                 ELSE ${OTHER_BRANCH} END AS bucket
       FROM investors i
      WHERE i.branch_id = ${branchId}::uuid${oneRm}
-       AND i.deleted_at IS NULL AND i.merged_into_id IS NULL AND i.status <> 'closed'`;
+       AND i.deleted_at IS NULL AND i.merged_into_id IS NULL${records ? sql`` : sql` AND i.status NOT IN ('closed', 'exited')`}`;
 }
 
 const TARGET_KEYS: Array<[TargetKey, string]> = [
@@ -188,8 +189,6 @@ export async function loadRmLedger(
       COUNT(*)::int                                                          AS clients,
       COALESCE(SUM(aum::numeric), 0)                                         AS aum,
       COALESCE(SUM(active_sip_amount::numeric), 0)                           AS sip_book,
-      COUNT(*) FILTER (WHERE created_at >= ${w.from}::date
-                         AND created_at < (${w.to}::date + 1))::int          AS new_clients,
       COUNT(*) FILTER (WHERE upper(COALESCE(client_category,'')) IN ('A','B'))::int AS ab,
       COUNT(*) FILTER (WHERE next_review_at::date < ${w.today}::date)::int  AS reviews_overdue,
       COUNT(*) FILTER (WHERE next_review_at::date <= ${w.to}::date)::int     AS reviews_due,
@@ -210,6 +209,16 @@ export async function loadRmLedger(
       COUNT(*) FILTER (WHERE risk_profile IS NOT NULL AND risk_profile_signed_at IS NOT NULL
                          AND risk_profile_signed_at < now() - interval '1 year')::int AS risk_due
       FROM (SELECT bc.*, (${w.today}::date - last_contact_at::date) AS d FROM bc) x
+     GROUP BY bucket
+  `)).rows as Array<Record<string, unknown>>;
+
+  // New clients by onboarding date, over client RECORDS: a client won in the
+  // period and closed since was still won (lib/metrics/new-clients.ts), so the
+  // column sums to the branch's New clients figure.
+  const fresh = (await tx.execute(sql`
+    WITH bc AS (${bucketed(w, branchId, rmId, true)})
+    SELECT bucket, COUNT(*)::int AS new_clients FROM bc
+     WHERE ${onboardedInSql({ from: w.from, to: w.to }, "bc")}
      GROUP BY bucket
   `)).rows as Array<Record<string, unknown>>;
 
@@ -393,6 +402,7 @@ export async function loadRmLedger(
   const byKey = (rows: Array<Record<string, unknown>>, key = "bucket") =>
     new Map(rows.map((r) => [String(r[key]), r]));
   const B = byKey(book), F = byKey(flows), N = byKey(newSip), R = byKey(rejections), Q = byKey(queries);
+  const NC = byKey(fresh);
   const M = byKey(meetings, "id"), P = byKey(proposals, "id"), L = byKey(leads, "id");
   const C = byKey(calls, "id"), T = byKey(tasks, "id"), I = byKey(premium, "id"), K = byKey(backlog, "id");
 
@@ -426,7 +436,7 @@ export async function loadRmLedger(
       clients,
       aum: num(b?.aum),
       sipBook: num(b?.sip_book),
-      newClients: num(b?.new_clients),
+      newClients: num(NC.get(id)?.new_clients),
       abClients: num(b?.ab),
       grossSip: num(n?.gross_sip),
       grossSipCount: num(n?.n),

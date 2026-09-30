@@ -3,10 +3,10 @@
  *
  * ── One set of queries, three books ─────────────────────────────────────────
  *
- * The personal cockpit (`?scope=mine`) and the branch command centre
- * (`?scope=branch`) ask the same questions of different books — "what is the
- * AUM", "which reviews are overdue", "how many SIPs bounced". They run the SAME
- * queries; only the spine differs. A figure on the branch dashboard and the sum
+ * The Relationship Manager Dashboard and the Branch Head Dashboard ask the
+ * same questions of different books — "what is the AUM", "which reviews are
+ * overdue", "how many SIPs bounced". They run the SAME queries; only the
+ * spine differs. A figure on the branch dashboard and the sum
  * of that figure across the branch's RMs therefore cannot disagree about what
  * the figure means, because there is only one definition of it.
  *
@@ -16,8 +16,7 @@
  *
  * ── Client facts and staff facts ────────────────────────────────────────────
  *
- * The attribution rule is the one src/lib/dashboard/scoreboard.ts documents
- * for the director's branch scoreboard, so the two reconcile:
+ * The attribution rule — mixing the two silently double-counts:
  *
  *   CLIENT facts (AUM, SIP, flows, reviews, queries, new clients) go through
  *   the client spine — the branch that owns the relationship.
@@ -128,10 +127,16 @@ function col(alias: string | undefined, column: string): SQL {
  * match what the firm pulse counts, so a figure here and the same figure on the
  * firm cockpit differ only by the book — which is the point of switching.
  */
-function spine(scope: BookScope, alias?: string): SQL {
-  const alive = sql`${col(alias, "deleted_at")} IS NULL
+function spine(scope: BookScope, alias?: string, records = false): SQL {
+  // Live = lib/metrics aliveClient: not deleted, not merged, not closed
+  // (`exited` is the legacy spelling of closed). A RECORD is any client not
+  // deleted or merged, whatever its status.
+  const alive = records
+    ? sql`${col(alias, "deleted_at")} IS NULL
+             AND ${col(alias, "merged_into_id")} IS NULL`
+    : sql`${col(alias, "deleted_at")} IS NULL
              AND ${col(alias, "merged_into_id")} IS NULL
-             AND ${col(alias, "status")} <> 'closed'`;
+             AND ${col(alias, "status")} NOT IN ('closed', 'exited')`;
   const f = filterSql(scope.filter, alias);
   if (scope.kind === "rm") {
     return sql`${col(alias, "rm_id")} = ${scope.userId}::uuid AND ${alive}${f}`;
@@ -212,6 +217,23 @@ export function clientsWhere(scope: BookScope): SQL {
 export function clientsWhereOn(alias: string, scope: BookScope): SQL {
   return spine(scope, alias);
 }
+
+/**
+ * The book's client RECORDS against an investors alias — status not
+ * considered — for facts that stay true after a client leaves. New clients
+ * use it: a client onboarded in April and closed in August was still won in
+ * April (lib/metrics/new-clients.ts).
+ */
+export function clientRecordsWhereOn(alias: string, scope: BookScope): SQL {
+  return spine(scope, alias, true);
+}
+
+/**
+ * New clients: onboarded in the period by India date — the ONE definition
+ * (lib/metrics/new-clients.ts), never created_at: an import creates hundreds
+ * of records in an afternoon and none of them is a new client.
+ */
+export { onboardedDateSql, onboardedInSql } from "@/lib/metrics/new-clients";
 
 /**
  * The client a task is about, as an expression over a `tasks` alias.
@@ -419,14 +441,13 @@ export const asInList = (xs: readonly string[]) =>
   sql.raw(xs.map((x) => `'${x.replace(/'/g, "")}'`).join(", "));
 
 /**
- * Gross investment excludes SWITCH and STP, exactly as the firm pulse does.
- * The RTA parser collapses both legs of a switch into one row and reads
- * direction off it, so every leg arrives as an inflow — on one production book
- * that was ₹39.56 Cr of "fresh investment" that was the same money moving
- * between schemes. See src/lib/dashboard/firm-pulse.ts for the long version.
+ * Gross investment excludes SWITCH and STP. The RTA parser collapses both legs
+ * of a switch into one row and reads direction off it, so every leg arrives as
+ * an inflow — on one production book that was ₹39.56 Cr of "fresh investment"
+ * that was the same money moving between schemes. See GROSS_TYPES in
+ * src/lib/metrics/business.ts, the one definition.
  */
-export const GROSS_TYPES = ["purchase", "lumpsum", "additional_purchase", "sip", "sip_topup"] as const;
-export const REDEMPTION_TYPES = ["redemption", "swp"] as const;
+export { GROSS_TYPES, REDEMPTION_TYPES } from "@/lib/metrics/business";
 
 /**
  * A SIP STOP is the RTA's own stop or pause event in the ledger, dated by its
@@ -442,7 +463,7 @@ export const REDEMPTION_TYPES = ["redemption", "swp"] as const;
  * The trade-off, stated once: a feed that never carries stop events shows no
  * stops. The register's stopped SIPs are still listed on the SIPs page.
  */
-export const SIP_STOP_TYPES = ["sip_stop", "sip_pause"] as const;
+export { SIP_STOP_TYPES } from "@/lib/metrics/business";
 
 /**
  * Service-request statuses, split by WHO the ball is with.
@@ -453,15 +474,13 @@ export const SIP_STOP_TYPES = ["sip_stop", "sip_pause"] as const;
  * into either side — an RM chasing their own queue should not be charged for
  * the three days a client took to send a PAN copy.
  */
-export const SR_OPEN_ON_US = ["open", "in_progress", "escalated"] as const;
-export const SR_WAITING_CLIENT = ["waiting_customer"] as const;
-export const SR_CLOSED = ["resolved", "closed"] as const;
+export { SR_OPEN_ON_US, SR_WAITING_CLIENT, SR_CLOSED } from "@/lib/metrics/service";
 
 /** Task statuses that still need doing. `done` is not one of them — see below. */
-export const TASK_OPEN = ["open", "in_progress", "blocked"] as const;
+export { TASK_OPEN } from "@/lib/metrics/tasks";
 /** The completed value is `completed`. There is no `done`; filtering on it
  *  silently counts every finished task as still open. */
-export const TASK_DEAD = ["completed", "cancelled"] as const;
+export { TASK_DEAD } from "@/lib/metrics/tasks";
 
 /** Meeting statuses that mean the meeting still lies ahead. */
 export const MEETING_UPCOMING = ["scheduled", "confirmed"] as const;

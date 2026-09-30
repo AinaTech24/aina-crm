@@ -15,7 +15,8 @@
  * always "Me" — the desk shows no one else's book.
  */
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useDashboardNav } from "@/components/dashboards/system/DashboardNav";
 import { Lock, X } from "lucide-react";
 import { Select } from "@/components/ui/Select";
 import { cn } from "@/lib/utils";
@@ -29,16 +30,21 @@ export function DeskFilters({
   sources: Opt[];
   families: Opt[];
 }) {
-  const router = useRouter();
+  const nav = useDashboardNav();
+  const pathname = usePathname();
   const params = useSearchParams();
   const get = (k: string) => params?.get(k) ?? "";
   const cats = get("cat").split(",").filter(Boolean);
 
+  function go(next: URLSearchParams) {
+    const qs = next.toString();
+    nav.go(`${pathname}${qs ? `?${qs}` : ""}`);
+  }
   function set(k: string, v: string | null) {
     const next = new URLSearchParams(params?.toString() ?? "");
     if (v) next.set(k, v);
     else next.delete(k);
-    router.push(`/dashboard?${next.toString()}`, { scroll: false });
+    go(next);
   }
   function toggleCat(c: string) {
     const nextCats = cats.includes(c) ? cats.filter((x) => x !== c) : [...cats, c];
@@ -47,7 +53,7 @@ export function DeskFilters({
   function clearAll() {
     const next = new URLSearchParams(params?.toString() ?? "");
     for (const k of ["cat", "ctype", "cnew", "cstatus", "city", "src", "fam"]) next.delete(k);
-    router.push(`/dashboard?${next.toString()}`, { scroll: false });
+    go(next);
   }
   const active = ["cat", "ctype", "cnew", "cstatus", "city", "src", "fam"].filter((k) => get(k)).length;
 

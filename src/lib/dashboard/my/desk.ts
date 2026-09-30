@@ -31,10 +31,12 @@
 
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
+import { formatDate } from "@/lib/format";
 import type { DashboardThresholds } from "@/lib/dashboard/thresholds";
 import { findAtRiskSips, type AtRiskSip } from "@/lib/finance/sip-defense";
 import {
-  asInList, bookPerson, clientIds, clientsHref, clientsWhere, clientsWhereOn, FINANCIAL_TASK_TYPES,
+  asInList, bookPerson, clientIds, clientsHref, clientsWhere, clientsWhereOn, clientRecordsWhereOn, FINANCIAL_TASK_TYPES,
+  onboardedDateSql,
   GROSS_TYPES, LEAD_CLOSED_STAGES, leadsHref, leadsMatch, MEETING_UPCOMING, num, PROPOSAL_LIVE,
   SR_OPEN_ON_US, staffMatch, staffParam, TASK_DEAD, type MyWindow,
   taskInvestor, taskIsAbout, taskLead,
@@ -256,7 +258,7 @@ export async function loadMyDay(
       href: `/dashboard/tasks?assignee=${me}`,
     },
     {
-      key: "queries", label: "Client queries pending",
+      key: "queries", label: "Service requests pending",
       count: num(qry?.n),
       parts: num(qry?.breached) > 0 ? [{ label: "Past SLA", value: num(qry?.breached), tone: "bad" }] : [],
       detail: qry?.oldest != null && num(qry?.n) > 0 ? `Oldest ${num(qry?.oldest)} day${num(qry?.oldest) === 1 ? "" : "s"}` : null,
@@ -423,7 +425,7 @@ export async function loadOverdue(tx: Tx, w: MyWindow, t: DashboardThresholds): 
       rule: "Due date passed, still open. Critical when past its SLA.",
     },
     {
-      key: "queries", label: "Overdue queries", count: num(r?.q_n),
+      key: "queries", label: "Overdue service requests", count: num(r?.q_n),
       oldestDays: age(r?.q_min), value: null,
       severity: "critical", href: "/dashboard/service-requests?mine=1&breached=1",
       rule: "Past the resolution SLA and still with us.",
@@ -731,7 +733,7 @@ export async function loadWorklist(
     const breached = x.sla_resolution_at != null && Date.parse(String(x.sla_resolution_at)) < Date.now();
     items.push({
       ...b, action: `Resolve query — ${humanStatus(String(x.type ?? "query"))}`,
-      related: { label: "Open query", href: `/dashboard/service-requests/${x.id}` },
+      related: { label: "Open service request", href: `/dashboard/service-requests/${x.id}` },
       priority: breached ? "critical" : "normal",
       why: breached ? ["SLA breached", ...catWhy(b.category)] : [x.sla_resolution_at ? "SLA due" : `Open ${t.queryAgeingDays}+ days, no SLA`, ...catWhy(b.category)],
       status: humanStatus(String(x.status)),
@@ -1165,7 +1167,8 @@ export type Onboarding = {
  */
 export async function loadOnboarding(tx: Tx, w: MyWindow): Promise<Onboarding> {
   const rows = (await tx.execute(sql`
-    SELECT i.id, i.name, upper(NULLIF(btrim(i.client_category), '')) AS category, i.created_at,
+    SELECT i.id, i.name, upper(NULLIF(btrim(i.client_category), '')) AS category,
+           to_char(${onboardedDateSql("i")}, 'YYYY-MM-DD') AS onboarded_on,
            (SELECT l.source FROM leads l WHERE l.converted_investor_id = i.id
              ORDER BY l.converted_at DESC NULLS LAST LIMIT 1)                               AS source,
            EXISTS (SELECT 1 FROM leads l WHERE l.converted_investor_id = i.id)              AS from_lead,
@@ -1180,8 +1183,8 @@ export async function loadOnboarding(tx: Tx, w: MyWindow): Promise<Onboarding> {
            (i.status = 'active' AND (COALESCE(i.aum::numeric, 0) > 0
                                      OR COALESCE(i.active_sip_amount::numeric, 0) > 0))    AS active
       FROM investors i
-     WHERE ${clientsWhereOn("i", w.scope)} AND i.created_at >= ${w.fyStart}::date
-     ORDER BY i.created_at DESC
+     WHERE ${clientsWhereOn("i", w.scope)} AND ${onboardedDateSql("i")} >= ${w.fyStart}::date
+     ORDER BY i.onboarded_at DESC
   `)).rows as Row[];
 
   const STEPS = [
@@ -1214,11 +1217,11 @@ export async function loadOnboarding(tx: Tx, w: MyWindow): Promise<Onboarding> {
   return {
     cohort: rows.length,
     steps: STEPS.map((s) => ({ key: s.key, label: s.label, done: counts[s.key].done, stuck: counts[s.key].stuck })),
-    thisMonth: rows.filter((r) => String(r.created_at).slice(0, 10) >= monthStart).slice(0, 20).map((r) => {
+    thisMonth: rows.filter((r) => String(r.onboarded_on) >= monthStart).slice(0, 20).map((r) => {
       const n = nextOf(r);
       return {
         id: String(r.id), name: String(r.name ?? "—"), category: str(r.category), source: str(r.source),
-        created: String(r.created_at), kyc: r.kyc === true, risk: r.risk === true, proposal: r.proposal === true,
+        created: String(r.onboarded_on), kyc: r.kyc === true, risk: r.risk === true, proposal: r.proposal === true,
         transacted: r.transacted === true, active: r.active === true,
         nextStep: n === "done" ? "Onboarded" : label[n],
       };
@@ -1246,7 +1249,7 @@ export async function loadSourceAnalysis(tx: Tx, w: MyWindow): Promise<SourceRow
   `)).rows as Row[];
   const clients = (await tx.execute(sql`
     SELECT COALESCE(NULLIF(btrim(src.source), ''), '__none__') AS source,
-           COUNT(*) FILTER (WHERE i.created_at >= ${w.from}::date AND i.created_at < (${w.to}::date + 1))::int AS n,
+           COUNT(*) FILTER (WHERE ${onboardedDateSql("i")} BETWEEN ${w.from}::date AND ${w.to}::date)::int AS n,
            COALESCE(SUM((SELECT SUM(t.amount::numeric) FROM transactions t
                           WHERE t.investor_id = i.id AND t.status IN ('processed','successful')
                             AND t.type IN (${GROSS_IN})
@@ -1417,8 +1420,7 @@ export async function loadFlowByMonth(tx: Tx, w: MyWindow): Promise<FlowByMonth>
 export function timeIST(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" })
-    .format(d).toUpperCase();
+  return formatDate(d, "time");
 }
 function localDate(iso: string): string {
   if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
@@ -1434,9 +1436,8 @@ function hasClock(iso: string): boolean {
   return t !== "" && t !== "12:00 AM";
 }
 function fmtShort(iso: string): string {
-  const d = new Date(`${iso.slice(0, 10)}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return iso;
-  return new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short" }).format(d);
+  const out = formatDate(iso.slice(0, 10), "dayMonth");
+  return out === "—" ? iso : out;
 }
 export function humanStatus(s: string): string {
   const t = s.replace(/_/g, " ").trim();

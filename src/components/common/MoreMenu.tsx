@@ -8,7 +8,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { MoreHorizontal } from "lucide-react";
+import { ChevronDown, MoreHorizontal } from "lucide-react";
 import { buttonClass } from "@/components/ui/button-class";
 import { Tooltip } from "@/components/ui/Tooltip";
 
@@ -20,7 +20,16 @@ export type MoreMenuItem = {
   tooltip?: string;
 };
 
-export function MoreMenu({ items, label = "More actions" }: { items: readonly MoreMenuItem[]; label?: string }) {
+export function MoreMenu({
+  items,
+  label = "More actions",
+  text,
+}: {
+  items: readonly MoreMenuItem[];
+  label?: string;
+  /** A labelled secondary button instead of the "⋯" icon — for a menu that IS an action. */
+  text?: string;
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -44,20 +53,20 @@ export function MoreMenu({ items, label = "More actions" }: { items: readonly Mo
 
   return (
     <div className="relative" ref={ref}>
-      <Tooltip label={label} hidden={open}>
+      <Tooltip label={label} hidden={open || !!text}>
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          aria-label={label}
+          aria-label={text ? undefined : label}
           aria-haspopup="menu"
           aria-expanded={open}
-          className={buttonClass("secondary", "icon")}
+          className={buttonClass("secondary", text ? "md" : "icon")}
         >
-          <MoreHorizontal className="size-4" />
+          {text ? <>{text} <ChevronDown className="size-3.5" aria-hidden /></> : <MoreHorizontal className="size-4" />}
         </button>
       </Tooltip>
       {open && (
-        <div role="menu" className="absolute right-0 top-full z-40 mt-2 w-64 rounded-lg border bg-card p-1.5 shadow-lg">
+        <div role="menu" className="absolute right-0 top-full z-40 mt-2 w-64 rounded-lg border bg-card p-1.5 text-left shadow-lg">
           {items.map((it) => (
             <Link
               key={it.href}

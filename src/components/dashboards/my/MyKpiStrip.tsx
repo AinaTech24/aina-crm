@@ -7,15 +7,16 @@
  * is for the other case — several figures of the same measure side by side,
  * such as a column of category AUMs.
  *
- * Two labels do a lot of work here:
+ * A balance tile (AUM, the SIP book) says "Balance today" under its name.
+ * Its change is mostly the market; every other tile is money that MOVED in
+ * the period named above the row. Without the marker, a director reads
+ * "My AUM +6.9%" as sales they made. The brief says it outright — "Do not
+ * treat AUM movement as net business" — and a label on the tile is the only
+ * place that instruction survives contact with a screenshot. It used to say
+ * "stock" and "flow"; nobody outside finance reads those words that way.
  *
- *   "Stock"  the tile is a BALANCE. Its change is mostly the market.
- *   "Flow"   the tile is money that MOVED in the selected period.
- *
- * Without them, a director reads "My AUM +6.9%" as sales they made. The brief
- * says it outright — "Do not treat AUM movement as net business" — and a badge
- * on the tile is the only place that instruction survives contact with a
- * screenshot.
+ * Quiet by default: no comparison line when there is nothing to compare, and
+ * a zero is grey rather than a bold figure competing with the real ones.
  */
 
 import Link from "next/link";
@@ -62,17 +63,7 @@ function fmt(k: MyKpi, v: number | null | undefined) {
 
 function Delta({ kpi }: { kpi: MyKpi }) {
   const d = kpi.compare;
-  if (!d) {
-    return (
-      <span className="inline-flex items-center gap-1 text-muted-foreground" title={
-        kpi.kind === "stock"
-          ? "No recorded snapshot from a month ago yet. Balances cannot be recomputed after the fact, so this fills in once the nightly snapshot has a month of history."
-          : "Nothing recorded in the comparison period."
-      }>
-        <Minus className="size-3.5 opacity-50" aria-hidden /> —
-      </span>
-    );
-  }
+  if (!d) return null;
   // No movement is not a rise. "↗ ₹0" in red on a stopped-SIP tile read as a
   // deterioration that never happened.
   if (d.abs === 0) {
@@ -98,6 +89,7 @@ function Delta({ kpi }: { kpi: MyKpi }) {
 
 function Tile({ kpi }: { kpi: MyKpi }) {
   const unknown = kpi.value == null;
+  const zero = kpi.value === 0;
   const notes = kpi.notes.filter((n) => n.label);
 
   return (
@@ -109,16 +101,14 @@ function Tile({ kpi }: { kpi: MyKpi }) {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <span className="block text-xs font-medium leading-snug text-muted-foreground">{kpi.label}</span>
-          <span
-            className="mt-1 inline-block text-2xs uppercase tracking-wide text-muted-foreground/70"
-            title={
-              kpi.kind === "stock"
-                ? "A balance as it stands now. Its movement includes the market, not just your sales."
-                : "Money that moved during the selected period."
-            }
-          >
-            {kpi.kind}
-          </span>
+          {kpi.kind === "stock" && (
+            <span
+              className="mt-1 inline-block text-2xs text-muted-foreground/70"
+              title="A balance as it stands now. Its movement includes the market, not just sales."
+            >
+              Balance today
+            </span>
+          )}
         </div>
         <span
           className="grid size-8 shrink-0 place-items-center rounded-lg"
@@ -131,18 +121,20 @@ function Tile({ kpi }: { kpi: MyKpi }) {
 
       <div
         className={cn(
-          "mt-2.5 text-[1.6rem] font-semibold leading-none tabular-nums tracking-[-0.035em]",
-          unknown ? "text-muted-foreground" : "text-foreground",
+          "mt-2.5 text-2xl leading-none tabular-nums tracking-tight",
+          unknown || zero ? "font-medium text-muted-foreground/60" : "font-semibold text-foreground",
         )}
         title={unknown ? "Data unavailable — nothing has been recorded against this yet." : undefined}
       >
         {fmt(kpi, kpi.value)}
       </div>
 
-      <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs">
-        <Delta kpi={kpi} />
-        <span className="text-muted-foreground">{kpi.compareLabel}</span>
-      </div>
+      {kpi.compare && !(zero && kpi.compare.abs === 0) && (
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs">
+          <Delta kpi={kpi} />
+          <span className="text-muted-foreground">{kpi.compareLabel}</span>
+        </div>
+      )}
 
       <div className="mt-auto space-y-1 border-t border-border/60 pt-2.5 text-2xs">
         {kpi.fytd != null && (
@@ -204,10 +196,7 @@ export function MyKpiStrip({ kpis, periodLabel, title = "My business" }: {
     <section aria-label={`${title} figures`} className="space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="section-title">{title}</h2>
-        <p className="text-2xs text-muted-foreground">
-          Flow figures cover <span className="font-medium text-foreground">{periodLabel}</span>;
-          balances are as they stand now.
-        </p>
+        <p className="text-2xs text-muted-foreground">{periodLabel}</p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {kpis.map((k) => (

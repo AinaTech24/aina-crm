@@ -101,7 +101,7 @@ export function BranchTargets({
   return (
     <Section
       title={title ?? (oneRm ? `Targets — ${oneRm}` : "Branch target vs achievement")}
-      subtitle={`Target, actual and ${personal ? "what remains" : "the gap"} for ${horizonWord} — never a bare percentage.`}
+      subtitle={`Target, actual and ${personal ? "what remains" : "the gap"} for ${horizonWord}.`}
       icon={<Target className="size-4" />}
       action={
         <ToggleChips
@@ -234,7 +234,7 @@ export function RmScoreboard({
     },
     { key: "od", label: "Overdue tasks", title: "Open tasks past their due date today, whenever they were raised.",
       get: (r) => r.tasksOverdueNow, tone: (v) => (v != null && v > 0 ? "bad" : "neutral") },
-    { key: "q", label: "Open queries", get: (r) => r.queriesOpen, tone: (v) => (v != null && v > 0 ? "warn" : "neutral") },
+    { key: "q", label: "Open service requests", get: (r) => r.queriesOpen, tone: (v) => (v != null && v > 0 ? "warn" : "neutral") },
     { key: "ins", label: "Insurance", get: (r) => r.insurance, format: "currency" },
     {
       key: "status", label: "Target status", title: "How many of this RM's targets are achieved, near or short for the period. A count, not a score.",
@@ -246,9 +246,9 @@ export function RmScoreboard({
   return (
     <Section
       title="RM performance scoreboard"
-      subtitle={`Every RM's book and business for ${periodLabel}. Click a name for their one-on-one view.`}
+      subtitle={`Every RM's book and business for ${periodLabel}.`}
       icon={<Trophy className="size-4" />}
-      note="Client figures (AUM, SIP, flows, new clients, queries) follow the client's RM within this branch; work figures (meetings, proposals, tasks, insurance booked) follow the person. The last rows hold branch clients whose RM works elsewhere or who have no RM, so every column adds up to the branch total. There is no overall score — only target statuses you can check in the matrix below."
+      note="Client figures (AUM, SIP, flows, new clients, service requests) follow the client's RM within this branch; work figures (meetings, proposals, tasks, insurance booked) follow the person. The last rows hold branch clients whose RM works elsewhere or who have no RM, so every column adds up to the branch total. There is no overall score — only target statuses you can check in the matrix below."
     >
       {/* In the body, not the header's action slot: that slot does not shrink,
           so seven chips ran off the card on a phone. */}
@@ -380,7 +380,8 @@ export function RmOneOnOne({
   near: number;
   noPhase: string;
   periodLabel: string;
-  backHref: string;
+  /** Back to the whole branch; null when the viewer may see only this RM. */
+  backHref: string | null;
   links: { clients: string; tasks: string; meetings: string; leads: string };
 }) {
   const cells = targetCells(row, phase, near, noPhase);
@@ -393,9 +394,11 @@ export function RmOneOnOne({
       icon={<UserRound className="size-4" />}
       className="border-primary/30"
       action={
-        <Link href={backHref} className="inline-flex min-h-6 items-center gap-1 rounded px-1 text-xs font-medium text-primary hover:bg-accent hover:underline">
-          <ArrowLeft className="size-3.5" aria-hidden /> Whole branch
-        </Link>
+        backHref ? (
+          <Link href={backHref} className="inline-flex min-h-6 items-center gap-1 rounded px-1 text-xs font-medium text-primary hover:bg-accent hover:underline">
+            <ArrowLeft className="size-3.5" aria-hidden /> Whole branch
+          </Link>
+        ) : undefined
       }
     >
       <StatGrid cols={6}>
@@ -410,7 +413,7 @@ export function RmOneOnOne({
         <Stat label="Pending tasks" value={row.tasksOpenNow} tone={(row.tasksOverdueNow ?? 0) > 0 ? "bad" : "neutral"}
               hint={row.tasksOverdueNow ? `${row.tasksOverdueNow} overdue` : "whenever raised"} href={links.tasks} />
         <Stat label="Overdue reviews" value={row.reviewsOverdue} tone={row.reviewsOverdue > 0 ? "bad" : "neutral"} />
-        <Stat label="Client queries open" value={row.queriesOpen} tone={row.queriesOverdue > 0 ? "bad" : "neutral"}
+        <Stat label="Open service requests" value={row.queriesOpen} tone={row.queriesOverdue > 0 ? "bad" : "neutral"}
               hint={row.queriesOverdue ? `${row.queriesOverdue} past SLA` : undefined} />
         <Stat label="SIP rejections" value={row.sipRejections} tone={row.sipPending > 0 ? "bad" : "neutral"}
               hint={row.sipRejections ? `${formatMoney(row.sipRejectionValue)} · ${row.sipPending} pending` : undefined} />

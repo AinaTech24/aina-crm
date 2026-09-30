@@ -78,8 +78,8 @@ export async function loadClientBook(tx: Tx, w: MyWindow): Promise<ClientBook> {
       COUNT(*) FILTER (WHERE family_id IS NOT NULL AND NOT is_head)::int          AS family_members,
       COUNT(*) FILTER (WHERE family_id IS NULL)::int                             AS individuals,
       COUNT(*) FILTER (WHERE status = 'active')::int                             AS active,
-      COUNT(*) FILTER (WHERE created_at >= date_trunc('month', ${w.to}::date))::int AS new_month,
-      COUNT(*) FILTER (WHERE created_at >= ${w.fyStart}::date)::int              AS new_fy,
+      COUNT(*) FILTER (WHERE (onboarded_at AT TIME ZONE 'Asia/Kolkata')::date >= date_trunc('month', ${w.to}::date)::date)::int AS new_month,
+      COUNT(*) FILTER (WHERE (onboarded_at AT TIME ZONE 'Asia/Kolkata')::date >= ${w.fyStart}::date)::int AS new_fy,
       COUNT(*) FILTER (WHERE client_category IS NULL OR btrim(client_category) = '')::int AS uncategorised,
       COALESCE(SUM(aum::numeric), 0)                                             AS aum
       FROM (
@@ -367,11 +367,11 @@ export async function loadOpportunities(tx: Tx, w: MyWindow): Promise<Opportunit
       (r) => r.sip_rejected === true,
       (r) => inr(num(r.aum))),
 
-    group("open_query", "Client with a pending query",
+    group("open_query", "Client with an open service request",
       "Something the client is waiting on. Resolve it before any other conversation.",
       "/dashboard/service-requests?mine=1",
       (r) => r.open_query === true,
-      () => "query open"),
+      () => "service request open"),
   ];
 
   // An opportunity with nobody in it is not an opportunity. Then: gaps that

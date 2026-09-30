@@ -32,7 +32,7 @@ export function PeriodSelector({ current, variant = "dark" }: { current: Period;
   const cls =
     variant === "light"
       ? { wrap: "border-border bg-card", active: "bg-primary text-primary-foreground shadow-sm", idle: "text-muted-foreground hover:text-foreground hover:bg-accent" }
-      : { wrap: "border-white/20 bg-white/10 backdrop-blur-sm", active: "bg-white text-slate-900 shadow-sm", idle: "text-white/75 hover:text-white hover:bg-white/10" };
+      : { wrap: "border-white/20 bg-white/10 backdrop-blur-sm", active: "bg-white text-foreground shadow-sm", idle: "text-white/75 hover:text-white hover:bg-white/10" };
 
   function select(p: Period) {
     const params = new URLSearchParams(searchParams.toString());

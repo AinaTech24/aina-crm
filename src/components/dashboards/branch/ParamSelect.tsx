@@ -11,7 +11,8 @@
  * right there and wrong here.
  */
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useDashboardNav } from "@/components/dashboards/system/DashboardNav";
 import { Building2, Users } from "lucide-react";
 import { Select } from "@/components/ui/Select";
 
@@ -34,7 +35,8 @@ export function ParamSelect({
   /** Params that stop meaning anything once this one changes. */
   clear?: string[];
 }) {
-  const router = useRouter();
+  const nav = useDashboardNav();
+  const pathname = usePathname();
   const params = useSearchParams();
 
   function go(v: string) {
@@ -42,7 +44,8 @@ export function ParamSelect({
     if (v) next.set(param, v);
     else next.delete(param);
     for (const c of clear) next.delete(c);
-    router.push(`/dashboard?${next.toString()}`, { scroll: false });
+    const qs = next.toString();
+    nav.go(`${pathname}${qs ? `?${qs}` : ""}`);
   }
 
   const Icon = icon === "branch" ? Building2 : Users;

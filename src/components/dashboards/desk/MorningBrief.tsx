@@ -72,7 +72,7 @@ export function MorningBrief({
         // past a phone screen.
         <div className="grid grid-cols-1 gap-4 p-5 lg:grid-cols-5">
           <div className="min-w-0 lg:col-span-2">
-            <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Your day</h3>
+            <h3 className="mb-2 text-2xs font-semibold text-muted-foreground">Your day</h3>
             <ul className="grid grid-cols-2 gap-2">
               {counts.map((c) => (
                 <li key={c.label}>
@@ -85,7 +85,8 @@ export function MorningBrief({
             </ul>
           </div>
           <div className="min-w-0 lg:col-span-3">
-            <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <h3 className="mb-2 text-2xs font-semibold text-muted-foreground"
+              title="Overdue first, then due today, then client category, then time. No hidden score.">
               Top actions{overdue ? ` — ${overdue} overdue` : ""}
             </h3>
             {top.length === 0 ? (
@@ -117,9 +118,6 @@ export function MorningBrief({
                 ))}
               </ol>
             )}
-            <p className="mt-2 text-2xs text-muted-foreground">
-              Ordered by a plain rule: overdue first, then due today, then client category, then time. No hidden score.
-            </p>
           </div>
         </div>
       )}

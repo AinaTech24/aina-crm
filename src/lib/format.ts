@@ -98,28 +98,55 @@ export function formatPercent(
 /* ────────────────────────────── dates ────────────────────────────── */
 
 /**
- * `date`      7 Sept 2026        the default — use unless you have a reason
- * `dayMonth`  7 Sept             inside a column already scoped to one year
+ * `date`      7 Sep 2026         the default — use unless you have a reason
+ * `dayMonth`  7 Sep              inside a column already scoped to one year
  * `monthYear` September 2026     period headers
- * `dateTime`  7 Sept 2026, 4:30 pm
- * `weekday`   Mon, 7 Sept
+ * `dateTime`  7 Sep 2026, 4:30 PM
+ * `weekday`   Mon, 7 Sep
+ * `time`      5:21 PM
+ *
+ * Always India time, whatever the server's clock zone: production once ran
+ * UTC and every timestamp before 05:30 IST printed as the previous day.
+ *
+ * Month names are spelled out here rather than taken from the `en-IN` locale,
+ * which abbreviates September as "Sept" — the only four-letter month, so a
+ * column of dates never lined up and the style guide says "Sep".
  */
-export type DateStyle = "date" | "dayMonth" | "monthYear" | "dateTime" | "weekday";
+export type DateStyle = "date" | "dayMonth" | "monthYear" | "dateTime" | "weekday" | "time";
 
-const DATE_OPTIONS: Record<DateStyle, Intl.DateTimeFormatOptions> = {
-  // `day: "numeric"` throughout — never "2-digit". Mixing the two is what put
-  // `30 Jun 26` next to `07 Sept 26` in the same card stack on My Day.
-  date: { day: "numeric", month: "short", year: "numeric" },
-  dayMonth: { day: "numeric", month: "short" },
-  monthYear: { month: "long", year: "numeric" },
-  dateTime: { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" },
-  weekday: { weekday: "short", day: "numeric", month: "short" },
-};
+const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTH_LONG = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+const IST_PARTS = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Kolkata",
+  year: "numeric", month: "numeric", day: "numeric", weekday: "short",
+  hour: "numeric", minute: "2-digit", hourCycle: "h23",
+});
+
+/** The date and time a moment reads in India. */
+function istParts(d: Date): { y: number; m: number; d: number; wd: number; h: number; min: string } {
+  const p: Record<string, string> = {};
+  for (const part of IST_PARTS.formatToParts(d)) p[part.type] = part.value;
+  const wd = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(p.weekday);
+  return { y: Number(p.year), m: Number(p.month) - 1, d: Number(p.day), wd, h: Number(p.hour) % 24, min: p.minute };
+}
 
 function toDate(value: Date | string | number | null | undefined): Date | null {
   if (value == null || value === "") return null;
+  // A bare yyyy-mm-dd is a calendar date, not a UTC midnight: read it as noon
+  // India time so no zone can push it onto the neighbouring day.
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const d = new Date(`${value}T12:00:00+05:30`);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
   const d = value instanceof Date ? value : new Date(value);
   return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** `5:21 PM`. */
+function clock(h: number, min: string): string {
+  return `${h % 12 === 0 ? 12 : h % 12}:${min} ${h < 12 ? "AM" : "PM"}`;
 }
 
 export function formatDate(
@@ -128,15 +155,39 @@ export function formatDate(
 ): string {
   const d = toDate(value);
   if (!d) return "—";
-  return new Intl.DateTimeFormat("en-IN", DATE_OPTIONS[style]).format(d);
+  const p = istParts(d);
+  switch (style) {
+    case "dayMonth": return `${p.d} ${MONTH_SHORT[p.m]}`;
+    case "monthYear": return `${MONTH_LONG[p.m]} ${p.y}`;
+    case "dateTime": return `${p.d} ${MONTH_SHORT[p.m]} ${p.y}, ${clock(p.h, p.min)}`;
+    case "weekday": return `${WEEKDAY_SHORT[p.wd]}, ${p.d} ${MONTH_SHORT[p.m]}`;
+    case "time": return clock(p.h, p.min);
+    default: return `${p.d} ${MONTH_SHORT[p.m]} ${p.y}`;
+  }
 }
 
-/** `just now` · `4m ago` · `3h ago` · `6d ago`, then falls back to a real date. */
-export function formatRelative(value: Date | string | number | null | undefined): string {
+/**
+ * `just now` · `4m ago` · `3h ago` · `6d ago`, then falls back to a real date.
+ *
+ * A date still ahead prints as a date — unless `future` is set, when it reads
+ * `in 4m` · `in 3h` · `in 6d` the same way. Opt-in because most callers pass
+ * past times, and the few future ones were written expecting a date.
+ */
+export function formatRelative(
+  value: Date | string | number | null | undefined,
+  opts?: { future?: boolean },
+): string {
   const d = toDate(value);
   if (!d) return "—";
   const seconds = (Date.now() - d.getTime()) / 1000;
-  if (seconds < 0) return formatDate(d);
+  if (seconds < 0) {
+    const ahead = -seconds;
+    if (!opts?.future || ahead >= 604800) return formatDate(d);
+    if (ahead < 60) return "in under a minute";
+    if (ahead < 3600) return `in ${Math.floor(ahead / 60)}m`;
+    if (ahead < 86400) return `in ${Math.floor(ahead / 3600)}h`;
+    return `in ${Math.floor(ahead / 86400)}d`;
+  }
   if (seconds < 60) return "just now";
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;

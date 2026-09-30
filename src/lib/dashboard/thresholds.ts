@@ -42,7 +42,7 @@ export const DEFAULT_DASHBOARD_THRESHOLDS = {
   largeRedemptionAbsolute: 1_000_000,
   largeRedemptionShareOfAum: 0.25,
 
-  // ── Personal cockpit (/dashboard?scope=mine) ─────────────────────────────
+  // ── Relationship Manager Dashboard (was /dashboard?scope=mine) ───────────
   /**
    * A lead with no meaningful activity for this long is STALE.
    *
@@ -55,7 +55,7 @@ export const DEFAULT_DASHBOARD_THRESHOLDS = {
    */
   staleLeadDays: 21,
 
-  // ── Branch command centre (/dashboard?scope=branch) ──────────────────────
+  // ── Branch Head Dashboard (was /dashboard?scope=branch) ─────────────────
   /** A proposal sent this many days ago with no decision needs attention. */
   proposalAgeingDays: 7,
   /**
@@ -78,6 +78,49 @@ export const DEFAULT_DASHBOARD_THRESHOLDS = {
   /** An A/B client this many days past review is a critical exception, not
    *  merely an overdue one. */
   reviewSevereOverdueDays: 30,
+
+  // ── Operations Dashboard (was /dashboard?scope=ops) ─────────────────────
+  /** An open request whose SLA falls due within this many hours is
+   *  "approaching" (Level 1). The task list's "SLA at risk" uses 24 hours. */
+  opsSlaWarnHours: 24,
+  /** Breached by more than this many hours is Level 3 — escalate. */
+  opsEscalateHours: 24,
+  /** A request at or above this value is high-value; the page also offers
+   *  ₹1 L – ₹50 L presets and a custom figure per viewer. */
+  opsHighValue: 1_000_000,
+  /** An open record with no edit and no remark for this many days is a
+   *  "no update" exception. */
+  opsNoUpdateDays: 3,
+  /** A feed transaction still pending / submitted this many days is waiting
+   *  on the platform or AMC too long. */
+  opsPlatformPendingDays: 3,
+  /** Insurance: a renewal, proposal or pending policy at or above this premium
+   *  is high value on the Insurance Business Command Centre. */
+  insHighPremium: 100_000,
+  /** Insurance: a proposed / in-underwriting policy older than this many days
+   *  is an issuance delay. */
+  insIssuanceSlaDays: 7,
+  /** Insurance: an open claim at or above this amount is high value. */
+  insHighClaim: 500_000,
+
+  // ── Claims Dashboard (was /dashboard?scope=claims) ──────────────────────
+  // The overall claim SLA is claimSlaDays above. The CRM holds no per-insurer
+  // or per-stage SLA, so each of these is the firm's own service standard —
+  // editable at Settings → Dashboard thresholds, never a regulator's number.
+  /** An open claim within this many days of its SLA is "approaching" (Attention). */
+  claimSlaWarnDays: 5,
+  /** Breached by more than this many days, a claim is escalated (Level 3). */
+  claimEscalateDays: 15,
+  /** A claim file awaited from the client longer than this is overdue. */
+  claimDocsDays: 7,
+  /** An insurer query or information request unanswered longer than this is overdue. */
+  claimQueryDays: 7,
+  /** Under process with the insurer longer than this is "under assessment too long". */
+  claimAssessDays: 21,
+  /** An open claim with no edit for this many days is a "no update" exception. */
+  claimNoUpdateDays: 3,
+  /** A claimant with no logged contact for this many days is due an update. */
+  claimClientUpdateDays: 7,
 };
 
 export type DashboardThresholds = typeof DEFAULT_DASHBOARD_THRESHOLDS;
@@ -91,7 +134,7 @@ export const CONFIGURABLE_THRESHOLDS: Array<{
   key: keyof DashboardThresholds;
   label: string;
   hint: string;
-  kind: "days" | "rupees" | "fraction" | "choice";
+  kind: "days" | "hours" | "rupees" | "fraction" | "choice";
   min?: number;
   max?: number;
   choices?: Array<{ value: string; label: string }>;
@@ -108,6 +151,22 @@ export const CONFIGURABLE_THRESHOLDS: Array<{
   { key: "sipRejectionSlaDays", label: "SIP rejection SLA", hint: "Days before an unworked rejection is past SLA", kind: "days", min: 1, max: 60 },
   { key: "queryAgeingDays", label: "Query ageing from", hint: "Days before an open query is flagged", kind: "days", min: 1, max: 90 },
   { key: "reviewSevereOverdueDays", label: "Review severely overdue after", hint: "Days past review before an A/B client is critical", kind: "days", min: 1, max: 365 },
+  { key: "opsSlaWarnHours", label: "Operations: SLA approaching within", hint: "Hours before an open request's SLA falls due", kind: "hours", min: 1, max: 168 },
+  { key: "opsEscalateHours", label: "Operations: escalate once SLA is breached by", hint: "Hours past SLA before a request is Level 3", kind: "hours", min: 1, max: 720 },
+  { key: "opsHighValue", label: "Operations: high-value request from", hint: "Default threshold; each viewer can pick another on the page", kind: "rupees", min: 10000, max: 1e10 },
+  { key: "opsNoUpdateDays", label: "Operations: no update after", hint: "Days with no edit or remark on an open record", kind: "days", min: 1, max: 60 },
+  { key: "opsPlatformPendingDays", label: "Operations: waiting on platform too long after", hint: "Days a feed transaction may stay pending or submitted", kind: "days", min: 1, max: 60 },
+  { key: "insHighPremium", label: "Insurance: high premium from", hint: "Renewals, proposals and pending policies at or above this are high value", kind: "rupees", min: 1000, max: 1e9 },
+  { key: "insIssuanceSlaDays", label: "Insurance: issuance delayed after", hint: "Days a proposed or in-underwriting policy may wait", kind: "days", min: 1, max: 90 },
+  { key: "insHighClaim", label: "Insurance: high-value claim from", hint: "Open claims at or above this amount are escalated", kind: "rupees", min: 1000, max: 1e10 },
+  { key: "claimSlaDays", label: "Insurance: claim SLA", hint: "Days from intimation before an open claim is past SLA", kind: "days", min: 1, max: 365 },
+  { key: "claimSlaWarnDays", label: "Claims: SLA approaching within", hint: "Days before the claim SLA falls due", kind: "days", min: 1, max: 60 },
+  { key: "claimEscalateDays", label: "Claims: escalate once SLA is breached by", hint: "Days past SLA before a claim is escalated", kind: "days", min: 1, max: 365 },
+  { key: "claimDocsDays", label: "Claims: documents overdue after", hint: "Days a claim file may stay awaited from the client", kind: "days", min: 1, max: 90 },
+  { key: "claimQueryDays", label: "Claims: insurer query overdue after", hint: "Days a query or information request may stay unanswered", kind: "days", min: 1, max: 90 },
+  { key: "claimAssessDays", label: "Claims: under process too long after", hint: "Days a submitted claim may stay under process", kind: "days", min: 1, max: 365 },
+  { key: "claimNoUpdateDays", label: "Claims: no update after", hint: "Days an open claim may go without an edit", kind: "days", min: 1, max: 60 },
+  { key: "claimClientUpdateDays", label: "Claims: client update due every", hint: "Days a claimant may go without a logged call, email, visit or message", kind: "days", min: 1, max: 60 },
 ];
 
 /**
@@ -129,7 +188,7 @@ export function sanitizeThresholdOverrides(raw: unknown): Partial<DashboardThres
     if (!Number.isFinite(n)) continue;
     if (def.min != null && n < def.min) continue;
     if (def.max != null && n > def.max) continue;
-    out[def.key] = def.kind === "days" ? Math.round(n) : n;
+    out[def.key] = def.kind === "days" || def.kind === "hours" ? Math.round(n) : n;
   }
   return out as Partial<DashboardThresholds>;
 }

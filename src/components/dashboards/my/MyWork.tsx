@@ -94,7 +94,7 @@ export function MyTaskPanel({ data, periodLabel, staffIds }: {
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <div>
-          <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <h3 className="mb-2 text-2xs font-semibold text-muted-foreground">
             Due today <span className="font-normal normal-case tracking-normal">&mdash; whenever it was raised</span>
           </h3>
           <Table
@@ -125,7 +125,7 @@ export function MyTaskPanel({ data, periodLabel, staffIds }: {
               period-scoped. Without it, "0 assigned this month" sitting beside
               a task 78 days late reads as a contradiction rather than as two
               different questions. */}
-          <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <h3 className="mb-2 text-2xs font-semibold text-muted-foreground">
             Overdue <span className="font-normal normal-case tracking-normal">&mdash; whenever it was raised</span>
           </h3>
           <Table
@@ -159,11 +159,11 @@ export function MyTaskPanel({ data, periodLabel, staffIds }: {
 export function MyQueryPanel({ data, periodLabel }: { data: MyQueries; periodLabel: string }) {
   return (
     <Section
-      title="My clients' queries"
+      title="My clients' service requests"
       subtitle="What my clients are waiting on, however it is being handled."
       icon={<Headset className="size-4" />}
-      action={<SectionLink href="/dashboard/service-requests?mine=1">All queries</SectionLink>}
-      note="Queries are scoped to MY CLIENTS, not to what is assigned to me — a ticket sitting with ops is still my client waiting. Waiting-on-client is counted separately so an RM is not charged for a delay at the other end."
+      action={<SectionLink href="/dashboard/service-requests?mine=1">All service requests</SectionLink>}
+      note="Service requests are scoped to my clients, not to what is assigned to me — a ticket sitting with ops is still my client waiting. Waiting-on-client is counted separately so an RM is not charged for a delay at the other end."
     >
       <StatGrid cols={6}>
         <Stat label="Open with us" value={data.open} tone={data.open > 0 ? "warn" : "good"} />
@@ -187,11 +187,11 @@ export function MyQueryPanel({ data, periodLabel }: { data: MyQueries; periodLab
       <div className="mt-4">
         <Table
           rows={data.rows.length}
-          empty="Nothing open — every query from your clients has been answered."
+          empty="Nothing open — every service request from your clients has been answered."
           head={
             <>
               <th scope="col">Client</th>
-              <th scope="col">Query type</th>
+              <th scope="col">Request type</th>
               <th scope="col">Raised</th>
               <th scope="col" className="text-right">Ageing</th>
               <th scope="col">Assigned to</th>
@@ -209,7 +209,7 @@ export function MyQueryPanel({ data, periodLabel }: { data: MyQueries; periodLab
               <td className="py-2.5 text-xs">{formatDate(r.created)}</td>
               <Num tone={r.ageDays > 15 ? "bad" : r.ageDays > 7 ? "warn" : "neutral"}>{pluralDays(r.ageDays)}</Num>
               <td className="py-2.5 text-xs">
-                {r.assignedTo ?? <span className="text-muted-foreground" title="Nobody has been assigned to this query.">Unassigned</span>}
+                {r.assignedTo ?? <span className="text-muted-foreground" title="Nobody has been assigned to this service request.">Unassigned</span>}
               </td>
               <td className="py-2.5">
                 <span

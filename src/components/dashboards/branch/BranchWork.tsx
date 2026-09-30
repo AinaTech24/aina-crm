@@ -83,7 +83,7 @@ export function BranchTasks({
         <TaskSide title="Non-financial" data={data.nonFinancial} hint="KYC, nominee, bank and record changes" />
       </div>
       <div className="mt-4">
-        <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">By person</h3>
+        <h3 className="mb-2 text-2xs font-semibold text-muted-foreground">By person</h3>
         <RmTable
           rows={rows}
           rmHref={rmHref}
@@ -104,7 +104,7 @@ export function BranchTasks({
         />
       </div>
       <div className="mt-4">
-        <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h3 className="mb-2 text-2xs font-semibold text-muted-foreground">
           Oldest pending <span className="font-normal normal-case tracking-normal">&mdash; whenever raised</span>
         </h3>
         <Table
@@ -142,7 +142,7 @@ function Breakdown({ title, items }: { title: string; items: Array<{ label: stri
   const peak = Math.max(1, ...items.map((i) => i.count));
   return (
     <div>
-      <h4 className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h4>
+      <h4 className="mb-1.5 text-2xs font-semibold text-muted-foreground">{title}</h4>
       {items.length === 0 ? (
         <p className="text-2xs text-muted-foreground">Nothing open.</p>
       ) : (
@@ -179,11 +179,11 @@ export function BranchQueries({
   const link = (id: string) => (canOpen ? `/dashboard/service-requests/${id}` : null);
   return (
     <Section
-      title="Client query and service health"
+      title="Service request health"
       subtitle="What the branch's clients are waiting on, however it is being handled."
       icon={<Headset className="size-4" />}
-      action={canOpen ? <SectionLink href="/dashboard/service-requests?breached=1">Overdue queries</SectionLink> : undefined}
-      note="Queries follow the CLIENT — a ticket sitting with operations is still this branch's client waiting. Waiting-on-client is counted apart so an RM is not charged for a delay at the other end."
+      action={canOpen ? <SectionLink href="/dashboard/service-requests?breached=1">Overdue service requests</SectionLink> : undefined}
+      note="Service requests follow the client — a ticket sitting with operations is still this branch's client waiting. Waiting-on-client is counted apart so an RM is not charged for a delay at the other end."
     >
       <StatGrid cols={6}>
         <Stat label="Received" value={data.received} hint={periodLabel} />
@@ -214,7 +214,7 @@ export function BranchQueries({
 
       {showRm && (
         <div className="mt-4">
-          <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">By RM</h3>
+          <h3 className="mb-2 text-2xs font-semibold text-muted-foreground">By RM</h3>
           <RmTable
             rows={rmRows(ledger)}
             rmHref={rmHref}
@@ -228,13 +228,13 @@ export function BranchQueries({
       )}
 
       <div className="mt-4">
-        <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Escalation — past SLA</h3>
+        <h3 className="mb-2 text-2xs font-semibold text-muted-foreground">Escalation — past SLA</h3>
         {escalation.length === 0 && data.overdue > 0 ? (
-          <Unavailable>{data.overdue} queries are past SLA; open the register to see them all.</Unavailable>
+          <Unavailable>{data.overdue} service requests are past SLA; open the register to see them all.</Unavailable>
         ) : (
           <Table
             rows={escalation.length}
-            empty="No query is past its SLA."
+            empty="No service request is past its SLA."
             head={
               <>
                 <th scope="col">Client</th>

@@ -246,24 +246,155 @@ Idempotency: communications updates are keyed by `(external_id, channel)` — sa
 
 ## The dashboards
 
-`/dashboard` serves **three** cockpits, chosen by `?scope=`:
+Rebuilt 2026-09-29 from the dashboard-cleanup brief (D1–D9): **one metrics
+module** under every number, and **named dashboards** picked from a Zoho-style
+dropdown instead of `?scope=` tabs. The dropdown holds **six role
+dashboards** — Owner, Branch Head, Relationship Manager, Operations,
+Insurance Team, Claims — and every one of them lives in Dashboard: none is a
+report, a module tab or a page of its own (the owner's instruction after the
+first cleanup moved them out).
 
-| scope | What it answers | Default period |
-|---|---|---|
-| `firm` (default) | "How is the business doing?" — every branch, every RM | FY to date |
-| `branch` | "Is my branch on target, which RM, what needs me?" — one branch | Month to date |
-| `mine` | "Whom do I contact today, what is pending, how is my business going?" — the RM desk, only the signed-in user's own book. The DEFAULT for an RM | Today for actions, month to date for business |
+### One definition per number — `src/lib/metrics/`
 
-They are deliberately separate views rather than one page with a filter. A
-director who also carries clients wants both, and merging them makes both
-worse: firm-wide overdue tasks bury the four that are actually theirs, and a
-personal AUM figure inside a firm cockpit reads as the firm's. The switch is
-`DashboardScopeSwitch`, which preserves every other query param except the
-ones that change meaning between views (`rm`, `tab`, the branch view's
-toggles). WHICH scopes a viewer may open is decided in
-[src/app/dashboard/page.tsx](src/app/dashboard/page.tsx), never by the switch.
+Every figure on a dashboard card, the sidebar Tasks badge, My Day's counts and
+the list page a card drills into comes from `src/lib/metrics` (`index.ts`
+lists the functions). If a screen needs a figure that is not there, add it
+there — never write the SQL inside a widget. Each function takes a
+`MetricScope` (explicit `tenantId`, then the viewer's access, then the
+dashboard filters, each only narrowing). Client facts follow
+`investors.rm_id` / `branch_id`; staff facts (tasks, leads) follow the person.
 
-**What "mine" means is defined once**, in
+- **Live client** = not deleted, not merged, status not closed/exited
+  (`aliveClient`). Active = live and `active`/`redemption_risk`.
+- **SIP book** = Σ monthly-equivalent active SIPs of live clients
+  (`sipMonthlySql`, one factor table for SQL and TS).
+  `investors.active_sip_amount` is only a cache, written by
+  `refreshActiveSipAmount` — call it after any SIP write.
+- **New clients** = `onboarded_at` (India date) in the period, never
+  `created_at`; imports never default the onboarding date to today. Targets
+  are FY figures, achievement is always FY-to-date (`targets.ts`).
+- **Health**: `getClientHealth` scores live AND keeps the stored score equal;
+  the Clients list calls `ensureHealthFresh` (once a day per firm).
+- **Leads**: the Leads board's seven columns (`LEAD_PIPELINE`, incl. the
+  `proposal_sent` SOP stage from migration 0222); conversion = Won ÷ all leads
+  counted; a converted or onboarding lead is Won.
+- **No data is not zero**: money that moved needs the RTA ledger to reach the
+  period (`getNetBusiness().hasData`), else the card says "—" + Import RTA files.
+
+### Named dashboards — `/dashboard/[dashboardId]`
+
+- `/dashboard` redirects to the viewer's default: their own "Set as my
+  default" → a dashboard assigned to them (Settings → Dashboards) → the last
+  one they opened → their role's default → the Owner Dashboard
+  (`resolveDefaultDashboard`). Old `?scope=` links open the role dashboard
+  that replaced each view.
+- **Six system dashboards** (`src/lib/dashboards/system/definitions.ts`), one
+  `dashboards` row each per firm (`is_system`, `system_key`; migration 0223
+  and `ensureSystemDashboards` for new firms) so they can be linked,
+  favourited and defaulted. Their content lives in code and they are always
+  locked. Two kinds:
+  - **widgets** — the Owner Dashboard: 16 cards from the widget library. Clone
+    it to vary it.
+  - **centre** — the other five: a full role dashboard built from its own
+    brief, rendered under the same header by
+    `components/dashboards/system/centres.tsx`, which also applies that
+    view's access rule and book. A centre has no cards, so it cannot be
+    cloned (the clone API refuses it).
+  A system row whose key this build does not define is never shown
+  (`canView`).
+- **Who sees / edits / shares** — `src/lib/dashboards/platform.ts`:
+  `canView`, `canEdit` (creator, `dashboards.manage`, or a share while
+  unlocked), `canShare`, `canShareOrDelete` (delete), `allowedShares` (a
+  branch head shares only inside their branch). Shares: all / user / role
+  (+ subordinates) / branch / team (desk).
+- **Sharing a role dashboard** (admins, from its ⋯ menu or Manage
+  dashboards): its `'all'` row means "everyone in the roles it's for"
+  (`visibleTo`, described by `audience`) and is the default; user / role /
+  branch / team rows add people, and dropping the `'all'` row limits it to
+  them. A person it is shared with opens the centre too — its drawer, search
+  and export routes check `mayUseRoleDashboard` (open-system.ts), not just the
+  capability. `ensureSystemDashboards` seeds `'all'` only on rows it creates.
+- **Seeing a dashboard never widens what it counts**: every card goes through
+  `resolveDataAccess` (`lib/dashboards/team.ts` over `system/access.ts`):
+  firm / branch / **team** / self. Team = the viewer plus everyone under them
+  in `users.reporting_manager_id` (any depth); their RM filter offers exactly
+  those people, and the RM Dashboard gets a "Team member" picker
+  (`?member=`). Someone nobody reports to sees only their own. In a centre the
+  same rule holds: an own-clients viewer on the Branch Head Dashboard gets the
+  one-on-one view of themselves (`rmLocked`), a team lead picks among their
+  team (`rmAll={false}`), and the Claims Dashboard has a `self` scope (own
+  clients' and own claims) for someone without claims access. The header says
+  "Showing: …".
+- **Widgets**: metadata in `system/catalog.ts` (sizes S/M/L, max 16, which
+  filters each honours), implementations in
+  `src/components/dashboards/system/widgets/*`, wired in `registry.ts`. To add
+  one: a catalog row + a `{ key, render, csv? }` implementation
+  (`tests/dashboard-platform.test.ts` checks every key has one). A card with
+  no data returns `body: null` and is not rendered, and the half-width card
+  it was paired with takes the full row (`system/sizes.ts` `effectiveSizes`).
+  `EmbeddedWidgets` places library cards inside a centre (the Operations
+  Dashboard's Compliance tab), on the same implementations.
+- **Filters** live in the URL (`system/filters.ts`): `period` (+`from`/`to`,
+  India dates, compared with the same period last year), `rm` (`me` = the
+  viewer), `branch`, and up to three "+ Filter" fields. "Save filter" and a
+  card's personal "Filter this card" are stored in `dashboard_user_prefs`. A
+  filter a card cannot use shows "Filter not applied". Drill-down links
+  (`components/dashboards/system/links.ts`) send params the list pages read
+  with the SAME metric definitions, so a card's count is the list's row count.
+  A custom range is read the way it was meant (`resolvePeriod`): dates
+  picked backwards are swapped, the end stops at today, and a range that has
+  not started falls back to the default period.
+- **A filter change must show it is working.** It re-renders the dashboard on
+  the server and React keeps the old page up meanwhile — seconds on a busy dev
+  server, which read as "the filter does nothing". Every control that changes
+  a dashboard's URL (the filter bar, the centres' pickers, period menus,
+  client filters, chips) navigates with `useDashboardNav().go`
+  (`system/DashboardNav.tsx`); while that is pending the body dims, Apply
+  says "Applying…" and the header "Updating…". A new filter control must use
+  it too. The filter bar's draft re-syncs whenever the page's filter changes
+  (Back / Forward), so the bar never disagrees with the cards.
+- **One render**: `DashboardGrid` loads every card (own transaction each,
+  `runLimit(4)`), then renders once; `loading.tsx` is the one skeleton.
+- Pages: `/dashboard/manage` (All · Created by me · Shared with me · Recently
+  deleted, 30-day restore), `/dashboard/new`, `/dashboard/[id]/edit`,
+  Settings → Dashboards (role and per-user defaults, `dashboard_defaults`).
+
+### The six role dashboards
+
+Every one reads top to bottom the same way: the headline numbers, what needs
+action today, the team, then the analysis and the reviews.
+
+| Dashboard | Default for | What it is | Was |
+|---|---|---|---|
+| **Owner Dashboard** | owner, compliance, marketing | widgets: KPI row (AUM, SIP book, net business, net SIP added, new clients vs target, clients, insurance premium) · needs attention · lead pipeline · team · branches · business trend · money movement · SIP health · AUM mix · client mix · top clients · brokerage · premium book · compliance gaps · expiries · automation | `?scope=firm`, Practice Overview, Reports › Practice health |
+| **Branch Head Dashboard** | branch head | `BranchCommandCentre` (32 sections) | `?scope=branch`, Reports › Branch review |
+| **Relationship Manager Dashboard** | RM, team member | `MyBusinessDashboard` (40 sections) | `?scope=mine`, Reports › My desk |
+| **Operations Dashboard** | ops, back office, service team | `OperationsControlTower` (50 sections; tabs Queue · SLA & escalations · Team load · Rejections · Compliance) | `?scope=ops`, `/dashboard/operations` |
+| **Insurance Team Dashboard** | insurance team | `InsuranceCommandCentre` (58 sections) | `?scope=insurance`, Insurance › Overview |
+| **Claims Dashboard** | — (insurance team opens it from the dropdown) | `ClaimsControlCentre` (60 sections) | `?scope=claims`, Insurance › Claims desk |
+
+- **Who sees which** is `visibleTo` in definitions.ts: an RM sees only their
+  own dashboard, a branch head locked to their branch never sees the Owner
+  Dashboard, the owner sees all six. Leads and compliance have no dashboards
+  of their own: their cards are on the Owner Dashboard (and compliance on the
+  Operations Dashboard's Compliance tab).
+- **The old addresses redirect** — Reports › Branch review / My desk /
+  Practice health, Insurance › Overview / Claims desk and WORK › Operations
+  (`/dashboard/operations`) — through `openSystemDashboard`
+  (`lib/dashboards/open-system.ts`), keeping their query string. A viewer who
+  may not see that dashboard lands on their own default.
+- **A centre builds every link to itself from `basePath`** (`/dashboard/<id>`),
+  never a literal path, and reads its own URL params — including the old
+  period keys (`mtd`, `fytd`, `pfrom`…), which `/dashboard` passes through
+  untouched to a centre and translates only for a widget dashboard.
+- **The Owner Dashboard's practice cards** are `lib/metrics/practice.ts`:
+  `getStockHistory` (month-end AUM and SIP book as recorded — never
+  recomputed), `getSipHealth`, `getAumMix`, `getClientMix`, `getBrokerage`
+  (firm-wide only: a brokerage statement is the ARN's) and
+  `getAutomationMonth`.
+
+**What "mine" means is defined once** (the Relationship Manager and Branch
+Head dashboards), in
 [src/lib/dashboard/my/window.ts](src/lib/dashboard/my/window.ts). Everything
 hangs off one spine — clients whose `investors.rm_id` is me — and business,
 transactions, SIPs, queries and insurance are scoped THROUGH that spine, not
@@ -275,7 +406,10 @@ my clients' policies whoever sold them.
 
 Loaders live in `src/lib/dashboard/my/` (window · kpis · clients · pipeline ·
 desk); components in `src/components/dashboards/my/` and, for the RM desk's
-action sections, `src/components/dashboards/desk/`. Each band on the page is
+action sections, `src/components/dashboards/desk/`. The spine's "live" is
+lib/metrics' (not closed, not exited); **new clients** count client RECORDS
+by onboarding date (`clientRecordsWhereOn` + `onboardedInSql`), the same
+definition as the Owner Dashboard, so the three dashboards agree. Each band on the page is
 its own `<Suspense>` so My Day paints without waiting for the forty-odd
 aggregates below it — and every band's transaction goes through
 `runLimit(4)` (`lib/dashboard/run-limit.ts`): unbounded, one render held ~17
@@ -294,8 +428,16 @@ client and made redemptions look unfollowed.
 
 - **Stock vs flow.** AUM and the SIP book are BALANCES; their month-on-month
   change is mostly the market. Everything else is money that moved in the
-  period. Every tile says which it is, because "My AUM +6.9%" read as sales is
-  the classic error.
+  period. A balance tile says "Balance today" under its name, and the row names
+  the period the rest cover, because "My AUM +6.9%" read as sales is the
+  classic error. (The tiles used to print "stock" / "flow"; nobody outside
+  finance reads those words that way.)
+- **Quiet by default.** A section's purpose and caveats sit behind the ⓘ beside
+  its title (`InfoTip` in `my/Shared.tsx`), not in paragraphs on the page. A
+  zero is grey, an empty comparison line is not drawn, and every cockpit's
+  filters fold behind one "Filters" button (`FilterDisclosure`) with what is
+  applied still shown as chips. Keep new sections to that: a title, the
+  numbers, and an ⓘ if it needs explaining.
 - **A null is not a zero.** `Figure` renders an em dash with a reason on hover
   and refuses to print ₹0 for an absent value. "No target set" is not 0%; "no
   ledger imported" is not ₹0 of business.
@@ -308,21 +450,24 @@ client and made redemptions look unfollowed.
   approaching, neutral for everything else including every empty card. An empty
   card is never green: "0 SIP rejections" is not an achievement.
 
-### The branch command centre (`?scope=branch`)
+### Branch Head Dashboard (was `?scope=branch`)
 
 The Branch Business Command Centre (`BranchCommandCentre.tsx`) is the
-branch head's view: KPIs, targets, the RM scoreboard and target matrix, SIP /
-redemption / review / task / query desks, the attention centre, weekly and
-monthly review modes and the FY scorecard — 32 sections.
+branch head's view — 32 sections, in this order: the KPI strip; the attention
+centre, SIP exceptions, tasks and service requests, meetings and reviews;
+targets, the RM scoreboard and target matrix; the lead funnel, flows,
+redemptions, trend, book, insurance and operations, data quality; the weekly
+/ monthly review and the FY scorecard.
 
 - **The branch lock.** A branch head (`isBranchScoped`: branch head, not owner,
   with a branch) WITHOUT `dashboard.view.all_branches` is locked to
   `session.branchId`: the branch view is their default, `?branch=` is
-  ignored, `?rm=` is honoured only for someone in that branch, and
-  `?scope=firm` falls back to the branch. `dashboard.view.all_branches`
-  (owner implicitly; grantable per user) lifts the lock and adds the branch
-  picker. A branch head with no branch gets an explanation, never a silent
-  widening to the firm. `dashboard.view.branch` gates the view itself.
+  ignored, `?rm=` is honoured only for someone in that branch, and the Owner
+  Dashboard is not in their dropdown. `dashboard.view.all_branches` (owner
+  implicitly; grantable per user) lifts the lock and adds the branch picker.
+  A branch head with no branch gets an explanation, never a silent widening to
+  the firm. `dashboard.view.branch` gates the view itself. All of it is
+  decided in `centres.tsx` (`BranchHead`).
 - **Same loaders, branch scope.** Everything shared with the personal cockpit
   runs the `lib/dashboard/my/*` loaders with `{ kind: "branch", branchId,
   rmId? }`. Client facts follow `investors.branch_id`; staff facts follow
@@ -350,7 +495,7 @@ monthly review modes and the FY scorecard — 32 sections.
   for their copy and links, so one component says "My client book" or "Branch
   client book" without knowing which page it is on.
 
-### The RM desk (`?scope=mine`)
+### Relationship Manager Dashboard (was `?scope=mine`)
 
 "My Client & Business Dashboard" (`MyBusinessDashboard.tsx`) — the RM's work
 desk, client cockpit and target tracker, built from the 40-section RM brief.
@@ -358,16 +503,14 @@ Action before analytics: morning priorities → My Day → Needs my attention �
 KPIs → targets → today's worklist + 7 days → meetings, reviews, book, leads,
 SIP, flows, tasks, queries, relationships → scorecards → FY performance.
 
-- **An RM lands here.** `rmHome` in `app/dashboard/page.tsx`: no firm,
-  compliance, marketing or ops cockpit but `dashboard.view.rm` → scope
-  `mine`, and so do `?scope=firm` and a branch view they may not open. A
-  director or branch head who carries clients opens the same desk from the
-  switch.
+- **An RM lands here** (the RM and team member role default). It only ever
+  shows the viewer's own book and work, so it needs no capability of its own:
+  a director or branch head who carries clients opens the same desk from the
+  dropdown.
 - **Owner is locked to "Me".** There is no owner picker. Client filters
   (`cat`, `ctype`, `cnew`, `cstatus`, `city`, `src`, `fam` → `BookScope.filter`)
   narrow CLIENT facts only; the RM's own tasks, leads and meetings are not
-  filtered. They and `day` / `eod` are `MINE_ONLY_PARAMS`, dropped by the
-  scope switch on the way out.
+  filtered.
 - **The worklist is the priority.** `loadWorklist` (desk.ts) merges meetings,
   reviews, lead and client follow-ups, tasks, queries, SIP rejections,
   proposals and renewals into one list sorted overdue → due today → category
@@ -387,6 +530,152 @@ SIP, flows, tasks, queries, relationships → scorecards → FY performance.
   `lib/investors/summary.ts` put family, RM, AUM, SIP, last meeting, next
   review, risk, open work and insurance at the top of the client page, with
   the same missing-data wording as the desk.
+
+### Operations Dashboard (was `?scope=ops`)
+
+`OperationsControlTower.tsx`, built from the 50-section operations brief:
+pending work, exceptions and ageing first, analytics last. Loaders in
+`src/lib/dashboard/ops/`, components in `src/components/dashboards/ops/`.
+
+- **Who lands here.** Operations, back office and service team roles default
+  to it; anyone with `dashboard.view.ops` (owner included) opens it from the
+  dropdown or WORK → Operations (`/dashboard/operations` redirects to it).
+  Five tabs (`?tab=queue|sla|team|rejections|compliance`), only the active one
+  loads. Compliance is the library's compliance gaps, complaints and expiries
+  cards (`EmbeddedWidgets`), through the tower's scope.
+- **A request is a task.** The CRM has no transaction-request entity, so
+  `opsBase(w)` (`ops/window.ts`) derives it from `tasks`. Ops work
+  (`OPS_WORK`) means an operations or back-office department, an ops task
+  type, or an assignee with an ops role. `kind` comes from the task type, then
+  the back-office particular, then the operations template title, else Other.
+  Value is only `meta.boValue`. `pending_with` comes from the assignee's role,
+  and SLA from `sla_due_at`. Query as `WITH ops AS (${opsBase(w)}) … WHERE
+  ${opsFilter(w)}`. Registers (queries, SIP rejections, the transaction
+  feed) scope with `clientScope(w, alias)` / `selfOnly(w)`.
+- **Access is `opsAccess(session)`** (`ops/access.ts`). Scope is firm
+  (`task.view.all`), branch (`isBranchScoped` without `all_branches`) or
+  self. The audit trail is shown only to the owner and compliance. Contact
+  details need `investor.view.*`. The drawer API (`/api/ops/items/[id]`) loads
+  through `opsBase`, so an out-of-scope id is simply not found. The export
+  (`/api/ops/export?kind=`) parses the same params as the page.
+- **What the CRM does not record is said, never zeroed.** It has no
+  "validated" or "confirmed by the platform" funnel step, no per-document
+  status (there is no documents table), and no rework or internal-error
+  field. "Rejected" is the RTA/exchange feed's verdict
+  (`transactions.status`), not a task state.
+- **Thresholds** `opsSlaWarnHours`, `opsEscalateHours`, `opsHighValue`,
+  `opsNoUpdateDays` and `opsPlatformPendingDays` live in `dashboard_settings`.
+  `loadQueue` derives escalation levels 0–3 from them.
+- **URL state.** The shared dashboard filter bar: `period` (+`from`/`to`;
+  `parseOpsPeriod` maps it onto the loaders' old keys), `rm` (csv; `me` = work
+  assigned to the viewer), `st` (`open` = every unfinished state), and under
+  "+ Filter" `branch exec kind prio sla pw cat`. View toggles `vh nu hv review
+  eod` and `tab` are kept when a filter is applied. "Save filter" stores under
+  this dashboard's prefs.
+
+### Insurance Team Dashboard (was `?scope=insurance`)
+
+`InsuranceCommandCentre.tsx`, built from the 58-section Insurance Head brief:
+the business strip; today's priorities, attention, renewals due and pending
+issuance; the team and its targets; the pipeline; then lines, product,
+retention, lost business, clients, corporate, claims, data quality and the
+reviews. Loaders are in `src/lib/dashboard/insurance/`
+and components in `src/components/dashboards/insurance/`.
+
+- **One vocabulary, in `lib/insurance/book.ts`.** The policy register
+  (`/dashboard/insurance`) reads the same file, so a tile's drill-down shows
+  the tile's rows. The CRM has no column for any of these:
+  - *Line* is derived from `policy_type` on the firm's MIS split (the same as
+    the Insurance Production report): motor, home and other general are
+    Commercial.
+  - *New vs renewal* comes from `details.businessType`.
+  - *Booked on* is `COALESCE(risk_cover_start_date, policy_start_date)`.
+  - *Issued* means not proposed, in underwriting or cancelled. *In force* is
+    active, claim filed or claim settled, because a claim moves a policy off
+    `active`.
+  - *Business owner* is the seller when they hold a sales role, else the
+    client's RM. `sold_by_user_id` defaults to whoever keyed the policy.
+  - *Branch* is the client's branch. A policy's `branch_id` is the keyer's
+    branch.
+- **Renewal history lives only in `audit_log`.** Mark renewed writes the due
+  date it cleared (`before.nextPremiumDueDate`), and retention is measured from
+  it. Renewal premium is one installment per event, from the policy's second
+  year (`SECOND_YEAR` in `window.ts`). Lost business is dated from the audit
+  trail too; a lost policy with no audit row counts as "undated", never in a
+  period.
+- **Access is `insuranceAccess()`.** The view needs `dashboard.view.insurance`
+  (insurance_team by default). The firm-wide book needs `insurance.view.all`
+  (no role by default; tick it for the Insurance Head) or the register's
+  existing manager caps. A branch-locked head sees their branch; anyone else
+  sees their own book. The client drawer (`/api/insurance/command-centre/clients/:id`)
+  loads through the same scope.
+- **Targets** are firm-scope `annual_targets` keys (`insurance_business`,
+  `insurance_personal`, `insurance_commercial`, `insurance_new`,
+  `insurance_renewal`, `insurance_new_clients`, `insurance_policies`,
+  `insurance_corporate_clients`). They are set at Settings → Targets →
+  Insurance targets (`settings.dashboard`). A branch reads its branch
+  `insurance_business`, and an RM their KRA. Under a line, product or client
+  filter a target reads "Not for a filtered view" (`targetsComparable`), never
+  a percentage of a target that describes the whole book.
+- **Filtered out is not zero.** With the dashboard on one line, the other
+  line's card, table, product mix and comparison row are hidden or say
+  "Filtered out", and the sections' own Personal / Commercial switches go away
+  (`lockedLine`). A new per-line section must do the same, or it prints
+  "₹0 → ₹0, No change" for business nobody looked at.
+- **Thresholds**: `insHighPremium`, `insIssuanceSlaDays`, `insHighClaim` and a
+  now-configurable `claimSlaDays`.
+- **Postgres trap:** `${date}::date - ${n}` with an untyped parameter is read
+  as date − date, which is an integer. Cast the parameter (`${n}::int`), or
+  comparing a date to it fails.
+
+### Claims Dashboard (was `?scope=claims`)
+
+`ClaimsControlCentre.tsx`, built from the 60-section claims brief: the claims
+team's live queue — the headline figures; attention, the escalation centre,
+the worklist, high-value and stale claims, documents and queries; the owners
+and branches carrying them; then lifecycle, ageing, SLA/TAT, settlement,
+rejections, lines, insurers, trends and reviews. Logic is in `src/lib/dashboard/claims/`, components in
+`src/components/dashboards/claims/`.
+
+- **One read, then pure functions.** `loadClaimSet` (`set.ts`) loads every
+  claim the page can say anything about — open now, or intimated / closed
+  since the earliest date any section looks back to — with its status
+  history, next action and last client contact attached, and derives each
+  claim's state for today (SLA, level, pending with, documents, flags).
+  `analysis.ts` and `review.ts` compute every section from that array with no
+  further queries; the drawer (`detail.ts`) loads one claim through the same
+  set, so it can never disagree with the page.
+- **Status history lives only in `audit_log`.** Every claim create / update
+  writes the status before and after. "In this status since", query counts,
+  stage timestamps and the rejection / withdrawal date all come from there;
+  a claim closed with no settlement date and no status change on record is
+  dated from its last edit, and says so.
+- **What the claim does not record is never a figure.** There is no approval
+  step or approved amount, claim number, TPA, hospital, rejection reason,
+  legal stage, priority or pending-with field. Pending with is DERIVED from the
+  status (`PENDING_WITH` in `lib/insurance/claims-book.ts`); claim mode
+  Grievance is the only legal marker and is kept out of TAT; high value stands
+  in for priority in the worklist order. Each place such a field would appear
+  says "Not recorded".
+- **A claim's next action is a task** with `meta.claimId`, created by
+  `POST /api/insurance-claims/:id/follow-up` (insurance.write + the task
+  rules). Its earliest open one is the next action; an open claim with none is
+  an exception. Status, owner and settlement changes go through the claim's
+  own `PATCH /api/insurance-claims/:id`.
+- **The document checklist follows the product** (`lib/insurance/claim-checklist.ts`,
+  shared with the claim page's `ClaimDocuments`). Keys are the stored
+  `docType`; the original eight keep their spelling.
+- **Access is `claimsAccess()`.** `dashboard.view.claims` (insurance_team by
+  default) opens it; claims are firm-wide there, as on the claims register,
+  except for a branch-locked head. The drawer and search routes
+  (`/api/claims-control/…`) apply the same scope.
+- **Thresholds** are firm settings: `claimSlaDays` (SLA),
+  `claimSlaWarnDays`, `claimEscalateDays`, `claimDocsDays`, `claimQueryDays`,
+  `claimAssessDays`, `claimNoUpdateDays`, `claimClientUpdateDays`, and
+  `insHighClaim` for high value. `hv`, `nu` and `cu` presets change one view only.
+- **`.table-scroll` caps a table at 30rem and hides its vertical scrollbar.**
+  The worklist and every claim list use `overflow-x-auto` instead — the cap
+  silently hid claims below the eighth row.
 
 ### Per-RM history (`rm_snapshots`, migration 0217)
 

@@ -141,6 +141,10 @@ export type Capability =
   // Insurance policy register
   | "insurance.view"
   | "insurance.write"
+  // The firm's whole insurance book on the Insurance Business Command Centre
+  // and the policy register — for an Insurance Head who does not otherwise see
+  // every client.
+  | "insurance.view.all"
   // Compliance + DDQ + risk profile + consent + SOP
   | "compliance.view"
   | "induction.view"
@@ -168,6 +172,9 @@ export type Capability =
   | "dashboard.view.rm"
   | "dashboard.view.branch"
   | "dashboard.view.all_branches"
+  | "dashboard.view.insurance"
+  | "dashboard.view.claims"
+  | "dashboards.manage"
   // Master settings + admin
   | "settings.users"
   | "settings.billing"
@@ -274,6 +281,10 @@ const MATRIX: Record<Capability, Role[]> = {
   // Insurance — RM + back-office maintain; compliance reads.
   "insurance.view": ["rm", "branch_head", "back_office", "ops", "compliance", "insurance_team"],
   "insurance.write": ["rm", "branch_head", "back_office", "ops", "insurance_team"],
+  // Firm-wide insurance book. Deliberately no role: the Insurance Head gets it
+  // by an explicit tick (owner through the hard-case in can()). Without it the
+  // command centre shows the viewer's own book.
+  "insurance.view.all": [],
 
   // Compliance + adjacent
   "compliance.view": ["compliance"],
@@ -324,6 +335,18 @@ const MATRIX: Record<Capability, Role[]> = {
   // "firm-wide", and which branch_head still holds. Narrowing those is a
   // separate decision; this key only governs the dashboard page.
   "dashboard.view.all_branches": [],
+  // The Insurance Business Command Centre (?scope=insurance) — the insurance
+  // team's home. Firm-wide figures additionally need insurance.view.all.
+  "dashboard.view.insurance": ["insurance_team"],
+  // The Insurance Claims Control Centre (?scope=claims) — the claims team's
+  // queue. Claims are firm-wide there, as they already are on the claims register.
+  "dashboard.view.claims": ["insurance_team"],
+  // Manage dashboards (Zoho's "Manage Dashboards"): edit, share, lock, assign
+  // and delete ANY dashboard, set the firm's default per role and per user, and
+  // see other users' dashboards. Owner has it through the hard-case in can();
+  // granted to no role by default. Without it a branch head still shares
+  // within their branch and everyone creates private dashboards and clones.
+  "dashboards.manage": [],
 
   // Org admin. User management + billing stay owner-only by design (account
   // ownership boundary) — owner is granted them via the hard-case in can().

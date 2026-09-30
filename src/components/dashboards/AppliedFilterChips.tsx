@@ -14,8 +14,9 @@
  * removable — there is always a period — so it renders as a plain label.
  */
 
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useDashboardNav } from "@/components/dashboards/system/DashboardNav";
+import { useEffect, useState } from "react";
 import { X, RotateCcw, Filter } from "lucide-react";
 
 export type AppliedFilter = {
@@ -49,23 +50,29 @@ export function AppliedFilterChips({
   /** Offer Reset even with no removable chip — e.g. a non-default period. */
   showReset?: boolean;
 }) {
-  const router = useRouter();
+  const { pending, go } = useDashboardNav();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [pending, startTransition] = useTransition();
 
   function drop(params: string[]) {
     const next = new URLSearchParams(searchParams.toString());
     params.forEach((k) => next.delete(k));
     const qs = next.toString();
-    startTransition(() => router.push(`${pathname}${qs ? `?${qs}` : ""}`));
+    go(`${pathname}${qs ? `?${qs}` : ""}`);
   }
 
   function reset() {
-    startTransition(() => router.push(resetHref ?? pathname));
+    go(resetHref ?? pathname);
   }
 
   const hasFilters = filters.length > 0 || !!showReset;
+
+  // Nothing narrowing the numbers: say nothing. The period is already on the
+  // period picker and the refresh time on the dashboard header, so a
+  // permanent "Showing September 2026 vs 01 Aug – 29 Aug 26" line only
+  // repeated them. The receipt appears the moment a filter or a non-default
+  // period is set, which is when it has something to say.
+  const quiet = !hasFilters;
 
   // Format the timestamp AFTER mount, never during SSR.
   //
@@ -86,6 +93,9 @@ export function AppliedFilterChips({
       })
     );
   }, [lastRefreshed]);
+
+  // After every hook, so the hook order never changes between renders.
+  if (quiet) return null;
 
   return (
     <div

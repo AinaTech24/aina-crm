@@ -1,0 +1,17 @@
+export { InsFilters } from "./InsFilters";
+export { InsClientDrawer, ClientLink } from "./InsClientDrawer";
+export { KpiStrip, MomPanel, YoyPanel, LinesPanel, CompareTable } from "./InsKpis";
+export { InsTrend } from "./InsTrend";
+export { InsMix } from "./InsMix";
+export { TargetsPanel, FyScorecard } from "./InsTargets";
+export { BranchPanel, RmPanel, TeamPanel, MeetingsPanel, InsurerPanel, DrillSummary } from "./InsPeople";
+export { PipelinePanel, CorporatePanel, IssuancePanel } from "./InsPipeline";
+export { RenewalCommand, RenewalCyclePanel, RetentionPanel, AtRiskPanel } from "./InsRenewals";
+export { LostPanel } from "./InsLost";
+export { NewClientsPanel, CoveragePanel, PolicyCountPanel, BandsPanel, ConcentrationPanel } from "./InsClients";
+export { BookCuts } from "./BookCuts";
+export { ClaimSnapshotPanel } from "./ClaimSnapshot";
+export { SettlementPanel, ClaimAgeingPanel, EscalationPanel, RenewalClaimPanel } from "./InsClaims";
+export { QualityPanel } from "./InsQuality";
+export { ReviewPanel } from "./InsReview";
+export { PrioritiesPanel, AttentionPanel, InsQuickActions } from "./InsTop";

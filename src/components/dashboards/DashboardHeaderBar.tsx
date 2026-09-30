@@ -1,15 +1,12 @@
 "use client";
 
 /**
- * Dashboard hero controls — the right-hand cluster on the Owner cockpit banner:
- *
- *   [ View ▾ ]   [ + Create ]   [ Period ▾ ]
- *
- * - View     — switch between Dashboards / Team Dashboards / Team Scorecard.
- * - Create   — spin up a new "My Dashboard" board (themed name modal → POST → edit).
- * - Period   — a single dropdown replacing the old row of chips. Holds the
- *              named windows (Month/Quarter/FY to date, Last month) plus the
- *              richer pickers: Monthly, Quarterly, Since, and Custom from–to.
+ * The period picker of the full role dashboards (Branch Head, Relationship
+ * Manager, Insurance Team, Claims): one dropdown with the named windows (Month /
+ * Quarter / FY to date, Last month …) plus Monthly, Quarterly, Since and a
+ * custom from–to. The "Dashboards" view menu and "+ New board" that used to
+ * sit beside it are gone: dashboards are picked from the dashboard name's own
+ * dropdown now, and "+ Add" in the top bar is the one create entry.
  *
  * The banner is a `.card-elevated` with `overflow-hidden` + `backdrop-blur`,
  * which clips absolutely/fixed-positioned children AND establishes a containing
@@ -22,18 +19,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { useTransition } from "react";
-import { CalendarDays, ChevronDown, Plus, LayoutGrid, Loader2, Check } from "lucide-react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useDashboardNav } from "@/components/dashboards/system/DashboardNav";
+import { CalendarDays, ChevronDown, Check } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import type { Period } from "@/lib/dashboard/period";
+import { formatDate } from "@/lib/format";
 import { DateFieldInline, DateRangeField } from "@/components/ui/DateRangeField";
-
-const VIEWS: { href: string; label: string }[] = [
-  { href: "/dashboard/boards", label: "My Dashboards" },
-  { href: "/dashboard/team", label: "Team Dashboards" },
-  { href: "/dashboard/team/scorecard", label: "Team Scorecard" },
-];
 
 type SubMode = null | "monthly" | "quarterly" | "since" | "range";
 type Anchor = { top: number; right: number };
@@ -72,7 +64,7 @@ function monthOptions(now: Date): { value: string; label: string }[] {
   for (let i = 0; i < 12; i++) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    out.push({ value, label: d.toLocaleDateString("en-IN", { month: "long", year: "numeric" }) });
+    out.push({ value, label: formatDate(d, "monthYear") });
   }
   return out;
 }
@@ -102,41 +94,31 @@ export function DashboardHeaderBar({
    */
   children?: React.ReactNode;
 }) {
-  const router = useRouter();
+  const { pending, go } = useDashboardNav();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [pending, startTransition] = useTransition();
 
-  const [viewOpen, setViewOpen] = useState(false);
   const [periodOpen, setPeriodOpen] = useState(false);
-  const [viewAnchor, setViewAnchor] = useState<Anchor | null>(null);
   const [periodAnchor, setPeriodAnchor] = useState<Anchor | null>(null);
   const [sub, setSub] = useState<SubMode>(null);
   const [rangeFrom, setRangeFrom] = useState("");
   const [rangeTo, setRangeTo] = useState("");
 
-  const [createOpen, setCreateOpen] = useState(false);
-  const [createName, setCreateName] = useState("My Dashboard");
-  const [creating, setCreating] = useState(false);
-
-  const viewBtnRef = useRef<HTMLButtonElement>(null);
   const periodBtnRef = useRef<HTMLButtonElement>(null);
-  const viewMenuRef = useRef<HTMLDivElement>(null);
   const periodMenuRef = useRef<HTMLDivElement>(null);
   const now = new Date();
 
-  const closeAll = () => { setViewOpen(false); setPeriodOpen(false); setSub(null); };
+  const closeAll = () => { setPeriodOpen(false); setSub(null); };
 
   // Close on outside click / Esc / page-scroll / resize. Clicks and inner-scrolls
   // inside the menus OR inside a portaled Select/DatePicker popup must NOT close
   // it — those popups live in their own body portal, so without this guard
   // picking a month/date would instantly dismiss the menu (the stutter).
   useEffect(() => {
-    if (!viewOpen && !periodOpen) return;
+    if (!periodOpen) return;
     const insideOurUi = (t: HTMLElement | null) =>
       !!t && (
         !!t.closest?.("[data-floating-popup]") ||
-        !!viewBtnRef.current?.contains(t) || !!viewMenuRef.current?.contains(t) ||
         !!periodBtnRef.current?.contains(t) || !!periodMenuRef.current?.contains(t)
       );
     function onDoc(e: MouseEvent) { if (!insideOurUi(e.target as HTMLElement)) closeAll(); }
@@ -152,17 +134,10 @@ export function DashboardHeaderBar({
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", closeAll);
     };
-  }, [viewOpen, periodOpen]);
+  }, [periodOpen]);
 
-  function toggleView() {
-    if (viewOpen) { setViewOpen(false); return; }
-    setPeriodOpen(false);
-    setViewAnchor(anchorFor(viewBtnRef.current));
-    setViewOpen(true);
-  }
   function togglePeriod() {
     if (periodOpen) { setPeriodOpen(false); setSub(null); return; }
-    setViewOpen(false);
     setPeriodAnchor(anchorFor(periodBtnRef.current));
     setPeriodOpen(true);
   }
@@ -173,24 +148,7 @@ export function DashboardHeaderBar({
     for (const [k, v] of Object.entries(next)) if (v) params.set(k, v);
     const qs = params.toString();
     closeAll();
-    startTransition(() => router.push(`${pathname}${qs ? `?${qs}` : ""}`));
-  }
-
-  async function submitCreate() {
-    if (!createName.trim() || creating) return;
-    setCreating(true);
-    try {
-      const res = await fetch("/api/dashboards", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: createName.trim() }),
-      });
-      const j = await res.json().catch(() => ({}));
-      if (res.ok && j?.id) router.push(`/dashboard/boards/${j.id}/edit`);
-      else setCreating(false);
-    } catch {
-      setCreating(false);
-    }
+    go(`${pathname}${qs ? `?${qs}` : ""}`);
   }
 
   const btn = variant === "dark"
@@ -199,11 +157,21 @@ export function DashboardHeaderBar({
   const panel = "z-50 min-w-[13rem] max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-popover p-1.5 shadow-2xl text-foreground";
   const item = "w-full text-left rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors flex items-center justify-between gap-2";
 
+  // The named windows a director actually asks for, in the order they think of
+  // them: shortest first, each "to date" window paired with the closed period
+  // before it. The richer pickers (Monthly / Quarterly / Since / Custom) stay
+  // below this list.
   const simple: { key: Period; label: string }[] = [
+    { key: "today", label: "Today" },
+    { key: "yd", label: "Yesterday" },
+    { key: "tw", label: "This week" },
+    { key: "lw", label: "Previous week" },
     { key: "mtd", label: "Month to date" },
+    { key: "lm", label: "Previous month" },
     { key: "qtd", label: "Quarter to date" },
+    { key: "lq", label: "Previous quarter" },
     { key: "fytd", label: "FY to date" },
-    { key: "lm", label: "Last month" },
+    { key: "ly", label: "Previous FY" },
   ];
 
   const canPortal = typeof document !== "undefined";
@@ -212,7 +180,7 @@ export function DashboardHeaderBar({
     /* One toolbar, read left to right as: what am I looking at (scope) · over
        what period (time) · and what can I do to this page (actions). */
     <div
-      className={`flex flex-wrap items-center gap-x-2 gap-y-2 rounded-lg border border-border bg-card px-2.5 py-2 ${
+      className={`flex flex-wrap items-center gap-x-2 gap-y-2 ${
         pending ? "opacity-60 pointer-events-none" : ""
       }`}
     >
@@ -224,32 +192,6 @@ export function DashboardHeaderBar({
       <button ref={periodBtnRef} type="button" className={btn} onClick={togglePeriod} aria-haspopup="menu" aria-expanded={periodOpen}>
         <CalendarDays className="size-3.5" /> {currentLabel} <ChevronDown className="size-3.5" />
       </button>
-
-      {/* ---- Page actions ---- */}
-      <div className="flex items-center gap-2">
-        <button ref={viewBtnRef} type="button" className={btn} onClick={toggleView} aria-haspopup="menu" aria-expanded={viewOpen}>
-          <LayoutGrid className="size-3.5" /> View <ChevronDown className="size-3.5" />
-        </button>
-        <button type="button" className={btn} onClick={() => { setCreateName("My Dashboard"); setCreateOpen(true); }}>
-          <Plus className="size-3.5" /> Create
-        </button>
-      </div>
-
-      {/* ---- View menu (portaled, fixed under the trigger) ---- */}
-      {canPortal && viewOpen && viewAnchor && createPortal(
-        <div ref={viewMenuRef} className={`fixed ${panel}`} style={{ top: viewAnchor.top, right: viewAnchor.right }} role="menu">
-          {VIEWS.map((v) => {
-            const active = v.href === "/dashboard" ? pathname === "/dashboard" : pathname.startsWith(v.href);
-            return (
-              <button key={v.href} className={item} onClick={() => { closeAll(); router.push(v.href); }}>
-                <span>{v.label}</span>
-                {active && <Check className="size-3.5 text-brand-cyan-deep" />}
-              </button>
-            );
-          })}
-        </div>,
-        document.body
-      )}
 
       {/* ---- Period menu (portaled, fixed under the trigger) ---- */}
       {canPortal && periodOpen && periodAnchor && createPortal(
@@ -316,30 +258,6 @@ export function DashboardHeaderBar({
         document.body
       )}
 
-      {/* ---- Create-dashboard modal (themed, portaled) ---- */}
-      {canPortal && createOpen && createPortal(
-        <div className="fixed inset-0 z-[60] grid place-items-center bg-black/40 backdrop-blur-sm p-4" onMouseDown={() => !creating && setCreateOpen(false)}>
-          <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-5 shadow-2xl" onMouseDown={(e) => e.stopPropagation()}>
-            <h3 className="text-base font-semibold text-foreground">New dashboard</h3>
-            <p className="text-xs text-muted-foreground mt-1">Give your dashboard a name — you can add widgets next.</p>
-            <input
-              autoFocus
-              value={createName}
-              onChange={(e) => setCreateName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") submitCreate(); if (e.key === "Escape") setCreateOpen(false); }}
-              placeholder="Dashboard name"
-              className="mt-3 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-brand-cyan/40"
-            />
-            <div className="mt-4 flex justify-end gap-2">
-              <button type="button" className="btn-secondary text-sm" onClick={() => setCreateOpen(false)} disabled={creating}>Cancel</button>
-              <button type="button" className="btn-primary text-sm inline-flex items-center gap-1.5" onClick={submitCreate} disabled={!createName.trim() || creating}>
-                {creating ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />} Create
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
     </div>
   );
 }

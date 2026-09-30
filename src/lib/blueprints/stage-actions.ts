@@ -265,11 +265,47 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       behaviour: { kind: "open_dialog", dialog: "won_lead_product" },
     },
     {
+      key: "proposal_sent",
+      label: "Proposal Sent",
+      tone: "secondary",
+      targetStage: "proposal_sent",
+      hint: "The proposal has gone to the client — wait for their decision.",
+      behaviour: { kind: "advance_only" },
+    },
+    {
       key: "not_qualified",
       label: "Not a Fit",
       tone: "danger",
       targetStage: "not_qualified",
       hint: "Close lead as not qualified.",
+      behaviour: { kind: "advance_only" },
+    },
+  ],
+
+  // Proposal Sent — the client decides.
+  proposal_sent: [
+    {
+      key: "won_lead",
+      label: "Proposal Accepted — Won Lead",
+      tone: "success",
+      targetStage: "won_lead",
+      hint: "Pick which product(s) the client is investing in — the onboarding flow adapts to it.",
+      behaviour: { kind: "open_dialog", dialog: "won_lead_product" },
+    },
+    {
+      key: "follow_up_meeting",
+      label: "Schedule Follow-up Meeting",
+      tone: "secondary",
+      targetStage: "meeting_scheduled",
+      hint: "Walk the client through the proposal again.",
+      behaviour: { kind: "open_dialog", dialog: "schedule_meeting" },
+    },
+    {
+      key: "not_qualified",
+      label: "Proposal Declined",
+      tone: "danger",
+      targetStage: "not_qualified",
+      hint: "Close lead as lost.",
       behaviour: { kind: "advance_only" },
     },
   ],

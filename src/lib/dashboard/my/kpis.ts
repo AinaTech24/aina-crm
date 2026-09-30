@@ -26,12 +26,14 @@
 
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
+import { formatDate } from "@/lib/format";
 
 /** A raw SQL result row. Postgres hands numerics back as strings, so every
  *  field goes through num() / numOrNull() before it is used. */
 type Row = Record<string, unknown>;
 import {
-  asInList, clientIds, clientsHref, clientsWhere, clientsWhereOn, delta, GROSS_TYPES,
+  asInList, clientIds, clientsHref, clientsWhere, clientsWhereOn, clientRecordsWhereOn, delta, GROSS_TYPES,
+  onboardedDateSql, onboardedInSql,
   loadBookTargets, num, premiumMatch, REDEMPTION_TYPES, SIP_STOP_TYPES, snapshotSource, staffMatch,
   staffParam, type Delta, type MyWindow, type TargetKey,
 } from "./window";
@@ -164,14 +166,14 @@ export async function loadMyKpis(tx: Tx, w: MyWindow): Promise<MyKpi[]> {
     ) s
   `)).rows[0] as Row | undefined;
 
-  // ── New clients on my book ────────────────────────────────────────────────
+  // ── New clients on my book — by onboarding date, never created_at ─────────
   const clients = (await tx.execute(sql`
     SELECT
-      COUNT(*) FILTER (WHERE created_at >= ${w.from}::date     AND created_at < (${w.to}::date + 1))     ::int AS cur,
-      COUNT(*) FILTER (WHERE created_at >= ${w.prevFrom}::date AND created_at < (${w.prevTo}::date + 1)) ::int AS prev,
-      COUNT(*) FILTER (WHERE created_at >= ${w.fyStart}::date  AND created_at < (${w.to}::date + 1))     ::int AS fy
-      FROM investors
-     WHERE ${clientsWhere(w.scope)}
+      COUNT(*) FILTER (WHERE ${onboardedInSql({ from: w.from, to: w.to }, "i")})::int         AS cur,
+      COUNT(*) FILTER (WHERE ${onboardedInSql({ from: w.prevFrom, to: w.prevTo }, "i")})::int AS prev,
+      COUNT(*) FILTER (WHERE ${onboardedInSql({ from: w.fyStart, to: w.to }, "i")})::int      AS fy
+      FROM investors i
+     WHERE ${clientRecordsWhereOn("i", w.scope)}
   `)).rows[0] as Row | undefined;
 
   // ── Insurance booked by the book. NEW premium is cover that STARTED in the period;
@@ -234,7 +236,15 @@ export async function loadMyKpis(tx: Tx, w: MyWindow): Promise<MyKpi[]> {
   /** "My AUM" / "Branch AUM" / plain "AUM" when neither word is true. */
   const own = (label: string) => (w.possessive ? `${w.possessive} ${label}` : label.charAt(0).toUpperCase() + label.slice(1));
 
-  const hasLedger = num(flow?.has_any) > 0;
+  // The same rule as lib/metrics/business.ts: imported transactions must
+  // reach into the period, or its flows are unknown ("—"), not ₹0 — a firm
+  // whose only processed rows are from 2024 has no data for this month.
+  const lastTxn = ((await tx.execute(sql`
+    SELECT to_char(MAX(order_date), 'YYYY-MM-DD') AS last FROM transactions
+     WHERE tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid
+       AND status IN ('processed', 'successful') AND amount IS NOT NULL
+  `)).rows[0] as { last: string | null } | undefined)?.last ?? null;
+  const hasLedger = num(flow?.has_any) > 0 && !!lastTxn && lastTxn >= w.from;
   const hasSips = num(sipReg?.has_any) > 0;
   const hasPolicies = num(ins?.has_any) > 0;
 
@@ -508,9 +518,9 @@ export async function loadTargetMeters(
          FROM transactions
         WHERE status IN ('processed','successful') AND investor_id IN ${MINE}
           AND order_date >= ${since}::date AND order_date <= ${w.to}::date) AS net_business,
-      (SELECT COUNT(*)::int FROM investors
-        WHERE ${clientsWhere(w.scope)}
-          AND created_at >= ${since}::date AND created_at < (${w.to}::date + 1)) AS new_clients,
+      (SELECT COUNT(*)::int FROM investors i
+        WHERE ${clientRecordsWhereOn("i", w.scope)}
+          AND ${onboardedInSql({ from: since, to: w.to }, "i")}) AS new_clients,
       (SELECT COUNT(*)::int FROM review_meetings
         WHERE ${staffMatch("rm_id", w)} AND status = 'completed'
           AND meeting_date >= ${since}::date AND meeting_date < (${w.to}::date + 1)) AS meetings,
@@ -565,7 +575,7 @@ export async function loadTargetMeters(
     meter("sip_book", "SIP book", "currency", num(actuals?.sip_book), "/dashboard/sips", true),
     meter("net_sip", "Net new SIP", "currency", num(actuals?.net_sip), "/dashboard/reports/sip-health"),
     meter("net_business", "Net business", "currency", num(actuals?.net_business), "/dashboard/transactions"),
-    meter("new_clients", "New clients", "count", num(actuals?.new_clients), clientsHref(w.scope, "sort=created&dir=desc")),
+    meter("new_clients", "New clients", "count", num(actuals?.new_clients), clientsHref(w.scope, `onboarded_from=${since}&onboarded_to=${w.to}`)),
     meter("meetings", "Meetings", "count", num(actuals?.meetings), `/dashboard/review-meetings?rm=${staffParam(w)}`),
     // The RM brief tracks review meetings as their own target; the branch
     // brief does not, and its meter row stays as it was.
@@ -647,8 +657,8 @@ export async function loadMonthlySummary(tx: Tx, w: MyWindow): Promise<MonthRow[
       (SELECT COALESCE(SUM(amount::numeric) FILTER (WHERE s.start_date BETWEEN b.prev_from AND b.prev_to), 0) FROM sips s WHERE s.investor_id IN ${MINE}) AS sip_prev,
       (SELECT COALESCE(SUM(amount::numeric) FILTER (WHERE t.type IN ('sip_stop','sip_pause') AND t.order_date BETWEEN b.cur_from AND b.cur_to), 0) FROM transactions t WHERE t.status IN ('processed','successful') AND t.investor_id IN ${MINE})   AS stop_cur,
       (SELECT COALESCE(SUM(amount::numeric) FILTER (WHERE t.type IN ('sip_stop','sip_pause') AND t.order_date BETWEEN b.prev_from AND b.prev_to), 0) FROM transactions t WHERE t.status IN ('processed','successful') AND t.investor_id IN ${MINE}) AS stop_prev,
-      (SELECT COUNT(*) FILTER (WHERE i.created_at::date BETWEEN b.cur_from AND b.cur_to)::int FROM investors i WHERE ${clientsWhereOn("i", w.scope)})   AS nc_cur,
-      (SELECT COUNT(*) FILTER (WHERE i.created_at::date BETWEEN b.prev_from AND b.prev_to)::int FROM investors i WHERE ${clientsWhereOn("i", w.scope)}) AS nc_prev,
+      (SELECT COUNT(*) FILTER (WHERE ${onboardedDateSql("i")} BETWEEN b.cur_from AND b.cur_to)::int FROM investors i WHERE ${clientRecordsWhereOn("i", w.scope)})   AS nc_cur,
+      (SELECT COUNT(*) FILTER (WHERE ${onboardedDateSql("i")} BETWEEN b.prev_from AND b.prev_to)::int FROM investors i WHERE ${clientRecordsWhereOn("i", w.scope)}) AS nc_prev,
       (SELECT COUNT(*) FILTER (WHERE m.meeting_date::date BETWEEN b.cur_from AND b.cur_to)::int FROM review_meetings m WHERE ${staffMatch("rm_id", w, "m")} AND m.status = 'completed')   AS mt_cur,
       (SELECT COUNT(*) FILTER (WHERE m.meeting_date::date BETWEEN b.prev_from AND b.prev_to)::int FROM review_meetings m WHERE ${staffMatch("rm_id", w, "m")} AND m.status = 'completed') AS mt_prev,
       (SELECT COUNT(*) FILTER (WHERE m.meeting_date::date BETWEEN b.cur_from AND b.cur_to)::int FROM review_meetings m WHERE ${staffMatch("rm_id", w, "m")} AND m.status = 'completed' AND m.category = 'review')   AS rv_cur,
@@ -702,6 +712,20 @@ export async function loadMonthlySummary(tx: Tx, w: MyWindow): Promise<MonthRow[
     row("proposals", "Proposals", "count", num(r?.pr_prev), num(r?.pr_cur)),
     row("insurance", "Insurance business", "currency", num(r?.ins_prev), num(r?.ins_cur)),
   ];
+}
+
+/**
+ * The two column headings for loadMonthlySummary: the month `to` falls in and
+ * the one before it ("September 2026", "August 2026"). Taken from the same
+ * date the query bounds come from, so a past period is labelled as that period.
+ */
+export function monthLabels(to: string): { monthLabel: string; prevMonthLabel: string } {
+  const [y, m] = to.slice(0, 7).split("-").map(Number);
+  const prev = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
+  return {
+    monthLabel: formatDate(`${to.slice(0, 7)}-01`, "monthYear"),
+    prevMonthLabel: formatDate(`${prev}-01`, "monthYear"),
+  };
 }
 
 /* ───────────────────────── §4 my business trend ───────────────────────── */
@@ -803,13 +827,14 @@ export async function loadMyTrend(tx: Tx, w: MyWindow): Promise<MyTrend> {
          AND status IN ('processed','successful')
          AND order_date >= ${prevStart}::date AND order_date <= ${fyEnd}::date
     ),
+    -- New clients by onboarding date (India), never created_at.
     clients AS (
-      SELECT ${fyIdx("created_at")} AS m,
-             (created_at >= ${w.fyStart}::date AND created_at <= ${fyEnd}::date) AS cur,
-             (created_at >= ${prevStart}::date AND created_at <= ${prevEnd}::date) AS prv
-        FROM investors
-       WHERE ${clientsWhere(w.scope)}
-         AND created_at >= ${prevStart}::date AND created_at <= ${fyEnd}::date
+      SELECT ${fyIdx("(i.onboarded_at AT TIME ZONE 'Asia/Kolkata')::date")} AS m,
+             (${onboardedDateSql("i")} BETWEEN ${w.fyStart}::date AND ${fyEnd}::date) AS cur,
+             (${onboardedDateSql("i")} BETWEEN ${prevStart}::date AND ${prevEnd}::date) AS prv
+        FROM investors i
+       WHERE ${clientRecordsWhereOn("i", w.scope)}
+         AND ${onboardedDateSql("i")} BETWEEN ${prevStart}::date AND ${fyEnd}::date
     ),
     premium AS (
       SELECT ${fyIdx("policy_start_date")} AS m,

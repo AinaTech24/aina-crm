@@ -1,7 +1,9 @@
 /**
- * My Client & Business Dashboard — the RM's daily work desk, client cockpit
- * and target tracker in one page. The same page serves a director on
- * "My portfolio": in that view they ARE an RM.
+ * The Relationship Manager Dashboard — the RM's daily work desk, client
+ * cockpit and target tracker in one page, one of the role dashboards picked
+ * from the Dashboard dropdown (a system dashboard at /dashboard/<id>). The
+ * same dashboard serves a director or branch head who carries clients: on it
+ * they ARE an RM.
  *
  * ── Action before analytics ────────────────────────────────────────────────
  *
@@ -33,21 +35,20 @@
  */
 
 import { Suspense, type ReactNode } from "react";
-import { MapPin, UserRound } from "lucide-react";
 import { sql } from "drizzle-orm";
 
 import { withTenant } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
-import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { CardSkeleton } from "./DashboardSkeletons";
 import { DashboardHeaderBar } from "./DashboardHeaderBar";
 import { AppliedFilterChips, type AppliedFilter } from "./AppliedFilterChips";
+import { FilterDisclosure } from "./FilterDisclosure";
 import type { Period } from "@/lib/dashboard/period";
 import { loadDashboardThresholds, type DashboardThresholds } from "@/lib/dashboard/thresholds";
 import { clientIds, clientsWhere, loadBookTargets, num, type BookScope, type ClientFilter, type MyWindow } from "@/lib/dashboard/my/window";
 import { buildBookWindow } from "@/lib/dashboard/my/build-window";
-import { loadMonthlySummary, loadMyKpis, loadMyTrend, loadTargetMeters, phaseFraction } from "@/lib/dashboard/my/kpis";
+import { loadMonthlySummary, loadMyKpis, loadMyTrend, loadTargetMeters, monthLabels, phaseFraction } from "@/lib/dashboard/my/kpis";
 import {
   loadClientBook, loadContactGap, loadDataQuality, loadKeyClients, loadOpportunities, loadReviewDesk,
   loadRiskDesk, type KeyClientSort,
@@ -78,6 +79,7 @@ import {
   DeskFilters, DeskMeetings, DeskTasks, FlowChart, LeadsNeedingAction, MorningBrief, MyDayPanel,
   NeedsMyAttention, OnboardingPipeline, SipDebitCheck, SourceAnalysis, UpcomingWeek, Worklist,
 } from "./desk";
+import { ParamSelect } from "./branch/ParamSelect";
 
 /* ─────────────────────────────── layout cells ─────────────────────────────── */
 
@@ -106,6 +108,9 @@ type Run = <T>(fn: (tx: Tx) => Promise<T>) => Promise<T>;
 const KEY_SORTS: KeyClientSort[] = ["aum", "sip", "interaction", "review", "category"];
 const UUID = /^[0-9a-f-]{36}$/i;
 
+/** An href ready for one more `key=value`: the page may have no query string yet. */
+const paramBase = (href: string) => `${href}${href.includes("?") ? "&" : "?"}`;
+
 /** The client filters in the URL, validated — anything unrecognised is dropped. */
 function parseClientFilter(sp: Record<string, string | string[] | undefined>, fyStart: string): ClientFilter | undefined {
   const s = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string).trim() : "");
@@ -128,26 +133,38 @@ export async function MyBusinessDashboard({
   customFrom,
   customTo,
   sp,
-  scopeSwitch,
+  basePath,
+  team,
+  viewing = null,
 }: {
   session: SessionUser;
+  /** Where this dashboard lives (/dashboard/<id>) — every link it builds back to itself starts here. */
+  basePath: string;
   period?: Period;
   customStart?: string;
   customFrom?: string;
   customTo?: string;
   sp: Record<string, string | string[] | undefined>;
-  /** The Firm / Branch / Mine switch — rendered by the page, which knows what is allowed. */
-  scopeSwitch: ReactNode;
+  /**
+   * The people who report to the viewer (lib/dashboards/team.ts). With any,
+   * a "Team member" picker opens one of their desks; `viewing` is the one
+   * open, already checked to be in `team`.
+   */
+  team?: Array<{ id: string; name: string }>;
+  viewing?: { id: string; name: string } | null;
 }) {
   const now = new Date();
+  // Whose desk: the viewer's own, or a team member's they chose.
+  const whoId = viewing?.id ?? session.userId;
+  const possessive = viewing ? `${viewing.name.split(/\s+/)[0]}'s` : "My";
   // The FY start for the "new this FY" filter comes from an unfiltered window.
   const bare = buildBookWindow({
-    scope: { kind: "rm", userId: session.userId }, staff: [session.userId], possessive: "My", period, customStart, customFrom, customTo, now,
+    scope: { kind: "rm", userId: whoId }, staff: [whoId], possessive, period, customStart, customFrom, customTo, now,
   });
   const filter = parseClientFilter(sp, bare.w.fyStart);
-  const scope: BookScope = { kind: "rm", userId: session.userId, filter };
+  const scope: BookScope = { kind: "rm", userId: whoId, filter };
   const { w, periodLabel, comparisonLabel } = filter
-    ? buildBookWindow({ scope, staff: [session.userId], possessive: "My", period, customStart, customFrom, customTo, now })
+    ? buildBookWindow({ scope, staff: [whoId], possessive, period, customStart, customFrom, customTo, now })
     : bare;
 
   // Four transactions at a time for this render — see lib/dashboard/run-limit.ts.
@@ -159,16 +176,13 @@ export async function MyBusinessDashboard({
       roles: session.roles,
     }));
 
-  // Thresholds, the RM's branch and the filter options: small, and needed by
-  // the header before anything streams.
+  // Thresholds and the filter options: small, and needed by the filter row
+  // before anything streams.
   const [t, meta] = await run(async (tx) => {
     const th = await loadDashboardThresholds(tx);
     // Options come from the WHOLE book, not the filtered one — otherwise
     // picking a city would leave that city as the only choice in its menu.
-    const bookIds = clientIds({ kind: "rm", userId: session.userId });
-    const branch = session.branchId
-      ? ((await tx.execute(sql`SELECT name FROM branches WHERE id = ${session.branchId}::uuid`)).rows[0] as { name?: string } | undefined)?.name ?? null
-      : null;
+    const bookIds = clientIds({ kind: "rm", userId: whoId });
     const cities = (await tx.execute(sql`
       SELECT DISTINCT btrim(address->>'city') AS v FROM investors
        WHERE id IN ${bookIds} AND btrim(COALESCE(address->>'city', '')) <> '' ORDER BY 1 LIMIT 60
@@ -182,20 +196,21 @@ export async function MyBusinessDashboard({
         FROM investors i JOIN families f ON f.id = i.family_id
        WHERE i.id IN ${bookIds} ORDER BY 2 LIMIT 200
     `)).rows as Array<{ id: string; name: string }>;
-    return [th, { branch, cities, sources, families }] as const;
+    return [th, { cities, sources, families }] as const;
   });
 
   /* ── URL state ──────────────────────────────────────────────────────── */
   const base = new URLSearchParams();
   for (const [k, v] of Object.entries(sp)) if (typeof v === "string" && v !== "") base.set(k, v);
-  base.set("scope", "mine");
+  base.delete("scope"); // left over from a /dashboard?scope=mine link; means nothing here
   const hrefWith = (over: Record<string, string | null>, hash = "") => {
     const q = new URLSearchParams(base);
     for (const [k, v] of Object.entries(over)) {
       if (v == null) q.delete(k);
       else q.set(k, v);
     }
-    return `/dashboard?${q.toString()}${hash}`;
+    const qs = q.toString();
+    return `${basePath}${qs ? `?${qs}` : ""}${hash}`;
   };
   const tomorrow = addDaysISO(w.today, 1);
   const actionDay = sp.day === "tomorrow" ? tomorrow : w.today;
@@ -232,9 +247,6 @@ export async function MyBusinessDashboard({
   const hour = Number(new Intl.DateTimeFormat("en-IN", { hour: "numeric", hour12: false, timeZone: "Asia/Kolkata" }).format(now));
   const firstName = (session.name ?? session.email ?? "").split(/[\s@]/)[0] || "there";
   const greeting = `${hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"}, ${firstName}`;
-  const asOf = new Intl.DateTimeFormat("en-IN", {
-    day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata",
-  }).format(now);
   const filters: AppliedFilter[] = [];
   const label: Record<string, (v: string) => string> = {
     cat: (v) => v.split(",").map((c) => (c === "none" ? "Uncategorised" : c)).join(", "),
@@ -254,45 +266,46 @@ export async function MyBusinessDashboard({
     .some((k) => typeof sp[k] === "string" && sp[k] !== "");
 
   return (
-    <div className="max-w-[92rem] space-y-6">
-      <PageHeaderCard
-        title="My Client & Business Dashboard"
-        subtitle="Today's Actions | Clients | Meetings | Business | Follow-ups"
-        breadcrumb={[{ label: "My portfolio" }]}
-      >
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className="chip bg-primary/10 text-sm font-semibold text-primary">
-            <UserRound className="size-3.5" aria-hidden /> RM: {session.name ?? session.email}
-          </span>
-          <span className="chip bg-secondary text-secondary-foreground">
-            <MapPin className="size-3" aria-hidden /> Branch: {meta.branch ?? "Not assigned"}
-          </span>
-          <span className="text-2xs text-muted-foreground">Last CRM refresh: {asOf}</span>
-        </div>
-      </PageHeaderCard>
-
-      {/* ── Row 1 · search, filters — sticky under the top bar on desktop ── */}
-      <div className="space-y-2.5 border-b border-border bg-background pb-4 lg:sticky lg:top-16 lg:z-30 lg:pt-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">{scopeSwitch}</div>
-          <DashboardHeaderBar period={period} currentLabel={periodLabel} variant="light" />
-        </div>
-        <DeskFilters
-          cities={meta.cities.map((c) => ({ value: c.v, label: c.v }))}
-          sources={[...meta.sources.map((s) => ({ value: s.v, label: s.v.replace(/_/g, " ") })), { value: "__none__", label: "Not recorded" }]}
-          families={meta.families.map((f) => ({ value: f.id, label: f.name }))}
-        />
+    <div className="max-w-screen-2xl space-y-6">
+      {/* ── One row: actions · period · Filters — sticky under the top bar on
+          desktop. The client filters fold behind "Filters"; whatever is
+          applied still shows as chips below. ── */}
+      <div className="space-y-2.5 border-b border-border bg-background pb-3 lg:sticky lg:top-16 lg:z-30 lg:pt-3">
+        <FilterDisclosure
+          keys={["cat", "ctype", "cnew", "cstatus", "city", "src", "fam"]}
+          start={<QuickActions session={session} />}
+          leading={
+            <>
+              {team && team.length > 0 && (
+                <ParamSelect
+                  param="member"
+                  value={viewing?.id ?? ""}
+                  allLabel="My desk"
+                  options={team.map((m) => ({ value: m.id, label: m.name }))}
+                  ariaLabel="Team member"
+                />
+              )}
+              <DashboardHeaderBar period={period} currentLabel={periodLabel} variant="light" />
+            </>
+          }
+        >
+          <DeskFilters
+            cities={meta.cities.map((c) => ({ value: c.v, label: c.v }))}
+            sources={[...meta.sources.map((s) => ({ value: s.v, label: s.v.replace(/_/g, " ") })), { value: "__none__", label: "Not recorded" }]}
+            families={meta.families.map((f) => ({ value: f.id, label: f.name }))}
+          />
+        </FilterDisclosure>
         <AppliedFilterChips
           periodLabel={periodLabel}
           comparisonLabel={comparisonLabel}
           filters={filters}
-          resetHref="/dashboard?scope=mine"
+          resetHref={basePath}
           showReset={touched}
         />
         <nav aria-label="Jump to section" className="flex flex-wrap items-center gap-x-1 text-2xs">
           {([
             ["my-day", "My Day"], ["attention", "Needs attention"], ["worklist", "Worklist"], ["meetings", "Meetings"],
-            ["reviews", "Reviews"], ["leads", "Leads"], ["sip", "SIP"], ["tasks", "Tasks & queries"],
+            ["reviews", "Reviews"], ["leads", "Leads"], ["sip", "SIP"], ["tasks", "Tasks & service requests"],
             ["relationships", "Relationships"], ["scorecards", "Scorecards"], ["fy", "FY performance"],
           ] as const).map(([id, l]) => (
             <a key={id} href={`#${id}`}
@@ -300,8 +313,6 @@ export async function MyBusinessDashboard({
           ))}
         </nav>
       </div>
-
-      <QuickActions session={session} />
 
       <div className="grid grid-cols-1 items-start gap-6 2xl:grid-cols-2">
         {/* §35 morning priorities */}
@@ -349,7 +360,7 @@ export async function MyBusinessDashboard({
 
         {/* Row 8 · §10 client book + §12 contact health, then key clients */}
         <Suspense fallback={<Loading order="rest" />}>
-          <BookBand run={run} w={w} keySort={keySort} keyBaseHref={`${hrefWith({ myclients: null })}&`} />
+          <BookBand run={run} w={w} keySort={keySort} keyBaseHref={paramBase(hrefWith({ myclients: null }))} />
         </Suspense>
 
         {/* Row 9 · §13–14 leads + §15–16 proposals */}
@@ -366,7 +377,7 @@ export async function MyBusinessDashboard({
         <Suspense fallback={<Loading order="rest" />}>
           <FlowBand run={run} w={w} periodLabel={periodLabel} highValue={highValue}
             presetHrefs={HV_PRESETS.map((v) => ({ value: v, href: hrefWith({ hv: String(v) }, "#redemptions") }))}
-            customHidden={[...base.entries()].filter(([k]) => k !== "hv")} />
+            customAction={basePath} customHidden={[...base.entries()].filter(([k]) => k !== "hv")} />
         </Suspense>
 
         {/* Row 12 · §24 tasks + §25 queries */}
@@ -414,7 +425,7 @@ async function BriefBand({
   const card = (k: string) => day.cards.find((c) => c.key === k);
   const counts = [
     { label: "Meetings", key: "meetings" }, { label: "Reviews", key: "reviews" }, { label: "Follow-ups", key: "followups" },
-    { label: "Tasks", key: "tasks" }, { label: "SIP exceptions", key: "sip" }, { label: "Queries", key: "queries" },
+    { label: "Tasks", key: "tasks" }, { label: "SIP exceptions", key: "sip" }, { label: "Service requests", key: "queries" },
     { label: "Renewals", key: "renewals" },
   ].map((c) => ({ label: c.label, value: card(c.key)?.count ?? null, href: card(c.key)?.href ?? "#my-day" }));
   const top = work.items.slice(0, 8).map((i) => ({
@@ -587,10 +598,10 @@ async function SipBand({ run, w, periodLabel, tenantId }: { run: Run; w: MyWindo
 }
 
 async function FlowBand({
-  run, w, periodLabel, highValue, presetHrefs, customHidden,
+  run, w, periodLabel, highValue, presetHrefs, customAction, customHidden,
 }: {
   run: Run; w: MyWindow; periodLabel: string; highValue: number;
-  presetHrefs: Array<{ value: number; href: string }>; customHidden: Array<[string, string]>;
+  presetHrefs: Array<{ value: number; href: string }>; customAction: string; customHidden: Array<[string, string]>;
 }) {
   const [trend, flow, red] = await run(async (tx) => [
     await loadMyTrend(tx, w),
@@ -607,7 +618,7 @@ async function FlowBand({
       </Cell>
       <Cell order="rest" wide={false} id="redemptions">
         <BranchRedemptions data={red} periodLabel={periodLabel} presetHrefs={presetHrefs}
-          customAction="/dashboard" customHidden={customHidden} showRm={false} personal />
+          customAction={customAction} customHidden={customHidden} showRm={false} personal />
       </Cell>
     </>
   );
@@ -689,9 +700,7 @@ async function ScorecardBand({
       await loadMonthlySummary(tx, w),
     ] as const;
   });
-  const monthLabel = new Intl.DateTimeFormat("en-IN", { month: "long", timeZone: "Asia/Kolkata" }).format(now);
-  const prevMonthLabel = new Intl.DateTimeFormat("en-IN", { month: "long", timeZone: "Asia/Kolkata" })
-    .format(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+  const { monthLabel, prevMonthLabel } = monthLabels(w.to);
   return (
     <>
       <Cell order="rest" id="scorecards">

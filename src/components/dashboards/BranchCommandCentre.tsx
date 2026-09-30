@@ -1,20 +1,27 @@
 /**
- * Branch Business Command Centre — the branch head's operating system.
+ * The Branch Head Dashboard — the branch head's operating system, one of the
+ * role dashboards picked from the Dashboard dropdown (a system dashboard at
+ * /dashboard/<id>; lib/dashboards/system/definitions.ts).
  *
- * ── One page, three questions, in this order ─────────────────────────────────
+ * ── One page, read top to bottom ─────────────────────────────────────────────
  *
- *   Is the branch on target?        KPI strip, target meters, FY scorecard
- *   Which RM, on which metric?      scoreboard, target matrix, RM tables
- *   What needs me today?            attention centre, exception desks
+ *   The headline                    KPI strip
+ *   What needs me today?            attention centre, SIP exceptions, tasks and
+ *                                   service requests, meetings and reviews
+ *   Which RM, on which metric?      targets, scoreboard, target matrix
+ *   The analysis                    pipeline, flows, trend, book, insurance and
+ *                                   operations, data quality; then the weekly /
+ *                                   monthly review and the FY scorecard
  *
  * Every figure follows the brief's drill-down: branch → RM (the one-on-one
  * view, `?rm=`) → client (the lists and priority tables) → the record itself.
  *
  * ── Scope ─────────────────────────────────────────────────────────────────────
  *
- * The PAGE decides which branch this is and whether the viewer may choose
- * another (src/app/dashboard/page.tsx); by the time a branch reaches this
- * component it is authorised. Nothing here reads `?branch=` itself.
+ * The dashboard decides which branch this is and whether the viewer may
+ * choose another (components/dashboards/system/centres.tsx); by the time a
+ * branch reaches this component it is authorised. Nothing here reads
+ * `?branch=` itself.
  *
  * Everything shared with the personal cockpit runs the SAME loaders with a
  * branch scope (lib/dashboard/my/*), and every per-RM table is a projection of
@@ -25,18 +32,17 @@
  *
  * One CSS grid. On a phone the cells take the brief's MOBILE priority through
  * `order-*` (attention first, then KPIs, RM performance, SIP exceptions…); from
- * `lg` up `order-none` restores document order, which is the brief's DESKTOP
- * row order; from `2xl` the paired rows sit side by side. Suspense renders no
- * element of its own, so each band's cells are the grid's real items.
+ * `lg` up `order-none` restores document order, the desktop order above; from
+ * `2xl` the paired rows sit side by side. Suspense renders no element of its
+ * own, so each band's cells are the grid's real items.
  */
 
 import { Suspense, type ReactNode } from "react";
-import { AlertOctagon, Lock, Store, UserRound } from "lucide-react";
+import { AlertOctagon, Lock, UserRound } from "lucide-react";
 
 import { withTenant } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
-import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { CardSkeleton } from "./DashboardSkeletons";
 import { DashboardHeaderBar } from "./DashboardHeaderBar";
 import { AppliedFilterChips, type AppliedFilter } from "./AppliedFilterChips";
@@ -44,7 +50,7 @@ import type { Period } from "@/lib/dashboard/period";
 import { loadDashboardThresholds, type DashboardThresholds } from "@/lib/dashboard/thresholds";
 import { buildBookWindow } from "@/lib/dashboard/my/build-window";
 import { clientsHref, loadBookTargets, type BookScope, type MyWindow } from "@/lib/dashboard/my/window";
-import { loadMonthlySummary, loadMyKpis, loadMyTrend, loadTargetMeters, phaseFraction, type MyKpi } from "@/lib/dashboard/my/kpis";
+import { loadMonthlySummary, loadMyKpis, loadMyTrend, loadTargetMeters, monthLabels, phaseFraction, type MyKpi } from "@/lib/dashboard/my/kpis";
 import {
   loadClientBook, loadContactGap, loadDataQuality, loadKeyClients, loadOpportunities,
   loadReviewDesk, loadRiskDesk, type KeyClientSort,
@@ -109,8 +115,13 @@ function Loading({ order, wide = true }: { order: OrderKey; wide?: boolean }) {
 type Tx = Parameters<Parameters<typeof withTenant>[1]>[0];
 type Run = <T>(fn: (tx: Tx) => Promise<T>) => Promise<T>;
 
+/** An href ready for one more `key=value`: the page may have no query string yet. */
+const paramBase = (href: string) => `${href}${href.includes("?") ? "&" : "?"}`;
+
 export type BranchCentreProps = {
   session: SessionUser;
+  /** Where this dashboard lives (/dashboard/<id>) — every link it builds back to itself starts here. */
+  basePath: string;
   branch: { id: string; name: string };
   /** Other branches the viewer may switch to — null when they are locked to theirs. */
   branchOptions: Array<{ id: string; name: string }> | null;
@@ -121,17 +132,19 @@ export type BranchCentreProps = {
   staffIds: string[];
   /** Already validated to be one of `staff`. */
   rmId: string | null;
+  /** The viewer sees only their own clients: the view stays on `rmId`, with no RM picker. */
+  rmLocked?: boolean;
+  /** False for a team lead: the RM picker offers their team only, with no "All branch". */
+  rmAll?: boolean;
   period: Period;
   customStart?: string;
   customFrom?: string;
   customTo?: string;
   sp: Record<string, string | string[] | undefined>;
-  /** The Firm / Branch / Mine switch, rendered by the page (it knows what is allowed). */
-  scopeSwitch: ReactNode;
 };
 
 export async function BranchCommandCentre({
-  session, branch, branchOptions, staff, staffIds, rmId, period, customStart, customFrom, customTo, sp, scopeSwitch,
+  session, basePath, branch, branchOptions, staff, staffIds, rmId, rmLocked = false, rmAll = true, period, customStart, customFrom, customTo, sp,
 }: BranchCentreProps) {
   const now = new Date();
   const oneRm = rmId ? staff.find((s) => s.id === rmId) ?? null : null;
@@ -164,7 +177,7 @@ export async function BranchCommandCentre({
   /* ── URL state ───────────────────────────────────────────────────────── */
   const base = new URLSearchParams();
   for (const [k, v] of Object.entries(sp)) if (typeof v === "string" && v !== "") base.set(k, v);
-  base.set("scope", "branch");
+  base.delete("scope"); // left over from a /dashboard?scope=branch link; means nothing here
   if (!branchOptions) base.delete("branch"); // locked: a branch in the URL means nothing
   const hrefWith = (over: Record<string, string | null>, hash = "") => {
     const q = new URLSearchParams(base);
@@ -172,7 +185,8 @@ export async function BranchCommandCentre({
       if (v == null) q.delete(k);
       else q.set(k, v);
     }
-    return `/dashboard?${q.toString()}${hash}`;
+    const qs = q.toString();
+    return `${basePath}${qs ? `?${qs}` : ""}${hash}`;
   };
   const rmHref = (id: string) => hrefWith({ rm: id, myclients: null });
 
@@ -212,54 +226,51 @@ export async function BranchCommandCentre({
     .includes(sp.myclients as KeyClientSort) ? (sp.myclients as KeyClientSort) : "aum";
 
   /* ── header ──────────────────────────────────────────────────────────── */
-  const asOf = new Intl.DateTimeFormat("en-IN", {
-    day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata",
-  }).format(now);
   const filters: AppliedFilter[] = [];
-  if (oneRm) filters.push({ params: ["rm", "myclients"], label: "RM", value: oneRm.name });
+  if (oneRm && !rmLocked && rmAll) filters.push({ params: ["rm", "myclients"], label: "RM", value: oneRm.name });
   const touched = ["period", "rm", "tgt", "rmsort", "flow", "hv", "review", ...(branchOptions ? ["branch"] : [])]
     .some((k) => typeof sp[k] === "string" && sp[k] !== "");
   const canQueries = can(session.roles, "service_request.view.all", session.permissions)
     || can(session.roles, "service_request.view.assigned", session.permissions);
 
   return (
-    <div className="max-w-[92rem] space-y-6">
-      <PageHeaderCard
-        title="Branch Business Command Centre"
-        subtitle="Branch Growth | RM Performance | Client Engagement | Service & Exceptions"
-        breadcrumb={[{ label: "Branch" }]}
-      >
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className="chip bg-primary/10 text-sm font-semibold text-primary">
-            <Store className="size-3.5" aria-hidden />
-            Branch: {branch.name}
+    <div className="max-w-screen-2xl space-y-6">
+      {/* The dashboard header above names the dashboard and the branch; this
+          line is the branch's state: whose view it is and the one-line verdict. */}
+      <div className="flex flex-wrap items-center gap-2">
+        {!branchOptions && (
+          <span className="chip bg-secondary text-secondary-foreground" title="Your access covers your own branch only. Another branch needs cross-branch permission from an administrator.">
+            <Lock className="size-3" aria-hidden /> Your branch only
           </span>
-          {!branchOptions && (
-            <span className="chip bg-secondary text-secondary-foreground" title="Your access covers your own branch only. Another branch needs cross-branch permission from an administrator.">
-              <Lock className="size-3" aria-hidden /> Your branch only
-            </span>
-          )}
-          {oneRm && (
-            <span className="chip bg-secondary text-secondary-foreground">
-              <UserRound className="size-3" aria-hidden /> RM: {oneRm.name}
-            </span>
-          )}
-          <Suspense fallback={
-            <a href="#attention" className="chip bg-secondary text-secondary-foreground hover:bg-accent">
-              <AlertOctagon className="size-3" aria-hidden /> Needs attention
-            </a>
-          }>
-            <AttentionChip p={attentionP} />
-          </Suspense>
-          <span className="text-2xs text-muted-foreground">Last data refresh: {asOf}</span>
-        </div>
-      </PageHeaderCard>
+        )}
+        {oneRm && (
+          <span className="chip bg-secondary text-secondary-foreground">
+            <UserRound className="size-3" aria-hidden /> RM: {oneRm.name}
+          </span>
+        )}
+        <Suspense fallback={
+          <a href="#attention" className="chip bg-secondary text-secondary-foreground hover:bg-accent">
+            <AlertOctagon className="size-3" aria-hidden /> Needs attention
+          </a>
+        }>
+          <AttentionChip p={attentionP} />
+        </Suspense>
+      </div>
 
       {/* ── Row 1 · global filters — sticky under the top bar on desktop ── */}
       <div className="space-y-2.5 border-b border-border bg-background pb-4 lg:sticky lg:top-16 lg:z-30 lg:pt-3">
+        {/* One row: actions on the left, which branch / RM / period on the right. */}
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            {scopeSwitch}
+          <BranchQuickActions
+            session={session}
+            hrefs={{
+              sipRejections: `/dashboard/sip-rejections?branch=${branch.id}${oneRm ? `&rm=${oneRm.id}` : ""}`,
+              pendingReviews: clientsHref(scope, "review=due"),
+              overdueTasks: `/dashboard/tasks?assignee=${w.staff.join(",")}&due=overdue`,
+              clients: clientsHref(scope),
+            }}
+          />
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {branchOptions && (
               <ParamSelect
                 param="branch"
@@ -270,30 +281,32 @@ export async function BranchCommandCentre({
                 clear={["rm", "myclients"]}
               />
             )}
-            <ParamSelect
-              param="rm"
-              value={oneRm?.id ?? ""}
-              allLabel="All branch"
-              options={staff.map((s) => ({ value: s.id, label: s.active ? s.name : `${s.name} (inactive)` }))}
-              ariaLabel="Relationship manager"
-              clear={["myclients"]}
-            />
+            {!rmLocked && (
+              <ParamSelect
+                param="rm"
+                value={oneRm?.id ?? ""}
+                allLabel={rmAll ? "All branch" : undefined}
+                options={staff.map((s) => ({ value: s.id, label: s.active ? s.name : `${s.name} (inactive)` }))}
+                ariaLabel="Relationship manager"
+                clear={["myclients"]}
+              />
+            )}
+            <DashboardHeaderBar period={period} currentLabel={periodLabel} variant="light" />
           </div>
-          <DashboardHeaderBar period={period} currentLabel={periodLabel} variant="light" />
         </div>
         <AppliedFilterChips
           periodLabel={periodLabel}
           comparisonLabel={comparisonLabel}
           filters={filters}
-          resetHref="/dashboard?scope=branch"
+          resetHref={basePath}
           showReset={touched}
         />
         {/* Thirty-odd sections is a long page; these are the ways into it. */}
         <nav aria-label="Jump to section" className="flex flex-wrap items-center gap-x-1 text-2xs">
           {([
-            ["attention", "Attention"], ["targets", "Targets"], [oneRm ? "rm-targets" : "rm-scoreboard", "RMs"],
-            ["sip-performance", "SIP"], ["redemptions", "Redemptions"], ["reviews", "Reviews"],
-            ["client-book", "Clients"], ["tasks", "Tasks & queries"], ["insurance", "Insurance & ops"],
+            ["attention", "Attention"], ["tasks", "Tasks & service requests"], ["reviews", "Reviews"],
+            ["targets", "Targets"], [oneRm ? "rm-targets" : "rm-scoreboard", "RMs"], ["redemptions", "Redemptions"],
+            ["sip-performance", "SIP"], ["client-book", "Clients"], ["insurance", "Insurance & ops"],
             ["review-mode", "Weekly / monthly"], ["scorecard", "FY scorecard"],
           ] as const).map(([id, label]) => (
             <a key={id} href={`#${id}`}
@@ -304,104 +317,94 @@ export async function BranchCommandCentre({
         </nav>
       </div>
 
-      <BranchQuickActions
-        session={session}
-        hrefs={{
-          sipRejections: `/dashboard/sip-rejections?branch=${branch.id}${oneRm ? `&rm=${oneRm.id}` : ""}`,
-          pendingReviews: clientsHref(scope, "review=due"),
-          overdueTasks: `/dashboard/tasks?assignee=${w.staff.join(",")}&due=overdue`,
-          clients: clientsHref(scope),
-        }}
-      />
-
       <div className="grid grid-cols-1 items-start gap-6 2xl:grid-cols-2">
         {oneRm && (
           <Suspense fallback={<Loading order="one" />}>
             <OneOnOneBand ledgerP={ledgerP} rmId={oneRm.id} t={t} periodPhase={periodPhase} noPhase={noPhase}
-              periodLabel={periodLabel} backHref={hrefWith({ rm: null, myclients: null })} scope={scope} />
+              periodLabel={periodLabel} backHref={rmLocked || !rmAll ? null : hrefWith({ rm: null, myclients: null })} scope={scope} />
           </Suspense>
         )}
 
-        {/* Row 2 · KPI strip */}
+        {/* The headline · KPI strip */}
         <Suspense fallback={<Loading order="kpi" />}>
           <KpiBand run={run} w={w} periodLabel={periodLabel} oneRm={oneRm?.name ?? null}
             hrefFor={(k) => kpiHref(k, hrefWith)} />
         </Suspense>
 
-        {/* Row 3 · targets */}
+        {/* Today · management attention centre */}
+        <Suspense fallback={<Loading order="attention" />}>
+          <AttentionBand attentionP={attentionP} highValue={highValue} rmHref={rmHref} />
+        </Suspense>
+
+        {/* Today · SIP exception centre */}
+        <Suspense fallback={<Loading order="sipx" />}>
+          <SipExceptionBand ledgerP={ledgerP} t={t} rmHref={rmHref} periodLabel={periodLabel}
+            book={{ branchId: branch.id, rmId: oneRm?.id ?? null }} period={{ from: w.from, to: w.to }} />
+        </Suspense>
+
+        {/* Today · tasks + service requests */}
+        <Suspense fallback={<Loading order="work" />}>
+          <WorkBand run={run} w={w} ledgerP={ledgerP} rmHref={rmHref} periodLabel={periodLabel}
+            canQueries={canQueries} showRm={voice.showRm} />
+        </Suspense>
+
+        {/* Today · meetings + reviews */}
+        <Suspense fallback={<Loading order="reviews" />}>
+          <MeetingsBand run={run} w={w} ledgerP={ledgerP} voice={voice} rmHref={rmHref} periodLabel={periodLabel}
+            periodPhase={periodPhase} ageingDays={t.proposalAgeingDays} />
+        </Suspense>
+
+        {/* The team · targets */}
         <Suspense fallback={<Loading order="targets" />}>
           <TargetsBand run={run} w={w} since={since} phase={horizonPhase} horizon={horizon}
             hrefs={{ mtd: hrefWith({ tgt: "mtd" }), qtd: hrefWith({ tgt: "qtd" }), fytd: hrefWith({ tgt: "fytd" }) }}
             phasing={t.targetPhasing} oneRm={oneRm?.name ?? null} />
         </Suspense>
 
-        {/* Row 4 · RM scoreboard + target matrix */}
+        {/* The team · RM scoreboard + target matrix */}
         <Suspense fallback={<Loading order="rm" />}>
           <ScoreboardBand ledgerP={ledgerP} t={t} periodPhase={periodPhase} noPhase={noPhase} sort={sort}
             sortHrefs={Object.fromEntries(SCORE_SORTS.map((s) => [s.key, hrefWith({ rmsort: s.key }, "#rm-scoreboard")])) as Record<ScoreSort, string>}
             rmHref={rmHref} periodLabel={periodLabel} fyLabel={w.fiscalYear} oneRm={!!oneRm} />
         </Suspense>
 
-        {/* Row 5 · business trend + SIP performance */}
-        <Suspense fallback={<Loading order="trend" />}>
-          <TrendBand run={run} w={w} ledgerP={ledgerP} t={t} rmHref={rmHref} periodLabel={periodLabel} oneRm={oneRm?.name ?? null} />
-        </Suspense>
-
-        {/* Row 6 · investment flow + redemption watch */}
-        <Suspense fallback={<Loading order="redemptions" />}>
-          <FlowBand run={run} w={w} flowH={flowH} highValue={highValue} rmHref={rmHref} periodLabel={periodLabel}
-            flowHrefs={{ mtd: hrefWith({ flow: "mtd" }), fytd: hrefWith({ flow: "fytd" }) }}
-            presetHrefs={HV_PRESETS.map((v) => ({ value: v, href: hrefWith({ hv: String(v) }, "#redemptions") }))}
-            customHidden={[...base.entries()].filter(([k]) => k !== "hv")}
-            showRm={voice.showRm} />
-        </Suspense>
-
-        {/* Row 7 · new clients + lead funnel */}
+        {/* Pipeline · new clients + lead funnel */}
         <Suspense fallback={<Loading order="rest" />}>
           <AcquisitionBand run={run} w={w} ledgerP={ledgerP} t={t} voice={voice} rmHref={rmHref} periodLabel={periodLabel} />
         </Suspense>
 
-        {/* Row 8 · meetings + reviews */}
-        <Suspense fallback={<Loading order="reviews" />}>
-          <MeetingsBand run={run} w={w} ledgerP={ledgerP} voice={voice} rmHref={rmHref} periodLabel={periodLabel}
-            periodPhase={periodPhase} ageingDays={t.proposalAgeingDays} />
+        {/* Analysis · investment flow + redemption watch */}
+        <Suspense fallback={<Loading order="redemptions" />}>
+          <FlowBand run={run} w={w} flowH={flowH} highValue={highValue} rmHref={rmHref} periodLabel={periodLabel}
+            flowHrefs={{ mtd: hrefWith({ flow: "mtd" }), fytd: hrefWith({ flow: "fytd" }) }}
+            presetHrefs={HV_PRESETS.map((v) => ({ value: v, href: hrefWith({ hv: String(v) }, "#redemptions") }))}
+            customAction={basePath} customHidden={[...base.entries()].filter(([k]) => k !== "hv")}
+            showRm={voice.showRm} />
         </Suspense>
 
-        {/* Row 9 · SIP exception centre */}
-        <Suspense fallback={<Loading order="sipx" />}>
-          <SipExceptionBand ledgerP={ledgerP} t={t} rmHref={rmHref} periodLabel={periodLabel}
-            book={{ branchId: branch.id, rmId: oneRm?.id ?? null }} period={{ from: w.from, to: w.to }} />
+        {/* Analysis · business trend + SIP performance */}
+        <Suspense fallback={<Loading order="trend" />}>
+          <TrendBand run={run} w={w} ledgerP={ledgerP} t={t} rmHref={rmHref} periodLabel={periodLabel} oneRm={oneRm?.name ?? null} />
         </Suspense>
 
-        {/* Row 10 · client book + contact health (+ key clients for one RM) */}
+        {/* Analysis · client book + contact health (+ key clients for one RM) */}
         <Suspense fallback={<Loading order="rest" />}>
           <BookBand run={run} w={w} ledgerP={ledgerP} voice={voice} rmHref={rmHref} oneRm={!!oneRm}
-            keySort={keySort} keyBaseHref={`${hrefWith({ myclients: null })}&`} />
+            keySort={keySort} keyBaseHref={paramBase(hrefWith({ myclients: null }))} />
         </Suspense>
 
-        {/* Row 11 · tasks + queries */}
-        <Suspense fallback={<Loading order="work" />}>
-          <WorkBand run={run} w={w} ledgerP={ledgerP} rmHref={rmHref} periodLabel={periodLabel}
-            canQueries={canQueries} showRm={voice.showRm} />
-        </Suspense>
-
-        {/* Row 12 · insurance + operations */}
+        {/* Analysis · insurance + operations */}
         <Suspense fallback={<Loading order="rest" />}>
           <ServiceBand run={run} w={w} ledgerP={ledgerP} rmHref={rmHref} periodLabel={periodLabel} showRm={voice.showRm}
-            opsHref={can(session.roles, "dashboard.view.ops", session.permissions) ? "/dashboard/command-center" : null} />
+            opsHref={can(session.roles, "dashboard.view.ops", session.permissions) ? "/dashboard/operations" : null} />
         </Suspense>
 
-        {/* Row 13 · data quality + risk profile, then relationships and activity */}
+        {/* Analysis · data quality + risk profile, then relationships and activity */}
         <Suspense fallback={<Loading order="rest" />}>
           <QualityBand run={run} w={w} ledgerP={ledgerP} voice={voice} rmHref={rmHref} periodLabel={periodLabel} />
         </Suspense>
 
-        {/* Row 14 · management attention centre */}
-        <Suspense fallback={<Loading order="attention" />}>
-          <AttentionBand attentionP={attentionP} highValue={highValue} rmHref={rmHref} />
-        </Suspense>
-
-        {/* Row 15 · weekly / monthly review, month on month */}
+        {/* Reviews · weekly / monthly, month on month */}
         <Suspense fallback={<Loading order="rest" />}>
           <ReviewBand run={run} w={w} t={t} mode={reviewMode}
             hrefs={{
@@ -412,7 +415,7 @@ export async function BranchCommandCentre({
             now={now} />
         </Suspense>
 
-        {/* Row 16 · FY scorecard */}
+        {/* Reviews · FY scorecard */}
         <Suspense fallback={<Loading order="rest" />}>
           <ScorecardBand run={run} w={w} ledgerP={ledgerP} t={t} />
         </Suspense>
@@ -463,7 +466,7 @@ async function OneOnOneBand({
   ledgerP, rmId, t, periodPhase, noPhase, periodLabel, backHref, scope,
 }: {
   ledgerP: Promise<RmLedgerRow[]>; rmId: string; t: DashboardThresholds; periodPhase: number | null;
-  noPhase: string; periodLabel: string; backHref: string; scope: BookScope;
+  noPhase: string; periodLabel: string; backHref: string | null; scope: BookScope;
 }) {
   const ledger = await ledgerP;
   const row = ledger.find((r) => r.id === rmId);
@@ -568,11 +571,11 @@ async function TrendBand({
 }
 
 async function FlowBand({
-  run, w, flowH, highValue, rmHref, periodLabel, flowHrefs, presetHrefs, customHidden, showRm,
+  run, w, flowH, highValue, rmHref, periodLabel, flowHrefs, presetHrefs, customAction, customHidden, showRm,
 }: {
   run: Run; w: MyWindow; flowH: "mtd" | "fytd"; highValue: number; rmHref: (id: string) => string;
   periodLabel: string; flowHrefs: Record<"mtd" | "fytd", string>;
-  presetHrefs: Array<{ value: number; href: string }>; customHidden: Array<[string, string]>; showRm: boolean;
+  presetHrefs: Array<{ value: number; href: string }>; customAction: string; customHidden: Array<[string, string]>; showRm: boolean;
 }) {
   const [flow, red] = await run(async (tx) => [
     await loadInvestmentFlow(tx, w, flowH),
@@ -585,7 +588,7 @@ async function FlowBand({
       </Cell>
       <Cell order="redemptions" wide={false} id="redemptions">
         <BranchRedemptions data={red} periodLabel={periodLabel} presetHrefs={presetHrefs}
-          customAction="/dashboard" customHidden={customHidden} showRm={showRm} />
+          customAction={customAction} customHidden={customHidden} showRm={showRm} />
       </Cell>
     </>
   );
@@ -804,9 +807,7 @@ async function ReviewBand({
       await loadMonthlySummary(tx, w),
     ] as const;
   });
-  const monthLabel = new Intl.DateTimeFormat("en-IN", { month: "long", timeZone: "Asia/Kolkata" }).format(now);
-  const prevMonthLabel = new Intl.DateTimeFormat("en-IN", { month: "long", timeZone: "Asia/Kolkata" })
-    .format(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+  const { monthLabel, prevMonthLabel } = monthLabels(w.to);
   return (
     <>
       <Cell order="rest">

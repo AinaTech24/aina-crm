@@ -11,6 +11,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { CalendarCheck, CalendarClock, CalendarDays, Gift, ListChecks, PhoneCall, Shield } from "lucide-react";
 import type { UpcomingItem } from "@/lib/dashboard/my/desk";
+import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const KIND: Record<UpcomingItem["kind"], { label: string; icon: React.ReactNode }> = {
@@ -23,8 +24,7 @@ const KIND: Record<UpcomingItem["kind"], { label: string; icon: React.ReactNode 
 };
 
 function dayHeading(iso: string, today: string): string {
-  const d = new Date(`${iso}T00:00:00`);
-  const base = new Intl.DateTimeFormat("en-IN", { weekday: "short", day: "numeric", month: "short" }).format(d);
+  const base = formatDate(iso, "weekday");
   if (iso === today) return `Today · ${base}`;
   const t = new Date(`${today}T00:00:00`);
   t.setDate(t.getDate() + 1);
@@ -73,7 +73,7 @@ export function UpcomingWeek({ items, today }: { items: UpcomingItem[]; today: s
         <div className="space-y-4">
           {days.map((d) => (
             <div key={d}>
-              <h3 className={cn("mb-1.5 text-2xs font-semibold uppercase tracking-wide",
+              <h3 className={cn("mb-1.5 text-2xs font-semibold",
                 d === today ? "text-primary" : "text-muted-foreground")}>
                 {dayHeading(d, today)}
               </h3>

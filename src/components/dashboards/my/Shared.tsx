@@ -20,10 +20,51 @@
  */
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { ArrowUpRight, Info } from "lucide-react";
 import { formatCount, formatMoney, formatPercent } from "@/lib/format";
 import { cn } from "@/lib/utils";
+
+/* ─────────────────────────────── info tip ─────────────────────────────── */
+
+/**
+ * The explanation behind a small ⓘ, shown on hover and on tap/focus.
+ *
+ * The dashboards used to print every section's purpose, every methodology
+ * caveat and every "why is this empty" paragraph in full — about 450 pieces of
+ * text across the six role dashboards. Read once they are useful; read on
+ * every visit they are noise, and they made the pages feel crowded to people
+ * who just want the numbers. They now live here: one tap away, never in the way.
+ *
+ * Server-safe (only `useId`, which Server Components may call) and CSS-only:
+ * hover opens it with a mouse, and a tap focuses the button, which opens it on
+ * a phone. The text is the button's DESCRIPTION, so a screen reader hears
+ * "What this shows" and then the explanation while the heading around it keeps
+ * its short name; a link inside a note stays valid because it never sits inside
+ * the button. No arbitrary Tailwind values — they fail silently in this repo.
+ */
+export function InfoTip({ children, label = "What this shows" }: { children: ReactNode; label?: string }) {
+  const id = useId();
+  return (
+    <span className="group/info relative inline-flex align-middle">
+      <button
+        type="button"
+        aria-label={label}
+        aria-describedby={id}
+        className="inline-grid size-6 place-items-center rounded-full text-muted-foreground/70 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <Info className="size-3.5" aria-hidden />
+      </button>
+      <span
+        id={id}
+        role="tooltip"
+        className="invisible absolute left-0 top-full z-50 mt-1 w-72 rounded-lg border border-border bg-card p-3 text-2xs font-normal normal-case leading-relaxed tracking-normal text-muted-foreground opacity-0 shadow-lg transition-opacity duration-150 group-hover/info:visible group-hover/info:opacity-100 group-focus-within/info:visible group-focus-within/info:opacity-100"
+      >
+        {children}
+      </span>
+    </span>
+  );
+}
 
 /* ────────────────────────────── section shell ────────────────────────────── */
 
@@ -45,25 +86,26 @@ export function Section({
   className?: string;
   note?: string;
 }) {
+  // The subtitle (what the section answers) and the note (how it is measured)
+  // are explanations, not data. Both move behind one ⓘ beside the title, so a
+  // section reads as a title and its numbers.
+  const about = subtitle || note;
   return (
     <section className={cn("card-surface p-5 sm:p-6", className)} aria-label={title}>
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b border-border/60 pb-4">
-        <div className="min-w-0">
-          <h2 className="section-title flex items-center gap-2">
-            {icon && <span className="shrink-0 text-muted-foreground">{icon}</span>}
-            {title}
-          </h2>
-          {subtitle && <p className="section-subtitle mt-1">{subtitle}</p>}
-        </div>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/60 pb-3">
+        <h2 className="section-title flex min-w-0 items-center gap-1.5">
+          {icon && <span className="shrink-0 text-muted-foreground">{icon}</span>}
+          {title}
+          {about && (
+            <InfoTip>
+              {subtitle && <span className="block">{subtitle}</span>}
+              {note && <span className={cn("block", subtitle && "mt-2")}>{note}</span>}
+            </InfoTip>
+          )}
+        </h2>
         {action && <div className="flex shrink-0 items-center gap-2">{action}</div>}
       </div>
       {children}
-      {note && (
-        <p className="mt-4 flex items-start gap-1.5 border-t border-border/60 pt-3 text-2xs text-muted-foreground">
-          <Info className="mt-px size-3 shrink-0" aria-hidden />
-          <span>{note}</span>
-        </p>
-      )}
     </section>
   );
 }
@@ -149,6 +191,12 @@ export function Stat({
   unavailable?: string;
   display?: ReactNode;
 }) {
+  // Quiet zeros. A zero is a fact, not an alarm and not an achievement, so it
+  // drops to a lighter grey and loses its sub-line ("Clients 0 · Leads 0…"),
+  // leaving the eye free for the figures that need action. `display` is a
+  // caller's own wording and is shown as given.
+  const zero = display == null && value === 0;
+  const empty = display == null && (value == null || value === 0);
   const body = (
     <div
       className={cn(
@@ -156,11 +204,16 @@ export function Stat({
         href && "hover:border-primary/40 hover:bg-accent",
       )}
     >
-      <div className={cn("text-xl font-semibold tabular-nums leading-tight", TONE_TEXT[tone])}>
+      <div
+        className={cn(
+          "text-xl tabular-nums leading-tight",
+          zero ? "font-medium text-muted-foreground/60" : cn("font-semibold", TONE_TEXT[tone]),
+        )}
+      >
         {display ?? <Figure value={value} format={format} unavailable={unavailable} />}
       </div>
       <div className="mt-1 text-2xs font-medium leading-snug text-foreground">{label}</div>
-      {hint && <div className="text-2xs leading-snug text-muted-foreground">{hint}</div>}
+      {hint && !empty && <div className="text-2xs leading-snug text-muted-foreground">{hint}</div>}
     </div>
   );
   return href ? (
@@ -345,12 +398,32 @@ export function CategoryTag({ value }: { value: string | null }) {
   return <span className="chip bg-secondary text-secondary-foreground">{value}</span>;
 }
 
-/** A single explanatory line for a figure the CRM cannot currently produce. */
+/**
+ * A single quiet line for a figure the CRM cannot currently produce, or an
+ * empty list.
+ *
+ * Only the FIRST sentence is shown ("No new clients in September 2026."); any
+ * further explanation — where the figure would come from, why it is missing —
+ * sits behind an ⓘ. Most of these read the same every day, and a dashed box of
+ * prose per empty section made quiet days look busier than busy ones.
+ */
 export function Unavailable({ children }: { children: ReactNode }) {
+  let first: ReactNode = children;
+  let rest: string | null = null;
+  if (typeof children === "string") {
+    const text = children.replace(/\s+/g, " ").trim();
+    const cut = text.search(/[.!?]\s/);
+    if (cut > 0) {
+      first = text.slice(0, cut + 1);
+      rest = text.slice(cut + 2).trim() || null;
+    } else {
+      first = text;
+    }
+  }
   return (
-    <p className="flex items-start gap-1.5 rounded-lg border border-dashed border-border bg-secondary/40 px-3 py-2.5 text-2xs leading-relaxed text-muted-foreground">
-      <Info className="mt-px size-3 shrink-0" aria-hidden />
-      <span>{children}</span>
+    <p className="flex items-center gap-1 py-1 text-xs text-muted-foreground">
+      <span>{first}</span>
+      {rest && <InfoTip label="More about this">{rest}</InfoTip>}
     </p>
   );
 }

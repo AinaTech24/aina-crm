@@ -57,7 +57,7 @@ export function DeskMeetings({
         </StatGrid>
       )}
 
-      <h3 className="mb-2 mt-5 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Upcoming meetings</h3>
+      <h3 className="mb-2 mt-5 text-2xs font-semibold text-muted-foreground">Upcoming meetings</h3>
       <Table
         rows={desk.upcoming.length}
         empty="Nothing in the diary."
@@ -106,7 +106,7 @@ export function DeskMeetings({
 
       {prep.length > 0 && (
         <>
-          <h3 className="mb-2 mt-5 flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <h3 className="mb-2 mt-5 flex items-center gap-1.5 text-2xs font-semibold text-muted-foreground">
             <ClipboardList className="size-3.5" aria-hidden /> Preparation — next {prep.length} client meeting{prep.length === 1 ? "" : "s"}
           </h3>
           <div className="grid gap-3 lg:grid-cols-2">
@@ -143,7 +143,7 @@ function PrepCard({ p, today }: { p: MeetingPrep; today: string }) {
         <div><dt className="text-muted-foreground">SIP book</dt><dd className="font-medium tabular-nums">{p.sipBook > 0 ? `${formatMoney(p.sipBook)}/mo` : "No active SIP"}</dd></div>
         <div><dt className="text-muted-foreground">Last meeting</dt><dd className="font-medium">{p.lastMeeting ? formatDate(p.lastMeeting) : "None recorded"}</dd></div>
         <div><dt className="text-muted-foreground">Open tasks</dt><dd className={cn("font-medium tabular-nums", p.openTasks > 0 && "text-warning-foreground")}>{p.openTasks}</dd></div>
-        <div><dt className="text-muted-foreground">Open queries</dt><dd className={cn("font-medium tabular-nums", p.openQueries > 0 && "text-warning-foreground")}>{p.openQueries}</dd></div>
+        <div><dt className="text-muted-foreground">Open service requests</dt><dd className={cn("font-medium tabular-nums", p.openQueries > 0 && "text-warning-foreground")}>{p.openQueries}</dd></div>
         <div><dt className="text-muted-foreground">Review due</dt><dd className={cn("font-medium", reviewLate && "text-destructive")}>{p.nextReview ? formatDate(p.nextReview) : "Not scheduled"}</dd></div>
         <div>
           <dt className="text-muted-foreground">Risk profile</dt>

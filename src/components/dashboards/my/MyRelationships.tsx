@@ -292,7 +292,7 @@ export function MyDataQuality({ data, voice = MY_VOICE, extra }: { data: DataQua
         <div className="rounded-lg border border-border bg-card px-4 py-3">
           <div
             className={cn(
-              "text-[1.75rem] font-semibold leading-none tabular-nums",
+              "text-2xl font-semibold leading-none tabular-nums",
               // Incomplete data is an "attention" item (§38), never red: red is
               // kept for work that is overdue or has failed.
               data.completePct == null ? "text-muted-foreground"
@@ -325,7 +325,7 @@ export function MyDataQuality({ data, voice = MY_VOICE, extra }: { data: DataQua
       </div>
       {optional.length > 0 && (
         <div className="mt-4">
-          <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <h3 className="mb-2 text-2xs font-semibold text-muted-foreground">
             Optional fields &mdash; for follow-up, not scored
           </h3>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">

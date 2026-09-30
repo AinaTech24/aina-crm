@@ -159,7 +159,7 @@ function ProgressStrip({ data }: { data: TodayProgress }) {
         {pair("Follow-ups done", data.followUps.done, data.followUps.due, "due")}
         {pair("Tasks completed", data.tasks.done, data.tasks.due, "due")}
         {pair("Reviews completed", data.reviews.done, data.reviews.due, "due")}
-        {one("Queries actioned", formatCount(data.queriesActioned))}
+        {one("Service requests actioned", formatCount(data.queriesActioned))}
         {one("New leads created", formatCount(data.leadsCreated))}
         {one("Proposals shared", formatCount(data.proposalsShared))}
         {one("Business recorded today", data.business == null
@@ -186,7 +186,7 @@ export function NeedsMyAttention({ cards }: { cards: OverdueCard[] }) {
         ? "Nothing is overdue."
         : `${late.length} kind${late.length === 1 ? "" : "s"} of work overdue${critical ? ` — ${critical} critical` : ""}. Oldest first inside every list.`}
       icon={<AlertOctagon className="size-4" />}
-      note="Red is reserved for genuinely late or failed work. Each card says how many, how late the oldest is, and the money involved; the rule under it says what puts an item there. Thresholds are set in Settings → Dashboard thresholds."
+      note="Red is reserved for genuinely late or failed work. Each card says how many, how late the oldest is, and the money involved; hover a card for what puts an item there. Thresholds are set in Settings → Dashboard thresholds."
     >
       <div id="attention" className="scroll-mt-40" />
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -196,6 +196,7 @@ export function NeedsMyAttention({ cards }: { cards: OverdueCard[] }) {
             <Link
               key={c.key}
               href={c.href}
+              title={c.rule}
               className={cn(
                 "flex flex-col rounded-xl border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-accent",
                 empty ? "border-border" : c.severity === "critical" ? "border-destructive/40" : "border-warning/60",
@@ -230,7 +231,6 @@ export function NeedsMyAttention({ cards }: { cards: OverdueCard[] }) {
                   )}
                 </div>
               )}
-              <span className="mt-auto pt-2 text-2xs leading-snug text-muted-foreground">{c.rule}</span>
             </Link>
           );
         })}

@@ -59,7 +59,7 @@ export function BranchFunnel({
       </div>
       {voice.showRm && (
         <div className="mt-4">
-          <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Conversion by RM</h3>
+          <h3 className="mb-2 text-2xs font-semibold text-muted-foreground">Conversion by RM</h3>
           <RmTable
             rows={people}
             rmHref={rmHref}
@@ -125,7 +125,7 @@ export function BranchProposals({
             of decided proposals.
           </p>
 
-          <h3 className="mb-2 mt-4 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <h3 className="mb-2 mt-4 text-2xs font-semibold text-muted-foreground">
             Waiting on a client &mdash; by days since sent
           </h3>
           <div className="grid grid-cols-5 gap-2">
@@ -147,7 +147,7 @@ export function BranchProposals({
       )}
       {voice.showRm && desk.created != null && (
         <div className="mt-4">
-          <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">By RM</h3>
+          <h3 className="mb-2 text-2xs font-semibold text-muted-foreground">By RM</h3>
           <RmTable
             rows={people}
             rmHref={rmHref}
@@ -172,7 +172,7 @@ export function BranchProposals({
       )}
       {desk.rows.length > 0 && (
         <div className="mt-4">
-          <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Latest proposals</h3>
+          <h3 className="mb-2 text-2xs font-semibold text-muted-foreground">Latest proposals</h3>
           <Table
             rows={desk.rows.length}
             empty="No proposals beyond draft."
@@ -326,7 +326,7 @@ export function BranchReviews({
 
       {voice.showRm && (
         <div className="mt-4">
-          <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Review completion by RM</h3>
+          <h3 className="mb-2 text-2xs font-semibold text-muted-foreground">Review completion by RM</h3>
           <RmTable
             rows={rmRows(ledger)}
             rmHref={rmHref}
@@ -350,7 +350,7 @@ export function BranchReviews({
       )}
 
       <div className="mt-4">
-        <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Priority list</h3>
+        <h3 className="mb-2 text-2xs font-semibold text-muted-foreground">Priority list</h3>
         <Table
           rows={data.rows.length}
           empty="No review is overdue or due in the next 30 days."

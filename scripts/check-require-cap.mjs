@@ -85,12 +85,14 @@ const SKIP_FILES = new Set([
   "command-center/snooze/route.ts",            // own snooze
   "command-center/digest/route.ts",            // own digest
   "daily-tracker/route.ts",                    // own daily tracker
-  "dashboards/route.ts",                       // own custom dashboards
-  "dashboards/templates/route.ts",
-  "dashboards/[id]/clone/route.ts",
-  "dashboards/[id]/default/route.ts",
-  "dashboards/[id]/restore/route.ts",
-  "dashboard/custom-chart/route.ts",
+  "dashboards/route.ts",                       // create one's own (private) dashboard
+  "dashboards/[id]/clone/route.ts",            // a private copy for the caller of one they can see
+  "dashboards/[id]/restore/route.ts",          // creator or dashboards.manage (platform.ts)
+  "dashboards/[id]/prefs/route.ts",            // own favourite / default / saved + card filters
+  // Edit = canEdit, delete = canShareOrDelete (src/lib/dashboards/platform.ts):
+  // the creator, a dashboards.manage holder, or — edit only, while unlocked —
+  // someone it is shared with. System dashboards refuse both.
+  "dashboards/[id]/route.ts",
   "devices/route.ts",                          // own device registration
   "me/devices/[id]/route.ts",                  // own device
   "me/session/register/route.ts",              // own session

@@ -12,7 +12,7 @@ import { RmTable, rmRows } from "./RmTable";
 const sumOf = (f: (r: RmLedgerRow) => number | null) => (rs: RmLedgerRow[]) => rs.reduce((s, r) => s + (f(r) ?? 0), 0);
 
 function Heading({ children }: { children: React.ReactNode }) {
-  return <h3 className="mb-2 mt-5 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">{children}</h3>;
+  return <h3 className="mb-2 mt-5 text-2xs font-semibold text-muted-foreground">{children}</h3>;
 }
 
 type Props = { ledger: RmLedgerRow[]; rmHref: (id: string) => string; clientsOf: (r: RmLedgerRow) => string | null };

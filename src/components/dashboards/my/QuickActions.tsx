@@ -1,5 +1,5 @@
 /**
- * §23 universal client search and §24 quick actions.
+ * §24 quick actions. (§23's client search is the top bar's — Ctrl K — on every page.)
  *
  * One row, at the top, because both answer the same impulse: "I know what I
  * want to do, get me there". Search is the first thing because a name is the
@@ -17,7 +17,7 @@ import {
   AlertOctagon, CalendarPlus, FileSignature, ListPlus, MessageSquarePlus, NotebookPen, Repeat,
   UserPlus, CalendarCheck,
 } from "lucide-react";
-import { GlobalSearch } from "@/components/layout/GlobalSearch";
+import { MoreMenu } from "@/components/common/MoreMenu";
 import { LogActivityButton } from "@/components/activities/ActivityLogger";
 import { buttonClass } from "@/components/ui/button-class";
 import { can, type Capability } from "@/lib/auth/rbac";
@@ -48,44 +48,42 @@ const ACTIONS = (userId: string): Action[] => [
   { key: "lead", label: "Add lead", href: "/dashboard/leads/new", icon: UserPlus, caps: ["lead.edit.assigned", "lead.edit.all"] },
   { key: "proposal", label: "Create proposal", href: "/dashboard/proposals/new", icon: FileSignature, caps: ["proposal.write"] },
   { key: "task", label: "Add task", href: "/dashboard/tasks/new", icon: ListPlus, caps: ["task.edit.assigned", "task.edit.all"] },
-  { key: "query", label: "Add query", href: "/dashboard/service-requests/new", icon: MessageSquarePlus, caps: ["service_request.manage"] },
+  { key: "query", label: "Add service request", href: "/dashboard/service-requests/new", icon: MessageSquarePlus, caps: ["service_request.manage"] },
   { key: "rejections", label: "SIP rejections", href: "/dashboard/sip-rejections?recovery=pending,client_contacted,bank_issue,mandate_issue", icon: Repeat },
   { key: "overdue", label: "Overdue actions", href: "#attention", icon: AlertOctagon },
   { key: "note", label: "Add meeting note", href: `/dashboard/review-meetings?rm=${userId}&status=completed`, icon: NotebookPen,
     caps: ["review_meeting.manage.assigned", "review_meeting.manage.all"] },
 ];
 
+/**
+ * The actions shown as buttons; everything else the user may do sits under
+ * "More". Nine same-weight buttons plus a search box was the busiest thing on
+ * the page, and the search duplicated the one in the top bar (Ctrl K), so it
+ * is gone from here. The primary action plus the two an RM reaches for most —
+ * logging a follow-up and adding a task — stay one click away.
+ */
+const ON_BAR = new Set(["meeting", "task"]);
+
 export function QuickActions({ session }: { session: SessionUser }) {
   const allowed = ACTIONS(session.userId).filter((a) => !a.caps || a.caps.some((c) => can(session.roles, c, session.permissions)));
   const canLog = can(session.roles, "investor.note.add", session.permissions)
     || can(session.roles, "lead.edit.assigned", session.permissions);
+  const bar = allowed.filter((a) => ON_BAR.has(a.key));
+  const more = allowed.filter((a) => !ON_BAR.has(a.key));
 
   return (
-    <section className="card-surface p-4" aria-label="Search and quick actions">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-        <div className="min-w-[16rem] flex-1">
-          <GlobalSearch />
-          <p className="mt-1.5 text-2xs text-muted-foreground">
-            Search by name, family, PAN, mobile, email or client code &mdash; then open the 360&deg; view.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {allowed.map((a) => {
-            const Icon = a.icon;
-            return (
-              <Link
-                key={a.key}
-                href={a.href}
-                className={buttonClass(a.primary ? "primary" : "secondary", "sm")}
-              >
-                <Icon className="size-3.5" aria-hidden />
-                {a.label}
-              </Link>
-            );
-          })}
-          {canLog && <LogActivityButton label="Add follow-up" variant="secondary" />}
-        </div>
-      </div>
-    </section>
+    <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Quick actions">
+      {bar.map((a) => {
+        const Icon = a.icon;
+        return (
+          <Link key={a.key} href={a.href} className={buttonClass(a.primary ? "primary" : "secondary", "md")}>
+            <Icon className="size-4" aria-hidden />
+            {a.label}
+          </Link>
+        );
+      })}
+      {canLog && <LogActivityButton label="Add follow-up" variant="secondary" />}
+      <MoreMenu text="More" label="More actions" items={more.map((a) => ({ href: a.href, label: a.label }))} />
+    </div>
   );
 }

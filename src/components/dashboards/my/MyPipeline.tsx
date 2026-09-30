@@ -65,7 +65,7 @@ export function MyMeetings({ desk, periodLabel, staffIds }: {
 
       {desk.trend.length > 0 && (
         <div className="mt-4">
-          <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <h3 className="mb-2 text-2xs font-semibold text-muted-foreground">
             Meetings completed this financial year
           </h3>
           <div className="flex items-end gap-1.5">
@@ -87,7 +87,7 @@ export function MyMeetings({ desk, periodLabel, staffIds }: {
       )}
 
       <div className="mt-4">
-        <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h3 className="mb-2 text-2xs font-semibold text-muted-foreground">
           Coming up
         </h3>
         <Table
@@ -207,7 +207,7 @@ export function MyFunnel({ funnel }: { funnel: LeadFunnel }) {
 
       {funnel.staleRows.length > 0 && (
         <div className="mt-4">
-          <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <h3 className="mb-2 text-2xs font-semibold text-muted-foreground">
             Untouched longest
           </h3>
           <Table

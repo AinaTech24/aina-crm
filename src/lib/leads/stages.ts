@@ -21,8 +21,11 @@ import { LEAD_STAGE_ALIASES } from "@/lib/leads/normalize";
 export type StageTone = "blue" | "cyan" | "amber" | "indigo" | "purple" | "teal" | "emerald" | "rose" | "slate";
 
 /**
- * The pipeline as people see it: six columns, New → Contacted → Meeting
- * Scheduled → Meeting Done → Won / Lost.
+ * The pipeline as people see it: seven columns, New → Contacted → Meeting
+ * Scheduled → Meeting Done → Proposal Sent → Won / Lost. The dashboard's lead
+ * pipeline, the dashboards' lead cards and every conversion rate read these
+ * columns (lib/metrics/leads.ts), so there is no "Qualified" or "Converted"
+ * anywhere: a converted lead is Won.
  *
  * The blueprint behind it has ten lead-phase stages. Four of them are LOOPS
  * (the blueprint's own flavour for them): a call back later, a call that did
@@ -57,6 +60,7 @@ const PIPELINE_BASE: readonly LeadPipelineColumn[] = [
     members: ["meeting_scheduled", "meeting_pending", "appointment_scheduled", "qualified"],
   },
   { key: "meeting_done", label: "Meeting Done", tone: "indigo", members: ["meeting_done"] },
+  { key: "proposal_sent", label: "Proposal Sent", tone: "purple", members: ["proposal_sent"] },
   { key: "won_lead", label: "Won", tone: "emerald", members: ["won_lead", "converted", "post_meeting_qualified"] },
   { key: "not_qualified", label: "Lost", tone: "rose", members: ["not_qualified", "lost", "not_interested", "cold"] },
 ];
@@ -149,6 +153,7 @@ const LABEL_OVERRIDES: Record<string, string> = {
   call_not_connected: "Call not connected",
   contact_in_future: "Contact in future",
   meeting_pending: "Meeting pending",
+  proposal_sent: "Proposal Sent",
   won_lead: "Won",
   not_qualified: "Lost",
 };

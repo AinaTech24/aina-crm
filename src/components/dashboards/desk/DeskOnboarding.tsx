@@ -45,7 +45,7 @@ export function OnboardingPipeline({ data, fyLabel }: { data: Onboarding; fyLabe
               </li>
             ))}
           </ol>
-          <h3 className="mb-2 mt-4 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">New clients this month</h3>
+          <h3 className="mb-2 mt-4 text-2xs font-semibold text-muted-foreground">New clients this month</h3>
           <Table
             rows={data.thisMonth.length}
             empty="No client has been added this month."

@@ -78,7 +78,7 @@ export function BranchInvestmentFlow({
             )}
           </Table>
 
-          <h3 className="mb-2 mt-5 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">By RM</h3>
+          <h3 className="mb-2 mt-5 text-2xs font-semibold text-muted-foreground">By RM</h3>
           <Table
             rows={data.byRm.length}
             empty="No business entries in this window."
@@ -279,7 +279,7 @@ export function BranchAcquisition({
 
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
         <div>
-          <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Target vs added, by RM</h3>
+          <h3 className="mb-2 text-2xs font-semibold text-muted-foreground">Target vs added, by RM</h3>
           {data.byRm.length === 0 ? (
             <Unavailable>No relationship managers in this view.</Unavailable>
           ) : (
@@ -309,7 +309,7 @@ export function BranchAcquisition({
           )}
         </div>
         <div>
-          <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">By source</h3>
+          <h3 className="mb-2 text-2xs font-semibold text-muted-foreground">By source</h3>
           {data.sources.length === 0 ? (
             <Unavailable>No new clients in {periodLabel}.</Unavailable>
           ) : (

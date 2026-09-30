@@ -16,6 +16,7 @@ const useIso = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 type Opt = { value: string; label: string };
 
 export function MultiSelectField({
+  id,
   values,
   onChange,
   options,
@@ -24,6 +25,8 @@ export function MultiSelectField({
   className = "",
   searchable = true,
 }: {
+  /** Put this on the trigger so a `<label htmlFor>` points at something real. */
+  id?: string;
   values: string[];
   onChange: (v: string[]) => void;
   options: Opt[];
@@ -85,6 +88,7 @@ export function MultiSelectField({
   return (
     <div ref={ref} className={`relative ${className}`}>
       <button
+        id={id}
         type="button"
         onClick={() => setOpen((s) => !s)}
         aria-haspopup="listbox"

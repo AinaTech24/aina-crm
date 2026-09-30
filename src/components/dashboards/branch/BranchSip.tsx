@@ -44,7 +44,7 @@ export function BranchSipPerformance({
       <div className="grid gap-3 sm:grid-cols-3">
         {data.windows.map((x) => (
           <div key={x.key} className="rounded-lg border border-border bg-card p-3">
-            <div className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">{x.label}</div>
+            <div className="text-2xs font-semibold text-muted-foreground">{x.label}</div>
             <div className={cn("mt-1 text-xl font-semibold tabular-nums", x.net < 0 ? "text-destructive" : "text-foreground")}>
               {formatMoney(x.net)}
             </div>
@@ -77,7 +77,7 @@ export function BranchSipPerformance({
         </div>
       </dl>
 
-      <h3 className="mb-2 mt-5 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <h3 className="mb-2 mt-5 text-2xs font-semibold text-muted-foreground">
         Net SIP by RM &mdash; {periodLabel}
       </h3>
       {data.byRm.length === 0 ? (

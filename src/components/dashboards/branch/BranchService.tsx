@@ -52,7 +52,7 @@ export function BranchInsurance({
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
             {data.byLine.map((l) => (
               <div key={l.key} className="rounded-lg border border-border p-3">
-                <div className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">{l.label}</div>
+                <div className="text-2xs font-semibold text-muted-foreground">{l.label}</div>
                 <div className="mt-1 text-lg font-semibold tabular-nums">{formatMoney(l.premium)}</div>
                 <div className="text-2xs text-muted-foreground">new premium · {formatCount(l.policies)} active policies</div>
               </div>
@@ -67,7 +67,7 @@ export function BranchInsurance({
       )}
       {showRm && data.totalPremium != null && sellers.length > 0 && (
         <div className="mt-4">
-          <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Premium booked, by person</h3>
+          <h3 className="mb-2 text-2xs font-semibold text-muted-foreground">Premium booked, by person</h3>
           <RmTable
             rows={sellers}
             rmHref={rmHref}
@@ -98,7 +98,7 @@ export function BranchOps({
       subtitle="Only the service work that concerns this branch's clients and people."
       icon={<Wrench className="size-4" />}
       action={opsHref ? <SectionLink href={opsHref}>Operations view</SectionLink> : undefined}
-      note="Cases beyond SLA counts client queries past their resolution SLA plus the branch's tasks past theirs (or past their due date where no SLA is set). Documents pending are open document-collection tasks — the CRM has no separate document queue."
+      note="Cases beyond SLA counts service requests past their resolution SLA plus the branch's tasks past theirs (or past their due date where no SLA is set). Documents pending are open document-collection tasks — the CRM has no separate document queue."
     >
       <StatGrid cols={6}>
         <Stat label="Transactions pending" value={data.transactionsPending} tone={data.transactionsPending > 0 ? "warn" : "neutral"}
@@ -107,7 +107,7 @@ export function BranchOps({
               hint="in the period" href={`/dashboard/transactions?status=rejected&date_from=${period.from}&date_to=${period.to}`} />
         <Stat label="Cases beyond SLA" value={data.casesBeyondSla} tone={data.casesBeyondSla > 0 ? "bad" : "neutral"} />
         <Stat label="Documents pending" value={data.documentsPending} />
-        <Stat label="Client queries pending" value={data.queriesPending} />
+        <Stat label="Service requests pending" value={data.queriesPending} />
         <Stat
           label="Oldest pending case"
           display={data.oldestPendingDays == null ? <span className="text-muted-foreground" title="Nothing is pending.">—</span> : pluralDays(data.oldestPendingDays)}
@@ -116,15 +116,15 @@ export function BranchOps({
       </StatGrid>
       {showRm && (
         <div className="mt-4">
-          <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Summary by RM</h3>
+          <h3 className="mb-2 text-2xs font-semibold text-muted-foreground">Summary by RM</h3>
           <RmTable
             rows={rmRows(ledger)}
             rmHref={rmHref}
             cols={[
               { key: "to", label: "Tasks open", get: (r) => r.tasksOpenNow },
               { key: "td", label: "Tasks overdue", get: (r) => r.tasksOverdueNow, tone: (v) => (v ? "bad" : "neutral") },
-              { key: "qo", label: "Queries open", get: (r) => r.queriesOpen },
-              { key: "qs", label: "Queries past SLA", get: (r) => r.queriesOverdue, tone: (v) => (v ? "bad" : "neutral") },
+              { key: "qo", label: "Service requests open", get: (r) => r.queriesOpen },
+              { key: "qs", label: "Service requests past SLA", get: (r) => r.queriesOverdue, tone: (v) => (v ? "bad" : "neutral") },
               { key: "sp", label: "SIP rejections pending", get: (r) => r.sipPending, tone: (v) => (v ? "warn" : "neutral") },
             ]}
           />
@@ -146,10 +146,10 @@ export function AttentionCentre({
   const critical = items.filter((i) => i.severity === "critical").length;
   return (
     <Section
-      title="Needs branch head attention"
+      title="Needs attention"
       subtitle={items.length === 0
         ? "Nothing needs escalation right now."
-        : `${items.length} exception type${items.length === 1 ? "" : "s"} — ${critical} critical. Each card says how many, how much, whose, and how old.`}
+        : `${items.length} exception type${items.length === 1 ? "" : "s"} — ${critical} critical.`}
       icon={<AlertOctagon className="size-4" />}
       note={`Critical: SLA breaches, unworked SIP rejections, large redemptions (${formatMoney(highValue)}+) with no follow-up, badly overdue A/B reviews, renewals past due and claims past their service window. Attention: target gaps and ageing. Every threshold is set in Settings → Dashboard thresholds.`}
     >

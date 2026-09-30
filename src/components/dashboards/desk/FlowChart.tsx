@@ -19,7 +19,7 @@ import { formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const PRODUCTS: Array<{ key: FlowProduct; label: string }> = [
-  { key: "all_mf", label: "Mutual Fund" },
+  { key: "all_mf", label: "Mutual fund" },
   { key: "equity", label: "Equity" },
   { key: "debt", label: "Debt" },
   { key: "liquid", label: "Liquid" },

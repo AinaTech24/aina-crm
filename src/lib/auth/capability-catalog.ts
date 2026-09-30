@@ -106,6 +106,7 @@ export const CAPABILITY_CATALOG: Record<Capability, CapabilityMeta> = {
   "financial_plan.manage": { group: "Advice & Products", label: "Create & edit financial plans" },
   "insurance.view": { group: "Advice & Products", label: "View insurance policies" },
   "insurance.write": { group: "Advice & Products", label: "Create & edit insurance policies" },
+  "insurance.view.all": { group: "Advice & Products", label: "See the whole firm's insurance book", hint: "For an Insurance Head" },
   "goal.manage": { group: "Advice & Products", label: "Manage client goals" },
 
   // ── Workflows & Marketing ───────────────────────────────────────────────
@@ -140,6 +141,9 @@ export const CAPABILITY_CATALOG: Record<Capability, CapabilityMeta> = {
   "dashboard.view.rm": { group: "Reports & Dashboards", label: "RM dashboard" },
   "dashboard.view.branch": { group: "Reports & Dashboards", label: "Branch dashboard", hint: "Own branch only" },
   "dashboard.view.all_branches": { group: "Reports & Dashboards", label: "All branches on the dashboard", hint: "Lifts the own-branch lock" },
+  "dashboard.view.insurance": { group: "Reports & Dashboards", label: "Insurance dashboard", hint: "Insurance Business Command Centre" },
+  "dashboard.view.claims": { group: "Reports & Dashboards", label: "Claims dashboard", hint: "Insurance Claims Control Centre — every claim, its stage, SLA and next action" },
+  "dashboards.manage": { group: "Reports & Dashboards", label: "Manage dashboards", hint: "Edit, share, lock and delete any dashboard; set the default dashboard per role and per user" },
 
   // ── Settings ────────────────────────────────────────────────────────────
   "settings.users": { group: "Settings", label: "Manage team & permissions", hint: "Lets this member change others' access" },
