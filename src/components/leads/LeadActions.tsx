@@ -16,6 +16,7 @@ import {
 import { RmSelector } from "@/components/common/RmSelector";
 import { leadStageDisplay } from "@/lib/leads/stages";
 import { ProductInterestDialog } from "@/components/leads/ProductInterestDialog";
+import { DateTimeField } from "@/components/ui/DateTimeField";
 
 type Props = {
   leadId: string;
@@ -405,8 +406,7 @@ function LogActivityDialog({
         </label>
         <label className="block">
           <div className="text-xs font-medium mb-1">Next follow-up (optional)</div>
-          <input
-            type="datetime-local"
+          <DateTimeField
             value={nextFollowUp}
             onChange={(e) => setNextFollowUp(e.target.value)}
             className="w-full border rounded-md px-3 py-2 text-sm bg-background"
@@ -544,8 +544,7 @@ function TaskDialog({
         </div>
         <label className="block">
           <div className="text-xs font-medium mb-1">{isMeeting ? "When" : "Due"}</div>
-          <input
-            type="datetime-local"
+          <DateTimeField
             value={dueAt}
             onChange={(e) => setDueAt(e.target.value)}
             className="w-full border rounded-md px-3 py-2 text-sm bg-background"
@@ -696,8 +695,7 @@ export function ScheduleMeetingDialog({
           </label>
           <label className="block">
             <div className="text-xs font-medium mb-1">When<span className="text-rose-600">*</span></div>
-            <input
-              type="datetime-local"
+            <DateTimeField
               value={meetingDate}
               onChange={(e) => setMeetingDate(e.target.value)}
               className="w-full border rounded-md px-3 py-2 text-sm bg-background"

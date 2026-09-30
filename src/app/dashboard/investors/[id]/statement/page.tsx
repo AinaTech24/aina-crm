@@ -14,6 +14,7 @@ import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { loadAccountStatement } from "@/lib/finance/account-statement";
+import { DateField } from "@/components/ui/DateField";
 
 export const dynamic = "force-dynamic";
 
@@ -74,11 +75,11 @@ export default async function StatementPage({
 <form className="flex items-end gap-2" action={`/dashboard/investors/${id}/statement`}>
             <label className="text-xs">
               <span className="block text-muted-foreground mb-1">From</span>
-              <input type="date" name="from" defaultValue={from} className="input-base h-8 text-xs" />
+              <DateField name="from" defaultValue={from} className="input-base h-8 text-xs" />
             </label>
             <label className="text-xs">
               <span className="block text-muted-foreground mb-1">To</span>
-              <input type="date" name="to" defaultValue={to} className="input-base h-8 text-xs" />
+              <DateField name="to" defaultValue={to} className="input-base h-8 text-xs" />
             </label>
             <button className="btn-secondary text-xs h-8">Apply</button>
           </form>

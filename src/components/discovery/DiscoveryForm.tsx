@@ -13,6 +13,7 @@ import { computeDiscovery, type DiscoveryData } from "@/lib/discovery/calc";
 import { RISK_QUESTIONS } from "@/lib/discovery/risk";
 import { HealthSnapshot } from "./HealthSnapshot";
 import * as O from "@/lib/discovery/options";
+import { DateField } from "@/components/ui/DateField";
 
 type ColType = "text" | "num" | { select: readonly string[] };
 type Col = { key: string; label: string; type: ColType; w?: string };
@@ -49,7 +50,7 @@ export function DiscoveryForm({
         <Section title="1 · Client identity">
           <Grid>
             <F label="Full name (as per PAN)"><T v={data.identification?.fullName} on={(x) => setId("fullName", x)} /></F>
-            <F label="Date of birth"><input type="date" className="input-base text-sm w-full" value={data.identification?.dob ?? ""} onChange={(e) => setId("dob", e.target.value)} /></F>
+            <F label="Date of birth"><DateField className="input-base text-sm w-full" value={data.identification?.dob ?? ""} onChange={(e) => setId("dob", e.target.value)} /></F>
             <F label="PAN"><T v={data.identification?.pan} on={(x) => setId("pan", x.toUpperCase())} mono /></F>
             <F label="Mobile"><T v={data.identification?.mobile} on={(x) => setId("mobile", x)} /></F>
             <F label="Email"><T v={data.identification?.email} on={(x) => setId("email", x)} /></F>
@@ -206,7 +207,7 @@ export function DiscoveryForm({
               <F label="Assessed risk profile"><S v={data.assessment?.riskProfile} on={(x) => setAssess("riskProfile", x)} opts={O.RISK_PROFILES} /></F>
               <F label="Advisory service required"><S v={data.assessment?.advisoryService} on={(x) => setAssess("advisoryService", x)} opts={O.ADVICE_TYPES} /></F>
               <F label="Recommended next action"><S v={data.assessment?.nextAction} on={(x) => setAssess("nextAction", x)} opts={O.NEXT_STEPS} /></F>
-              <F label="Follow-up date"><input type="date" className="input-base text-sm w-full" value={data.assessment?.followUpDate ?? ""} onChange={(e) => setAssess("followUpDate", e.target.value)} /></F>
+              <F label="Follow-up date"><DateField className="input-base text-sm w-full" value={data.assessment?.followUpDate ?? ""} onChange={(e) => setAssess("followUpDate", e.target.value)} /></F>
               <F label="RM conviction (1–5)"><S v={data.assessment?.convictionRating} on={(x) => setAssess("convictionRating", x)} opts={O.RM_RATINGS} /></F>
               <F label="Review type"><S v={data.assessment?.reviewType} on={(x) => setAssess("reviewType", x)} opts={O.REVIEW_TYPES} /></F>
             </Grid>

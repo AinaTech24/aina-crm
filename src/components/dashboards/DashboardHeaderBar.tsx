@@ -25,9 +25,9 @@ import { createPortal } from "react-dom";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useTransition } from "react";
 import { CalendarDays, ChevronDown, Plus, LayoutGrid, Loader2, Check } from "lucide-react";
-import { DatePicker } from "@/components/ui/DatePicker";
 import { SelectField } from "@/components/ui/SelectField";
 import type { Period } from "@/lib/dashboard/period";
+import { DateFieldInline, DateRangeField } from "@/components/ui/DateRangeField";
 
 const VIEWS: { href: string; label: string }[] = [
   { href: "/dashboard/boards", label: "My Dashboards" },
@@ -294,8 +294,8 @@ export function DashboardHeaderBar({
             <span>Since a date</span><ChevronDown className={`size-3.5 transition-transform ${sub === "since" ? "rotate-180" : ""}`} />
           </button>
           {sub === "since" && (
-            <div className="px-2 py-1.5">
-              <DatePicker value="" onChange={(iso) => { if (iso) apply({ period: "custom", pstart: iso }); }} size="sm" className="w-full" ariaLabel="Since date" />
+            <div className="w-72 max-w-full px-2 py-1.5">
+              <DateFieldInline value="" label="Since date" max={new Date().toISOString().slice(0, 10)} onChange={(iso) => { if (iso) apply({ period: "custom", pstart: iso }); }} />
             </div>
           )}
 
@@ -304,15 +304,8 @@ export function DashboardHeaderBar({
             <span>Custom range</span><ChevronDown className={`size-3.5 transition-transform ${sub === "range" ? "rotate-180" : ""}`} />
           </button>
           {sub === "range" && (
-            <div className="px-2 py-1.5 space-y-1.5">
-              <div className="flex items-center gap-1.5">
-                <span className="text-2xs uppercase tracking-wide text-muted-foreground w-8">From</span>
-                <DatePicker value={rangeFrom} onChange={setRangeFrom} size="sm" className="flex-1" ariaLabel="Range from" />
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-2xs uppercase tracking-wide text-muted-foreground w-8">To</span>
-                <DatePicker value={rangeTo} onChange={setRangeTo} size="sm" className="flex-1" ariaLabel="Range to" />
-              </div>
+            <div className="w-72 max-w-full px-2 py-1.5 space-y-2">
+              <DateRangeField from={rangeFrom} to={rangeTo} onChange={(f, t) => { setRangeFrom(f); setRangeTo(t); }} />
               <button className="w-full btn-primary text-xs justify-center disabled:opacity-50" disabled={!rangeFrom || !rangeTo}
                 onClick={() => apply({ period: "custom", pfrom: rangeFrom, pto: rangeTo })}>
                 Apply range

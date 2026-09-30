@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, FileText, Loader2, Upload, X, PenLine, ImageUp, Save, Check } from "lucide-react";
 import { isFieldVisible, validateNomineeAllocations, type KycField } from "@/lib/onboarding/kyc-fields";
+import { DateField } from "@/components/ui/DateField";
 
 type RequiredDoc = { key: string; label: string; required?: boolean };
 
@@ -428,9 +429,11 @@ function FieldRow({ field, value, onChange }: { field: KycField; value: string; 
             </option>
           ))}
         </select>
+      ) : field.type === "date" ? (
+        <DateField value={value} onChange={(e) => onChange(e.target.value)} />
       ) : (
         <input
-          type={field.type === "tel" ? "tel" : field.type === "email" ? "email" : field.type === "date" ? "date" : field.type === "number" ? "number" : "text"}
+          type={field.type === "tel" ? "tel" : field.type === "email" ? "email" : field.type === "number" ? "number" : "text"}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={field.placeholder ?? ""}

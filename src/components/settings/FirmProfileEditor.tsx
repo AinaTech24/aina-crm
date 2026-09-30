@@ -13,6 +13,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Save, Loader2, Pencil, X, Plus } from "lucide-react";
+import { DateField } from "@/components/ui/DateField";
 
 const LEGAL_STRUCTURES = [
   { value: "", label: "—" },
@@ -367,8 +368,7 @@ export function FirmProfileEditor({ tenant }: { tenant: Tenant }) {
             </select>
           </Field>
           <Field label="Date of incorporation">
-            <input
-              type="date"
+            <DateField
               value={v.incorporationDate}
               onChange={(e) => setField("incorporationDate", e.target.value)}
               className="input-base text-sm w-full"

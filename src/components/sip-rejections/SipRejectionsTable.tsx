@@ -14,6 +14,7 @@ import { RmSelector } from "@/components/common/RmSelector";
 import { RecoveryStatusUpdater } from "@/components/sip-rejections/RecoveryStatusUpdater";
 import { RemarkEditor } from "@/components/sip-rejections/RemarkEditor";
 import { formatINR, formatDate, formatRelative } from "@/lib/utils";
+import { DateField } from "@/components/ui/DateField";
 
 export type SipRejectionRow = {
   id: string;
@@ -159,7 +160,7 @@ export function SipRejectionsTable({ rows }: { rows: SipRejectionRow[] }) {
             </div>
           )}
           {bulk === "follow_up" && (
-            <input type="date" value={followDate} onChange={(e) => setFollowDate(e.target.value)} className="input-base text-sm" />
+            <DateField value={followDate} onChange={(e) => setFollowDate(e.target.value)} className="input-base text-sm" />
           )}
           <button onClick={runBulk} disabled={busy} className="btn-primary text-xs">
             {busy && <Loader2 className="size-3.5 animate-spin" />} Apply to {selected.size}

@@ -13,6 +13,8 @@ import { Loader2, PencilLine } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import { buttonClass } from "@/components/ui/button-class";
 import { BULK_FIELDS, BULK_FIELD_BY_KEY, BULK_TEXT_MAX } from "@/lib/investors/bulk-fields";
+import { DateField } from "@/components/ui/DateField";
+import { formatDateLabel } from "@/lib/dates/typed-date";
 
 export type MassUpdateOptions = {
   branches: Array<{ value: string; label: string }>;
@@ -65,7 +67,8 @@ export function MassUpdateDialog({
 
   const clients = `${count.toLocaleString("en-IN")} ${count === 1 ? "client" : "clients"}`;
   const shown = clear ? null : value.trim();
-  const shownLabel = shown == null ? null : (choices.find((c) => c.value === shown)?.label ?? shown);
+  const shownLabel =
+    shown == null ? null : def?.kind === "date" ? formatDateLabel(shown) || shown : (choices.find((c) => c.value === shown)?.label ?? shown);
   const ready = !!def && (clear || !!value.trim());
 
   const sentence = !def
@@ -154,7 +157,7 @@ export function MassUpdateDialog({
                   ))}
                 </select>
               ) : def.kind === "date" ? (
-                <input id={inputId} type="date" value={value} onChange={(e) => setValue(e.target.value)} disabled={clear} className="input-base w-full" />
+                <DateField id={inputId} value={value} onChange={(e) => setValue(e.target.value)} disabled={clear} className="input-base w-full" />
               ) : (
                 <>
                   <input

@@ -11,6 +11,7 @@ import { Loader2, X, Plus, Pin, PinOff, Trash2, Megaphone, Save, Edit2, Eye, Eye
 import { useToast } from "@/components/ui/Toast";
 import { confirmDialog } from "@/components/ui/ConfirmProvider";
 import { buttonClass } from "@/components/ui/button-class";
+import { DateTimeField } from "@/components/ui/DateTimeField";
 
 type Row = Record<string, any>;
 
@@ -474,8 +475,7 @@ function Composer({
               </select>
             </Field>
             <Field label="Expires (optional)">
-              <input
-                type="datetime-local"
+              <DateTimeField
                 value={expiresAt}
                 onChange={(e) => setExpiresAt(e.target.value)}
                 className="input-base"

@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Check, Clock, X, MessageCircle, Loader2 } from "lucide-react";
 import { Tooltip } from "@/components/ui/Tooltip";
+import { DateField } from "@/components/ui/DateField";
 
 type Props = {
   itemKey: string;
@@ -187,8 +188,7 @@ function SnoozeMenu({
       </button>
       <label className="block px-2.5 pb-1.5 pt-1 text-2xs text-muted-foreground">
         Pick date
-        <input
-          type="date"
+        <DateField
           min={dayPlus(1)}
           onChange={(e) => e.target.value && onPick(e.target.value)}
           className="mt-1 block w-full rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground"

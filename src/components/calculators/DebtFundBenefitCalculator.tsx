@@ -14,6 +14,7 @@
 import { useMemo, useState } from "react";
 import { ClientNameField } from "./ClientNameField";
 import { computeDebtFundBenefit } from "@/lib/calculators/debt-fund-benefit";
+import { DateField } from "@/components/ui/DateField";
 
 export function DebtFundBenefitCalculator() {
   const [clientName, setClientName] = useState("");
@@ -59,11 +60,11 @@ export function DebtFundBenefitCalculator() {
       {/* Inputs */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <Field label="Purchase date">
-          <input type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} className="input-base text-sm w-full" />
+          <DateField value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} className="input-base text-sm w-full" />
         </Field>
         <Num label="Investment amount (₹)" value={investmentAmount} setValue={setInvestmentAmount} />
         <Field label="Redemption date (sell now)">
-          <input type="date" value={redemptionDate} onChange={(e) => setRedemptionDate(e.target.value)} className="input-base text-sm w-full" />
+          <DateField value={redemptionDate} onChange={(e) => setRedemptionDate(e.target.value)} className="input-base text-sm w-full" />
         </Field>
         <Num label="Current market value (₹)" value={currentMarketValue} setValue={setCurrentMarketValue} />
         <Num label="Assumed indexation rate (%)" value={indexationRatePct} setValue={setIndexationRatePct} step={0.5} />

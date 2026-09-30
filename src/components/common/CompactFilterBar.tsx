@@ -13,6 +13,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Search, X, ChevronDown, ChevronRight, SlidersHorizontal, Loader2, ArrowDownUp, Check } from "lucide-react";
 import { formatMoney } from "@/lib/format";
+import { DateRangeField } from "@/components/ui/DateRangeField";
 
 /**
  * Accepts the full legacy `FilterDef` union so any page still on the old
@@ -351,23 +352,14 @@ export function CompactFilterBar({
                               onApply={(min, max) => pushParams({ [`${f.key}_min`]: min, [`${f.key}_max`]: max })}
                             />
                           ) : (
-                            <div className="flex items-center gap-1.5">
-                              <input
-                                type="date"
-                                value={values[`${f.key}_from`]}
-                                onChange={(e) => pushParams({ [`${f.key}_from`]: e.target.value })}
-                                className="input-base h-7 text-2xs flex-1"
-                                aria-label={`${f.label} from`}
-                              />
-                              <span className="text-muted-foreground text-xs">→</span>
-                              <input
-                                type="date"
-                                value={values[`${f.key}_to`]}
-                                onChange={(e) => pushParams({ [`${f.key}_to`]: e.target.value })}
-                                className="input-base h-7 text-2xs flex-1"
-                                aria-label={`${f.label} to`}
-                              />
-                            </div>
+                            // Inline calendar: a floating one would cover this panel.
+                            <DateRangeField
+                              from={String(values[`${f.key}_from`] || "")}
+                              to={String(values[`${f.key}_to`] || "")}
+                              fromLabel={`${f.label} from`}
+                              toLabel="To"
+                              onChange={(from, to) => pushParams({ [`${f.key}_from`]: from, [`${f.key}_to`]: to })}
+                            />
                           )}
                         </div>
                       )}

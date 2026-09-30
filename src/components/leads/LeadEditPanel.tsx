@@ -14,6 +14,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Save, X, Loader2 } from "lucide-react";
+import { DateField } from "@/components/ui/DateField";
 
 const SOURCES = [
   ["referral", "Referral"],
@@ -244,8 +245,7 @@ export function LeadEditPanel({ lead }: { lead: any }) {
 
           <Row label="Next follow-up">
             {editing ? (
-              <input
-                type="date"
+              <DateField
                 value={form.nextFollowUpAt}
                 onChange={(e) => set("nextFollowUpAt", e.target.value)}
                 className="w-full border rounded-md px-2 py-1 text-sm bg-background"

@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { RmSelector } from "@/components/common/RmSelector";
 import { LEAD_PIPELINE } from "@/lib/leads/stages";
+import { DateField } from "@/components/ui/DateField";
 
 export type BulkActionType =
   | "assign"
@@ -241,8 +242,7 @@ export function FloatingBulkBar({
           {activeModal === "review" && (
             <div className="space-y-3">
               <p className="text-muted-foreground">Set next scheduled review date for {selectedCount} clients:</p>
-              <input
-                type="date"
+              <DateField
                 value={reviewDate}
                 onChange={(e) => setReviewDate(e.target.value)}
                 className="input-base text-xs w-full"

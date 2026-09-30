@@ -9,6 +9,7 @@ import { useMemo, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { computeXirr, type DatedCashflow } from "@/lib/calculators/xirr";
 import { inr, Stat, Insight } from "./ui";
+import { DateField } from "@/components/ui/DateField";
 
 let nextId = 1;
 type Row = DatedCashflow & { id: number };
@@ -43,7 +44,7 @@ export function XirrCalculator() {
         {rows.map((r, i) => (
           <div key={r.id} className="flex items-end gap-2">
             <label className="block"><span className="text-2xs text-muted-foreground block mb-0.5">Date</span>
-              <input type="date" value={r.date} onChange={(e) => update(r.id, { date: e.target.value })} className="input-base text-sm w-44" /></label>
+              <DateField value={r.date} onChange={(e) => update(r.id, { date: e.target.value })} className="input-base text-sm w-44" /></label>
             <label className="block"><span className="text-2xs text-muted-foreground block mb-0.5">Amount (₹) — invest −, redeem +</span>
               <input type="number" step={10000} value={r.amount} onChange={(e) => update(r.id, { amount: Number(e.target.value) || 0 })} className={`input-base text-sm w-40 text-right ${r.amount < 0 ? "text-rose-600" : "text-emerald-700"}`} /></label>
             <span className="text-2xs text-muted-foreground pb-2">{r.amount < 0 ? "investment" : "inflow / value"}</span>

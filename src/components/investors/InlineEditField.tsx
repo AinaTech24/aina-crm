@@ -16,6 +16,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Check, X, Loader2 } from "lucide-react";
+import { DateField } from "@/components/ui/DateField";
 
 export type InlineEditSpec = {
   /** Investor id. */
@@ -116,11 +117,13 @@ export function InlineEditField({ spec, display }: { spec: InlineEditSpec; displ
           {(spec.nullable || !(spec.options ?? []).some((o) => o.value === "")) && <option value="">Select…</option>}
           {spec.options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
+      ) : spec.type === "date" ? (
+        <DateField value={val} onChange={(e) => setVal(e.target.value)} disabled={busy} size="sm" className="w-full max-w-60" />
       ) : (
         <input
           autoFocus
           disabled={busy}
-          type={spec.type === "date" ? "date" : spec.type === "email" ? "email" : spec.type === "tel" ? "tel" : "text"}
+          type={spec.type === "email" ? "email" : spec.type === "tel" ? "tel" : "text"}
           value={val}
           maxLength={spec.maxLength}
           placeholder={spec.placeholder}

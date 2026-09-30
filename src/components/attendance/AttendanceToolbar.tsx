@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Search, SlidersHorizontal, X } from "lucide-react";
+import { DateField } from "@/components/ui/DateField";
 
 export function AttendanceToolbar({ statusOptions }: { statusOptions: { value: string; label: string }[] }) {
   const router = useRouter();
@@ -116,9 +117,9 @@ export function AttendanceToolbar({ statusOptions }: { statusOptions: { value: s
             <div>
               <div className="text-2xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Date range</div>
               <div className="flex items-center gap-1.5">
-                <input type="date" value={dateFrom} onChange={(e) => setParam({ date_from: e.target.value || null, today: null })} className="input-base h-8 text-xs flex-1 min-w-0" aria-label="From date" />
+                <DateField value={dateFrom} onChange={(e) => setParam({ date_from: e.target.value || null, today: null })} className="input-base h-8 text-xs flex-1 min-w-0" aria-label="From date" />
                 <span className="text-muted-foreground text-xs">–</span>
-                <input type="date" value={dateTo} onChange={(e) => setParam({ date_to: e.target.value || null, today: null })} className="input-base h-8 text-xs flex-1 min-w-0" aria-label="To date" />
+                <DateField value={dateTo} onChange={(e) => setParam({ date_to: e.target.value || null, today: null })} className="input-base h-8 text-xs flex-1 min-w-0" aria-label="To date" />
               </div>
             </div>
 

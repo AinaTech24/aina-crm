@@ -12,6 +12,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { taskChecklist, type Task } from "@/db/schema";
 import { Loader2, ListChecks, Trash2, Clock3, ShieldCheck, CalendarClock, Gauge, Check, X, Pencil, ChevronDown } from "lucide-react";
+import { DateField } from "@/components/ui/DateField";
 
 // Priority → left-accent stripe colour (row hierarchy at a glance).
 const PRIORITY_ACCENT: Record<string, string> = {
@@ -366,8 +367,7 @@ export function TaskList({ initialRows, currentUserId, canManageAll = false, ini
             >
               Next week
             </button>
-            <input
-              type="date"
+            <DateField
               onChange={(e) => { if (e.target.value) { const d = new Date(e.target.value); d.setHours(18, 0, 0, 0); runBulk("reschedule", d.toISOString()); } }}
               className="input-base h-7 text-xs w-[130px]"
               aria-label="Change due date to"

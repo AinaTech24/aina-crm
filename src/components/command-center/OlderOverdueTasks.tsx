@@ -18,6 +18,7 @@ import { ChevronRight, Loader2 } from "lucide-react";
 import { buttonClass } from "@/components/ui/button-class";
 import { confirmDialog } from "@/components/ui/ConfirmProvider";
 import { CommandItemActions } from "@/components/command-center/CommandItemActions";
+import { DateField } from "@/components/ui/DateField";
 
 type Row = { id: string; title: string; detail?: string; href: string; ageDays?: number; itemKey?: string };
 
@@ -118,8 +119,7 @@ export function OlderOverdueTasks({ count, items, ids }: { count: number; items:
               </button>
               <label className="block px-2.5 pb-1.5 pt-1 text-2xs text-muted-foreground">
                 Pick date
-                <input
-                  type="date"
+                <DateField
                   min={dayPlus(0)}
                   onChange={(e) => e.target.value && rescheduleTo(e.target.value)}
                   className="mt-1 block w-full rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground"

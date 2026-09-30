@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, Send, X, MessageSquare, Mail, MessageSquarePlus } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
+import { DateField } from "@/components/ui/DateField";
 
 type TemplateInfo = {
   id: string;
@@ -224,8 +225,7 @@ export function QuickCommsPanel({
                           {v.required && <span className="text-rose-600 ml-0.5">*</span>}
                         </div>
                         {v.type === "date" ? (
-                          <input
-                            type="date"
+                          <DateField
                             value={vars[v.key] ?? ""}
                             onChange={(e) => setVars({ ...vars, [v.key]: e.target.value })}
                             className="w-full border rounded-md px-3 py-2 text-sm bg-background text-foreground font-sans"

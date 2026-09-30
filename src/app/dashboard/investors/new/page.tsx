@@ -317,7 +317,7 @@ function NewInvestorPageInner() {
           <Field label="Date of onboarding" type="date" value={form.onboardedAt} onChange={(v) => set("onboardedAt", v)} />
           <Field label="Anniversary date" type="date" value={form.anniversaryDate} onChange={(v) => set("anniversaryDate", v)} />
           <Field label="Last meeting date" type="date" value={form.lastReviewAt} onChange={(v) => set("lastReviewAt", v)} />
-          <Field label="Next meeting date" type="date" value={form.nextReviewAt} onChange={(v) => set("nextReviewAt", v)} />
+          <Field label="Next meeting date" type="date" future value={form.nextReviewAt} onChange={(v) => set("nextReviewAt", v)} />
           <SelectField label="Review frequency" value={form.reviewFrequency} onChange={(v) => set("reviewFrequency", v)} options={[{ value: "", label: "Select" }, { value: "monthly", label: "Monthly" }, { value: "quarterly", label: "Quarterly" }, { value: "half_yearly", label: "Half-yearly" }, { value: "annual", label: "Annual" }]} />
         </Section>
 
@@ -368,6 +368,7 @@ function Field({
   type = "text",
   placeholder,
   required,
+  future,
 }: {
   label: string;
   value: string;
@@ -375,6 +376,8 @@ function Field({
   type?: string;
   placeholder?: string;
   required?: boolean;
+  /** A date that may lie ahead (a next meeting); others are capped at today. */
+  future?: boolean;
 }) {
   const today = new Date().toISOString().slice(0, 10);
   return (
@@ -384,7 +387,7 @@ function Field({
         {required && <span className="text-rose-600 ml-0.5">*</span>}
       </div>
       {type === "date" ? (
-        <DateField value={value} onChange={(e) => onChange(e.target.value)} max={today} required={required} className="w-full" />
+        <DateField value={value} onChange={(e) => onChange(e.target.value)} max={future ? undefined : today} required={required} className="w-full" />
       ) : (
         <input
           type={type}

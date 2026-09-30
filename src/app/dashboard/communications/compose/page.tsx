@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { ChevronLeft, Mail, Loader2, Send, Clock, AlertTriangle, ShieldCheck } from "lucide-react";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
 import { SelectField } from "@/components/ui/SelectField";
+import { DateTimeField } from "@/components/ui/DateTimeField";
 
 type Finding = { severity: string; message: string; rule?: string };
 
@@ -176,8 +177,7 @@ export default function ComposePage() {
               <Clock className="size-3.5" /> Schedule for later
             </label>
             {scheduleOn && (
-              <input
-                type="datetime-local"
+              <DateTimeField
                 value={scheduledAt}
                 onChange={(e) => setScheduledAt(e.target.value)}
                 className="input-base"

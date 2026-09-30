@@ -17,6 +17,7 @@ import { ChevronLeft, ChevronRight, ChevronDown, Search, Plus, Trash2, Save, Ale
 import { SelectField } from "@/components/ui/SelectField";
 import { MultiSelectField } from "@/components/ui/MultiSelectField";
 import { TimeField } from "@/components/ui/TimeField";
+import { DateField } from "@/components/ui/DateField";
 
 type ModuleField = {
   key: string;
@@ -1032,7 +1033,7 @@ function CriteriaValueInput({ field, op, value, onChange }: { field: ModuleField
     if (op === "last_n_days" || op === "next_n_days") {
       return <input type="number" className="input-base text-xs flex-1" min={1} value={value ?? ""} onChange={(e) => onChange(Number(e.target.value))} placeholder="N days" />;
     }
-    return <input type="date" className="input-base text-xs flex-1" value={value ?? ""} onChange={(e) => onChange(e.target.value)} />;
+    return <DateField className="input-base text-xs flex-1" value={value ?? ""} onChange={(e) => onChange(e.target.value)} />;
   }
   if (field.type === "integer" || field.type === "number" || field.type === "currency") {
     return <input type="number" className="input-base text-xs flex-1" value={value ?? ""} onChange={(e) => onChange(Number(e.target.value))} />;

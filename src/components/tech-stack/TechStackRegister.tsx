@@ -9,6 +9,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Plus, Trash2, ExternalLink, AlertTriangle } from "lucide-react";
 import { formatINR, formatDate } from "@/lib/utils";
+import { DateField } from "@/components/ui/DateField";
 
 const CATEGORIES: Array<{ value: string; label: string }> = [
   { value: "practice_setup", label: "Practice Setup" },
@@ -198,7 +199,7 @@ export function TechStackRegister({ initial }: { initial: Tool[] }) {
           </label>
           <label className="block">
             <div className="text-2xs font-medium text-muted-foreground mb-1">Renewal date</div>
-            <input type="date" value={form.renewalDate} onChange={(e) => setForm((s) => ({ ...s, renewalDate: e.target.value }))} className="input-base text-sm w-full" />
+            <DateField value={form.renewalDate} onChange={(e) => setForm((s) => ({ ...s, renewalDate: e.target.value }))} className="input-base text-sm w-full" />
           </label>
         </div>
         <div className="flex items-center justify-between mt-3">

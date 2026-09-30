@@ -10,6 +10,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Loader2, X } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
+import { DateField } from "@/components/ui/DateField";
 
 type Register = "dsc" | "incident" | "unsuitability";
 
@@ -91,7 +92,7 @@ export function RegisterQuickAdd({ register, defaultFy }: { register: Register; 
                       <option value="acknowledged">Acknowledged</option>
                     </select>
                   </Field>
-                  <Field label="Submitted on"><input type="date" className="input-base" onChange={(e) => set("submittedOn", e.target.value)} /></Field>
+                  <Field label="Submitted on"><DateField className="input-base" onChange={(e) => set("submittedOn", e.target.value)} /></Field>
                 </div>
               </>
             )}
@@ -109,7 +110,7 @@ export function RegisterQuickAdd({ register, defaultFy }: { register: Register; 
                   </select>
                 </Field>
                 <div className="grid grid-cols-2 gap-2">
-                  <Field label="Occurred on"><input type="date" className="input-base" onChange={(e) => set("occurredOn", e.target.value)} required /></Field>
+                  <Field label="Occurred on"><DateField className="input-base" onChange={(e) => set("occurredOn", e.target.value)} required /></Field>
                   <Field label="AMC (if any)"><input className="input-base" onChange={(e) => set("amcName", e.target.value)} /></Field>
                 </div>
                 <Field label="What happened"><input className="input-base" onChange={(e) => set("title", e.target.value)} required /></Field>
@@ -128,7 +129,7 @@ export function RegisterQuickAdd({ register, defaultFy }: { register: Register; 
                 </Field>
                 <div className="grid grid-cols-2 gap-2">
                   <Field label="Scheme"><input className="input-base" onChange={(e) => set("schemeName", e.target.value)} /></Field>
-                  <Field label="Communicated on"><input type="date" className="input-base" onChange={(e) => set("communicatedOn", e.target.value)} required /></Field>
+                  <Field label="Communicated on"><DateField className="input-base" onChange={(e) => set("communicatedOn", e.target.value)} required /></Field>
                 </div>
                 <Field label="Why it's unsuitable"><textarea rows={2} className="input-base" onChange={(e) => set("reason", e.target.value)} required /></Field>
                 <div className="flex flex-col gap-1.5">

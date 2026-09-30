@@ -14,6 +14,7 @@ import { TaskComments } from "./TaskComments";
 import { TaskTimePanel } from "./TaskTimePanel";
 import { TaskAttachments } from "./TaskAttachments";
 import { TaskWatchersDeps } from "./TaskWatchersDeps";
+import { DateTimeField } from "@/components/ui/DateTimeField";
 
 interface TaskDetailDrawerProps {
   task: Task & {
@@ -533,8 +534,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
                 <option value="custom">Custom date &amp; time…</option>
               </SelectField>
               {reminderMode === "custom" && (
-                <input
-                  type="datetime-local"
+                <DateTimeField
                   value={reminderCustom}
                   onChange={(e) => { setReminderCustom(e.target.value); setReminderDirty(true); }}
                   className="input-base text-xs mt-1.5 w-full"

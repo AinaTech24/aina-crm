@@ -13,6 +13,7 @@ import {
   type AssetType, type AcquisitionBasis, type Improvement,
 } from "@/lib/calculators/capital-gains";
 import { inr, fmtPct, clampNum, NumberField, Field, Segmented, Section, Stat, Table, Insight } from "./ui";
+import { DateField } from "@/components/ui/DateField";
 
 const ASSET_TYPES: { value: AssetType; label: string }[] = [
   { value: "immovable", label: "Immovable Property" },
@@ -87,7 +88,7 @@ export function CapitalGainsTaxCalculator() {
         <Field label="Asset name"><input value={assetName} onChange={(e) => setAssetName(e.target.value)} className="input-base text-sm w-full" /></Field>
         <NumberField label="Purchase price (₹)" value={purchasePrice} setValue={setPurchasePrice} step={100000} />
         <Field label="Date of purchase">
-          <input type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} className="input-base text-sm w-full" />
+          <DateField value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} className="input-base text-sm w-full" />
         </Field>
         {basis === "before_2001" && (
           <NumberField label="FMV as on 01/04/2001 (₹)" value={fmv2001} setValue={setFmv2001} step={100000} />
@@ -122,7 +123,7 @@ export function CapitalGainsTaxCalculator() {
         <NumberField label="Sale price (₹)" value={salePrice} setValue={setSalePrice} step={100000} />
         <NumberField label="Sales expenses (₹)" value={salesExpenses} setValue={setSalesExpenses} step={10000} />
         <Field label="Sale date">
-          <input type="date" value={saleDate} onChange={(e) => setSaleDate(e.target.value)} className="input-base text-sm w-full" />
+          <DateField value={saleDate} onChange={(e) => setSaleDate(e.target.value)} className="input-base text-sm w-full" />
         </Field>
         <NumberField label="Expected sale-year CII (optional)" value={expectedSaleCII} setValue={setExpectedSaleCII} step={1} />
         <NumberField label="Income-tax slab of assessee (%)" value={incomeTaxSlabPct} setValue={setIncomeTaxSlabPct} step={5} />

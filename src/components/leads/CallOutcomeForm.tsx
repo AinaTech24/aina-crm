@@ -22,6 +22,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Phone, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { DateField } from "@/components/ui/DateField";
 
 type Outcome =
   | "connected"
@@ -152,7 +153,7 @@ export function CallOutcomeForm({ leadId }: { leadId: string }) {
       {outcome === "appointment_booked" && (
         <div className="grid grid-cols-2 gap-2 p-3 rounded-md border border-brand-cyan/30 bg-brand-cyan-light/20">
           <Field label="Date *">
-            <input type="date" value={meetingDate} onChange={(e) => setMeetingDate(e.target.value)} className="input-base text-xs w-full" />
+            <DateField value={meetingDate} onChange={(e) => setMeetingDate(e.target.value)} className="input-base text-xs w-full" />
           </Field>
           <Field label="Time *">
             <input type="time" value={meetingTime} onChange={(e) => setMeetingTime(e.target.value)} className="input-base text-xs w-full" />
@@ -178,7 +179,7 @@ export function CallOutcomeForm({ leadId }: { leadId: string }) {
 
       {outcome === "call_later" && (
         <Field label="Next follow-up date *">
-          <input type="date" value={followUpDate} onChange={(e) => setFollowUpDate(e.target.value)} className="input-base text-xs w-full" />
+          <DateField value={followUpDate} onChange={(e) => setFollowUpDate(e.target.value)} className="input-base text-xs w-full" />
         </Field>
       )}
 

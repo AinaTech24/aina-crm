@@ -9,6 +9,7 @@ import { formatINR } from "@/lib/utils";
 import { getBusinessSummary } from "@/lib/business/report";
 import { ASSET_CLASS_LABELS, type AssetClass } from "@/lib/business/asset-class";
 import { PRODUCT_TYPES, BUSINESS_ENTRY_STATUSES } from "@/db/schema/business_entries";
+import { DateField } from "@/components/ui/DateField";
 
 export const dynamic = "force-dynamic";
 
@@ -96,11 +97,11 @@ export default async function BusinessDashboardPage({
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 items-end">
           <label className="block">
             <span className="text-xs text-muted-foreground">From date</span>
-            <input type="date" name="from" defaultValue={fromISO} className="input-base mt-1" />
+            <DateField name="from" defaultValue={fromISO} className="input-base mt-1" />
           </label>
           <label className="block">
             <span className="text-xs text-muted-foreground">To date</span>
-            <input type="date" name="to" defaultValue={toISO} className="input-base mt-1" />
+            <DateField name="to" defaultValue={toISO} className="input-base mt-1" />
           </label>
           <label className="block">
             <span className="text-xs text-muted-foreground">User (RM)</span>

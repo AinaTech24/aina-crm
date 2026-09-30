@@ -41,6 +41,8 @@ import { STAGE_ACTIONS, type StageAction, type DialogKind } from "@/lib/blueprin
 import { isFieldVisible, validateNomineeAllocations, type KycField } from "@/lib/onboarding/kyc-fields";
 import { ScheduleMeetingModal } from "@/components/review-meetings/ScheduleMeetingModal";
 import { CompleteMeetingModal } from "@/components/review-meetings/CompleteMeetingModal";
+import { DateTimeField } from "@/components/ui/DateTimeField";
+import { DateField } from "@/components/ui/DateField";
 
 /** Does this href open the schedule-meeting page? If so we pop a modal instead. */
 const isMeetingHref = (href: string) => /\/review-meetings\/new\b/.test(href);
@@ -819,8 +821,7 @@ export function GuidedStageActions({
                     ))}
                   </div>
                 )}
-                <input
-                  type="datetime-local"
+                <DateTimeField
                   required
                   value={callBackAt}
                   onChange={(e) => setCallBackAt(e.target.value)}
@@ -887,8 +888,7 @@ export function GuidedStageActions({
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs text-foreground font-medium">Due by (date &amp; time)</label>
-                  <input
-                    type="datetime-local"
+                  <DateTimeField
                     value={taskDueAt}
                     onChange={(e) => setTaskDueAt(e.target.value)}
                     className="input-base text-xs w-full"
@@ -1202,9 +1202,11 @@ function CollectField({ field, value, onChange }: { field: KycField; value: stri
             </option>
           ))}
         </select>
+      ) : field.type === "date" ? (
+        <DateField value={value} onChange={(e) => onChange(e.target.value)} />
       ) : (
         <input
-          type={field.type === "tel" ? "tel" : field.type === "email" ? "email" : field.type === "date" ? "date" : field.type === "number" ? "number" : "text"}
+          type={field.type === "tel" ? "tel" : field.type === "email" ? "email" : field.type === "number" ? "number" : "text"}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={field.placeholder ?? ""}

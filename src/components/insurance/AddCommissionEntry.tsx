@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus, Loader2, X } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { useToast } from "@/components/ui/Toast";
+import { DateField } from "@/components/ui/DateField";
 
 export const COMMISSION_TYPE_LABELS: Record<string, string> = {
   first_year: "First-year",
@@ -101,7 +102,7 @@ export function AddCommissionEntry() {
 
             <div className="grid grid-cols-2 gap-3">
               <Field label="Date *">
-                <input type="date" value={f.entryDate} onChange={(e) => set("entryDate", e.target.value)} className="input-base" />
+                <DateField value={f.entryDate} onChange={(e) => set("entryDate", e.target.value)} className="input-base" />
               </Field>
               <Field label="Type">
                 <SelectField value={f.commissionType} onChange={(e) => set("commissionType", e.target.value)} className="w-full">

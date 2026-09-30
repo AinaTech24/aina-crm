@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from "react";
 import { SlidersHorizontal } from "lucide-react";
+import { DateField } from "@/components/ui/DateField";
 
 export type CustomFieldDef = {
   id: string;
@@ -121,7 +122,7 @@ function Field({ d, value, onChange }: { d: CustomFieldDef; value: any; onChange
     case "number":
       return <input type="number" value={value ?? ""} onChange={(e) => onChange(e.target.value)} className="input-base text-sm w-full" />;
     case "date":
-      return <input type="date" value={value ?? ""} onChange={(e) => onChange(e.target.value)} className="input-base text-sm w-full" />;
+      return <DateField value={value ?? ""} onChange={(e) => onChange(e.target.value)} className="input-base text-sm w-full" />;
     case "email":
       return <input type="email" value={value ?? ""} onChange={(e) => onChange(e.target.value)} placeholder="name@example.com" className="input-base text-sm w-full" />;
     case "phone":

@@ -11,6 +11,7 @@
 import { useState } from "react";
 import { Plus, Trash2, Upload, FileText, Loader2 } from "lucide-react";
 import type { Nominee } from "@/lib/investors/nominee";
+import { DateField } from "@/components/ui/DateField";
 
 export function NomineesField({
   value,
@@ -179,13 +180,17 @@ function Inp({
   return (
     <label className="block">
       <div className="text-xs font-medium mb-1">{label}</div>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full border rounded-md px-2.5 py-1.5 text-sm bg-background"
-      />
+      {type === "date" ? (
+        <DateField value={value} onChange={(e) => onChange(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
+      ) : (
+        <input
+          type={type}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="w-full border rounded-md px-2.5 py-1.5 text-sm bg-background"
+        />
+      )}
     </label>
   );
 }

@@ -15,6 +15,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Loader2, X, Plus, MapPin, Phone, Save, NotebookPen } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
+import { DateTimeField } from "@/components/ui/DateTimeField";
 
 type Subject = { type: "investor" | "lead" | "family"; id: string; name: string; phone?: string | null };
 
@@ -145,7 +146,7 @@ function LogActivityDrawer({ subject: fixed, onClose, initialKind = "call" }: { 
 
           <Field label="Subject"><input value={subjectLine} onChange={(e) => setSubjectLine(e.target.value)} placeholder="e.g. SIP top-up discussion" className="input-base" /></Field>
           <Field label="Notes / outcome"><textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} className="input-base" placeholder="What was discussed / agreed?" /></Field>
-          <Field label="Next follow-up (optional)"><input type="datetime-local" value={nextFollowup} onChange={(e) => setNextFollowup(e.target.value)} className="input-base" /></Field>
+          <Field label="Next follow-up (optional)"><DateTimeField value={nextFollowup} onChange={(e) => setNextFollowup(e.target.value)} className="input-base" /></Field>
 
           {err && <div className="text-sm text-rose-600">{err}</div>}
         </div>

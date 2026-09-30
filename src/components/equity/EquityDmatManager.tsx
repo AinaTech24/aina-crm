@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { useToast } from "@/components/ui/Toast";
+import { DateField } from "@/components/ui/DateField";
 
 type Account = {
   id: string;
@@ -115,7 +116,7 @@ export function EquityDmatManager() {
         </label>
         <label className="text-sm">
           <span className="block text-muted-foreground mb-1 text-xs">Opened date *</span>
-          <input type="date" value={form.openedDate} onChange={(e) => setForm((f) => ({ ...f, openedDate: e.target.value }))} className="w-full rounded-md border border-border px-2 py-1.5 text-sm focus:outline-none focus:border-brand-cyan" />
+          <DateField value={form.openedDate} onChange={(e) => setForm((f) => ({ ...f, openedDate: e.target.value }))} className="w-full rounded-md border border-border px-2 py-1.5 text-sm focus:outline-none focus:border-brand-cyan" />
         </label>
         <button type="button" onClick={add} disabled={busy || !form.clientName.trim()} className="btn-primary justify-center">
           <Plus className="size-4" /> Add
