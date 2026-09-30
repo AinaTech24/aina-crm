@@ -7,6 +7,7 @@
 import { create } from "zustand";
 import { storageGet, storageSet } from "../lib/storage";
 import type { LanguagePref } from "../i18n";
+import { getAccountScope, onAccountChange } from "../lib/accountScope";
 
 const KEY = "device_prefs_v1";
 
@@ -31,7 +32,7 @@ export interface Prefs {
   language: LanguagePref;
 }
 
-const DEFAULTS: Prefs = { autoLogCalls: false, autoLogOutcome: "answered", appLock: false, language: "system" };
+const DEFAULTS: Prefs = { autoLogCalls: false, autoLogOutcome: "", appLock: false, language: "en" };
 
 interface PrefsState extends Prefs {
   hydrated: boolean;
@@ -56,10 +57,9 @@ export const usePrefs = create<PrefsState>((set, get) => ({
       if (raw) {
         const p = JSON.parse(raw);
         set({
-          autoLogCalls: pick(p, "autoLogCalls"),
           autoLogOutcome: pick(p, "autoLogOutcome"),
           appLock: pick(p, "appLock"),
-          language: pick(p, "language"),
+          language: "en",
         });
       }
     } catch {
@@ -71,7 +71,15 @@ export const usePrefs = create<PrefsState>((set, get) => ({
 
   set: (key, value) => {
     set({ [key]: value } as any);
+    if (key === "autoLogCalls" && getAccountScope().owner) storageSet(`sim_enabled.${getAccountScope().owner}`, String(value)).catch(() => {});
     const { autoLogCalls, autoLogOutcome, appLock, language } = get();
     storageSet(KEY, JSON.stringify({ autoLogCalls, autoLogOutcome, appLock, language })).catch(() => {});
   },
 }));
+onAccountChange(() => {
+  const scope = getAccountScope();
+  usePrefs.setState({ autoLogCalls: false });
+  if (scope.owner) void storageGet(`sim_enabled.${scope.owner}`).then(value => {
+    if (getAccountScope().generation === scope.generation) usePrefs.setState({ autoLogCalls: value === "true" });
+  }).catch(() => {});
+});

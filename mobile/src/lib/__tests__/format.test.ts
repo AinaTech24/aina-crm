@@ -33,6 +33,10 @@ describe("initials", () => {
     expect(initials("Pooja")).toBe("PO");
     expect(initials("  ")).toBe("?");
     expect(initials(null)).toBe("?");
+    expect(initials("Rajesh Demo (Owner)")).toBe("RO");
+    expect(initials("(Owner)")).toBe("OW");
+    expect(initials("राजेश शाह")).toBe("रश");
+    expect(initials("--- ...")).toBe("?");
   });
 });
 

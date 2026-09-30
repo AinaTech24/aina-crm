@@ -8,7 +8,7 @@ import { Activity, Flame } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { leadSignalScore, type SignalScore } from "@/lib/leads/signal-score";
 
-const BAND_TONE: Record<string, string> = { hot: "bg-rose-50 text-rose-700", warm: "bg-amber-50 text-amber-700", cold: "bg-slate-100 text-slate-600" };
+const BAND_TONE: Record<string, string> = { hot: "bg-rose-50 text-rose-700", warm: "bg-amber-50 text-amber-700", cold: "bg-secondary text-muted-foreground" };
 
 export async function SignalScoreCard({ session, leadId }: { session: { tenantId: string; userId: string; branchId?: string | null; roles: string[] }; leadId: string }) {
   const score: SignalScore = await withTenant(

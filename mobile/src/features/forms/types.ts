@@ -4,7 +4,7 @@
  * sends — field-for-field parity, one spec per module (see ./index.ts).
  */
 
-import type { Router } from "expo-router";
+import type { useRouter } from "expo-router";
 
 export type FieldType =
   | "text"
@@ -90,7 +90,7 @@ export interface StepSpec {
 export type FormValues = Record<string, any>;
 
 export interface AfterCreateCtx {
-  router: Router;
+  router: ReturnType<typeof useRouter>;
   params: Record<string, string>;
   post: (path: string, body: unknown) => Promise<any>;
 }

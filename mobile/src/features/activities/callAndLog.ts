@@ -7,11 +7,13 @@
 import { Linking } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useCallIntent, type CallIntent } from "../../state/callIntent";
+import { usePrefs } from "../../state/prefs";
+import { simCallsAvailable } from "./simCallSync";
 
 export function startCall(intent: Omit<CallIntent, "armedAt">) {
   const phone = (intent.phone ?? "").trim();
   if (!phone) return;
-  useCallIntent.getState().arm({ ...intent, phone });
+  if (!usePrefs.getState().autoLogCalls || !simCallsAvailable) useCallIntent.getState().arm({ ...intent, phone });
   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
   Linking.openURL(`tel:${phone}`).catch(() => {});
 }

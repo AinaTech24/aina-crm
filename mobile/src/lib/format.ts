@@ -29,7 +29,9 @@ export function inrFull(value: unknown): string {
 
 export function initials(name?: string | null): string {
   if (!name) return "?";
-  const parts = name.trim().split(/\s+/).filter(Boolean);
+  // Letters/digits only per word, so "Rajesh Demo (Owner)" gives "RO", not "R(".
+  // The range keeps Devanagari/Gujarati and other non-Latin scripts.
+  const parts = name.trim().split(/\s+/).map((p) => p.replace(/[^A-Za-z0-9\u00C0-\uFFFF]/g, "")).filter(Boolean);
   if (parts.length === 0) return "?";
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();

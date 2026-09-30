@@ -20,7 +20,9 @@ import { withTenant } from "@/db/client";
 import { withIdempotentMutation } from "@/lib/api/idempotent-mutation";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { mobileActivityScope, mobileFirmAccess } from "@/lib/mobile/access";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { getClientHealth } from "@/lib/metrics/health";
 import {
   ACTIVITY_KINDS,
   ACTIVITY_DIRECTIONS,
@@ -30,6 +32,9 @@ import {
 } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
+
+/** Outcomes that mean nobody was reached. */
+const CONTACT_FAILED = new Set(["no_answer", "busy", "failed", "left_voicemail", "no_show"]);
 
 const Body = z.object({
   subjectType: z.enum(ACTIVITY_SUBJECT_TYPES),
@@ -64,13 +69,14 @@ export async function GET(req: NextRequest) {
       session.tenantId,
       async (tx) => {
         const conds: any[] = [sql`a.tenant_id = ${session.tenantId}::uuid`];
+        if (session.mobile) conds.push(mobileActivityScope(session));
         if (kind.length) conds.push(sql`a.kind IN (${sql.join(kind.map((k) => sql`${k}`), sql`, `)})`);
         if (subjectType) conds.push(sql`a.subject_type = ${subjectType}`);
         if (subjectId) conds.push(sql`a.subject_id = ${subjectId}::uuid`);
         if (q) conds.push(sql`(a.subject_name ILIKE ${`%${q}%`} OR a.subject ILIKE ${`%${q}%`} OR a.notes ILIKE ${`%${q}%`})`);
         if (from) conds.push(sql`a.occurred_at >= ${from}::timestamptz`);
         if (to) conds.push(sql`a.occurred_at < (${to}::date + 1)`);
-        if (mine || !firmWide) conds.push(sql`a.owner_user_id = ${session.userId}::uuid`);
+        if (mine || (!session.mobile && !firmWide)) conds.push(sql`a.owner_user_id = ${session.userId}::uuid`);
         const whereSql = sql`WHERE ${sql.join(conds, sql` AND `)}`;
 
         const r = await tx.execute(sql`
@@ -86,7 +92,7 @@ export async function GET(req: NextRequest) {
         `);
 
         // KPI ribbon — over the tenant (+ own-logged) scope only, mirroring web.
-        const scope = mine || !firmWide ? sql` AND owner_user_id = ${session.userId}::uuid` : sql``;
+        const scope = session.mobile ? sql` AND ${mobileActivityScope(session, "activities")}` : mine || !firmWide ? sql` AND owner_user_id = ${session.userId}::uuid` : sql``;
         const statsRes = await tx.execute(sql`
           SELECT
             COUNT(*)::int AS total,
@@ -108,9 +114,9 @@ export async function GET(req: NextRequest) {
 /** Resolve a denormalised name + phone for the polymorphic subject. */
 function subjectLookupSql(subjectType: string, subjectId: string) {
   if (subjectType === "investor")
-    return sql`SELECT name, phone, rm_id FROM investors WHERE id = ${subjectId}::uuid LIMIT 1`;
+    return sql`SELECT name, phone, rm_id, branch_id FROM investors WHERE id = ${subjectId}::uuid LIMIT 1`;
   if (subjectType === "lead")
-    return sql`SELECT name, phone, owner_id FROM leads WHERE id = ${subjectId}::uuid LIMIT 1`;
+    return sql`SELECT name, phone, owner_id, branch_id FROM leads WHERE id = ${subjectId}::uuid LIMIT 1`;
   return sql`SELECT COALESCE(family_name, head_name) AS name, NULL::text AS phone, NULL::uuid AS owner_id FROM families WHERE id = ${subjectId}::uuid LIMIT 1`;
 }
 
@@ -131,6 +137,10 @@ export async function POST(req: NextRequest) {
         const subj = await tx.execute(subjectLookupSql(b.subjectType, b.subjectId));
         const sr = subj.rows[0] as any;
         if (!sr) return { notFound: true as const };
+        if (session.mobile && !mobileFirmAccess(session)) {
+          if (session.roles.includes("branch_head") && (!session.branchId || sr.branch_id !== session.branchId)) return { forbidden: true as const };
+          if (!session.roles.includes("branch_head") && session.roles.includes("rm") && (b.subjectType === "investor" ? sr.rm_id : sr.owner_id) !== session.userId) return { forbidden: true as const };
+        }
 
         // Enforce RM assignment checking for non-manager RMs
         if (b.subjectType === "investor" && !seesAllInvestors && sr.rm_id !== session.userId) {
@@ -162,6 +172,19 @@ export async function POST(req: NextRequest) {
           ownerUserId: session.userId,
         } as any);
 
+        // A call, visit or message IS the client's last contact. Health and the
+        // "no contact in N days" lists all read investors.last_contact_at, which
+        // nothing here used to write — so a client called yesterday stayed
+        // "silent 60 days" everywhere. Never moves the date backwards; a note
+        // or a call that did not connect is not contact.
+        if (b.subjectType === "investor" && b.kind !== "note" && !CONTACT_FAILED.has(String(b.status ?? ""))) {
+          const at = b.occurredAt ? new Date(b.occurredAt) : new Date();
+          await tx.execute(sql`
+            UPDATE investors SET last_contact_at = GREATEST(COALESCE(last_contact_at, ${at}), ${at})
+             WHERE id = ${b.subjectId}::uuid AND tenant_id = ${session.tenantId}::uuid`);
+          await getClientHealth(tx, session.tenantId, b.subjectId);
+        }
+
         await recordAudit(tx, {
           tenantId: session.tenantId,
           actorUserId: session.userId,
@@ -171,14 +194,14 @@ export async function POST(req: NextRequest) {
           after: { kind: b.kind, subjectType: b.subjectType, subjectId: b.subjectId } as any,
           ...meta,
         });
-        return { notFound: false as const };
+        return { notFound: false as const, id };
       },
       { userId: session.userId, branchId: session.branchId, roles: session.roles }
     );
 
     if (result.notFound) return NextResponse.json({ error: "subject not found" }, { status: 404 });
     if ("forbidden" in result) return NextResponse.json({ error: "forbidden: client or lead not assigned to you" }, { status: 403 });
-    return NextResponse.json({ id }, { status: 201 });
+    return NextResponse.json({ id: result.id }, { status: 201 });
   } catch (err: any) {
     return handleApiError(err);
   }

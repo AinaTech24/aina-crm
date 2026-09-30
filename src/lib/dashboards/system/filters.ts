@@ -18,7 +18,7 @@ import { isPeriodKey, type PeriodKey } from "./period";
 export const FILTER_KEYS = [
   "rm", "branch", "segment", "category", "amc", "product", "leadSource", "tags", "family",
   // Operations only.
-  "status", "executive", "requestType", "priority", "slaState", "pendingWith",
+  "status", "executive", "requestType", "priority", "slaState", "pendingWith", "ageing", "mode",
 ] as const;
 export type FilterKey = (typeof FILTER_KEYS)[number];
 
@@ -45,6 +45,8 @@ export const FILTER_FIELDS: Record<FilterKey, FilterField> = {
   priority: { key: "priority", label: "Priority", param: "prio" },
   slaState: { key: "slaState", label: "SLA state", param: "sla" },
   pendingWith: { key: "pendingWith", label: "Pending with", param: "pw" },
+  ageing: { key: "ageing", label: "Ageing", param: "age" },
+  mode: { key: "mode", label: "Processing mode", param: "mode" },
 };
 
 /** The "+ Filter" fields every business dashboard may offer (D9). */

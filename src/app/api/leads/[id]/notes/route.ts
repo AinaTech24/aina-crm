@@ -18,6 +18,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { leads, eventsOutbox } from "@/db/schema";
 import { autoAdvance } from "@/lib/blueprints/auto-advance";
 import { loadEditableLead } from "@/lib/leads/access";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -78,7 +79,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // without moving the funnel.
       if (parse.data.activityType === "call") {
         await autoAdvance(tx, session.tenantId, id, "call.logged", {
-          remarks: `Auto: call logged on ${ts.toLocaleDateString("en-IN")} — "${parse.data.note.slice(0, 60)}".`,
+          remarks: `Auto: call logged on ${formatDate(ts)} — "${parse.data.note.slice(0, 60)}".`,
         });
       } else if (parse.data.activityType === "meeting") {
         await autoAdvance(tx, session.tenantId, id, "meeting.completed", {

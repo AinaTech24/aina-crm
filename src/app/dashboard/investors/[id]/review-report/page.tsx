@@ -109,7 +109,7 @@ export default async function ReviewReportPage({
               style={{ backgroundColor: tenant?.primaryColor ?? "#1f2937" }}
             />
             <h1 className="text-3xl font-bold tracking-tight">Portfolio review</h1>
-            <p className="text-gray-600 mt-1">{period} · prepared for {inv.name}</p>
+            <p className="text-muted-foreground mt-1">{period} · prepared for {inv.name}</p>
           </div>
           <div className="text-right text-sm">
             {(tenant as any)?.logoUrl ? (
@@ -122,8 +122,8 @@ export default async function ReviewReportPage({
             ) : (
               <div className="font-semibold text-lg">{tenant?.legalName ?? "—"}</div>
             )}
-            <div className="text-gray-500 font-mono text-xs">{tenant?.arn ?? ""}</div>
-            <div className="text-xs text-gray-500 mt-1">Generated {formatDate(new Date())}</div>
+            <div className="text-muted-foreground font-mono text-xs">{tenant?.arn ?? ""}</div>
+            <div className="text-xs text-muted-foreground mt-1">Generated {formatDate(new Date())}</div>
           </div>
         </header>
 
@@ -136,7 +136,7 @@ export default async function ReviewReportPage({
             <SummaryCell label="Lifetime gain" value={formatINR(gain)} tone={gain >= 0 ? "good" : "bad"} />
             <SummaryCell label="Gain %" value={`${gainPct.toFixed(1)}%`} tone={gain >= 0 ? "good" : "bad"} />
           </div>
-          <p className="text-sm text-gray-700 mt-4 leading-relaxed">
+          <p className="text-sm text-foreground mt-4 leading-relaxed">
             Dear {inv.name.split(" ")[0]}, this is your portfolio review for {period}. Your current AUM stands
             at <strong>{formatINR(totalAum)}</strong> across {foliosRows.length} folios, with an active SIP book
             of <strong>{formatINR(totalSip)}/month</strong>. {gain >= 0 ? `Your portfolio has generated a lifetime gain of ${formatINR(gain)}.` : "We'd like to discuss rebalancing in our next review."}
@@ -147,11 +147,11 @@ export default async function ReviewReportPage({
         <section className="mb-8">
           <h2 className="text-lg font-semibold mb-3">Asset allocation</h2>
           {allocationTotal === 0 ? (
-            <p className="text-sm text-gray-500">No scheme-level allocation data available yet. We'll populate this from the next CAMS feed sync.</p>
+            <p className="text-sm text-muted-foreground">No scheme-level allocation data available yet. We'll populate this from the next CAMS feed sync.</p>
           ) : (
             <table className="w-full text-sm border-collapse">
               <thead className="border-b">
-                <tr className="text-left text-xs text-gray-500">
+                <tr className="text-left text-xs text-muted-foreground">
                   <th className="py-2">Category</th>
                   <th className="py-2 text-right">Value</th>
                   <th className="py-2 text-right">% of portfolio</th>
@@ -176,10 +176,10 @@ export default async function ReviewReportPage({
         <section className="mb-8">
           <h2 className="text-lg font-semibold mb-3">Folios ({foliosRows.length})</h2>
           {foliosRows.length === 0 ? (
-            <p className="text-sm text-gray-500">No folios.</p>
+            <p className="text-sm text-muted-foreground">No folios.</p>
           ) : (
             <table className="w-full text-sm border-collapse">
-              <thead className="border-b text-left text-xs text-gray-500">
+              <thead className="border-b text-left text-xs text-muted-foreground">
                 <tr>
                   <th className="py-2">AMC</th>
                   <th className="py-2">Folio #</th>
@@ -204,7 +204,7 @@ export default async function ReviewReportPage({
           <section className="mb-8">
             <h2 className="text-lg font-semibold mb-3">Active SIPs</h2>
             <table className="w-full text-sm border-collapse">
-              <thead className="border-b text-left text-xs text-gray-500">
+              <thead className="border-b text-left text-xs text-muted-foreground">
                 <tr>
                   <th className="py-2">Scheme</th>
                   <th className="py-2 text-right">Amount</th>
@@ -237,9 +237,9 @@ export default async function ReviewReportPage({
                     <div className="flex justify-between items-baseline text-sm">
                       <div>
                         <span className="font-medium">{g.name}</span>
-                        <span className="text-gray-500 text-xs ml-2 capitalize">{g.category}</span>
+                        <span className="text-muted-foreground text-xs ml-2 capitalize">{g.category}</span>
                       </div>
-                      <span className="text-xs text-gray-500">target {formatDate(g.targetDate)}</span>
+                      <span className="text-xs text-muted-foreground">target {formatDate(g.targetDate)}</span>
                     </div>
                     <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
                       <div
@@ -247,7 +247,7 @@ export default async function ReviewReportPage({
                         style={{ width: `${Math.min(100, pct)}%` }}
                       />
                     </div>
-                    <div className="text-xs text-gray-600 mt-1 flex justify-between">
+                    <div className="text-xs text-muted-foreground mt-1 flex justify-between">
                       <span>{formatINR(Number(g.currentValue ?? 0))} of {formatINR(Number(g.targetAmount))}</span>
                       <span className={onTrack ? "text-emerald-700" : "text-amber-700"}>
                         {pct.toFixed(0)}% · {onTrack ? "on track" : "needs attention"}
@@ -264,10 +264,10 @@ export default async function ReviewReportPage({
         <section className="mb-8">
           <h2 className="text-lg font-semibold mb-3">Recent transactions ({txRows.length})</h2>
           {txRows.length === 0 ? (
-            <p className="text-sm text-gray-500">No transactions in the period.</p>
+            <p className="text-sm text-muted-foreground">No transactions in the period.</p>
           ) : (
             <table className="w-full text-sm border-collapse">
-              <thead className="border-b text-left text-xs text-gray-500">
+              <thead className="border-b text-left text-xs text-muted-foreground">
                 <tr>
                   <th className="py-2">Date</th>
                   <th className="py-2">Scheme</th>
@@ -293,9 +293,9 @@ export default async function ReviewReportPage({
         </section>
 
         {/* ACTION ITEMS */}
-        <section className="mb-8 bg-gray-50 rounded p-4">
+        <section className="mb-8 bg-secondary rounded p-4">
           <h2 className="text-lg font-semibold mb-2">Action items / next steps</h2>
-          <ul className="text-sm space-y-1 list-disc list-inside text-gray-700">
+          <ul className="text-sm space-y-1 list-disc list-inside text-foreground">
             {!inv.nomineeName && <li>Add a nominee for your folios (currently missing).</li>}
             {inv.kycStatus === "expired" && <li>Renew KYC — currently expired.</li>}
             {inv.panAadhaarLinkStatus === "not_linked" && (
@@ -318,7 +318,7 @@ export default async function ReviewReportPage({
         </section>
 
         {/* COMPLIANT FOOTER */}
-        <footer className="border-t pt-4 mt-8 text-xs text-gray-500 space-y-1">
+        <footer className="border-t pt-4 mt-8 text-xs text-muted-foreground space-y-1">
           <p>
             <strong>Mutual fund investments are subject to market risks. Read all scheme related documents carefully.</strong>
           </p>
@@ -354,8 +354,8 @@ export default async function ReviewReportPage({
 function SummaryCell({ label, value, tone }: { label: string; value: string; tone?: "good" | "bad" }) {
   const color = tone === "good" ? "text-emerald-700" : tone === "bad" ? "text-rose-700" : "text-gray-900";
   return (
-    <div className="border rounded p-3 bg-gray-50">
-      <div className="text-xs text-gray-500">{label}</div>
+    <div className="border rounded p-3 bg-secondary">
+      <div className="text-xs text-muted-foreground">{label}</div>
       <div className={`text-lg font-bold mt-0.5 ${color}`}>{value}</div>
     </div>
   );

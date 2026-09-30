@@ -170,6 +170,17 @@ export default async function CampaignsPage({
     return { rows: rows.rows as any[], s: stats.rows[0] as any };
   });
 
+  // Five of thirteen columns were an em dash on every row of the demo firm.
+  // A column nothing fills is width spent on nothing; each returns as soon as
+  // one campaign carries the value.
+  const has = {
+    theme: data.rows.some((c) => !!c.theme),
+    window: data.rows.some((c) => !!c.start_date || !!c.end_date),
+    audience: data.rows.some((c) => !!c.segment_name || !!c.target_audience),
+    cost: data.rows.some((c) => Number(c.campaign_cost ?? 0) > 0),
+    remarks: data.rows.some((c) => !!c.remarks),
+  };
+
   return (
     <div className="space-y-6 max-w-7xl">
       <PageHeaderCard title={<><Megaphone className="size-6 text-muted-foreground" /> Marketing Campaigns</>} subtitle={<>Send a WhatsApp or email campaign to a group of clients and see who opened it.</>} actions={<><div className="flex items-center gap-2">
@@ -295,17 +306,17 @@ export default async function CampaignsPage({
                 <tr>
                   <th className="text-left px-4 py-2 font-medium">Campaign</th>
                   <th className="text-left py-2 font-medium">Type</th>
-                  <th className="text-left py-2 font-medium">Theme</th>
-                  <th className="text-left py-2 font-medium">Window</th>
-                  <th className="text-left py-2 font-medium">Audience</th>
+                  {has.theme && <th className="text-left py-2 font-medium">Theme</th>}
+                  {has.window && <th className="text-left py-2 font-medium">Window</th>}
+                  {has.audience && <th className="text-left py-2 font-medium">Audience</th>}
                   <th className="text-left py-2 font-medium">Content</th>
                   <th className="text-left py-2 font-medium">Compliance</th>
                   <th className="text-left py-2 font-medium">Approval</th>
                   <th className="text-right py-2 font-medium">Leads</th>
                   <th className="text-right py-2 font-medium">Meetings</th>
                   <th className="text-right py-2 font-medium">Conv.</th>
-                  <th className="text-right py-2 font-medium">Cost</th>
-                  <th className="text-left py-2 font-medium">Remarks</th>
+                  {has.cost && <th className="text-right py-2 font-medium">Cost</th>}
+                  {has.remarks && <th className="text-left py-2 font-medium">Remarks</th>}
                   <th className="px-4 py-2"></th>
                 </tr>
               </thead>
@@ -333,8 +344,8 @@ export default async function CampaignsPage({
                           <span>{KIND_LABEL[c.kind ?? c.channel] ?? c.kind ?? c.channel}</span>
                         </div>
                       </td>
-                      <td className="py-3 text-xs">{c.theme ?? "—"}</td>
-                      <td className="py-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                      {has.theme && <td className="py-3 text-xs">{c.theme ?? "—"}</td>}
+                      {has.window && <td className="py-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
                         {c.start_date ? formatDate(c.start_date) : "—"}
                         {c.end_date && (
                           <>
@@ -342,8 +353,8 @@ export default async function CampaignsPage({
                             <span className="text-2xs">→ {formatDate(c.end_date)}</span>
                           </>
                         )}
-                      </td>
-                      <td className="py-3 text-xs">
+                      </td>}
+                      {has.audience && <td className="py-3 text-xs">
                         {c.segment_name ? (
                           <>
                             <div className="font-medium">{c.segment_name}</div>
@@ -356,7 +367,7 @@ export default async function CampaignsPage({
                             {c.target_audience ?? "—"}
                           </span>
                         )}
-                      </td>
+                      </td>}
                       <td className="py-3">
                         <StatusChip tone={CONTENT_TONE[c.content_status] ?? "neutral"}>
                           {(c.content_status ?? "—").replace(/_/g, " ")}
@@ -377,12 +388,12 @@ export default async function CampaignsPage({
                       <td className="py-3 text-right tabular-nums text-emerald-600 font-medium">
                         {c.clients_converted ?? 0}
                       </td>
-                      <td className="py-3 text-right tabular-nums text-muted-foreground">
+                      {has.cost && <td className="py-3 text-right tabular-nums text-muted-foreground">
                         {c.campaign_cost ? formatINR(Number(c.campaign_cost)) : "—"}
-                      </td>
-                      <td className="py-3 text-xs text-muted-foreground max-w-[160px] truncate">
+                      </td>}
+                      {has.remarks && <td className="py-3 text-xs text-muted-foreground max-w-[160px] truncate">
                         {c.remarks ?? "—"}
-                      </td>
+                      </td>}
                       <td className="px-4 py-3 text-right">
                         <RowActions
                           editHref={`/dashboard/campaigns/${c.id}`}
@@ -435,7 +446,7 @@ function Stat({
           : "bg-brand-cyan-light text-brand-cyan-deep";
   return (
     <div className={`kpi-card transition-all ${active
-        ? "ring-2 ring-primary/65 border-primary bg-slate-50/50 shadow-sm"
+        ? "ring-2 ring-primary/65 border-primary bg-secondary/50 shadow-sm"
         : "hover:border-slate-300 bg-white"
       }`}>
       <div className="flex items-center justify-between">

@@ -4,13 +4,14 @@ import { BookOpen } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { MfSchemeSearch } from "./MfSchemeSearch";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
 function fmtDate(d?: string | null) {
   if (!d) return "—";
   const dt = new Date(d);
-  return isNaN(dt.getTime()) ? "—" : dt.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  return isNaN(dt.getTime()) ? "—" : formatDate(dt);
 }
 
 export default async function MfSchemeCatalogPage({

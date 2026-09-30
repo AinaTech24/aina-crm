@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Calendar, X, Loader2, CheckCircle2, CalendarPlus, Copy, Check } from "lucide-react";
 import { ScheduleMeetingForm } from "./ScheduleMeetingForm";
 import { DownloadButton } from "@/components/common/SecureLinkButtons";
+import { formatDate } from "@/lib/format";
 
 type Saved = { id?: string; day?: string; time?: string; subject?: string; name?: string };
 
@@ -63,7 +64,7 @@ export function ScheduleMeetingModal({
 
   const subjectName = data?.leads?.[0]?.name ?? data?.investors?.[0]?.name ?? "";
   const defaultSubject = subjectName ? `Intro meeting — ${subjectName}` : "";
-  const prettyDate = saved?.day ? new Date(saved.day + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" }) : "";
+  const prettyDate = saved?.day ? formatDate(new Date(saved.day + "T00:00:00"), "weekday") : "";
 
   const inviteText = saved
     ? `Hi${saved.name ? " " + saved.name : ""}, our meeting is scheduled for ${prettyDate}${saved.time ? " at " + saved.time : ""}.${saved.subject ? ` Agenda: ${saved.subject}.` : ""} Looking forward to it.`

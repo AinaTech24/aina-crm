@@ -27,7 +27,7 @@ const CAT_LABEL = Object.fromEntries(CATEGORIES.map((c) => [c.value, c.label]));
 const STATUS_TONE: Record<string, string> = {
   active: "bg-emerald-50 text-emerald-700",
   evaluating: "bg-amber-50 text-amber-700",
-  discontinued: "bg-slate-100 text-slate-500",
+  discontinued: "bg-secondary text-muted-foreground",
 };
 
 type Tool = {

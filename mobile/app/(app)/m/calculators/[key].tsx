@@ -58,7 +58,7 @@ export default function CalculatorScreen() {
       <ScreenHeader
         title={def.name}
         subtitle={def.desc}
-        right={<Pressable onPress={share} hitSlop={8} style={styles.shareBtn}><Feather name="share-2" size={16} color={palette.white} /></Pressable>}
+        right={<Pressable accessibilityRole="button" accessibilityLabel="Share result" onPress={share} hitSlop={8} style={styles.shareBtn}><Feather name="share-2" size={16} color={palette.white} /></Pressable>}
       />
       <Screen scroll padded contentStyle={{ paddingTop: spacing.lg, paddingBottom: spacing["3xl"] }}>
         {/* Inputs */}
@@ -80,7 +80,7 @@ export default function CalculatorScreen() {
         {/* Share CTA */}
         <Pressable style={styles.shareCta} onPress={share}>
           <Feather name="message-circle" size={16} color={palette.white} />
-          <Text style={{ color: palette.white, fontWeight: fontWeight.semibold as any }}>Share on WhatsApp</Text>
+          <Text style={{ color: palette.white, fontWeight: fontWeight.semibold }}>Share on WhatsApp</Text>
         </Pressable>
         <Text variant="caption" tone="faint" style={{ textAlign: "center", marginTop: spacing.md }}>
           Illustration only. Mutual fund investments are subject to market risks.

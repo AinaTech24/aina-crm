@@ -1,0 +1,47 @@
+# EAS Build archives the project from the GIT ROOT (this directory), not from
+# mobile/, and reads .easignore only from here (eas-cli vcs/clients/git.js:
+# path.join(gitRoot, ".easignore")). Without this file every mobile build
+# copied and scanned the whole CRM repo — web app, uploads, build caches —
+# ~170 MB per upload, and it could stall for an hour copying files other dev
+# servers held open.
+#
+# The mobile app is self-contained, so ship only mobile/. When this file exists
+# EAS stops reading ALL .gitignore files, so mobile's own exclusions are
+# repeated below. (mobile/.easignore is NOT read by EAS; expo-doctor reads it.)
+
+# Everything at the root except the app. NO trailing slashes on directory
+# rules: EAS filters with fs.cp, which passes bare directory names
+# ("mobile", "mobile/android"), and "dir/" never matches those — "!/mobile/"
+# shipped an empty 80-byte archive on 2026-09-29.
+/*
+!/mobile
+
+# mobile/.gitignore equivalents
+/mobile/node_modules
+/mobile/.expo
+/mobile/dist
+/mobile/dist-apk-check
+/mobile/web-build
+/mobile/expo-env.d.ts
+/mobile/coverage
+/mobile/.kotlin
+/mobile/.metro-health-check*
+/mobile/*.tsbuildinfo
+# generated native projects (prebuild runs on EAS) — rooted, so the local
+# module's source at mobile/modules/aina-call-log/android is still shipped
+/mobile/android
+/mobile/ios
+
+# never upload secrets, keystores or build outputs
+.env*
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.pem
+*.mobileprovision
+*.log
+*.apk
+*.aab
+.DS_Store

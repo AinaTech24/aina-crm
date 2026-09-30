@@ -18,7 +18,7 @@ const STATUS_COLORS: Record<string, string> = {
   past_due: "bg-amber-50 text-amber-700",
   suspended: "bg-rose-50 text-rose-700",
   expired: "bg-rose-50 text-rose-700",
-  cancelled: "bg-gray-50 text-gray-700",
+  cancelled: "bg-secondary text-foreground",
 };
 
 export const dynamic = "force-dynamic";

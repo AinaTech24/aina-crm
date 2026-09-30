@@ -91,7 +91,7 @@ export function RiskQuestionnaireSettings() {
           <Card key={qi} style={{ marginBottom: spacing.md }}>
             <View style={styles.head}>
               <Text variant="label" tone="muted">Question {qi + 1}</Text>
-              {canEdit ? <Pressable onPress={() => confirmDelete({ title: "Remove question?", message: q.label || `Question ${qi + 1}` }, () => setQuestions((s) => s.filter((_, i) => i !== qi)))} hitSlop={8}><Feather name="trash-2" size={15} color={palette.danger} /></Pressable> : null}
+              {canEdit ? <Pressable accessibilityRole="button" accessibilityLabel={`Remove question ${qi + 1}`} onPress={() => confirmDelete({ title: "Remove question?", message: q.label || `Question ${qi + 1}` }, () => setQuestions((s) => s.filter((_, i) => i !== qi)))} hitSlop={8}><Feather name="trash-2" size={15} color={palette.danger} /></Pressable> : null}
             </View>
             <TextField label="Label" value={q.label} onChangeText={(v) => setQ(qi, { label: v })} />
             <TextField label="Helper text (optional)" value={q.helperText} onChangeText={(v) => setQ(qi, { helperText: v })} />
@@ -100,7 +100,7 @@ export function RiskQuestionnaireSettings() {
               <View key={oi} style={styles.optRow}>
                 <View style={{ flex: 3 }}><TextField label="" value={o.label} onChangeText={(v) => setOpt(qi, oi, { label: v })} placeholder="Answer" /></View>
                 <View style={{ flex: 1 }}><TextField label="" value={o.score} onChangeText={(v) => setOpt(qi, oi, { score: v.replace(/[^0-9-]/g, "") })} keyboardType="number-pad" placeholder="0" /></View>
-                {canEdit ? <Pressable onPress={() => setQ(qi, { options: q.options.filter((_, j) => j !== oi) })} hitSlop={6} style={{ paddingBottom: 22 }}><Feather name="x" size={16} color={palette.muted} /></Pressable> : null}
+                {canEdit ? <Pressable accessibilityRole="button" accessibilityLabel="Remove answer" onPress={() => setQ(qi, { options: q.options.filter((_, j) => j !== oi) })} hitSlop={6} style={{ paddingBottom: 22 }}><Feather name="x" size={16} color={palette.muted} /></Pressable> : null}
               </View>
             ))}
             {canEdit ? <Button label="Add option" variant="secondary" size="sm" onPress={() => setQ(qi, { options: [...q.options, { label: "", score: "0" }] })} /> : null}
@@ -114,7 +114,7 @@ export function RiskQuestionnaireSettings() {
             <View style={styles.head}>
               <View style={[styles.swatch, { backgroundColor: /^#[0-9a-fA-F]{6}$/.test(b.color) ? b.color : palette.line }]} />
               <Text variant="label" tone="muted" style={{ flex: 1 }}>Band {bi + 1}</Text>
-              {canEdit ? <Pressable onPress={() => confirmDelete({ title: "Remove band?", message: b.label || `Band ${bi + 1}` }, () => setBands((s) => s.filter((_, i) => i !== bi)))} hitSlop={8}><Feather name="trash-2" size={15} color={palette.danger} /></Pressable> : null}
+              {canEdit ? <Pressable accessibilityRole="button" accessibilityLabel={`Remove band ${bi + 1}`} onPress={() => confirmDelete({ title: "Remove band?", message: b.label || `Band ${bi + 1}` }, () => setBands((s) => s.filter((_, i) => i !== bi)))} hitSlop={8}><Feather name="trash-2" size={15} color={palette.danger} /></Pressable> : null}
             </View>
             <TextField label="Label" value={b.label} onChangeText={(v) => setB(bi, { label: v })} placeholder="e.g. Conservative" />
             <View style={{ flexDirection: "row", gap: spacing.md }}>
@@ -136,7 +136,7 @@ export function RiskQuestionnaireSettings() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.surfaceAlt },
-  section: { fontSize: fontSize.xs, fontWeight: fontWeight.bold as any, letterSpacing: 0.6, color: palette.muted, marginTop: spacing.xl, marginBottom: spacing.sm },
+  section: { fontSize: fontSize.xs, fontWeight: fontWeight.bold, letterSpacing: 0.6, color: palette.muted, marginTop: spacing.xl, marginBottom: spacing.sm },
   head: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.sm },
   optRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.sm },
   swatch: { width: 18, height: 18, borderRadius: 5 },

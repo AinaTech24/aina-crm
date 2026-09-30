@@ -24,15 +24,15 @@ const channelMeta: Record<string, { label: string; icon: any; tint: string }> = 
   whatsapp: { label: "WhatsApp", icon: MessageCircle, tint: "bg-emerald-50 text-emerald-600" },
   email: { label: "Email", icon: Mail, tint: "bg-blue-50 text-blue-600" },
   sms: { label: "SMS", icon: MessageSquare, tint: "bg-violet-50 text-violet-600" },
-  inapp: { label: "In-app", icon: MessageSquare, tint: "bg-slate-100 text-slate-600" },
+  inapp: { label: "In-app", icon: MessageSquare, tint: "bg-secondary text-muted-foreground" },
 };
 
 const statusColors: Record<string, string> = {
   approved: "bg-emerald-50 text-emerald-700 border-emerald-200",
   pending_approval: "bg-amber-50 text-amber-700 border-amber-200",
   rejected: "bg-rose-50 text-rose-700 border-rose-200",
-  draft: "bg-slate-50 text-slate-600 border-slate-200",
-  paused: "bg-slate-50 text-slate-600 border-slate-200",
+  draft: "bg-secondary text-muted-foreground border-border",
+  paused: "bg-secondary text-muted-foreground border-border",
   archived: "bg-zinc-50 text-zinc-600 border-zinc-200",
 };
 
@@ -77,6 +77,18 @@ export default async function TemplatesPage({
     pending: all.filter((r) => r.tpl.status === "pending_approval").length,
     draft: all.filter((r) => r.tpl.status === "draft").length,
   };
+  // Counts shown on the status chips (which filter), instead of on a separate
+  // row of tiles (which did not).
+  const STATUS_COUNTS: Record<string, number> = {
+    "": kpi.total,
+    draft: kpi.draft,
+    pending: kpi.pending,
+    approved: kpi.approved,
+  };
+  // Compliance scored 0/"—" on every template, so the column was width spent on
+  // nothing. It returns the moment one version carries a score.
+  const hasCompliance = all.some((r) => Number(r.score ?? 0) > 0);
+
   const channelCount = (key: string) =>
     key ? all.filter((r) => r.tpl.channel === key).length : all.length;
 
@@ -114,13 +126,12 @@ export default async function TemplatesPage({
           </Link>
         </div></>} />
 
-      {/* KPI strip */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Kpi label="All templates" value={kpi.total} />
-        <Kpi label="Approved" value={kpi.approved} tone="emerald" />
-        <Kpi label="Pending approval" value={kpi.pending} tone={kpi.pending > 0 ? "amber" : "muted"} />
-        <Kpi label="Drafts" value={kpi.draft} tone={kpi.draft > 0 ? "slate" : "muted"} />
-      </div>
+      {/* The four-tile KPI strip that stood here read "All 7 · Approved 7 ·
+          Pending 0 · Drafts 0" — a full-width band where one number was the
+          total, one repeated it, and two were zero. The status chips in the
+          toolbar below carry the same counts AND filter the list when clicked,
+          so the tiles were a less useful copy of a control that already exists.
+          The counts moved onto those chips instead. */}
 
       <div className="card-surface overflow-hidden">
         {/* Toolbar: channel tabs + search + status */}
@@ -166,7 +177,7 @@ export default async function TemplatesPage({
               />
             </form>
 
-            {/* Status chips */}
+            {/* Status chips — now the only place these counts live. */}
             <div className="inline-flex items-center gap-1">
               {STATUS_TABS.map((s) => {
                 const active = activeStatus === s.key;
@@ -180,6 +191,11 @@ export default async function TemplatesPage({
                       }`}
                   >
                     {s.label}
+                    {STATUS_COUNTS[s.key] != null && (
+                      <span className={`ml-1.5 tabular-nums ${active ? "opacity-80" : "text-muted-foreground/70"}`}>
+                        {STATUS_COUNTS[s.key]}
+                      </span>
+                    )}
                   </Link>
                 );
               })}
@@ -217,7 +233,7 @@ export default async function TemplatesPage({
                   <th className="text-left py-2 font-medium">Channel</th>
                   <th className="text-left py-2 font-medium">Category</th>
                   <th className="text-left py-2 font-medium">Status</th>
-                  <th className="text-left py-2 font-medium">Compliance</th>
+                  {hasCompliance && <th className="text-left py-2 font-medium">Compliance</th>}
                   <th className="text-left py-2 font-medium">Updated</th>
                   <th className="px-4 py-2"></th>
                 </tr>
@@ -248,7 +264,7 @@ export default async function TemplatesPage({
                         <span className="capitalize text-xs text-muted-foreground">{cm.label}</span>
                       </td>
                       <td className="py-3">
-                        <span className="text-2xs uppercase font-semibold tracking-wide text-muted-foreground bg-secondary/60 border border-border/60 rounded px-1.5 py-0.5">
+                        <span className="text-2xs font-semibold capitalize text-muted-foreground bg-secondary/60 border border-border/60 rounded px-1.5 py-0.5">
                           {tpl.category}
                         </span>
                       </td>
@@ -257,9 +273,11 @@ export default async function TemplatesPage({
                           {tpl.status.replace(/_/g, " ")}
                         </span>
                       </td>
-                      <td className="py-3">
-                        <ScoreBar score={Number(score ?? 0)} />
-                      </td>
+                      {hasCompliance && (
+                        <td className="py-3">
+                          <ScoreBar score={Number(score ?? 0)} />
+                        </td>
+                      )}
                       <td className="py-3 text-xs text-muted-foreground whitespace-nowrap">
                         {tpl.updatedAt ? formatRelative(tpl.updatedAt) : "—"}
                       </td>
@@ -284,32 +302,6 @@ export default async function TemplatesPage({
   );
 }
 
-function Kpi({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: number;
-  tone?: "emerald" | "amber" | "slate" | "muted";
-}) {
-  const color =
-    tone === "emerald"
-      ? "text-emerald-600"
-      : tone === "amber"
-        ? "text-amber-600"
-        : tone === "slate"
-          ? "text-slate-700"
-          : tone === "muted"
-            ? "text-muted-foreground"
-            : "text-foreground";
-  return (
-    <div className="card-surface p-4">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={`text-2xl font-bold mt-1 tabular-nums ${color}`}>{value}</div>
-    </div>
-  );
-}
 
 function ScoreBar({ score }: { score: number }) {
   if (!score) return <span className="text-xs text-muted-foreground">—</span>;

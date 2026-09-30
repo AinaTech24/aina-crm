@@ -119,9 +119,9 @@ export function directionFor(
   // drives unit netting in valuation (inflow adds units, outflow subtracts), so
   // flipping it on a guess would move holdings as well as the investment total,
   // in a direction nothing here has verified. The money-in figure is corrected
-  // where it is actually computed instead: loadFirmPulse() excludes switches and
-  // STPs from Total Investment outright, since neither is ever new money
-  // whichever leg it is.
+  // where it is actually computed instead: GROSS_TYPES in lib/metrics/business.ts
+  // excludes switches and STPs from gross investment outright, since neither is
+  // ever new money whichever leg it is.
   return "inflow";
 }
 

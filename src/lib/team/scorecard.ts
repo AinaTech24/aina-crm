@@ -29,6 +29,14 @@ export const TARGETABLE_METRICS: { key: string; label: string; team: "sales" | "
   // MF + Other come from business_entries (by product_type); Insurance comes
   // from the insurance_policies module (annual premium booked in the period).
   { key: "mf_business", label: "MF business", team: "sales", unit: "inr" },
+  // Read by the personal and branch dashboards (src/lib/dashboard/my/window.ts,
+  // PERSON_KEY). The scorecard's own composite score does not use them —
+  // they exist so each dashboard metric is held to its OWN target instead of
+  // three different actuals being scored against the one MF-business number.
+  { key: "aum", label: "AUM (closing)", team: "sales", unit: "inr" },
+  { key: "sip_book", label: "SIP book (closing)", team: "sales", unit: "inr" },
+  { key: "net_sip", label: "Net new SIP", team: "sales", unit: "inr" },
+  { key: "reviews", label: "Client reviews", team: "sales", unit: "count" },
   { key: "insurance_business", label: "Insurance business", team: "sales", unit: "inr" },
   { key: "other_business", label: "Other products", team: "sales", unit: "inr" },
   { key: "new_clients", label: "New clients", team: "sales", unit: "count" },

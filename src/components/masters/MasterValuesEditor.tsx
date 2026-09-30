@@ -175,7 +175,7 @@ export function MasterValuesEditor({
                 <button
                   onClick={() => toggleActive(v)}
                   className={`text-xs px-2 py-0.5 rounded-full ${
-                    v.isActive ? "bg-emerald-50 text-emerald-700" : "bg-gray-50 text-gray-700"
+                    v.isActive ? "bg-emerald-50 text-emerald-700" : "bg-secondary text-foreground"
                   }`}
                 >
                   {v.isActive ? "active" : "disabled"}

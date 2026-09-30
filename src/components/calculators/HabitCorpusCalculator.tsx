@@ -55,7 +55,7 @@ export function HabitCorpusCalculator() {
               setAmount(p.amount);
               setFreq(p.freq);
             }}
-            className="chip text-xs bg-slate-100 hover:bg-primary/10"
+            className="chip text-xs bg-secondary hover:bg-primary/10"
           >
             {p.label}
           </button>

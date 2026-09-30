@@ -7,6 +7,8 @@ import { Printer } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { useToast } from "@/components/ui/Toast";
 import { PRODUCT_OPTIONS, type NetSalesMatrix } from "@/lib/business/net-sales-matrix";
+import { formatDate } from "@/lib/format";
+import { TableSkeleton } from "@/components/common/Skeleton";
 
 const money = (n: number) => "₹ " + n.toLocaleString("en-IN", { maximumFractionDigits: 0 });
 
@@ -21,7 +23,7 @@ function recentMonths(count = 24) {
   const d = new Date();
   d.setDate(1);
   for (let i = 0; i < count; i++) {
-    out.push({ value: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, label: d.toLocaleString("en-IN", { month: "long", year: "numeric" }) });
+    out.push({ value: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, label: formatDate(d, "monthYear") });
     d.setMonth(d.getMonth() - 1);
   }
   return out;
@@ -85,7 +87,7 @@ export function NetSalesBoard() {
       </div>
 
       {loading ? (
-        <div className="text-sm text-muted-foreground py-10 text-center">Loading…</div>
+        <div className="text-sm text-muted-foreground py-10 text-center" aria-busy="true"><TableSkeleton rows={4} /></div>
       ) : !data || data.rows.length === 0 ? (
         <div className="text-sm text-muted-foreground py-10 text-center">No business booked for this month/product.</div>
       ) : (

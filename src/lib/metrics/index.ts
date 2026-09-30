@@ -24,6 +24,15 @@
  *   getClientMix            practice.ts     the book by state, and exits
  *   getBrokerage            practice.ts     brokerage by month and fund house
  *   getAutomationMonth      practice.ts     what the workflows did this month
+ *   getEntryMatrix          entries.ts      Business Entries: product x asset class flows
+ *   getEntrySipFlow         entries.ts      Business Entries: SIP added / stopped / net
+ *   getBookBreakdown        book.ts         clients by category / type / status / KYC
+ *   getMeetingSummary       meetings.ts     meetings by kind x status
+ *   getReviewsDue           meetings.ts     next review overdue / this month / 30 days
+ *   getTaskSummary          work-summary.ts tasks created, financial vs non-financial
+ *   getSipRejectionSummary  work-summary.ts SIP rejections by recovery status
+ *   getPremiumByProduct     insurance-mix.ts new / renewal premium by product
+ *   getClaimsByStatus       insurance-mix.ts claims intimated in a period by status
  */
 
 export * from "./scope";
@@ -43,3 +52,8 @@ export * from "./targets";
 export * from "./compliance";
 export * from "./practice";
 export * from "./in-order";
+export * from "./entries";
+export * from "./book";
+export * from "./meetings";
+export * from "./work-summary";
+export * from "./insurance-mix";

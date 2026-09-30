@@ -338,7 +338,7 @@ export function LegalRegistrationForm({
             {v.documents.map((d, i) => (
               <li
                 key={i}
-                className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-md px-3 py-2"
+                className="flex items-center justify-between bg-secondary border border-border rounded-md px-3 py-2"
               >
                 <div className="min-w-0">
                   <div className="text-sm font-medium truncate">{d.label}</div>
@@ -346,7 +346,7 @@ export function LegalRegistrationForm({
                     href={d.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-2xs text-slate-500 truncate inline-flex items-center gap-1 hover:text-slate-800"
+                    className="text-2xs text-muted-foreground truncate inline-flex items-center gap-1 hover:text-foreground"
                   >
                     {d.url} <ExternalLink className="size-2.5" />
                   </a>
@@ -354,7 +354,7 @@ export function LegalRegistrationForm({
                 <button
                   type="button"
                   onClick={() => removeDoc(i)}
-                  className="ml-2 text-slate-400 hover:text-rose-600"
+                  className="ml-2 text-muted-foreground hover:text-rose-600"
                   title="Remove"
                 >
                   <X className="size-3.5" />

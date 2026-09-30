@@ -67,7 +67,7 @@ export function CheckInSheet({ visible, onClose }: { visible: boolean; onClose: 
 
       {who ? (
         <Pressable style={styles.whoRow} onPress={() => setWho(null)}>
-          <View style={styles.avatar}><Text style={{ color: palette.white, fontWeight: fontWeight.bold as any }}>{who.name.slice(0, 1).toUpperCase()}</Text></View>
+          <View style={styles.avatar}><Text style={{ color: palette.white, fontWeight: fontWeight.bold }}>{who.name.slice(0, 1).toUpperCase()}</Text></View>
           <View style={{ flex: 1 }}><Text variant="body">{who.name}</Text><Text variant="caption" tone="muted">{who.type === "investor" ? "Client" : "Lead"}</Text></View>
           <Feather name="x" size={16} color={palette.faint} />
         </Pressable>
@@ -91,7 +91,7 @@ export function CheckInSheet({ visible, onClose }: { visible: boolean; onClose: 
           <TextField label="Notes (optional)" value={note} onChangeText={setNote} multiline placeholder="What was discussed on the visit…" />
           <Pressable style={styles.submit} onPress={submit} disabled={log.isPending}>
             <Feather name="check-circle" size={16} color={palette.white} />
-            <Text style={{ color: palette.white, fontWeight: fontWeight.semibold as any }}>{log.isPending ? "Logging…" : "Log visit"}</Text>
+            <Text style={{ color: palette.white, fontWeight: fontWeight.semibold }}>{log.isPending ? "Logging…" : "Log visit"}</Text>
           </Pressable>
         </>
       ) : null}
@@ -102,7 +102,7 @@ export function CheckInSheet({ visible, onClose }: { visible: boolean; onClose: 
 function PickRow({ name, sub, tone, onPress }: { name: string; sub: string; tone: string; onPress: () => void }) {
   return (
     <Pressable style={styles.pickRow} onPress={onPress}>
-      <View style={[styles.avatar, { backgroundColor: tone }]}><Text style={{ color: palette.white, fontWeight: fontWeight.bold as any, fontSize: 12 }}>{name.slice(0, 1).toUpperCase()}</Text></View>
+      <View style={[styles.avatar, { backgroundColor: tone }]}><Text style={{ color: palette.white, fontWeight: fontWeight.bold, fontSize: 12 }}>{name.slice(0, 1).toUpperCase()}</Text></View>
       <View style={{ flex: 1 }}><Text variant="body" numberOfLines={1}>{name}</Text><Text variant="caption" tone="muted">{sub}</Text></View>
     </Pressable>
   );

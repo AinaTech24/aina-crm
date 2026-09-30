@@ -1,38 +1,38 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import {
+  formatMoney,
+  formatMoneyFull,
+  formatDate as formatDateBase,
+  formatRelative as formatRelativeBase,
+  type DateStyle,
+} from "@/lib/format";
+
+export * from "@/lib/format";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/**
+ * Money and dates now live in `@/lib/format`, which is the single definition of
+ * how a figure or a date looks in this product. These four names are kept
+ * because 670 call sites import `formatINR` and 137 import `formatDate` from
+ * here — they delegate, so those sites are already on the unified rules and
+ * render exactly as before.
+ *
+ * New code should import from `@/lib/format` directly, and reach for
+ * `pickMoneyScale()` whenever several figures sit in one row.
+ */
+
+/** Every digit: `₹32,00,000`. Right for a table read a row at a time. */
 export function formatINR(amount: number | string | null | undefined): string {
-  if (amount == null) return "—";
-  const n = typeof amount === "string" ? Number(amount) : amount;
-  if (!Number.isFinite(n)) return "—";
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(n);
+  return formatMoneyFull(amount);
 }
 
-/**
- * Indian-notation SHORT money: ₹1238.64 Cr · ₹71.35 Lakh · ₹3,000.
- *
- * `formatINR` above prints every digit, which is right in a table you read a
- * row at a time and wrong on a dashboard tile you glance at — ₹2,49,00,000
- * has to be counted, ₹2.49 Cr does not. This was already hand-copied into
- * FirmPulseStrip and FirmCharts; they now share this one.
- */
+/** Indian-notation short money: `₹12.39 Cr` · `₹71.35 Lakh` · `₹3,000`. */
 export function formatINRShort(amount: number | string | null | undefined): string {
-  if (amount == null) return "—";
-  const n = typeof amount === "string" ? Number(amount) : amount;
-  if (!Number.isFinite(n)) return "—";
-  const abs = Math.abs(n);
-  const sign = n < 0 ? "-" : "";
-  if (abs >= 1e7) return `${sign}₹${(abs / 1e7).toFixed(2)} Cr`;
-  if (abs >= 1e5) return `${sign}₹${(abs / 1e5).toFixed(2)} Lakh`;
-  return `${sign}₹${Math.round(abs).toLocaleString("en-IN")}`;
+  return formatMoney(amount);
 }
 
 /**
@@ -66,19 +66,11 @@ export function formatPhone(raw: string | null | undefined): string {
   return String(raw).trim();
 }
 
-export function formatDate(d: Date | string | null | undefined): string {
-  if (!d) return "—";
-  const date = typeof d === "string" ? new Date(d) : d;
-  return new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" }).format(date);
+/** `7 Sept 2026`. Pass a `DateStyle` for the other shapes. */
+export function formatDate(d: Date | string | number | null | undefined, style?: DateStyle): string {
+  return formatDateBase(d, style);
 }
 
 export function formatRelative(d: Date | string | null | undefined): string {
-  if (!d) return "—";
-  const date = typeof d === "string" ? new Date(d) : d;
-  const diff = (Date.now() - date.getTime()) / 1000;
-  if (diff < 60) return "just now";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
-  return formatDate(date);
+  return formatRelativeBase(d);
 }

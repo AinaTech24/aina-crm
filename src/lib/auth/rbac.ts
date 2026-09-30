@@ -211,9 +211,9 @@ const MATRIX: Record<Capability, Role[]> = {
   "family.delete": ["back_office", "ops"],
 
   // Leads — marketing + owner own pipeline; RM works assigned.
-  "lead.view.all": ["marketing", "branch_head", "compliance"],
+  "lead.view.all": ["marketing", "branch_head", "compliance", "back_office", "ops"],
   "lead.view.assigned": ["rm"],
-  "lead.edit.all": ["marketing", "branch_head"],
+  "lead.edit.all": ["marketing", "branch_head", "back_office", "ops"],
   "lead.edit.assigned": ["rm"],
 
   // Transactions — execute by back_office + RM; everyone in ops/compliance views.

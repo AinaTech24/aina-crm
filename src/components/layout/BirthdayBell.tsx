@@ -16,6 +16,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Cake, ArrowRight, MessageCircle, Check } from "lucide-react";
+import { formatDate } from "@/lib/format";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { buttonClass } from "@/components/ui/button-class";
 
@@ -223,5 +224,5 @@ export function BirthdayBell() {
 function fmtDM(dob: string): string {
   const d = new Date(dob);
   if (isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+  return formatDate(d, "dayMonth");
 }

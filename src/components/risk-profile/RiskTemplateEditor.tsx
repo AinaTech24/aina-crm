@@ -15,7 +15,7 @@
  * Publishes via PUT /api/risk-profile-template, which creates a new version.
  */
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus,
@@ -63,6 +63,7 @@ export function RiskTemplateEditor({
   initial: Template;
   versionNumber: number | null;
 }) {
+  const uid = useId();
   const router = useRouter();
   const [t, setT] = useState<Template>(initial);
   const [saving, setSaving] = useState(false);
@@ -255,8 +256,8 @@ export function RiskTemplateEditor({
       {/* Header / save bar */}
       <div className="card-surface p-4 flex flex-wrap items-end gap-3">
         <div className="flex-1 min-w-[260px]">
-          <label className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">Template name</label>
-          <input
+          <label htmlFor={`${uid}-template-name`} className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">Template name</label>
+          <input id={`${uid}-template-name`}
             value={t.name}
             onChange={(e) => setMeta("name", e.target.value)}
             className="input-base text-sm w-full mt-1"
@@ -264,8 +265,8 @@ export function RiskTemplateEditor({
           />
         </div>
         <div className="w-40">
-          <label className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">Review interval (days)</label>
-          <input
+          <label htmlFor={`${uid}-review-interval-days`} className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">Review interval (days)</label>
+          <input id={`${uid}-review-interval-days`}
             type="number"
             min={30}
             max={3650}
@@ -328,8 +329,8 @@ export function RiskTemplateEditor({
 
       {/* Description */}
       <div>
-        <label className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">Description (shown on the wizard header)</label>
-        <textarea
+        <label htmlFor={`${uid}-description-shown-on-the-wizard-header`} className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">Description (shown on the wizard header)</label>
+        <textarea id={`${uid}-description-shown-on-the-wizard-header`}
           rows={2}
           value={t.description}
           onChange={(e) => setMeta("description", e.target.value)}

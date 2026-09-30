@@ -23,13 +23,18 @@ import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { Pager } from "@/components/common/Pager";
 import { Avatar } from "@/components/ui/Avatar";
 import { PdfRow } from "@/components/common/ClickableRow";
+import { EmptyState } from "@/components/common/EmptyState";
+import { MoreMenu, type MoreMenuItem } from "@/components/common/MoreMenu";
 import { financialPlans, investors, leads } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
+/** GET /api/discovery/:id's gate — the new-plan form reads the fact-find through it. */
+const FACT_FIND_VIEW_CAPS = ["investor.view.all", "investor.view.assigned", "lead.view.all", "lead.view.assigned"] as const;
+
 
 const STATUS_TONE: Record<string, string> = {
-  draft: "bg-slate-100 text-slate-700",
+  draft: "bg-secondary text-foreground",
   finalized: "bg-emerald-50 text-emerald-700 border border-emerald-200/50",
 };
 
@@ -50,6 +55,9 @@ export default async function FinancialPlansPage({
   const statusFilter = (sp.status ?? "").split(",").filter(Boolean);
   const PAGE_SIZE = 50;
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
+  const hasFilters = !!q || statusFilter.length > 0 || !!dateRangeCond(sp, "created", "financial_plans.created_at");
+  // Opening a fact-find needs a client or lead view (the discovery API's gate).
+  const canUseFactFinds = FACT_FIND_VIEW_CAPS.some((c) => can(session.roles, c, session.permissions));
 
   const data = await withTenant(session.tenantId, async (tx) => {
     // Server-side filter (was filtered in JS over the whole table before).
@@ -105,14 +113,45 @@ export default async function FinancialPlansPage({
       FROM financial_plans${statsScope}
     `);
 
+    // The empty state offers to start from a completed fact-find — only when
+    // there is nothing to list, and only the viewer's own unless they see all.
+    const factFinds = Number(cnt[0]?.c ?? 0) === 0 && !hasFilters && canUseFactFinds
+      ? ((await tx.execute(sql`
+          SELECT d.id, d.subject_type, d.status,
+                 COALESCE(NULLIF(d.title, ''), i.name, l.name) AS name,
+                 COALESCE(d.reviewed_at, d.submitted_at, d.updated_at) AS done_at,
+                 COUNT(*) OVER ()::int AS total
+            FROM financial_discoveries d
+            LEFT JOIN investors i ON d.subject_type = 'investor' AND i.id = d.subject_id AND i.tenant_id = ${session.tenantId}::uuid
+            LEFT JOIN leads l ON d.subject_type = 'lead' AND l.id = d.subject_id AND l.tenant_id = ${session.tenantId}::uuid
+           WHERE d.tenant_id = ${session.tenantId}::uuid
+             AND d.status IN ('submitted', 'reviewed')
+             AND ((i.id IS NOT NULL AND i.deleted_at IS NULL) OR (l.id IS NOT NULL AND COALESCE(l.lost_reason, '') <> '__deleted__'))
+             ${seesAll ? sql`` : sql`AND (d.assigned_rm_id = ${session.userId}::uuid OR d.created_by = ${session.userId}::uuid
+                                      OR i.rm_id = ${session.userId}::uuid OR l.owner_id = ${session.userId}::uuid)`}
+           ORDER BY done_at DESC NULLS LAST
+           LIMIT 8
+        `)).rows as Array<{ id: string; subject_type: string; status: string; name: string | null; done_at: string | null; total: number }>)
+      : [];
+
     return {
       rows,
       filteredTotal: Number(cnt[0]?.c ?? 0),
       s: stats.rows[0] as any,
+      factFinds,
     };
   });
 
   const filteredRows = data.rows;
+  const factFindItems: MoreMenuItem[] = data.factFinds.map((f) => ({
+    href: `/dashboard/financial-plans/new?discovery=${f.id}`,
+    label: f.name ?? "Unnamed client",
+    description: `${f.status === "reviewed" ? "Reviewed" : "Submitted"} ${formatDate(f.done_at)} · ${f.subject_type === "lead" ? "Lead" : "Client"}`,
+  }));
+  const moreFactFinds = Math.max(0, Number(data.factFinds[0]?.total ?? 0) - data.factFinds.length);
+  if (moreFactFinds > 0) {
+    factFindItems.push({ href: "/dashboard/discovery", label: "All fact-finds", description: `${moreFactFinds} more completed` });
+  }
   const totalPlans = Number(data.s.total_plans ?? 0);
   const totalSurplus = Number(data.s.total_surplus ?? 0);
   const totalNetWorth = Number(data.s.total_assets ?? 0) - Number(data.s.total_liabilities ?? 0);
@@ -145,6 +184,17 @@ export default async function FinancialPlansPage({
           ]}
         />
 
+        {data.filteredTotal === 0 && !hasFilters ? (
+          <EmptyState
+            icon={ScrollText}
+            title="No financial plans yet"
+            description="A financial plan puts a client's cash flow, assets, protection and goals in one document, with a roadmap you can print and share."
+            primary={{ href: "/dashboard/financial-plans/new", label: "Create financial plan" }}
+            secondaryNode={factFindItems.length > 0
+              ? <MoreMenu text="Start from a fact-find" label="Start from a fact-find" items={factFindItems} />
+              : undefined}
+          />
+        ) : (
         <div className="card-surface">
           {filteredRows.length === 0 ? (
             <div className="p-12 text-center text-sm text-muted-foreground">
@@ -251,6 +301,7 @@ export default async function FinancialPlansPage({
             </div>
           )}
         </div>
+        )}
       </div>
     </div>
   );

@@ -51,6 +51,8 @@ export function sessionCookieForRoles(roles: string[] | null | undefined): strin
 }
 
 export type SessionUser = {
+  /** Set by the server for a verified Bearer request; enforces mobile book scope. */
+  mobile?: boolean;
   userId: string;
   tenantId: string;
   branchId?: string;

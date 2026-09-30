@@ -19,7 +19,7 @@ function BandChip({ band }: { band?: string | null }) {
   const c = BAND_TONE[band] ?? palette.muted;
   return (
     <View style={[styles.band, { backgroundColor: c + "1A" }]}>
-      <Text style={{ fontSize: 10.5, color: c, fontWeight: fontWeight.bold as any }}>{band.toUpperCase()}</Text>
+      <Text style={{ fontSize: 10.5, color: c, fontWeight: fontWeight.bold }}>{band.toUpperCase()}</Text>
     </View>
   );
 }

@@ -80,7 +80,7 @@ export function DateField({
           <Feather name="calendar" size={18} color={palette.faint} />
         </Pressable>
         {value ? (
-          <Pressable style={styles.clear} onPress={() => onChange("")} hitSlop={8}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Clear date" style={styles.clear} onPress={() => onChange("")} hitSlop={8}>
             <Feather name="x" size={18} color={palette.muted} />
           </Pressable>
         ) : null}

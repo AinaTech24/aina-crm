@@ -50,6 +50,7 @@ import { eq, sql } from "drizzle-orm";
 import { withSystem, withTenant } from "@/db/client";
 import { readSoftDeleteRetentionDays } from "@/lib/platform/retention";
 import { recomputeAllHealth } from "@/lib/investors/health-persist";
+import { refreshActiveSipAmount } from "@/lib/metrics/sip";
 import { recomputeAllFamilyHealth } from "@/lib/families/health-persist";
 import { recomputeAllGoals } from "@/lib/goal-planning/recompute";
 import { recomputeCombinedAum, revalueAllFolios } from "@/lib/finance/aum-persist";
@@ -651,7 +652,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
       // it drifts even when rows don't change. Re-score the whole book nightly
       // off the same JS scorecard the app writes on edit.
       const scanNow = new Date();
-      const health = await recomputeAllHealth(tx, scanNow);
+      const health = await recomputeAllHealth(tx, scanNow, 500, tenantId);
       result.healthScored = health.scored;
 
       // Family health depends on member aggregates + family review cadence —
@@ -896,19 +897,10 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
       }
 
       // ── Refresh investors.active_sip_amount ───────────────────────────
-      // This cached column was never recomputed, so the client list's
-      // "Monthly SIP", the SIP health card, family suggestions etc. all read
-      // a stale (usually 0) value. Recompute from the live SIP book nightly.
-      await tx.execute(sql`
-        UPDATE investors i SET active_sip_amount = COALESCE((
-          SELECT SUM(s.amount::numeric) FROM sips s
-          WHERE s.investor_id = i.id AND s.status = 'active'
-        ), 0)
-        WHERE i.active_sip_amount IS DISTINCT FROM COALESCE((
-          SELECT SUM(s.amount::numeric) FROM sips s
-          WHERE s.investor_id = i.id AND s.status = 'active'
-        ), 0)
-      `);
+      // The per-client cache of the SIP book (monthly-equivalent active SIPs).
+      // Every SIP write refreshes its own clients; this nightly pass catches
+      // anything that changed underneath them (expiry above, bulk scripts).
+      await refreshActiveSipAmount(tx, { tenantId });
 
       // ── SIP expiring — emit `sip.expiring` at 30/15/7 days before end_date
       // so the client gets a renewal nudge before recurring AUM quietly ends.

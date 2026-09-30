@@ -380,8 +380,8 @@ export function PublicRiskForm({
 
             {/* Email-OTP verification — only when the template requires it */}
             {otpRequired && (
-              <div className="border border-slate-200 bg-slate-50/50 rounded-lg p-4 space-y-3">
-                <div className="text-sm font-semibold text-slate-800">Verify it&apos;s you</div>
+              <div className="border border-border bg-secondary/50 rounded-lg p-4 space-y-3">
+                <div className="text-sm font-semibold text-foreground">Verify it&apos;s you</div>
                 <p className="text-xs text-muted-foreground">
                   We&apos;ll email you a 6-digit code to confirm this submission.
                 </p>

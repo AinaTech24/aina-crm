@@ -48,9 +48,9 @@ export function EmiSipRecoveryPlanner() {
       </div>
 
       {/* Mode toggle */}
-      <div className="inline-flex gap-1 rounded-lg bg-slate-100 p-1">
-        <button type="button" onClick={() => setMode("loan")} className={`text-xs px-3 py-1.5 rounded-md ${mode === "loan" ? "bg-white shadow-sm font-semibold" : "text-slate-600"}`}>Enter loan details</button>
-        <button type="button" onClick={() => setMode("emi")} className={`text-xs px-3 py-1.5 rounded-md ${mode === "emi" ? "bg-white shadow-sm font-semibold" : "text-slate-600"}`}>Enter EMI details</button>
+      <div className="inline-flex gap-1 rounded-lg bg-secondary p-1">
+        <button type="button" onClick={() => setMode("loan")} className={`text-xs px-3 py-1.5 rounded-md ${mode === "loan" ? "bg-white shadow-sm font-semibold" : "text-muted-foreground"}`}>Enter loan details</button>
+        <button type="button" onClick={() => setMode("emi")} className={`text-xs px-3 py-1.5 rounded-md ${mode === "emi" ? "bg-white shadow-sm font-semibold" : "text-muted-foreground"}`}>Enter EMI details</button>
       </div>
 
       {/* Inputs */}
@@ -174,7 +174,7 @@ function Num({
 }
 
 function Stat({ label, value, tone }: { label: string; value: string; tone?: "amber" | "rose" }) {
-  const t = tone === "amber" ? "border-amber-200 bg-amber-50/50" : tone === "rose" ? "border-rose-200 bg-rose-50/50" : "border-slate-200";
+  const t = tone === "amber" ? "border-amber-200 bg-amber-50/50" : tone === "rose" ? "border-rose-200 bg-rose-50/50" : "border-border";
   return (
     <div className={`border rounded-md p-3 ${t}`}>
       <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">{label}</div>

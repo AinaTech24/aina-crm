@@ -15,7 +15,7 @@ type Due = { id: string; title: string; priority: string; for: string | null };
 const TYPE_STYLE: Record<string, string> = {
   client: "bg-brand-cyan-light/60 text-brand-cyan-deep",
   lead: "bg-amber-50 text-amber-700",
-  other: "bg-slate-100 text-slate-600",
+  other: "bg-secondary text-muted-foreground",
 };
 
 export function DailyTrackerForm({

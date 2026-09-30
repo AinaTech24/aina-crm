@@ -14,6 +14,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { requireSession } from "@/lib/auth/session";
 import { PrintReportButton } from "@/components/investors/PrintReportButton";
+import { formatDate } from "@/lib/format";
 import {
   CATEGORY_CRITERIA,
   MF_GROUP_LABELS,
@@ -55,8 +56,8 @@ export default async function MfSelectionCriteriaPage() {
 
       <div className="hidden print:block text-center mb-3">
         <h1 className="page-title">MF Selection Criteria</h1>
-        <p className="text-xs text-slate-500">
-          Generated {new Date().toLocaleDateString("en-GB")}
+        <p className="text-xs text-muted-foreground">
+          Generated {formatDate(new Date())}
         </p>
       </div>
 

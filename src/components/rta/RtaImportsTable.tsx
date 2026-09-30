@@ -37,7 +37,7 @@ function StatusBadge({ status }: { status: string }) {
     completed: "bg-emerald-50 text-emerald-700",
     partial: "bg-amber-50 text-amber-700",
     failed: "bg-rose-50 text-rose-700",
-    rejected: "bg-gray-100 text-gray-600",
+    rejected: "bg-secondary text-muted-foreground",
     parsing: "bg-blue-50 text-blue-700",
     uploaded: "bg-blue-50 text-blue-700",
   };

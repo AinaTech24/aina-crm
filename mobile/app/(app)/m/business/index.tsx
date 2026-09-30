@@ -142,12 +142,12 @@ export default function BusinessDashboard() {
               .sort((a: any, b: any) => num(b.aum) - num(a.aum))
               .map((r: any, i: number, arr: any[]) => (
                 <View key={r.rm_name + i} style={[styles.rmRow, i < arr.length - 1 && styles.divider]}>
-                  <View style={[styles.rank, i === 0 && { backgroundColor: toneColors("success").bg }]}><Text variant="caption" style={{ fontWeight: fontWeight.bold as any, color: i === 0 ? toneColors("success").fg : palette.muted }}>{i + 1}</Text></View>
+                  <View style={[styles.rank, i === 0 && { backgroundColor: toneColors("success").bg }]}><Text variant="caption" style={{ fontWeight: fontWeight.bold, color: i === 0 ? toneColors("success").fg : palette.muted }}>{i + 1}</Text></View>
                   <View style={{ flex: 1 }}>
                     <Text variant="body" numberOfLines={1}>{r.rm_name}</Text>
                     <Text variant="caption" tone="muted">{num(r.clients)} clients · {inr(num(r.sip_book))} SIP</Text>
                   </View>
-                  <Text variant="body" style={{ fontWeight: fontWeight.semibold as any }}>{inr(num(r.aum))}</Text>
+                  <Text variant="body" style={{ fontWeight: fontWeight.semibold }}>{inr(num(r.aum))}</Text>
                 </View>
               ))
           )}
@@ -159,20 +159,20 @@ export default function BusinessDashboard() {
 
 // ── bits ──
 function Kpi({ label, value }: { label: string; value: string }) {
-  return <View style={{ flex: 1, alignItems: "center" }}><Text style={{ fontSize: 16, fontWeight: fontWeight.bold as any }} numberOfLines={1}>{value}</Text><Text variant="caption" tone="muted">{label}</Text></View>;
+  return <View style={{ flex: 1, alignItems: "center" }}><Text style={{ fontSize: 16, fontWeight: fontWeight.bold }} numberOfLines={1}>{value}</Text><Text variant="caption" tone="muted">{label}</Text></View>;
 }
 function Big({ label, value, tone }: { label: string; value: string; tone: Tone }) {
-  return <View style={{ flex: 1 }}><Text variant="caption" tone="muted" numberOfLines={1}>{label}</Text><Text style={{ fontSize: 15, fontWeight: fontWeight.bold as any, color: toneColors(tone).fg }} numberOfLines={1}>{value}</Text></View>;
+  return <View style={{ flex: 1 }}><Text variant="caption" tone="muted" numberOfLines={1}>{label}</Text><Text style={{ fontSize: 15, fontWeight: fontWeight.bold, color: toneColors(tone).fg }} numberOfLines={1}>{value}</Text></View>;
 }
 function Mini({ label, value, tone }: { label: string; value: string; tone?: Tone }) {
-  return <View style={{ flex: 1 }}><Text variant="caption" tone="faint" numberOfLines={1}>{label}</Text><Text variant="caption" style={{ fontWeight: fontWeight.semibold as any, color: tone ? toneColors(tone).fg : palette.ink }} numberOfLines={1}>{value}</Text></View>;
+  return <View style={{ flex: 1 }}><Text variant="caption" tone="faint" numberOfLines={1}>{label}</Text><Text variant="caption" style={{ fontWeight: fontWeight.semibold, color: tone ? toneColors(tone).fg : palette.ink }} numberOfLines={1}>{value}</Text></View>;
 }
 function Bar({ slice, color, showInr }: { slice: PiSlice; color: string; showInr?: boolean }) {
   return (
     <View style={{ marginBottom: spacing.md }}>
       <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
         <Text variant="caption" tone="muted" numberOfLines={1} style={{ flex: 1 }}>{slice.label}</Text>
-        <Text variant="caption" style={{ fontWeight: fontWeight.semibold as any, color: palette.ink }}>{showInr ? inr(slice.value) : `${Math.round(slice.pct)}%`}</Text>
+        <Text variant="caption" style={{ fontWeight: fontWeight.semibold, color: palette.ink }}>{showInr ? inr(slice.value) : `${Math.round(slice.pct)}%`}</Text>
       </View>
       <View style={styles.track}><View style={[styles.fill, { width: `${Math.min(100, Math.max(2, slice.pct))}%`, backgroundColor: color }]} /></View>
     </View>
@@ -186,7 +186,7 @@ function EmptyRow({ icon, text }: { icon: any; text: string }) {
 }
 
 const styles = StyleSheet.create({
-  hero: { fontSize: 32, fontWeight: fontWeight.bold as any, letterSpacing: -0.5, marginTop: 4 },
+  hero: { fontSize: 32, fontWeight: fontWeight.bold, letterSpacing: -0.5, marginTop: 4 },
   kpiRow: { flexDirection: "row", alignItems: "center", marginTop: spacing.lg, paddingTop: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.line },
   vline: { width: StyleSheet.hairlineWidth, height: 28, backgroundColor: palette.line },
   threeUp: { flexDirection: "row", gap: spacing.md },

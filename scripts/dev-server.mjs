@@ -11,11 +11,27 @@
  *
  * This wrapper:
  *
- *   1. Bounds the heap (`--max-old-space-size`, default 3 GB). When Next
+ *   1. Bounds the heap (`--max-old-space-size`, default 5 GB). When Next
  *      crosses that, V8 OOM-crashes the process *cleanly* instead of
- *      living in the swap zone for 30 minutes. 3 GB (was 2 GB) gives the
- *      heavy dashboard route enough headroom to finish its first Turbopack
- *      compile without OOM-ing mid-build. Override with NEXT_HEAP_MB.
+ *      living in the swap zone for 30 minutes. Override with NEXT_HEAP_MB.
+ *
+ *      The bound is NOT only an OOM backstop: Next runs its own memory
+ *      watchdog against it and recycles the dev server as the heap
+ *      approaches the limit —
+ *
+ *          ⚠ Server is approaching the used memory threshold, restarting...
+ *
+ *      which kills every in-flight request. A streaming RSC navigation cut
+ *      that way surfaces in the browser as `TypeError: network error`, with
+ *      no stack pointing at anything in this app, so it reads like a bug in
+ *      the page you happened to be on.
+ *
+ *      At 3 GB (the previous value) that fired every few minutes: the dev
+ *      server idles around 1.8-2.4 GB once the dashboard cockpits, the
+ *      reports catalog and the ops tower are compiled, so a single Turbopack
+ *      recompile spike was enough to trip it. 5 GB leaves roughly 3 GB of
+ *      headroom over steady state. Lower it with NEXT_HEAP_MB if you are
+ *      running another dev server alongside this one on a 16 GB machine.
  *
  *   2. Kills any stale process holding port 3000 before starting,
  *      so a half-dead previous instance doesn't block the new one.
@@ -46,7 +62,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const PORT = Number(process.env.PORT ?? 3000);
-const HEAP_MB = Number(process.env.NEXT_HEAP_MB ?? 3072);
+const HEAP_MB = Number(process.env.NEXT_HEAP_MB ?? 5120);
 const HEALTH_PATH = "/api/health";
 const HEALTH_TIMEOUT_MS = Number(process.env.NEXT_HEALTH_TIMEOUT_MS ?? 240_000);
 const HEALTH_INTERVAL_MS = 2_000;

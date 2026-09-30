@@ -16,6 +16,7 @@ import { EmptyState } from "../../../components/states";
 import { titleCase } from "../../../lib/format";
 import { palette, radius, spacing, fontWeight } from "../../../theme/tokens";
 import { useInvestorTemplates, useDispatchComm, type CommSubject } from "../api";
+import { asIcon } from "../../../lib/icons";
 
 interface TVar { key: string; type: string; required?: boolean }
 interface Template { id: string; key: string; channel: string; name: string; description?: string; category?: string; variables?: TVar[] }
@@ -65,9 +66,9 @@ export function QuickCommsSheet({
           : templates.length === 0 ? <EmptyState icon="send" title="No approved templates" message="Approve templates in the Templates module to send from here." />
           : templates.map((t) => (
             <Pressable key={t.id ?? t.key} style={styles.tRow} onPress={() => pick(t)}>
-              <Feather name={chIcon(t.channel) as any} size={16} color={palette.brand} />
+              <Feather name={asIcon(chIcon(t.channel))} size={16} color={palette.brand} />
               <View style={{ flex: 1 }}>
-                <Text style={{ fontWeight: fontWeight.medium as any }} numberOfLines={1}>{t.name}</Text>
+                <Text style={{ fontWeight: fontWeight.medium }} numberOfLines={1}>{t.name}</Text>
                 <Text variant="caption" tone="muted" numberOfLines={1}>{[titleCase(t.channel), titleCase(t.category)].filter(Boolean).join(" · ")}</Text>
               </View>
               <Feather name="chevron-right" size={18} color={palette.faint} />

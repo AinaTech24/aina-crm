@@ -18,6 +18,7 @@ import { displayPan, isMinorKey } from "@/lib/investors/pan-display";
 import { resolveAgeBands } from "@/lib/risk-profile/age-bands";
 import { Avatar } from "@/components/ui/Avatar";
 import { PdfRow } from "@/components/common/ClickableRow";
+import { riskProfileBaseSql } from "@/lib/metrics/risk";
 
 export const dynamic = "force-dynamic";
 
@@ -63,12 +64,22 @@ export default async function RiskProfilesPage({
   const sp = await searchParams;
   // Default tab: Not profiled. Old ?filter=needs_review / suggested links map
   // onto the bucket that now holds those clients.
-  const filter = parseRiskBucket(sp.filter);
+  const filter = parseRiskBucket(sp.filter?.split(",")[0]);
+  // A dashboard's "Risk profiles due" opens `?filter=due,expired` — both
+  // buckets in one list, so the count it showed is the row count here.
+  const filters = [...new Set((sp.filter ?? "").split(",").map((f) => f.trim()).filter((f) => RISK_BUCKETS.some((b) => b.key === f)))] as RiskBucket[];
+  const combined = filters.length > 1;
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
 
   const data = await withTenant(session.tenantId, async (tx) => {
-    // Owner slice for non-managers (applied to every query below).
-    const rmScope = canViewAll ? sql`TRUE` : sql`i.rm_id = ${session.userId}::uuid`;
+    // The clients the page lists — active clients of this firm, an RM's own
+    // book for non-managers, narrowed by a dashboard drill-down's rm / branch
+    // (lib/metrics/risk.ts: the same base every risk-profile count uses).
+    const base = riskProfileBaseSql({
+      tenantId: session.tenantId,
+      rmIds: canViewAll ? (sp.rm ? sp.rm.split(",") : undefined) : [session.userId],
+      branchIds: sp.branch ? sp.branch.split(",") : undefined,
+    });
     // Tab counts — one aggregate over the active book. The buckets are
     // mutually exclusive, so the tabs add up to the book.
     const stats = await tx.execute(sql`
@@ -78,18 +89,20 @@ export default async function RiskProfilesPage({
         COUNT(*) FILTER (WHERE ${riskBucketSql("current")})::int AS current,
         COUNT(*) FILTER (WHERE ${riskBucketSql("expired")})::int AS expired,
         COUNT(*) FILTER (WHERE ${riskBucketSql("awaiting")})::int AS awaiting
-      FROM investors i WHERE i.status = 'active' AND i.deleted_at IS NULL AND ${rmScope}
+      FROM investors i WHERE ${base}
     `);
     const s = (stats.rows[0] ?? {}) as Partial<Record<RiskBucket, number>>;
     const counts = Object.fromEntries(RISK_BUCKETS.map((b) => [b.key, Number(s[b.key] ?? 0)])) as Record<RiskBucket, number>;
 
-    const predicate = riskBucketSql(filter);
+    const predicate = combined
+      ? sql`(${sql.join(filters.map((f) => riskBucketSql(f)), sql` OR `)})`
+      : riskBucketSql(filter);
 
     // Total matching the active filter (drives the pager) — investor-only, no
     // join needed since the filter is on the investor mirror columns.
     const c = await tx.execute(sql`
       SELECT COUNT(*)::int AS c FROM investors i
-      WHERE i.status = 'active' AND i.deleted_at IS NULL AND ${predicate} AND ${rmScope}
+      WHERE ${base} AND ${predicate}
     `);
     const total = Number((c.rows[0] as any)?.c ?? 0);
 
@@ -112,7 +125,7 @@ export default async function RiskProfilesPage({
         ORDER BY r.signed_at DESC NULLS LAST
         LIMIT 1
       ) rp ON TRUE
-      WHERE i.status = 'active' AND i.deleted_at IS NULL AND ${predicate} AND ${rmScope}
+      WHERE ${base} AND ${predicate}
       ORDER BY ${orderClause(filter)}
       LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}
     `);
@@ -148,7 +161,7 @@ export default async function RiskProfilesPage({
       {/* Filter tabs */}
       <div className="flex flex-wrap items-center gap-1.5">
         {RISK_BUCKETS.map((f) => {
-          const active = f.key === filter;
+          const active = !combined && f.key === filter;
           return (
             <Link
               key={f.key}
@@ -172,7 +185,9 @@ export default async function RiskProfilesPage({
       <RiskSelectionProvider key={`${filter}:${page}`} pageIds={data.rows.map((r: any) => String(r.id))}>
       <div className="card-surface">
         <div className="border-b border-border px-4 py-2.5 font-semibold flex items-center justify-between">
-          <span>{RISK_BUCKETS.find((f) => f.key === filter)?.label} ({data.filterTotal.toLocaleString("en-IN")})</span>
+          <span>{combined
+            ? filters.map((k) => RISK_BUCKETS.find((f) => f.key === k)?.label).join(" + ")
+            : RISK_BUCKETS.find((f) => f.key === filter)?.label} ({data.filterTotal.toLocaleString("en-IN")})</span>
         </div>
         {canManage && <RiskBulkBar notProfiledCount={data.counts.not_profiled} />}
         {data.rows.length === 0 ? (

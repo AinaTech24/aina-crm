@@ -156,10 +156,10 @@ export default function ProposalDetail() {
         {(p.status === "sent" || p.status === "viewed") ? (
           <View style={styles.sendRow}>
             <Pressable style={[styles.outBtn, { borderColor: toneColors("success").fg }]} onPress={() => setStatus("accepted", "Marked accepted")}>
-              <Text style={{ color: toneColors("success").fg, fontWeight: fontWeight.semibold as any }}>Mark accepted</Text>
+              <Text style={{ color: toneColors("success").fg, fontWeight: fontWeight.semibold }}>Mark accepted</Text>
             </Pressable>
             <Pressable style={[styles.outBtn, { borderColor: toneColors("danger").fg }]} onPress={() => setStatus("rejected", "Marked rejected")}>
-              <Text style={{ color: toneColors("danger").fg, fontWeight: fontWeight.semibold as any }}>Mark rejected</Text>
+              <Text style={{ color: toneColors("danger").fg, fontWeight: fontWeight.semibold }}>Mark rejected</Text>
             </Pressable>
           </View>
         ) : null}
@@ -188,12 +188,12 @@ function ProductRow({ line, last }: { line: ProposalLine; last: boolean }) {
   const sub = subFor(line);
   return (
     <View style={[styles.pRow, !last && styles.divider]}>
-      <View style={styles.pTag}><Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.semibold as any, fontSize: 10 }}>{LINE_KIND_LABEL[line.kind].toUpperCase()}</Text></View>
+      <View style={styles.pTag}><Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.semibold, fontSize: 10 }}>{LINE_KIND_LABEL[line.kind].toUpperCase()}</Text></View>
       <View style={{ flex: 1 }}>
         <Text variant="body" numberOfLines={1}>{lineTitle(line)}</Text>
         {sub ? <Text variant="caption" tone="muted" numberOfLines={1}>{sub}</Text> : null}
       </View>
-      {amt > 0 ? <Text variant="caption" style={{ fontWeight: fontWeight.semibold as any, color: palette.ink }}>{inr(amt)}</Text> : null}
+      {amt > 0 ? <Text variant="caption" style={{ fontWeight: fontWeight.semibold, color: palette.ink }}>{inr(amt)}</Text> : null}
     </View>
   );
 }
@@ -207,7 +207,7 @@ function subFor(l: ProposalLine): string {
 }
 
 function Kpi({ label, value }: { label: string; value: string }) {
-  return <View style={{ flex: 1, alignItems: "center" }}><Text style={{ fontSize: 15, fontWeight: fontWeight.bold as any }} numberOfLines={1}>{value}</Text><Text variant="caption" tone="muted">{label}</Text></View>;
+  return <View style={{ flex: 1, alignItems: "center" }}><Text style={{ fontSize: 15, fontWeight: fontWeight.bold }} numberOfLines={1}>{value}</Text><Text variant="caption" tone="muted">{label}</Text></View>;
 }
 function SectionLabel({ text }: { text: string }) {
   return <Text variant="caption" tone="faint" style={{ letterSpacing: 0.6, marginTop: spacing.xl, marginBottom: spacing.sm }}>{text}</Text>;
@@ -221,6 +221,6 @@ const styles = StyleSheet.create({
   pTag: { backgroundColor: palette.brandLight, borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 3 },
   sendRow: { flexDirection: "row", gap: spacing.md, marginTop: spacing.xl },
   sendBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, borderRadius: radius.md, paddingVertical: spacing.md },
-  sendTxt: { color: palette.white, fontWeight: fontWeight.semibold as any },
+  sendTxt: { color: palette.white, fontWeight: fontWeight.semibold },
   outBtn: { flex: 1, alignItems: "center", justifyContent: "center", borderWidth: 1, borderRadius: radius.md, paddingVertical: spacing.md },
 });

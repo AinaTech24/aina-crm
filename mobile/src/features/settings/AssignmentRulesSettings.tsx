@@ -110,7 +110,7 @@ export function AssignmentRulesSettings() {
                   trackColor={{ true: palette.brand, false: palette.line }}
                   thumbColor={palette.white}
                 />
-                <Pressable onPress={() => confirmDelete({ title: "Delete rule?", message: `"${r.name}"` }, () => del.mutate(r.id))} hitSlop={8} style={styles.delBtn}>
+                <Pressable accessibilityRole="button" accessibilityLabel={`Delete rule ${r.name}`} onPress={() => confirmDelete({ title: "Delete rule?", message: `"${r.name}"` }, () => del.mutate(r.id))} hitSlop={8} style={styles.delBtn}>
                   <Feather name="trash-2" size={16} color={palette.danger} />
                 </Pressable>
               </View>
@@ -124,7 +124,7 @@ export function AssignmentRulesSettings() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.surfaceAlt },
-  section: { fontSize: fontSize.xs, fontWeight: fontWeight.bold as any, letterSpacing: 0.6, color: palette.muted, marginTop: spacing.xl, marginBottom: spacing.sm },
+  section: { fontSize: fontSize.xs, fontWeight: fontWeight.bold, letterSpacing: 0.6, color: palette.muted, marginTop: spacing.xl, marginBottom: spacing.sm },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.md, paddingHorizontal: spacing.lg },
   divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line },

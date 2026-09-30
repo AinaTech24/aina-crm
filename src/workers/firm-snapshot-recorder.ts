@@ -24,9 +24,9 @@ export async function recordDailySnapshots(): Promise<number> {
     // Per-tenant client aggregates in one pass.
     const agg = await tx.execute(sql`
       SELECT t.id AS tenant_id,
-        COALESCE(SUM(i.aum::numeric) FILTER (WHERE i.deleted_at IS NULL AND i.status <> 'closed' AND i.merged_into_id IS NULL), 0) AS total_aum,
-        COUNT(i.id) FILTER (WHERE i.deleted_at IS NULL AND i.status <> 'closed' AND i.merged_into_id IS NULL)::int AS active_clients,
-        COALESCE(SUM(i.active_sip_amount::numeric) FILTER (WHERE i.deleted_at IS NULL AND i.status <> 'closed' AND i.merged_into_id IS NULL), 0) AS monthly_sip
+        COALESCE(SUM(i.aum::numeric) FILTER (WHERE i.deleted_at IS NULL AND i.status NOT IN ('closed', 'exited') AND i.merged_into_id IS NULL), 0) AS total_aum,
+        COUNT(i.id) FILTER (WHERE i.deleted_at IS NULL AND i.status NOT IN ('closed', 'exited') AND i.merged_into_id IS NULL)::int AS active_clients,
+        COALESCE(SUM(i.active_sip_amount::numeric) FILTER (WHERE i.deleted_at IS NULL AND i.status NOT IN ('closed', 'exited') AND i.merged_into_id IS NULL), 0) AS monthly_sip
       FROM tenants t
       LEFT JOIN investors i ON i.tenant_id = t.id
       WHERE t.deleted_at IS NULL
@@ -73,7 +73,7 @@ export async function recordDailySnapshots(): Promise<number> {
            WHERE sips.investor_id = i.id AND sips.status = 'active'
         ) s ON true
        WHERE i.rm_id IS NOT NULL
-         AND i.deleted_at IS NULL AND i.status <> 'closed' AND i.merged_into_id IS NULL
+         AND i.deleted_at IS NULL AND i.status NOT IN ('closed', 'exited') AND i.merged_into_id IS NULL
        GROUP BY i.tenant_id, i.rm_id
       ON CONFLICT (tenant_id, rm_id, snapshot_date) DO UPDATE SET
         aum = EXCLUDED.aum,
@@ -100,7 +100,7 @@ export async function recordDailySnapshots(): Promise<number> {
            WHERE sips.investor_id = i.id AND sips.status = 'active'
         ) s ON true
        WHERE i.branch_id IS NOT NULL
-         AND i.deleted_at IS NULL AND i.status <> 'closed' AND i.merged_into_id IS NULL
+         AND i.deleted_at IS NULL AND i.status NOT IN ('closed', 'exited') AND i.merged_into_id IS NULL
        GROUP BY i.tenant_id, i.branch_id
       ON CONFLICT (tenant_id, branch_id, snapshot_date) DO UPDATE SET
         aum = EXCLUDED.aum,

@@ -373,7 +373,7 @@ function summarizeAction(a: any): string {
 function jobStatusClass(status: string): string {
   if (status === "completed") return "bg-emerald-50 text-emerald-700";
   if (status === "failed") return "bg-rose-50 text-rose-700";
-  if (status === "cancelled") return "bg-slate-100 text-slate-600";
+  if (status === "cancelled") return "bg-secondary text-muted-foreground";
   if (status === "running") return "bg-brand-cyan-light text-brand-cyan-deep";
   return "bg-amber-50 text-amber-700";
 }

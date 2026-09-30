@@ -1,6 +1,6 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
-import { eq, sql, inArray, isNull } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   Plus,
   Sparkles,
@@ -27,7 +27,8 @@ import { LEAD_SOURCE_OPTIONS } from "@/lib/leads/sources";
 import { LEADS_VIEW_COOKIE, LEADS_LIST_THRESHOLD, parseLeadsView } from "@/lib/leads/view-pref";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { Pager } from "@/components/common/Pager";
-import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
+import { dateRangeFilter } from "@/lib/filters/date-range";
+import { leadCreatedInSql, leadOpenSql, leadStageKeySql, leadWhere, textList } from "@/lib/metrics";
 import { CustomViews } from "@/components/common/CustomViews";
 import { EmptyState } from "@/components/common/EmptyState";
 import { RowActions } from "@/components/common/RowActions";
@@ -47,7 +48,18 @@ const STAGES = LEAD_PIPELINE.map((c) => ({
   aliases: c.members.filter((m) => m !== c.key),
 }));
 
-const LEAD_PHASE_STAGES = [...LEAD_PIPELINE_STAGE_VALUES];
+/**
+ * A lead ON THE BOARD: not converted, and its stored stage (trimmed, lower
+ * case — as lib/metrics/leads.ts leadStageKeySql reads it) is one of the
+ * columns' values, legacy ones included, or blank (New) or the insurance
+ * branch's "not proceeded" (Lost). What is left — converted leads and leads
+ * already in onboarding — is the rest of the dashboard's Won bucket, which
+ * `include_won=1` adds.
+ */
+const BOARD_STAGE_VALUES = [...LEAD_PIPELINE_STAGE_VALUES, "", "insurance_lost"];
+const ON_BOARD = sql`(leads.converted_investor_id IS NULL
+  AND lower(btrim(COALESCE(leads.stage::text, ''))) IN (${textList(BOARD_STAGE_VALUES)}))`;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Header "⋯": the other lead views the old "Module" dropdown switched to. */
 const MORE_ITEMS = [
@@ -86,6 +98,13 @@ export default async function LeadsPage({
   const sourceFilter = (sp.source ?? "").split(",").filter(Boolean);
   const ownerFilter = (sp.owner ?? "").split(",").filter(Boolean);
   const branchFilter = (sp.branch ?? "").split(",").filter((v) => /^[0-9a-f-]{36}$/i.test(v));
+  // include_won=1 — the dashboard's Won count: converted leads and leads
+  // already in onboarding too, which are not on the board.
+  const includeWon = sp.include_won === "1";
+  // followup_due=1 — the dashboard's "need follow-up today".
+  const followupDue = sp.followup_due === "1";
+  const createdFrom = ISO_DATE.test(sp.created_from ?? "") ? sp.created_from! : "";
+  const createdTo = ISO_DATE.test(sp.created_to ?? "") ? sp.created_to! : "";
   // Describes the active narrowing so the empty state can name it.
   const activeFilterLabel = [
     q ? `matching “${q}”` : "",
@@ -98,8 +117,11 @@ export default async function LeadsPage({
   // size — past LEADS_LIST_THRESHOLD leads a board is columns of scrolling, so
   // a list is the better first view. (Decided inside the query, once the
   // count is known.)
+  // A Won drill-down (include_won=1) opens as a list unless the URL asks for
+  // the board: converted and onboarding leads have no column to sit in.
   const requestedView =
-    parseLeadsView(sp.view) ?? parseLeadsView((await cookies()).get(LEADS_VIEW_COOKIE)?.value);
+    parseLeadsView(sp.view) ??
+    (includeWon ? "table" : parseLeadsView((await cookies()).get(LEADS_VIEW_COOKIE)?.value));
   // Table sort: "score" (default — hottest first) or "recent". Both default to
   // descending; an explicit `dir` (set by re-clicking the column header) flips
   // to ascending so the user can see coldest leads / oldest-created first.
@@ -121,53 +143,56 @@ export default async function LeadsPage({
     new_week: sp.new_week === "1",
   };
   const userId = session.userId;
+  // Any narrowing at all (a dashboard drill-down included) — an empty result
+  // then reads "no matches", never "no leads yet".
+  const filtering = !!q || stageFilter.length > 0 || sourceFilter.length > 0 || ownerFilter.length > 0
+    || branchFilter.length > 0 || includeWon || followupDue || !!createdFrom || !!createdTo
+    || Object.values(qf).some(Boolean);
 
   const data = await withTenant(session.tenantId, async (tx) => {
-    const conds: any[] = [
-      inArray(leads.stage, LEAD_PHASE_STAGES as any),
-      isNull(leads.convertedInvestorId),
-      // Hide soft-deleted (archived) leads — they carry the __deleted__ sentinel.
-      sql`leads.lost_reason IS DISTINCT FROM '__deleted__'`,
-      // Role scope: RMs see only their own leads, branch heads only their
-      // branch, owner/managers the whole book. RLS isolates by TENANT only, so
-      // this owner/branch slice MUST be applied in the query (the API enforces
-      // the same via leadScopeCondition — the page used to skip it, exposing the
-      // whole firm's pipeline to every RM).
+    // The whole book in scope, before any filter: tenant, not soft-deleted
+    // (archived leads carry the __deleted__ sentinel — lib/metrics leadWhere),
+    // on the board, and the role scope — RMs see only their own leads, branch
+    // heads only their branch, owner/managers the whole book. RLS isolates by
+    // TENANT only, so this owner/branch slice MUST be applied in the query (the
+    // API enforces the same via leadScopeCondition — the page used to skip it,
+    // exposing the whole firm's pipeline to every RM).
+    const bookConds: any[] = [
+      leadWhere({ tenantId: session.tenantId }, "leads"),
+      ON_BOARD,
       leadScopeSql(session, "leads"),
     ];
+    // include_won=1 lifts "on the board" only; deletion and role scope stay.
+    const conds: any[] = includeWon ? [bookConds[0], bookConds[2]] : [...bookConds];
     if (q) {
       conds.push(
         sql`(leads.name ILIKE ${`%${q}%`} OR leads.phone ILIKE ${`%${q}%`} OR leads.email ILIKE ${`%${q}%`} OR users.name ILIKE ${`%${q}%`})`
       );
     }
     if (stageFilter.length) {
-      // Match the canonical key AND the legacy values folded onto it. Without
-      // this, ?stage=call_done returns nothing for a firm whose rows still say
-      // "contacted" — and every link that counts leads by canonical stage (the
-      // dashboard's Lead pipeline, the kanban columns) would show a number the
-      // filtered list then contradicts.
-      const wanted = new Set<string>();
-      for (const s of stageFilter) {
-        wanted.add(s);
-        const col = STAGES.find((c) => c.key === s);
-        for (const a of col?.aliases ?? []) wanted.add(a);
-      }
-      conds.push(
-        sql`leads.stage IN (${sql.join([...wanted].map((v) => sql`${v}`), sql`, `)})`
-      );
+      // stage=<column key> — the dashboard's Lead pipeline counts: the column a
+      // lead sits in, exactly as lib/metrics/leads.ts leadStageKeySql decides it,
+      // so every stored value folded into the column matches (legacy
+      // "contacted", "qualified", mixed case…). A legacy value in the URL
+      // (?stage=contacted) means its column. Without this, ?stage=call_done
+      // returned nothing for a firm whose rows still say "contacted".
+      const keys = [...new Set(stageFilter.map((s) => leadPipelineColumn(s)?.key ?? s))];
+      conds.push(sql`(${leadStageKeySql("leads")}) IN (${textList(keys)})`);
     }
-    if (sourceFilter.length)
-      conds.push(sql`leads.source IN (${sql.join(sourceFilter.map((v) => sql`${v}`), sql`, `)})`);
-    if (ownerFilter.length)
-      conds.push(sql`leads.owner_id IN (${sql.join(ownerFilter.map((v) => sql`${v}::uuid`), sql`, `)})`);
-    // Branch — the branch command centre's drill-down, with the same rule its
-    // lead counts use (lib/dashboard/my/window.ts, leadsMatch): captured in the
-    // branch, or — where no capture branch was recorded — owned by someone in
-    // it. Only narrows; leadScopeSql above still applies.
-    if (branchFilter.length) {
-      const ids = sql.join(branchFilter.map((v) => sql`${v}::uuid`), sql`, `);
-      conds.push(sql`(leads.branch_id IN (${ids})
-        OR (leads.branch_id IS NULL AND leads.owner_id IN (SELECT id FROM users WHERE branch_id IN (${ids}))))`);
+    // owner / branch / source — the dashboard's lead scope, with its rules
+    // (lib/metrics leadWhere): branch = captured in the branch or, where no
+    // capture branch was recorded, owned by someone in it. Only narrows;
+    // leadScopeSql above still applies.
+    if (sourceFilter.length || ownerFilter.length || branchFilter.length) {
+      conds.push(leadWhere({
+        tenantId: session.tenantId, rmIds: ownerFilter, branchIds: branchFilter, leadSources: sourceFilter,
+      }, "leads"));
+    }
+    // followup_due=1 — the dashboard's "need follow-up today" (getOpenLeads):
+    // open leads whose next follow-up falls today or earlier, India dates.
+    if (followupDue) {
+      conds.push(sql`${leadOpenSql("leads")} AND leads.next_follow_up_at IS NOT NULL
+        AND (leads.next_follow_up_at AT TIME ZONE 'Asia/Kolkata')::date <= (now() AT TIME ZONE 'Asia/Kolkata')::date`);
     }
 
     // Quick-filter conditions — each adds a constraint; AND-combined.
@@ -193,8 +218,11 @@ export default async function LeadsPage({
     if (qf.new_week) {
       conds.push(sql`leads.created_at >= now() - interval '7 days'`);
     }
-    const dr = dateRangeCond(sp, "created", "leads.created_at");
-    if (dr) conds.push(dr);
+    // created_from / created_to — the dashboard's period: the India date the
+    // lead was created on, both ends inclusive (lib/metrics leadCreatedInSql).
+    if (createdFrom || createdTo) {
+      conds.push(leadCreatedInSql({ from: createdFrom || "1900-01-01", to: createdTo || "9999-12-31" }, "leads"));
+    }
 
     const whereClause: any = sql.join(conds, sql` AND `);
 
@@ -205,7 +233,7 @@ export default async function LeadsPage({
       const bookRes = await tx
         .select({ c: sql<number>`count(*)::int` })
         .from(leads)
-        .where(sql.join(conds.slice(0, 4), sql` AND `) as any);
+        .where(sql.join(bookConds, sql` AND `) as any);
       view = Number(bookRes[0]?.c ?? 0) > LEADS_LIST_THRESHOLD ? "table" : "kanban";
     }
 
@@ -375,7 +403,7 @@ export default async function LeadsPage({
       {/* Kanban — drag-and-drop enabled. Show a friendly empty-state when
           there are no leads yet AND no filters are active, so a brand-new
           tenant sees a clear "Add your first lead" path. */}
-      {data.rows.length === 0 && !q && stageFilter.length === 0 && sourceFilter.length === 0 ? (
+      {data.rows.length === 0 && !filtering ? (
         <EmptyState
           icon={Sparkles}
           title="No leads yet — let's add the first one"

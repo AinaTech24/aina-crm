@@ -74,7 +74,7 @@ export function DesksSettings() {
                   <Text variant="body">{d.name}</Text>
                   <Text variant="caption" tone="muted">{count(d.id)} member{count(d.id) === 1 ? "" : "s"}</Text>
                 </View>
-                <Pressable onPress={() => confirmDelete({ title: "Delete desk?", message: `"${d.name}" — members become unassigned.` }, () => del.mutate(d.id))} hitSlop={8} style={styles.delBtn}>
+                <Pressable accessibilityRole="button" accessibilityLabel={`Delete desk ${d.name}`} onPress={() => confirmDelete({ title: "Delete desk?", message: `"${d.name}" — members become unassigned.` }, () => del.mutate(d.id))} hitSlop={8} style={styles.delBtn}>
                   <Feather name="trash-2" size={16} color={palette.danger} />
                 </Pressable>
               </View>
@@ -118,7 +118,7 @@ export function DesksSettings() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.surfaceAlt },
-  section: { fontSize: fontSize.xs, fontWeight: fontWeight.bold as any, letterSpacing: 0.6, color: palette.muted, marginTop: spacing.xl, marginBottom: spacing.sm },
+  section: { fontSize: fontSize.xs, fontWeight: fontWeight.bold, letterSpacing: 0.6, color: palette.muted, marginTop: spacing.xl, marginBottom: spacing.sm },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.lg },
   divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line },
   iconWrap: { width: 34, height: 34, borderRadius: radius.md, backgroundColor: palette.brandLight, alignItems: "center", justifyContent: "center" },

@@ -61,12 +61,18 @@ export async function mobileVerify2fa(challenge: string, code: string): Promise<
 /** Roll the session window forward. Returns a fresh token, or null if the
  *  session is gone (revoked/expired) — caller should sign out on null. */
 export async function refreshToken(token: string): Promise<string | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
   try {
-    const { res, data } = await postJson("/api/auth/refresh", {}, token);
-    return res.ok && data.token ? data.token : null;
-  } catch {
-    return null;
-  }
+    const res = await fetch(`${API_BASE_URL}/api/auth/refresh`, { method: "POST", headers: {
+      "Content-Type": "application/json", Authorization: `Bearer ${token}`,
+    }, body: "{}", signal: controller.signal });
+    if (res.status === 401 || res.status === 403) return null;
+    if (!res.ok) throw new Error("Session service temporarily unavailable");
+    const data = await res.json();
+    if (typeof data.token !== "string") throw new Error("Invalid refresh response");
+    return data.token;
+  } finally { clearTimeout(timer); }
 }
 
 /** Register this device's Expo push token with the backend (POST /api/devices). */

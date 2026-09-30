@@ -72,7 +72,7 @@ function RuleRow({ tab, row, users }: { tab: string; row: Row; users: User[] }) 
   return (
     <div className="flex items-center gap-3 px-4 py-2.5">
       <div className="min-w-0 flex-1">
-        <div className="font-medium text-sm">{row.name} {!row.is_active && <span className="chip text-2xs bg-slate-100 text-slate-500">inactive</span>}</div>
+        <div className="font-medium text-sm">{row.name} {!row.is_active && <span className="chip text-2xs bg-secondary text-muted-foreground">inactive</span>}</div>
         <div className="text-2xs text-muted-foreground truncate">{detail}{tab === "validation" && row.error_message ? ` · "${row.error_message}"` : ""}</div>
       </div>
       {tab === "assignment" && <button onClick={del} disabled={busy} className="rounded p-1.5 hover:bg-rose-50 text-rose-500" title="Delete">{busy ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}</button>}

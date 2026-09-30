@@ -313,7 +313,7 @@ export function EditTemplateForm({ initialTemplate, initialVersion }: EditTempla
           <input
             value={initialTemplate.channel.toUpperCase()}
             disabled
-            className="input-base w-full bg-slate-100/50 cursor-not-allowed select-none font-semibold text-slate-700"
+            className="input-base w-full bg-secondary/50 cursor-not-allowed select-none font-semibold text-foreground"
           />
         </Field>
         <Field label="Category">
@@ -388,15 +388,15 @@ export function EditTemplateForm({ initialTemplate, initialVersion }: EditTempla
 
       {/* Variable Configuration Panel */}
       {declaredVars.length > 0 && (
-        <div className="card-surface p-4 space-y-3 bg-slate-50/50">
+        <div className="card-surface p-4 space-y-3 bg-secondary/50">
           <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-xs text-slate-800">Auto-Detected Variables ({declaredVars.length})</h3>
+            <h3 className="font-semibold text-xs text-foreground">Auto-Detected Variables ({declaredVars.length})</h3>
             <span className="text-2xs text-muted-foreground font-mono">Use {"{{variable_name}}"} in text to add more</span>
           </div>
           <div className="border rounded-md divide-y bg-background overflow-hidden">
             {declaredVars.map((v, idx) => (
               <div key={v.key} className="p-3 grid grid-cols-1 md:grid-cols-4 gap-3 items-center text-xs">
-                <div className="font-mono font-semibold text-slate-700 truncate">{v.key}</div>
+                <div className="font-mono font-semibold text-foreground truncate">{v.key}</div>
                 <div>
                   <label className="text-2xs text-muted-foreground block font-medium uppercase tracking-wider mb-0.5">Type</label>
                   <SelectField
@@ -429,7 +429,7 @@ export function EditTemplateForm({ initialTemplate, initialVersion }: EditTempla
                     }}
                     disabled={!isDraft}
                     placeholder="e.g. investor.name"
-                    className="input-base py-1 px-2 text-xs w-full font-mono bg-background disabled:bg-slate-50 disabled:cursor-not-allowed"
+                    className="input-base py-1 px-2 text-xs w-full font-mono bg-background disabled:bg-secondary disabled:cursor-not-allowed"
                   />
                 </div>
                 <div className="flex items-center gap-2 md:pt-3">
@@ -445,7 +445,7 @@ export function EditTemplateForm({ initialTemplate, initialVersion }: EditTempla
                     disabled={!isDraft}
                     className="rounded border-gray-300 text-primary focus:ring-primary size-3.5 disabled:opacity-50"
                   />
-                  <label htmlFor={`req-${v.key}`} className="cursor-pointer text-xs text-slate-600 select-none">
+                  <label htmlFor={`req-${v.key}`} className="cursor-pointer text-xs text-muted-foreground select-none">
                     Required Variable
                   </label>
                 </div>
@@ -468,7 +468,7 @@ export function EditTemplateForm({ initialTemplate, initialVersion }: EditTempla
               onChange={(e) => setWaText(e.target.value)}
               disabled={!isDraft}
               rows={10}
-              className="input-base font-mono w-full disabled:bg-slate-50 disabled:cursor-not-allowed"
+              className="input-base font-mono w-full disabled:bg-secondary disabled:cursor-not-allowed"
             />
           </Field>
           <div className="text-xs text-muted-foreground">
@@ -486,7 +486,7 @@ export function EditTemplateForm({ initialTemplate, initialVersion }: EditTempla
               value={dltId} 
               onChange={(e) => setDltId(e.target.value)} 
               disabled={!isDraft}
-              className="input-base w-full font-mono disabled:bg-slate-50 disabled:cursor-not-allowed" 
+              className="input-base w-full font-mono disabled:bg-secondary disabled:cursor-not-allowed" 
               placeholder="1107171234567" 
             />
           </Field>
@@ -496,7 +496,7 @@ export function EditTemplateForm({ initialTemplate, initialVersion }: EditTempla
               onChange={(e) => setSmsText(e.target.value)}
               disabled={!isDraft}
               rows={5}
-              className="input-base font-mono w-full disabled:bg-slate-50 disabled:cursor-not-allowed"
+              className="input-base font-mono w-full disabled:bg-secondary disabled:cursor-not-allowed"
             />
           </Field>
           <div className="text-xs text-muted-foreground">{smsText.length} characters · {Math.ceil(smsText.length / 160)} SMS part(s)</div>

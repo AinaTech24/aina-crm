@@ -21,11 +21,11 @@ const KIND_OPTS = [
 const KIND_META: Record<string, { icon: any; tone: string; label: string }> = {
   call: { icon: Phone, tone: "bg-blue-50 text-blue-700", label: "Call" },
   visit: { icon: MapPin, tone: "bg-emerald-50 text-emerald-700", label: "Visit" },
-  note: { icon: StickyNote, tone: "bg-slate-50 text-slate-600", label: "Note" },
+  note: { icon: StickyNote, tone: "bg-secondary text-muted-foreground", label: "Note" },
   whatsapp: { icon: MessageCircle, tone: "bg-emerald-50 text-emerald-700", label: "WhatsApp" },
   email: { icon: MessageCircle, tone: "bg-violet-50 text-violet-700", label: "Email" },
   sms: { icon: MessageCircle, tone: "bg-blue-50 text-blue-700", label: "SMS" },
-  other: { icon: ActivityIcon, tone: "bg-slate-50 text-slate-600", label: "Other" },
+  other: { icon: ActivityIcon, tone: "bg-secondary text-muted-foreground", label: "Other" },
 };
 
 export default async function ActivitiesPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {

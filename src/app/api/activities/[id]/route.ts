@@ -16,6 +16,7 @@ import { withTenant } from "@/db/client";
 import { withIdempotentMutation } from "@/lib/api/idempotent-mutation";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { mobileActivityScope } from "@/lib/mobile/access";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { ACTIVITY_DIRECTIONS, ACTIVITY_STATUSES, activities } from "@/db/schema";
 
@@ -35,6 +36,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         FROM activities a
         LEFT JOIN users u ON u.id = a.owner_user_id
         WHERE a.tenant_id = ${session.tenantId}::uuid AND a.id = ${id}::uuid
+          AND ${session.mobile ? mobileActivityScope(session) : sql`TRUE`}
         LIMIT 1
       `);
       return r.rows[0] ?? null;
@@ -67,7 +69,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const result = await withIdempotentMutation(session, req, parse.data, async (tx) => {
         const before = (
-          await tx.select().from(activities).where(and(eq(activities.id, id), eq(activities.tenantId, session.tenantId))).limit(1)
+          await tx.select().from(activities).where(and(eq(activities.id, id), eq(activities.tenantId, session.tenantId), session.mobile ? mobileActivityScope(session, "activities") : undefined)).limit(1)
         )[0];
         if (!before) return null;
         if (!isManager && before.ownerUserId !== session.userId) return "forbidden" as const;
@@ -119,7 +121,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       session.tenantId,
       async (tx) => {
         const before = (
-          await tx.select().from(activities).where(and(eq(activities.id, id), eq(activities.tenantId, session.tenantId))).limit(1)
+          await tx.select().from(activities).where(and(eq(activities.id, id), eq(activities.tenantId, session.tenantId), session.mobile ? mobileActivityScope(session, "activities") : undefined)).limit(1)
         )[0];
         if (!before) return null;
         if (!isManager && before.ownerUserId !== session.userId) return "forbidden" as const;

@@ -142,6 +142,11 @@ export function ProfileMenu({
         aria-label="Account menu"
       >
         <Avatar size="size-9" />
+        <span className="hidden xl:block px-2 text-left">
+          {/* The full name; the role is the second line, never "(Owner)" in brackets. */}
+          <span className="block whitespace-nowrap text-xs font-semibold">{name.replace(/\s*\([^)]*\)\s*$/, "")}</span>
+          <span className="block text-2xs text-muted-foreground">{roleLabel}</span>
+        </span>
         <ChevronDown
           className={`size-3.5 text-muted-foreground transition-transform duration-200 hidden sm:block ${open ? "rotate-180" : ""}`}
         />

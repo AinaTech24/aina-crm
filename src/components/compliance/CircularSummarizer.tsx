@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sparkles, Loader2, ChevronDown, Save, Check } from "lucide-react";
 
@@ -18,6 +18,7 @@ type Draft = {
  * and edited inline before saving to the tenant's library.
  */
 export function CircularSummarizer() {
+  const uid = useId();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
@@ -142,8 +143,8 @@ export function CircularSummarizer() {
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1">
-                  <label className="text-2xs font-bold text-muted-foreground uppercase">Title</label>
-                  <input
+                  <label htmlFor={`${uid}-title`} className="text-2xs font-bold text-muted-foreground uppercase">Title</label>
+                  <input id={`${uid}-title`}
                     type="text"
                     value={draftTitle}
                     onChange={(e) => setDraftTitle(e.target.value)}
@@ -153,8 +154,8 @@ export function CircularSummarizer() {
                 
                 <div className="grid grid-cols-3 gap-2">
                   <div className="flex flex-col gap-1">
-                    <label className="text-2xs font-bold text-muted-foreground uppercase">Category</label>
-                    <input
+                    <label htmlFor={`${uid}-category`} className="text-2xs font-bold text-muted-foreground uppercase">Category</label>
+                    <input id={`${uid}-category`}
                       type="text"
                       value={draftCategory}
                       onChange={(e) => setDraftCategory(e.target.value)}
@@ -163,8 +164,8 @@ export function CircularSummarizer() {
                   </div>
                   
                   <div className="flex flex-col gap-1">
-                    <label className="text-2xs font-bold text-muted-foreground uppercase">Issuer</label>
-                    <input
+                    <label htmlFor={`${uid}-issuer`} className="text-2xs font-bold text-muted-foreground uppercase">Issuer</label>
+                    <input id={`${uid}-issuer`}
                       type="text"
                       value={draftIssuer}
                       onChange={(e) => setDraftIssuer(e.target.value)}
@@ -174,8 +175,8 @@ export function CircularSummarizer() {
                   </div>
 
                   <div className="flex flex-col gap-1">
-                    <label className="text-2xs font-bold text-muted-foreground uppercase">Severity</label>
-                    <select
+                    <label htmlFor={`${uid}-severity`} className="text-2xs font-bold text-muted-foreground uppercase">Severity</label>
+                    <select id={`${uid}-severity`}
                       value={draftSeverity}
                       onChange={(e) => setDraftSeverity(e.target.value as any)}
                       className="w-full bg-background border rounded-md p-2 text-xs focus:outline-none focus:ring-1 focus:ring-brand-cyan"
@@ -189,8 +190,8 @@ export function CircularSummarizer() {
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="text-2xs font-bold text-muted-foreground uppercase">Summary</label>
-                <textarea
+                <label htmlFor={`${uid}-summary`} className="text-2xs font-bold text-muted-foreground uppercase">Summary</label>
+                <textarea id={`${uid}-summary`}
                   value={draftSummary}
                   onChange={(e) => setDraftSummary(e.target.value)}
                   rows={3}
@@ -199,8 +200,8 @@ export function CircularSummarizer() {
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="text-2xs font-bold text-muted-foreground uppercase">MFD Actions (one action per line)</label>
-                <textarea
+                <label htmlFor={`${uid}-mfd-actions-one-action-per-line`} className="text-2xs font-bold text-muted-foreground uppercase">MFD Actions (one action per line)</label>
+                <textarea id={`${uid}-mfd-actions-one-action-per-line`}
                   value={draftActions}
                   onChange={(e) => setDraftActions(e.target.value)}
                   rows={3}

@@ -77,7 +77,7 @@ export function TaskAttachments({ taskId }: { taskId: string }) {
   return (
     <div className="space-y-2.5">
       <div className="flex items-center justify-between">
-        <h4 className="text-2xs uppercase font-bold text-slate-500 flex items-center gap-1.5">
+        <h4 className="text-2xs uppercase font-bold text-muted-foreground flex items-center gap-1.5">
           <Paperclip className="size-3.5" /> Attachments
         </h4>
         <button
@@ -105,16 +105,16 @@ export function TaskAttachments({ taskId }: { taskId: string }) {
       ) : (
         <ul className="space-y-1.5">
           {items.map((a) => (
-            <li key={a.id} className="group flex items-center gap-2 rounded-md border border-slate-100 bg-slate-50/60 px-2.5 py-1.5">
-              <Paperclip className="size-3.5 text-slate-400 shrink-0" />
+            <li key={a.id} className="group flex items-center gap-2 rounded-md border border-slate-100 bg-secondary/60 px-2.5 py-1.5">
+              <Paperclip className="size-3.5 text-muted-foreground shrink-0" />
               <div className="min-w-0 flex-1">
-                <div className="text-xs font-medium text-slate-700 truncate">{a.fileName}</div>
-                <div className="text-2xs text-slate-400">{fmtSize(a.sizeBytes)}{a.uploaderName ? ` · ${a.uploaderName}` : ""}</div>
+                <div className="text-xs font-medium text-foreground truncate">{a.fileName}</div>
+                <div className="text-2xs text-muted-foreground">{fmtSize(a.sizeBytes)}{a.uploaderName ? ` · ${a.uploaderName}` : ""}</div>
               </div>
               <DownloadButton
                 url={`/api/tasks/${taskId}/attachments/${a.id}/download`}
                 filename={a.fileName}
-                className="p-1 rounded text-slate-400 hover:text-brand-cyan-deep"
+                className="p-1 rounded text-muted-foreground hover:text-brand-cyan-deep"
                 ariaLabel="Download"
               >
                 <Download className="size-3.5" />
@@ -122,7 +122,7 @@ export function TaskAttachments({ taskId }: { taskId: string }) {
               <button
                 type="button"
                 onClick={() => remove(a.id)}
-                className="p-1 rounded text-slate-300 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                className="p-1 rounded text-muted-foreground hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity"
                 aria-label="Delete attachment"
               >
                 <Trash className="size-3.5" />

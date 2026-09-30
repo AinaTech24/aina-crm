@@ -80,7 +80,7 @@ export function TypeaheadField({
           </Text>
         </Pressable>
         {value ? (
-          <Pressable style={styles.clear} onPress={clear} hitSlop={8}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Clear selection" style={styles.clear} onPress={clear} hitSlop={8}>
             <Feather name="x" size={18} color={palette.muted} />
           </Pressable>
         ) : null}

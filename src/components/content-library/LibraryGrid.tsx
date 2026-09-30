@@ -45,7 +45,7 @@ const TYPE_TONE: Record<string, string> = {
   presentation: "bg-amber-50 text-amber-700",
   video: "bg-violet-50 text-violet-700",
   audio: "bg-cyan-50 text-cyan-700",
-  other: "bg-gray-50 text-gray-700",
+  other: "bg-secondary text-foreground",
 };
 
 export function LibraryGrid({ rows }: { rows: Asset[] }) {

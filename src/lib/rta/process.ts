@@ -23,6 +23,7 @@ import {
   type CanonicalTransaction,
 } from "@/lib/integrations/cams-feed-parser";
 import type { RtaFileKind, RtaSource } from "@/db/schema/rta_imports";
+import { refreshActiveSipAmount } from "@/lib/metrics/sip";
 import {
   parseSipRejectionReport,
   parseBrokerageStatement,
@@ -856,11 +857,22 @@ async function processSipBook(
       // Including amount meant a step-up SIP (amount changes between monthly
       // books) failed to match and inserted a duplicate active SIP, inflating
       // active-SIP count + AUM projections. Update the amount on match instead.
+      //
+      // Match on folio_NUMBER, not folio_id. folio_id is a surrogate key that
+      // CHANGES when the folio master is re-imported: the new folio row gets a
+      // fresh uuid, the existing SIP still points at the old one, the lookup
+      // misses and a duplicate active SIP is inserted. That is not theoretical —
+      // it produced 96 byte-identical duplicate SIPs on one firm, same folio,
+      // scheme, amount and start date, differing only in when they were written.
+      //
+      // The folio number is what the registrar actually keys on and survives a
+      // re-import. investor_id is dropped from the match for the same reason:
+      // a re-imported client is a new row, and the folio number already scopes
+      // this tightly enough.
       const existing = await tx.execute(sql`
         SELECT id FROM sips
         WHERE tenant_id = ${args.tenantId}::uuid
-          AND investor_id = ${investorId}::uuid
-          AND folio_id = ${folioId}::uuid
+          AND folio_number = ${r.folioNumber}
           AND scheme_code = ${r.schemeCode}
           AND status = 'active'
         LIMIT 1
@@ -909,6 +921,11 @@ async function processSipBook(
       errors.push({ row: i + 1, reason: e.message ?? "SIP import failed" });
     }
   }
+
+  // The SIP book changed underneath the clients' cached "Monthly SIP" — and a
+  // match by folio number can move a SIP between client records — so refresh
+  // the whole firm's cache in one set-based pass (lib/metrics/sip.ts).
+  if (imported > 0) await refreshActiveSipAmount(tx, { tenantId: args.tenantId });
 
   return {
     rowsTotal: rows.length,

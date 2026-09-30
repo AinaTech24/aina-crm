@@ -16,6 +16,7 @@ import { SelectField } from "../../components/ui/SelectField";
 import { LoadingState, ErrorState } from "../../components/states";
 import { palette, spacing, fontSize, fontWeight } from "../../theme/tokens";
 import { useTargets, useSaveTarget } from "./api";
+import { errorMessage } from "../../lib/errors";
 
 export function TargetsSettings() {
   const router = useRouter();
@@ -47,8 +48,8 @@ export function TargetsSettings() {
       }
       setEdits({});
       setMsg("Saved.");
-    } catch (e: any) {
-      setMsg(e?.message ?? "Could not save.");
+    } catch (e) {
+      setMsg(errorMessage(e, "Could not save."));
     } finally {
       setBusy(false);
     }
@@ -91,5 +92,5 @@ export function TargetsSettings() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.surfaceAlt },
-  section: { fontSize: fontSize.xs, fontWeight: fontWeight.bold as any, letterSpacing: 0.6, color: palette.muted, marginTop: spacing.xl, marginBottom: spacing.sm },
+  section: { fontSize: fontSize.xs, fontWeight: fontWeight.bold, letterSpacing: 0.6, color: palette.muted, marginTop: spacing.xl, marginBottom: spacing.sm },
 });

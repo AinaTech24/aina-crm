@@ -18,7 +18,7 @@ export const palette = {
   ink: "#0F172A", // primary text
   ink70: "#334155",
   muted: "#64748B", // secondary text
-  faint: "#94A3B8", // tertiary / placeholders
+  faint: "#64748B", // tertiary / placeholders
   line: "#E2E8F0", // borders
   lineSoft: "#EEF2F6",
   surface: "#FFFFFF",
@@ -101,4 +101,4 @@ export const shadow = {
 
 /** Minimum thumb-friendly touch target. */
 export const HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 } as const;
-export const TOUCH_MIN = 44;
+export const TOUCH_MIN = 48;

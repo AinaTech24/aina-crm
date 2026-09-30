@@ -33,7 +33,7 @@ const STATUS_TONE: Record<string, string> = {
   invited: "bg-blue-50 text-blue-700 border-blue-200",
   suspended: "bg-amber-50 text-amber-700 border-amber-200",
   offboarding: "bg-amber-50 text-amber-700 border-amber-200",
-  offboarded: "bg-gray-100 text-gray-600 border-gray-200",
+  offboarded: "bg-secondary text-muted-foreground border-border",
 };
 
 function fmtINR(n: number): string {

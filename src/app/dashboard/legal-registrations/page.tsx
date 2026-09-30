@@ -13,6 +13,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { legalRegistrations } from "@/db/schema";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +36,7 @@ const STATUS_TONE: Record<string, string> = {
   active: "bg-emerald-50 text-emerald-700",
   expired: "bg-rose-100 text-rose-800",
   pending_renewal: "bg-amber-50 text-amber-700",
-  surrendered: "bg-gray-100 text-gray-600",
+  surrendered: "bg-secondary text-muted-foreground",
   rejected: "bg-rose-50 text-rose-700",
 };
 
@@ -130,7 +131,7 @@ export default async function LegalRegistrationsPage({
               }`}
             className={`chip text-xs ${statusFilter === s.value
                 ? "bg-slate-900 text-white"
-                : "bg-slate-100"
+                : "bg-secondary"
               }`}
           >
             {s.label}
@@ -169,7 +170,7 @@ export default async function LegalRegistrationsPage({
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} className="border-t hover:bg-slate-50/60">
+                <tr key={r.id} className="border-t hover:bg-secondary/60">
                   <td className="px-3 py-2">
                     <Link
                       href={`/dashboard/legal-registrations/${r.id}`}
@@ -216,7 +217,7 @@ export default async function LegalRegistrationsPage({
                       const eff = effectiveStatus(r);
                       return (
                         <span
-                          className={`chip text-2xs ${STATUS_TONE[eff] ?? "bg-slate-100"}`}
+                          className={`chip text-2xs ${STATUS_TONE[eff] ?? "bg-secondary"}`}
                           title={eff !== r.status ? `Marked "${r.status}", but lapsed by date` : undefined}
                         >
                           {eff.replace("_", " ")}
@@ -262,8 +263,8 @@ function Tile({
 function ExpiryBadge({ date, perpetual }: { date: string | null; perpetual?: boolean }) {
   // A perpetual license never expires — show a neutral chip, never a red alarm,
   // even if an expiry date was entered by mistake.
-  if (perpetual) return <span className="chip bg-slate-100 text-2xs">Perpetual</span>;
-  if (!date) return <span className="chip bg-slate-100 text-2xs">Perpetual</span>;
+  if (perpetual) return <span className="chip bg-secondary text-2xs">Perpetual</span>;
+  if (!date) return <span className="chip bg-secondary text-2xs">Perpetual</span>;
   const d = new Date(date);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -312,11 +313,7 @@ function effectiveStatus(r: { status: string; expiryAt: unknown; renewalFrequenc
 
 function fmt(d: string): string {
   try {
-    return new Date(d).toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "short",
-      year: "2-digit",
-    });
+    return formatDate(new Date(d));
   } catch {
     return d;
   }

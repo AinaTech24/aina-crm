@@ -4,108 +4,85 @@
 
 @layer base {
   :root {
-    /* ═══════════════════════════════════════════════════════════════════════
-       Aina CRM palette — orange primary (#F97316), matching the FlowDesk reference
-       the user asked to reproduce exactly. Was Aina red (#B71A20).
-       Derived from the Aina logo. The brand token names below keep their legacy
-       spelling (`--brand-navy` = red, `--brand-cyan` = teal) so the hundreds of
-       existing `bg-brand-navy` / `text-brand-cyan` consumers re-theme in place.
-       ═══════════════════════════════════════════════════════════════════════ */
-    /* Ground sits ~4% below --card so a card reads as a surface ON the page.
-       It was 98.6% — a 1.4% gap that made every panel dissolve into the page,
-       which is why the app looked flat however much structure was there. */
-    --background: 220 20% 97%;               /* #F5F7FA — reference ground */
-    --foreground: 200 30% 12%;               /* near-black charcoal-teal */
+    /* ═══════════════════════════════════════════════════════════════════
+       SEMANTIC TOKENS — the only values a theme sets.
+
+       Everything below this block is an ALIAS. That matters: `--brand-navy`,
+       `--brand-cyan`, `--nav-active-bg`, `--ring` and `--primary` had all
+       drifted to the identical literal `221 83% 53%`, and three more names had
+       collapsed onto `221 70% 40%`. Five names for one colour is not a
+       palette, it is a trap — a tenant override had to find and set all five,
+       and a designer reading "navy" and "cyan" was told they differed when
+       they did not.
+
+       Now a tenant sets `--primary` and the rest follow.
+       ═══════════════════════════════════════════════════════════════════ */
+    --background: 220 20% 97%;
+    --foreground: 222 25% 16%;
     --card: 0 0% 100%;
-    --card-foreground: 200 30% 12%;
+    --card-foreground: 222 25% 16%;
     --popover: 0 0% 100%;
-    --popover-foreground: 200 30% 12%;
-
-    --primary: 25 95% 53%;                  /* Aina red #B71A20 */
+    --popover-foreground: 222 25% 16%;
+    --primary: 221 83% 53%;
     --primary-foreground: 0 0% 100%;
-
-    --secondary: 220 20% 96%;                /* soft neutral for hovers / chips */
-    --secondary-foreground: 200 30% 20%;
-
-    --muted: 220 18% 95%;
-    --muted-foreground: 218 11% 50%;        /* #6B7280-ish label grey */
-
-    --accent: 25 95% 96%;                   /* light brand tint — hover surface */
-    --accent-foreground: 21 90% 35%;        /* deep red text on the tint */
-
-    --destructive: 4 80% 52%;                /* warmer red, distinct from brand crimson */
+    /* One step darker than primary — for the gradient's far end and for
+       primary-coloured TEXT, which needs more weight than a fill does. */
+    --primary-deep: 221 70% 40%;
+    --primary-darkest: 221 70% 35%;
+    --secondary: 220 20% 96%;
+    --secondary-foreground: 222 22% 25%;
+    --muted: 220 16% 95%;
+    --muted-foreground: 218 12% 43%;
+    --accent: 221 90% 97%;
+    --accent-foreground: var(--primary-deep);
+    --destructive: 4 72% 46%;
     --destructive-foreground: 0 0% 100%;
-    --success: 151 55% 35%;
-    --success-foreground: 151 62% 22%;
-    --warning: 37 92% 50%;
+    --success: 153 58% 32%;
+    --success-foreground: 153 58% 25%;
+    --warning: 37 85% 46%;
     --warning-foreground: 31 78% 25%;
-    --info: 199 74% 45%;
-    --info-foreground: 202 72% 28%;
+    --info: 210 75% 43%;
+    --info-foreground: 210 72% 30%;
+    --border: 220 18% 89%;
+    --input: 220 18% 85%;
+    --ring: var(--primary);
+    --radius: 0.625rem;
 
-    --border: 220 16% 92%;                   /* hairline, neutral */
-    --input: 220 16% 92%;
-    --ring: 25 95% 53%;                     /* Aina-red focus ring — one accent */
+    /* ── Aliases kept for the ~1,000 existing `brand-*` class uses ──────────
+       Do not give these new literal values. If a surface needs a different
+       colour, it needs a new SEMANTIC token, not another brand synonym. */
+    --brand-navy: var(--primary);
+    --brand-navy-deep: var(--primary-darkest);
+    --brand-navy-light: var(--accent);
+    --brand-cyan: var(--primary);
+    --brand-cyan-deep: var(--primary-deep);
+    --brand-cyan-light: var(--accent);
+    --brand-mint: var(--success);
+    --brand-violet: 250 45% 53%;
+    --nav-active-bg: var(--primary);
+    --nav-active-fg: var(--primary-deep);
 
-    --radius: 0.75rem;                       /* 12px base; xl utilities give 16/20px */
-
-    /* Extended brand tokens (consumed by gradients, badges, hero strips).
-       Names are legacy; values are the Aina palette. */
-    --brand-navy: 25 95% 53%;               /* = Aina red #B71A20 */
-    --brand-navy-deep: 21 90% 42%;          /* deep red */
-    --brand-navy-light: 25 95% 96%;         /* red tint */
-    --brand-cyan: 25 95% 53%;               /* re-pointed: = Aina red (one accent) */
-    --brand-cyan-deep: 21 90% 42%;          /* deep red */
-    --brand-cyan-light: 25 95% 96%;         /* red tint */
-    --brand-violet: 25 85% 60%;
-
-    /* ── Metric accents ────────────────────────────────────────────────
-       A deliberate SIX-hue set, used only by dashboard metric cards to give
-       each figure its own identity — tinted icon chip, sparkline, progress
-       ring. This is a considered exception to the one-accent rule above, not
-       a drift from it: `--primary` stays Aina red and still owns every button,
-       nav pill and focus ring, and severity still speaks through
-       --success / --warning / --destructive.
-
-       The exception exists because the alternative was tested and rejected.
-       With colour spent only on severity, four headline cards sat in a row
-       looking identical and the dashboard read as unfinished however well it
-       was spaced. Identity colour is what the premium dashboards this was
-       benchmarked against all use.
-
-       Rule for anyone extending this: a metric hue may tint a chip, a line or
-       a ring. It may never fill a button or a row — that is severity's job,
-       and a metric hue standing in for "this is wrong" breaks both systems. */
-    --metric-indigo:  243 75% 59%;
-    --metric-emerald: 160 94% 30%;
-    --metric-violet:  263 83% 58%;
-    --metric-cyan:    192 91% 36%;
-    --metric-amber:    32 95% 44%;
-    --metric-rose:    347 77% 50%;
-    --brand-mint: 25 95% 53%;              /* re-pointed: = Aina red (one accent) */
-    /* Sidebar active-item tint — theme-aware (see .nav-link-active). Soft brand
-       red on light; a muted deep red on dark (brand-navy-light would be near
-       white in dark, so it gets its own value below). */
-    /* Soft brand tint, not a solid fill. Both the FlowDesk reference and the
-       current best-practice guidance put the active nav item on ~6-10% alpha of
-       the brand hue with brand-coloured text, rather than a saturated pill.
-       A solid red bar is the loudest element on a screen whose whole job is to
-       let the eye land somewhere else, and it spends the one accent colour on
-       "you are here" — a fact the user already knows. */
-    --nav-active-bg: 25 95% 53%;            /* Aina red, applied at low alpha */
-    --nav-active-fg: 21 90% 42%;            /* brand-red label + icon */
-
-    /* Chart ramp — see tailwind.config.ts `colors.chart`. Muted, mutually
-       distinguishable, and sharing no hue with --primary so red keeps meaning
-       "needs attention" inside a chart rather than "series 1". */
-    /* Flat, saturated — the reference's chart set (indigo donut, blue bars,
-       green line, amber, red, slate). Charts sit on white, so these need to
-       be full-strength to read as the reference does. */
-    --chart-1: 239 84% 67%;                  /* indigo  #6366F1 */
-    --chart-2: 217 91% 60%;                  /* blue    #3B82F6 */
-    --chart-3: 142 71% 45%;                  /* green   #22C55E */
-    --chart-4: 38 92% 50%;                   /* amber   #F59E0B */
-    --chart-5: 0 84% 60%;                    /* red     #EF4444 */
-    --chart-6: 215 14% 64%;                  /* slate   #94A3B8 */
+    /* ── Data palettes — two, on purpose ───────────────────────────────────
+       `--metric-*` is INK: it sits as text and icons on a white tile, so every
+       value is dark enough to pass AA on `--card`.
+       `--chart-*` is FILL: it sits as SVG geometry with no text on it, so the
+       values are lighter and more separable.
+       They are NOT interchangeable — swapping them drops metric tiles below
+       contrast. For Recharts specifically the source of truth is the resolved
+       hex in `src/lib/dashboard/chart-palette.ts`, because an unresolved
+       `hsl(var(--chart-2))` in an SVG fill attribute paints BLACK. */
+    --metric-indigo: 221 70% 48%;
+    --metric-emerald: 163 40% 35%;
+    --metric-violet: 250 35% 50%;
+    --metric-cyan: 202 55% 40%;
+    --metric-amber: 32 72% 40%;
+    --metric-rose: 347 55% 45%;
+    --chart-1: 221 75% 55%;
+    --chart-2: 201 65% 55%;
+    --chart-3: 160 45% 42%;
+    --chart-4: 38 75% 52%;
+    --chart-5: 250 40% 60%;
+    --chart-6: 215 15% 62%;
   }
 
 
@@ -119,6 +96,11 @@
   input[type="checkbox"],
   input[type="radio"] {
     accent-color: hsl(var(--primary));
+    /* 13 sites drew these at 12–14px. 16px is the native standard and the
+       smallest a trackpad hits reliably; the row or label around it is the
+       real target. */
+    min-width: 1rem;
+    min-height: 1rem;
   }
   /* Checkboxes / radios must NEVER show the boxy native outline or the form
      field's border-ring (which made a square halo around the tick). On mouse:
@@ -425,7 +407,7 @@
 
   .chip {
     @apply inline-flex items-center gap-1 rounded-full
-           px-2.5 py-0.5 text-xs font-semibold;
+           px-2.5 py-0.5 text-2xs font-semibold;
     /* One declaration only. This was previously declared twice back-to-back,
        the second silently overriding a currentColor ring the comment described. */
     box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.06);
@@ -439,11 +421,13 @@
 
   /* ─── Brand surfaces ─────────────────────────────────────────────────── */
 
+  /* A single-hue wash from deep to full primary. It used to be navy→cyan,
+     which rendered flat once both names resolved to the same blue. */
   .brand-gradient {
     background: linear-gradient(
       135deg,
       hsl(var(--brand-navy-deep)) 0%,
-      hsl(var(--brand-navy)) 50%,
+      hsl(var(--brand-cyan-deep)) 45%,
       hsl(var(--brand-cyan)) 100%
     );
   }
@@ -472,7 +456,7 @@
   .brand-bar {
     background-image: linear-gradient(
       to right,
-      hsl(var(--brand-navy)) 0%,
+      hsl(var(--brand-cyan-deep)) 0%,
       hsl(var(--brand-cyan)) 100%
     );
   }
@@ -481,15 +465,19 @@
 
   /* Page section heading + subtitle */
   .page-title {
-    @apply text-xl font-semibold tracking-tight flex items-center gap-2 text-foreground;
+    @apply text-2xl sm:text-[1.75rem] leading-tight font-semibold tracking-tight flex items-center gap-2 text-foreground;
   }
   .page-subtitle {
-    @apply text-sm text-muted-foreground;
+    @apply text-sm leading-relaxed text-muted-foreground;
   }
 
   /* Section title (smaller, used on inner panels) */
+  /* A section heading must not be the same size as the body text under it —
+     it was `text-sm`, i.e. exactly body size, which is why cards read as one
+     undifferentiated block. `text-base` is the step between body and
+     `.page-title`. */
   .section-title {
-    @apply text-sm font-semibold tracking-tight text-foreground/90;
+    @apply text-base font-semibold tracking-tight text-foreground;
   }
   .section-subtitle {
     @apply text-xs text-muted-foreground;
@@ -517,7 +505,7 @@
      when stacked with pinned duplicates + red section headers. */
   .nav-link {
     @apply relative flex items-center gap-3 rounded-lg
-           px-3 py-[9px] text-sm font-medium
+           px-3 py-2 text-xs font-medium
            text-foreground/80
            hover:bg-secondary hover:text-foreground
            transition-colors duration-150;
@@ -534,7 +522,6 @@
     background-color: hsl(var(--nav-active-bg) / 0.10);
     color: hsl(var(--nav-active-fg));
     font-weight: 600;
-    font-weight: 600;
   }
   .nav-link-active .nav-link-icon,
   .nav-link-active:hover .nav-link-icon {
@@ -547,13 +534,41 @@
   /* ─── Modern table polish ────────────────────────────────────────────── */
 
   /* Apply on <table>. Adds sticky header, gentle row hover, and softer borders. */
+  /* ─── Every table in the app shell gets the same chrome ────────────────
+     179 files hand-roll a <table>; 9 opted into `.table-modern`. Rather than
+     migrate each, the modern header, row hover and hairline dividers now apply
+     to ANY table under `.dashboard-content` by default. A table that must own
+     its look (a calendar grid, a print sheet, a pivot) opts out with
+     `.table-raw` on the <table>. Author classes on <th>/<tr> still win: the
+     table part sits in :where(), so each rule weighs one class — no more than
+     `text-right` — and utilities come later in the cascade. (Without the
+     :where() it outweighed them, and every right-aligned numeric header in
+     the app rendered left-aligned over its right-aligned numbers.) */
+  .dashboard-content :where(table:not(.table-raw) thead th) {
+    @apply text-xs font-medium tracking-normal text-muted-foreground
+           bg-secondary/70 border-b border-border text-left;
+  }
+  .dashboard-content :where(table:not(.table-raw) tbody tr) {
+    @apply transition-colors duration-100;
+  }
+  .dashboard-content :where(table:not(.table-raw) tbody tr:hover) {
+    @apply bg-secondary/70;
+  }
+  .dashboard-content :where(table:not(.table-raw) tbody tr + tr) {
+    @apply border-t border-border;
+  }
+  .dashboard-content :where(table:not(.table-raw) th),
+  .dashboard-content :where(table:not(.table-raw) td) {
+    @apply align-middle;
+  }
+
   .table-modern thead th {
     /* A faint brand tint on the header row, per the reference — enough to
        separate it from the body at a glance without the weight of a filled
        bar. `text-foreground/70` rather than muted so the column names stay
        readable against it. */
-    @apply text-2xs font-semibold uppercase tracking-wider
-           text-foreground/70 bg-primary/[0.06]
+    @apply text-xs font-medium tracking-normal
+           text-muted-foreground bg-secondary/70
            border-b border-border sticky top-0 z-[1];
   }
   .table-modern tbody tr {
@@ -897,18 +912,17 @@
    rule in that layer gets tree-shaken by Tailwind and silently never ships
    (this repo has been bitten by exactly that — see the note above). */
 .nav-link-active .nav-link-beta {
-  background-color: rgba(255, 255, 255, 0.22);
-  color: #fff;
+  background-color: hsl(var(--warning) / 0.14);
+  color: hsl(var(--warning-foreground));
 }
 .nav-link-active .nav-link-badge {
-  background-color: rgba(255, 255, 255, 0.25);
+  background-color: hsl(var(--destructive));
   color: #fff;
 }
 .nav-link-active button {
-  color: rgba(255, 255, 255, 0.85);
+  color: hsl(var(--nav-active-fg));
 }
-.nav-link-active button:hover {
-  color: #fff;
+.nav-link-active button:hover { color: hsl(var(--primary));
 }
 
 /* Collapsed icon rail: a full-width solid pill reads as a heavy block, so keep
@@ -973,8 +987,8 @@
   opacity: 1;
   transition: max-height 300ms ease, opacity 250ms ease;
 }
-.nav-sec-body.nav-sec-collapsed { max-height: 0; opacity: 0; }
-.sidebar-collapsed .nav-sec-body.nav-sec-collapsed { max-height: none; opacity: 1; }
+.nav-sec-body.nav-sec-collapsed { max-height: 0; min-height: 0; opacity: 0; visibility: hidden; }
+.sidebar-collapsed .nav-sec-body.nav-sec-collapsed { max-height: none; opacity: 1; visibility: visible; }
 
 /* ──────────────────────────────────────────────────────────────────────────
    Custom checkbox — ONE consistent look across the whole app.
@@ -1041,3 +1055,4 @@ input[type="checkbox"]:not([data-native]):indeterminate::before {
   /* Reference has no elevated variant; kept as a no-op so callers survive. */
   box-shadow: none;
 }
+

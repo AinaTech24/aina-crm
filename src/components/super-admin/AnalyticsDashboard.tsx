@@ -23,6 +23,7 @@ import {
   Radar as RadarIcon, CircleDot, AlignStartVertical, Trash2, ChevronDown,
 } from "lucide-react";
 import { ChartMount } from "@/components/dashboards/ChartMount";
+import { formatDate } from "@/lib/format";
 
 export type MfdRow = {
   id: string;
@@ -66,13 +67,13 @@ function bucketOf(date: Date, gran: Gran): { key: string; label: string; sort: n
   const m = date.getMonth();
   switch (gran) {
     case "daily":
-      return { key: date.toISOString().slice(0, 10), label: date.toLocaleDateString("en-IN", { day: "2-digit", month: "short" }), sort: date.getTime() };
+      return { key: date.toISOString().slice(0, 10), label: formatDate(date, "dayMonth"), sort: date.getTime() };
     case "weekly": {
       const dt = new Date(date);
       const dow = (dt.getDay() + 6) % 7;
       dt.setDate(dt.getDate() - dow);
       dt.setHours(0, 0, 0, 0);
-      return { key: dt.toISOString().slice(0, 10), label: dt.toLocaleDateString("en-IN", { day: "2-digit", month: "short" }), sort: dt.getTime() };
+      return { key: dt.toISOString().slice(0, 10), label: formatDate(dt, "dayMonth"), sort: dt.getTime() };
     }
     case "monthly":
       return { key: `${y}-${m}`, label: date.toLocaleDateString("en-IN", { month: "short", year: "2-digit" }), sort: y * 12 + m };

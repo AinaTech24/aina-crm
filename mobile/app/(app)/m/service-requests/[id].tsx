@@ -63,7 +63,7 @@ export default function ServiceRequestDetail() {
         <Card style={breached ? { borderLeftWidth: 3, borderLeftColor: toneColors("danger").fg } : undefined}>
           <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.sm }}>
             <Text variant="title" style={{ flex: 1 }}>{r.subject ?? "Request"}</Text>
-            <Pressable onPress={() => setStatusOpen(true)}><StatusPill label={meta.label} tone={meta.tone} size="sm" /></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel={`Status: ${meta.label}. Change status`} onPress={() => setStatusOpen(true)}><StatusPill label={meta.label} tone={meta.tone} size="sm" /></Pressable>
           </View>
           <View style={styles.metaRow}>
             {r.priority ? <StatusPill label={titleCase(r.priority)} tone={PRIORITY_TONE[r.priority] ?? "neutral"} size="sm" dot={false} /> : null}
@@ -94,7 +94,7 @@ export default function ServiceRequestDetail() {
             const active = r.status === s;
             return (
               <Pressable key={s} style={[styles.statusBtn, active && { backgroundColor: toneColors(m.tone).bg, borderColor: toneColors(m.tone).fg }]} onPress={() => setStatus(s)} disabled={update.isPending}>
-                <Text variant="caption" style={{ color: active ? toneColors(m.tone).fg : palette.ink, fontWeight: fontWeight.semibold as any }}>{m.label}</Text>
+                <Text variant="caption" style={{ color: active ? toneColors(m.tone).fg : palette.ink, fontWeight: fontWeight.semibold }}>{m.label}</Text>
               </Pressable>
             );
           })}
@@ -141,7 +141,7 @@ const styles = StyleSheet.create({
   statusRow: { flexDirection: "row", gap: spacing.sm },
   statusBtn: { flex: 1, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: palette.line, backgroundColor: palette.surface, borderRadius: radius.md, paddingVertical: spacing.md },
   saveBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, backgroundColor: palette.success, borderRadius: radius.md, paddingVertical: spacing.md, marginTop: spacing.sm },
-  btnTxt: { color: palette.white, fontWeight: fontWeight.semibold as any },
+  btnTxt: { color: palette.white, fontWeight: fontWeight.semibold },
   pickRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.lineSoft },
   dot: { width: 8, height: 8, borderRadius: 4 },
 });

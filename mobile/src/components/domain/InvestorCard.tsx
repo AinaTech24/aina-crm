@@ -21,7 +21,7 @@ const SEGMENT_TONE: Record<string, string> = { HNI: palette.violet, Affluent: pa
 function MiniBadge({ label, color }: { label: string; color: string }) {
   return (
     <View style={[styles.mini, { backgroundColor: color + "1A" }]}>
-      <Text style={{ fontSize: 10.5, color, fontWeight: fontWeight.semibold as any }}>{label}</Text>
+      <Text style={{ fontSize: 10.5, color, fontWeight: fontWeight.semibold }}>{label}</Text>
     </View>
   );
 }

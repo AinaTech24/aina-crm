@@ -51,7 +51,7 @@ const STATUS_TONE: Record<DdqStatus, string> = {
   in_place: "bg-emerald-50 text-emerald-700 border-emerald-300",
   in_progress: "bg-amber-50 text-amber-700 border-amber-300",
   pending: "bg-rose-50 text-rose-700 border-rose-300",
-  not_applicable: "bg-slate-50 text-slate-600 border-slate-300",
+  not_applicable: "bg-secondary text-muted-foreground border-slate-300",
 };
 
 export function DdqAuditChecklist({
@@ -241,7 +241,7 @@ export function DdqAuditChecklist({
                   {readiness.pending} pending
                 </span>
                 {readiness.na > 0 && (
-                  <span className="chip bg-slate-100 text-slate-700 font-semibold px-2 py-0.5 rounded text-2xs">
+                  <span className="chip bg-secondary text-foreground font-semibold px-2 py-0.5 rounded text-2xs">
                     {readiness.na} N/A
                   </span>
                 )}
@@ -347,7 +347,7 @@ export function DdqAuditChecklist({
                                 className={`chip text-2xs font-bold py-0.5 px-2 rounded-full border ${
                                   item.coverage === "in_app"
                                     ? "bg-brand-cyan-light text-brand-cyan-deep border-brand-cyan/20"
-                                    : "bg-slate-100 text-slate-600 border-slate-200"
+                                    : "bg-secondary text-muted-foreground border-border"
                                 }`}
                               >
                                 {item.coverage === "in_app" ? "In-app evidence" : "Document vault"}

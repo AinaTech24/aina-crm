@@ -14,6 +14,7 @@ import { isNativeApp, nativePickImage } from "@/lib/native-bridge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { SelectField } from "@/components/ui/SelectField";
 import { DocumentViewerModal, type ViewerDoc } from "@/components/documents/DocumentViewerModal";
+import { formatDate } from "@/lib/format";
 
 type Doc = {
   id: string;
@@ -37,7 +38,7 @@ function fmtSize(b?: string | null): string {
 function fmtDate(s?: string): string {
   if (!s) return "";
   const d = new Date(s);
-  return isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  return isNaN(d.getTime()) ? "" : formatDate(d);
 }
 
 export function InvestorDocumentsSection({ investorId, investorName, investorPhone, investorEmail }: { investorId: string; investorName?: string; investorPhone?: string | null; investorEmail?: string | null }) {

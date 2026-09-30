@@ -24,6 +24,7 @@ import { useTask, useUpdateTask, useDeleteTask, TASK_PRIORITY_TONE, TASK_STATUSE
 import { titleCase, fmtDate, timeAgo } from "../../../../src/lib/format";
 import { taskStatusBadge } from "../../../../src/lib/status";
 import { palette, radius, spacing, fontWeight } from "../../../../src/theme/tokens";
+import { asIcon } from "../../../../src/lib/icons";
 
 const CHECK_CYCLE: Record<string, ChecklistItem["status"]> = { not_started: "in_progress", in_progress: "completed", completed: "not_started", assigned_to_other: "not_started" };
 const CHECK_ICON: Record<string, string> = { not_started: "circle", in_progress: "loader", completed: "check-circle", assigned_to_other: "user" };
@@ -79,8 +80,8 @@ export default function TaskDetail() {
           <Card>
             <Text variant="title">{task.title}</Text>
             <View style={styles.badgeRow}>
-              <Pressable onPress={() => setStatusSheet(true)}><StatusPill label={status.label} tone={status.tone} /></Pressable>
-              <Pressable onPress={() => setPrioSheet(true)}>{task.priority ? <StatusPill label={titleCase(task.priority)} tone={TASK_PRIORITY_TONE[task.priority] ?? "neutral"} dot={false} /> : <StatusPill label="Set priority" tone="neutral" dot={false} />}</Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel={`Status: ${status.label}. Change status`} onPress={() => setStatusSheet(true)}><StatusPill label={status.label} tone={status.tone} /></Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="Change priority" onPress={() => setPrioSheet(true)}>{task.priority ? <StatusPill label={titleCase(task.priority)} tone={TASK_PRIORITY_TONE[task.priority] ?? "neutral"} dot={false} /> : <StatusPill label="Set priority" tone="neutral" dot={false} />}</Pressable>
               {sla ? <StatusPill label={sla.label} tone={sla.tone} dot={false} /> : null}
             </View>
           </Card>
@@ -129,9 +130,9 @@ export default function TaskDetail() {
             </View>
             {checklist.length === 0 ? <Text variant="caption" tone="muted">No sub-tasks yet.</Text> : checklist.map((item) => (
               <View key={item.id} style={styles.clRow}>
-                <Pressable onPress={() => cycleItem(item)} hitSlop={8}><Feather name={(CHECK_ICON[item.status ?? "not_started"] ?? "circle") as any} size={18} color={item.status === "completed" ? palette.success : palette.faint} /></Pressable>
+                <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: item.status === "completed" }} accessibilityLabel={item.text} onPress={() => cycleItem(item)} hitSlop={8}><Feather name={asIcon((CHECK_ICON[item.status ?? "not_started"] ?? "circle"))} size={18} color={item.status === "completed" ? palette.success : palette.faint} /></Pressable>
                 <Text variant="body" style={[{ flex: 1 }, item.status === "completed" && { textDecorationLine: "line-through", color: palette.faint }]}>{item.text}</Text>
-                <Pressable onPress={() => removeItem(item)} hitSlop={8}><Feather name="x" size={15} color={palette.faint} /></Pressable>
+                <Pressable accessibilityRole="button" accessibilityLabel="Remove sub-task" onPress={() => removeItem(item)} hitSlop={8}><Feather name="x" size={15} color={palette.faint} /></Pressable>
               </View>
             ))}
             <View style={styles.addRow}>
@@ -144,7 +145,7 @@ export default function TaskDetail() {
           {related.map((r) => (
             <Pressable key={r.href} onPress={() => router.push(r.href as any)} style={{ marginTop: spacing.md }}>
               <Card flat style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-                <Feather name={r.icon as any} size={18} color={palette.brandDark} />
+                <Feather name={asIcon(r.icon)} size={18} color={palette.brandDark} />
                 <Text variant="body" style={{ flex: 1, color: palette.ink }}>{r.label}</Text>
                 <Feather name="chevron-right" size={16} color={palette.faint} />
               </Card>
@@ -197,7 +198,7 @@ function parseRemarks(raw?: string | null): { header: string; body: string }[] {
 }
 
 function SnoozeBtn({ label, onPress }: { label: string; onPress: () => void }) {
-  return <Pressable onPress={onPress} style={styles.snooze}><Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.semibold as any }}>{label}</Text></Pressable>;
+  return <Pressable onPress={onPress} style={styles.snooze}><Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.semibold }}>{label}</Text></Pressable>;
 }
 function Field({ label, value, last }: { label: string; value?: string | null; last?: boolean }) {
   return (

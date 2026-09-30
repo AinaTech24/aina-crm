@@ -41,7 +41,7 @@ export const resources = {
         hidePassword: "Hide password",
         missing: "Enter your email and password.",
       },
-      tabs: { home: "Home", tasks: "Tasks", settings: "Settings" },
+      tabs: { home: "Home", tasks: "Tasks", settings: "Settings", leads: "Leads", clients: "Clients", activities: "Activities", more: "More" },
       home: { greeting: "Hi, {{name}}", planDay: "Plan your day", planDaySub: "Set today's focus & reflect" },
       settings: { title: "SETTINGS", signOut: "Sign out", signOutQ: "Sign out?", signOutMsg: "You'll need to log in again." },
       prefs: {
@@ -70,7 +70,7 @@ export const resources = {
         hidePassword: "पासवर्ड छिपाएँ",
         missing: "अपना ईमेल और पासवर्ड दर्ज करें।",
       },
-      tabs: { home: "होम", tasks: "कार्य", settings: "सेटिंग्स" },
+      tabs: { home: "होम", tasks: "कार्य", settings: "सेटिंग्स", leads: "लीड्स", clients: "क्लाइंट", activities: "गतिविधियाँ", more: "और" },
       home: { greeting: "नमस्ते, {{name}}", planDay: "अपना दिन प्लान करें", planDaySub: "आज का फ़ोकस तय करें और समीक्षा करें" },
       settings: { title: "सेटिंग्स", signOut: "साइन आउट", signOutQ: "साइन आउट करें?", signOutMsg: "आपको फिर से लॉग इन करना होगा।" },
       prefs: {
@@ -99,7 +99,7 @@ export const resources = {
         hidePassword: "પાસવર્ડ છુપાવો",
         missing: "તમારો ઈમેલ અને પાસવર્ડ દાખલ કરો.",
       },
-      tabs: { home: "હોમ", tasks: "કાર્યો", settings: "સેટિંગ્સ" },
+      tabs: { home: "હોમ", tasks: "કાર્યો", settings: "સેટિંગ્સ", leads: "લીડ્સ", clients: "ક્લાયન્ટ", activities: "પ્રવૃત્તિઓ", more: "વધુ" },
       home: { greeting: "નમસ્તે, {{name}}", planDay: "તમારો દિવસ પ્લાન કરો", planDaySub: "આજનું ફોકસ નક્કી કરો અને સમીક્ષા કરો" },
       settings: { title: "સેટિંગ્સ", signOut: "સાઇન આઉટ", signOutQ: "સાઇન આઉટ કરવું છે?", signOutMsg: "તમારે ફરીથી લૉગ ઇન કરવું પડશે." },
       prefs: {

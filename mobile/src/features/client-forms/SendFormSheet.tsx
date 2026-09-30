@@ -15,6 +15,7 @@ import { useSendClientForm, CLIENT_FORMS, type FormKind, type SendFormResult } f
 import { toast } from "../../lib/toast";
 import { spacing, palette, radius, fontWeight } from "../../theme/tokens";
 import { toneColors } from "../../theme";
+import { asIcon } from "../../lib/icons";
 
 export function SendFormSheet({
   visible, onClose, subjectType, subjectId, name,
@@ -53,7 +54,7 @@ export function SendFormSheet({
           <View style={[styles.resultBox, { backgroundColor: toneColors(result.ok ? "success" : "warning").bg }]}>
             <Feather name={result.ok ? "check-circle" : "alert-circle"} size={16} color={toneColors(result.ok ? "success" : "warning").fg} />
             <View style={{ flex: 1 }}>
-              <Text variant="body" style={{ fontWeight: fontWeight.semibold as any }}>{result.label}</Text>
+              <Text variant="body" style={{ fontWeight: fontWeight.semibold }}>{result.label}</Text>
               <Text variant="caption" tone="muted" style={{ marginTop: 2 }}>{result.summary}</Text>
             </View>
           </View>
@@ -80,7 +81,7 @@ export function SendFormSheet({
           </Pressable>
 
           <Pressable style={{ alignSelf: "center", padding: spacing.md }} onPress={() => setResult(null)}>
-            <Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.semibold as any }}>Send another</Text>
+            <Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.semibold }}>Send another</Text>
           </Pressable>
         </View>
       ) : (
@@ -90,7 +91,7 @@ export function SendFormSheet({
           </Text>
           {CLIENT_FORMS.map((f) => (
             <Pressable key={f.kind} style={styles.row} onPress={() => go(f.kind)} disabled={!!sending}>
-              <View style={styles.icon}><Feather name={f.icon as any} size={16} color={palette.brand} /></View>
+              <View style={styles.icon}><Feather name={asIcon(f.icon)} size={16} color={palette.brand} /></View>
               <View style={{ flex: 1 }}>
                 <Text variant="body">{f.label}</Text>
                 <Text variant="caption" tone="muted" numberOfLines={1}>{f.blurb}</Text>
@@ -110,5 +111,5 @@ const styles = StyleSheet.create({
   resultBox: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, borderRadius: radius.md, padding: spacing.md },
   noteRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, marginTop: spacing.md },
   btn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, borderRadius: radius.md, paddingVertical: spacing.md, marginTop: spacing.md },
-  btnTxt: { color: palette.white, fontWeight: fontWeight.semibold as any },
+  btnTxt: { color: palette.white, fontWeight: fontWeight.semibold },
 });

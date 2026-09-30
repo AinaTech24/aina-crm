@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useId, useEffect, useRef, useState } from "react";
 import {
   Loader2,
   CheckCircle2,
@@ -455,6 +455,7 @@ function PasswordManager({
   onAdd: (label: string, password: string) => void;
   onRemove: (index: number) => void;
 }) {
+  const uid = useId();
   const [adding, setAdding] = useState(false);
   const [label, setLabel] = useState("");
   const [password, setPassword] = useState("");
@@ -516,8 +517,8 @@ function PasswordManager({
       {adding && (
         <form onSubmit={submit} className="flex items-end gap-2 flex-wrap">
           <div className="flex-1 min-w-[140px]">
-            <label className="text-2xs text-muted-foreground">Label (optional)</label>
-            <input
+            <label htmlFor={`${uid}-label-optional`} className="text-2xs text-muted-foreground">Label (optional)</label>
+            <input id={`${uid}-label-optional`}
               value={label}
               onChange={(ev) => setLabel(ev.target.value)}
               placeholder={entries.length ? "e.g. ARN-9981" : "e.g. Primary"}
@@ -526,8 +527,8 @@ function PasswordManager({
             />
           </div>
           <div className="flex-1 min-w-[160px]">
-            <label className="text-2xs text-muted-foreground">{title} ZIP password</label>
-            <PasswordInput
+            <label htmlFor={`${uid}-zip-password`} className="text-2xs text-muted-foreground">{title} ZIP password</label>
+            <PasswordInput id={`${uid}-zip-password`}
               value={password}
               onChange={(ev) => setPassword(ev.target.value)}
               placeholder={`${title} ZIP password`}

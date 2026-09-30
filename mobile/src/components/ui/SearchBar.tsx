@@ -36,7 +36,7 @@ export function SearchBar({
         autoFocus={autoFocus}
       />
       {value.length > 0 ? (
-        <Pressable onPress={() => onChangeText("")} hitSlop={10}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Clear search" onPress={() => onChangeText("")} hitSlop={10}>
           <Feather name="x" size={18} color={palette.faint} />
         </Pressable>
       ) : null}

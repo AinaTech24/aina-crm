@@ -19,6 +19,7 @@ import Link from "next/link";
 import { Save, Loader2, Upload, CreditCard, AlertCircle } from "lucide-react";
 import { HelpHint } from "@/components/help/HelpHint";
 import { LOGO_SLOTS, type LogoField } from "@/lib/branding/logo";
+import { formatDate } from "@/lib/format";
 
 type OwnerLite = { id: string; name: string; email: string } | null;
 
@@ -173,7 +174,7 @@ export function OrganisationProfileForm({
           <Row label="GSTIN" value={tenant.gstNumber ?? "—"} disabled />
           <Row
             label="Created"
-            value={tenant.createdAt ? new Date(tenant.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—"}
+            value={tenant.createdAt ? formatDate(new Date(tenant.createdAt)) : "—"}
             disabled
           />
         </div>
@@ -396,7 +397,7 @@ function fmtDate(d: any): string {
   if (!d) return "—";
   const date = new Date(d);
   if (isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  return formatDate(date);
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

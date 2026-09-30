@@ -9,8 +9,9 @@ import { formatINR, formatDate } from "@/lib/utils";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
-import { buildTransactionConditions, transactionFiltersNeedInvestors } from "@/lib/transactions/list-filters";
+import { buildTransactionConditions, transactionClientCondition, transactionFiltersNeedInvestors } from "@/lib/transactions/list-filters";
 import { EmptyState, InlineEmpty } from "@/components/common/EmptyState";
+
 
 const TRANSACTIONS_COLUMNS = [
   { key: "date", label: "Date", required: true },
@@ -102,9 +103,20 @@ export default async function TransactionsPage({
   const dateTo = sp.date_to ?? "";
   const cursor = sp.cursor;
 
+  // The Net business card and the money chart link here with the period
+  // (date_from / date_to, order_date inclusive), status=processed, amc and the
+  // client filters; transactionClientCondition applies those and the
+  // live-client rule the figures are summed over, for this page and the export.
   // Shared filter conditions (search / type / status / date / RM / AMC / source)
-  // — identical to the KPI cards and the Excel export, so all three agree.
-  const baseConds = buildTransactionConditions(sp);
+  // — identical to the KPI cards and the Excel export, so all three agree —
+  // plus the tenant (explicit: a superuser connection bypasses RLS) and the
+  // client filters above.
+  const baseConds = [
+    eq(transactions.tenantId, session.tenantId),
+    ...buildTransactionConditions(sp),
+    transactionClientCondition(sp, session.tenantId),
+  ];
+  const needsInvestors = transactionFiltersNeedInvestors(sp);
   const conds = [...baseConds];
 
   if (cursor) {
@@ -133,7 +145,7 @@ export default async function TransactionsPage({
     // load the join was joining every transaction row to compute five numbers
     // that ignore it — which is what pushed this page past the 30s statement
     // timeout, and drained the pool, once one firm reached half a million rows.
-    const statRows = transactionFiltersNeedInvestors(sp)
+    const statRows = needsInvestors
       ? await tx
           .select(statSelect)
           .from(transactions)
@@ -216,7 +228,7 @@ export default async function TransactionsPage({
   // "No transactions yet" only when the book really is empty — not when the
   // filters (or a page past the end) match nothing.
   const filtering =
-    ["q", "date_from", "date_to", "rm", "amc", "source", "txtype", "status"].some((k) => (sp[k] ?? "").trim() !== "") ||
+    ["q", "date_from", "date_to", "amc", "source", "txtype", "status", "rm", "branch", "segment", "category", "fam", "tag", "src"].some((k) => (sp[k] ?? "").trim() !== "") ||
     Boolean(sp.cursor);
   const bookEmpty = data.displayRows.length === 0 && !filtering;
 

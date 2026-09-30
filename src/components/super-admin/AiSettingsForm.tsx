@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Bot, KeyRound, Loader2, CheckCircle2, XCircle, Save, Plug, Eye, EyeOff } from "lucide-react";
 
 type Provider = "anthropic" | "google" | "openai";
@@ -15,6 +15,7 @@ type Status = {
 };
 
 export function AiSettingsForm({ initial, providers }: { initial: Status; providers: ProviderDef[] }) {
+  const uid = useId();
   const [provider, setProvider] = useState<Provider>(initial.provider);
   const [apiKey, setApiKey] = useState("");
   const [fastModel, setFastModel] = useState(initial.fastModel);
@@ -239,8 +240,8 @@ export function AiSettingsForm({ initial, providers }: { initial: Status; provid
       {/* Models */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <label className="text-sm font-medium">Fast model</label>
-          <input
+          <label htmlFor={`${uid}-fast-model`} className="text-sm font-medium">Fast model</label>
+          <input id={`${uid}-fast-model`}
             value={fastModel}
             onChange={(e) => setFastModel(e.target.value)}
             className="w-full rounded-md border px-3 py-2 text-sm font-mono"
@@ -248,8 +249,8 @@ export function AiSettingsForm({ initial, providers }: { initial: Status; provid
           <p className="text-2xs text-muted-foreground">Classify, score, triage, translate.</p>
         </div>
         <div className="space-y-1.5">
-          <label className="text-sm font-medium">Reasoning model</label>
-          <input
+          <label htmlFor={`${uid}-reasoning-model`} className="text-sm font-medium">Reasoning model</label>
+          <input id={`${uid}-reasoning-model`}
             value={reasoningModel}
             onChange={(e) => setReasoningModel(e.target.value)}
             className="w-full rounded-md border px-3 py-2 text-sm font-mono"

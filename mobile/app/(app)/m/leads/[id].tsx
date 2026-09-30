@@ -5,6 +5,7 @@
  * edit, delete. Data from GET /api/leads/[id]/full.
  */
 
+import { FollowUpField } from "../../../../src/components/form/FollowUpField";
 import React, { useState, useEffect } from "react";
 import { View, ScrollView, Pressable, Linking, RefreshControl, StyleSheet } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -31,6 +32,7 @@ import { useRecentlyViewed } from "../../../../src/state/recentlyViewed";
 import { inr, initials, fmtDate, titleCase, timeAgo } from "../../../../src/lib/format";
 import { palette, radius, spacing, fontWeight } from "../../../../src/theme/tokens";
 import { useBrand } from "../../../../src/theme/brand";
+import { asIcon } from "../../../../src/lib/icons";
 
 type Tab = "overview" | "details" | "activity";
 const TABS = [{ key: "overview", label: "Overview" }, { key: "details", label: "Details" }, { key: "activity", label: "Activity" }];
@@ -89,7 +91,7 @@ export default function LeadDetail() {
 
   return (
     <View style={styles.screen}>
-      <ScreenHeader title={l.name ?? "Lead"} right={<Pressable onPress={() => setActions(true)} hitSlop={10}><Feather name="more-vertical" size={20} color={palette.ink} /></Pressable>} />
+      <ScreenHeader title={l.name ?? "Lead"} right={<Pressable accessibilityRole="button" accessibilityLabel="More actions" onPress={() => setActions(true)} hitSlop={10}><Feather name="more-vertical" size={20} color={palette.ink} /></Pressable>} />
       <ScrollView
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing["3xl"] }}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={palette.brand} />}
@@ -171,7 +173,7 @@ export default function LeadDetail() {
           return (
             <Pressable key={s.key} style={styles.stageRow} onPress={() => pickStage(s.key)}>
               <View style={[styles.colDot, { backgroundColor: toneColor(s.tone) }]} />
-              <Text style={{ flex: 1, fontWeight: (active ? fontWeight.semibold : fontWeight.regular) as any, color: active ? palette.brand : palette.ink }}>{s.label}</Text>
+              <Text style={{ flex: 1, fontWeight: (active ? fontWeight.semibold : fontWeight.regular), color: active ? palette.brand : palette.ink }}>{s.label}</Text>
               {active ? <Feather name="check" size={16} color={palette.brand} /> : null}
             </Pressable>
           );
@@ -182,7 +184,7 @@ export default function LeadDetail() {
       <LostReasonSheet visible={!!lostFor} onClose={() => setLostFor(null)} pending={stageMut.isPending} onSubmit={(reason) => { stageMut.mutate({ stage: "not_qualified", lostReason: reason }, { onSuccess: () => setLostFor(null) }); }} />
 
       {/* Log activity */}
-      <LogActivitySheet visible={activityOpen} onClose={() => setActivityOpen(false)} pending={logAct.isPending} onSubmit={(v) => logAct.mutate(v, { onSuccess: () => setActivityOpen(false) })} />
+      <LogActivitySheet visible={activityOpen} onClose={() => setActivityOpen(false)} pending={logAct.isPending} onSubmit={async (v) => { await logAct.mutateAsync(v); setActivityOpen(false); }} />
 
       {/* Convert */}
       <ConvertSheet visible={convertOpen} onClose={() => setConvertOpen(false)} pending={convert.isPending} defaultPan={l.pan} error={(convert.error as any)?.message}
@@ -204,7 +206,7 @@ function Overview({ d, converted, onChangeStage, onLog }: { d: any; converted: b
             return (
               <View key={s.key} style={styles.step}>
                 <View style={[styles.node, { backgroundColor: done ? palette.success : active ? palette.brand : palette.surfaceSunken, borderColor: done ? palette.success : active ? palette.brand : palette.line }]}>
-                  {done ? <Feather name="check" size={11} color="#fff" /> : <Text style={{ fontSize: 10, color: active ? "#fff" : palette.muted, fontWeight: fontWeight.bold as any }}>{i + 1}</Text>}
+                  {done ? <Feather name="check" size={11} color="#fff" /> : <Text style={{ fontSize: 10, color: active ? "#fff" : palette.muted, fontWeight: fontWeight.bold }}>{i + 1}</Text>}
                 </View>
                 <Text variant="caption" tone={active ? "brand" : "faint"} numberOfLines={2} style={styles.stepLabel}>{s.label}</Text>
               </View>
@@ -319,18 +321,18 @@ function LostReasonSheet({ visible, onClose, onSubmit, pending }: { visible: boo
   );
 }
 
-function LogActivitySheet({ visible, onClose, onSubmit, pending }: { visible: boolean; onClose: () => void; onSubmit: (v: { note: string; activityType: string; nextFollowUpAt?: string }) => void; pending: boolean }) {
+function LogActivitySheet({ visible, onClose, onSubmit, pending }: { visible: boolean; onClose: () => void; onSubmit: (v: { note: string; activityType: string; nextFollowUpAt?: string }) => Promise<void>; pending: boolean }) {
   const [note, setNote] = useState("");
   const [type, setType] = useState("note");
   const [next, setNext] = useState("");
-  const submit = () => { if (!note.trim()) return; onSubmit({ note: note.trim(), activityType: type, nextFollowUpAt: next ? new Date(next + "T09:00:00").toISOString() : undefined }); setNote(""); setNext(""); setType("note"); };
+  const submit = async () => { if (!note.trim()) return; if (next && !Number.isFinite(new Date(next).getTime())) { toast.error("Choose a valid follow-up time"); return; } try { await onSubmit({ note: note.trim(), activityType: type, nextFollowUpAt: next ? new Date(next).toISOString() : undefined }); setNote(""); setNext(""); setType("note"); } catch { /* Mutation displays the error; preserve the draft. */ } };
   return (
     <BottomSheet visible={visible} onClose={onClose} title="Log activity">
       <Text variant="label" tone="muted" style={{ marginBottom: spacing.xs }}>Type</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}><Segmented<string> options={ACTIVITY_TYPES} value={type} onChange={setType} /></ScrollView>
       <View style={{ height: spacing.md }} />
       <TextField label="Note" value={note} onChangeText={setNote} placeholder="What happened?" multiline required />
-      <DateField label="Next follow-up (optional)" value={next} onChange={setNext} />
+      <FollowUpField value={next} onChange={setNext} />
       <View style={{ height: spacing.md }} />
       <Button label="Save activity" full loading={pending} onPress={submit} />
     </BottomSheet>
@@ -355,16 +357,16 @@ function ConvertSheet({ visible, onClose, onSubmit, pending, defaultPan, error }
 
 // ── bits ──────────────────────────────────────────────────────────────────────
 function Badge({ label, tone }: { label: string; tone: string }) {
-  return <View style={[styles.badge, { backgroundColor: tone + "1A" }]}><Text style={{ fontSize: 11, color: tone, fontWeight: fontWeight.semibold as any }}>{label}</Text></View>;
+  return <View style={[styles.badge, { backgroundColor: tone + "1A" }]}><Text style={{ fontSize: 11, color: tone, fontWeight: fontWeight.semibold }}>{label}</Text></View>;
 }
 function Stat({ label, value }: { label: string; value: string }) {
-  return <View style={styles.stat}><Text style={{ fontWeight: fontWeight.bold as any }}>{value}</Text><Text variant="caption" tone="muted">{label}</Text></View>;
+  return <View style={styles.stat}><Text style={{ fontWeight: fontWeight.bold }}>{value}</Text><Text variant="caption" tone="muted">{label}</Text></View>;
 }
 function ContactBtn({ icon, label, onPress, disabled }: { icon: string; label: string; onPress: () => void; disabled: boolean }) {
   return (
     <Pressable onPress={onPress} disabled={disabled} style={[styles.contactBtn, disabled && { opacity: 0.4 }]}>
-      <Feather name={icon as any} size={16} color={palette.brand} />
-      <Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.medium as any }}>{label}</Text>
+      <Feather name={asIcon(icon)} size={16} color={palette.brand} />
+      <Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.medium }}>{label}</Text>
     </Pressable>
   );
 }

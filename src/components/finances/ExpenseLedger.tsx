@@ -229,10 +229,7 @@ export function ExpenseLedger({
         ) : (
           byMonth.map(([month, items]) => {
             const mTotal = items.reduce((s, r) => s + Number(r.amount), 0);
-            const mLabel = new Date(month + "-01").toLocaleDateString("en-IN", {
-              month: "long",
-              year: "numeric",
-            });
+            const mLabel = formatDate(new Date(month + "-01"), "monthYear");
             return (
               <div key={month}>
                 <div className="bg-secondary/40 px-4 py-1.5 flex items-center justify-between text-xs font-semibold">

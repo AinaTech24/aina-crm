@@ -37,9 +37,9 @@ const STATUS_TONE: Record<string, string> = {
   in_underwriting: "bg-amber-50 text-amber-700",
   active: "bg-emerald-50 text-emerald-700",
   lapsed: "bg-rose-50 text-rose-700",
-  matured: "bg-slate-50 text-slate-700",
-  surrendered: "bg-slate-50 text-slate-700",
-  cancelled: "bg-gray-50 text-gray-700",
+  matured: "bg-secondary text-foreground",
+  surrendered: "bg-secondary text-foreground",
+  cancelled: "bg-secondary text-foreground",
   claim_filed: "bg-amber-50 text-amber-700",
   claim_settled: "bg-cyan-50 text-cyan-700",
 };

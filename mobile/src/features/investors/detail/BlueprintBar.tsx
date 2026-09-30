@@ -23,12 +23,12 @@ export function BlueprintBar({ id }: { id: string }) {
     <Section title="Onboarding blueprint" icon="map" right={<Text variant="caption" tone="faint">{doneCount}/{stages.length}</Text>}>
       {stages.length === 0 ? <Empty text="No blueprint stages." /> : (
         <>
-          {data.current?.name ? <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>Current: <Text style={{ fontWeight: fontWeight.semibold as any, color: palette.brand }}>{data.current.name}</Text></Text> : null}
+          {data.current?.name ? <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>Current: <Text style={{ fontWeight: fontWeight.semibold, color: palette.brand }}>{data.current.name}</Text></Text> : null}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingVertical: spacing.xs }}>
             {stages.map((s: BlueprintStage) => (
               <View key={s.key} style={styles.step}>
                 <View style={[styles.node, { backgroundColor: s.status === "done" ? palette.success : s.status === "current" ? palette.brand : palette.surfaceSunken, borderColor: TONE[s.status] ?? palette.line }]}>
-                  {s.status === "done" ? <Feather name="check" size={12} color="#fff" /> : <Text style={{ fontSize: 10, color: s.status === "current" ? "#fff" : palette.muted, fontWeight: fontWeight.bold as any }}>{s.order}</Text>}
+                  {s.status === "done" ? <Feather name="check" size={12} color="#fff" /> : <Text style={{ fontSize: 10, color: s.status === "current" ? "#fff" : palette.muted, fontWeight: fontWeight.bold }}>{s.order}</Text>}
                 </View>
                 <Text variant="caption" tone={s.status === "current" ? "brand" : "faint"} numberOfLines={2} style={styles.stepLabel}>{s.name}</Text>
               </View>

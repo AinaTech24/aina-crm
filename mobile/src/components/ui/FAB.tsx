@@ -14,12 +14,15 @@ import { useBrand } from "../../theme/brand";
 
 type FeatherName = React.ComponentProps<typeof Feather>["name"];
 
-export function FAB({ icon = "plus", onPress }: { icon?: FeatherName; onPress: () => void }) {
+/** `label` is what a screen reader announces — say what the button creates. */
+export function FAB({ icon = "plus", onPress, label = "Add new" }: { icon?: FeatherName; onPress: () => void; label?: string }) {
   const insets = useSafeAreaInsets();
   const { brand } = useBrand();
   return (
     <Animated.View entering={FadeInDown.delay(150).springify()} style={[styles.wrap, { bottom: insets.bottom + spacing.lg }]}>
       <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
         onPress={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
           onPress();

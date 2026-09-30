@@ -11,6 +11,8 @@
 import { v4 as uuid } from "uuid";
 import { notifications } from "@/db/schema";
 
+const MOBILE_ALERTS = new Set(["task.assigned", "task.subtask_assigned", "task.reminder", "task.overdue", "task.overdue.branch", "meeting.reminder"]);
+
 export type NotifySeverity = "info" | "success" | "warning" | "critical";
 
 export async function createNotification(
@@ -35,6 +37,7 @@ export async function createNotification(
     body: n.body ?? null,
     linkUrl: n.linkUrl ?? null,
     severity: n.severity ?? "info",
-    meta: n.meta ?? null,
+    // Persist the push intent with the notification, never send before commit.
+    meta: MOBILE_ALERTS.has(n.kind) ? { ...n.meta, mobilePush: { status: "pending" } } : n.meta ?? null,
   } as any);
 }

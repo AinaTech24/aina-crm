@@ -35,11 +35,11 @@ export function PortfolioTab({ d }: { d: any }) {
             {holdings.slice(0, 10).map((h: any, i: number) => (
               <View key={i} style={styles.holding}>
                 <View style={{ flex: 1 }}>
-                  <Text variant="caption" style={{ fontWeight: fontWeight.medium as any }} numberOfLines={1}>{h.schemeName ?? h.schemeCode ?? "Scheme"}</Text>
+                  <Text variant="caption" style={{ fontWeight: fontWeight.medium }} numberOfLines={1}>{h.schemeName ?? h.schemeCode ?? "Scheme"}</Text>
                   <Text variant="caption" tone="faint" numberOfLines={1}>{h.amcName ?? "—"}</Text>
                 </View>
                 <View style={{ alignItems: "flex-end" }}>
-                  <Text variant="caption" style={{ fontWeight: fontWeight.semibold as any }}>{inr(h.currentValue)}</Text>
+                  <Text variant="caption" style={{ fontWeight: fontWeight.semibold }}>{inr(h.currentValue)}</Text>
                   <Text variant="caption" style={{ color: num(h.gain) < 0 ? palette.danger : palette.success }}>{num(h.gain) >= 0 ? "+" : ""}{inr(h.gain)}</Text>
                 </View>
               </View>
@@ -91,11 +91,11 @@ export function PortfolioTab({ d }: { d: any }) {
         {tx.length === 0 ? <Empty text="No transactions yet." /> : tx.slice(0, 30).map((t: any) => (
           <View key={t.id} style={styles.txRow}>
             <View style={{ flex: 1 }}>
-              <Text variant="caption" style={{ fontWeight: fontWeight.medium as any }} numberOfLines={1}>{t.schemeName ?? "—"}</Text>
+              <Text variant="caption" style={{ fontWeight: fontWeight.medium }} numberOfLines={1}>{t.schemeName ?? "—"}</Text>
               <Text variant="caption" tone="faint">{titleCase(t.type)} · {fmtDate(t.orderDate ?? t.createdAt)}</Text>
             </View>
             <View style={{ alignItems: "flex-end" }}>
-              <Text variant="caption" style={{ fontWeight: fontWeight.semibold as any }}>{inr(t.amount)}</Text>
+              <Text variant="caption" style={{ fontWeight: fontWeight.semibold }}>{inr(t.amount)}</Text>
               <Text variant="caption" tone="faint">{titleCase(t.status)}</Text>
             </View>
           </View>
@@ -116,7 +116,7 @@ function ValCell({ label, value, tone, sub }: { label: string; value: string; to
   return (
     <View style={styles.valCell}>
       <Text variant="caption" tone="muted">{label}</Text>
-      <Text style={{ fontWeight: fontWeight.bold as any, color: tone ?? palette.ink }} numberOfLines={1}>{value}</Text>
+      <Text style={{ fontWeight: fontWeight.bold, color: tone ?? palette.ink }} numberOfLines={1}>{value}</Text>
       {sub ? <Text variant="caption" tone="faint">{sub}</Text> : null}
     </View>
   );

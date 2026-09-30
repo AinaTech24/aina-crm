@@ -1,10 +1,11 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { useId, Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 function AcceptInviteInner() {
+  const uid = useId();
   const router = useRouter();
   const params = useSearchParams();
   const token = params.get("token") ?? "";
@@ -57,16 +58,16 @@ function AcceptInviteInner() {
         </p>
         <form onSubmit={submit} className="mt-6 space-y-3">
           <div>
-            <label className="text-xs font-medium block mb-1">Your name (optional)</label>
-            <input
+            <label htmlFor={`${uid}-your-name-optional`} className="text-xs font-medium block mb-1">Your name (optional)</label>
+            <input id={`${uid}-your-name-optional`}
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full border rounded-md px-3 py-2 text-sm bg-background"
             />
           </div>
           <div>
-            <label className="text-xs font-medium block mb-1">Set a password (8+ chars)</label>
-            <input
+            <label htmlFor={`${uid}-set-a-password-8-chars`} className="text-xs font-medium block mb-1">Set a password (8+ chars)</label>
+            <input id={`${uid}-set-a-password-8-chars`}
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}

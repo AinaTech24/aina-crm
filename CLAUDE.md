@@ -701,6 +701,89 @@ node scripts/dev-session.mjs            # uses DEMO_USER_ID
 
 ---
 
+## The UI system
+
+A UI audit on 2026-09-21 found the same defect in many shapes: there was no
+component layer, so every screen re-decided what a button, a card, a badge, a
+table and an empty state look like. 818 hand-written `btn-*` across 289 files,
+179 files hand-rolling `<table>`, 474 distinct empty-state strings. These
+primitives are the fix. **Reach for them before writing utility classes.**
+
+| Use | Instead of |
+|---|---|
+| `<Button>` / `buttonClass()` — `@/components/ui/Button` | `className="btn-primary"` |
+| `<Card>` + `<CardHeader>` — `@/components/ui/Card` | a `card-surface` div with an ad-hoc header |
+| `<Badge>` — `@/components/ui/Badge` | a hand-tinted `chip` |
+| `<Field>` / `<FieldSection>` — `@/components/ui/Field` | a bare `<label>` next to an input |
+| `<DataTable>` — `@/components/ui/DataTable` | a hand-rolled `<table>` |
+| `<EmptyState>` / `<InlineEmpty>` — `@/components/common/EmptyState` | a bespoke "No … yet." string |
+| `<FormActions>` — `@/components/ui/FormActions` | a submit button at the bottom of a long form |
+| `confirmDialog()` / `promptDialog()` — `@/components/ui/ConfirmProvider` | `window.confirm` / `window.prompt` |
+| `formatMoney` / `formatDate` — `@/lib/format` | a local `toLocaleString` / `toLocaleDateString` (109 sites migrated 2026-09-21; the ~19 left carry a timeZone or ISO intent) |
+
+Three rules the primitives encode, worth knowing even when you don't use them:
+
+- **One primary action per screen.** `variant="primary"` is the thing the user
+  came to do. Everything else is `secondary` or `ghost`.
+- **Colour is a signal, not decoration.** `tone="neutral"` for taxonomy (channel,
+  source, category); the coloured tones only for status. A lead card that paints
+  its source green is spending the same ink as an overdue warning.
+- **A column nothing fills is width spent on nothing.** `hideWhenEmpty` on a
+  `DataTable` column drops it when no row in the current result set has a value.
+  The Clients and Templates tables do this by hand for the same reason.
+
+### Type scale
+
+`tailwind.config.ts` re-points the scale: `2xs` 12px · `xs` 13px · `sm` 14px ·
+`base` 16px. Before that, `2xs` was 11px and `xs` was Tailwind's 12px, which put
+~60% of the visible text on a content screen at or below 12px. **Do not
+introduce arbitrary sizes** (`text-[11px]`): they fail silently in this repo
+(see the memory note on arbitrary Tailwind values) and they reopen the floor.
+
+### Colour tokens
+
+`--primary` is the one value a theme sets. `--brand-navy`, `--brand-cyan`,
+`--nav-active-bg` and `--ring` are `var()` ALIASES of it — they had all drifted
+to the same literal, so five names described one colour and a tenant override
+had to set all five. **Never give an alias its own literal value**; if a surface
+needs a different colour it needs a new semantic token.
+
+`--metric-*` (ink, dark enough for text on a white tile) and `--chart-*` (fill,
+lighter, for SVG geometry) are deliberately two palettes and are not
+interchangeable. For Recharts the source of truth is the resolved hex in
+`src/lib/dashboard/chart-palette.ts`.
+
+### Tables
+
+Every `<table>` under `.dashboard-content` gets the modern header, row hover
+and hairline dividers by default (globals.css, "Every table in the app shell").
+A table that must own its look — a calendar grid, a print sheet, a pivot —
+opts out with `className="table-raw"` on the `<table>`. Author classes on
+`<th>`/`<tr>` still win. This is what made 180 hand-rolled tables consistent
+without migrating them; `<DataTable>` is still the right choice for NEW lists
+because it also hides empty columns and renders the standard empty state.
+
+### Hit targets
+
+Nothing interactive under 24px. `.btn-icon` is 32px; native checkboxes and
+radios have a 16px floor in CSS; the sidebar pin and task-complete controls
+were raised to 24/28px. When adding a row action, use `btn-icon`, not
+`p-1` + an icon — that is how 24px buttons crept in.
+
+### Radius
+
+Bare `rounded` is on the token too (`--radius − 4px`). Five radii on one
+screen came from it being Tailwind's raw 4px; now every corner derives from
+`--radius`.
+
+### Ratchets
+
+`npm run check:labels` and `npm run check:colors` are baseline ratchets: CI
+fails only if the count GROWS. Lower the baseline when you migrate a file;
+never raise it.
+
+---
+
 ## Conventions
 
 - **Tenant id everywhere.** Every domain table has `tenant_id`. Every API call uses `withTenant`.
@@ -709,6 +792,10 @@ node scripts/dev-session.mjs            # uses DEMO_USER_ID
 - **Catalog-driven UI.** New queryable fields go in the catalog, not the UI.
 - **Versions are immutable.** Don't edit `workflow_versions.graph` after publish; bump the version instead.
 - **Compliance is not optional.** Every outbound passes through the gate. No bypass flag exists.
+- **Use the UI primitives.** See "The UI system" above. A new hand-rolled button, table or empty-state string is a regression.
+- **No native dialogs.** `window.confirm` / `window.alert` / `window.prompt` are banned in app code — use `confirmDialog()` / `notify` / `promptDialog()`.
+- **Never put a backtick inside a `sql\`…\`` template**, including in a `--` comment. It closes the JS literal, and the error you get names a SQL identifier ("Expected `)` but found `follow_up_task_created`"), which sends you looking at the query instead of the quoting. Write the column name bare.
+- **A server component cannot CALL a function exported from a `"use client"` module.** It fails only at runtime, never in `tsc`. Helpers meant for both sides live in a plain module and are re-exported from the client one — `humanise` in `@/lib/format`, `buttonClass` in `@/components/ui/button-class`.
 
 ---
 
@@ -786,11 +873,22 @@ The worker process drains queued runs in a tight loop (default 500ms).
 Wrapped by `scripts/dev-server.mjs`. The wrapper does three things that
 plain `next dev` doesn't:
 
-1. **Bounds the Node heap to 2 GB** via `--max-old-space-size=2048`. Without
-   this, the dev server's HMR cache grows unbounded — we've seen the
-   process at 12 GB after a long session, at which point Windows
-   page-thrashes and every HTTP request hangs at "loading". With the
-   bound, V8 OOM-crashes cleanly instead.
+1. **Bounds the Node heap to 5 GB** via `--max-old-space-size` (override with
+   `NEXT_HEAP_MB`). Without a bound, the dev server's HMR cache grows
+   unbounded — we've seen the process at 12 GB after a long session, at which
+   point Windows page-thrashes and every HTTP request hangs at "loading". With
+   the bound, V8 OOM-crashes cleanly instead.
+
+   **The bound also sets Next's own restart threshold.** Next watches the heap
+   against this limit and recycles the dev server as it approaches it
+   (`⚠ Server is approaching the used memory threshold, restarting...`),
+   killing every in-flight request. A streaming RSC navigation cut that way
+   reaches the browser as `TypeError: network error` with no stack into this
+   app, so it looks like a bug in whatever page was open. At the old 3 GB it
+   fired every few minutes — the server idles at 1.8–2.4 GB once the dashboard
+   cockpits, reports catalog and ops tower are compiled, so one recompile spike
+   tripped it. If you see that overlay, check this ceiling before debugging the
+   page.
 2. **Frees port 3000 before starting** — kills any stale `node.exe`
    listening on the port so a half-dead previous instance doesn't block
    the new one.
@@ -800,6 +898,16 @@ plain `next dev` doesn't:
 
 If you need the old behaviour (no wrapper) for debugging, use
 `npm run dev:raw`.
+
+### Verifying a production build — `npm run build:check`
+
+**Never run a bare `next build` while `npm run dev` is up.** Both write to
+`.next`, they race on the build manifest, and you lose the dev server to
+`ENOENT … _buildManifest.js.tmp.*` while the build fails with a misleading
+`Cannot find module for page: /api/…`. `npm run build:check` builds into
+`.next-verify`, deletes it afterwards, and restores `tsconfig.json` — which
+`next build` rewrites every time to add `<distDir>/types` to `include`, leaving
+a dangling path that makes `tsc --noEmit` fail with TS6053.
 
 ### Production / demos / end-user delivery — `npm run start:prod`
 

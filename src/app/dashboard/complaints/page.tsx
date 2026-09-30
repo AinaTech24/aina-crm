@@ -10,6 +10,7 @@ import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { StatusChip, type Tone } from "@/components/common/StatusChip";
+import { clientRecordWhere } from "@/lib/metrics";
 
 const STATUS_TONE: Record<string, Tone> = {
   open: "info",
@@ -45,11 +46,18 @@ export default async function ComplaintsPage({
   const session = await requireSession();
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
+  // status — comma-separated; the dashboard's "complaints open" links send
+  // open,in_progress,escalated (lib/metrics getOpenComplaints), and breached=1
+  // narrows the same set further.
   const statusFilter = (sp.status ?? "").split(",").filter(Boolean);
   const priorityFilter = (sp.priority ?? "").split(",").filter(Boolean);
   const categoryFilter = (sp.category ?? "").split(",").filter(Boolean);
   const sourceFilter = (sp.source ?? "").split(",").filter(Boolean);
   const breachedOnly = sp.breached === "1";
+  // rm / branch — the dashboard's complaint counts follow the CLIENT when
+  // narrowed to an RM or a branch (getOpenComplaints: clientRecordWhere).
+  const rmFilter = (sp.rm ?? "").split(",").filter(Boolean);
+  const branchFilter = (sp.branch ?? "").split(",").filter(Boolean);
 
   const data = await withTenant(session.tenantId, async (tx) => {
     const filters: any[] = [sql`sr.type = 'complaint'`, sql`sr.tenant_id = ${session.tenantId}::uuid`];
@@ -82,6 +90,9 @@ export default async function ComplaintsPage({
       filters.push(
         sql`(sr.status NOT IN ('resolved','closed') AND sr.sla_resolution_at < now())`
       );
+    }
+    if (rmFilter.length || branchFilter.length) {
+      filters.push(sql`(${clientRecordWhere({ tenantId: session.tenantId, rmIds: rmFilter, branchIds: branchFilter }, "i")})`);
     }
     const dr = dateRangeCond(sp, "created", "sr.created_at");
     if (dr) filters.push(dr);

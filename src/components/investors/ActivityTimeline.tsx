@@ -12,7 +12,7 @@ import {
   AlertCircle,
   FileText,
 } from "lucide-react";
-import { formatRelative } from "@/lib/utils";
+import { formatDate, formatRelative } from "@/lib/utils";
 
 type ActivityItem = {
   id: string;
@@ -74,7 +74,7 @@ export function ActivityTimeline({
         description: t.description || "No task notes captured.",
         status: isCompleted ? "Completed" : isOverdue ? "Overdue" : "Open",
         badgeTone: isCompleted ? "success" : isOverdue ? "danger" : "warning",
-        meta: t.dueAt ? `Due: ${new Date(t.dueAt).toLocaleDateString()}` : "No due date",
+        meta: t.dueAt ? `Due: ${formatDate(new Date(t.dueAt))}` : "No due date",
       });
     });
 
@@ -120,7 +120,7 @@ export function ActivityTimeline({
     warning: "bg-amber-50 text-amber-700 border-amber-200",
     info: "bg-sky-50 text-sky-700 border-sky-200",
     danger: "bg-rose-50 text-rose-700 border-rose-200",
-    neutral: "bg-slate-50 text-slate-700 border-slate-200",
+    neutral: "bg-secondary text-foreground border-border",
   };
 
   const getIcon = (item: ActivityItem) => {

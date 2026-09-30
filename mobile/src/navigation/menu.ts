@@ -1,9 +1,10 @@
 /**
- * The drawer ("sidebar") information architecture, as data.
+ * The module list for the More tab, as data.
  *
- * The app is deliberately focused on a small set of modules. Bottom tabs are
- * Home (dashboard) · Tasks · Settings; every other kept module lives here,
- * grouped and capability-gated (mirrors the server's `can()` matrix).
+ * Bottom tabs are Home · Leads · Clients · Activities · More; every other module
+ * is listed here, grouped and capability-gated (mirrors the server's `can()`
+ * matrix). Entries that are also tabs (Clients, Leads, Calls) stay here for the
+ * "coming up" label lookup in m/[module] but are hidden from More.
  */
 
 import { type ComponentProps } from "react";

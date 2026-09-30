@@ -16,6 +16,7 @@ import { requireSession } from "@/lib/auth/session";
 import { RiskProfileWizard } from "@/components/risk-profile/RiskProfileWizard";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { loadActiveTemplate } from "@/lib/risk-profile/template";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -93,7 +94,7 @@ export default async function NewRiskProfilePage({
                       </div>
                       <div className="text-2xs text-muted-foreground">
                         {i.risk_profile_signed_at
-                          ? `Last ${new Date(i.risk_profile_signed_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`
+                          ? `Last ${formatDate(new Date(i.risk_profile_signed_at))}`
                           : "Never"}
                       </div>
                     </div>

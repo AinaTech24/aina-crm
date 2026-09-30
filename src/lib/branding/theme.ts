@@ -21,7 +21,7 @@
 export type ThemeColors = { primary: string; accent: string };
 
 /** The stock AINA palette — deep navy + electric cyan (matches globals.css). */
-export const DEFAULT_THEME: ThemeColors = { primary: "#0e2557", accent: "#0ea5e9" };
+export const DEFAULT_THEME: ThemeColors = { primary: "#2563eb", accent: "#2563eb" };
 
 /**
  * The legacy column default for `tenants.primary_color`. It was never a
@@ -40,7 +40,7 @@ export type ThemePreset = {
 
 /** Curated one-click palettes shown in the Appearance picker. */
 export const THEME_PRESETS: ThemePreset[] = [
-  { id: "aina", label: "AINA Navy", primary: "#0e2557", accent: "#0ea5e9" },
+  { id: "aina", label: "Workspace Blue", primary: "#2563eb", accent: "#2563eb" },
   { id: "emerald", label: "Emerald", primary: "#064e3b", accent: "#10b981" },
   { id: "royal", label: "Royal Purple", primary: "#3b0764", accent: "#a855f7" },
   { id: "sunset", label: "Sunset Orange", primary: "#7c2d12", accent: "#f97316" },
@@ -151,7 +151,7 @@ export function buildThemeVars(primaryHex: string, accentHex: string): Record<st
 
   // Navy family — dark chrome, white text. Lightness forced dark for contrast.
   const navyS = Math.max(p.s, 24);
-  const navyL = clamp(p.l, 14, 30);
+  const navyL = primaryHex.toLowerCase() === DEFAULT_THEME.primary ? p.l : clamp(p.l, 14, 30);
   const navy = hslVar(p.h, navyS, navyL);
   const navyDeep = hslVar(p.h, navyS, clamp(navyL - 7, 8, 24));
   const navyLight = hslVar(p.h, clamp(p.s, 18, 64), 95);

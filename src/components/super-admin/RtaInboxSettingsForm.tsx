@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Inbox, KeyRound, Loader2, CheckCircle2, XCircle, Save, PlugZap, Eye, EyeOff } from "lucide-react";
 
 type Status = {
@@ -17,6 +17,7 @@ type Status = {
 };
 
 export function RtaInboxSettingsForm({ initial }: { initial: Status }) {
+  const uid = useId();
   const [host, setHost] = useState(initial.host ?? "");
   const [port, setPort] = useState(String(initial.port || 993));
   const [secure, setSecure] = useState(initial.secure);
@@ -139,12 +140,12 @@ export function RtaInboxSettingsForm({ initial }: { initial: Status }) {
       {/* Server */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="space-y-1.5 sm:col-span-2">
-          <label className="text-sm font-medium">IMAP host</label>
-          <input value={host} onChange={(e) => setHost(e.target.value)} placeholder="imap.hostinger.com" className={inputCls} autoComplete="off" />
+          <label htmlFor={`${uid}-imap-host`} className="text-sm font-medium">IMAP host</label>
+          <input id={`${uid}-imap-host`} value={host} onChange={(e) => setHost(e.target.value)} placeholder="imap.hostinger.com" className={inputCls} autoComplete="off" />
         </div>
         <div className="space-y-1.5">
-          <label className="text-sm font-medium">Port</label>
-          <input value={port} onChange={(e) => setPort(e.target.value.replace(/\D/g, ""))} placeholder="993" className={inputCls} inputMode="numeric" />
+          <label htmlFor={`${uid}-port`} className="text-sm font-medium">Port</label>
+          <input id={`${uid}-port`} value={port} onChange={(e) => setPort(e.target.value.replace(/\D/g, ""))} placeholder="993" className={inputCls} inputMode="numeric" />
         </div>
       </div>
 
@@ -156,8 +157,8 @@ export function RtaInboxSettingsForm({ initial }: { initial: Status }) {
       {/* Auth */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <label className="text-sm font-medium">Mailbox (username)</label>
-          <input value={user} onChange={(e) => setUser(e.target.value)} placeholder="rta@crm.ainatech.in" className={inputCls} autoComplete="off" />
+          <label htmlFor={`${uid}-mailbox-username`} className="text-sm font-medium">Mailbox (username)</label>
+          <input id={`${uid}-mailbox-username`} value={user} onChange={(e) => setUser(e.target.value)} placeholder="rta@crm.ainatech.in" className={inputCls} autoComplete="off" />
         </div>
         <div className="space-y-1.5">
           <label className="text-sm font-medium flex items-center gap-1.5"><KeyRound className="size-3.5" /> Password</label>
@@ -190,8 +191,8 @@ export function RtaInboxSettingsForm({ initial }: { initial: Status }) {
 
       {/* Domain */}
       <div className="space-y-1.5">
-        <label className="text-sm font-medium">Forwarding domain</label>
-        <input value={domain} onChange={(e) => setDomain(e.target.value.trim())} placeholder="crm.ainatech.in" className={inputCls} />
+        <label htmlFor={`${uid}-forwarding-domain`} className="text-sm font-medium">Forwarding domain</label>
+        <input id={`${uid}-forwarding-domain`} value={domain} onChange={(e) => setDomain(e.target.value.trim())} placeholder="crm.ainatech.in" className={inputCls} />
         <p className="text-2xs text-muted-foreground">
           Each firm gets <code className="bg-background px-1 rounded">rta-&lt;token&gt;@{domain || "crm.ainatech.in"}</code>. A catch-all on this domain must deliver into the mailbox above.
         </p>
@@ -218,8 +219,8 @@ export function RtaInboxSettingsForm({ initial }: { initial: Status }) {
         </label>
         {deleteAfterImport && (
           <div className="flex items-center gap-2 pl-6">
-            <label className="text-sm">Keep for</label>
-            <input
+            <label htmlFor={`${uid}-keep-for`} className="text-sm">Keep for</label>
+            <input id={`${uid}-keep-for`}
               value={retentionDays}
               onChange={(e) => setRetentionDays(e.target.value.replace(/\D/g, ""))}
               className="w-20 rounded-md border px-2 py-1 text-sm"

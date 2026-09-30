@@ -116,7 +116,7 @@ export function RegisterQuickAdd({ register, defaultFy }: { register: Register; 
                 <Field label="What happened"><input className="input-base" onChange={(e) => set("title", e.target.value)} required /></Field>
                 <Field label="Remedial action taken"><textarea rows={2} className="input-base" onChange={(e) => set("remedialAction", e.target.value)} /></Field>
                 <label className="flex items-center gap-2 text-xs">
-                  <input type="checkbox" className="size-3.5 accent-brand-cyan" onChange={(e) => set("reportedToAmc", e.target.checked)} />
+                  <input type="checkbox" className="size-4 accent-brand-cyan" onChange={(e) => set("reportedToAmc", e.target.checked)} />
                   Reported to the concerned AMC
                 </label>
               </>
@@ -134,11 +134,11 @@ export function RegisterQuickAdd({ register, defaultFy }: { register: Register; 
                 <Field label="Why it's unsuitable"><textarea rows={2} className="input-base" onChange={(e) => set("reason", e.target.value)} required /></Field>
                 <div className="flex flex-col gap-1.5">
                   <label className="flex items-center gap-2 text-xs">
-                    <input type="checkbox" className="size-3.5 accent-brand-cyan" onChange={(e) => set("clientAcknowledged", e.target.checked)} />
+                    <input type="checkbox" className="size-4 accent-brand-cyan" onChange={(e) => set("clientAcknowledged", e.target.checked)} />
                     Client acknowledged the communication
                   </label>
                   <label className="flex items-center gap-2 text-xs">
-                    <input type="checkbox" className="size-3.5 accent-brand-cyan" onChange={(e) => set("executionOnlyConfirmed", e.target.checked)} />
+                    <input type="checkbox" className="size-4 accent-brand-cyan" onChange={(e) => set("executionOnlyConfirmed", e.target.checked)} />
                     Client confirmed &ldquo;execution only&rdquo; notwithstanding
                   </label>
                 </div>

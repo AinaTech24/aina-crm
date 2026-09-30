@@ -12,41 +12,26 @@ import { useRouter } from "next/navigation";
 import { CheckCircle2, Circle, ExternalLink, Loader2, Plus, Trash2, Paperclip } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { useToast } from "@/components/ui/Toast";
+import { formatDate } from "@/lib/format";
+import { checklistFor, DOC_LABEL } from "@/lib/insurance/claim-checklist";
 
 type ClaimDoc = { name: string; docType?: string; url?: string; uploadedAt?: string };
 
-/** Default checklist of expected documents per claim. Death/life claims get the
- *  estate-specific extras appended. Each entry's `key` is the stored `docType`. */
-const BASE_CHECKLIST: { key: string; label: string }[] = [
-  { key: "claim_form", label: "Claim form" },
-  { key: "hospital_bills", label: "Hospital bills / Final bill" },
-  { key: "discharge_summary", label: "Discharge summary" },
-  { key: "kyc", label: "KYC (PAN / Aadhaar)" },
-  { key: "bank_proof", label: "Bank proof / Cancelled cheque" },
-  { key: "policy_copy", label: "Policy copy" },
-];
-
-const DEATH_CHECKLIST: { key: string; label: string }[] = [
-  { key: "death_certificate", label: "Death certificate" },
-  { key: "nominee_kyc", label: "Nominee KYC" },
-];
-
-function checklistFor(claimType?: string): { key: string; label: string }[] {
-  // Life / death-style claims (rider claims on life policies, "other") get the
-  // estate docs too. We can't perfectly infer life vs health from claimType, so
-  // include the death docs for rider/other where a life payout is plausible.
-  const wantsDeath = claimType === "rider" || claimType === "other";
-  return wantsDeath ? [...BASE_CHECKLIST, ...DEATH_CHECKLIST] : BASE_CHECKLIST;
-}
-
+/** The expected documents follow the policy's product, then the claim mode and
+ *  type (lib/insurance/claim-checklist.ts — the Claims Control Centre reads the
+ *  same list). Each entry's `key` is the stored `docType`. */
 export function ClaimDocuments({
   claimId,
   initialDocuments,
   claimType,
+  policyType,
+  claimMode,
 }: {
   claimId: string;
   initialDocuments: ClaimDoc[];
   claimType?: string;
+  policyType?: string;
+  claimMode?: string;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -56,7 +41,7 @@ export function ClaimDocuments({
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const checklist = checklistFor(claimType);
+  const checklist = checklistFor({ claimType, policyType, claimMode });
   const present = new Set(docs.map((d) => d.docType).filter(Boolean) as string[]);
 
   async function persist(next: ClaimDoc[]) {
@@ -111,15 +96,15 @@ export function ClaimDocuments({
   }
 
   const docTypeLabel = (k?: string) =>
-    checklist.find((c) => c.key === k)?.label ?? (k ? k.replace(/_/g, " ") : "");
+    checklist.find((c) => c.key === k)?.label ?? (k ? DOC_LABEL[k] ?? k.replace(/_/g, " ") : "");
 
   return (
-    <div className="card-surface p-5">
+    <div id="documents" className="card-surface scroll-mt-24 p-5">
       <div className="flex items-center gap-2 mb-3">
         <Paperclip className="size-4 text-muted-foreground" />
         <h2 className="section-title">Documents</h2>
         <span className="text-xs text-muted-foreground ml-auto">
-          {present.size}/{checklist.length} required on file
+          {checklist.filter((i) => present.has(i.key)).length}/{checklist.length} required on file
         </span>
       </div>
 
@@ -162,7 +147,7 @@ export function ClaimDocuments({
                   <div className="text-2xs text-muted-foreground">
                     {d.docType ? docTypeLabel(d.docType) : ""}
                     {d.docType && d.uploadedAt ? " · " : ""}
-                    {d.uploadedAt ? new Date(d.uploadedAt).toLocaleDateString() : ""}
+                    {d.uploadedAt ? formatDate(new Date(d.uploadedAt)) : ""}
                   </div>
                 )}
               </div>

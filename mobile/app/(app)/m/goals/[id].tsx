@@ -30,6 +30,7 @@ import { computeGoal, projectYearly, sensitivitySipRates, monthsBetween, inflate
 import { openWhatsApp } from "../../../../src/features/activities/whatsapp";
 import { inr, fmtDate, toNumber } from "../../../../src/lib/format";
 import { palette, spacing, radius, fontWeight } from "../../../../src/theme/tokens";
+import { errorMessage } from "../../../../src/lib/errors";
 
 const num = (v: any, d = 0) => { const n = toNumber(v); return Number.isFinite(n) && n !== 0 ? n : (v == null || v === "" ? d : n); };
 
@@ -133,7 +134,7 @@ export default function GoalDetail() {
             </View>
             {sens.map((s) => (
               <View key={s.ratePct} style={styles.trow}>
-                <Text variant="body" style={{ flex: 1, fontWeight: (s.ratePct === Math.round(ret) ? fontWeight.bold : fontWeight.regular) as any }}>{s.ratePct}%</Text>
+                <Text variant="body" style={{ flex: 1, fontWeight: (s.ratePct === Math.round(ret) ? fontWeight.bold : fontWeight.regular) }}>{s.ratePct}%</Text>
                 <Text variant="body" style={styles.tnum}>{inr(s.sip)}</Text>
                 <Text variant="body" style={styles.tnum}>{inr(s.lumpsum)}</Text>
               </View>
@@ -163,7 +164,7 @@ export default function GoalDetail() {
           <Card style={{ marginTop: spacing.lg }}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.sm }}>
               <Text variant="subtitle">Linked investments</Text>
-              <Pressable onPress={() => setLinkOpen(true)} hitSlop={8}><Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.semibold as any }}>Manage</Text></Pressable>
+              <Pressable onPress={() => setLinkOpen(true)} hitSlop={8}><Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.semibold }}>Manage</Text></Pressable>
             </View>
             <Text variant="caption" tone="muted">
               {(g.linkedFolios?.length ?? 0)} folio{(g.linkedFolios?.length ?? 0) === 1 ? "" : "s"} · {(g.linkedSips?.length ?? 0)} SIP{(g.linkedSips?.length ?? 0) === 1 ? "" : "s"} linked. Recompute pulls current value + SIP from them.
@@ -196,7 +197,7 @@ function Way({ label, value, last }: { label: string; value: string; last?: bool
   return (
     <View style={[styles.wayRow, !last && styles.divider]}>
       <Text variant="body" tone="muted" style={{ flex: 1 }}>{label}</Text>
-      <Text variant="body" style={{ fontWeight: fontWeight.bold as any }}>{value}</Text>
+      <Text variant="body" style={{ fontWeight: fontWeight.bold }}>{value}</Text>
     </View>
   );
 }
@@ -261,7 +262,7 @@ function EditGoalSheet({ visible, onClose, id, goal }: { visible: boolean; onClo
       expectedReturnPct: parseFloat(ret) || 12,
       remarks: remarks || undefined,
     };
-    try { await patch.mutateAsync(body); onClose(); } catch (e: any) { setErr(e?.message ?? "Could not save."); }
+    try { await patch.mutateAsync(body); onClose(); } catch (e) { setErr(errorMessage(e, "Could not save.")); }
   };
 
   return (
@@ -308,7 +309,7 @@ function LinkInvestmentsSheet({ visible, onClose, id, data }: { visible: boolean
       folioAllocations: folios.map((folioId) => ({ folioId, allocationPct: 100 })),
       sipAllocations: sipIds.map((sipId) => ({ sipId, allocationPct: 100 })),
     };
-    try { await patch.mutateAsync(body); onClose(); } catch (e: any) { setErr(e?.message ?? "Could not save."); }
+    try { await patch.mutateAsync(body); onClose(); } catch (e) { setErr(errorMessage(e, "Could not save.")); }
   };
 
   return (

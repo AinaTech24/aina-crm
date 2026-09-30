@@ -42,7 +42,7 @@ export function NotificationsSheet({ visible, onClose }: { visible: boolean; onC
     <BottomSheet visible={visible} onClose={onClose} title="Notifications">
       {unread.length > 0 ? (
         <Pressable onPress={() => markRead.mutate({ all: true })} hitSlop={8} style={styles.markAll}>
-          <Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.semibold as any }}>Mark all read</Text>
+          <Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.semibold }}>Mark all read</Text>
         </Pressable>
       ) : null}
 
@@ -56,7 +56,7 @@ export function NotificationsSheet({ visible, onClose }: { visible: boolean; onC
           <Pressable key={n.id ?? i} style={[styles.row, i < rows.length - 1 && styles.divider]} onPress={() => open(n)}>
             <View style={[styles.dot, { backgroundColor: isUnread(n) ? palette.brand : "transparent" }]} />
             <View style={{ flex: 1 }}>
-              <Text variant="body" numberOfLines={2} style={{ fontWeight: (isUnread(n) ? fontWeight.semibold : fontWeight.regular) as any }}>{n.title ?? "Notification"}</Text>
+              <Text variant="body" numberOfLines={2} style={{ fontWeight: (isUnread(n) ? fontWeight.semibold : fontWeight.regular) }}>{n.title ?? "Notification"}</Text>
               {n.body ? <Text variant="caption" tone="muted" numberOfLines={2} style={{ marginTop: 2 }}>{n.body}</Text> : null}
               <Text variant="caption" tone="faint" style={{ marginTop: 4 }}>{timeAgo(n.createdAt)}</Text>
             </View>
@@ -65,7 +65,7 @@ export function NotificationsSheet({ visible, onClose }: { visible: boolean; onC
       )}
 
       <Pressable onPress={viewAll} style={styles.viewAll}>
-        <Text variant="body" style={{ color: palette.brand, fontWeight: fontWeight.semibold as any }}>View all notifications</Text>
+        <Text variant="body" style={{ color: palette.brand, fontWeight: fontWeight.semibold }}>View all notifications</Text>
         <Feather name="chevron-right" size={16} color={palette.brand} />
       </Pressable>
     </BottomSheet>

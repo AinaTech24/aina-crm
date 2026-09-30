@@ -11,7 +11,7 @@
  * Mirrors https://help.zoho.com/portal/en/kb/crm/automate-business-processes/workflows
  */
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useId, Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, ChevronDown, Search, Plus, Trash2, Save, AlertTriangle, Workflow } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
@@ -213,6 +213,7 @@ export function RuleBuilder({
   initialRule?: SavedRule;
   mode?: "create" | "edit";
 }) {
+  const uid = useId();
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
@@ -342,8 +343,8 @@ export function RuleBuilder({
         {step === 1 && (
           <>
             <div>
-              <label className="text-xs font-semibold text-muted-foreground">Module *</label>
-              <SelectField
+              <label htmlFor={`${uid}-module`} className="text-xs font-semibold text-muted-foreground">Module *</label>
+              <SelectField id={`${uid}-module`}
                 value={moduleKey}
                 onChange={(e) => setModuleKey(e.target.value)}
                 className="input-base mt-1 w-full"
@@ -357,8 +358,8 @@ export function RuleBuilder({
               </p>
             </div>
             <div>
-              <label className="text-xs font-semibold text-muted-foreground">Rule name *</label>
-              <input
+              <label htmlFor={`${uid}-rule-name`} className="text-xs font-semibold text-muted-foreground">Rule name *</label>
+              <input id={`${uid}-rule-name`}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Send welcome email when investor is created"
@@ -366,8 +367,8 @@ export function RuleBuilder({
               />
             </div>
             <div>
-              <label className="text-xs font-semibold text-muted-foreground">Description</label>
-              <textarea
+              <label htmlFor={`${uid}-description`} className="text-xs font-semibold text-muted-foreground">Description</label>
+              <textarea id={`${uid}-description`}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={2}
@@ -376,8 +377,8 @@ export function RuleBuilder({
               />
             </div>
             <div>
-              <label className="text-xs font-semibold text-muted-foreground">Rate limit (max firings / hour)</label>
-              <input
+              <label htmlFor={`${uid}-rate-limit-max-firings-hour`} className="text-xs font-semibold text-muted-foreground">Rate limit (max firings / hour)</label>
+              <input id={`${uid}-rate-limit-max-firings-hour`}
                 type="number"
                 min={1}
                 max={100000}
@@ -494,14 +495,15 @@ function TriggerStep({
   dateFields: ModuleField[];
   scoreFields: ModuleField[];
 }) {
+  const uid = useId();
   const trig = trigger as any;
   return (
     <div className="space-y-5">
       <div>
-        <label className="text-xs font-semibold text-muted-foreground">
+        <label htmlFor={`${uid}-execute-this-workflow-rule-based-on`} className="text-xs font-semibold text-muted-foreground">
           Execute this workflow rule based on
         </label>
-        <SelectField
+        <SelectField id={`${uid}-execute-this-workflow-rule-based-on`}
           value={trigger.kind}
           onChange={(e) => {
             const k = e.target.value;
@@ -537,8 +539,8 @@ function TriggerStep({
       {trigger.kind === "record_action" && (
         <div className="space-y-3">
           <div>
-            <label className="text-xs font-semibold text-muted-foreground">When</label>
-            <SelectField
+            <label htmlFor={`${uid}-when`} className="text-xs font-semibold text-muted-foreground">When</label>
+            <SelectField id={`${uid}-when`}
               value={trig.when}
               onChange={(e) => onChange({ ...trigger, when: e.target.value as any } as any)}
               className="input-base mt-1 w-full max-w-sm"
@@ -552,10 +554,10 @@ function TriggerStep({
           </div>
           {(trig.when === "edit" || trig.when === "field_update") && (
             <div>
-              <label className="text-xs font-semibold text-muted-foreground">
+              <label htmlFor={`${uid}-only-when-these-fields-change-max-5`} className="text-xs font-semibold text-muted-foreground">
                 Only when these fields change (max 5)
               </label>
-              <MultiSelectField
+              <MultiSelectField id={`${uid}-only-when-these-fields-change-max-5`}
                 values={trig.fields ?? []}
                 onChange={(vals) => onChange({ ...trigger, fields: vals.slice(0, 5) } as any)}
                 options={(mod?.fields ?? []).map((f) => ({ value: f.key, label: f.label }))}
@@ -584,10 +586,10 @@ function TriggerStep({
         return (
           <div className="space-y-3 max-w-2xl">
             <div className="grid grid-cols-1 sm:grid-cols-[230px_1fr] sm:items-center gap-1.5 sm:gap-3">
-              <label className="text-xs font-medium text-muted-foreground sm:text-right leading-tight">
+              <label htmlFor={`${uid}-based-on-which-date-time-field-this-rule`} className="text-xs font-medium text-muted-foreground sm:text-right leading-tight">
                 Based on which Date/Time field this rule should execute
               </label>
-              <SelectField
+              <SelectField id={`${uid}-based-on-which-date-time-field-this-rule`}
                 value={trig.field}
                 onChange={(e) => onChange({ ...trigger, field: e.target.value } as any)}
                 className="input-base w-64"
@@ -631,8 +633,8 @@ function TriggerStep({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-[230px_1fr] sm:items-center gap-1.5 sm:gap-3">
-              <label className="text-xs font-medium text-muted-foreground sm:text-right">Recur</label>
-              <SelectField
+              <label htmlFor={`${uid}-recur`} className="text-xs font-medium text-muted-foreground sm:text-right">Recur</label>
+              <SelectField id={`${uid}-recur`}
                 value={trig.recurrence}
                 onChange={(e) => onChange({ ...trigger, recurrence: e.target.value } as any)}
                 className="input-base w-44"
@@ -649,8 +651,8 @@ function TriggerStep({
       {trigger.kind === "score_change" && (
         <div className="space-y-3 max-w-2xl">
           <div className="grid grid-cols-1 sm:grid-cols-[230px_1fr] sm:items-center gap-1.5 sm:gap-3">
-            <label className="text-xs font-medium text-muted-foreground sm:text-right">Record score</label>
-            <SelectField
+            <label htmlFor={`${uid}-record-score`} className="text-xs font-medium text-muted-foreground sm:text-right">Record score</label>
+            <SelectField id={`${uid}-record-score`}
               value={trig.direction}
               onChange={(e) => onChange({ ...trigger, direction: e.target.value } as any)}
               className="input-base w-48"
@@ -661,8 +663,8 @@ function TriggerStep({
             </SelectField>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-[230px_1fr] sm:items-center gap-1.5 sm:gap-3">
-            <label className="text-xs font-medium text-muted-foreground sm:text-right">This rule should be applied for</label>
-            <SelectField
+            <label htmlFor={`${uid}-this-rule-should-be-applied-for`} className="text-xs font-medium text-muted-foreground sm:text-right">This rule should be applied for</label>
+            <SelectField id={`${uid}-this-rule-should-be-applied-for`}
               value={trig.field}
               onChange={(e) => onChange({ ...trigger, field: e.target.value } as any)}
               className="input-base w-64"
@@ -673,8 +675,8 @@ function TriggerStep({
             </SelectField>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-[230px_1fr] sm:items-center gap-1.5 sm:gap-3">
-            <label className="text-xs font-medium text-muted-foreground sm:text-right">Threshold (optional)</label>
-            <input
+            <label htmlFor={`${uid}-threshold-optional`} className="text-xs font-medium text-muted-foreground sm:text-right">Threshold (optional)</label>
+            <input id={`${uid}-threshold-optional`}
               type="number"
               value={trig.threshold ?? ""}
               onChange={(e) =>
@@ -689,8 +691,8 @@ function TriggerStep({
 
       {trigger.kind === "recurrence" && (
         <div>
-          <label className="text-xs font-semibold text-muted-foreground">Cron expression</label>
-          <input
+          <label htmlFor={`${uid}-cron-expression`} className="text-xs font-semibold text-muted-foreground">Cron expression</label>
+          <input id={`${uid}-cron-expression`}
             value={trig.cron}
             onChange={(e) => onChange({ ...trigger, cron: e.target.value } as any)}
             className="input-base mt-1 w-full font-mono"
@@ -864,6 +866,7 @@ function CriteriaStep({
   pattern: string;
   setPattern: (p: string) => void;
 }) {
+  const uid = useId();
   function addRow() {
     if (rows.length >= 10) return;
     const f = mod?.fields[0];
@@ -987,8 +990,8 @@ function CriteriaStep({
 
           {rows.length >= 2 && (
             <div className="mt-3">
-              <label className="text-xs font-semibold text-muted-foreground">Pattern (optional)</label>
-              <input
+              <label htmlFor={`${uid}-pattern-optional`} className="text-xs font-semibold text-muted-foreground">Pattern (optional)</label>
+              <input id={`${uid}-pattern-optional`}
                 value={pattern}
                 onChange={(e) => setPattern(e.target.value)}
                 placeholder={`e.g. 1 AND (2 OR 3)`}
@@ -1247,6 +1250,7 @@ function ScheduledActionRow({
   mod: Module | undefined;
   dateFields: ModuleField[];
 }) {
+  const uid = useId();
   const meta = ACTION_TYPES.find((t) => t.key === action.type);
   return (
     <div className="card-surface p-3 space-y-2">
@@ -1259,8 +1263,8 @@ function ScheduledActionRow({
 
       <div className="grid grid-cols-4 gap-2 items-end">
         <div className="col-span-1">
-          <label className="text-2xs text-muted-foreground">Delay amount</label>
-          <input
+          <label htmlFor={`${uid}-delay-amount`} className="text-2xs text-muted-foreground">Delay amount</label>
+          <input id={`${uid}-delay-amount`}
             type="number"
             min={1}
             value={action.delay.amount}
@@ -1271,8 +1275,8 @@ function ScheduledActionRow({
           />
         </div>
         <div className="col-span-1">
-          <label className="text-2xs text-muted-foreground">Unit</label>
-          <SelectField
+          <label htmlFor={`${uid}-unit`} className="text-2xs text-muted-foreground">Unit</label>
+          <SelectField id={`${uid}-unit`}
             value={action.delay.unit}
             onChange={(e) => onChange({ ...action, delay: { ...action.delay, unit: e.target.value as any } })}
             className="input-base text-xs w-full"
@@ -1284,8 +1288,8 @@ function ScheduledActionRow({
           </SelectField>
         </div>
         <div className="col-span-2">
-          <label className="text-2xs text-muted-foreground">Anchor</label>
-          <SelectField
+          <label htmlFor={`${uid}-anchor`} className="text-2xs text-muted-foreground">Anchor</label>
+          <SelectField id={`${uid}-anchor`}
             value={action.delay.anchor}
             onChange={(e) =>
               onChange({ ...action, delay: { ...action.delay, anchor: e.target.value as any } })
@@ -1298,8 +1302,8 @@ function ScheduledActionRow({
         </div>
         {action.delay.anchor === "date_field" && (
           <div className="col-span-4">
-            <label className="text-2xs text-muted-foreground">Date field</label>
-            <SelectField
+            <label htmlFor={`${uid}-date-field`} className="text-2xs text-muted-foreground">Date field</label>
+            <SelectField id={`${uid}-date-field`}
               value={action.delay.anchorField ?? dateFields[0]?.key ?? ""}
               onChange={(e) =>
                 onChange({ ...action, delay: { ...action.delay, anchorField: e.target.value } })
@@ -1331,6 +1335,7 @@ function ActionConfigEditor({
   onChange: (next: Action) => void;
   mod: Module | undefined;
 }) {
+  const uid = useId();
   const c = action.config ?? {};
   function set(patch: Record<string, any>) {
     onChange({ ...action, config: { ...c, ...patch } });
@@ -1359,8 +1364,8 @@ function ActionConfigEditor({
             <div className="space-y-2">
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-2xs text-muted-foreground">Template</label>
-                  <SelectField
+                  <label htmlFor={`${uid}-template`} className="text-2xs text-muted-foreground">Template</label>
+                  <SelectField id={`${uid}-template`}
                     value={chosen}
                     onChange={(e) => set({ templateKey: e.target.value })}
                     className="input-base text-xs w-full"
@@ -1375,8 +1380,8 @@ function ActionConfigEditor({
                   </SelectField>
                 </div>
                 <div>
-                  <label className="text-2xs text-muted-foreground">Category</label>
-                  <SelectField
+                  <label htmlFor={`${uid}-category`} className="text-2xs text-muted-foreground">Category</label>
+                  <SelectField id={`${uid}-category`}
                     value={String(c.category ?? "transactional")}
                     onChange={(e) => set({ category: e.target.value })}
                     className="input-base text-xs w-full"
@@ -1388,8 +1393,8 @@ function ActionConfigEditor({
                 </div>
               </div>
               <div>
-                <label className="text-2xs text-muted-foreground">Send to</label>
-                <SelectField
+                <label htmlFor={`${uid}-send-to`} className="text-2xs text-muted-foreground">Send to</label>
+                <SelectField id={`${uid}-send-to`}
                   value={String(c.recipient ?? "subject")}
                   onChange={(e) => set({ recipient: e.target.value })}
                   className="input-base text-xs w-full"
@@ -1407,8 +1412,8 @@ function ActionConfigEditor({
               </div>
               {action.type === "send_email" && (
                 <div>
-                  <label className="text-2xs text-muted-foreground">Send from</label>
-                  <SelectField
+                  <label htmlFor={`${uid}-send-from`} className="text-2xs text-muted-foreground">Send from</label>
+                  <SelectField id={`${uid}-send-from`}
                     value={String(c.fromAddress ?? "organization")}
                     onChange={(e) => set({ fromAddress: e.target.value })}
                     className="input-base text-xs w-full"

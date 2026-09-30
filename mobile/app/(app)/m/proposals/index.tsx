@@ -51,7 +51,7 @@ export default function ProposalsList() {
       <View style={styles.chips}>
         {FILTERS.map((f) => (
           <Pressable key={f.key} onPress={() => setFilter(f.key)} style={[styles.chip, filter === f.key && styles.chipOn]}>
-            <Text variant="caption" style={{ color: filter === f.key ? palette.white : palette.muted, fontWeight: fontWeight.semibold as any }}>{f.label}</Text>
+            <Text variant="caption" style={{ color: filter === f.key ? palette.white : palette.muted, fontWeight: fontWeight.semibold }}>{f.label}</Text>
           </Pressable>
         ))}
       </View>
@@ -75,7 +75,7 @@ export default function ProposalsList() {
           renderItem={({ item }) => <Row p={item} onPress={() => router.push(`/m/proposals/${item.id}` as any)} />}
         />
       )}
-      <FAB icon="plus" onPress={() => router.push("/m/proposals/new" as any)} />
+      <FAB icon="plus" label="New proposal" onPress={() => router.push("/m/proposals/new" as any)} />
     </View>
   );
 }
@@ -86,7 +86,7 @@ function Row({ p, onPress }: { p: Proposal; onPress: () => void }) {
     <Pressable onPress={onPress}>
       <Card style={{ marginBottom: spacing.sm }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <Text variant="body" style={{ flex: 1, fontWeight: fontWeight.semibold as any }} numberOfLines={1}>{p.title}</Text>
+          <Text variant="body" style={{ flex: 1, fontWeight: fontWeight.semibold }} numberOfLines={1}>{p.title}</Text>
           <StatusPill label={titleCase(p.status)} tone={STATUS_TONE[p.status]} size="sm" />
         </View>
         <Text variant="caption" tone="muted" numberOfLines={1} style={{ marginTop: 2 }}>
@@ -94,7 +94,7 @@ function Row({ p, onPress }: { p: Proposal; onPress: () => void }) {
         </Text>
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: spacing.sm }}>
           <Text variant="caption" tone="faint">{titleCase(p.type.replace(/_/g, " "))}</Text>
-          {invest > 0 ? <Text variant="caption" style={{ fontWeight: fontWeight.semibold as any, color: palette.ink }}>{inr(invest)}</Text> : null}
+          {invest > 0 ? <Text variant="caption" style={{ fontWeight: fontWeight.semibold, color: palette.ink }}>{inr(invest)}</Text> : null}
           <Text variant="caption" tone="faint">{fmtDate(p.createdAt)}</Text>
         </View>
       </Card>
@@ -103,7 +103,7 @@ function Row({ p, onPress }: { p: Proposal; onPress: () => void }) {
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
-  return <View style={{ flex: 1, alignItems: "center" }}><Text style={{ fontSize: 18, fontWeight: fontWeight.bold as any }}>{value}</Text><Text variant="caption" tone="muted">{label}</Text></View>;
+  return <View style={{ flex: 1, alignItems: "center" }}><Text style={{ fontSize: 18, fontWeight: fontWeight.bold }}>{value}</Text><Text variant="caption" tone="muted">{label}</Text></View>;
 }
 
 const styles = StyleSheet.create({

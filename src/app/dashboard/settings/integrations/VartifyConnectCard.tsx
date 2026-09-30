@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useId, useEffect, useState } from "react";
 import { Check, AlertCircle, Loader2, MessageCircle, RefreshCw } from "lucide-react";
 import { confirmDialog } from "@/components/ui/ConfirmProvider";
 
@@ -22,6 +22,7 @@ type Verify = {
 };
 
 export default function VartifyConnectCard() {
+  const uid = useId();
   const [status, setStatus] = useState<Status | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -130,7 +131,7 @@ export default function VartifyConnectCard() {
         </div>
         <span
           className={`text-xs px-2 py-1 rounded-full flex items-center gap-1 ${
-            connected ? "bg-emerald-50 text-emerald-700" : "bg-gray-50 text-gray-600"
+            connected ? "bg-emerald-50 text-emerald-700" : "bg-secondary text-muted-foreground"
           }`}
         >
           {loading ? (
@@ -249,10 +250,10 @@ export default function VartifyConnectCard() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-medium text-muted-foreground">
+                <label htmlFor={`${uid}-endpoint-url-optional-leave-blank`} className="text-xs font-medium text-muted-foreground">
                   Endpoint URL (optional — leave blank)
                 </label>
-                <input
+                <input id={`${uid}-endpoint-url-optional-leave-blank`}
                   type="text"
                   value={webhookUrl}
                   onChange={(e) => setWebhookUrl(e.target.value)}
@@ -264,10 +265,10 @@ export default function VartifyConnectCard() {
                 </p>
               </div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground">
+                <label htmlFor={`${uid}-default-language`} className="text-xs font-medium text-muted-foreground">
                   Default language
                 </label>
-                <input
+                <input id={`${uid}-default-language`}
                   type="text"
                   value={defaultLanguage}
                   onChange={(e) => setDefaultLanguage(e.target.value)}

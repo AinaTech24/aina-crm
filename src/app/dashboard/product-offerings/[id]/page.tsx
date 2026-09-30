@@ -164,7 +164,7 @@ function ReadinessPanel({
     <div className="card-surface p-4 space-y-3">
       <h2 className="font-semibold text-sm flex items-center gap-2">
         {health.license === "expired" || health.readiness === "blocked" ? (
-          <ShieldAlert className={`size-4 ${active ? "text-rose-600" : "text-slate-400"}`} />
+          <ShieldAlert className={`size-4 ${active ? "text-rose-600" : "text-muted-foreground"}`} />
         ) : health.license === "expiring" || health.readiness === "attention" || health.readiness === "no_team" ? (
           <AlertTriangle className="size-4 text-amber-600" />
         ) : (

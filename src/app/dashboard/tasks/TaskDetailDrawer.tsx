@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useId, useState, useEffect } from "react";
 import { X, Calendar, User, Sparkles, LifeBuoy, AlertCircle, Trash, Plus, CheckCircle2, ListChecks, Loader2, ShieldCheck, Clock3, Bell, Send, RotateCcw } from "lucide-react";
 import { RmSelector } from "@/components/common/RmSelector";
 import { SelectField } from "@/components/ui/SelectField";
@@ -14,6 +14,7 @@ import { TaskComments } from "./TaskComments";
 import { TaskTimePanel } from "./TaskTimePanel";
 import { TaskAttachments } from "./TaskAttachments";
 import { TaskWatchersDeps } from "./TaskWatchersDeps";
+import { formatDate } from "@/lib/format";
 import { DateTimeField } from "@/components/ui/DateTimeField";
 
 interface TaskDetailDrawerProps {
@@ -53,6 +54,7 @@ const DEPARTMENTS: [string, string][] = [
 ];
 
 export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, onClose, onUpdate }: TaskDetailDrawerProps) {
+  const uid = useId();
   const toast = useToast();
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
 
@@ -173,7 +175,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
         body: JSON.stringify({ dueAt: new Date(iso).toISOString() }),
       });
       if (!res.ok) throw new Error("Failed");
-      toast.success(`Rescheduled to ${new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}`);
+      toast.success(`Rescheduled to ${formatDate(new Date(iso), "dayMonth")}`);
       onUpdate();
     } catch {
       toast.error("Couldn't reschedule", "Update failed");
@@ -234,12 +236,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
       // Append new remark to top if provided
       let finalRemarks = remarksHistory;
       if (newRemark.trim()) {
-        const timestamp = new Date().toLocaleString("en-IN", {
-          day: "numeric",
-          month: "short",
-          hour: "2-digit",
-          minute: "2-digit",
-        });
+        const timestamp = formatDate(new Date(), "dateTime");
         const entry = `[${timestamp}] ${newRemark.trim()}`;
         finalRemarks = remarksHistory ? `${entry}\n\n${remarksHistory}` : entry;
       }
@@ -374,13 +371,13 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
         {/* Centered modal */}
         <div
           onClick={(e) => e.stopPropagation()}
-          className="relative w-full h-full sm:h-auto sm:max-h-[88vh] sm:w-[560px] sm:max-w-[calc(100vw-2rem)] bg-white text-slate-800 sm:rounded-xl border border-border shadow-2xl z-50 flex flex-col overflow-hidden animate-modal-in"
+          className="relative w-full h-full sm:h-auto sm:max-h-[88vh] sm:w-[560px] sm:max-w-[calc(100vw-2rem)] bg-white text-foreground sm:rounded-xl border border-border shadow-2xl z-50 flex flex-col overflow-hidden animate-modal-in"
         >
 
         {/* Header */}
-        <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-slate-50">
+        <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-secondary">
           <div>
-            <h3 className="font-bold text-sm text-slate-800 uppercase tracking-wider">
+            <h3 className="font-bold text-sm text-foreground uppercase tracking-wider">
               Task Details
             </h3>
             <span className="text-2xs text-muted-foreground font-mono">ID: {task.id.slice(0, 8)}</span>
@@ -388,7 +385,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-slate-200 text-slate-500 hover:text-slate-700 transition-colors"
+            className="p-1.5 rounded-full hover:bg-slate-200 text-muted-foreground hover:text-foreground transition-colors"
           >
             <X className="size-4" />
           </button>
@@ -420,13 +417,13 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
             />
             
             <div>
-              <label className="text-2xs uppercase font-bold text-slate-500 block mb-1">Description</label>
-              <textarea
+              <label htmlFor={`${uid}-description`} className="text-2xs uppercase font-bold text-muted-foreground block mb-1">Description</label>
+              <textarea id={`${uid}-description`}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
                 placeholder="No description provided. Click to add details..."
-                className="input-base text-xs py-2 bg-slate-50 border-slate-200 focus:bg-white transition-colors"
+                className="input-base text-xs py-2 bg-secondary border-border focus:bg-white transition-colors"
               />
             </div>
           </div>
@@ -436,8 +433,8 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
           {/* Quick Stats Grid */}
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div>
-              <label className="text-2xs uppercase font-bold text-slate-500 block mb-1">Status</label>
-              <SelectField
+              <label htmlFor={`${uid}-status`} className="text-2xs uppercase font-bold text-muted-foreground block mb-1">Status</label>
+              <SelectField id={`${uid}-status`}
                 value={status}
                 onChange={(e) => setStatus(e.target.value as any)}
                 size="sm"
@@ -452,8 +449,8 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
             </div>
 
             <div>
-              <label className="text-2xs uppercase font-bold text-slate-500 block mb-1">Priority</label>
-              <SelectField
+              <label htmlFor={`${uid}-priority`} className="text-2xs uppercase font-bold text-muted-foreground block mb-1">Priority</label>
+              <SelectField id={`${uid}-priority`}
                 value={priority}
                 onChange={(e) => setPriority(e.target.value as any)}
                 size="sm"
@@ -467,21 +464,21 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
             </div>
 
             <div>
-              <label className="text-2xs uppercase font-bold text-slate-500 block mb-1">Due Date</label>
-              <DateField
+              <label htmlFor={`${uid}-due-date`} className="text-2xs uppercase font-bold text-muted-foreground block mb-1">Due Date</label>
+              <DateField id={`${uid}-due-date`}
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
                 size="sm"
                 className="w-full"
               />
               <div className="mt-1 flex items-center gap-1">
-                <span className="text-2xs uppercase text-slate-400 font-semibold">Snooze</span>
+                <span className="text-2xs uppercase text-muted-foreground font-semibold">Snooze</span>
                 {[["+1d", 1], ["+1w", 7], ["+1m", 30]].map(([label, days]) => (
                   <button
                     key={label as string}
                     type="button"
                     onClick={() => quickReschedule(days as number)}
-                    className="text-2xs px-1.5 py-0.5 rounded border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                    className="text-2xs px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:bg-secondary hover:text-foreground"
                   >
                     {label}
                   </button>
@@ -490,8 +487,8 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
             </div>
 
             <div>
-              <label className="text-2xs uppercase font-bold text-slate-500 block mb-1">SLA Due Date</label>
-              <DateField
+              <label htmlFor={`${uid}-sla-due-date`} className="text-2xs uppercase font-bold text-muted-foreground block mb-1">SLA Due Date</label>
+              <DateField id={`${uid}-sla-due-date`}
                 value={slaDate}
                 onChange={(e) => setSlaDate(e.target.value)}
                 size="sm"
@@ -500,8 +497,8 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
             </div>
 
             <div className="col-span-2">
-              <label className="text-2xs uppercase font-bold text-slate-500 block mb-1">Department</label>
-              <SelectField
+              <label htmlFor={`${uid}-department`} className="text-2xs uppercase font-bold text-muted-foreground block mb-1">Department</label>
+              <SelectField id={`${uid}-department`}
                 value={department}
                 onChange={(e) => setDepartment(e.target.value)}
                 size="sm"
@@ -515,8 +512,8 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
             </div>
 
             <div className="col-span-2">
-              <label className="text-2xs uppercase font-bold text-slate-500 mb-1 flex items-center gap-1">
-                <Bell className="size-3" /> Reminder <span className="normal-case font-medium text-slate-400">— pings the assignee</span>
+              <label className="text-2xs uppercase font-bold text-muted-foreground mb-1 flex items-center gap-1">
+                <Bell className="size-3" /> Reminder <span className="normal-case font-medium text-muted-foreground">— pings the assignee</span>
               </label>
               <SelectField
                 value={reminderMode}
@@ -541,19 +538,19 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
                 />
               )}
               {task.remindAt && !reminderDirty && (
-                <p className="text-2xs text-slate-400 mt-1">
-                  Reminds {new Date(task.remindAt).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                <p className="text-2xs text-muted-foreground mt-1">
+                  Reminds {formatDate(new Date(task.remindAt), "dateTime")}
                   {task.reminderFiredAt ? " · sent" : ""}.
                 </p>
               )}
               {reminderDirty && reminderMode !== "none" && (
-                <p className="text-2xs text-slate-400 mt-1">Saved when you click “Save Changes”.</p>
+                <p className="text-2xs text-muted-foreground mt-1">Saved when you click “Save Changes”.</p>
               )}
             </div>
           </div>
 
           <div>
-            <label className="text-2xs uppercase font-bold text-slate-500 block mb-1">Assigned To</label>
+            <label className="text-2xs uppercase font-bold text-muted-foreground block mb-1">Assigned To</label>
             <RmSelector
               value={assigneeId || null}
               onChange={(id) => setAssigneeId(id ?? "")}
@@ -566,11 +563,11 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
           {/* Approval / verification loop */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
-              <h4 className="text-2xs uppercase font-bold text-slate-500 flex items-center gap-1.5">
+              <h4 className="text-2xs uppercase font-bold text-muted-foreground flex items-center gap-1.5">
                 <ShieldCheck className="size-3.5" /> Approval
               </h4>
               {isApprover && (
-                <label className="flex items-center gap-1.5 text-2xs text-slate-600 cursor-pointer">
+                <label className="flex items-center gap-1.5 text-2xs text-muted-foreground cursor-pointer">
                   <input
                     type="checkbox"
                     checked={requiresApproval}
@@ -600,7 +597,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
                     {approvalNoteShown && <div className="mt-1 text-rose-700">“{approvalNoteShown}”</div>}
                   </div>
                 ) : (
-                  <div className="text-2xs text-slate-500">Needs an approver's sign-off before it can be completed.</div>
+                  <div className="text-2xs text-muted-foreground">Needs an approver's sign-off before it can be completed.</div>
                 )}
 
                 {approvalStatus === "pending" && isApprover ? (
@@ -660,7 +657,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
               </>
             ) : (
               isApprover && (
-                <p className="text-2xs text-slate-400">
+                <p className="text-2xs text-muted-foreground">
                   Turn on sign-off to require an approver to verify this task before it's marked complete.
                 </p>
               )
@@ -671,13 +668,13 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
 
           {/* Related Entities Card Links */}
           <div className="space-y-2.5">
-            <h4 className="text-2xs uppercase font-bold text-slate-500">Related Entities</h4>
+            <h4 className="text-2xs uppercase font-bold text-muted-foreground">Related Entities</h4>
             
             <div className="grid grid-cols-1 gap-2">
               {task.relatedInvestorId && (
                 <Link
                   href={`/dashboard/investors/${task.relatedInvestorId}`}
-                  className="flex items-center justify-between p-2.5 border rounded-lg hover:bg-slate-50 border-brand-cyan/20 bg-brand-cyan-light/10 transition-colors"
+                  className="flex items-center justify-between p-2.5 border rounded-lg hover:bg-secondary border-brand-cyan/20 bg-brand-cyan-light/10 transition-colors"
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     <User className="size-4 text-brand-cyan-deep flex-shrink-0" />
@@ -694,7 +691,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
               {task.relatedLeadId && (
                 <Link
                   href={`/dashboard/leads/${task.relatedLeadId}`}
-                  className="flex items-center justify-between p-2.5 border rounded-lg hover:bg-slate-50 border-amber-200 bg-amber-50/10 transition-colors"
+                  className="flex items-center justify-between p-2.5 border rounded-lg hover:bg-secondary border-amber-200 bg-amber-50/10 transition-colors"
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     <Sparkles className="size-4 text-amber-600 flex-shrink-0" />
@@ -727,7 +724,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
               {task.relatedMeetingId && (
                 <Link
                   href={`/dashboard/review-meetings/${task.relatedMeetingId}`}
-                  className="flex items-center justify-between p-2.5 border rounded-lg hover:bg-slate-50 border-emerald-100 bg-emerald-50/10 transition-colors"
+                  className="flex items-center justify-between p-2.5 border rounded-lg hover:bg-secondary border-emerald-100 bg-emerald-50/10 transition-colors"
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     <Calendar className="size-4 text-emerald-600 flex-shrink-0" />
@@ -742,7 +739,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
               )}
 
               {!task.relatedInvestorId && !task.relatedLeadId && !task.relatedServiceRequestId && !task.relatedMeetingId && (
-                <div className="text-xs text-muted-foreground p-3 border border-dashed rounded-lg text-center bg-slate-50">
+                <div className="text-xs text-muted-foreground p-3 border border-dashed rounded-lg text-center bg-secondary">
                   No entities linked to this task.
                 </div>
               )}
@@ -754,17 +751,17 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
           {/* Action points (checklist) — the sub-steps to complete this task. */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h4 className="text-2xs uppercase font-bold text-slate-500 flex items-center gap-1.5">
+              <h4 className="text-2xs uppercase font-bold text-muted-foreground flex items-center gap-1.5">
                 <ListChecks className="size-3.5" /> Sub-tasks
                 {checklist.length > 0 && (
-                  <span className="text-slate-400 normal-case font-semibold">· {doneCount}/{checklist.length} done</span>
+                  <span className="text-muted-foreground normal-case font-semibold">· {doneCount}/{checklist.length} done</span>
                 )}
               </h4>
               {checklistBusy && <Loader2 className="size-3 animate-spin text-brand-cyan" />}
             </div>
 
             {checklist.length > 0 && (
-              <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+              <div className="h-1.5 w-full rounded-full bg-secondary overflow-hidden">
                 <div
                   className="h-full bg-emerald-500 transition-all"
                   style={{ width: `${Math.round((doneCount / checklist.length) * 100)}%` }}
@@ -776,29 +773,29 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
               {checklist.map((c) => {
                 const st = subTaskStatus(c);
                 const meta = ({
-                  not_started: { label: "Not started", dot: "bg-slate-300", text: "text-slate-500" },
+                  not_started: { label: "Not started", dot: "bg-slate-300", text: "text-muted-foreground" },
                   in_progress: { label: "In progress", dot: "bg-sky-500", text: "text-sky-700" },
                   completed: { label: "Completed", dot: "bg-emerald-500", text: "text-emerald-700" },
                   assigned_to_other: { label: "Assigned to other", dot: "bg-violet-500", text: "text-violet-700" },
                 } as const)[st];
                 return (
-                  <div key={c.id} className="group rounded-lg border border-slate-100 bg-slate-50/60 px-2.5 py-2 space-y-1.5">
+                  <div key={c.id} className="group rounded-lg border border-slate-100 bg-secondary/60 px-2.5 py-2 space-y-1.5">
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => cycleStatus(c.id)}
                         title="Click to advance status"
-                        className={`shrink-0 inline-flex items-center gap-1.5 rounded-full bg-white border border-slate-200 px-2 py-0.5 text-2xs font-semibold ${meta.text}`}
+                        className={`shrink-0 inline-flex items-center gap-1.5 rounded-full bg-white border border-border px-2 py-0.5 text-2xs font-semibold ${meta.text}`}
                       >
                         <span className={`size-2 rounded-full ${meta.dot}`} /> {meta.label}
                       </button>
-                      <span className={`flex-1 text-xs leading-relaxed ${st === "completed" ? "line-through text-slate-400" : "text-slate-700"}`}>
+                      <span className={`flex-1 text-xs leading-relaxed ${st === "completed" ? "line-through text-muted-foreground" : "text-foreground"}`}>
                         {c.text}
                       </span>
                       <button
                         type="button"
                         onClick={() => removePoint(c.id)}
-                        className="shrink-0 text-slate-300 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="shrink-0 text-muted-foreground hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity"
                         aria-label="Remove sub-task"
                       >
                         <Trash className="size-3.5" />
@@ -824,7 +821,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
                     {/* Delegate this sub-task to a teammate — they're notified and
                         can open + edit this task. */}
                     <div className="flex items-center gap-2">
-                      <span className="text-2xs uppercase font-bold text-slate-400 shrink-0">Assign</span>
+                      <span className="text-2xs uppercase font-bold text-muted-foreground shrink-0">Assign</span>
                       <RmSelector
                         value={c.assigneeId ?? null}
                         onChange={(uid) =>
@@ -909,10 +906,10 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
 
           {/* Tags */}
           <div className="space-y-2">
-            <h4 className="text-2xs uppercase font-bold text-slate-500">Tags</h4>
+            <h4 className="text-2xs uppercase font-bold text-muted-foreground">Tags</h4>
             <div className="flex flex-wrap items-center gap-1.5">
               {tags.map((tg) => (
-                <span key={tg} className="chip text-2xs bg-slate-100 text-slate-600 border border-slate-200 inline-flex items-center gap-1">
+                <span key={tg} className="chip text-2xs bg-secondary text-muted-foreground border border-border inline-flex items-center gap-1">
                   {tg}
                   <button type="button" onClick={() => setTags((t) => t.filter((x) => x !== tg))} className="hover:text-rose-600" aria-label={`Remove ${tg}`}>
                     <X className="size-2.5" />
@@ -928,20 +925,20 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
                 className="input-base h-7 text-2xs w-24 bg-white"
               />
             </div>
-            <p className="text-2xs text-slate-400">Saved with the task.</p>
+            <p className="text-2xs text-muted-foreground">Saved with the task.</p>
           </div>
 
           <hr className="border-slate-100" />
 
           {/* Comments — real threaded log with author + @mentions. */}
           <div className="space-y-3">
-            <h4 className="text-2xs uppercase font-bold text-slate-500">Comments</h4>
+            <h4 className="text-2xs uppercase font-bold text-muted-foreground">Comments</h4>
             <TaskComments taskId={task.id} currentUserId={currentUserId} />
 
             {/* Legacy prepend-only remarks (pre-comments) — read-only, collapsed. */}
             {remarksHistory && (
               <details className="mt-1">
-                <summary className="text-2xs uppercase font-bold text-slate-400 cursor-pointer">Earlier notes (legacy log)</summary>
+                <summary className="text-2xs uppercase font-bold text-muted-foreground cursor-pointer">Earlier notes (legacy log)</summary>
                 <div className="space-y-3 max-h-48 overflow-y-auto pr-1 scrollbar-thin mt-2">
                   {remarksHistory.split("\n\n").map((chunk, idx) => {
                     const match = chunk.match(/^\[(.*?)\]\s*([\s\S]*)$/);
@@ -949,12 +946,12 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
                     const content = match ? match[2] : chunk;
                     return (
                       <div key={idx} className="flex gap-2.5 items-start">
-                        <div className="w-6 h-6 rounded-full bg-slate-100 border text-2xs font-bold text-slate-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <div className="w-6 h-6 rounded-full bg-secondary border text-2xs font-bold text-muted-foreground flex items-center justify-center flex-shrink-0 mt-0.5">
                           💬
                         </div>
-                        <div className="flex-1 min-w-0 bg-slate-50 border border-slate-100 rounded-lg p-2.5">
-                          {timestamp && <div className="text-2xs text-slate-400 font-semibold mb-1">{timestamp}</div>}
-                          <div className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">{content}</div>
+                        <div className="flex-1 min-w-0 bg-secondary border border-slate-100 rounded-lg p-2.5">
+                          {timestamp && <div className="text-2xs text-muted-foreground font-semibold mb-1">{timestamp}</div>}
+                          <div className="text-xs text-foreground whitespace-pre-wrap leading-relaxed">{content}</div>
                         </div>
                       </div>
                     );
@@ -966,7 +963,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
         </div>
 
         {/* Footer controls */}
-        <div className="px-5 py-4 border-t border-border bg-slate-50 flex justify-between gap-3 flex-shrink-0">
+        <div className="px-5 py-4 border-t border-border bg-secondary flex justify-between gap-3 flex-shrink-0">
           <button
             type="button"
             onClick={() => setConfirmCancelOpen(true)}
@@ -981,7 +978,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="px-3 py-1.5 border hover:bg-slate-100 text-xs font-semibold rounded-md bg-white"
+              className="px-3 py-1.5 border hover:bg-secondary text-xs font-semibold rounded-md bg-white"
             >
               Close
             </button>

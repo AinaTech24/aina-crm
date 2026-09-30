@@ -725,7 +725,7 @@ function RoleMultiSelect({
                   type="checkbox"
                   checked={on}
                   readOnly
-                  className="size-3"
+                  className="size-4"
                 />
                 <span className="capitalize">{r.replace(/_/g, " ")}</span>
               </button>

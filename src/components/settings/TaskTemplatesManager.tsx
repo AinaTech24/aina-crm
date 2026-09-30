@@ -6,7 +6,7 @@
  * KYC → UCC → mandate…); the team applies them from the New Task form.
  */
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { notify } from "@/components/ui/Toast";
 import { useRouter } from "next/navigation";
 import {
@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { MfdTemplateLibrary } from "@/components/settings/MfdTemplateLibrary";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 
 export type TaskTemplateRow = {
   id: string;
@@ -112,6 +113,7 @@ export function TaskTemplatesManager({
 }: {
   templates: TaskTemplateRow[];
 }) {
+  const uid = useId();
   const router = useRouter();
   // null = closed, "new" = create, otherwise the template id being edited
   const [editing, setEditing] = useState<string | null>(null);
@@ -245,9 +247,12 @@ export function TaskTemplatesManager({
 
   const remove = async (t: TaskTemplateRow) => {
     if (
-      !window.confirm(
-        `Delete the template "${t.name}"? Tasks already created from it are not affected.`
-      )
+      !(await confirmDialog({
+        title: `Delete the template "${t.name}"?`,
+        message: "Tasks already created from it are not affected.",
+        confirmLabel: "Delete template",
+        tone: "danger",
+      }))
     )
       return;
     setDeletingId(t.id);
@@ -431,8 +436,8 @@ export function TaskTemplatesManager({
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">Type</label>
-                  <SelectField
+                  <label htmlFor={`${uid}-type`} className="text-xs font-medium text-muted-foreground">Type</label>
+                  <SelectField id={`${uid}-type`}
                     value={form.taskType}
                     onChange={(e) => set("taskType", e.target.value)}
                     className="w-full"
@@ -447,8 +452,8 @@ export function TaskTemplatesManager({
                   </SelectField>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">Department</label>
-                  <SelectField
+                  <label htmlFor={`${uid}-department`} className="text-xs font-medium text-muted-foreground">Department</label>
+                  <SelectField id={`${uid}-department`}
                     value={form.department}
                     onChange={(e) => set("department", e.target.value)}
                     className="w-full"
@@ -463,8 +468,8 @@ export function TaskTemplatesManager({
                   </SelectField>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">Priority</label>
-                  <SelectField
+                  <label htmlFor={`${uid}-priority`} className="text-xs font-medium text-muted-foreground">Priority</label>
+                  <SelectField id={`${uid}-priority`}
                     value={form.priority}
                     onChange={(e) => set("priority", e.target.value)}
                     className="w-full"

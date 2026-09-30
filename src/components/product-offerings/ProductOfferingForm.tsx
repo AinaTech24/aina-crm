@@ -336,7 +336,7 @@ export function ProductOfferingForm({
                   className={`chip text-xs ${
                     on
                       ? "bg-violet-100 text-violet-800 border border-violet-300"
-                      : "bg-slate-100 hover:bg-slate-200"
+                      : "bg-secondary hover:bg-slate-200"
                   }`}
                 >
                   {reg.registrationFor}
@@ -387,7 +387,7 @@ export function ProductOfferingForm({
                   className={`chip text-xs ${
                     on
                       ? "bg-cyan-100 text-cyan-800 border border-cyan-300"
-                      : "bg-slate-100 hover:bg-slate-200"
+                      : "bg-secondary hover:bg-slate-200"
                   }`}
                 >
                   {t.name}
@@ -410,7 +410,7 @@ export function ProductOfferingForm({
             {v.documents.map((d, i) => (
               <li
                 key={i}
-                className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-md px-3 py-2"
+                className="flex items-center justify-between bg-secondary border border-border rounded-md px-3 py-2"
               >
                 <div className="min-w-0">
                   <div className="text-sm font-medium truncate">{d.label}</div>
@@ -418,7 +418,7 @@ export function ProductOfferingForm({
                     href={d.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-2xs text-slate-500 truncate inline-flex items-center gap-1 hover:text-slate-800"
+                    className="text-2xs text-muted-foreground truncate inline-flex items-center gap-1 hover:text-foreground"
                   >
                     {d.url} <ExternalLink className="size-2.5" />
                   </a>
@@ -426,7 +426,7 @@ export function ProductOfferingForm({
                 <button
                   type="button"
                   onClick={() => removeDoc(i)}
-                  className="text-slate-400 hover:text-rose-600"
+                  className="text-muted-foreground hover:text-rose-600"
                 >
                   <X className="size-3.5" />
                 </button>
@@ -523,13 +523,13 @@ function ChipInput({
           {chips.map((c, i) => (
             <span
               key={i}
-              className="chip bg-slate-100 text-slate-700 text-xs inline-flex items-center gap-1"
+              className="chip bg-secondary text-foreground text-xs inline-flex items-center gap-1"
             >
               {c}
               <button
                 type="button"
                 onClick={() => onRemove(i)}
-                className="text-slate-400 hover:text-rose-600"
+                className="text-muted-foreground hover:text-rose-600"
               >
                 <X className="size-3" />
               </button>

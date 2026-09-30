@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, CalendarDays, HelpCircle } from "lucide-react";
 import { LEAVE_TYPE_LABELS } from "@/lib/leave/policy";
+import { formatDate } from "@/lib/format";
 
 type UserRow = {
   id: string;
@@ -67,10 +68,7 @@ export function LeaveTimeline({
   const daysArray = useMemo(() => Array.from({ length: daysInMonth }, (_, i) => i + 1), [daysInMonth]);
 
   const monthName = useMemo(() => {
-    return new Date(currentYear, currentMonth - 1, 1).toLocaleDateString("en-IN", {
-      month: "long",
-      year: "numeric",
-    });
+    return formatDate(new Date(currentYear, currentMonth - 1, 1), "monthYear");
   }, [currentYear, currentMonth]);
 
   // Navigate to another month

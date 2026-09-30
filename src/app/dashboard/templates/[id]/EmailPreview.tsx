@@ -233,7 +233,7 @@ export function EmailPreview({ body, blocksView, defaultTestEmail = "" }: Props)
           )}
 
           {!err && html !== null && (
-            <div className="rounded-lg border bg-slate-100 p-3 sm:p-4 overflow-x-auto">
+            <div className="rounded-lg border bg-secondary p-3 sm:p-4 overflow-x-auto">
               <div className="mx-auto transition-all" style={{ width: WIDTHS[device], maxWidth: "100%" }}>
                 <iframe
                   ref={frameRef}

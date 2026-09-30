@@ -29,16 +29,16 @@ import { FEEDBACK_QUESTIONS, NPS_QUESTION_KEY } from "@/lib/support/feedback-que
 function scoreTone(n: number): { idle: string; active: string } {
   if (n <= 6)
     return {
-      idle: "bg-white text-slate-700 border-slate-200 hover:border-rose-300 hover:bg-rose-50",
+      idle: "bg-white text-foreground border-border hover:border-rose-300 hover:bg-rose-50",
       active: "bg-rose-500 text-white border-rose-500",
     };
   if (n <= 8)
     return {
-      idle: "bg-white text-slate-700 border-slate-200 hover:border-amber-300 hover:bg-amber-50",
+      idle: "bg-white text-foreground border-border hover:border-amber-300 hover:bg-amber-50",
       active: "bg-amber-500 text-white border-amber-500",
     };
   return {
-    idle: "bg-white text-slate-700 border-slate-200 hover:border-emerald-300 hover:bg-emerald-50",
+    idle: "bg-white text-foreground border-border hover:border-emerald-300 hover:bg-emerald-50",
     active: "bg-emerald-500 text-white border-emerald-500",
   };
 }
@@ -106,7 +106,7 @@ export function PublicFeedbackForm({
         <h2 className="text-xl font-bold mt-3">
           Thank you{recipientName ? `, ${recipientName.split(" ")[0]}` : ""}!
         </h2>
-        <p className="text-sm text-slate-600 mt-2">
+        <p className="text-sm text-muted-foreground mt-2">
           Your feedback has reached {firmName}.{" "}
           {npsScore != null && npsScore <= 6
             ? "Someone from the team will get in touch with you shortly."
@@ -122,7 +122,7 @@ export function PublicFeedbackForm({
         <MessageSquareHeart className="size-6 text-brand-cyan shrink-0 mt-0.5" />
         <div>
           <h1 className="text-lg font-bold">How are we doing?</h1>
-          <p className="text-sm text-slate-600 mt-1">
+          <p className="text-sm text-muted-foreground mt-1">
             {recipientName ? `${recipientName}, a` : "A"} few quick questions about working with {firmName}. Rate each
             one from 0 (not at all) to 10 (completely) — it takes about a minute.
           </p>
@@ -131,13 +131,13 @@ export function PublicFeedbackForm({
 
       {/* Progress — shown so it is obvious how much is left. */}
       <div className="mt-5 flex items-center gap-3">
-        <div className="h-1.5 flex-1 rounded-full bg-slate-100 overflow-hidden">
+        <div className="h-1.5 flex-1 rounded-full bg-secondary overflow-hidden">
           <div
             className="h-full bg-brand-cyan transition-all"
             style={{ width: `${(answered / FEEDBACK_QUESTIONS.length) * 100}%` }}
           />
         </div>
-        <span className="text-2xs text-slate-500 tabular-nums shrink-0">
+        <span className="text-2xs text-muted-foreground tabular-nums shrink-0">
           {answered} of {FEEDBACK_QUESTIONS.length}
         </span>
       </div>
@@ -145,10 +145,10 @@ export function PublicFeedbackForm({
       <div className="mt-6 space-y-7">
         {FEEDBACK_QUESTIONS.map((q, qi) => (
           <fieldset key={q.key} id={`q-${q.key}`}>
-            <legend className="text-sm font-medium text-slate-900">
+            <legend className="text-sm font-medium text-foreground">
               {qi + 1}. {q.label}
             </legend>
-            {q.hint && <p className="text-xs text-slate-500 mt-0.5">{q.hint}</p>}
+            {q.hint && <p className="text-xs text-muted-foreground mt-0.5">{q.hint}</p>}
 
             <div className="grid grid-cols-6 sm:grid-cols-11 gap-1.5 mt-3">
               {Array.from({ length: 11 }, (_, n) => {
@@ -174,7 +174,7 @@ export function PublicFeedbackForm({
               })}
             </div>
             {qi === 0 && (
-              <div className="flex justify-between text-2xs text-slate-500 mt-1.5">
+              <div className="flex justify-between text-2xs text-muted-foreground mt-1.5">
                 <span>Not at all</span>
                 <span>Completely</span>
               </div>
@@ -185,7 +185,7 @@ export function PublicFeedbackForm({
 
       <label className="block mt-8">
         <span className="text-sm font-medium">
-          Anything you would like to add? <span className="font-normal text-slate-500">(optional)</span>
+          Anything you would like to add? <span className="font-normal text-muted-foreground">(optional)</span>
         </span>
         <textarea
           rows={4}
@@ -193,7 +193,7 @@ export function PublicFeedbackForm({
           onChange={(e) => setComment(e.target.value)}
           maxLength={2000}
           placeholder="Anything we did well, or anything we should do better."
-          className="mt-1.5 w-full rounded-lg border border-slate-200 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-cyan/40"
+          className="mt-1.5 w-full rounded-lg border border-border p-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-cyan/40"
         />
       </label>
 
@@ -203,7 +203,7 @@ export function PublicFeedbackForm({
           value={signature}
           onChange={(e) => setSignature(e.target.value)}
           maxLength={120}
-          className="mt-1.5 w-full rounded-lg border border-slate-200 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-cyan/40"
+          className="mt-1.5 w-full rounded-lg border border-border p-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-cyan/40"
         />
       </label>
 
@@ -219,7 +219,7 @@ export function PublicFeedbackForm({
         {busy ? "Sending…" : "Submit feedback"}
       </button>
 
-      <p className="mt-3 text-2xs text-slate-500 text-center">
+      <p className="mt-3 text-2xs text-muted-foreground text-center">
         This link is personal to you and can be used once.
       </p>
     </div>

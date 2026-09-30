@@ -13,6 +13,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Avatar } from "@/components/ui/Avatar";
 import { useToast } from "@/components/ui/Toast";
+import { formatDate } from "@/lib/format";
 
 type Row = {
   id: string;
@@ -156,7 +157,7 @@ export function MeetingsKanban({ meetings }: { meetings: Row[] }) {
                             ? "bg-violet-50 text-violet-700 border-violet-200"
                             : m.party_kind === "investor"
                               ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                              : "bg-slate-50 text-slate-500 border-slate-200"
+                              : "bg-secondary text-muted-foreground border-border"
                         }`}
                       >
                         {m.party_kind === "lead" ? "Lead" : m.party_kind === "investor" ? "Client" : "Unlinked"}
@@ -167,7 +168,7 @@ export function MeetingsKanban({ meetings }: { meetings: Row[] }) {
                     </div>
                     <div className="mt-1.5 flex items-center justify-between text-2xs text-muted-foreground">
                       <span className="tabular-nums">
-                        {new Date(m.meeting_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
+                        {formatDate(new Date(m.meeting_date), "dayMonth")}
                         {" · "}
                         {new Date(m.meeting_date).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}
                       </span>

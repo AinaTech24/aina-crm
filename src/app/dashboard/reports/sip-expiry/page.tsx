@@ -14,6 +14,7 @@ import { CalendarClock, AlertTriangle } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { loadSipExpiry, loadSipExpirySummary } from "@/lib/finance/sip-lifecycle";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ const inr = (n: number) =>
 const fmtDate = (v: string | null) => {
   if (!v) return "—";
   const d = new Date(v);
-  return isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  return isNaN(d.getTime()) ? "—" : formatDate(d);
 };
 
 const WINDOWS = [30, 60, 90, 180] as const;

@@ -68,7 +68,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   complaint: "bg-rose-50 text-rose-700 border-rose-200",
   audit_report: "bg-brand-cyan-light/50 text-brand-cyan-deep border-brand-cyan/30",
   ria_compliance: "bg-teal-50 text-teal-700 border-teal-200",
-  other: "bg-gray-50 text-gray-700 border-gray-200",
+  other: "bg-secondary text-foreground border-border",
 };
 
 export function DocumentsFeed({
@@ -318,8 +318,8 @@ export function DocumentsFeed({
                   >
                     <ChevronRight className={`size-4 text-muted-foreground shrink-0 transition-transform duration-300 ${isOpen ? "rotate-90" : ""}`} />
                     {isFirm ? (
-                      <div className="size-9 rounded-lg grid place-items-center shrink-0 bg-slate-100">
-                        <Building2 className="size-4 text-slate-500" />
+                      <div className="size-9 rounded-lg grid place-items-center shrink-0 bg-secondary">
+                        <Building2 className="size-4 text-muted-foreground" />
                       </div>
                     ) : (
                       <Avatar src={g.clientAvatar} name={g.clientName} size={36} />

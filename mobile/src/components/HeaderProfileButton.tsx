@@ -19,6 +19,7 @@ import { absUrl } from "../api/client";
 import { useSession } from "../state/session";
 import { confirmDelete } from "../lib/confirm";
 import { initials } from "../lib/format";
+import { asIcon } from "../lib/icons";
 
 const PROFILE_MENU: { icon: string; label: string; route: string }[] = [
   { icon: "user", label: "My profile", route: "/m/settings-profile" },
@@ -51,7 +52,7 @@ export function HeaderProfileButton() {
           <Image source={{ uri: photo }} style={styles.avatar} />
         ) : (
           <View style={[styles.avatar, { backgroundColor: brand }]}>
-            <Text style={{ color: palette.white, fontWeight: fontWeight.bold as any, fontSize: 13 }}>
+            <Text style={{ color: palette.white, fontWeight: fontWeight.bold, fontSize: 13 }}>
               {initials(me?.user.name) || "?"}
             </Text>
           </View>
@@ -64,7 +65,7 @@ export function HeaderProfileButton() {
             <Image source={{ uri: photo }} style={styles.bigAvatar} />
           ) : (
             <View style={[styles.bigAvatar, { backgroundColor: brand }]}>
-              <Text style={{ color: palette.white, fontWeight: fontWeight.bold as any, fontSize: 18 }}>{initials(me?.user.name) || "?"}</Text>
+              <Text style={{ color: palette.white, fontWeight: fontWeight.bold, fontSize: 18 }}>{initials(me?.user.name) || "?"}</Text>
             </View>
           )}
           <View style={{ flex: 1 }}>
@@ -76,7 +77,7 @@ export function HeaderProfileButton() {
 
         {PROFILE_MENU.map((m) => (
           <Pressable key={m.route} style={styles.row} onPress={() => go(m.route)}>
-            <View style={[styles.rowIcon, { backgroundColor: brandLight }]}><Feather name={m.icon as any} size={16} color={brand} /></View>
+            <View style={[styles.rowIcon, { backgroundColor: brandLight }]}><Feather name={asIcon(m.icon)} size={16} color={brand} /></View>
             <Text variant="body" style={{ flex: 1 }}>{m.label}</Text>
             <Feather name="chevron-right" size={18} color={palette.faint} />
           </Pressable>
@@ -84,7 +85,7 @@ export function HeaderProfileButton() {
 
         <Pressable style={[styles.row, styles.signOut]} onPress={onSignOut}>
           <View style={[styles.rowIcon, { backgroundColor: palette.dangerBg }]}><Feather name="log-out" size={16} color={palette.danger} /></View>
-          <Text variant="body" style={{ flex: 1, color: palette.danger, fontWeight: fontWeight.medium as any }}>Sign out</Text>
+          <Text variant="body" style={{ flex: 1, color: palette.danger, fontWeight: fontWeight.medium }}>Sign out</Text>
         </Pressable>
       </BottomSheet>
     </>

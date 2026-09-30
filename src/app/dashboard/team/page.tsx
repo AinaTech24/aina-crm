@@ -22,6 +22,7 @@ import { LEAVE_TYPE_LABELS } from "@/lib/leave/policy";
 import { TeamMemberFilter } from "@/components/dashboards/TeamMemberFilter";
 import { TeamRangePicker } from "@/components/dashboards/TeamRangePicker";
 import { AutoRefresh } from "@/components/common/AutoRefresh";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -196,7 +197,7 @@ export default async function TeamDashboardPage({
               >
                 <span className={`size-1.5 rounded-full ${l.is_today ? "bg-rose-500" : "bg-amber-500"}`} />
                 {l.employee_name ?? "Employee"}
-                <span className="opacity-70">{l.is_today ? "· today" : `· from ${new Date(l.from_date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`}</span>
+                <span className="opacity-70">{l.is_today ? "· today" : `· from ${formatDate(new Date(l.from_date), "dayMonth")}`}</span>
               </span>
             ))}
           </div>

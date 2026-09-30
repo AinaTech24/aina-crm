@@ -9,6 +9,9 @@ import { can, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { createNotification } from "@/lib/notifications/create";
+import { mobileTaskScope } from "@/lib/mobile/access";
+import { assertMobileAssignee, assertMobileSubjects } from "@/lib/mobile/record-access";
+import { withIdempotentMutation } from "@/lib/api/idempotent-mutation";
 import { tasks, users, investors, leads } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
@@ -110,6 +113,7 @@ export async function GET(req: NextRequest) {
       session.tenantId,
       async (tx) => {
         const conds: any[] = [eq(tasks.tenantId, session.tenantId), isNull(tasks.deletedAt)];
+        if (session.mobile) conds.push(mobileTaskScope(session));
         if (!canViewAll) conds.push(or(eq(tasks.assigneeId, session.userId), eq(tasks.createdById, session.userId))!);
         if (view === "to_me") conds.push(eq(tasks.assigneeId, session.userId));
         else if (view === "by_me") conds.push(eq(tasks.createdById, session.userId));
@@ -186,7 +190,7 @@ export async function POST(req: NextRequest) {
     // Users without task.edit.all may only create tasks assigned to themselves.
     const canEditAll = can(session.roles, "task.edit.all", session.permissions);
     const assigneeId = body.assigneeId ?? session.userId;
-    if (!canEditAll && assigneeId !== session.userId) {
+    if (!canEditAll && !session.mobile && assigneeId !== session.userId) {
       return NextResponse.json({ error: "you can only assign tasks to yourself" }, { status: 403 });
     }
 
@@ -211,7 +215,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    await withTenant(session.tenantId, async (tx) => {
+    const result = await withIdempotentMutation(session, req, body, async (tx) => {
+      await assertMobileAssignee(tx, session, assigneeId);
+      await assertMobileSubjects(tx, session, body);
       // Assignee must be a user in THIS tenant (the FK allows any tenant's user).
       const [u] = await tx
         .select({ id: users.id })
@@ -294,8 +300,9 @@ export async function POST(req: NextRequest) {
           meta: { task_id: id, assigned_by: session.userId, priority: body.priority },
         });
       }
+      return { id };
     });
-    return NextResponse.json({ id }, { status: 201 });
+    return NextResponse.json(result, { status: 201 });
   } catch (err: any) {
     return handleApiError(err);
   }

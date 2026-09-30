@@ -10,6 +10,7 @@ import { Printer } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { useToast } from "@/components/ui/Toast";
 import type { AdvisorProduction, ProdRow } from "@/lib/insurance/advisor-production";
+import { TableSkeleton } from "@/components/common/Skeleton";
 
 type Payload = { advisors: { id: string; name: string }[]; production: AdvisorProduction | null };
 
@@ -89,7 +90,7 @@ export function InsuranceProductionBoard() {
       </div>
 
       {loading ? (
-        <div className="text-sm text-muted-foreground py-10 text-center">Loading…</div>
+        <div className="text-sm text-muted-foreground py-10 text-center" aria-busy="true"><TableSkeleton rows={4} /></div>
       ) : !prod ? (
         <div className="text-sm text-muted-foreground py-10 text-center">No advisors found.</div>
       ) : (

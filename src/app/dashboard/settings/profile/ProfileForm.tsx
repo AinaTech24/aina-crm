@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Check, Camera, Trash2, LogOut, User, KeyRound, ImageIcon, Monitor, PenLine } from "lucide-react";
 
@@ -18,6 +18,7 @@ import { useToast } from "@/components/ui/Toast";
 import { PasswordInput } from "@/components/ui/PasswordInput";
 import { DeviceSessions } from "@/components/settings/DeviceSessions";
 import { confirmDialog } from "@/components/ui/ConfirmProvider";
+import { Button, buttonClass } from "@/components/ui/Button";
 
 export default function ProfileForm({
   initialName,
@@ -32,6 +33,7 @@ export default function ProfileForm({
   initialAvatarUrl?: string | null;
   initialSignatureUrl?: string | null;
 }) {
+  const uid = useId();
   const router = useRouter();
   const toast = useToast();
   const [name, setName] = useState(initialName);
@@ -326,7 +328,7 @@ export default function ProfileForm({
                 type="button"
                 onClick={() => fileRef.current?.click()}
                 disabled={uploadingAvatar}
-                className="text-sm px-3 py-2 rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 inline-flex items-center gap-2"
+                className={buttonClass("secondary", "md")}
               >
                 <Camera className="size-3.5" /> {avatarUrl ? "Change photo" : "Upload photo"}
               </button>
@@ -383,7 +385,7 @@ export default function ProfileForm({
                 type="button"
                 onClick={() => signatureRef.current?.click()}
                 disabled={uploadingSignature}
-                className="text-sm px-3 py-2 rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 inline-flex items-center gap-2"
+                className={buttonClass("secondary", "md")}
               >
                 <PenLine className="size-3.5" /> {signatureUrl ? "Change signature" : "Upload signature"}
               </button>
@@ -419,21 +421,15 @@ export default function ProfileForm({
         <div className="space-y-6">
           {/* Your details */}
           <div className="border rounded-lg bg-card p-5 space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="font-semibold text-sm flex items-center gap-2">
-                <User className="size-4 text-muted-foreground" /> Your details
-              </h3>
-              <button
-                onClick={saveProfile}
-                disabled={savingProfile || name.trim().length < 2}
-                className="text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 inline-flex items-center gap-1.5 shrink-0"
-              >
-                {savingProfile && <Loader2 className="size-3.5 animate-spin" />} Save details
-              </button>
-            </div>
+            {/* Save used to sit HERE, in the header, above the fields it saves —
+                so the eye passed it before there was anything to save. It is
+                now under them, where the reading order puts it. */}
+            <h3 className="section-title flex items-center gap-2">
+              <User className="size-4 text-muted-foreground" /> Your details
+            </h3>
             <div>
-              <label className={label}>Full name</label>
-              <input className={field} value={name} onChange={(e) => setName(e.target.value)} />
+              <label htmlFor={`${uid}-full-name`} className={label}>Full name</label>
+              <input id={`${uid}-full-name`} className={field} value={name} onChange={(e) => setName(e.target.value)} />
             </div>
             <div>
               <label className={label}>Email</label>
@@ -463,10 +459,23 @@ export default function ProfileForm({
               {verifyMsg && <p className="mt-1 text-xs text-emerald-600">{verifyMsg}</p>}
             </div>
             {profileMsg && (
-              <p className={`text-sm ${profileMsg.kind === "ok" ? "text-emerald-600" : "text-red-600"}`}>
+              <p
+                role={profileMsg.kind === "ok" ? "status" : "alert"}
+                className={`text-sm ${profileMsg.kind === "ok" ? "text-success" : "text-destructive"}`}
+              >
                 {profileMsg.kind === "ok" && <Check className="size-3.5 inline mr-1" />}{profileMsg.text}
               </p>
             )}
+            <div className="flex justify-end pt-1">
+              <Button
+                onClick={saveProfile}
+                variant="primary"
+                loading={savingProfile}
+                disabled={name.trim().length < 2}
+              >
+                Save details
+              </Button>
+            </div>
           </div>
 
           {/* Change password */}
@@ -484,12 +493,12 @@ export default function ProfileForm({
               </button>
             </div>
             <div>
-              <label className={label}>Current password</label>
-              <PasswordInput autoComplete="current-password" className={field} value={curPw} onChange={(e) => setCurPw(e.target.value)} />
+              <label htmlFor={`${uid}-current-password`} className={label}>Current password</label>
+              <PasswordInput id={`${uid}-current-password`} autoComplete="current-password" className={field} value={curPw} onChange={(e) => setCurPw(e.target.value)} />
             </div>
             <div>
-              <label className={label}>New password</label>
-              <PasswordInput autoComplete="new-password" className={field} value={newPw} onChange={(e) => setNewPw(e.target.value)} />
+              <label htmlFor={`${uid}-new-password`} className={label}>New password</label>
+              <PasswordInput id={`${uid}-new-password`} autoComplete="new-password" className={field} value={newPw} onChange={(e) => setNewPw(e.target.value)} />
               {newPw.length > 0 && (() => {
                 const score = pwStrength(newPw);
                 const meta = [
@@ -511,8 +520,8 @@ export default function ProfileForm({
               })()}
             </div>
             <div>
-              <label className={label}>Confirm new password</label>
-              <PasswordInput autoComplete="new-password" className={field} value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} />
+              <label htmlFor={`${uid}-confirm-new-password`} className={label}>Confirm new password</label>
+              <PasswordInput id={`${uid}-confirm-new-password`} autoComplete="new-password" className={field} value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} />
             </div>
           </div>
         </div>

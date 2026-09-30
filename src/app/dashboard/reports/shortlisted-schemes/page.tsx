@@ -19,6 +19,7 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { amcEmpanelments, schemeMaster, users } from "@/db/schema";
 import { PrintButton } from "@/components/settings/PrintButton";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +50,7 @@ const COARSE_TONE: Record<string, string> = {
   liquid: "bg-cyan-50 text-cyan-700 border-cyan-200",
   commodity: "bg-orange-50 text-orange-700 border-orange-200",
   international: "bg-violet-50 text-violet-700 border-violet-200",
-  other: "bg-slate-50 text-slate-700 border-slate-200",
+  other: "bg-secondary text-foreground border-border",
 };
 
 export default async function ShortlistedSchemesPage() {
@@ -147,8 +148,8 @@ export default async function ShortlistedSchemesPage() {
 
       <div className="hidden print:block text-center mb-3">
         <h1 className="page-title">AMC Schemes Shortlist</h1>
-        <p className="text-xs text-slate-500">
-          Generated {new Date().toLocaleDateString("en-GB")} · {totalShortlisted}{" "}
+        <p className="text-xs text-muted-foreground">
+          Generated {formatDate(new Date())} · {totalShortlisted}{" "}
           schemes across {byAmc.size} AMCs
         </p>
       </div>
@@ -282,13 +283,9 @@ export default async function ShortlistedSchemesPage() {
                                       Approved by{" "}
                                       {data.userMap.get(s.shortlistedBy) ?? "—"}
                                       {s.shortlistedAt &&
-                                        ` · ${new Date(
+                                        ` · ${formatDate(new Date(
                                           s.shortlistedAt
-                                        ).toLocaleDateString("en-GB", {
-                                          day: "2-digit",
-                                          month: "short",
-                                          year: "2-digit",
-                                        })}`}
+                                        ))}`}
                                     </div>
                                   )}
                                 </li>

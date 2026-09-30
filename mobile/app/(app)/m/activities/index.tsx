@@ -30,6 +30,8 @@ import { timeAgo, titleCase } from "../../../../src/lib/format";
 import { confirmDelete } from "../../../../src/lib/confirm";
 import { palette, radius, spacing, fontWeight } from "../../../../src/theme/tokens";
 import { toneColors } from "../../../../src/theme";
+import { asIcon } from "../../../../src/lib/icons";
+import { errorMessage } from "../../../../src/lib/errors";
 
 function useDebounced<T>(value: T, delay = 350): T {
   const [v, setV] = useState(value);
@@ -46,7 +48,7 @@ function ActivityCard({ a, onPress, onLong }: { a: Activity; onPress: () => void
   return (
     <Card onPress={onPress} onLongPress={onLong} style={{ marginBottom: spacing.md }}>
       <View style={{ flexDirection: "row", gap: spacing.md }}>
-        <View style={[styles.icon, { backgroundColor: bg }]}><Feather name={km.icon as any} size={17} color={fg} /></View>
+        <View style={[styles.icon, { backgroundColor: bg }]}><Feather name={asIcon(km.icon)} size={17} color={fg} /></View>
         <View style={{ flex: 1, gap: 2 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
             <Text variant="subtitle" numberOfLines={1} style={{ flex: 1 }}>{a.subject_name ?? "—"}</Text>
@@ -63,7 +65,7 @@ function ActivityCard({ a, onPress, onLong }: { a: Activity; onPress: () => void
           </View>
         </View>
         {a.subject_phone ? (
-          <Pressable onPress={() => call(a.subject_phone)} hitSlop={8} style={styles.callBtn}><Feather name="phone" size={15} color={palette.brand} /></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Call" onPress={() => call(a.subject_phone)} hitSlop={8} style={styles.callBtn}><Feather name="phone" size={15} color={palette.brand} /></Pressable>
         ) : null}
       </View>
     </Card>
@@ -74,15 +76,15 @@ function StatTile({ icon, tone, label, value }: { icon: string; tone: string; la
   return (
     <View style={styles.statTile}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-        <Feather name={icon as any} size={13} color={tone} />
+        <Feather name={asIcon(icon)} size={13} color={tone} />
         <Text variant="caption" tone="muted" numberOfLines={1}>{label}</Text>
       </View>
-      <Text style={{ fontSize: 20, fontWeight: fontWeight.bold as any }}>{value}</Text>
+      <Text style={{ fontSize: 20, fontWeight: fontWeight.bold }}>{value}</Text>
     </View>
   );
 }
 
-export default function ActivitiesList() {
+export default function ActivitiesList({ embedded = false }: { embedded?: boolean }) {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [kind, setKind] = useState("");
@@ -117,13 +119,13 @@ export default function ActivitiesList() {
       <View style={styles.toolbarRow}>
         <Pressable style={styles.filterBtn} onPress={() => setSheetOpen(true)}>
           <Feather name="sliders" size={15} color={activeCount ? palette.brand : palette.ink} />
-          <Text style={{ fontWeight: fontWeight.medium as any, color: activeCount ? palette.brand : palette.ink }}>Filter{activeCount ? ` · ${activeCount}` : ""}</Text>
+          <Text style={{ fontWeight: fontWeight.medium, color: activeCount ? palette.brand : palette.ink }}>Filter{activeCount ? ` · ${activeCount}` : ""}</Text>
         </Pressable>
         {activeCount > 0 ? <Pressable onPress={() => setFilters({ ...EMPTY_ACTIVITY_FILTERS })} hitSlop={8}><Text variant="caption" style={{ color: palette.danger }}>Clear</Text></Pressable> : null}
         <View style={{ flex: 1 }} />
         <Pressable style={styles.checkinBtn} onPress={() => setCheckinOpen(true)}>
           <Feather name="map-pin" size={15} color={palette.white} />
-          <Text style={{ fontWeight: fontWeight.semibold as any, color: palette.white }}>Check in</Text>
+          <Text style={{ fontWeight: fontWeight.semibold, color: palette.white }}>Check in</Text>
         </Pressable>
       </View>
       <View style={styles.chips}>
@@ -137,7 +139,7 @@ export default function ActivitiesList() {
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.surfaceAlt }}>
-      <ScreenHeader title="Calls & Activities" subtitle={isLoading ? undefined : `${rows.length} logged`} onBack={() => router.back()} />
+      {!embedded ? <ScreenHeader title="Calls & Activities" subtitle={isLoading ? undefined : `${rows.length} logged`} onBack={() => router.back()} /> : null}
       {isLoading ? (
         <>
           <View style={{ paddingHorizontal: spacing.lg }}>{header}</View>
@@ -157,7 +159,7 @@ export default function ActivitiesList() {
           ListEmptyComponent={debounced || activeCount || kind ? <SearchEmptyState query={debounced || "these filters"} /> : <EmptyState icon="phone-call" title="No activities yet" message="Tap + to log a call, visit or note." />}
         />
       )}
-      <FAB icon="plus" onPress={() => router.push("/m/activities/new" as any)} />
+      <FAB icon="plus" label="Log activity" onPress={() => router.push("/m/activities/new" as any)} />
 
       <ActivityFilters visible={sheetOpen} onClose={() => setSheetOpen(false)} value={filters} onApply={setFilters} />
       <EditActivitySheet row={editRow} onClose={() => setEditRow(null)} />
@@ -186,7 +188,7 @@ function EditActivitySheet({ row, onClose }: { row: Activity | null; onClose: ()
     try {
       await update.mutateAsync({ subject: subject || null, notes: notes || null, status: status || null, direction: direction || null });
       onClose();
-    } catch (e: any) { setErr(e?.message ?? "Could not save."); }
+    } catch (e) { setErr(errorMessage(e, "Could not save.")); }
   };
   const doDelete = () => confirmDelete({ title: "Delete this activity?", message: "It's permanently removed from the log.", confirmLabel: "Delete" }, () => del.mutate(row!.id, { onSuccess: onClose }));
 

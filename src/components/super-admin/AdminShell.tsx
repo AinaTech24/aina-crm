@@ -162,7 +162,7 @@ export function AdminShell({
               {initialsOf(name)}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-[13px] font-semibold truncate text-white">{name}</div>
+              <div className="text-xs font-semibold truncate text-white">{name}</div>
               <div className="text-2xs text-white/55 truncate">{email}</div>
             </div>
             <ChevronUp className={`size-4 text-white/50 transition-transform ${menuOpen ? "" : "rotate-180"}`} />

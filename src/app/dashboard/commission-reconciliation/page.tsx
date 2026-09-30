@@ -12,12 +12,12 @@ import { PeriodPicker } from "@/components/commission/PeriodPicker";
 import { computeSubDistributorPayouts } from "@/lib/commission/sub_distributor_payouts";
 
 const STATUS_COLORS: Record<string, string> = {
-  pending: "bg-gray-50 text-gray-700",
+  pending: "bg-secondary text-foreground",
   matched: "bg-emerald-50 text-emerald-700",
   anomaly: "bg-rose-50 text-rose-700",
   investigating: "bg-amber-50 text-amber-700",
   resolved: "bg-emerald-50 text-emerald-700",
-  written_off: "bg-slate-50 text-slate-700",
+  written_off: "bg-secondary text-foreground",
 };
 
 export const dynamic = "force-dynamic";
@@ -292,7 +292,7 @@ export default async function CommissionReconciliationPage({
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs min-w-[860px]">
-              <thead className="bg-slate-50 text-slate-600">
+              <thead className="bg-secondary text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 text-left">Partner</th>
                   <th className="px-3 py-2 text-left">ARN</th>

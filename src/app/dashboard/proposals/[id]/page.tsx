@@ -32,13 +32,13 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 const STATUS_TONE: Record<string, string> = {
-  draft: "bg-gray-50 text-gray-700",
+  draft: "bg-secondary text-foreground",
   ready: "bg-blue-50 text-blue-700",
   sent: "bg-amber-50 text-amber-700",
   viewed: "bg-cyan-50 text-cyan-700",
   accepted: "bg-emerald-50 text-emerald-700",
   rejected: "bg-rose-50 text-rose-700",
-  expired: "bg-slate-50 text-slate-700",
+  expired: "bg-secondary text-foreground",
 };
 
 const KIND_LABEL: Record<string, string> = {
@@ -260,7 +260,7 @@ export default async function ProposalDetailPage({
                         : it.kind === "pms"
                         ? "bg-amber-50 text-amber-700"
                         : it.kind === "other"
-                        ? "bg-slate-100 text-slate-700"
+                        ? "bg-secondary text-foreground"
                         : "bg-rose-50 text-rose-700"
                     }`}
                   >

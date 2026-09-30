@@ -54,7 +54,7 @@ function spanStart(w: InsWindow, span: Span): string {
 export function targetsComparable(w: InsWindow): boolean {
   const f = w.filter;
   return !f.line && !f.groups?.length && !f.nature && !f.insurer && !f.categories?.length && !f.clientType && !f.mf
-    && !f.statuses?.length && !f.band && !f.source && !f.execId;
+    && !f.statuses?.length && !f.band && !f.source && !f.execId && !f.industry && !f.lossReason;
 }
 
 export async function loadAnnualTargets(tx: Tx, w: InsWindow): Promise<Map<string, number>> {

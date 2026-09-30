@@ -71,6 +71,14 @@ export type InsFilter = {
   source?: string;
   claimGroup?: string;
   claimType?: string;
+  /**
+   * The client's industry. The CRM has no industry field: this is the
+   * client's occupation / nature of business as keyed (the corporate view's
+   * own stand-in), compared case-insensitively. "none" = not recorded.
+   */
+  industry?: string;
+  /** Why a policy lapsed or was cancelled (policies.lapse_reason); "none" = not recorded. */
+  lossReason?: string;
 };
 
 export type InsWindow = {
@@ -207,6 +215,10 @@ export function polWhere(w: InsWindow, opts: { nature?: boolean; status?: boolea
   }
   if (f.source === "none") parts.push(sql`${c("source")} IS NULL`);
   else if (f.source) parts.push(sql`${c("source")} = ${f.source}`);
+  if (f.industry === "none") parts.push(sql`${c("occupation")} IS NULL`);
+  else if (f.industry) parts.push(sql`lower(${c("occupation")}) = ${f.industry.toLowerCase()}`);
+  if (f.lossReason === "none") parts.push(sql`${c("lapse_reason")} IS NULL`);
+  else if (f.lossReason) parts.push(sql`lower(${c("lapse_reason")}) = ${f.lossReason.toLowerCase()}`);
   return sql.join(parts, sql` AND `);
 }
 
@@ -337,6 +349,8 @@ export function leadWhere(w: InsWindow, a = "ld"): SQL {
   if (f.line === "personal") parts.push(sql`${c("lead_type")} IS DISTINCT FROM 'corporate'`);
   if (f.source === "none") parts.push(sql`${c("source")} IS NULL`);
   else if (f.source) parts.push(sql`${c("source")} = ${f.source}`);
+  if (f.industry === "none") parts.push(sql`${c("occupation")} IS NULL`);
+  else if (f.industry) parts.push(sql`lower(${c("occupation")}) = ${f.industry.toLowerCase()}`);
   return parts.length ? sql.join(parts, sql` AND `) : sql`TRUE`;
 }
 

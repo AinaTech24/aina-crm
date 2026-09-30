@@ -15,12 +15,12 @@ export const dynamic = "force-dynamic";
 
 const STATUS_COLORS: Record<string, string> = {
   // version approval statuses
-  draft: "bg-gray-100 text-gray-800 border-gray-200",
+  draft: "bg-secondary text-gray-800 border-border",
   submitted: "bg-amber-100 text-amber-800 border-amber-200",
   approved_internal: "bg-emerald-100 text-emerald-800 border-emerald-200",
   approved_external: "bg-emerald-100 text-emerald-800 border-emerald-200",
   rejected: "bg-rose-100 text-rose-800 border-rose-200",
-  paused: "bg-slate-100 text-slate-800 border-slate-200",
+  paused: "bg-secondary text-foreground border-border",
   // template-level statuses (header chip)
   approved: "bg-emerald-100 text-emerald-800 border-emerald-200",
   pending_approval: "bg-amber-100 text-amber-800 border-amber-200",
@@ -82,22 +82,22 @@ export default async function TemplateDetailPage({
           <div>
 <PageHeaderCard title={<>{tpl.name}</>} />
 <div className="flex items-center gap-3 mt-2 text-sm flex-wrap">
-              <span className="font-mono text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded border">{tpl.key}</span>
-              <div className="flex items-center gap-1.5 text-slate-600 font-semibold uppercase text-xs">
-                <Icon className="size-4 text-slate-500" />
+              <span className="font-mono text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded border">{tpl.key}</span>
+              <div className="flex items-center gap-1.5 text-muted-foreground font-semibold uppercase text-xs">
+                <Icon className="size-4 text-muted-foreground" />
                 <span>{tpl.channel}</span>
               </div>
-              <span className="text-xs font-semibold uppercase text-slate-500 bg-slate-50 px-2 py-0.5 rounded border">{tpl.category}</span>
+              <span className="text-xs font-semibold uppercase text-muted-foreground bg-secondary px-2 py-0.5 rounded border">{tpl.category}</span>
               <span className={`text-xs px-2 py-0.5 rounded-full border capitalize font-medium ${STATUS_COLORS[tpl.status] ?? ""}`}>
                 {tpl.status.replace(/_/g, " ")}
               </span>
             </div>
 </div>
           <div className="text-right">
-            <div className="text-sm font-semibold text-slate-700">Version {ver?.versionNumber ?? "—"}</div>
+            <div className="text-sm font-semibold text-foreground">Version {ver?.versionNumber ?? "—"}</div>
             {ver?.complianceScore && (
               <div className="flex items-center gap-1.5 mt-1 text-xs justify-end font-mono">
-                <span className="text-slate-500">Compliance Score:</span>
+                <span className="text-muted-foreground">Compliance Score:</span>
                 <span className={`font-bold ${Number(ver.complianceScore) >= 90 ? "text-emerald-600" : Number(ver.complianceScore) >= 70 ? "text-amber-600" : "text-rose-600"}`}>
                   {ver.complianceScore}/100
                 </span>
@@ -132,7 +132,7 @@ export default async function TemplateDetailPage({
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           {/* Version History Sidebar */}
           <div className="col-span-1 border rounded-lg bg-card p-4 space-y-4 shadow-sm h-fit">
-            <h3 className="font-semibold text-xs text-slate-500 uppercase tracking-wider">
+            <h3 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">
               Version History
             </h3>
             <div className="space-y-2">
@@ -145,12 +145,12 @@ export default async function TemplateDetailPage({
                     href={`/dashboard/templates/${tpl.id}?v=${v.versionNumber}`}
                     className={`block p-3 rounded-lg border transition-all ${
                       isSelected
-                        ? "bg-slate-50 border-primary/50 text-slate-900 shadow-sm font-medium"
-                        : "hover:bg-slate-50/50 border-transparent text-slate-600"
+                        ? "bg-secondary border-primary/50 text-foreground shadow-sm font-medium"
+                        : "hover:bg-secondary/50 border-transparent text-muted-foreground"
                     }`}
                   >
                     <div className="flex justify-between items-center gap-1.5">
-                      <span className="font-semibold text-xs text-slate-700">Version {v.versionNumber}</span>
+                      <span className="font-semibold text-xs text-foreground">Version {v.versionNumber}</span>
                       {isActive && (
                         <span className="text-2xs bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200 font-bold uppercase tracking-wider">
                           Active
@@ -162,7 +162,7 @@ export default async function TemplateDetailPage({
                         {v.approvalStatus.replace(/_/g, " ").replace("approved ", "")}
                       </span>
                       {v.complianceScore && (
-                        <span className="font-mono text-slate-500">
+                        <span className="font-mono text-muted-foreground">
                           Score: {Math.round(Number(v.complianceScore))}
                         </span>
                       )}
@@ -176,13 +176,13 @@ export default async function TemplateDetailPage({
           {/* Version Details Content */}
           <div className="col-span-1 md:col-span-3 space-y-6">
             <div className="border rounded-lg bg-card p-5 shadow-sm">
-              <h2 className="font-semibold mb-3 text-slate-900 flex items-center gap-1.5">
-                <FileText className="size-4 text-slate-500" /> Template Body Content
+              <h2 className="font-semibold mb-3 text-foreground flex items-center gap-1.5">
+                <FileText className="size-4 text-muted-foreground" /> Template Body Content
               </h2>
               
               {tpl.channel === "email" ? (
                 <div className="space-y-4">
-                  <div className="bg-slate-50 p-3 rounded-lg border text-sm space-y-2">
+                  <div className="bg-secondary p-3 rounded-lg border text-sm space-y-2">
                     <div><strong>Subject:</strong> {(ver.body as any)?.subject}</div>
                     <div><strong>Preheader:</strong> {(ver.body as any)?.preheader}</div>
                   </div>
@@ -197,13 +197,13 @@ export default async function TemplateDetailPage({
                           <div className="divide-y space-y-3">
                             {((ver.body as any).blocks as any[]).map((b, idx) => (
                               <div key={idx} className="pt-3 first:pt-0">
-                                <span className="text-2xs text-slate-400 font-bold tracking-wider uppercase block mb-1">{b.type}</span>
-                                <p className="text-sm text-slate-800 whitespace-pre-line">{b.text || b.content || b.title || b.subtitle || b.html || b.label || "—"}</p>
+                                <span className="text-2xs text-muted-foreground font-bold tracking-wider uppercase block mb-1">{b.type}</span>
+                                <p className="text-sm text-foreground whitespace-pre-line">{b.text || b.content || b.title || b.subtitle || b.html || b.label || "—"}</p>
                               </div>
                             ))}
                           </div>
                         ) : (
-                          <pre className="text-xs bg-slate-50 p-3 rounded font-mono overflow-x-auto whitespace-pre-wrap">
+                          <pre className="text-xs bg-secondary p-3 rounded font-mono overflow-x-auto whitespace-pre-wrap">
                             {JSON.stringify(ver.body, null, 2)}
                           </pre>
                         )}
@@ -212,7 +212,7 @@ export default async function TemplateDetailPage({
                   />
                 </div>
               ) : tpl.channel === "whatsapp" ? (
-                <div className="bg-slate-50 border p-4 rounded-lg font-mono text-sm whitespace-pre-wrap text-slate-800">
+                <div className="bg-secondary border p-4 rounded-lg font-mono text-sm whitespace-pre-wrap text-foreground">
                   {(ver.body as any).body?.text || JSON.stringify(ver.body)}
                 </div>
               ) : (
@@ -220,11 +220,11 @@ export default async function TemplateDetailPage({
                   {/* SMS body */}
                   {/* @ts-expect-error — `ver.body` / `ver.complianceChecks` come back as jsonb and are typed `{}` / `unknown`; these reads are guarded at runtime. */}
                   {ver.body?.dltTemplateId && (
-                    <div className="text-xs bg-slate-50 border px-3 py-1.5 rounded-lg font-mono">
+                    <div className="text-xs bg-secondary border px-3 py-1.5 rounded-lg font-mono">
                       <strong>DLT Template ID:</strong> {(ver.body as any).dltTemplateId}
                     </div>
                   )}
-                  <div className="bg-slate-50 border p-4 rounded-lg font-mono text-sm whitespace-pre-wrap text-slate-800">
+                  <div className="bg-secondary border p-4 rounded-lg font-mono text-sm whitespace-pre-wrap text-foreground">
                     {(ver.body as any).text}
                   </div>
                 </div>
@@ -233,10 +233,10 @@ export default async function TemplateDetailPage({
 
             {ver.variables && (ver.variables as any[]).length > 0 && (
               <div className="border rounded-lg bg-card p-5 shadow-sm">
-                <h2 className="font-semibold mb-3 text-slate-900">Declared Variables ({(ver.variables as any[]).length})</h2>
+                <h2 className="font-semibold mb-3 text-foreground">Declared Variables ({(ver.variables as any[]).length})</h2>
                 <div className="border rounded-lg overflow-hidden bg-background">
                   <table className="w-full text-sm">
-                    <thead className="text-xs text-slate-500 bg-slate-50 border-b">
+                    <thead className="text-xs text-muted-foreground bg-secondary border-b">
                       <tr>
                         <th className="text-left px-4 py-2 font-medium">Variable Key</th>
                         <th className="text-left py-2 font-medium">Type</th>
@@ -246,17 +246,17 @@ export default async function TemplateDetailPage({
                     </thead>
                     <tbody>
                       {(ver.variables as any[]).map((v: any) => (
-                        <tr key={v.key} className="border-b last:border-0 hover:bg-slate-50/50">
-                          <td className="px-4 py-2.5 font-mono font-medium text-slate-700">{v.key}</td>
+                        <tr key={v.key} className="border-b last:border-0 hover:bg-secondary/50">
+                          <td className="px-4 py-2.5 font-mono font-medium text-foreground">{v.key}</td>
                           <td className="py-2.5">
                             <span className="text-xs font-semibold bg-blue-50 text-blue-700 px-2 py-0.5 rounded capitalize">{v.type}</span>
                           </td>
-                          <td className="py-2.5 font-mono text-xs text-slate-500">{v.source ?? "—"}</td>
+                          <td className="py-2.5 font-mono text-xs text-muted-foreground">{v.source ?? "—"}</td>
                           <td className="py-2.5 text-xs">
                             {v.required ? (
                               <span className="text-rose-600 font-semibold">Yes</span>
                             ) : (
-                              <span className="text-slate-400">No</span>
+                              <span className="text-muted-foreground">No</span>
                             )}
                           </td>
                         </tr>
@@ -269,11 +269,11 @@ export default async function TemplateDetailPage({
 
             {Array.isArray((ver as any).attachments) && (ver as any).attachments.length > 0 && (
               <div className="border rounded-lg bg-card p-5 shadow-sm">
-                <h2 className="font-semibold mb-3 text-slate-900">Attachments ({(ver as any).attachments.length})</h2>
+                <h2 className="font-semibold mb-3 text-foreground">Attachments ({(ver as any).attachments.length})</h2>
                 <ul className="space-y-1.5 text-sm">
                   {((ver as any).attachments as Array<{ name: string; url: string }>).map((a, i) => (
                     <li key={i} className="flex items-center gap-2">
-                      <span className="text-slate-400">📎</span>
+                      <span className="text-muted-foreground">📎</span>
                       <a href={a.url} target="_blank" rel="noreferrer" className="text-brand-cyan hover:underline truncate">
                         {a.name || a.url}
                       </a>
@@ -286,8 +286,8 @@ export default async function TemplateDetailPage({
 
             {Boolean(ver.complianceChecks) && (
               <div className="border rounded-lg bg-card p-5 shadow-sm">
-                <h2 className="font-semibold mb-3 text-slate-900 flex items-center gap-1.5">
-                  <ShieldAlert className="size-4 text-slate-500" /> Compliance Scan Findings
+                <h2 className="font-semibold mb-3 text-foreground flex items-center gap-1.5">
+                  <ShieldAlert className="size-4 text-muted-foreground" /> Compliance Scan Findings
                 </h2>
                 {/* @ts-expect-error — `ver.body` / `ver.complianceChecks` come back as jsonb and are typed `{}` / `unknown`; these reads are guarded at runtime. */}
                 {ver.complianceChecks.findings && (ver.complianceChecks.findings as any[]).length > 0 ? (
@@ -296,11 +296,11 @@ export default async function TemplateDetailPage({
                     {(ver.complianceChecks.findings as any[]).map((f: any, idx: number) => {
                       const badgeColor = f.severity === "block" ? "bg-rose-50 text-rose-700 border-rose-250" : f.severity === "warn" ? "bg-amber-50 text-amber-700 border-amber-250" : "bg-blue-50 text-blue-700 border-blue-250";
                       return (
-                        <div key={idx} className="p-3.5 border rounded-lg bg-slate-50/50 flex gap-3 items-start text-sm">
+                        <div key={idx} className="p-3.5 border rounded-lg bg-secondary/50 flex gap-3 items-start text-sm">
                           <span className={`px-2 py-0.5 text-xs rounded border capitalize font-semibold ${badgeColor}`}>{f.severity}</span>
                           <div className="space-y-1 flex-1">
-                            <div className="font-medium text-slate-800">{f.message}</div>
-                            {f.match && <div className="text-xs font-mono bg-slate-100 px-2 py-0.5 rounded inline-block text-slate-600 mt-1">Match: "{f.match}"</div>}
+                            <div className="font-medium text-foreground">{f.message}</div>
+                            {f.match && <div className="text-xs font-mono bg-secondary px-2 py-0.5 rounded inline-block text-muted-foreground mt-1">Match: "{f.match}"</div>}
                             {f.remediation && <div className="text-xs text-emerald-700 mt-1"><strong>Suggested Fix:</strong> {f.remediation}</div>}
                           </div>
                         </div>
@@ -312,7 +312,7 @@ export default async function TemplateDetailPage({
                     <CheckCircle2 className="size-8 text-emerald-600" />
                     <div>
                       <div className="font-semibold">Fully Compliant!</div>
-                      <div className="text-xs text-slate-500">This template passes all AMFI and SEBI rules with a compliance score of {ver.complianceScore}/100.</div>
+                      <div className="text-xs text-muted-foreground">This template passes all AMFI and SEBI rules with a compliance score of {ver.complianceScore}/100.</div>
                     </div>
                   </div>
                 )}

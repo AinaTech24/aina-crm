@@ -974,7 +974,7 @@ function DelayColumn({
   body: { years: number; invested: number; finalValue: number; gain: number };
 }) {
   return (
-    <div className="border border-slate-200 rounded-md p-3 space-y-1.5">
+    <div className="border border-border rounded-md p-3 space-y-1.5">
       <div className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold">
         {label}
       </div>
@@ -1556,21 +1556,21 @@ function StpCalc() {
       </div>
 
       <div className="grid grid-cols-3 gap-3 mt-3">
-        <div className="border border-slate-200 rounded-md p-3 space-y-1.5">
+        <div className="border border-border rounded-md p-3 space-y-1.5">
           <div className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold">
             Debt fund remaining
           </div>
           <div className="text-base font-semibold">{inr(res.sourceFinalValue)}</div>
           <p className="text-2xs text-muted-foreground">Un-transferred balance earning {sourceReturn}%</p>
         </div>
-        <div className="border border-slate-200 rounded-md p-3 space-y-1.5">
+        <div className="border border-border rounded-md p-3 space-y-1.5">
           <div className="text-2xs uppercase tracking-wide text-primary font-semibold">
             Equity fund value
           </div>
           <div className="text-base font-semibold">{inr(res.targetFinalValue)}</div>
           <p className="text-2xs text-muted-foreground">Transferred installments compounding at {targetReturn}%</p>
         </div>
-        <div className="border border-slate-200 rounded-md p-3 space-y-1.5 bg-emerald-50/20 border-emerald-100">
+        <div className="border border-border rounded-md p-3 space-y-1.5 bg-emerald-50/20 border-emerald-100">
           <div className="text-2xs uppercase tracking-wide text-emerald-700 font-semibold">
             Total STP value
           </div>

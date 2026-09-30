@@ -10,12 +10,13 @@ import { Feather } from "@expo/vector-icons";
 import { Text } from "../../../components/ui/Text";
 import { inr, fmtDate, titleCase } from "../../../lib/format";
 import { palette, radius, spacing, fontWeight } from "../../../theme/tokens";
+import { asIcon } from "../../../lib/icons";
 
 export function Section({ title, icon, right, children }: { title: string; icon?: string; right?: React.ReactNode; children: React.ReactNode }) {
   return (
     <View style={styles.section}>
       <View style={styles.secHead}>
-        {icon ? <Feather name={icon as any} size={14} color={palette.muted} /> : null}
+        {icon ? <Feather name={asIcon(icon)} size={14} color={palette.muted} /> : null}
         <Text variant="label" tone="muted" style={{ letterSpacing: 0.5, flex: 1 }}>{title.toUpperCase()}</Text>
         {right}
       </View>
@@ -29,7 +30,7 @@ export function FieldRow({ label, value }: { label: string; value?: string | num
   return (
     <View style={styles.fieldRow}>
       <Text variant="label" tone="muted" style={{ flex: 1 }}>{label}</Text>
-      <Text variant="body" style={{ flex: 1.4, textAlign: "right", color: palette.ink, fontWeight: fontWeight.medium as any }} numberOfLines={3}>
+      <Text variant="body" style={{ flex: 1.4, textAlign: "right", color: palette.ink, fontWeight: fontWeight.medium }} numberOfLines={3}>
         {v == null || v === "" ? "—" : String(v)}
       </Text>
     </View>
@@ -40,7 +41,7 @@ export function FieldRow({ label, value }: { label: string; value?: string | num
 export function FieldGroup({ title, rows }: { title: string; rows: [string, any][] }) {
   return (
     <View style={{ marginBottom: spacing.md }}>
-      <Text style={{ fontWeight: fontWeight.semibold as any, marginBottom: spacing.xs }}>{title}</Text>
+      <Text style={{ fontWeight: fontWeight.semibold, marginBottom: spacing.xs }}>{title}</Text>
       {rows.map(([l, v], i) => <FieldRow key={i} label={l} value={v} />)}
     </View>
   );
@@ -50,7 +51,7 @@ export function Money({ value, label }: { value: any; label?: string }) {
   return (
     <View>
       {label ? <Text variant="caption" tone="muted">{label}</Text> : null}
-      <Text style={{ fontWeight: fontWeight.bold as any }}>{inr(value)}</Text>
+      <Text style={{ fontWeight: fontWeight.bold }}>{inr(value)}</Text>
     </View>
   );
 }
@@ -71,7 +72,7 @@ export function AllocBar({ label, pct, value, tone }: { label: string; pct: numb
 export function Badge({ label, tone }: { label: string; tone: string }) {
   return (
     <View style={[styles.badge, { backgroundColor: tone + "1A" }]}>
-      <Text style={{ fontSize: 11, color: tone, fontWeight: fontWeight.semibold as any }}>{label}</Text>
+      <Text style={{ fontSize: 11, color: tone, fontWeight: fontWeight.semibold }}>{label}</Text>
     </View>
   );
 }

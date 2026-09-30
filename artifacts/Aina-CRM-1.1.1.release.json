@@ -1,0 +1,29 @@
+{
+  "name": "Aina CRM",
+  "version": "1.1.1",
+  "androidVersionCode": 9,
+  "package": "in.ainatech.growthos",
+  "distribution": "internal acceptance testing",
+  "file": "Aina-CRM-1.1.1.apk",
+  "bytes": 143366426,
+  "sha256": "b3ed12b9cbf7684b23db7c34c8b6f96ad08dc47a5bd3714b4d28f6855a885a98",
+  "buildId": "3fb99acc-a511-4b43-ab10-97f8237d5801",
+  "buildUrl": "https://expo.dev/accounts/ainatech-services-llp/projects/growth-os-mobile/builds/3fb99acc-a511-4b43-ab10-97f8237d5801",
+  "downloadUrl": "https://expo.dev/artifacts/eas/64eqgABFrapGcD2vjner5GzFLifFyHnZifHsH2Lmy_0.apk",
+  "backend": "https://crm.ainatech.in",
+  "backendDeployedAt": "2026-09-30T03:39:19Z",
+  "backendDeployment": "passed build, typecheck, migration, schema and health gates; reminder worker running",
+  "checks": {
+    "mobileTypecheck": "passed",
+    "backendTypecheck": "passed",
+    "mobileUnitTests": 34,
+    "backendUnitTests": 22,
+    "androidCloudBuild": "finished",
+    "downloadArchive": "manifest and DEX present",
+    "physicalDevice": "not tested"
+  },
+  "pendingConfiguration": [
+    "Firebase Android configuration and FCM credentials, followed by a new APK build and push delivery test",
+    "Gemini audio API key and audio-capable model, then consented English/Hindi/Gujarati recording tests"
+  ]
+}

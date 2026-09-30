@@ -1,8 +1,8 @@
 /**
  * Authenticated shell. A native STACK is the parent navigator: its base screen
- * is the drawer+tabs group, and every module screen (/m/*, search,
+ * is the bottom-tab group, and every module screen (/m/*, search, sync,
  * notifications) PUSHES on top with the platform transition + iOS swipe-back —
- * the drawer never swallows push animations (it used to own every screen, which
+ * the tabs never swallow push animations (a drawer used to own every screen, which
  * made all navigation snap with no motion). Guards against a lost session.
  */
 
@@ -13,6 +13,7 @@ import { addNotificationTapListener, getInitialNotificationUrl } from "../../src
 import { toMobileRoute } from "../../src/features/command-center/api";
 import { useApplyTenantBrand } from "../../src/features/settings/api";
 import { CallLogPrompt } from "../../src/features/activities/CallLogPrompt";
+import { watchSimCalls } from "../../src/features/activities/simCallSync";
 import { OfflineBanner } from "../../src/components/ui/OfflineBanner";
 import { AppLock } from "../../src/components/AppLock";
 import { useRecentlyViewed } from "../../src/state/recentlyViewed";
@@ -21,9 +22,9 @@ import { useOfflineQueue, watchConnectivityAndFlush } from "../../src/lib/offlin
 import { usePrefs } from "../../src/state/prefs";
 import { palette } from "../../src/theme/tokens";
 
-// Deep links into /m/* land with the drawer+tabs group as the back anchor, so
+// Deep links into /m/* land with the tab group as the back anchor, so
 // the first back press goes Home instead of exiting the app.
-export const unstable_settings = { initialRouteName: "(drawer)" };
+export const unstable_settings = { initialRouteName: "(tabs)" };
 
 /** Push payloads carry a web path ("/dashboard/tasks/…") or a full URL; map
  *  it to the native route, or null when this app has no screen for it. */
@@ -42,6 +43,8 @@ export default function AppLayout() {
   const status = useSession((s) => s.status);
   const token = useSession((s) => s.token);
   const owner = useSession((s) => s.owner);
+  const autoLogCalls = usePrefs((s) => s.autoLogCalls);
+  React.useEffect(() => status === "authed" && autoLogCalls ? watchSimCalls() : undefined, [status, owner, autoLogCalls]);
   // A tapped notification should land on the thing it's about — both when the
   // app is already running and when the tap cold-started it.
   React.useEffect(() => {
@@ -82,7 +85,7 @@ export default function AppLayout() {
           contentStyle: { backgroundColor: palette.surfaceAlt },
         }}
       >
-        <Stack.Screen name="(drawer)" />
+        <Stack.Screen name="(tabs)" />
       </Stack>
       {/* Semi-automatic call logging — prompts to log a call on return to the app. */}
       <CallLogPrompt />

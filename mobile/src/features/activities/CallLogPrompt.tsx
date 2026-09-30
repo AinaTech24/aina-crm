@@ -28,6 +28,7 @@ import { usePrefs } from "../../state/prefs";
 import { useLogActivity, ACTIVITY_OUTCOMES } from "./api";
 import { toast } from "../../lib/toast";
 import { palette, spacing, radius } from "../../theme/tokens";
+import { errorMessage } from "../../lib/errors";
 
 // Below this, the "call" was almost certainly cancelled before connecting —
 // don't nag. Above it, prompt to log.
@@ -60,29 +61,8 @@ export function CallLogPrompt() {
         const elapsedMs = Date.now() - p.armedAt;
         if (elapsedMs < MIN_CALL_MS) return clear(); // too quick — treat as cancelled
 
-        if (usePrefs.getState().autoLogCalls) {
-          // Auto mode: log it now. Time away includes dialling and ringing, so
-          // it's an approximation — but a recorded approximate call beats a
-          // dismissed prompt and no record at all.
-          const secs = Math.round(elapsedMs / 1000);
-          log.mutate(
-            {
-              subjectType: p.subjectType,
-              subjectId: p.subjectId,
-              kind: "call",
-              direction: "outbound",
-              subject: `Call with ${p.name}`,
-              status: usePrefs.getState().autoLogOutcome || "answered",
-              durationSec: secs,
-            },
-            {
-              onSuccess: () => toast.success(`Call with ${p.name} logged · ${fmtDur(secs)}`),
-              onError: () => toast.error(`Couldn't log the call with ${p.name}`),
-            }
-          );
-          clear();
-          return;
-        }
+        // SIM import uses actual Android metadata. Manual mode never guesses
+        // whether a call connected or how long the conversation lasted.
         setShow(true);
       }
     });
@@ -90,7 +70,7 @@ export function CallLogPrompt() {
   }, [clear, log]);
 
   useEffect(() => {
-    if (show) { setOutcome("answered"); setDurationMin(""); setNotes(""); setErr(null); }
+    if (show) { setOutcome(""); setDurationMin(""); setNotes(""); setErr(null); }
   }, [show]);
 
   const dismiss = () => { setShow(false); clear(); };
@@ -112,8 +92,8 @@ export function CallLogPrompt() {
       });
       toast.success(`Call with ${pending.name} logged`);
       dismiss();
-    } catch (e: any) {
-      setErr(e?.message ?? "Could not log the call.");
+    } catch (e) {
+      setErr(errorMessage(e, "Could not log the call."));
     }
   };
 

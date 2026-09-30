@@ -180,7 +180,7 @@ function Row({ k, v, strong }: { k: string; v: string; strong?: boolean }) {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border border-slate-200 rounded-md p-3">
+    <div className="border border-border rounded-md p-3">
       <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">{label}</div>
       <div className="text-sm font-semibold mt-0.5">{value}</div>
     </div>

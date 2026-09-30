@@ -42,7 +42,7 @@ export default function MonthlyReview() {
             <Feather name="chevron-left" size={18} color={palette.ink} />
             <Text variant="caption" style={{ color: palette.ink }}>Prev</Text>
           </Pressable>
-          <Text variant="body" style={{ fontWeight: fontWeight.semibold as any }}>{periodLabel(period)}</Text>
+          <Text variant="body" style={{ fontWeight: fontWeight.semibold }}>{periodLabel(period)}</Text>
           <Pressable style={[styles.stepBtn, isCurrent && { opacity: 0.3 }]} onPress={() => !isCurrent && setPeriod(thisMonth)} disabled={isCurrent} hitSlop={8}>
             <Text variant="caption" style={{ color: palette.ink }}>This month</Text>
             <Feather name="chevron-right" size={18} color={palette.ink} />
@@ -111,7 +111,7 @@ function EffortRowView({ row, last }: { row: EffortRow; last: boolean }) {
     <View style={[styles.effRow, !last && styles.divider]}>
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
         <Text variant="body" numberOfLines={1} style={{ flex: 1 }}>{row.label}</Text>
-        <Text variant="caption" style={{ color: palette.ink, fontWeight: fontWeight.semibold as any }}>
+        <Text variant="caption" style={{ color: palette.ink, fontWeight: fontWeight.semibold }}>
           {actual}{planned > 0 ? <Text variant="caption" tone="faint"> / {planned}</Text> : null}
         </Text>
       </View>
@@ -121,10 +121,10 @@ function EffortRowView({ row, last }: { row: EffortRow; last: boolean }) {
 }
 
 function Big({ label, value, tone, hint }: { label: string; value: string; tone: Tone; hint?: string }) {
-  return <View style={{ flex: 1 }}><Text variant="caption" tone="muted" numberOfLines={1}>{label}</Text><Text style={{ fontSize: 15, fontWeight: fontWeight.bold as any, color: toneColors(tone).fg }} numberOfLines={1}>{value}</Text>{hint ? <Text variant="caption" tone="faint" numberOfLines={1}>{hint}</Text> : null}</View>;
+  return <View style={{ flex: 1 }}><Text variant="caption" tone="muted" numberOfLines={1}>{label}</Text><Text style={{ fontSize: 15, fontWeight: fontWeight.bold, color: toneColors(tone).fg }} numberOfLines={1}>{value}</Text>{hint ? <Text variant="caption" tone="faint" numberOfLines={1}>{hint}</Text> : null}</View>;
 }
 function Mini({ label, value, tone }: { label: string; value: string; tone?: Tone }) {
-  return <View style={{ flex: 1 }}><Text variant="caption" tone="faint" numberOfLines={1}>{label}</Text><Text variant="caption" style={{ fontWeight: fontWeight.semibold as any, color: tone ? toneColors(tone).fg : palette.ink }} numberOfLines={1}>{value}</Text></View>;
+  return <View style={{ flex: 1 }}><Text variant="caption" tone="faint" numberOfLines={1}>{label}</Text><Text variant="caption" style={{ fontWeight: fontWeight.semibold, color: tone ? toneColors(tone).fg : palette.ink }} numberOfLines={1}>{value}</Text></View>;
 }
 function SectionLabel({ icon, text }: { icon: any; text: string }) {
   return <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: spacing.xl, marginBottom: spacing.sm }}><Feather name={icon} size={13} color={palette.muted} /><Text variant="caption" tone="faint" style={{ letterSpacing: 0.6 }}>{text}</Text></View>;

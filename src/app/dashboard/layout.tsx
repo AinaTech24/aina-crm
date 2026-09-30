@@ -78,6 +78,8 @@ import { ProfileMenu } from "@/components/layout/ProfileMenu";
 import { ToastProvider } from "@/components/ui/Toast";
 import { ConfirmProvider } from "@/components/ui/ConfirmProvider";
 import { buildTenantThemeCss } from "@/lib/branding/theme";
+import { overdueTaskSql } from "@/lib/metrics/tasks";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -136,6 +138,9 @@ const NAV: NavSection[] = [
       { href: "/dashboard/review-meetings", label: "Meetings", icon: Presentation, module: "review_meetings",
         roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
       { href: "/dashboard/service-requests", label: "Service Requests", icon: LifeBuoy, module: "service_requests" },
+      // Pending work across the team (dashboard cleanup D5) — was ?scope=ops.
+      { href: "/dashboard/operations", label: "Operations", icon: Activity,
+        roles: ["owner", "ops", "back_office", "service_team"] },
     ],
   },
   {
@@ -251,6 +256,14 @@ const NAV: NavSection[] = [
  * Labels are the pages' own H1s, which is what a user types.
  */
 const PALETTE_ONLY: NavSection[] = [
+  {
+    title: "Home",
+    items: [
+      // The dashboard dropdown's footer links, findable with Ctrl/Cmd+K too.
+      { href: "/dashboard/manage", label: "Manage dashboards", icon: LayoutDashboard },
+      { href: "/dashboard/new", label: "New dashboard", icon: LayoutDashboard },
+    ],
+  },
   {
     title: "Automation",
     items: [
@@ -383,13 +396,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
       }
     };
     const [tasksOverdue, srOpen, leavePending] = await Promise.all([
+      // Overdue tasks assigned to ME — lib/metrics/tasks.ts, the same
+      // definition as every overdue count on the dashboards and My Day.
       countOf(sql`
-        SELECT count(*)::int AS n FROM tasks
-         WHERE tenant_id = ${session.tenantId}::uuid
-           AND assignee_id = ${session.userId}::uuid
-           AND deleted_at IS NULL
-           AND status IN ('open', 'in_progress', 'blocked')
-           AND due_at < now()`),
+        SELECT count(*)::int AS n FROM tasks t
+         WHERE t.tenant_id = ${session.tenantId}::uuid
+           AND t.assignee_id = ${session.userId}::uuid
+           AND ${overdueTaskSql("t")}`),
       // waiting_customer is excluded on purpose: the ball is in the client's court.
       countOf(sql`
         SELECT count(*)::int AS n FROM service_requests
@@ -655,9 +668,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
       {/* ────────────────────────── Main ────────────────────────── */}
       {/* h-full + overflow-y-auto = independent scroll, sticky topbar stays
           pinned inside this pane (not at viewport top). */}
-      <main className="flex-1 h-full overflow-y-auto print:overflow-visible print:h-auto">
+      <main id="main-content" tabIndex={-1} className="flex-1 min-w-0 h-full overflow-y-auto print:overflow-visible print:h-auto">
         {/* Topbar — glass, sticky; hidden when printing */}
-        <div className="sticky top-0 z-40 border-b border-border bg-card px-4 sm:px-6 h-[72px] flex items-center gap-3 sm:gap-4 print:hidden">
+        <div className="sticky top-0 z-40 border-b border-border bg-card px-4 sm:px-6 h-16 flex items-center gap-3 sm:gap-4 print:hidden">
           <div className="flex items-center gap-3 min-w-0">
             {/* Mobile hamburger — opens the nav drawer (shares sidebarInner).
                 Firm name + ARN live in the sidebar header only (no duplication). */}
@@ -708,7 +721,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
               licenseStatus={license.status}
               trialEndsLabel={
                 license.status === "trial" && license.trialEndsAt
-                  ? license.trialEndsAt.toLocaleDateString("en-IN", { day: "numeric", month: "short" })
+                  ? formatDate(license.trialEndsAt, "dayMonth")
                   : null
               }
             />

@@ -533,7 +533,7 @@ export function MergeClientTool() {
             <thead className="text-xs text-muted-foreground bg-secondary/40 border-b">
               <tr>
                 <th className="py-2.5 px-3 w-10">
-                  <input type="checkbox" checked={allIncluded} onChange={toggleAll} disabled={picked.length === 0} aria-label="Select all for merge" className="size-3.5" />
+                  <input type="checkbox" checked={allIncluded} onChange={toggleAll} disabled={picked.length === 0} aria-label="Select all for merge" className="size-4" />
                 </th>
                 <th className="text-left py-2.5 px-3 font-medium">Client Name</th>
                 <th className="text-left py-2.5 px-3 font-medium">Client ID</th>

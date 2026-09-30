@@ -36,7 +36,7 @@ import { checkAlignment } from "@/lib/proposal/risk-alignment";
 import { resolveEmailSender } from "@/lib/comms/sender";
 import { emailAdapter } from "@/lib/comms/adapters/resend";
 import { renderProposalPdf } from "@/lib/proposal/proposal-pdf";
-import { formatINR } from "@/lib/utils";
+import { formatDate, formatINR } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -100,13 +100,9 @@ function buildHtmlEmail(args: {
       )}</td></tr>`
     : "";
   const validUntil = proposal.validUntil
-    ? `<p style="color:#64748b;font-size:12px;margin:12px 0 0">This proposal is valid till <strong>${new Date(
+    ? `<p style="color:#64748b;font-size:12px;margin:12px 0 0">This proposal is valid till <strong>${formatDate(new Date(
         proposal.validUntil
-      ).toLocaleDateString("en-IN", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      })}</strong>.</p>`
+      ))}</strong>.</p>`
     : "";
 
   const arnLine = `${tenant?.legalName ?? tenant?.displayName ?? ""} · ARN ${

@@ -24,6 +24,7 @@ import { useMe, hasCap } from "../../api/me";
 import { titleCase } from "../../lib/format";
 import { palette, spacing, radius, fontSize, fontWeight } from "../../theme/tokens";
 import { useTenant, useSaveOrg } from "./api";
+import { errorMessage } from "../../lib/errors";
 
 const EDITABLE = ["displayName", "legalName", "email", "phone", "website", "addressLine1", "city", "state", "pincode", "aumRange", "sipBookRange", "teamSize", "currentSoftwareUsed"] as const;
 
@@ -79,8 +80,8 @@ export function OrganisationSettings() {
       const up = await api.upload<{ key: string }>("/api/compliance/upload", form);
       await save.mutateAsync({ logoUrl: `/api/upload-local/${up.key}` });
       toast.success("Logo updated");
-    } catch (e: any) {
-      toast.error(e?.message ?? "Could not upload the logo.");
+    } catch (e) {
+      toast.error(errorMessage(e, "Could not upload the logo."));
     } finally {
       setUploadingLogo(false);
     }
@@ -199,7 +200,7 @@ function RO({ label, value, note, last }: { label: string; value: string; note?:
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.surfaceAlt },
-  section: { fontSize: fontSize.xs, fontWeight: fontWeight.bold as any, letterSpacing: 0.6, color: palette.muted, marginTop: spacing.xl, marginBottom: spacing.sm },
+  section: { fontSize: fontSize.xs, fontWeight: fontWeight.bold, letterSpacing: 0.6, color: palette.muted, marginTop: spacing.xl, marginBottom: spacing.sm },
   logo: { width: 64, height: 64, borderRadius: radius.md, backgroundColor: palette.surfaceSunken, borderWidth: 1, borderColor: palette.line },
   roRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: spacing.md, paddingHorizontal: spacing.lg, gap: spacing.md },
   divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line },

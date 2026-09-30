@@ -13,7 +13,7 @@
  * Designed as a controlled component — parent owns the EmailDesignerBody.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useId, useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuid } from "uuid";
 import {
   PenLine,
@@ -90,6 +90,7 @@ export function EmailDesigner({
   onChange: (next: EmailDesignerBody) => void;
   tenant?: { displayName?: string | null; arn?: string | null; logoUrl?: string | null; brandColor?: string | null };
 }) {
+  const uid = useId();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   // Expand/shrink accordion sections in the left rail — several may be open at
@@ -309,12 +310,12 @@ export function EmailDesigner({
         {/* Header: subject / preheader / mode */}
         <div className="px-3.5 py-3 border-b border-border space-y-2 shrink-0">
           <div>
-            <label className="text-2xs font-medium text-muted-foreground">Subject</label>
-            <input value={value.subject ?? ""} onChange={(e) => update({ subject: e.target.value })} placeholder="Subject line — visible in the inbox" className="input-base text-sm w-full mt-0.5" />
+            <label htmlFor={`${uid}-subject`} className="text-2xs font-medium text-muted-foreground">Subject</label>
+            <input id={`${uid}-subject`} value={value.subject ?? ""} onChange={(e) => update({ subject: e.target.value })} placeholder="Subject line — visible in the inbox" className="input-base text-sm w-full mt-0.5" />
           </div>
           <div>
-            <label className="text-2xs font-medium text-muted-foreground">Preheader (inbox preview)</label>
-            <input value={value.preheader ?? ""} onChange={(e) => update({ preheader: e.target.value })} placeholder="Short preview text after the subject" className="input-base text-sm w-full mt-0.5" />
+            <label htmlFor={`${uid}-preheader-inbox-preview`} className="text-2xs font-medium text-muted-foreground">Preheader (inbox preview)</label>
+            <input id={`${uid}-preheader-inbox-preview`} value={value.preheader ?? ""} onChange={(e) => update({ preheader: e.target.value })} placeholder="Short preview text after the subject" className="input-base text-sm w-full mt-0.5" />
           </div>
           <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5 bg-background w-fit">
             <ModeChip active={mode === "designer"} onClick={() => update({ mode: "designer" })} label="Designer" />
@@ -418,7 +419,7 @@ export function EmailDesigner({
             {value.subject?.trim() ? resolvePreviewTokens(value.subject) : "(no subject yet)"}
           </div>
           {value.preheader?.trim() && (
-            <div className="text-[13px] text-muted-foreground mt-1 leading-snug">{resolvePreviewTokens(value.preheader)}</div>
+            <div className="text-xs text-muted-foreground mt-1 leading-snug">{resolvePreviewTokens(value.preheader)}</div>
           )}
         </div>
         <div className="flex-1 min-h-0">
@@ -702,6 +703,7 @@ function ThemePanel({
   footer: any;
   onFooterChange: (f: any) => void;
 }) {
+  const uid = useId();
   return (
     <div className="space-y-3 text-xs">
       <Section title="Brand colors">
@@ -716,8 +718,8 @@ function ThemePanel({
         <ImageUploadInput value={theme.logoUrl ?? ""} onChange={(v) => onChange({ logoUrl: v })} placeholder="https://…/logo.png" />
         <div className="grid grid-cols-2 gap-2 mt-1">
           <div>
-            <label className="text-2xs text-muted-foreground">Logo height</label>
-            <input
+            <label htmlFor={`${uid}-logo-height`} className="text-2xs text-muted-foreground">Logo height</label>
+            <input id={`${uid}-logo-height`}
               type="number"
               min={20}
               max={120}
@@ -727,8 +729,8 @@ function ThemePanel({
             />
           </div>
           <div>
-            <label className="text-2xs text-muted-foreground">Logo align</label>
-            <select
+            <label htmlFor={`${uid}-logo-align`} className="text-2xs text-muted-foreground">Logo align</label>
+            <select id={`${uid}-logo-align`}
               value={theme.logoAlign ?? "center"}
               onChange={(e) => onChange({ logoAlign: e.target.value as any })}
               className="input-base text-xs w-full"
@@ -742,8 +744,8 @@ function ThemePanel({
       </Section>
 
       <Section title="Typography">
-        <label className="text-2xs text-muted-foreground">Font family</label>
-        <select
+        <label htmlFor={`${uid}-font-family`} className="text-2xs text-muted-foreground">Font family</label>
+        <select id={`${uid}-font-family`}
           value={theme.fontFamily ?? "sans"}
           onChange={(e) => onChange({ fontFamily: e.target.value as any })}
           className="input-base text-xs w-full"
@@ -753,8 +755,8 @@ function ThemePanel({
           <option value="modern">Modern (Inter)</option>
           <option value="rounded">Rounded</option>
         </select>
-        <label className="text-2xs text-muted-foreground mt-2 block">Base font size (px)</label>
-        <input
+        <label htmlFor={`${uid}-base-font-size-px`} className="text-2xs text-muted-foreground mt-2 block">Base font size (px)</label>
+        <input id={`${uid}-base-font-size-px`}
           type="number"
           min={12}
           max={20}
@@ -767,8 +769,8 @@ function ThemePanel({
       <Section title="Layout">
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="text-2xs text-muted-foreground">Container width</label>
-            <input
+            <label htmlFor={`${uid}-container-width`} className="text-2xs text-muted-foreground">Container width</label>
+            <input id={`${uid}-container-width`}
               type="number"
               min={480}
               max={800}
@@ -778,8 +780,8 @@ function ThemePanel({
             />
           </div>
           <div>
-            <label className="text-2xs text-muted-foreground">Corner radius</label>
-            <input
+            <label htmlFor={`${uid}-corner-radius`} className="text-2xs text-muted-foreground">Corner radius</label>
+            <input id={`${uid}-corner-radius`}
               type="number"
               min={0}
               max={24}
@@ -816,8 +818,8 @@ function ThemePanel({
           />
           Include unsubscribe link
         </label>
-        <label className="text-2xs text-muted-foreground mt-2 block">Custom footer text (optional)</label>
-        <textarea
+        <label htmlFor={`${uid}-custom-footer-text-optional`} className="text-2xs text-muted-foreground mt-2 block">Custom footer text (optional)</label>
+        <textarea id={`${uid}-custom-footer-text-optional`}
           rows={2}
           value={footer.customText ?? ""}
           onChange={(e) => onFooterChange({ ...footer, customText: e.target.value })}
@@ -954,6 +956,7 @@ function ImageUploadInput({ value, onChange, placeholder }: { value: string; onC
 // =============================================================================
 
 function BlockEditor({ block, onChange }: { block: any; onChange: (patch: any) => void }) {
+  const uid = useId();
   switch (block.type) {
     case "logo":
       // Size/alignment are per-email overrides; blank falls back to the Theme
@@ -1179,17 +1182,17 @@ function BlockEditor({ block, onChange }: { block: any; onChange: (patch: any) =
     case "divider":
       return (
         <div className="flex gap-2 items-center">
-          <label className="text-2xs">Thickness</label>
-          <input type="number" min={1} max={6} value={block.thickness ?? 1} onChange={(e) => onChange({ thickness: Number(e.target.value) })} className="input-base text-xs w-16" />
-          <label className="text-2xs">Color</label>
-          <input type="color" value={block.color ?? "#e5e7eb"} onChange={(e) => onChange({ color: e.target.value })} className="h-7 w-10 rounded border" />
+          <label htmlFor={`${uid}-thickness`} className="text-2xs">Thickness</label>
+          <input id={`${uid}-thickness`} type="number" min={1} max={6} value={block.thickness ?? 1} onChange={(e) => onChange({ thickness: Number(e.target.value) })} className="input-base text-xs w-16" />
+          <label htmlFor={`${uid}-color`} className="text-2xs">Color</label>
+          <input id={`${uid}-color`} type="color" value={block.color ?? "#e5e7eb"} onChange={(e) => onChange({ color: e.target.value })} className="h-7 w-10 rounded border" />
         </div>
       );
     case "spacer":
       return (
         <div className="flex items-center gap-2">
-          <label className="text-2xs">Height (px)</label>
-          <input type="number" min={4} max={120} value={block.height ?? 24} onChange={(e) => onChange({ height: Number(e.target.value) })} className="input-base text-xs w-20" />
+          <label htmlFor={`${uid}-height-px`} className="text-2xs">Height (px)</label>
+          <input id={`${uid}-height-px`} type="number" min={4} max={120} value={block.height ?? 24} onChange={(e) => onChange({ height: Number(e.target.value) })} className="input-base text-xs w-20" />
         </div>
       );
     case "quote":

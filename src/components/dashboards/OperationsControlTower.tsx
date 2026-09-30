@@ -42,7 +42,7 @@ import { runLimit } from "@/lib/dashboard/run-limit";
 import { opsAccess } from "@/lib/dashboard/ops/access";
 import { istToday, parseOpsFilter, parseOpsPeriod, parseRupees } from "@/lib/dashboard/ops/params";
 import {
-  OPS_KINDS, OPS_ROLES, PENDING_WITH, PRIORITIES, SLA_STATES, STATUS_FILTERS, textArray, type OpsWindow,
+  AGE_BUCKETS, MODE_FILTERS, OPS_KINDS, OPS_ROLES, PENDING_WITH, PRIORITIES, SLA_STATES, STATUS_FILTERS, textArray, type OpsWindow,
 } from "@/lib/dashboard/ops/window";
 import { loadAttention, loadCommandStrip, loadDayCounts, loadQueue } from "@/lib/dashboard/ops/queue";
 import {
@@ -218,6 +218,8 @@ export async function OperationsControlTower({
     priority: PRIORITIES.map((p) => ({ value: p.key, label: p.label })),
     slaState: SLA_STATES.map((s) => ({ value: s.key, label: s.label })),
     pendingWith: PENDING_WITH.map((p) => ({ value: p.key, label: p.label })),
+    ageing: AGE_BUCKETS.map((b) => ({ value: b.key, label: b.label })),
+    mode: MODE_FILTERS.map((m) => ({ value: m.key, label: m.label })),
     category: CATEGORY_OPTIONS,
   };
   // Only fields this page offers, and only values it knows. A filter the

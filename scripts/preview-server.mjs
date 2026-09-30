@@ -22,6 +22,7 @@ const child = spawn(process.execPath, [nextBin, "dev", "--turbopack", "-p", Stri
   env: {
     ...process.env,
     NO_AUTH: "1",
+    NEXT_DIST_DIR: ".next-preview",
     NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --max-old-space-size=3072`.trim(),
   },
 });

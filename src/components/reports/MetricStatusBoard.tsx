@@ -18,6 +18,8 @@ import { SelectField } from "@/components/ui/SelectField";
 import { useToast } from "@/components/ui/Toast";
 import { METRICS, fyLabel, type MetricKey } from "@/lib/finance/metric-config";
 import type { MetricStatus } from "@/lib/finance/metric-status";
+import { formatDate } from "@/lib/format";
+import { TableSkeleton } from "@/components/common/Skeleton";
 
 type EditBranch = {
   branchId: string;
@@ -50,7 +52,7 @@ function recentMonths(count = 24): { value: string; label: string }[] {
   d.setDate(1);
   for (let i = 0; i < count; i++) {
     const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const label = d.toLocaleString("en-IN", { month: "long", year: "numeric" });
+    const label = formatDate(d, "monthYear");
     out.push({ value, label });
     d.setMonth(d.getMonth() - 1);
   }
@@ -229,7 +231,7 @@ export function MetricStatusBoard({ metricKey }: { metricKey: MetricKey }) {
       </div>
 
       {loading ? (
-        <div className="text-sm text-muted-foreground py-10 text-center">Loading…</div>
+        <div className="text-sm text-muted-foreground py-10 text-center" aria-busy="true"><TableSkeleton rows={4} /></div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full text-sm border-collapse">

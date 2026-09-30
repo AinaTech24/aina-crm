@@ -88,7 +88,7 @@ export default function InvestorsList() {
       <View style={styles.toolbar}>
         <Pressable style={styles.filterBtn} onPress={() => setSheetOpen(true)}>
           <Feather name="sliders" size={15} color={activeCount ? palette.brand : palette.ink} />
-          <Text style={{ fontWeight: fontWeight.medium as any, color: activeCount ? palette.brand : palette.ink }}>
+          <Text style={{ fontWeight: fontWeight.medium, color: activeCount ? palette.brand : palette.ink }}>
             Filter & sort{activeCount ? ` · ${activeCount}` : ""}
           </Text>
         </Pressable>
@@ -142,7 +142,7 @@ export default function InvestorsList() {
     <View style={{ flex: 1, backgroundColor: palette.surfaceAlt }}>
       <ScreenHeader title="Clients" subtitle={query.isLoading ? undefined : `${total} client${total === 1 ? "" : "s"}`} />
       <View style={{ flex: 1 }}>{renderBody()}</View>
-      <FAB onPress={() => router.push("/m/investors/new" as any)} />
+      <FAB label="Add client" onPress={() => router.push("/m/investors/new" as any)} />
 
       <InvestorFilters
         visible={sheetOpen}

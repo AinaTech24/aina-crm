@@ -14,6 +14,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Save, X, Loader2 } from "lucide-react";
+import { formatDate } from "@/lib/format";
 import { DateField } from "@/components/ui/DateField";
 
 const SOURCES = [
@@ -384,5 +385,5 @@ function toDateInput(d: any): string {
 }
 
 function fmt(d: any): string {
-  return new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  return formatDate(new Date(d));
 }

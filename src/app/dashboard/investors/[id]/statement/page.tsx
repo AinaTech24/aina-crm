@@ -14,6 +14,8 @@ import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { loadAccountStatement } from "@/lib/finance/account-statement";
+import { formatDate } from "@/lib/format";
+import { toLocalISODate } from "@/lib/dashboard/period";
 import { DateField } from "@/components/ui/DateField";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +24,7 @@ const inr = (n: number) => `₹${n.toLocaleString("en-IN", { minimumFractionDigi
 const units = (n: number) => n.toLocaleString("en-IN", { minimumFractionDigits: 3, maximumFractionDigits: 4 });
 const fmtDate = (v: string) => {
   const d = new Date(v);
-  return isNaN(d.getTime()) ? v : d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  return isNaN(d.getTime()) ? v : formatDate(d);
 };
 
 /** Default range: this financial year to date (Apr 1 → today), the period an
@@ -30,7 +32,10 @@ const fmtDate = (v: string) => {
 function defaultRange(): { from: string; to: string } {
   const now = new Date();
   const fyStart = new Date(now.getFullYear() - (now.getMonth() < 3 ? 1 : 0), 3, 1);
-  return { from: fyStart.toISOString().slice(0, 10), to: now.toISOString().slice(0, 10) };
+  // Local, not UTC: `toISOString()` on local midnight 1 April in IST yields
+  // 2026-03-31, so the statement would silently open on 31 March and pull the
+  // previous financial year's last day into this year's statement.
+  return { from: toLocalISODate(fyStart), to: toLocalISODate(now) };
 }
 
 export default async function StatementPage({

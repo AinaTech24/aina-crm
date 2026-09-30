@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useId, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Loader2, CheckCircle2, AlertCircle, Plug, RefreshCw, Copy, KeyRound } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
@@ -49,6 +49,7 @@ type Status = {
 };
 
 export function ZohoIntegrationCard() {
+  const uid = useId();
   const toast = useToast();
   const params = useSearchParams();
   const [status, setStatus] = useState<Status | null>(null);
@@ -256,8 +257,8 @@ export function ZohoIntegrationCard() {
 
           <div className="grid sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Client ID</label>
-              <input
+              <label htmlFor={`${uid}-client-id`} className="text-xs font-medium text-muted-foreground">Client ID</label>
+              <input id={`${uid}-client-id`}
                 value={clientId}
                 onChange={(e) => setClientId(e.target.value)}
                 required
@@ -266,8 +267,8 @@ export function ZohoIntegrationCard() {
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Data center</label>
-              <SelectField value={dc} onChange={(e) => setDc(e.target.value)} className="mt-1 text-sm">
+              <label htmlFor={`${uid}-data-center`} className="text-xs font-medium text-muted-foreground">Data center</label>
+              <SelectField id={`${uid}-data-center`} value={dc} onChange={(e) => setDc(e.target.value)} className="mt-1 text-sm">
                 {DATA_CENTERS.map((d) => (
                   <option key={d.value} value={d.value}>
                     {d.label}
@@ -278,8 +279,8 @@ export function ZohoIntegrationCard() {
           </div>
 
           <div>
-            <label className="text-xs font-medium text-muted-foreground">Client Secret</label>
-            <PasswordInput
+            <label htmlFor={`${uid}-client-secret`} className="text-xs font-medium text-muted-foreground">Client Secret</label>
+            <PasswordInput id={`${uid}-client-secret`}
               value={clientSecret}
               onChange={(e) => setClientSecret(e.target.value)}
               required

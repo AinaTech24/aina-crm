@@ -14,6 +14,7 @@ import { useToast } from "@/components/ui/Toast";
 import { TaskDetailDrawer } from "./TaskDetailDrawer";
 import { Avatar } from "@/components/ui/Avatar";
 import { taskChecklist, type Task } from "@/db/schema";
+import { formatDate } from "@/lib/format";
 
 interface TaskRow {
   task: Task;
@@ -35,15 +36,15 @@ const COLUMNS = [
 const PRIORITY_TONE: Record<string, string> = {
   urgent: "bg-rose-100 text-rose-700",
   high: "bg-amber-100 text-amber-700",
-  normal: "bg-slate-100 text-slate-600",
-  low: "bg-slate-100 text-slate-500",
+  normal: "bg-secondary text-muted-foreground",
+  low: "bg-secondary text-muted-foreground",
 };
 
 function fmtDue(d: any): string | null {
   if (!d) return null;
   const dt = new Date(d);
   if (isNaN(dt.getTime())) return null;
-  return dt.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+  return formatDate(dt, "dayMonth");
 }
 
 export function TaskKanban({ initialRows, currentUserId, canManageAll = false }: { initialRows: TaskRow[]; currentUserId: string; canManageAll?: boolean }) {
@@ -168,7 +169,7 @@ export function TaskKanban({ initialRows, currentUserId, canManageAll = false }:
                             {checklist.length > 0 && (
                               <span
                                 className={`chip text-2xs inline-flex items-center gap-1 ${
-                                  checklistDone === checklist.length ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"
+                                  checklistDone === checklist.length ? "bg-emerald-100 text-emerald-700" : "bg-secondary text-muted-foreground"
                                 }`}
                                 title={`${checklistDone}/${checklist.length} action points done`}
                               >

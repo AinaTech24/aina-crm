@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CalendarHeart, Cake, Gift } from "lucide-react";
+import { formatDate } from "@/lib/format";
 
 /**
  * Family Touchpoints — birthdays + onboarding anniversaries across all
@@ -160,10 +161,7 @@ export function FamilyTouchpoints({
                       : `in ${e.daysAway}d`}
                   </div>
                   <div className="text-2xs text-muted-foreground">
-                    {e.eventDate.toLocaleDateString("en-IN", {
-                      day: "numeric",
-                      month: "short",
-                    })}
+                    {formatDate(e.eventDate, "dayMonth")}
                   </div>
                 </div>
               </li>

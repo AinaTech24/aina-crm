@@ -14,6 +14,7 @@ import { createPortal } from "react-dom";
 import { Mail, Send, Loader2, X, ChevronDown, RefreshCw, Inbox, ArrowDownLeft, ArrowUpRight, Reply, PenLine, ShieldCheck } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { Select } from "@/components/ui/Select";
+import { formatDate } from "@/lib/format";
 
 type EmailRow = {
   id: string;
@@ -58,14 +59,14 @@ function fmtWhen(s?: string | null): string {
   const d = new Date(s);
   return isNaN(d.getTime())
     ? ""
-    : d.toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
+    : formatDate(d, "dateTime");
 }
 
 function statusChip(status: string, direction: string): { label: string; cls: string } {
   const ok = "bg-emerald-50 text-emerald-700 border-emerald-200";
   const warn = "bg-amber-50 text-amber-700 border-amber-200";
   const bad = "bg-rose-50 text-rose-700 border-rose-200";
-  const muted = "bg-slate-100 text-slate-600 border-slate-200";
+  const muted = "bg-secondary text-muted-foreground border-border";
   const sky = "bg-sky-50 text-sky-700 border-sky-200";
   if (direction === "inbound") return { label: "Received", cls: sky };
   const map: Record<string, { label: string; cls: string }> = {

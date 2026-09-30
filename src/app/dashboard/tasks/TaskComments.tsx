@@ -10,6 +10,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2, Send, Trash, AtSign } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
+import { formatDate } from "@/lib/format";
 
 type Employee = { id: string; name: string; email: string; roles: string[]; department: string | null };
 type Comment = {
@@ -29,7 +30,7 @@ function initials(name?: string | null): string {
 function whenLabel(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "";
-  return d.toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  return formatDate(d, "dateTime");
 }
 /** Render a comment body, lightly highlighting @mention tokens. */
 function renderBody(body: string) {
@@ -146,7 +147,7 @@ export function TaskComments({ taskId, currentUserId }: { taskId: string; curren
           }}
           placeholder="Write a comment…  Type @ to mention a teammate."
           rows={2}
-          className="input-base text-xs bg-slate-50 border-slate-200 focus:bg-white transition-colors w-full pr-9"
+          className="input-base text-xs bg-secondary border-border focus:bg-white transition-colors w-full pr-9"
         />
         <button
           type="button"
@@ -201,25 +202,25 @@ export function TaskComments({ taskId, currentUserId }: { taskId: string; curren
         <div className="space-y-3 max-h-72 overflow-y-auto pr-1 scrollbar-thin">
           {comments.map((c) => (
             <div key={c.id} className="group flex gap-2.5 items-start">
-              <div className="size-6 rounded-full bg-slate-100 border text-2xs font-bold text-slate-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <div className="size-6 rounded-full bg-secondary border text-2xs font-bold text-muted-foreground flex items-center justify-center flex-shrink-0 mt-0.5">
                 {initials(c.authorName)}
               </div>
-              <div className="flex-1 min-w-0 bg-slate-50 border border-slate-100 rounded-lg p-2.5">
+              <div className="flex-1 min-w-0 bg-secondary border border-slate-100 rounded-lg p-2.5">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-2xs font-semibold text-slate-700 truncate">{c.authorName ?? "Someone"}</span>
-                  <span className="text-2xs text-slate-400">{whenLabel(c.createdAt)}</span>
+                  <span className="text-2xs font-semibold text-foreground truncate">{c.authorName ?? "Someone"}</span>
+                  <span className="text-2xs text-muted-foreground">{whenLabel(c.createdAt)}</span>
                   {c.authorId === currentUserId && (
                     <button
                       type="button"
                       onClick={() => remove(c.id)}
-                      className="ml-auto text-slate-300 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="ml-auto text-muted-foreground hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity"
                       aria-label="Delete comment"
                     >
                       <Trash className="size-3" />
                     </button>
                   )}
                 </div>
-                <div className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed break-words">
+                <div className="text-xs text-foreground whitespace-pre-wrap leading-relaxed break-words">
                   {renderBody(c.body)}
                 </div>
               </div>

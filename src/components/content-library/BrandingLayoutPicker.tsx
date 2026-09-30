@@ -84,7 +84,7 @@ export function BrandingLayoutPicker({
                     : "border-border hover:bg-secondary"
                 }`}
               >
-                <div className="font-semibold text-[12px]">{o.label}</div>
+                <div className="font-semibold text-2xs">{o.label}</div>
                 <div className="text-2xs text-muted-foreground mt-0.5 leading-tight">
                   {o.description}
                 </div>
@@ -150,7 +150,7 @@ export function BrandingLayoutPicker({
                     : "border-border hover:bg-secondary"
                 }`}
               >
-                <div className="font-semibold text-[12px]">{s.label}</div>
+                <div className="font-semibold text-2xs">{s.label}</div>
                 <div className="text-2xs text-muted-foreground mt-0.5 leading-tight">{s.hint}</div>
               </button>
             );

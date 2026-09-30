@@ -16,8 +16,13 @@ import { cn } from "@/lib/utils";
 /**
  * ProductTour — a lightweight, dependency-free first-run coachmark tour.
  *
- * Runs ONCE on a new user's first dashboard visit (gated by a localStorage
- * flag), spotlighting the key surfaces so a feature-rich CRM doesn't overwhelm.
+ * Launched ON DEMAND from the profile menu ("Take a tour"), not automatically.
+ *
+ * It used to auto-open 600ms after the first dashboard paint. That put it on
+ * screen at the same moment as the setup checklist and the (now removed)
+ * redesign promo banner — three things competing for attention on the busiest
+ * screen in the app, before the user had read a single number. A tour the user
+ * asks for lands; a tour that ambushes them gets dismissed.
  *
  * The parent mounts this in the dashboard layout and is responsible for adding
  * the `data-tour="..."` anchor attributes to the real DOM elements. This file
@@ -79,24 +84,22 @@ const STEPS: Step[] = [
 ];
 
 /**
- * Clears the "seen" flag and reloads so the tour runs again.
- * Wire this to a "Take the tour again" menu item anywhere.
+ * Opens the tour. Wired to "Take a tour" in the profile menu.
+ *
+ * No reload: the component is already mounted in the dashboard layout, so the
+ * event is enough and the user keeps their place on the page.
  */
-export function restartProductTour() {
+export function startProductTour() {
   try {
     localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    /* ignore storage errors (private mode, etc.) */
-  }
-  // If the component is already mounted this turn, let it react live;
-  // a reload is the simplest reliable path though.
-  try {
     window.dispatchEvent(new CustomEvent(RESTART_EVENT));
   } catch {
-    /* no-op */
+    /* storage or event unavailable (private mode) — nothing to recover */
   }
-  window.location.reload();
 }
+
+/** @deprecated Use {@link startProductTour}. */
+export const restartProductTour = startProductTour;
 
 interface Rect {
   top: number;
@@ -115,24 +118,10 @@ export default function ProductTour() {
   const [rect, setRect] = useState<Rect | null>(null);
   const [isMobile, setIsMobile] = useState(false);
 
-  // Decide whether to run at all (first visit only), after the layout paints.
-  useEffect(() => {
-    let seen = false;
-    try {
-      seen = Boolean(localStorage.getItem(STORAGE_KEY));
-    } catch {
-      seen = true; // if storage is unavailable, don't nag
-    }
-    if (seen) return;
+  // No auto-start: the tour opens only when the user asks for it, via
+  // `startProductTour()` from the profile menu.
 
-    const t = setTimeout(() => {
-      setIndex(0);
-      setActive(true);
-    }, 600);
-    return () => clearTimeout(t);
-  }, []);
-
-  // Allow an in-page restart without a reload (belt-and-braces).
+  // Listen for that request.
   useEffect(() => {
     const onRestart = () => {
       setIndex(0);

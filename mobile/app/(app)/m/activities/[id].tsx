@@ -23,12 +23,14 @@ import {
   kindMeta, outcomeBadge, ACTIVITY_OUTCOMES, type Activity,
 } from "../../../../src/features/activities/api";
 import { startCall } from "../../../../src/features/activities/callAndLog";
+import { CallSummary } from "../../../../src/features/activities/CallSummary";
 import { openWhatsApp } from "../../../../src/features/activities/whatsapp";
 import { confirmDelete } from "../../../../src/lib/confirm";
 import { toast } from "../../../../src/lib/toast";
 import { fmtDate, timeAgo, titleCase } from "../../../../src/lib/format";
 import { spacing, palette, radius, fontWeight } from "../../../../src/theme/tokens";
 import { toneColors } from "../../../../src/theme";
+import { asIcon } from "../../../../src/lib/icons";
 
 /** Opens WhatsApp and records the touch against the same client. */
 const openWa = (p?: string | null, subject?: { type: "investor" | "lead" | "family"; id: string | null; name?: string | null }) =>
@@ -87,15 +89,16 @@ export default function ActivityDetail() {
       <ScreenHeader
         title={meta.label}
         subtitle={timeAgo(a.occurred_at)}
-        right={<Pressable onPress={() => setEditOpen(true)} hitSlop={8} style={styles.editBtn}><Feather name="edit-2" size={15} color={palette.white} /></Pressable>}
+        right={<Pressable accessibilityRole="button" accessibilityLabel="Edit activity" onPress={() => setEditOpen(true)} hitSlop={8} style={styles.editBtn}><Feather name="edit-2" size={15} color={palette.white} /></Pressable>}
       />
       <Screen scroll padded contentStyle={{ paddingTop: spacing.lg, paddingBottom: spacing["3xl"] }}>
+        {a.kind === "call" ? <CallSummary activityId={aid} existingNotes={a.notes} /> : null}
         {/* Hero */}
         <Card>
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-            <View style={[styles.kindIcon, { backgroundColor: toneColors(meta.tone).bg }]}><Feather name={meta.icon as any} size={18} color={toneColors(meta.tone).fg} /></View>
+            <View style={[styles.kindIcon, { backgroundColor: toneColors(meta.tone).bg }]}><Feather name={asIcon(meta.icon)} size={18} color={toneColors(meta.tone).fg} /></View>
             <Pressable style={{ flex: 1 }} onPress={openClient}>
-              <Text variant="body" style={{ fontWeight: fontWeight.semibold as any }} numberOfLines={1}>{a.subject_name ?? "—"}</Text>
+              <Text variant="body" style={{ fontWeight: fontWeight.semibold }} numberOfLines={1}>{a.subject_name ?? "—"}</Text>
               <Text variant="caption" tone="muted">{a.subject_type ? titleCase(a.subject_type) : ""}{a.direction ? ` · ${titleCase(a.direction)}` : ""}</Text>
             </Pressable>
             {a.status ? <StatusPill label={badge.label} tone={badge.tone} size="sm" /> : null}
@@ -185,7 +188,7 @@ function TimelineRow({ t, last, onPress }: { t: Activity; last: boolean; onPress
   const meta = kindMeta(t.kind);
   return (
     <Pressable style={[styles.tlRow, !last && styles.divider]} onPress={onPress}>
-      <View style={[styles.tlIcon, { backgroundColor: toneColors(meta.tone).bg }]}><Feather name={meta.icon as any} size={13} color={toneColors(meta.tone).fg} /></View>
+      <View style={[styles.tlIcon, { backgroundColor: toneColors(meta.tone).bg }]}><Feather name={asIcon(meta.icon)} size={13} color={toneColors(meta.tone).fg} /></View>
       <View style={{ flex: 1 }}>
         <Text variant="body" numberOfLines={1}>{t.subject || t.notes || meta.label}</Text>
         <Text variant="caption" tone="muted">{meta.label} · {timeAgo(t.occurred_at)}</Text>
@@ -208,7 +211,7 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md, marginTop: spacing.lg, paddingTop: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.line },
   actionRow: { flexDirection: "row", gap: spacing.md, marginTop: spacing.lg },
   actBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, borderRadius: radius.md, paddingVertical: spacing.md },
-  actTxt: { color: palette.white, fontWeight: fontWeight.semibold as any },
+  actTxt: { color: palette.white, fontWeight: fontWeight.semibold },
   tlRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.lg },
   divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line },
   tlIcon: { width: 28, height: 28, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },

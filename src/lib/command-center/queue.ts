@@ -17,6 +17,8 @@
  */
 
 import { sql } from "drizzle-orm";
+import { leadOpenSql } from "@/lib/metrics/leads";
+import { riskBucketSql } from "@/lib/risk-profile/buckets";
 
 export type Severity = "now" | "today" | "soon";
 
@@ -396,13 +398,15 @@ export async function buildCommandQueue(
   }
 
   // ── 6. Overdue tasks ─────────────────────────────────────────────────
+  // Same definition as the sidebar badge and the dashboards
+  // (lib/metrics/tasks.ts): blocked work is still work, and still late.
   {
     const r = await tx.execute(sql`
       SELECT id, title, priority, due_at, subject_type, subject_id,
              related_investor_id, related_lead_id, related_meeting_id, related_service_request_id,
              count(*) OVER() AS total
       FROM tasks
-      WHERE status IN ('open','in_progress')
+      WHERE status IN ('open','in_progress','blocked')
         AND deleted_at IS NULL
         AND due_at IS NOT NULL
         AND due_at < now()
@@ -444,7 +448,7 @@ export async function buildCommandQueue(
                related_investor_id, related_lead_id, related_meeting_id, related_service_request_id,
                count(*) OVER() AS total
         FROM tasks
-        WHERE status IN ('open','in_progress')
+        WHERE status IN ('open','in_progress','blocked')
           AND deleted_at IS NULL
           AND due_at IS NOT NULL
           AND due_at < now()
@@ -460,7 +464,7 @@ export async function buildCommandQueue(
               SELECT id, title, priority, due_at, subject_type, subject_id,
                      related_investor_id, related_lead_id, related_meeting_id, related_service_request_id
               FROM tasks
-              WHERE status IN ('open','in_progress')
+              WHERE status IN ('open','in_progress','blocked')
                 AND deleted_at IS NULL
                 AND due_at IS NOT NULL
                 AND due_at < now() - interval '30 days'
@@ -494,8 +498,8 @@ export async function buildCommandQueue(
     const r = await tx.execute(sql`
       SELECT id, name, stage, next_follow_up_at, count(*) OVER() AS total
       FROM leads
-      WHERE converted_investor_id IS NULL
-        AND stage NOT IN ('not_qualified','lost','not_interested','converted')
+      WHERE ${leadOpenSql("leads")}
+        AND lost_reason IS DISTINCT FROM '__deleted__'
         AND next_follow_up_at IS NOT NULL
         AND next_follow_up_at < now()
         ${scope("owner_id", userId, firmWide)}
@@ -522,27 +526,30 @@ export async function buildCommandQueue(
     }
   }
 
-  // ── 8. Risk profile stale (>365d) — SEBI annual refresh ──────────────
+  // ── 8. Risk profiles due — SEBI annual refresh ───────────────────────
+  // The Risk Profiles page's "Due for review" + "Expired" buckets over the
+  // same active clients (lib/metrics/risk.ts), so this count is the row count
+  // of the page it opens.
   {
     const r = await tx.execute(sql`
-      SELECT id, name, risk_profile_signed_at, count(*) OVER() AS total
-      FROM investors
-      WHERE status = 'active'
-        AND deleted_at IS NULL
-        AND (risk_profile_signed_at IS NULL OR risk_profile_signed_at < now() - interval '365 days')
-        ${scope("rm_id", userId, firmWide)}${cscope("id")}
-      ORDER BY risk_profile_signed_at ASC NULLS FIRST
+      SELECT i.id, i.name, i.risk_profile_signed_at, count(*) OVER() AS total
+      FROM investors i
+      WHERE i.deleted_at IS NULL AND i.merged_into_id IS NULL
+        AND i.status IN ('active', 'redemption_risk')
+        AND (${riskBucketSql("due")} OR ${riskBucketSql("expired")})
+        ${scope("i.rm_id", userId, firmWide)}${cscope("i.id")}
+      ORDER BY i.risk_profile_signed_at ASC NULLS FIRST
       LIMIT 5
     `);
     if (r.rows.length) {
       groups.push({
         key: "rp_stale",
-        label: "Risk profiles to refresh",
+        label: "Risk profiles due",
         icon: "ShieldCheck",
         severity: "soon",
         tone: "sky",
         count: Number(r.rows[0].total ?? r.rows.length),
-        href: href("/dashboard/investors", firmWide, "rp_stale=1"),
+        href: "/dashboard/risk-profiles?filter=due,expired",
         items: r.rows.map((x: any) => ({
           id: x.id,
           title: x.name,

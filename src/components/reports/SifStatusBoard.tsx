@@ -12,6 +12,7 @@ import { Save, Printer } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { useToast } from "@/components/ui/Toast";
 import type { SifStatus, SifRow } from "@/lib/business/sif-status";
+import { TableSkeleton } from "@/components/common/Skeleton";
 
 const fmt = (n: number): string =>
   "₹ " + n.toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -140,7 +141,7 @@ export function SifStatusBoard() {
       </div>
 
       {loading ? (
-        <div className="text-sm text-muted-foreground py-10 text-center">Loading…</div>
+        <div className="text-sm text-muted-foreground py-10 text-center" aria-busy="true"><TableSkeleton rows={4} /></div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full text-sm border-collapse">

@@ -8,6 +8,8 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, LogOut, Monitor, Smartphone, ShieldCheck } from "lucide-react";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
+import { Skeleton } from "@/components/common/Skeleton";
 
 type Device = {
   id: string;
@@ -67,7 +69,15 @@ export function DeviceSessions() {
   async function logout(id: string, deviceName: string | null) {
     // Confirm before revoking — a per-device sign-out is destructive (that
     // device has to log in again).
-    if (!window.confirm(`Sign out "${deviceName || "this device"}"? It will need to log in again.`)) return;
+    if (
+      !(await confirmDialog({
+        title: `Sign out "${deviceName || "this device"}"?`,
+        message: "Anyone using it will have to log in again.",
+        confirmLabel: "Sign out device",
+        tone: "danger",
+      }))
+    )
+      return;
     setBusy(id);
     try {
       await fetch(`/api/me/devices/${id}`, { method: "DELETE" });
@@ -80,7 +90,19 @@ export function DeviceSessions() {
   return (
     <>
       {devices === null ? (
-        <div className="text-xs text-muted-foreground inline-flex items-center gap-1.5"><Loader2 className="size-3.5 animate-spin" /> Loading…</div>
+        /* A bare "Loading…" string next to a finished card reads as a stall.
+           Skeleton rows show the SHAPE of what is coming instead. */
+        <div className="space-y-2" aria-busy="true" aria-label="Loading your devices">
+          {[0, 1].map((i) => (
+            <div key={i} className="flex items-center justify-between gap-3">
+              <div className="space-y-1.5 flex-1">
+                <Skeleton className="h-3.5 w-40" />
+                <Skeleton className="h-3 w-28" />
+              </div>
+              <Skeleton className="h-7 w-20 rounded-md" />
+            </div>
+          ))}
+        </div>
       ) : devices.length === 0 ? (
         <div className="text-xs text-muted-foreground">No active sessions found.</div>
       ) : (

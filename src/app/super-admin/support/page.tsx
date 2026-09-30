@@ -9,9 +9,9 @@ import { SupportTicketFilters } from "@/components/super-admin/SupportTicketFilt
 const STATUS_COLORS: Record<string, string> = {
   open: "bg-blue-50 text-blue-700",
   in_progress: "bg-amber-50 text-amber-700",
-  waiting_customer: "bg-slate-50 text-slate-700",
+  waiting_customer: "bg-secondary text-foreground",
   resolved: "bg-emerald-50 text-emerald-700",
-  closed: "bg-gray-50 text-gray-700",
+  closed: "bg-secondary text-foreground",
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -28,7 +28,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   training: "bg-amber-50 text-amber-700",
   integration: "bg-purple-50 text-purple-700",
   data_help: "bg-teal-50 text-teal-700",
-  other: "bg-gray-50 text-gray-700",
+  other: "bg-secondary text-foreground",
 };
 
 export const dynamic = "force-dynamic";

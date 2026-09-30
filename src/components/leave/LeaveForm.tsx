@@ -11,6 +11,7 @@ import {
 } from "@/lib/leave/policy";
 import { ThemeSelect } from "@/components/ui/ThemeSelect";
 import { ThemeDate } from "@/components/ui/ThemeDate";
+import { formatDate } from "@/lib/format";
 
 type Emp = {
   id: string;
@@ -199,8 +200,8 @@ export function LeaveForm({
               const fDate = c.from_date || c.fromDate;
               const tDate = c.to_date || c.toDate;
               const lType = c.leave_type || c.leaveType;
-              const formattedFDate = fDate ? new Date(fDate).toLocaleDateString("en-IN", { day: 'numeric', month: 'short' }) : '';
-              const formattedTDate = tDate ? new Date(tDate).toLocaleDateString("en-IN", { day: 'numeric', month: 'short' }) : '';
+              const formattedFDate = fDate ? formatDate(new Date(fDate), "dayMonth") : '';
+              const formattedTDate = tDate ? formatDate(new Date(tDate), "dayMonth") : '';
               const dateStr = formattedFDate === formattedTDate ? formattedFDate : `${formattedFDate} - ${formattedTDate}`;
               const typeLabel = LEAVE_TYPE_LABELS[lType] || lType;
 

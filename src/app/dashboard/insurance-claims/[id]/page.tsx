@@ -25,7 +25,7 @@ import { ClaimDocuments } from "@/components/insurance/ClaimDocuments";
 export const dynamic = "force-dynamic";
 
 const STATUS_META: Record<string, { label: string; tone: string }> = {
-  empty: { label: "Empty", tone: "bg-slate-100 text-slate-600" },
+  empty: { label: "Empty", tone: "bg-secondary text-muted-foreground" },
   claim_intimated: { label: "Claim Intimated", tone: "bg-amber-50 text-amber-700" },
   file_awaited: { label: "File Awaited", tone: "bg-brand-cyan-light/50 text-brand-cyan-deep" },
   file_received: { label: "File Received", tone: "bg-cyan-50 text-cyan-700" },
@@ -36,7 +36,7 @@ const STATUS_META: Record<string, { label: string; tone: string }> = {
   settled_fully: { label: "Settled Fully", tone: "bg-emerald-50 text-emerald-700" },
   settled_partially: { label: "Settled Partially", tone: "bg-emerald-50 text-emerald-700" },
   rejected: { label: "Rejected", tone: "bg-rose-50 text-rose-700" },
-  withdrawn: { label: "Withdrawn", tone: "bg-slate-100 text-slate-600" },
+  withdrawn: { label: "Withdrawn", tone: "bg-secondary text-muted-foreground" },
 };
 const TYPE_LABEL: Record<string, string> = {
   main_claim: "Main Claim",
@@ -294,6 +294,8 @@ export default async function ClaimDetailPage({ params }: { params: Promise<{ id
           uploadedAt: d.uploadedAt,
         }))}
         claimType={c.claimType ?? undefined}
+        policyType={policy?.policyType ?? undefined}
+        claimMode={c.claimMode ?? undefined}
       />
     </div>
   );

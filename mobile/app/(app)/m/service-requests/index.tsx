@@ -94,7 +94,7 @@ function SrRow({ r, onPress }: { r: ServiceRequest; onPress: () => void }) {
     <Pressable onPress={onPress}>
       <Card style={{ marginBottom: spacing.sm, ...(breached ? { borderLeftWidth: 3, borderLeftColor: toneColors("danger").fg } : null) }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <Text variant="body" style={{ flex: 1, fontWeight: fontWeight.semibold as any }} numberOfLines={1}>{r.subject ?? "Request"}</Text>
+          <Text variant="body" style={{ flex: 1, fontWeight: fontWeight.semibold }} numberOfLines={1}>{r.subject ?? "Request"}</Text>
           <StatusPill label={meta.label} tone={meta.tone} size="sm" />
         </View>
         <Text variant="caption" tone="muted" numberOfLines={1} style={{ marginTop: 2 }}>
@@ -112,6 +112,6 @@ function SrRow({ r, onPress }: { r: ServiceRequest; onPress: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  hero: { fontSize: 26, fontWeight: fontWeight.bold as any, letterSpacing: -0.4, marginTop: 2 },
+  hero: { fontSize: 26, fontWeight: fontWeight.bold, letterSpacing: -0.4, marginTop: 2 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
 });

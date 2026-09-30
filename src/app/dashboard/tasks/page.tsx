@@ -15,6 +15,7 @@ import { TaskViewSelect } from "./TaskViewSelect";
 import { TaskList } from "./TaskList";
 import { TaskKanban } from "./TaskKanban";
 import { buttonClass } from "@/components/ui/button-class";
+import { overdueTaskSql, staffWhere } from "@/lib/metrics";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +45,9 @@ export default async function TasksPage({
   const typeFilter = (sp.type ?? "").split(",").filter(Boolean);
   const deptFilter = (sp.department ?? "").split(",").filter(Boolean);
   const assigneeFilter = (sp.assignee ?? "").split(",").filter(Boolean);
+  // branch — the dashboard's tasks link for a branch: tasks assigned to someone
+  // in it (tasks are a staff fact — lib/metrics staffWhere).
+  const branchFilter = (sp.branch ?? "").split(",").filter(Boolean);
   const tagsFilter = (sp.tags ?? "").split(",").filter(Boolean);
   const flagFilter = (sp.flag ?? "").split(",").filter(Boolean);
   // Due filter — CSV multi-select: today | overdue | sla_risk
@@ -103,8 +107,10 @@ export default async function TasksPage({
     const tabConds: any[] = [];
     if (!isKanban) {
       if (tab === "completed") tabConds.push(eq(tasks.status, "completed"));
+      // Overdue — the dashboard's overdue-tasks count and the sidebar badge:
+      // not deleted, still to do, due before now (lib/metrics overdueTaskSql).
+      else if (tab === "overdue") tabConds.push(overdueTaskSql("tasks"));
       else if (tab) tabConds.push(inArray(tasks.status, [...OPEN_STATUSES]));
-      if (tab === "overdue") tabConds.push(sql`${tasks.dueAt} < now()`);
       if (tab === "today") tabConds.push(sql`${tasks.dueAt} >= now() AND ${DUE_DAY} = ${IST_TODAY}`);
       if (tab === "upcoming") tabConds.push(sql`${DUE_DAY} > ${IST_TODAY}`);
       if (statusFilter.length) {
@@ -129,7 +135,11 @@ export default async function TasksPage({
     if (priorityFilter.length) conds.push(inArray(tasks.priority, priorityFilter as any));
     if (typeFilter.length) conds.push(inArray(tasks.type, typeFilter as any));
     if (deptFilter.length) conds.push(inArray(tasks.department, deptFilter as any));
+    // assignee — user ids, comma-separated (the dashboard's RM filter).
     if (assigneeFilter.length) conds.push(inArray(tasks.assigneeId, assigneeFilter as any));
+    if (branchFilter.length) {
+      conds.push(staffWhere({ tenantId: session.tenantId, branchIds: branchFilter }, sql`${tasks.assigneeId}`));
+    }
     if (tagsFilter.length) conds.push(sql`tasks.tags ?| ${tagsFilter}::text[]`);
     if (flagFilter.includes("requires_approval")) conds.push(eq(tasks.requiresApproval, true));
     if (flagFilter.includes("recurring")) conds.push(sql`tasks.recurrence is not null`);
@@ -154,13 +164,7 @@ export default async function TasksPage({
       .select({ c: sql<number>`count(*)::int` })
       .from(tasks)
       .leftJoin(users, eq(users.id, tasks.assigneeId))
-      .where(
-        and(
-          ...conds,
-          inArray(tasks.status, [...OPEN_STATUSES]),
-          sql`${tasks.dueAt} < now()`
-        ) as any
-      );
+      .where(and(...conds, overdueTaskSql("tasks")) as any);
     const overdueCount = Number(overdueRow[0]?.c ?? 0);
 
     conds.push(...tabConds);

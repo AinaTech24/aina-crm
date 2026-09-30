@@ -13,6 +13,7 @@ import { EmptyState, ErrorState, LoadingState } from "../../components/states";
 import { inr, fmtDate, titleCase } from "../../lib/format";
 import { palette, radius, spacing, fontWeight } from "../../theme/tokens";
 import { useBilling, type UsageMetric } from "./api";
+import { asIcon } from "../../lib/icons";
 
 const statusTone = (s?: string | null): string => {
   const v = (s ?? "").toLowerCase();
@@ -53,11 +54,11 @@ export function Billing() {
         <View style={styles.planCard}>
           <View style={styles.planHead}>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 18, fontWeight: fontWeight.bold as any }}>{pkg.name ?? "Plan"}</Text>
+              <Text style={{ fontSize: 18, fontWeight: fontWeight.bold }}>{pkg.name ?? "Plan"}</Text>
               {pkg.description ? <Text variant="caption" tone="muted">{pkg.description}</Text> : null}
             </View>
             <View style={[styles.badge, { backgroundColor: statusTone(sub.status) + "1A" }]}>
-              <Text style={{ fontSize: 12, color: statusTone(sub.status), fontWeight: fontWeight.bold as any }}>{titleCase(sub.status)}</Text>
+              <Text style={{ fontSize: 12, color: statusTone(sub.status), fontWeight: fontWeight.bold }}>{titleCase(sub.status)}</Text>
             </View>
           </View>
           <View style={styles.planMeta}>
@@ -81,10 +82,10 @@ export function Billing() {
             {events.map((e) => (
               <View key={e.id} style={styles.eventRow}>
                 <View style={{ flex: 1 }}>
-                  <Text variant="caption" style={{ fontWeight: fontWeight.medium as any }}>{titleCase(e.eventType)}</Text>
+                  <Text variant="caption" style={{ fontWeight: fontWeight.medium }}>{titleCase(e.eventType)}</Text>
                   <Text variant="caption" tone="faint">{fmtDate(e.at)}</Text>
                 </View>
-                {e.amountPaise ? <Text variant="caption" style={{ fontWeight: fontWeight.semibold as any }}>{inr(e.amountPaise / 100)}</Text> : null}
+                {e.amountPaise ? <Text variant="caption" style={{ fontWeight: fontWeight.semibold }}>{inr(e.amountPaise / 100)}</Text> : null}
               </View>
             ))}
           </Section>
@@ -113,7 +114,7 @@ function Meta({ label, value }: { label: string; value?: string | null }) {
   return (
     <View>
       <Text variant="caption" tone="muted">{label}</Text>
-      <Text style={{ fontWeight: fontWeight.semibold as any }}>{value || "—"}</Text>
+      <Text style={{ fontWeight: fontWeight.semibold }}>{value || "—"}</Text>
     </View>
   );
 }
@@ -121,7 +122,7 @@ function Section({ title, icon, children }: { title: string; icon: string; child
   return (
     <View style={{ marginTop: spacing.lg }}>
       <View style={styles.secLabel}>
-        <Feather name={icon as any} size={13} color={palette.muted} />
+        <Feather name={asIcon(icon)} size={13} color={palette.muted} />
         <Text variant="label" tone="muted" style={{ letterSpacing: 0.6 }}>{title}</Text>
       </View>
       <View style={styles.card}>{children}</View>

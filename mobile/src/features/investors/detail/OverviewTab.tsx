@@ -32,11 +32,11 @@ export function OverviewTab({ d, id }: { d: any; id: string }) {
       <Section title="Client health" icon="heart">
         <View style={styles.healthRow}>
           <View style={[styles.gauge, { borderColor: score != null ? healthTone(score) : palette.line }]}>
-            <Text style={{ fontSize: 26, fontWeight: fontWeight.bold as any, color: score != null ? healthTone(score) : palette.muted }}>{score ?? "—"}</Text>
+            <Text style={{ fontSize: 26, fontWeight: fontWeight.bold, color: score != null ? healthTone(score) : palette.muted }}>{score ?? "—"}</Text>
             <Text variant="caption" tone="muted">/ 100</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontWeight: fontWeight.semibold as any }}>{inv.healthBand ? titleCase(inv.healthBand) : "Not scored"}</Text>
+            <Text style={{ fontWeight: fontWeight.semibold }}>{inv.healthBand ? titleCase(inv.healthBand) : "Not scored"}</Text>
             <Text variant="caption" tone="muted">
               {inv.healthScoredAt ? `Scored ${timeAgo(inv.healthScoredAt)}` : "A blend of KYC, nominee, risk, review and activity signals."}
             </Text>
@@ -90,7 +90,7 @@ function SummaryCard({ label, value, sub }: { label: string; value: string; sub:
   return (
     <View style={styles.sum}>
       <Text variant="caption" tone="muted">{label}</Text>
-      <Text style={{ fontWeight: fontWeight.semibold as any }} numberOfLines={1}>{value}</Text>
+      <Text style={{ fontWeight: fontWeight.semibold }} numberOfLines={1}>{value}</Text>
       <Text variant="caption" tone="faint" numberOfLines={1}>{sub}</Text>
     </View>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Edit2, Send, Check, X, Plus } from "lucide-react";
@@ -22,6 +22,7 @@ export function TemplateActions({
   versionNumber,
   hasApproveRole,
 }: TemplateActionsProps) {
+  const uid = useId();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
@@ -113,14 +114,14 @@ export function TemplateActions({
           <h3 className="font-semibold text-xs text-amber-900 uppercase tracking-wider">
             Compliance Review Panel (Version {versionNumber})
           </h3>
-          <p className="text-xs text-slate-600">
+          <p className="text-xs text-muted-foreground">
             This marketing template has been submitted for compliance approval. Review the body and compliance findings before deciding.
           </p>
 
           {showRejectInput ? (
             <div className="space-y-2">
-              <label className="text-2xs uppercase font-bold text-slate-500 block">Rejection notes</label>
-              <textarea
+              <label htmlFor={`${uid}-rejection-notes`} className="text-2xs uppercase font-bold text-muted-foreground block">Rejection notes</label>
+              <textarea id={`${uid}-rejection-notes`}
                 value={rejectReason}
                 onChange={(e) => setRejectReason(e.target.value)}
                 placeholder="Explain why this template is being rejected (e.g. missing disclaimer, guaranteed returns language, etc.)"
@@ -131,7 +132,7 @@ export function TemplateActions({
                 <button
                   onClick={() => setShowRejectInput(false)}
                   disabled={loading}
-                  className="px-2.5 py-1 rounded text-xs border bg-white hover:bg-slate-50"
+                  className="px-2.5 py-1 rounded text-xs border bg-white hover:bg-secondary"
                 >
                   Cancel
                 </button>

@@ -10,6 +10,8 @@ import { Save, Printer, RefreshCw } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { useToast } from "@/components/ui/Toast";
 import type { EffortsStatus } from "@/lib/finance/efforts";
+import { formatDate } from "@/lib/format";
+import { TableSkeleton } from "@/components/common/Skeleton";
 
 function defaultPeriod(): string {
   const d = new Date();
@@ -22,7 +24,7 @@ function recentMonths(count = 24) {
   const d = new Date();
   d.setDate(1);
   for (let i = 0; i < count; i++) {
-    out.push({ value: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, label: d.toLocaleString("en-IN", { month: "long", year: "numeric" }) });
+    out.push({ value: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, label: formatDate(d, "monthYear") });
     d.setMonth(d.getMonth() - 1);
   }
   return out;
@@ -127,7 +129,7 @@ export function EffortsBoard() {
       </div>
 
       {loading || !data ? (
-        <div className="text-sm text-muted-foreground py-10 text-center">Loading…</div>
+        <div className="text-sm text-muted-foreground py-10 text-center" aria-busy="true"><TableSkeleton rows={4} /></div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border max-w-2xl">
           <table className="w-full text-sm border-collapse">

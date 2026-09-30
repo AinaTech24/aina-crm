@@ -91,7 +91,7 @@ export default async function PublicRiskFormPage({ params }: { params: Promise<{
   });
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-secondary">
       {/* Brand header */}
       <header className="bg-white border-b">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
@@ -141,7 +141,7 @@ function maskEmail(email: string | null): string | null {
 
 function ErrorScreen({ message }: { message: string }) {
   return (
-    <div className="min-h-screen bg-slate-50 grid place-items-center p-6">
+    <div className="min-h-screen bg-secondary grid place-items-center p-6">
       <div className="max-w-md bg-white rounded-lg shadow p-6 text-center">
         <ShieldCheck className="size-10 text-rose-600 mx-auto" />
         <h1 className="text-lg font-semibold mt-3">Link unavailable</h1>
@@ -161,7 +161,7 @@ function ErrorScreen({ message }: { message: string }) {
  */
 function SampleScreen({ what }: { what: string }) {
   return (
-    <div className="min-h-screen bg-slate-50 grid place-items-center p-6">
+    <div className="min-h-screen bg-secondary grid place-items-center p-6">
       <div className="max-w-md bg-white rounded-lg shadow p-6 text-center">
         <ShieldCheck className="size-10 text-brand-cyan mx-auto" />
         <h1 className="text-lg font-semibold mt-3">This is a sample link</h1>

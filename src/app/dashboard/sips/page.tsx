@@ -14,6 +14,7 @@ import { ColumnManager } from "@/components/common/ColumnManager";
 import { Pager } from "@/components/common/Pager";
 import { ModuleTabs, SIP_TABS } from "@/components/common/ModuleTabs";
 import { sipNextDue, indiaToday } from "@/lib/sips/next-due";
+import { clientWhere, sipMonthlySql, textList, type MetricScope } from "@/lib/metrics";
 
 const SIPS_COLUMNS = [
   { key: "investor", label: "Investor", required: true },
@@ -90,35 +91,56 @@ export default async function SipsPage({
 
   const today = indiaToday();
 
+  // The dashboard's SIP book card sends its filters (components/dashboards/
+  // system/links.ts sipsHref): the client spine — rm, branch, segment,
+  // category, fam, tag, src — applied through the SIP's client exactly as
+  // lib/metrics clientWhere counts the book, and amc (sips.amc_name). They
+  // narrow the totals AND the rows, so "Monthly SIP book" is the card's figure
+  // and the row count is its SIP count. The own-book slice still applies.
+  const csvParam = (k: string) => (sp[k] ?? "").split(",").map((v) => v.trim()).filter(Boolean);
+  const bookScope: MetricScope = {
+    tenantId: session.tenantId,
+    rmIds: csvParam("rm"),
+    branchIds: csvParam("branch"),
+    segments: csvParam("segment"),
+    categories: csvParam("category"),
+    familyIds: csvParam("fam"),
+    tags: csvParam("tag"),
+    leadSources: csvParam("src"),
+    amcs: csvParam("amc"),
+  };
+  const amcs = bookScope.amcs ?? [];
+
   const data = await withTenant(session.tenantId, async (tx) => {
     // Own-book slice for non-managers: SIPs they own OR for a client they manage.
     const statsScope = seesAll
       ? sql``
-      : sql` AND (rm_id = ${session.userId}::uuid OR investor_id IN (SELECT id FROM investors WHERE rm_id = ${session.userId}::uuid))`;
+      : sql` AND (s.rm_id = ${session.userId}::uuid OR i.rm_id = ${session.userId}::uuid)`;
+    // The SIP book is defined once (lib/metrics/sip.ts): active SIPs of live
+    // clients, converted to a monthly figure — the same number as the
+    // dashboard's SIP book card and the sum of the clients' "Monthly SIP".
     const stats = await tx.execute(sql`
       SELECT
-        COUNT(*) FILTER (WHERE status = 'active')::int AS active_sips,
-        -- Per month: weekly, fortnightly, quarterly and yearly SIPs are
-        -- converted, so a quarterly 30,000 counts as 10,000 a month.
-        COALESCE(SUM(CASE WHEN status = 'active' THEN amount::numeric * CASE frequency
-          WHEN 'weekly' THEN 52.0 / 12 WHEN 'fortnightly' THEN 26.0 / 12
-          WHEN 'quarterly' THEN 1.0 / 3 WHEN 'yearly' THEN 1.0 / 12 ELSE 1 END
-          ELSE 0 END), 0) AS active_amount,
-        COUNT(*) FILTER (WHERE status = 'active' AND created_at >= date_trunc('month', now()))::int AS added_mtd,
-        COUNT(*) FILTER (WHERE status IN ('stopped', 'rejected') AND updated_at >= date_trunc('month', now()))::int AS lost_mtd,
-        COUNT(*) FILTER (WHERE status = 'active' AND end_date IS NOT NULL
-          AND end_date >= current_date
-          AND end_date <= current_date + interval '90 days')::int AS expiring_soon
-      FROM sips
-      WHERE tenant_id = ${session.tenantId}::uuid
-        AND investor_id IN (SELECT id FROM investors WHERE deleted_at IS NULL)${statsScope}
+        COUNT(*) FILTER (WHERE s.status = 'active')::int AS active_sips,
+        COALESCE(SUM(${sipMonthlySql("s")}) FILTER (WHERE s.status = 'active'), 0) AS active_amount,
+        COUNT(*) FILTER (WHERE s.status = 'active' AND s.created_at >= date_trunc('month', now()))::int AS added_mtd,
+        COUNT(*) FILTER (WHERE s.status IN ('stopped', 'rejected') AND s.updated_at >= date_trunc('month', now()))::int AS lost_mtd,
+        COUNT(*) FILTER (WHERE s.status = 'active' AND s.end_date IS NOT NULL
+          AND s.end_date >= current_date
+          AND s.end_date <= current_date + interval '90 days')::int AS expiring_soon
+      FROM sips s JOIN investors i ON i.id = s.investor_id
+      WHERE s.tenant_id = ${session.tenantId}::uuid
+        AND ${clientWhere(bookScope, "i")}${amcs.length ? sql` AND s.amc_name IN (${textList(amcs)})` : sql``}${statsScope}
     `);
     const s = stats.rows[0] as any;
 
-    const conds: any[] = [];
-    // Exclude SIPs whose client is soft-deleted (in Trash) — they were showing
-    // here with investor links that 404'd on the deleted client.
-    conds.push(isNull(investors.deletedAt));
+    const conds: any[] = [eq(sips.tenantId, session.tenantId)];
+    // Live clients only — the same clients the SIP book total is taken over
+    // (not deleted, not merged away, not closed), so the rows add up to it —
+    // narrowed by the dashboard's client filters (bookScope above).
+    conds.push(sql`(${clientWhere(bookScope, "investors")})`);
+    // amc — the dashboard's AMC filter, on the SIP itself.
+    if (amcs.length) conds.push(inArray(sips.amcName, amcs));
     if (!seesAll) conds.push(or(eq(sips.rmId, session.userId), eq(investors.rmId, session.userId))!);
     if (q) {
       conds.push(

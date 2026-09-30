@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 const MANAGE_ROLES = ["owner", "branch_head", "rm", "back_office", "ops"];
 const PRODUCT_LABEL: Record<string, string> = { mutual_fund: "Mutual Fund", pms: "PMS", aif: "AIF", sif: "SIF", bond: "Bond", ncd: "NCD", other: "Other" };
 const TXN_LABEL: Record<string, string> = { sip: "SIP", sip_topup: "SIP Top-Up", sip_stop: "SIP Stop", other: "Others", lumpsum: "Lumpsum", additional_purchase: "Add'l Purchase", switch: "Switch", stp: "STP", swp: "SWP", redemption: "Redemption" };
-const STATUS_TONE: Record<string, string> = { draft: "bg-slate-100 text-slate-600", confirmed: "bg-sky-50 text-sky-700", emailed: "bg-emerald-50 text-emerald-700", cancelled: "bg-rose-50 text-rose-600" };
+const STATUS_TONE: Record<string, string> = { draft: "bg-secondary text-muted-foreground", confirmed: "bg-sky-50 text-sky-700", emailed: "bg-emerald-50 text-emerald-700", cancelled: "bg-rose-50 text-rose-600" };
 
 export default async function BusinessEntryDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession();

@@ -99,7 +99,7 @@ export function RowActions({
         {editHref && (
           <Link
             href={editHref}
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="btn-icon"
             aria-label={`Edit ${itemLabel}`}
             title="Edit"
           >

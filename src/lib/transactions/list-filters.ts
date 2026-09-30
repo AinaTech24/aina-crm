@@ -13,6 +13,7 @@
 
 import { inArray, sql } from "drizzle-orm";
 import { transactions, investors } from "@/db/schema";
+import { clientRecordWhere } from "@/lib/metrics/scope";
 
 export type TxListParams = Record<string, string | undefined>;
 
@@ -60,8 +61,31 @@ export function expandStatusFilter(raw: string[]): string[] {
  *
  * Keep this in step with buildTransactionConditions below.
  */
-export function transactionFiltersNeedInvestors(sp: TxListParams): boolean {
-  return Boolean((sp.q ?? "").trim()) || csv(sp.rm).length > 0;
+export function transactionFiltersNeedInvestors(_sp: TxListParams): boolean {
+  // Always: every list and export applies transactionClientCondition, which
+  // reads the client row.
+  return true;
+}
+
+/**
+ * The client side of a transaction list, shared by the page and the export:
+ * the firm, a live client record (not in Trash, not merged away — the rule the
+ * dashboard's Net business and money-movement figures are summed over,
+ * lib/metrics clientRecordWhere) and the dashboard's client filters as its
+ * links send them (rm, branch, segment, category, fam, tag, src). Only ever
+ * narrows. Needs the investors table joined.
+ */
+export function transactionClientCondition(sp: TxListParams, tenantId: string) {
+  return sql`(${clientRecordWhere({
+    tenantId,
+    rmIds: csv(sp.rm),
+    branchIds: csv(sp.branch),
+    segments: csv(sp.segment),
+    categories: csv(sp.category),
+    familyIds: csv(sp.fam),
+    tags: csv(sp.tag),
+    leadSources: csv(sp.src),
+  }, "investors")})`;
 }
 
 /** Build the array of Drizzle conditions for the transactions list (no cursor). */

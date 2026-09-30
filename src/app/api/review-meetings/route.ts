@@ -21,6 +21,11 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
 import { findRmConflicts } from "@/lib/review-meetings/conflicts";
+import { formatDate } from "@/lib/format";
+import { mobileOwnerScope } from "@/lib/mobile/access";
+import { assertMobileAssignee } from "@/lib/mobile/record-access";
+import { loadViewableInvestor } from "@/lib/investors/access";
+import { loadViewableLead } from "@/lib/leads/access";
 import {
   reviewMeetings,
   investors,
@@ -92,6 +97,7 @@ export async function GET(req: NextRequest) {
       session.tenantId,
       async (tx) => {
         const filters: any[] = [sql`m.tenant_id = ${session.tenantId}::uuid`];
+        if (session.mobile) filters.push(mobileOwnerScope(session, "m.rm_id"));
         if (!canAll) filters.push(sql`m.rm_id = ${session.userId}::uuid`);
         if (leadId) filters.push(sql`m.lead_id = ${leadId}::uuid`);
         if (q) filters.push(sql`(i.name ILIKE ${`%${q}%`} OR l.name ILIKE ${`%${q}%`} OR u.name ILIKE ${`%${q}%`} OR m.discussion_points ILIKE ${`%${q}%`} OR m.meeting_notes ILIKE ${`%${q}%`})`);
@@ -118,7 +124,7 @@ export async function GET(req: NextRequest) {
         `);
 
         // Stats ribbon — the 4 fixed metrics, scoped to tenant (+ RM for .assigned).
-        const scopeStats = canAll ? sql`` : sql` AND rm_id = ${session.userId}::uuid`;
+        const scopeStats = session.mobile ? sql` AND ${mobileOwnerScope(session, "review_meetings.rm_id")}` : canAll ? sql`` : sql` AND rm_id = ${session.userId}::uuid`;
         const statsRes = await tx.execute(sql`
           SELECT
             COUNT(*) FILTER (WHERE status IN ('scheduled','confirmed') AND meeting_date >= now())::int AS upcoming,
@@ -153,6 +159,8 @@ export async function POST(req: NextRequest) {
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     const result = await withTenant(session.tenantId, async (tx) => {
+      if (session.mobile && body.investorId && !await loadViewableInvestor(tx, session, body.investorId)) throw Object.assign(new Error("Client not found"), { status: 404 });
+      if (session.mobile && body.leadId && !await loadViewableLead(tx, session, body.leadId)) throw Object.assign(new Error("Lead not found"), { status: 404 });
       // Resolve the subject — investor OR lead. The XOR was enforced by zod.
       let subjectName = "";
       let subjectRmId: string | null = null;
@@ -176,6 +184,7 @@ export async function POST(req: NextRequest) {
 
       const id = uuid();
       const rmId = body.rmId ?? subjectRmId ?? session.userId;
+      await assertMobileAssignee(tx, session, rmId);
       const meetingDate = new Date(body.meetingDate);
 
       // ─── Double-booking guard ──────────────────────────────────────
@@ -276,7 +285,7 @@ export async function POST(req: NextRequest) {
       // hop to the lead detail page and click Advance.
       if (body.leadId) {
         await autoAdvance(tx, session.tenantId, body.leadId, "meeting.scheduled.lead", {
-          remarks: `Auto: ${labelForType(body.meetingType)} scheduled for ${meetingDate.toLocaleDateString("en-IN")}.`,
+          remarks: `Auto: ${labelForType(body.meetingType)} scheduled for ${formatDate(meetingDate)}.`,
         });
       }
 

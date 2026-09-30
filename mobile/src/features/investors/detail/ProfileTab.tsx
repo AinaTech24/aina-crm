@@ -125,7 +125,7 @@ export function ProfileTab({ d }: { d: any }) {
         )}
         {i.notes ? (
           <View style={{ marginTop: spacing.sm }}>
-            <Text style={{ fontWeight: fontWeight.semibold as any, marginBottom: 2 }}>Notes</Text>
+            <Text style={{ fontWeight: fontWeight.semibold, marginBottom: 2 }}>Notes</Text>
             <Text variant="caption" tone="muted">{i.notes}</Text>
           </View>
         ) : null}
@@ -134,7 +134,7 @@ export function ProfileTab({ d }: { d: any }) {
       {/* Completeness */}
       <Section title="Profile completeness" icon="check-circle">
         <View style={styles.compHead}>
-          <Text style={{ fontSize: 22, fontWeight: fontWeight.bold as any }}>{comp.pct ?? comp.score ?? 0}%</Text>
+          <Text style={{ fontSize: 22, fontWeight: fontWeight.bold }}>{comp.pct ?? comp.score ?? 0}%</Text>
           <View style={styles.compTrack}><View style={[styles.compFill, { width: `${comp.pct ?? comp.score ?? 0}%` }]} /></View>
         </View>
         {(comp.missing ?? []).length > 0 ? <Text variant="caption" tone="muted">Missing: {(comp.missing ?? []).join(", ")}</Text> : <Text variant="caption" tone="muted">All key fields captured.</Text>}

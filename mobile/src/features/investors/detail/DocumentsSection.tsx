@@ -18,6 +18,7 @@ import { confirmDelete } from "../../../lib/confirm";
 import { fmtDate, titleCase } from "../../../lib/format";
 import { palette, radius, spacing, fontWeight } from "../../../theme/tokens";
 import { useDocuments, useUploadDocument, useDeleteDocument, getDocumentUrl } from "./subfeatures";
+import { asIcon } from "../../../lib/icons";
 
 const iconFor = (mime?: string | null) => (!mime ? "file" : mime.includes("pdf") ? "file-text" : mime.startsWith("image/") ? "image" : "file");
 const kb = (b?: string | null) => (b ? `${Math.max(1, Math.round(Number(b) / 1024))} KB` : "");
@@ -58,13 +59,13 @@ export function DocumentsSection({ id, clientName }: { id: string; clientName?: 
   };
 
   return (
-    <Section title="Documents" icon="paperclip" right={<Pressable onPress={() => setPick(true)} hitSlop={8}><Feather name="upload" size={16} color={palette.brand} /></Pressable>}>
+    <Section title="Documents" icon="paperclip" right={<Pressable accessibilityRole="button" accessibilityLabel="Upload document" onPress={() => setPick(true)} hitSlop={8}><Feather name="upload" size={16} color={palette.brand} /></Pressable>}>
       {upload.isPending ? <Text variant="caption" tone="muted" style={{ marginBottom: spacing.xs }}>Uploading…</Text> : null}
       {docs.length === 0 ? <Empty text="No documents. Tap upload to add KYC / statements / forms." /> : docs.map((doc) => (
         <Pressable key={doc.id} style={styles.row} onPress={() => openDoc(doc.id)} onLongPress={() => removeDoc(doc.id, doc.name)}>
-          <Feather name={iconFor(doc.mimeType) as any} size={16} color={palette.brand} />
+          <Feather name={asIcon(iconFor(doc.mimeType))} size={16} color={palette.brand} />
           <View style={{ flex: 1 }}>
-            <Text variant="caption" style={{ fontWeight: fontWeight.medium as any }} numberOfLines={1}>{doc.name}</Text>
+            <Text variant="caption" style={{ fontWeight: fontWeight.medium }} numberOfLines={1}>{doc.name}</Text>
             <Text variant="caption" tone="faint">{[titleCase(doc.category), kb(doc.sizeBytes), fmtDate(doc.createdAt)].filter(Boolean).join(" · ")}</Text>
           </View>
           <Feather name="external-link" size={14} color={palette.faint} />

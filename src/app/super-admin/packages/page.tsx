@@ -61,7 +61,7 @@ export default async function PackagesPage() {
                 <h3 className="font-semibold">{p.name}</h3>
                 <span
                   className={`text-xs px-2 py-0.5 rounded-full ${
-                    p.isActive ? "bg-emerald-50 text-emerald-700" : "bg-gray-50 text-gray-600"
+                    p.isActive ? "bg-emerald-50 text-emerald-700" : "bg-secondary text-muted-foreground"
                   }`}
                 >
                   {p.isActive ? "active" : "disabled"}

@@ -36,7 +36,8 @@
       },
       "channel": "production",
       "env": {
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true",
+        "AINA_STORE_BUILD": "1"
       }
     }
   },

@@ -48,7 +48,7 @@ function GoalCard({ g, onPress, onLong }: { g: Goal; onPress: () => void; onLong
           </Text>
         </View>
         <View style={{ alignItems: "flex-end" }}>
-          <Text style={{ fontWeight: fontWeight.bold as any }}>{inr(g.targetAmount)}</Text>
+          <Text style={{ fontWeight: fontWeight.bold }}>{inr(g.targetAmount)}</Text>
           <StatusPill label={st.label} tone={st.tone} size="sm" dot={false} />
         </View>
       </View>
@@ -64,7 +64,7 @@ function GoalCard({ g, onPress, onLong }: { g: Goal; onPress: () => void; onLong
 function StatTile({ tone, label, value }: { tone: string; label: string; value: number }) {
   return (
     <View style={styles.statTile}>
-      <Text style={{ fontSize: 20, fontWeight: fontWeight.bold as any, color: value > 0 ? tone : palette.ink }}>{value}</Text>
+      <Text style={{ fontSize: 20, fontWeight: fontWeight.bold, color: value > 0 ? tone : palette.ink }}>{value}</Text>
       <Text variant="caption" tone="muted" numberOfLines={1}>{label}</Text>
     </View>
   );
@@ -104,7 +104,7 @@ export default function GoalsList() {
       <View style={styles.toolbarRow}>
         <Pressable style={styles.filterBtn} onPress={() => setSheetOpen(true)}>
           <Feather name="sliders" size={15} color={activeCount ? palette.brand : palette.ink} />
-          <Text style={{ fontWeight: fontWeight.medium as any, color: activeCount ? palette.brand : palette.ink }}>Filter & sort{activeCount ? ` · ${activeCount}` : ""}</Text>
+          <Text style={{ fontWeight: fontWeight.medium, color: activeCount ? palette.brand : palette.ink }}>Filter & sort{activeCount ? ` · ${activeCount}` : ""}</Text>
         </Pressable>
         {activeCount > 0 ? <Pressable onPress={() => setFilters({ ...EMPTY_GOAL_FILTERS })} hitSlop={8}><Text variant="caption" style={{ color: palette.danger }}>Clear</Text></Pressable> : null}
       </View>
@@ -133,7 +133,7 @@ export default function GoalsList() {
           ListEmptyComponent={debounced || activeCount ? <SearchEmptyState query={debounced || "these filters"} /> : <EmptyState icon="target" title="No goals yet" message="Add a goal to compute the required SIP and gap live." />}
         />
       )}
-      <FAB icon="plus" onPress={() => router.push("/m/goals/new" as any)} />
+      <FAB icon="plus" label="New goal" onPress={() => router.push("/m/goals/new" as any)} />
 
       <GoalFilters visible={sheetOpen} onClose={() => setSheetOpen(false)} value={filters} onApply={setFilters} />
 

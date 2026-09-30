@@ -10,6 +10,7 @@ import { v4 as uuid } from "uuid";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
+import { withIdempotentMutation } from "@/lib/api/idempotent-mutation";
 import { pickAssignee } from "@/lib/assignment/engine";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, requireAny } from "@/lib/auth/rbac";
@@ -172,13 +173,18 @@ export async function POST(req: NextRequest) {
     let assignedOwnerId: string | null = null;
     let assignedVia: "manual" | "round_robin" | "creator" = "creator";
 
-    await withTenant(session.tenantId, async (tx) => {
+    const result = await withIdempotentMutation(session, req, body, async (tx) => {
       // Resolve owner: explicit body.ownerId wins; otherwise auto-assign to an
       // RM via least-loaded round-robin; otherwise fall back to the creator.
-      if (body.ownerId && canEditAllLeads(session)) {
+      if (body.ownerId && (canEditAllLeads(session) || (session.mobile && session.roles.includes("rm")))) {
+        const recipient = (await tx.execute(sql`SELECT id, branch_id FROM users WHERE tenant_id = ${session.tenantId}::uuid
+          AND id = ${body.ownerId}::uuid AND status = 'active'`)).rows[0];
+        if (!recipient) throw Object.assign(new Error("Choose an active team member in this firm"), { status: 400 });
+        if (session.mobile && !session.roles.some(r => ["owner", "ops", "back_office"].includes(r)) && body.ownerId !== session.userId
+          && (!session.branchId || recipient.branch_id !== session.branchId)) throw Object.assign(new Error("You may assign leads only within your branch"), { status: 403 });
         assignedOwnerId = body.ownerId;
         assignedVia = "manual";
-      } else if (!canEditAllLeads(session)) {
+      } else if (!canEditAllLeads(session) || (session.mobile && !session.roles.some(r => ["owner", "ops", "back_office"].includes(r)))) {
         assignedOwnerId = session.userId;
         assignedVia = "creator";
       } else {
@@ -208,6 +214,15 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // Mobile branch visibility follows the assigned RM, including entries
+      // made by a firm-wide Operations user for a different branch.
+      let assignedBranchId = session.branchId;
+      if (session.mobile && assignedOwnerId) {
+        const assigned = (await tx.execute(sql`SELECT branch_id FROM users
+          WHERE tenant_id = ${session.tenantId}::uuid AND id = ${assignedOwnerId}::uuid`)).rows[0];
+        assignedBranchId = assigned?.branch_id as string | undefined;
+      }
+
       // Canonical pipeline value wins; keep intended_amount populated (from it)
       // so legacy scoring + old readers keep working.
       const intendedAmount =
@@ -225,7 +240,7 @@ export async function POST(req: NextRequest) {
         .values({
           id,
           tenantId: session.tenantId,
-          branchId: session.branchId,
+          branchId: assignedBranchId,
           name: body.name,
           email: body.email || null,
           emailNormalized: normalizeEmail(body.email),
@@ -308,9 +323,10 @@ export async function POST(req: NextRequest) {
         after: { name: body.name, source: body.source, stage: "new", ownerId: assignedOwnerId, assignedVia },
         ...clientMeta,
       });
+      return { id, ownerId: assignedOwnerId, assignedVia };
     });
 
-    return NextResponse.json({ id, ownerId: assignedOwnerId, assignedVia }, { status: 201 });
+    return NextResponse.json(result, { status: 201 });
   } catch (err: any) {
     return handleApiError(err);
   }

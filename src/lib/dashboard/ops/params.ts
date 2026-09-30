@@ -6,13 +6,13 @@
  *
  * The params are the shared dashboard filter bar's (lib/dashboards/system/
  * filters.ts): every field is a comma-separated list — `branch`, `rm`, `exec`,
- * `kind`, `st`, `prio`, `sla`, `pw`, `cat` — plus `period` with `from` / `to`
- * for a custom range. `mode` is still read for an export link that carries it.
+ * `kind`, `st`, `prio`, `sla`, `pw`, `cat`, `age`, `mode` — plus `period` with
+ * `from` / `to` for a custom range.
  */
 
 import { resolvePeriodRange, toLocalISODate, type Period } from "@/lib/dashboard/period";
 import { formatRange } from "@/lib/dashboards/system/period";
-import { OPS_KINDS, PENDING_WITH, PRIORITIES, SLA_STATES, STATUS_FILTERS, type OpsFilter } from "./window";
+import { AGE_BUCKETS, MODE_FILTERS, OPS_KINDS, PENDING_WITH, PRIORITIES, SLA_STATES, STATUS_FILTERS, type OpsFilter } from "./window";
 
 type SP = Record<string, string | string[] | undefined>;
 
@@ -50,8 +50,10 @@ export function parseOpsFilter(sp: SP, userId: string): OpsFilter {
   if (pw.length) f.pendingWith = pw;
   const cat = listIn(s(sp, "cat"), ["A", "B", "C", "D", "none"]);
   if (cat.length) f.categories = cat;
-  const mode = s(sp, "mode");
-  if (mode === "online" || mode === "offline") f.mode = mode;
+  const ages = listIn(s(sp, "age"), AGE_BUCKETS.map((x) => x.key));
+  if (ages.length) f.ages = ages;
+  const modes = listIn(s(sp, "mode"), MODE_FILTERS.map((x) => x.key));
+  if (modes.length) f.modes = modes;
   return f;
 }
 

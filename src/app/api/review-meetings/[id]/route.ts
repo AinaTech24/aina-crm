@@ -23,6 +23,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
 import { computeNextReview } from "@/lib/investors/review-cadence";
+import { formatDate } from "@/lib/format";
 import {
   reviewMeetings,
   investors,
@@ -271,7 +272,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         // the user sees their journey progress without a manual click.
         if (before.leadId) {
           await autoAdvance(tx, session.tenantId, before.leadId, "meeting.completed", {
-            remarks: `Auto: meeting marked completed on ${new Date().toLocaleDateString("en-IN")}.`,
+            remarks: `Auto: meeting marked completed on ${formatDate(new Date())}.`,
           });
         } else if (before.investorId) {
           // Client-side meeting completion → if the client was converted

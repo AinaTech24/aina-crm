@@ -90,7 +90,7 @@ export function ResultBlockView({ block }: { block: ResultBlock }) {
     const tc = toneColors((block.tone ?? TONE_FALLBACK) as any);
     return (
       <View style={[styles.stat, { backgroundColor: tc.bg }]}>
-        <Text variant="caption" style={{ color: tc.fg, fontWeight: fontWeight.medium as any }}>{block.label}</Text>
+        <Text variant="caption" style={{ color: tc.fg, fontWeight: fontWeight.medium }}>{block.label}</Text>
         <Text style={[styles.statValue, { color: tc.fg }]}>{block.value}</Text>
         {block.hint ? <Text variant="caption" style={{ color: tc.fg, opacity: 0.8 }}>{block.hint}</Text> : null}
       </View>
@@ -143,8 +143,8 @@ export function resultsToText(name: string, firm: string, blocks: ResultBlock[])
 const styles = StyleSheet.create({
   field: { marginBottom: spacing.lg },
   inputWrap: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: palette.line, borderRadius: radius.md, backgroundColor: palette.surface, paddingHorizontal: spacing.lg },
-  input: { flex: 1, fontSize: fontSize.lg, color: palette.ink, paddingVertical: spacing.md, fontWeight: fontWeight.semibold as any },
-  unitLead: { fontSize: fontSize.lg, color: palette.muted, marginRight: 4, fontWeight: fontWeight.semibold as any },
+  input: { flex: 1, fontSize: fontSize.lg, color: palette.ink, paddingVertical: spacing.md, fontWeight: fontWeight.semibold },
+  unitLead: { fontSize: fontSize.lg, color: palette.muted, marginRight: 4, fontWeight: fontWeight.semibold },
   unitTrail: { fontSize: fontSize.md, color: palette.muted, marginLeft: 4 },
   toggleRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   switch: { width: 44, height: 26, borderRadius: 13, backgroundColor: palette.line, padding: 3, justifyContent: "center" },
@@ -153,13 +153,13 @@ const styles = StyleSheet.create({
   knobOn: { alignSelf: "flex-end" },
   section: { letterSpacing: 0.6, marginTop: spacing.lg, marginBottom: spacing.sm },
   stat: { borderRadius: radius.md, padding: spacing.lg, marginBottom: spacing.sm },
-  statValue: { fontSize: 24, fontWeight: fontWeight.bold as any, marginTop: 2, letterSpacing: -0.4 },
+  statValue: { fontSize: 24, fontWeight: fontWeight.bold, marginTop: 2, letterSpacing: -0.4 },
   insight: { flexDirection: "row", gap: spacing.sm, borderRadius: radius.md, borderLeftWidth: 3, padding: spacing.md, marginBottom: spacing.sm },
   table: { borderWidth: 1, borderColor: palette.line, borderRadius: radius.md, overflow: "hidden", marginBottom: spacing.sm },
   tr: { flexDirection: "row", paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   thead: { backgroundColor: palette.surfaceSunken },
   trAlt: { backgroundColor: palette.surfaceAlt },
-  th: { flex: 1, textAlign: "right", fontWeight: fontWeight.semibold as any, color: palette.muted },
+  th: { flex: 1, textAlign: "right", fontWeight: fontWeight.semibold, color: palette.muted },
   thFirst: { flex: 1.4, textAlign: "left" },
   td: { flex: 1, textAlign: "right", color: palette.ink },
   tdFirst: { flex: 1.4, textAlign: "left", color: palette.muted },

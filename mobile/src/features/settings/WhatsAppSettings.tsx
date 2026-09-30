@@ -74,7 +74,7 @@ export function WhatsAppSettings() {
 function Tile({ label, value, color }: { label: string; value: number; color: string }) {
   return (
     <View style={styles.tile}>
-      <Text style={{ fontSize: fontSize.xl, fontWeight: fontWeight.bold as any, color }}>{value}</Text>
+      <Text style={{ fontSize: fontSize.xl, fontWeight: fontWeight.bold, color }}>{value}</Text>
       <Text variant="caption" tone="muted">{label}</Text>
     </View>
   );
@@ -82,7 +82,7 @@ function Tile({ label, value, color }: { label: string; value: number; color: st
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.surfaceAlt },
-  section: { fontSize: fontSize.xs, fontWeight: fontWeight.bold as any, letterSpacing: 0.6, color: palette.muted, marginTop: spacing.xl, marginBottom: spacing.sm },
+  section: { fontSize: fontSize.xs, fontWeight: fontWeight.bold, letterSpacing: 0.6, color: palette.muted, marginTop: spacing.xl, marginBottom: spacing.sm },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.lg },
   divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line },
   iconWrap: { width: 34, height: 34, borderRadius: radius.md, backgroundColor: palette.successBg, alignItems: "center", justifyContent: "center" },

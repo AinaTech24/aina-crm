@@ -9,6 +9,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Download } from "lucide-react";
+import { formatDate } from "@/lib/format";
 
 type Row = {
   id: string;
@@ -64,7 +65,7 @@ const LINK_TONE: Record<string, string> = {
   linked: "bg-emerald-50 text-emerald-700",
   not_linked: "bg-rose-50 text-rose-700",
   pending: "bg-amber-50 text-amber-700",
-  not_applicable: "bg-slate-100 text-slate-600",
+  not_applicable: "bg-secondary text-muted-foreground",
 };
 
 const RESIDENCY_LABELS: Record<string, string> = {
@@ -257,7 +258,7 @@ export function KycTrackerClient({
       {/* Table */}
       <div className="card-surface overflow-x-auto">
         <table className="w-full text-xs min-w-[1200px]">
-          <thead className="bg-slate-50 text-slate-600">
+          <thead className="bg-secondary text-muted-foreground">
             <tr>
               <th className="px-3 py-2 text-left">Client</th>
               <th className="px-3 py-2 text-left">PAN</th>
@@ -282,7 +283,7 @@ export function KycTrackerClient({
               </tr>
             ) : (
               filtered.map((r) => (
-                <tr key={r.id} className="border-t hover:bg-slate-50/60">
+                <tr key={r.id} className="border-t hover:bg-secondary/60">
                   <td className="px-3 py-2 align-top">
                     <Link
                       href={`/dashboard/investors/${r.id}`}
@@ -305,7 +306,7 @@ export function KycTrackerClient({
                   <td className="px-3 py-2">
                     <span
                       className={`chip text-2xs ${
-                        KYC_TONE[r.kycStatus] ?? "bg-slate-100"
+                        KYC_TONE[r.kycStatus] ?? "bg-secondary"
                       }`}
                     >
                       {KYC_LABELS[r.kycStatus] ?? r.kycStatus}
@@ -315,7 +316,7 @@ export function KycTrackerClient({
                     {r.panAadhaarLinkStatus ? (
                       <span
                         className={`chip text-2xs ${
-                          LINK_TONE[r.panAadhaarLinkStatus] ?? "bg-slate-100"
+                          LINK_TONE[r.panAadhaarLinkStatus] ?? "bg-secondary"
                         }`}
                       >
                         {LINK_LABELS[r.panAadhaarLinkStatus] ??
@@ -343,21 +344,14 @@ export function KycTrackerClient({
                   </td>
                   <td className="px-3 py-2">
                     {r.kycValidatedAt
-                      ? new Date(r.kycValidatedAt).toLocaleDateString(
-                          "en-GB",
-                          {
-                            day: "2-digit",
-                            month: "short",
-                            year: "2-digit",
-                          }
-                        )
+                      ? formatDate(new Date(r.kycValidatedAt))
                       : "—"}
                   </td>
                   <td className="px-3 py-2">
                     {r.kycLastUpdatedByName ?? "—"}
                     {r.updatedAt && (
                       <div className="text-2xs text-muted-foreground">
-                        {new Date(r.updatedAt).toLocaleDateString("en-GB")}
+                        {formatDate(new Date(r.updatedAt))}
                       </div>
                     )}
                   </td>
@@ -418,7 +412,7 @@ function ChipBtn({
     <button
       onClick={onClick}
       className={`chip text-xs ${
-        on ? "bg-slate-900 text-white" : "bg-slate-100"
+        on ? "bg-slate-900 text-white" : "bg-secondary"
       }`}
     >
       {children}
@@ -442,11 +436,7 @@ function ExpiryBadge({ date }: { date: string | null }) {
           : "bg-emerald-50 text-emerald-700";
   return (
     <span className={`chip text-2xs ${tone}`}>
-      {new Date(date).toLocaleDateString("en-GB", {
-        day: "2-digit",
-        month: "short",
-        year: "2-digit",
-      })}
+      {formatDate(new Date(date))}
     </span>
   );
 }

@@ -14,6 +14,8 @@ import { useRecentlyViewed } from "./recentlyViewed";
 import { accountFromToken, setAccountScope } from "../lib/accountScope";
 import { queryClient } from "../api/queryClient";
 import { wipePersistedCache } from "../api/queryPersist";
+import { isUnexpiredSession } from "../lib/offlineSession";
+import { useConnectivity } from "./connectivity";
 
 type Status = "loading" | "authed" | "guest";
 
@@ -41,7 +43,13 @@ export const useSession = create<SessionState>((set, get) => ({
     try {
       const saved = await storageGet(TOKEN_KEY);
       if (!saved) { setAccountScope(null); return set({ status: "guest", token: null, owner: null }); }
-      const fresh = await refreshToken(saved);
+      let fresh: string | null;
+      try { fresh = await refreshToken(saved); }
+      catch {
+        if (!isUnexpiredSession(saved)) throw new Error("Reconnect to renew your session");
+        fresh = saved;
+        useConnectivity.getState().setOnline(false);
+      }
       if (fresh) {
         const owner = accountFromToken(fresh);
         if (owner !== accountFromToken(saved)) throw new Error("Account changed during refresh");

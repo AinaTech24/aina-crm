@@ -13,6 +13,7 @@ import { BottomSheet } from "../../../components/ui/BottomSheet";
 import { palette, radius, spacing, fontWeight } from "../../../theme/tokens";
 import { useGenerateBrief } from "./subfeatures";
 import { openWhatsApp } from "../../activities/whatsapp";
+import { asIcon } from "../../../lib/icons";
 
 const wa = (p?: string | null) => (p ? p.replace(/[^\d]/g, "").replace(/^0+/, "") : "");
 
@@ -65,7 +66,7 @@ function ListBlock({ title, items, icon, tone }: { title: string; items: string[
     <Block title={title}>
       {items.map((it, i) => (
         <View key={i} style={styles.li}>
-          <Feather name={icon as any} size={13} color={tone ?? palette.brand} style={{ marginTop: 2 }} />
+          <Feather name={asIcon(icon)} size={13} color={tone ?? palette.brand} style={{ marginTop: 2 }} />
           <Text variant="caption" style={{ flex: 1 }}>{it}</Text>
         </View>
       ))}

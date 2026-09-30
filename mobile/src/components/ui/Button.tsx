@@ -75,6 +75,9 @@ function AnimatedButton(p: ButtonProps) {
   const isDisabled = p.disabled || p.loading;
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={p.label}
+      accessibilityState={{ disabled: !!isDisabled, busy: !!p.loading }}
       disabled={isDisabled}
       onPress={() => fire(p.haptic, p.onPress)}
       onPressIn={() => (scale.value = withTiming(0.97, { duration: 80 }))}
@@ -94,6 +97,9 @@ function StaticButton(p: ButtonProps) {
   const isDisabled = p.disabled || p.loading;
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={p.label}
+      accessibilityState={{ disabled: !!isDisabled, busy: !!p.loading }}
       disabled={isDisabled}
       onPress={() => fire(p.haptic, p.onPress)}
       style={({ pressed }) => [styles.base, { height, backgroundColor: v.bg, borderColor: v.border }, isDisabled && { opacity: 0.5 }, pressed && { opacity: 0.9 }, p.full ? { width: "100%" } : undefined, p.style]}

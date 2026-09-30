@@ -14,6 +14,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Send, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
+import { promptDialog } from "@/components/ui/ConfirmProvider";
 
 export function ProposalStatusActions({ id, status }: { id: string; status: string }) {
   const router = useRouter();
@@ -80,8 +81,18 @@ export function ProposalStatusActions({ id, status }: { id: string; status: stri
       )}
       {canReject && (
         <button
-          onClick={() => {
-            const reason = window.prompt("Reason for rejection? (optional)") ?? "";
+          onClick={async () => {
+            const reason = await promptDialog({
+              title: "Mark this proposal rejected?",
+              message: "A reason helps the next person picking up this client.",
+              label: "Reason for rejection",
+              placeholder: "e.g. went with another advisor",
+              confirmLabel: "Mark rejected",
+              multiline: true,
+              optional: true,
+              maxLength: 500,
+            });
+            if (reason === null) return;
             void transition("rejected", { rejectionReason: reason });
           }}
           disabled={!!busy}

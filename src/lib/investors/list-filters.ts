@@ -13,6 +13,8 @@
 
 import { and, ilike, inArray, or, sql } from "drizzle-orm";
 import { investors } from "@/db/schema";
+import { aliveClient, cleanIds, textList, uuidList } from "@/lib/metrics/scope";
+import { missingDataSql, reviewOverdueSql } from "@/lib/metrics/attention";
 
 export type InvestorListParams = Record<string, string | undefined>;
 
@@ -100,13 +102,14 @@ export function buildInvestorConditions(
   // `category=none` is the "no category set" bucket the dashboards link to.
   // Matching it literally found nothing (no client's category is the string
   // "none"), so the link opened an empty list under a count of twelve.
+  // Compared trimmed and upper-cased, exactly as lib/metrics/scope.ts counts a
+  // category, so a stored "a " is Category A on the dashboard and here alike.
   if (category.length) {
-    const named = category.filter((c) => c !== "none");
+    const named = category.filter((c) => c !== "none").map((c) => c.toUpperCase());
+    const catCol = sql`upper(btrim(COALESCE(${investors.clientCategory}, '')))`;
     const parts: any[] = [];
-    if (named.length) parts.push(inArray(investors.clientCategory, named as any));
-    if (named.length !== category.length) {
-      parts.push(sql`(${investors.clientCategory} IS NULL OR btrim(${investors.clientCategory}) = '')`);
-    }
+    if (named.length) parts.push(sql`${catCol} IN (${textList(named)})`);
+    if (named.length !== category.length) parts.push(sql`${catCol} = ''`);
     conditions.push(parts.length === 1 ? parts[0] : or(...parts)!);
   }
   if (tier.length) conditions.push(inArray(investors.serviceTier, tier as any));
@@ -129,11 +132,46 @@ export function buildInvestorConditions(
     );
   }
 
+  // The dashboard's client filters (components/dashboards/system/links.ts),
+  // each with the definition lib/metrics/scope.ts counts by, so a card's number
+  // is the row count here. Like every filter, they only NARROW.
+  //
+  // alive=1 — the dashboard's client base: live clients, i.e. not deleted, not
+  // merged away, not closed (aliveClient). Every Clients link a card builds
+  // carries it.
+  if (sp.alive === "1") conditions.push(sql`(${aliveClient("investors")})`);
+  // fam — the dashboard's family filter: family ids, comma-separated.
+  const fam = cleanIds(csv(sp.fam));
+  if (fam.length) conditions.push(sql`${investors.familyId} IN (${uuidList(fam)})`);
+  // tag — the dashboard's tag filter: any of these tags (investors.tags is a
+  // jsonb array of strings).
+  const tag = csv(sp.tag);
+  if (tag.length) {
+    conditions.push(sql`COALESCE(${investors.tags}, '[]'::jsonb) ?| ARRAY[${textList(tag)}]::text[]`);
+  }
+  // src — the dashboard's lead-source filter: clients converted from a lead
+  // with one of these sources (scope.ts clientFilterParts, which is not
+  // exported; the lead's tenant is the client's own).
+  const src = csv(sp.src);
+  if (src.length) {
+    conditions.push(sql`${investors.id} IN (SELECT l.converted_investor_id FROM leads l
+      WHERE l.tenant_id = ${investors.tenantId} AND l.converted_investor_id IS NOT NULL
+        AND l.source IN (${textList(src)}))`);
+  }
+  // needs_data=1 — "Needs attention", the dashboard's "clients missing data"
+  // count: live clients missing PAN, date of birth, nominee, bank, a verified
+  // KYC or a risk profile (lib/metrics/attention.ts missingDataSql).
+  if (sp.needs_data === "1") {
+    conditions.push(sql`(${aliveClient("investors")}) AND ${missingDataSql("investors")}`);
+  }
+
   // Review state, as the dashboards count it: overdue is a review DATE before
   // today; due is today or earlier. `reviews_due=1` below compares with now(),
   // which drops a review due at 5pm today from a list opened at 10am.
   if (sp.review === "overdue") {
-    conditions.push(sql`(${investors.nextReviewAt} IS NOT NULL AND ${investors.nextReviewAt}::date < current_date)`);
+    // The dashboard's "Reviews overdue" count: the review's India date before
+    // today's India date (lib/metrics/attention.ts reviewOverdueSql).
+    conditions.push(sql`(${reviewOverdueSql("investors")})`);
   } else if (sp.review === "due") {
     conditions.push(sql`(${investors.nextReviewAt} IS NOT NULL AND ${investors.nextReviewAt}::date <= current_date)`);
   }
@@ -236,7 +274,8 @@ export function buildInvestorConditions(
         conditions.push(sql`${investors.dob} IS NULL`);
         break;
       case "nominee":
-        conditions.push(sql`(${investors.nomineeName} IS NULL OR ${investors.nomineeName} = '')`);
+        // Blank means blank after trimming — the compliance card's count.
+        conditions.push(sql`(${investors.nomineeName} IS NULL OR btrim(${investors.nomineeName}) = '')`);
         break;
       case "bank":
         conditions.push(
@@ -270,6 +309,11 @@ export function buildInvestorConditions(
       case "pan_aadhaar":
         conditions.push(sql`(${investors.panAadhaarLinkStatus} = 'not_linked' OR ${investors.panAadhaarLinkStatus} IS NULL)`);
         break;
+      case "marketing_consent":
+        // No marketing consent granted and still in force (lib/metrics/compliance.ts).
+        conditions.push(sql`NOT EXISTS (SELECT 1 FROM consents c WHERE c.investor_id = ${investors.id}
+          AND c.scope IN ('marketing', 'all') AND c.status = 'granted' AND c.revoked_at IS NULL)`);
+        break;
       case "unverified_contact":
         // Sanchay "Verified At" parity — email/phone present but not confirmed.
         conditions.push(sql`(
@@ -289,6 +333,18 @@ export function buildInvestorConditions(
   const isDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
   if (isDate(createdFrom)) conditions.push(sql`${investors.createdAt} >= ${createdFrom}::date`);
   if (isDate(createdTo)) conditions.push(sql`${investors.createdAt} < (${createdTo}::date + interval '1 day')`);
+
+  // Onboarded between two India dates — how a dashboard's "New clients" count
+  // opens onto exactly its rows (lib/metrics/new-clients.ts has the one
+  // definition: onboarding date in the period, not deleted, not merged).
+  const onbFrom = (sp.onboarded_from ?? "").trim();
+  const onbTo = (sp.onboarded_to ?? "").trim();
+  if (isDate(onbFrom) || isDate(onbTo)) {
+    const onbDay = sql`(${investors.onboardedAt} AT TIME ZONE 'Asia/Kolkata')::date`;
+    if (isDate(onbFrom)) conditions.push(sql`${onbDay} >= ${onbFrom}::date`);
+    if (isDate(onbTo)) conditions.push(sql`${onbDay} <= ${onbTo}::date`);
+    conditions.push(sql`${investors.mergedIntoId} IS NULL`);
+  }
 
   // AUM range in rupees (the filter bar's amount_range emits aum_min / aum_max).
   // Lower bound inclusive, upper bound exclusive, so adjacent bands such as

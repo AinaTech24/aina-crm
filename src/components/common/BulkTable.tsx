@@ -166,7 +166,7 @@ export function BulkTable<T extends { id: string }>({
           <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
             <tr>
               <th className="w-8 px-4 py-2">
-                <input type="checkbox" checked={allSel} onChange={toggleAll} className="size-3.5 rounded" aria-label="Select all" />
+                <input type="checkbox" checked={allSel} onChange={toggleAll} className="size-4 rounded" aria-label="Select all" />
               </th>
               {columns.map((c) => (
                 <th key={c.key} data-col={c.colKey} className={c.thClass ?? "text-left py-2 font-medium"}>{c.header}</th>

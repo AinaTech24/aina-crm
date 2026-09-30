@@ -148,6 +148,17 @@ export const AGE_BUCKETS = [
   { key: "d16", label: "Over 15 days", min: 16, max: null },
 ] as const;
 
+/**
+ * Processing mode. Only back-office work records one (tasks.meta.boChannel);
+ * "Not recorded" is every other request, so choosing Online or Offline
+ * narrows the tower to back-office work — the filter says what it can.
+ */
+export const MODE_FILTERS = [
+  { key: "online", label: "Online" },
+  { key: "offline", label: "Offline" },
+  { key: "none", label: "Not recorded" },
+] as const;
+
 export const OPS_ROLES = ["back_office", "ops", "service_team"] as const;
 const RM_ROLES = ["rm", "branch_head"] as const;
 
@@ -253,7 +264,10 @@ export type OpsFilter = {
   sla?: string[];
   pendingWith?: string[];
   categories?: string[];
-  mode?: string;
+  /** AGE_BUCKETS keys. Narrows open work only, as status does. */
+  ages?: string[];
+  /** MODE_FILTERS keys. */
+  modes?: string[];
 };
 
 export type OpsWindow = {
@@ -273,7 +287,7 @@ export function hasFilter(w: OpsWindow): boolean {
   const f = w.filter;
   return !!(f.branchIds?.length || f.rmIds?.length || f.mine || f.execIds?.length || f.kinds?.length
     || (f.statuses?.length && !f.statuses.includes("open")) || f.priorities?.length
-    || f.sla?.length || f.pendingWith?.length || f.categories?.length || f.mode);
+    || f.sla?.length || f.pendingWith?.length || f.categories?.length || f.ages?.length || f.modes?.length);
 }
 
 const uuidList = (xs: readonly string[]): SQL => sql.join(xs.map((x) => sql`${x}::uuid`), sql`, `);
@@ -398,7 +412,20 @@ export function opsFilter(w: OpsWindow, alias = "ops"): SQL {
     if (named.length !== f.categories.length) terms.push(sql`${a}.category IS NULL`);
     parts.push(sql`(${sql.join(terms, sql` OR `)})`);
   }
-  if (f.mode) parts.push(sql`${a}.mode = ${f.mode}`);
+  // Ageing narrows OPEN work only, like status: a finished request has no
+  // age to be in, and received / completed / TAT must stay whole under it.
+  if (f.ages?.length) {
+    const terms = AGE_BUCKETS.filter((b) => f.ages!.includes(b.key)).map((b) =>
+      b.max == null ? sql`${a}.age_days >= ${b.min}` : sql`${a}.age_days BETWEEN ${b.min} AND ${b.max}`);
+    if (terms.length) parts.push(sql`(NOT ${a}.is_open OR ${sql.join(terms, sql` OR `)})`);
+  }
+  if (f.modes?.length) {
+    const named = f.modes.filter((m) => m !== "none");
+    const terms: SQL[] = [];
+    if (named.length) terms.push(sql`lower(${a}.mode) IN (${inList(named)})`);
+    if (named.length !== f.modes.length) terms.push(sql`${a}.mode IS NULL`);
+    parts.push(sql`(${sql.join(terms, sql` OR `)})`);
+  }
   return parts.length ? sql.join(parts, sql` AND `) : sql`TRUE`;
 }
 

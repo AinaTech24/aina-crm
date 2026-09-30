@@ -45,7 +45,7 @@ export default function Login() {
   const finish = async (token: string) => {
     storageSet(LAST_EMAIL_KEY, email.trim()).catch(() => {});
     await signIn(token);
-    router.replace("/(app)/(drawer)/(tabs)/home");
+    router.replace("/(app)/(tabs)/home");
   };
 
   const onPassword = async () => {

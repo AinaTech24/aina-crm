@@ -233,6 +233,15 @@ describe("System dashboards and the widget library", () => {
     expect(keys.indexOf("team_table")).toBeLessThan(keys.indexOf("business_trend"));
   });
 
+  it("carry every card the firm's dashboard sheet asks for on the Owner Dashboard", () => {
+    const keys = SYSTEM_DASHBOARDS.find((d) => d.key === "owner")!.layout.map((i) => i.widgetKey);
+    for (const k of [
+      "business_entries", "sip_flow", "new_clients_category", "client_book", "kyc_risk", "meetings",
+      "reviews_due", "sip_rejection_status", "insurance_business", "claims_period", "task_summary", "lead_sources",
+    ]) expect(keys, k).toContain(k);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
   it("show each role its own dashboard", () => {
     const visible = (s: SessionUser) => SYSTEM_DASHBOARDS.filter((d) => d.visibleTo(s)).map((d) => d.key);
     expect(visible(session(["owner"]))).toEqual(["owner", "branch_head", "rm", "operations", "insurance", "claims"]);
@@ -270,11 +279,14 @@ describe("System dashboards and the widget library", () => {
     }
   });
 
-  it("cap a layout at 16 widgets, drop unknown ones, and warn on duplicates", () => {
+  it("cap a layout at MAX_WIDGETS, drop unknown ones, and warn on duplicates", () => {
     const many = Array.from({ length: 20 }, (_, n) => ({ id: `w${n}`, widgetKey: n % 2 ? "kpi_row" : "nope", size: "L" }));
     const clean = sanitizeLayoutItems(many);
     expect(clean.length).toBe(10); // 10 known of 20, under the cap
-    expect(sanitizeLayoutItems(Array.from({ length: 20 }, (_, n) => ({ id: `k${n}`, widgetKey: "lead_pipeline", size: "M" }))).length).toBe(MAX_WIDGETS);
+    // A clone of the Owner Dashboard must survive sanitising whole.
+    const owner = SYSTEM_DASHBOARDS.find((d) => d.key === "owner")!;
+    expect(sanitizeLayoutItems(owner.layout).length).toBe(owner.layout.length);
+    expect(sanitizeLayoutItems(Array.from({ length: MAX_WIDGETS + 8 }, (_, n) => ({ id: `k${n}`, widgetKey: "lead_pipeline", size: "M" }))).length).toBe(MAX_WIDGETS);
     expect(duplicateWidgets(clean)).toEqual(["kpi_row"]);
     expect(sanitizeLayoutItems([{ widgetKey: "team_table", size: "S" }])[0].size).toBe("L"); // S not allowed
   });

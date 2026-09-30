@@ -11,6 +11,7 @@ import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
 import { MoreMenu } from "@/components/common/MoreMenu";
 import { buttonClass } from "@/components/ui/button-class";
+import { srPastSlaSql, srWhere } from "@/lib/metrics";
 
 const SR_COLUMNS = [
   { key: "ticket", label: "Ticket #", required: true },
@@ -71,19 +72,26 @@ export default async function ServiceRequestsPage({
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const status = (sp.status ?? "").split(",").filter(Boolean);
+  const breached = sp.breached === "1";
   // A tab picks the statuses, unless an explicit ?status= (an old link or a
-  // saved view) already did — then no tab is highlighted.
+  // saved view) already did — then no tab is highlighted. `breached=1` without
+  // a tab spans every tab: the dashboard's "past SLA" count includes escalated
+  // and waiting tickets too, so defaulting to Open would hide some of them.
   const tab: TabKey | null = status.length
     ? null
-    : (TABS.find((t) => t.key === sp.tab)?.key ?? "open");
+    : (TABS.find((t) => t.key === sp.tab)?.key ?? (breached ? null : "open"));
   const priority = (sp.priority ?? "").split(",").filter(Boolean);
   const srType = (sp.srtype ?? "").split(",").filter(Boolean);
-  const breached = sp.breached === "1";
   const mine = sp.mine === "1";
   const assigneeFilter = (sp.assignee ?? "").split(",").filter(Boolean);
+  // rm / branch — the dashboard's service-request counts follow the CLIENT:
+  // the ticket's client's RM / branch (lib/metrics/service.ts srWhere; a ticket
+  // with no client then drops out). With neither, every ticket of the firm.
+  const rmFilter = (sp.rm ?? "").split(",").filter(Boolean);
+  const branchFilter = (sp.branch ?? "").split(",").filter(Boolean);
 
   // Build WHERE conditions
-  const conds: any[] = [sql`sr.tenant_id = ${session.tenantId}::uuid`];
+  const conds: any[] = [srWhere({ tenantId: session.tenantId, rmIds: rmFilter, branchIds: branchFilter })];
   if (mine) conds.push(sql`sr.assigned_to_user_id = ${session.userId}::uuid`);
   if (assigneeFilter.length)
     conds.push(sql`sr.assigned_to_user_id IN (${sql.join(assigneeFilter.map((v) => sql`${v}::uuid`), sql`, `)})`);
@@ -98,7 +106,8 @@ export default async function ServiceRequestsPage({
     conds.push(sql`sr.priority IN (${sql.join(priority.map((v) => sql`${v}`), sql`, `)})`);
   if (srType.length)
     conds.push(sql`sr.type IN (${sql.join(srType.map((v) => sql`${v}`), sql`, `)})`);
-  if (breached) conds.push(sql`sr.status NOT IN ('resolved','closed') AND sr.sla_resolution_at < now()`);
+  // breached=1 — the dashboard's "service requests past SLA" (srPastSlaSql).
+  if (breached) conds.push(srPastSlaSql("sr"));
   const dr = dateRangeCond(sp, "created", "sr.created_at");
   if (dr) conds.push(dr);
   // Tab counts are taken over every other filter, before the tab narrows.
@@ -158,7 +167,8 @@ export default async function ServiceRequestsPage({
   const tabHref = (key: TabKey) => {
     const p = new URLSearchParams();
     for (const [k, v] of Object.entries(sp)) if (v && k !== "tab" && k !== "status" && k !== "page") p.set(k, v);
-    if (key !== "open") p.set("tab", key);
+    // With breached=1 "no tab" means every tab, so Open must be named.
+    if (key !== "open" || breached) p.set("tab", key);
     const qs = p.toString();
     return qs ? `/dashboard/service-requests?${qs}` : "/dashboard/service-requests";
   };

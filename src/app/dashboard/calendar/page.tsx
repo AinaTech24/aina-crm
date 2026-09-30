@@ -8,6 +8,7 @@ import { InteractiveCalendar } from "@/components/calendar/InteractiveCalendar";
 import { getCalendarItems } from "@/lib/calendar/items";
 import crypto from "node:crypto";
 import { MyDayNav } from "@/components/layout/MyDayNav";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +48,7 @@ export default async function CalendarPage({
 
   const prevMonth = new Date(yyyy, mm - 2, 1);
   const nextMonth = new Date(yyyy, mm, 1);
-  const monthLabel = monthStart.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+  const monthLabel = formatDate(monthStart, "monthYear");
 
   // iCal subscription link — signed per user. Fail closed: if no signing secret
   // is configured, hand out NO link rather than one keyed on a public default.

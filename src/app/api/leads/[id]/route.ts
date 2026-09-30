@@ -70,16 +70,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const result = await withTenant(session.tenantId, async (tx) => {
       const before = await loadEditableLead(tx, session, id);
       const patch: Record<string, any> = { ...parse.data };
-      if (!canEditAllLeads(session)) delete patch.ownerId;
+      if (!canEditAllLeads(session) && !(session.mobile && session.roles.includes("rm"))) delete patch.ownerId;
       // Reassigning the owner must stay inside the firm — a uuid from another
       // tenant would orphan the lead under someone who can't see it.
       if (patch.ownerId && patch.ownerId !== before.ownerId) {
         const [u] = await tx
-          .select({ id: users.id })
+          .select({ id: users.id, branchId: users.branchId, status: users.status })
           .from(users)
           .where(and(eq(users.id, patch.ownerId), eq(users.tenantId, session.tenantId)))
           .limit(1);
         if (!u) return "bad_owner" as const;
+        if (u.status !== "active") return "bad_owner" as const;
+        if (session.mobile && !session.roles.some(r => ["owner", "ops", "back_office"].includes(r))
+          && (!session.branchId || u.branchId !== session.branchId)) return "bad_owner" as const;
+        if (session.mobile) patch.branchId = u.branchId;
       }
       if (Object.prototype.hasOwnProperty.call(patch, "email")) {
         patch.email = patch.email || null;

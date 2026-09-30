@@ -19,7 +19,7 @@ import { tenants, investors } from "@/db/schema";
 import { resolveShareToken } from "@/lib/share-tokens";
 import { valueInvestorCached } from "@/lib/finance/valuation";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { formatINR } from "@/lib/utils";
+import { formatDate, formatINR } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -91,7 +91,7 @@ export default async function PublicPortfolioPage({ params }: { params: Promise<
             )}
           </div>
           <p className="text-xs text-muted-foreground">{v.dataQuality.pricedHoldings}/{v.dataQuality.openHoldings} holdings priced; {v.dataQuality.unknownCostHoldings} have unknown cost. Account returns include closed positions when transaction history is complete.</p>
-          {v.asOf && <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 10 }}>As of {new Date(v.asOf).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</div>}
+          {v.asOf && <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 10 }}>As of {formatDate(new Date(v.asOf))}</div>}
         </div>
 
         {/* Goals */}

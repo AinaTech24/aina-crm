@@ -24,7 +24,7 @@
     "check:calc": "tsx scripts/check-calc-math.ts",
     "check:finance": "tsx scripts/check-finance-math.ts",
     "check:spine": "tsx scripts/check-spine.ts",
-    "test": "tsx scripts/check-finance-math.ts && tsx scripts/check-calc-math.ts && tsx scripts/check-spine.ts && node scripts/check-migration-dups.mjs && vitest run",
+    "test": "tsx scripts/check-finance-math.ts && tsx scripts/check-calc-math.ts && tsx scripts/check-spine.ts && node scripts/check-sql-comments.mjs && node scripts/check-migration-dups.mjs && vitest run",
     "db:provision-app-role": "node scripts/provision-app-role.mjs",
     "migrate:all": "tsx scripts/migrate-all.ts",
     "db:generate": "drizzle-kit generate",
@@ -43,7 +43,10 @@
     "backfill:active-sip": "tsx scripts/backfill-active-sip-amount.ts",
     "backfill:aum": "tsx scripts/backfill-aum.ts",
     "recipes:enable": "tsx scripts/enable-recipes.ts",
-    "refresh:nav": "tsx scripts/refresh-nav.ts"
+    "refresh:nav": "tsx scripts/refresh-nav.ts",
+    "check:labels": "node scripts/check-form-labels.mjs",
+    "build:check": "node scripts/build-check.mjs",
+    "check:sql": "node scripts/check-sql-comments.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

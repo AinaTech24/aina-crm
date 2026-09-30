@@ -4,7 +4,8 @@
  */
 
 import React from "react";
-import { View, StyleSheet } from "react-native";
+import { useRouter } from "expo-router";
+import { View, Pressable, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { Feather } from "@expo/vector-icons";
@@ -15,18 +16,23 @@ import { Text } from "./Text";
 
 export function OfflineBanner() {
   const online = useConnectivity((s) => s.online);
-  const pending = useOfflineQueue((s) => s.items.length);
+  const items = useOfflineQueue(s => s.items);
+  const storageError = useOfflineQueue(s => s.storageError);
+  const pending = items.filter(w => w.status === "pending").length;
+  const failed = items.filter(w => w.status === "failed").length;
+  const router = useRouter();
   const insets = useSafeAreaInsets();
-  if (online) return null;
-  // Work IS saved now — it queues and replays on reconnect — so say so rather
-  // than the old "changes may not save", which is no longer true.
-  const label = pending > 0
-    ? `Offline — ${pending} change${pending === 1 ? "" : "s"} saved, will sync`
-    : "Offline — your work is saved and will sync";
+  if (online && !items.length && !storageError) return null;
+  const label = storageError ? "Device storage needs attention · Open Sync"
+    : failed ? `${failed} change${failed === 1 ? "" : "s"} need attention · Open Sync`
+    : pending ? `${pending} saved on this phone · ${online ? "Sync pending" : "Offline"}`
+    : "Offline · Some actions need a connection";
   return (
-    <Animated.View entering={FadeInDown.duration(200)} style={[styles.bar, { paddingTop: insets.top + 6 }]} pointerEvents="none">
+    <Animated.View entering={FadeInDown.duration(200)} style={[styles.bar, { paddingTop: insets.top + 6 }]}>
+      <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={() => router.push("/sync" as any)} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 48, flex: 1, justifyContent: "center" }}>
       <Feather name="wifi-off" size={13} color={palette.white} />
-      <Text style={{ color: palette.white, fontWeight: fontWeight.medium as any, fontSize: 12 }}>{label}</Text>
+      <Text style={{ color: palette.white, fontWeight: fontWeight.medium, fontSize: 12 }}>{label}</Text>
+      </Pressable>
     </Animated.View>
   );
 }

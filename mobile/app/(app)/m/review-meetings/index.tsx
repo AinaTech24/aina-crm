@@ -28,6 +28,7 @@ import { meetingStatusBadge } from "../../../../src/lib/status";
 import { titleCase } from "../../../../src/lib/format";
 import { confirmDelete } from "../../../../src/lib/confirm";
 import { palette, radius, spacing, fontWeight } from "../../../../src/theme/tokens";
+import { asIcon } from "../../../../src/lib/icons";
 
 function useDebounced<T>(value: T, delay = 350): T {
   const [v, setV] = useState(value);
@@ -85,15 +86,15 @@ function StatTile({ icon, tone, label, value }: { icon: string; tone: string; la
   return (
     <View style={styles.statTile}>
       <View style={styles.statHead}>
-        <Feather name={icon as any} size={13} color={tone} />
+        <Feather name={asIcon(icon)} size={13} color={tone} />
         <Text variant="caption" tone="muted" numberOfLines={1}>{label}</Text>
       </View>
-      <Text style={{ fontSize: 20, fontWeight: fontWeight.bold as any }}>{value}</Text>
+      <Text style={{ fontSize: 20, fontWeight: fontWeight.bold }}>{value}</Text>
     </View>
   );
 }
 
-export default function MeetingsList() {
+export default function MeetingsList({ embedded = false }: { embedded?: boolean }) {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
@@ -143,7 +144,7 @@ export default function MeetingsList() {
       <View style={styles.toolbarRow}>
         <Pressable style={styles.filterBtn} onPress={() => setSheetOpen(true)}>
           <Feather name="sliders" size={15} color={activeCount ? palette.brand : palette.ink} />
-          <Text style={{ fontWeight: fontWeight.medium as any, color: activeCount ? palette.brand : palette.ink }}>Filter & sort{activeCount ? ` · ${activeCount}` : ""}</Text>
+          <Text style={{ fontWeight: fontWeight.medium, color: activeCount ? palette.brand : palette.ink }}>Filter & sort{activeCount ? ` · ${activeCount}` : ""}</Text>
         </Pressable>
         {activeCount > 0 ? <Pressable onPress={() => setFilters({ ...EMPTY_MEETING_FILTERS, status: filters.status })} hitSlop={8}><Text variant="caption" style={{ color: palette.danger }}>Clear</Text></Pressable> : null}
       </View>
@@ -158,7 +159,7 @@ export default function MeetingsList() {
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.surfaceAlt }}>
-      <ScreenHeader title="Review Meetings" subtitle={isLoading ? undefined : `${meetings.length} meeting${meetings.length === 1 ? "" : "s"}`} />
+      {!embedded ? <ScreenHeader title="Review Meetings" subtitle={isLoading ? undefined : `${meetings.length} meeting${meetings.length === 1 ? "" : "s"}`} /> : null}
       {isLoading ? (
         <>
           <View style={{ paddingHorizontal: spacing.lg }}>{header}</View>
@@ -178,7 +179,7 @@ export default function MeetingsList() {
           ListEmptyComponent={debounced || activeCount || status ? <SearchEmptyState query={debounced || "these filters"} /> : <EmptyState icon="calendar" title="No meetings" message="Scheduled client reviews will appear here." />}
         />
       )}
-      <FAB icon="plus" onPress={() => router.push("/m/review-meetings/new" as any)} />
+      <FAB icon="plus" label="Schedule meeting" onPress={() => router.push("/m/review-meetings/new" as any)} />
 
       <MeetingFilters visible={sheetOpen} onClose={() => setSheetOpen(false)} value={filters} onApply={setFilters} rmOptions={rmOptions} />
 

@@ -731,7 +731,7 @@ export default function NewProposalPage() {
                             : it.kind === "pms"
                               ? "bg-amber-50 text-amber-700"
                               : it.kind === "other"
-                                ? "bg-slate-100 text-slate-700"
+                                ? "bg-secondary text-foreground"
                                 : "bg-rose-50 text-rose-700"
                         }`}
                     >

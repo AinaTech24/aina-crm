@@ -19,6 +19,7 @@
 
 import { useMemo, useState } from "react";
 import { Layers, AlertTriangle, ListFilter } from "lucide-react";
+import { formatDate } from "@/lib/format";
 
 export type Holding = {
   schemeName: string | null;
@@ -46,7 +47,7 @@ function fmtDate(d: string | null | undefined): string {
   if (!d) return "—";
   const dt = new Date(d);
   if (Number.isNaN(dt.getTime())) return String(d);
-  return dt.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  return formatDate(dt);
 }
 function fmtUnits(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -184,7 +185,7 @@ export function HoldingsTable({
                 <th className={`${th} text-center`}>
                   <input
                     type="checkbox"
-                    className="size-3.5 align-middle"
+                    className="size-4 align-middle"
                     checked={selected.size === rows.length && rows.length > 0}
                     onChange={toggleAll}
                     aria-label="Select all"
@@ -220,7 +221,7 @@ export function HoldingsTable({
                   <td className={`${td} text-center`}>
                     <input
                       type="checkbox"
-                      className="size-3.5"
+                      className="size-4"
                       checked={selected.has(i)}
                       onChange={() => toggle(i)}
                       aria-label={`Select ${h.schemeName ?? "scheme"}`}

@@ -25,6 +25,8 @@ import { SelectField } from "@/components/ui/SelectField";
 import { formatINR } from "@/lib/utils";
 import { computeGoal } from "@/lib/goal-planning/calc";
 import { recommendedLifeCover, financialAssetsTotal } from "@/lib/financial-plans/analysis";
+import { FACT_FIND_GOAL_RETURN, planFromFactFind } from "@/lib/financial-plans/from-fact-find";
+import { formatDate } from "@/lib/format";
 
 type Recipient = { id: string; name: string; kind?: "investor" | "lead" };
 
@@ -81,6 +83,9 @@ function PlanFormContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get("edit");
+  // "Start from a fact-find" on the empty list: prefill a NEW plan from it.
+  const discoveryId = editId ? null : searchParams.get("discovery");
+  const [fromFactFind, setFromFactFind] = useState<{ id: string; name: string; status: string; at: string | null; undatedGoals: number } | null>(null);
 
   // Multi-step State
   const [step, setStep] = useState(1);
@@ -172,6 +177,42 @@ function PlanFormContent() {
       .catch((e) => setErr(e.message))
       .finally(() => setLoadingPlan(false));
   }, [editId]);
+
+  // Prefill from a completed fact-find (see lib/financial-plans/from-fact-find.ts).
+  useEffect(() => {
+    if (!discoveryId) return;
+    setLoadingPlan(true);
+    setErr(null);
+    fetch(`/api/discovery/${discoveryId}`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Could not load that fact-find. Start the plan by hand, or open the fact-find to check it.");
+        const { discovery } = await res.json();
+        const p = planFromFactFind(discovery);
+        setRecipient(p.recipient);
+        setClientAge(p.clientAge);
+        setMonthlyIncome(p.monthlyIncome);
+        setMonthlyExpenses(p.monthlyExpenses);
+        setAssets(p.assets);
+        setLiabilities(p.liabilities);
+        if (p.emergencyFundCurrentValue != null) setEmergencyFundCurrentValue(p.emergencyFundCurrentValue);
+        setLifeInsuranceSumAssured(p.lifeInsuranceSumAssured);
+        setLifeInsuranceAnnualPremium(p.lifeInsuranceAnnualPremium);
+        setHealthInsuranceSumAssured(p.healthInsuranceSumAssured);
+        setHealthInsuranceAnnualPremium(p.healthInsuranceAnnualPremium);
+        setGoals(p.goals);
+        if (p.riskProfile) setRiskProfile(p.riskProfile);
+        setFromFactFind({
+          id: discovery.id,
+          name: p.recipient.name,
+          status: discovery.status,
+          at: discovery.reviewedAt ?? discovery.submittedAt ?? discovery.updatedAt ?? null,
+          // A goal with no target year imports with 0 years, and the SIP for 0 years reads ₹0.
+          undatedGoals: p.goals.filter((g) => g.targetYears === 0).length,
+        });
+      })
+      .catch((e) => setErr(e.message))
+      .finally(() => setLoadingPlan(false));
+  }, [discoveryId]);
 
   // Calculations
   const surplus = useMemo(() => {
@@ -508,7 +549,7 @@ function PlanFormContent() {
     return (
       <div className="flex flex-col items-center justify-center py-20 space-y-4">
         <Loader2 className="size-8 text-brand-cyan animate-spin" />
-        <p className="text-sm text-muted-foreground">Loading financial plan...</p>
+        <p className="text-sm text-muted-foreground">{discoveryId ? "Loading the fact-find…" : "Loading financial plan..."}</p>
       </div>
     );
   }
@@ -570,6 +611,26 @@ function PlanFormContent() {
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 text-destructive text-sm px-4 py-3 flex items-center gap-2">
           <AlertTriangle className="size-4 flex-shrink-0" />
           <span>{err}</span>
+        </div>
+      )}
+
+      {fromFactFind && (
+        <div className="rounded-lg border border-info/30 bg-info/5 px-4 py-3 text-sm text-foreground">
+          <span className="font-semibold">Started from {fromFactFind.name}&apos;s fact-find</span>
+          {" "}({fromFactFind.status === "reviewed" ? "reviewed" : "submitted"} {formatDate(fromFactFind.at)}).
+          {" "}Goals come across in future rupees at the fact-find&apos;s {FACT_FIND_GOAL_RETURN}% return, so their
+          inflation is 0%.
+          {fromFactFind.undatedGoals > 0 && (
+            <>
+              {" "}<span className="font-semibold">
+                {fromFactFind.undatedGoals === 1 ? "1 goal has" : `${fromFactFind.undatedGoals} goals have`} no target year in the fact-find
+              </span>; set the years on step 4, or {fromFactFind.undatedGoals === 1 ? "its SIP reads" : "their SIPs read"} ₹0.
+            </>
+          )}
+          {" "}Check each step before saving.{" "}
+          <Link href={`/dashboard/discovery/${fromFactFind.id}`} className="font-medium text-primary hover:underline">
+            Open the fact-find
+          </Link>
         </div>
       )}
 
@@ -1026,7 +1087,7 @@ function PlanFormContent() {
                       {Math.min(100, Math.round((emergencyFundCurrentValue / requiredEmergency) * 100))}%
                     </span>
                   </div>
-                  <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                  <div className="w-full bg-secondary h-1.5 rounded-full overflow-hidden">
                     <div
                       style={{ width: `${Math.min(100, (emergencyFundCurrentValue / requiredEmergency) * 100)}%` }}
                       className={`h-full rounded-full transition-all ${emergencyFundCurrentValue >= requiredEmergency ? "bg-emerald-500" : "bg-amber-500"
@@ -1081,7 +1142,7 @@ function PlanFormContent() {
                         {Math.min(100, Math.round((lifeInsuranceSumAssured / requiredLifeInsurance) * 100))}%
                       </span>
                     </div>
-                    <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                    <div className="w-full bg-secondary h-1.5 rounded-full overflow-hidden">
                       <div
                         style={{ width: `${Math.min(100, (lifeInsuranceSumAssured / requiredLifeInsurance) * 100)}%` }}
                         className={`h-full rounded-full transition-all ${lifeInsuranceSumAssured >= requiredLifeInsurance ? "bg-emerald-500" : "bg-amber-500"
@@ -1127,7 +1188,7 @@ function PlanFormContent() {
                         {Math.min(100, Math.round((healthInsuranceSumAssured / 500000) * 100))}%
                       </span>
                     </div>
-                    <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                    <div className="w-full bg-secondary h-1.5 rounded-full overflow-hidden">
                       <div
                         style={{ width: `${Math.min(100, (healthInsuranceSumAssured / 500000) * 100)}%` }}
                         className={`h-full rounded-full transition-all ${healthInsuranceSumAssured >= 500000 ? "bg-emerald-500" : "bg-amber-500"
@@ -1284,7 +1345,7 @@ function PlanFormContent() {
                             Sync with Profile
                           </button>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-slate-700">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-foreground">
                           <div>
                             <span className="text-2xs text-muted-foreground block">Monthly Expense Today:</span>
                             <span className="font-semibold">{formatINR(monthlyExpenses || 0)}</span>
@@ -1308,7 +1369,7 @@ function PlanFormContent() {
                             </span>
                           </div>
                         </div>
-                        <p className="text-2xs text-slate-500 leading-normal">
+                        <p className="text-2xs text-muted-foreground leading-normal">
                           *Assumptions: retirement at 60, life expectancy 85 (25 years in retirement), post-retirement return 8% p.a., inflation {g.inflationRate || 6}%.
                         </p>
                       </div>

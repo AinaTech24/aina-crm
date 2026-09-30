@@ -9,6 +9,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { formatDate } from "@/lib/format";
 import {
   MessageCircle, Mail, MessageSquare, Phone, Bell,
   Check, CheckCheck, AlertCircle, Clock, Star, XCircle, RotateCw, Loader2,
@@ -41,7 +42,7 @@ const statusTone: Record<string, string> = {
   replied: "bg-emerald-50 text-emerald-700",
   failed: "bg-rose-50 text-rose-700",
   bounced: "bg-rose-50 text-rose-700",
-  cancelled: "bg-slate-100 text-slate-600",
+  cancelled: "bg-secondary text-muted-foreground",
 };
 const statusIcons: Record<string, any> = {
   scheduled: Clock, queued: AlertCircle, sent: Check, delivered: Check,
@@ -55,7 +56,7 @@ function rel(iso: string): string {
   if (Math.abs(m) < 60) return m <= 0 ? "soon" : `${m}m ago`;
   const h = Math.round(m / 60);
   if (Math.abs(h) < 24) return `${h}h ago`;
-  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+  return formatDate(d, "dayMonth");
 }
 
 export function CommsList({ rows }: { rows: CommRow[] }) {

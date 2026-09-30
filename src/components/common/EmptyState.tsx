@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { LucideIcon, Sparkles } from "lucide-react";
 
 /**
@@ -19,6 +20,8 @@ type Props = {
   tip?: string;
   primary?: { href: string; label: string };
   secondary?: { href: string; label: string };
+  /** A secondary control that is not a plain link (a menu of choices). Wins over `secondary`. */
+  secondaryNode?: ReactNode;
   /** Optional learn-more link to /dashboard/help#<anchor> */
   learnMoreAnchor?: string;
 };
@@ -30,6 +33,7 @@ export function EmptyState({
   tip,
   primary,
   secondary,
+  secondaryNode,
   learnMoreAnchor,
 }: Props) {
   return (
@@ -42,18 +46,18 @@ export function EmptyState({
         {description}
       </p>
 
-      {(primary || secondary) && (
+      {(primary || secondary || secondaryNode) && (
         <div className="mt-6 flex gap-2 justify-center flex-wrap">
           {primary && (
             <Link href={primary.href} className="btn-primary">
               {primary.label}
             </Link>
           )}
-          {secondary && (
+          {secondaryNode ?? (secondary && (
             <Link href={secondary.href} className="btn-secondary">
               {secondary.label}
             </Link>
-          )}
+          ))}
         </div>
       )}
 

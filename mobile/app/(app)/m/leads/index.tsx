@@ -67,7 +67,7 @@ export default function LeadsList() {
       <View style={styles.toolbarRow}>
         <Pressable style={styles.filterBtn} onPress={() => setSheetOpen(true)}>
           <Feather name="sliders" size={15} color={activeCount ? palette.brand : palette.ink} />
-          <Text style={{ fontWeight: fontWeight.medium as any, color: activeCount ? palette.brand : palette.ink }}>Filter & sort{activeCount ? ` · ${activeCount}` : ""}</Text>
+          <Text style={{ fontWeight: fontWeight.medium, color: activeCount ? palette.brand : palette.ink }}>Filter & sort{activeCount ? ` · ${activeCount}` : ""}</Text>
         </Pressable>
         {activeCount > 0 ? <Pressable onPress={() => setFilters({ ...EMPTY_LEAD_FILTERS })} hitSlop={8}><Text variant="caption" style={{ color: palette.danger }}>Clear</Text></Pressable> : null}
       </View>
@@ -116,7 +116,7 @@ export default function LeadsList() {
         </View>
       )}
 
-      <FAB onPress={() => router.push("/m/leads/new" as any)} />
+      <FAB label="Add lead" onPress={() => router.push("/m/leads/new" as any)} />
 
       <LeadFilters visible={sheetOpen} onClose={() => setSheetOpen(false)} value={filters} onApply={setFilters} rmOptions={rmOptions} />
 

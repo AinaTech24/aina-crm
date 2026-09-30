@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Mail, KeyRound, Loader2, CheckCircle2, XCircle, Save, Send, Eye, EyeOff } from "lucide-react";
 
 type Status = {
@@ -15,6 +15,7 @@ type Status = {
 };
 
 export function EmailSettingsForm({ initial }: { initial: Status }) {
+  const uid = useId();
   const [host, setHost] = useState(initial.host ?? "");
   const [port, setPort] = useState(String(initial.port || 587));
   const [secure, setSecure] = useState(initial.secure);
@@ -112,12 +113,12 @@ export function EmailSettingsForm({ initial }: { initial: Status }) {
       {/* Server */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="space-y-1.5 sm:col-span-2">
-          <label className="text-sm font-medium">SMTP host</label>
-          <input value={host} onChange={(e) => setHost(e.target.value)} placeholder="smtp.yourprovider.com" className={inputCls} autoComplete="off" />
+          <label htmlFor={`${uid}-smtp-host`} className="text-sm font-medium">SMTP host</label>
+          <input id={`${uid}-smtp-host`} value={host} onChange={(e) => setHost(e.target.value)} placeholder="smtp.yourprovider.com" className={inputCls} autoComplete="off" />
         </div>
         <div className="space-y-1.5">
-          <label className="text-sm font-medium">Port</label>
-          <input value={port} onChange={(e) => setPort(e.target.value.replace(/\D/g, ""))} placeholder="587" className={inputCls} inputMode="numeric" />
+          <label htmlFor={`${uid}-port`} className="text-sm font-medium">Port</label>
+          <input id={`${uid}-port`} value={port} onChange={(e) => setPort(e.target.value.replace(/\D/g, ""))} placeholder="587" className={inputCls} inputMode="numeric" />
         </div>
       </div>
 
@@ -129,8 +130,8 @@ export function EmailSettingsForm({ initial }: { initial: Status }) {
       {/* Auth */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <label className="text-sm font-medium">Username</label>
-          <input value={user} onChange={(e) => setUser(e.target.value)} placeholder="you@yourdomain.com" className={inputCls} autoComplete="off" />
+          <label htmlFor={`${uid}-username`} className="text-sm font-medium">Username</label>
+          <input id={`${uid}-username`} value={user} onChange={(e) => setUser(e.target.value)} placeholder="you@yourdomain.com" className={inputCls} autoComplete="off" />
         </div>
         <div className="space-y-1.5">
           <label className="text-sm font-medium flex items-center gap-1.5"><KeyRound className="size-3.5" /> Password</label>
@@ -152,8 +153,8 @@ export function EmailSettingsForm({ initial }: { initial: Status }) {
 
       {/* From */}
       <div className="space-y-1.5">
-        <label className="text-sm font-medium">From address</label>
-        <input value={from} onChange={(e) => setFrom(e.target.value)} placeholder="Aina CRM <connect@ainatech.in>" className={inputCls} />
+        <label htmlFor={`${uid}-from-address`} className="text-sm font-medium">From address</label>
+        <input id={`${uid}-from-address`} value={from} onChange={(e) => setFrom(e.target.value)} placeholder="Aina CRM <connect@ainatech.in>" className={inputCls} />
         <p className="text-2xs text-muted-foreground">Many providers require the From to match the authenticated mailbox/domain.</p>
       </div>
 

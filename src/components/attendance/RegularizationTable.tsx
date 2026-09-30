@@ -18,7 +18,7 @@ const STATUS_TONE: Record<string, string> = {
   requested: "bg-blue-50 text-blue-700",
   approved: "bg-emerald-50 text-emerald-700",
   rejected: "bg-rose-50 text-rose-700",
-  cancelled: "bg-gray-50 text-gray-700",
+  cancelled: "bg-secondary text-foreground",
 };
 
 export type RegularizationRow = {

@@ -17,6 +17,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { businessEntries, businessEntryLines, investors, users, sips, eventsOutbox } from "@/db/schema";
 import { EntryInput, normalizeLine, computeTotals } from "@/lib/business/entry-input";
+import { refreshActiveSipAmount } from "@/lib/metrics/sip";
 
 export const dynamic = "force-dynamic";
 
@@ -29,10 +30,12 @@ const canManage = (roles: string[]) => roles.some((r) => MANAGE_ROLES.includes(r
 const seesAllEntries = (s: { roles: string[]; permissions?: string[] | null }) =>
   can(s.roles, "investor.view.all", s.permissions) || can(s.roles, "reports.business", s.permissions);
 
-/** sips.frequency only has a subset of the business-line frequencies; map the
- *  overlap and default the rest (one_time / half_yearly) to monthly. */
-function toSipFrequency(f: string | null | undefined): "monthly" | "quarterly" | "weekly" | "yearly" {
-  return f === "quarterly" || f === "weekly" || f === "yearly" ? f : "monthly";
+/** A business line's frequency as a SIP frequency. Every real SIP frequency
+ *  maps to itself — half-yearly used to fall through to monthly, which counted
+ *  a ₹60,000 half-yearly SIP as ₹60,000 a month in the SIP book. `one_time`
+ *  is not a SIP frequency at all; it stays monthly as before. */
+function toSipFrequency(f: string | null | undefined): "monthly" | "quarterly" | "weekly" | "fortnightly" | "half_yearly" | "yearly" {
+  return f === "quarterly" || f === "weekly" || f === "fortnightly" || f === "half_yearly" || f === "yearly" ? f : "monthly";
 }
 
 /** First debit date: the next occurrence of `sipDay` (1..28) on/after the SIP's
@@ -186,6 +189,7 @@ export async function POST(req: NextRequest) {
           });
         if (sipRows.length) {
           await tx.insert(sips).values(sipRows.map((s) => s.row) as any);
+          await refreshActiveSipAmount(tx, { tenantId: session.tenantId, investorIds: [b.investorId!] });
           await tx.insert(eventsOutbox).values(
             sipRows.map((s) => ({
               tenantId: session.tenantId,

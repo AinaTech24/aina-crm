@@ -109,7 +109,7 @@ export function AppLock() {
 
         <Pressable onPress={unlock} disabled={busy} style={[styles.unlock, busy && { opacity: 0.6 }]} accessibilityRole="button">
           <Feather name="unlock" size={18} color={palette.white} />
-          <Text style={{ color: palette.white, fontWeight: fontWeight.semibold as any }}>Unlock</Text>
+          <Text style={{ color: palette.white, fontWeight: fontWeight.semibold }}>Unlock</Text>
         </Pressable>
 
         <Pressable onPress={() => { setLocked(false); signOut(); }} hitSlop={8} style={{ marginTop: spacing.xl }} accessibilityRole="button">

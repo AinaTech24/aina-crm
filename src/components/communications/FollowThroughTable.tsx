@@ -16,11 +16,12 @@ import { Loader2, Mail, Check, CircleDashed, MousePointerClick, MailOpen, AlertT
 import { useToast } from "@/components/ui/Toast";
 import type { FollowThroughRow, Stage } from "@/lib/comms/follow-through";
 import { ACTION_TEMPLATES } from "@/lib/comms/follow-through";
+import { formatDate } from "@/lib/format";
 
 const fmt = (v: string | null) => {
   if (!v) return "—";
   const d = new Date(v);
-  return isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+  return isNaN(d.getTime()) ? "—" : formatDate(d, "dayMonth");
 };
 
 const STAGE_META: Record<Stage, { label: string; cls: string; icon: any }> = {
@@ -117,7 +118,7 @@ export function FollowThroughTable({ rows, canSend }: { rows: FollowThroughRow[]
                 {canSend && (
                   <th className="w-9 px-3 py-2.5">
                     <input type="checkbox" checked={allChosen} onChange={toggleAll} disabled={chaseable.length === 0}
-                      aria-label="Select everyone who hasn't finished" className="size-3.5" />
+                      aria-label="Select everyone who hasn't finished" className="size-4" />
                   </th>
                 )}
                 <th className="text-left py-2.5 px-3 font-medium">Client</th>

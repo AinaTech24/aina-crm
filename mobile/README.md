@@ -1,146 +1,58 @@
-# Growth OS — Mobile App
+# Aina CRM mobile
 
-A **hybrid** React Native (Expo) app for MFD staff. A thin native shell handles
-login, secure session storage, and (soon) push + camera; the full dashboard —
-all 65 modules — renders in a WebView of the existing Next.js backend. One web
-app to maintain; every web feature appears in the app automatically.
+Native Expo Router / React Native field-team app for Owner, Branch Head, RM and Operations. The five tabs are Home, Leads, Clients, Activities and More. It connects to https://crm.ainatech.in with existing CRM accounts. Some secondary web modules retain a WebView fallback.
 
-## Architecture
+See [the interview requirements](../docs/AINA-MOBILE-REQUIREMENTS.md) for the agreed scope and [the test handover](../docs/AINA-MOBILE-HANDOVER.md) for limitations and phone checks.
 
-```
-App.tsx ──> AuthProvider ──┬─ no token  ─> LoginScreen   (native, /api/auth/mobile-login)
-                           └─ has token ─> DashboardWebView (loads crm.ainatech.in/dashboard)
-```
+## Development
 
-The session JWT is stored in the device keychain (`expo-secure-store`) and sent
-as `Authorization: Bearer <token>`. The backend's Edge middleware accepts that
-header (added in Phase 0), so every one of the existing `/api/*` routes works
-from the app with no per-route changes.
+The current dependencies target Expo SDK 57, React Native 0.86 and React 19.2.3. Use Node 22.13 or newer and the exact lockfile.
 
-## Prerequisites
-
-- Node 20+ and the Expo tooling (`npx expo` — no global install needed)
-- The **Expo Go** app on your phone (iOS App Store / Google Play) for instant testing,
-  OR Android Studio / Xcode for native builds
-- The backend running and reachable (production `https://crm.ainatech.in`, or your
-  LAN dev server — see `src/config.ts`)
-
-## First-time setup
-
-```bash
+```sh
 cd mobile
-npm install
-# Native modules (already in package.json; this realigns them to the Expo SDK):
-npx expo install react-native-webview expo-secure-store \
-  expo-notifications expo-device expo-constants expo-local-authentication
+npm ci
+npm run typecheck
+npm test -- --runInBand
+npm start
 ```
 
-## Run
+The native app uses the production backend by default. The browser preview uses localhost:3000. Read `src/config.ts` before changing environments. Use a development build or signed APK to test the local Android call-log module; Expo Go cannot load that module.
 
-```bash
-npm start          # opens the Expo dev tools; scan the QR with Expo Go
-# or target a platform directly:
-npm run android
-npm run ios        # macOS only for the simulator; Expo Go works from any OS
+## Android APK
+
+The project is already linked to `@ainatech-services-llp/growth-os-mobile`. Preserve its project ID, Android package and signing key so installed apps can update in place.
+
+```sh
+eas build --platform android --profile preview
 ```
 
-## Pointing at a local backend
+The preview profile produces an internally distributed signed APK. Production produces a Play Store AAB and sets `AINA_STORE_BUILD=1`, removing call-log access through `app.config.ts`. The runtime uses Expo's fingerprint policy to prevent updates crossing incompatible native builds.
 
-The phone is a separate device, so `localhost` won't reach your laptop. In
-`src/config.ts` set `API_BASE_URL` to your machine's LAN IP, e.g.
-`http://192.168.1.20:3000`, and make sure the Next.js dev server is listening on
-`0.0.0.0` and the firewall allows it.
+## Main flows
 
-> Note: a plain-HTTP dev URL needs an ATS/cleartext exception for a production
-> build. It works in Expo Go for development as-is; production always uses HTTPS.
+- Sign in, optional configured two-factor authentication, secure session storage and biometric unlock.
+- Leads, clients, activities, tasks, follow-ups and meetings.
+- More → Business entries: Operations enters business; authorized staff view their scope.
+- More → Targets & achievement: monthly meeting, mutual-fund and insurance measures; Owner/Branch Head set targets.
+- Cached reads and an account-isolated offline queue for supported lead, activity and task changes. Server idempotency keys prevent duplicate queued writes.
+- Settings → automatic SIM call logging: per-account/device opt-in, permission required. Imports metadata only for uniquely matched CRM numbers while the app is open or when it resumes. Manual call notes remain available when Android does not grant access.
+- Call detail → Call summary: confirm participants agreed to recording and AI processing, choose an existing recording, review and save the English draft. Supports English, Hindi and Gujarati speech through the configured audio-capable Gemini service. The app does not capture SIM call audio.
 
-## Building & releasing (EAS)
+## Push setup still required
 
-Builds run in Expo's cloud — **no Mac needed for iOS**. `eas.json` defines three
-profiles:
+Expo project linkage alone does not enable Android push. Configure the Firebase Android app for `in.ainatech.growthos`, provide its `google-services.json` to the native build, configure FCM v1 credentials in EAS, then rebuild and test on a phone. Keep service-account private keys out of source control.
 
-| Profile | Output | Use |
-|---|---|---|
-| `development` | dev client (APK / device build) | day-to-day testing **with push** |
-| `preview` | internal APK / ipa | hand to your RMs to try |
-| `production` | Android `.aab` + iOS store build | Play Store / App Store |
+Device registration and the backend `send_push` workflow action exist. Task assignments, reminders, overdue alerts, branch escalations and meetings starting within 15 minutes now queue mobile alerts alongside durable in-app notifications. The task scanner claims each delivery before sending to avoid duplicate worker retries; pushes are best-effort and uncertain deliveries are not automatically resent. Firebase setup and physical-phone delivery checks remain required.
 
-One-time:
-```bash
-npm i -g eas-cli
-eas login            # your Expo account
-eas init             # writes extra.eas.projectId into app.json (enables push)
-```
+## Backend
 
-Then build / submit:
-```bash
-eas build --profile development --platform android   # or ios / all
-eas build --profile production  --platform all
-eas submit --profile production  --platform all       # uploads to the stores
-```
+Call summaries can use `GEMINI_AUDIO_API_KEY` and `GEMINI_AUDIO_MODEL` in the server's secure environment without changing the existing text-AI provider. Both are required for the dedicated configuration. Alternatively, the global Gemini configuration is reused. Never put AI keys in the APK or source control.
 
-Accounts you'll need: **Google Play Developer** ($25 one-time) and **Apple
-Developer** ($99/yr). EAS manages the signing certs for both.
+Mobile Bearer sessions apply branch/assignment restrictions to leads, clients, activities, tasks and meetings, including task child routes. All new endpoints use tenant-scoped transactions:
 
-## What's built (Phase 0–3)
+- `/api/mobile/call-contacts`
+- `/api/mobile/call-summary`
+- `/api/mobile/business`
+- `/api/mobile/targets`
 
-- ✅ Native email/password login + 2FA code step
-- ✅ Secure token storage + auto session refresh on launch
-- ✅ Full dashboard in a WebView (all modules), Android back-button handling
-- ✅ Auto sign-out when the web session dies
-- ✅ **Push notifications** — device registers with `POST /api/devices`; the
-  backend `send_push` workflow action delivers to it; tapping a push deep-links
-  into the matching dashboard screen
-- ✅ **Biometric unlock** (Face ID / fingerprint) on returning sessions
-- ✅ Logout unregisters the device so a signed-out phone stops getting pushes
-
-## Enabling push (one-time)
-
-Push needs two things the shell already supports but that require your accounts:
-
-1. **An EAS projectId.** Run `npx eas init` (after `npm i -g eas-cli` and
-   `eas login`). It writes `extra.eas.projectId` into `app.json`. Until then,
-   `registerForPush()` no-ops gracefully — the app still runs, just no token.
-2. **A development build, not Expo Go.** Remote push stopped working in Expo Go
-   from SDK 53. Build a dev client: `npx expo run:android` (local) or
-   `eas build --profile development`. Then push works end-to-end.
-
-> The app **detects Expo Go and no-ops all push code** (`isExpoGo` in
-> `src/push.ts`), so Expo Go stays fully usable for testing login, the dashboard,
-> biometrics, and the camera bridge — push simply activates once you're on a dev
-> build. Without this guard, expo-notifications red-screens the app on launch.
-
-Test delivery quickly with Expo's tool: https://expo.dev/notifications — paste a
-device's token (log it from `registerForPush`) and send a test.
-
-## Camera / file upload bridge (built)
-
-The native shell exposes a small API to the web app — **no changes to the web
-upload code are required**. When running inside the app, the web can detect
-`window.__MFD_NATIVE__` and call:
-
-```js
-// In the web dashboard, on an "Upload KYC doc" button:
-if (window.__MFD_NATIVE__ && window.GrowthOSNative) {
-  const img = await window.GrowthOSNative.pickImage({ source: "camera" }); // or "library"
-  if (img && !img.canceled) {
-    // img = { base64, mimeType, fileName }
-    const file = new File(
-      [Uint8Array.from(atob(img.base64), (c) => c.charCodeAt(0))],
-      img.fileName,
-      { type: img.mimeType }
-    );
-    // …hand `file` to your existing upload (FormData → /api/upload-*).
-  }
-}
-```
-
-The native side opens the OS camera/library, returns the image as base64, and the
-web turns it into a `File` and uploads it through the same route it already uses.
-Wiring this into specific upload buttons on the web is the one remaining (small,
-web-side) task.
-
-## Next
-
-- Add the `pickImage()` call to the web KYC/document upload buttons (web-side)
-- Optionally nativize the top screens (Home/Clients/Tasks/Inbox) for snappier UX
+The backend additions must be deployed before their screens are usable against production. An APK build confirms compilation, not physical-device permissions or end-to-end behavior.

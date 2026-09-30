@@ -22,7 +22,7 @@ import {
   Target,
   Lightbulb,
 } from "lucide-react";
-import { formatINR } from "@/lib/utils";
+import { formatDate, formatINR } from "@/lib/utils";
 
 type PrepPack = {
   meeting: { id: string; scheduledAt: string };
@@ -57,7 +57,7 @@ type PrepPack = {
 
 function fmtDate(d: string | null | undefined): string {
   if (!d) return "—";
-  return new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  return formatDate(new Date(d));
 }
 
 function titleCase(s: string): string {

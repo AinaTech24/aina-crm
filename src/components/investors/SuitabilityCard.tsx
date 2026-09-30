@@ -34,9 +34,9 @@ const SEVERITY_STYLES: Record<
     label: "Breach",
   },
   unknown: {
-    badge: "bg-slate-100 text-slate-600",
-    tile: "bg-slate-100",
-    icon: "text-slate-500",
+    badge: "bg-secondary text-muted-foreground",
+    tile: "bg-secondary",
+    icon: "text-muted-foreground",
     label: "Unknown",
   },
 };

@@ -22,8 +22,8 @@ export const dynamic = "force-dynamic";
 const PRIORITY_TONE: Record<string, string> = {
   urgent: "bg-rose-100 text-rose-700",
   high: "bg-amber-100 text-amber-700",
-  normal: "bg-slate-100 text-slate-600",
-  low: "bg-slate-100 text-slate-500",
+  normal: "bg-secondary text-muted-foreground",
+  low: "bg-secondary text-muted-foreground",
 };
 
 function addDays(iso: string, days: number): string {
@@ -173,7 +173,7 @@ function MiniStat({
   tone: "emerald" | "amber" | "muted";
 }) {
   const ring =
-    tone === "emerald" ? "bg-emerald-100 text-emerald-600" : tone === "amber" ? "bg-amber-100 text-amber-600" : "bg-slate-100 text-slate-500";
+    tone === "emerald" ? "bg-emerald-100 text-emerald-600" : tone === "amber" ? "bg-amber-100 text-amber-600" : "bg-secondary text-muted-foreground";
   const num = tone === "emerald" ? "text-emerald-600" : tone === "amber" ? "text-amber-600" : "text-foreground";
   return (
     <div className="rounded-xl bg-card border border-border p-4 flex items-center gap-3">
@@ -226,7 +226,7 @@ function WorkList({
               <span className={`absolute left-0 top-1.5 bottom-1.5 w-1 rounded-full ${bar}`} aria-hidden />
               <span className="text-sm truncate">{t.title}</span>
               {t.rightBadge ? (
-                <span className={`text-2xs shrink-0 capitalize px-1.5 py-0.5 rounded ${PRIORITY_TONE[t.rightBadge] ?? "bg-slate-100 text-slate-600"}`}>{t.rightBadge}</span>
+                <span className={`text-2xs shrink-0 capitalize px-1.5 py-0.5 rounded ${PRIORITY_TONE[t.rightBadge] ?? "bg-secondary text-muted-foreground"}`}>{t.rightBadge}</span>
               ) : t.right ? (
                 <span className="text-2xs text-muted-foreground shrink-0 truncate max-w-[40%]">{t.right}</span>
               ) : null}

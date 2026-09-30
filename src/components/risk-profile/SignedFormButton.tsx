@@ -39,7 +39,7 @@ export function SignedFormButton({ profileId }: { profileId: string }) {
       disabled={busy}
       title="Open the signed form"
       aria-label="Open the signed form"
-      className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+      className="btn-icon"
     >
       {busy ? <Loader2 className="size-4 animate-spin" /> : <FileSignature className="size-4" />}
     </button>

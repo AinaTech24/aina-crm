@@ -101,7 +101,7 @@ export default function Attendance() {
               {doneForDay ? (
                 <View style={[styles.doneBox, { backgroundColor: toneColors("success").bg }]}>
                   <Feather name="check-circle" size={16} color={toneColors("success").fg} />
-                  <Text variant="body" style={{ color: toneColors("success").fg, fontWeight: fontWeight.semibold as any }}>Day complete — {durationLabel(todayRow)}</Text>
+                  <Text variant="body" style={{ color: toneColors("success").fg, fontWeight: fontWeight.semibold }}>Day complete — {durationLabel(todayRow)}</Text>
                 </View>
               ) : (
                 <Pressable
@@ -163,7 +163,7 @@ export default function Attendance() {
                           <Text variant="body" numberOfLines={1}>{r.employee_name ?? "—"}</Text>
                           <Text variant="caption" tone="muted">{timeLabel(r.clock_in_at)}{r.clock_out_at ? ` → ${timeLabel(r.clock_out_at)}` : " · still in"}</Text>
                         </View>
-                        <Text variant="caption" style={{ color: palette.ink, fontWeight: fontWeight.semibold as any }}>{durationLabel(r)}</Text>
+                        <Text variant="caption" style={{ color: palette.ink, fontWeight: fontWeight.semibold }}>{durationLabel(r)}</Text>
                       </View>
                     ))
                   )}
@@ -198,22 +198,22 @@ function DayRow({ r, last }: { r: AttendanceRow; last: boolean }) {
         </Text>
       </View>
       {r.status ? <StatusPill label={titleCase(r.status)} tone={STATUS_TONE[r.status] ?? "neutral"} size="sm" dot={false} /> : null}
-      <Text variant="caption" style={{ color: palette.ink, fontWeight: fontWeight.semibold as any, minWidth: 52, textAlign: "right" }}>{durationLabel(r)}</Text>
+      <Text variant="caption" style={{ color: palette.ink, fontWeight: fontWeight.semibold, minWidth: 52, textAlign: "right" }}>{durationLabel(r)}</Text>
     </View>
   );
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
-  return <View style={{ flex: 1, alignItems: "center" }}><Text style={{ fontSize: 18, fontWeight: fontWeight.bold as any }}>{value}</Text><Text variant="caption" tone="muted">{label}</Text></View>;
+  return <View style={{ flex: 1, alignItems: "center" }}><Text style={{ fontSize: 18, fontWeight: fontWeight.bold }}>{value}</Text><Text variant="caption" tone="muted">{label}</Text></View>;
 }
 function SectionLabel({ icon, text }: { icon: any; text: string }) {
   return <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: spacing.xl, marginBottom: spacing.sm }}><Feather name={icon} size={13} color={palette.muted} /><Text variant="caption" tone="faint" style={{ letterSpacing: 0.6 }}>{text}</Text></View>;
 }
 
 const styles = StyleSheet.create({
-  timer: { fontSize: 34, fontWeight: fontWeight.bold as any, letterSpacing: -0.6, marginTop: 6 },
+  timer: { fontSize: 34, fontWeight: fontWeight.bold, letterSpacing: -0.6, marginTop: 6 },
   punchBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, borderRadius: radius.md, paddingVertical: spacing.lg, marginTop: spacing.lg },
-  punchTxt: { color: palette.white, fontWeight: fontWeight.bold as any, fontSize: 16 },
+  punchTxt: { color: palette.white, fontWeight: fontWeight.bold, fontSize: 16 },
   doneBox: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, borderRadius: radius.md, paddingVertical: spacing.lg, marginTop: spacing.lg },
   geoRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: spacing.md },
   vline: { width: StyleSheet.hairlineWidth, height: 28, backgroundColor: palette.line },

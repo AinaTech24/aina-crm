@@ -19,6 +19,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Download, FileText } from "lucide-react";
 import { DownloadButton } from "@/components/common/SecureLinkButtons";
+import { formatDate } from "@/lib/format";
 
 type Row = {
   id: string;
@@ -173,7 +174,7 @@ export function ArnEuinTrackerClient({
           <button
             onClick={() => setWithin(null)}
             className={`chip text-xs ${
-              within == null ? "bg-slate-900 text-white" : "bg-slate-100"
+              within == null ? "bg-slate-900 text-white" : "bg-secondary"
             }`}
           >
             any
@@ -185,7 +186,7 @@ export function ArnEuinTrackerClient({
               className={`chip text-xs ${
                 within === o.value
                   ? "bg-slate-900 text-white"
-                  : "bg-slate-100"
+                  : "bg-secondary"
               }`}
             >
               {o.label}
@@ -203,7 +204,7 @@ export function ArnEuinTrackerClient({
       {/* Table */}
       <div className="card-surface overflow-x-auto">
         <table className="w-full text-xs min-w-[1280px]">
-          <thead className="bg-slate-50 text-slate-600">
+          <thead className="bg-secondary text-muted-foreground">
             <tr>
               <Th>Employee</Th>
               <Th>Code</Th>
@@ -235,7 +236,7 @@ export function ArnEuinTrackerClient({
               filtered.map((r) => (
                 <tr
                   key={r.id}
-                  className="border-t hover:bg-slate-50/60 align-top"
+                  className="border-t hover:bg-secondary/60 align-top"
                 >
                   <td className="px-3 py-2">
                     <Link
@@ -251,7 +252,7 @@ export function ArnEuinTrackerClient({
                       {(r.roles ?? []).slice(0, 2).join(" · ")}
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-slate-700">
+                  <td className="px-3 py-2 text-foreground">
                     {r.employeeCode ?? "—"}
                   </td>
                   <td className="px-3 py-2">
@@ -260,7 +261,7 @@ export function ArnEuinTrackerClient({
                         {r.distributingAmcs.slice(0, 4).map((a) => (
                           <span
                             key={a}
-                            className="chip bg-slate-100 text-slate-700 text-2xs"
+                            className="chip bg-secondary text-foreground text-2xs"
                           >
                             {a}
                           </span>
@@ -298,7 +299,7 @@ export function ArnEuinTrackerClient({
                       </div>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-slate-600">
+                  <td className="px-3 py-2 text-muted-foreground">
                     {fmt(r.nismExamDate)}
                   </td>
                   <td className="px-3 py-2">
@@ -322,7 +323,7 @@ export function ArnEuinTrackerClient({
                       })()}
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-slate-600">
+                  <td className="px-3 py-2 text-muted-foreground">
                     {fmt(r.arnRegistrationDate)}
                   </td>
                   <td className="px-3 py-2">
@@ -377,7 +378,7 @@ export function ArnEuinTrackerClient({
                       })()}
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-slate-600">
+                  <td className="px-3 py-2 text-muted-foreground">
                     {fmt(r.dscLastSubmittedAt)}
                   </td>
                   <td className="px-3 py-2">
@@ -454,11 +455,7 @@ function fmt(d: string | null): string {
   // YYYY-MM-DD → DD MMM YYYY for human reading
   try {
     const dt = new Date(d);
-    return dt.toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
+    return formatDate(dt);
   } catch {
     return d;
   }

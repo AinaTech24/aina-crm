@@ -40,7 +40,7 @@ export default async function EditPackagePage({ params }: { params: Promise<{ id
         </div>
         <span
           className={`text-xs px-2 py-1 rounded-full ${
-            pkg.isActive ? "bg-emerald-50 text-emerald-700" : "bg-gray-50 text-gray-600"
+            pkg.isActive ? "bg-emerald-50 text-emerald-700" : "bg-secondary text-muted-foreground"
           }`}
         >
           {pkg.isActive ? "active" : "disabled"}

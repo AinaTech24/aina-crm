@@ -154,7 +154,19 @@ export async function InsuranceCommandCentre({
        WHERE l.tenant_id = ${session.tenantId}::uuid AND l.converted_investor_id IN (SELECT investor_id FROM insurance_policies WHERE tenant_id = ${session.tenantId}::uuid)
          AND l.source IS NOT NULL ORDER BY 1
     `)).rows as Array<{ source: string }>;
-    return [th, { branchName, branches, owners, execs, insurers, sources: sources.map((s) => s.source) }] as const;
+    // Industry and loss reason are free text: offer what the book actually holds.
+    const industries = (await tx.execute(sql`
+      SELECT lower(btrim(i.occupation)) AS k, mode() WITHIN GROUP (ORDER BY btrim(i.occupation)) AS name
+        FROM insurance_policies p JOIN investors i ON i.id = p.investor_id
+       WHERE p.tenant_id = ${session.tenantId}::uuid AND NULLIF(btrim(i.occupation), '') IS NOT NULL
+       GROUP BY 1 ORDER BY 2 LIMIT 100
+    `)).rows as Array<{ k: string; name: string }>;
+    const lossReasons = (await tx.execute(sql`
+      SELECT lower(btrim(lapse_reason)) AS k, mode() WITHIN GROUP (ORDER BY btrim(lapse_reason)) AS name
+        FROM insurance_policies WHERE tenant_id = ${session.tenantId}::uuid AND NULLIF(btrim(lapse_reason), '') IS NOT NULL
+       GROUP BY 1 ORDER BY 2 LIMIT 100
+    `)).rows as Array<{ k: string; name: string }>;
+    return [th, { branchName, branches, owners, execs, insurers, sources: sources.map((s) => s.source), industries, lossReasons }] as const;
   });
 
   const w: InsWindow = {
@@ -265,6 +277,8 @@ export async function InsuranceCommandCentre({
   if (filter.source) chips.push({ params: ["src"], label: "Source", value: filter.source === "none" ? "Not recorded" : leadSourceLabel(filter.source) });
   if (filter.claimGroup) chips.push({ params: ["cst"], label: "Claim status", value: CLAIM_GROUPS.find((g) => g.key === filter.claimGroup)?.label ?? filter.claimGroup });
   if (filter.claimType) chips.push({ params: ["ctyp"], label: "Claim type", value: CLAIM_TYPE_LABEL[filter.claimType] ?? filter.claimType });
+  if (filter.industry) chips.push({ params: ["ind"], label: "Industry", value: filter.industry === "none" ? "Not recorded" : meta.industries.find((x) => x.k === filter.industry!.toLowerCase())?.name ?? filter.industry });
+  if (filter.lossReason) chips.push({ params: ["lr"], label: "Loss reason", value: filter.lossReason === "none" ? "Not recorded" : meta.lossReasons.find((x) => x.k === filter.lossReason!.toLowerCase())?.name ?? filter.lossReason });
   const resetHref = (() => {
     const q = new URLSearchParams(base);
     for (const k of INS_PARAM_KEYS) q.delete(k);
@@ -296,6 +310,8 @@ export async function InsuranceCommandCentre({
           groups={PRODUCT_GROUPS.map((g) => ({ value: g.key, label: `${g.label} (${g.line === "personal" ? "Personal" : "Commercial"})` }))}
           insurers={meta.insurers.map((i) => ({ value: i.k, label: i.name }))}
           sources={[...meta.sources.map((s) => ({ value: s, label: leadSourceLabel(s) })), { value: "none", label: "Source not recorded" }]}
+          industries={meta.industries.length ? [...meta.industries.map((x) => ({ value: x.k, label: x.name })), { value: "none", label: "Industry not recorded" }] : []}
+          lossReasons={meta.lossReasons.length ? [...meta.lossReasons.map((x) => ({ value: x.k, label: x.name })), { value: "none", label: "Reason not recorded" }] : []}
           statuses={Object.entries(POLICY_STATUS_LABEL).map(([value, label]) => ({ value, label }))}
           bands={PREMIUM_BANDS.map((b) => ({ value: b.key, label: b.label }))}
           claimGroups={CLAIM_GROUPS.map((g) => ({ value: g.key, label: g.label }))}

@@ -114,7 +114,7 @@ export function SwpPeriodicPlanner() {
 
       {/* Asset allocation + returns */}
       <div className="grid md:grid-cols-2 gap-4">
-        <section className="border border-slate-200 rounded-lg p-4 space-y-2">
+        <section className="border border-border rounded-lg p-4 space-y-2">
           <div className="flex items-center justify-between">
             <div className="text-2xs uppercase tracking-wider font-semibold text-primary">Asset allocation</div>
             <div className={`text-2xs font-semibold ${allocTotal === 100 ? "text-emerald-600" : "text-rose-600"}`}>Total {allocTotal}%</div>
@@ -125,7 +125,7 @@ export function SwpPeriodicPlanner() {
             <Num label="Equity %" value={alloc.equity} setValue={(v) => setAlloc((a) => ({ ...a, equity: v }))} step={5} />
           </div>
         </section>
-        <section className="border border-slate-200 rounded-lg p-4 space-y-2">
+        <section className="border border-border rounded-lg p-4 space-y-2">
           <div className="flex items-center justify-between">
             <div className="text-2xs uppercase tracking-wider font-semibold text-emerald-700">Assumed return per class</div>
             <div className="text-2xs font-semibold text-emerald-700">Avg {result.averageReturnPct.toFixed(2)}%</div>
@@ -140,7 +140,7 @@ export function SwpPeriodicPlanner() {
 
       {/* Deferment + withdrawal config */}
       <div className="grid md:grid-cols-2 gap-4">
-        <section className="border border-slate-200 rounded-lg p-4 space-y-3">
+        <section className="border border-border rounded-lg p-4 space-y-3">
           <div className="flex items-center gap-4">
             <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">Deferment required?</span>
             <label className="flex items-center gap-1.5 text-sm cursor-pointer"><input type="radio" checked={!defermentRequired} onChange={() => setDefermentRequired(false)} /> No</label>
@@ -153,7 +153,7 @@ export function SwpPeriodicPlanner() {
             </div>
           )}
         </section>
-        <section className="border border-slate-200 rounded-lg p-4 space-y-3">
+        <section className="border border-border rounded-lg p-4 space-y-3">
           <div className="text-2xs uppercase tracking-wider font-semibold text-amber-700">Periodic withdrawals</div>
           <div className="grid grid-cols-3 gap-3">
             <Num label="Every N years" value={withdrawalIntervalYears} setValue={setWithdrawalIntervalYears} step={1} />
@@ -181,8 +181,8 @@ export function SwpPeriodicPlanner() {
 
       {/* Schedule */}
       {result.schedule.length > 0 && (
-        <details className="border border-slate-200 rounded-lg overflow-hidden" open>
-          <summary className="cursor-pointer select-none px-4 py-2.5 text-xs font-semibold bg-slate-50 hover:bg-slate-100">
+        <details className="border border-border rounded-lg overflow-hidden" open>
+          <summary className="cursor-pointer select-none px-4 py-2.5 text-xs font-semibold bg-secondary hover:bg-secondary">
             Projected periodic withdrawal &amp; fund value ({result.schedule.length} years)
           </summary>
           <div className="max-h-80 overflow-y-auto scrollbar-thin print:max-h-none print:overflow-visible">

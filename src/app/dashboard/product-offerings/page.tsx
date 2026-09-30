@@ -44,7 +44,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 const STATUS_TONE: Record<string, string> = {
   active: "bg-emerald-50 text-emerald-700",
   paused: "bg-amber-50 text-amber-700",
-  discontinued: "bg-gray-100 text-gray-600",
+  discontinued: "bg-secondary text-muted-foreground",
 };
 
 export default async function ProductOfferingsListPage({
@@ -177,7 +177,7 @@ export default async function ProductOfferingsListPage({
 
     if (bad) {
       return (
-        <span title={title} className={`chip text-2xs inline-flex items-center gap-1 ${active ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-500"}`}>
+        <span title={title} className={`chip text-2xs inline-flex items-center gap-1 ${active ? "bg-rose-100 text-rose-700" : "bg-secondary text-muted-foreground"}`}>
           <ShieldAlert className="size-3" /> Risk
         </span>
       );
@@ -255,7 +255,7 @@ export default async function ProductOfferingsListPage({
             <Link
               key={r.id}
               href={`/dashboard/product-offerings/${r.id}`}
-              className="card-surface p-4 hover:bg-slate-50/60 transition-colors"
+              className="card-surface p-4 hover:bg-secondary/60 transition-colors"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
@@ -268,7 +268,7 @@ export default async function ProductOfferingsListPage({
                 <div className="flex items-center gap-1.5 shrink-0">
                   <HealthBadge health={healthById.get(r.id)} active={r.status === "active"} />
                   <span
-                    className={`chip text-2xs ${STATUS_TONE[r.status] ?? "bg-slate-100"
+                    className={`chip text-2xs ${STATUS_TONE[r.status] ?? "bg-secondary"
                       }`}
                   >
                     {r.status}
@@ -281,7 +281,7 @@ export default async function ProductOfferingsListPage({
                   {((r.providers as string[]) ?? []).slice(0, 5).map((p) => (
                     <span
                       key={p}
-                      className="chip bg-slate-100 text-slate-700 text-2xs"
+                      className="chip bg-secondary text-foreground text-2xs"
                     >
                       {p}
                     </span>

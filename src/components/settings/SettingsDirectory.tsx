@@ -43,6 +43,7 @@ const SECTIONS: Section[] = [
 
   { icon: Users, title: "Team & roles", desc: "Invite team members, assign roles, manage seats.", href: "/dashboard/employees", group: "Team", keywords: "users employees invite permissions seats staff" },
   { icon: Network, title: "Teams within a branch", desc: "Group each branch into small teams (desks) and assign RMs — powers the monthly MIS roll-ups.", href: "/dashboard/settings/desks", group: "Team", keywords: "desks mis" },
+  { icon: Gauge, title: "Dashboards", desc: "Which dashboard each role opens by default, and dashboards assigned to one person.", href: "/dashboard/settings/dashboards", group: "Team", keywords: "default home role assign" },
   { icon: Gauge, title: "Dashboard thresholds", desc: "Where the dashboards draw their lines — target bands, phasing, stale leads, proposal ageing and SLAs.", href: "/dashboard/settings/dashboard-thresholds", group: "Team", keywords: "sla bands" },
   { icon: Target, title: "Targets & quota", desc: "Set monthly business, new-meeting and renewal-meeting targets per team member — track vs achievement.", href: "/dashboard/settings/targets", group: "Team", keywords: "kra goals" },
 

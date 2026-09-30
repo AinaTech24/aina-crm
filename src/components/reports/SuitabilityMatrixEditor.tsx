@@ -12,6 +12,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Save, X, Pencil, Printer, Sparkles } from "lucide-react";
+import { formatDate } from "@/lib/format";
 
 type Entry = {
   id?: string;
@@ -56,7 +57,7 @@ const COARSE_TONE: Record<string, string> = {
   liquid: "bg-cyan-100 text-cyan-800 border-cyan-300",
   commodity: "bg-orange-100 text-orange-800 border-orange-300",
   international: "bg-violet-100 text-violet-800 border-violet-300",
-  other: "bg-slate-100 text-slate-800 border-slate-300",
+  other: "bg-secondary text-foreground border-slate-300",
 };
 
 const RISK_TONE: Record<string, string> = {
@@ -227,8 +228,8 @@ export function SuitabilityMatrixEditor({
       {/* Print header */}
       <div className="hidden print:block text-center mb-3">
         <h1 className="page-title">MF Suitability Matrix</h1>
-        <p className="text-xs text-slate-500">
-          Generated {new Date().toLocaleDateString("en-GB")}
+        <p className="text-xs text-muted-foreground">
+          Generated {formatDate(new Date())}
         </p>
       </div>
 
@@ -236,18 +237,18 @@ export function SuitabilityMatrixEditor({
         <table className="w-full border-collapse text-xs min-w-[800px]">
           <thead>
             <tr>
-              <th className="border border-slate-300 bg-slate-100 px-3 py-2 text-left w-[140px]">
-                <div className="text-2xs uppercase tracking-wide font-semibold text-slate-600">
+              <th className="border border-slate-300 bg-secondary px-3 py-2 text-left w-[140px]">
+                <div className="text-2xs uppercase tracking-wide font-semibold text-muted-foreground">
                   Client Risk Profile
                 </div>
-                <div className="text-2xs uppercase tracking-wide font-semibold text-slate-600 mt-3">
+                <div className="text-2xs uppercase tracking-wide font-semibold text-muted-foreground mt-3">
                   ↓ × Time Horizon →
                 </div>
               </th>
               {HORIZONS.map((h) => (
                 <th
                   key={h.value}
-                  className="border border-slate-300 bg-slate-100 px-3 py-2 text-left"
+                  className="border border-slate-300 bg-secondary px-3 py-2 text-left"
                 >
                   <div className="font-semibold text-sm">{h.label}</div>
                   <div className="text-2xs text-muted-foreground">
@@ -294,7 +295,7 @@ export function SuitabilityMatrixEditor({
                             return (
                               <span
                                 key={c}
-                                className={`chip text-2xs border ${COARSE_TONE[c] ?? "bg-slate-100"}`}
+                                className={`chip text-2xs border ${COARSE_TONE[c] ?? "bg-secondary"}`}
                               >
                                 {label}
                                 {pct != null && (
@@ -312,7 +313,7 @@ export function SuitabilityMatrixEditor({
                         </p>
                       )}
                       {cell.notes && (
-                        <div className="text-2xs text-slate-700 italic">
+                        <div className="text-2xs text-foreground italic">
                           “{cell.notes}”
                         </div>
                       )}
@@ -347,7 +348,7 @@ export function SuitabilityMatrixEditor({
                     setEditingKey(null);
                     setDraft(null);
                   }}
-                  className="text-slate-400 hover:text-slate-700"
+                  className="text-muted-foreground hover:text-foreground"
                 >
                   <X className="size-4" />
                 </button>
@@ -373,8 +374,8 @@ export function SuitabilityMatrixEditor({
                         className={`chip text-xs border ${
                           on
                             ? COARSE_TONE[c.value] ??
-                              "bg-slate-200 text-slate-900"
-                            : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
+                              "bg-slate-200 text-foreground"
+                            : "bg-white text-foreground border-slate-300 hover:bg-secondary"
                         }`}
                       >
                         {c.label}

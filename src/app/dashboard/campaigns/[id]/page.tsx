@@ -16,11 +16,11 @@ import { RecordProvenance } from "@/components/common/RecordProvenance";
 import { formatDate } from "@/lib/utils";
 
 const STATUS_COLORS: Record<string, string> = {
-  draft: "bg-gray-50 text-gray-700",
+  draft: "bg-secondary text-foreground",
   scheduled: "bg-blue-50 text-blue-700",
   sending: "bg-amber-50 text-amber-700",
   sent: "bg-emerald-50 text-emerald-700",
-  paused: "bg-slate-50 text-slate-700",
+  paused: "bg-secondary text-foreground",
   cancelled: "bg-rose-50 text-rose-700",
 };
 const ICONS = { whatsapp: MessageCircle, email: Mail, sms: MessageSquare } as any;

@@ -12,6 +12,7 @@ import { requireSession } from "@/lib/auth/session";
 import { PrintReportButton } from "@/components/investors/PrintReportButton";
 import { ChecklistBox } from "@/components/reports/ChecklistBox";
 import { FINANCE_CHECKLIST } from "@/lib/finance/checklist";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -43,8 +44,8 @@ export default async function FinancialChecklistPage() {
 
       <div className="hidden print:block text-center mb-3">
         <h1 className="page-title">Finance Management Checklist</h1>
-        <p className="text-xs text-slate-500">
-          Generated {new Date().toLocaleDateString("en-GB")}
+        <p className="text-xs text-muted-foreground">
+          Generated {formatDate(new Date())}
         </p>
       </div>
 

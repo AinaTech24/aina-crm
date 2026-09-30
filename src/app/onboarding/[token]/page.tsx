@@ -72,22 +72,22 @@ export default async function PublicOnboardingPage({ params }: { params: Promise
     : null;
 
   return (
-    <div className="min-h-screen bg-slate-50 bg-gradient-to-br from-slate-50 via-white to-cyan-50/50 text-slate-800 relative overflow-hidden flex flex-col font-sans">
+    <div className="min-h-screen bg-secondary bg-gradient-to-br from-slate-50 via-white to-cyan-50/50 text-foreground relative overflow-hidden flex flex-col font-sans">
       {/* Soft brand wash */}
       <div className="absolute -top-20 left-1/4 size-[36rem] bg-cyan-300/20 rounded-full blur-[130px] pointer-events-none" />
       <div className="absolute bottom-0 right-1/5 size-[34rem] bg-indigo-300/15 rounded-full blur-[130px] pointer-events-none" />
 
       {/* Brand Header */}
-      <header className="bg-white/75 border-b border-slate-200 backdrop-blur-md relative z-10">
+      <header className="bg-white/75 border-b border-border backdrop-blur-md relative z-10">
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ShieldCheck className="size-5 text-brand-cyan" />
-            <span className="font-semibold text-slate-900 tracking-tight">
+            <span className="font-semibold text-foreground tracking-tight">
               {data.tenant.displayName ?? data.tenant.legalName ?? "Onboarding Progress"}
             </span>
           </div>
           {arnLabel && (
-            <div className="text-2xs font-mono text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200">
+            <div className="text-2xs font-mono text-muted-foreground bg-secondary px-2.5 py-0.5 rounded-full border border-border">
               {arnLabel}
             </div>
           )}
@@ -105,7 +105,7 @@ export default async function PublicOnboardingPage({ params }: { params: Promise
       </main>
 
       {/* Footer */}
-      <footer className="max-w-3xl mx-auto w-full px-4 py-6 text-2xs text-slate-500 text-center relative z-10 border-t border-slate-200">
+      <footer className="max-w-3xl mx-auto w-full px-4 py-6 text-2xs text-muted-foreground text-center relative z-10 border-t border-border">
         Mutual fund investments are subject to market risks. Read all scheme related documents carefully.
         {arnLabel ? (
           <>
@@ -120,13 +120,13 @@ export default async function PublicOnboardingPage({ params }: { params: Promise
 
 function ErrorScreen({ message }: { message: string }) {
   return (
-    <div className="min-h-screen bg-slate-50 bg-gradient-to-br from-slate-50 via-white to-cyan-50/50 grid place-items-center p-6 text-slate-800 relative font-sans">
+    <div className="min-h-screen bg-secondary bg-gradient-to-br from-slate-50 via-white to-cyan-50/50 grid place-items-center p-6 text-foreground relative font-sans">
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 size-96 bg-rose-300/15 rounded-full blur-[80px] pointer-events-none" />
-      <div className="max-w-md w-full bg-white/90 backdrop-blur-md rounded-2xl border border-slate-200 p-8 text-center shadow-lg relative z-10">
+      <div className="max-w-md w-full bg-white/90 backdrop-blur-md rounded-2xl border border-border p-8 text-center shadow-lg relative z-10">
         <AlertCircle className="size-12 text-rose-500 mx-auto animate-pulse" />
         <h1 className="page-title mt-4">Link Unavailable</h1>
-        <p className="text-sm text-slate-500 mt-2 leading-relaxed">{message}</p>
-        <p className="text-xs text-slate-400 mt-6 leading-relaxed">
+        <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{message}</p>
+        <p className="text-xs text-muted-foreground mt-6 leading-relaxed">
           Please reach out to your relationship manager or representative for assistance or a new link.
         </p>
       </div>

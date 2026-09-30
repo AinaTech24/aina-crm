@@ -34,7 +34,7 @@ const STATUS_BADGE: Record<string, string> = {
 const PKG_BADGE: Record<string, string> = {
   premium: "bg-violet-100 text-violet-700",
   professional: "bg-blue-100 text-blue-700",
-  starter: "bg-slate-100 text-slate-700",
+  starter: "bg-secondary text-foreground",
   platform: "bg-amber-100 text-amber-700",
 };
 

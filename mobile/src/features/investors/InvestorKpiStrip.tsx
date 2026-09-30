@@ -11,15 +11,16 @@ import { Text } from "../../components/ui/Text";
 import { inr } from "../../lib/format";
 import { palette, radius, spacing, fontWeight } from "../../theme/tokens";
 import { useInvestorKpis } from "./api";
+import { asIcon } from "../../lib/icons";
 
 function Tile({ icon, tone, label, value, sub }: { icon: string; tone: string; label: string; value: string; sub: string }) {
   return (
     <View style={styles.tile}>
       <View style={styles.head}>
-        <Feather name={icon as any} size={13} color={tone} />
+        <Feather name={asIcon(icon)} size={13} color={tone} />
         <Text variant="caption" tone="muted" numberOfLines={1}>{label}</Text>
       </View>
-      <Text style={{ fontSize: 17, fontWeight: fontWeight.bold as any }} numberOfLines={1}>{value}</Text>
+      <Text style={{ fontSize: 17, fontWeight: fontWeight.bold }} numberOfLines={1}>{value}</Text>
       <Text variant="caption" tone="faint" numberOfLines={1}>{sub}</Text>
     </View>
   );

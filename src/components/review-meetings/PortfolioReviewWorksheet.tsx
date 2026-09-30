@@ -87,7 +87,7 @@ const ACTION_OPTIONS: Array<{ value: RecommendedAction; label: string }> = [
 
 const ACTION_TONE: Record<string, string> = {
   hold: "bg-emerald-50 text-emerald-700",
-  no_action: "bg-slate-50 text-slate-600",
+  no_action: "bg-secondary text-muted-foreground",
   switch: "bg-violet-50 text-violet-700",
   exit: "bg-rose-50 text-rose-700",
   increase: "bg-blue-50 text-blue-700",
@@ -251,7 +251,7 @@ export function PortfolioReviewWorksheet({
 
       <div className="overflow-x-auto card-surface">
         <table className="w-full text-xs min-w-[1400px]">
-          <thead className="bg-slate-50 text-slate-600">
+          <thead className="bg-secondary text-muted-foreground">
             <tr>
               <th className="px-2 py-2 text-left w-8">#</th>
               <th className="px-2 py-2 text-left min-w-[180px]">Fund / Folio</th>

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Save, Loader2, Check, ChevronDown, ChevronUp, RotateCcw, Info } from "lucide-react";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 
 /**
  * Lets an MFD owner map the "From" identity for client emails. The default path
@@ -62,7 +63,15 @@ export function EmailSenderForm({
   }
 
   async function resetDefault() {
-    if (!window.confirm("Reset to the platform default sender? Client emails will go from the shared address again.")) return;
+    if (
+      !(await confirmDialog({
+        title: "Reset to the platform default sender?",
+        message: "Client emails will go out from the shared address instead of your firm's.",
+        confirmLabel: "Reset sender",
+        tone: "danger",
+      }))
+    )
+      return;
     setBusy(true);
     try {
       await fetch("/api/settings/email-sender", { method: "DELETE" });

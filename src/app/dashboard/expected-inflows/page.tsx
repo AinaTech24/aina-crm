@@ -15,6 +15,7 @@ import { requireSession } from "@/lib/auth/session";
 import { requireAny } from "@/lib/auth/rbac";
 import { expectedInflows, investors, users, INFLOW_SOURCE_LABELS } from "@/db/schema";
 import { CollapsibleKpiStrip } from "@/components/investors/CollapsibleKpiStrip";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -92,7 +93,7 @@ export default async function ExpectedInflowsPage() {
     (byMonth.get(key) as any).push(r);
   }
   const monthLabel = (k: string) =>
-    new Date(`${k}-01T00:00:00`).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+    formatDate(new Date(`${k}-01T00:00:00`), "monthYear");
 
   return (
     <div className="space-y-5 max-w-6xl">
@@ -163,7 +164,7 @@ export default async function ExpectedInflowsPage() {
                           <td className="py-2.5 px-3">{INFLOW_SOURCE_LABELS[r.sourceType as keyof typeof INFLOW_SOURCE_LABELS] ?? r.sourceType}</td>
                           <td className="py-2.5 px-3 text-right tabular-nums font-semibold">{r.expectedAmount ? inr(r.expectedAmount) : "—"}</td>
                           <td className="py-2.5 px-3 tabular-nums whitespace-nowrap">
-                            {new Date(`${r.expectedOn}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                            {formatDate(new Date(`${r.expectedOn}T00:00:00`), "dayMonth")}
                           </td>
                           <td className="py-2.5 px-3 capitalize text-muted-foreground">{r.confidence}</td>
                           <td className="py-2.5 px-3 text-muted-foreground">{r.ownerName ?? "—"}</td>

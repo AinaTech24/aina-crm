@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { useToast } from "@/components/ui/Toast";
+import { TableSkeleton } from "@/components/common/Skeleton";
 import { DateField } from "@/components/ui/DateField";
 
 type Account = {
@@ -124,7 +125,7 @@ export function EquityDmatManager() {
       </div>
 
       {loading ? (
-        <div className="text-sm text-muted-foreground py-8 text-center">Loading…</div>
+        <div className="text-sm text-muted-foreground py-8 text-center" aria-busy="true"><TableSkeleton rows={4} /></div>
       ) : accounts.length === 0 ? (
         <div className="text-sm text-muted-foreground py-8 text-center">No DMAT accounts yet.</div>
       ) : (

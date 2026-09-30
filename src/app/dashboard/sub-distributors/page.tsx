@@ -16,6 +16,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { subDistributors } from "@/db/schema";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ const ASSOCIATION_LABELS: Record<string, string> = {
 const STATUS_TONE: Record<string, string> = {
   active: "bg-emerald-50 text-emerald-700",
   inactive: "bg-amber-50 text-amber-700",
-  terminated: "bg-gray-100 text-gray-600",
+  terminated: "bg-secondary text-muted-foreground",
 };
 
 export default async function SubDistributorsListPage({
@@ -92,7 +93,7 @@ export default async function SubDistributorsListPage({
             href={`/dashboard/sub-distributors?status=${s.value}`}
             className={`chip text-xs ${statusFilter === s.value
                 ? "bg-slate-900 text-white"
-                : "bg-slate-100"
+                : "bg-secondary"
               }`}
           >
             {s.label}
@@ -116,7 +117,7 @@ export default async function SubDistributorsListPage({
       ) : (
         <div className="card-surface table-scroll">
           <table className="w-full text-xs min-w-[960px]">
-            <thead className="bg-slate-50 text-slate-600 sticky top-0 z-10 bg-card">
+            <thead className="bg-secondary text-muted-foreground sticky top-0 z-10 bg-card">
               <tr>
                 <th className="px-3 py-2 text-left">Name</th>
                 <th className="px-3 py-2 text-left">Code</th>
@@ -131,7 +132,7 @@ export default async function SubDistributorsListPage({
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} className="border-t hover:bg-slate-50/60">
+                <tr key={r.id} className="border-t hover:bg-secondary/60">
                   <td className="px-3 py-2">
                     <Link
                       href={`/dashboard/sub-distributors/${r.id}`}
@@ -168,7 +169,7 @@ export default async function SubDistributorsListPage({
                   </td>
                   <td className="px-3 py-2">
                     <span
-                      className={`chip text-2xs ${STATUS_TONE[r.status] ?? "bg-slate-100"
+                      className={`chip text-2xs ${STATUS_TONE[r.status] ?? "bg-secondary"
                         }`}
                     >
                       {r.status}
@@ -200,11 +201,7 @@ function ExpiryBadge({ date }: { date: string | null }) {
           : "bg-emerald-50 text-emerald-700";
   return (
     <span className={`chip text-2xs ${tone}`}>
-      {new Date(date).toLocaleDateString("en-GB", {
-        day: "2-digit",
-        month: "short",
-        year: "2-digit",
-      })}
+      {formatDate(new Date(date))}
     </span>
   );
 }

@@ -11,6 +11,9 @@ import { BranchTargetsManager } from "./BranchTargetsManager";
 import { BRANCH_TARGET_METRICS } from "@/lib/targets/branch-targets";
 import { currentFiscalYear } from "@/lib/business/sif-status";
 import { sql } from "drizzle-orm";
+import { can } from "@/lib/auth/rbac";
+import { INS_TARGETS } from "@/lib/dashboard/insurance/targets";
+import { InsuranceTargetsManager } from "./InsuranceTargetsManager";
 
 export const dynamic = "force-dynamic";
 
@@ -78,6 +81,19 @@ export default async function TargetsSettingsPage() {
       })
     : null;
 
+  // Firm-level insurance targets (the Insurance Business Command Centre).
+  // Firm policy, so settings.dashboard — owner, or an Insurance Head granted it.
+  const insuranceTargets = can(session.roles, "settings.dashboard", session.permissions)
+    ? await withTenant(session.tenantId, async (tx) => {
+        const rows = await tx.execute(sql`
+          SELECT metric_key, target_value FROM annual_targets
+           WHERE tenant_id = ${session.tenantId}::uuid AND fiscal_year = ${fiscalYear} AND scope_type = 'firm' AND scope_id IS NULL
+             AND metric_key IN (${sql.join(INS_TARGETS.map((t) => sql`${t.key}`), sql`, `)})
+        `);
+        return Object.fromEntries((rows.rows as Array<{ metric_key: string; target_value: string }>).map((r) => [r.metric_key, Number(r.target_value)]));
+      })
+    : null;
+
   return (
     <div className="space-y-5 max-w-5xl">
       <Link href="/dashboard/settings" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
@@ -96,6 +112,10 @@ export default async function TargetsSettingsPage() {
           initial={branchData.targets}
           fiscalYear={fiscalYear}
         />
+      )}
+
+      {insuranceTargets && (
+        <InsuranceTargetsManager metrics={INS_TARGETS} initial={insuranceTargets} fiscalYear={fiscalYear} />
       )}
     </div>
   );

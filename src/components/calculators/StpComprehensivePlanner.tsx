@@ -161,8 +161,8 @@ export function StpComprehensivePlanner() {
 
       {/* Year-by-year (Detail) */}
       {reportDetail && result.schedule.length > 0 && (
-        <details className="border border-slate-200 rounded-lg overflow-hidden" open>
-          <summary className="cursor-pointer select-none px-4 py-2.5 text-xs font-semibold bg-slate-50 hover:bg-slate-100">
+        <details className="border border-border rounded-lg overflow-hidden" open>
+          <summary className="cursor-pointer select-none px-4 py-2.5 text-xs font-semibold bg-secondary hover:bg-secondary">
             Projected annual investment value ({result.schedule.length} years)
           </summary>
           <div className="max-h-80 overflow-y-auto scrollbar-thin print:max-h-none print:overflow-visible">

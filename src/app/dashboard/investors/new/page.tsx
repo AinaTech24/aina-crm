@@ -15,6 +15,8 @@ import type { Referral } from "@/lib/investors/referral";
 import { UccCodesField } from "@/components/investors/UccCodesField";
 import { cleanUccCodes } from "@/lib/investors/ucc";
 import { CustomFieldsSection, missingRequired, type CustomFieldDef } from "@/components/common/CustomFieldInputs";
+import { FormActions } from "@/components/ui/FormActions";
+import { Button, buttonClass } from "@/components/ui/Button";
 
 function NewInvestorPageInner() {
   const router = useRouter();
@@ -327,26 +329,25 @@ function NewInvestorPageInner() {
             value={form.notes}
             onChange={(e) => set("notes", e.target.value)}
             rows={3}
-            className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+            className="input-base"
           />
         </Section>
 
         {/* Firm-defined custom fields (Settings → Custom fields) */}
         <CustomFieldsSection entity="investor" values={customFields} onChange={setCustomFields} onDefsLoaded={setCfDefs} />
 
-        {err && <div className="text-sm text-rose-600">{err}</div>}
-
-        <div className="flex justify-end gap-2 pt-2">
-          <Link href="/dashboard/investors" className="rounded-md border px-4 py-2 text-sm">
+        {/* Sticky, so "Create client" is reachable from anywhere in a form that
+            is five sections long — it used to sit below the fold with nothing
+            to say it was there. The error lives in the same bar as the button
+            that triggered it, rather than scrolling away above it. */}
+        <FormActions status={err ? <span role="alert" className="text-destructive">{err}</span> : null}>
+          <Link href="/dashboard/investors" className={buttonClass("secondary")}>
             Cancel
           </Link>
-          <button
-            disabled={busy}
-            className="rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium disabled:opacity-50"
-          >
+          <Button type="submit" variant="primary" loading={busy}>
             {busy ? "Creating…" : "Create client"}
-          </button>
-        </div>
+          </Button>
+        </FormActions>
       </form>
 </div>
   );
@@ -355,7 +356,7 @@ function NewInvestorPageInner() {
 function Section({ title, children, cols = 2 }: { title: string; children: React.ReactNode; cols?: 1 | 2 }) {
   return (
     <div className="border rounded-lg bg-card p-4 sm:p-6 space-y-3">
-      <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</div>
+      <h2 className="section-title">{title}</h2>
       <div className={cols === 1 ? "space-y-3" : "grid grid-cols-1 sm:grid-cols-2 gap-3"}>{children}</div>
     </div>
   );
@@ -395,7 +396,7 @@ function Field({
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           required={required}
-          className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+          className="input-base"
         />
       )}
     </label>

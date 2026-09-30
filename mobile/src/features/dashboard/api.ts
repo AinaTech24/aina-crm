@@ -81,7 +81,7 @@ export function useMyDay(date?: string) {
     staleTime: 60_000,
     // Keep the previous day's plan on screen while the next one loads — tapping
     // through the week strip shouldn't flash a skeleton each time.
-    placeholderData: (prev) => prev,
+
   });
 }
 

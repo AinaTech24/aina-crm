@@ -362,7 +362,7 @@ export async function LeadInsightsSection({ session }: { session: SessionUser })
           </div>
           {data.agingByStage.length === 0 ? (
             <p className="text-sm text-muted-foreground py-6 text-center">
-              No open leads to analyse.
+              No open leads to analyze.
             </p>
           ) : (
             <ul className="space-y-2">

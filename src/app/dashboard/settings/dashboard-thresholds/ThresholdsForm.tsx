@@ -22,7 +22,7 @@ type Def = {
   key: string;
   label: string;
   hint: string;
-  kind: "days" | "rupees" | "fraction" | "choice";
+  kind: "days" | "hours" | "rupees" | "fraction" | "choice";
   min?: number;
   max?: number;
   choices?: Array<{ value: string; label: string }>;
@@ -46,6 +46,7 @@ function describe(def: Def, v: unknown): string {
   if (def.kind === "choice") return def.choices?.find((c) => c.value === v)?.label ?? String(v);
   if (def.kind === "fraction") return `${Math.round(Number(v) * 100)}%`;
   if (def.kind === "rupees") return formatMoney(Number(v));
+  if (def.kind === "hours") return `${v} hour${Number(v) === 1 ? "" : "s"}`;
   return `${v} day${Number(v) === 1 ? "" : "s"}`;
 }
 
@@ -128,7 +129,7 @@ export function ThresholdsForm({
                   <>
                     {f.hint}. Default: <span className="font-medium">{describe(f, defaults[f.key])}</span>
                     {f.kind !== "choice" && f.min != null && f.max != null && (
-                      <> · allowed {f.kind === "fraction" ? `${Math.round(f.min * 100)}–${Math.round(f.max * 100)}%` : f.kind === "rupees" ? `${formatMoney(f.min)} – ${formatMoney(f.max)}` : `${f.min}–${f.max} days`}</>
+                      <> · allowed {f.kind === "fraction" ? `${Math.round(f.min * 100)}–${Math.round(f.max * 100)}%` : f.kind === "rupees" ? `${formatMoney(f.min)} – ${formatMoney(f.max)}` : `${f.min}–${f.max} ${f.kind === "hours" ? "hours" : "days"}`}</>
                     )}
                   </>
                 }
@@ -160,7 +161,7 @@ export function ThresholdsForm({
                         onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
                       />
                       <span className="whitespace-nowrap text-sm text-muted-foreground">
-                        {f.kind === "days" ? "days" : f.kind === "fraction" ? "% of target" : ""}
+                        {f.kind === "days" ? "days" : f.kind === "hours" ? "hours" : f.kind === "fraction" ? "% of target" : ""}
                       </span>
                     </div>
                   )

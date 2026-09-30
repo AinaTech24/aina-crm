@@ -253,7 +253,7 @@ export function PublicDocsForm({
       {/* ─── KYC data fields ─────────────────────────────────────────── */}
       {sections.map(([section, fields]) => (
         <div key={section} className="bg-white rounded-xl shadow p-6 space-y-3">
-          <h2 className="text-sm font-bold text-slate-800">{section}</h2>
+          <h2 className="text-sm font-bold text-foreground">{section}</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {fields.map((f) => (
               <FieldRow key={f.key} field={f} value={fieldValues[f.key] ?? ""} onChange={(val) => setField(f.key, val)} />
@@ -265,7 +265,7 @@ export function PublicDocsForm({
       {/* ─── Document uploads ────────────────────────────────────────── */}
       <div className="bg-white rounded-xl shadow p-6 space-y-3">
         <div>
-          <h2 className="text-sm font-bold text-slate-800">Upload your documents</h2>
+          <h2 className="text-sm font-bold text-foreground">Upload your documents</h2>
           <p className="text-2xs text-muted-foreground mt-0.5">Files: PDF, JPG, PNG up to 10 MB each.</p>
         </div>
         {requiredDocs.map((d) => (
@@ -284,7 +284,7 @@ export function PublicDocsForm({
         </label>
 
         <div className="border-t pt-3 mt-1">
-          <div className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+          <div className="text-sm font-bold text-foreground flex items-center gap-1.5">
             <PenLine className="size-4 text-brand-cyan" /> Your signature
           </div>
 
@@ -380,7 +380,7 @@ function SignatureUpload({ value, onChange }: { value: File | null; onChange: (f
 
   if (value) {
     return (
-      <div className="border rounded-lg p-3 flex items-center gap-3 bg-slate-50">
+      <div className="border rounded-lg p-3 flex items-center gap-3 bg-secondary">
         {preview && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={preview} alt="Signature preview" className="h-12 w-auto max-w-[160px] object-contain border rounded bg-white" />
@@ -411,7 +411,7 @@ function SignatureUpload({ value, onChange }: { value: File | null; onChange: (f
 
 function FieldRow({ field, value, onChange }: { field: KycField; value: string; onChange: (v: string) => void }) {
   const labelEl = (
-    <div className="text-xs font-medium text-slate-700 mb-1">
+    <div className="text-xs font-medium text-foreground mb-1">
       {field.label}
       {field.required && <span className="text-rose-600 ml-1">*</span>}
     </div>

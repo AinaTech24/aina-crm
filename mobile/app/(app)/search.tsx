@@ -24,6 +24,7 @@ import { startCall } from "../../src/features/activities/callAndLog";
 import { openWhatsApp } from "../../src/features/activities/whatsapp";
 import { inr, initials, titleCase } from "../../src/lib/format";
 import { spacing, palette, radius, fontWeight, TOUCH_MIN } from "../../src/theme/tokens";
+import { asIcon } from "../../src/lib/icons";
 
 /** Opens WhatsApp and records the touch on the client's timeline. */
 const openWa = (phone: string | null | undefined, subject?: { type: "investor" | "lead"; id: string; name?: string | null }) =>
@@ -163,7 +164,7 @@ function FolioRow({ it, last, onOpen }: { it: SearchFolio; last: boolean; onOpen
         <Text variant="body" numberOfLines={1}>{it.folio_number}</Text>
         <Text variant="caption" tone="muted" numberOfLines={1}>{[it.investor_name, it.amc_name].filter(Boolean).join(" · ") || "—"}</Text>
       </View>
-      {aum ? <Text variant="caption" style={{ color: palette.ink, fontWeight: fontWeight.semibold as any }}>{aum}</Text> : null}
+      {aum ? <Text variant="caption" style={{ color: palette.ink, fontWeight: fontWeight.semibold }}>{aum}</Text> : null}
       <Feather name="chevron-right" size={16} color={palette.faint} />
     </Pressable>
   );
@@ -178,7 +179,7 @@ function SipRow({ it, last, onOpen }: { it: SearchSip; last: boolean; onOpen: ()
         <Text variant="body" numberOfLines={1}>{it.scheme_name ?? "SIP"}</Text>
         <Text variant="caption" tone="muted" numberOfLines={1}>{[it.investor_name, it.status ? titleCase(it.status) : null].filter(Boolean).join(" · ") || "—"}</Text>
       </View>
-      {amt ? <Text variant="caption" style={{ color: palette.ink, fontWeight: fontWeight.semibold as any }}>{amt}</Text> : null}
+      {amt ? <Text variant="caption" style={{ color: palette.ink, fontWeight: fontWeight.semibold }}>{amt}</Text> : null}
       <Feather name="chevron-right" size={16} color={palette.faint} />
     </Pressable>
   );
@@ -195,7 +196,7 @@ function Actions({ phone, onCall, onOpen, subject }: { phone?: string | null; on
   );
 }
 function Avatar({ name, tone }: { name: string; tone: string }) {
-  return <View style={[styles.avatar, { backgroundColor: tone }]}><Text style={{ color: palette.white, fontWeight: fontWeight.bold as any, fontSize: 12 }}>{initials(name)}</Text></View>;
+  return <View style={[styles.avatar, { backgroundColor: tone }]}><Text style={{ color: palette.white, fontWeight: fontWeight.bold, fontSize: 12 }}>{initials(name)}</Text></View>;
 }
 function SectionLabel({ text }: { text: string }) {
   return <Text variant="caption" tone="faint" style={{ letterSpacing: 0.6, marginBottom: spacing.sm }}>{text}</Text>;
@@ -211,7 +212,7 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
 function Hint({ icon, text }: { icon: string; text: string }) {
   return (
     <View style={{ alignItems: "center", paddingTop: spacing["2xl"], gap: spacing.md }}>
-      <View style={[styles.iconCircle, { width: 48, height: 48, backgroundColor: palette.surfaceSunken }]}><Feather name={icon as any} size={20} color={palette.faint} /></View>
+      <View style={[styles.iconCircle, { width: 48, height: 48, backgroundColor: palette.surfaceSunken }]}><Feather name={asIcon(icon)} size={20} color={palette.faint} /></View>
       <Text variant="body" tone="muted" style={{ textAlign: "center" }}>{text}</Text>
     </View>
   );

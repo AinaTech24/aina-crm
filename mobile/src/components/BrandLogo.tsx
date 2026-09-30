@@ -26,7 +26,7 @@ export function BrandLogo({
     <View style={[styles.row, style]}>
       <Image source={LOGO} style={{ width: size, height: size }} resizeMode="contain" />
       {showWordmark ? (
-        <Text style={{ fontSize: size * 0.42, fontWeight: fontWeight.bold as any, color: wordmarkColor, letterSpacing: -0.4 }}>
+        <Text style={{ fontSize: size * 0.42, fontWeight: fontWeight.bold, color: wordmarkColor, letterSpacing: -0.4 }}>
           Aina CRM
         </Text>
       ) : null}

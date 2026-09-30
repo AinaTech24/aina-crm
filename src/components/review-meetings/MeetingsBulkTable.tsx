@@ -35,7 +35,7 @@ const MODE_TONE: Record<string, string> = {
 };
 const STATUS_TONE: Record<string, string> = {
   scheduled: "bg-blue-50 text-blue-700", confirmed: "bg-cyan-50 text-cyan-700", in_progress: "bg-amber-50 text-amber-700",
-  completed: "bg-emerald-50 text-emerald-700", rescheduled: "bg-slate-50 text-slate-700", cancelled: "bg-gray-50 text-gray-700", no_show: "bg-rose-50 text-rose-700",
+  completed: "bg-emerald-50 text-emerald-700", rescheduled: "bg-secondary text-foreground", cancelled: "bg-secondary text-foreground", no_show: "bg-rose-50 text-rose-700",
 };
 
 type Row = Record<string, any> & { id: string };
@@ -61,7 +61,7 @@ const clientCell = (m: Row) => {
         {rel ? (
           <span className={`shrink-0 text-2xs font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${rel.cls}`}>{rel.label}</span>
         ) : (
-          <span className="shrink-0 text-2xs font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border bg-slate-50 text-slate-500 border-slate-200">Unlinked</span>
+          <span className="shrink-0 text-2xs font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border bg-secondary text-muted-foreground border-border">Unlinked</span>
         )}
       </div>
       {m.party_kind === "investor" && m.segment_tag ? (
@@ -103,7 +103,7 @@ function CancelMeetingButton({ id, disabled }: { id: string; disabled?: boolean 
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); setConfirm(true); }}
-        className="rounded-md p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+        className="rounded-md p-1.5 text-muted-foreground hover:text-rose-600 hover:bg-rose-50"
         title="Cancel meeting"
         aria-label="Cancel meeting"
         data-no-row-nav
@@ -158,7 +158,7 @@ export function MeetingsBulkTable({
       render: (m) => (
         <>
           <Link href={`/dashboard/review-meetings/${m.id}`} className="font-medium tabular-nums hover:underline">
-            {new Date(m.meeting_date).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}
+            {formatDate(new Date(m.meeting_date), "dateTime")}
           </Link>
           <div className="text-2xs text-muted-foreground">
             in {Math.ceil((new Date(m.meeting_date).getTime() - Date.now()) / (24 * 60 * 60 * 1000))} day(s)

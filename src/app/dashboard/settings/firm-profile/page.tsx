@@ -32,6 +32,7 @@ import { FirmProfileEditor } from "@/components/settings/FirmProfileEditor";
 import { DomainSettings } from "@/components/settings/DomainSettings";
 import { PrintButton } from "@/components/settings/PrintButton";
 import { computeFirmReadiness, expiryStatus } from "@/lib/firm/readiness";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -138,8 +139,8 @@ export default async function FirmProfilePage() {
         <h1 className="text-2xl font-bold text-center">
           {data.tenant.displayName} — Firm Profile
         </h1>
-        <p className="text-center text-xs text-slate-500">
-          Generated on {new Date().toLocaleDateString("en-GB")}
+        <p className="text-center text-xs text-muted-foreground">
+          Generated on {formatDate(new Date())}
         </p>
         <hr className="my-3" />
       </div>
@@ -237,7 +238,7 @@ export default async function FirmProfilePage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
-              <thead className="bg-slate-50 text-slate-600">
+              <thead className="bg-secondary text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 text-left">Name</th>
                   <th className="px-3 py-2 text-left">Role</th>
@@ -279,7 +280,7 @@ export default async function FirmProfilePage() {
                         className={`chip text-2xs ${
                           d.status === "active"
                             ? "bg-emerald-50 text-emerald-700"
-                            : "bg-gray-100 text-gray-600"
+                            : "bg-secondary text-muted-foreground"
                         }`}
                       >
                         {d.status}
@@ -290,7 +291,7 @@ export default async function FirmProfilePage() {
               </tbody>
               {shareSet && (
                 <tfoot>
-                  <tr className="border-t bg-slate-50">
+                  <tr className="border-t bg-secondary">
                     <td className="px-3 py-2 font-semibold" colSpan={4}>
                       Total shareholding
                     </td>
@@ -325,7 +326,7 @@ export default async function FirmProfilePage() {
             {data.branches.map((b) => (
               <li
                 key={b.id}
-                className="border border-slate-200 rounded-md p-3 text-sm"
+                className="border border-border rounded-md p-3 text-sm"
               >
                 <div className="flex items-center justify-between">
                   <div className="font-medium">{b.name}</div>
@@ -357,7 +358,7 @@ export default async function FirmProfilePage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
-              <thead className="bg-slate-50 text-slate-600">
+              <thead className="bg-secondary text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 text-left">Authority</th>
                   <th className="px-3 py-2 text-left">For</th>

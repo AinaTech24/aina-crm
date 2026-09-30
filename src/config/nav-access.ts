@@ -28,7 +28,7 @@ export const NAV_ACCESS_GROUPS: NavAccessGroup[] = [
     // gating; an explicit grant is what turns them off.)
     title: "Dashboards",
     items: [
-      { key: "/dashboard/boards", label: "My Dashboards" },
+      { key: "/dashboard/manage", label: "Manage dashboards" },
       { key: "/dashboard/team", label: "Team Dashboard" },
       { key: "/dashboard/team/scorecard", label: "Team Scorecard" },
     ],
@@ -47,6 +47,7 @@ export const NAV_ACCESS_GROUPS: NavAccessGroup[] = [
       { key: "/dashboard/review-meetings", label: "Meetings", module: "review_meetings" },
       { key: "/dashboard/calendar", label: "Calendar" },
       { key: "/dashboard/service-requests", label: "Service Requests", module: "service_requests" },
+      { key: "/dashboard/operations", label: "Operations" },
       { key: "/dashboard/complaints", label: "Complaints", module: "complaints" },
     ],
   },

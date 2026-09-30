@@ -18,6 +18,7 @@ import { Share2, Pencil, X, Loader2, Save, UserPlus } from "lucide-react";
 import { ReferralsField } from "./ReferralsField";
 import type { Referral } from "@/lib/investors/referral";
 import { useToast } from "@/components/ui/Toast";
+import { formatDate } from "@/lib/format";
 
 /**
  * A lead that names this client as its referrer (`leads.referred_by_investor_id`).
@@ -37,7 +38,7 @@ export type ReferredLead = {
 /** "23 Apr 2026" — matches the date style used elsewhere on the 360 page. */
 function fmtDate(v: string): string {
   const d = new Date(v);
-  return isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  return isNaN(d.getTime()) ? "" : formatDate(d);
 }
 
 /** Compact INR for the converted-referral subtitle. */

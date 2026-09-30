@@ -73,7 +73,7 @@ export function ForgotPasswordForm() {
         </p>
 
         <div className="mt-6 rounded-lg border bg-card p-4 text-xs text-muted-foreground space-y-1.5">
-          <p className="font-semibold text-foreground text-[13px]">Not arrived?</p>
+          <p className="font-semibold text-foreground text-xs">Not arrived?</p>
           <p>· Check spam and any promotions folder.</p>
           <p>· Confirm you used your work address.</p>
           <p>· Links are one-time — always open the newest email.</p>

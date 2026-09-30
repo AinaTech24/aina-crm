@@ -74,7 +74,7 @@ export function LeadFilters({
             const active = draft.sort === s.sort && draft.dir === s.dir;
             return (
               <Pressable key={s.key} style={styles.sortRow} onPress={() => setDraft((d) => ({ ...d, sort: s.sort, dir: s.dir }))}>
-                <Text style={{ flex: 1, color: active ? palette.brand : palette.ink, fontWeight: (active ? fontWeight.semibold : fontWeight.regular) as any }}>{s.label}</Text>
+                <Text style={{ flex: 1, color: active ? palette.brand : palette.ink, fontWeight: (active ? fontWeight.semibold : fontWeight.regular) }}>{s.label}</Text>
                 {active ? <Feather name="check" size={16} color={palette.brand} /> : null}
               </Pressable>
             );

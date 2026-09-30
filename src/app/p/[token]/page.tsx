@@ -13,6 +13,7 @@ import { withSystem } from "@/db/client";
 import { tenants, proposals } from "@/db/schema";
 import { resolveShareToken } from "@/lib/share-tokens";
 import { PublicProposalApproval } from "@/components/public/PublicProposalApproval";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +43,7 @@ export default async function PublicProposalApprovalPage({ params }: { params: P
   const acceptanceText = String(info.payload?.acceptanceText ?? DEFAULT_ACCEPTANCE_TEXT);
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-secondary">
       <header className="bg-white border-b">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -65,7 +66,7 @@ export default async function PublicProposalApprovalPage({ params }: { params: P
             expectedCorpus: proposal.expectedCorpus ? Number(proposal.expectedCorpus) : null,
             riskRating: proposal.riskRating ?? "",
             type: proposal.type,
-            validUntil: proposal.validUntil ? new Date(proposal.validUntil as any).toLocaleDateString("en-IN") : null,
+            validUntil: proposal.validUntil ? formatDate(new Date(proposal.validUntil as any)) : null,
             url: `/api/proposals/${proposal.id}/pdf`,
           }}
           acceptanceText={acceptanceText}
@@ -82,7 +83,7 @@ export default async function PublicProposalApprovalPage({ params }: { params: P
 
 function ErrorScreen({ message }: { message: string }) {
   return (
-    <div className="min-h-screen bg-slate-50 grid place-items-center p-6">
+    <div className="min-h-screen bg-secondary grid place-items-center p-6">
       <div className="max-w-md bg-white rounded-lg shadow p-6 text-center">
         <FileSignature className="size-10 text-rose-600 mx-auto" />
         <h1 className="text-lg font-semibold mt-3">Link unavailable</h1>

@@ -5,7 +5,6 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
   X,
-  ExternalLink,
   Phone,
   MessageSquare,
   Mail,
@@ -23,7 +22,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
-import { formatINR } from "@/lib/utils";
+import { formatDate, formatINR } from "@/lib/utils";
 import { healthBandClasses } from "@/lib/investors/health";
 
 export type SidePeekInvestor = {
@@ -171,12 +170,6 @@ export function InvestorSidePeek({
                   <Mail className="size-3" /> Email
                 </a>
               )}
-              <Link
-                href={`/dashboard/investors/${investor.id}`}
-                className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-brand-cyan hover:underline"
-              >
-                Full Profile <ExternalLink className="size-3" />
-              </Link>
             </div>
           </div>
 
@@ -202,9 +195,19 @@ export function InvestorSidePeek({
               <span className="text-2xs uppercase font-bold text-muted-foreground tracking-wider block">
                 Health Score
               </span>
-              <span className="text-sm font-bold text-emerald-600 tabular-nums">
-                {investor.healthScore ?? details?.healthScore ?? 85}/100
-              </span>
+              {/* The API scores live and keeps the stored score equal, so prefer it
+                  over the list row's copy; never invent a score while loading. */}
+              {(() => {
+                const score = details?.health?.score ?? investor.healthScore;
+                if (score == null) return <span className="text-sm font-bold text-muted-foreground tabular-nums">—</span>;
+                const band = details?.health?.band ?? investor.healthBand ?? (score >= 80 ? "green" : score >= 60 ? "amber" : "red");
+                const tone = band === "red" ? "text-rose-700" : band === "amber" ? "text-amber-700" : "text-foreground";
+                return (
+                  <span className={`text-sm font-bold tabular-nums ${tone}`}>
+                    {score}/100 <span className="text-2xs font-medium">{healthBandClasses(band).label}</span>
+                  </span>
+                );
+              })()}
             </div>
           </div>
 
@@ -262,20 +265,22 @@ export function InvestorSidePeek({
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
                       <span className="text-muted-foreground block text-2xs">RM</span>
-                      <span className="font-medium text-foreground">{details?.rm?.name ?? "Unassigned"}</span>
+                      <span className="font-medium text-foreground">{details?.rm?.name ?? (loading ? "…" : "Unassigned")}</span>
                     </div>
                     <div>
                       <span className="text-muted-foreground block text-2xs">Branch</span>
-                      <span className="font-medium text-foreground">{details?.branch?.name ?? "Head Office"}</span>
+                      <span className="font-medium text-foreground">{details?.branch?.name ?? (loading ? "…" : "Not set")}</span>
                     </div>
                     <div>
                       <span className="text-muted-foreground block text-2xs">Segment</span>
-                      <span className="font-medium text-foreground">{investor.segmentTag ?? "Retail"}</span>
+                      <span className="font-medium text-foreground">{investor.segmentTag ?? details?.investor?.segmentTag ?? "Not set"}</span>
                     </div>
                     <div>
                       <span className="text-muted-foreground block text-2xs">Category</span>
                       <span className="font-medium text-foreground">
-                        {investor.clientCategory ? `Category ${investor.clientCategory}` : "Category A"}
+                        {(investor.clientCategory ?? details?.investor?.clientCategory)
+                          ? `Category ${investor.clientCategory ?? details?.investor?.clientCategory}`
+                          : "Not set"}
                       </span>
                     </div>
                   </div>
@@ -329,7 +334,7 @@ export function InvestorSidePeek({
                           <div>
                             <span className="font-medium text-foreground block capitalize">{t.type}</span>
                             <span className="text-2xs text-muted-foreground">
-                              {new Date(t.date).toLocaleDateString("en-IN")}
+                              {formatDate(new Date(t.date))}
                             </span>
                           </div>
                         </div>
@@ -366,7 +371,7 @@ export function InvestorSidePeek({
                           <span className="font-medium text-foreground">{t.title}</span>
                         </div>
                         <span className="text-2xs text-muted-foreground">
-                          {t.dueAt ? new Date(t.dueAt).toLocaleDateString("en-IN") : "No due date"}
+                          {t.dueAt ? formatDate(new Date(t.dueAt)) : "No due date"}
                         </span>
                       </div>
                     ))}
@@ -386,7 +391,7 @@ export function InvestorSidePeek({
               href={`/dashboard/investors/${investor.id}`}
               className="btn-primary text-xs inline-flex items-center gap-1.5 px-4 py-2 flex-1 justify-center"
             >
-              Open 360° Profile <ArrowRight className="size-3.5" />
+              Open full profile <ArrowRight className="size-3.5" />
             </Link>
             <button
               type="button"

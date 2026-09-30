@@ -19,6 +19,7 @@
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { trailRate, sipAnnualAmount, FALLBACK_TRAIL } from "@/lib/finance/trail-rates";
+import { sipMonthlySql } from "@/lib/metrics/sip";
 
 export type SliceRow = { key: string; label: string; aum: number; annualTrail: number; sharePct: number };
 
@@ -235,15 +236,7 @@ export async function computeTrailForecast(tx: Tx, tenantId: string): Promise<Tr
 
   // ── 5. Net monthly SIP inflow from HEALTHY active SIPs (drives the curve) ──
   const healthySipRes = await tx.execute(sql`
-    SELECT COALESCE(SUM(
-      CASE s.frequency
-        WHEN 'monthly' THEN s.amount::numeric
-        WHEN 'quarterly' THEN s.amount::numeric / 3
-        WHEN 'weekly' THEN s.amount::numeric * 52 / 12
-        WHEN 'fortnightly' THEN s.amount::numeric * 26 / 12
-        WHEN 'annually' THEN s.amount::numeric / 12
-        ELSE s.amount::numeric
-      END), 0) AS monthly_inflow
+    SELECT COALESCE(SUM(${sipMonthlySql("s")}), 0) AS monthly_inflow
     FROM sips s
     WHERE s.tenant_id = ${tenantId} AND s.status = 'active'
       AND COALESCE(NULLIF(s.consecutive_failures, '')::int, 0) < 2

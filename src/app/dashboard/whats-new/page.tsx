@@ -14,6 +14,7 @@ import { Sparkles, ArrowRight } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { Markdown } from "@/components/ai/Markdown";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -55,7 +56,7 @@ export default async function WhatsNewPage() {
   const groups = new Map<string, any[]>();
   for (const n of notes) {
     const d = new Date(n.published_at);
-    const key = d.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+    const key = formatDate(d, "monthYear");
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(n);
   }
@@ -81,7 +82,7 @@ export default async function WhatsNewPage() {
                     {n.module && <span className="text-2xs text-muted-foreground">{n.module}</span>}
                     {n.version && <span className="text-2xs text-muted-foreground">· {n.version}</span>}
                     <span className="text-2xs text-muted-foreground ml-auto">
-                      {new Date(n.published_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
+                      {formatDate(new Date(n.published_at), "dayMonth")}
                     </span>
                   </div>
                   <h3 className="font-semibold text-sm">{n.title}</h3>

@@ -19,6 +19,7 @@ import {
 import { Select } from "@/components/ui/Select";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Markdown } from "@/components/ai/Markdown";
+import { promptDialog } from "@/components/ui/ConfirmProvider";
 
 type ChatRow = { id: string; title: string; model: string; archivedAt: string | null; lastMessageAt: string | null; createdAt: string };
 type Msg = { id: string; role: "user" | "assistant"; content: string; model?: string | null };
@@ -183,7 +184,13 @@ export function AssistantChat({ insightsHref }: { insightsHref?: string }) {
   }
 
   async function renameChat(id: string, current: string) {
-    const title = window.prompt("Rename chat", current)?.trim();
+    const title = await promptDialog({
+      title: "Rename chat",
+      label: "Chat name",
+      defaultValue: current,
+      confirmLabel: "Rename",
+      maxLength: 80,
+    });
     if (!title || title === current) return;
     setChats((cs) => cs.map((c) => (c.id === id ? { ...c, title } : c)));
     await fetch(`/api/ai/chats/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ title }) });
@@ -466,7 +473,7 @@ function MessageBubble({
 /** Animated multi-phase status while the assistant works. Cycles smoothly
  *  through Thinking → Fetching → Analyzing → Generating so a longer,
  *  tool-using answer feels alive rather than a frozen spinner. */
-const PHASES = ["Thinking", "Fetching your data", "Analysing", "Generating the answer", "Almost done", "Delivering"];
+const PHASES = ["Thinking", "Fetching your data", "Analyzing", "Generating the answer", "Almost done", "Delivering"];
 function PhaseIndicator() {
   const [i, setI] = useState(0);
   useEffect(() => {

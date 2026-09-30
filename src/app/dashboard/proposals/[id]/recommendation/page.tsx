@@ -20,6 +20,7 @@ import {
   investors,
 } from "@/db/schema";
 import { RecommendationWorksheet } from "@/components/proposals/RecommendationWorksheetLazy";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -117,11 +118,7 @@ export default async function RecommendationPage({
             <>Risk profile: {data.investor.riskProfile} · </>
           )}
           Recommendation date:{" "}
-          {new Date().toLocaleDateString("en-GB", {
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-          })}</>} />
+          {formatDate(new Date())}</>} />
 
       <RecommendationWorksheet proposalId={id} initialRows={rows} />
     </div>

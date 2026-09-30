@@ -16,10 +16,12 @@ import { useTranslation } from "react-i18next";
 import { biometricAvailable, biometricLabel, biometricPrompt } from "../../components/AppLock";
 import { LANGUAGES } from "../../i18n";
 import { usePrefs } from "../../state/prefs";
+import { enableSimCalls, syncSimCalls } from "../activities/simCallSync";
 import { ACTIVITY_OUTCOMES } from "../activities/api";
 import { toast } from "../../lib/toast";
 import { spacing, palette, radius, fontWeight } from "../../theme/tokens";
 import { toneColors } from "../../theme";
+import { errorMessage } from "../../lib/errors";
 
 export function PreferencesSettings() {
   const autoLogCalls = usePrefs((s) => s.autoLogCalls);
@@ -38,10 +40,12 @@ export function PreferencesSettings() {
     biometricLabel().then(setBioName);
   }, []);
 
-  const toggleAuto = () => {
-    const next = !autoLogCalls;
-    setPref("autoLogCalls", next);
-    toast.success(next ? "Calls will log automatically" : "You'll be asked after each call");
+  const toggleAuto = async () => {
+    if (autoLogCalls) { setPref("autoLogCalls", false); toast.success("Automatic call logging off"); return; }
+    try {
+      if (await enableSimCalls()) toast.success("CRM call logging enabled from now");
+      else toast.info("Call log permission was not granted. You can still log calls manually.");
+    } catch (e) { toast.error(errorMessage(e)); }
   };
 
   // Turning the lock ON requires passing the check once, so a user with a
@@ -65,19 +69,15 @@ export function PreferencesSettings() {
       <Screen scroll padded contentStyle={{ paddingTop: spacing.lg, paddingBottom: spacing["3xl"] }}>
         <Text variant="caption" tone="faint" style={styles.label}>{t("prefs.language")}</Text>
         <Card flat style={{ marginBottom: spacing.xl }}>
-          <Segmented
-            options={LANGUAGES.map((l) => ({ key: l.code, label: l.label }))}
-            value={language}
-            onChange={(v) => setPref("language", v as (typeof LANGUAGES)[number]["code"])}
-          />
-          <Text variant="caption" tone="faint" style={{ marginTop: spacing.sm }}>{t("prefs.languageHint")}</Text>
+          <Text>English</Text>
+          <Text variant="caption" tone="faint" style={{ marginTop: spacing.sm }}>English, Hindi and Gujarati call recordings can be summarized in English.</Text>
         </Card>
 
         <Text variant="caption" tone="faint" style={styles.label}>SECURITY</Text>
         <Card flat style={{ marginBottom: spacing.xl }}>
           <Pressable style={styles.row} onPress={toggleLock} disabled={bioOk === null} accessibilityRole="switch" accessibilityState={{ checked: appLock, disabled: bioOk === false }}>
             <View style={{ flex: 1 }}>
-              <Text variant="body" style={{ fontWeight: fontWeight.semibold as any }}>Require {bioName} to open</Text>
+              <Text variant="body" style={{ fontWeight: fontWeight.semibold }}>Require {bioName} to open</Text>
               <Text variant="caption" tone="muted" style={{ marginTop: 2 }}>
                 {bioOk === false
                   ? `No ${bioName} set up on this phone — add one in your device settings to use app lock.`
@@ -97,10 +97,10 @@ export function PreferencesSettings() {
         <Card flat>
           <Pressable style={styles.row} onPress={toggleAuto} accessibilityRole="switch" accessibilityState={{ checked: autoLogCalls }}>
             <View style={{ flex: 1 }}>
-              <Text variant="body" style={{ fontWeight: fontWeight.semibold as any }}>Log calls automatically</Text>
+              <Text variant="body" style={{ fontWeight: fontWeight.semibold }}>Log calls automatically</Text>
               <Text variant="caption" tone="muted" style={{ marginTop: 2 }}>
                 {autoLogCalls
-                  ? "Calls you place from the app are logged the moment you return — no prompt."
+                  ? "Matching incoming, outgoing and missed SIM calls sync when you open this app."
                   : "You'll be asked to log each call when you return to the app."}
               </Text>
             </View>
@@ -111,16 +111,10 @@ export function PreferencesSettings() {
 
           {autoLogCalls ? (
             <View style={styles.sub}>
-              <Text variant="caption" tone="muted" style={{ marginBottom: spacing.xs }}>Record the outcome as</Text>
-              <Segmented
-                options={ACTIVITY_OUTCOMES.slice(0, 3).map((o) => ({ key: o.value, label: o.label }))}
-                value={autoLogOutcome}
-                onChange={(v) => setPref("autoLogOutcome", v)}
-              />
               <Text variant="caption" tone="faint" style={{ marginTop: spacing.sm }}>
-                Duration is measured from when you tapped call to when you came back, so it includes ringing. Open the call from
-                Calls to correct it or add what was discussed.
+                Duration and direction come from Android. Only uniquely matched CRM numbers are uploaded. No audio is recorded.
               </Text>
+              <Pressable accessibilityRole="button" onPress={() => syncSimCalls().then(() => toast.success("Call sync checked")).catch((e) => toast.error(e.message))} style={{ paddingVertical: spacing.md }}><Text tone="brand">Sync calls now</Text></Pressable>
             </View>
           ) : null}
         </Card>
@@ -129,8 +123,7 @@ export function PreferencesSettings() {
         <View style={styles.note}>
           <Feather name="info" size={13} color={toneColors("info").fg} />
           <Text variant="caption" tone="muted" style={{ flex: 1 }}>
-            Only calls placed from inside the app are detected. Calls dialled from your phone's own dialer can't be captured —
-            reading the device call log needs a special build and isn't possible on iPhone at all.
+            Requires Android call-log permission. To summarize a discussion, open its call activity and choose a recording after the participants have consented to recording and AI processing.
           </Text>
         </View>
       </Screen>

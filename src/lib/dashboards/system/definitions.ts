@@ -64,12 +64,31 @@ export const SYSTEM_DASHBOARDS: SystemDashboard[] = [
     key: "owner",
     name: "Owner Dashboard",
     description: "The whole practice: business, what needs attention, the team, the book and compliance.",
+    // The order follows the firm's dashboard sheet (Owner Dashboard tab):
+    // headline, business and SIP flow, clients, meetings and work, insurance —
+    // then the team and the analysis cards that were here before the sheet.
     layout: [
       // Headline
       item("kpi_row", "L"),
       // Today's actions
       item("needs_attention", "M"),
+      item("reviews_due", "M"),
+      // Business
+      item("business_entries", "L"),
+      item("sip_flow", "M"),
+      item("sip_rejection_status", "M"),
+      // Clients
+      item("new_clients_category", "M"),
+      item("kyc_risk", "M"),
+      item("client_book", "L"),
+      // Meetings and work
+      item("meetings", "L"),
+      item("task_summary", "M"),
       item("lead_pipeline", "M"),
+      item("lead_sources", "L"),
+      // Insurance
+      item("insurance_business", "M"),
+      item("claims_period", "M"),
       // The team
       item("team_table", "L"),
       item("branch_table", "L"),
@@ -126,7 +145,7 @@ export const SYSTEM_DASHBOARDS: SystemDashboard[] = [
     centre: "ops",
     // The Operations Dashboard uses the shared filter bar; "Save filter" is kept under this dashboard.
     filters: {
-      fields: ["branch", "executive", "requestType", "priority", "slaState", "pendingWith", "category"],
+      fields: ["branch", "executive", "requestType", "priority", "slaState", "pendingWith", "ageing", "mode", "category"],
       pinned: ["rm", "status"],
       defaults: { period: "today", values: { status: ["open"] } },
     },

@@ -210,7 +210,7 @@ export function InductionManager({ moduleOptions }: { moduleOptions: { href: str
                         type="checkbox"
                         name={`role_${r}`}
                         defaultChecked={(track.targetRoles ?? []).includes(r)}
-                        className="size-3"
+                        className="size-4"
                       />
                       {r}
                     </label>
@@ -218,7 +218,7 @@ export function InductionManager({ moduleOptions }: { moduleOptions: { href: str
                 </div>
               </div>
               <label className="text-xs inline-flex items-center gap-2">
-                <input type="checkbox" name="issueLetter" defaultChecked={track.issueLetter} className="size-3.5" />
+                <input type="checkbox" name="issueLetter" defaultChecked={track.issueLetter} className="size-4" />
                 Issue a confirmation letter on pass
               </label>
               <div className="sm:col-span-2 flex justify-between items-center">
@@ -336,7 +336,7 @@ export function InductionManager({ moduleOptions }: { moduleOptions: { href: str
                   <div className="max-h-40 overflow-y-auto border rounded p-2 grid sm:grid-cols-2 gap-1 scrollbar-thin">
                     {moduleOptions.map((m) => (
                       <label key={m.href} className="inline-flex items-center gap-1.5 text-2xs">
-                        <input type="checkbox" name={`mod_${m.href}`} className="size-3" />
+                        <input type="checkbox" name={`mod_${m.href}`} className="size-4" />
                         <span className="truncate">
                           {m.label} <span className="text-muted-foreground">· {m.group}</span>
                         </span>
@@ -416,7 +416,7 @@ export function InductionManager({ moduleOptions }: { moduleOptions: { href: str
                       <span className="text-xs w-4">{k}</span>
                       <input name={`opt_${k}`} className="input flex-1" placeholder={`Option ${k}`} />
                       <label className="text-2xs inline-flex items-center gap-1">
-                        <input type="checkbox" name={`ok_${k}`} className="size-3" /> correct
+                        <input type="checkbox" name={`ok_${k}`} className="size-4" /> correct
                       </label>
                     </div>
                   ))}

@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, Trash2, Check, X, Pencil, Network } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { useToast } from "@/components/ui/Toast";
+import { TableSkeleton } from "@/components/common/Skeleton";
 
 type Branch = { id: string; name: string };
 type Desk = { id: string; branchId: string; branchName: string; name: string; code: string | null; memberCount: number };
@@ -130,7 +131,7 @@ export function DeskManager() {
     }
   };
 
-  if (loading) return <div className="text-sm text-muted-foreground py-10 text-center">Loading…</div>;
+  if (loading) return <div className="text-sm text-muted-foreground py-10 text-center" aria-busy="true"><TableSkeleton rows={4} /></div>;
 
   if (branches.length === 0)
     return <div className="text-sm text-muted-foreground">No branches found. Add branches first.</div>;

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { DeleteCircularButton } from "@/components/compliance/DeleteCircularButton";
 import { SelectField } from "@/components/ui/SelectField";
+import { formatDate } from "@/lib/format";
 
 type CircularItem = {
   id: string;
@@ -45,7 +46,7 @@ function safeHref(url?: string | null): string | null {
 const SEVERITY = {
   critical: { icon: AlertOctagon, chip: "bg-rose-50 text-rose-700 border-rose-200", label: "Critical" },
   action_required: { icon: AlertTriangle, chip: "bg-amber-50 text-amber-700 border-amber-200", label: "Action required" },
-  info: { icon: Info, chip: "bg-slate-50 text-slate-700 border-slate-200", label: "Info" },
+  info: { icon: Info, chip: "bg-secondary text-foreground border-border", label: "Info" },
 } as const;
 
 export function CircularsFeed({
@@ -148,7 +149,7 @@ export function CircularsFeed({
                       {c.issuer && <span className="chip bg-secondary text-2xs uppercase">{c.issuer}</span>}
                       {c.category && <span className="chip bg-secondary text-2xs">{c.category}</span>}
                       {c.publishedOn && (
-                        <span className="text-2xs text-muted-foreground">{new Date(c.publishedOn).toLocaleDateString("en-IN")}</span>
+                        <span className="text-2xs text-muted-foreground">{formatDate(new Date(c.publishedOn))}</span>
                       )}
                     </div>
                     {canDraft && <DeleteCircularButton id={c.id} />}
@@ -210,7 +211,7 @@ export function CircularsFeed({
                         <span className="chip bg-secondary text-2xs uppercase">{c.issuer}</span>
                         {c.category && <span className="chip bg-secondary text-2xs">{c.category}</span>}
                         {c.publishedOn && (
-                          <span className="text-2xs text-muted-foreground">{new Date(c.publishedOn).toLocaleDateString("en-IN")}</span>
+                          <span className="text-2xs text-muted-foreground">{formatDate(new Date(c.publishedOn))}</span>
                         )}
                       </div>
                       <h3 className="font-semibold mt-2">{c.title}</h3>

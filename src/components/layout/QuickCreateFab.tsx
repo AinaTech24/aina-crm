@@ -81,11 +81,13 @@ export function QuickCreateFab() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
-  // Only surface the quick-create button on the Dashboards pages — elsewhere
-  // each module has its own "+ New", so the floating button is just clutter.
+  // Only on the dashboards, and only on phones: on a desktop the top bar's
+  // "+ Add" is the one create entry (dashboard cleanup D3), and the floating
+  // button sat over the page's own links. Elsewhere each module has its own
+  // "+ New", so the floating button is just clutter.
   const onDashboards =
     pathname === "/dashboard" ||
-    pathname.startsWith("/dashboard/boards") ||
+    /^\/dashboard\/[0-9a-f-]{36}$/i.test(pathname) ||
     pathname.startsWith("/dashboard/team");
 
   // Click-outside + Esc to close
@@ -108,7 +110,7 @@ export function QuickCreateFab() {
   if (!onDashboards) return null;
 
   return (
-    <div ref={ref} className="fixed bottom-6 right-6 z-40 print:hidden flex flex-col items-end">
+    <div ref={ref} className="fixed bottom-6 right-6 z-40 print:hidden flex flex-col items-end md:hidden">
       {open && (
         <div className="mb-3 w-72 rounded-2xl bg-card border border-border shadow-2xl overflow-hidden animate-fade-in">
           <div className="px-4 py-3 border-b border-border/70 bg-gradient-to-br from-brand-navy to-brand-cyan-deep">

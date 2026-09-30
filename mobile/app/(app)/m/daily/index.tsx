@@ -101,11 +101,11 @@ export default function DailyPlan() {
               ) : (
                 focus.map((f, i) => (
                   <View key={i} style={[styles.focusRow, i < focus.length - 1 && styles.divider]}>
-                    <Pressable onPress={() => toggleFocus(i)} hitSlop={8}>
+                    <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: !!f.done }} accessibilityLabel={f.text} onPress={() => toggleFocus(i)} hitSlop={8}>
                       <Feather name={f.done ? "check-circle" : "circle"} size={22} color={f.done ? toneColors("success").fg : palette.faint} />
                     </Pressable>
                     <Text variant="body" style={[{ flex: 1 }, f.done && { textDecorationLine: "line-through", color: palette.faint }]}>{f.text}</Text>
-                    <Pressable onPress={() => removeFocus(i)} hitSlop={8}><Feather name="x" size={16} color={palette.faint} /></Pressable>
+                    <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${f.text}`} onPress={() => removeFocus(i)} hitSlop={8}><Feather name="x" size={16} color={palette.faint} /></Pressable>
                   </View>
                 ))
               )}
@@ -121,7 +121,7 @@ export default function DailyPlan() {
                   returnKeyType="done"
                   onSubmitEditing={() => addFocus(draft)}
                 />
-                {draft.trim() ? <Pressable onPress={() => addFocus(draft)} hitSlop={8}><Text style={{ color: palette.brand, fontWeight: fontWeight.semibold as any }}>Add</Text></Pressable> : null}
+                {draft.trim() ? <Pressable onPress={() => addFocus(draft)} hitSlop={8}><Text style={{ color: palette.brand, fontWeight: fontWeight.semibold }}>Add</Text></Pressable> : null}
               </View>
             </Card>
 
@@ -150,7 +150,7 @@ export default function DailyPlan() {
               <TextField label="Breakdown — what got stuck" value={breakdown} onChangeText={setBreakdown} multiline placeholder="What to fix tomorrow" />
               <Pressable style={styles.saveBtn} onPress={() => { persist(); toast.success("Daily plan saved"); }}>
                 <Feather name="check" size={16} color={palette.white} />
-                <Text style={{ color: palette.white, fontWeight: fontWeight.semibold as any }}>Save reflection</Text>
+                <Text style={{ color: palette.white, fontWeight: fontWeight.semibold }}>Save reflection</Text>
               </Pressable>
             </Card>
 

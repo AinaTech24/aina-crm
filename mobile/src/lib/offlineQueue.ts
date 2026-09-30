@@ -1,7 +1,8 @@
 /** Account-bound durable writes. Attempts share one server deduplication key. */
 import { create } from "zustand";
 import { api, ApiError } from "../api/client";
-import { storageGet, storageSet } from "./storage";
+import { storageGet, storageDelete } from "./storage";
+import { bulkGet, bulkSet } from "./bulkStorage";
 import { getAccountScope, onAccountChange } from "./accountScope";
 import { useConnectivity } from "../state/connectivity";
 import { toast } from "./toast";
@@ -14,7 +15,7 @@ export interface QueuedWrite {
   id: string; method: "POST" | "PATCH"; path: string; body: unknown; label: string; at: number;
   attempts: number; status: "pending" | "failed"; nextAttemptAt: number; error?: string;
 }
-type Input = Pick<QueuedWrite, "method" | "path" | "body" | "label">;
+type Input = Pick<QueuedWrite, "method" | "path" | "body" | "label"> & { requestId?: string };
 type Outcome = { value?: unknown; error?: Error };
 interface QueueState {
   items: QueuedWrite[]; flushing: boolean; hydrated: boolean; legacyPending: boolean; storageError: string | null;
@@ -26,7 +27,7 @@ export function retryable(error: unknown): boolean {
   return error instanceof ApiError && (error.kind !== "http" || [408, 425, 429].includes(error.status) || error.status >= 500);
 }
 function supported(w: Input): boolean {
-  return w.method === "POST" ? /^\/api\/(activities|leads\/[a-f\d-]+\/notes)$/.test(w.path)
+  return w.method === "POST" ? /^\/api\/(leads|activities|leads\/[a-f\d-]+\/notes)$/.test(w.path)
     : /^\/api\/(activities|tasks|investors)\/[a-f\d-]+$/.test(w.path);
 }
 let writes: Promise<unknown> = Promise.resolve();
@@ -39,7 +40,8 @@ export const useOfflineQueue = create<QueueState>((set, get) => {
     const scope = getAccountScope();
     if (!scope.owner || scope.generation !== generation) throw new Error("Account changed. Sign in to the original account to sync this change.");
     const items = change(get().items);
-    try { await storageSet(key(scope.owner), JSON.stringify(items)); }
+    // AsyncStorage, not SecureStore: the queue outgrows SecureStore's 2 KB value cap.
+    try { await bulkSet(key(scope.owner), JSON.stringify(items)); }
     catch { set({ storageError: "Device storage could not save your changes. Free space and try again." }); throw new Error("Unable to save offline change to device storage"); }
     if (getAccountScope().generation === generation) set({ items, storageError: null });
   });
@@ -49,7 +51,12 @@ export const useOfflineQueue = create<QueueState>((set, get) => {
       const scope = getAccountScope();
       if (!scope.owner || get().hydrated) return;
       try {
-        const raw = await storageGet(key(scope.owner));
+        let raw = await bulkGet(key(scope.owner));
+        if (raw == null) {
+          // One-time move: builds before this one kept the queue in SecureStore.
+          const moved = await storageGet(key(scope.owner));
+          if (moved != null) { await bulkSet(key(scope.owner), moved); await storageDelete(key(scope.owner)); raw = moved; }
+        }
         const parsed: unknown = raw ? JSON.parse(raw) : [];
         if (!Array.isArray(parsed) || !parsed.every((w) => w && typeof w.id === "string" && typeof w.at === "number" && supported(w) && ["pending", "failed"].includes(w.status))) throw new Error("Stored changes need recovery");
         const legacy = await storageGet("offline_queue_v1");
@@ -63,8 +70,10 @@ export const useOfflineQueue = create<QueueState>((set, get) => {
       const scope = getAccountScope();
       if (!scope.owner || !supported(input)) throw new Error("This change cannot be saved offline");
       await get().hydrate();
-      const item: QueuedWrite = { ...input, id: nextId(), at: Date.now(), attempts: 0, status: "pending", nextAttemptAt: 0 };
+      const { requestId, ...write } = input;
+      const item: QueuedWrite = { ...write, id: requestId ?? nextId(), at: Date.now(), attempts: 0, status: "pending", nextAttemptAt: 0 };
       await update(scope.generation, (items) => {
+        if (items.some(w => w.id === item.id)) return items;
         if (items.length >= MAX) throw new Error("Your sync queue is full. Sync or review existing changes before saving more.");
         return [...items, item];
       });

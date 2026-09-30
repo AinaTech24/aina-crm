@@ -94,8 +94,8 @@ export function FvAnnualLumpsumPlanner() {
 
       {/* Schedule */}
       {s1.schedule.length > 0 && (
-        <details className="border border-slate-200 rounded-lg overflow-hidden" open>
-          <summary className="cursor-pointer select-none px-4 py-2.5 text-xs font-semibold bg-slate-50 hover:bg-slate-100">
+        <details className="border border-border rounded-lg overflow-hidden" open>
+          <summary className="cursor-pointer select-none px-4 py-2.5 text-xs font-semibold bg-secondary hover:bg-secondary">
             Projected annual investment value ({s1.schedule.length} years)
           </summary>
           <div className="max-h-80 overflow-y-auto scrollbar-thin print:max-h-none print:overflow-visible">
@@ -110,7 +110,7 @@ export function FvAnnualLumpsumPlanner() {
               </thead>
               <tbody>
                 {s1.schedule.map((row, i) => (
-                  <tr key={row.year} className={`border-b border-slate-100 ${row.investment === 0 ? "bg-slate-50/40" : ""}`}>
+                  <tr key={row.year} className={`border-b border-slate-100 ${row.investment === 0 ? "bg-secondary/40" : ""}`}>
                     <td className="px-3 py-1.5">{row.year}</td>
                     <td className="px-3 py-1.5 text-right">{row.investment > 0 ? inr(row.investment) : "—"}</td>
                     <td className="px-3 py-1.5 text-right font-medium">{inr(row.yearEndValue)}</td>

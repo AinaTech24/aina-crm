@@ -10,7 +10,7 @@
  * API string with no way forward.
  */
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, Check, Loader2, TriangleAlert } from "lucide-react";
@@ -20,6 +20,7 @@ import { PasswordInput } from "@/components/ui/PasswordInput";
 const MIN_LEN = 8;
 
 export function ResetPasswordForm({ token }: { token: string }) {
+  const uid = useId();
   const router = useRouter();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -104,8 +105,8 @@ export function ResetPasswordForm({ token }: { token: string }) {
 
       <form onSubmit={submit} className="mt-8 space-y-4">
         <div>
-          <label className="text-xs font-semibold text-foreground/80 block mb-1.5">New password</label>
-          <PasswordInput
+          <label htmlFor={`${uid}-new-password`} className="text-xs font-semibold text-foreground/80 block mb-1.5">New password</label>
+          <PasswordInput id={`${uid}-new-password`}
             value={password}
             onChange={(e) => {
               setPassword(e.target.value);
@@ -127,10 +128,10 @@ export function ResetPasswordForm({ token }: { token: string }) {
         </div>
 
         <div>
-          <label className="text-xs font-semibold text-foreground/80 block mb-1.5">
+          <label htmlFor={`${uid}-confirm-password`} className="text-xs font-semibold text-foreground/80 block mb-1.5">
             Confirm password
           </label>
-          <PasswordInput
+          <PasswordInput id={`${uid}-confirm-password`}
             value={confirm}
             onChange={(e) => {
               setConfirm(e.target.value);

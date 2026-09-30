@@ -17,6 +17,7 @@ import { can, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { createNotification } from "@/lib/notifications/create";
+import { assertMobileAssignee, assertMobileSubjects } from "@/lib/mobile/record-access";
 import { spawnNextOccurrence } from "@/lib/tasks/recurrence";
 import { notifyWatchers } from "@/lib/tasks/watchers";
 import { tasks, users, taskChecklist } from "@/db/schema";
@@ -159,6 +160,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if ("remindAt" in rest) patch.reminderFiredAt = null;
 
     const result = await withIdempotentMutation(session, req, parse.data, async (tx) => {
+      await assertMobileSubjects(tx, session, parse.data);
+      if (parse.data.assigneeId) await assertMobileAssignee(tx, session, parse.data.assigneeId);
+      for (const item of checklist ?? []) if (item.assigneeId) await assertMobileAssignee(tx, session, item.assigneeId);
       const before = (await tx
         .select()
         .from(tasks)

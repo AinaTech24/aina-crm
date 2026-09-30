@@ -103,20 +103,20 @@ export function LeadCaptureFormClient({
 
   if (done) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
-        <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 p-8 text-center">
+      <div className="min-h-screen flex items-center justify-center bg-secondary px-4">
+        <div className="max-w-md w-full bg-white rounded-2xl border border-border p-8 text-center">
           <div
             className="size-12 rounded-full mx-auto mb-3 flex items-center justify-center text-white text-2xl"
             style={{ backgroundColor: primary }}
           >
             ✓
           </div>
-          <h1 className="text-xl font-semibold text-slate-800 mb-1">
+          <h1 className="text-xl font-semibold text-foreground mb-1">
             Got it.
           </h1>
-          <p className="text-sm text-slate-600">{thankYou}</p>
+          <p className="text-sm text-muted-foreground">{thankYou}</p>
           {tenant?.arn && (
-            <p className="text-2xs text-slate-400 mt-6">
+            <p className="text-2xs text-muted-foreground mt-6">
               {tenant.displayName} · ARN-{tenant.arn}
             </p>
           )}
@@ -126,9 +126,9 @@ export function LeadCaptureFormClient({
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-10">
+    <div className="min-h-screen bg-secondary px-4 py-10">
       <div className="max-w-lg mx-auto">
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        <div className="bg-white rounded-2xl border border-border overflow-hidden">
           {/* Header */}
           <div
             className="px-8 py-6 text-white"
@@ -259,7 +259,7 @@ export function LeadCaptureFormClient({
               Submit
             </button>
 
-            <p className="text-2xs text-slate-400 pt-2">
+            <p className="text-2xs text-muted-foreground pt-2">
               By submitting, you agree to be contacted by{" "}
               {tenant?.displayName ?? "this firm"} regarding your enquiry.
               Mutual fund investments are subject to market risks.
@@ -267,7 +267,7 @@ export function LeadCaptureFormClient({
           </form>
 
           {tenant && (
-            <div className="border-t border-slate-100 bg-slate-50 px-8 py-3 text-2xs text-slate-500">
+            <div className="border-t border-slate-100 bg-secondary px-8 py-3 text-2xs text-muted-foreground">
               {tenant.displayName}
               {tenant.arn && ` · ARN-${tenant.arn}`}
             </div>
@@ -289,7 +289,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="text-xs font-medium text-slate-600 block mb-1">
+      <span className="text-xs font-medium text-muted-foreground block mb-1">
         {label} {required && <span className="text-rose-500">*</span>}
       </span>
       {children}

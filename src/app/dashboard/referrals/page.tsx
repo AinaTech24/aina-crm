@@ -225,7 +225,7 @@ export default async function ReferralsPage({
                             ? "bg-emerald-50 text-emerald-700"
                             : convPct >= 20
                               ? "bg-amber-50 text-amber-700"
-                              : "bg-gray-50 text-gray-700"
+                              : "bg-secondary text-foreground"
                         }`}
                       >
                         {convPct}%

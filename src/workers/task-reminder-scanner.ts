@@ -23,6 +23,7 @@ import { withSystem, withTenant } from "@/db/client";
 import { eventsOutbox } from "@/db/schema";
 import { createNotification } from "@/lib/notifications/create";
 import { sendStaffEmails, type StaffEmailJob } from "@/lib/tasks/staff-email";
+import { createMeetingReminders, deliverMobileAlerts } from "@/lib/notifications/mobile";
 
 function fmtDue(due: string | Date | null): string {
   if (!due) return "";
@@ -84,6 +85,14 @@ async function scanTenantOverdue(tenantId: string): Promise<ScanOut> {
         text: `Your task "${r.title}" was due ${fmtDue(r.due_at)} and is still open.\n\nAction it or reschedule: /dashboard/tasks?due=overdue`,
         key: `task-overdue:${r.id}`,
       });
+      if (r.assignee_id) {
+        const heads = await tx.execute(sql`SELECT id FROM users WHERE tenant_id = ${tenantId}::uuid AND status = 'active'
+          AND roles @> ARRAY['branch_head']::text[] AND id <> ${r.assignee_id}::uuid
+          AND branch_id = (SELECT branch_id FROM users WHERE id = ${r.assignee_id}::uuid AND tenant_id = ${tenantId}::uuid)`);
+        for (const head of heads.rows) await createNotification(tx, { tenantId, userId: String(head.id), kind: "task.overdue.branch",
+          severity: "warning", title: `Team follow-up overdue: ${r.title}`, body: `${r.assignee_name || "Team member"} has an overdue task.`,
+          linkUrl: `/dashboard/tasks/${r.id}`, meta: { task_id: r.id } });
+      }
       await tx
         .insert(eventsOutbox)
         .values({
@@ -211,6 +220,12 @@ export async function runTaskReminderScan(): Promise<{ overdue: number; reminder
       escalations += await scanTenantApprovalEscalations(t);
     } catch (err) {
       console.error(`[task-scan] approval-escalation scan failed for tenant ${t}:`, (err as Error).message);
+    }
+    try {
+      await createMeetingReminders(t);
+      await deliverMobileAlerts(t);
+    } catch (err) {
+      console.error(`[task-scan] mobile alerts failed for tenant ${t}:`, (err as Error).message);
     }
     // Best-effort staff email — sent outside the scan transactions.
     if (emailJobs.length) {

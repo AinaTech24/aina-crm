@@ -150,6 +150,61 @@ export const SYSTEM_WIDGETS: SystemWidgetMeta[] = [
     description: "Workflow runs, messages sent, tasks created and sends stopped by compliance. Firm-wide only.",
     supports: [],
   },
+  {
+    key: "business_entries", title: "Business (Business Entries)", category: "Business", defaultSize: "L", sizes: ["L"],
+    description: "Gross investment, redemption and net business by product (MF, PMS, AIF, SIF) and type (equity, liquid …), beside the RTA feed.",
+    supports: ["period", ...CLIENT, "amc"],
+  },
+  {
+    key: "sip_flow", title: "SIP added and stopped", category: "Business", defaultSize: "M", sizes: ["M", "L"],
+    description: "Gross SIP added, SIP stopped and net SIP from Business Entries, with the SIP register and RTA figures.",
+    supports: ["period", ...CLIENT, "amc"],
+  },
+  {
+    key: "new_clients_category", title: "New clients by category", category: "Clients", defaultSize: "M", sizes: ["M", "L"],
+    description: "Clients onboarded in the period by A–D category, and FY to date against the target.",
+    supports: ["period", ...CLIENT],
+  },
+  {
+    key: "client_book", title: "Client book", category: "Clients", defaultSize: "L", sizes: ["L"],
+    description: "Clients and AUM by category, by client type (family head, member, individual, corporate) and by status.",
+    supports: ["period", ...CLIENT],
+  },
+  {
+    key: "kyc_risk", title: "KYC and risk profile", category: "Compliance", defaultSize: "M", sizes: ["M", "L"],
+    description: "Clients by KYC status and by risk-profile status.",
+    supports: ["period", ...CLIENT],
+  },
+  {
+    key: "meetings", title: "Meetings", category: "Work", defaultSize: "L", sizes: ["M", "L"],
+    description: "New, review, follow-up and on-call meetings in the period, by status.",
+    supports: ["period", "rm", "branch"],
+  },
+  {
+    key: "reviews_due", title: "Client reviews due", category: "Clients", defaultSize: "M", sizes: ["M", "L"],
+    description: "Reviews overdue, due this month and in the next 30 days, with the clients.",
+    supports: ["rm", "branch", "segment", "category", "family", "tags", "leadSource"],
+  },
+  {
+    key: "sip_rejection_status", title: "SIP rejections", category: "Business", defaultSize: "M", sizes: ["M", "L"],
+    description: "SIPs rejected in the period, count and value, by recovery status.",
+    supports: ["period", ...CLIENT],
+  },
+  {
+    key: "insurance_business", title: "Insurance business by product", category: "Insurance", defaultSize: "M", sizes: ["M", "L"],
+    description: "New and renewal premium booked in the period, by product.",
+    supports: ["period", "rm", "branch"],
+  },
+  {
+    key: "claims_period", title: "Claims by status", category: "Insurance", defaultSize: "M", sizes: ["M", "L"],
+    description: "Claims intimated in the period by status, with the amount claimed and settled.",
+    supports: ["period", "rm", "branch"],
+  },
+  {
+    key: "task_summary", title: "Task summary", category: "Work", defaultSize: "M", sizes: ["M", "L"],
+    description: "Tasks created in the period — total, pending, awaiting input and completed, financial and non-financial.",
+    supports: ["period", "rm", "branch"],
+  },
 ];
 
 export const SYSTEM_WIDGETS_BY_KEY: Record<string, SystemWidgetMeta> = Object.fromEntries(
@@ -159,8 +214,8 @@ export const SYSTEM_WIDGETS_BY_KEY: Record<string, SystemWidgetMeta> = Object.fr
 /** A placed widget in a dashboard layout. */
 export type LayoutItem = { id: string; widgetKey: string; size: WidgetSize; title?: string };
 
-/** At most this many widgets on one dashboard (the Owner Dashboard, cloned, has 16). */
-export const MAX_WIDGETS = 16;
+/** At most this many widgets on one dashboard (the Owner Dashboard, cloned, has 28). */
+export const MAX_WIDGETS = 32;
 
 /** Validate a layout from the client or the database: known widgets, valid sizes, capped. */
 export function sanitizeLayoutItems(input: unknown): LayoutItem[] {

@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import { Plus, Pencil, Trash2, X, Building2 } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { useToast } from "@/components/ui/Toast";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 
 type BranchAddress = {
   line1?: string;
@@ -163,9 +164,12 @@ export function BranchesManager({
 
   const remove = async (b: BranchRow) => {
     if (
-      !window.confirm(
-        `Delete branch "${b.name}"? This can't be undone.`
-      )
+      !(await confirmDialog({
+        title: `Delete branch "${b.name}"?`,
+        message: "Clients and users assigned to it keep their records, but the branch itself cannot be restored.",
+        confirmLabel: "Delete branch",
+        tone: "danger",
+      }))
     )
       return;
     setBusy(true);

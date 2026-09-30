@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { GuidedStageActions } from "@/components/leads/GuidedStageActions";
 import { leadPipelineColumn, stageLabel } from "@/lib/leads/stages";
+import { LEAD_PHASE_LAST_ORDER } from "@/lib/blueprints/lead_to_client";
 
 type Stage = {
   key: string;
@@ -230,7 +231,7 @@ export function BlueprintStageBar({
   const isConvertReady =
     phase === "lead" && current.key === "won_lead" && !convertedInvestorId;
   const leadStillInProgress =
-    phase === "client" && (current.order <= 10 || !convertedInvestorId);
+    phase === "client" && (current.order <= LEAD_PHASE_LAST_ORDER || !convertedInvestorId);
 
   const slaTone =
     current.slaRemainingDays == null

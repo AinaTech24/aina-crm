@@ -90,6 +90,8 @@ export function MasterTypeScreen({ type }: { type: string }) {
                 </View>
                 {v.isSystemDefault ? <StatusPill label="Default" tone="neutral" dot={false} size="sm" /> : null}
                 <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`${v.isSystemDefault ? "Disable" : "Delete"} ${v.label}`}
                   onPress={() => confirmDelete({ title: v.isSystemDefault ? "Disable value?" : "Delete value?", message: `"${v.label}"` }, () => del.mutate(v.key))}
                   hitSlop={8}
                   style={styles.delBtn}
@@ -107,7 +109,7 @@ export function MasterTypeScreen({ type }: { type: string }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.surfaceAlt },
-  section: { fontSize: fontSize.xs, fontWeight: fontWeight.bold as any, letterSpacing: 0.6, color: palette.muted, marginTop: spacing.xl, marginBottom: spacing.sm },
+  section: { fontSize: fontSize.xs, fontWeight: fontWeight.bold, letterSpacing: 0.6, color: palette.muted, marginTop: spacing.xl, marginBottom: spacing.sm },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.lg },
   divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line },
   iconWrap: { width: 34, height: 34, borderRadius: radius.md, backgroundColor: palette.brandLight, alignItems: "center", justifyContent: "center" },

@@ -1067,7 +1067,7 @@ export function EmployeeEditForm({
                             <CheckCircle2 className="size-3" /> Completed
                           </span>
                         ) : t.status === "cancelled" ? (
-                          <span className="chip bg-gray-50 text-gray-700 flex items-center gap-1">
+                          <span className="chip bg-secondary text-foreground flex items-center gap-1">
                             <XCircle className="size-3" /> Cancelled
                           </span>
                         ) : (
@@ -1140,7 +1140,7 @@ export function EmployeeEditForm({
                         <span className="font-medium text-foreground truncate max-w-[70%]">{t.title}</span>
                         <div className="flex items-center gap-2">
                           <span className={`chip text-2xs font-bold ${
-                            t.priority === 'urgent' ? 'bg-rose-50 text-rose-700' : t.priority === 'high' ? 'bg-amber-50 text-amber-700' : 'bg-slate-50 text-slate-700'
+                            t.priority === 'urgent' ? 'bg-rose-50 text-rose-700' : t.priority === 'high' ? 'bg-amber-50 text-amber-700' : 'bg-secondary text-foreground'
                           }`}>{t.priority}</span>
                           <span className="text-2xs font-mono text-muted-foreground">{t.dueAt ? formatDate(t.dueAt) : 'No due date'}</span>
                         </div>

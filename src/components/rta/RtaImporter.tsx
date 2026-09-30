@@ -17,6 +17,7 @@
 import { useRef, useState } from "react";
 import { Upload, FileSpreadsheet, Eye, Database, Loader2, CheckCircle2, AlertTriangle, X, KeyRound } from "lucide-react";
 import { Select } from "@/components/ui/Select";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 
 const RTA_OPTIONS = [
   { value: "kfintech", label: "Kfintech (Karvy)" },
@@ -86,7 +87,15 @@ export function RtaImporter() {
 
   async function run(dryRun: boolean) {
     if (!ready) return;
-    if (!dryRun && !window.confirm(`Import will create/update investors and folios from "${file!.name}". Continue?`)) return;
+    if (
+      !dryRun &&
+      !(await confirmDialog({
+        title: "Run this import?",
+        message: `Investors and folios will be created or updated from "${file!.name}". Run a preview first if you are unsure.`,
+        confirmLabel: "Import now",
+      }))
+    )
+      return;
     setBusy(dryRun ? "preview" : "import");
     reset();
     try {

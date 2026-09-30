@@ -12,6 +12,7 @@ import { Feather } from "@expo/vector-icons";
 import { useToastStore, type ToastItem, type ToastTone } from "../../lib/toast";
 import { palette, spacing, radius, fontWeight } from "../../theme/tokens";
 import { Text } from "./Text";
+import { asIcon } from "../../lib/icons";
 
 const TONE: Record<ToastTone, { bg: string; icon: string }> = {
   success: { bg: palette.success, icon: "check-circle" },
@@ -40,8 +41,8 @@ function Row({ item }: { item: ToastItem }) {
   return (
     <Animated.View entering={FadeInDown.duration(220)} exiting={FadeOutDown.duration(180)}>
       <Pressable onPress={() => dismiss(item.id)} style={[styles.toast, { backgroundColor: tone.bg }]}>
-        <Feather name={tone.icon as any} size={16} color={palette.white} />
-        <Text style={{ color: palette.white, flex: 1, fontWeight: fontWeight.medium as any }} numberOfLines={2}>{item.message}</Text>
+        <Feather name={asIcon(tone.icon)} size={16} color={palette.white} />
+        <Text style={{ color: palette.white, flex: 1, fontWeight: fontWeight.medium }} numberOfLines={2}>{item.message}</Text>
       </Pressable>
     </Animated.View>
   );

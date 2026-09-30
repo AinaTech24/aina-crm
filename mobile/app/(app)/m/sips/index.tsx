@@ -118,8 +118,8 @@ function SipRow({ s, onPress }: { s: Sip; onPress: () => void }) {
     <Pressable onPress={onPress}>
       <Card style={{ marginBottom: spacing.sm, ...(risk ? { borderLeftWidth: 3, borderLeftColor: toneColors("danger").fg } : null) }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <Text variant="body" style={{ flex: 1, fontWeight: fontWeight.semibold as any }} numberOfLines={1}>{s.investorName ?? "—"}</Text>
-          {s.amount ? <Text variant="body" style={{ fontWeight: fontWeight.bold as any }}>{inr(s.amount)}</Text> : null}
+          <Text variant="body" style={{ flex: 1, fontWeight: fontWeight.semibold }} numberOfLines={1}>{s.investorName ?? "—"}</Text>
+          {s.amount ? <Text variant="body" style={{ fontWeight: fontWeight.bold }}>{inr(s.amount)}</Text> : null}
         </View>
         <Text variant="caption" tone="muted" numberOfLines={1} style={{ marginTop: 2 }}>{s.schemeName ?? "—"}</Text>
         {/* The reason IS the next action — "mandate expired" vs "insufficient funds"
@@ -168,7 +168,7 @@ function SipSheet({ sip, onClose, onOpenClient, onAssignOps }: { sip: Sip | null
       </View>
       {risk && sip.lastFailureReason ? (
         <View style={[styles.reasonBox, { backgroundColor: toneColors("danger").bg }]}>
-          <Text variant="caption" style={{ color: toneColors("danger").fg, fontWeight: fontWeight.semibold as any }}>Why it bounced</Text>
+          <Text variant="caption" style={{ color: toneColors("danger").fg, fontWeight: fontWeight.semibold }}>Why it bounced</Text>
           <Text variant="body" style={{ color: palette.ink, marginTop: 2 }}>{sip.lastFailureReason}</Text>
         </View>
       ) : null}
@@ -207,15 +207,15 @@ function SipSheet({ sip, onClose, onOpenClient, onAssignOps }: { sip: Sip | null
 }
 
 function Meta({ label, value, tone }: { label: string; value: string; tone?: Tone }) {
-  return <View style={{ flex: 1 }}><Text variant="caption" tone="faint">{label}</Text><Text variant="caption" style={{ fontWeight: fontWeight.semibold as any, color: tone ? toneColors(tone).fg : palette.ink }}>{value}</Text></View>;
+  return <View style={{ flex: 1 }}><Text variant="caption" tone="faint">{label}</Text><Text variant="caption" style={{ fontWeight: fontWeight.semibold, color: tone ? toneColors(tone).fg : palette.ink }}>{value}</Text></View>;
 }
 
 const styles = StyleSheet.create({
-  hero: { fontSize: 26, fontWeight: fontWeight.bold as any, letterSpacing: -0.4, marginTop: 2 },
+  hero: { fontSize: 26, fontWeight: fontWeight.bold, letterSpacing: -0.4, marginTop: 2 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   reasonRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 6 },
   reasonBox: { borderRadius: radius.md, padding: spacing.md, marginTop: spacing.md },
   metaRow: { flexDirection: "row", gap: spacing.md, marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.line },
   btn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, borderRadius: radius.md, paddingVertical: spacing.md, marginTop: spacing.md },
-  btnTxt: { color: palette.white, fontWeight: fontWeight.semibold as any },
+  btnTxt: { color: palette.white, fontWeight: fontWeight.semibold },
 });

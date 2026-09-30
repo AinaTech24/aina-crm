@@ -7,6 +7,8 @@ import { Printer } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { useToast } from "@/components/ui/Toast";
 import type { ClaimRow } from "@/lib/insurance/claims-summary";
+import { formatDate } from "@/lib/format";
+import { TableSkeleton } from "@/components/common/Skeleton";
 
 type Payload = { branches: { id: string; name: string }[]; period: string; rows: ClaimRow[] };
 
@@ -23,7 +25,7 @@ function recentMonths(count = 24) {
   const d = new Date();
   d.setDate(1);
   for (let i = 0; i < count; i++) {
-    out.push({ value: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, label: d.toLocaleString("en-IN", { month: "long", year: "numeric" }) });
+    out.push({ value: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, label: formatDate(d, "monthYear") });
     d.setMonth(d.getMonth() - 1);
   }
   return out;
@@ -90,7 +92,7 @@ export function InsuranceClaimsBoard() {
       </div>
 
       {loading ? (
-        <div className="text-sm text-muted-foreground py-10 text-center">Loading…</div>
+        <div className="text-sm text-muted-foreground py-10 text-center" aria-busy="true"><TableSkeleton rows={4} /></div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border max-w-2xl">
           <table className="w-full text-sm border-collapse">

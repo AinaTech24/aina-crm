@@ -29,6 +29,7 @@ import {
   portfolioReviewItems,
 } from "@/db/schema";
 import { PortfolioReviewWorksheet } from "@/components/review-meetings/PortfolioReviewWorksheet";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -172,11 +173,7 @@ export default async function MeetingPortfolioPage({
             </>
           )}
           Review date:{" "}
-          {new Date(data.meeting.meetingDate).toLocaleDateString("en-GB", {
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-          })}{" "}
+          {formatDate(new Date(data.meeting.meetingDate))}{" "}
           · {folioRows.length} folio{folioRows.length === 1 ? "" : "s"}</>} />
 
       <PortfolioReviewWorksheet

@@ -149,12 +149,12 @@ export function AdvisorAlphaSimulator({
         {/* Results Visual */}
         <div className="flex flex-col justify-between bg-card p-4 rounded-xl border border-border/60">
           <div className="space-y-3">
-            <div className="text-2xs font-bold text-slate-500 uppercase tracking-wide">Projected Future Wealth</div>
+            <div className="text-2xs font-bold text-muted-foreground uppercase tracking-wide">Projected Future Wealth</div>
             
             <div className="grid grid-cols-2 gap-4 text-xs">
               <div className="space-y-1 p-2 rounded bg-secondary/10">
                 <span className="text-muted-foreground block text-2xs">DIY Investing (8.5% p.a.)</span>
-                <span className="font-semibold text-slate-700 tabular-nums">{formatINR(result.diyFV)}</span>
+                <span className="font-semibold text-foreground tabular-nums">{formatINR(result.diyFV)}</span>
               </div>
               <div className="space-y-1 p-2 rounded bg-brand-cyan-light/10 border border-brand-cyan/20">
                 <span className="text-brand-cyan-deep block text-2xs">MFD Partnered (11.5% p.a.)</span>
@@ -164,7 +164,7 @@ export function AdvisorAlphaSimulator({
           </div>
 
           <div className="border-t pt-3 mt-3 flex flex-col justify-end">
-            <div className="text-2xs font-bold text-slate-500 uppercase tracking-wide block mb-1">
+            <div className="text-2xs font-bold text-muted-foreground uppercase tracking-wide block mb-1">
               MFD Wealth Value-Add Gap
             </div>
             <div className="flex items-baseline gap-1.5">
@@ -188,28 +188,28 @@ export function AdvisorAlphaSimulator({
           <div className="p-2.5 bg-white border rounded-lg space-y-1 shadow-sm">
             <span className="font-bold text-brand-navy block">Behavioral Coaching</span>
             <span className="text-emerald-700 font-extrabold block text-xs">+1.50% p.a.</span>
-            <span className="text-slate-500 leading-normal block">Preventing panic-selling during volatile market phases.</span>
+            <span className="text-muted-foreground leading-normal block">Preventing panic-selling during volatile market phases.</span>
           </div>
           <div className="p-2.5 bg-white border rounded-lg space-y-1 shadow-sm">
             <span className="font-bold text-brand-navy block">Asset Allocation</span>
             <span className="text-emerald-700 font-extrabold block text-xs">+0.50% p.a.</span>
-            <span className="text-slate-500 leading-normal block">Custom-designed multi-asset portfolio matching risk capacity.</span>
+            <span className="text-muted-foreground leading-normal block">Custom-designed multi-asset portfolio matching risk capacity.</span>
           </div>
           <div className="p-2.5 bg-white border rounded-lg space-y-1 shadow-sm">
             <span className="font-bold text-brand-navy block">Portfolio Rebalancing</span>
             <span className="text-emerald-700 font-extrabold block text-xs">+0.40% p.a.</span>
-            <span className="text-slate-500 leading-normal block">Systematically buying low and selling high to restore targets.</span>
+            <span className="text-muted-foreground leading-normal block">Systematically buying low and selling high to restore targets.</span>
           </div>
           <div className="p-2.5 bg-white border rounded-lg space-y-1 shadow-sm">
             <span className="font-bold text-brand-navy block">Tax Location Alpha</span>
             <span className="text-emerald-700 font-extrabold block text-xs">+0.60% p.a.</span>
-            <span className="text-slate-500 leading-normal block">Harvesting capital gains and structuring tax-optimized schemes.</span>
+            <span className="text-muted-foreground leading-normal block">Harvesting capital gains and structuring tax-optimized schemes.</span>
           </div>
         </div>
       </div>
 
       {mfdValueAddText && (
-        <div className="p-3 bg-white/70 border border-brand-cyan/20 rounded-lg text-xs italic text-slate-700">
+        <div className="p-3 bg-white/70 border border-brand-cyan/20 rounded-lg text-xs italic text-foreground">
           <strong>Advisor's Personalized Note:</strong> "{mfdValueAddText}"
         </div>
       )}

@@ -13,7 +13,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useDashboardNav } from "@/components/dashboards/system/DashboardNav";
 import { useState } from "react";
 import {
-  Briefcase, Building2, FileWarning, Filter, Layers, Landmark, ListChecks, Repeat, Shapes, SlidersHorizontal, Tag, UserCheck, UserRound, Users, Wallet,
+  Ban, Briefcase, Building2, Factory, FileWarning, Filter, Layers, Landmark, ListChecks, Repeat, Shapes, SlidersHorizontal, Tag, UserCheck, UserRound, Users, Wallet,
 } from "lucide-react";
 import { Select } from "@/components/ui/Select";
 import { buttonClass } from "@/components/ui/button-class";
@@ -21,10 +21,10 @@ import { cn } from "@/lib/utils";
 
 type Opt = { value: string; label: string };
 
-const KEYS = ["line", "nature", "grp", "branch", "rm", "exec", "insurer", "cat", "ctype", "mf", "pst", "band", "src", "cst", "ctyp"] as const;
+const KEYS = ["line", "nature", "grp", "branch", "rm", "exec", "insurer", "cat", "ctype", "mf", "pst", "band", "src", "cst", "ctyp", "ind", "lr"] as const;
 
 export function InsFilters({
-  branches, owners, execs, groups, insurers, sources, statuses, bands, claimGroups, claimTypes, resetHref, active,
+  branches, owners, execs, groups, insurers, sources, statuses, bands, claimGroups, claimTypes, industries = [], lossReasons = [], resetHref, active,
 }: {
   /** Null when the viewer is locked to one branch. */
   branches: Opt[] | null;
@@ -37,6 +37,10 @@ export function InsFilters({
   bands: Opt[];
   claimGroups: Opt[];
   claimTypes: Opt[];
+  /** Clients' occupation / nature of business as keyed — the CRM has no industry field. */
+  industries?: Opt[];
+  /** Lapse / cancellation reasons recorded on policies. */
+  lossReasons?: Opt[];
   resetHref: string;
   active: boolean;
 }) {
@@ -116,6 +120,8 @@ export function InsFilters({
           {sel("band", "Any premium band", bands, <Wallet className="size-3.5" />, "w-48")}
           {sel("cst", "Any claim status", claimGroups, <FileWarning className="size-3.5" />)}
           {sel("ctyp", "Any claim type", claimTypes, <Layers className="size-3.5" />)}
+          {sel("ind", "Any industry", industries, <Factory className="size-3.5" />, "w-52")}
+          {sel("lr", "Any loss reason", lossReasons, <Ban className="size-3.5" />, "w-52")}
           {active && (
             <Link href={resetHref} className="inline-flex min-h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-primary hover:bg-accent">
               <Repeat className="size-3" aria-hidden /> Reset filters

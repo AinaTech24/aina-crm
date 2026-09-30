@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
+import { InlineEmpty } from "@/components/common/EmptyState";
 import { formatINR } from "@/lib/utils";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
@@ -22,17 +24,40 @@ import { ProposalsBulkTable } from "@/components/proposals/ProposalsBulkTable";
 
 const PROPOSALS_COLUMNS = [
   { key: "number", label: "Proposal number", required: true },
-  { key: "title", label: "Title" },
-  { key: "recipient", label: "Recipient", required: true },
+  { key: "title", label: "Title", defaultHidden: true },
+  { key: "recipient", label: "Client", required: true },
   { key: "type", label: "Type" },
-  { key: "invest", label: "Investment ₹" },
-  { key: "corpus", label: "Expected corpus" },
+  { key: "invest", label: "Invest amount" },
+  { key: "corpus", label: "Projected corpus" },
   { key: "status", label: "Status" },
   { key: "valid_till", label: "Valid till" },
-  { key: "prepared_by", label: "Prepared by", defaultHidden: true },
-  { key: "created", label: "Created" },
+  { key: "prepared_by", label: "Prepared by" },
+  { key: "created", label: "Created", defaultHidden: true },
   { key: "actions", label: "Actions", required: true },
 ];
+/** v2: Prepared by shown, Title and Created hidden by default. */
+const COLUMNS_VERSION = 2;
+
+/**
+ * Past its valid-till date, on the IST calendar: a proposal valid till the
+ * 25th is still valid all of the 25th.
+ */
+const PAST = sql`(p.valid_until IS NOT NULL AND (p.valid_until AT TIME ZONE 'Asia/Kolkata')::date < (now() AT TIME ZONE 'Asia/Kolkata')::date)`;
+
+/**
+ * Status tabs. Together they cover every status, so no proposal is in none of
+ * them. A draft or sent proposal past its valid-till date is Expired whatever
+ * its stored status says: the nightly expiry job flips only sent / viewed /
+ * ready, so a lapsed draft used to sit under Draft for good.
+ */
+const TABS = [
+  { key: "draft", label: "Draft", where: sql`(p.status IN ('draft', 'ready') AND NOT ${PAST})` },
+  { key: "sent", label: "Sent", where: sql`(p.status IN ('sent', 'viewed') AND NOT ${PAST})` },
+  { key: "accepted", label: "Accepted", where: sql`p.status IN ('accepted', 'partially_approved', 'executed')` },
+  { key: "rejected", label: "Rejected", where: sql`p.status = 'rejected'` },
+  { key: "expired", label: "Expired", where: sql`(p.status = 'expired' OR (p.status IN ('draft', 'ready', 'sent', 'viewed') AND ${PAST}))` },
+] as const;
+type TabKey = (typeof TABS)[number]["key"];
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +69,15 @@ export default async function ProposalsPage({
   const session = await requireSession();
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
+  // status — comma-separated: the dashboard's Proposal pipeline links each
+  // group with its statuses (draft,ready · sent,viewed · accepted,… · rejected,expired).
   const statusFilter = (sp.status ?? "").split(",").filter(Boolean);
+  // A tab picks the statuses, unless an explicit ?status= (an old link or a
+  // saved view) already did — then no tab is highlighted.
+  const tab: TabKey | null = statusFilter.length
+    ? null
+    : (TABS.find((t) => t.key === sp.tab)?.key ?? "draft");
+  const canRenew = can(session.roles, "proposal.write", session.permissions);
   const typeFilter = (sp.type ?? "").split(",").filter(Boolean);
   const riskFilter = (sp.risk ?? "").split(",").filter(Boolean);
   const PAGE_SIZE = 50;
@@ -62,15 +95,10 @@ export default async function ProposalsPage({
           : sql`p.created_at DESC`;
 
   const data = await withTenant(session.tenantId, async (tx) => {
-    const filters: any[] = [];
+    const filters: any[] = [sql`p.tenant_id = ${session.tenantId}::uuid`];
     if (q) {
       filters.push(
         sql`(p.proposal_number ILIKE ${`%${q}%`} OR p.title ILIKE ${`%${q}%`} OR p.recipient_name ILIKE ${`%${q}%`})`
-      );
-    }
-    if (statusFilter.length) {
-      filters.push(
-        sql`p.status IN (${sql.join(statusFilter.map((v) => sql`${v}`), sql`, `)})`
       );
     }
     if (typeFilter.length) {
@@ -85,15 +113,27 @@ export default async function ProposalsPage({
     }
     const dr = dateRangeCond(sp, "created", "p.created_at");
     if (dr) filters.push(dr);
-    const whereSql = filters.length ? sql` WHERE ${sql.join(filters, sql` AND `)}` : sql``;
+    // Tab counts are taken over every other filter, before the tab narrows.
+    const countWhere = sql` WHERE ${sql.join(filters, sql` AND `)}`;
+    if (statusFilter.length) {
+      filters.push(
+        sql`p.status IN (${sql.join(statusFilter.map((v) => sql`${v}`), sql`, `)})`
+      );
+    }
+    if (tab) filters.push(TABS.find((t) => t.key === tab)!.where);
+    const whereSql = sql` WHERE ${sql.join(filters, sql` AND `)}`;
 
     const rows = await tx.execute(sql`
       SELECT p.id, p.proposal_number, p.title, p.type, p.status,
              p.recipient_name, p.recipient_type, p.investor_id, p.lead_id,
              p.total_investment::numeric AS total_investment,
              p.expected_corpus::numeric AS expected_corpus,
-             p.risk_rating, p.valid_until, p.sent_at, p.accepted_at,
+             p.risk_rating, p.valid_until, p.sent_at, p.viewed_at, p.accepted_at,
              p.created_at,
+             (p.status IN ('draft', 'ready', 'sent', 'viewed') AND ${PAST}) AS lapsed,
+             (p.valid_until AT TIME ZONE 'Asia/Kolkata')::date::text AS valid_date,
+             -- The moment it stops being valid: midnight IST after its last valid day.
+             ((p.valid_until AT TIME ZONE 'Asia/Kolkata')::date + 1)::timestamp AT TIME ZONE 'Asia/Kolkata' AS lapses_at,
              u.name AS prepared_by,
              i.avatar_url AS investor_avatar_url,
              l.avatar_url AS lead_avatar_url
@@ -108,6 +148,10 @@ export default async function ProposalsPage({
     // True count of the filtered set (drives the pager + accurate header count).
     const filtered = await tx.execute(sql`
       SELECT COUNT(*)::int AS c FROM proposals p ${whereSql}
+    `);
+    const tabCounts = await tx.execute(sql`
+      SELECT ${sql.join(TABS.map((t) => sql`COUNT(*) FILTER (WHERE ${t.where})::int AS ${sql.identifier(t.key)}`), sql`, `)}
+      FROM proposals p ${countWhere}
     `);
     const stats = await tx.execute(sql`
       SELECT
@@ -132,14 +176,55 @@ export default async function ProposalsPage({
       rows: rows.rows as any[],
       s: stats.rows[0] as any,
       filteredTotal: Number((filtered.rows[0] as any)?.c ?? 0),
+      counts: (tabCounts.rows[0] ?? {}) as Record<string, number>,
     };
   });
+
+  // A tab keeps every other filter; it replaces status and restarts the page.
+  const tabHref = (key: TabKey) => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(sp)) if (v && k !== "tab" && k !== "status" && k !== "page") p.set(k, v);
+    if (key !== "draft") p.set("tab", key);
+    const qs = p.toString();
+    return qs ? `/dashboard/proposals?${qs}` : "/dashboard/proposals";
+  };
+  const anyProposal = TABS.some((t) => Number(data.counts[t.key] ?? 0) > 0);
+  const hasFilters = !!q || statusFilter.length > 0 || typeFilter.length > 0 || riskFilter.length > 0
+    || !!dateRangeCond(sp, "created", "p.created_at");
+  const tabLabel = tab ? TABS.find((t) => t.key === tab)!.label.toLowerCase() : null;
+  const emptyMessage = tabLabel && anyProposal
+    ? `No ${tabLabel} proposals${hasFilters ? " match these filters" : ""}.`
+    : "No proposals match these filters.";
 
   return (
     <div className="space-y-6 max-w-7xl">
       <PageHeaderCard title={<><FileSignature className="size-6 text-muted-foreground" /> Proposals</>} subtitle={<>Investment proposals you have sent, and whether the client approved them.</>} actions={<><Link href="/dashboard/proposals/new" className="btn-primary">
           <Plus className="size-4" /> New proposal
         </Link></>} />
+
+      {/* Status tabs, with counts under the current filters. */}
+      <nav role="tablist" aria-label="Proposal status" className="inline-flex flex-wrap items-center gap-1 rounded-lg border border-border bg-secondary/40 p-1">
+        {TABS.map((t) => {
+          const active = tab === t.key;
+          const n = Number(data.counts[t.key] ?? 0);
+          return (
+            <Link
+              key={t.key}
+              href={tabHref(t.key)}
+              role="tab"
+              aria-selected={active}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                active ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-card/60"
+              }`}
+            >
+              {t.label}
+              <span className={`tabular-nums ${t.key === "expired" && n > 0 ? "font-semibold text-destructive" : "text-muted-foreground"}`}>
+                {n}
+              </span>
+            </Link>
+          );
+        })}
+      </nav>
 
       <CompactFilterBar
         totalCount={data.filteredTotal}
@@ -197,7 +282,7 @@ export default async function ProposalsPage({
         ]}
         rightSlot={
           <div className="flex items-center gap-2">
-            <ColumnManager moduleKey="proposals" columns={PROPOSALS_COLUMNS} />
+            <ColumnManager moduleKey="proposals" columns={PROPOSALS_COLUMNS} version={COLUMNS_VERSION} />
             <CustomViews
               viewsKey="views:proposals"
               presets={[
@@ -212,7 +297,9 @@ export default async function ProposalsPage({
       />
 
       <div className="card-surface">
-        {data.rows.length === 0 ? (
+        {data.rows.length === 0 && (anyProposal || hasFilters) ? (
+          <InlineEmpty icon={FileSignature} message={emptyMessage} />
+        ) : data.rows.length === 0 ? (
           <div className="p-12 text-center text-sm text-muted-foreground">
             <FileSignature className="size-8 mx-auto text-muted-foreground/50" />
             <div className="mt-2 font-medium">No proposals yet.</div>
@@ -223,7 +310,7 @@ export default async function ProposalsPage({
           </div>
         ) : (
           <div>
-            <ProposalsBulkTable rows={data.rows.map((r, i) => ({ ...r, _seq: (page - 1) * PAGE_SIZE + i + 1 }))} />
+            <ProposalsBulkTable canRenew={canRenew} rows={data.rows.map((r, i) => ({ ...r, _seq: (page - 1) * PAGE_SIZE + i + 1 }))} />
             <div className="px-4 pb-3">
               <Pager
                 page={page}

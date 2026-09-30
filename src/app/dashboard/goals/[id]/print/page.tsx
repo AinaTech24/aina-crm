@@ -24,13 +24,13 @@ import {
   sensitivitySipRates,
   categoryLabel,
 } from "@/lib/goal-planning/calc";
-import { formatINR } from "@/lib/utils";
+import { formatDate, formatINR } from "@/lib/utils";
 import { GoalPrintHelper } from "@/components/goal-planning/GoalPrintHelper";
 
 export const dynamic = "force-dynamic";
 
 const STATUS_COPY: Record<string, { label: string; tone: string }> = {
-  not_started: { label: "Not Started", tone: "bg-gray-100 text-gray-700" },
+  not_started: { label: "Not Started", tone: "bg-secondary text-foreground" },
   on_track: { label: "On Track", tone: "bg-emerald-50 text-emerald-700" },
   behind_track: { label: "Behind Track", tone: "bg-amber-50 text-amber-700" },
   achieved: { label: "Achieved ✓", tone: "bg-blue-50 text-blue-700" },
@@ -86,7 +86,7 @@ export default async function GoalPrintPage({
   const status = STATUS_COPY[calc.status] ?? STATUS_COPY.not_started;
 
   return (
-    <div className="bg-white text-slate-900 print:bg-white">
+    <div className="bg-white text-foreground print:bg-white">
       <GoalPrintHelper
         goalId={id}
         view={view}
@@ -106,15 +106,15 @@ export default async function GoalPrintPage({
               maxWidth={200}
             />
             <div>
-              <div className="text-2xs text-slate-600">ARN {String(data.tenant?.arn ?? "—").replace(/^ARN-?/i, "")}</div>
+              <div className="text-2xs text-muted-foreground">ARN {String(data.tenant?.arn ?? "—").replace(/^ARN-?/i, "")}</div>
               {data.tenant?.email && (
-                <div className="text-2xs text-slate-600">{data.tenant.email}</div>
+                <div className="text-2xs text-muted-foreground">{data.tenant.email}</div>
               )}
             </div>
           </div>
-          <div className="text-right text-xs text-slate-600">
+          <div className="text-right text-xs text-muted-foreground">
             <div className="font-semibold uppercase tracking-wide">Goal Plan</div>
-            <div>Prepared {new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</div>
+            <div>Prepared {formatDate(new Date())}</div>
           </div>
         </div>
         {/* Theme gradient rule (matches the statement PDF) */}
@@ -125,8 +125,8 @@ export default async function GoalPrintPage({
 
         {/* Salutation */}
         <div className="mt-5 text-sm">
-          <div className="text-slate-700">Dear {data.investor?.name ?? "Investor"},</div>
-          <p className="mt-2 text-slate-700 leading-relaxed">
+          <div className="text-foreground">Dear {data.investor?.name ?? "Investor"},</div>
+          <p className="mt-2 text-foreground leading-relaxed">
             This report summarises your <strong>{goal.name}</strong> goal and the contribution plan
             needed to achieve it. Numbers are based on the assumptions stated at the bottom.
           </p>
@@ -134,17 +134,17 @@ export default async function GoalPrintPage({
 
         {/* Goal headline */}
         <div className="mt-6 grid grid-cols-2 gap-4">
-          <div className="rounded-lg border border-slate-200 p-4">
-            <div className="text-2xs uppercase tracking-wide text-slate-500">Goal</div>
+          <div className="rounded-lg border border-border p-4">
+            <div className="text-2xs uppercase tracking-wide text-muted-foreground">Goal</div>
             <div className="font-semibold mt-1">{goal.name}</div>
-            <div className="text-xs text-slate-600 mt-0.5">{categoryLabel(goal.category)}</div>
+            <div className="text-xs text-muted-foreground mt-0.5">{categoryLabel(goal.category)}</div>
           </div>
-          <div className="rounded-lg border border-slate-200 p-4">
-            <div className="text-2xs uppercase tracking-wide text-slate-500">Status</div>
+          <div className="rounded-lg border border-border p-4">
+            <div className="text-2xs uppercase tracking-wide text-muted-foreground">Status</div>
             <div className={`text-xs font-semibold inline-block px-2 py-0.5 rounded-full mt-1 ${status.tone}`}>
               {status.label}
             </div>
-            <div className="text-xs text-slate-600 mt-1">
+            <div className="text-xs text-muted-foreground mt-1">
               {monthsLeft} months to {targetDate.getFullYear()}
             </div>
           </div>
@@ -204,8 +204,8 @@ export default async function GoalPrintPage({
             <h2 className="text-base font-bold mt-8 mb-3 tracking-tight">
               Sensitivity — SIP needed at different return rates
             </h2>
-            <table className="w-full text-sm border border-slate-200 rounded-lg overflow-hidden">
-              <thead className="bg-slate-50 text-xs text-slate-600">
+            <table className="w-full text-sm border border-border rounded-lg overflow-hidden">
+              <thead className="bg-secondary text-xs text-muted-foreground">
                 <tr>
                   <th className="text-left px-3 py-2 font-semibold">Return p.a.</th>
                   <th className="text-right px-3 py-2 font-semibold">Flat SIP needed</th>
@@ -216,7 +216,7 @@ export default async function GoalPrintPage({
                 {sensitivity.map((s) => (
                   <tr
                     key={s.ratePct}
-                    className={`border-t border-slate-200 ${
+                    className={`border-t border-border ${
                       Math.abs(s.ratePct - ret) < 0.01 ? "bg-cyan-50 font-semibold" : ""
                     }`}
                   >
@@ -224,7 +224,7 @@ export default async function GoalPrintPage({
                     <td className="px-3 py-2 text-right tabular-nums">
                       {formatINR(Math.round(s.sip))}
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-600">
+                    <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
                       {formatINR(Math.round(s.lumpsum))}
                     </td>
                   </tr>
@@ -234,7 +234,7 @@ export default async function GoalPrintPage({
 
             {/* Year-by-year */}
             <h2 className="text-base font-bold mt-8 mb-3 tracking-tight">Year-by-year projection</h2>
-            <p className="text-xs text-slate-600 mb-2">
+            <p className="text-xs text-muted-foreground mb-2">
               Assumes current investment of {formatINR(currentValue)} + new SIP of{" "}
               {formatINR(Math.round(calc.requiredMonthlySipTotal))}/mo, both compounding at {ret} % p.a.
             </p>
@@ -253,8 +253,8 @@ export default async function GoalPrintPage({
               })}
             </div>
 
-            <table className="w-full text-xs border border-slate-200 rounded-lg overflow-hidden">
-              <thead className="bg-slate-50 text-slate-600">
+            <table className="w-full text-xs border border-border rounded-lg overflow-hidden">
+              <thead className="bg-secondary text-muted-foreground">
                 <tr>
                   <th className="text-left px-3 py-1.5 font-semibold">Year</th>
                   <th className="text-right px-3 py-1.5 font-semibold">Contributed</th>
@@ -267,12 +267,12 @@ export default async function GoalPrintPage({
                 {projection.map((row) => {
                   const pct = (row.endOfYearCorpus / targetAmount) * 100;
                   return (
-                    <tr key={row.year} className="border-t border-slate-200">
+                    <tr key={row.year} className="border-t border-border">
                       <td className="px-3 py-1.5 tabular-nums">{row.year}</td>
-                      <td className="px-3 py-1.5 text-right tabular-nums text-slate-600">
+                      <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">
                         {formatINR(Math.round(row.contributedThisYear))}
                       </td>
-                      <td className="px-3 py-1.5 text-right tabular-nums text-slate-600">
+                      <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">
                         {formatINR(Math.round(row.cumulativeContributed))}
                       </td>
                       <td className="px-3 py-1.5 text-right tabular-nums font-semibold">
@@ -289,7 +289,7 @@ export default async function GoalPrintPage({
 
             {/* Formula appendix */}
             <h2 className="text-base font-bold mt-8 mb-3 tracking-tight">How these numbers are calculated</h2>
-            <ul className="text-xs space-y-2 text-slate-700 leading-relaxed">
+            <ul className="text-xs space-y-2 text-foreground leading-relaxed">
               <li>
                 <strong>Future-value of an SIP:</strong> P × ((1 + r/12)<sup>n</sup> − 1) / (r/12) × (1 + r/12),
                 where P = monthly SIP, r = annual return, n = months.
@@ -310,7 +310,7 @@ export default async function GoalPrintPage({
         )}
 
         {/* Disclosure footer */}
-        <div className="mt-10 pt-4 border-t border-slate-200 text-2xs text-slate-500 leading-relaxed">
+        <div className="mt-10 pt-4 border-t border-border text-2xs text-muted-foreground leading-relaxed">
           <p>
             <strong>Important disclosures:</strong> Mutual fund investments are subject to market risks.
             Read all scheme-related documents carefully. The illustrations above are based on assumed
@@ -329,8 +329,8 @@ export default async function GoalPrintPage({
 
 function Money({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-slate-200 p-3">
-      <div className="text-2xs uppercase tracking-wide text-slate-500">{label}</div>
+    <div className="rounded-lg border border-border p-3">
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className="text-lg font-bold tabular-nums mt-0.5">{value}</div>
     </div>
   );
@@ -339,9 +339,9 @@ function Money({ label, value }: { label: string; value: string }) {
 function Plan({ label, value, sub }: { label: string; value: string; sub: string }) {
   return (
     <div className="rounded-lg border border-slate-300 p-3">
-      <div className="text-2xs uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className="text-lg font-bold tabular-nums mt-1">{value}</div>
-      <div className="text-2xs text-slate-600 mt-0.5 leading-tight">{sub}</div>
+      <div className="text-2xs text-muted-foreground mt-0.5 leading-tight">{sub}</div>
     </div>
   );
 }

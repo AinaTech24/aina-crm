@@ -8,10 +8,11 @@
  * given. All mutations hit /api/investors/[id]/gifts and refetch local state.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useId, useCallback, useEffect, useState } from "react";
 import { Cake, Gift, Trash2, Plus, Loader2 } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
+import { formatDate } from "@/lib/format";
 
 type GiftRow = {
   id: string;
@@ -36,13 +37,13 @@ function fmtDayMonth(dob: string): string {
   // dob is yyyy-mm-dd — parse the parts directly to avoid TZ drift.
   const [, m, d] = dob.split("-").map(Number);
   const date = new Date(2000, (m || 1) - 1, d || 1);
-  return date.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  return formatDate(date, "dayMonth");
 }
 
 function fmtDate(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
   const date = new Date(y, (m || 1) - 1, d || 1);
-  return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  return formatDate(date);
 }
 
 /** Days until the next birthday (ignoring year). 0 = today. */
@@ -60,6 +61,7 @@ function daysUntilBirthday(dob: string): number {
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export function ClientGifts({ investorId, clientName }: { investorId: string; clientName: string }) {
+  const uid = useId();
   const [data, setData] = useState<GiftsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -303,8 +305,8 @@ export function ClientGifts({ investorId, clientName }: { investorId: string; cl
             <form onSubmit={addGift} className="mb-4 rounded-lg border bg-card p-3 space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">Occasion</label>
-                  <SelectField value={occasion} onChange={(e) => setOccasion(e.target.value)}>
+                  <label htmlFor={`${uid}-occasion`} className="block text-xs font-medium text-muted-foreground mb-1">Occasion</label>
+                  <SelectField id={`${uid}-occasion`} value={occasion} onChange={(e) => setOccasion(e.target.value)}>
                     <option value="birthday">Birthday</option>
                     <option value="anniversary">Anniversary</option>
                     <option value="festival">Festival</option>
@@ -312,12 +314,12 @@ export function ClientGifts({ investorId, clientName }: { investorId: string; cl
                   </SelectField>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">Given on</label>
-                  <DateField value={givenOn} onChange={(e) => setGivenOn(e.target.value)} />
+                  <label htmlFor={`${uid}-given-on`} className="block text-xs font-medium text-muted-foreground mb-1">Given on</label>
+                  <DateField id={`${uid}-given-on`} value={givenOn} onChange={(e) => setGivenOn(e.target.value)} />
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">Title</label>
-                  <input
+                  <label htmlFor={`${uid}-title`} className="block text-xs font-medium text-muted-foreground mb-1">Title</label>
+                  <input id={`${uid}-title`}
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder="e.g. Sweet box & card"
@@ -327,8 +329,8 @@ export function ClientGifts({ investorId, clientName }: { investorId: string; cl
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">Amount (₹)</label>
-                  <input
+                  <label htmlFor={`${uid}-amount`} className="block text-xs font-medium text-muted-foreground mb-1">Amount (₹)</label>
+                  <input id={`${uid}-amount`}
                     type="number"
                     min={0}
                     inputMode="numeric"
@@ -339,8 +341,8 @@ export function ClientGifts({ investorId, clientName }: { investorId: string; cl
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">Notes</label>
-                  <input
+                  <label htmlFor={`${uid}-notes`} className="block text-xs font-medium text-muted-foreground mb-1">Notes</label>
+                  <input id={`${uid}-notes`}
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     placeholder="Optional"

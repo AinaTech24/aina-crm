@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Save, Loader2, Check, X, Plug, ServerCog, Inbox, Mail } from "lucide-react";
 import { NavButton } from "@/components/common/SecureLinkButtons";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 
 type Server = { host: string; port: number; secure: boolean; user: string; pass: string };
 
@@ -62,6 +63,7 @@ export function MailboxForm({
   /** Which OAuth providers the server has credentials for (buttons enabled). */
   oauthAvailable?: { google: boolean; microsoft: boolean };
 }) {
+  const uid = useId();
   const router = useRouter();
   const qs = scope === "user" ? "?scope=user" : "";
   const isUser = scope === "user";
@@ -141,7 +143,15 @@ export function MailboxForm({
   }
 
   async function disconnect() {
-    if (!window.confirm("Disconnect this mailbox? Client emails will fall back to the firm mailbox / platform sender.")) return;
+    if (
+      !(await confirmDialog({
+        title: "Disconnect this mailbox?",
+        message: "Client emails will fall back to the firm mailbox, or the platform sender if none is set.",
+        confirmLabel: "Disconnect",
+        tone: "danger",
+      }))
+    )
+      return;
     setBusy(true);
     try {
       await fetch(`/api/settings/integrations/mailbox${qs}`, { method: "DELETE" });
@@ -212,8 +222,8 @@ export function MailboxForm({
       )}
 
       <div>
-        <label className="text-xs font-medium text-muted-foreground">Provider preset</label>
-        <select
+        <label htmlFor={`${uid}-provider-preset`} className="text-xs font-medium text-muted-foreground">Provider preset</label>
+        <select id={`${uid}-provider-preset`}
           value={preset}
           onChange={(e) => applyPreset(e.target.value)}
           className="mt-1 w-full border rounded-md px-3 py-2 text-sm bg-background"

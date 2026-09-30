@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { ShieldCheck, ShieldAlert, Loader2, Copy, Check } from "lucide-react";
 
 type Mode = "idle" | "enrolling" | "showBackup";
 
 export function TwoFactorSetup({ initialEnabled }: { initialEnabled: boolean }) {
+  const uid = useId();
   const [enabled, setEnabled] = useState(initialEnabled);
   const [mode, setMode] = useState<Mode>("idle");
   const [busy, setBusy] = useState(false);
@@ -173,8 +174,8 @@ export function TwoFactorSetup({ initialEnabled }: { initialEnabled: boolean }) 
             </div>
           )}
           <form onSubmit={confirmEnable} className="space-y-3">
-            <label className="text-sm font-medium block">Enter the 6-digit code to confirm</label>
-            <input
+            <label htmlFor={`${uid}-enter-the-6-digit-code-to-confirm`} className="text-sm font-medium block">Enter the 6-digit code to confirm</label>
+            <input id={`${uid}-enter-the-6-digit-code-to-confirm`}
               inputMode="numeric"
               autoComplete="one-time-code"
               value={code}

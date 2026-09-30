@@ -77,7 +77,7 @@ export default function NewProposal() {
         {recipient ? (
           <Pressable onPress={() => setPickerOpen(true)}>
             <Card flat style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-              <View style={styles.avatar}><Text style={{ color: palette.white, fontWeight: fontWeight.bold as any }}>{recipient.name.slice(0, 1).toUpperCase()}</Text></View>
+              <View style={styles.avatar}><Text style={{ color: palette.white, fontWeight: fontWeight.bold }}>{recipient.name.slice(0, 1).toUpperCase()}</Text></View>
               <View style={{ flex: 1 }}>
                 <Text variant="body" numberOfLines={1}>{recipient.name}</Text>
                 <Text variant="caption" tone="muted">{recipient.type === "investor" ? "Client" : "Lead"}{recipient.phone ? ` · ${recipient.phone}` : ""}</Text>
@@ -88,7 +88,7 @@ export default function NewProposal() {
         ) : (
           <Pressable style={styles.addBtn} onPress={() => setPickerOpen(true)}>
             <Feather name="user-plus" size={16} color={palette.brand} />
-            <Text style={{ color: palette.brand, fontWeight: fontWeight.semibold as any }}>Choose client or lead</Text>
+            <Text style={{ color: palette.brand, fontWeight: fontWeight.semibold }}>Choose client or lead</Text>
           </Pressable>
         )}
 
@@ -106,21 +106,21 @@ export default function NewProposal() {
         {/* Products */}
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: spacing.xl, marginBottom: spacing.sm }}>
           <Text variant="caption" tone="faint" style={{ letterSpacing: 0.6 }}>PRODUCTS ({products.length})</Text>
-          {total > 0 ? <Text variant="caption" style={{ fontWeight: fontWeight.semibold as any, color: palette.ink }}>{inr(total)}</Text> : null}
+          {total > 0 ? <Text variant="caption" style={{ fontWeight: fontWeight.semibold, color: palette.ink }}>{inr(total)}</Text> : null}
         </View>
         {products.map((l, i) => (
           <Card key={i} flat style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, marginBottom: spacing.sm }}>
-            <View style={styles.pTag}><Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.semibold as any, fontSize: 10 }}>{LINE_KIND_LABEL[l.kind].toUpperCase()}</Text></View>
+            <View style={styles.pTag}><Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.semibold, fontSize: 10 }}>{LINE_KIND_LABEL[l.kind].toUpperCase()}</Text></View>
             <View style={{ flex: 1 }}>
               <Text variant="body" numberOfLines={1}>{lineTitle(l)}</Text>
               {lineAmount(l) > 0 ? <Text variant="caption" tone="muted">{inr(lineAmount(l))}</Text> : null}
             </View>
-            <Pressable onPress={() => setProducts((p) => p.filter((_, ix) => ix !== i))} hitSlop={8}><Feather name="x" size={18} color={palette.faint} /></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Remove product" onPress={() => setProducts((p) => p.filter((_, ix) => ix !== i))} hitSlop={8}><Feather name="x" size={18} color={palette.faint} /></Pressable>
           </Card>
         ))}
         <Pressable style={styles.addBtn} onPress={() => setLineOpen(true)}>
           <Feather name="plus" size={16} color={palette.brand} />
-          <Text style={{ color: palette.brand, fontWeight: fontWeight.semibold as any }}>Add product</Text>
+          <Text style={{ color: palette.brand, fontWeight: fontWeight.semibold }}>Add product</Text>
         </Pressable>
       </Screen>
 
@@ -147,13 +147,13 @@ function RecipientPicker({ visible, onClose, onPick }: { visible: boolean; onClo
       <ScrollView style={{ maxHeight: 360, marginTop: spacing.sm }} keyboardShouldPersistTaps="handled">
         {(search.data?.investors ?? []).map((i) => (
           <Pressable key={`i-${i.id}`} style={styles.pickRow} onPress={() => onPick({ type: "investor", id: i.id, name: i.name, email: i.email, phone: i.phone })}>
-            <View style={[styles.avatar, { backgroundColor: palette.violet }]}><Text style={{ color: palette.white, fontWeight: fontWeight.bold as any, fontSize: 12 }}>{i.name.slice(0, 1).toUpperCase()}</Text></View>
+            <View style={[styles.avatar, { backgroundColor: palette.violet }]}><Text style={{ color: palette.white, fontWeight: fontWeight.bold, fontSize: 12 }}>{i.name.slice(0, 1).toUpperCase()}</Text></View>
             <View style={{ flex: 1 }}><Text variant="body" numberOfLines={1}>{i.name}</Text><Text variant="caption" tone="muted">Client{i.phone ? ` · ${i.phone}` : ""}</Text></View>
           </Pressable>
         ))}
         {(search.data?.leads ?? []).map((l) => (
           <Pressable key={`l-${l.id}`} style={styles.pickRow} onPress={() => onPick({ type: "lead", id: l.id, name: l.name, email: l.email, phone: l.phone })}>
-            <View style={[styles.avatar, { backgroundColor: palette.brand }]}><Text style={{ color: palette.white, fontWeight: fontWeight.bold as any, fontSize: 12 }}>{l.name.slice(0, 1).toUpperCase()}</Text></View>
+            <View style={[styles.avatar, { backgroundColor: palette.brand }]}><Text style={{ color: palette.white, fontWeight: fontWeight.bold, fontSize: 12 }}>{l.name.slice(0, 1).toUpperCase()}</Text></View>
             <View style={{ flex: 1 }}><Text variant="body" numberOfLines={1}>{l.name}</Text><Text variant="caption" tone="muted">Lead{l.phone ? ` · ${l.phone}` : ""}</Text></View>
           </Pressable>
         ))}
@@ -236,5 +236,5 @@ const styles = StyleSheet.create({
   pickRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.lineSoft },
   footer: { position: "absolute", left: 0, right: 0, bottom: 0, padding: spacing.lg, backgroundColor: palette.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.line },
   save: { backgroundColor: palette.brand, borderRadius: radius.md, paddingVertical: spacing.md, alignItems: "center" },
-  saveTxt: { color: palette.white, fontWeight: fontWeight.semibold as any, fontSize: 15 },
+  saveTxt: { color: palette.white, fontWeight: fontWeight.semibold, fontSize: 15 },
 });

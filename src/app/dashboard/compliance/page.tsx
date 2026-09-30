@@ -318,7 +318,7 @@ export default async function CompliancePage() {
         </div>
         <div className="border rounded-lg bg-card p-5">
           <h2 className="font-semibold flex items-center gap-2 mb-3">
-            <FileText className="size-4 text-slate-700" /> Pending approvals
+            <FileText className="size-4 text-foreground" /> Pending approvals
           </h2>
           <ul className="space-y-2 text-sm">
             {pendingTemplates.length === 0 ? (
@@ -329,7 +329,7 @@ export default async function CompliancePage() {
               pendingTemplates.map((t) => (
                 <li key={t.id} className="flex items-center justify-between py-1.5 border-b last:border-0">
                   <div>
-                    <span className="font-medium text-slate-800">Marketing template</span>{" "}
+                    <span className="font-medium text-foreground">Marketing template</span>{" "}
                     <span className="text-muted-foreground font-mono text-xs">— {t.key} (v{t.versionNumber})</span>
                   </div>
                   <Link href={`/dashboard/templates/${t.id}?v=${t.versionNumber}`} className="text-xs text-primary hover:underline font-semibold">

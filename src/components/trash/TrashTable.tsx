@@ -279,7 +279,7 @@ export function TrashTable({
             </button>
           )}
           <label className="inline-flex items-center gap-1.5 text-xs cursor-pointer select-none">
-            <input type="checkbox" checked={allSelected} onChange={toggleAll} className="size-3.5 rounded" />
+            <input type="checkbox" checked={allSelected} onChange={toggleAll} className="size-4 rounded" />
             Select all
           </label>
         </div>

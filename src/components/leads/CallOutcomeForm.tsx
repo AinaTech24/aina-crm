@@ -19,7 +19,7 @@
  *   5. Advances the blueprint stage accordingly
  */
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Phone, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { DateField } from "@/components/ui/DateField";
@@ -42,6 +42,7 @@ const OUTCOMES: Array<{ value: Outcome; label: string; nextStage?: string }> = [
 ];
 
 export function CallOutcomeForm({ leadId }: { leadId: string }) {
+  const uid = useId();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [outcome, setOutcome] = useState<Outcome>("connected");
@@ -140,8 +141,8 @@ export function CallOutcomeForm({ leadId }: { leadId: string }) {
       </div>
 
       <div>
-        <label className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">Notes</label>
-        <textarea
+        <label htmlFor={`${uid}-notes`} className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">Notes</label>
+        <textarea id={`${uid}-notes`}
           rows={2}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}

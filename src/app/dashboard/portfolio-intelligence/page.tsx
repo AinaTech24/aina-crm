@@ -59,7 +59,7 @@ export default async function PortfolioIntelligencePage({ searchParams }: { sear
       {intel.totalAum === 0 ? (
         <div className="card-surface p-12 text-center text-sm text-muted-foreground">
           <PieChart className="size-8 mx-auto text-muted-foreground/40" />
-          <div className="mt-2 font-medium">No folio holdings to analyse {mine ? "in your book" : "yet"}.</div>
+          <div className="mt-2 font-medium">No folio holdings to analyze {mine ? "in your book" : "yet"}.</div>
           <p className="mt-1 text-xs">Holdings flow in from RTA/CAS imports. Once folios carry AUM, this page lights up.</p>
         </div>
       ) : (

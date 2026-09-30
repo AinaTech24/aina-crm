@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { KeyRound, Loader2, CheckCircle2, XCircle, Save, Plug, CreditCard } from "lucide-react";
 
 type Status = {
@@ -13,6 +13,7 @@ type Status = {
 };
 
 export function RazorpaySettingsForm({ initial }: { initial: Status }) {
+  const uid = useId();
   const [keyId, setKeyId] = useState(initial.keyId ?? "");
   const [keySecret, setKeySecret] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
@@ -125,8 +126,8 @@ export function RazorpaySettingsForm({ initial }: { initial: Status }) {
 
       {/* Key Secret */}
       <div className="space-y-1.5">
-        <label className="text-sm font-medium">Key Secret</label>
-        <input
+        <label htmlFor={`${uid}-key-secret`} className="text-sm font-medium">Key Secret</label>
+        <input id={`${uid}-key-secret`}
           type="password"
           autoComplete="off"
           value={keySecret}
@@ -139,8 +140,8 @@ export function RazorpaySettingsForm({ initial }: { initial: Status }) {
 
       {/* Webhook Secret */}
       <div className="space-y-1.5">
-        <label className="text-sm font-medium">Webhook Secret</label>
-        <input
+        <label htmlFor={`${uid}-webhook-secret`} className="text-sm font-medium">Webhook Secret</label>
+        <input id={`${uid}-webhook-secret`}
           type="password"
           autoComplete="off"
           value={webhookSecret}

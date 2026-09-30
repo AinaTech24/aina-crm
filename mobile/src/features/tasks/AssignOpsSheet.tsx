@@ -183,5 +183,5 @@ const styles = StyleSheet.create({
   person: { borderWidth: 1, borderColor: palette.line, backgroundColor: palette.surface, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 7 },
   personOn: { backgroundColor: palette.brand, borderColor: palette.brand },
   btn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, backgroundColor: palette.brand, borderRadius: radius.md, paddingVertical: spacing.md, marginTop: spacing.md },
-  btnTxt: { color: palette.white, fontWeight: fontWeight.semibold as any },
+  btnTxt: { color: palette.white, fontWeight: fontWeight.semibold },
 });

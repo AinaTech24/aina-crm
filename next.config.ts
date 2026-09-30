@@ -26,6 +26,12 @@ const BUILD = resolveBuildStamp();
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // A second Next process (the NO_AUTH preview server used for UI review) must
+  // not share `.next` with an already-running `npm run dev` — on Windows the two
+  // race on `_buildManifest.js.tmp` and both start 500ing. Set NEXT_DIST_DIR to
+  // give that process its own build dir. Unset everywhere else, so normal dev,
+  // build and deploy are untouched.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   // Surfaced by /api/health. NEXT_PUBLIC_ is deliberately avoided: this is
   // server-only diagnostics, not something the browser bundle needs.
   env: {

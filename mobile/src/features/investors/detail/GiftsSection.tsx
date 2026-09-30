@@ -54,10 +54,10 @@ export function GiftsSection({ id }: { id: string }) {
         {(data?.gifts ?? []).length === 0 ? <Empty text="No gifts logged." /> : (data?.gifts ?? []).map((g) => (
           <View key={g.id} style={styles.row}>
             <View style={{ flex: 1 }}>
-              <Text variant="caption" style={{ fontWeight: fontWeight.medium as any }} numberOfLines={1}>{g.title}</Text>
+              <Text variant="caption" style={{ fontWeight: fontWeight.medium }} numberOfLines={1}>{g.title}</Text>
               <Text variant="caption" tone="faint">{titleCase(g.occasion)} · {fmtDate(g.givenOn)}</Text>
             </View>
-            <Text variant="caption" style={{ fontWeight: fontWeight.semibold as any }}>{inr(g.amount)}</Text>
+            <Text variant="caption" style={{ fontWeight: fontWeight.semibold }}>{inr(g.amount)}</Text>
             <Feather name="trash-2" size={13} color={palette.faint} onPress={() => confirmDelete({ title: `Delete “${g.title}”?`, confirmLabel: "Delete" }, () => del.mutate(g.id))} />
           </View>
         ))}

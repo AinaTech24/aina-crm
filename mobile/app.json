@@ -3,19 +3,18 @@
     "name": "Aina CRM",
     "slug": "growth-os-mobile",
     "scheme": "growthos",
-    "version": "1.0.1",
+    "version": "1.1.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "in.ainatech.growthos",
-      "buildNumber": "2"
+      "bundleIdentifier": "in.ainatech.growthos"
     },
     "android": {
       "package": "in.ainatech.growthos",
-      "versionCode": 2,
       "permissions": [
+        "android.permission.READ_CALL_LOG",
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
         "android.permission.USE_BIOMETRIC",
@@ -28,7 +27,8 @@
         "foregroundImage": "./assets/android-icon-foreground.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "allowBackup": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -54,7 +54,6 @@
         }
       ],
       "expo-router",
-      "@react-native-community/datetimepicker",
       [
         "expo-location",
         {
@@ -66,17 +65,20 @@
       ],
       "@sentry/react-native",
       "expo-localization",
-      "expo-font"
+      "expo-font",
+      "expo-image",
+      "expo-status-bar"
     ],
     "extra": {
       "router": {},
       "eas": {
         "projectId": "6f496da1-7cc7-4891-9fb7-ca03a97dd8f0"
-      }
+      },
+      "callLogEnabled": true
     },
     "owner": "ainatech-services-llp",
     "runtimeVersion": {
-      "policy": "appVersion"
+      "policy": "fingerprint"
     },
     "updates": {
       "url": "https://u.expo.dev/6f496da1-7cc7-4891-9fb7-ca03a97dd8f0"

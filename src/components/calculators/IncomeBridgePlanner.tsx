@@ -128,7 +128,7 @@ export function IncomeBridgePlanner() {
       {/* Inputs — two phases */}
       <div className="grid md:grid-cols-2 gap-4">
         {/* Accumulation */}
-        <section className="border border-slate-200 rounded-lg p-4 space-y-3">
+        <section className="border border-border rounded-lg p-4 space-y-3">
           <div className="text-2xs uppercase tracking-wider font-semibold text-primary">
             ① Accumulation — build the corpus
           </div>
@@ -160,7 +160,7 @@ export function IncomeBridgePlanner() {
         </section>
 
         {/* Distribution */}
-        <section className="border border-slate-200 rounded-lg p-4 space-y-3">
+        <section className="border border-border rounded-lg p-4 space-y-3">
           <div className="text-2xs uppercase tracking-wider font-semibold text-emerald-700">
             ② Distribution — draw the income
           </div>
@@ -224,8 +224,8 @@ export function IncomeBridgePlanner() {
 
       {/* Year-by-year SWP schedule */}
       {result.schedule.length > 0 && (
-        <details className="border border-slate-200 rounded-lg overflow-hidden">
-          <summary className="cursor-pointer select-none px-4 py-2.5 text-xs font-semibold bg-slate-50 hover:bg-slate-100">
+        <details className="border border-border rounded-lg overflow-hidden">
+          <summary className="cursor-pointer select-none px-4 py-2.5 text-xs font-semibold bg-secondary hover:bg-secondary">
             Year-by-year withdrawal schedule ({result.schedule.length} years)
           </summary>
           <div className="max-h-72 overflow-y-auto scrollbar-thin print:max-h-none print:overflow-visible">
@@ -279,14 +279,14 @@ function Segmented({
   return (
     <div>
       <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
-      <div className="flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1">
+      <div className="flex flex-wrap gap-1 rounded-lg bg-secondary p-1">
         {options.map((o) => (
           <button
             key={o.value}
             type="button"
             onClick={() => onChange(o.value)}
             className={`text-xs px-2.5 py-1.5 rounded-md transition-colors flex-1 min-w-fit ${
-              value === o.value ? "bg-white shadow-sm font-semibold text-slate-900" : "text-slate-600 hover:text-slate-900"
+              value === o.value ? "bg-white shadow-sm font-semibold text-foreground" : "text-muted-foreground hover:text-foreground"
             }`}
           >
             {o.label}
@@ -336,7 +336,7 @@ function Num({
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border border-slate-200 rounded-md p-3">
+    <div className="border border-border rounded-md p-3">
       <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">{label}</div>
       <div className="text-sm font-semibold mt-0.5">{value}</div>
     </div>

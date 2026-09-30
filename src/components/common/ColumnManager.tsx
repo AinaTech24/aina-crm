@@ -72,13 +72,20 @@ export function ColumnManager({
   // of glyphs (Filters / Sort / Columns / Views). Pass compact={false} for the
   // rare toolbar that wants the text label.
   compact = true,
+  version,
 }: {
   moduleKey: string;
   columns: ColumnDef[];
   /** Icon-only trigger (no "Columns" label) — for compact toolbars. */
   compact?: boolean;
+  /**
+   * Bump when a page changes its DEFAULT columns. The first visit saves the
+   * defaults of the day as the user's choice, so without a new key a changed
+   * default never reaches anyone who has opened the page before.
+   */
+  version?: number;
 }) {
-  const storageKey = `cols:${moduleKey}`;
+  const storageKey = version ? `cols:${moduleKey}:v${version}` : `cols:${moduleKey}`;
 
   // null = not yet hydrated — we don't emit any CSS so the SSR table
   // shows fully. Once hydrated, we apply prefs.

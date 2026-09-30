@@ -17,6 +17,7 @@ import { require as requireCap, can } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { sips, investors, users, eventsOutbox } from "@/db/schema";
+import { refreshActiveSipAmount } from "@/lib/metrics/sip";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -208,6 +209,9 @@ export async function POST(req: NextRequest) {
           remarks: b.remarks || null,
         } as any)
         .returning();
+
+      // The client's "Monthly SIP" is a cache of their active SIPs.
+      await refreshActiveSipAmount(tx, { tenantId: session.tenantId, investorIds: [b.investorId] });
 
       // Let subscribed workflows react to a newly-registered SIP.
       await tx.insert(eventsOutbox).values({

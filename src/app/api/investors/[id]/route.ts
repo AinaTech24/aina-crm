@@ -29,6 +29,7 @@ import { ReferralsArray } from "@/lib/investors/referral";
 import { registerNomineePanDocs } from "@/lib/investors/nominee-docs";
 import { recomputeFamilyHealthForInvestor } from "@/lib/families/health-persist";
 import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
+import { getClientHealth } from "@/lib/metrics/health";
 import {
   investors,
   folios,
@@ -247,8 +248,24 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         reason: "investor 360 page",
       } as any);
 
+      // The preview drawer shows the RM, the branch (by its master name) and
+      // the health score. Health is scored live and the stored score kept
+      // equal (lib/metrics/health.ts), so the drawer, the list and the client
+      // page can never show two different numbers for one client.
+      const [health, names] = await Promise.all([
+        getClientHealth(tx, session.tenantId, id),
+        tx.execute(sql`
+          SELECT (SELECT name FROM users WHERE id = ${inv.rmId ?? null}::uuid AND tenant_id = ${session.tenantId}::uuid) AS rm_name,
+                 (SELECT name FROM branches WHERE id = ${inv.branchId ?? null}::uuid AND tenant_id = ${session.tenantId}::uuid) AS branch_name
+        `),
+      ]);
+      const nm = names.rows[0] as { rm_name: string | null; branch_name: string | null } | undefined;
+
       return {
-        investor: inv,
+        investor: { ...inv, ...(health ? { healthScore: health.score, healthBand: health.band } : {}) },
+        rm: inv.rmId && nm?.rm_name ? { id: inv.rmId, name: nm.rm_name } : null,
+        branch: inv.branchId && nm?.branch_name ? { id: inv.branchId, name: nm.branch_name } : null,
+        health: health ? { score: health.score, band: health.band } : null,
         folios: foliosRows,
         sips: sipsRows,
         goals: goalsRows,
@@ -402,6 +419,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         } as any)
         .where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId)))
         .returning();
+
+      // Re-score with the full inputs (the open-SR-breach flag included), so the
+      // stored score equals what the client page and the drawer show.
+      await getClientHealth(tx, session.tenantId, id);
 
       // Advance the lead-to-client blueprint when this edit is the real-world
       // signal for a journey milestone (UCC activated / mandate registered).

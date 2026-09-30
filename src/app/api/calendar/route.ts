@@ -13,6 +13,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { getCalendarItems } from "@/lib/calendar/items";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -47,7 +48,7 @@ export async function GET(req: NextRequest) {
       { userId: session.userId, branchId: session.branchId, roles: session.roles }
     );
 
-    const monthLabel = new Date(yyyy, mm - 1, 1).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+    const monthLabel = formatDate(new Date(yyyy, mm - 1, 1), "monthYear");
     return NextResponse.json({ month, monthLabel, from: fromIso, to: toIso, items });
   } catch (err) {
     return handleApiError(err);

@@ -74,6 +74,10 @@ export async function isDataScopeRestricted(tx: any, tenantId: string): Promise<
  */
 export async function investorScopeCondition(tx: any, session: SessionUser) {
   requireInvestorView(session);
+  if (session.mobile && !session.roles.some(r => ["owner", "ops", "back_office"].includes(r))) {
+    if (session.roles.includes("branch_head")) return session.branchId ? eq(investors.branchId, session.branchId) : sql`FALSE`;
+    if (session.roles.includes("rm")) return eq(investors.rmId, session.userId);
+  }
   if (!(await isDataScopeRestricted(tx, session.tenantId))) return undefined;
   if (isBranchScoped(session)) return eq(investors.branchId, session.branchId!);
   if (canViewAllInvestors(session)) return undefined;
@@ -87,6 +91,10 @@ export async function investorScopeCondition(tx: any, session: SessionUser) {
  */
 export async function investorScopeSql(tx: any, session: SessionUser, alias = "investors") {
   requireInvestorView(session);
+  if (session.mobile && !session.roles.some(r => ["owner", "ops", "back_office"].includes(r))) {
+    if (session.roles.includes("branch_head")) return session.branchId ? sql`${sql.raw(`${alias}.branch_id`)} = ${session.branchId}::uuid` : sql`FALSE`;
+    if (session.roles.includes("rm")) return sql`${sql.raw(`${alias}.rm_id`)} = ${session.userId}::uuid`;
+  }
   if (!(await isDataScopeRestricted(tx, session.tenantId))) return sql`TRUE`;
   if (isBranchScoped(session)) {
     return sql`${sql.raw(`${alias}.branch_id`)} = ${session.branchId}::uuid`;

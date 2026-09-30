@@ -17,21 +17,26 @@ jest.mock("../../api/client", () => {
   }
   return { api: { post: jest.fn(), patch: jest.fn() }, ApiError };
 });
-jest.mock("../storage", () => ({ storageGet: jest.fn(), storageSet: jest.fn() }));
+jest.mock("../storage", () => ({ storageGet: jest.fn(), storageSet: jest.fn(), storageDelete: jest.fn() }));
+jest.mock("../bulkStorage", () => ({ bulkGet: jest.fn(), bulkSet: jest.fn(), bulkDelete: jest.fn() }));
 jest.mock("../toast", () => ({ toast: { info: jest.fn(), success: jest.fn() } }));
 import { api, ApiError } from "../../api/client";
-import { storageGet, storageSet } from "../storage";
+import { storageGet, storageDelete } from "../storage";
+import { bulkGet, bulkSet } from "../bulkStorage";
 import { setAccountScope } from "../accountScope";
 import { useOfflineQueue, queuedPost } from "../offlineQueue";
 
-const disk = new Map<string, string>();
+const secure = new Map<string, string>(); // SecureStore
+const disk = new Map<string, string>();   // bulk (AsyncStorage)
 const post = jest.mocked(api.post);
-const store = jest.mocked(storageSet);
+const store = jest.mocked(bulkSet);
 const queue = () => useOfflineQueue.getState();
 const input = { method: "POST" as const, path: "/api/activities", body: { notes: "A call" }, label: "Call log" };
 beforeEach(() => {
-  jest.clearAllMocks(); disk.clear(); setAccountScope(null); setAccountScope("tenant.user-a");
-  jest.mocked(storageGet).mockImplementation(async (key) => disk.get(key) ?? null);
+  jest.clearAllMocks(); disk.clear(); secure.clear(); setAccountScope(null); setAccountScope("tenant.user-a");
+  jest.mocked(storageGet).mockImplementation(async (key) => secure.get(key) ?? null);
+  jest.mocked(storageDelete).mockImplementation(async (key) => { secure.delete(key); });
+  jest.mocked(bulkGet).mockImplementation(async (key) => disk.get(key) ?? null);
   store.mockImplementation(async (key, value) => { disk.set(key, value); });
   post.mockResolvedValue({ id: "saved" });
 });
@@ -92,8 +97,35 @@ test("capacity rejects new work without dropping old work", async () => {
   expect(queue().items).toHaveLength(100); expect(queue().items[0].id).toBe(first);
 });
 test("legacy writes remain quarantined without exposing their records", async () => {
-  disk.set("offline_queue_v1", JSON.stringify([{ ...input, label: "Other client" }]));
+  secure.set("offline_queue_v1", JSON.stringify([{ ...input, label: "Other client" }]));
   await queue().hydrate(); await queue().flush();
   expect(queue().legacyPending).toBe(true); expect(queue().items).toEqual([]);
-  expect(post).not.toHaveBeenCalled(); expect(disk.has("offline_queue_v1")).toBe(true);
+  expect(post).not.toHaveBeenCalled(); expect(secure.has("offline_queue_v1")).toBe(true);
+});
+test("offline lead creation retains its request ID across retries", async () => {
+  post.mockRejectedValueOnce(new ApiError(0, "Offline", undefined, "network"));
+  await expect(queuedPost("/api/leads", { name: "New prospect" }, "Lead")).resolves.toBeNull();
+  const item = queue().items[0];
+  await queue().retry(item.id);
+  expect(post.mock.calls[0][2]).toEqual(post.mock.calls[1][2]);
+});
+test("re-reading the same SIM call does not duplicate the pending queue", async () => {
+  await queue().enqueue({ ...input, requestId: "sim_device_1_1700000000" });
+  await queue().enqueue({ ...input, requestId: "sim_device_1_1700000000" });
+  expect(queue().items).toHaveLength(1);
+});
+test("a queue saved to SecureStore by an older build moves to bulk storage intact", async () => {
+  const saved = [{ ...input, id: "w1", at: 1, attempts: 0, status: "pending", nextAttemptAt: 0 }];
+  secure.set("offline_queue_v2.tenant.user-a", JSON.stringify(saved));
+  await queue().hydrate();
+  expect(queue().items.map((w) => w.id)).toEqual(["w1"]);
+  expect(JSON.parse(disk.get("offline_queue_v2.tenant.user-a")!)).toHaveLength(1);
+  expect(secure.has("offline_queue_v2.tenant.user-a")).toBe(false);
+});
+test("a large queue is written whole, not truncated at SecureStore's 2 KB cap", async () => {
+  const notes = "x".repeat(900);
+  for (let n = 0; n < 5; n++) await queue().enqueue({ ...input, body: { notes } });
+  const written = disk.get("offline_queue_v2.tenant.user-a")!;
+  expect(written.length).toBeGreaterThan(2048);
+  expect(JSON.parse(written)).toHaveLength(5);
 });

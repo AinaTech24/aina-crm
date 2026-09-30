@@ -6,6 +6,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { ATTENDANCE_STATUS_SHORT, ATTENDANCE_STATUS_TONE, ATTENDANCE_STATUS_LABELS } from "@/lib/attendance/policy";
 import { DownloadButton } from "@/components/common/SecureLinkButtons";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,7 @@ export default async function AttendanceGridPage({
   const daysInMonth = new Date(y, m, 0).getDate();
   const monthStart = `${month}-01`;
   const monthEnd = `${shiftMonth(month, 1)}-01`;
-  const label = new Date(y, m - 1, 1).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+  const label = formatDate(new Date(y, m - 1, 1), "monthYear");
 
   const { employees, cells } = await withTenant(session.tenantId, async (tx) => {
     const emp = await tx.execute(sql`
@@ -115,7 +116,7 @@ export default async function AttendanceGridPage({
                               {ATTENDANCE_STATUS_SHORT[st]}
                             </span>
                           ) : (
-                            <span className="text-slate-300">·</span>
+                            <span className="text-muted-foreground">·</span>
                           )}
                         </td>
                       );

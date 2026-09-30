@@ -20,6 +20,7 @@ import { db, withSystem } from "./client";
 import { ALL_RECIPES } from "@/lib/recipes";
 import { ALL_MODULES, PACKAGE_PRESETS, PLATFORM_TENANT_ID } from "@/lib/platform";
 import { MASTER_SEEDS } from "@/lib/masters/seeds";
+import { refreshActiveSipAmount } from "@/lib/metrics/sip";
 
 async function seedRecipes() {
   console.log(`Seeding ${ALL_RECIPES.length} recipes…`);
@@ -373,7 +374,8 @@ async function seedDemoTenant() {
 
     // 10 leads
     const leadSources = ["website", "referral", "meta_ads", "google_ads", "walk_in", "linkedin"];
-    const leadStages = ["new", "contacted", "qualified", "proposal_sent", "new", "contacted", "qualified", "converted", "lost", "new"];
+    // The Leads board's own stage values (lib/leads/stages.ts), not legacy aliases.
+    const leadStages = ["new", "call_done", "meeting_scheduled", "proposal_sent", "new", "call_done", "meeting_done", "won_lead", "not_qualified", "new"];
     const leadNames = [
       "Ankit Trivedi", "Reema Kapoor", "Mohit Arora", "Sneha Reddy", "Kunal Tiwari",
       "Anjali Desai", "Rohit Saxena", "Tanya Aggarwal", "Vivek Mishra", "Riya Kapoor",
@@ -411,13 +413,18 @@ async function seedDemoTenant() {
           gen_random_uuid(), ${tenantId}, ${investorIds[i]},
           ${["HDFC-TOP100", "AXIS-BLUE", "PARAG-FLEX", "SBI-CONTRA", "MIRAE-ELSS"][i % 5]},
           ${["HDFC Top 100 Fund", "Axis Bluechip Fund", "Parag Parikh Flexi Cap", "SBI Contra Fund", "Mirae Asset ELSS"][i % 5]},
-          ${clients[i].sip * 100}, 'monthly', ${(i % 28 + 1).toString()},
+          ${clients[i].sip}, 'monthly', ${(i % 28 + 1).toString()},
           ${daysFromNow(-(i + 1) * 90).toISOString().slice(0, 10)}::date,
           ${daysFromNow((i % 28) + 1).toISOString().slice(0, 10)}::date,
           ${i === 9 ? "stopped" : "active"}, now(), now()
         )
       `);
     }
+
+    // The clients' "Monthly SIP" is a cache of their active SIP rows — derive
+    // it from the rows just written rather than trusting the literals above,
+    // or the Clients list and the SIP book disagree from the first login.
+    await refreshActiveSipAmount(tx, { tenantId });
 
     // 5 SIP rejections (as transactions with status=rejected)
     const reasons = [
@@ -438,7 +445,7 @@ async function seedDemoTenant() {
         VALUES (
           gen_random_uuid(), ${tenantId}, ${investorIds[i + 2]},
           'HDFC-TOP100', 'HDFC Top 100 Fund',
-          'sip', 'inflow', ${clients[i + 2].sip * 100},
+          'sip', 'inflow', ${clients[i + 2].sip},
           'rejected', ${r.code}, ${r.desc},
           ${daysFromNow(-(i + 1)).toISOString().slice(0, 10)}::date, 'cams',
           ${daysFromNow(-(i + 1)).toISOString()}::timestamptz, now()

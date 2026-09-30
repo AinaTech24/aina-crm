@@ -89,7 +89,7 @@ export function ModuleList<T extends { id: string }>({
           ListEmptyComponent={search ? <SearchEmptyState query={search} /> : <EmptyState icon={emptyIcon} title={emptyTitle} message={emptyMessage} />}
         />
       )}
-      {createHref ? <FAB onPress={() => router.push(createHref as any)} /> : null}
+      {createHref ? <FAB label={`Add ${unit[0]}`} onPress={() => router.push(createHref as any)} /> : null}
     </View>
   );
 }

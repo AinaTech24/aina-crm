@@ -1,58 +1,21 @@
 "use client";
 
-/**
- * Desktop sidebar shell (lg+) with hover-expand + click-to-pin behaviour.
- *
- *   • Resting state is a slim icon rail.
- *   • Hovering the rail expands it to the full nav. The sidebar is IN-FLOW, so
- *     the page content shrinks to make room (nothing hides behind it) and the
- *     width change animates smoothly.
- *   • The edge handle pins the sidebar: click to keep it open, click again to
- *     keep it closed (icons only). The choice persists across reloads.
- *
- * The nav markup itself is server-rendered and passed in as `children`; this
- * wrapper only owns the open/closed/hover state and the collapsed styling hook
- * (`.sidebar-collapsed`, see globals.css). Mobile uses MobileNav instead.
- */
-
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 const STORAGE_KEY = "aina:sidebar-pinned";
-const RAIL = "4rem"; // collapsed icon-rail width
-const FULL = "16rem"; // expanded width (matches the old w-64)
 
+/** Stable, user-controlled navigation width with a persisted compact mode. */
 export function DesktopSidebar({ children }: { children: React.ReactNode }) {
-  // Persisted pin state. Default "open" → the nav reads as words, not as a
-  // column of unlabelled glyphs. Someone who has never touched the pin cannot
-  // be expected to discover that hovering a 4rem rail reveals the labels, and
-  // this app has ~50 nav items whose icons are not self-evident. A user who
-  // pins it closed still gets the slim rail back on every later visit.
-  const [pinned, setPinned] = useState<"open" | "closed">("open");
-  const [hovered, setHovered] = useState(false);
+  const [expanded, setExpanded] = useState(true);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved === "open" || saved === "closed") setPinned(saved);
-    } catch {
-      /* localStorage unavailable — keep default */
-    }
-  }, []);
-
-  // Pages that need maximum canvas (e.g. the email template designer) can ask the
-  // sidebar to collapse on mount and restore the user's saved pin on unmount — via
-  // window events, so the user's persisted preference is never overwritten.
-  useEffect(() => {
-    const collapse = () => setPinned("closed");
     const restore = () => {
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        setPinned(saved === "open" ? "open" : "closed");
-      } catch {
-        setPinned("closed");
-      }
+      try { setExpanded(localStorage.getItem(STORAGE_KEY) !== "closed"); }
+      catch { setExpanded(true); }
     };
+    const collapse = () => setExpanded(false);
+    restore();
     window.addEventListener("aina:sidebar-collapse", collapse);
     window.addEventListener("aina:sidebar-restore", restore);
     return () => {
@@ -62,64 +25,30 @@ export function DesktopSidebar({ children }: { children: React.ReactNode }) {
   }, []);
 
   function toggle() {
-    setPinned((prev) => {
-      const next = prev === "open" ? "closed" : "open";
-      try {
-        localStorage.setItem(STORAGE_KEY, next);
-      } catch {
-        /* ignore */
-      }
-      return next;
+    setExpanded((prev) => {
+      try { localStorage.setItem(STORAGE_KEY, prev ? "closed" : "open"); }
+      catch { /* The sidebar remains usable when storage is unavailable. */ }
+      return !prev;
     });
   }
 
-  // Expanded when pinned open, or while hovering a closed (rail) sidebar.
-  const expanded = pinned === "open" || hovered;
-
   return (
     <aside
-      style={{ width: expanded ? FULL : RAIL }}
-      className={[
-        "hidden lg:flex relative z-30 flex-shrink-0 h-full flex-col",
-        "bg-card border-r border-border/70 shadow-sm print:hidden",
-        "transition-[width] duration-300 ease-in-out",
-        expanded ? "" : "sidebar-collapsed",
-      ].join(" ")}
+      aria-label="Workspace navigation"
+      style={{ width: expanded ? "16rem" : "4rem" }}
+      className={`hidden lg:flex relative z-30 shrink-0 h-full flex-col bg-card border-r border-border transition-[width] duration-200 print:hidden ${expanded ? "" : "sidebar-collapsed"}`}
     >
-      {/* Edge handle — straddles the sidebar's right border, always visible.
-          CLICK toggles the pinned/collapsed state. It is deliberately OUTSIDE
-          the hover-tracking wrapper below (and stops mouse events from bubbling)
-          so that merely hovering the pin does NOT auto open/close the rail — the
-          pin is click-only, while hovering the nav area still hover-expands. */}
       <button
         type="button"
         onClick={toggle}
-        onMouseEnter={(e) => e.stopPropagation()}
-        onMouseLeave={(e) => e.stopPropagation()}
-        aria-label={pinned === "open" ? "Collapse sidebar" : "Keep sidebar open"}
-        title={pinned === "open" ? "Collapse sidebar" : "Keep sidebar open"}
-        className="absolute top-1/2 -right-3 z-40 grid size-6 -translate-y-1/2 place-items-center
-                   rounded-full border border-border bg-card text-foreground/70 shadow-md
-                   hover:text-brand-cyan hover:border-brand-cyan/50 hover:shadow-lg
-                   transition-all duration-150"
+        aria-label={expanded ? "Collapse sidebar" : "Expand sidebar"}
+        aria-expanded={expanded}
+        title={expanded ? "Collapse sidebar" : "Expand sidebar"}
+        className="absolute top-[82px] -right-3 z-40 grid size-6 place-items-center rounded-full border border-border bg-card text-muted-foreground shadow-sm hover:text-primary hover:border-primary/40"
       >
-        {pinned === "open" ? (
-          <ChevronLeft className="size-3.5" />
-        ) : (
-          <ChevronRight className="size-3.5" />
-        )}
+        {expanded ? <ChevronLeft className="size-3.5" /> : <ChevronRight className="size-3.5" />}
       </button>
-
-      {/* Hover-expand zone — ONLY the nav content. Hovering here expands a
-          collapsed rail; leaving shrinks it (unless pinned open). The pin button
-          above is excluded, so it never triggers a hover open/close. */}
-      <div
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        className="flex-1 flex flex-col min-h-0"
-      >
-        {children}
-      </div>
+      <div className="flex-1 flex flex-col min-h-0">{children}</div>
     </aside>
   );
 }

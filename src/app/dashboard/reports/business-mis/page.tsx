@@ -269,7 +269,7 @@ function ProductBlock({
           <Cells c={r} />
         </tr>
       ))}
-      <tr className="border-t border-border/60 text-[13px] font-medium">
+      <tr className="border-t border-border/60 text-xs font-medium">
         <td className="py-1.5 px-3 pl-3">Sub-total — {label}</td>
         <Cells c={subtotal} />
       </tr>

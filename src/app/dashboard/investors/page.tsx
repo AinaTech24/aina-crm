@@ -29,6 +29,7 @@ import { CopyPlus } from "lucide-react";
 import { DownloadButton } from "@/components/common/SecureLinkButtons";
 import { formatMoney } from "@/lib/format";
 import type { MassUpdateOptions } from "@/components/investors/MassUpdateDialog";
+import { ensureHealthFresh } from "@/lib/metrics/health";
 
 /** AUM bands for the filter: lower bound inclusive, upper exclusive. */
 const AUM_PRESETS = [
@@ -109,6 +110,10 @@ export default async function InvestorsPage({
   ]
     .filter(Boolean)
     .join(" · ");
+  // Any narrowing param at all (a dashboard drill-down such as review=overdue
+  // or needs_data=1 included) — an empty result then reads "no matches", never
+  // "no clients yet".
+  const filtering = Object.entries(sp).some(([k, v]) => !!v && !["view", "sort", "dir", "page"].includes(k));
   const view = sp.view === "kanban" ? "kanban" : "table";
   const userId = session.userId;
   // Only firm-wide viewers (owner / branch_head) get the "RM" book-slice filter.
@@ -157,7 +162,12 @@ export default async function InvestorsPage({
   const PAGE_SIZE = 50;
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
 
-  const { rows, total, kanbanRows, rms, allIds, dupCount, massUpdate } = await withTenant(session.tenantId, async (tx) => {
+  const { rows, total, kanbanRows, rms, allIds, dupCount, massUpdate, needsDataCount } = await withTenant(session.tenantId, async (tx) => {
+    // The Health column reads the stored score. Re-score anyone not scored
+    // since this morning first (days-since-contact moves with the calendar),
+    // so the list shows what the client page and the drawer show. A no-op
+    // after the first load of the day.
+    await ensureHealthFresh(tx, session.tenantId);
     // Filters live in one shared helper so the page and the Excel export apply
     // identical WHERE logic. Tenant isolation is handled by RLS.
     // Row scope: an RM sees only their own book, a branch head only their
@@ -297,6 +307,16 @@ export default async function InvestorsPage({
     // Possible-duplicate count (same PAN / mobile) — surfaced as a banner.
     const dupCount = await countPossibleDuplicates(tx as any, session.tenantId);
 
+    // "Needs attention" quick filter (needs_data=1): the dashboard's "clients
+    // missing data" count for this viewer's book, taken with the list's own
+    // builder so the badge is the row count the filter opens onto.
+    const ndFilter = buildInvestorWhere({ needs_data: "1" }, userId);
+    const nd = await tx
+      .select({ c: sql<number>`count(*)::int` })
+      .from(investors)
+      .where((scope ? and(ndFilter as any, scope) : ndFilter) as any);
+    const needsDataCount = Number(nd[0]?.c ?? 0);
+
     // Choices for "Update a field" (branches, and the firm's master lists as
     // suggestions) — only for people who may bulk-edit.
     let massUpdate: MassUpdateOptions | undefined;
@@ -324,7 +344,7 @@ export default async function InvestorsPage({
       };
     }
 
-    return { rows: r, total: Number(c[0]?.c ?? 0), kanbanRows, rms, allIds, dupCount, massUpdate };
+    return { rows: r, total: Number(c[0]?.c ?? 0), kanbanRows, rms, allIds, dupCount, massUpdate, needsDataCount };
   }, { userId: session.userId, branchId: session.branchId, roles: session.roles });
 
   const rmOptions = (rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
@@ -429,6 +449,13 @@ export default async function InvestorsPage({
         totalCount={total}
         searchPlaceholder="Search by name, PAN, phone…"
         filters={[
+          // needs_data=1 — the data-hygiene list the dashboard's "clients
+          // missing data" count opens onto.
+          {
+            type: "flags",
+            label: "Quick filters",
+            options: [{ key: "needs_data", label: "Needs attention", count: needsDataCount }],
+          },
           {
             type: "multi",
             key: "segment",
@@ -535,7 +562,7 @@ export default async function InvestorsPage({
         // Brand-new tenant with zero investors AND no active filter → big friendly EmptyState.
         // Otherwise just a short "no matches" line so the filter UI stays in context.
         <div className="card-surface overflow-hidden">
-          {total === 0 && !q && !segment.length && !tier.length && !status.length && !kyc.length && !aumMin && !aumMax ? (
+          {total === 0 && !filtering ? (
             <div className="p-6">
               <EmptyState
                 icon={Users}

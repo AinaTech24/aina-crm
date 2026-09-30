@@ -23,8 +23,8 @@ const TYPE_LABEL: Record<string, string> = {
 
 const STATUS_TONE: Record<string, string> = {
   open: "bg-blue-50 text-blue-700", in_progress: "bg-amber-50 text-amber-700",
-  waiting_customer: "bg-slate-50 text-slate-700", resolved: "bg-emerald-50 text-emerald-700",
-  closed: "bg-gray-50 text-gray-700", escalated: "bg-rose-50 text-rose-700",
+  waiting_customer: "bg-secondary text-foreground", resolved: "bg-emerald-50 text-emerald-700",
+  closed: "bg-secondary text-foreground", escalated: "bg-rose-50 text-rose-700",
 };
 
 export default async function ServiceRequestDetailPage({ params }: { params: Promise<{ id: string }> }) {

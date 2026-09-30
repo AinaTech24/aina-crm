@@ -13,6 +13,7 @@ import { requireSession } from "@/lib/auth/session";
 import { subscriptions, subscriptionEvents, packages, tenants } from "@/db/schema";
 import { LEGAL } from "@/lib/legal/company";
 import { PrintButton } from "@/components/settings/PrintButton";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +62,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ eventI
           <div>
             <div className="text-xl font-bold">{docTitle}</div>
             <div className="text-xs text-muted-foreground mt-1">
-              No. {data.ev.id.slice(0, 8).toUpperCase()} · {new Date(data.ev.at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+              No. {data.ev.id.slice(0, 8).toUpperCase()} · {formatDate(new Date(data.ev.at))}
             </div>
           </div>
           <div className="text-right">

@@ -13,7 +13,7 @@ import * as XLSX from "xlsx";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { transactions, investors, users } from "@/db/schema";
-import { buildTransactionConditions } from "@/lib/transactions/list-filters";
+import { buildTransactionConditions, transactionClientCondition } from "@/lib/transactions/list-filters";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +36,13 @@ export async function GET(req: NextRequest) {
     });
 
     const rows = await withTenant(session.tenantId, async (tx) => {
-      const conds = buildTransactionConditions(sp);
+      // The same rows as the page: the firm, live client records and the
+      // dashboard's client filters (transactionClientCondition).
+      const conds = [
+        sql`${transactions.tenantId} = ${session.tenantId}::uuid`,
+        ...buildTransactionConditions(sp),
+        transactionClientCondition(sp, session.tenantId),
+      ];
       const baseQ = tx
         .select({ tx: transactions, investorName: investors.name, rmName: users.name })
         .from(transactions)

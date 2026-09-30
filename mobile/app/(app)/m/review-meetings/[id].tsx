@@ -218,7 +218,7 @@ export default function MeetingDetail() {
               </View>
               {m.investor_id ? (
                 <Pressable onPress={() => router.push(`/m/investors/${m.investor_id}` as any)} style={{ marginTop: spacing.md }}>
-                  <Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.semibold as any }}>Open Client 360 →</Text>
+                  <Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.semibold }}>Open Client 360 →</Text>
                 </Pressable>
               ) : null}
             </Card>
@@ -267,7 +267,7 @@ export default function MeetingDetail() {
               <View key={i} style={styles.rowItem}>
                 <StatusPill label={ATTENDEE_ROLES.find((r) => r.value === a.role)?.label ?? a.role} tone={a.isExternal ? "violet" : "info"} size="sm" dot={false} />
                 <Text variant="body" style={{ flex: 1 }} numberOfLines={1}>{a.name}{a.notes ? ` · ${a.notes}` : ""}</Text>
-                <Pressable onPress={() => setAttendees((p) => p.filter((_, idx) => idx !== i))} hitSlop={8}><Feather name="x" size={16} color={palette.danger} /></Pressable>
+                <Pressable accessibilityRole="button" accessibilityLabel="Remove attendee" onPress={() => setAttendees((p) => p.filter((_, idx) => idx !== i))} hitSlop={8}><Feather name="x" size={16} color={palette.danger} /></Pressable>
               </View>
             ))}
             <View style={{ marginTop: spacing.sm, gap: spacing.sm }}>
@@ -301,7 +301,7 @@ export default function MeetingDetail() {
           <Card style={{ marginTop: spacing.lg }}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.sm }}>
               <Text variant="subtitle">Action items ({items.length})</Text>
-              <Pressable onPress={() => setItems((s) => [...s, { title: "" }])} hitSlop={8}><Feather name="plus" size={18} color={palette.brand} /></Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="Add action item" onPress={() => setItems((s) => [...s, { title: "" }])} hitSlop={8}><Feather name="plus" size={18} color={palette.brand} /></Pressable>
             </View>
             {items.length === 0 ? (
               <Text variant="caption" tone="muted">Each item becomes an RM task when this meeting is marked completed.</Text>
@@ -314,7 +314,7 @@ export default function MeetingDetail() {
                   {it.taskId ? (
                     <View style={{ paddingTop: 26 }}><StatusPill label="task ✓" tone="success" size="sm" dot={false} /></View>
                   ) : (
-                    <Pressable onPress={() => setItems((s) => s.filter((_, idx) => idx !== i))} hitSlop={8} style={{ paddingTop: 30 }}><Feather name="trash-2" size={16} color={palette.danger} /></Pressable>
+                    <Pressable accessibilityRole="button" accessibilityLabel="Remove action item" onPress={() => setItems((s) => s.filter((_, idx) => idx !== i))} hitSlop={8} style={{ paddingTop: 30 }}><Feather name="trash-2" size={16} color={palette.danger} /></Pressable>
                   )}
                 </View>
                 <DateField label="Due" value={it.dueAt ?? ""} onChange={(v) => setItems((s) => s.map((x, idx) => idx === i ? { ...x, dueAt: v } : x))} />
@@ -326,7 +326,7 @@ export default function MeetingDetail() {
           <Card style={{ marginTop: spacing.lg }}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.sm }}>
               <Text variant="subtitle">Attachments ({atts.length})</Text>
-              <Pressable onPress={() => setAtts((s) => [...s, { name: "", url: "" }])} hitSlop={8}><Feather name="plus" size={18} color={palette.brand} /></Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="Add attachment" onPress={() => setAtts((s) => [...s, { name: "", url: "" }])} hitSlop={8}><Feather name="plus" size={18} color={palette.brand} /></Pressable>
             </View>
             {atts.length === 0 ? (
               <Text variant="caption" tone="muted">Paste a link to a presentation, report, or signed document.</Text>
@@ -336,7 +336,7 @@ export default function MeetingDetail() {
                   <TextField label={`Name ${i + 1}`} value={a.name} onChangeText={(v) => setAtts((s) => s.map((x, idx) => idx === i ? { ...x, name: v } : x))} placeholder="Display name" />
                   <TextField label="URL" value={a.url} onChangeText={(v) => setAtts((s) => s.map((x, idx) => idx === i ? { ...x, url: v } : x))} placeholder="https://…" autoCapitalize="none" />
                 </View>
-                <Pressable onPress={() => setAtts((s) => s.filter((_, idx) => idx !== i))} hitSlop={8} style={{ paddingTop: 30 }}><Feather name="trash-2" size={16} color={palette.danger} /></Pressable>
+                <Pressable accessibilityRole="button" accessibilityLabel="Remove attachment" onPress={() => setAtts((s) => s.filter((_, idx) => idx !== i))} hitSlop={8} style={{ paddingTop: 30 }}><Feather name="trash-2" size={16} color={palette.danger} /></Pressable>
               </View>
             ))}
           </Card>
@@ -360,7 +360,7 @@ function Prep({ label, value, tone }: { label: string; value: string; tone?: str
   return (
     <View style={styles.prepCell}>
       <Text variant="caption" tone="muted" numberOfLines={1}>{label}</Text>
-      <Text style={{ fontSize: 15, fontWeight: fontWeight.bold as any, color: tone ?? palette.ink }} numberOfLines={1}>{value}</Text>
+      <Text style={{ fontSize: 15, fontWeight: fontWeight.bold, color: tone ?? palette.ink }} numberOfLines={1}>{value}</Text>
     </View>
   );
 }

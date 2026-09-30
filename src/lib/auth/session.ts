@@ -68,6 +68,14 @@ export const getSession = cache(async (): Promise<SessionUser | null> => {
   const deviceRevoked = await isDeviceSessionRevoked({ sid: session.sid, tenantId: session.tenantId, userId: session.userId });
   if (deviceRevoked) return null;
 
+  // Middleware overwrites x-pathname with the actual request URL. Apply the
+  // mobile parent-record boundary once per request, including nested routes.
+  if (session.mobile) {
+    const pathname = (await headers()).get("x-pathname") ?? "";
+    const { assertMobileRecordPath } = await import("@/lib/mobile/record-access");
+    await assertMobileRecordPath(session, pathname);
+  }
+
   return session;
 });
 
@@ -90,7 +98,7 @@ async function readSession(): Promise<SessionUser | null> {
     const bearer = authz?.startsWith("Bearer ") ? authz.slice(7).trim() : null;
     if (bearer) {
       const s = await verifySession(bearer);
-      if (s) return s;
+      if (s) return { ...s, mobile: true };
     }
     const pathname = h.get("x-pathname");
     if (pathname) cookieName = sessionCookieForPath(pathname);

@@ -1,5 +1,6 @@
 /** Persist the same folio-aware valuation used by the client profile and PDFs. */
 import { sql } from "drizzle-orm";
+import { refreshActiveSipAmount } from "@/lib/metrics/sip";
 import type { Tx } from "@/db/client";
 import { folios } from "@/db/schema";
 import { computeInvestorValuation, loadValuationRows, invalidateInvestorValuation } from "./valuation";
@@ -48,11 +49,7 @@ export const recomputeAllAum = recomputeCombinedAum;
 
 export async function recomputeInvestorAum(tx: Tx, investorId: string): Promise<void> {
   await persistBatch(tx, [investorId]);
-  await tx.execute(sql`
-    UPDATE investors i SET active_sip_amount = COALESCE((
-      SELECT SUM(s.amount::numeric) FROM sips s WHERE s.investor_id = i.id AND s.status = 'active'
-    ), 0), updated_at = now() WHERE i.id = ${investorId}::uuid
-  `);
+  await refreshActiveSipAmount(tx, { investorIds: [investorId] });
 }
 type FolioScheme = {
   schemeCode: string;

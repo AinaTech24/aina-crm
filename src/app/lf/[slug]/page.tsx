@@ -39,17 +39,17 @@ export default async function PublicLeadFormPage({
 
   if ("error" in data) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
-        <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 p-8 text-center">
+      <div className="min-h-screen flex items-center justify-center bg-secondary px-4">
+        <div className="max-w-md w-full bg-white rounded-2xl border border-border p-8 text-center">
           <div className="text-5xl mb-3">
             {data.error === "retired" ? "📪" : "🤷"}
           </div>
-          <h1 className="text-xl font-semibold text-slate-800 mb-1">
+          <h1 className="text-xl font-semibold text-foreground mb-1">
             {data.error === "retired"
               ? "This form is no longer active"
               : "Form not found"}
           </h1>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-muted-foreground">
             {data.error === "retired"
               ? "The MFD has retired this form. Please reach out to them directly."
               : "Double-check the link or contact the MFD who shared it with you."}

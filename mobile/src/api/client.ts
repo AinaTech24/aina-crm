@@ -101,9 +101,10 @@ export async function apiRequest<T = any>(path: string, opts: RequestOptions = {
   let res: Response;
   try {
     res = await rawFetch(path, opts, token);
-  } catch (e: any) {
+  } catch (e) {
     useConnectivity.getState().setOnline(false);
-    if (e?.name === "AbortError") throw new ApiError(0, "Request timed out", undefined, "timeout");
+    // DOMException isn't guaranteed to extend Error in RN, so read the name structurally.
+    if ((e as { name?: unknown } | null)?.name === "AbortError") throw new ApiError(0, "Request timed out", undefined, "timeout");
     throw new ApiError(0, "Network error — check your connection", undefined, "network");
   }
 
@@ -112,7 +113,9 @@ export async function apiRequest<T = any>(path: string, opts: RequestOptions = {
   if (res.status === 401 && token) {
     const oldToken = token;
     if (!refreshes.has(oldToken)) refreshes.set(oldToken, refreshToken(oldToken).finally(() => refreshes.delete(oldToken)));
-    const fresh = await refreshes.get(oldToken);
+    let fresh: string | null | undefined;
+    try { fresh = await refreshes.get(oldToken); }
+    catch { throw new ApiError(0, "Session service unavailable. Your offline changes are safe.", undefined, "network"); }
     assertSameAccount();
     if (fresh) {
       await useSession.getState().setToken(fresh);

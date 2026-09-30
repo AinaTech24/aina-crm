@@ -69,7 +69,7 @@ export default async function PublicDocsFormPage({ params }: { params: Promise<{
   ).filter((f) => !f.backOffice);
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-secondary">
       <header className="bg-white border-b">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -99,7 +99,7 @@ export default async function PublicDocsFormPage({ params }: { params: Promise<{
 
 function ErrorScreen({ message }: { message: string }) {
   return (
-    <div className="min-h-screen bg-slate-50 grid place-items-center p-6">
+    <div className="min-h-screen bg-secondary grid place-items-center p-6">
       <div className="max-w-md bg-white rounded-lg shadow p-6 text-center">
         <FileText className="size-10 text-rose-600 mx-auto" />
         <h1 className="text-lg font-semibold mt-3">Link unavailable</h1>

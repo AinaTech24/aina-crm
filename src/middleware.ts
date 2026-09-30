@@ -66,6 +66,7 @@ const PUBLIC_PATHS = new Set([
   // covered by the "/knowledge-base/" prefix below. The whole KB is public —
   // scenario, walkthrough and screenshots — with no login anywhere.
   "/knowledge-base",
+  "/preview",
 ]);
 
 /**
@@ -84,6 +85,7 @@ const PUBLIC_PATHS = new Set([
  *   /api/health, /api/auth/*, /api/employees/accept-invite — auth flows
  */
 const PUBLIC_PATH_PREFIXES = [
+  "/preview/",
   "/r/",
   "/lc/",
   "/d/",
@@ -201,28 +203,32 @@ export async function middleware(req: NextRequest) {
   if (PUBLIC_PATH_PREFIXES.some((p) => pathname.startsWith(p))) return tag(passThrough());
   if (PUBLIC_API_PREFIXES.some((p) => pathname.startsWith(p))) return tag(passThrough());
 
-  // Dev escape hatch — set NO_AUTH=1 to bypass and inject the demo session.
-  // Useful for previewing the UI before a real auth wiring lands.
-  // HARD-DISABLED in production builds: an accidentally-set env var would
-  // hand any unauthenticated visitor an owner+rm+compliance session.
-  if (process.env.NO_AUTH === "1" && process.env.NODE_ENV !== "production") {
-    const res = tag(passThrough());
-    // Point the demo session at the seeded demo owner (tenant that actually
-    // holds the demo book) so every tenant-scoped page renders populated.
-    // Overridable via DEMO_* env vars for a reseeded DB with fresh ids.
-    res.headers.set(
-      "x-mfd-session",
-      JSON.stringify({
-        userId: process.env.DEMO_USER_ID ?? "c59fb71f-2bc9-426d-a7b4-8d59cad5481b",
-        tenantId: process.env.DEMO_TENANT_ID ?? "3a8231bb-8ff2-4f49-bcca-bb41857c5be2",
-        branchId: process.env.DEMO_BRANCH_ID ?? "cfdc80f1-e03f-414f-bab5-460967f524a5",
-        roles: ["owner", "rm", "compliance"],
-        email: "owner@demo.in",
-        name: "Rajesh Demo (Owner)",
-      })
-    );
-    return res;
-  }
+  // NO_AUTH is DEAD. It is deliberately left here, doing nothing, because the
+  // reason it cannot work is not obvious and someone will otherwise try to
+  // "fix" it the same two wrong ways I did.
+  //
+  // It used to set `x-mfd-session` on the RESPONSE and let the request through.
+  // That stopped working for two independent reasons, either of which is fatal:
+  //
+  //   1. `headers()` in a Server Component reads the INCOMING request, so a
+  //      response header never reaches it — the same trap documented for
+  //      `x-pathname` further down this file.
+  //   2. More fundamentally, `readSession()` now treats internal identity
+  //      headers as NON-CREDENTIALS on purpose. Even on the request headers it
+  //      would be ignored, and making it trusted again would undo that.
+  //
+  // Nor can middleware mint a real session instead: `isDeviceSessionRevoked`
+  // treats a missing `user_sessions` row as revoked, that row is written by the
+  // Node login path, and Edge middleware has no DB access by design.
+  //
+  // The damage was that this branch ALSO short-circuited the redirect below, so
+  // an unauthenticated dev hit a raw "not authenticated" crash with no way to
+  // reach the login form. Falling through means they now get /login and can
+  // sign in as owner@demo.in — one extra step, and the flow actually works.
+  //
+  // To bring it back properly: seed a `user_sessions` row for a fixed dev sid,
+  // or have scripts/preview-server.mjs POST /api/auth/login once at startup and
+  // reuse the cookie. Both belong in Node, not here.
 
   // Resolve the session from the cookie that governs THIS surface. The admin
   // console (/super-admin, /api/super-admin) reads `aina_session`; everything

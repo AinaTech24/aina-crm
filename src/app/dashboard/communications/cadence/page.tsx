@@ -10,6 +10,7 @@ import Link from "next/link";
 import { ChevronLeft, Zap, Clock, ShieldCheck } from "lucide-react";
 import { requireSession } from "@/lib/auth/session";
 import { PrintReportButton } from "@/components/investors/PrintReportButton";
+import { formatDate } from "@/lib/format";
 import {
   COMMUNICATION_MATRIX,
   RESPONSE_TIMELINES,
@@ -47,8 +48,8 @@ export default async function CommunicationCadencePage() {
 
       <div className="hidden print:block text-center mb-3">
         <h1 className="page-title">Client Communication Cadence</h1>
-        <p className="text-xs text-slate-500">
-          Generated {new Date().toLocaleDateString("en-GB")}
+        <p className="text-xs text-muted-foreground">
+          Generated {formatDate(new Date())}
         </p>
       </div>
 

@@ -21,6 +21,7 @@ import { BottomSheet } from "../ui/BottomSheet";
 import { LoadingState, ErrorState } from "../states";
 import { FieldRenderer } from "./FieldRenderer";
 import { api, ApiError } from "../../api/client";
+import { queuedPost } from "../../lib/offlineQueue";
 import { palette, spacing, fontSize, fontWeight } from "../../theme/tokens";
 import type { FormSpec, FormValues, SectionSpec } from "../../features/forms/types";
 
@@ -144,7 +145,9 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
       const finalBody = opts?.force ? { ...body, force: true } : body;
       const json = isEdit
         ? await api.patch<any>(`${spec.endpoint}/${editId}`, finalBody)
-        : await api.post<any>(spec.endpoint, finalBody);
+        : ["/api/leads", "/api/activities"].includes(spec.endpoint)
+          ? await queuedPost<any>(spec.endpoint, finalBody, spec.title)
+          : await api.post<any>(spec.endpoint, finalBody);
       for (const key of spec.invalidate ?? []) qc.invalidateQueries({ queryKey: [key] });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       if (isEdit) {
@@ -153,6 +156,7 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
         router.back();
         return;
       }
+      if (!json) { router.back(); return; }
       if (spec.afterCreate) {
         await spec.afterCreate(json, form, { router, params, post: api.post });
         return;
@@ -321,7 +325,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: fontSize.xs,
-    fontWeight: fontWeight.bold as any,
+    fontWeight: fontWeight.bold,
     letterSpacing: 0.6,
     color: palette.muted,
     marginBottom: spacing.md,

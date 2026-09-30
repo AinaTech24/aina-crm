@@ -15,7 +15,7 @@ import Link from "next/link";
 import { Loader2, Wand2 } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { useToast } from "@/components/ui/Toast";
-import { formatINR } from "@/lib/utils";
+import { formatDate, formatINR } from "@/lib/utils";
 
 type Row = {
   id: string;
@@ -43,7 +43,7 @@ const TYPE_LABEL: Record<string, string> = {
 const SEV_TONE: Record<string, string> = {
   high: "bg-rose-50 text-rose-700 border-rose-200",
   medium: "bg-amber-50 text-amber-700 border-amber-200",
-  low: "bg-slate-50 text-slate-600 border-slate-200",
+  low: "bg-secondary text-muted-foreground border-border",
 };
 
 const TOLERANCE = 0.5;
@@ -212,7 +212,7 @@ export function ReconTable({ rows }: { rows: Row[] }) {
                 <td className="px-3 py-2 text-right tabular-nums">{fmtUnits(r.delta_units)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{formatINR(Math.abs(Number(r.delta_value ?? 0)))}</td>
                 <td className="px-3 py-2 text-2xs text-muted-foreground whitespace-nowrap">
-                  {r.detected_at ? new Date(r.detected_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "—"}
+                  {r.detected_at ? formatDate(new Date(r.detected_at), "dayMonth") : "—"}
                 </td>
                 <td className="px-3 py-2">
                   <SelectField

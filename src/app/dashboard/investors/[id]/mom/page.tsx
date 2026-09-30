@@ -21,6 +21,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { investors, reviewMeetings, users } from "@/db/schema";
 import { PrintButton } from "@/components/settings/PrintButton";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -65,8 +66,8 @@ const STATUS_TONE: Record<string, string> = {
   scheduled: "bg-blue-50 text-blue-700",
   confirmed: "bg-cyan-50 text-cyan-700",
   in_progress: "bg-amber-50 text-amber-700",
-  rescheduled: "bg-slate-50 text-slate-700",
-  cancelled: "bg-gray-50 text-gray-700",
+  rescheduled: "bg-secondary text-foreground",
+  cancelled: "bg-secondary text-foreground",
   no_show: "bg-rose-50 text-rose-700",
 };
 
@@ -128,8 +129,8 @@ export default async function InvestorMomPage({
       </div>
 
       <PageHeaderCard title={<>Minutes of Meeting Tracker</>}>
-<p className="text-xs text-slate-500">
-          Generated {new Date().toLocaleDateString("en-GB")}
+<p className="text-xs text-muted-foreground">
+          Generated {formatDate(new Date())}
         </p>
 </PageHeaderCard>
 
@@ -203,7 +204,7 @@ export default async function InvestorMomPage({
                   <div className="flex items-center gap-2 print:hidden">
                     <span
                       className={`chip text-2xs ${
-                        STATUS_TONE[m.status] ?? "bg-slate-100"
+                        STATUS_TONE[m.status] ?? "bg-secondary"
                       }`}
                     >
                       {m.status.replace("_", " ")}

@@ -9,9 +9,10 @@
  * date forward automatically, so a reviewed client drops off the reminder.
  */
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarClock, Check, Loader2, Pencil, X } from "lucide-react";
+import { formatDate } from "@/lib/format";
 import {
   PRESET_LABEL,
   describeCadence,
@@ -23,7 +24,7 @@ const PRESETS: ReviewFrequency[] = ["monthly", "quarterly", "half_yearly", "annu
 function fmtDate(d: string | Date | null | undefined): string {
   if (!d) return "—";
   try {
-    return new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+    return formatDate(new Date(d));
   } catch {
     return "—";
   }
@@ -44,6 +45,7 @@ export function ReviewCadenceEditor({
   nextReviewAt: string | Date | null;
   canEdit?: boolean;
 }) {
+  const uid = useId();
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -167,8 +169,8 @@ export function ReviewCadenceEditor({
 
           {mode === "custom" && (
             <div className="flex items-center gap-2">
-              <label className="text-xs text-muted-foreground">Every</label>
-              <input
+              <label htmlFor={`${uid}-every`} className="text-xs text-muted-foreground">Every</label>
+              <input id={`${uid}-every`}
                 type="number"
                 min={1}
                 max={3650}

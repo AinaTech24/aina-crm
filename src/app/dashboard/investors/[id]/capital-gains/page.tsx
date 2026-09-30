@@ -6,7 +6,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { investors, tenants } from "@/db/schema";
 import { computeRealizedGains, currentFyStartYear } from "@/lib/tax/realized-gains";
-import { formatINR } from "@/lib/utils";
+import { formatDate, formatINR } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -139,5 +139,5 @@ function Kpi({ label, value, tone }: { label: string; value: string; tone?: "eme
 
 function fmt(iso: string): string {
   const d = new Date(iso);
-  return isNaN(d.getTime()) ? iso : d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" });
+  return isNaN(d.getTime()) ? iso : formatDate(d);
 }

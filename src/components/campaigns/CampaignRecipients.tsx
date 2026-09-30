@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, Users, RefreshCw } from "lucide-react";
+import { formatDate } from "@/lib/format";
 
 type Recipient = {
   id: string;
@@ -34,7 +35,7 @@ function chip(status: string): string {
   const ok = "bg-emerald-50 text-emerald-700 border-emerald-200";
   const blue = "bg-blue-50 text-blue-700 border-blue-200";
   const bad = "bg-rose-50 text-rose-700 border-rose-200";
-  const muted = "bg-slate-100 text-slate-600 border-slate-200";
+  const muted = "bg-secondary text-muted-foreground border-border";
   if (["delivered", "sent", "replied"].includes(status)) return ok;
   if (status === "read") return blue;
   if (["failed", "bounced"].includes(status)) return bad;
@@ -44,7 +45,7 @@ function chip(status: string): string {
 function fmt(s: string | null): string {
   if (!s) return "";
   const d = new Date(s);
-  return isNaN(d.getTime()) ? "" : d.toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "numeric", minute: "2-digit" });
+  return isNaN(d.getTime()) ? "" : formatDate(d, "dateTime");
 }
 
 export function CampaignRecipients({ campaignId }: { campaignId: string }) {

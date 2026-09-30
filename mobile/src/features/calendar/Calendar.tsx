@@ -17,6 +17,7 @@ import { EmptyState, ErrorState, LoadingState } from "../../components/states";
 import { palette, radius, spacing, fontSize, fontWeight } from "../../theme/tokens";
 import { toMobileRoute } from "../command-center/api";
 import { useCalendar, shiftMonth, currentMonth, kindIcon, kindColor, kindLabel, CALENDAR_KINDS, type CalendarItem } from "./api";
+import { asIcon } from "../../lib/icons";
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -96,7 +97,7 @@ export function CalendarScreen() {
     const time = timeLabel(it.at);
     return (
       <Pressable style={styles.item} onPress={() => goItem(it)}>
-        <View style={[styles.dot, { backgroundColor: kindColor(it.kind) }]}><Feather name={kindIcon(it.kind) as any} size={13} color={palette.white} /></View>
+        <View style={[styles.dot, { backgroundColor: kindColor(it.kind) }]}><Feather name={asIcon(kindIcon(it.kind))} size={13} color={palette.white} /></View>
         <View style={{ flex: 1 }}>
           <Text variant="body" numberOfLines={2}>{it.title}</Text>
           <Text variant="caption" tone="muted">{time ? `${time} · ` : ""}{kindLabel(it.kind)}</Text>
@@ -110,10 +111,10 @@ export function CalendarScreen() {
     <View style={styles.screen}>
       <ScreenHeader title="Calendar" onBack={() => router.back()} />
       <View style={styles.nav}>
-        <Pressable onPress={() => setMonth((mm) => shiftMonth(mm, -1))} hitSlop={8} style={styles.navBtn}><Feather name="chevron-left" size={20} color={palette.ink} /></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Previous month" onPress={() => setMonth((mm) => shiftMonth(mm, -1))} hitSlop={8} style={styles.navBtn}><Feather name="chevron-left" size={20} color={palette.ink} /></Pressable>
         <Text variant="subtitle">{data?.monthLabel ?? month}</Text>
-        <Pressable onPress={() => setMonth((mm) => shiftMonth(mm, 1))} hitSlop={8} style={styles.navBtn}><Feather name="chevron-right" size={20} color={palette.ink} /></Pressable>
-        <Pressable onPress={() => setMonth(currentMonth())} hitSlop={8} style={styles.todayBtn}><Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.semibold as any }}>Today</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Next month" onPress={() => setMonth((mm) => shiftMonth(mm, 1))} hitSlop={8} style={styles.navBtn}><Feather name="chevron-right" size={20} color={palette.ink} /></Pressable>
+        <Pressable onPress={() => setMonth(currentMonth())} hitSlop={8} style={styles.todayBtn}><Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.semibold }}>Today</Text></Pressable>
       </View>
 
       {isLoading ? (
@@ -146,7 +147,7 @@ export function CalendarScreen() {
                   return (
                     <Pressable key={i} style={[styles.cell, isSel && styles.cellSel]} onPress={() => setSelected(c.iso)}>
                       <View style={[styles.dayNum, isToday && styles.dayToday]}>
-                        <Text variant="caption" style={{ color: isToday ? palette.white : palette.ink, fontWeight: (isToday ? fontWeight.bold : fontWeight.regular) as any }}>{c.day}</Text>
+                        <Text variant="caption" style={{ color: isToday ? palette.white : palette.ink, fontWeight: (isToday ? fontWeight.bold : fontWeight.regular) }}>{c.day}</Text>
                       </View>
                       <View style={styles.dotsRow}>
                         {kinds.map((k) => <View key={k} style={[styles.miniDot, { backgroundColor: kindColor(k) }]} />)}
@@ -197,7 +198,7 @@ const styles = StyleSheet.create({
   dayToday: { backgroundColor: palette.brand },
   dotsRow: { flexDirection: "row", gap: 2, height: 6 },
   miniDot: { width: 5, height: 5, borderRadius: 2.5 },
-  dayText: { fontSize: fontSize.sm, fontWeight: fontWeight.bold as any, color: palette.muted, marginBottom: spacing.sm },
+  dayText: { fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: palette.muted, marginBottom: spacing.sm },
   item: { flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.line, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm },
   dot: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center" },
 });

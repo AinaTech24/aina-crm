@@ -17,7 +17,7 @@ export const SIDEBAR_REGISTRY: SidebarEntry[] = [
   // the Dashboard link for every tenant.
   // Home
   { group: "Home", href: "/dashboard", label: "Dashboard" },
-  { group: "Home", href: "/dashboard/boards", label: "My Dashboards" },
+  { group: "Home", href: "/dashboard/manage", label: "Manage dashboards" },
   { group: "Home", href: "/dashboard/team", label: "Team Dashboard" },
   { group: "Home", href: "/dashboard/team/scorecard", label: "Team Scorecard" },
   { group: "Home", href: "/dashboard/command-center", label: "My Day" },
@@ -28,6 +28,7 @@ export const SIDEBAR_REGISTRY: SidebarEntry[] = [
   { group: "Work", href: "/dashboard/review-meetings", label: "Meetings" },
   { group: "Work", href: "/dashboard/calendar", label: "Calendar" },
   { group: "Work", href: "/dashboard/service-requests", label: "Service Requests" },
+  { group: "Work", href: "/dashboard/operations", label: "Operations" },
   // Clients
   { group: "Clients", href: "/dashboard/leads", label: "Leads" },
   { group: "Clients", href: "/dashboard/investors", label: "Clients" },

@@ -225,7 +225,7 @@ export default async function FinancialPlanDetailPage({
                   className={`chip text-2xs uppercase font-bold ${
                     plan.status === "finalized"
                       ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                      : "bg-slate-100 text-slate-700"
+                      : "bg-secondary text-foreground"
                   }`}
                 >
                   {plan.status}
@@ -285,7 +285,7 @@ export default async function FinancialPlanDetailPage({
               }`}
             />
           </div>
-          <p className="text-2xs text-slate-500 leading-tight">
+          <p className="text-2xs text-muted-foreground leading-tight">
             Covers Savings, Debt, Emergency Fund, Life and Health insurance adequacy.
           </p>
         </div>
@@ -564,7 +564,7 @@ export default async function FinancialPlanDetailPage({
                       <span className="text-2xs text-muted-foreground">
                         {a.curr}% vs <strong className="text-foreground">{a.rec}%</strong>
                         {a.name !== "Others" && (
-                          <span className={`ml-1 font-bold ${deviation > 0 ? "text-emerald-600" : deviation < 0 ? "text-rose-600" : "text-slate-500"}`}>
+                          <span className={`ml-1 font-bold ${deviation > 0 ? "text-emerald-600" : deviation < 0 ? "text-rose-600" : "text-muted-foreground"}`}>
                             ({deviation > 0 ? `+${deviation}` : deviation}%)
                           </span>
                         )}
@@ -572,11 +572,11 @@ export default async function FinancialPlanDetailPage({
                     </div>
                     {/* Visual Comparison Progress bars */}
                     <div className="space-y-0.5">
-                      <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden flex" title={`Current: ${a.curr}%`}>
+                      <div className="w-full bg-secondary h-1.5 rounded-full overflow-hidden flex" title={`Current: ${a.curr}%`}>
                         <div style={{ width: `${a.curr}%` }} className={`h-full ${a.color} opacity-40`} />
                       </div>
                       {a.name !== "Others" && (
-                        <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden flex" title={`Recommended: ${a.rec}%`}>
+                        <div className="w-full bg-secondary h-1.5 rounded-full overflow-hidden flex" title={`Recommended: ${a.rec}%`}>
                           <div style={{ width: `${a.rec}%` }} className={`h-full ${a.color}`} />
                         </div>
                       )}
@@ -605,7 +605,7 @@ export default async function FinancialPlanDetailPage({
                           ? "text-rose-600"
                           : r.priority === "medium"
                           ? "text-amber-600"
-                          : "text-slate-500"
+                          : "text-muted-foreground"
                       }`}>
                         {r.priority} Priority
                       </span>

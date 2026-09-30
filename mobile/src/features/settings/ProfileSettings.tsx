@@ -26,6 +26,7 @@ import { palette, radius, spacing, fontSize, fontWeight } from "../../theme/toke
 import {
   useProfile, useUpdateProfile, useChangePassword, useSignOutEverywhere, useSendVerifyEmail, pwStrength,
 } from "./api";
+import { errorMessage } from "../../lib/errors";
 
 export function ProfileSettings() {
   const router = useRouter();
@@ -62,8 +63,8 @@ export function ProfileSettings() {
       const up = await api.upload<{ key: string }>("/api/compliance/upload", form);
       await updateProfile.mutateAsync({ avatarUrl: `/api/upload-local/${up.key}` });
       toast.success("Photo updated");
-    } catch (e: any) {
-      toast.error(e?.message ?? "Could not upload the photo.");
+    } catch (e) {
+      toast.error(errorMessage(e, "Could not upload the photo."));
     } finally {
       setUploadingPhoto(false);
     }
@@ -114,7 +115,7 @@ export function ProfileSettings() {
               <Image source={{ uri: absUrl(u.avatarUrl)! }} style={styles.avatar} />
             ) : (
               <View style={styles.avatar}>
-                <Text style={{ color: palette.white, fontWeight: fontWeight.bold as any, fontSize: 20 }}>{(u.name || "?").slice(0, 1).toUpperCase()}</Text>
+                <Text style={{ color: palette.white, fontWeight: fontWeight.bold, fontSize: 20 }}>{(u.name || "?").slice(0, 1).toUpperCase()}</Text>
               </View>
             )}
             <View style={styles.camBadge}>
@@ -188,7 +189,7 @@ export function ProfileSettings() {
           {data.leave.map((l) => (
             <View key={l.type} style={styles.leaveTile}>
               <Text variant="caption" tone="muted">{l.label}</Text>
-              <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold as any, color: palette.ink, marginTop: 2 }}>
+              <Text style={{ fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: palette.ink, marginTop: 2 }}>
                 {l.entitlement == null ? "Unpaid" : `${l.remaining}/${l.entitlement}`}
               </Text>
               {l.entitlement != null ? <Text variant="caption" tone="muted">{l.used} used</Text> : null}
@@ -230,7 +231,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.surfaceAlt },
   avatar: { width: 52, height: 52, borderRadius: radius.pill, backgroundColor: palette.brand, alignItems: "center", justifyContent: "center" },
   camBadge: { position: "absolute", right: -2, bottom: -2, width: 20, height: 20, borderRadius: 10, backgroundColor: palette.ink, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: palette.surface },
-  section: { fontSize: fontSize.xs, fontWeight: fontWeight.bold as any, letterSpacing: 0.6, color: palette.muted, marginTop: spacing.xl, marginBottom: spacing.sm },
+  section: { fontSize: fontSize.xs, fontWeight: fontWeight.bold, letterSpacing: 0.6, color: palette.muted, marginTop: spacing.xl, marginBottom: spacing.sm },
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: spacing.lg },
   actRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.lg },
   divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line },

@@ -24,7 +24,7 @@
  * The dialogs themselves come from the existing leads/actions
  * components — we just trigger them via callbacks.
  */
-import { useState, useEffect } from "react";
+import { useId, useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
@@ -117,6 +117,7 @@ export function GuidedStageActions({
   onOpenDialog?: (kind: DialogKind) => void;
   onAfterAdvance?: () => void;
 }) {
+  const uid = useId();
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
@@ -887,8 +888,8 @@ export function GuidedStageActions({
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs text-foreground font-medium">Due by (date &amp; time)</label>
-                  <DateTimeField
+                  <label htmlFor={`${uid}-due-by-date-amp-time`} className="text-xs text-foreground font-medium">Due by (date &amp; time)</label>
+                  <DateTimeField id={`${uid}-due-by-date-amp-time`}
                     value={taskDueAt}
                     onChange={(e) => setTaskDueAt(e.target.value)}
                     className="input-base text-xs w-full"
@@ -970,10 +971,10 @@ export function GuidedStageActions({
                   </p>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs text-foreground font-medium">
+                  <label htmlFor={`${uid}-mandate-reference-umrn-approval-no`} className="text-xs text-foreground font-medium">
                     Mandate reference / UMRN (approval no.)
                   </label>
-                  <input
+                  <input id={`${uid}-mandate-reference-umrn-approval-no`}
                     type="text"
                     value={mandateRef}
                     onChange={(e) => setMandateRef(e.target.value)}
@@ -989,10 +990,10 @@ export function GuidedStageActions({
 
             {/* Remarks / Notes */}
             <div className="space-y-1">
-              <label className="text-xs text-foreground font-medium">
+              <label htmlFor={`${uid}-transition-notes-remarks-optional`} className="text-xs text-foreground font-medium">
                 Transition Notes / Remarks (Optional)
               </label>
-              <textarea
+              <textarea id={`${uid}-transition-notes-remarks-optional`}
                 value={remarks}
                 onChange={(e) => setRemarks(e.target.value)}
                 rows={3}
@@ -1265,12 +1266,12 @@ function SentPanel({
               readOnly
               value={outcome.url}
               onClick={(e) => (e.target as HTMLInputElement).select()}
-              className="flex-1 border border-border rounded-md px-2 py-1.5 text-xs font-mono bg-white text-slate-800 min-w-0"
+              className="flex-1 border border-border rounded-md px-2 py-1.5 text-xs font-mono bg-white text-foreground min-w-0"
             />
             <button
               type="button"
               onClick={copyLink}
-              className="rounded-md border border-border bg-white px-2.5 text-xs flex items-center gap-1 hover:bg-secondary text-slate-700 flex-shrink-0"
+              className="rounded-md border border-border bg-white px-2.5 text-xs flex items-center gap-1 hover:bg-secondary text-foreground flex-shrink-0"
             >
               <Copy className="size-3" /> {copied ? "Copied!" : "Copy"}
             </button>

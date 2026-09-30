@@ -17,7 +17,7 @@ const csvIn = (raw: string, allowed: readonly string[]) => raw.split(",").map((x
 
 /** Every param the command centre owns — the scope switch drops them on the way out. */
 export const INS_PARAM_KEYS = [
-  "line", "nature", "grp", "branch", "rm", "exec", "insurer", "cat", "ctype", "mf", "pst", "band", "src", "cst", "ctyp",
+  "line", "nature", "grp", "branch", "rm", "exec", "insurer", "cat", "ctype", "mf", "pst", "band", "src", "cst", "ctyp", "ind", "lr",
 ] as const;
 export const INS_VIEW_KEYS = ["tp", "rv"] as const;
 
@@ -50,6 +50,10 @@ export function parseInsFilter(sp: SP): InsFilter {
   if (CLAIM_GROUPS.some((g) => g.key === cst)) f.claimGroup = cst;
   const ctyp = s(sp, "ctyp");
   if (["main_claim", "supplementary", "pre_authorization", "rider", "other"].includes(ctyp)) f.claimType = ctyp;
+  const ind = s(sp, "ind");
+  if (ind && ind.length <= 120) f.industry = ind;
+  const lr = s(sp, "lr");
+  if (lr && lr.length <= 200) f.lossReason = lr;
   return f;
 }
 

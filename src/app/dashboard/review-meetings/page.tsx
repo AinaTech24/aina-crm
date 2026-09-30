@@ -54,8 +54,8 @@ const STATUS_TONE: Record<string, string> = {
   confirmed: "bg-cyan-50 text-cyan-700",
   in_progress: "bg-amber-50 text-amber-700",
   completed: "bg-emerald-50 text-emerald-700",
-  rescheduled: "bg-slate-50 text-slate-700",
-  cancelled: "bg-gray-50 text-gray-700",
+  rescheduled: "bg-secondary text-foreground",
+  cancelled: "bg-secondary text-foreground",
   no_show: "bg-rose-50 text-rose-700",
 };
 

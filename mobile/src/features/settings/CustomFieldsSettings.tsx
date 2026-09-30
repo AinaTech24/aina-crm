@@ -92,6 +92,8 @@ export function CustomFieldsSettings() {
                   </Text>
                 </View>
                 <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Delete field ${f.label}`}
                   onPress={() => confirmDelete({ title: "Delete field?", message: `Remove "${f.label}" from ${entity === "investor" ? "clients" : "leads"}.` }, () => del.mutate(f.id))}
                   hitSlop={8}
                   style={styles.delBtn}
@@ -109,7 +111,7 @@ export function CustomFieldsSettings() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.surfaceAlt },
-  section: { fontSize: fontSize.xs, fontWeight: fontWeight.bold as any, letterSpacing: 0.6, color: palette.muted, marginTop: spacing.xl, marginBottom: spacing.sm },
+  section: { fontSize: fontSize.xs, fontWeight: fontWeight.bold, letterSpacing: 0.6, color: palette.muted, marginTop: spacing.xl, marginBottom: spacing.sm },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.lg },
   divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line },
   delBtn: { width: 34, height: 34, alignItems: "center", justifyContent: "center" },

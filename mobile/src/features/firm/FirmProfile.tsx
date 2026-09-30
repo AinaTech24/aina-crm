@@ -49,7 +49,7 @@ export function FirmProfile() {
               <Image source={{ uri: absUrl(t.logoUrl)! }} style={styles.logo} contentFit="cover" transition={150} />
             ) : (
               <View style={[styles.logo, { backgroundColor: brand }]}>
-                <Text style={{ color: palette.white, fontWeight: fontWeight.bold as any, fontSize: 20 }}>{initials(name) || "F"}</Text>
+                <Text style={{ color: palette.white, fontWeight: fontWeight.bold, fontSize: 20 }}>{initials(name) || "F"}</Text>
               </View>
             )}
             <View style={{ flex: 1 }}>
@@ -118,7 +118,7 @@ function Row({ label, value, note, last }: { label: string; value?: string | nul
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.surfaceAlt },
   logo: { width: 56, height: 56, borderRadius: radius.lg, alignItems: "center", justifyContent: "center" },
-  section: { fontSize: fontSize.xs, fontWeight: fontWeight.bold as any, letterSpacing: 0.6, color: palette.muted, marginTop: spacing.xl, marginBottom: spacing.sm },
+  section: { fontSize: fontSize.xs, fontWeight: fontWeight.bold, letterSpacing: 0.6, color: palette.muted, marginTop: spacing.xl, marginBottom: spacing.sm },
   row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: spacing.md, paddingHorizontal: spacing.lg, gap: spacing.md },
   divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line },
 });

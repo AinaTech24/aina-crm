@@ -394,7 +394,11 @@ export async function POST(req: NextRequest) {
               dedupPan: false,
               ...core,
               customFields: Object.keys(cleanCf).length ? cleanCf : null,
-              onboardedAt: parseTimestamp(pick(row, reverse.onboardedAt)) ?? new Date(),
+              // No date in the file means "an existing client we did not record
+              // the start of", never "onboarded today": defaulting to today made
+              // every imported record count as a NEW client this month
+              // (lib/metrics/new-clients.ts).
+              onboardedAt: parseTimestamp(pick(row, reverse.onboardedAt)) ?? null,
               rmId: (reverse.rmId ? resolveRm(pick(row, reverse.rmId)) : null) ?? session.userId,
               status: enumize(pick(row, reverse.status), ["active", "dormant", "inactive", "redemption_risk", "closed"], "active") ?? "active",
               ...h,

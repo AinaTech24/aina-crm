@@ -147,7 +147,7 @@ export const sips = pgTable(
     schemeCode: text("scheme_code"),
     schemeName: text("scheme_name"),
     amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
-    frequency: text("frequency", { enum: ["monthly", "quarterly", "weekly", "fortnightly", "yearly"] })
+    frequency: text("frequency", { enum: ["monthly", "quarterly", "weekly", "fortnightly", "half_yearly", "yearly"] })
       .notNull()
       .default("monthly"),
     sipDate: text("sip_date"), // day of month "1".."28"

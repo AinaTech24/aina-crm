@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MessageCircle, Send, Loader2, RefreshCw, Inbox, Check, CheckCheck, AlertTriangle, Zap } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { Select } from "@/components/ui/Select";
+import { formatDate } from "@/lib/format";
 
 type WaMsg = {
   id: string;
@@ -53,7 +54,7 @@ const QUICK_REPLIES = [
 function fmtWhen(s?: string | null): string {
   if (!s) return "";
   const d = new Date(s);
-  return isNaN(d.getTime()) ? "" : d.toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "numeric", minute: "2-digit" });
+  return isNaN(d.getTime()) ? "" : formatDate(d, "dateTime");
 }
 
 /** Tiny delivery indicator for an outbound bubble. */
@@ -210,7 +211,7 @@ export function WhatsAppRelatedList({
           <MessageCircle className="size-4 text-emerald-600" />
           <span className="font-medium text-foreground">WhatsApp</span>
           <span className="text-xs">· {messages.length}</span>
-          <span className={`text-2xs font-semibold px-1.5 py-0.5 rounded-full border ${sessionActive ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-600 border-slate-200"}`}>
+          <span className={`text-2xs font-semibold px-1.5 py-0.5 rounded-full border ${sessionActive ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-secondary text-muted-foreground border-border"}`}>
             {sessionActive ? "Window open" : "Window closed"}
           </span>
         </div>

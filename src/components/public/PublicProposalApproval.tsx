@@ -118,7 +118,7 @@ export function PublicProposalApproval({
           <FileSignature className="size-4 text-brand-cyan" /> Accept this proposal
         </h2>
 
-        <div className="rounded-lg border bg-slate-50 p-3 text-sm text-slate-700 leading-relaxed">
+        <div className="rounded-lg border bg-secondary p-3 text-sm text-foreground leading-relaxed">
           {acceptanceText}
         </div>
 
@@ -158,7 +158,7 @@ export function PublicProposalApproval({
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border rounded-lg p-3 bg-slate-50">
+    <div className="border rounded-lg p-3 bg-secondary">
       <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{label}</div>
       <div className="text-sm font-semibold mt-1 capitalize tabular-nums">{value}</div>
     </div>

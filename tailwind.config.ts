@@ -22,17 +22,24 @@ const config: Config = {
       },
       fontSize: {
         /**
-         * `2xs` (11px) is the ONLY size added here, and it is deliberately the
-         * app's smallest. It had no name until now: 1,155 places spelled it
-         * `text-[11px]` by hand, and another 1,074 went smaller still
-         * (`text-[10px]` ×994, `text-[9px]` ×77, `text-[8px]` ×3) — unreadable
-         * for back-office staff scanning PANs and SIP dates all day. Those all
-         * collapse onto this token, which makes 11px the floor.
+         * The app's readable floor. Every size below is one step of a single
+         * scale — 12 · 13 · 14 · 16 — and `text-base` (16px) is a real option,
+         * not a curiosity.
          *
-         * Tailwind's own xs/sm/base/lg/xl/2xl are intentionally NOT redefined.
-         * Re-scaling `text-sm` would silently move 2,662 call sites.
+         * This block was previously only `2xs: 11px`, with xs/sm/base left at
+         * Tailwind's defaults. That put the two most-used sizes in the product
+         * at 11px (2,284 uses) and 12px (3,715 uses), so ~60% of the visible
+         * text on a content screen sat at or below 12px — measurably too small
+         * for the people who read AUM and PAN numbers in it all day.
+         *
+         * Re-pointing the tokens lifts all ~6,000 of those call sites at once
+         * without re-tagging a single component. `sm` and `base` keep their
+         * familiar values on purpose, so the 2,567 `text-sm` sites do not move.
          */
-        "2xs": ["0.6875rem", { lineHeight: "1rem", letterSpacing: "0.01em" }],
+        "2xs": ["0.75rem", { lineHeight: "1rem" }],            // 12px — metadata floor (was 11px)
+        xs: ["0.8125rem", { lineHeight: "1.125rem" }],         // 13px — secondary text (was 12px)
+        sm: ["0.875rem", { lineHeight: "1.25rem" }],           // 14px — body (unchanged)
+        base: ["1rem", { lineHeight: "1.5rem" }],              // 16px — emphasis (unchanged)
       },
       colors: {
         border: "hsl(var(--border))",
@@ -108,6 +115,10 @@ const config: Config = {
         },
       },
       borderRadius: {
+        // Bare `rounded` (403 uses) was Tailwind's raw 4px — the only corner in
+        // the app not derived from --radius, and why one screen showed five
+        // radii. It now sits one step under `sm` on the same scale.
+        DEFAULT: "calc(var(--radius) - 4px)",
         "2xl": "calc(var(--radius) + 8px)",
         xl: "calc(var(--radius) + 4px)",
         lg: "var(--radius)",

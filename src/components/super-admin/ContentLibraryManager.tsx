@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { formatDate } from "@/lib/format";
 
 export type AssetRow = {
   id: string;
@@ -42,7 +43,7 @@ const TYPE_TONE: Record<string, string> = {
   presentation: "bg-amber-50 text-amber-700",
   video: "bg-violet-50 text-violet-700",
   audio: "bg-cyan-50 text-cyan-700",
-  other: "bg-gray-100 text-gray-600",
+  other: "bg-secondary text-muted-foreground",
 };
 
 const CATEGORIES = ["festive", "market_update", "investor_education", "scheme_recommendation", "tax_planning", "retirement", "child_education", "wealth_creation", "sebi_compliance", "general"];
@@ -50,7 +51,7 @@ const TYPES = ["image", "pdf", "article", "presentation", "video", "audio", "oth
 
 function statusOf(a: AssetRow): { label: string; tone: string } {
   const now = Date.now();
-  if (!a.isActive) return { label: "Inactive", tone: "bg-gray-100 text-gray-600" };
+  if (!a.isActive) return { label: "Inactive", tone: "bg-secondary text-muted-foreground" };
   if (a.expireAt && new Date(a.expireAt).getTime() <= now) return { label: "Expired", tone: "bg-rose-100 text-rose-700" };
   if (a.publishAt && new Date(a.publishAt).getTime() > now) return { label: "Scheduled", tone: "bg-amber-100 text-amber-700" };
   return { label: "Live", tone: "bg-emerald-100 text-emerald-700" };
@@ -58,7 +59,7 @@ function statusOf(a: AssetRow): { label: string; tone: string } {
 
 function fmtDate(d: string | null) {
   if (!d) return "—";
-  return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" });
+  return formatDate(new Date(d));
 }
 
 export function ContentLibraryManager({ assets }: { assets: AssetRow[] }) {

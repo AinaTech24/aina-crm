@@ -75,9 +75,9 @@ export function AppearanceSettings() {
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing["3xl"] }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {/* Live preview */}
         <View style={[styles.preview, { backgroundColor: isHex(state.primary) ? state.primary : DEFAULTS.primary }]}>
-          <Text style={{ color: palette.white, fontWeight: fontWeight.bold as any }}>{tenant?.displayName ?? "Your firm"}</Text>
+          <Text style={{ color: palette.white, fontWeight: fontWeight.bold }}>{tenant?.displayName ?? "Your firm"}</Text>
           <View style={[styles.previewBtn, { backgroundColor: isHex(state.accent) ? state.accent : DEFAULTS.accent }]}>
-            <Text style={{ color: palette.white, fontSize: fontSize.sm, fontWeight: fontWeight.semibold as any }}>Accent button</Text>
+            <Text style={{ color: palette.white, fontSize: fontSize.sm, fontWeight: fontWeight.semibold }}>Accent button</Text>
           </View>
         </View>
 
@@ -157,7 +157,7 @@ function HexRow({ label, value, onChange, disabled, last }: { label: string; val
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.surfaceAlt },
-  section: { fontSize: fontSize.xs, fontWeight: fontWeight.bold as any, letterSpacing: 0.6, color: palette.muted, marginTop: spacing.xl, marginBottom: spacing.sm },
+  section: { fontSize: fontSize.xs, fontWeight: fontWeight.bold, letterSpacing: 0.6, color: palette.muted, marginTop: spacing.xl, marginBottom: spacing.sm },
   preview: { borderRadius: radius.lg, padding: spacing.lg, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   previewBtn: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.md },
   readonly: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md, padding: spacing.md, backgroundColor: palette.surfaceSunken, borderRadius: radius.md },

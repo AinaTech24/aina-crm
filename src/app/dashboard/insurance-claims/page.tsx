@@ -11,11 +11,13 @@ import { claimTatDays, claimAgeDays, OPEN_CLAIM_STATUSES } from "@/lib/insurance
 import { Pager } from "@/components/common/Pager";
 import { Avatar } from "@/components/ui/Avatar";
 import { ModuleTabs, INSURANCE_TABS } from "@/components/common/ModuleTabs";
+import { CLAIM_OPEN } from "@/lib/insurance/book";
+import { clientRecordWhere } from "@/lib/metrics";
 
 export const dynamic = "force-dynamic";
 
 const STATUS_META: Record<string, { label: string; tone: string }> = {
-  empty: { label: "Empty", tone: "bg-slate-100 text-slate-600" },
+  empty: { label: "Empty", tone: "bg-secondary text-muted-foreground" },
   claim_intimated: { label: "Claim Intimated", tone: "bg-amber-50 text-amber-700" },
   file_awaited: { label: "File Awaited", tone: "bg-brand-cyan-light/50 text-brand-cyan-deep" },
   file_received: { label: "File Received", tone: "bg-cyan-50 text-cyan-700" },
@@ -26,7 +28,7 @@ const STATUS_META: Record<string, { label: string; tone: string }> = {
   settled_fully: { label: "Settled Fully", tone: "bg-emerald-50 text-emerald-700" },
   settled_partially: { label: "Settled Partially", tone: "bg-emerald-50 text-emerald-700" },
   rejected: { label: "Rejected", tone: "bg-rose-50 text-rose-700" },
-  withdrawn: { label: "Withdrawn", tone: "bg-slate-100 text-slate-600" },
+  withdrawn: { label: "Withdrawn", tone: "bg-secondary text-muted-foreground" },
 };
 const OPEN_STATUSES = ["claim_intimated", "file_awaited", "file_received", "add_info_awaited", "query", "query_replied", "under_process"];
 const TYPE_LABEL: Record<string, string> = { main_claim: "Main Claim", supplementary: "Supplementary", pre_authorization: "Pre-Auth", rider: "Rider", other: "Other" };
@@ -42,11 +44,31 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
   const mode = sp.mode && (CLAIM_MODES as readonly string[]).includes(sp.mode) ? sp.mode : "";
   const q = (sp.q ?? "").trim();
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
+  // open_over=N — the dashboard's "insurance claims open over N days": open
+  // claims (CLAIM_OPEN) intimated — else created — more than N days before
+  // today in India (lib/metrics/attention.ts getClaimsOpenOver, its exact SQL).
+  const openOverRaw = sp.open_over ? Number(sp.open_over) : NaN;
+  const openOver = Number.isInteger(openOverRaw) && openOverRaw >= 0 && openOverRaw <= 3650 ? openOverRaw : null;
+  // rm / branch — the dashboard's claim counts follow the CLIENT when narrowed
+  // to an RM or a branch (lib/metrics clientRecordWhere on the claimant).
+  const rmFilter = (sp.rm ?? "").split(",").filter(Boolean);
+  const branchFilter = (sp.branch ?? "").split(",").filter(Boolean);
 
   const data = await withTenant(session.tenantId, async (tx) => {
-    const conds: any[] = [];
+    // Explicit tenant: a superuser connection bypasses RLS.
+    const conds: any[] = [eq(insuranceClaims.tenantId, session.tenantId)];
+    // status — one value, any CLAIM_STATUSES key ("empty" included): the
+    // dashboard's Claims card links each of its status rows here.
     if (mode) conds.push(eq(insuranceClaims.claimMode, mode as any));
     else if (status) conds.push(eq(insuranceClaims.claimStatus, status as any));
+    if (openOver != null) {
+      conds.push(sql`COALESCE(${insuranceClaims.claimStatus}, 'empty') IN (${sql.join(CLAIM_OPEN.map((s) => sql`${s}`), sql`, `)})
+        AND COALESCE(${insuranceClaims.intimationDate}, ${insuranceClaims.createdAt}::date) < (now() AT TIME ZONE 'Asia/Kolkata')::date - ${openOver}::int`);
+    }
+    if (rmFilter.length || branchFilter.length) {
+      conds.push(sql`${insuranceClaims.investorId} IN (SELECT i.id FROM investors i
+        WHERE ${clientRecordWhere({ tenantId: session.tenantId, rmIds: rmFilter, branchIds: branchFilter }, "i")})`);
+    }
     if (q) conds.push(or(ilike(insuranceClaims.proposerName, `%${q}%`), ilike(insuranceClaims.policyNumber, `%${q}%`), ilike(insuranceClaims.insurer, `%${q}%`))!);
     const where = conds.length ? and(...conds) : undefined;
 
@@ -121,10 +143,20 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
         </div>
       </div>
 
+      {openOver != null && (
+        <p className="text-xs text-muted-foreground">
+          Open claims intimated more than {openOver} days ago ·{" "}
+          <Link href="/dashboard/insurance-claims" className="text-primary hover:underline">Clear</Link>
+        </p>
+      )}
+
       {/* Search */}
       <form className="max-w-sm">
         {status && <input type="hidden" name="status" value={status} />}
         {mode && <input type="hidden" name="mode" value={mode} />}
+        {openOver != null && <input type="hidden" name="open_over" value={openOver} />}
+        {rmFilter.length > 0 && <input type="hidden" name="rm" value={rmFilter.join(",")} />}
+        {branchFilter.length > 0 && <input type="hidden" name="branch" value={branchFilter.join(",")} />}
         <input name="q" defaultValue={q} placeholder="Search proposer, policy no., insurer…" className="input-base" />
       </form>
 

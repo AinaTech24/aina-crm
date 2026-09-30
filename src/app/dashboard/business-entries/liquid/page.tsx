@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { ChevronLeft, Droplets, TrendingUp } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { formatINR } from "@/lib/utils";
+import { formatDate, formatINR } from "@/lib/utils";
 import { getLiquidParkingReport } from "@/lib/business/report";
 
 export const dynamic = "force-dynamic";
@@ -69,7 +69,7 @@ export default async function LiquidReportPage() {
                     <span className="inline-flex items-center gap-1">{formatINR(r.liquidNet)} <TrendingUp className="size-3.5 opacity-60" /></span>
                   </td>
                   <td className="py-2.5 pr-4 text-xs tabular-nums text-muted-foreground">
-                    {r.lastDate ? new Date(r.lastDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" }) : "—"}
+                    {r.lastDate ? formatDate(new Date(r.lastDate)) : "—"}
                   </td>
                 </tr>
               ))}

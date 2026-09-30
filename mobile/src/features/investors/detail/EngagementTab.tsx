@@ -100,10 +100,10 @@ export function EngagementTab({ d, id }: { d: any; id: string }) {
         {folios.length === 0 ? <Empty text="No folios." /> : folios.slice(0, 12).map((f, i) => (
           <View key={f.id ?? i} style={styles.row}>
             <View style={{ flex: 1 }}>
-              <Text variant="caption" style={{ fontWeight: fontWeight.medium as any }} numberOfLines={1}>{f.schemeName ?? "Scheme"}</Text>
+              <Text variant="caption" style={{ fontWeight: fontWeight.medium }} numberOfLines={1}>{f.schemeName ?? "Scheme"}</Text>
               <Text variant="caption" tone="faint" numberOfLines={1}>{[f.amcName, f.folioNumber].filter(Boolean).join(" · ")}</Text>
             </View>
-            <Text variant="caption" style={{ fontWeight: fontWeight.semibold as any }}>{inr(f.currentValue ?? f.costBasis)}</Text>
+            <Text variant="caption" style={{ fontWeight: fontWeight.semibold }}>{inr(f.currentValue ?? f.costBasis)}</Text>
           </View>
         ))}
       </Section>
@@ -113,10 +113,10 @@ export function EngagementTab({ d, id }: { d: any; id: string }) {
         {sips.length === 0 ? <Empty text="No SIPs." /> : sips.slice(0, 12).map((s, i) => (
           <View key={s.id ?? i} style={styles.row}>
             <View style={{ flex: 1 }}>
-              <Text variant="caption" style={{ fontWeight: fontWeight.medium as any }} numberOfLines={1}>{s.schemeName ?? s.schemeCode ?? "SIP"}</Text>
+              <Text variant="caption" style={{ fontWeight: fontWeight.medium }} numberOfLines={1}>{s.schemeName ?? s.schemeCode ?? "SIP"}</Text>
               <Text variant="caption" tone="faint">{titleCase(s.frequency)} · {titleCase(s.status)}</Text>
             </View>
-            <Text variant="caption" style={{ fontWeight: fontWeight.semibold as any }}>{inr(s.amount)}</Text>
+            <Text variant="caption" style={{ fontWeight: fontWeight.semibold }}>{inr(s.amount)}</Text>
           </View>
         ))}
       </Section>
@@ -128,7 +128,7 @@ export function EngagementTab({ d, id }: { d: any; id: string }) {
           return (
             <View key={g.id ?? i} style={{ marginBottom: spacing.sm }}>
               <View style={styles.goalHead}>
-                <Text variant="caption" style={{ flex: 1, fontWeight: fontWeight.medium as any }} numberOfLines={1}>{g.name ?? titleCase(g.category)}</Text>
+                <Text variant="caption" style={{ flex: 1, fontWeight: fontWeight.medium }} numberOfLines={1}>{g.name ?? titleCase(g.category)}</Text>
                 <Text variant="caption" tone="muted">{inr(g.currentValue)} / {inr(g.targetAmount)}</Text>
               </View>
               <View style={styles.track}><View style={[styles.fill, { width: `${Math.max(0, Math.min(100, pct))}%` }]} /></View>
@@ -153,7 +153,7 @@ export function EngagementTab({ d, id }: { d: any; id: string }) {
         {srs.length === 0 ? <Empty text="No service requests." /> : srs.slice(0, 10).map((s, i) => (
           <View key={s.id ?? i} style={styles.row}>
             <View style={{ flex: 1 }}>
-              <Text variant="caption" style={{ fontWeight: fontWeight.medium as any }} numberOfLines={1}>{s.subject ?? s.ticketNo}</Text>
+              <Text variant="caption" style={{ fontWeight: fontWeight.medium }} numberOfLines={1}>{s.subject ?? s.ticketNo}</Text>
               <Text variant="caption" tone="faint">{s.ticketNo}</Text>
             </View>
             <Text variant="caption" tone="muted">{titleCase(s.status)}</Text>
@@ -170,7 +170,7 @@ export function EngagementTab({ d, id }: { d: any; id: string }) {
         </View>
         {CHANNELS.map((ch) => (
           <View key={ch} style={styles.consentRow}>
-            <Text variant="caption" style={{ flex: 1, fontWeight: fontWeight.medium as any }}>{titleCase(ch)}</Text>
+            <Text variant="caption" style={{ flex: 1, fontWeight: fontWeight.medium }}>{titleCase(ch)}</Text>
             {SCOPES.map((sc) => {
               const granted = !!consentMap[ch]?.[sc];
               return (

@@ -33,7 +33,7 @@ import { palette, spacing, fontWeight } from "../src/theme/tokens";
 
 // Module-scope, once: crash reporting first so even a boot failure is reported.
 initSentry();
-initI18n("system");
+initI18n("en");
 setPushHandler();
 
 const VERSION = Constants.expoConfig?.version ?? "1.0.0";
@@ -134,7 +134,7 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
       </Text>
       {__DEV__ ? <Text variant="caption" tone="danger" center style={{ marginTop: spacing.md }} selectable>{String(error?.message ?? error)}</Text> : null}
       <Pressable onPress={retry} style={styles.retryBtn} accessibilityRole="button">
-        <Text style={{ color: palette.white, fontWeight: fontWeight.semibold as any }}>Try again</Text>
+        <Text style={{ color: palette.white, fontWeight: fontWeight.semibold }}>Try again</Text>
       </Pressable>
     </View>
   );
@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
   crash: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing["2xl"], backgroundColor: palette.surfaceAlt },
   retryBtn: { marginTop: spacing.xl, backgroundColor: palette.brand, paddingHorizontal: spacing["2xl"], paddingVertical: spacing.md, borderRadius: 12 },
   brandWrap: { alignItems: "center" },
-  wordmark: { fontSize: 30, fontWeight: fontWeight.bold as any, color: palette.ink, letterSpacing: -0.5, marginTop: spacing.md },
+  wordmark: { fontSize: 30, fontWeight: fontWeight.bold, color: palette.ink, letterSpacing: -0.5, marginTop: spacing.md },
   underline: { width: 92, height: 3, borderRadius: 2, backgroundColor: palette.brand, marginTop: spacing.sm },
   tagline: { fontSize: 13, color: palette.muted, marginTop: spacing.md },
   version: { position: "absolute", bottom: spacing.xl },

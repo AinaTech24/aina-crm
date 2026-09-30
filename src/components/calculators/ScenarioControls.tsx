@@ -21,6 +21,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Save, FolderOpen, Trash2, Loader2, X } from "lucide-react";
 import { useToast } from "../ui/Toast";
+import { formatDate } from "@/lib/format";
 
 type Snapshot = {
   v: 1;
@@ -132,7 +133,7 @@ export function ScenarioControls({
     try {
       const title =
         (clientName?.trim() ? `${clientName.trim()} — ` : "") +
-        `${calculatorName} · ${new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`;
+        `${calculatorName} · ${formatDate(new Date(), "dayMonth")}`;
       const res = await fetch("/api/calculators/scenarios", {
         method: "POST",
         headers: { "content-type": "application/json" },

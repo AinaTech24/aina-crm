@@ -792,7 +792,7 @@ export default function NewTemplatePage() {
                   <div className="border rounded-md divide-y bg-background overflow-hidden">
                     {declaredVars.map((v, idx) => (
                       <div key={v.key} className="p-3 grid grid-cols-1 md:grid-cols-4 gap-3 items-center text-xs">
-                        <div className="font-mono font-semibold text-slate-700 truncate">{v.key}</div>
+                        <div className="font-mono font-semibold text-foreground truncate">{v.key}</div>
                         <div>
                           <label className="text-2xs text-muted-foreground block font-medium uppercase tracking-wider mb-0.5">Format</label>
                           <SelectField
@@ -838,7 +838,7 @@ export default function NewTemplatePage() {
                             }}
                             className="rounded border-gray-300 text-primary focus:ring-primary size-3.5"
                           />
-                          <label htmlFor={`req-${v.key}`} className="cursor-pointer text-xs text-slate-600 select-none">
+                          <label htmlFor={`req-${v.key}`} className="cursor-pointer text-xs text-muted-foreground select-none">
                             Required
                           </label>
                         </div>

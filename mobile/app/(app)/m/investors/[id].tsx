@@ -38,6 +38,7 @@ import { SendFormSheet } from "../../../../src/features/client-forms/SendFormShe
 import { AssignOpsSheet } from "../../../../src/features/tasks/AssignOpsSheet";
 import { useRecentlyViewed } from "../../../../src/state/recentlyViewed";
 import { useBrand } from "../../../../src/theme/brand";
+import { asIcon } from "../../../../src/lib/icons";
 
 type Tab = "overview" | "portfolio" | "profile" | "engagement";
 const TABS = [
@@ -109,7 +110,7 @@ export default function InvestorDetail() {
     <View style={styles.screen}>
       <ScreenHeader
         title={i.name}
-        right={<Pressable onPress={() => setActions(true)} hitSlop={10}><Feather name="more-vertical" size={20} color={palette.ink} /></Pressable>}
+        right={<Pressable accessibilityRole="button" accessibilityLabel="More actions" onPress={() => setActions(true)} hitSlop={10}><Feather name="more-vertical" size={20} color={palette.ink} /></Pressable>}
       />
       <ScrollView
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing["3xl"] }}
@@ -200,24 +201,24 @@ export default function InvestorDetail() {
 }
 
 function Badge({ label, tone }: { label: string; tone: string }) {
-  return <View style={[styles.badge, { backgroundColor: tone + "1A" }]}><Text style={{ fontSize: 11, color: tone, fontWeight: fontWeight.semibold as any }}>{label}</Text></View>;
+  return <View style={[styles.badge, { backgroundColor: tone + "1A" }]}><Text style={{ fontSize: 11, color: tone, fontWeight: fontWeight.semibold }}>{label}</Text></View>;
 }
 function Rail({ label, value }: { label: string; value: string }) {
-  return <View style={styles.railCell}><Text variant="caption" tone="muted">{label}</Text><Text style={{ fontWeight: fontWeight.bold as any }} numberOfLines={1}>{value}</Text></View>;
+  return <View style={styles.railCell}><Text variant="caption" tone="muted">{label}</Text><Text style={{ fontWeight: fontWeight.bold }} numberOfLines={1}>{value}</Text></View>;
 }
 function VerifyPill({ label, verified, onPress, disabled }: { label: string; verified: boolean; onPress: () => void; disabled: boolean }) {
   return (
     <Pressable onPress={onPress} disabled={disabled} style={[styles.verifyPill, verified && { backgroundColor: palette.successBg, borderColor: palette.success }, disabled && { opacity: 0.5 }]}>
       <Feather name={verified ? "check-circle" : "shield"} size={12} color={verified ? palette.success : palette.muted} />
-      <Text style={{ fontSize: 11, color: verified ? palette.success : palette.muted, fontWeight: fontWeight.medium as any }}>{label}{verified ? " verified" : ""}</Text>
+      <Text style={{ fontSize: 11, color: verified ? palette.success : palette.muted, fontWeight: fontWeight.medium }}>{label}{verified ? " verified" : ""}</Text>
     </Pressable>
   );
 }
 function ContactBtn({ icon, label, onPress, disabled }: { icon: string; label: string; onPress: () => void; disabled: boolean }) {
   return (
     <Pressable onPress={onPress} disabled={disabled} style={[styles.contactBtn, disabled && { opacity: 0.4 }]}>
-      <Feather name={icon as any} size={16} color={palette.brand} />
-      <Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.medium as any }}>{label}</Text>
+      <Feather name={asIcon(icon)} size={16} color={palette.brand} />
+      <Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.medium }}>{label}</Text>
     </Pressable>
   );
 }

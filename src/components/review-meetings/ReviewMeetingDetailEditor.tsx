@@ -17,7 +17,7 @@
  *   - creates a "write up your notes" task if notes are empty
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useId, useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Save, Plus, Trash2, CheckCircle2, X, Sparkles, ListChecks, CalendarPlus, Target, CalendarClock, ChevronDown, Download } from "lucide-react";
 import { renderReviewAgendaTemplate } from "@/lib/review-meetings/agenda";
@@ -54,8 +54,8 @@ const STATUS_TONE: Record<string, string> = {
   confirmed: "bg-cyan-50 text-cyan-700",
   in_progress: "bg-amber-50 text-amber-700",
   completed: "bg-emerald-50 text-emerald-700",
-  rescheduled: "bg-slate-50 text-slate-700",
-  cancelled: "bg-gray-50 text-gray-700",
+  rescheduled: "bg-secondary text-foreground",
+  cancelled: "bg-secondary text-foreground",
   no_show: "bg-rose-50 text-rose-700",
 };
 
@@ -114,6 +114,7 @@ export function ReviewMeetingDetailEditor({
   meeting: any;
   investorName: string;
 }) {
+  const uid = useId();
   const router = useRouter();
   const [status, setStatus] = useState<string>(meeting.status);
   const [subject, setSubject] = useState<string>(meeting.subject ?? "");
@@ -350,8 +351,8 @@ export function ReviewMeetingDetailEditor({
       {/* Status bar */}
       <div className="card-surface p-4 flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2">
-          <label className="text-xs font-semibold text-muted-foreground">Status</label>
-          <SelectField value={status} onChange={(e) => setStatus(e.target.value)} size="sm" className="w-40">
+          <label htmlFor={`${uid}-status`} className="text-xs font-semibold text-muted-foreground">Status</label>
+          <SelectField id={`${uid}-status`} value={status} onChange={(e) => setStatus(e.target.value)} size="sm" className="w-40">
             {STATUSES.map(([k, l]) => (
               <option key={k} value={k}>{l}</option>
             ))}
@@ -514,7 +515,7 @@ export function ReviewMeetingDetailEditor({
             {attendees.map((a, i) => (
               <li
                 key={i}
-                className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-md px-3 py-2"
+                className="flex items-center justify-between bg-secondary border border-border rounded-md px-3 py-2"
               >
                 <div className="min-w-0 flex items-center gap-3">
                   <span

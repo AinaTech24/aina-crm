@@ -10,6 +10,7 @@ import { IndianRupee, Plus, Loader2, Trash2, BellRing, CheckCircle2 } from "luci
 import { useToast } from "@/components/ui/Toast";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
+import { formatDate } from "@/lib/format";
 
 type Row = {
   id: string;
@@ -192,7 +193,7 @@ export function ExpectedInflowsCard({ investorId }: { investorId: string }) {
                       {LABEL[r.sourceType] ?? r.sourceType} · <span className="tabular-nums">{inr(r.expectedAmount)}</span>
                     </div>
                     <div className="text-2xs text-muted-foreground mt-0.5">
-                      {new Date(`${r.expectedOn}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                      {formatDate(new Date(`${r.expectedOn}T00:00:00`))}
                       {past && isOpen && <span className="text-rose-600 font-semibold"> · date passed</span>}
                       {" · "}{r.confidence} confidence
                       {r.notes ? ` · ${r.notes}` : ""}

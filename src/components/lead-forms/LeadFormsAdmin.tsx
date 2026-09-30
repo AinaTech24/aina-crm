@@ -161,7 +161,7 @@ export function LeadFormsAdmin({
                   className={`chip text-2xs ${
                     f.enabled
                       ? "bg-emerald-50 text-emerald-700"
-                      : "bg-gray-100 text-gray-600"
+                      : "bg-secondary text-muted-foreground"
                   }`}
                 >
                   {f.enabled ? "Live" : "Disabled"}

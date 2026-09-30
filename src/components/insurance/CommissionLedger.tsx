@@ -29,7 +29,7 @@ const TYPE_TONE: Record<string, string> = {
   override: "bg-violet-50 text-violet-700",
   bonus: "bg-amber-50 text-amber-700",
   reward: "bg-pink-50 text-pink-700",
-  other: "bg-slate-100 text-slate-600",
+  other: "bg-secondary text-muted-foreground",
 };
 
 export function CommissionLedger({ entries, canDelete }: { entries: CommissionRow[]; canDelete: boolean }) {

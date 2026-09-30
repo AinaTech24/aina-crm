@@ -15,6 +15,7 @@ import { getSession } from "@/lib/auth/session";
 import { loadArticle, loadKbCards } from "@/lib/kb/articles";
 import { PublicShell } from "@/components/kb/PublicShell";
 import { Markdown } from "@/components/ai/Markdown";
+import { formatDate } from "@/lib/format";
 
 export const revalidate = 60;
 
@@ -67,7 +68,7 @@ export default async function KbArticlePage({ params }: { params: Promise<{ slug
           ) : null}
           {a.publishedAt ? (
             <span className="text-2xs text-muted-foreground">
-              {new Date(a.publishedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+              {formatDate(new Date(a.publishedAt))}
             </span>
           ) : null}
         </div>

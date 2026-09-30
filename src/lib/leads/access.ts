@@ -13,10 +13,12 @@ export function requireLeadEdit(session: SessionUser) {
 }
 
 export function canViewAllLeads(session: SessionUser) {
+  if (session.mobile) return session.roles.some(r => ["owner", "ops", "back_office"].includes(r));
   return can(session.roles, "lead.view.all", session.permissions);
 }
 
 export function canEditAllLeads(session: SessionUser) {
+  if (session.mobile) return session.roles.some(r => ["owner", "ops", "back_office"].includes(r)) || (session.roles.includes("branch_head") && !!session.branchId);
   return can(session.roles, "lead.edit.all", session.permissions);
 }
 
@@ -28,6 +30,7 @@ export function canEditAllLeads(session: SessionUser) {
  * branch-limited.
  */
 export function isBranchScoped(session: SessionUser): boolean {
+  if (session.mobile && session.roles.some(r => ["owner", "ops", "back_office"].includes(r))) return false;
   return (
     !session.roles.includes("owner") &&
     session.roles.includes("branch_head") &&
@@ -37,6 +40,7 @@ export function isBranchScoped(session: SessionUser): boolean {
 
 export function leadScopeCondition(session: SessionUser) {
   requireLeadView(session);
+  if (session.mobile && !session.roles.some(r => ["owner", "ops", "back_office"].includes(r)) && session.roles.includes("branch_head") && !session.branchId) return sql`FALSE`;
   if (isBranchScoped(session)) return eq(leads.branchId, session.branchId!);
   if (canViewAllLeads(session)) return undefined;
   return eq(leads.ownerId, session.userId);
@@ -44,6 +48,7 @@ export function leadScopeCondition(session: SessionUser) {
 
 export function leadScopeSql(session: SessionUser, alias = "leads") {
   requireLeadView(session);
+  if (session.mobile && !session.roles.some(r => ["owner", "ops", "back_office"].includes(r)) && session.roles.includes("branch_head") && !session.branchId) return sql`FALSE`;
   if (isBranchScoped(session)) return sql`${sql.raw(`${alias}.branch_id`)} = ${session.branchId}::uuid`;
   if (canViewAllLeads(session)) return sql`TRUE`;
   return sql`${sql.raw(`${alias}.owner_id`)} = ${session.userId}::uuid`;
@@ -51,6 +56,9 @@ export function leadScopeSql(session: SessionUser, alias = "leads") {
 
 export async function loadEditableLead(tx: Tx, session: SessionUser, leadId: string) {
   requireLeadEdit(session);
+  if (session.mobile && session.roles.includes("branch_head") && !canEditAllLeads(session) && !session.branchId) {
+    throw Object.assign(new Error("forbidden: no branch is assigned"), { status: 403 });
+  }
   const [lead] = await tx.select().from(leads).where(and(eq(leads.id, leadId), eq(leads.tenantId, session.tenantId))).limit(1);
   if (!lead) throw Object.assign(new Error("lead not found"), { status: 404 });
   if (isBranchScoped(session)) {
@@ -64,6 +72,7 @@ export async function loadEditableLead(tx: Tx, session: SessionUser, leadId: str
 
 export async function loadViewableLead(tx: Tx, session: SessionUser, leadId: string) {
   requireLeadView(session);
+  if (session.mobile && session.roles.includes("branch_head") && !canViewAllLeads(session) && !session.branchId) return null;
   const [lead] = await tx.select().from(leads).where(and(eq(leads.id, leadId), eq(leads.tenantId, session.tenantId))).limit(1);
   if (!lead) return null;
   if (isBranchScoped(session)) return lead.branchId === session.branchId ? lead : null;

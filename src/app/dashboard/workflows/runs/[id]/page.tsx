@@ -23,7 +23,7 @@ const STATUS_COLORS: Record<string, string> = {
   paused: "text-amber-600",
   completed: "text-emerald-600",
   failed: "text-rose-600",
-  cancelled: "text-gray-600",
+  cancelled: "text-muted-foreground",
 };
 
 export const dynamic = "force-dynamic";

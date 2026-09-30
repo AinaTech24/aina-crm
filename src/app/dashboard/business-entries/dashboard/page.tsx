@@ -5,7 +5,7 @@ import { ChevronLeft, Droplets, Filter, X } from "lucide-react";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { formatINR } from "@/lib/utils";
+import { formatDate, formatINR } from "@/lib/utils";
 import { getBusinessSummary } from "@/lib/business/report";
 import { ASSET_CLASS_LABELS, type AssetClass } from "@/lib/business/asset-class";
 import { PRODUCT_TYPES, BUSINESS_ENTRY_STATUSES } from "@/db/schema/business_entries";
@@ -29,7 +29,7 @@ function fyBounds(now = new Date()): { fromISO: string; toISO: string; label: st
   return { fromISO: `${y}-04-01`, toISO: iso(now), label: `FY ${y}–${String((y + 1) % 100).padStart(2, "0")}` };
 }
 
-const fmtDate = (iso: string) => new Date(iso + "T00:00:00").toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+const fmtDate = (iso: string) => formatDate(new Date(iso + "T00:00:00"));
 
 function Bars({ rows, label }: { rows: Array<{ key: string; amount: number }>; label: (k: string) => string }) {
   const max = Math.max(1, ...rows.map((r) => r.amount));

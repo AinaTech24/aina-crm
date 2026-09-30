@@ -220,7 +220,7 @@ function RepeaterField({
             <Text variant="label" tone="muted">
               {field.itemTitle ? field.itemTitle(row, i) : `#${i + 1}`}
             </Text>
-            <Pressable onPress={() => removeRow(i)} hitSlop={8}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Remove row" onPress={() => removeRow(i)} hitSlop={8}>
               <Feather name="trash-2" size={16} color={palette.danger} />
             </Pressable>
           </View>

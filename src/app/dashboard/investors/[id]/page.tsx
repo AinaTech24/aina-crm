@@ -80,6 +80,7 @@ import { KycDataViewer } from "@/components/investors/KycDataViewer";
 import { clientCompleteness } from "@/lib/investors/completeness";
 import { assetClassExposure } from "@/lib/investors/asset-class";
 import { assessSuitability } from "@/lib/investors/suitability";
+import { getClientHealth } from "@/lib/metrics/health";
 import {
   RelatedListsContainer,
   RelatedListsManager,
@@ -172,10 +173,14 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
   }
 
   const data = await withTenant(session.tenantId, async (tx) => {
-    const inv = (await tx.select().from(investors).where(eq(investors.id, id)).limit(1))[0];
+    const inv = (await tx.select().from(investors)
+      .where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId))).limit(1))[0];
     if (!inv) return null;
     // Soft-deleted clients live in the Trash bin, not on the detail page.
     if ((inv as any).deletedAt) return null;
+    // Score live and keep the stored score equal (lib/metrics/health.ts): the
+    // Clients list and the preview drawer read the same number.
+    const health = await getClientHealth(tx, session.tenantId, id);
 
     const [foliosRows, sipsRows, goalsRows, commsRows, tasksRows, srRows, consentsRows, rmRow, familyRow, lumpsumSum, valuation, reviewMeetingsRows, riskHistoryRows, recentTxRows, txCountRow, sipBouncesRow] = await Promise.all([
       tx.select().from(folios).where(eq(folios.investorId, id)),
@@ -308,6 +313,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
       communications: commsRows,
       tasks: tasksRows,
       serviceRequests: srRows,
+      health,
       consents: consentsRows,
       rm: rmRow,
       family: familyRow,
@@ -599,12 +605,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
       <RelatedListSection moduleKey="investors-detail" sectionKey="health">
         <ClientHealthCard
           investor={inv as any}
-          hasOpenSrBreach={data.serviceRequests.some(
-            (sr) =>
-              (sr.status === "open" || sr.status === "in_progress") &&
-              sr.slaResolutionAt != null &&
-              new Date(sr.slaResolutionAt as any).getTime() < Date.now()
-          )}
+          hasOpenSrBreach={!!data.health?.factors.some((f) => f.key === "sr")}
         />
       </RelatedListSection>
 

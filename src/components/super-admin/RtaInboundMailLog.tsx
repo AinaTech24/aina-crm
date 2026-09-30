@@ -10,6 +10,7 @@
  */
 
 import { Fragment, useCallback, useEffect, useState } from "react";
+import { formatDate } from "@/lib/format";
 import {
   Loader2,
   RefreshCw,
@@ -106,7 +107,7 @@ function fmtWhen(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  return formatDate(d, "dateTime");
 }
 function fmtSize(b: number): string {
   if (!b) return "0 B";

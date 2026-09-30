@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Avatar } from "@/components/ui/Avatar";
+import { formatDate } from "@/lib/format";
 import {
   Calendar as CalendarIcon,
   CalendarClock,
@@ -208,8 +209,8 @@ export function InteractiveCalendar({
               <ChevronLeft className="size-4" />
             </button>
             <span className="text-xs font-medium min-w-[170px] text-center">
-              Week of {weekDays[0].toLocaleDateString("en-IN", { day: "numeric", month: "short" })} –{" "}
-              {weekDays[6].toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+              Week of {formatDate(weekDays[0], "dayMonth")} –{" "}
+              {formatDate(weekDays[6])}
             </span>
             <button
               onClick={() => navigateWeek(1)}
@@ -258,7 +259,7 @@ export function InteractiveCalendar({
               className={`flex items-center gap-1.5 px-3 py-1 rounded-full border transition-all select-none cursor-pointer ${
                 isActive
                   ? `${meta.color} ring-1 ring-black/5`
-                  : "bg-slate-50 text-slate-400 border-slate-200 line-through opacity-60 hover:opacity-85"
+                  : "bg-secondary text-muted-foreground border-border line-through opacity-60 hover:opacity-85"
               }`}
             >
               <Icon className="size-3 flex-shrink-0" />
@@ -272,7 +273,7 @@ export function InteractiveCalendar({
       {/* Main Grid View */}
       {viewMode === "month" ? (
         <div className="border rounded-lg bg-card overflow-hidden bg-white shadow-sm">
-          <div className="grid grid-cols-7 border-b text-xs font-bold text-slate-500 bg-slate-50">
+          <div className="grid grid-cols-7 border-b text-xs font-bold text-muted-foreground bg-secondary">
             {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
               <div key={d} className="px-3 py-2 text-center border-r last:border-r-0">
                 {d}
@@ -288,8 +289,8 @@ export function InteractiveCalendar({
                 <div
                   key={i}
                   onClick={() => cell && setSelectedDay(iso)}
-                  className={`border-r border-b min-h-[120px] p-2 hover:bg-slate-50/50 transition-colors ${
-                    cell ? "cursor-pointer" : "bg-slate-50/20"
+                  className={`border-r border-b min-h-[120px] p-2 hover:bg-secondary/50 transition-colors ${
+                    cell ? "cursor-pointer" : "bg-secondary/20"
                   } ${isToday ? "bg-blue-50/40 border-blue-200" : "border-slate-100"}`}
                 >
                   {cell && (
@@ -297,13 +298,13 @@ export function InteractiveCalendar({
                       <div className="flex items-center justify-between">
                         <span
                           className={`text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center ${
-                            isToday ? "bg-brand-cyan text-white shadow-sm" : "text-slate-400"
+                            isToday ? "bg-brand-cyan text-white shadow-sm" : "text-muted-foreground"
                           }`}
                         >
                           {cell.date!.getDate()}
                         </span>
                         {cell.items.length > 0 && (
-                          <span className="text-2xs font-bold text-slate-400 font-mono">
+                          <span className="text-2xs font-bold text-muted-foreground font-mono">
                             {cell.items.length}
                           </span>
                         )}
@@ -340,7 +341,7 @@ export function InteractiveCalendar({
       ) : (
         /* Week View Grid */
         <div className="border rounded-lg bg-card overflow-hidden bg-white shadow-sm">
-          <div className="grid grid-cols-7 border-b text-xs font-bold text-slate-500 bg-slate-50">
+          <div className="grid grid-cols-7 border-b text-xs font-bold text-muted-foreground bg-secondary">
             {weekDays.map((d) => {
               const isToday = d.toDateString() === new Date().toDateString();
               return (
@@ -353,7 +354,7 @@ export function InteractiveCalendar({
                   <span>{d.toLocaleDateString("en-IN", { weekday: "short" })}</span>
                   <span
                     className={`text-xs font-extrabold w-5 h-5 rounded-full flex items-center justify-center ${
-                      isToday ? "bg-brand-cyan text-white shadow-sm" : "text-slate-400"
+                      isToday ? "bg-brand-cyan text-white shadow-sm" : "text-muted-foreground"
                     }`}
                   >
                     {d.getDate()}
@@ -372,12 +373,12 @@ export function InteractiveCalendar({
                 <div
                   key={iso}
                   onClick={() => setSelectedDay(iso)}
-                  className={`p-2 space-y-1.5 cursor-pointer hover:bg-slate-50/40 transition-colors ${
+                  className={`p-2 space-y-1.5 cursor-pointer hover:bg-secondary/40 transition-colors ${
                     isToday ? "bg-blue-50/10" : ""
                   }`}
                 >
                   {dayItems.length === 0 ? (
-                    <div className="text-2xs text-slate-300 italic text-center mt-12 select-none">
+                    <div className="text-2xs text-muted-foreground italic text-center mt-12 select-none">
                       No events
                     </div>
                   ) : (
@@ -422,11 +423,11 @@ export function InteractiveCalendar({
             onClick={() => setSelectedDay(null)}
           />
           {/* Panel */}
-          <div className="fixed top-0 right-0 h-full w-full md:w-[420px] bg-white border-l shadow-2xl z-[70] flex flex-col animate-slide-in overflow-hidden bg-card text-slate-800">
+          <div className="fixed top-0 right-0 h-full w-full md:w-[420px] bg-white border-l shadow-2xl z-[70] flex flex-col animate-slide-in overflow-hidden bg-card text-foreground">
             {/* Header */}
-            <div className="px-5 py-4 border-b flex items-center justify-between bg-slate-50">
+            <div className="px-5 py-4 border-b flex items-center justify-between bg-secondary">
               <div>
-                <h3 className="font-bold text-sm text-slate-800 uppercase tracking-wider">
+                <h3 className="font-bold text-sm text-foreground uppercase tracking-wider">
                   Agenda for Day
                 </h3>
                 <span className="text-xs font-semibold text-brand-cyan-deep">
@@ -440,7 +441,7 @@ export function InteractiveCalendar({
               </div>
               <button
                 onClick={() => setSelectedDay(null)}
-                className="p-1.5 rounded-full hover:bg-slate-200 text-slate-500 hover:text-slate-700 transition-colors focus:outline-none"
+                className="p-1.5 rounded-full hover:bg-slate-200 text-muted-foreground hover:text-foreground transition-colors focus:outline-none"
               >
                 <X className="size-4" />
               </button>
@@ -449,7 +450,7 @@ export function InteractiveCalendar({
             {/* List */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-thin">
               {drawerItems.length === 0 ? (
-                <div className="text-center p-12 text-sm text-muted-foreground italic border border-dashed rounded-lg bg-slate-50">
+                <div className="text-center p-12 text-sm text-muted-foreground italic border border-dashed rounded-lg bg-secondary">
                   No active events scheduled for this day.
                 </div>
               ) : (
@@ -494,7 +495,7 @@ export function InteractiveCalendar({
             </div>
             
             {/* Footer */}
-            <div className="px-4 py-3 border-t bg-slate-50 flex justify-end">
+            <div className="px-4 py-3 border-t bg-secondary flex justify-end">
               <button onClick={() => setSelectedDay(null)} className="btn-secondary text-xs px-4 py-1.5">
                 Close
               </button>

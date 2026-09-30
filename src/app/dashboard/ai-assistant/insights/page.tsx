@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { ArrowLeft, MessageSquare, CheckCircle2, AlertCircle } from "lucide-react";
 import { requireSession } from "@/lib/auth/session";
 import { withTenant } from "@/db/client";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -155,7 +156,7 @@ export default async function CopilotInsightsPage() {
                   <tr key={i} className="border-b border-border/50 last:border-0">
                     <td className="py-1.5 pr-3">{r.q}</td>
                     <td className="py-1.5 px-3 text-right tabular-nums">{r.c}</td>
-                    <td className="py-1.5 pl-3 text-right text-muted-foreground whitespace-nowrap">{r.last ? new Date(r.last).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "—"}</td>
+                    <td className="py-1.5 pl-3 text-right text-muted-foreground whitespace-nowrap">{r.last ? formatDate(new Date(r.last), "dayMonth") : "—"}</td>
                   </tr>
                 ))}
               </tbody>
