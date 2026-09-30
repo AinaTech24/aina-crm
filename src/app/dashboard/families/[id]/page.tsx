@@ -20,6 +20,7 @@ import { RecordProvenance } from "@/components/common/RecordProvenance";
 import { DownloadButton } from "@/components/common/SecureLinkButtons";
 import { CalendarPlus } from "lucide-react";
 import { SuccessionReadiness } from "@/components/families/SuccessionReadiness";
+import { familyReviewFrequencyLabel } from "@/lib/families/cadence";
 
 export const dynamic = "force-dynamic";
 
@@ -204,7 +205,12 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
         <InfoCard
           label="Family review"
           value={data.family.nextReviewAt ? formatDate(data.family.nextReviewAt) : "—"}
-          sub={data.family.lastReviewAt ? `Last ${formatRelative(data.family.lastReviewAt)}` : "Never reviewed"}
+          sub={[
+            familyReviewFrequencyLabel(data.family.reviewFrequency),
+            data.family.lastReviewAt ? `Last ${formatRelative(data.family.lastReviewAt)}` : "Never reviewed",
+          ]
+            .filter(Boolean)
+            .join(" · ")}
           tone={
             data.family.nextReviewAt && new Date(data.family.nextReviewAt) < new Date()
               ? "warn"

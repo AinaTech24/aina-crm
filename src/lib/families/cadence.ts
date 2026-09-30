@@ -42,3 +42,36 @@ export function computeFamilyNextReview(
   }
   return d;
 }
+
+export function familyReviewFrequencyLabel(frequency: string | null | undefined): string | null {
+  return FAMILY_REVIEW_FREQUENCIES.find(([v]) => v === frequency)?.[1] ?? null;
+}
+
+/**
+ * The next household review for a cadence, from the best anchor the family has:
+ *
+ *   1. a first-meeting date — a fixed schedule (computeFamilyNextReview);
+ *   2. else the last household review — one cadence after it, NOT rolled past
+ *      today, so a missed review shows as overdue;
+ *   3. else `since` (when the household was created) — one cadence after it.
+ *
+ * The same shape as a client's review (last review, else onboarding, plus the
+ * cadence). Null when there is no frequency — the caller then leaves the
+ * current next-review date alone rather than blanking it.
+ */
+export function nextFamilyReview(args: {
+  frequency: string | null | undefined;
+  firstMeeting?: string | Date | null;
+  lastReview?: string | Date | null;
+  since?: string | Date | null;
+  now?: Date;
+}): Date | null {
+  const m = args.frequency ? MONTHS[args.frequency] : undefined;
+  if (!m) return null;
+  if (args.firstMeeting) return computeFamilyNextReview(args.firstMeeting, args.frequency, args.now);
+  const base = args.lastReview ?? args.since ?? args.now ?? new Date();
+  const d = new Date(base);
+  if (isNaN(d.getTime())) return null;
+  d.setMonth(d.getMonth() + m);
+  return d;
+}

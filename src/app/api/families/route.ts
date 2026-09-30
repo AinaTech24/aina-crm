@@ -17,7 +17,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { families, users } from "@/db/schema";
 import { familyHealthFields } from "@/lib/families/health";
-import { computeFamilyNextReview } from "@/lib/families/cadence";
+import { nextFamilyReview } from "@/lib/families/cadence";
 import { applyFamilyNamePattern, loadFamilySettings } from "@/lib/families/master";
 import { WEALTH_BANDS, bandBounds, type WealthBand } from "@/lib/families/wealth-band";
 
@@ -228,11 +228,13 @@ export async function POST(req: NextRequest) {
     const familyName =
       parse.data.familyName ?? applyFamilyNamePattern(defaults.familyNamePattern, parse.data.headName);
 
-    // Auto-derive the next household review from the cadence + first meeting.
-    const nextReviewAt = computeFamilyNextReview(
-      parse.data.firstMeetingDate ?? null,
-      reviewFrequency
-    );
+    // Auto-derive the next household review from the cadence: the first
+    // meeting's schedule, else one cadence from today.
+    const nextReviewAt = nextFamilyReview({
+      frequency: reviewFrequency,
+      firstMeeting: parse.data.firstMeetingDate ?? null,
+      since: new Date(),
+    });
     const outcome = await withTenant(session.tenantId, async (tx) => {
       // An explicit RM must be a user in THIS firm — otherwise the household
       // would be owned by an out-of-tenant uuid.

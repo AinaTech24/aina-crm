@@ -4,8 +4,12 @@
  * Inline edit panel for the Family detail page.
  *
  * Edits the family-level fields: name, primary client (dropdown of members),
- * RM (dropdown of users), review dates, notes. Member CRUD lives in the
- * AddMemberDialog / RemoveMemberButton — out of scope here.
+ * RM (dropdown of users), review frequency and dates, notes. Member CRUD lives
+ * in the AddMemberDialog / RemoveMemberButton — out of scope here.
+ *
+ * Review frequency: changing it (or the first meeting date) moves "Next
+ * review" to the date the cadence gives — the same rule the server applies
+ * (lib/families/cadence nextFamilyReview). A next review typed by hand wins.
  */
 
 import { useState } from "react";
@@ -13,6 +17,7 @@ import { useRouter } from "next/navigation";
 import { Pencil, Save, X, Loader2 } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { DatePicker } from "@/components/ui/DatePicker";
+import { FAMILY_REVIEW_FREQUENCIES, nextFamilyReview } from "@/lib/families/cadence";
 
 export function FamilyEditPanel({
   family,
@@ -33,15 +38,36 @@ export function FamilyEditPanel({
     headName: family.headName ?? "",
     primaryInvestorId: family.primaryInvestorId ?? "",
     rmId: family.rmId ?? "",
+    reviewFrequency: (family.reviewFrequency as string | null) ?? "",
+    firstMeetingDate: family.firstMeetingDate ? String(family.firstMeetingDate).slice(0, 10) : "",
     lastReviewAt: family.lastReviewAt ? toDateInput(family.lastReviewAt) : "",
     nextReviewAt: family.nextReviewAt ? toDateInput(family.nextReviewAt) : "",
     notes: family.notes ?? "",
   });
 
   const [form, setForm] = useState(initial);
+  /** The next review was typed by hand — the cadence no longer moves it. */
+  const [nextTouched, setNextTouched] = useState(false);
 
   function set(k: keyof ReturnType<typeof initial>, v: string) {
     setForm((s) => ({ ...s, [k]: v }));
+  }
+
+  /** A cadence input changed: move "Next review" to what the cadence gives. */
+  function setCadence(k: "reviewFrequency" | "firstMeetingDate", v: string) {
+    setForm((s) => {
+      const next = { ...s, [k]: v };
+      if (!nextTouched) {
+        const d = nextFamilyReview({
+          frequency: next.reviewFrequency || null,
+          firstMeeting: next.firstMeetingDate || null,
+          lastReview: next.lastReviewAt || null,
+          since: family.createdAt ?? null,
+        });
+        if (d) next.nextReviewAt = toIsoDate(d);
+      }
+      return next;
+    });
   }
 
   async function save() {
@@ -56,7 +82,14 @@ export function FamilyEditPanel({
         notes: form.notes || undefined,
       };
       if (form.lastReviewAt) payload.lastReviewAt = new Date(form.lastReviewAt).toISOString();
-      if (form.nextReviewAt) payload.nextReviewAt = new Date(form.nextReviewAt).toISOString();
+      // Cadence fields only when they changed — sending them unchanged would
+      // make the server re-derive the next review on an unrelated edit.
+      const init = initial();
+      if (form.reviewFrequency !== init.reviewFrequency) payload.reviewFrequency = form.reviewFrequency || null;
+      if (form.firstMeetingDate !== init.firstMeetingDate) payload.firstMeetingDate = form.firstMeetingDate || null;
+      // A next review typed by hand is sent as is ("" clears it); otherwise
+      // the server derives it from the cadence.
+      if (nextTouched) payload.nextReviewAt = form.nextReviewAt ? new Date(form.nextReviewAt).toISOString() : "";
 
       const res = await fetch(`/api/families/${family.id}`, {
         method: "PATCH",
@@ -77,6 +110,7 @@ export function FamilyEditPanel({
 
   function cancel() {
     setForm(initial());
+    setNextTouched(false);
     setEditing(false);
     setErr(null);
   }
@@ -154,13 +188,42 @@ export function FamilyEditPanel({
             ))}
           </SelectField>
         </Field>
+        <Field label="Review frequency">
+          <SelectField
+            value={form.reviewFrequency}
+            onChange={(e) => setCadence("reviewFrequency", e.target.value)}
+            className="w-full"
+            aria-label="Review frequency"
+          >
+            <option value="">None</option>
+            {FAMILY_REVIEW_FREQUENCIES.map(([v, l]) => (
+              <option key={v} value={v}>{l}</option>
+            ))}
+          </SelectField>
+        </Field>
+        <Field label="First meeting date">
+          <DatePicker value={form.firstMeetingDate} onChange={(iso) => setCadence("firstMeetingDate", iso)} className="w-full" ariaLabel="First meeting date" />
+        </Field>
         <Field label="Last review">
           <DatePicker value={form.lastReviewAt} onChange={(iso) => set("lastReviewAt", iso)} className="w-full" ariaLabel="Last review date" />
         </Field>
         <Field label="Next review">
-          <DatePicker value={form.nextReviewAt} onChange={(iso) => set("nextReviewAt", iso)} className="w-full" ariaLabel="Next review date" />
+          <DatePicker
+            value={form.nextReviewAt}
+            onChange={(iso) => {
+              setNextTouched(true);
+              set("nextReviewAt", iso);
+            }}
+            className="w-full"
+            ariaLabel="Next review date"
+          />
         </Field>
       </div>
+      {form.reviewFrequency && !nextTouched && (
+        <p className="text-2xs text-muted-foreground">
+          Next review follows the frequency — from the first meeting date, else the last review. Pick a date to set it yourself.
+        </p>
+      )}
       <Field label="Notes">
         <textarea
           value={form.notes}
@@ -182,6 +245,11 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       {children}
     </label>
   );
+}
+
+/** yyyy-mm-dd for a local date. */
+function toIsoDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function toDateInput(d: any): string {

@@ -161,7 +161,7 @@ export default function NewFamilyPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label className="block">
-              <div className="text-xs font-medium mb-1">Meeting frequency</div>
+              <div className="text-xs font-medium mb-1">Review frequency</div>
               <SelectField
                 value={form.reviewFrequency}
                 onChange={(e) => set("reviewFrequency", e.target.value)}
@@ -180,10 +180,12 @@ export default function NewFamilyPage() {
               />
             </label>
           </div>
-          {form.reviewFrequency && form.firstMeetingDate && (
+          {form.reviewFrequency && (
             <p className="text-2xs text-muted-foreground mt-2">
-              The next household review date is computed automatically from this cadence and surfaces
-              in the Command Center / Team Dashboard "reviews due".
+              {form.firstMeetingDate
+                ? "Reviews follow this schedule from the first meeting date."
+                : "The first review falls due one period from today."}{" "}
+              It shows up in "reviews due" on the dashboards.
             </p>
           )}
         </div>

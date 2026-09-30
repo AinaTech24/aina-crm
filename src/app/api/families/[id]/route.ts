@@ -17,7 +17,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { families, investors, users } from "@/db/schema";
 import { familyHealthFields } from "@/lib/families/health";
-import { computeFamilyNextReview } from "@/lib/families/cadence";
+import { nextFamilyReview } from "@/lib/families/cadence";
 
 export const dynamic = "force-dynamic";
 
@@ -97,13 +97,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const merged: any = { ...before, ...patch };
 
       // If the cadence inputs changed (and the caller didn't set nextReviewAt
-      // explicitly), re-derive nextReviewAt from frequency + first meeting.
+      // explicitly), re-derive nextReviewAt: from the first meeting's schedule,
+      // else one cadence after the last review, else after creation. With no
+      // frequency the current date is kept rather than blanked.
       const cadenceTouched =
         parse.data.reviewFrequency !== undefined || parse.data.firstMeetingDate !== undefined;
-      let recomputedNextReview: Date | null | undefined;
+      let recomputedNextReview: Date | undefined;
       if (cadenceTouched && parse.data.nextReviewAt === undefined) {
-        recomputedNextReview = computeFamilyNextReview(merged.firstMeetingDate, merged.reviewFrequency);
-        merged.nextReviewAt = recomputedNextReview;
+        const next = nextFamilyReview({
+          frequency: merged.reviewFrequency,
+          firstMeeting: merged.firstMeetingDate,
+          lastReview: merged.lastReviewAt,
+          since: before.createdAt,
+        });
+        if (next) {
+          recomputedNextReview = next;
+          merged.nextReviewAt = next;
+        }
       }
 
       const members = await tx.select().from(investors).where(eq(investors.familyId, id));
