@@ -4,7 +4,11 @@ import { handleApiError } from "@/lib/api/error-handler";
  *
  *   GET    /api/families/[id]   — fetch one family + member count
  *   PATCH  /api/families/[id]   — partial update
- *   DELETE /api/families/[id]   — hard delete only if no members linked, otherwise 409
+ *   DELETE /api/families/[id]   — hard delete only if no live members linked, otherwise 409
+ *
+ * Every verb checks the family is visible to the caller (lib/families/access);
+ * they used to check only a capability, so PATCH could reassign the RM of any
+ * family in the firm.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -12,12 +16,14 @@ import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap, requireAny } from "@/lib/auth/rbac";
+import { requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { families, investors, users } from "@/db/schema";
 import { familyHealthFields } from "@/lib/families/health";
 import { nextFamilyReview } from "@/lib/families/cadence";
+import { loadViewableFamily, assertFamilyEditable } from "@/lib/families/access";
+import { HEAD_ROLE } from "@/lib/families/roles";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +32,8 @@ const Patch = z.object({
   familyName: z.string().min(2).max(120).optional(),
   primaryInvestorId: z.string().uuid().nullable().optional(),
   rmId: z.string().uuid().nullable().optional(),
-  notes: z.string().max(2000).optional(),
+  // null or "" clears the note (an empty box used to send nothing, so the old note stayed)
+  notes: z.string().max(2000).nullable().optional(),
   lastReviewAt: z.string().optional(),
   nextReviewAt: z.string().optional(),
   familyCode: z.string().max(60).nullable().optional(),
@@ -39,11 +46,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
-    // Require an investor-view capability (this GET was open to any role).
-    requireAny(session.roles, ["family.view", "investor.view.all", "investor.view.assigned"], session.permissions);
-    const row = await withTenant(session.tenantId, async (tx) =>
-      (await tx.select().from(families).where(and(eq(families.id, id), eq(families.tenantId, session.tenantId))).limit(1))[0] ?? null
-    );
+    const row = await withTenant(session.tenantId, async (tx) => {
+      if (!(await loadViewableFamily(tx, session, id))) return null;
+      return (await tx.select().from(families).where(and(eq(families.id, id), eq(families.tenantId, session.tenantId))).limit(1))[0] ?? null;
+    });
     if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json(row);
   } catch (err: any) {
@@ -58,7 +64,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // Same rule as create — the RM who services the household may edit it.
     // (DELETE below stays at .edit.all: removing a household touches every
     // client linked to it.)
-    requireAny(session.roles, ["family.edit", "family.manage", "investor.edit.all", "investor.edit.assigned"], session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
 
     const parse = Patch.safeParse(await req.json().catch(() => ({})));
@@ -66,8 +71,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     const result = await withTenant(session.tenantId, async (tx) => {
+      await assertFamilyEditable(tx, session, id);
       const before = (await tx.select().from(families).where(and(eq(families.id, id), eq(families.tenantId, session.tenantId))).limit(1))[0];
       if (!before) return null;
+
+      // The head must be a live member of THIS family — the API accepted any
+      // uuid, and a head who isn't a member made the page and the health card
+      // disagree about who leads the family.
+      if (parse.data.primaryInvestorId) {
+        const [m] = await tx
+          .select({ id: investors.id })
+          .from(investors)
+          .where(and(
+            eq(investors.id, parse.data.primaryInvestorId),
+            eq(investors.familyId, id),
+            sql`${investors.deletedAt} IS NULL AND ${investors.mergedIntoId} IS NULL`,
+          ))
+          .limit(1);
+        if (!m) return "bad_head" as const;
+      }
 
       // A reassigned RM must be a user in this firm (a stray uuid would orphan
       // the household under someone outside the tenant).
@@ -85,6 +107,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // is not a function") → the 500 the user saw when saving with a review
       // date present. Unparseable → null.
       const patch: any = { ...parse.data };
+      if (patch.notes === "") patch.notes = null;
       for (const k of ["lastReviewAt", "nextReviewAt", "firstMeetingDate"] as const) {
         if (typeof patch[k] === "string") {
           const d = new Date(patch[k]);
@@ -100,8 +123,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // explicitly), re-derive nextReviewAt: from the first meeting's schedule,
       // else one cadence after the last review, else after creation. With no
       // frequency the current date is kept rather than blanked.
+      // A new "last review" date moves the next one too — saving today's review
+      // used to leave the old next date in the past, so the family stayed
+      // "review due".
+      const lastReviewMoved =
+        parse.data.lastReviewAt !== undefined &&
+        String(parse.data.lastReviewAt ?? "") !== (before.lastReviewAt ? new Date(before.lastReviewAt).toISOString() : "");
       const cadenceTouched =
-        parse.data.reviewFrequency !== undefined || parse.data.firstMeetingDate !== undefined;
+        parse.data.reviewFrequency !== undefined || parse.data.firstMeetingDate !== undefined || lastReviewMoved;
       let recomputedNextReview: Date | undefined;
       if (cadenceTouched && parse.data.nextReviewAt === undefined) {
         const next = nextFamilyReview({
@@ -113,7 +142,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         if (next) {
           recomputedNextReview = next;
           merged.nextReviewAt = next;
+        } else if (lastReviewMoved && merged.lastReviewAt && merged.nextReviewAt && new Date(merged.nextReviewAt) <= new Date(merged.lastReviewAt)) {
+          // No cadence to derive from, and the old next date is already behind
+          // the review just recorded — drop it rather than show "overdue".
+          patch.nextReviewAt = null;
+          merged.nextReviewAt = null;
         }
+      }
+
+      // A new head carries the head role, and only they do.
+      if (parse.data.primaryInvestorId && parse.data.primaryInvestorId !== before.primaryInvestorId) {
+        await tx.execute(sql`
+          UPDATE investors SET family_role = 'other', updated_at = now()
+           WHERE family_id = ${id}::uuid AND id <> ${parse.data.primaryInvestorId}::uuid
+             AND family_role IN ('self', 'head', 'primary')
+        `);
+        await tx.update(investors).set({ familyRole: HEAD_ROLE, updatedAt: new Date() } as any).where(eq(investors.id, parse.data.primaryInvestorId));
       }
 
       const members = await tx.select().from(investors).where(eq(investors.familyId, id));
@@ -135,12 +179,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         action: "family.update",
         entityType: "family",
         entityId: id,
+        before: Object.fromEntries(Object.keys(parse.data).map((k) => [k, (before as any)[k] ?? null])) as any,
         after: parse.data as any,
         ...clientMeta,
       });
       return after[0];
     });
     if (result === "bad_rm") return NextResponse.json({ error: "selected RM is not a user in this firm" }, { status: 400 });
+    if (result === "bad_head") return NextResponse.json({ error: "The head of the family must be one of its members." }, { status: 400 });
     if (!result) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json(result);
   } catch (err: any) {
@@ -157,12 +203,24 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
     const clientMeta = clientMetaFromHeaders(req.headers);
     const result = await withTenant(session.tenantId, async (tx) => {
-      // Refuse delete if any members are still linked
-      const count = await tx.execute(sql`SELECT COUNT(*)::int AS c FROM investors WHERE family_id = ${id}`);
+      if (!(await loadViewableFamily(tx, session, id))) return null;
+      // Refuse while a live member is linked. Deleted or merged-away records
+      // don't count — the page shows them as no one, and a family whose only
+      // "members" were deleted could never be removed.
+      const count = await tx.execute(sql`
+        SELECT COUNT(*)::int AS c FROM investors
+         WHERE family_id = ${id}::uuid AND tenant_id = ${session.tenantId}::uuid
+           AND deleted_at IS NULL AND merged_into_id IS NULL
+      `);
       const c = Number((count.rows[0] as any)?.c ?? 0);
       if (c > 0) {
-        throw Object.assign(new Error(`cannot delete: ${c} member(s) still linked`), { status: 409 });
+        throw Object.assign(new Error(`Remove the ${c} member${c === 1 ? "" : "s"} first — a family with members can't be deleted.`), { status: 409 });
       }
+      // Let go of the dead links first so the family row can go.
+      await tx.execute(sql`
+        UPDATE investors SET family_id = NULL, family_role = NULL
+         WHERE family_id = ${id}::uuid AND tenant_id = ${session.tenantId}::uuid
+      `);
       const before = (await tx.select().from(families).where(and(eq(families.id, id), eq(families.tenantId, session.tenantId))).limit(1))[0];
       if (!before) return null;
 

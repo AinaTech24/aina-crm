@@ -55,7 +55,13 @@ function changedFields(e: Entry): Array<{ k: string; from?: any; to?: any }> {
 
 const fmt = (v: any) => (v == null ? "—" : typeof v === "object" ? JSON.stringify(v) : String(v));
 
-export function ChangeLogButton({ entityType, entityId, variant = "secondary" }: { entityType: string; entityId: string; variant?: "secondary" | "ghost" }) {
+export function ChangeLogButton({
+  entityType, entityId, variant = "secondary", triggerClassName,
+}: {
+  entityType: string; entityId: string; variant?: "secondary" | "ghost";
+  /** Replaces the trigger's look — a record menu passes its row class. */
+  triggerClassName?: string;
+}) {
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -73,14 +79,14 @@ export function ChangeLogButton({ entityType, entityId, variant = "secondary" }:
 
   return (
     <>
-      <button onClick={load} className={`${variant === "ghost" ? "btn-ghost" : "btn-secondary"} text-xs inline-flex items-center gap-1`} title="View change history">
-        <History className="size-3.5" /> History
+      <button type="button" onClick={load} className={triggerClassName ?? `${variant === "ghost" ? "btn-ghost" : "btn-secondary"} text-xs inline-flex items-center gap-1`} title="Who changed what on this record, and when">
+        <History className={triggerClassName ? "size-4 shrink-0 text-muted-foreground" : "size-3.5"} /> {triggerClassName ? "Change history" : "History"}
       </button>
       {open && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-50 bg-black/40 flex justify-end" onClick={() => setOpen(false)}>
           <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md h-full bg-card border-l shadow-2xl flex flex-col">
             <div className="px-5 py-3 border-b flex items-center justify-between">
-              <div className="font-semibold flex items-center gap-2"><History className="size-4 text-brand-cyan" /> Change Log</div>
+              <div className="font-semibold flex items-center gap-2"><History className="size-4 text-muted-foreground" /> Change history</div>
               <button onClick={() => setOpen(false)} className="rounded p-1 hover:bg-accent"><X className="size-4" /></button>
             </div>
             <div className="flex-1 overflow-y-auto p-4">

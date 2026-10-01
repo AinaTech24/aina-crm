@@ -29,6 +29,12 @@
  *
  * Accessibility, which the underline version had none of: proper
  * tablist/tab roles, aria-selected, roving tabindex and ←/→/Home/End keys.
+ *
+ * In-page links still work across tabs. The summary strip links "Open tasks"
+ * to `#rel-tasks`, which lives on another tab and is therefore display:none;
+ * the browser cannot scroll to it and the click did nothing. A click on any
+ * `#anchor` link now switches to the tab that holds the target first, then
+ * scrolls, and a URL opened with a hash does the same on load.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -92,6 +98,39 @@ export function InvestorDetailTabs({
       localStorage.setItem(storageKey, active);
     } catch {}
   }, [active, storageKey]);
+
+  // The latest tabs, readable from the document-level listener below without
+  // re-binding it on every render.
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+
+  useEffect(() => {
+    function reveal(id: string): boolean {
+      const el = document.getElementById(id);
+      if (!el) return false;
+      const section = el.closest<HTMLElement>(`[data-rl-module="${moduleKey}"][data-rl-section]`);
+      const key = section?.dataset.rlSection;
+      const tab = key ? tabsRef.current.find((t) => t.sections.includes(key)) : undefined;
+      if (tab) setActive(tab.key);
+      // Two frames: one for React to apply the tab's style, one for layout.
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => el.scrollIntoView({ behavior: "smooth", block: "start" }))
+      );
+      return true;
+    }
+    function onClick(e: MouseEvent) {
+      // Runs after any React handler on the link (a <Link> may already have
+      // pushed the hash); revealing the target afterwards is still right.
+      if (e.button !== 0 || e.metaKey || e.ctrlKey) return;
+      const a = (e.target as HTMLElement | null)?.closest?.("a[href^='#']") as HTMLAnchorElement | null;
+      if (!a) return;
+      const id = decodeURIComponent((a.getAttribute("href") ?? "").slice(1));
+      if (id && reveal(id)) e.preventDefault();
+    }
+    document.addEventListener("click", onClick);
+    if (window.location.hash.length > 1) reveal(decodeURIComponent(window.location.hash.slice(1)));
+    return () => document.removeEventListener("click", onClick);
+  }, [moduleKey]);
 
   const managed = new Set(tabs.flatMap((t) => t.sections));
   const activeSet = new Set(tabs.find((t) => t.key === active)?.sections ?? []);

@@ -24,7 +24,8 @@ import { requireSession } from "@/lib/auth/session";
 import { can, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
-import { propagateReviewToFamily, type FamilyPropagationResult } from "@/lib/reviews/family-propagation";
+import { propagateReviewToFamily, stampFamilyReview, type FamilyPropagationResult } from "@/lib/reviews/family-propagation";
+import { recomputeFamilyHealth } from "@/lib/families/health-persist";
 import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
 import { computeNextReview } from "@/lib/investors/review-cadence";
 import { formatDate } from "@/lib/format";
@@ -282,6 +283,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             reviewedAt: new Date(reviewedAt),
             explicitNextReview: (body.nextReviewDate as string | undefined) ?? null,
           });
+        }
+
+        // …and the family's own review dates, so the family stops reading
+        // "review due" the moment its review is done.
+        const reviewedFamilyId = (before as any).familyId ?? familyPropagation?.familyId ?? null;
+        if (reviewedFamilyId) {
+          await stampFamilyReview(tx, {
+            tenantId: session.tenantId,
+            familyId: reviewedFamilyId,
+            reviewedAt: new Date(reviewedAt),
+            explicitNextReview: (body.nextReviewDate as string | undefined) ?? null,
+          });
+          await recomputeFamilyHealth(tx, reviewedFamilyId);
         }
 
         // ─── Smart blueprint advance — meeting completed ──────────────

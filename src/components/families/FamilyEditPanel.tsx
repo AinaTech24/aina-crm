@@ -3,9 +3,12 @@
 /**
  * Inline edit panel for the Family detail page.
  *
- * Edits the family-level fields: name, primary client (dropdown of members),
- * RM (dropdown of users), review frequency and dates, notes. Member CRUD lives
- * in the AddMemberDialog / RemoveMemberButton — out of scope here.
+ * Edits the family-level fields: name, code, category, head of family (one of
+ * its live members), RM, review frequency and dates, notes. Member CRUD lives
+ * in the AddMemberDialog / the members table — out of scope here.
+ *
+ * Clearing the notes clears them (it used to send nothing, so they could never
+ * be emptied). The head's name follows the member picked as head.
  *
  * Review frequency: changing it (or the first meeting date) moves "Next
  * review" to the date the cadence gives — the same rule the server applies
@@ -15,6 +18,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Save, X, Loader2 } from "lucide-react";
+import { buttonClass } from "@/components/ui/button-class";
 import { SelectField } from "@/components/ui/SelectField";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { FAMILY_REVIEW_FREQUENCIES, nextFamilyReview } from "@/lib/families/cadence";
@@ -43,6 +47,8 @@ export function FamilyEditPanel({
     lastReviewAt: family.lastReviewAt ? toDateInput(family.lastReviewAt) : "",
     nextReviewAt: family.nextReviewAt ? toDateInput(family.nextReviewAt) : "",
     notes: family.notes ?? "",
+    familyCode: family.familyCode ?? "",
+    familyCategory: (family.familyCategory as string | null) ?? "",
   });
 
   const [form, setForm] = useState(initial);
@@ -74,12 +80,15 @@ export function FamilyEditPanel({
     setBusy(true);
     setErr(null);
     try {
+      const head = members.find((m) => m.id === form.primaryInvestorId);
       const payload: any = {
-        familyName: form.familyName,
-        headName: form.headName || form.familyName,
+        familyName: form.familyName.trim(),
+        headName: head?.name ?? (form.headName || form.familyName),
         primaryInvestorId: form.primaryInvestorId || null,
         rmId: form.rmId || null,
-        notes: form.notes || undefined,
+        notes: form.notes.trim() ? form.notes : null,
+        familyCode: form.familyCode.trim() || null,
+        familyCategory: form.familyCategory || null,
       };
       if (form.lastReviewAt) payload.lastReviewAt = new Date(form.lastReviewAt).toISOString();
       // Cadence fields only when they changed — sending them unchanged would
@@ -96,13 +105,15 @@ export function FamilyEditPanel({
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const j = await res.json();
+      const j = await res.json().catch(() => ({}));
       if (!res.ok) {
         setErr(j.error ?? `Save failed (${res.status})`);
         return;
       }
       setEditing(false);
       router.refresh();
+    } catch {
+      setErr("Could not reach the server. Try again.");
     } finally {
       setBusy(false);
     }
@@ -118,11 +129,8 @@ export function FamilyEditPanel({
   if (!editing) {
     return (
       <div className="flex justify-end">
-        <button
-          onClick={() => setEditing(true)}
-          className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5 hover:bg-accent"
-        >
-          <Pencil className="size-3.5" /> Edit family
+        <button type="button" onClick={() => setEditing(true)} className={buttonClass("secondary", "sm")}>
+          <Pencil className="size-3.5" /> Edit details
         </button>
       </div>
     );
@@ -133,18 +141,10 @@ export function FamilyEditPanel({
       <div className="flex items-center justify-between border-b pb-3">
         <h2 className="font-semibold">Edit family</h2>
         <div className="flex gap-2">
-          <button
-            onClick={cancel}
-            disabled={busy}
-            className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5 hover:bg-accent disabled:opacity-50"
-          >
+          <button type="button" onClick={cancel} disabled={busy} className={buttonClass("secondary", "sm")}>
             <X className="size-3.5" /> Cancel
           </button>
-          <button
-            onClick={save}
-            disabled={busy}
-            className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 disabled:opacity-50"
-          >
+          <button type="button" onClick={save} disabled={busy || form.familyName.trim().length < 2} className={buttonClass("primary", "sm")}>
             {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
             {busy ? "Saving…" : "Save"}
           </button>
@@ -152,26 +152,45 @@ export function FamilyEditPanel({
       </div>
 
       {err && (
-        <div className="border border-rose-300 bg-rose-50 text-rose-900 rounded-md p-2 text-sm">{err}</div>
+        <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-sm text-destructive">{err}</div>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Family name">
           <input value={form.familyName} onChange={(e) => set("familyName", e.target.value)} className={inputCls} />
         </Field>
-        <Field label="Head name (legacy)">
-          <input value={form.headName} onChange={(e) => set("headName", e.target.value)} className={inputCls} />
-        </Field>
-        <Field label="Primary client">
+        <Field label="Head of family">
           <SelectField
             value={form.primaryInvestorId}
             onChange={(e) => set("primaryInvestorId", e.target.value)}
             className="w-full"
-            aria-label="Primary client"
+            aria-label="Head of family"
           >
-            <option value="">— None set —</option>
+            <option value="">— Not set —</option>
             {members.map((m) => (
-              <option key={m.id} value={m.id}>{m.name} · {m.pan}</option>
+              <option key={m.id} value={m.id}>{m.name}{m.pan ? ` · ${m.pan}` : ""}</option>
+            ))}
+          </SelectField>
+        </Field>
+        <Field label="Family code">
+          <input
+            value={form.familyCode}
+            onChange={(e) => set("familyCode", e.target.value)}
+            maxLength={60}
+            placeholder="e.g. your back-office group code"
+            className={inputCls}
+          />
+        </Field>
+        <Field label="Category">
+          <SelectField
+            value={form.familyCategory}
+            onChange={(e) => set("familyCategory", e.target.value)}
+            className="w-full"
+            aria-label="Family category"
+          >
+            <option value="">— Not set —</option>
+            {FAMILY_CATEGORIES.map((c) => (
+              <option key={c} value={c}>{c}</option>
             ))}
           </SelectField>
         </Field>
@@ -235,6 +254,8 @@ export function FamilyEditPanel({
     </div>
   );
 }
+
+const FAMILY_CATEGORIES = ["HNI", "Affluent", "Retail", "NRI", "Corporate"] as const;
 
 const inputCls = "w-full border rounded-md px-2 py-1 text-sm bg-background";
 

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2, UserMinus } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 
@@ -37,6 +37,8 @@ export function RemoveMemberButton({
       setConfirming(false);
       toast.success(`${investorName} removed from this family`);
       router.refresh();
+    } catch {
+      toast.error("Could not reach the server. Try again.", "Remove failed");
     } finally {
       setBusy(false);
     }
@@ -45,11 +47,14 @@ export function RemoveMemberButton({
   return (
     <>
       <button
+        type="button"
         onClick={() => setConfirming(true)}
         disabled={busy}
-        className="text-xs text-rose-600 hover:underline disabled:opacity-50"
+        aria-label={`Remove ${investorName} from this family`}
+        title="Remove from family"
+        className="btn-icon text-muted-foreground hover:text-destructive disabled:opacity-50"
       >
-        {busy ? <Loader2 className="size-3.5 animate-spin inline" /> : "Remove"}
+        {busy ? <Loader2 className="size-4 animate-spin" /> : <UserMinus className="size-4" />}
       </button>
 
       <ConfirmDialog

@@ -1,130 +1,92 @@
 import Link from "next/link";
-import { sql } from "drizzle-orm";
 import { ArrowRight, GitMerge, Users2, Settings2 } from "lucide-react";
-import { withTenant } from "@/db/client";
-import type { SessionUser } from "@/lib/auth/session";
 import { buttonClass } from "@/components/ui/button-class";
 
 /**
  * Family Master tools — one place that answers "what can I do with households?"
  *
- * The module had capable parts (create, merge, AI pairing, next-gen pulse) that
- * were scattered across the page header and a dialog, so the only obvious action
- * was "New family". These tiles surface the whole set, and carry the live counts
- * that say which one is worth clicking — the unmapped queue is the one that
- * actually moves coverage, so it leads — and it is the page's primary action:
- * "Map 768 clients →", not a card title with a number beside it.
+ * The unmapped queue is the one that actually moves coverage, so it leads, and
+ * it is the page's primary action: "Map 768 clients →".
+ *
+ * The counts come from the page, over the clients THIS person can see (live
+ * clients only). They used to be firm-wide, so an RM was told to "Map 9,434
+ * clients" and then found a queue of their own forty.
  */
-export async function FamilyToolsGrid({ session }: { session: SessionUser }) {
-  const counts = await withTenant(
-    session.tenantId,
-    async (tx) => {
-      const r = await tx.execute(sql`
-        SELECT
-          COUNT(*) FILTER (WHERE i.family_id IS NULL)::int   AS unmapped,
-          COUNT(*) FILTER (WHERE i.family_id IS NOT NULL)::int AS mapped
-        FROM investors i
-        WHERE i.tenant_id = ${session.tenantId}::uuid
-          AND i.deleted_at IS NULL
-          AND i.status = 'active'
-      `);
-      const f = await tx.execute(sql`
-        SELECT COUNT(*)::int AS c FROM families WHERE tenant_id = ${session.tenantId}::uuid
-      `);
-      const counts = r.rows[0] as { unmapped?: number; mapped?: number } | undefined;
-      const fam = f.rows[0] as { c?: number } | undefined;
-      return {
-        unmapped: Number(counts?.unmapped ?? 0),
-        mapped: Number(counts?.mapped ?? 0),
-        families: Number(fam?.c ?? 0),
-      };
-    },
-    { userId: session.userId, branchId: session.branchId, roles: session.roles }
-  );
+export function FamilyToolsGrid({
+  mapped,
+  unmapped,
+  showCoverage = true,
+}: {
+  mapped: number;
+  unmapped: number;
+  /** False for someone who can see families but not the client book. */
+  showCoverage?: boolean;
+}) {
+  const total = mapped + unmapped;
+  const coverage = total > 0 ? Math.round((mapped / total) * 100) : 0;
 
-  const total = counts.mapped + counts.unmapped;
-  const coverage = total > 0 ? Math.round((counts.mapped / total) * 100) : 0;
-
-  // Three tiles were removed here because each was a second door to somewhere
-  // already on screen: "Create household" and "Next-gen pulse" duplicated the
-  // two buttons in the page header (same hrefs), and "Household list" linked to
-  // this very page with a sort param. What is left is the three destinations
-  // that exist nowhere else on the screen.
   const tiles = [
+    ...(showCoverage
+      ? [{
+          href: "/dashboard/families/unmapped",
+          icon: Users2,
+          title: "Unmapped clients",
+          desc: unmapped > 0 ? "Clients not in any family yet" : "Every client is in a family",
+          cta: unmapped > 0 ? `Map ${unmapped.toLocaleString("en-IN")} client${unmapped === 1 ? "" : "s"} →` : null,
+          primary: unmapped > 0,
+        }]
+      : []),
     {
-      href: "/dashboard/families/unmapped",
-      icon: Users2,
-      title: "Unmapped clients",
-      desc: counts.unmapped > 0 ? "Clients not in any household yet" : "Every active client is in a household",
-      badge: null,
-      cta: counts.unmapped > 0 ? `Map ${counts.unmapped.toLocaleString("en-IN")} client${counts.unmapped === 1 ? "" : "s"} →` : null,
-      tone: counts.unmapped > 0 ? ("primary" as const) : ("plain" as const),
-    },
-    {
-      href: "/dashboard/duplicates",
+      href: "/dashboard/duplicates?tab=families",
       icon: GitMerge,
       title: "Merge duplicates",
-      desc: "Combine households created twice",
-      badge: null,
+      desc: "Combine families created twice",
       cta: null,
-      tone: "plain" as const,
+      primary: false,
     },
     {
       href: "/dashboard/families/settings",
       icon: Settings2,
       title: "Family settings",
-      desc: "Relationship types and defaults for new households",
-      badge: null,
+      desc: "Relationship types and defaults for new families",
       cta: null,
-      tone: "plain" as const,
+      primary: false,
     },
   ];
 
   return (
     <div className="space-y-3">
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-          Family master
-        </h2>
-        <span className="text-xs text-muted-foreground">
-          <span className={coverage >= 60 ? "text-emerald-600 font-semibold" : "text-amber-600 font-semibold"}>
-            {coverage}%
-          </span>{" "}
-          of active clients mapped
-        </span>
-      </div>
+      {showCoverage && total > 0 && (
+        <div className="flex items-baseline justify-end gap-3 text-xs text-muted-foreground">
+          <span>
+            <span className="font-semibold text-foreground">{coverage}%</span> of your clients are in a family
+          </span>
+        </div>
+      )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {tiles.map((t) => (
           <Link
             key={t.href}
             href={t.href}
-            className={`group border rounded-lg bg-card p-4 flex items-start gap-3 transition-colors hover:bg-accent/40 ${
-              t.tone === "primary" ? "border-primary/30" : ""
+            className={`group flex items-start gap-3 rounded-xl border bg-card p-4 transition-colors hover:bg-accent/40 ${
+              t.primary ? "border-primary/30" : "border-border"
             }`}
           >
             <span
-              className={`size-9 rounded-lg grid place-items-center shrink-0 ${
-                t.tone === "primary" ? "bg-primary/10 text-primary" : "bg-secondary text-foreground/70"
+              className={`grid size-9 shrink-0 place-items-center rounded-lg ${
+                t.primary ? "bg-accent text-primary" : "bg-secondary text-foreground/70"
               }`}
             >
               <t.icon className="size-4" />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="flex items-center gap-2">
-                <span className="font-semibold text-sm">{t.title}</span>
-                {t.badge && (
-                  <span className="text-2xs font-bold tabular-nums rounded-full px-1.5 py-0.5 bg-secondary text-muted-foreground">
-                    {t.badge}
-                  </span>
-                )}
-              </span>
-              <span className="block text-2xs text-muted-foreground mt-0.5">{t.desc}</span>
-              {/* The page's one primary action: the queue that moves coverage. */}
+              <span className="text-sm font-semibold">{t.title}</span>
+              <span className="mt-0.5 block text-2xs text-muted-foreground">{t.desc}</span>
               {t.cta && <span className={buttonClass("primary", "sm", "mt-3")}>{t.cta}</span>}
             </span>
             {!t.cta && (
-              <ArrowRight className="size-4 text-muted-foreground/50 shrink-0 transition-transform group-hover:translate-x-0.5" />
+              <ArrowRight className="size-4 shrink-0 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5" />
             )}
           </Link>
         ))}

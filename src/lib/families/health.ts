@@ -1,18 +1,25 @@
 /**
  * Family-level health + missing-data helpers.
  *
- * Pure functions, no DB calls. Feed them the family row + its members
- * (the same shapes the family detail page already loads from drizzle).
+ * Pure functions, no DB calls. Feed them the family row + its members (the
+ * same shapes the family pages load from drizzle).
+ *
+ * Who counts: LIVE members only — not deleted, not merged into another
+ * record, not closed (the same rule as lib/metrics `aliveClient`, so the
+ * family and the Clients list agree on who a client is). A merged-away
+ * duplicate used to stay a "member" and count against nominee coverage.
  *
  * Score model — 100 minus deductions:
- *   - 15  primary investor not set
+ *   - 15  no head of family (or the head set is not a live member)
  *   - 10  family RM not assigned
- *   - 15  family review overdue / never done
- *   -  varies  nominee coverage <100%
- *   -  varies  KYC verified coverage <100%
- *   -  varies  risk-profile coverage <100%
- *   - 10  no next-gen member captured (no minor + no <35-year-old)
- *   -  5  only one member captured (single-person "family")
+ *   - 12  never reviewed as a family; 10 when the review is overdue — overdue
+ *         against the family's own next-review date when it has one (its
+ *         cadence), else a year after the last review
+ *   -  varies  nominee / KYC-verified / signed-risk-profile coverage <100%
+ *   - 10  no next-gen member captured (no minor, no one under 35)
+ *   -  5  only one member captured
+ * A family with no live member is scored on its family-level facts alone —
+ * it used to be scored as one imaginary member with every gap.
  */
 
 import type { HealthBand } from "@/lib/investors/health";
@@ -28,10 +35,13 @@ export type MemberForHealth = {
   id: string;
   name?: string | null;
   status?: string | null;
+  deletedAt?: Date | string | null;
+  mergedIntoId?: string | null;
   dob?: Date | string | null;
   isMinor?: boolean | null;
   kycStatus?: string | null;
   nomineeName?: string | null;
+  nominees?: unknown;
   riskProfile?: string | null;
   riskProfileSignedAt?: Date | string | null;
   aum?: string | number | null;
@@ -58,13 +68,60 @@ export type FamilyHealthBreakdown = {
 
 function toDate(v: Date | string | null | undefined): Date | null {
   if (!v) return null;
-  return v instanceof Date ? v : new Date(v);
+  const d = v instanceof Date ? v : new Date(v);
+  return isNaN(d.getTime()) ? null : d;
 }
 
 function daysSince(v: Date | string | null | undefined, now = new Date()): number | null {
   const d = toDate(v);
-  if (!d || isNaN(d.getTime())) return null;
+  if (!d) return null;
   return Math.floor((now.getTime() - d.getTime()) / 86_400_000);
+}
+
+/** A member we still serve: not deleted, not merged away, not closed. */
+export function isLiveMember(m: Pick<MemberForHealth, "status" | "deletedAt" | "mergedIntoId">): boolean {
+  return !m.deletedAt && !m.mergedIntoId && m.status !== "closed" && m.status !== "exited";
+}
+
+/** Age in whole years, or null without a usable date of birth. */
+export function memberAge(m: Pick<MemberForHealth, "dob">, now = new Date()): number | null {
+  const dob = toDate(m.dob ?? null);
+  if (!dob) return null;
+  return Math.floor((now.getTime() - dob.getTime()) / (365.25 * 86_400_000));
+}
+
+/** Has a nominee on file (the multi-nominee list or the legacy single field). */
+export function hasNominee(m: Pick<MemberForHealth, "nomineeName" | "nominees">): boolean {
+  if (m.nomineeName && m.nomineeName.trim() !== "") return true;
+  return Array.isArray(m.nominees) && m.nominees.some((n: any) => n && String(n.name ?? "").trim() !== "");
+}
+
+/**
+ * A next-generation PROSPECT: a minor, or an 18–30-year-old, who is not yet
+ * investing (no AUM). The one definition — the family page, the next-gen view
+ * and the engage action all use it.
+ */
+export function isNextGenProspect(m: MemberForHealth, now = new Date()): boolean {
+  if (Number(m.aum ?? 0) > 0) return false;
+  if (m.isMinor) return true;
+  const age = memberAge(m, now);
+  return age != null && age >= 18 && age <= 30;
+}
+
+/** The next generation is CAPTURED when a minor or someone under 35 is a member. */
+function isNextGenMember(m: MemberForHealth, now: Date): boolean {
+  if (m.isMinor) return true;
+  const age = memberAge(m, now);
+  return age != null && age < 35;
+}
+
+/** Overdue review: against the family's next-review date when set, else a year after the last. */
+export function familyReviewState(family: FamilyForHealth, now = new Date()): "never" | "overdue" | "ok" {
+  const next = toDate(family.nextReviewAt ?? null);
+  const last = toDate(family.lastReviewAt ?? null);
+  if (!last && !next) return "never";
+  if (next) return next.getTime() < now.getTime() ? (last ? "overdue" : "never") : "ok";
+  return (daysSince(last, now) ?? 0) > 365 ? "overdue" : "ok";
 }
 
 export function familyHealth(
@@ -75,14 +132,15 @@ export function familyHealth(
   const factors: FamilyHealthBreakdown["factors"] = [];
   let score = 100;
 
-  const active = members.filter((m) => m.status === "active" || m.status == null);
-  const total = Math.max(active.length, 1);
+  const live = members.filter(isLiveMember);
+  const total = live.length;
 
-  // 1. Primary set
-  if (!family.primaryInvestorId) {
+  // 1. Head of family — must be a live member, not just a stored id.
+  const headIsMember = !!family.primaryInvestorId && live.some((m) => m.id === family.primaryInvestorId);
+  if (!headIsMember) {
     factors.push({
       key: "primary",
-      label: "Primary client not set",
+      label: "Head of family not set",
       deduction: 15,
       why: "Without a head, decisions and routing get ambiguous",
     });
@@ -100,38 +158,36 @@ export function familyHealth(
     score -= 10;
   }
 
-  // 3. Review cadence — annual at family level by default
-  const reviewGap = daysSince(family.lastReviewAt, now);
-  if (reviewGap == null) {
+  // 3. Review cadence
+  const review = familyReviewState(family, now);
+  if (review === "never") {
     factors.push({
       key: "review",
-      label: "Never reviewed at family level",
+      label: "Never reviewed as a family",
       deduction: 12,
-      why: "Schedule the first annual family review",
+      why: "Schedule the first family review",
     });
     score -= 12;
-  } else if (reviewGap > 365) {
+  } else if (review === "overdue") {
     factors.push({
       key: "review",
-      label: `Family review ${Math.floor(reviewGap / 30)}mo overdue`,
+      label: "Family review overdue",
       deduction: 10,
-      why: "Best practice is an annual family-level review",
+      why: "The review the family's cadence calls for has passed",
     });
     score -= 10;
   }
 
-  // 4. Coverage metrics across active members
-  const withNominee = active.filter((m) => m.nomineeName && m.nomineeName.trim() !== "").length;
-  const withKyc = active.filter((m) => m.kycStatus === "verified").length;
-  const withRp = active.filter(
-    (m) => m.riskProfile && m.riskProfileSignedAt
-  ).length;
+  // 4. Coverage across live members (only when there are any)
+  const withNominee = live.filter(hasNominee).length;
+  const withKyc = live.filter((m) => m.kycStatus === "verified").length;
+  const withRp = live.filter((m) => m.riskProfile && m.riskProfileSignedAt).length;
 
   const nomineePct = total > 0 ? (withNominee / total) * 100 : 0;
   const kycPct = total > 0 ? (withKyc / total) * 100 : 0;
   const riskProfilePct = total > 0 ? (withRp / total) * 100 : 0;
 
-  if (nomineePct < 100) {
+  if (total > 0 && nomineePct < 100) {
     const gap = total - withNominee;
     const ded = nomineePct < 50 ? 15 : nomineePct < 80 ? 10 : 5;
     factors.push({
@@ -143,7 +199,7 @@ export function familyHealth(
     score -= ded;
   }
 
-  if (kycPct < 100) {
+  if (total > 0 && kycPct < 100) {
     const gap = total - withKyc;
     const ded = kycPct < 50 ? 10 : 5;
     factors.push({
@@ -155,7 +211,7 @@ export function familyHealth(
     score -= ded;
   }
 
-  if (riskProfilePct < 100) {
+  if (total > 0 && riskProfilePct < 100) {
     const gap = total - withRp;
     const ded = riskProfilePct < 50 ? 8 : 5;
     factors.push({
@@ -168,14 +224,7 @@ export function familyHealth(
   }
 
   // 5. Next-gen capture
-  const hasNextGen = active.some((m) => {
-    if (m.isMinor) return true;
-    if (!m.dob) return false;
-    const dob = toDate(m.dob);
-    if (!dob) return false;
-    const age = (now.getTime() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
-    return age < 35;
-  });
+  const hasNextGen = live.some((m) => isNextGenMember(m, now));
   if (!hasNextGen && total >= 2) {
     factors.push({
       key: "next_gen",
@@ -224,8 +273,10 @@ export function familyHealthFields(
 }
 
 /**
- * Lightweight "what's missing" generator for the punch-list panel.
- * Returns an ordered checklist of items the RM/ops should fix.
+ * The household's gaps, as one ordered checklist — the ONLY place the family
+ * page lists them (nominee coverage used to appear five times, with two
+ * different percentages). Each item says what to do and, where there is one,
+ * links to the place to do it.
  */
 export type MissingItem = {
   key: string;
@@ -237,56 +288,43 @@ export type MissingItem = {
 export function familyMissingChecklist(
   familyId: string,
   family: FamilyForHealth,
-  members: MemberForHealth[]
+  members: MemberForHealth[],
+  now = new Date()
 ): MissingItem[] {
   const items: MissingItem[] = [];
+  const live = members.filter(isLiveMember);
 
-  if (!family.primaryInvestorId) {
+  if (!family.primaryInvestorId || !live.some((m) => m.id === family.primaryInvestorId)) {
     items.push({
       key: "primary",
-      label: "Set the primary / head client",
+      label: "Set the head of family",
       severity: "high",
+      action: live.length ? { href: "#family-details", label: "Set" } : undefined,
     });
   }
   if (!family.rmId) {
-    items.push({
-      key: "rm",
-      label: "Assign a family RM",
-      severity: "high",
-    });
+    items.push({ key: "rm", label: "Assign a family RM", severity: "high", action: { href: "#family-details", label: "Assign" } });
   }
-  if (!family.lastReviewAt) {
+  const review = familyReviewState(family, now);
+  if (review !== "ok") {
     items.push({
-      key: "first_review",
-      label: "Schedule the first family review",
+      key: "review",
+      label: review === "never" ? "Schedule the first family review" : "Family review is overdue",
       severity: "medium",
+      action: { href: `/dashboard/review-meetings/new?familyId=${familyId}&meetingType=family_review`, label: "Schedule" },
     });
   }
 
-  for (const m of members) {
-    if (!m.nomineeName || m.nomineeName.trim() === "") {
-      items.push({
-        key: `nominee-${m.id}`,
-        label: `Capture nominee for ${m.name ?? "member"}`,
-        severity: "high",
-        action: { href: `/dashboard/investors/${m.id}`, label: "Open" },
-      });
+  for (const m of live) {
+    const who = m.name ?? "member";
+    if (!hasNominee(m)) {
+      items.push({ key: `nominee-${m.id}`, label: `Add a nominee for ${who}`, severity: "high", action: { href: `/dashboard/investors/${m.id}#rel-nominees`, label: "Open" } });
     }
-    if (m.kycStatus && m.kycStatus !== "verified") {
-      items.push({
-        key: `kyc-${m.id}`,
-        label: `KYC ${m.kycStatus} for ${m.name ?? "member"}`,
-        severity: "high",
-        action: { href: `/dashboard/investors/${m.id}`, label: "Open" },
-      });
+    if (m.kycStatus !== "verified") {
+      items.push({ key: `kyc-${m.id}`, label: `KYC ${m.kycStatus ? m.kycStatus.replace(/_/g, " ") : "not recorded"} for ${who}`, severity: "high", action: { href: `/dashboard/investors/${m.id}`, label: "Open" } });
     }
     if (!m.riskProfile || !m.riskProfileSignedAt) {
-      items.push({
-        key: `rp-${m.id}`,
-        label: `Risk profile missing for ${m.name ?? "member"}`,
-        severity: "medium",
-        action: { href: `/dashboard/investors/${m.id}`, label: "Open" },
-      });
+      items.push({ key: `rp-${m.id}`, label: `Risk profile missing for ${who}`, severity: "medium", action: { href: `/dashboard/risk-profiles/new?investorId=${m.id}`, label: "Start" } });
     }
   }
 

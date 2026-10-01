@@ -75,6 +75,7 @@ export function ScheduleMeetingForm({
   families,
   preselectedInvestorId,
   preselectedLeadId,
+  preselectedFamilyId,
   preselectedCategory,
   onSuccess,
   defaultSubject,
@@ -84,6 +85,9 @@ export function ScheduleMeetingForm({
   families: FamilyOpt[];
   preselectedInvestorId?: string;
   preselectedLeadId?: string;
+  /** Opens on the Family tab with this family picked (the family page's
+   *  "Schedule family review"). */
+  preselectedFamilyId?: string;
   /** When provided (e.g. in a modal), called on save instead of navigating to
    *  the review-meetings list — lets the host close the modal & refresh. The
    *  saved meeting's key details are passed back for a confirmation / invite. */
@@ -94,12 +98,14 @@ export function ScheduleMeetingForm({
   preselectedCategory?: string;
 }) {
   const router = useRouter();
-  const [subjectKind, setSubjectKind] = useState<Kind>(preselectedLeadId ? "lead" : "client");
+  const [subjectKind, setSubjectKind] = useState<Kind>(
+    preselectedLeadId ? "lead" : preselectedFamilyId && !preselectedInvestorId ? "family" : "client"
+  );
   const def = defaultDateTimeParts();
   const [form, setForm] = useState({
     investorId: preselectedInvestorId ?? "",
     leadId: preselectedLeadId ?? "",
-    familyId: "",
+    familyId: preselectedFamilyId ?? "",
     subject: defaultSubject ?? "",
     category: (["new", "review", "follow_up"].includes(preselectedCategory ?? "") ? preselectedCategory! : "review"),
     meetingDay: def.day,
@@ -188,7 +194,7 @@ export function ScheduleMeetingForm({
   const canSave =
     !!form.meetingDay && !!form.meetingTime &&
     (subjectKind === "client" ? !!form.investorId : subjectKind === "lead" ? !!form.leadId : !!form.familyId);
-  const subjectLocked = !!(preselectedInvestorId || preselectedLeadId);
+  const subjectLocked = !!(preselectedInvestorId || preselectedLeadId || preselectedFamilyId);
 
   const TABS: Array<{ k: Kind; label: string; Icon: any }> = [
     { k: "client", label: "Client", Icon: Users },

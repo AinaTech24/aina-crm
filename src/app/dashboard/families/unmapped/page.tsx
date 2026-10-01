@@ -21,7 +21,10 @@ import { requireAny } from "@/lib/auth/rbac";
 import { investors, users } from "@/db/schema";
 import { formatINR } from "@/lib/utils";
 import { buildInvestorWhere } from "@/lib/investors/list-filters";
-import { investorScopeCondition } from "@/lib/investors/access";
+import { investorScopeCondition, investorScopeSql } from "@/lib/investors/access";
+import { aliveClient } from "@/lib/metrics/scope";
+import { buttonClass } from "@/components/ui/button-class";
+import { InlineEmpty } from "@/components/common/EmptyState";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { Pager } from "@/components/common/Pager";
 import { MapClientActions } from "@/components/families/MapClientActions";
@@ -51,7 +54,9 @@ export default async function UnmappedClientsPage({
       const scope = await investorScopeCondition(tx, session);
       // `unmapped` is a quick-filter on the shared builder, so this page can't
       // drift from how Clients filters and searches.
-      const filters = buildInvestorWhere({ ...sp, unmapped: "1" }, session.userId);
+      // Live clients only (alive=1): a closed or merged-away record is not
+      // waiting to be mapped.
+      const filters = buildInvestorWhere({ ...sp, unmapped: "1", alive: "1" }, session.userId);
       const where = scope ? and(filters, scope) : filters;
 
       const r = await tx
@@ -77,11 +82,14 @@ export default async function UnmappedClientsPage({
         .where(where);
 
       // How many ARE mapped — the coverage number that makes the queue mean
-      // something rather than being a bare list.
+      // something. Same base as the queue: live clients this person can see
+      // (it used to count the whole firm, closed accounts included, against a
+      // queue scoped to the viewer).
+      const mineScope = await investorScopeSql(tx, session, "i");
       const m = await tx.execute(sql`
-        SELECT COUNT(*)::int AS c FROM investors
-         WHERE tenant_id = ${session.tenantId}::uuid
-           AND deleted_at IS NULL AND family_id IS NOT NULL
+        SELECT COUNT(*)::int AS c FROM investors i
+         WHERE i.tenant_id = ${session.tenantId}::uuid
+           AND ${aliveClient("i")} AND i.family_id IS NOT NULL AND ${mineScope}
       `);
 
       return {
@@ -100,15 +108,21 @@ export default async function UnmappedClientsPage({
 
   return (
     <div className="space-y-4">
-      <PageHeaderCard title={<>Unmapped clients</>} subtitle={<>Clients not linked to any household yet. Map them to see combined AUM, run
-            household reviews and spot next-generation prospects.</>} actions={<><Link href="/dashboard/families" className="btn-secondary text-sm shrink-0">
-          <HeartHandshake className="size-4" /> Family mapping
-        </Link></>} />
+      <PageHeaderCard
+        breadcrumb={[{ label: "Families", href: "/dashboard/families" }, { label: "Unmapped clients" }]}
+        title={<>Unmapped clients</>}
+        subtitle={<>Live clients not linked to any household yet. Map them to see combined AUM, run household reviews and spot next-generation prospects.</>}
+        actions={
+          <Link href="/dashboard/families" className={buttonClass("secondary", "md", "shrink-0")}>
+            <HeartHandshake className="size-4" /> Family mapping
+          </Link>
+        }
+      />
 
       <div className="grid grid-cols-3 gap-3">
-        <Kpi label="Unmapped" value={total.toLocaleString("en-IN")} tone="amber" />
-        <Kpi label="Mapped into households" value={mappedCount.toLocaleString("en-IN")} tone="emerald" />
-        <Kpi label="Coverage" value={`${coverage}%`} tone={coverage >= 60 ? "emerald" : "amber"} />
+        <Kpi label="Unmapped" value={total.toLocaleString("en-IN")} />
+        <Kpi label="Mapped into households" value={mappedCount.toLocaleString("en-IN")} />
+        <Kpi label="Coverage" value={`${coverage}%`} />
       </div>
 
       <CompactFilterBar
@@ -130,15 +144,10 @@ export default async function UnmappedClientsPage({
 
       <div className="border rounded-lg bg-card overflow-hidden">
         {rows.length === 0 ? (
-          <div className="p-12 text-center text-sm text-muted-foreground">
-            <Users2 className="size-8 mx-auto text-muted-foreground/50" />
-            <div className="mt-2 font-medium text-foreground">
-              {sp.q ? "No unmapped client matches that search." : "Every client is mapped to a household."}
-            </div>
-            {!sp.q && (
-              <p className="mt-1 text-xs">Nothing to do here — that is the goal.</p>
-            )}
-          </div>
+          <InlineEmpty
+            icon={Users2}
+            message={sp.q ? "No unmapped client matches that search." : "Every client is mapped to a household."}
+          />
         ) : (
           <div className="table-scroll">
             <table className="w-full text-sm">
@@ -182,17 +191,13 @@ export default async function UnmappedClientsPage({
   );
 }
 
-function Kpi({ label, value, tone }: { label: string; value: string; tone: "amber" | "emerald" }) {
+// Neutral: a count of unmapped clients is work to do, not a warning, and
+// coverage is not "good" at an arbitrary 60%.
+function Kpi({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border rounded-lg bg-card p-4">
-      <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">{label}</div>
-      <div
-        className={`mt-1 text-2xl font-bold tabular-nums ${
-          tone === "emerald" ? "text-emerald-600" : "text-amber-600"
-        }`}
-      >
-        {value}
-      </div>
+    <div className="card-surface p-4">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
     </div>
   );
 }

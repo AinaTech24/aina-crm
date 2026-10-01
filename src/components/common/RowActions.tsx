@@ -17,6 +17,7 @@
  * Variants:
  *   - `permanent`: if true, says "Permanently delete" (for hard delete paths)
  *   - `verb`: override "Delete" label (e.g. "Archive", "Deactivate")
+ *   - `menuItem`: one labelled row ("Delete client") for a record's More menu
  */
 
 import { useState } from "react";
@@ -25,6 +26,7 @@ import Link from "next/link";
 import { MoreHorizontal, Pencil, Trash2, Loader2, type LucideIcon } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
+import { MENU_ITEM_DANGER } from "@/components/ui/menu-item-class";
 
 export function RowActions({
   editHref,
@@ -36,6 +38,7 @@ export function RowActions({
   onDeleted,
   redirectTo,
   inline = false,
+  menuItem = false,
   deleteIcon: DeleteIcon = Trash2,
   items,
 }: {
@@ -51,6 +54,8 @@ export function RowActions({
   redirectTo?: string;
   /** Render Edit + Delete as two side-by-side icon buttons instead of a "⋯" menu. */
   inline?: boolean;
+  /** Render the destructive action as one labelled row inside a record's More menu. */
+  menuItem?: boolean;
   /** Icon for the destructive action in inline mode (e.g. Archive, Ban). Defaults to Trash2. */
   deleteIcon?: LucideIcon;
   /** Extra navigation entries shown at the top of the ⋯ menu (menu mode only). */
@@ -89,6 +94,31 @@ export function RowActions({
     } finally {
       setBusy(false);
     }
+  }
+
+  // Menu-row variant — "Delete client" as the last row of a record's More
+  // menu. Same confirm and toasts; the label says what is being deleted, which
+  // a bare red bin at the bottom of a menu did not.
+  if (menuItem) {
+    if (!deleteUrl) return null;
+    return (
+      <>
+        <button type="button" onClick={() => setConfirmOpen(true)} disabled={busy} className={MENU_ITEM_DANGER}>
+          {busy ? <Loader2 className="size-4 shrink-0 animate-spin" /> : <DeleteIcon className="size-4 shrink-0" />}
+          {verb} {itemLabel}
+        </button>
+        <ConfirmDialog
+          open={confirmOpen}
+          title={`${verb} ${itemLabel}?`}
+          message={confirmMessage}
+          confirmLabel={verb}
+          tone="danger"
+          busy={busy}
+          onConfirm={doDelete}
+          onCancel={() => setConfirmOpen(false)}
+        />
+      </>
+    );
   }
 
   // Inline variant — two explicit icon buttons (no dropdown). The ConfirmDialog

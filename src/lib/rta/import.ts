@@ -691,7 +691,7 @@ export async function importRtaFolios(
       const gids = part.map(([gid]) => gid);
       const fids = part.map(([, fid]) => fid);
       await tx.execute(sql`
-        UPDATE investors g SET family_id = v.fid::uuid, family_role = coalesce(g.family_role, 'head'), updated_at = now()
+        UPDATE investors g SET family_id = v.fid::uuid, family_role = 'self', updated_at = now()
         FROM (SELECT unnest(${pgArray(gids, "uuid")}) AS gid, unnest(${pgArray(fids, "uuid")}) AS fid) v
         WHERE g.id = v.gid AND g.tenant_id = ${tenantId}::uuid AND g.family_id IS NULL
       `);
@@ -711,6 +711,8 @@ export async function importRtaFolios(
         UPDATE investors m SET family_id = v.fid::uuid, family_role = coalesce(m.family_role, 'minor'), updated_at = now()
         FROM (SELECT unnest(${pgArray(mids, "uuid")}) AS mid, unnest(${pgArray(fids, "uuid")}) AS fid) v
         WHERE m.id = v.mid AND m.tenant_id = ${tenantId}::uuid
+          -- never pull a minor out of a family an RM already put them in
+          AND (m.family_id IS NULL OR m.family_id = v.fid::uuid)
       `);
     }
   }

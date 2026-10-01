@@ -1,7 +1,7 @@
 /**
  * Family wealth-band tiering (Sanchay "Family Category" parity).
  *
- * Classifies a family by its combined active-member AUM into the standard
+ * Classifies a family by its combined live-member AUM into the standard
  * Indian wealth tiers. Used for the counted status chips + band badge on the
  * Families list. Pure thresholds — no stored column, computed from member AUM.
  */
@@ -32,7 +32,7 @@ export function bandCaseSql(aumExpr: string): string {
     WHEN ${aumExpr} >= ${WEALTH_BAND_META.super_hni.min} THEN 'super_hni'
     WHEN ${aumExpr} >= ${WEALTH_BAND_META.hni.min} THEN 'hni'
     WHEN ${aumExpr} >= ${WEALTH_BAND_META.upper_middle.min} THEN 'upper_middle'
-    WHEN ${aumExpr} > 0 THEN 'middle'
+    WHEN ${aumExpr} >= ${WEALTH_BAND_META.middle.min} THEN 'middle'
     ELSE 'empty' END`;
 }
 

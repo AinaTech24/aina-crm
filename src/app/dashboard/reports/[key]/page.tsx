@@ -227,7 +227,7 @@ const REPORTS: Record<
         COALESCE(SUM(i.active_sip_amount::numeric), 0)::numeric AS sip,
         (SELECT name FROM investors WHERE id = f.primary_investor_id) AS primary
       FROM families f
-      LEFT JOIN investors i ON i.family_id = f.id AND i.status = 'active' AND i.deleted_at IS NULL
+      LEFT JOIN investors i ON i.family_id = f.id AND i.deleted_at IS NULL AND i.merged_into_id IS NULL AND i.status NOT IN ('closed', 'exited')
       GROUP BY f.id ORDER BY aum DESC NULLS LAST LIMIT 200
     `,
   },
@@ -246,7 +246,7 @@ const REPORTS: Record<
         COALESCE(SUM(i.active_sip_amount::numeric), 0)::numeric AS monthly_sip,
         COALESCE(SUM(i.active_sip_amount::numeric) * 12, 0)::numeric AS yearly_run_rate
       FROM families f
-      LEFT JOIN investors i ON i.family_id = f.id AND i.status = 'active' AND i.deleted_at IS NULL
+      LEFT JOIN investors i ON i.family_id = f.id AND i.deleted_at IS NULL AND i.merged_into_id IS NULL AND i.status NOT IN ('closed', 'exited')
       GROUP BY f.id
       HAVING SUM(i.active_sip_amount::numeric) > 0
       ORDER BY monthly_sip DESC LIMIT 200
@@ -268,7 +268,7 @@ const REPORTS: Record<
         u.name AS rm_name, i.onboarded_at
       FROM investors i
       LEFT JOIN users u ON u.id = i.rm_id
-      WHERE i.status = 'active' AND i.deleted_at IS NULL AND i.family_id IS NULL
+      WHERE i.deleted_at IS NULL AND i.merged_into_id IS NULL AND i.status NOT IN ('closed', 'exited') AND i.family_id IS NULL
       ORDER BY i.aum::numeric DESC NULLS LAST LIMIT 500
     `,
   },
@@ -288,7 +288,7 @@ const REPORTS: Record<
         COALESCE(SUM(i.aum::numeric), 0)::numeric AS combined_aum,
         f.last_review_at, f.next_review_at
       FROM families f
-      LEFT JOIN investors i ON i.family_id = f.id AND i.status = 'active' AND i.deleted_at IS NULL
+      LEFT JOIN investors i ON i.family_id = f.id AND i.deleted_at IS NULL AND i.merged_into_id IS NULL AND i.status NOT IN ('closed', 'exited')
       WHERE f.next_review_at IS NOT NULL
         AND f.next_review_at <= now() + interval '30 days'
       GROUP BY f.id ORDER BY f.next_review_at ASC LIMIT 200

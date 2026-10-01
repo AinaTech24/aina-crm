@@ -27,8 +27,9 @@
  */
 
 import { and, eq, isNull, ne, sql } from "drizzle-orm";
-import { investors } from "@/db/schema";
+import { families, investors } from "@/db/schema";
 import { computeNextReview } from "@/lib/investors/review-cadence";
+import { nextFamilyReview } from "@/lib/families/cadence";
 
 type Tx = any;
 
@@ -116,6 +117,35 @@ export async function propagateReviewToFamily(
   }
 
   return { familyId, updated: updated.length, members: updated };
+}
+
+/**
+ * Stamp a completed review on the FAMILY itself. Members were stamped, but the
+ * family row never was — so after a family review the family still read
+ * "Never reviewed", stayed in the "Review due" filter and lost health points
+ * until someone hand-edited the date. The next date follows the family's own
+ * cadence (an explicit date from the form wins); with no cadence it is left
+ * empty rather than invented.
+ */
+export async function stampFamilyReview(
+  tx: Tx,
+  opts: { tenantId: string; familyId: string; reviewedAt: Date; explicitNextReview?: string | null }
+): Promise<void> {
+  const [fam] = await tx
+    .select({ rf: families.reviewFrequency, first: families.firstMeetingDate })
+    .from(families)
+    .where(and(eq(families.id, opts.familyId), eq(families.tenantId, opts.tenantId)))
+    .limit(1);
+  if (!fam) return;
+  const next = opts.explicitNextReview
+    ? new Date(opts.explicitNextReview)
+    : nextFamilyReview({ frequency: fam.rf, firstMeeting: fam.first, lastReview: opts.reviewedAt, now: opts.reviewedAt });
+  await tx
+    .update(families)
+    // No cadence → no next date, rather than leave a stale one in the past
+    // that keeps the just-reviewed family "overdue".
+    .set({ lastReviewAt: opts.reviewedAt, nextReviewAt: next ?? null, updatedAt: new Date() } as any)
+    .where(and(eq(families.id, opts.familyId), eq(families.tenantId, opts.tenantId)));
 }
 
 /**

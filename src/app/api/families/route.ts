@@ -19,6 +19,9 @@ import { families, users } from "@/db/schema";
 import { familyHealthFields } from "@/lib/families/health";
 import { nextFamilyReview } from "@/lib/families/cadence";
 import { applyFamilyNamePattern, loadFamilySettings } from "@/lib/families/master";
+import { loadViewableInvestor } from "@/lib/investors/access";
+import { familyScopeSql, requireFamilyView } from "@/lib/families/access";
+import { LIVE_MEMBER_JOIN } from "@/lib/families/live";
 import { WEALTH_BANDS, bandBounds, type WealthBand } from "@/lib/families/wealth-band";
 
 const PAGE_SIZE = 50;
@@ -41,9 +44,8 @@ export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
     // Households carry client PII (member names, PAN via search, AUM rollup).
-    // Require an investor-view capability and scope non-managers to their own.
-    requireAny(session.roles, ["family.view", "investor.view.all", "investor.view.assigned"], session.permissions);
-    const canViewAll = can(session.roles, "investor.view.all", session.permissions);
+    // The same visibility rule as the Families page (lib/families/access).
+    requireFamilyView(session);
 
     const url = req.nextUrl;
     const g = (k: string) => url.searchParams.get(k) ?? "";
@@ -51,6 +53,9 @@ export async function GET(req: NextRequest) {
     const band = (WEALTH_BANDS as readonly string[]).includes(g("band")) ? (g("band") as WealthBand) : "";
     const sortKey = g("sort") === "health" ? "health" : "aum";
     const page = Math.max(1, parseInt(g("page") || "1", 10) || 1);
+    // Callers ask for a page size (the "add to a family" picker wants 20); it
+    // used to be ignored.
+    const limit = Math.min(PAGE_SIZE, Math.max(1, parseInt(g("limit") || String(PAGE_SIZE), 10) || PAGE_SIZE));
     const qf = {
       mine: g("mine") === "1",
       no_primary: g("no_primary") === "1",
@@ -68,14 +73,15 @@ export async function GET(req: NextRequest) {
     const data = await withTenant(
       session.tenantId,
       async (tx) => {
-        const where: any[] = [];
-        if (!canViewAll) where.push(sql`f.rm_id = ${userId}::uuid`);
+        const scopeSql = await familyScopeSql(tx, session, "f");
+        const where: any[] = [scopeSql];
         if (q) {
           where.push(sql`(
             f.head_name ILIKE ${`%${q}%`}
             OR f.family_name ILIKE ${`%${q}%`}
+            OR f.family_code ILIKE ${`%${q}%`}
             OR EXISTS (
-              SELECT 1 FROM investors mi WHERE mi.family_id = f.id AND mi.deleted_at IS NULL
+              SELECT 1 FROM investors mi WHERE mi.family_id = f.id AND mi.deleted_at IS NULL AND mi.merged_into_id IS NULL
                 AND (mi.name ILIKE ${`%${q}%`} OR mi.pan ILIKE ${`%${q.toUpperCase()}%`})
             )
           )`);
@@ -87,14 +93,14 @@ export async function GET(req: NextRequest) {
         if (qf.red_health) where.push(sql`f.health_band = 'red'`);
 
         const having: any[] = [];
-        if (qf.nominee_gap) having.push(sql`BOOL_OR(i.status = 'active' AND (i.nominee_name IS NULL OR i.nominee_name = '')) = true`);
+        if (qf.nominee_gap) having.push(sql`BOOL_OR(i.id IS NOT NULL AND (i.nominee_name IS NULL OR i.nominee_name = '')) = true`);
         if (qf.has_minor) having.push(sql`BOOL_OR(i.is_minor = true) = true`);
         if (qf.hni) having.push(sql`BOOL_OR(i.segment_tag = 'HNI') = true`);
-        if (qf.single) having.push(sql`COUNT(i.id) FILTER (WHERE i.status = 'active') = 1`);
-        if (qf.large) having.push(sql`COUNT(i.id) FILTER (WHERE i.status = 'active') >= 5`);
+        if (qf.single) having.push(sql`COUNT(i.id) = 1`);
+        if (qf.large) having.push(sql`COUNT(i.id) >= 5`);
         if (band) {
           const b = bandBounds(band);
-          const aumExpr = sql.raw(`COALESCE(SUM(i.aum::numeric) FILTER (WHERE i.status = 'active'), 0)`);
+          const aumExpr = sql.raw(`COALESCE(SUM(i.aum::numeric), 0)`);
           having.push(b.max == null ? sql`${aumExpr} >= ${b.min}` : sql`${aumExpr} >= ${b.min} AND ${aumExpr} < ${b.max}`);
         }
 
@@ -111,43 +117,43 @@ export async function GET(req: NextRequest) {
             f.last_review_at, f.next_review_at, f.health_score, f.health_band,
             f.created_at, f.updated_at,
             u.name AS rm_name,
-            COUNT(i.id) FILTER (WHERE i.status = 'active')::int AS member_count,
-            COUNT(i.id) FILTER (WHERE i.status = 'active' AND (i.nominee_name IS NULL OR i.nominee_name = ''))::int AS nominee_gap_count,
-            COUNT(i.id) FILTER (WHERE i.status = 'active' AND i.kyc_status = 'verified')::int AS kyc_verified_count,
-            COALESCE(SUM(i.aum::numeric) FILTER (WHERE i.status = 'active'), 0)::numeric AS family_aum,
-            COALESCE(SUM(i.active_sip_amount::numeric) FILTER (WHERE i.status = 'active'), 0)::numeric AS family_sip,
+            COUNT(i.id)::int AS member_count,
+            COUNT(i.id) FILTER (WHERE (i.nominee_name IS NULL OR i.nominee_name = ''))::int AS nominee_gap_count,
+            COUNT(i.id) FILTER (WHERE i.kyc_status = 'verified')::int AS kyc_verified_count,
+            COALESCE(SUM(i.aum::numeric), 0)::numeric AS family_aum,
+            COALESCE(SUM(i.active_sip_amount::numeric), 0)::numeric AS family_sip,
             BOOL_OR(i.segment_tag = 'HNI') AS has_hni
           FROM families f
-          LEFT JOIN investors i ON i.family_id = f.id AND i.deleted_at IS NULL
+          LEFT JOIN investors i ON ${LIVE_MEMBER_JOIN}
           LEFT JOIN users u ON u.id = f.rm_id
           ${whereSql}
           GROUP BY f.id, u.name
           ${havingSql}
           ORDER BY ${orderSql}
-          LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}
+          LIMIT ${limit} OFFSET ${(page - 1) * limit}
         `);
 
         const countRes = await tx.execute(sql`
           SELECT COUNT(*)::int AS c FROM (
             SELECT f.id FROM families f
-            LEFT JOIN investors i ON i.family_id = f.id AND i.deleted_at IS NULL
+            LEFT JOIN investors i ON ${LIVE_MEMBER_JOIN}
             ${whereSql} GROUP BY f.id ${havingSql}
           ) sub
         `);
 
         // KPI + quick-filter + wealth-band counts, all in one grouped roll-up
         // (scoped to the owner slice for non-managers).
-        const scope = canViewAll ? sql`` : sql`AND f.rm_id = ${userId}::uuid`;
+        const scope = sql`AND ${scopeSql}`;
         const statsRes = await tx.execute(sql`
           WITH fam AS (
             SELECT f.id, f.primary_investor_id, f.rm_id, f.next_review_at, f.health_band,
-              COUNT(i.id) FILTER (WHERE i.status = 'active') AS active_members,
-              COUNT(i.id) FILTER (WHERE i.status = 'active' AND (i.nominee_name IS NULL OR i.nominee_name = '')) AS nominee_gap,
-              COALESCE(SUM(i.aum::numeric) FILTER (WHERE i.status = 'active'), 0) AS family_aum,
-              COALESCE(SUM(i.active_sip_amount::numeric) FILTER (WHERE i.status = 'active'), 0) AS family_sip,
+              COUNT(i.id) AS active_members,
+              COUNT(i.id) FILTER (WHERE (i.nominee_name IS NULL OR i.nominee_name = '')) AS nominee_gap,
+              COALESCE(SUM(i.aum::numeric), 0) AS family_aum,
+              COALESCE(SUM(i.active_sip_amount::numeric), 0) AS family_sip,
               BOOL_OR(i.segment_tag = 'HNI') AS has_hni,
               BOOL_OR(i.is_minor = true) AS has_minor
-            FROM families f LEFT JOIN investors i ON i.family_id = f.id AND i.deleted_at IS NULL
+            FROM families f LEFT JOIN investors i ON ${LIVE_MEMBER_JOIN}
             WHERE f.tenant_id = ${session.tenantId}::uuid ${scope}
             GROUP BY f.id
           )
@@ -170,7 +176,7 @@ export async function GET(req: NextRequest) {
             COUNT(*) FILTER (WHERE family_aum >= 10000000 AND family_aum < 50000000)::int AS band_hni,
             COUNT(*) FILTER (WHERE family_aum >= 2500000 AND family_aum < 10000000)::int AS band_upper_middle,
             COUNT(*) FILTER (WHERE family_aum >= 1 AND family_aum < 2500000)::int AS band_middle,
-            COUNT(*) FILTER (WHERE family_aum = 0)::int AS band_empty
+            COUNT(*) FILTER (WHERE family_aum < 1)::int AS band_empty
           FROM fam
         `);
         const s = (statsRes.rows[0] ?? {}) as any;
@@ -190,7 +196,7 @@ export async function GET(req: NextRequest) {
       { userId: session.userId, branchId: session.branchId, roles: session.roles }
     );
 
-    return NextResponse.json({ families: data.families, total: data.total, page, limit: PAGE_SIZE, stats: data.stats, bands: data.bands });
+    return NextResponse.json({ families: data.families, total: data.total, page, limit, stats: data.stats, bands: data.bands });
   } catch (err: any) {
     return handleApiError(err);
   }
@@ -225,8 +231,14 @@ export async function POST(req: NextRequest) {
       );
     }
     const reviewFrequency = parse.data.reviewFrequency ?? defaults.defaultReviewFrequency ?? null;
+    // The firm's pattern ("{head} Family") applies to a person's name only. A
+    // name that already reads as a household ("Adesh Manocha Family", "Sharma
+    // Trust", "… HUF") is used as given — the pattern used to turn it into
+    // "Adesh Manocha Family Family".
+    const looksLikeHousehold = /\b(family|families|group|trust|huf|household)\s*$/i.test(parse.data.headName.trim());
     const familyName =
-      parse.data.familyName ?? applyFamilyNamePattern(defaults.familyNamePattern, parse.data.headName);
+      parse.data.familyName ??
+      (looksLikeHousehold ? parse.data.headName.trim() : applyFamilyNamePattern(defaults.familyNamePattern, parse.data.headName));
 
     // Auto-derive the next household review from the cadence: the first
     // meeting's schedule, else one cadence from today.
@@ -254,9 +266,11 @@ export async function POST(req: NextRequest) {
           SELECT id, family_id FROM investors
            WHERE id = ${parse.data.primaryInvestorId}::uuid
              AND tenant_id = ${session.tenantId}::uuid
-             AND deleted_at IS NULL
+             AND deleted_at IS NULL AND merged_into_id IS NULL
         `)).rows[0] as any;
         if (!head) return "bad_head" as const;
+        // …and one this person can open.
+        if (!(await loadViewableInvestor(tx, session, parse.data.primaryInvestorId))) return "bad_head" as const;
         if (head.family_id) return "head_in_family" as const;
       }
       await tx.insert(families).values({
@@ -290,15 +304,22 @@ export async function POST(req: NextRequest) {
       // rollup and family health all read, so the household would have shown
       // "0 members" and zero AUM while naming someone as its head.
       if (parse.data.primaryInvestorId) {
-        await tx.execute(sql`
+        const linked = await tx.execute(sql`
           UPDATE investors
              SET family_id = ${id}::uuid,
-                 family_role = COALESCE(family_role, 'head'),
+                 family_role = 'self',
                  updated_at = now()
            WHERE id = ${parse.data.primaryInvestorId}::uuid
              AND tenant_id = ${session.tenantId}::uuid
              AND family_id IS NULL
+          RETURNING id
         `);
+        // Someone else put this client in a family between our check and now
+        // (two people pressing "New household" at once). Roll the whole create
+        // back rather than leave a family whose head belongs to another one.
+        if (!linked.rows.length) {
+          throw Object.assign(new Error("That client was just added to another household. Refresh and try again."), { status: 409 });
+        }
       }
 
       await recordAudit(tx, {

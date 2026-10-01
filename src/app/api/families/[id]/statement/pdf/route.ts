@@ -11,9 +11,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { requireAny, can } from "@/lib/auth/rbac";
 import { investors, families, tenants } from "@/db/schema";
 import { computeInvestorValuation, loadValuationRows } from "@/lib/finance/valuation";
+import { loadViewableFamily, requireFamilyView } from "@/lib/families/access";
+import { aliveClient } from "@/lib/metrics/scope";
 import { renderValuationStatementPdf } from "@/lib/finance/valuation-pdf";
 
 export const dynamic = "force-dynamic";
@@ -21,8 +22,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
-    requireAny(session.roles, ["family.view", "investor.view.all", "investor.view.assigned"], session.permissions);
-    const canViewAll = can(session.roles, "investor.view.all", session.permissions);
+    requireFamilyView(session);
     const { id } = await params;
     const download = req.nextUrl.searchParams.get("download") === "1";
 
@@ -33,13 +33,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         .where(and(eq(families.id, id), eq(families.tenantId, session.tenantId)))
         .limit(1);
       if (!fam) return null;
-      // Owner scope: a household's consolidated statement (every member's name +
-      // live valuation) is only pullable by a manager or the family's own RM.
-      if (!canViewAll && fam.rmId !== session.userId) return null;
+      // The same visibility rule as the family page (lib/families/access).
+      if (!(await loadViewableFamily(tx, session, id))) return null;
+      // Live members only — a deleted or merged-away record's holdings used to
+      // be added into the household statement.
       const members = await tx
         .select({ id: investors.id })
         .from(investors)
-        .where(and(eq(investors.familyId, id), eq(investors.tenantId, session.tenantId)));
+        .where(and(eq(investors.familyId, id), eq(investors.tenantId, session.tenantId), aliveClient("investors")));
 
       // Combine raw account rows before computing returns. This preserves each
       // member's folio identity and avoids averaging incompatible percentages.

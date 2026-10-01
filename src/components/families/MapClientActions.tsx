@@ -13,20 +13,9 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { Loader2, Plus, Search, Users, X } from "lucide-react";
+import { useRelationshipOptions } from "./useRelationshipOptions";
 
 type Family = { id: string; family_name: string | null; head_name: string | null; member_count?: number };
-
-const FALLBACK_RELATIONSHIPS: [string, string][] = [
-  ["spouse", "Spouse"],
-  ["son", "Son"],
-  ["daughter", "Daughter"],
-  ["father", "Father"],
-  ["mother", "Mother"],
-  ["sibling", "Sibling"],
-  ["huf_karta", "HUF Karta"],
-  ["huf_coparcener", "HUF Co-parcener"],
-  ["other", "Other"],
-];
 
 export function MapClientActions({
   investorId,
@@ -117,20 +106,8 @@ function LinkToFamilyDialog({
   const [loading, setLoading] = useState(false);
   const [picked, setPicked] = useState<Family | null>(null);
   const [role, setRole] = useState("spouse");
-  const [relationships, setRelationships] = useState<[string, string][]>(FALLBACK_RELATIONSHIPS);
-
-  // Firm-configured relationship master — same source as the family page.
-  useEffect(() => {
-    let dead = false;
-    fetch("/api/families/relationship-types")
-      .then((r) => r.json())
-      .then((j) => {
-        if (dead || !Array.isArray(j?.types) || !j.types.length) return;
-        setRelationships(j.types.map((t: any) => [t.key, t.label] as [string, string]));
-      })
-      .catch(() => {});
-    return () => { dead = true; };
-  }, []);
+  // The firm's relationship list (Settings → Family), shared with every picker.
+  const relationships = useRelationshipOptions();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 

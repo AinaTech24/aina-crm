@@ -210,7 +210,13 @@ function SubjectPicker({ value, onChange }: { value: Subject | null; onChange: (
 }
 
 /** Geo field-visit "Check In" — one tap captures location + timestamp. */
-export function CheckInButton({ subject }: { subject: Subject }) {
+export function CheckInButton({
+  subject, triggerClassName,
+}: {
+  subject: Subject;
+  /** Replaces the trigger's look — a record menu passes its row class. */
+  triggerClassName?: string;
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
@@ -236,8 +242,8 @@ export function CheckInButton({ subject }: { subject: Subject }) {
   }
 
   return (
-    <button onClick={checkIn} disabled={busy} className="btn-secondary text-xs inline-flex items-center gap-1" title="Log an in-person field visit with your location">
-      {busy ? <Loader2 className="size-3.5 animate-spin" /> : <MapPin className="size-3.5" />} {done ? "Checked in ✓" : "Check In"}
+    <button type="button" onClick={checkIn} disabled={busy} className={triggerClassName ?? "btn-secondary text-xs inline-flex items-center gap-1"} title="Log an in-person visit with your location">
+      {busy ? <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" /> : <MapPin className="size-4 shrink-0 text-muted-foreground" />} {done ? "Checked in" : "Check in (field visit)"}
     </button>
   );
 }

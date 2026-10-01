@@ -11,10 +11,13 @@ export const dynamic = "force-dynamic";
 export default async function NewReviewMeetingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ investorId?: string; leadId?: string; category?: string }>;
+  searchParams: Promise<{ investorId?: string; leadId?: string; familyId?: string; category?: string }>;
 }) {
   const sp = await searchParams;
   const session = await requireSession();
+  // ?familyId= — the family page's "Schedule family review". It used to be
+  // sent and never read, so the form opened on an empty Client picker.
+  const familyId = sp.familyId && /^[0-9a-f-]{36}$/i.test(sp.familyId) ? sp.familyId : null;
 
   // Load both subject lists in parallel — the form decides which to show
   // based on the Lead | Client toggle.
@@ -37,11 +40,11 @@ export default async function NewReviewMeetingPage({
       // Families that have a primary investor — a family meeting attaches to the
       // primary investor + the familyId (family_review path).
       tx.execute(sql`
-        SELECT f.id, f.family_name, f.primary_investor_id, i.name AS primary_name
+        SELECT f.id, COALESCE(f.family_name, f.head_name) AS family_name, f.primary_investor_id, i.name AS primary_name
         FROM families f
         JOIN investors i ON i.id = f.primary_investor_id
         WHERE f.tenant_id = ${session.tenantId}::uuid AND f.primary_investor_id IS NOT NULL
-        ORDER BY f.family_name
+        ORDER BY (f.id = ${familyId}::uuid) DESC NULLS LAST, f.family_name
         LIMIT 300
       `),
     ]);
@@ -70,6 +73,7 @@ export default async function NewReviewMeetingPage({
         families={families}
         preselectedInvestorId={sp.investorId}
         preselectedLeadId={sp.leadId}
+        preselectedFamilyId={familyId ?? undefined}
         preselectedCategory={sp.category}
       />
     </div>

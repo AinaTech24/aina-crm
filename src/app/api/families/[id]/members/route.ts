@@ -2,92 +2,196 @@ import { handleApiError } from "@/lib/api/error-handler";
 /**
  * Family membership management.
  *
- *   POST   /api/families/[id]/members  Body: { investorId, familyRole? } — attach an existing investor.
- *   DELETE /api/families/[id]/members?investorId=…                       — detach.
+ *   POST   /api/families/[id]/members  Body: { investorId, familyRole? }
+ *                                         or { investorIds: [...], familyRole? } — attach (several at once)
+ *   PATCH  /api/families/[id]/members  Body: { investorId, familyRole }         — change a member's relationship
+ *   DELETE /api/families/[id]/members?investorId=…                              — detach
  *
- * On attach: sets investors.family_id + family_role and emits an outbox event
- * so any downstream workflows (e.g. family-onboarding play) can react.
+ * Access (lib/families/access): the family must be visible to the caller and
+ * the caller must hold an edit capability; every client being linked must be
+ * one the caller can open (lib/investors/access). Both used to be unchecked —
+ * any editor could move any client in the firm into any household.
+ *
+ * Head of family stays consistent:
+ *   · linking someone as head (or into a family with no head) makes them the
+ *     family's head; there is only ever one member with the head role;
+ *   · moving a client OUT of a family they headed clears that family's head;
+ *   · detaching the head clears the head.
+ * On attach an outbox event lets downstream workflows react.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { investors, families, eventsOutbox } from "@/db/schema";
 import { recomputeFamilyHealth } from "@/lib/families/health-persist";
+import { assertFamilyEditable } from "@/lib/families/access";
+import { loadViewableInvestor } from "@/lib/investors/access";
+import { HEAD_ROLE, isHeadRole } from "@/lib/families/roles";
 
 export const dynamic = "force-dynamic";
 
-const AddBody = z.object({
-  investorId: z.string().uuid(),
-  familyRole: z.string().optional(), // 'spouse' | 'son' | 'daughter' | 'father' | ...
-});
+const Role = z.string().trim().min(1).max(40).regex(/^[a-z0-9_]+$/, "invalid relationship");
+
+const AddBody = z
+  .object({
+    investorId: z.string().uuid().optional(),
+    investorIds: z.array(z.string().uuid()).min(1).max(50).optional(),
+    familyRole: Role.optional(),
+  })
+  .refine((b) => b.investorId || b.investorIds?.length, { message: "investorId or investorIds required" });
+
+const PatchBody = z.object({ investorId: z.string().uuid(), familyRole: Role });
+
+/** Make `investorId` the head of `familyId`: the pointer, and the only head role. */
+async function makeHead(tx: any, familyId: string, investorId: string) {
+  await tx.update(families).set({ primaryInvestorId: investorId, updatedAt: new Date() } as any).where(eq(families.id, familyId));
+  // Anyone else carrying the head role becomes "other" — two heads is how the
+  // page used to badge one person "primary" and the map another "Head".
+  await tx
+    .update(investors)
+    .set({ familyRole: "other", updatedAt: new Date() } as any)
+    .where(and(eq(investors.familyId, familyId), ne(investors.id, investorId), inArray(investors.familyRole, ["self", "head", "primary"])));
+  await tx.update(investors).set({ familyRole: HEAD_ROLE, updatedAt: new Date() } as any).where(eq(investors.id, investorId));
+}
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: familyId } = await params;
   try {
     const session = await requireSession();
-    requireAny(session.roles, ["family.edit", "family.manage", "investor.edit.all", "investor.edit.assigned"], session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
 
     const parse = AddBody.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
+    const ids = Array.from(new Set([...(parse.data.investorIds ?? []), ...(parse.data.investorId ? [parse.data.investorId] : [])]));
+    const role = parse.data.familyRole ?? null;
+    if (role && isHeadRole(role) && ids.length > 1) {
+      return NextResponse.json({ error: "Only one person can be the head of the family." }, { status: 400 });
+    }
 
     const clientMeta = clientMetaFromHeaders(req.headers);
     const result = await withTenant(session.tenantId, async (tx) => {
-      // Confirm family exists (RLS already scopes to tenant)
+      await assertFamilyEditable(tx, session, familyId);
       const fam = (await tx.select().from(families).where(eq(families.id, familyId)).limit(1))[0];
       if (!fam) throw Object.assign(new Error("family not found"), { status: 404 });
 
-      // Confirm investor exists
-      const inv = (await tx.select().from(investors).where(eq(investors.id, parse.data.investorId)).limit(1))[0];
-      if (!inv) throw Object.assign(new Error("investor not found"), { status: 404 });
+      const linked: string[] = [];
+      const priorFamilies = new Set<string>();
+      for (const investorId of ids) {
+        // Only a client this person can open — and never a merged-away record.
+        const inv = await loadViewableInvestor(tx, session, investorId);
+        if (!inv) throw Object.assign(new Error("client not found"), { status: 404 });
+        if ((inv as any).mergedIntoId) throw Object.assign(new Error(`${inv.name} was merged into another record`), { status: 409 });
+        if (inv.familyId === familyId) continue;
 
-      const updated = await tx
-        .update(investors)
-        .set({
-          familyId,
-          familyRole: parse.data.familyRole ?? null,
-          updatedAt: new Date(),
-        } as any)
-        .where(eq(investors.id, parse.data.investorId))
-        .returning();
+        // Leaving a family they headed: that family loses its head, rather than
+        // keep pointing at someone who is no longer in it.
+        if (inv.familyId) {
+          priorFamilies.add(inv.familyId);
+          await tx
+            .update(families)
+            .set({ primaryInvestorId: null, updatedAt: new Date() } as any)
+            .where(and(eq(families.id, inv.familyId), eq(families.primaryInvestorId, investorId)));
+        }
 
-      await tx.insert(eventsOutbox).values({
-        tenantId: session.tenantId,
-        kind: "investor.family_linked",
-        entityType: "investor",
-        entityId: parse.data.investorId,
-        before: { familyId: inv.familyId } as any,
-        after: { familyId, familyRole: parse.data.familyRole } as any,
-        meta: { userId: session.userId } as any,
-      } as any);
+        await tx
+          .update(investors)
+          .set({ familyId, familyRole: role && isHeadRole(role) ? HEAD_ROLE : role, updatedAt: new Date() } as any)
+          .where(eq(investors.id, investorId));
 
+        await tx.insert(eventsOutbox).values({
+          tenantId: session.tenantId,
+          kind: "investor.family_linked",
+          entityType: "investor",
+          entityId: investorId,
+          before: { familyId: inv.familyId } as any,
+          after: { familyId, familyRole: role } as any,
+          meta: { userId: session.userId } as any,
+        } as any);
+        linked.push(investorId);
+      }
+
+      // Head: an explicit head link, or the first member of a family without one.
+      const headless = !fam.primaryInvestorId;
+      if (ids.length === 1 && role && isHeadRole(role)) await makeHead(tx, familyId, ids[0]);
+      else if (headless && linked.length) {
+        const live = await tx
+          .select({ id: investors.id })
+          .from(investors)
+          .where(and(eq(investors.familyId, familyId), isNull(investors.deletedAt), isNull(investors.mergedIntoId)));
+        if (live.length === linked.length) await makeHead(tx, familyId, linked[0]);
+      }
+
+      if (linked.length) {
+        await recordAudit(tx, {
+          tenantId: session.tenantId,
+          actorUserId: session.userId,
+          action: "family.member.add",
+          entityType: "family",
+          entityId: familyId,
+          after: { investorIds: linked, familyRole: role },
+          ...clientMeta,
+        });
+      }
+
+      await recomputeFamilyHealth(tx, familyId);
+      for (const prior of priorFamilies) if (prior !== familyId) await recomputeFamilyHealth(tx, prior);
+      return { linked: linked.length };
+    });
+    return NextResponse.json(result);
+  } catch (err: any) {
+    return handleApiError(err);
+  }
+}
+
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id: familyId } = await params;
+  try {
+    const session = await requireSession();
+    await assertActiveLicense(session.tenantId, session.roles);
+    const parse = PatchBody.safeParse(await req.json().catch(() => ({})));
+    if (!parse.success) return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
+    const { investorId, familyRole } = parse.data;
+    const clientMeta = clientMetaFromHeaders(req.headers);
+
+    const out = await withTenant(session.tenantId, async (tx) => {
+      await assertFamilyEditable(tx, session, familyId);
+      const fam = (await tx.select().from(families).where(eq(families.id, familyId)).limit(1))[0];
+      const [m] = await tx
+        .select({ id: investors.id, familyRole: investors.familyRole })
+        .from(investors)
+        .where(and(eq(investors.id, investorId), eq(investors.familyId, familyId)))
+        .limit(1);
+      if (!fam || !m) return null;
+
+      if (isHeadRole(familyRole)) {
+        await makeHead(tx, familyId, investorId);
+      } else {
+        await tx.update(investors).set({ familyRole, updatedAt: new Date() } as any).where(eq(investors.id, investorId));
+        // Demoting the head leaves the family without one, honestly.
+        if (fam.primaryInvestorId === investorId) {
+          await tx.update(families).set({ primaryInvestorId: null, updatedAt: new Date() } as any).where(eq(families.id, familyId));
+        }
+      }
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,
-        action: "family.member.add",
+        action: "family.member.role",
         entityType: "family",
         entityId: familyId,
-        before: { familyId: inv.familyId },
-        after: { investorId: parse.data.investorId, familyRole: parse.data.familyRole },
+        before: { investorId, familyRole: m.familyRole },
+        after: { investorId, familyRole },
         ...clientMeta,
       });
-
-      // Membership changed ⇒ re-score the family (and the prior family, if the
-      // investor was moved from one to another).
       await recomputeFamilyHealth(tx, familyId);
-      if (inv.familyId && inv.familyId !== familyId) {
-        await recomputeFamilyHealth(tx, inv.familyId);
-      }
-
-      return updated[0];
+      return { ok: true };
     });
-    return NextResponse.json(result);
+    if (!out) return NextResponse.json({ error: "member not found" }, { status: 404 });
+    return NextResponse.json(out);
   } catch (err: any) {
     return handleApiError(err);
   }
@@ -101,18 +205,25 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   try {
     const session = await requireSession();
-    requireAny(session.roles, ["family.edit", "family.manage", "investor.edit.all", "investor.edit.assigned"], session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
 
     const clientMeta = clientMetaFromHeaders(req.headers);
-    await withTenant(session.tenantId, async (tx) => {
-      await tx
+    const removed = await withTenant(session.tenantId, async (tx) => {
+      await assertFamilyEditable(tx, session, familyId);
+      const rows = await tx
         .update(investors)
         .set({ familyId: null, familyRole: null, updatedAt: new Date() } as any)
-        .where(and(eq(investors.id, investorId), eq(investors.familyId, familyId)));
+        .where(and(eq(investors.id, investorId), eq(investors.familyId, familyId)))
+        .returning({ id: investors.id });
+      // Nothing to remove — say so instead of logging an unlink that never happened.
+      if (!rows.length) return false;
 
-      // Emit the unlink event (attach emits investor.family_linked) so workflows
-      // can react to a member leaving a household.
+      // The head left: the family has no head until someone is chosen.
+      await tx.execute(sql`
+        UPDATE families SET primary_investor_id = NULL, updated_at = now()
+         WHERE id = ${familyId}::uuid AND primary_investor_id = ${investorId}::uuid
+      `);
+
       await tx.insert(eventsOutbox).values({
         tenantId: session.tenantId,
         kind: "investor.family_unlinked",
@@ -133,9 +244,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         ...clientMeta,
       });
 
-      // Membership shrank ⇒ re-score the family.
       await recomputeFamilyHealth(tx, familyId);
+      return true;
     });
+    if (!removed) return NextResponse.json({ error: "That client is not in this family." }, { status: 404 });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return handleApiError(err);

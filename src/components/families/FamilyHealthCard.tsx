@@ -1,17 +1,33 @@
 import Link from "next/link";
-import { Activity, CheckCircle2, ArrowRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import {
   familyHealth,
   familyMissingChecklist,
   type FamilyForHealth,
   type MemberForHealth,
 } from "@/lib/families/health";
-import { healthBandClasses } from "@/lib/investors/health";
+import { Badge, type BadgeTone } from "@/components/ui/Badge";
+import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { InfoTip } from "@/components/dashboards/my/Shared";
 
 /**
- * Family Health Card — composite score + breakdown + actionable
- * "what's missing" punch-list. Pure render component.
+ * Family health — the family page's ONE list of what is missing.
+ *
+ * The page used to say the same thing four times: four status tiles (head,
+ * RM, review, nominee), a "succession readiness" card, the health card's
+ * "why this score", and its checklist. This card keeps the score, the three
+ * coverage figures and one checklist; each row links to where it is fixed.
+ *
+ * Severity budget: red only for a gap with consequences (no nominee, KYC,
+ * no head); everything else is neutral. A family with nothing missing says
+ * so in one line, without painting it green.
  */
+const BAND: Record<string, { label: string; tone: BadgeTone }> = {
+  green: { label: "Healthy", tone: "success" },
+  amber: { label: "Watch", tone: "warning" },
+  red: { label: "At risk", tone: "danger" },
+};
+
 export function FamilyHealthCard({
   family,
   members,
@@ -23,177 +39,102 @@ export function FamilyHealthCard({
 }) {
   const health = familyHealth(family, members);
   const checklist = familyMissingChecklist(familyId, family, members);
-  const cls = healthBandClasses(health.band);
+  const band = BAND[health.band] ?? BAND.amber;
+  const shown = checklist.slice(0, 10);
 
   return (
-    <div className="border rounded-lg bg-card p-5">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="font-semibold flex items-center gap-2">
-          <Activity className="size-4 text-muted-foreground" />
-          Family health
-        </h2>
-        <span
-          className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-0.5 rounded-full border ${cls.chip} font-semibold`}
-        >
-          <span className={`size-2 rounded-full ${cls.dot}`} />
-          {cls.label}
-        </span>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        {/* Score gauge */}
-        <div className="flex items-center gap-4">
-          <div className="relative size-24 flex-shrink-0">
-            <svg className="size-full transform -rotate-90">
-              <circle
-                cx="48"
-                cy="48"
-                r="40"
-                className="stroke-slate-100 fill-none"
-                strokeWidth="8"
-              />
-              <circle
-                cx="48"
-                cy="48"
-                r="40"
-                className={`fill-none ${
-                  health.band === "green"
-                    ? "stroke-emerald-500"
-                    : health.band === "amber"
-                    ? "stroke-amber-500"
-                    : "stroke-rose-500"
-                }`}
-                strokeWidth="8"
-                strokeDasharray={`${2 * Math.PI * 40}`}
-                strokeDashoffset={`${2 * Math.PI * 40 * (1 - health.score / 100)}`}
-                strokeLinecap="round"
-              />
-            </svg>
-            <div className="absolute inset-0 grid place-items-center text-center">
-              <div>
-                <div className="text-2xl font-bold tabular-nums">{health.score}</div>
-                <div className="text-2xs uppercase tracking-wider text-muted-foreground">
-                  / 100
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="text-xs space-y-1">
-            <div className="font-semibold text-foreground/90">
-              {health.activeMemberCount} active member
-              {health.activeMemberCount === 1 ? "" : "s"}
-            </div>
-            <div className="text-muted-foreground">
-              {health.hasNextGen ? "Next-gen captured ✓" : "No next-gen captured"}
-            </div>
-          </div>
-        </div>
-
-        {/* Coverage bars */}
-        <div className="space-y-2.5">
-          <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
-            Coverage
-          </div>
-          <CoverageBar label="Nominee" pct={health.coverage.nomineePct} />
-          <CoverageBar label="KYC verified" pct={health.coverage.kycPct} />
-          <CoverageBar label="Risk profile" pct={health.coverage.riskProfilePct} />
-        </div>
-
-        {/* Why-this-score */}
-        <div>
-          <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground mb-2">
-            Why this score
-          </div>
-          {health.factors.length === 0 ? (
-            <div className="flex items-center gap-2 text-sm text-emerald-700">
-              <CheckCircle2 className="size-4" />
-              <span className="font-medium">All checks green.</span>
-            </div>
-          ) : (
-            <ul className="space-y-1 text-xs">
-              {health.factors.slice(0, 4).map((f) => (
-                <li
-                  key={f.key}
-                  className="flex items-start justify-between gap-2 py-0.5"
-                >
-                  <span className="font-medium truncate">{f.label}</span>
-                  <span className="text-rose-700 font-bold tabular-nums flex-shrink-0">
-                    −{f.deduction}
-                  </span>
-                </li>
-              ))}
-              {health.factors.length > 4 && (
-                <li className="text-2xs text-muted-foreground italic">
-                  + {health.factors.length - 4} more
-                </li>
+    <Card>
+      <CardHeader
+        title={
+          <span className="inline-flex items-center gap-1">
+            Family health
+            <InfoTip>
+              Starts at 100 and loses points for each gap across the family&apos;s live members: no head of family, no
+              RM, review overdue, nominee / KYC / risk-profile gaps, a single member, no next-generation investor.
+              {health.factors.length > 0 && (
+                <>
+                  {" "}This family: {health.factors.map((f) => `${f.label} (−${f.deduction})`).join(", ")}.
+                </>
               )}
-            </ul>
-          )}
-        </div>
-      </div>
+            </InfoTip>
+          </span>
+        }
+        action={
+          health.activeMemberCount > 0 ? (
+            <span className="inline-flex items-center gap-2">
+              <span className="text-lg font-semibold tabular-nums">{health.score}</span>
+              <Badge raw tone={band.tone}>{band.label}</Badge>
+            </span>
+          ) : null
+        }
+      />
+      <CardBody>
+        {health.activeMemberCount === 0 ? (
+          <p className="text-sm text-muted-foreground">Add a member to see the family&apos;s health.</p>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Coverage label="Nominee recorded" pct={health.coverage.nomineePct} />
+              <Coverage label="KYC verified" pct={health.coverage.kycPct} />
+              <Coverage label="Risk profile done" pct={health.coverage.riskProfilePct} />
+            </div>
 
-      {/* Missing-data punch-list */}
-      {checklist.length > 0 && (
-        <div className="mt-4 pt-4 border-t border-border/40">
-          <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground mb-2">
-            Fix-it checklist · {checklist.length} item{checklist.length === 1 ? "" : "s"}
-          </div>
-          <ul className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
-            {checklist.slice(0, 8).map((c) => (
-              <li
-                key={c.key}
-                className={`text-xs px-2.5 py-1.5 rounded-md border flex items-center justify-between gap-2 ${
-                  c.severity === "high"
-                    ? "bg-rose-50/40 border-rose-100 text-rose-800"
-                    : "bg-amber-50/40 border-amber-100 text-amber-800"
-                }`}
-              >
-                <span className="truncate">{c.label}</span>
-                {c.action && (
-                  <Link
-                    href={c.action.href}
-                    className="inline-flex items-center gap-0.5 font-semibold whitespace-nowrap hover:underline"
-                  >
-                    {c.action.label}
-                    <ArrowRight className="size-3" />
-                  </Link>
+            {checklist.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nothing missing — every check passes.</p>
+            ) : (
+              <div>
+                <div className="mb-2 text-xs font-medium text-muted-foreground">
+                  To fix · {checklist.length}
+                </div>
+                <ul className="divide-y rounded-lg border">
+                  {shown.map((c) => (
+                    <li key={c.key} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span
+                          aria-hidden
+                          className={`size-1.5 shrink-0 rounded-full ${c.severity === "high" ? "bg-destructive" : "bg-muted-foreground/40"}`}
+                        />
+                        <span className="truncate">{c.label}</span>
+                      </span>
+                      {c.action && (
+                        <Link
+                          href={c.action.href}
+                          className="inline-flex shrink-0 items-center gap-0.5 text-xs font-medium text-primary hover:underline"
+                        >
+                          {c.action.label}
+                          <ArrowRight className="size-3" />
+                        </Link>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                {checklist.length > shown.length && (
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    {checklist.length - shown.length} more — see each member&apos;s page.
+                  </p>
                 )}
-              </li>
-            ))}
-            {checklist.length > 8 && (
-              <li className="text-2xs text-muted-foreground italic px-2.5 py-1.5">
-                + {checklist.length - 8} more — scroll the member list to address.
-              </li>
+              </div>
             )}
-          </ul>
-        </div>
-      )}
-    </div>
+          </div>
+        )}
+      </CardBody>
+    </Card>
   );
 }
 
-function CoverageBar({ label, pct }: { label: string; pct: number }) {
-  const tone = pct >= 100 ? "emerald" : pct >= 60 ? "amber" : "rose";
-  const bg =
-    tone === "emerald"
-      ? "bg-emerald-500"
-      : tone === "amber"
-      ? "bg-amber-500"
-      : "bg-rose-500";
-  const text =
-    tone === "emerald"
-      ? "text-emerald-700"
-      : tone === "amber"
-      ? "text-amber-700"
-      : "text-rose-700";
+function Coverage({ label, pct: raw }: { label: string; pct: number }) {
+  const pct = Math.round(raw);
   return (
     <div>
-      <div className="flex items-center justify-between text-xs mb-1">
-        <span className="font-medium">{label}</span>
-        <span className={`tabular-nums font-bold ${text}`}>{pct.toFixed(0)}%</span>
+      <div className="flex items-baseline justify-between text-xs">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-semibold tabular-nums">{pct}%</span>
       </div>
-      <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
-        <div className={`h-full rounded-full ${bg}`} style={{ width: `${Math.min(100, pct)}%` }} />
+      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
+        <div
+          className={`h-full rounded-full ${pct >= 100 ? "bg-primary" : "bg-muted-foreground/50"}`}
+          style={{ width: `${Math.max(0, Math.min(100, pct))}%` }}
+        />
       </div>
     </div>
   );

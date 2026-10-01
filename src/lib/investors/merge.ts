@@ -211,7 +211,15 @@ export async function mergeInvestors(tx: Tx, input: MergeInput): Promise<MergeRe
   // Special columns the generic pass misses.
   await tx.execute(sql`UPDATE leads SET referred_by_investor_id = ${survivorId}::uuid WHERE referred_by_investor_id = ${loserId}::uuid${tf("leads")}`);
   await tx.execute(sql`UPDATE leads SET converted_investor_id = ${survivorId}::uuid WHERE converted_investor_id = ${loserId}::uuid${tf("leads")}`);
-  await tx.execute(sql`UPDATE families SET primary_investor_id = ${survivorId}::uuid WHERE primary_investor_id = ${loserId}::uuid${tf("families")}`);
+  // A family headed by the loser is headed by the survivor only if the
+  // survivor is IN that family; otherwise it has no head until someone picks
+  // one (it used to point at a person who belonged to another family).
+  await tx.execute(sql`
+    UPDATE families f
+       SET primary_investor_id = CASE
+             WHEN EXISTS (SELECT 1 FROM investors s WHERE s.id = ${survivorId}::uuid AND s.family_id = f.id)
+             THEN ${survivorId}::uuid ELSE NULL END
+     WHERE f.primary_investor_id = ${loserId}::uuid${tf("families")}`);
   await tx.execute(sql`UPDATE activities SET subject_id = ${survivorId}::uuid WHERE subject_type = 'investor' AND subject_id = ${loserId}::uuid${tf("activities")}`);
 
   // Snapshot the survivor's mergeable fields BEFORE anything writes to them.

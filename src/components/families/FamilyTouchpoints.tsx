@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CalendarHeart, Cake, Gift } from "lucide-react";
 import { formatDate } from "@/lib/format";
+import { roleLabel } from "@/lib/families/roles";
 
 /**
  * Family Touchpoints — birthdays + onboarding anniversaries across all
@@ -27,6 +28,7 @@ export function FamilyTouchpoints({
 
   type Event = {
     id: string;
+    investorId: string;
     kind: "birthday" | "anniversary";
     name: string;
     role: string | null;
@@ -55,6 +57,7 @@ export function FamilyTouchpoints({
               : 0);
           events.push({
             id: `${m.id}-bday`,
+            investorId: m.id,
             kind: "birthday",
             name,
             role: m.familyRole ?? null,
@@ -75,6 +78,7 @@ export function FamilyTouchpoints({
           if (years >= 1) {
             events.push({
               id: `${m.id}-anniv`,
+              investorId: m.id,
               kind: "anniversary",
               name,
               role: m.familyRole ?? null,
@@ -124,7 +128,7 @@ export function FamilyTouchpoints({
                 className="py-2 flex items-center justify-between text-sm"
               >
                 <Link
-                  href={`/dashboard/investors/${e.id.split("-")[0]}`}
+                  href={`/dashboard/investors/${e.investorId}`}
                   className="flex items-center gap-2 hover:underline min-w-0 flex-1"
                 >
                   <Icon
@@ -139,7 +143,7 @@ export function FamilyTouchpoints({
                         ? `Turning ${e.age}`
                         : `${e.years}-year anniversary`}
                       {e.role && (
-                        <span className="ml-1.5 capitalize">· {e.role}</span>
+                        <span className="ml-1.5">· {roleLabel(e.role)}</span>
                       )}
                     </div>
                   </div>
@@ -189,7 +193,10 @@ function nextOccurrence(eventDate: Date, now: Date): Date {
     eventDate.getMonth(),
     eventDate.getDate()
   );
-  if (candidate.getTime() < now.setHours(0, 0, 0, 0)) {
+  // A copy: setHours on `now` itself shifted every later event in the loop.
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  if (candidate.getTime() < today.getTime()) {
     candidate.setFullYear(candidate.getFullYear() + 1);
   }
   return candidate;

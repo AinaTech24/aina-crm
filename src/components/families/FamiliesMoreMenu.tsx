@@ -9,8 +9,9 @@
  *                                                  an existing household
  *   Next generation view  (was "Next-gen pulse") — /dashboard/families/at-risk
  *
- * The suggestion count is fetched up front (cheap, and it is the reason to
- * open the menu); the list itself only mounts when the dialog opens.
+ * Suggestions load when the dialog opens. They used to be fetched on every
+ * visit to the Families list just to print a count here — a whole-book scan on
+ * each page load.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -22,7 +23,7 @@ import { buttonClass } from "@/components/ui/button-class";
 import { Tooltip } from "@/components/ui/Tooltip";
 
 const SUGGEST_TIP =
-  "Clients not in any family who look like they belong to one: same email, address or surname as an existing household.";
+  "Clients not in any family who look like they belong to one: the same mobile, email or address as a household member, or the family head named on their RTA record.";
 const NEXT_GEN_TIP =
   "Families over ₹50 L whose head is 60+ or who have no member under 35 — and whether the next generation already invests with you.";
 
@@ -31,15 +32,6 @@ export function FamiliesMoreMenu() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [count, setCount] = useState<number | null>(null);
   const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/families/suggestions")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { if (!cancelled) setCount(j?.suggestions?.length ?? 0); })
-      .catch(() => { if (!cancelled) setCount(0); });
-    return () => { cancelled = true; };
-  }, []);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -120,8 +112,8 @@ export function FamiliesMoreMenu() {
               )}
             </DialogTitle>
             <DialogDescription>
-              Unlinked clients that look like they belong to an existing household — matched on shared email, address and
-              surname.
+              Unlinked clients that look like they belong to a household — the same mobile, email or address as a member,
+              or the family head named on their RTA record.
             </DialogDescription>
           </DialogHeader>
           {dialogOpen && <FamilySuggestionsPanel onCountChange={handleCountChange} />}

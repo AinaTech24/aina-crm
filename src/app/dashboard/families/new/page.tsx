@@ -5,11 +5,11 @@ import { useState } from "react";
 import { FamilyHeadPicker, familyNameFromHead, type HeadCandidate } from "@/components/families/FamilyHeadPicker";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
 import { RmSelector } from "@/components/common/RmSelector";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
 import { FAMILY_REVIEW_FREQUENCIES } from "@/lib/families/cadence";
+import { buttonClass } from "@/components/ui/button-class";
 
 const CATEGORIES = ["HNI", "Affluent", "Retail", "NRI", "Corporate"] as const;
 
@@ -50,7 +50,11 @@ export default function NewFamilyPage() {
     setBusy(true);
     setErr(null);
     try {
-      const payload: any = { headName: form.headName, notes: form.notes || undefined };
+      // The name field IS the family's name: send it as such, so the firm's
+      // naming pattern does not wrap it again ("Patel" → "Patel Family" was
+      // fine, "Ramesh Patel" → "Ramesh Patel Family" was not what was typed).
+      const name = form.headName.trim();
+      const payload: any = { headName: head?.name ?? name, familyName: name, notes: form.notes.trim() || undefined };
       // Link the head so the household starts attached to a real client instead
       // of being a name with members bolted on later.
       if (head) payload.primaryInvestorId = head.id;
@@ -86,7 +90,10 @@ export default function NewFamilyPage() {
         }
         return;
       }
-      router.push("/dashboard/families");
+      // Straight into the new family, where members are added next.
+      router.push(j?.id ? `/dashboard/families/${j.id}` : "/dashboard/families");
+    } catch {
+      setErr("Could not reach the server. Try again.");
     } finally {
       setBusy(false);
     }
@@ -94,7 +101,11 @@ export default function NewFamilyPage() {
 
   return (
     <div className="space-y-4 max-w-2xl">
-<PageHeaderCard title={<>New family</>} />
+      <PageHeaderCard
+        breadcrumb={[{ label: "Families", href: "/dashboard/families" }, { label: "New family" }]}
+        title={<>New family</>}
+        subtitle={<>Pick the head of the household, name the family, then add the other members on the next screen.</>}
+      />
 <form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-4">
         {/* Head of family first: picking it fills the name below, so the common
             case is one search and a Create click. Optional — a household can
@@ -110,7 +121,7 @@ export default function NewFamilyPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="block">
             <div className="text-xs font-medium mb-1">
-              Family / organisation name<span className="text-rose-600">*</span>
+              Family / organisation name<span className="text-destructive">*</span>
             </div>
             <input
               value={form.headName}
@@ -200,10 +211,10 @@ export default function NewFamilyPage() {
           />
         </label>
 
-        {err && <div className="text-sm text-rose-600">{err}</div>}
+        {err && <div role="alert" className="text-sm text-destructive">{err}</div>}
         <div className="flex justify-end gap-2 pt-2 border-t">
-          <Link href="/dashboard/families" className="rounded-md border px-4 py-2 text-sm">Cancel</Link>
-          <button disabled={busy || !form.headName} className="rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium disabled:opacity-50">
+          <Link href="/dashboard/families" className={buttonClass("secondary")}>Cancel</Link>
+          <button type="submit" disabled={busy || form.headName.trim().length < 2} className={buttonClass("primary")}>
             {busy ? "Creating…" : "Create family"}
           </button>
         </div>
