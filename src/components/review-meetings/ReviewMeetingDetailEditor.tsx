@@ -334,8 +334,18 @@ export function ReviewMeetingDetailEditor({
       }
       if (overrideStatus === "completed" || j.completed) {
         setStatus("completed");
+        // Say who ELSE this covered. The review now lands on the whole
+        // household, and an RM who is not told will log a duplicate meeting
+        // for each member to clear their due list.
+        const also = Array.isArray(j.familyMembers) ? (j.familyMembers as string[]) : [];
+        const family =
+          also.length === 0
+            ? ""
+            : ` · also reviewed ${also.length} family member${also.length === 1 ? "" : "s"}: ${
+                also.slice(0, 4).join(", ")
+              }${also.length > 4 ? ` +${also.length - 4} more` : ""}`;
         setOk(
-          `Marked completed · action items became tasks · ${investorName}'s next review set to ${nextReview}.`
+          `Marked completed · action items became tasks · ${investorName}'s next review set to ${nextReview}${family}.`
         );
       } else {
         setOk("Saved.");

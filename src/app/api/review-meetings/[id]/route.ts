@@ -7,6 +7,9 @@ import { handleApiError } from "@/lib/api/error-handler";
  *
  * Automations on status flip to `completed`:
  *   - Update investor.lastReviewAt = meeting_date and nextReviewAt = nextReviewDate
+ *   - Stamp the same review on every other live member of that client's FAMILY
+ *     (each keeps their own cadence; contact dates are not propagated) —
+ *     see lib/reviews/family-propagation.ts
  *   - Fan out actionItems[] → tasks for the RM (only items without a taskId yet)
  *   - Stamp followUpTaskCreated = true
  *   - Create a "Write up your notes" task if meetingNotes still empty
@@ -21,6 +24,7 @@ import { requireSession } from "@/lib/auth/session";
 import { can, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { propagateReviewToFamily, type FamilyPropagationResult } from "@/lib/reviews/family-propagation";
 import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
 import { computeNextReview } from "@/lib/investors/review-cadence";
 import { formatDate } from "@/lib/format";
@@ -228,6 +232,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
 
       // ─── Automation: propagate review dates to investor on completion ──
+      let familyPropagation: FamilyPropagationResult | null = null;
       if (becomingCompleted) {
         const reviewedAt = patch.meetingDate ?? before.meetingDate;
         // Link spawned tasks to whichever party this meeting is about — a lead
@@ -265,6 +270,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               updatedAt: new Date(),
             } as any)
             .where(and(eq(investors.id, before.investorId), eq(investors.tenantId, session.tenantId)));
+
+          // One sitting reviews the household. Without this, every other member
+          // of the family stayed "review overdue" and the RM's due list was
+          // full of people they had just sat with — clearable only by logging a
+          // fake meeting each. Contact dates are NOT propagated and each member
+          // keeps their own cadence; see lib/reviews/family-propagation.ts.
+          familyPropagation = await propagateReviewToFamily(tx, {
+            tenantId: session.tenantId,
+            investorId: before.investorId,
+            reviewedAt: new Date(reviewedAt),
+            explicitNextReview: (body.nextReviewDate as string | undefined) ?? null,
+          });
         }
 
         // ─── Smart blueprint advance — meeting completed ──────────────
@@ -452,11 +469,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         entityType: "review_meeting",
         entityId: id,
         before: { status: before.status } as any,
-        after: body as any,
+        after: {
+          ...body,
+          // A client whose next review moved without a meeting of their own
+          // has to be able to show why.
+          ...(familyPropagation?.updated
+            ? {
+                familyReview: {
+                  familyId: familyPropagation.familyId,
+                  alsoReviewed: familyPropagation.members,
+                },
+              }
+            : {}),
+        } as any,
         ...clientMeta,
       });
 
-      return { ok: true, completed: becomingCompleted };
+      return {
+        ok: true,
+        completed: becomingCompleted,
+        familyAlsoReviewed: familyPropagation?.updated ?? 0,
+        familyMembers: familyPropagation?.members.map((m) => m.name) ?? [],
+      };
     });
     if (!result) return NextResponse.json({ error: "not found" }, { status: 404 });
     if ("forbidden" in result) return NextResponse.json({ error: "you can only manage your own meetings" }, { status: 403 });
