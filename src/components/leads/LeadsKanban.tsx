@@ -30,7 +30,7 @@ import {
 import { Loader2, CalendarClock, PhoneCall } from "lucide-react";
 import { RowActions } from "@/components/common/RowActions";
 import { leadTemperature, stageAgingDays } from "@/lib/leads/scoring";
-import { LEAD_STAGE_TAG, leadPipelineColumn, leadStageSlaDays } from "@/lib/leads/stages";
+import { LEAD_STAGE_TAG, leadPipelineColumn, leadStageSlaDays, type StageTone } from "@/lib/leads/stages";
 import { leadSourceLabel } from "@/lib/leads/sources";
 import { ScheduleMeetingDialog } from "@/components/leads/LeadActions";
 
@@ -70,14 +70,18 @@ type Stage = {
   aliases: readonly string[];
 };
 
-const TONE_STYLES: Record<
-  string,
-  { strip: string; bg: string; chip: string; text: string; ring: string }
-> = {
+type ToneStyle = { strip: string; bg: string; chip: string; text: string; ring: string };
+
+// Keyed by StageTone so a colour added to lib/leads/stages.ts without a style
+// here fails the typecheck. "purple" (Proposal Sent, migration 0222) shipped
+// without one and crashed the whole Leads page on production.
+const TONE_STYLES: Record<StageTone | "violet", ToneStyle> = {
   blue:    { strip: "bg-blue-500",    bg: "bg-blue-50/40",    chip: "bg-blue-50 text-blue-700",       text: "text-blue-700",    ring: "ring-blue-400" },
   cyan:    { strip: "bg-cyan-500",    bg: "bg-cyan-50/40",    chip: "bg-cyan-50 text-cyan-700",       text: "text-cyan-700",    ring: "ring-cyan-400" },
   amber:   { strip: "bg-amber-500",   bg: "bg-amber-50/40",   chip: "bg-amber-50 text-amber-700",     text: "text-amber-700",   ring: "ring-amber-400" },
   violet:  { strip: "bg-violet-500",  bg: "bg-violet-50/40",  chip: "bg-violet-50 text-violet-700",   text: "text-violet-700",  ring: "ring-violet-400" },
+  purple:  { strip: "bg-purple-500",  bg: "bg-purple-50/40",  chip: "bg-purple-50 text-purple-700",   text: "text-purple-700",  ring: "ring-purple-400" },
+  teal:    { strip: "bg-teal-500",    bg: "bg-teal-50/40",    chip: "bg-teal-50 text-teal-700",       text: "text-teal-700",    ring: "ring-teal-400" },
   indigo:  { strip: "bg-indigo-500",  bg: "bg-indigo-50/40",  chip: "bg-indigo-50 text-indigo-700",   text: "text-indigo-700",  ring: "ring-indigo-400" },
   emerald: { strip: "bg-emerald-500", bg: "bg-emerald-50/40", chip: "bg-emerald-50 text-emerald-700", text: "text-emerald-700", ring: "ring-emerald-400" },
   rose:    { strip: "bg-rose-500",    bg: "bg-rose-50/40",    chip: "bg-rose-50 text-rose-700",       text: "text-rose-700",    ring: "ring-rose-400" },
@@ -383,7 +387,8 @@ export function LeadsKanban({
            during a drag, so you couldn't release on a middle stage. */}
         <div className="flex gap-3 overflow-x-auto scrollbar-thin pb-2 -mx-1 px-1">
           {stages.map((s) => {
-            const tone = TONE_STYLES[s.tone];
+            // An unknown colour falls back to neutral rather than taking the page down.
+            const tone = TONE_STYLES[s.tone as StageTone] ?? TONE_STYLES.slate;
             const items = byStage[s.key] ?? [];
             const visibleCount = getVisibleCount(s.key);
             return (
@@ -477,7 +482,7 @@ function DroppableColumn({
   children,
 }: {
   stage: Stage;
-  tone: typeof TONE_STYLES[string];
+  tone: ToneStyle;
   count: number;
   children: React.ReactNode;
 }) {
