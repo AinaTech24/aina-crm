@@ -2,32 +2,28 @@
 
 /**
  * Investor (client) book table — row selection + bulk actions + sortable
- * columns. Supports high-density (compact) vs cozy view modes and a
- * split-screen side-peek drawer for rapid client inspection.
+ * columns. Supports high-density (compact) vs cozy view modes (the switch sits
+ * in the filter bar) and a side-peek drawer: clicking a row opens the quick
+ * view, clicking the name opens the full client page.
+ *
+ * Colour is a signal (CLAUDE.md, "The UI system"): segment, tier and category
+ * are taxonomy and render neutral; KYC, health and status are tinted only
+ * when they ask for attention, so a row of "verified · active" reads quiet and
+ * the one "expired · dormant" row stands out.
  */
 
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import {
-  Loader2,
-  X,
-  UserCog,
-  CalendarClock,
-  Layers,
-  Tag,
-  ArrowUpDown,
-  Trash2,
-  Eye,
-  PencilLine,
-} from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, PencilLine } from "lucide-react";
 import { RowActions } from "@/components/common/RowActions";
 import { RmSelector } from "@/components/common/RmSelector";
 import { formatINR } from "@/lib/utils";
 import { healthBandClasses, type HealthBand } from "@/lib/investors/health";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Avatar } from "@/components/ui/Avatar";
-import { TableDensityToggle, useTableDensity } from "@/components/common/TableDensityToggle";
+import { useTableDensity } from "@/components/common/TableDensityToggle";
+import { Badge } from "@/components/ui/Badge";
 import { FloatingBulkBar } from "@/components/common/FloatingBulkBar";
 import { InvestorSidePeek, type SidePeekInvestor } from "@/components/investors/InvestorSidePeek";
 import { MassUpdateDialog, type MassUpdateOptions } from "@/components/investors/MassUpdateDialog";
@@ -62,24 +58,17 @@ export type InvestorTableFlags = {
   showStatus: boolean;
 };
 
-const segmentColors: Record<string, string> = {
-  HNI: "bg-violet-50 text-violet-700",
-  Affluent: "bg-emerald-50 text-emerald-700",
-  Retail: "bg-blue-50 text-blue-700",
-  NRI: "bg-pink-50 text-pink-700",
-  Corporate: "bg-amber-50 text-amber-700",
-};
-const tierColors: Record<string, string> = {
-  A: "bg-violet-100 text-violet-700",
-  B: "bg-emerald-100 text-emerald-700",
-  C: "bg-blue-100 text-blue-700",
-};
-const categoryColors: Record<string, string> = {
-  A: "bg-amber-100 text-amber-800 border border-amber-300",
-  B: "bg-sky-100 text-sky-800 border border-sky-300",
-  C: "bg-secondary text-foreground border border-slate-300",
-  D: "bg-rose-50 text-rose-700 border border-rose-200",
-};
+/** A status that is fine reads as plain text; only a problem gets a tint. */
+function kycTone(k: string | null): "neutral" | "warning" | "danger" {
+  if (k === "verified" || k === "registered") return "neutral";
+  if (k === "expired" || k === "rejected" || k === "hold") return "danger";
+  return "warning";
+}
+function statusTone(st: string | null): "neutral" | "warning" | "danger" {
+  if (st === "dormant" || st === "inactive") return "warning";
+  if (st === "redemption_risk") return "danger";
+  return "neutral";
+}
 
 export function InvestorsTable({
   rows,
@@ -103,7 +92,7 @@ export function InvestorsTable({
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const { density, toggleDensity, isCompact } = useTableDensity("cozy");
+  const { isCompact } = useTableDensity("cozy");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sidePeekInvestor, setSidePeekInvestor] = useState<SidePeekInvestor | null>(null);
   const [busy, setBusy] = useState(false);
@@ -157,8 +146,9 @@ export function InvestorsTable({
   function setSort(next: string) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", "table");
-    if (next === "aum") params.delete("sort");
-    else params.set("sort", next);
+    // Always explicit: the list's default is newest-first, so dropping the
+    // param for AUM (as this used to) sorted by date instead.
+    params.set("sort", next);
     if (sort === next) {
       params.set("dir", dir === "asc" ? "desc" : "asc");
     } else {
@@ -200,28 +190,27 @@ export function InvestorsTable({
     }
   }
 
-  const arrow = (key: string) => (sort === key ? (dir === "asc" ? "↑" : "↓") : "");
+  const py = isCompact ? "py-1.5" : "py-2.5";
+
+  /** One sort cue per header: a faint ⇅ until sorted, then ↑ or ↓. */
+  function sortHeader(k: string, label: string, align: "left" | "right" = "left") {
+    const on = sort === k;
+    const Icon = !on ? ArrowUpDown : dir === "asc" ? ArrowUp : ArrowDown;
+    return (
+      <button
+        type="button"
+        onClick={() => setSort(k)}
+        className={`inline-flex items-center gap-1 hover:text-foreground ${on ? "text-foreground" : ""} ${align === "right" ? "flex-row-reverse" : ""}`}
+        aria-label={`Sort by ${label}`}
+      >
+        {label}
+        <Icon className={`size-3 ${on ? "" : "opacity-40"}`} aria-hidden />
+      </button>
+    );
+  }
 
   return (
     <div className="card-surface overflow-hidden relative">
-      {/* Table Sub-header with Density Switcher & Selection Summary */}
-      <div className="flex items-center justify-between px-4 py-2 bg-muted/20 border-b border-border text-xs">
-        <div className="flex items-center gap-2">
-          {/* The filter bar above already prints the filtered count, so saying
-              "Showing 22 of 22 clients" under "22 results" was the same fact
-              twice. This line now only appears when the list is TRUNCATED,
-              which is the case it exists to warn about. */}
-          {total > rows.length && (
-            <span className="text-muted-foreground font-medium">
-              Showing <strong className="text-foreground">{rows.length}</strong> of {total} clients
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <TableDensityToggle density={density} onToggle={toggleDensity} />
-        </div>
-      </div>
-
       {/* Phones get card rows — a 12-column table can't shrink to 390px. */}
       <ul className="sm:hidden divide-y divide-border">
         {rows.map((i) => (
@@ -254,7 +243,7 @@ export function InvestorsTable({
         <table className={`w-full ${isCompact ? "text-xs" : "text-sm"}`} data-table="investors">
           <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
             <tr>
-              <th className={`px-3 ${isCompact ? "py-1.5" : "py-2.5"} w-8`}>
+              <th className={`px-3 ${py} w-8`}>
                 <input
                   type="checkbox"
                   checked={allSelected}
@@ -263,55 +252,43 @@ export function InvestorsTable({
                   aria-label="Select all"
                 />
               </th>
-              <th data-col="name" className={`text-left ${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>
-                <button onClick={() => setSort("name")} className="inline-flex items-center gap-1 hover:text-foreground">
-                  Name <ArrowUpDown className="size-3" />
-                  {arrow("name")}
-                </button>
+              <th data-col="name" className={`text-left ${py} font-medium`}>
+                {sortHeader("name", "Name")}
               </th>
-              {flags.showPan && <th data-col="pan" className={`text-left ${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>PAN</th>}
-              {flags.showCategory && hasCategory && <th data-col="category" className={`text-left ${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>Category</th>}
-              {flags.showTier && hasTier && <th data-col="tier" className={`text-left ${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>Tier</th>}
-              {flags.showSegment && hasSegment && <th data-col="segment" className={`text-left ${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>Segment</th>}
+              {flags.showPan && <th data-col="pan" className={`text-left ${py} font-medium`}>PAN</th>}
+              {flags.showCategory && hasCategory && <th data-col="category" className={`text-left ${py} font-medium`}>Category</th>}
+              {flags.showTier && hasTier && <th data-col="tier" className={`text-left ${py} font-medium`}>Tier</th>}
+              {flags.showSegment && hasSegment && <th data-col="segment" className={`text-left ${py} font-medium`}>Segment</th>}
               {flags.showAum && (
-                <th data-col="aum" className={`text-right ${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>
-                  <button onClick={() => setSort("aum")} className="inline-flex items-center gap-1 hover:text-foreground">
-                    AUM <ArrowUpDown className="size-3" />
-                    {arrow("aum")}
-                  </button>
+                <th data-col="aum" className={`text-right ${py} font-medium`}>
+                  {sortHeader("aum", "AUM", "right")}
                 </th>
               )}
               {flags.showSip && (
-                <th data-col="sip" className={`text-right ${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>
-                  <button onClick={() => setSort("sip")} className="inline-flex items-center gap-1 hover:text-foreground">
-                    SIP <ArrowUpDown className="size-3" />
-                    {arrow("sip")}
-                  </button>
+                <th data-col="sip" className={`text-right ${py} font-medium`}>
+                  {sortHeader("sip", "SIP / month", "right")}
                 </th>
               )}
-              {flags.showKyc && <th data-col="kyc" className={`text-left ${isCompact ? "py-1.5" : "py-2.5"} font-medium pl-4`}>KYC</th>}
+              {flags.showKyc && <th data-col="kyc" className={`text-left ${py} font-medium pl-4`}>KYC</th>}
               {/* Both of these columns are bare numbers with no unit, so say
                   what they measure on hover — otherwise "100/100" and "13%"
                   mean nothing to someone opening this list for the first time. */}
               <th
                 data-col="health"
-                className={`text-left ${isCompact ? "py-1.5" : "py-2.5"} font-medium`}
+                className={`text-left ${py} font-medium`}
                 title="Relationship health, 0–100. Drops when you haven't been in touch, a review is overdue, KYC/FATCA is expiring, or a nominee, bank or risk profile is missing."
               >
-                <button onClick={() => setSort("health")} className="inline-flex items-center gap-1 hover:text-foreground">
-                  Health <ArrowUpDown className="size-3" />
-                  {arrow("health")}
-                </button>
+                {sortHeader("health", "Health")}
               </th>
               <th
                 data-col="complete"
-                className={`text-left ${isCompact ? "py-1.5" : "py-2.5"} font-medium`}
+                className={`text-left ${py} font-medium`}
                 title="How much of the client record is filled in — PAN, date of birth, email, mobile, address, KYC, nominee, bank and risk profile."
               >
-                Profile %
+                Profile
               </th>
-              {flags.showStatus && <th data-col="status" className={`text-left ${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>Status</th>}
-              <th data-col="actions" className={`px-4 ${isCompact ? "py-1.5" : "py-2.5"} text-right font-medium`}>Actions</th>
+              {flags.showStatus && <th data-col="status" className={`text-left ${py} font-medium`}>Status</th>}
+              <th data-col="actions" className={`px-4 ${py} text-right font-medium`}><span className="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
@@ -327,10 +304,10 @@ export function InvestorsTable({
                     setSidePeekInvestor(i);
                   }}
                   className={`border-b last:border-0 hover:bg-accent/40 cursor-pointer transition-colors ${
-                    isSel ? "bg-brand-cyan-light/30" : ""
+                    isSel ? "bg-accent" : ""
                   }`}
                 >
-                  <td className={`px-3 ${isCompact ? "py-1.5" : "py-2.5"}`}>
+                  <td className={`px-3 ${py}`}>
                     <input
                       type="checkbox"
                       checked={isSel}
@@ -339,49 +316,35 @@ export function InvestorsTable({
                       aria-label={`Select ${i.name}`}
                     />
                   </td>
-                  <td data-col="name" className={`${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>
+                  <td data-col="name" className={`${py} font-medium`}>
                     <div className="flex items-center gap-2">
                       <Avatar
                         src={i.avatarUrl ? `/api/investors/${i.id}/avatar` : null}
                         name={i.name}
                         size={isCompact ? 22 : 28}
                       />
-                      <span className="hover:text-brand-navy hover:underline">{i.name}</span>
+                      <Link href={`/dashboard/investors/${i.id}`} className="hover:text-primary hover:underline">{i.name}</Link>
                     </div>
                   </td>
                   {flags.showPan && (
-                    <td data-col="pan" className={`${isCompact ? "py-1.5" : "py-2.5"} font-mono text-muted-foreground ${isCompact ? "text-2xs" : "text-xs"}`}>
+                    <td data-col="pan" className={`${py} font-mono text-muted-foreground ${isCompact ? "text-2xs" : "text-xs"}`}>
                       {i.pan}
                     </td>
                   )}
                   {flags.showCategory && hasCategory && (
-                    <td data-col="category" className={`${isCompact ? "py-1.5" : "py-2.5"}`}>
+                    <td data-col="category" className={`${py}`}>
                       {i.clientCategory ? (
-                        <span
-                          className={`text-xs font-bold px-2 py-0.5 rounded-full ${categoryColors[i.clientCategory] ?? ""}`}
-                          title={`Client Category ${i.clientCategory}`}
-                        >
-                          {i.clientCategory}
-                        </span>
+                        <span title={`Client category ${i.clientCategory}`}><Badge raw>{i.clientCategory}</Badge></span>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
                     </td>
                   )}
                   {flags.showTier && hasTier && (
-                    <td data-col="tier" className={`${isCompact ? "py-1.5" : "py-2.5"}`}>
+                    <td data-col="tier" className={`${py}`}>
                       {i.serviceTier ? (
-                        <span
-                          className={`text-xs font-bold px-2 py-0.5 rounded-full ${tierColors[i.serviceTier] ?? ""}`}
-                          title={
-                            i.serviceTier === "A"
-                              ? "Quarterly review"
-                              : i.serviceTier === "B"
-                              ? "Half-yearly review"
-                              : "Annual review"
-                          }
-                        >
-                          {i.serviceTier}
+                        <span title={i.serviceTier === "A" ? "Quarterly review" : i.serviceTier === "B" ? "Half-yearly review" : "Annual review"}>
+                          <Badge raw>{i.serviceTier}</Badge>
                         </span>
                       ) : (
                         <span className="text-muted-foreground">—</span>
@@ -389,49 +352,39 @@ export function InvestorsTable({
                     </td>
                   )}
                   {flags.showSegment && hasSegment && (
-                    <td data-col="segment" className={`${isCompact ? "py-1.5" : "py-2.5"}`}>
-                      {i.segmentTag && (
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${segmentColors[i.segmentTag] ?? ""}`}>
-                          {i.segmentTag}
-                        </span>
-                      )}
+                    <td data-col="segment" className={`${py}`}>
+                      {i.segmentTag && <Badge raw>{i.segmentTag}</Badge>}
                     </td>
                   )}
                   {flags.showAum && (
-                    <td data-col="aum" className={`${isCompact ? "py-1.5" : "py-2.5"} text-right tabular-nums font-semibold`}>
+                    <td data-col="aum" className={`${py} text-right tabular-nums font-semibold`}>
                       {formatINR(i.aum)}
                     </td>
                   )}
                   {flags.showSip && (
-                    <td data-col="sip" className={`${isCompact ? "py-1.5" : "py-2.5"} text-right tabular-nums text-muted-foreground`}>
-                      {i.sip > 0 ? `${formatINR(i.sip)}/mo` : "—"}
+                    <td data-col="sip" className={`${py} text-right tabular-nums text-muted-foreground`}>
+                      {i.sip > 0 ? formatINR(i.sip) : "—"}
                     </td>
                   )}
                   {flags.showKyc && (
-                    <td data-col="kyc" className={`${isCompact ? "py-1.5" : "py-2.5"} pl-4`}>
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded-full ${
-                          i.kycStatus === "verified"
-                            ? "bg-emerald-50 text-emerald-700"
-                            : i.kycStatus === "expired"
-                            ? "bg-rose-50 text-rose-700"
-                            : "bg-amber-50 text-amber-700"
-                        }`}
-                      >
-                        {i.kycStatus ?? "pending"}
-                      </span>
+                    <td data-col="kyc" className={`${py} pl-4`}>
+                      {kycTone(i.kycStatus) === "neutral" ? (
+                        <span className="text-xs capitalize text-muted-foreground">{i.kycStatus}</span>
+                      ) : (
+                        <Badge tone={kycTone(i.kycStatus)}>{i.kycStatus ?? "pending"}</Badge>
+                      )}
                     </td>
                   )}
-                  <td data-col="health" className={`${isCompact ? "py-1.5" : "py-2.5"}`}>
+                  <td data-col="health" className={`${py}`}>
                     <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${cls.chip}`}>
                       {i.healthScore}/100
                     </span>
                   </td>
-                  <td data-col="complete" className={`${isCompact ? "py-1.5" : "py-2.5"}`}>
+                  <td data-col="complete" className={`${py}`}>
                     <div className="flex items-center gap-1.5">
                       <div className="w-12 h-1.5 bg-muted rounded-full overflow-hidden">
                         <div
-                          className="h-full bg-brand-cyan rounded-full"
+                          className="h-full bg-foreground/40 rounded-full"
                           style={{ width: `${i.completeness}%` }}
                         />
                       </div>
@@ -439,36 +392,23 @@ export function InvestorsTable({
                     </div>
                   </td>
                   {flags.showStatus && (
-                    <td data-col="status" className={`${isCompact ? "py-1.5" : "py-2.5"}`}>
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded-full capitalize ${
-                          i.status === "active"
-                            ? "bg-emerald-50 text-emerald-700"
-                            : i.status === "dormant"
-                            ? "bg-amber-50 text-amber-700"
-                            : "bg-secondary text-foreground"
-                        }`}
-                      >
-                        {i.status ?? "active"}
-                      </span>
+                    <td data-col="status" className={`${py}`}>
+                      {statusTone(i.status) === "neutral" ? (
+                        <span className="text-xs capitalize text-muted-foreground">{(i.status ?? "active").replace(/_/g, " ")}</span>
+                      ) : (
+                        <Badge tone={statusTone(i.status)}>{i.status ?? "active"}</Badge>
+                      )}
                     </td>
                   )}
-                  <td data-col="actions" className={`px-4 ${isCompact ? "py-1.5" : "py-2.5"} text-right`}>
+                  <td data-col="actions" className={`px-4 ${py} text-right`}>
                     <div className="flex items-center justify-end gap-1" data-no-row-nav>
-                      <button
-                        type="button"
-                        onClick={() => setSidePeekInvestor(i)}
-                        className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
-                        title="Side-Peek Snapshot"
-                      >
-                        <Eye className="size-3.5" />
-                      </button>
                       <RowActions
+                        itemLabel="client"
                         items={[
-                          { label: "Open full profile", href: `/dashboard/investors/${i.id}` },
-                          { label: "Create Proposal", href: `/dashboard/proposals/new?investorId=${i.id}` },
-                          { label: "Schedule Review", href: `/dashboard/review-meetings/new?investorId=${i.id}` },
-                          { label: "Log Service Request", href: `/dashboard/service-requests/new?investorId=${i.id}` },
+                          { label: "Open client page", href: `/dashboard/investors/${i.id}` },
+                          { label: "Create proposal", href: `/dashboard/proposals/new?investorId=${i.id}` },
+                          { label: "Schedule review", href: `/dashboard/review-meetings/new?investorId=${i.id}` },
+                          { label: "Log service request", href: `/dashboard/service-requests/new?investorId=${i.id}` },
                         ]}
                       />
                     </div>
@@ -496,7 +436,7 @@ export function InvestorsTable({
             <button
               type="button"
               onClick={() => setMassOpen(true)}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-secondary/80 hover:bg-secondary text-foreground hover:text-brand-cyan transition-colors"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-secondary/80 hover:bg-secondary text-foreground transition-colors"
             >
               <PencilLine className="size-3.5" /> Update a field
             </button>

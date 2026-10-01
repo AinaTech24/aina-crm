@@ -130,7 +130,7 @@ export function BranchProposals({
           </h3>
           <div className="grid grid-cols-5 gap-2">
             {desk.ageing.map((a, i) => (
-              <div key={a.key} className="rounded-lg border border-border p-2 text-center">
+              <div key={a.key} className="rounded-lg bg-secondary/70 p-2 text-center">
                 <div className={cn(
                   "text-base font-semibold tabular-nums",
                   a.count === 0 ? "text-muted-foreground" : i >= 2 ? "text-warning-foreground" : "text-foreground",
@@ -400,7 +400,7 @@ export function BranchReviews({
                   <td className="py-2.5 text-right">
                     {r.booked ? <span className="text-2xs text-muted-foreground">Booked</span> : (
                       <Link href={`/dashboard/review-meetings/new?investorId=${r.id}&category=review`}
-                            className="text-xs font-medium text-primary hover:underline">Schedule review</Link>
+                            className="inline-flex min-h-6 items-center text-xs font-medium text-primary hover:underline">Schedule review</Link>
                     )}
                   </td>
                 )}

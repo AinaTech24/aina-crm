@@ -30,7 +30,7 @@ export function PrioritiesPanel({ items, dateLabel }: { items: Priority[]; dateL
           {live.map((p, i) => (
             <li key={p.key}>
               <Link href={p.href} className={cn("flex items-center gap-3 rounded-lg border p-3 transition-colors hover:bg-accent",
-                p.tone === "bad" ? "border-destructive/40" : "border-warning/50")}>
+                p.tone === "bad" ? "border-destructive/30 bg-destructive/5" : "border-warning/50 bg-warning/5")}>
                 <span className={cn("grid size-7 shrink-0 place-items-center rounded-full text-xs font-semibold",
                   p.tone === "bad" ? "bg-destructive/10 text-destructive" : "bg-warning/15 text-warning-foreground")}>{i + 1}</span>
                 <span className="min-w-0 flex-1">
@@ -60,10 +60,10 @@ export function AttentionPanel({ cards }: { cards: AttentionCard[] }) {
         {cards.map((c) => (
           <Link key={c.key} href={c.href} title={c.definition}
             className={cn("block rounded-lg border p-3 transition-colors hover:bg-accent",
-              c.count === 0 ? "border-border bg-card" : c.tone === "bad" ? "border-destructive/40 bg-destructive/5" : "border-warning/50 bg-warning/5")}>
+              c.count === 0 ? "border-transparent bg-secondary/70" : c.tone === "bad" ? "border-destructive/30 bg-destructive/5" : "border-warning/50 bg-warning/5")}>
             <div className="text-xs font-medium text-foreground">{c.label}</div>
             <div className="mt-1 flex items-baseline gap-2">
-              <span className={cn("text-xl font-semibold tabular-nums", c.count === 0 ? "text-muted-foreground" : c.tone === "bad" ? "text-destructive" : "text-warning-foreground")}>
+              <span className={cn("text-xl font-semibold tabular-nums tracking-tight", c.count === 0 ? "font-medium text-muted-foreground/60" : c.tone === "bad" ? "text-destructive" : "text-warning-foreground")}>
                 {formatCount(c.count)}
               </span>
               {c.amount != null && c.count > 0 && <span className="text-xs tabular-nums text-muted-foreground">{formatMoney(c.amount)}</span>}

@@ -15,7 +15,7 @@ export function DailyFlowPanel({ d }: { d: ReturnType<typeof dailyFlow> }) {
   const eq = (label: string, v: number, op?: string, tone?: string) => (
     <div className="flex items-center gap-2">
       {op && <span className="text-lg font-semibold text-muted-foreground" aria-hidden>{op}</span>}
-      <div className="rounded-lg border border-border bg-card px-3 py-2">
+      <div className="rounded-lg bg-secondary/70 px-3 py-2">
         <div className={cn("text-xl font-semibold tabular-nums", tone)}>{formatCount(v)}</div>
         <div className="text-2xs text-muted-foreground">{label}</div>
       </div>

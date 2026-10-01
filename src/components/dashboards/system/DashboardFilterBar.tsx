@@ -54,7 +54,6 @@ function tidyRange(s: FilterState): FilterState {
 export function DashboardFilterBar({
   dashboardId,
   state,
-  defaults,
   options,
   bar,
   usingSaved,
@@ -63,6 +62,8 @@ export function DashboardFilterBar({
 }: {
   dashboardId: string;
   state: FilterState;
+  /** The dashboard's default filter — what a first visit shows. "Clear all"
+   *  does NOT return to it (that re-applied Status: Open on Operations). */
   defaults: FilterState;
   options: FilterOptions;
   bar: { rm: boolean; branch: boolean; extras: FilterKey[]; pinned: FilterKey[] };
@@ -291,17 +292,21 @@ export function DashboardFilterBar({
           </div>
         )}
 
-        {/* Apply and Save wrap together, never one without the other. */}
+        {/* Apply and Save wrap together, never one without the other. Apply
+            shows once the draft differs from the page — a disabled primary
+            button sitting in the bar all day read as broken. */}
         <span className="inline-flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            className={buttonClass("primary", "sm")}
-            disabled={!dirty || busy || nav.pending || needsRange}
-            title={needsRange ? "Pick a start and an end date for the custom range" : undefined}
-            onClick={() => { setPeriodOpen(false); push(draft); }}
-          >
-            {nav.pending ? "Applying…" : "Apply"}
-          </button>
+          {(dirty || nav.pending) && (
+            <button
+              type="button"
+              className={buttonClass("primary", "sm")}
+              disabled={busy || nav.pending || needsRange}
+              title={needsRange ? "Pick a start and an end date for the custom range" : undefined}
+              onClick={() => { setPeriodOpen(false); push(draft); }}
+            >
+              {nav.pending ? "Applying…" : "Apply"}
+            </button>
+          )}
           <button type="button" className={buttonClass("secondary", "sm")} disabled={busy || nav.pending || needsRange} onClick={save}>
             Save filter
           </button>
@@ -320,7 +325,8 @@ export function DashboardFilterBar({
               <span className="text-muted-foreground">{FILTER_FIELDS[c.k].label}:</span> {c.label}
               <button
                 type="button"
-                className="rounded-full hover:bg-secondary p-0.5"
+                // 24px hit area (the floor) without making the chip taller.
+                className="-my-1 -mr-1.5 inline-grid size-6 place-items-center rounded-full hover:bg-secondary"
                 aria-label={`Remove ${c.label}`}
                 onClick={() => {
                   const next = { ...draft, values: { ...draft.values, [c.k]: (draft.values[c.k] ?? []).filter((x) => x !== c.v) } };
@@ -336,11 +342,17 @@ export function DashboardFilterBar({
           {chipValues.length > 0 && (
             <button
               type="button"
-              className="text-primary hover:underline"
+              className="inline-flex min-h-6 items-center rounded px-1 text-primary hover:underline"
               onClick={() => {
-                setDraft(defaults);
+                // Clear every filter, keep the period. It used to push the
+                // dashboard's DEFAULTS, so on the Operations Dashboard (default
+                // Status: Open) "Clear all" put the Open filter straight back.
+                // The URL still carries the period, so the page reads this as an
+                // explicit, empty filter rather than "no filter → use defaults".
+                const cleared: FilterState = { ...draft, values: {} };
+                setDraft(cleared);
                 setAdded([]);
-                push(defaults);
+                push(cleared);
               }}
             >
               Clear all

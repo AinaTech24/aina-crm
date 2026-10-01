@@ -247,7 +247,7 @@ export function BackOfficePanel({ d, periodLabel }: { d: { rows: BoRow[]; any: b
       title="Back-office work"
       subtitle={`Received ${inPeriod(periodLabel)} or still open.`}
       icon={<Briefcase className="size-4" />}
-      action={<Link href="/dashboard/reports/back-office-work" className="text-xs font-medium text-primary hover:underline">Report ↗</Link>}
+      action={<Link href="/dashboard/reports/back-office-work" className="inline-flex min-h-6 items-center text-xs font-medium text-primary hover:underline">Report ↗</Link>}
       note="Categories and channels are exactly what the back-office quick-add records."
     >
       {!d.any ? <Unavailable>No back-office work recorded in this period or still open.</Unavailable> : (

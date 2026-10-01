@@ -5,7 +5,7 @@
  * THIS person, ranked. Server component — runs the NBA engine for one investor.
  */
 
-import { Sparkles, ShieldCheck } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { buildNextBestActions, NBA_META, type NbaAction } from "@/lib/nba/engine";
 import { ContactQuickActions } from "@/components/common/ContactQuickActions";
@@ -29,16 +29,19 @@ export async function RecommendedActions({
 
   const firstName = name?.split(" ")[0] ?? "";
 
+  // No recommendation → no card. The empty card used to say "in good shape —
+  // nothing pressing" beside a health card reading "At risk"; the engine only
+  // scores a handful of situations, so its silence is not a verdict.
+  if (actions.length === 0) return null;
+
   return (
-    <div className="border rounded-lg bg-card p-5">
+    <div className="card-surface p-5">
       <div className="flex items-center gap-2 mb-3">
-        <Sparkles className="size-5 text-brand-cyan" />
-        <h2 className="font-semibold">Recommended actions</h2>
-        {actions.length > 0 && <span className="text-xs text-muted-foreground">{actions.length}</span>}
+        <Sparkles className="size-4 text-muted-foreground" />
+        <h2 className="section-title">Recommended actions</h2>
+        <span className="text-xs text-muted-foreground">{actions.length}</span>
       </div>
-      {actions.length === 0 ? (
-        <div className="flex items-center gap-2 text-sm text-emerald-700"><ShieldCheck className="size-4" /> This client is in good shape — nothing pressing.</div>
-      ) : (
+      {(
         <ul className="space-y-2">
           {actions.map((a) => {
             const meta = NBA_META[a.type];

@@ -74,7 +74,7 @@ export default async function ResponsesPage({
 
   return (
     <div className="space-y-5 max-w-7xl">
-      <PageHeaderCard title={<><MailCheck className="size-6 text-primary" /> Client responses</>} subtitle={<>For the emails that ask a client to do something — who opened it, who tapped the link, and who actually finished.</>} actions={<><Link href="/dashboard/communications" className="btn-secondary text-xs inline-flex items-center gap-1.5">
+      <PageHeaderCard breadcrumb={[{ label: "Settings", href: "/dashboard/settings" }, { label: "Communications", href: "/dashboard/communications" }, { label: "Client responses" }]} title={<><MailCheck className="size-6 text-primary" /> Client responses</>} subtitle={<>For the emails that ask a client to do something — who opened it, who tapped the link, and who actually finished.</>} actions={<><Link href="/dashboard/communications" className="btn-secondary text-xs inline-flex items-center gap-1.5">
           <ArrowLeft className="size-3.5" /> All messages
         </Link></>} />
 

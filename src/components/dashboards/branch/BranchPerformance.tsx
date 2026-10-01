@@ -38,7 +38,7 @@ export function ToggleChips<K extends string>({
   label: string;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-1" role="group" aria-label={label}>
+    <div className="dash-seg flex-wrap" role="group" aria-label={label}>
       {options.map((o) => (
         <Link
           key={o.key}

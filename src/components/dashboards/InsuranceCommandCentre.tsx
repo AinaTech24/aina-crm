@@ -42,14 +42,12 @@ import {
   CLAIM_GROUPS, fyLabelOf, fyStartOf, hasFilter, leadBase, leadWhere, num, polBase, polWhere, PREMIUM_BANDS, registerHref, yearBefore,
   type InsWindow, type Row, type Tx,
 } from "@/lib/dashboard/insurance/window";
-import { branchNames, byDim, loadBiz, loadMix, loadTrend, loadYoY, pick, userNames } from "@/lib/dashboard/insurance/business";
-import { loadAtRisk, loadRenewalBuckets, loadRenewalCycle, loadRetention, retentionOf, type Retention } from "@/lib/dashboard/insurance/renewals";
+import { branchNames, byDim, loadBiz, loadTrend, pick, userNames } from "@/lib/dashboard/insurance/business";
+import { loadAtRisk, loadRenewalBuckets, loadRetention, retentionOf, type Retention } from "@/lib/dashboard/insurance/renewals";
 import { loadLost } from "@/lib/dashboard/insurance/lost";
-import { loadBookCuts, loadCoverage, loadIndustry, loadNewClients } from "@/lib/dashboard/insurance/clients";
+import { loadBookCuts, loadNewClients } from "@/lib/dashboard/insurance/clients";
 import { loadInsuranceProposals, loadIssuance, loadPipeline } from "@/lib/dashboard/insurance/pipeline";
-import {
-  loadClaimAgeing, loadClaimSnapshot, loadEscalations, loadOpenClaimsByInsurer, loadRenewalVsClaims, loadSettlement,
-} from "@/lib/dashboard/insurance/claims";
+import { loadClaimSnapshot, loadEscalations, loadOpenClaimsByInsurer } from "@/lib/dashboard/insurance/claims";
 import { loadQuality } from "@/lib/dashboard/insurance/quality";
 import { loadAnnualTargets, loadFyScorecard, loadTargetMeters, targetsComparable } from "@/lib/dashboard/insurance/targets";
 import { loadMonthly, loadMoM, loadWeekly } from "@/lib/dashboard/insurance/review";
@@ -57,11 +55,11 @@ import { loadBranchGaps, loadRenewalAttention, type AttentionCard } from "@/lib/
 import { loadInsurers, loadInsuranceTeam, loadMeetings, loadPeople } from "@/lib/dashboard/insurance/team";
 
 import {
-  AtRiskPanel, AttentionPanel, BandsPanel, BookCuts, BranchPanel, ClaimAgeingPanel, ClaimSnapshotPanel, ConcentrationPanel,
-  CorporatePanel, CoveragePanel, DrillSummary, EscalationPanel, FyScorecard, InsClientDrawer, InsFilters, InsMix, InsQuickActions,
+  AtRiskPanel, AttentionPanel, BookCuts, BranchPanel, ClaimSnapshotPanel, ConcentrationPanel,
+  DrillSummary, FyScorecard, InsClientDrawer, InsFilters, InsQuickActions,
   InsTrend, InsurerPanel, IssuancePanel, KpiStrip, LinesPanel, LostPanel, MeetingsPanel, MomPanel, NewClientsPanel, PipelinePanel,
-  PolicyCountPanel, PrioritiesPanel, QualityPanel, RenewalClaimPanel, RenewalCommand, RenewalCyclePanel, RetentionPanel,
-  ReviewPanel, RmPanel, SettlementPanel, TargetsPanel, TeamPanel, YoyPanel,
+  PolicyCountPanel, PrioritiesPanel, QualityPanel, RenewalCommand, RetentionPanel,
+  ReviewPanel, RmPanel, TargetsPanel, TeamPanel,
 } from "./insurance";
 import type { Priority } from "./insurance/InsTop";
 
@@ -229,7 +227,9 @@ export async function InsuranceCommandCentre({
     open: "/dashboard/insurance-claims",
     settled: "/dashboard/insurance-claims?status=settled_fully",
     fnr: "/dashboard/insurance-claims?status=file_awaited",
-    escalations: hrefWith({}, "#claims-escalations"),
+    // "Claims needing attention" was removed from this dashboard (2026-10-01);
+    // the Claims Dashboard's escalation centre is where those claims are worked.
+    escalations: claimsHref ?? "/dashboard/insurance-claims",
     board: "/dashboard/pipeline-board?p=insurance",
     meetings: "/dashboard/review-meetings",
     clients: "/dashboard/investors",
@@ -238,7 +238,7 @@ export async function InsuranceCommandCentre({
     settingsTargets: "/dashboard/settings/targets#insurance",
     weekly: hrefWith({ rv: "weekly" }, "#review"),
     monthly: hrefWith({ rv: "monthly" }, "#review"),
-    ...Object.fromEntries(PRODUCT_GROUPS.map((g) => [g.key, hrefWith({ grp: g.key }, "#mix")])),
+    ...Object.fromEntries(PRODUCT_GROUPS.map((g) => [g.key, hrefWith({ grp: g.key })])),
     ...Object.fromEntries(PREMIUM_BANDS.map((b) => [`band:${b.key}`, hrefWith({ band: b.key })])),
   };
   const spanHrefs = { mtd: hrefWith({ tp: "mtd" }, "#targets"), qtd: hrefWith({ tp: "qtd" }, "#targets"), fytd: hrefWith({ tp: "fytd" }, "#targets") };
@@ -293,7 +293,7 @@ export async function InsuranceCommandCentre({
       {/* One row: actions · period · Filters — pinned under the top bar on
           desktop. The fifteen filters fold behind "Filters"; what is applied
           still shows as chips below. */}
-      <div className="space-y-2.5 border-b border-border bg-background pb-3 lg:sticky lg:top-16 lg:z-30 lg:pt-3">
+      <div className="dash-toolbar space-y-2.5 border-b border-border bg-background pb-3 lg:sticky lg:top-16 lg:z-30 lg:pt-3">
         <FilterDisclosure
           keys={INS_PARAM_KEYS}
           start={
@@ -376,11 +376,7 @@ export async function InsuranceCommandCentre({
           <LinesBand run={run} w={w} shared={shared} hrefWith={hrefWith} />
         </Suspense>
         <Suspense fallback={<Loading order="rest" />}>
-          <CompareBand run={run} w={w} hrefs={hrefs} fyLabel={fyLabel} pyLabel={pyLabel} />
-        </Suspense>
-        {/* Analysis · §6–7 */}
-        <Suspense fallback={<Loading order="rest" />}>
-          <MixBand run={run} w={w} hrefs={hrefs} />
+          <CompareBand run={run} w={w} hrefs={hrefs} />
         </Suspense>
         {/* Analysis · §16–17 retention */}
         <Suspense fallback={<Loading order="atRisk" />}>
@@ -392,14 +388,10 @@ export async function InsuranceCommandCentre({
         </Suspense>
         {/* Analysis · §20–21, then §22–24 / §40 clients */}
         <Suspense fallback={<Loading order="clients" />}>
-          <ClientsBand run={run} w={w} shared={shared} hrefs={hrefs} hrefWith={hrefWith} />
+          <ClientsBand run={run} w={w} shared={shared} hrefs={hrefs} />
         </Suspense>
         <Suspense fallback={<Loading order="rest" />}>
           <CoverageBand run={run} w={w} hrefs={hrefs} />
-        </Suspense>
-        {/* Analysis · §26–27 corporate */}
-        <Suspense fallback={<Loading order="rest" />}>
-          <CorporateBand run={run} w={w} shared={shared} />
         </Suspense>
         {/* Analysis · §33–37 claims */}
         <Suspense fallback={<Loading order="claims" />}>
@@ -585,21 +577,13 @@ async function LinesBand({ run, w, shared, hrefWith }: { run: Run; w: InsWindow;
   return <Cell order="rest" id="lines"><LinesPanel cards={cards} /></Cell>;
 }
 
-async function CompareBand({ run, w, hrefs, fyLabel, pyLabel }: { run: Run; w: InsWindow; hrefs: Hrefs; fyLabel: string; pyLabel: string }) {
-  const [mom, yoy] = await run(async (tx) => [await loadMoM(tx, w), await loadYoY(tx, w)] as const);
+async function CompareBand({ run, w, hrefs }: { run: Run; w: InsWindow; hrefs: Hrefs }) {
+  const mom = await run((tx) => loadMoM(tx, w));
   return (
-    <>
-      <Cell order="rest" wide={false} id="mom">
-        <MomPanel c={mom} hrefs={{ total: hrefs.booked, new: hrefs.bookedNew, renewal: hrefs.bookedRenewal, lost: hrefs.lostTable, clients: hrefs.newClients }} />
-      </Cell>
-      <Cell order="rest" wide={false} id="yoy"><YoyPanel rows={yoy} fyLabel={fyLabel} pyLabel={pyLabel} lockedLine={w.filter.line ?? null} /></Cell>
-    </>
+    <Cell order="rest" id="mom">
+      <MomPanel c={mom} hrefs={{ total: hrefs.booked, new: hrefs.bookedNew, renewal: hrefs.bookedRenewal, lost: hrefs.lostTable, clients: hrefs.newClients }} />
+    </Cell>
   );
-}
-
-async function MixBand({ run, w, hrefs }: { run: Run; w: InsWindow; hrefs: Hrefs }) {
-  const rows = await run((tx) => loadMix(tx, w));
-  return <Cell order="rest" id="mix"><InsMix rows={rows} periodLabel={w.periodLabel} hrefs={hrefs} lockedLine={w.filter.line ?? null} /></Cell>;
 }
 
 async function PeopleBand({ run, w, hrefWith }: { run: Run; w: InsWindow; hrefWith: (o: Record<string, string | null>, h?: string) => string }) {
@@ -633,13 +617,8 @@ async function PipelineBand({ run, shared, hrefs }: BandProps) {
 }
 
 async function RenewalBand({ run, w, shared, hrefs }: BandProps) {
-  const [b, cycle] = await Promise.all([shared.buckets, run((tx) => loadRenewalCycle(tx, w))]);
-  return (
-    <>
-      <Cell order="renewals" id="renewals"><RenewalCommand buckets={b.buckets} pastGrace={b.pastGrace} hrefs={hrefs} /></Cell>
-      <Cell order="rest" id="renewal-cycle"><RenewalCyclePanel c={cycle} /></Cell>
-    </>
-  );
+  const b = await shared.buckets;
+  return <Cell order="renewals" id="renewals"><RenewalCommand buckets={b.buckets} pastGrace={b.pastGrace} hrefs={hrefs} /></Cell>;
 }
 
 async function RetentionBand({ run, w, hrefs, fyLabel, pyLabel }: BandProps & { fyLabel: string; pyLabel: string }) {
@@ -684,41 +663,20 @@ async function LostBand({ run, w, shared, hrefs }: BandProps) {
   return <Cell order="lost" id="lost"><LostPanel d={d} periodLabel={w.periodLabel} names={names} branches={branches} hrefs={hrefs} /></Cell>;
 }
 
-async function ClientsBand({ run, w, shared, hrefs, hrefWith }: BandProps & { hrefWith: (o: Record<string, string | null>, h?: string) => string }) {
-  const [cur, fy, targets, biz] = await Promise.all([
-    shared.ncCur, shared.ncFy, shared.targets,
-    run((tx) => loadBiz(tx, w, [{ k: "cur", from: w.from, to: w.to }], ["source"])),
-  ]);
-  const bySrc = byDim(biz, "cur", "source");
-  const keys = new Set<string | null>([...bySrc.keys(), ...cur.bySource.map((s) => s.source)]);
-  const sources = [...keys].map((k) => ({
-    source: k, clients: cur.bySource.find((s) => s.source === k)?.count ?? 0,
-    policies: bySrc.get(k)?.policies ?? 0, premium: bySrc.get(k)?.total ?? 0,
-  })).sort((a, b) => b.premium - a.premium || b.clients - a.clients);
-  const srcHrefs = Object.fromEntries(sources.map((s) => [`src:${s.source ?? "none"}`, hrefWith({ src: s.source ?? "none" })]));
+async function ClientsBand({ w, shared, hrefs }: BandProps) {
+  const [cur, fy, targets] = await Promise.all([shared.ncCur, shared.ncFy, shared.targets]);
   return (
     <Cell order="clients" id="new-clients">
-      <NewClientsPanel cur={cur} fy={fy} target={tgt(w, targets, "insurance_new_clients")} sources={sources}
+      <NewClientsPanel cur={cur} fy={fy} target={tgt(w, targets, "insurance_new_clients")}
         targetNote={targetsComparable(w) ? "No target set — Settings → Targets → Insurance targets." : "Targets are for the whole book — clear the line, product and client filters to compare."}
-        hrefs={{ ...hrefs, ...srcHrefs }} periodLabel={w.periodLabel} lockedLine={w.filter.line ?? null} />
+        hrefs={hrefs} periodLabel={w.periodLabel} lockedLine={w.filter.line ?? null} />
     </Cell>
   );
 }
 
 async function CoverageBand({ run, w, hrefs }: { run: Run; w: InsWindow; hrefs: Hrefs }) {
-  const [c, cuts] = await run(async (tx) => [await loadCoverage(tx, w), await loadBookCuts(tx, w)] as const);
-  return (
-    <>
-      <Cell order="rest" wide={false} id="coverage"><CoveragePanel c={c} hrefs={hrefs} /></Cell>
-      <Cell order="rest" wide={false} id="book-cuts"><BookCuts byCategory={cuts.byCategory} byType={cuts.byType} lockedLine={w.filter.line ?? null} /></Cell>
-    </>
-  );
-}
-
-async function CorporateBand({ run, w, shared }: { run: Run; w: InsWindow; shared: Shared }) {
-  const [p, industry] = await Promise.all([shared.pipeline, run((tx) => loadIndustry(tx, w))]);
-  const names = await namesFor(run, p.corporate.rows.map((r) => r.ownerId));
-  return <Cell order="rest" id="corporate"><CorporatePanel p={p} names={names} industry={industry} /></Cell>;
+  const cuts = await run((tx) => loadBookCuts(tx, w));
+  return <Cell order="rest" id="book-cuts"><BookCuts byCategory={cuts.byCategory} byType={cuts.byType} lockedLine={w.filter.line ?? null} /></Cell>;
 }
 
 async function IssuanceBand({ run, w, shared, hrefs }: BandProps) {
@@ -742,17 +700,10 @@ async function BookBand({ run, w, shared, hrefs, hrefWith }: BandProps & { hrefW
   ]);
   const [insurers, biz] = await run(async (tx) => [
     await loadInsurers(tx, w, openClaims),
-    await loadBiz(tx, w, [{ k: "cur", from: w.from, to: w.to }], ["band"]),
+    await loadBiz(tx, w, [{ k: "cur", from: w.from, to: w.to }]),
   ] as const);
   const conc = await run((tx) => loadBiz(tx, w, [{ k: "cur", from: w.from, to: w.to }], ["grp", "branch", "source", "investor", "ctype"]));
   const total = pick(biz, "cur");
-  const bands: Array<{ key: string; label: string; policies: number; premium: number }> = PREMIUM_BANDS.map((b) => {
-    const m = pick(biz, "cur", (r) => r.d.band === b.key);
-    return { key: b.key, label: b.label, policies: m.policies, premium: m.total };
-  });
-  // A policy with no premium keyed is its own row — never "below ₹10,000".
-  const unknown = pick(biz, "cur", (r) => r.d.band === "none");
-  if (unknown.policies) bands.push({ key: "none", label: "Premium not recorded", policies: unknown.policies, premium: 0 });
   const top = (dim: "grp" | "branch" | "source", label: (k: string | null) => string) => {
     const m = byDim(conc, "cur", dim);
     return [...m.entries()].map(([k, v]) => ({ label: label(k), premium: v.total })).filter((r) => r.premium > 0).sort((a, b) => b.premium - a.premium).slice(0, 5);
@@ -773,35 +724,18 @@ async function BookBand({ run, w, shared, hrefs, hrefWith }: BandProps & { hrefW
   return (
     <>
       <Cell order="rest" id="insurers"><InsurerPanel rows={insurers} periodLabel={w.periodLabel} hrefFor={(k) => hrefWith({ insurer: k })} /></Cell>
-      <Cell order="rest" wide={false} id="policy-count">
+      <Cell order="rest" id="policy-count">
         <PolicyCountPanel periodLabel={w.periodLabel} hrefs={hrefs}
           v={{ newN: total.newN, renN: total.renN, total: total.policies, cancelled: lost.count, pastGrace, pending: issuance.proposed.count + issuance.underwriting.count }} />
       </Cell>
-      <Cell order="rest" wide={false} id="bands"><BandsPanel rows={bands} periodLabel={w.periodLabel} hrefs={hrefs} /></Cell>
       <Cell order="rest" id="concentration"><ConcentrationPanel blocks={blocks} /></Cell>
     </>
   );
 }
 
 async function ClaimsBand({ run, w, shared, hrefs }: BandProps) {
-  const [snap, esc] = await Promise.all([shared.claims, shared.escalations]);
-  const [settlement, ageing, link] = await run(async (tx) => [
-    await loadSettlement(tx, w, w.from, w.to),
-    await loadClaimAgeing(tx, w),
-    await loadRenewalVsClaims(tx, w),
-  ] as const);
-  const names = await namesFor(run, esc.rows.map((r) => r.handlerId));
-  return (
-    <>
-      <Cell order="claims" wide={false} id="claims"><ClaimSnapshotPanel s={snap} periodLabel={w.periodLabel} slaDays={w.t.claimSlaDays} hrefs={hrefs} lockedLine={w.filter.line ?? null} /></Cell>
-      <Cell order="rest" wide={false} id="claim-ageing"><ClaimAgeingPanel rows={ageing} href={hrefs.claimsList} /></Cell>
-      <Cell order="rest" wide={false} id="settlement"><SettlementPanel s={settlement} periodLabel={w.periodLabel} /></Cell>
-      <Cell order="claims" wide={false} id="claims-escalations">
-        <EscalationPanel rows={esc.rows} total={esc.total} names={names} hrefs={hrefs} highClaim={w.t.insHighClaim} />
-      </Cell>
-      <Cell order="rest" id="renewal-claims"><RenewalClaimPanel rows={link.rows} renewalWithClaim={link.renewalWithClaim} claimOnLapsed={link.claimOnLapsed} /></Cell>
-    </>
-  );
+  const snap = await shared.claims;
+  return <Cell order="claims" id="claims"><ClaimSnapshotPanel s={snap} periodLabel={w.periodLabel} slaDays={w.t.claimSlaDays} hrefs={hrefs} lockedLine={w.filter.line ?? null} /></Cell>;
 }
 
 async function QualityBand({ run, w, shared, hrefWith }: { run: Run; w: InsWindow; shared: Shared; hrefWith: (o: Record<string, string | null>, h?: string) => string }) {

@@ -8,6 +8,7 @@
  * unresolved CSS variable in an SVG fill paints black.
  */
 
+import { TrendingUp } from "lucide-react";
 import { useState } from "react";
 import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { MonthPoint } from "@/lib/dashboard/claims/review";
@@ -30,7 +31,7 @@ export function ClaimTrend({ points, fyLabel, lockedLine }: { points: MonthPoint
     <section className="card-surface p-5 sm:p-6" aria-label="Claims trend">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-border/60 pb-4">
         <div>
-          <h2 className="section-title">Claims trend and backlog</h2>
+          <h2 className="section-title flex items-center gap-2"><TrendingUp className="size-4 shrink-0 text-muted-foreground" aria-hidden /> Claims trend and backlog</h2>
           <p className="section-subtitle mt-1">{fyLabel}, month by month{lockedLine ? ` — ${lockedLine === "personal" ? "Personal" : "Commercial"} Lines` : ""}. Counts and amounts on separate charts.</p>
         </div>
         {!lockedLine && (
@@ -45,7 +46,7 @@ export function ClaimTrend({ points, fyLabel, lockedLine }: { points: MonthPoint
         )}
       </div>
       {!any ? (
-        <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-xs text-muted-foreground">No claim activity in {fyLabel} yet.</p>
+        <p className="dash-empty">No claim activity in {fyLabel} yet.</p>
       ) : (
         <>
           <div className="grid gap-6 xl:grid-cols-2">

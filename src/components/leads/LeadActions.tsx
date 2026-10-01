@@ -8,15 +8,14 @@ import {
   CalendarPlus,
   ListPlus,
   MessageSquarePlus,
-  ChevronDown,
   X,
   Loader2,
   ArrowRight,
 } from "lucide-react";
 import { RmSelector } from "@/components/common/RmSelector";
-import { leadStageDisplay } from "@/lib/leads/stages";
 import { ProductInterestDialog } from "@/components/leads/ProductInterestDialog";
 import { DateTimeField } from "@/components/ui/DateTimeField";
+import { buttonClass } from "@/components/ui/button-class";
 
 type Props = {
   leadId: string;
@@ -26,34 +25,6 @@ type Props = {
   currentStage: string;
   alreadyConvertedInvestorId?: string | null;
 };
-
-/**
- * Lead-phase blueprint stages — exact mirror of LEAD_TO_CLIENT_STAGES 1-12
- * (up to Documents Received, before the convert-to-client boundary).
- * Used by both the header Stage: ▼ dropdown and the Kanban columns so the
- * platform speaks one language: stage === blueprint.
- *
- * Post-conversion stages (13-15) live in the Clients module and aren't
- * selectable here.
- */
-/**
- * Lead-phase stages — the ten blueprint stages, call-back loops included. Names
- * come from src/lib/leads/stages.ts, the same source as the kanban and the
- * dashboard, so a loop reads "Contacted · Call back later" here too.
- * Post-conversion stages (11-30) live in the Clients module.
- */
-const STAGES = [
-  "new",
-  "call_done",
-  "call_back_later",
-  "call_not_connected",
-  "contact_in_future",
-  "meeting_scheduled",
-  "meeting_pending",
-  "meeting_done",
-  "won_lead",
-  "not_qualified",
-].map((key) => ({ key, label: leadStageDisplay(key) }));
 
 const ACTIVITY_TYPES = [
   { key: "call", label: "Phone call" },
@@ -67,7 +38,7 @@ const ACTIVITY_TYPES = [
 export function LeadActions(props: Props) {
   const router = useRouter();
   const [dialog, setDialog] = useState<
-    "stage" | "convert" | "task" | "meeting" | "schedule_meeting" | "activity" | "won_product" | null
+    "convert" | "task" | "meeting" | "schedule_meeting" | "activity" | "won_product" | null
   >(null);
 
   // Listen for "open this dialog please" events emitted by the
@@ -109,7 +80,8 @@ export function LeadActions(props: Props) {
           setDialog("convert");
           break;
         case "mark_lost":
-          setDialog("stage"); // stage dropdown lets user pick Lost
+          // Closing a lead asks for a reason; the journey card's own
+          // transition dialog handles it, so nothing to open here.
           break;
       }
     }
@@ -119,59 +91,32 @@ export function LeadActions(props: Props) {
 
   return (
     <>
-      <div className="flex flex-wrap gap-2">
-        {props.alreadyConvertedInvestorId ? (
-          <button
-            onClick={() => router.push(`/dashboard/investors/${props.alreadyConvertedInvestorId}`)}
-            className="rounded-md bg-emerald-600 text-white px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 hover:bg-emerald-700"
-          >
-            <CheckCircle2 className="size-4" /> Already converted · View client
+      {/* The page header's actions. One primary — converting is what a lead
+          is for — and the three things done between now and then. */}
+      {props.alreadyConvertedInvestorId ? (
+        <button
+          type="button"
+          onClick={() => router.push(`/dashboard/investors/${props.alreadyConvertedInvestorId}`)}
+          className={buttonClass("primary", "md")}
+        >
+          <CheckCircle2 className="size-4" /> Open client record
+        </button>
+      ) : (
+        <>
+          <button type="button" onClick={() => setDialog("activity")} className={buttonClass("secondary", "md")}>
+            <MessageSquarePlus className="size-4" /> Log activity
           </button>
-        ) : (
-          <>
-            <StageDropdown
-              leadId={props.leadId}
-              fallbackStage={props.currentStage}
-              onChange={async (s) => {
-                // Single source of truth — advance the blueprint. The
-                // legacy /api/leads/[id]/stage still exists for back-compat
-                // but the user-facing stage = the blueprint stage now.
-                await fetch(`/api/leads/${props.leadId}/blueprint/advance`, {
-                  method: "POST",
-                  headers: { "content-type": "application/json" },
-                  body: JSON.stringify({ toStageKey: s, remarks: "Manual stage change from header dropdown." }),
-                });
-                router.refresh();
-              }}
-            />
-
-            <button
-              onClick={() => setDialog("activity")}
-              className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5 hover:bg-accent"
-            >
-              <MessageSquarePlus className="size-4" /> Log activity
-            </button>
-            <button
-              onClick={() => setDialog("task")}
-              className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5 hover:bg-accent"
-            >
-              <ListPlus className="size-4" /> Add task
-            </button>
-            <button
-              onClick={() => setDialog("schedule_meeting")}
-              className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5 hover:bg-accent"
-            >
-              <CalendarPlus className="size-4" /> Schedule meeting
-            </button>
-            <button
-              onClick={() => setDialog("convert")}
-              className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium flex items-center gap-1.5"
-            >
-              <ArrowRight className="size-4" /> Convert to client
-            </button>
-          </>
-        )}
-      </div>
+          <button type="button" onClick={() => setDialog("task")} className={buttonClass("secondary", "md")}>
+            <ListPlus className="size-4" /> Add task
+          </button>
+          <button type="button" onClick={() => setDialog("schedule_meeting")} className={buttonClass("secondary", "md")}>
+            <CalendarPlus className="size-4" /> Schedule meeting
+          </button>
+          <button type="button" onClick={() => setDialog("convert")} className={buttonClass("primary", "md")}>
+            <ArrowRight className="size-4" /> Convert to client
+          </button>
+        </>
+      )}
 
       {dialog === "activity" && (
         <LogActivityDialog
@@ -256,80 +201,6 @@ export function LeadActions(props: Props) {
         />
       )}
     </>
-  );
-}
-
-/* -------------------- Stage dropdown -------------------- */
-
-/**
- * Stage dropdown — driven by the blueprint, not by the legacy
- * `leads.stage` column. Self-fetches the current blueprint stage on mount
- * so the label is always accurate regardless of the legacy column.
- *
- * Falls back to the prop-supplied stage during the brief loading window
- * so the button label never flickers to blank.
- */
-function StageDropdown({
-  leadId,
-  fallbackStage,
-  onChange,
-}: {
-  leadId: string;
-  fallbackStage: string;
-  onChange: (s: string) => Promise<void>;
-}) {
-  const [open, setOpen] = useState(false);
-  const [currentStage, setCurrentStage] = useState<string>(fallbackStage);
-
-  // Pull the live blueprint stage so the dropdown reflects the actual
-  // journey position (smart auto-advance + manual moves both land here).
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`/api/leads/${leadId}/blueprint`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (!cancelled && d?.current?.key) setCurrentStage(d.current.key);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [leadId]);
-
-  const label = STAGES.find((s) => s.key === currentStage)?.label ?? currentStage;
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5 hover:bg-accent"
-      >
-        Stage: <span className="font-medium">{label}</span>
-        <ChevronDown className="size-3.5" />
-      </button>
-      {open && (
-        <div
-          className="absolute z-10 mt-1 right-0 border bg-card rounded-md shadow-lg min-w-[240px] max-h-[60vh] overflow-y-auto"
-          onMouseLeave={() => setOpen(false)}
-        >
-          {STAGES.map((s, i) => (
-            <button
-              key={s.key}
-              onClick={async () => {
-                setOpen(false);
-                setCurrentStage(s.key);
-                await onChange(s.key);
-              }}
-              className={`w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2 ${
-                s.key === currentStage ? "bg-accent font-medium" : ""
-              }`}
-            >
-              <span className="text-2xs tabular-nums text-muted-foreground w-5">{i + 1}.</span>
-              {s.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -814,9 +685,8 @@ function ConvertDialog({
     <Modal title={`Convert ${leadName} to client`} onClose={onClose}>
       <div className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          We'll create a new client record using this lead's contact info. Workflows subscribed
-          to <code className="text-xs bg-muted px-1 rounded">investor.created</code> will run
-          automatically (welcome message, onboarding tasks, etc).
+          This creates a client record from the lead&apos;s details. Any welcome message or
+          onboarding tasks your firm has set up for new clients start automatically.
         </p>
         <label className="block">
           <div className="text-xs font-medium mb-1">

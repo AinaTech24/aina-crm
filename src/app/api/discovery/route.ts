@@ -1,8 +1,9 @@
 import { handleApiError } from "@/lib/api/error-handler";
 /**
  * GET  /api/discovery            — list discoveries (newest first)
- * POST /api/discovery            — create a draft for a lead/investor (prefills
- *                                  identity from the subject record)
+ * POST /api/discovery            — create a draft for a lead/investor, prefilled
+ *                                  from the subject's record (identity, goals,
+ *                                  insurance, holdings, risk profile on record)
  *
  * Gated to anyone who can see leads or clients. Tenant-scoped via RLS.
  */
@@ -14,6 +15,8 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireAny } from "@/lib/auth/rbac";
 import { financialDiscoveries } from "@/db/schema";
+import { loadDiscoveryPrefill, mergeDiscoveryPrefill } from "@/lib/discovery/prefill";
+import { computeDiscovery } from "@/lib/discovery/calc";
 
 export const dynamic = "force-dynamic";
 
@@ -63,17 +66,18 @@ export async function POST(req: NextRequest) {
     const { subjectType, subjectId, reviewType } = parsed.data;
 
     const created = await withTenant(session.tenantId, async (tx) => {
-      // Prefill identity from the subject (tolerant — only common columns).
+      // Start from everything the CRM already holds on this person, so the
+      // client only fills what is genuinely new.
       const table = subjectType === "lead" ? "leads" : "investors";
       const subj = (
         await tx.execute(sql`
-          SELECT name, email, phone FROM ${sql.raw(table)}
+          SELECT name FROM ${sql.raw(table)}
           WHERE id = ${subjectId}::uuid AND tenant_id = ${session.tenantId}::uuid LIMIT 1
         `)
       ).rows[0] as any;
-      const identification = subj
-        ? { fullName: subj.name ?? "", email: subj.email ?? "", mobile: subj.phone ?? "" }
-        : {};
+      const prefill = await loadDiscoveryPrefill(tx, session.tenantId, subjectType, subjectId);
+      const { data } = mergeDiscoveryPrefill({}, prefill);
+      const computed = computeDiscovery(data);
 
       const [row] = await tx
         .insert(financialDiscoveries)
@@ -84,8 +88,9 @@ export async function POST(req: NextRequest) {
           title: subj?.name ?? null,
           reviewType: reviewType ?? null,
           status: "draft",
-          data: { identification } as any,
-          computed: {} as any,
+          data: data as any,
+          computed: computed as any,
+          healthScore: computed.healthScore,
           assignedRmId: session.userId,
           createdBy: session.userId,
         } as any)

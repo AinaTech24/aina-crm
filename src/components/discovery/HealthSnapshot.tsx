@@ -97,16 +97,22 @@ export function HealthSnapshot({ c, sticky }: { c: DiscoveryComputed; sticky?: b
               <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">Risk profile</div>
               <div className="text-base font-bold leading-tight" style={{ color: c.risk.bandColor }}>{c.risk.bandLabel}</div>
             </div>
-            <div className="text-right leading-tight">
-              <div className="text-lg font-bold tabular-nums" style={{ color: c.risk.bandColor }}>
-                {c.risk.score}<span className="text-2xs text-muted-foreground">/{c.risk.max}</span>
+            {c.risk.source === "record" ? (
+              <div className="text-right text-2xs leading-tight text-muted-foreground">On record</div>
+            ) : (
+              <div className="text-right leading-tight">
+                <div className="text-lg font-bold tabular-nums" style={{ color: c.risk.bandColor }}>
+                  {c.risk.score}<span className="text-2xs text-muted-foreground">/{c.risk.max}</span>
+                </div>
+                <div className="text-2xs text-muted-foreground">{c.risk.answered}/{c.risk.total} parameters</div>
               </div>
-              <div className="text-2xs text-muted-foreground">{c.risk.answered}/{c.risk.total} parameters</div>
+            )}
+          </div>
+          {c.risk.source !== "record" && (
+            <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+              <div className="h-full rounded-full" style={{ width: `${(c.risk.score / c.risk.max) * 100}%`, background: c.risk.bandColor }} />
             </div>
-          </div>
-          <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
-            <div className="h-full rounded-full" style={{ width: `${(c.risk.score / c.risk.max) * 100}%`, background: c.risk.bandColor }} />
-          </div>
+          )}
 
           <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold pt-0.5">Product suitability</div>
           <div className="grid grid-cols-2 gap-1.5">

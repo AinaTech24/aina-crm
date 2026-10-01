@@ -3,6 +3,7 @@ import { and, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { Plus, ListChecks } from "lucide-react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { withTenant } from "@/db/client";
 import { tasks, users, investors, leads } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
@@ -40,6 +41,11 @@ export default async function TasksPage({
 }) {
   const session = await requireSession();
   const sp = await searchParams;
+  // A task opens as its own page. ?task=<id> (dashboards, palette, emails) and
+  // ?focus=<id> (record timelines, notifications — never read before) go there,
+  // in list and board view alike.
+  const openId = sp.task ?? sp.focus;
+  if (openId && /^[0-9a-f-]{36}$/i.test(openId)) redirect(`/dashboard/tasks/${openId}`);
   const q = (sp.q ?? "").trim();
   const statusFilter = (sp.status ?? "").split(",").filter(Boolean);
   const priorityFilter = (sp.priority ?? "").split(",").filter(Boolean);

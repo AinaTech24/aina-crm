@@ -66,8 +66,10 @@ export async function DashboardHead({
   const onlyBranch = !d.canManage && session.roles.includes("branch_head") ? session.branchId ?? null : null;
 
   return (
-    <header className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between print:block">
-      <div className="min-w-0">
+    // Side by side from xl, not lg: at a 1024px screen the sidebar leaves the
+    // content ~770px, and the title ran into the period and filter controls.
+    <header className="relative flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between print:block">
+      <div className="min-w-0 pr-10 xl:pr-0">
         <DashboardSwitcher
           current={{ id: d.id, name: d.name }}
           isFavourite={d.isFavourite}
@@ -84,23 +86,26 @@ export async function DashboardHead({
         />
         <p className="text-xs text-muted-foreground">Showing: {showing}</p>
       </div>
-      <div className="flex flex-col items-stretch gap-1 lg:items-end print:hidden">
+      <div className="flex flex-col items-stretch gap-1 xl:items-end print:hidden">
         <div className="flex items-start gap-2">
           {right}
-          <DashboardActions
-            dashboardId={d.id}
-            name={d.name}
-            canEdit={d.canEdit}
-            canShare={d.canShare}
-            canDelete={d.canDelete}
-            canClone={d.cloneable}
-            audience={d.audience}
-            isDefault={d.isDefault}
-            shares={share?.shares ?? []}
-            locked={d.locked}
-            shareNames={share?.names ?? null}
-            onlyBranch={onlyBranch}
-          />
+          {/* On a phone the menu floats up beside the title (the header is `relative`). */}
+          <div className="absolute right-0 top-0 xl:static">
+            <DashboardActions
+              dashboardId={d.id}
+              name={d.name}
+              canEdit={d.canEdit}
+              canShare={d.canShare}
+              canDelete={d.canDelete}
+              canClone={d.cloneable}
+              audience={d.audience}
+              isDefault={d.isDefault}
+              shares={share?.shares ?? []}
+              locked={d.locked}
+              shareNames={share?.names ?? null}
+              onlyBranch={onlyBranch}
+            />
+          </div>
         </div>
         <DashboardStatus updated={formatDate(new Date(), "time")} />
       </div>

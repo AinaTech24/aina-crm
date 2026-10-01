@@ -87,7 +87,7 @@ function Delta({ kpi }: { kpi: MyKpi }) {
   );
 }
 
-function Tile({ kpi }: { kpi: MyKpi }) {
+function Tile({ kpi, className }: { kpi: MyKpi; className?: string }) {
   const unknown = kpi.value == null;
   const zero = kpi.value === 0;
   const notes = kpi.notes.filter((n) => n.label);
@@ -95,7 +95,7 @@ function Tile({ kpi }: { kpi: MyKpi }) {
   return (
     <Link
       href={kpi.href}
-      className="metric-tile card-surface flex h-full flex-col p-4 transition-colors hover:border-primary/30"
+      className={cn("metric-tile card-surface flex h-full flex-col p-4", className)}
       style={{ ["--c" as string]: `hsl(var(--metric-${HUE[kpi.key]}))` }}
     >
       <div className="flex items-start justify-between gap-2">
@@ -110,18 +110,15 @@ function Tile({ kpi }: { kpi: MyKpi }) {
             </span>
           )}
         </div>
-        <span
-          className="grid size-8 shrink-0 place-items-center rounded-lg"
-          style={{ background: "color-mix(in srgb, var(--c) 8%, transparent)", color: "var(--c)" }}
-          aria-hidden
-        >
+        <span className="dash-kpi-chip" aria-hidden>
           {ICON[kpi.key]}
         </span>
       </div>
 
       <div
         className={cn(
-          "mt-2.5 text-2xl leading-none tabular-nums tracking-tight",
+          // Two tiles to a row on a phone: one size down so "₹2.46 Lakh" keeps to one line.
+          "mt-2.5 text-xl leading-tight tabular-nums tracking-tight sm:text-2xl",
           unknown || zero ? "font-medium text-muted-foreground/60" : "font-semibold text-foreground",
         )}
         title={unknown ? "Data unavailable — nothing has been recorded against this yet." : undefined}
@@ -187,22 +184,46 @@ function Tile({ kpi }: { kpi: MyKpi }) {
   );
 }
 
+/** Width of a tile on a short last row of 1, 2 or 3 (twelve-column grid, wide screens). */
+const LAST_ROW: Record<number, string> = { 1: "xl:col-span-12", 2: "xl:col-span-6", 3: "xl:col-span-4" };
+
 export function MyKpiStrip({ kpis, periodLabel, title = "My business" }: {
   kpis: MyKpi[];
   periodLabel: string;
   title?: string;
 }) {
+  // Ten tiles sit five to a row. Any other count goes four to a row, and the
+  // tiles left over share the last row equally — eleven used to wrap 5 + 5 + 1
+  // and leave one tile alone under the headline.
+  const fives = kpis.length % 5 === 0;
+  const left = kpis.length % 4;
+  const lastRowFrom = kpis.length - left;
+  const oddLast = (i: number) => kpis.length % 2 === 1 && i === kpis.length - 1;
   return (
     <section aria-label={`${title} figures`} className="space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="section-title">{title}</h2>
         <p className="text-2xs text-muted-foreground">{periodLabel}</p>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {kpis.map((k) => (
-          <Tile key={k.key} kpi={k} />
-        ))}
-      </div>
+      {fives ? (
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+          {kpis.map((k) => (
+            <Tile key={k.key} kpi={k} />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-12 gap-3">
+          {kpis.map((k, i) => (
+            // Two to a row below xl (one per row made eleven tiles 1,600px tall
+            // on a phone; three per row at a 1024px screen left one alone), and
+            // an odd last tile takes the whole row.
+            <Tile key={k.key} kpi={k} className={cn(
+              oddLast(i) ? "col-span-12" : "col-span-6",
+              i >= lastRowFrom ? LAST_ROW[left] : "xl:col-span-3",
+            )} />
+          ))}
+        </div>
+      )}
     </section>
   );
 }

@@ -36,7 +36,6 @@ export const NAV_ACCESS_GROUPS: NavAccessGroup[] = [
   {
     title: "Home",
     items: [
-      { key: "/dashboard/command-center", label: "My Day" },
       { key: "/dashboard/next-best-action", label: "Next Best Action" },
     ],
   },
@@ -47,7 +46,6 @@ export const NAV_ACCESS_GROUPS: NavAccessGroup[] = [
       { key: "/dashboard/review-meetings", label: "Meetings", module: "review_meetings" },
       { key: "/dashboard/calendar", label: "Calendar" },
       { key: "/dashboard/service-requests", label: "Service Requests", module: "service_requests" },
-      { key: "/dashboard/operations", label: "Operations" },
       { key: "/dashboard/complaints", label: "Complaints", module: "complaints" },
     ],
   },
@@ -84,6 +82,7 @@ export const NAV_ACCESS_GROUPS: NavAccessGroup[] = [
       { key: "/dashboard/sips/at-risk", label: "SIP At-Risk", module: "sip_tracker" },
       { key: "/dashboard/transactions", label: "MF Transactions", module: "transactions" },
       { key: "/dashboard/business-entries", label: "Business Entries", module: "business_entries" },
+      { key: "/dashboard/fixed-deposits", label: "Fixed Deposits" },
     ],
   },
   {
@@ -108,7 +107,6 @@ export const NAV_ACCESS_GROUPS: NavAccessGroup[] = [
       { key: "/dashboard/templates", label: "Message Templates", module: "broadcasts" },
       { key: "/dashboard/communications", label: "Communications", module: "broadcasts" },
       { key: "/dashboard/communications/responses", label: "Client Responses" },
-      { key: "/dashboard/aina-library", label: "Content Library" },
       { key: "/dashboard/campaigns", label: "Marketing Campaigns", module: "marketing_campaigns" },
     ],
   },

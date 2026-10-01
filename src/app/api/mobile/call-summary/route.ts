@@ -14,6 +14,15 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 const MAX_AUDIO = 12 * 1024 * 1024;
 const Summary = z.object({ discussion: z.string().max(1200), requirements: z.string().max(500), products: z.string().max(400), objections: z.string().max(500), nextSteps: z.string().max(700) });
+export async function GET() {
+  try {
+    const s = await requireSession();
+    if (!s.roles.some(r => ["owner", "branch_head", "rm", "ops", "back_office"].includes(r))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const cfg = await loadAiConfig();
+    const ready = !!(process.env.GEMINI_AUDIO_API_KEY || (cfg.provider === "google" && cfg.apiKey)) && !!(process.env.GEMINI_AUDIO_MODEL || (cfg.provider === "google" && cfg.fastModel));
+    return NextResponse.json({ ready, message: ready ? "Audio summary service is configured" : "Ask your administrator to configure audio summaries. You can still add call notes." });
+  } catch (e) { return handleApiError(e); }
+}
 export async function POST(req: Request) {
   try {
     const s = await requireSession();

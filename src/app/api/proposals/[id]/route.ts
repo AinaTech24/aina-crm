@@ -16,7 +16,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { proposals } from "@/db/schema";
 import { proposalTotals } from "@/lib/proposals/projections";
-import { advanceJourneyForProposal, startOnboarding, currentStage, journeyLeadId } from "@/lib/proposals/journey";
+import { advanceJourneyForProposal, startOnboarding, currentStage, journeyLeadId, notifyOpportunity } from "@/lib/proposals/journey";
 import { proposalOwnerId } from "@/lib/proposals/public-link";
 
 /**
@@ -175,14 +175,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (patch.status && patch.status !== before.status) {
         const after = { ...before, ...patch };
         if (patch.status === "sent") {
-          await advanceJourneyForProposal(tx, after, "proposal.sent", `Proposal ${before.proposalNumber} marked sent.`);
+          await advanceJourneyForProposal(tx, after, "proposal.sent", `Proposal ${before.proposalNumber} marked sent.`, session.userId);
         } else if (patch.status === "accepted" || patch.status === "partially_approved") {
-          const leadId = await advanceJourneyForProposal(tx, after, "proposal.accepted", `Proposal ${before.proposalNumber} marked ${patch.status === "accepted" ? "accepted" : "partly accepted"} by ${session.userId === before.preparedByUserId ? "its RM" : "a colleague"}.`);
+          const leadId = await advanceJourneyForProposal(tx, after, "proposal.accepted", `Proposal ${before.proposalNumber} marked ${patch.status === "accepted" ? "accepted" : "partly accepted"} by ${session.userId === before.preparedByUserId ? "its RM" : "a colleague"}.`, session.userId);
           journey.onboard = {
             ownerId: (await proposalOwnerId(tx, after)) ?? session.userId,
             leadId: leadId ?? (await journeyLeadId(tx, after)),
             stage: leadId ? await currentStage(tx, leadId) : null,
           };
+        } else if (patch.status === "rejected") {
+          // A decline (not the client's "ask for a change", which is
+          // changes_requested): the opportunity's owner gets a revise-or-close task.
+          await notifyOpportunity(tx, session.tenantId, id, "declined", session.userId);
         }
       }
 

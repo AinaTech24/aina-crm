@@ -5,25 +5,31 @@
  *
  * Sections:
  *   - Status updater (7 states)
+ *   - Attendees — looked up from team, clients and leads (or a typed guest);
+ *     the meeting then shows for each of them
  *   - Discussion points / agenda
- *   - Meeting notes
- *   - Action items (add / remove rows; on save → server fans out to tasks)
- *   - Attachments (URL-pasted; in a future turn we add a real S3 upload)
+ *   - Action items — each one is a task: an owner and a due date, created in
+ *     the Task module on save
+ *   - Attachments (URL-pasted)
  *   - Next review date
  *
- * "Mark completed" runs the full automation chain server-side:
+ * The meeting-notes box and the Outcome card were removed at the firm's
+ * request (2026-10-01).
+ *
+ * "Mark completed" runs the automation chain server-side:
  *   - sets investor.lastReviewAt + nextReviewAt
- *   - creates one task per action item
- *   - creates a "write up your notes" task if notes are empty
  */
 
 import { MeetingAttachments, type MeetingAttachment } from "./MeetingAttachments";
 import { useId, useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2, Save, Plus, Trash2, CheckCircle2, X, Sparkles, ListChecks, CalendarPlus, Target, CalendarClock, ChevronDown, Download } from "lucide-react";
+import { Loader2, Save, Plus, Trash2, CheckCircle2, X, ListChecks, CalendarPlus, CalendarClock, ChevronDown, Download, ExternalLink } from "lucide-react";
 import { renderReviewAgendaTemplate } from "@/lib/review-meetings/agenda";
+import type { MeetingAttendee } from "@/lib/review-meetings/attendee-kinds";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
+import { AttendeePicker } from "./AttendeePicker";
 
 /** 15-minute time slots across the day, labelled in 12-hour form. */
 const TIME_SLOTS: Array<{ value: string; label: string }> = (() => {
@@ -60,15 +66,6 @@ const STATUS_TONE: Record<string, string> = {
   no_show: "bg-rose-50 text-rose-700",
 };
 
-const OUTCOMES = [
-  ["", "— Not captured —"],
-  ["ready", "Ready to proceed"],
-  ["more_info", "Wants more info"],
-  ["not_ready", "Not ready right now"],
-  ["not_interested", "Not interested"],
-  ["no_show", "No-show"],
-] as const;
-
 const MODES = [
   ["office", "Office"],
   ["client_place", "Client place"],
@@ -76,26 +73,15 @@ const MODES = [
   ["phone", "Phone"],
 ] as const;
 
-type ActionItem = { title: string; dueAt?: string; taskId?: string };
+type ActionItem = { title: string; assigneeId?: string; dueAt?: string; taskId?: string };
 // Links and uploaded files (lib/review-meetings/files.ts); a file has `fileId`.
 type Attachment = MeetingAttachment;
-type Attendee = {
-  name: string;
-  role:
-    | "rm"
-    | "investor"
-    | "spouse"
-    | "family"
-    | "ca"
-    | "amc_rm"
-    | "sub_distributor"
-    | "back_office"
-    | "compliance"
-    | "other";
-  isExternal: boolean;
-  notes?: string;
-};
+type Attendee = MeetingAttendee;
 
+/** What a looked-up attendee is, in one word. */
+const KIND_LABEL: Record<string, string> = { user: "Team", client: "Client", lead: "Lead", guest: "Guest" };
+
+/** Rows saved before the lookup carry only a role. */
 const ATTENDEE_ROLE_LABELS: Record<string, string> = {
   rm: "RM (firm)",
   investor: "Investor",
@@ -112,16 +98,17 @@ const ATTENDEE_ROLE_LABELS: Record<string, string> = {
 export function ReviewMeetingDetailEditor({
   meeting,
   investorName,
+  team,
 }: {
   meeting: any;
   investorName: string;
+  /** Active team members — who an action item can be given to. */
+  team: Array<{ id: string; name: string }>;
 }) {
   const uid = useId();
   const router = useRouter();
   const [status, setStatus] = useState<string>(meeting.status);
   const [subject, setSubject] = useState<string>(meeting.subject ?? "");
-  const [outcome, setOutcome] = useState<string>(meeting.outcome ?? "");
-  const [outcomeNotes, setOutcomeNotes] = useState<string>(meeting.outcomeNotes ?? "");
   // Reschedule fields — moving the date/time/mode/location after creation.
   const initDT = splitLocal(meeting.meetingDate);
   const [meetingDay, setMeetingDay] = useState<string>(initDT.day);
@@ -136,7 +123,6 @@ export function ReviewMeetingDetailEditor({
   const [calOpen, setCalOpen] = useState(false);
   const calRef = useRef<HTMLDivElement>(null);
   const [discussion, setDiscussion] = useState(meeting.discussionPoints ?? "");
-  const [notes, setNotes] = useState(meeting.meetingNotes ?? "");
   const [items, setItems] = useState<ActionItem[]>(
     (meeting.actionItems as ActionItem[] | null) ?? []
   );
@@ -146,11 +132,7 @@ export function ReviewMeetingDetailEditor({
   const [attendees, setAttendees] = useState<Attendee[]>(
     (meeting.attendees as Attendee[] | null) ?? []
   );
-  const [newAttendee, setNewAttendee] = useState<Attendee>({
-    name: "",
-    role: "investor",
-    isExternal: true,
-  });
+  const takenAttendees = new Set(attendees.filter((a) => a.kind && a.refId).map((a) => `${a.kind}:${a.refId}`));
   const [nextReview, setNextReview] = useState(
     meeting.nextReviewDate ? String(meeting.nextReviewDate).slice(0, 10) : defaultNextReview()
   );
@@ -201,85 +183,9 @@ export function ReviewMeetingDetailEditor({
     return { valid, google, outlook, ics: `/api/review-meetings/${meeting.id}/calendar.ics` };
   })();
 
-  // AI summary state
-  const [aiBusy, setAiBusy] = useState(false);
-  const [aiPreview, setAiPreview] = useState<null | {
-    summary: string;
-    keyPoints: string[];
-    decisions: string[];
-    actionItems: Array<{ title: string; owner?: string; dueHint?: string }>;
-    nextSteps: string[];
-  }>(null);
-  const [aiErr, setAiErr] = useState<string | null>(null);
-
-  async function runAiSummary() {
-    setAiBusy(true);
-    setAiErr(null);
-    setAiPreview(null);
-    try {
-      const res = await fetch("/api/ai/meeting-summary", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          notes,
-          agenda: discussion || undefined,
-          meetingType: meeting.meetingType,
-          durationMinutes: meeting.durationMinutes
-            ? Number(meeting.durationMinutes)
-            : undefined,
-          clientName: investorName,
-        }),
-      });
-      const j = await res.json();
-      if (!res.ok) {
-        setAiErr(j.error ?? `AI failed (${res.status})`);
-        return;
-      }
-      setAiPreview(j);
-    } catch (e: any) {
-      setAiErr(e?.message ?? "AI request failed");
-    } finally {
-      setAiBusy(false);
-    }
-  }
-
-  function acceptAiSummary() {
-    if (!aiPreview) return;
-    // Replace notes with the AI-formatted summary block.
-    const formatted = [
-      aiPreview.summary,
-      aiPreview.keyPoints.length
-        ? "\n\nKey points:\n" + aiPreview.keyPoints.map((p) => `  • ${p}`).join("\n")
-        : "",
-      aiPreview.decisions.length
-        ? "\n\nDecisions:\n" + aiPreview.decisions.map((p) => `  • ${p}`).join("\n")
-        : "",
-      aiPreview.nextSteps.length
-        ? "\n\nNext steps:\n" + aiPreview.nextSteps.map((p) => `  • ${p}`).join("\n")
-        : "",
-    ]
-      .filter(Boolean)
-      .join("");
-    // Append the AI summary BELOW the RM's own notes — never overwrite what they
-    // typed (the summary is derived from it; the verbatim notes still matter).
-    setNotes((prev: string) => {
-      const block = formatted.trim();
-      return prev.trim() ? `${prev.trim()}\n\n— AI summary —\n${block}` : block;
-    });
-    // Append action items to the existing list (don't replace — preserves
-    // anything the RM already typed).
-    if (aiPreview.actionItems.length) {
-      setItems((prev) => [
-        ...prev,
-        ...aiPreview.actionItems.map((a) => ({ title: a.title })),
-      ]);
-    }
-    setAiPreview(null);
-    setOk("AI summary applied — review + save when ready.");
-  }
-
   function addItem() {
-    setItems((s) => [...s, { title: "" }]);
+    // A new action item starts with the meeting's RM as its owner.
+    setItems((s) => [...s, { title: "", assigneeId: meeting.rmId ?? undefined }]);
   }
   function patchItem(i: number, k: keyof ActionItem, v: string) {
     setItems((s) => s.map((it, idx) => (idx === i ? { ...it, [k]: v } : it)));
@@ -298,14 +204,14 @@ export function ReviewMeetingDetailEditor({
         status: overrideStatus ?? status,
         subject: subject || undefined,
         discussionPoints: discussion || undefined,
-        meetingNotes: notes || undefined,
-        actionItems: items.filter((i) => i.title.trim().length > 0),
+        // A title under 2 characters is not a task yet; it stays off the save.
+        actionItems: items
+          .filter((i) => i.title.trim().length >= 2)
+          .map((i) => ({ ...i, title: i.title.trim(), assigneeId: i.assigneeId || undefined, dueAt: i.dueAt || undefined })),
         // An uploaded file has no URL — keep it by its fileId.
         attachments: atts.filter((a) => a.fileId || a.url.trim().length > 0),
         attendees: attendees.filter((a) => a.name.trim().length > 0),
         nextReviewDate: nextReview || undefined,
-        outcome: outcome || undefined,
-        outcomeNotes: outcomeNotes || undefined,
         meetingMode: meetingMode || undefined,
         locationOrLink: location || undefined,
         // Only send a (reschedule) date + reason when the date actually changed.
@@ -326,6 +232,10 @@ export function ReviewMeetingDetailEditor({
         setErr(j.error ?? `Save failed (${res.status})`);
         return;
       }
+      // Keep what the server stored: every action item now carries its task,
+      // so the next save edits those tasks instead of creating new ones.
+      if (Array.isArray(j.actionItems)) setItems(j.actionItems);
+      if (Array.isArray(j.attendees)) setAttendees(j.attendees);
       if (overrideStatus === "completed" || j.completed) {
         setStatus("completed");
         // Say who ELSE this covered. The review now lands on the whole
@@ -339,7 +249,7 @@ export function ReviewMeetingDetailEditor({
                 also.slice(0, 4).join(", ")
               }${also.length > 4 ? ` +${also.length - 4} more` : ""}`;
         setOk(
-          `Marked completed · action items became tasks · ${investorName}'s next review set to ${nextReview}${family}.`
+          `Marked completed · ${investorName}'s next review set to ${nextReview}${family}.`
         );
       } else {
         setOk("Saved.");
@@ -505,100 +415,44 @@ export function ReviewMeetingDetailEditor({
         )}
       </div>
 
-      {/* Attendees */}
-      <div className="card-surface p-5 space-y-2">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold">Attendees ({attendees.length})</h3>
-        </div>
-        {attendees.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-2">
-            Add who was actually in the room — spouse, family CA, AMC RM, etc.
-          </p>
-        ) : (
+      {/* Attendees — looked up from team, clients and leads */}
+      <div className="card-surface p-5 space-y-3">
+        <h3 className="font-semibold">Attendees ({attendees.length})</h3>
+        {attendees.length > 0 && (
           <ul className="space-y-1.5">
-            {attendees.map((a, i) => (
-              <li
-                key={i}
-                className="flex items-center justify-between bg-secondary border border-border rounded-md px-3 py-2"
-              >
-                <div className="min-w-0 flex items-center gap-3">
-                  <span
-                    className={`chip text-2xs ${
-                      a.isExternal
-                        ? "bg-violet-50 text-violet-700"
-                        : "bg-cyan-50 text-cyan-700"
-                    }`}
-                  >
-                    {ATTENDEE_ROLE_LABELS[a.role] ?? a.role}
-                  </span>
-                  <span className="text-sm font-medium">{a.name}</span>
-                  {a.notes && (
-                    <span className="text-2xs text-muted-foreground truncate">
-                      · {a.notes}
+            {attendees.map((a, i) => {
+              const href = a.kind === "client" && a.refId ? `/dashboard/investors/${a.refId}`
+                : a.kind === "lead" && a.refId ? `/dashboard/leads/${a.refId}` : null;
+              return (
+                <li key={`${a.kind ?? "x"}:${a.refId ?? a.name}:${i}`}
+                  className="flex items-center justify-between gap-3 rounded-md bg-secondary/60 px-3 py-2">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="chip shrink-0 bg-card text-2xs text-muted-foreground">
+                      {a.kind ? KIND_LABEL[a.kind] : ATTENDEE_ROLE_LABELS[a.role] ?? a.role}
                     </span>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setAttendees((p) => p.filter((_, idx) => idx !== i))
-                  }
-                  className="p-1.5 text-muted-foreground hover:text-rose-600 hover:bg-rose-50 rounded-md"
-                >
-                  <X className="size-3.5" />
-                </button>
-              </li>
-            ))}
+                    {href ? (
+                      <Link href={href} className="truncate text-sm font-medium hover:text-primary hover:underline">{a.name}</Link>
+                    ) : (
+                      <span className="truncate text-sm font-medium">{a.name}</span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAttendees((p) => p.filter((_, idx) => idx !== i))}
+                    className="btn-icon shrink-0 text-muted-foreground hover:text-destructive"
+                    aria-label={`Remove ${a.name}`}
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
-        <div className="grid grid-cols-12 gap-2 mt-2">
-          <input
-            value={newAttendee.name}
-            onChange={(e) =>
-              setNewAttendee((p) => ({ ...p, name: e.target.value }))
-            }
-            placeholder="Name"
-            className="input-base text-sm col-span-4"
-          />
-          <SelectField
-            value={newAttendee.role}
-            onChange={(e) =>
-              setNewAttendee((p) => ({
-                ...p,
-                role: e.target.value as Attendee["role"],
-                isExternal: !["rm", "back_office", "compliance"].includes(e.target.value),
-              }))
-            }
-            size="sm"
-            className="text-sm col-span-3"
-          >
-            {Object.entries(ATTENDEE_ROLE_LABELS).map(([k, v]) => (
-              <option key={k} value={k}>
-                {v}
-              </option>
-            ))}
-          </SelectField>
-          <input
-            value={newAttendee.notes ?? ""}
-            onChange={(e) =>
-              setNewAttendee((p) => ({ ...p, notes: e.target.value || undefined }))
-            }
-            placeholder="Notes (optional)"
-            className="input-base text-sm col-span-4"
-          />
-          <button
-            type="button"
-            onClick={() => {
-              if (!newAttendee.name.trim()) return;
-              setAttendees((p) => [...p, { ...newAttendee }]);
-              setNewAttendee({ name: "", role: "investor", isExternal: true });
-            }}
-            disabled={!newAttendee.name.trim()}
-            className="btn-ghost text-xs col-span-1"
-          >
-            <Plus className="size-3.5" />
-          </button>
-        </div>
+        <AttendeePicker taken={takenAttendees} onPick={(a) => setAttendees((p) => [...p, a])} />
+        <p className="text-2xs text-muted-foreground">
+          A team member added here sees this meeting in their meetings and calendar. Someone outside the CRM can be added as a guest.
+        </p>
       </div>
 
       {/* Discussion points */}
@@ -630,208 +484,77 @@ export function ReviewMeetingDetailEditor({
         />
       </div>
 
-      {/* Meeting notes */}
-      <div className="card-surface p-5 space-y-2">
+      {/* Action items — each one is a task in the Task module */}
+      <div className="card-surface p-5 space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold">Meeting notes</h3>
-          <button
-            onClick={runAiSummary}
-            disabled={aiBusy || notes.trim().length < 20}
-            title={
-              notes.trim().length < 20
-                ? "Write at least 20 chars of notes first"
-                : "Claude summarises your notes into key points + action items"
-            }
-            className="btn-ghost text-xs"
-          >
-            {aiBusy ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : (
-              <Sparkles className="size-3.5" />
-            )}
-            AI summarise
-          </button>
-        </div>
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          rows={6}
-          placeholder="What was actually discussed, decisions made, mood of the client, follow-up needed…"
-          className="input-base"
-        />
-        <p className="text-2xs text-muted-foreground">
-          When you mark this meeting completed without notes, a 24-hour high-priority "write up your notes"
-          task is auto-created.
-        </p>
-
-        {aiErr && (
-          <div className="border border-destructive/30 bg-destructive/5 text-destructive rounded-lg px-3 py-2 text-sm">
-            {aiErr}
-          </div>
-        )}
-
-        {aiPreview && (
-          <div className="mt-3 border border-violet-200 bg-violet-50/60 rounded-lg p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm font-medium text-violet-900">
-                <Sparkles className="size-3.5" /> AI draft (review before applying)
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setAiPreview(null)}
-                  className="btn-ghost text-xs"
-                >
-                  <X className="size-3.5" /> Discard
-                </button>
-                <button onClick={acceptAiSummary} className="btn-primary text-xs">
-                  <CheckCircle2 className="size-3.5" /> Apply
-                </button>
-              </div>
-            </div>
-            <div className="space-y-2 text-sm">
-              <p className="text-foreground">{aiPreview.summary}</p>
-              {aiPreview.keyPoints.length > 0 && (
-                <div>
-                  <div className="text-2xs uppercase tracking-wide text-violet-700 font-medium mt-2">
-                    Key points
-                  </div>
-                  <ul className="list-disc ml-5 text-foreground">
-                    {aiPreview.keyPoints.map((p, i) => (
-                      <li key={i}>{p}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {aiPreview.decisions.length > 0 && (
-                <div>
-                  <div className="text-2xs uppercase tracking-wide text-violet-700 font-medium mt-2">
-                    Decisions
-                  </div>
-                  <ul className="list-disc ml-5 text-foreground">
-                    {aiPreview.decisions.map((p, i) => (
-                      <li key={i}>{p}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {aiPreview.actionItems.length > 0 && (
-                <div>
-                  <div className="text-2xs uppercase tracking-wide text-violet-700 font-medium mt-2">
-                    Action items — will be appended below
-                  </div>
-                  <ul className="list-disc ml-5 text-foreground">
-                    {aiPreview.actionItems.map((a, i) => (
-                      <li key={i}>
-                        {a.title}
-                        {a.owner && (
-                          <span className="text-muted-foreground"> · {a.owner}</span>
-                        )}
-                        {a.dueHint && (
-                          <span className="text-muted-foreground"> · {a.dueHint}</span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {aiPreview.nextSteps.length > 0 && (
-                <div>
-                  <div className="text-2xs uppercase tracking-wide text-violet-700 font-medium mt-2">
-                    Next steps
-                  </div>
-                  <ul className="list-disc ml-5 text-foreground">
-                    {aiPreview.nextSteps.map((p, i) => (
-                      <li key={i}>{p}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-            <p className="text-2xs text-violet-700">
-              AI is advisory. Edit the draft after applying — nothing saves until you hit Save above.
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* Outcome */}
-      <div className="card-surface p-5 space-y-2">
-        <div className="flex items-center gap-2">
-          <Target className="size-4 text-brand-cyan" />
-          <h3 className="font-semibold">Outcome</h3>
-        </div>
-        <div className="grid sm:grid-cols-2 gap-3">
-          <label className="block">
-            <div className="text-2xs text-muted-foreground mb-0.5">Result</div>
-            <SelectField value={outcome} onChange={(e) => setOutcome(e.target.value)} size="sm" className="w-full">
-              {OUTCOMES.map(([k, l]) => (
-                <option key={k} value={k}>{l}</option>
-              ))}
-            </SelectField>
-          </label>
-          <label className="block">
-            <div className="text-2xs text-muted-foreground mb-0.5">Outcome notes</div>
-            <input
-              value={outcomeNotes}
-              onChange={(e) => setOutcomeNotes(e.target.value)}
-              placeholder="Optional context"
-              className="input-base"
-            />
-          </label>
-        </div>
-        <p className="text-2xs text-muted-foreground">
-          For lead meetings the outcome moves the journey forward — <b>Ready</b> → won, <b>Not interested</b> →
-          closed, <b>Wants more info / Not ready</b> → re-nurture in 7 days.
-        </p>
-      </div>
-
-      {/* Action items */}
-      <div className="card-surface p-5 space-y-2">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold">
-            Action items ({items.length}){" "}
-            {meeting.follow_up_task_created === "true" && (
-              <span className="text-xs text-emerald-600 ml-1">· tasks created ✓</span>
-            )}
-          </h3>
+          <h3 className="font-semibold">Action items ({items.length})</h3>
           <button onClick={addItem} className="btn-ghost text-xs">
             <Plus className="size-3.5" /> Add item
           </button>
         </div>
         {items.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-3">
-            None yet. Each action item you add becomes a task for the RM when this meeting is marked completed.
+          <p className="text-sm text-muted-foreground">
+            None yet. Each action item becomes a task for the person you give it to.
           </p>
         ) : (
           <ul className="space-y-2">
             {items.map((it, i) => (
-              <li key={i} className="flex items-center gap-2">
+              <li key={it.taskId ?? `new-${i}`} className="grid grid-cols-6 items-center gap-2 rounded-lg bg-secondary/50 p-2 lg:grid-cols-12">
                 <input
                   value={it.title}
                   onChange={(e) => patchItem(i, "title", e.target.value)}
-                  placeholder="e.g. Send tax-saving fund recommendation by next Tuesday"
-                  className="input-base flex-1"
+                  placeholder="e.g. Send tax-saving fund recommendation"
+                  aria-label="Action item"
+                  className="input-base col-span-6 lg:col-span-5"
                 />
-                <DateField
-                  value={it.dueAt ?? ""}
-                  onChange={(e) => patchItem(i, "dueAt", e.target.value)}
-                  size="sm"
-                  className="w-40"
-                />
-                {it.taskId ? (
-                  <span className="chip bg-emerald-50 text-emerald-700 text-2xs">task ✓</span>
-                ) : (
+                {/* The spans sit on wrappers: SelectField / DateField keep only
+                    unprefixed layout classes, so sm:col-span-* on them is dropped. */}
+                <div className="col-span-3 min-w-0">
+                  <SelectField
+                    value={it.assigneeId ?? ""}
+                    onChange={(e) => patchItem(i, "assigneeId", e.target.value)}
+                    size="sm"
+                    aria-label="Assigned to"
+                    className="w-full"
+                  >
+                    <option value="">Assign to…</option>
+                    {team.map((u) => (
+                      <option key={u.id} value={u.id}>{u.name}</option>
+                    ))}
+                  </SelectField>
+                </div>
+                <div className="col-span-2 min-w-0">
+                  <DateField
+                    value={it.dueAt ? String(it.dueAt).slice(0, 10) : ""}
+                    onChange={(e) => patchItem(i, "dueAt", e.target.value)}
+                    size="sm"
+                    aria-label="Due date"
+                    className="w-full"
+                  />
+                </div>
+                <div className="col-span-1 flex items-center justify-end gap-1 lg:col-span-2">
+                  {it.taskId && (
+                    <Link href={`/dashboard/tasks/${it.taskId}`} className="inline-flex min-h-6 items-center gap-1 rounded px-1 text-xs font-medium text-primary hover:underline">
+                      Task <ExternalLink className="size-3" aria-hidden />
+                    </Link>
+                  )}
                   <button
+                    type="button"
                     onClick={() => removeItem(i)}
-                    className="p-2 text-muted-foreground hover:text-rose-600 hover:bg-rose-50 rounded-md"
+                    className="btn-icon text-muted-foreground hover:text-destructive"
+                    aria-label={it.taskId ? "Remove (cancels its task on save)" : "Remove"}
+                    title={it.taskId ? "Remove — its task is cancelled when you save" : "Remove"}
                   >
                     <Trash2 className="size-3.5" />
                   </button>
-                )}
+                </div>
               </li>
             ))}
           </ul>
         )}
+        <p className="text-2xs text-muted-foreground">
+          Saved items appear in Tasks for the person assigned. No due date means a week from today.
+        </p>
       </div>
 
       {/* Attachments — uploaded files and links */}

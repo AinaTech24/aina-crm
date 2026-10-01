@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Loader2, Send, X, MessageSquare, Mail, MessageSquarePlus } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
+import { buttonClass } from "@/components/ui/button-class";
 
 type TemplateInfo = {
   id: string;
@@ -121,12 +122,9 @@ export function QuickCommsPanel({
 
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        className="text-xs rounded-md border px-2.5 py-1 hover:bg-accent flex items-center gap-1.5"
-      >
-        <MessageSquarePlus className="size-3.5 text-muted-foreground" />
-        Quick Comms
+      <button type="button" onClick={() => setOpen(true)} className={buttonClass("secondary", "md")}>
+        <MessageSquarePlus className="size-4" />
+        Send message
       </button>
 
       {open && (
@@ -138,8 +136,8 @@ export function QuickCommsPanel({
             {/* Header */}
             <div className="border-b px-5 py-3 flex items-center justify-between">
               <h2 className="font-semibold text-foreground flex items-center gap-2">
-                <Send className="size-4 text-brand-cyan" />
-                Quick Comms · {investorName}
+                <Send className="size-4 text-muted-foreground" />
+                Send message · {investorName}
               </h2>
               <button onClick={() => setOpen(false)} className="rounded p-1 hover:bg-muted text-muted-foreground">
                 <X className="size-4" />

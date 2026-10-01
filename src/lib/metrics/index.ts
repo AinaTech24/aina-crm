@@ -57,3 +57,4 @@ export * from "./book";
 export * from "./meetings";
 export * from "./work-summary";
 export * from "./insurance-mix";
+export * from "./opportunities";

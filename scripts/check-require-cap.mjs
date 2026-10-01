@@ -83,7 +83,6 @@ const SKIP_FILES = new Set([
   "ai/chats/[id]/messages/route.ts",
   "announcements/[id]/read/route.ts",          // own read receipt
   "command-center/snooze/route.ts",            // own snooze
-  "command-center/digest/route.ts",            // own digest
   "daily-tracker/route.ts",                    // own daily tracker
   "dashboards/route.ts",                       // create one's own (private) dashboard
   "dashboards/[id]/clone/route.ts",            // a private copy for the caller of one they can see
@@ -123,7 +122,7 @@ const MUTATION = /export\s+async\s+function\s+(POST|PUT|PATCH|DELETE)/g;
 // Keep this in lock-step with the real gating vocabulary so the guard catches
 // genuinely UNGATED mutations, not false-positive on a non-require idiom.
 const HAS_REQUIRE =
-  /\b(?:require|requireCap|requireAny|requirePlatform|isPlatformAdmin|isManager|loadEditableLead|loadViewableLead|requireFamilyEdit|assertFamilyEditable)\s*\(|\.includes\(\s*["']owner["']\s*\)|\[\s*["']owner["']/;
+  /\b(?:require|requireCap|requireAny|requirePlatform|isPlatformAdmin|isManager|loadEditableLead|loadViewableLead|requireFamilyEdit|assertFamilyEditable|requireEditFds|requireWorkOpportunities)\s*\(|\.includes\(\s*["']owner["']\s*\)|\[\s*["']owner["']/;
 
 // `can(roles, cap)` + an explicit 403 is an equally valid gate — several routes
 // (rta/import, team/targets, integrations/rta-mailback, …) use it to return a

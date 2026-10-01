@@ -19,8 +19,12 @@ import { enforce } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
-/** Client-editable sections — the advisor assessment is intentionally excluded. */
-const CLIENT_SECTIONS = ["identification", "income", "expenses", "surplusInputs", "assets", "liabilities", "lifeInsurance", "healthInsurance", "goals"] as const;
+/** Client-editable sections — the advisor assessment is intentionally excluded.
+ *  `riskProfile` carries the client's answers to the suitability questions
+ *  (and the risk questions when no profile is on record); it was left out, so
+ *  a client's answers there were silently dropped on submit. `recordedRisk`
+ *  is never accepted from the client — it comes from the Risk Profiles module. */
+const CLIENT_SECTIONS = ["identification", "income", "expenses", "surplusInputs", "assets", "liabilities", "lifeInsurance", "healthInsurance", "goals", "riskProfile"] as const;
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   try {

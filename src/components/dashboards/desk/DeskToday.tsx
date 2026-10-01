@@ -28,10 +28,15 @@ const ICON: Record<DayCard["key"], React.ReactNode> = {
   events: <Gift className="size-4" />,
 };
 
-const BORDER = {
-  critical: "border-destructive/40",
-  attention: "border-warning/60",
-  normal: "border-border",
+/**
+ * A card inside a section is a soft fill, not a second hairline box. Only a
+ * card that needs action carries a border — and a tint of its severity — so
+ * the eye lands on it without reading a single number.
+ */
+const SURFACE = {
+  critical: "border-destructive/30 bg-destructive/5",
+  attention: "border-warning/50 bg-warning/5",
+  normal: "border-transparent bg-secondary/70",
 } as const;
 
 function Toggle({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
@@ -68,10 +73,9 @@ export function MyDayPanel({
         : "What falls due tomorrow — plan the morning the evening before."}
       icon={<CalendarDays className="size-4" />}
       action={
-        <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Action day">
+        <div className="dash-seg flex-wrap" role="group" aria-label="Action day">
           <Toggle href={hrefs.today} active={data.isToday}>Today</Toggle>
           <Toggle href={hrefs.tomorrow} active={!data.isToday}>Tomorrow</Toggle>
-          <span className="mx-1 h-4 w-px bg-border" aria-hidden />
           <Toggle href={showProgress ? hrefs.progressOff : hrefs.progressOn} active={showProgress}>
             <Sunset className="size-3" aria-hidden /> Today&apos;s progress
           </Toggle>
@@ -85,13 +89,13 @@ export function MyDayPanel({
             key={c.key}
             href={c.href}
             className={cn(
-              "flex flex-col rounded-xl border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-accent",
-              BORDER[c.severity],
+              "flex flex-col rounded-xl border p-4 transition-colors hover:border-primary/40 hover:bg-accent",
+              SURFACE[c.severity],
             )}
           >
             <div className="flex items-start justify-between gap-2">
-              <span className="text-xs font-medium leading-snug text-muted-foreground">{c.label}</span>
-              <span className="text-muted-foreground" aria-hidden>{ICON[c.key]}</span>
+              <span className="text-xs font-medium leading-snug text-foreground/80">{c.label}</span>
+              <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-card text-muted-foreground" aria-hidden>{ICON[c.key]}</span>
             </div>
             {c.count == null ? (
               <>
@@ -135,7 +139,7 @@ export function MyDayPanel({
 
 function ProgressStrip({ data }: { data: TodayProgress }) {
   const pair = (label: string, done: number, due: number, dueWord = "planned") => (
-    <div key={label} className="rounded-lg border border-border bg-card px-3 py-2">
+    <div key={label} className="rounded-lg bg-card px-3 py-2">
       <div className="text-2xs text-muted-foreground">{label}</div>
       <div className="text-base font-semibold tabular-nums">
         {formatCount(done)}
@@ -144,7 +148,7 @@ function ProgressStrip({ data }: { data: TodayProgress }) {
     </div>
   );
   const one = (label: string, value: React.ReactNode) => (
-    <div key={label} className="rounded-lg border border-border bg-card px-3 py-2">
+    <div key={label} className="rounded-lg bg-card px-3 py-2">
       <div className="text-2xs text-muted-foreground">{label}</div>
       <div className="text-base font-semibold tabular-nums">{value}</div>
     </div>
@@ -198,12 +202,12 @@ export function NeedsMyAttention({ cards }: { cards: OverdueCard[] }) {
               href={c.href}
               title={c.rule}
               className={cn(
-                "flex flex-col rounded-xl border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-accent",
-                empty ? "border-border" : c.severity === "critical" ? "border-destructive/40" : "border-warning/60",
+                "flex flex-col rounded-xl border p-4 transition-colors hover:border-primary/40 hover:bg-accent",
+                empty ? SURFACE.normal : SURFACE[c.severity === "critical" ? "critical" : "attention"],
               )}
             >
               <div className="flex items-start justify-between gap-2">
-                <span className="text-xs font-semibold leading-snug text-foreground">{c.label}</span>
+                <span className={cn("text-xs font-semibold leading-snug", empty ? "text-muted-foreground" : "text-foreground")}>{c.label}</span>
                 {!empty && (
                   <span className={cn(
                     "chip shrink-0",
@@ -214,7 +218,7 @@ export function NeedsMyAttention({ cards }: { cards: OverdueCard[] }) {
                 )}
               </div>
               {empty ? (
-                <span className="mt-2 text-sm text-muted-foreground">Nothing overdue</span>
+                <span className="mt-2 text-xs text-muted-foreground/80">Nothing overdue</span>
               ) : (
                 <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                   <span className={cn("text-2xl font-semibold tabular-nums leading-none",

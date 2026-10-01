@@ -15,6 +15,7 @@ import Link from "next/link";
 import {
   Activity, Gauge, Building2, Database, Users, CreditCard, MessageCircle, Mail, Webhook, ShieldCheck, Workflow,
   KeyRound, Palette, UserCircle, GitBranch, Target, Network, BellRing, ClipboardCheck, SlidersHorizontal, Search, X,
+  MessageSquare, LayoutTemplate, Boxes,
 } from "lucide-react";
 
 type Group = "You" | "Workspace" | "Clients & onboarding" | "Automation" | "Team" | "Connections" | "Billing";
@@ -33,9 +34,15 @@ const SECTIONS: Section[] = [
 
   { icon: SlidersHorizontal, title: "Custom fields", desc: "Add your own fields to leads & clients — text, number, date, dropdown and more.", href: "/dashboard/settings/custom-fields", group: "Clients & onboarding" },
   { icon: Database, title: "Dropdown options", desc: "Edit the choices your team picks from — lead sources, campaign types, service types and more.", href: "/dashboard/settings/masters", group: "Clients & onboarding", keywords: "masters picklist values lead source" },
+  // Scheme Master and AMC Empanelments moved here from the sidebar (2026-10-01): master data that rarely changes.
+  { icon: Boxes, title: "Scheme master", desc: "Every mutual fund scheme the CRM knows — codes, categories and plan options.", href: "/dashboard/schemes", group: "Clients & onboarding", keywords: "schemes funds amfi isin nav plan category master" },
+  { icon: Building2, title: "AMC empanelments", desc: "The fund houses your firm is empanelled with, and their status.", href: "/dashboard/amc-empanelments", group: "Clients & onboarding", keywords: "amc fund house empanelment arn" },
   { icon: ShieldCheck, title: "Risk profile questionnaire", desc: "Customise questions, scoring, and risk-category bands for your firm.", href: "/dashboard/settings/risk-profile", group: "Clients & onboarding", keywords: "risk profiling suitability" },
   { icon: ClipboardCheck, title: "Onboarding form fields", desc: "Choose which client account-opening / KYC fields your team MUST fill — make any field mandatory or optional.", href: "/dashboard/settings/onboarding-fields", group: "Clients & onboarding", keywords: "kyc mandatory required account opening" },
 
+  // Automations and Message Templates moved here from the sidebar (2026-10-01): set up by an admin, not worked from daily.
+  { icon: Workflow, title: "Automations", desc: "Rules that send messages and create tasks on their own — with their actions and run history.", href: "/dashboard/automations", group: "Automation", keywords: "workflows rules triggers actions run history recipes" },
+  { icon: LayoutTemplate, title: "Message templates", desc: "The WhatsApp, email and SMS templates your team and automations send.", href: "/dashboard/templates", group: "Automation", keywords: "whatsapp email sms template designer approval meta" },
   { icon: Workflow, title: "Stages & journeys", desc: "Edit the stages, deadlines, required fields and automations for leads, service requests, complaints, SIP recovery and reviews.", href: "/dashboard/settings/blueprints", group: "Automation", keywords: "blueprints pipeline workflow sla" },
   { icon: BellRing, title: "Notification templates", desc: "Edit the 18 lead-journey templates — welcome, referral, meeting, proposal, docs, portal.", href: "/dashboard/settings/notification-templates", group: "Automation", keywords: "email whatsapp sms messages" },
   { icon: Workflow, title: "Task templates", desc: "Design predefined tasks with sub-task checklists (SOPs) — your team applies them when creating a task.", href: "/dashboard/settings/task-templates", group: "Automation", keywords: "sop checklist" },
@@ -49,24 +56,30 @@ const SECTIONS: Section[] = [
 
   { icon: MessageCircle, title: "WhatsApp connection", desc: "Your Aina WhatsApp number and Meta template approvals.", href: "/dashboard/settings/whatsapp", group: "Connections", keywords: "aisensy meta templates" },
   { icon: Mail, title: "Email setup", desc: "Sending domain, DKIM, transactional + marketing streams.", href: "/dashboard/settings/email", group: "Connections", keywords: "smtp domain dkim mailbox sender" },
+  // Moved here from the sidebar (2026-10-01): the message log is checked now and then, not worked from daily.
+  { icon: MessageSquare, title: "Communications", desc: "Every WhatsApp, email and SMS sent and received, with delivery status — and Compose.", href: "/dashboard/communications", group: "Connections", keywords: "messages log outbox inbox delivered read failed compose whatsapp email sms cadence responses" },
   { icon: Webhook, title: "Integrations", desc: "BSE Star MF, CAMS / KFintech feeds, Razorpay, KYC providers.", href: "/dashboard/settings/integrations", group: "Connections", keywords: "api zoho bse nse cams kfintech kyc" },
 
   { icon: CreditCard, title: "Billing & subscription", desc: "Current plan, payment history, renewal.", href: "/dashboard/billing", group: "Billing", keywords: "plan invoice payment razorpay renew upgrade" },
 ];
 
-export function SettingsDirectory() {
+export function SettingsDirectory({ hidden = [] }: {
+  /** Pages this viewer cannot open (a card that moved here from the sidebar keeps its access rules). */
+  hidden?: string[];
+}) {
   const [q, setQ] = useState("");
+  const sections = useMemo(() => SECTIONS.filter((s) => !hidden.includes(s.href)), [hidden]);
 
   // Every word must appear somewhere in the title, description, section or
   // keywords, so "email templates" finds Notification templates.
   const shown = useMemo(() => {
     const words = q.toLowerCase().split(/\s+/).filter(Boolean);
-    if (!words.length) return SECTIONS;
-    return SECTIONS.filter((s) => {
+    if (!words.length) return sections;
+    return sections.filter((s) => {
       const hay = `${s.title} ${s.desc} ${s.group} ${s.keywords ?? ""}`.toLowerCase();
       return words.every((w) => hay.includes(w));
     });
-  }, [q]);
+  }, [q, sections]);
 
   return (
     <div className="space-y-6">

@@ -82,6 +82,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         investorId: old.investorId,
         leadId: old.leadId,
         familyId: old.familyId,
+        // The new version answers the same opportunity (lib/opportunities).
+        opportunityId: old.opportunityId,
         recipientName: old.recipientName,
         recipientEmail: old.recipientEmail,
         recipientPhone: old.recipientPhone,

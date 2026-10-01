@@ -8,6 +8,7 @@
  * SVG fill paints black.
  */
 
+import { TrendingUp } from "lucide-react";
 import { useState } from "react";
 import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { TrendPoint } from "@/lib/dashboard/insurance/business";
@@ -39,7 +40,7 @@ export function InsTrend({ points, fyLabel, pyLabel, lockedLine }: {
     <section className="card-surface p-5 sm:p-6" aria-label="Insurance business trend">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-border/60 pb-4">
         <div>
-          <h2 className="section-title">Insurance business trend</h2>
+          <h2 className="section-title flex items-center gap-2"><TrendingUp className="size-4 shrink-0 text-muted-foreground" aria-hidden /> Insurance business trend</h2>
           <p className="section-subtitle mt-1">{fyLabel}, month by month — {lockedLine ? `${lockedLine === "personal" ? "Personal" : "Commercial"} Lines ` : ""}new and renewal premium, against {pyLabel}.</p>
         </div>
         {!lockedLine && <div className="inline-flex rounded-lg border border-border bg-secondary/60 p-0.5" role="group" aria-label="Line">
@@ -53,7 +54,7 @@ export function InsTrend({ points, fyLabel, pyLabel, lockedLine }: {
         </div>}
       </div>
       {!any ? (
-        <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-xs text-muted-foreground">No insurance business recorded in either year yet.</p>
+        <p className="dash-empty">No insurance business recorded in either year yet.</p>
       ) : (
         <div className="h-72 min-w-0 overflow-hidden">
           {/* First paint narrower than any phone: an 800px first paint made a mobile browser widen its

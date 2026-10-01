@@ -38,6 +38,7 @@
  */
 
 import { useEffect, useMemo, useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   Settings2,
   Check,
@@ -111,9 +112,12 @@ export function RelatedListSection({
 export function RelatedListsManager({
   moduleKey,
   sections,
+  triggerClassName,
 }: {
   moduleKey: string;
   sections: RelatedListDef[];
+  /** Replaces the trigger's look — a record menu passes its row class. */
+  triggerClassName?: string;
 }) {
   const storageKey = `rl:${moduleKey}`;
 
@@ -255,14 +259,16 @@ export function RelatedListsManager({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="rounded-md border border-border bg-secondary/40 px-2.5 py-1.5 text-xs font-medium hover:bg-secondary inline-flex items-center gap-1.5"
-        title="Show / hide and reorder the sections on this page"
+        className={triggerClassName ?? "rounded-md border border-border bg-secondary/40 px-2.5 py-1.5 text-xs font-medium hover:bg-secondary inline-flex items-center gap-1.5"}
+        title="Show, hide and reorder the sections on this page"
       >
-        <Settings2 className="size-3.5" />
+        <Settings2 className={triggerClassName ? "size-4 shrink-0 text-muted-foreground" : "size-3.5"} />
         Customize page
       </button>
 
-      {open && (
+      {/* Portaled to <body>: the trigger can sit inside a record's More menu,
+          and a drawer rendered there would live and die with the menu panel. */}
+      {open && typeof document !== "undefined" && createPortal(
         <CustomizeDrawer
           sections={ordered}
           hidden={hiddenSet}
@@ -271,7 +277,8 @@ export function RelatedListsManager({
           onReset={reset}
           onSaveFirmDefault={canSaveFirm ? saveFirmDefault : undefined}
           onClose={() => setOpen(false)}
-        />
+        />,
+        document.body
       )}
     </>
   );
@@ -321,7 +328,7 @@ function CustomizeDrawer({
         <div className="px-5 py-3 border-b border-border flex items-center justify-between">
           <div>
             <div className="font-semibold flex items-center gap-2">
-              <Layers className="size-4 text-brand-cyan" />
+              <Layers className="size-4 text-muted-foreground" />
               Customize page sections
             </div>
             <div className="text-2xs text-muted-foreground mt-0.5">

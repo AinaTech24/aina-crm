@@ -15,7 +15,6 @@ import { can } from "@/lib/auth/rbac";
 import { withTenant } from "@/db/client";
 import { loadDailyTracker } from "@/lib/daily-tracker";
 import { DailyTrackerForm } from "@/components/tasks/DailyTrackerForm";
-import { MyDayNav } from "@/components/layout/MyDayNav";
 
 export const dynamic = "force-dynamic";
 
@@ -70,7 +69,6 @@ export default async function DailyTrackerPage({
 
   return (
     <div className="space-y-5 w-full">
-      <MyDayNav />
       {/* Hero header */}
       <div className="rounded-2xl border border-border bg-gradient-to-br from-brand-cyan-light/50 via-card to-card p-5 sm:p-6">
         <Link href="/dashboard/tasks" className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1 mb-2">

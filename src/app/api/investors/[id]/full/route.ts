@@ -9,7 +9,8 @@
 import { withSchemeCategories } from "@/lib/investors/scheme-categories";
 import { handleApiError } from "@/lib/api/error-handler";
 import { NextResponse } from "next/server";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
+import { attendeeIs } from "@/lib/review-meetings/attendees";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
@@ -64,7 +65,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
             WHERE investor_id = ${id} AND type = 'lumpsum' AND status IN ('processed', 'successful')
           `).then((r) => Number((r.rows[0] as any)?.total ?? 0)),
           valueInvestor(tx as any, id),
-          tx.select().from(reviewMeetings).where(eq(reviewMeetings.investorId, id)),
+          tx.select().from(reviewMeetings).where(or(eq(reviewMeetings.investorId, id), attendeeIs("client", id, sql`${reviewMeetings.attendees}`))),
           tx.select().from(riskProfileResponses).where(eq(riskProfileResponses.investorId, id)).orderBy(desc(riskProfileResponses.signedAt)),
           tx.select().from(transactions).where(eq(transactions.investorId, id)).orderBy(sql`${transactions.orderDate} desc nulls last`, desc(transactions.createdAt)).limit(30),
           tx.execute(sql`SELECT count(*)::int AS c FROM transactions WHERE investor_id = ${id}`).then((r) => Number((r.rows[0] as any)?.c ?? 0)),

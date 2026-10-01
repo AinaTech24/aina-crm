@@ -25,7 +25,7 @@ export function RenewalCommand({ buckets, pastGrace, hrefs }: { buckets: Renewal
           return (
             <Link key={b.key} href={hrefs[`bucket:${b.key}`] ?? hrefs.renewals}
               className={cn("block rounded-xl border p-4 transition-colors hover:border-primary/40 hover:bg-accent",
-                bad ? "border-destructive/40 bg-destructive/5" : warn ? "border-warning/50 bg-warning/5" : "border-border bg-card")}>
+                bad ? "border-destructive/30 bg-destructive/5" : warn ? "border-warning/50 bg-warning/5" : "border-transparent bg-secondary/70")}>
               <div className="text-2xs font-semibold text-muted-foreground">{b.label}</div>
               <div className={cn("mt-1 text-2xl font-semibold tabular-nums", bad ? "text-destructive" : warn ? "text-warning-foreground" : "text-foreground")}>
                 {formatCount(b.count)}

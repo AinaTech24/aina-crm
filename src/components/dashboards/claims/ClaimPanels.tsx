@@ -68,7 +68,7 @@ export function AgeingPanel({ buckets, rows, names, sort, sortOptions }: {
       note="Age runs from the intimation date, or from the day the claim was keyed when there is none. 90+ days is highlighted: those claims are also on the management escalation centre.">
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
         {buckets.map((b) => (
-          <div key={b.key} className={cn("rounded-lg border p-3", b.key === "a6" && b.n > 0 ? "border-destructive/50 bg-destructive/5" : "border-border bg-card")}>
+          <div key={b.key} className={cn("rounded-lg border p-3", b.key === "a6" && b.n > 0 ? "border-destructive/30 bg-destructive/5" : "border-transparent bg-secondary/70")}>
             <div className={cn("text-xl font-semibold tabular-nums", b.key === "a6" && b.n > 0 && "text-destructive")}>{formatCount(b.n)}</div>
             <div className="text-2xs font-medium text-foreground">{b.label}</div>
             <div className="text-2xs text-muted-foreground">{formatMoney(b.amount)}</div>
@@ -163,7 +163,7 @@ export function PendingWithPanel({ rows, focusHref }: { rows: ReturnType<typeof 
       note="Derived from the status: the CRM has no pending-with field, and it cannot tell the insurer from a TPA, a hospital, a surveyor or a lawyer, or the claims team from the RM.">
       <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
         {rows.map((r) => (
-          <Link key={r.key} href={focusHref(r.key)} scroll={false} title={r.hint} className="block rounded-lg border border-border bg-card p-3 hover:border-primary/40 hover:bg-accent">
+          <Link key={r.key} href={focusHref(r.key)} scroll={false} title={r.hint} className="block rounded-lg border border-transparent bg-secondary/70 p-3 transition-colors hover:border-primary/25 hover:bg-accent">
             <div className="flex items-baseline justify-between">
               <span className="text-xs font-medium">{r.label}</span>
               <span className="text-xl font-semibold tabular-nums">{formatCount(r.n)}</span>
@@ -262,12 +262,12 @@ export function SettlementPanel({ s, periodLabel }: { s: ReturnType<typeof settl
         <div className="min-w-0">
           <h3 className="mb-1.5 text-2xs font-semibold text-muted-foreground">Settlement ratio · {periodLabel}</h3>
           <div className="grid grid-cols-2 gap-2.5">
-            <div className="rounded-lg border border-border p-3" title="Settled claims ÷ claims decided (settled + rejected) in the period. Withdrawn claims are the client's choice and are left out.">
+            <div className="rounded-lg bg-secondary/70 p-3" title="Settled claims ÷ claims decided (settled + rejected) in the period. Withdrawn claims are the client's choice and are left out.">
               <div className="text-xl font-semibold tabular-nums">{pct(s.countPct)}</div>
               <div className="text-2xs font-medium">By claim count</div>
               <div className="text-2xs text-muted-foreground">{formatCount(s.settledN)} settled of {formatCount(s.decidedN)} decided</div>
             </div>
-            <div className="rounded-lg border border-border p-3" title="Settled amount ÷ claimed amount, on the claims that settled in the period. The CRM has no approved amount to use instead.">
+            <div className="rounded-lg bg-secondary/70 p-3" title="Settled amount ÷ claimed amount, on the claims that settled in the period. The CRM has no approved amount to use instead.">
               <div className="text-xl font-semibold tabular-nums">{pct(s.amountPct)}</div>
               <div className="text-2xs font-medium">By amount</div>
               <div className="text-2xs text-muted-foreground">{formatMoney(s.period.amount)} of {formatMoney(s.claimedOnSettled)} claimed</div>

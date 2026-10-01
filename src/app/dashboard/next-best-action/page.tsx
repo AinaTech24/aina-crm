@@ -18,7 +18,6 @@ import { NbaUserFilter } from "@/components/nba/NbaUserFilter";
 import { NbaRowActions } from "@/components/nba/NbaRowActions";
 import { NbaFocusMode, type FocusAction } from "@/components/nba/NbaFocusMode";
 import { HelpTip } from "@/components/common/HelpTip";
-import { MyDayNav } from "@/components/layout/MyDayNav";
 
 export const dynamic = "force-dynamic";
 
@@ -120,8 +119,6 @@ export default async function NextBestActionPage({ searchParams }: { searchParam
           </div>
           {canFirm && <NbaUserFilter value={userParam} options={userOptions} />}
         </div></>} />
-
-      <MyDayNav />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Kpi icon={Target} label="Clients to act on" value={String(actions.length)} />

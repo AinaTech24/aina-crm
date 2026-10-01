@@ -472,7 +472,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // ─── Journey: Proposal Sent (forward only) ─────────────────────
       // A fresh proposal to a client already in onboarding or fully active
       // must not pull their journey back — see lib/proposals/journey.ts.
-      await advanceJourneyForProposal(tx, p as any, "proposal.sent", `Auto: proposal ${p.proposalNumber} sent via ${channel}.`);
+      await advanceJourneyForProposal(tx, p as any, "proposal.sent", `Auto: proposal ${p.proposalNumber} sent via ${channel}.`, session.userId);
 
       return NextResponse.json({
         ok: true,

@@ -161,6 +161,8 @@ export type SuitabilityMatrix = Record<ProductKey, SuitabilityCell>;
 /* ── the orchestrator ────────────────────────────────────────────────────── */
 export interface RiskInput {
   answers: Record<string, string>; // data.riskProfile (the 8 asked fields)
+  /** The category on record in the Risk Profiles module; wins over the answers. */
+  recordedCategory?: string | null;
   age: number | null;
   grossAnnualIncome: number;
   netWorth: number;
@@ -179,7 +181,17 @@ export interface RiskResult {
   category: "conservative" | "moderate" | "aggressive" | "very_aggressive";
   suitability: SuitabilityMatrix;
   suitabilityReady: boolean;
+  /** "record" when the band comes from the Risk Profiles module. */
+  source: "record" | "questions";
 }
+
+/** The module's 4 categories → this engine's 6 bands. */
+const RECORDED_BAND: Record<string, RiskBandId> = {
+  conservative: "conservative",
+  moderate: "moderate",
+  aggressive: "aggressive",
+  very_aggressive: "very_aggressive",
+};
 
 export function computeRisk(inp: RiskInput): RiskResult {
   const a = inp.answers ?? {};
@@ -202,7 +214,11 @@ export function computeRisk(inp: RiskInput): RiskResult {
     if (d != null) { answered++; score += d; }
   }
 
-  const band = bandForScore(score);
+  // A risk profile on record is the client's risk profile — one answer across
+  // the CRM. The questions then only feed the product-suitability inputs
+  // (horizon, lump sum, liquidity).
+  const recordedId = inp.recordedCategory ? RECORDED_BAND[inp.recordedCategory] : undefined;
+  const band = recordedId ? RISK_BANDS.find((b) => b.id === recordedId)! : bandForScore(score);
 
   // suitability inputs
   const r = riskShort(band.id);
@@ -218,7 +234,26 @@ export function computeRisk(inp: RiskInput): RiskResult {
     matrix[p] = { risk, horizon, surplus, liquidity, overall: rollup([risk, horizon, surplus, liquidity]) };
   }
 
+  if (recordedId) {
+    return {
+      score: band.max,
+      max: MAX_RISK_SCORE,
+      answered: 10,
+      total: 10,
+      complete: true,
+      bandId: band.id,
+      bandLabel: band.label,
+      bandColor: band.color,
+      bandProducts: band.products,
+      category: toCanonicalCategory(band.id),
+      suitability: matrix,
+      suitabilityReady: true,
+      source: "record",
+    };
+  }
+
   return {
+    source: "questions",
     score,
     max: MAX_RISK_SCORE,
     answered,

@@ -1056,3 +1056,421 @@ input[type="checkbox"]:not([data-native]):indeterminate::before {
   box-shadow: none;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Dashboard canvas — the six role dashboards (/dashboard/[dashboardId]).
+
+   Everything here is scoped under `.dash-canvas`, the wrapper that page puts
+   round a dashboard, so the rest of the CRM keeps the flat reference look.
+   A dashboard is read at a glance rather than worked through like a list page,
+   so it gets three things a list page does not need:
+
+   · depth — a card lifts a little off the ground, and a tile INSIDE a card is
+     a soft fill rather than a second hairline box (box-in-box was most of the
+     visual noise);
+   · one tile anatomy — icon chip, figure, change pill — on every dashboard;
+   · a response to the pointer on anything that opens a list.
+
+   Plain top-level CSS, not @layer components: a bare single-class rule in that
+   layer has been tree-shaken here before. No motion beyond colour and shadow.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.dash-canvas .card-surface {
+  box-shadow:
+    0 1px 2px hsl(222 30% 18% / 0.04),
+    0 6px 20px -10px hsl(222 30% 18% / 0.12);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+/* A card inside a card is a panel, not a second floating surface. */
+.dash-canvas .card-surface .card-surface {
+  box-shadow: none;
+}
+.dash-canvas a.card-surface:hover,
+.dash-canvas a:hover > .card-surface {
+  border-color: hsl(var(--primary) / 0.35);
+  box-shadow:
+    0 1px 2px hsl(222 30% 18% / 0.05),
+    0 10px 28px -12px hsl(var(--primary) / 0.28);
+}
+
+/* Headline KPI tile: the chip takes the metric's hue through --c. */
+.dash-kpi {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  padding: 1.125rem 1.25rem;
+  border-radius: calc(var(--radius) + 4px);
+  overflow: hidden;
+}
+.dash-kpi-chip {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  border-radius: 0.625rem;
+  color: var(--c, hsl(var(--primary)));
+  background: color-mix(in srgb, var(--c, hsl(var(--primary))) 11%, transparent);
+}
+.dash-kpi-value {
+  font-size: 1.75rem;
+  line-height: 1.15;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--foreground));
+}
+/* These rules sit after Tailwind's utilities, so a utility cannot recolour
+   them — a quiet state needs its own modifier. */
+.dash-kpi-value-empty {
+  color: hsl(var(--muted-foreground) / 0.5);
+}
+.dash-kpi-unit {
+  margin-left: 0.125rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: hsl(var(--muted-foreground));
+}
+
+/* Two tiles to a row on a phone: a smaller figure so "₹2.46 Lakh" stays on
+   one line, and a little less padding. */
+@media (max-width: 639px) {
+  .dash-kpi {
+    padding: 0.875rem;
+  }
+  .dash-kpi-chip {
+    width: 2rem;
+    height: 2rem;
+  }
+  .dash-kpi-value {
+    font-size: 1.375rem;
+  }
+}
+
+/* The change against the comparison period, as a pill. Green only for a
+   movement in the good direction; anything else stays neutral (a fall is not
+   an alarm — red is kept for overdue work). */
+.dash-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.0625rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--secondary));
+}
+.dash-delta-good {
+  color: hsl(var(--success-foreground));
+  background: hsl(var(--success) / 0.12);
+}
+.dash-delta-bad {
+  color: hsl(var(--destructive));
+  background: hsl(var(--destructive) / 0.1);
+}
+
+/* A figure inside a card: soft fill, no hairline. */
+.dash-tile {
+  display: block;
+  min-width: 0;
+  padding: 0.75rem 0.875rem;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  background: hsl(var(--secondary) / 0.75);
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+a.dash-tile:hover,
+a:hover > .dash-tile {
+  background: hsl(var(--accent));
+  border-color: hsl(var(--primary) / 0.25);
+}
+
+/* One row of an action list: count badge, what it is, arrow. */
+.dash-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0 -0.5rem;
+  padding: 0.5rem;
+  border-radius: var(--radius);
+  transition: background-color 150ms ease;
+}
+.dash-row:hover {
+  background: hsl(var(--secondary) / 0.8);
+}
+.dash-count {
+  display: grid;
+  place-items: center;
+  min-width: 2.5rem;
+  height: 2rem;
+  padding: 0 0.5rem;
+  flex-shrink: 0;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--foreground));
+  background: hsl(var(--secondary));
+}
+.dash-count-zero {
+  color: hsl(var(--muted-foreground) / 0.6);
+}
+.dash-count-alarm {
+  color: hsl(var(--destructive));
+  background: hsl(var(--destructive) / 0.1);
+}
+.dash-count-warn {
+  color: hsl(var(--warning-foreground));
+  background: hsl(var(--warning) / 0.14);
+}
+
+/* Share-of-whole bar. */
+.dash-bar {
+  height: 0.5rem;
+  border-radius: 9999px;
+  overflow: hidden;
+  background: hsl(var(--secondary));
+}
+.dash-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, hsl(var(--primary) / 0.75), hsl(var(--primary)));
+}
+
+/* Section icon, as a quiet brand chip beside the title. A section that draws
+   its own heading puts a bare icon first in it; that icon gets the same chip,
+   so every section on every dashboard opens the same way. */
+.dash-canvas .section-title > svg:first-child {
+  box-sizing: content-box;
+  flex-shrink: 0;
+  padding: 0.375rem;
+  border-radius: 0.5rem;
+  color: hsl(var(--primary));
+  background: hsl(var(--accent));
+}
+.dash-icon {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex-shrink: 0;
+  border-radius: 0.5rem;
+  color: hsl(var(--primary));
+  background: hsl(var(--accent));
+}
+
+/* Tables on a dashboard: one body size (a cell with no size of its own used to
+   inherit 16px beside 14px neighbours), and the header as a soft rounded band
+   instead of a ruled bar. :where() keeps author classes on a cell winning. */
+.dash-canvas :where(table:not(.table-raw)) {
+  font-size: 0.875rem;
+}
+.dash-canvas :where(table:not(.table-raw) thead th) {
+  border-bottom-width: 0;
+  /* Opaque, so a sticky first column paints the same band as its neighbours
+     (it used to sit white beside a translucent grey). */
+  background-color: color-mix(in srgb, hsl(var(--secondary)) 70%, hsl(var(--card)));
+}
+.dash-canvas :where(table:not(.table-raw) thead th:first-child) {
+  border-top-left-radius: 0.5rem;
+  border-bottom-left-radius: 0.5rem;
+}
+.dash-canvas :where(table:not(.table-raw) thead th:last-child) {
+  border-top-right-radius: 0.5rem;
+  border-bottom-right-radius: 0.5rem;
+}
+
+/* `.table-scroll` caps a list at 30rem and hides the vertical scrollbar — on a
+   list page that keeps every module's table the same height. On a dashboard
+   it silently cut the eighth row off a worklist that said "11 actions", and
+   the last two rows off every month-on-month table. A dashboard table shows
+   what its loader returned; the loaders already limit their rows. A table
+   that asks for a cap of its own (--table-scroll-h) keeps it, with a visible
+   scrollbar so the rows below the fold can be found. */
+.dash-canvas .table-scroll:not([style*="--table-scroll-h"]) {
+  max-height: none;
+}
+.dash-canvas .table-scroll[style*="--table-scroll-h"]::-webkit-scrollbar {
+  width: 8px;
+}
+.dash-canvas .table-scroll[style*="--table-scroll-h"]::-webkit-scrollbar:vertical {
+  width: 8px;
+  display: block;
+}
+
+/* A row of figures. Flex, not grid, so a short last row shares the width:
+   five tiles in four columns used to leave one alone; seven in three left a
+   hole. --cols is set per breakpoint by StatGrid (Shared.tsx). */
+.dash-stats {
+  --cols: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+}
+.dash-stats > * {
+  flex: 1 1 calc((100% - (var(--cols) - 1) * 0.625rem) / var(--cols) - 0.02px);
+  min-width: 0;
+}
+@media (min-width: 640px) {
+  .dash-stats { --cols: var(--cols-sm, 3); }
+}
+@media (min-width: 1024px) {
+  .dash-stats { --cols: var(--cols-lg, 4); }
+}
+
+/* One segmented control for every "this view or that" switch — Today ·
+   Tomorrow, MTD · QTD · FYTD, Weekly · Monthly, Personal · Commercial. A soft
+   track; the chosen segment is a raised white pill. The dashboards had five
+   toggle styles for the same job. Active state is the accessible one
+   (aria-current / aria-pressed), which every switch already sets. */
+.dash-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 0.625rem;
+  background: hsl(var(--secondary));
+  border: 0;
+  /* Never wider than its card: five thresholds (₹1 Lakh … ₹25 Lakh) pushed the
+     Claims page 52px sideways on a phone. Past the edge the track scrolls. */
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.dash-seg::-webkit-scrollbar {
+  display: none;
+}
+
+/* A chip you can tap (a threshold, a filter) meets the 24px hit-target floor.
+   A plain .chip is 20px — fine for a label, too small for a finger. */
+.dash-canvas a.chip,
+.dash-canvas button.chip {
+  min-height: 1.5rem;
+}
+.dash-seg > a,
+.dash-seg > button,
+.dash-seg > div {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: 1.75rem;
+  padding: 0 0.625rem;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 500;
+  white-space: nowrap;
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  box-shadow: none;
+  transition: color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+.dash-seg > a:hover,
+.dash-seg > button:hover {
+  color: hsl(var(--foreground));
+}
+.dash-seg > [aria-current],
+.dash-seg > [aria-pressed="true"],
+.dash-seg > .is-active {
+  color: hsl(var(--foreground));
+  font-weight: 600;
+  background: hsl(var(--card));
+  box-shadow:
+    0 1px 2px hsl(222 30% 18% / 0.08),
+    0 0 0 1px hsl(var(--border) / 0.7);
+}
+.dash-seg > [disabled] {
+  opacity: 0.5;
+}
+
+/* The centres' sticky toolbar (actions · period · filters): frosted, so the
+   page reads through it as it scrolls underneath. */
+.dash-toolbar {
+  background: hsl(var(--background) / 0.82);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
+  border-bottom-color: hsl(var(--border) / 0.6);
+}
+
+/* Jump-to-section links as quiet pills that scroll sideways on a phone. */
+.dash-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  overflow-x: auto;
+  padding-bottom: 0.125rem;
+  scrollbar-width: none;
+}
+.dash-nav::-webkit-scrollbar {
+  display: none;
+}
+.dash-nav > a {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  min-height: 1.625rem;
+  padding: 0 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--secondary) / 0.7);
+  transition: color 150ms ease, background-color 150ms ease;
+}
+.dash-nav > a:hover {
+  color: hsl(var(--primary));
+  background: hsl(var(--accent));
+}
+
+/* An empty list or figure: a soft panel and one sentence — the dashed boxes
+   that used to stack down an empty page read as broken drop zones. */
+.dash-empty {
+  display: block;
+  padding: 1.25rem 1rem;
+  border-radius: var(--radius);
+  background: hsl(var(--secondary) / 0.5);
+  text-align: center;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: hsl(var(--muted-foreground));
+}
+
+/* Initials in a soft disc — the person or client a row is about. */
+.dash-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: hsl(var(--primary-deep));
+  background: hsl(var(--accent));
+}
+
+/* The page opens on a soft wash of the firm's colour, fading into the ground
+   by the second row of cards. It is painted as the BACKGROUND of the content
+   pane that holds a dashboard, not as a layer of the canvas: a pseudo-element
+   behind the canvas would need a stacking context on the canvas, and that
+   would drop the drawers and dialogs the dashboards render inline
+   (fixed, z-50) beneath the shell's sticky top bar. */
+.dashboard-content:has(.dash-canvas) {
+  background:
+    radial-gradient(70% 90% at 12% 0%, hsl(var(--primary) / 0.11), transparent 70%),
+    radial-gradient(45% 70% at 92% 4%, hsl(var(--metric-violet) / 0.08), transparent 70%);
+  background-size: 100% 28rem;
+  background-repeat: no-repeat;
+}
+@media print {
+  .dashboard-content:has(.dash-canvas) { background: none; }
+}
+

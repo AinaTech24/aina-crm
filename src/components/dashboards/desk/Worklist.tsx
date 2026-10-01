@@ -19,7 +19,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { CalendarPlus, CalendarClock, ExternalLink } from "lucide-react";
+import { CalendarPlus, CalendarClock, ExternalLink, ListTodo } from "lucide-react";
 import type { WorkItem } from "@/lib/dashboard/my/desk";
 import { ContactQuickActions } from "@/components/common/ContactQuickActions";
 import { LogActivityButton } from "@/components/activities/ActivityLogger";
@@ -173,7 +173,7 @@ export function Worklist({
     <section className="card-surface p-5 sm:p-6" aria-label="Today's client worklist">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b border-border/60 pb-4">
         <div className="min-w-0">
-          <h2 className="section-title">{dayWord === "today" ? "Today's client worklist" : "Tomorrow's client worklist"}</h2>
+          <h2 className="section-title flex items-center gap-2"><ListTodo className="size-4 shrink-0 text-muted-foreground" aria-hidden /> {dayWord === "today" ? "Today's client worklist" : "Tomorrow's client worklist"}</h2>
           <p className="section-subtitle mt-1">
             {items.length === 0
               ? `Nothing due ${dayWord} and nothing overdue.`
@@ -207,7 +207,7 @@ export function Worklist({
       </div>
 
       {visible.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-xs text-muted-foreground">
+        <p className="dash-empty">
           {items.length === 0 ? `A clear desk, ${firstName}. Nothing is due ${dayWord} and nothing is overdue.` : "Nothing matches these filters."}
         </p>
       ) : (

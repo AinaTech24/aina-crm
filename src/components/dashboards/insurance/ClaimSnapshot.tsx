@@ -37,7 +37,7 @@ export function ClaimSnapshotPanel({ s, periodLabel, slaDays, hrefs, lockedLine 
           <h2 className="section-title flex items-center gap-2"><HeartPulse className="size-4 text-muted-foreground" /> Claims snapshot</h2>
           <p className="section-subtitle mt-1">Management figures only. <Link href={hrefs.claimsDashboard} className="font-medium text-primary hover:underline">Open the claims dashboard</Link></p>
         </div>
-        {!lockedLine && <div className="inline-flex rounded-lg border border-border bg-secondary/60 p-0.5" role="group" aria-label="Line">
+        {!lockedLine && <div className="dash-seg" role="group" aria-label="Line">
           {([["all", "All"], ["personal", "Personal"], ["commercial", "Commercial"]] as const).map(([k, l]) => (
             <button key={k} type="button" aria-pressed={line === k} onClick={() => setLine(k)}
               className={cn("inline-flex min-h-7 items-center rounded-md px-2.5 text-xs font-medium", line === k ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground")}>
@@ -48,7 +48,7 @@ export function ClaimSnapshotPanel({ s, periodLabel, slaDays, hrefs, lockedLine 
       </div>
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
         {tiles.map((t) => (
-          <Link key={t.label} href={t.href} className="block rounded-lg border border-border bg-card p-3 transition-colors hover:border-primary/40 hover:bg-accent">
+          <Link key={t.label} href={t.href} className="dash-tile">
             <div className={cn("text-xl font-semibold tabular-nums leading-tight",
               t.tone === "bad" ? "text-destructive" : t.tone === "warn" ? "text-warning-foreground" : t.tone === "good" ? "text-success" : "text-foreground")}>{t.value}</div>
             <div className="mt-1 text-2xs font-medium leading-snug text-foreground">{t.label}</div>

@@ -32,6 +32,7 @@
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { formatDate } from "@/lib/format";
+import { attendeeIsAnyUser } from "@/lib/review-meetings/attendees";
 import type { DashboardThresholds } from "@/lib/dashboard/thresholds";
 import { findAtRiskSips, type AtRiskSip } from "@/lib/finance/sip-defense";
 import {
@@ -804,7 +805,7 @@ export async function loadUpcoming(tx: Tx, w: MyWindow, days = 7): Promise<Upcom
              COALESCE(i.name, l.name) AS client, i.id::text AS client_id
         FROM review_meetings m
         LEFT JOIN investors i ON i.id = m.investor_id LEFT JOIN leads l ON l.id = m.lead_id
-       WHERE ${staffMatch("rm_id", w, "m")} AND m.status IN (${UPCOMING})
+       WHERE (${staffMatch("rm_id", w, "m")} OR ${attendeeIsAnyUser(w.staff)}) AND m.status IN (${UPCOMING})
          AND m.meeting_date >= ${w.today}::date AND m.meeting_date < (${end}::date + 1)
       UNION ALL
       SELECT 'review', i.id::text, i.next_review_at, false, 'Review due', i.name, i.id::text

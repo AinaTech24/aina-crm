@@ -17,21 +17,14 @@ export async function SignalScoreCard({ session, leadId }: { session: { tenantId
     { userId: session.userId, branchId: session.branchId ?? undefined, roles: session.roles }
   );
 
-  // Empty state — keep it to a single slim line so it doesn't eat a whole card
-  // when there's nothing to show yet.
-  if (score.lines.length === 0) {
-    return (
-      <div className="border rounded-lg bg-card px-4 py-2.5 flex items-center gap-2 text-xs text-muted-foreground">
-        <Activity className="size-4 text-brand-cyan shrink-0" />
-        <span><span className="font-medium text-foreground">Engagement signals:</span> none yet — log a call, message, or meeting to build this lead&apos;s behavioural score.</span>
-      </div>
-    );
-  }
+  // Nothing logged yet → nothing to show. A line saying "none yet" on most
+  // leads was a card explaining its own absence.
+  if (score.lines.length === 0) return null;
 
   return (
-    <div className="border rounded-lg bg-card p-4">
+    <div className="card-surface p-5">
       <div className="flex items-center justify-between mb-2">
-        <div className="font-semibold text-sm flex items-center gap-2"><Activity className="size-4 text-brand-cyan" /> Engagement signals</div>
+        <h3 className="section-title flex items-center gap-2"><Activity className="size-4 text-muted-foreground" /> Engagement signals</h3>
         <span className={`chip text-2xs capitalize inline-flex items-center gap-1 ${BAND_TONE[score.band]}`}><Flame className="size-3" /> {score.band} · +{score.total}</span>
       </div>
       {score.lines.length === 0 ? (
@@ -46,7 +39,7 @@ export async function SignalScoreCard({ session, leadId }: { session: { tenantId
           ))}
         </ul>
       )}
-      <p className="text-2xs text-muted-foreground mt-2 italic">Behavioural bonus on top of the deterministic lead score.</p>
+      <p className="text-2xs text-muted-foreground mt-2">Points earned from real contact, on top of the lead score in the header.</p>
     </div>
   );
 }

@@ -103,7 +103,7 @@ export function DashboardSwitcher({
             setCursor(0);
           }}
         >
-          <span className="page-title truncate">{current.name}</span>
+          <span className="page-title block text-left max-sm:text-xl max-sm:leading-snug sm:truncate">{current.name}</span>
           <ChevronDown className="size-4 shrink-0 text-muted-foreground" aria-hidden />
         </button>
         {open && (

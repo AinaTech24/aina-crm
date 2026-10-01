@@ -58,12 +58,12 @@ export function StandupPanel({
   const items = eod ? closure : morning;
   return (
     <section className="card-surface overflow-hidden" aria-label={eod ? "Today's closure" : "Morning stand-up"}>
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-secondary/40 px-5 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-5 py-3">
         <h2 className="section-title flex items-center gap-2">
           {eod ? <Sunset className="size-4 text-muted-foreground" aria-hidden /> : <Sunrise className="size-4 text-muted-foreground" aria-hidden />}
           {eod ? "Today's closure" : "Morning stand-up"}
         </h2>
-        <div className="inline-flex rounded-lg border border-border bg-card p-0.5 text-xs" role="group" aria-label="View">
+        <div className="dash-seg" role="group" aria-label="View">
           <Link href={hrefs.morning} aria-current={!eod ? "page" : undefined}
                 className={cn("rounded-md px-2.5 py-1 font-medium", !eod ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground")}>
             Morning stand-up
@@ -100,11 +100,11 @@ function Tile({ label, value, sub, tone = "neutral", href }: {
 }) {
   return (
     <Link href={href} className={cn(
-      "block rounded-xl border bg-card p-4 transition-colors hover:bg-accent",
-      tone === "bad" ? "border-destructive/40" : tone === "warn" ? "border-warning/50" : "border-border",
+      "card-surface block h-full p-4",
+      tone === "bad" ? "border-destructive/40" : tone === "warn" && "border-warning/50",
     )}>
-      <div className="text-2xs font-medium text-muted-foreground">{label}</div>
-      <div className={cn("mt-1.5 text-3xl font-semibold tabular-nums leading-none",
+      <div className="text-xs font-medium leading-snug text-muted-foreground">{label}</div>
+      <div className={cn("mt-1.5 text-3xl font-semibold tabular-nums leading-none tracking-tight",
         tone === "bad" ? "text-destructive" : tone === "warn" ? "text-warning-foreground" : tone === "good" ? "text-success" : "text-foreground")}>
         {value}
       </div>
@@ -167,7 +167,9 @@ export function AttentionPanel({ cards }: { cards: AttentionCard[] }) {
         {cards.map((c) => (
           <Link key={c.key} href={c.href} className={cn(
             "flex flex-col rounded-lg border p-3 transition-colors hover:bg-accent",
-            c.severity === "critical" ? "border-destructive/40 bg-destructive/5" : c.severity === "attention" ? "border-warning/50" : "border-border",
+            c.count === 0 ? "border-transparent bg-secondary/70"
+            : c.severity === "critical" ? "border-destructive/30 bg-destructive/5"
+            : c.severity === "attention" ? "border-warning/50 bg-warning/5" : "border-transparent bg-secondary/70",
           )}>
             <div className="flex items-start justify-between gap-2">
               <span className="text-xs font-semibold text-foreground">{c.label}</span>
@@ -178,7 +180,8 @@ export function AttentionPanel({ cards }: { cards: AttentionCard[] }) {
               )}
             </div>
             <div className="mt-2 flex items-baseline gap-2">
-              <span className={cn("text-2xl font-semibold tabular-nums", c.severity === "critical" ? "text-destructive" : "text-foreground")}>
+              <span className={cn("text-2xl tabular-nums tracking-tight",
+                c.count === 0 ? "font-medium text-muted-foreground/60" : cn("font-semibold", c.severity === "critical" ? "text-destructive" : "text-foreground"))}>
                 {formatCount(c.count)}
               </span>
               {c.value != null && c.count > 0 && <span className="text-xs tabular-nums text-muted-foreground">{formatMoney(c.value)}</span>}

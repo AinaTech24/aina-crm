@@ -53,29 +53,35 @@ export async function GET(req: Request) {
     return NextResponse.json(result);
   } catch (e) { return handleApiError(e); }
 }
-const Body = z.object({ period: z.string(), scopeType: z.enum(["user", "branch"]), scopeId: z.string().uuid(), metric: z.string(), target: z.number().min(0).max(1e12) });
+const Scope = z.object({ period: z.string(), scopeType: z.enum(["user", "branch"]), scopeId: z.string().uuid() });
+const Metric = z.object({ metric: z.string(), target: z.number().min(0).max(1e12) });
+// Keep the single-metric contract for installed older APKs.
+const Body = z.union([Scope.extend({ metrics: z.array(Metric).min(1).max(20) }), Scope.merge(Metric).transform(({ metric, target, ...scope }) => ({ ...scope, metrics: [{ metric, target }] }))]);
 export async function POST(req: Request) {
   try {
     const s = await requireSession();
     if (!s.roles.some(r => ["owner", "branch_head"].includes(r))) return NextResponse.json({ error: "Only Owner and Branch Head can set targets" }, { status: 403 });
     const parsed = Body.safeParse(await req.json());
     if (!parsed.success) return NextResponse.json({ error: "Invalid target" }, { status: 400 });
-    const b = parsed.data, dates = targetPeriod(b.period), metric = MOBILE_METRICS.find(m => m.key === b.metric);
-    if (!metric || (metric.unit === "count" && !Number.isInteger(b.target))) return NextResponse.json({ error: "Invalid metric or count" }, { status: 400 });
+    const b = parsed.data, dates = targetPeriod(b.period);
+    if (new Set(b.metrics.map(m => m.metric)).size !== b.metrics.length || b.metrics.some(item => { const metric = MOBILE_METRICS.find(m => m.key === item.metric); return !metric || (metric.unit === "count" && !Number.isInteger(item.target)); })) return NextResponse.json({ error: "Invalid metric or count" }, { status: 400 });
     await withTenant(s.tenantId, async tx => {
       const options = await choices(tx, s);
       if (!(b.scopeType === "branch" ? options.branches : options.members).some(r => r.id === b.scopeId)) throw Object.assign(new Error("Scope is not available to you"), { status: 403 });
-      const key = dates.prefix + b.metric;
+      // Stable lock order avoids deadlocks between overlapping batches.
+      for (const item of [...b.metrics].sort((a, b) => a.metric.localeCompare(b.metric))) {
+      const key = dates.prefix + item.metric;
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${s.tenantId}:${b.scopeType}:${b.scopeId}:${key}`},0))`);
       if (b.scopeType === "user") await tx.execute(sql`INSERT INTO kra_targets (tenant_id,user_id,fiscal_year,metric_key,annual_target,updated_by)
-        VALUES (${s.tenantId}::uuid,${b.scopeId}::uuid,${dates.fiscalYear},${key},${b.target},${s.userId}::uuid)
+        VALUES (${s.tenantId}::uuid,${b.scopeId}::uuid,${dates.fiscalYear},${key},${item.target},${s.userId}::uuid)
         ON CONFLICT (tenant_id,user_id,fiscal_year,metric_key) DO UPDATE SET annual_target=excluded.annual_target, updated_by=excluded.updated_by, updated_at=now()`);
       else {
         const existing = (await tx.execute(sql`SELECT id FROM annual_targets WHERE tenant_id=${s.tenantId}::uuid AND scope_type='branch'
           AND scope_id=${b.scopeId}::uuid AND metric_key=${key} AND fiscal_year=${dates.fiscalYear}`)).rows[0];
-        if (existing) await tx.execute(sql`UPDATE annual_targets SET target_value=${b.target}, updated_at=now() WHERE id=${existing.id}::uuid AND tenant_id=${s.tenantId}::uuid`);
+        if (existing) await tx.execute(sql`UPDATE annual_targets SET target_value=${item.target}, updated_at=now() WHERE id=${existing.id}::uuid AND tenant_id=${s.tenantId}::uuid`);
         else await tx.execute(sql`INSERT INTO annual_targets (tenant_id,scope_type,scope_id,metric_key,fiscal_year,target_value)
-          VALUES (${s.tenantId}::uuid,'branch',${b.scopeId}::uuid,${key},${dates.fiscalYear},${b.target})`);
+          VALUES (${s.tenantId}::uuid,'branch',${b.scopeId}::uuid,${key},${dates.fiscalYear},${item.target})`);
+      }
       }
       await recordAudit(tx, { tenantId: s.tenantId, actorUserId: s.userId, action: "mobile_target.set", entityType: "target", entityId: b.scopeId, after: b });
     }, { userId: s.userId, branchId: s.branchId, roles: s.roles });

@@ -4,6 +4,7 @@ import {
   healthBandClasses,
   type InvestorForHealth,
 } from "@/lib/investors/health";
+import { InfoTip } from "@/components/dashboards/my/Shared";
 
 /**
  * Client Health Card — composite score with factor breakdown.
@@ -23,12 +24,19 @@ export function ClientHealthCard({
   const cls = healthBandClasses(health.band);
 
   return (
-    <div className="border rounded-lg bg-card p-5">
+    <div className="card-surface p-5">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="font-semibold flex items-center gap-2">
-          <Activity className="size-4 text-muted-foreground" />
-          Client health
-        </h2>
+        <div className="flex items-center gap-1">
+          <h2 className="section-title flex items-center gap-2">
+            <Activity className="size-4 text-muted-foreground" />
+            Client health
+          </h2>
+          <InfoTip>
+            The score starts at 100 and loses points for stale contact, missed reviews, KYC or
+            nominee gaps and overdue service requests. Fix an item listed here to recover its
+            points.
+          </InfoTip>
+        </div>
         <span
           className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-0.5 rounded-full border ${cls.chip} font-semibold`}
         >
@@ -112,11 +120,6 @@ export function ClientHealthCard({
         </div>
       </div>
 
-      <p className="text-2xs text-muted-foreground mt-3 leading-relaxed border-t border-border/40 pt-3">
-        Score starts at 100 and loses points for stale contact, missed reviews,
-        KYC / nominee gaps and overdue service requests — fix an item above to
-        recover its points.
-      </p>
     </div>
   );
 }

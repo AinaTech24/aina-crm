@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { mobileFirmAccess, mobileOwnerScope } from "@/lib/mobile/access";
 import { can } from "@/lib/auth/rbac";
 import { investors, users } from "@/db/schema";
 import { buildCommandQueue } from "@/lib/command-center/queue";
@@ -28,7 +29,7 @@ const BAND_LABEL: Record<string, string> = { now: "Act now", today: "Today", soo
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
-    const ownerView = can(session.roles, "dashboard.view.owner", session.permissions);
+    const ownerView = session.mobile ? mobileFirmAccess(session) : can(session.roles, "dashboard.view.owner", session.permissions);
     const url = new URL(req.url);
     const userParam = ownerView ? url.searchParams.get("user") : null;
     const clientId = url.searchParams.get("client") || undefined;
@@ -44,7 +45,7 @@ export async function GET(req: NextRequest) {
         const groups = await buildCommandQueue(tx as any, { userId: effectiveUserId, firmWide, clientId });
         let clientName: string | null = null;
         if (clientId) {
-          const [c] = await tx.select({ name: investors.name }).from(investors).where(eq(investors.id, clientId)).limit(1);
+          const [c] = await tx.select({ name: investors.name }).from(investors).where(and(eq(investors.id, clientId), session.mobile ? mobileOwnerScope(session, "investors.rm_id") : undefined)).limit(1);
           clientName = c?.name ?? null;
         }
         let roster: Array<{ value: string; label: string }> | undefined;

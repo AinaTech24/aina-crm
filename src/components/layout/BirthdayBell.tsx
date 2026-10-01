@@ -30,7 +30,7 @@ type Item = {
 };
 type Bucket = "past" | "today" | "tomorrow";
 
-/** Same greeting My Day sends (src/app/dashboard/command-center/page.tsx). */
+/** The birthday greeting (My Day used the same one before that page was removed). */
 function wishText(name: string): string {
   return `Dear ${name}, wishing you a very happy birthday! 🎂 May the year ahead bring you health, happiness and prosperity.`;
 }

@@ -27,7 +27,7 @@ export function PeopleTable({ cols, rows, empty }: { cols: PeopleCol[]; rows: Pe
     const bn = typeof bv === "number" ? bv : -Infinity;
     return (an - bn) * sort.dir || a.name.localeCompare(b.name);
   }), [rows, sort]);
-  if (rows.length === 0) return <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-xs text-muted-foreground">{empty}</p>;
+  if (rows.length === 0) return <p className="dash-empty">{empty}</p>;
   const fmt = (c: PeopleCol, v: number | string | null) => {
     if (v == null) return <span className="text-muted-foreground" title="Not recorded">—</span>;
     if (c.format === "text") return String(v);

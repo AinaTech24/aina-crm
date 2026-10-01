@@ -55,7 +55,7 @@ export function TeamPanel({ rows, periodLabel }: { rows: ExecRow[]; periodLabel:
       icon={<UserCheck className="size-4" />}
       note="By the policy's seller, for users with the Insurance Team role; the CRM has no separate insurance-executive field. Pending is policies awaiting issue plus their open insurance leads; renewal due is within 30 days.">
       {rows.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-xs text-muted-foreground">No user holds the Insurance Team role.</p>
+        <p className="dash-empty">No user holds the Insurance Team role.</p>
       ) : (
         <Table rows={rows.length} empty="" head={<>
           <th scope="col">Executive</th>

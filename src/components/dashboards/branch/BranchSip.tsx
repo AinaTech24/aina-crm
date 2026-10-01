@@ -43,7 +43,7 @@ export function BranchSipPerformance({
       <div id="sip-performance" className="scroll-mt-40" />
       <div className="grid gap-3 sm:grid-cols-3">
         {data.windows.map((x) => (
-          <div key={x.key} className="rounded-lg border border-border bg-card p-3">
+          <div key={x.key} className="rounded-lg bg-secondary/70 p-3">
             <div className="text-2xs font-semibold text-muted-foreground">{x.label}</div>
             <div className={cn("mt-1 text-xl font-semibold tabular-nums", x.net < 0 ? "text-destructive" : "text-foreground")}>
               {formatMoney(x.net)}

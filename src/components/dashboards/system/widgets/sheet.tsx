@@ -25,19 +25,25 @@ import { formatCount, formatDate, formatMoney, formatPercent, pickMoneyScale } f
 import type { WidgetCtx, WidgetImpl } from "../types";
 import { clientRecordsHref, clientsHref, newClientsHref, qs, riskProfilesHref, tasksHref } from "../links";
 import { Drill } from "../Drill";
+import { stripRole } from "./business";
+import { Initials } from "@/components/dashboards/my/Shared";
 
 /* ─────────────────────────────── shared parts ─────────────────────────────── */
 
 function Tile({ label, value, href, tone, hint }: {
   label: string; value: ReactNode; href?: string; tone?: "danger" | "warning" | null; hint?: string;
 }) {
-  const valueClass = `text-lg font-semibold tabular-nums leading-tight ${tone === "danger" ? "text-rose-700" : tone === "warning" ? "text-amber-700" : "text-foreground"}`;
-  return (
-    <div className="min-w-0 rounded-lg border border-border bg-secondary/30 p-3" title={hint}>
-      {href ? <Link href={href} className={`${valueClass} hover:underline`}>{value}</Link> : <div className={valueClass}>{value}</div>}
-      <div className="mt-0.5 text-xs text-muted-foreground">{label}</div>
-    </div>
+  const valueClass = `text-xl font-semibold tabular-nums leading-tight tracking-tight ${tone === "danger" ? "text-rose-700" : tone === "warning" ? "text-amber-700" : "text-foreground"}`;
+  const inner = (
+    <>
+      <div className={valueClass}>{value}</div>
+      <div className="mt-1 text-xs leading-snug text-muted-foreground">{label}</div>
+    </>
   );
+  // The whole tile opens the list, not only the figure.
+  return href
+    ? <Link href={href} className="dash-tile" title={hint}>{inner}</Link>
+    : <div className="dash-tile" title={hint}>{inner}</div>;
 }
 
 /** A labelled bar: name, figure and share of the whole. */
@@ -45,11 +51,11 @@ function Bar({ label, figure, pct, href }: { label: string; figure: string; pct:
   return (
     <li className="space-y-1">
       <div className="flex items-baseline justify-between gap-3 text-sm">
-        {href ? <Link href={href} className="truncate hover:underline">{label}</Link> : <span className="truncate">{label}</span>}
+        {href ? <Link href={href} className="truncate py-1 hover:underline">{label}</Link> : <span className="truncate">{label}</span>}
         <span className="whitespace-nowrap tabular-nums text-muted-foreground"><Drill href={href}>{figure}</Drill></span>
       </div>
-      <div className="h-1.5 rounded-full bg-secondary" aria-hidden>
-        <div className="h-1.5 rounded-full bg-primary/70" style={{ width: `${Math.max(pct > 0 ? 2 : 0, Math.min(100, pct))}%` }} />
+      <div className="dash-bar" aria-hidden>
+        <span style={{ width: `${Math.max(pct > 0 ? 2 : 0, Math.min(100, pct))}%` }} />
       </div>
     </li>
   );
@@ -341,9 +347,10 @@ async function reviewsDue(tx: Tx, ctx: WidgetCtx) {
           <ul className="divide-y divide-border">
             {r.rows.map((x) => (
               <li key={x.id} className="flex items-center gap-3 py-2 min-w-0">
-                <Link href={`/dashboard/investors/${x.id}`} className="flex-1 min-w-0 truncate text-sm font-medium hover:underline">{x.name}</Link>
+                <Initials name={x.name} />
+                <Link href={`/dashboard/investors/${x.id}`} className="flex-1 min-w-0 truncate py-0.5 text-sm font-medium hover:underline">{x.name}</Link>
                 {ctx.access.kind !== "self" && x.rmId && (
-                  <span className="hidden sm:inline max-w-32 truncate text-xs text-muted-foreground">{ctx.userNames.get(x.rmId) ?? ""}</span>
+                  <span className="hidden sm:inline max-w-36 truncate text-xs text-muted-foreground">{stripRole(ctx.userNames.get(x.rmId) ?? "")}</span>
                 )}
                 <span className={`whitespace-nowrap text-xs ${x.overdue ? "font-medium text-rose-700" : "text-muted-foreground"}`}>
                   {formatDate(x.nextReview, "dayMonth")}

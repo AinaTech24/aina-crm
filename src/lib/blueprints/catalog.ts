@@ -1,5 +1,5 @@
 /**
- * Blueprint catalog — the 5 ready-to-use journey templates the engine ships
+ * Blueprint catalog — the ready-to-use journey templates the engine ships
  * with. Each is module-scoped (the `subject_type` it applies to) and lists
  * its stages + simple forward transitions.
  *
@@ -8,10 +8,13 @@
  */
 
 import { LEAD_TO_CLIENT_STAGES, LEAD_TO_CLIENT_TRANSITIONS, LEAD_TO_CLIENT_BLUEPRINT_NAME, type SeedStage } from "./lead_to_client";
+import {
+  OPPORTUNITY_BLUEPRINT_NAME, OPPORTUNITY_MODULE, OPPORTUNITY_STAGES, opportunityTransitions,
+} from "@/lib/opportunities/stages";
 
 export interface BlueprintCatalogEntry {
   /** Subject type — drives the subjectType column on blueprint_instances. */
-  subjectType: "lead" | "service_request" | "complaint" | "sip_rejection" | "investor";
+  subjectType: "lead" | "service_request" | "complaint" | "sip_rejection" | "investor" | "opportunity";
   moduleName: string;
   blueprintName: string;
   description?: string;
@@ -328,5 +331,13 @@ export const BLUEPRINT_CATALOG: BlueprintCatalogEntry[] = [
     description: "Quarterly/half-yearly/yearly review — due → scheduled → in progress → complete.",
     stages: REVIEW_STAGES,
     transitions: REVIEW_TRANSITIONS,
+  },
+  {
+    subjectType: "opportunity",
+    moduleName: OPPORTUNITY_MODULE,
+    blueprintName: OPPORTUNITY_BLUEPRINT_NAME,
+    description: "An existing client wants another product — skips KYC, UCC and mandate stages the client already has.",
+    stages: OPPORTUNITY_STAGES,
+    transitions: opportunityTransitions(),
   },
 ];

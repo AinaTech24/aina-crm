@@ -1,21 +1,30 @@
 import Link from "next/link";
-import { ShieldCheck, CheckCircle2, AlertTriangle, IdCard, ShieldAlert, Users, Landmark, Mail, Phone } from "lucide-react";
+import type { ReactNode } from "react";
+import { ShieldCheck, CheckCircle2, AlertTriangle, IdCard, ShieldAlert, Users, Landmark, type LucideIcon } from "lucide-react";
+import { Card } from "@/components/ui/Card";
+import { cn } from "@/lib/utils";
 
 /**
- * ClientReadinessStrip — one consolidated view of a client's onboarding &
- * compliance gaps (KYC, risk profile, nominee, bank, contact verification),
- * replacing the scattered signals (standalone risk banner + KYC chip + repeated
- * "do the risk assessment" prompts). For a new client this is the single most
- * useful thing on the page: what's left to make them transaction-ready.
+ * ClientReadinessStrip — the one checklist of what is still missing on a
+ * client: the compliance items that make them transaction-ready (KYC, risk
+ * profile, nominee, bank, verified contact) and the profile fields nobody has
+ * filled in yet (address, occupation, PAN–Aadhaar link…).
+ *
+ * The page used to carry three different completeness figures — "2/6" here,
+ * "Onboarding (3/5)" on a button, "67%, 10 of 15 fields" on a card in another
+ * tab — each with its own list. This is the only one now, and the button that
+ * fixes the gaps (the guided setup) sits on it.
  *
  * Pure render (server component). Renders nothing once every tracked item is
- * complete, so established clients don't see clutter. A tracked item passed as
- * `null` is hidden (license/field not visible for this firm).
+ * complete and no field is missing, so established clients don't see it. A
+ * tracked item passed as `null` is hidden (licence/field not visible for this
+ * firm). Colour is a signal: the card itself stays neutral; a pending item is
+ * amber and a missing or expired risk profile — the one SEBI blocker — red.
  */
 
 type RiskState = "ok" | "missing" | "expired";
 
-type Item = { key: string; label: string; ok: boolean; icon: any; urgent?: boolean };
+type Item = { key: string; label: string; ok: boolean; icon: LucideIcon; urgent?: boolean; href?: string };
 
 export function ClientReadinessStrip({
   investorId,
@@ -25,6 +34,9 @@ export function ClientReadinessStrip({
   bank,
   emailVerified,
   phoneVerified,
+  missingFields = [],
+  action,
+  verify,
 }: {
   investorId: string;
   kyc: boolean | null;
@@ -33,74 +45,106 @@ export function ClientReadinessStrip({
   bank: boolean | null;
   emailVerified: boolean | null;
   phoneVerified: boolean | null;
+  /** Profile fields still blank beyond the checks above, as labels. */
+  missingFields?: string[];
+  /** The control that completes the setup (the guided onboarding). */
+  action?: ReactNode;
+  /** Interactive "Verify email / phone" pills; drawn in place of the static ones. */
+  verify?: ReactNode;
 }) {
   const items: Item[] = [];
   if (kyc !== null) items.push({ key: "kyc", label: "KYC", ok: kyc, icon: IdCard });
-  if (risk !== null) items.push({ key: "risk", label: risk === "expired" ? "Risk (expired)" : "Risk profile", ok: risk === "ok", icon: ShieldAlert, urgent: true });
-  if (nominee !== null) items.push({ key: "nominee", label: "Nominee", ok: nominee, icon: Users });
-  if (bank !== null) items.push({ key: "bank", label: "Bank", ok: bank, icon: Landmark });
-  if (emailVerified !== null) items.push({ key: "email", label: "Email verified", ok: emailVerified, icon: Mail });
-  if (phoneVerified !== null) items.push({ key: "phone", label: "Phone verified", ok: phoneVerified, icon: Phone });
+  if (risk !== null) {
+    items.push({
+      key: "risk",
+      label: risk === "expired" ? "Risk profile (expired)" : "Risk profile",
+      ok: risk === "ok",
+      icon: ShieldAlert,
+      urgent: true,
+      href: `/dashboard/risk-profiles/new?investorId=${investorId}`,
+    });
+  }
+  if (nominee !== null) items.push({ key: "nominee", label: "Nominee", ok: nominee, icon: Users, href: "#rel-nominees" });
+  if (bank !== null) items.push({ key: "bank", label: "Bank account", ok: bank, icon: Landmark });
 
-  const done = items.filter((i) => i.ok).length;
-  const gaps = items.length - done;
+  const contact = [emailVerified, phoneVerified].filter((v): v is boolean => v !== null);
+  const total = items.length + contact.length;
+  const done = items.filter((i) => i.ok).length + contact.filter(Boolean).length;
+  const gaps = total - done;
 
-  // Nothing tracked, or everything complete → no strip (keeps active clients clean).
-  if (items.length === 0 || gaps === 0) return null;
+  // Nothing tracked and nothing missing → no strip (keeps active clients clean).
+  if (gaps === 0 && missingFields.length === 0) return null;
 
   const riskNeedsAction = risk === "missing" || risk === "expired";
-  const pct = Math.round((done / items.length) * 100);
 
   return (
-    <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="size-4 text-amber-600" />
-            <h3 className="text-sm font-semibold text-amber-900">Onboarding &amp; compliance readiness</h3>
-            <span className="text-2xs font-medium text-amber-700 tabular-nums">{done}/{items.length} complete</span>
-          </div>
-          <p className="text-2xs text-amber-700/90 mt-0.5">
-            {gaps} item{gaps === 1 ? "" : "s"} left before this client is fully transaction-ready (SEBI).
-          </p>
-        </div>
-        {riskNeedsAction && (
-          <Link
-            href={`/dashboard/risk-profiles/new?investorId=${investorId}`}
-            className="shrink-0 inline-flex items-center gap-1.5 text-xs font-medium bg-amber-600 hover:bg-amber-700 text-white rounded px-3 py-1.5 transition-colors shadow-sm"
-          >
-            <ShieldCheck className="size-3.5" /> {risk === "expired" ? "Renew risk profile" : "Start risk assessment"}
-          </Link>
+    <Card className="px-5 py-4">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+          <ShieldCheck className="size-4 text-muted-foreground" aria-hidden />
+          Client setup
+        </h2>
+        {total > 0 && (
+          <span className="text-xs tabular-nums text-muted-foreground">
+            {done} of {total} done{gaps > 0 ? ` · ${gaps} left before this client can transact` : ""}
+          </span>
         )}
-      </div>
-
-      {/* thin progress bar */}
-      <div className="mt-3 h-1.5 rounded-full bg-amber-100 overflow-hidden">
-        <div className="h-full bg-amber-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
-      </div>
-
-      {/* per-item status pills */}
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {items.map((it) => {
-          const Icon = it.ok ? CheckCircle2 : it.urgent ? AlertTriangle : it.icon;
-          return (
-            <span
-              key={it.key}
-              className={`inline-flex items-center gap-1 text-2xs font-medium px-2 py-1 rounded-md border ${
-                it.ok
-                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                  : it.urgent
-                    ? "bg-rose-50 text-rose-700 border-rose-200"
-                    : "bg-white text-amber-800 border-amber-200"
-              }`}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {riskNeedsAction && (
+            <Link
+              href={`/dashboard/risk-profiles/new?investorId=${investorId}`}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
             >
-              <Icon className="size-3" />
-              {it.label}
-              {!it.ok && <span className="opacity-60">· pending</span>}
-            </span>
-          );
-        })}
+              <ShieldCheck className="size-3.5" /> {risk === "expired" ? "Renew risk profile" : "Start risk assessment"}
+            </Link>
+          )}
+          {action}
+        </div>
       </div>
-    </div>
+
+      {(items.length > 0 || verify) && (
+        <ul className="mt-3 flex flex-wrap gap-1.5">
+          {items.map((it) => {
+            const Icon = it.ok ? CheckCircle2 : it.urgent ? AlertTriangle : it.icon;
+            const cls = cn(
+              "inline-flex items-center gap-1 rounded-md border px-2 py-1 text-2xs font-medium",
+              it.ok
+                ? "border-success/20 bg-success/5 text-success"
+                : it.urgent
+                  ? "border-destructive/30 bg-destructive/5 text-destructive"
+                  : "border-warning/40 bg-warning/5 text-warning-foreground",
+            );
+            const inner = (
+              <>
+                <Icon className="size-3" aria-hidden />
+                {it.label}
+                {!it.ok && <span className="opacity-70">· pending</span>}
+              </>
+            );
+            return (
+              <li key={it.key}>
+                {!it.ok && it.href ? (
+                  it.href.startsWith("#") ? (
+                    <a href={it.href} className={cn(cls, "hover:bg-secondary")}>{inner}</a>
+                  ) : (
+                    <Link href={it.href} className={cn(cls, "hover:bg-secondary")}>{inner}</Link>
+                  )
+                ) : (
+                  <span className={cls}>{inner}</span>
+                )}
+              </li>
+            );
+          })}
+          {verify && <li className="contents">{verify}</li>}
+        </ul>
+      )}
+
+      {missingFields.length > 0 && (
+        <p className="mt-3 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">Profile details still missing:</span> {missingFields.join(", ")}.{" "}
+          <a href="#rel-master" className="font-medium text-primary hover:underline">Add them</a>
+        </p>
+      )}
+    </Card>
   );
 }

@@ -1,16 +1,20 @@
 "use client";
 
 /**
- * Onboarding action panel — shown on the lead detail page.
- *
- * One-click actions that drive the journey forward:
+ * Client links — the panel on the lead detail page for what the client fills
+ * in or reads themselves:
  *   - Send Risk Profile (via WA + email — generates a /r/<token> link)
- *   - Send Document Collection (PAN, Aadhar, …  → /d/<token>)
  *   - Send Proposal for Approval (→ /p/<token> after creating proposal)
- *   - Convert lead to client (only enabled once docs received)
+ *   - Share the onboarding tracker (a live read-only progress page)
  *
  * Each action calls `/api/share-tokens` to mint a fresh token, returns the
  * URL, and copies it to the clipboard with a one-tap Open WhatsApp helper.
+ *
+ * It used to also hold a "Convert lead to client" tile and a call-outcome
+ * form. Both were second copies of controls the page already has — the
+ * header's Convert button (a superset: it also takes PAN and segment) and the
+ * journey card's guided actions (which capture the same outcomes with a
+ * follow-up date or a lost reason).
  */
 
 import { useState } from "react";
@@ -18,7 +22,6 @@ import { useRouter } from "next/navigation";
 import {
   ShieldCheck,
   FileSignature,
-  UserCheck,
   Loader2,
   Copy,
   ExternalLink,
@@ -27,13 +30,12 @@ import {
   Link as LinkIcon,
   ClipboardList,
 } from "lucide-react";
-import { CallOutcomeForm } from "./CallOutcomeForm";
+import { InfoTip } from "@/components/dashboards/my/Shared";
 
 type Action = "risk_profile" | "document_collection" | "proposal_approval" | "onboarding_progress";
 
 export function OnboardingActions({
   leadId,
-  leadStage,
   leadPhone,
   leadEmail,
   leadName,
@@ -42,7 +44,6 @@ export function OnboardingActions({
   alreadyConvertedInvestorId,
 }: {
   leadId: string;
-  leadStage: string;
   leadPhone: string | null;
   leadEmail: string | null;
   leadName: string;
@@ -51,7 +52,7 @@ export function OnboardingActions({
   alreadyConvertedInvestorId: string | null;
 }) {
   const router = useRouter();
-  const [busy, setBusy] = useState<Action | "convert" | null>(null);
+  const [busy, setBusy] = useState<Action | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [link, setLink] = useState<{ kind: Action; url: string; expiresAt: string } | null>(null);
 
@@ -82,49 +83,26 @@ export function OnboardingActions({
     }
   }
 
-  async function convert() {
-    setBusy("convert");
-    setError(null);
-    try {
-      const r = await fetch(`/api/leads/${leadId}/convert`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(data?.error ?? `HTTP ${r.status}`);
-      if (data.investorId) {
-        router.push(`/dashboard/investors/${data.investorId}`);
-      } else {
-        router.refresh();
-      }
-    } catch (e: any) {
-      setError(e?.message ?? "Conversion failed");
-    } finally {
-      setBusy(null);
-    }
-  }
-
   const isConverted = !!alreadyConvertedInvestorId;
-  const canConvert = !isConverted && (leadStage === "docs_received" || leadStage === "proposal_approved");
 
   return (
-    <div className="card-surface p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-sm flex items-center gap-2">
-          <LinkIcon className="size-4 text-brand-cyan" /> Onboarding actions
+    <div className="card-surface p-5 space-y-3">
+      <div className="flex items-center gap-1">
+        <h3 className="section-title flex items-center gap-2">
+          <LinkIcon className="size-4 text-muted-foreground" /> Client links
         </h3>
-        <span className="text-2xs text-muted-foreground italic">
-          Each link is single-use, signed, and expires automatically.
-        </span>
+        <InfoTip>
+          Each link is private to this lead, signed, and expires on its own — the risk profile and
+          proposal links work once; the tracker stays live for 30 days.
+        </InfoTip>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
         <ActionTile
           icon={ShieldCheck}
           title="Send risk profile"
-          subtitle="Generate a public link the client can fill from WhatsApp / email."
-          status={hasRiskProfile ? "Already on file — sending again creates a fresh score" : "Recommended next step"}
+          subtitle="A link the client fills in from WhatsApp or email."
+          status={hasRiskProfile ? "Already on file — sending again records a fresh score" : "Recommended next step"}
           onClick={() => makeLink("risk_profile")}
           disabled={isConverted}
           busy={busy === "risk_profile"}
@@ -134,10 +112,10 @@ export function OnboardingActions({
           title="Send proposal for approval"
           subtitle={
             pendingProposalId
-              ? "Create a SEBI-grade acceptance link for the latest draft proposal."
+              ? "An acceptance link for the latest draft proposal."
               : "Create a draft proposal first, then come back."
           }
-          status={pendingProposalId ? "Captures typed signature + IP + UA" : "No draft proposal yet"}
+          status={pendingProposalId ? "Records a typed signature, time and device" : "No draft proposal yet"}
           onClick={() => pendingProposalId && makeLink("proposal_approval", pendingProposalId)}
           disabled={!pendingProposalId || isConverted}
           busy={busy === "proposal_approval"}
@@ -145,26 +123,10 @@ export function OnboardingActions({
         <ActionTile
           icon={ClipboardList}
           title="Share onboarding tracker"
-          subtitle="Generate a live view-only progress page for the client to track onboarding status."
-          status="Multi-use link, remains active for 30 days"
+          subtitle="A live, view-only page where the client can see how their account setup is going."
+          status="Stays active for 30 days"
           onClick={() => makeLink("onboarding_progress")}
           busy={busy === "onboarding_progress"}
-        />
-        <ActionTile
-          icon={UserCheck}
-          title="Convert lead to client"
-          subtitle={
-            isConverted
-              ? "This lead is already a client."
-              : canConvert
-                ? "Documents received — ready to convert and create operations tasks."
-                : "Available once documents are received."
-          }
-          status={canConvert ? "Will auto-create KYC, UCC, Mandate and First-Txn tasks" : "—"}
-          onClick={convert}
-          disabled={!canConvert}
-          busy={busy === "convert"}
-          variant="primary"
         />
       </div>
 
@@ -175,13 +137,6 @@ export function OnboardingActions({
       )}
 
       {link && <LinkPanel link={link} leadName={leadName} leadPhone={leadPhone} leadEmail={leadEmail} />}
-
-      {/* Call outcome capture — inline form */}
-      {!isConverted && (
-        <div className="pt-2 border-t border-border">
-          <CallOutcomeForm leadId={leadId} />
-        </div>
-      )}
     </div>
   );
 }
@@ -210,11 +165,11 @@ function ActionTile({
       onClick={onClick}
       disabled={disabled || busy}
       className={`text-left rounded-lg border p-3 transition-colors disabled:opacity-40 ${
-        variant === "primary" ? "border-brand-cyan bg-brand-cyan-light/30 hover:bg-brand-cyan-light/60" : "border-border hover:bg-secondary/40"
+        variant === "primary" ? "border-primary/40 bg-accent hover:bg-accent/70" : "border-border hover:bg-secondary/40"
       }`}
     >
       <div className="flex items-center gap-2 mb-1">
-        <Icon className={`size-4 ${variant === "primary" ? "text-brand-cyan-deep" : "text-brand-cyan"}`} />
+        <Icon className="size-4 text-muted-foreground" />
         <span className="font-semibold text-sm">{title}</span>
         {busy && <Loader2 className="size-3 animate-spin ml-auto" />}
       </div>

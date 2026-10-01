@@ -38,7 +38,7 @@ export const FALLBACK_PLANS: LandingPlan[] = [
       "Insurance Policies & Claims", "Insurance Renewal Alerts", "Business Entities — All Products", "Email Automation",
       "User Management & Basic Support", "Report / MIS", "Command Centre — AI Alerts", "Next Big Action — AI Alerts",
       "Proposals & Insurance Commission Tracker", "Attendance & Leave Tracker", "Sub-Distributor Module",
-      "Workflow Rules & Basic Automation", "Recorded Training Sessions & Aina Content Library",
+      "Workflow Rules & Basic Automation", "Recorded Training Sessions",
     ],
   },
   {

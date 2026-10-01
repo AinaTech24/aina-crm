@@ -205,6 +205,11 @@ export const SYSTEM_WIDGETS: SystemWidgetMeta[] = [
     description: "Tasks created in the period — total, pending, awaiting input and completed, financial and non-financial.",
     supports: ["period", "rm", "branch"],
   },
+  {
+    key: "cross_sell", title: "Cross-sell", category: "Clients", defaultSize: "L", sizes: ["M", "L"],
+    description: "Existing clients taking another product: open opportunities, won and lost in the period, conversion, and products held per client.",
+    supports: ["period", "rm", "branch", "segment", "category", "family", "tags", "leadSource"],
+  },
 ];
 
 export const SYSTEM_WIDGETS_BY_KEY: Record<string, SystemWidgetMeta> = Object.fromEntries(

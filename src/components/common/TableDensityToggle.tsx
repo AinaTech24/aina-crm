@@ -77,3 +77,28 @@ export function TableDensityToggle({
     </button>
   );
 }
+
+/**
+ * The same toggle as an icon button that owns its own state, for a toolbar
+ * that sits outside the table (a filter bar). It shares the stored choice and
+ * the "density-change" event with every table on the page, so flipping it
+ * here re-spaces the table below.
+ */
+export function TableDensitySwitch() {
+  const { density, toggleDensity } = useTableDensity("cozy");
+  const compact = density === "compact";
+  return (
+    <button
+      type="button"
+      onClick={toggleDensity}
+      className={`inline-flex size-8 items-center justify-center rounded-lg border transition-colors ${
+        compact ? "border-primary/30 bg-accent text-primary" : "border-border bg-card text-muted-foreground hover:bg-secondary hover:text-foreground"
+      }`}
+      title={compact ? "Compact rows — switch to standard spacing" : "Standard rows — switch to compact"}
+      aria-label={compact ? "Switch to standard row spacing" : "Switch to compact rows"}
+      aria-pressed={compact}
+    >
+      {compact ? <Rows4 className="size-4" /> : <Rows3 className="size-4" />}
+    </button>
+  );
+}

@@ -22,22 +22,22 @@
  * like one that gained it. The axis now runs from the lowest value (or zero) to
  * the highest, with a baseline at zero.
  *
- * Drawn as an inline SVG rather than with Recharts: two polylines and twelve
- * labels. The one rule this inherits from the repo either way: SVG geometry
- * takes RESOLVED colours, never `hsl(var(--token))` — an unresolved custom
- * property in a `stroke` paints black, silently. Here the paints are Tailwind
- * classes on `currentColor`, which resolve normally.
+ * Drawn with Recharts like the Owner Dashboard's charts, so the six
+ * dashboards share one chart grammar (gridlines, tick size, tooltip). It used
+ * to be a hand-drawn SVG in a fixed viewBox that the browser scaled to the
+ * card, which made the month labels half again as large as every other label
+ * on the page. Paints are RESOLVED hex from chart-palette.ts — an unresolved
+ * `hsl(var(--token))` in an SVG paint attribute renders black, silently.
  */
 
 import { useState } from "react";
 import { TrendingUp } from "lucide-react";
+import { Area, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { TREND_METRICS, type MyTrend, type TrendMetricKey } from "@/lib/dashboard/my/kpis";
+import { CHART, CHART_INK, TOOLTIP_STYLE } from "@/lib/dashboard/chart-palette";
 import { formatCount, formatDate, formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
-
-const W = 720;
-const H = 190;
-const PAD = { top: 14, right: 12, bottom: 24, left: 8 };
+import { ChartMount } from "../ChartMount";
 
 type BalanceKey = "aum" | "sip_book";
 type MetricKey = TrendMetricKey | BalanceKey;
@@ -85,24 +85,8 @@ export function MyTrendChart({
   const fmt = (n: number) => (meta.format === "count" ? formatCount(n) : formatMoney(n));
 
   const shown = (showPrev ? [...cur, ...prev] : cur).filter((v): v is number => v != null);
-  const lo = Math.min(0, ...shown);
-  const hi0 = Math.max(0, ...shown);
-  const hi = hi0 === lo ? lo + 1 : hi0;
-  const innerW = W - PAD.left - PAD.right;
-  const innerH = H - PAD.top - PAD.bottom;
-  const x = (i: number) => PAD.left + (i / 11) * innerW;
-  const y = (v: number) => PAD.top + innerH - ((v - lo) / (hi - lo)) * innerH;
-  /** A polyline that lifts the pen over unrecorded months. */
-  const path = (data: Array<number | null>) => {
-    let d = "";
-    let pen = false;
-    data.forEach((v, i) => {
-      if (v == null) { pen = false; return; }
-      d += `${pen ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)} `;
-      pen = true;
-    });
-    return d.trim();
-  };
+  const data = trend.months.map((m, i) => ({ m, cur: cur[i], prev: showPrev ? prev[i] : null }));
+  const short = (n: number) => (meta.format === "count" ? formatCount(n) : formatMoney(n, { decimals: 1 }));
 
   // The legend figure: a year's TOTAL for a flow, the LATEST value for a balance.
   const lastOf = (xs: Array<number | null>) => {
@@ -186,46 +170,43 @@ export function MyTrendChart({
       </div>
 
       {noBalances ? (
-        <p className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-xs text-muted-foreground">
+        <p className="dash-empty">
           No month-end balance has been recorded for this book yet. {meta.label} history is
           recorded nightly from now on — it cannot be rebuilt for months already gone, so the line
           fills in as the months pass.
         </p>
       ) : everything ? (
-        <p className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-xs text-muted-foreground">
+        <p className="dash-empty">
           Nothing recorded for {meta.label.toLowerCase()} in either year.
         </p>
       ) : (
-        <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img"
-             aria-label={`${meta.label} by month, ${trend.fyLabel} versus ${trend.prevFyLabel}`}>
-          {/* The zero line only. Gridlines behind twelve points are chart junk. */}
-          <line x1={PAD.left} y1={y(0)} x2={W - PAD.right} y2={y(0)}
-                className="stroke-border" strokeWidth={1} />
-          {showPrev && (
-            <path d={path(prev)} fill="none" className="stroke-muted-foreground/45"
-                  strokeWidth={1.5} strokeDasharray="4 3" />
-          )}
-          <path d={path(cur)} fill="none" className="stroke-primary" strokeWidth={2}
-                strokeLinejoin="round" strokeLinecap="round" />
-          {cur.map((v, i) => v == null ? null : (
-            <g key={i}>
-              <circle cx={x(i)} cy={y(v)} r={v === 0 ? 1.5 : 3} className={v < 0 ? "fill-destructive" : "fill-primary"} />
-              <title>{`${trend.months[i]} · ${fmt(v)}`}</title>
-            </g>
-          ))}
-          {/* `fill-current` + a text colour, never `fill-[hsl(var(--token))]`.
-              An unresolved custom property in an SVG paint attribute renders
-              BLACK with no error — it has shipped that way in this repo before.
-              And `text-2xs` rather than an arbitrary size: arbitrary Tailwind
-              values are dropped silently here, which would leave the labels at
-              the browser default. */}
-          {trend.months.map((m, i) => (
-            <text key={m} x={x(i)} y={H - 6} textAnchor="middle"
-                  className="fill-current text-2xs text-muted-foreground">
-              {m}
-            </text>
-          ))}
-        </svg>
+        <ChartMount className="h-56">
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="my-trend-fill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={CHART.blue} stopOpacity={0.22} />
+                  <stop offset="100%" stopColor={CHART.blue} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke={CHART_INK.grid} strokeDasharray="3 4" vertical={false} />
+              <XAxis dataKey="m" tick={{ fontSize: 12, fill: CHART_INK.tick }} tickLine={false} axisLine={false} />
+              <YAxis tick={{ fontSize: 12, fill: CHART_INK.tick }} tickLine={false} axisLine={false} width={76} tickFormatter={short} />
+              <ReferenceLine y={0} stroke={CHART_INK.reference} strokeOpacity={0.35} />
+              <Tooltip
+                contentStyle={TOOLTIP_STYLE}
+                cursor={{ stroke: CHART_INK.grid }}
+                formatter={(v, name) => [v == null ? "—" : fmt(Number(v)), name === "cur" ? trend.fyLabel : trend.prevFyLabel]}
+              />
+              {showPrev && (
+                <Line dataKey="prev" name="prev" type="monotone" stroke={CHART.slate} strokeWidth={1.5} strokeDasharray="4 3"
+                      dot={false} activeDot={{ r: 3 }} connectNulls={false} isAnimationActive={false} />
+              )}
+              <Area dataKey="cur" name="cur" type="monotone" stroke={CHART.blue} strokeWidth={2.5} fill="url(#my-trend-fill)"
+                    baseValue={0} dot={{ r: 3, fill: "#FFFFFF", strokeWidth: 2 }} activeDot={{ r: 5 }} connectNulls={false} isAnimationActive={false} />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </ChartMount>
       )}
 
       <p className="mt-3 text-2xs text-muted-foreground">

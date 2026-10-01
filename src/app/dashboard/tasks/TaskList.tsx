@@ -7,7 +7,6 @@ import { RowActions } from "@/components/common/RowActions";
 import { SelectField } from "@/components/ui/SelectField";
 import { RmSelector } from "@/components/common/RmSelector";
 import { useToast } from "@/components/ui/Toast";
-import { TaskDetailDrawer } from "./TaskDetailDrawer";
 import { Avatar } from "@/components/ui/Avatar";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { taskChecklist, type Task } from "@/db/schema";
@@ -107,28 +106,17 @@ interface TaskListProps {
   toolbar?: ReactNode;
 }
 
-export function TaskList({ initialRows, currentUserId, canManageAll = false, initialOpenTaskId, total = 0, toolbar }: TaskListProps) {
+export function TaskList({ initialRows, currentUserId, initialOpenTaskId, total = 0, toolbar }: TaskListProps) {
   const router = useRouter();
   const toast = useToast();
   const [rows, setRows] = useState(initialRows);
-  const [selectedRow, setSelectedRow] = useState<TaskRow | null>(null);
+  // A task opens as its own page (/dashboard/tasks/[id]) — the dialog was too
+  // small for the description, checklist, comments and time log.
+  const openTask = (id: string) => router.push(`/dashboard/tasks/${id}`);
 
-  // Open the drawer for a ?task=<id> deep-link. If the task isn't in the current
-  // (filtered) page, fetch it directly so the link still works.
+  // Old ?task=<id> deep-links (notifications, emails) go to that page.
   useEffect(() => {
-    if (!initialOpenTaskId) return;
-    const inList = initialRows.find((r) => r.task.id === initialOpenTaskId);
-    if (inList) { setSelectedRow(inList); return; }
-    let cancelled = false;
-    fetch(`/api/tasks/${initialOpenTaskId}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((task) => {
-        if (!cancelled && task && task.id) {
-          setSelectedRow({ task, assignee: null, investorName: null, investorAvatarUrl: null, leadName: null, leadAvatarUrl: null });
-        }
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
+    if (initialOpenTaskId) router.replace(`/dashboard/tasks/${initialOpenTaskId}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialOpenTaskId]);
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
@@ -327,10 +315,6 @@ export function TaskList({ initialRows, currentUserId, canManageAll = false, ini
     }
   }
 
-  const handleUpdate = () => {
-    router.refresh();
-  };
-
   return (
     <div className="border rounded-lg bg-card bg-white overflow-hidden shadow-sm flex flex-col">
       {/* Bulk action bar — appears when rows are selected. */}
@@ -516,7 +500,7 @@ export function TaskList({ initialRows, currentUserId, canManageAll = false, ini
             return (
               <li
                 key={t.id}
-                onClick={() => setSelectedRow(row)}
+                onClick={() => openTask(t.id)}
                 className={`group/row px-4 py-2.5 flex items-center gap-2 transition-colors cursor-pointer select-none hover:bg-secondary/70 ${isDone ? "opacity-70" : ""}`}
               >
                 {/* Bulk-select checkbox — revealed on row hover (or when checked). */}
@@ -636,7 +620,7 @@ export function TaskList({ initialRows, currentUserId, canManageAll = false, ini
                 <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-0.5 flex-shrink-0">
                   <button
                     type="button"
-                    onClick={() => setSelectedRow(row)}
+                    onClick={() => openTask(t.id)}
                     className="btn-icon"
                     aria-label="Edit task"
                     title="Edit"
@@ -652,20 +636,6 @@ export function TaskList({ initialRows, currentUserId, canManageAll = false, ini
         </ul>
       </div>
 
-      {selectedRow && (
-        <TaskDetailDrawer
-          task={{
-            ...selectedRow.task,
-            assigneeName: selectedRow.assignee,
-            investorName: selectedRow.investorName,
-            leadName: selectedRow.leadName,
-          }}
-          currentUserId={currentUserId}
-          canManageAll={canManageAll}
-          onClose={() => setSelectedRow(null)}
-          onUpdate={handleUpdate}
-        />
-      )}
 
       <ConfirmDialog
         open={confirmBulkDelete}

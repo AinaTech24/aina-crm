@@ -49,7 +49,7 @@ export default async function DashboardById({
   if ("centre" in p) {
     return (
       <DashboardNavProvider>
-        <div className="space-y-4">
+        <div className="dash-canvas space-y-4">
           <AnnouncementsStrip session={session} />
           <CentreDashboard session={session} p={p} sp={sp} />
         </div>
@@ -64,7 +64,7 @@ export default async function DashboardById({
 
   return (
     <DashboardNavProvider>
-    <div className="space-y-4">
+    <div className="dash-canvas space-y-4">
       <AnnouncementsStrip session={session} />
       <DashboardHead
         session={session}

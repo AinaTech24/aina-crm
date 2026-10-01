@@ -75,7 +75,7 @@ export function RmTable({
       empty={empty}
       head={
         <>
-          <th scope="col" className="sticky left-0 z-10 bg-card">RM</th>
+          <th scope="col" className="sticky left-0 z-10 bg-secondary">RM</th>
           {cols.map((c) => (
             <th key={c.key} scope="col" className="whitespace-nowrap text-right" title={c.title}>
               {c.label}

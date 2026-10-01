@@ -18,7 +18,7 @@ export function MoneyMovementChart({ data }: { data: MoneyPoint[] }) {
     <ChartMount className="h-64">
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-          <CartesianGrid stroke={CHART_INK.grid} vertical={false} />
+          <CartesianGrid stroke={CHART_INK.grid} strokeDasharray="3 4" vertical={false} />
           <XAxis dataKey="label" tick={{ fontSize: 12, fill: CHART_INK.tick }} tickLine={false} axisLine={false} />
           <YAxis
             tick={{ fontSize: 12, fill: CHART_INK.tick }}
@@ -32,10 +32,18 @@ export function MoneyMovementChart({ data }: { data: MoneyPoint[] }) {
             cursor={{ fill: CHART_INK.cursor }}
             formatter={(v, name) => [formatMoney(Number(v)), String(name)]}
           />
-          <Legend wrapperStyle={{ fontSize: 12 }} />
-          <Bar dataKey="gross" name="Gross investment" fill={CHART.green} radius={[3, 3, 0, 0]} maxBarSize={28} />
-          <Bar dataKey="redemption" name="Redemption" fill={CHART.slate} radius={[3, 3, 0, 0]} maxBarSize={28} />
-          <Line dataKey="net" name="Net sales" stroke={CHART.navy} strokeWidth={2} dot={{ r: 2 }} />
+          <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+          <Bar dataKey="gross" name="Gross investment" fill={CHART.green} radius={[5, 5, 0, 0]} maxBarSize={36} />
+          <Bar dataKey="redemption" name="Redemption" fill={CHART.slate} radius={[5, 5, 0, 0]} maxBarSize={36} />
+          <Line
+            dataKey="net"
+            name="Net sales"
+            type="monotone"
+            stroke={CHART.navy}
+            strokeWidth={2.5}
+            dot={{ r: 3.5, fill: "#FFFFFF", strokeWidth: 2 }}
+            activeDot={{ r: 5 }}
+          />
         </ComposedChart>
       </ResponsiveContainer>
     </ChartMount>

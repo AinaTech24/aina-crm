@@ -20,7 +20,7 @@
  */
 
 import Link from "next/link";
-import { type ReactNode } from "react";
+import { Children, type ReactNode } from "react";
 import { ArrowUpRight } from "lucide-react";
 import { InfoTip } from "./InfoTip";
 import { formatCount, formatMoney, formatPercent } from "@/lib/format";
@@ -75,7 +75,7 @@ export function Section({
     <section className={cn("card-surface p-5 sm:p-6", className)} aria-label={title}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/60 pb-3">
         <h2 className="section-title flex min-w-0 items-center gap-1.5">
-          {icon && <span className="shrink-0 text-muted-foreground">{icon}</span>}
+          {icon && <span className="dash-icon mr-1" aria-hidden>{icon}</span>}
           {title}
           {about && (
             <InfoTip>
@@ -84,7 +84,9 @@ export function Section({
             </InfoTip>
           )}
         </h2>
-        {action && <div className="flex shrink-0 items-center gap-2">{action}</div>}
+        {/* Beside the title when it fits, on its own line when not — and never
+            wider than the card (a phone has ~300px for it). */}
+        {action && <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">{action}</div>}
       </div>
       {children}
     </section>
@@ -178,27 +180,25 @@ export function Stat({
   // caller's own wording and is shown as given.
   const zero = display == null && value === 0;
   const empty = display == null && (value == null || value === 0);
+  // As a flex item (StatGrid) the tile stretches to its row on its own; only
+  // inside a link does it need `h-full` to fill the anchor. A percentage
+  // height on the bare tile stopped Chrome from stretching it.
   const body = (
-    <div
-      className={cn(
-        "rounded-lg border border-border bg-card p-3 transition-colors",
-        href && "hover:border-primary/40 hover:bg-accent",
-      )}
-    >
+    <div className={cn("dash-tile", href && "h-full")}>
       <div
         className={cn(
-          "text-xl tabular-nums leading-tight",
+          "text-xl tabular-nums leading-tight tracking-tight",
           zero ? "font-medium text-muted-foreground/60" : cn("font-semibold", TONE_TEXT[tone]),
         )}
       >
         {display ?? <Figure value={value} format={format} unavailable={unavailable} />}
       </div>
-      <div className="mt-1 text-2xs font-medium leading-snug text-foreground">{label}</div>
+      <div className="mt-1 text-2xs font-medium leading-snug text-foreground/80">{label}</div>
       {hint && !empty && <div className="text-2xs leading-snug text-muted-foreground">{hint}</div>}
     </div>
   );
   return href ? (
-    <Link href={href} className="block">
+    <Link href={href} className="block h-full">
       {body}
     </Link>
   ) : (
@@ -206,15 +206,42 @@ export function Stat({
   );
 }
 
-/** A row of stats. Kept here so every section spaces them identically. */
+/**
+ * A row of stats. Kept here so every section spaces them identically.
+ *
+ * `cols` is the widest the row should go; the tiles are laid out so that no
+ * row is left with one tile alone. Five tiles asked to sit in four columns
+ * take one row of five; seven in four take four then three, the three
+ * sharing the row (the flex basis in `.dash-stats` does the stretching).
+ */
 export function StatGrid({ cols = 4, children }: { cols?: 2 | 3 | 4 | 5 | 6; children: ReactNode }) {
-  const cls =
-    cols === 2 ? "sm:grid-cols-2"
-    : cols === 3 ? "sm:grid-cols-3"
-    : cols === 4 ? "sm:grid-cols-2 lg:grid-cols-4"
-    : cols === 5 ? "sm:grid-cols-3 lg:grid-cols-5"
-    : "sm:grid-cols-3 lg:grid-cols-6";
-  return <div className={cn("grid grid-cols-2 gap-2.5", cls)}>{children}</div>;
+  const n = Children.toArray(children).length;
+  const perRow = balancedColumns(n, cols);
+  return (
+    <div
+      className="dash-stats"
+      style={{ ["--cols-sm" as string]: Math.min(perRow, 3), ["--cols-lg" as string]: perRow }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** Tiles per row on a wide screen: never more than `cols`, and no orphan row. */
+export function balancedColumns(n: number, cols: number): number {
+  if (n <= 0) return cols;
+  if (n <= cols) return n;
+  let across = cols;
+  let rows = Math.ceil(n / cols);
+  // One more across than asked when it saves a whole row: five tiles in four
+  // columns sit in one row of five, seven in three go four then three rather
+  // than three, three and one. Only for modest widths — six across is already
+  // as narrow as a small tile can go.
+  if (cols <= 4 && Math.ceil(n / (cols + 1)) < rows && n <= 2 * (cols + 1)) {
+    across = cols + 1;
+    rows = Math.ceil(n / across);
+  }
+  return Math.ceil(n / rows);
 }
 
 /* ──────────────────────────── target meters ──────────────────────────── */
@@ -265,7 +292,7 @@ export function Meter({
   const fill = pct == null ? 0 : Math.min(100, Math.max(0, pct * 100));
 
   return (
-    <Link href={href} className="block rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary/40">
+    <Link href={href} className="dash-tile">
       <div className="flex items-baseline justify-between gap-2">
         <span className="truncate text-xs font-medium text-foreground">{label}</span>
         {pct == null ? (
@@ -284,7 +311,7 @@ export function Meter({
         )}
       </div>
 
-      <div className="relative mt-2.5 h-2 overflow-hidden rounded-full bg-secondary">
+      <div className="relative mt-2.5 h-2 overflow-hidden rounded-full bg-border/70">
         <div
           className={cn("h-full rounded-full", pct == null ? "bg-border" : !judged ? "bg-primary/60" : onPace ? "bg-success" : "bg-warning")}
           style={{ width: `${fill}%` }}
@@ -348,7 +375,7 @@ export function Table({
   rows: number;
 }) {
   if (rows === 0) {
-    return <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-xs text-muted-foreground">{empty}</p>;
+    return <p className="dash-empty">{empty}</p>;
   }
   return (
     <div className="table-scroll">
@@ -377,6 +404,17 @@ export function Num({ children, tone = "neutral", className }: { children: React
 export function CategoryTag({ value }: { value: string | null }) {
   if (!value) return <span className="text-2xs text-muted-foreground" title="No category set for this client.">Not set</span>;
   return <span className="chip bg-secondary text-secondary-foreground">{value}</span>;
+}
+
+/**
+ * A person's or client's initials in a soft disc, beside their name in a list.
+ * Server-safe (no image, no state): the disc says "this row is about someone"
+ * at a glance, which is what makes a list of names scannable.
+ */
+export function Initials({ name, className }: { name: string | null | undefined; className?: string }) {
+  const parts = (name ?? "").replace(/\s*\([^)]*\)\s*$/, "").trim().split(/\s+/).filter(Boolean);
+  const text = parts.length === 0 ? "?" : (parts[0][0] + (parts[1]?.[0] ?? "")).toUpperCase();
+  return <span className={cn("dash-avatar", className)} aria-hidden>{text}</span>;
 }
 
 /**

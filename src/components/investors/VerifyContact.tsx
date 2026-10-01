@@ -1,14 +1,17 @@
 "use client";
 
 /**
- * VerifyContact — inline email/phone verification pills for the Client 360
- * header (Sanchay "Verified At" parity). Shows a green ✓ when verified, else a
- * one-tap "Verify" that stamps it via POST /api/investors/[id]/verify-contact.
+ * VerifyContact — email/phone verification pills on Client 360 (Sanchay
+ * "Verified At" parity). Shows a green ✓ when verified, else a one-tap
+ * "Verify" that stamps it via POST /api/investors/[id]/verify-contact.
+ *
+ * Drawn inside the client setup checklist, in the same pill anatomy as the
+ * KYC / nominee / bank items there, so the two states read as one list.
  */
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, BadgeCheck, ShieldQuestion } from "lucide-react";
+import { Loader2, CheckCircle2, ShieldQuestion } from "lucide-react";
 
 export function VerifyContact({
   investorId, hasEmail, hasPhone, emailVerified, phoneVerified,
@@ -31,26 +34,27 @@ export function VerifyContact({
 
   function Pill({ channel, label, has, verified }: { channel: "email" | "phone"; label: string; has: boolean; verified: boolean }) {
     if (!has) return null;
+    const spinning = busy === channel;
     return verified ? (
-      <button onClick={() => toggle(channel, false)} disabled={busy === channel}
-        className="inline-flex items-center gap-1 text-2xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+      <button type="button" onClick={() => toggle(channel, false)} disabled={spinning}
+        className="inline-flex items-center gap-1 rounded-md border border-success/20 bg-success/5 px-2 py-1 text-2xs font-medium text-success hover:bg-secondary disabled:opacity-50"
         title={`${label} verified — click to clear`}>
-        {busy === channel ? <Loader2 className="size-3 animate-spin" /> : <BadgeCheck className="size-3" />} {label} verified
+        {spinning ? <Loader2 className="size-3 animate-spin" /> : <CheckCircle2 className="size-3" />} {label} verified
       </button>
     ) : (
-      <button onClick={() => toggle(channel, true)} disabled={busy === channel}
-        className="inline-flex items-center gap-1 text-2xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 hover:bg-amber-100"
-        title={`Mark ${label.toLowerCase()} as verified`}>
-        {busy === channel ? <Loader2 className="size-3 animate-spin" /> : <ShieldQuestion className="size-3" />} Verify {label.toLowerCase()}
+      <button type="button" onClick={() => toggle(channel, true)} disabled={spinning}
+        className="inline-flex items-center gap-1 rounded-md border border-warning/40 bg-warning/5 px-2 py-1 text-2xs font-medium text-warning-foreground hover:bg-secondary disabled:opacity-50"
+        title={`Mark the ${label.toLowerCase()} as verified`}>
+        {spinning ? <Loader2 className="size-3 animate-spin" /> : <ShieldQuestion className="size-3" />} Verify {label.toLowerCase()}
       </button>
     );
   }
 
   if (!hasEmail && !hasPhone) return null;
   return (
-    <span className="inline-flex items-center gap-1.5">
+    <>
       <Pill channel="email" label="Email" has={hasEmail} verified={emailVerified} />
       <Pill channel="phone" label="Phone" has={hasPhone} verified={phoneVerified} />
-    </span>
+    </>
   );
 }

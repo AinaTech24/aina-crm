@@ -5,11 +5,20 @@
  * full form incl. advisor assessment) and by the client via the public link
  * (clientMode hides the assessment). Every keystroke recomputes the live
  * Financial Health Snapshot. Adapted from the workbook's five sections.
+ *
+ * What the CRM already knows is filled in before anyone types (see
+ * lib/discovery/prefill): identity, goals, insurance, holdings — each section
+ * that was says so, so the client checks rather than re-keys. The risk profile
+ * on record in the Risk Profiles module IS the risk profile here; when there is
+ * one, section 10 shows it and asks only the three product-suitability
+ * questions, instead of a second questionnaire that could disagree with it.
  */
 
 import { useMemo, useState } from "react";
-import { Plus, Trash2, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { Plus, Trash2, Loader2, ShieldCheck, Database } from "lucide-react";
 import { computeDiscovery, type DiscoveryData } from "@/lib/discovery/calc";
+import { formatDate, humanise } from "@/lib/format";
 import { RISK_QUESTIONS } from "@/lib/discovery/risk";
 import { HealthSnapshot } from "./HealthSnapshot";
 import * as O from "@/lib/discovery/options";
@@ -25,8 +34,11 @@ export function DiscoveryForm({
   onSave,
   onSubmit,
   submitLabel = "Submit",
+  subject,
 }: {
   initialData: DiscoveryData;
+  /** The lead / client this fact-find is for — links to their record (RM view only). */
+  subject?: { type: string; id: string };
   clientMode?: boolean;
   saving?: boolean;
   onSave?: (d: DiscoveryData) => void;
@@ -43,11 +55,20 @@ export function DiscoveryForm({
   const setRisk = (k: string, v: any) => set({ riskProfile: { ...(data.riskProfile ?? {}), [k]: v } });
   const setAssess = (k: string, v: any) => set({ assessment: { ...(data.assessment ?? {}), [k]: v } });
 
+  // What came from the CRM record, to say so on each section.
+  const from = new Set(data.prefilledFromRecord ?? []);
+  const identityFromRecord = [...from].some((k) => k.startsWith("identification."));
+  const who = clientMode ? "your details with us" : subject?.type === "lead" ? "the lead record" : "the client record";
+  const note = (on: boolean) => (on ? `Filled in from ${who} — check and correct if anything has changed.` : undefined);
+  const rec = data.recordedRisk;
+  const SUITABILITY_KEYS = new Set(["horizon", "lumpSum", "liquidity"]);
+  const riskQuestions = rec ? RISK_QUESTIONS.filter((q) => SUITABILITY_KEYS.has(q.key)) : RISK_QUESTIONS;
+
   return (
     <div className="grid lg:grid-cols-[1fr_320px] gap-5 items-start">
       <div className="space-y-5 min-w-0">
         {/* 1 · Identity */}
-        <Section title="1 · Client identity">
+        <Section title="1 · Client identity" note={note(identityFromRecord)}>
           <Grid>
             <F label="Full name (as per PAN)"><T v={data.identification?.fullName} on={(x) => setId("fullName", x)} /></F>
             <F label="Date of birth"><DateField className="input-base text-sm w-full" value={data.identification?.dob ?? ""} onChange={(e) => setId("dob", e.target.value)} /></F>
@@ -103,7 +124,7 @@ export function DiscoveryForm({
         </Section>
 
         {/* 5 · Assets */}
-        <Section title="5 · Assets" subtitle={`Total assets: ₹${Math.round(c.totalAssets).toLocaleString("en-IN")}`}>
+        <Section title="5 · Assets" subtitle={`Total assets: ₹${Math.round(c.totalAssets).toLocaleString("en-IN")}`} note={note(from.has("assets"))}>
           <Repeat
             rows={data.assets ?? []}
             on={(rows) => set({ assets: rows })}
@@ -135,7 +156,7 @@ export function DiscoveryForm({
         </Section>
 
         {/* 7 · Life insurance */}
-        <Section title="7 · Life insurance" subtitle={`Cover ₹${Math.round(c.totalLifeCover).toLocaleString("en-IN")} · Recommended ₹${Math.round(c.recommendedLifeCover).toLocaleString("en-IN")} (10×) · ${c.lifeCoverGap > 0 ? `Gap ₹${Math.round(c.lifeCoverGap).toLocaleString("en-IN")}` : "Adequately covered"}`}>
+        <Section title="7 · Life insurance" subtitle={`Cover ₹${Math.round(c.totalLifeCover).toLocaleString("en-IN")} · Recommended ₹${Math.round(c.recommendedLifeCover).toLocaleString("en-IN")} (10×) · ${c.lifeCoverGap > 0 ? `Gap ₹${Math.round(c.lifeCoverGap).toLocaleString("en-IN")}` : "Adequately covered"}`} note={note(from.has("lifeInsurance"))}>
           <Repeat
             rows={data.lifeInsurance ?? []}
             on={(rows) => set({ lifeInsurance: rows })}
@@ -150,7 +171,7 @@ export function DiscoveryForm({
         </Section>
 
         {/* 8 · Health insurance */}
-        <Section title="8 · Health & general insurance" subtitle={`Total health cover ₹${Math.round(c.totalHealthCover).toLocaleString("en-IN")}`}>
+        <Section title="8 · Health & general insurance" subtitle={`Total health cover ₹${Math.round(c.totalHealthCover).toLocaleString("en-IN")}`} note={note(from.has("healthInsurance"))}>
           <Repeat
             rows={data.healthInsurance ?? []}
             on={(rows) => set({ healthInsurance: rows })}
@@ -165,7 +186,7 @@ export function DiscoveryForm({
         </Section>
 
         {/* 9 · Goals */}
-        <Section title="9 · Financial goals" subtitle={`Target corpus ₹${Math.round(c.totalCorpusTarget).toLocaleString("en-IN")} · SIP needed ~₹${Math.round(c.totalSipNeeded).toLocaleString("en-IN")}/mo`}>
+        <Section title="9 · Financial goals" subtitle={`Target corpus ₹${Math.round(c.totalCorpusTarget).toLocaleString("en-IN")} · SIP needed ~₹${Math.round(c.totalSipNeeded).toLocaleString("en-IN")}/mo`} note={note(from.has("goals"))}>
           <Repeat
             rows={data.goals ?? []}
             on={(rows) => set({ goals: rows })}
@@ -181,23 +202,78 @@ export function DiscoveryForm({
           />
         </Section>
 
-        {/* 10 · Risk profiling — auto-scores into a 6-band profile + suitability */}
+        {/* 10 · Risk profile — the one on record, or (with none) the questionnaire */}
         <Section
           title="10 · Risk profile & suitability"
           subtitle={
-            c.risk.answered > 0
-              ? `${c.risk.bandLabel} · score ${c.risk.score}/${c.risk.max} · ${c.risk.answered}/${c.risk.total} parameters`
-              : "Answer the questions — risk score & product suitability auto-calculate →"
+            rec
+              ? undefined
+              : c.risk.answered > 0
+                ? `${c.risk.bandLabel} · score ${c.risk.score}/${c.risk.max} · ${c.risk.answered}/${c.risk.total} parameters`
+                : "Answer the questions — risk score & product suitability auto-calculate →"
           }
         >
+          {rec ? (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-border bg-secondary/40 px-4 py-3">
+              <ShieldCheck className="size-5 shrink-0 text-muted-foreground" aria-hidden />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm">
+                  <span className="text-muted-foreground">Risk profile on record: </span>
+                  <span className="font-semibold text-foreground">{humanise(rec.category)}</span>
+                  {rec.provisional && (
+                    <span className="ml-2 rounded-full bg-warning/10 px-2 py-0.5 text-2xs font-semibold text-warning-foreground">Provisional</span>
+                  )}
+                </div>
+                <div className="mt-0.5 text-xs text-muted-foreground">
+                  {[
+                    rec.date ? `Completed ${formatDate(rec.date)}` : null,
+                    rec.score != null ? `score ${rec.score}` : null,
+                    clientMode ? "from your risk profile with us" : "from the Risk Profiles module — not asked again here",
+                  ].filter(Boolean).join(" · ")}
+                </div>
+              </div>
+              {!clientMode && subject && (
+                <div className="flex items-center gap-3 text-xs font-medium">
+                  <Link
+                    href={subject.type === "lead" ? `/dashboard/leads/${subject.id}` : `/dashboard/investors/${subject.id}#rel-risk`}
+                    className="text-primary hover:underline"
+                  >
+                    View
+                  </Link>
+                  {subject.type !== "lead" && (
+                    <Link href={`/dashboard/risk-profiles/new?investorId=${subject.id}`} className="text-primary hover:underline">
+                      Re-assess
+                    </Link>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            !clientMode && (
+              <p className="text-xs text-muted-foreground">
+                No risk profile on record yet. Answer below, or{" "}
+                {subject && subject.type !== "lead" ? (
+                  <Link href={`/dashboard/risk-profiles/new?investorId=${subject.id}`} className="font-medium text-primary hover:underline">
+                    complete one in Risk Profiles
+                  </Link>
+                ) : (
+                  "complete one in Risk Profiles"
+                )}{" "}
+                so every screen shows the same profile.
+              </p>
+            )
+          )}
+          {rec && <div className="pt-1 text-xs font-medium text-muted-foreground">For product suitability</div>}
           <Grid>
-            {RISK_QUESTIONS.map((q) => (
+            {riskQuestions.map((q) => (
               <F key={q.key} label={q.label}>
                 <S v={data.riskProfile?.[q.key]} on={(x) => setRisk(q.key, x)} opts={q.options.map((o) => o.value)} />
               </F>
             ))}
           </Grid>
-          <p className="text-2xs text-muted-foreground">Age, annual income &amp; net worth are taken automatically from the fact-find above — no need to re-enter.</p>
+          {!rec && (
+            <p className="text-2xs text-muted-foreground">Age, annual income &amp; net worth are taken automatically from the fact-find above — no need to re-enter.</p>
+          )}
         </Section>
 
         {/* 11 · Advisor assessment — internal only */}
@@ -236,12 +312,17 @@ export function DiscoveryForm({
 }
 
 /* ── primitives ─────────────────────────────────────────────────────────── */
-function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+function Section({ title, subtitle, note, children }: { title: string; subtitle?: string; note?: string; children: React.ReactNode }) {
   return (
     <section className="card-surface p-5 space-y-3">
       <div>
         <h2 className="font-semibold text-sm">{title}</h2>
         {subtitle && <p className="text-2xs text-muted-foreground mt-0.5 tabular-nums">{subtitle}</p>}
+        {note && (
+          <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-md bg-secondary px-2 py-1 text-2xs text-muted-foreground">
+            <Database className="size-3 shrink-0" aria-hidden /> {note}
+          </p>
+        )}
       </div>
       {children}
     </section>

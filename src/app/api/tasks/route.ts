@@ -61,9 +61,17 @@ const Body = z.object({
   estimateMinutes: z.number().int().min(0).max(100000).optional(),
   /** Free-form tags. */
   tags: z.array(z.string().min(1).max(40)).max(30).optional(),
-  /** Action points (checklist) — optional at creation; stored in meta.checklist. */
+  /** Action points (checklist) — optional at creation; stored in meta.checklist.
+   *  A sub-task may be delegated to a teammate with its own due date
+   *  (TaskChecklistItem.assigneeId / actionDate). */
   checklist: z
-    .array(z.object({ id: z.string().max(64), text: z.string().min(1).max(500), done: z.boolean() }))
+    .array(z.object({
+      id: z.string().max(64),
+      text: z.string().min(1).max(500),
+      done: z.boolean(),
+      assigneeId: z.string().uuid().nullable().optional(),
+      actionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+    }))
     .max(100)
     .optional(),
   /** Back-office classification (Finowise MIS) — stored in meta for the
@@ -73,6 +81,19 @@ const Body = z.object({
     .optional(),
   boChannel: z.enum(["online", "offline"]).optional(),
   boValue: z.number().min(0).max(1e12).optional(),
+  /** A financial / non-financial request's details (lib/tasks/request-types.ts)
+   *  — stored in meta.request. Amount and mode travel as boValue / boChannel. */
+  request: z
+    .object({
+      scheme: z.string().max(200).optional(),
+      toScheme: z.string().max(200).optional(),
+      folio: z.string().max(60).optional(),
+      sipDate: z.string().max(20).optional(),
+      frequency: z.string().max(20).optional(),
+      units: z.string().max(30).optional(),
+      allUnits: z.boolean().optional(),
+    })
+    .optional(),
 });
 
 /**
@@ -220,11 +241,27 @@ export async function POST(req: NextRequest) {
       await assertMobileSubjects(tx, session, body);
       // Assignee must be a user in THIS tenant (the FK allows any tenant's user).
       const [u] = await tx
-        .select({ id: users.id })
+        .select({ id: users.id, department: users.department })
         .from(users)
         .where(and(eq(users.id, assigneeId), eq(users.tenantId, session.tenantId)))
         .limit(1);
       if (!u) throw Object.assign(new Error("assignee not found in this firm"), { status: 400 });
+
+      // Sub-tasks delegated to teammates: each delegate must be in this firm;
+      // their name is kept on the item for display (as the task drawer does).
+      const delegateIds = [...new Set((body.checklist ?? []).map((c) => c.assigneeId).filter((x): x is string => !!x))];
+      const delegates = new Map<string, string>();
+      if (delegateIds.length) {
+        for (const d of delegateIds) await assertMobileAssignee(tx, session, d);
+        const rows = await tx
+          .select({ id: users.id, name: users.name })
+          .from(users)
+          .where(and(eq(users.tenantId, session.tenantId), inArray(users.id, delegateIds)));
+        for (const r of rows) delegates.set(r.id, r.name);
+        if (delegates.size !== delegateIds.length) {
+          throw Object.assign(new Error("a sub-task assignee is not in this firm"), { status: 400 });
+        }
+      }
 
       // Internal SLA target derived from priority (overridable later in the editor).
       const slaHours = SLA_HOURS_BY_PRIORITY[body.priority] ?? 72;
@@ -239,7 +276,8 @@ export async function POST(req: NextRequest) {
         relatedLeadId: body.relatedLeadId ?? null,
         relatedServiceRequestId: body.relatedServiceRequestId ?? null,
         relatedMeetingId: body.relatedMeetingId ?? null,
-        department: body.department ?? null,
+        // The form no longer asks: a task belongs to its assignee's department.
+        department: body.department ?? u.department ?? null,
         type: body.type,
         title: body.title,
         description: body.description,
@@ -260,10 +298,22 @@ export async function POST(req: NextRequest) {
         ...(body.tags?.length ? { tags: body.tags } : {}),
         meta: (() => {
           const m: Record<string, unknown> = {};
-          if (body.checklist?.length) m.checklist = body.checklist.map((c) => ({ ...c, done: false }));
+          if (body.checklist?.length) {
+            m.checklist = body.checklist.map((c) => ({
+              id: c.id, text: c.text, done: false,
+              ...(c.assigneeId ? { assigneeId: c.assigneeId, assigneeName: delegates.get(c.assigneeId) ?? null } : {}),
+              ...(c.actionDate ? { actionDate: c.actionDate } : {}),
+            }));
+          }
           if (body.boParticular) m.boParticular = body.boParticular;
           if (body.boChannel) m.boChannel = body.boChannel;
           if (body.boValue != null) m.boValue = body.boValue;
+          if (body.request) {
+            const r = Object.fromEntries(
+              Object.entries(body.request).filter(([, v]) => v !== undefined && v !== "" && v !== false)
+            );
+            if (Object.keys(r).length) m.request = r;
+          }
           return Object.keys(m).length ? m : undefined;
         })(),
       } as any);
@@ -298,6 +348,21 @@ export async function POST(req: NextRequest) {
           linkUrl: "/dashboard/tasks?view=assigned_to_me",
           severity: body.priority === "urgent" || body.priority === "high" ? "warning" : "info",
           meta: { task_id: id, assigned_by: session.userId, priority: body.priority },
+        });
+      }
+      // Each teammate a sub-task was delegated to hears about it (not the
+      // creator, and not the task's own assignee, who was notified above).
+      for (const [delegateId] of delegates) {
+        if (delegateId === session.userId || delegateId === assigneeId) continue;
+        await createNotification(tx, {
+          tenantId: session.tenantId,
+          userId: delegateId,
+          kind: "task.subtask_assigned",
+          title: `Sub-task assigned: ${body.title}`,
+          body: "A sub-task on this task was assigned to you",
+          linkUrl: `/dashboard/tasks?focus=${id}`,
+          severity: "info",
+          meta: { task_id: id, assigned_by: session.userId },
         });
       }
       return { id };

@@ -11,7 +11,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, GripVertical, CalendarClock, User, ListChecks, Plus, X } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
-import { TaskDetailDrawer } from "./TaskDetailDrawer";
 import { Avatar } from "@/components/ui/Avatar";
 import { taskChecklist, type Task } from "@/db/schema";
 import { formatDate } from "@/lib/format";
@@ -47,11 +46,11 @@ function fmtDue(d: any): string | null {
   return formatDate(dt, "dayMonth");
 }
 
-export function TaskKanban({ initialRows, currentUserId, canManageAll = false }: { initialRows: TaskRow[]; currentUserId: string; canManageAll?: boolean }) {
+// A card opens the task as its own page (/dashboard/tasks/[id]).
+export function TaskKanban({ initialRows, currentUserId }: { initialRows: TaskRow[]; currentUserId: string; canManageAll?: boolean }) {
   const router = useRouter();
   const toast = useToast();
   const [rows, setRows] = useState(initialRows);
-  const [selected, setSelected] = useState<TaskRow | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [overCol, setOverCol] = useState<string | null>(null);
@@ -157,7 +156,7 @@ export function TaskKanban({ initialRows, currentUserId, canManageAll = false }:
                       draggable={busyId !== t.id}
                       onDragStart={() => setDragId(t.id)}
                       onDragEnd={() => setDragId(null)}
-                      onClick={() => setSelected(row)}
+                      onClick={() => router.push(`/dashboard/tasks/${t.id}`)}
                       className="group rounded-lg border border-border bg-card p-2.5 cursor-pointer hover:shadow-sm hover:border-brand-cyan/40 transition active:cursor-grabbing"
                     >
                       <div className="flex items-start gap-1.5">
@@ -257,21 +256,6 @@ export function TaskKanban({ initialRows, currentUserId, canManageAll = false }:
           ))}
         </div>
       </div>
-
-      {selected && (
-        <TaskDetailDrawer
-          task={{
-            ...selected.task,
-            assigneeName: selected.assignee,
-            investorName: selected.investorName,
-            leadName: selected.leadName,
-          }}
-          currentUserId={currentUserId}
-          canManageAll={canManageAll}
-          onClose={() => setSelected(null)}
-          onUpdate={() => router.refresh()}
-        />
-      )}
     </>
   );
 }

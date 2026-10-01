@@ -11,9 +11,9 @@ import { taskChecklist, subTaskStatus, type Task, type TaskChecklistItem, type S
 import Link from "next/link";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
 import { TaskComments } from "./TaskComments";
-import { TaskTimePanel } from "./TaskTimePanel";
 import { TaskAttachments } from "./TaskAttachments";
 import { TaskWatchersDeps } from "./TaskWatchersDeps";
+import { TaskRequestSummary } from "@/components/tasks/TaskRequestSummary";
 import { TaskRelatedEntities } from "./TaskRelatedEntities";
 import { formatDate } from "@/lib/format";
 import { DateTimeField } from "@/components/ui/DateTimeField";
@@ -29,6 +29,13 @@ interface TaskDetailDrawerProps {
   canManageAll?: boolean;
   onClose: () => void;
   onUpdate: () => void;
+  /**
+   * "modal" (default) — the centred dialog over the list.
+   * "page" — the same content as a full page (/dashboard/tasks/[id]): no
+   * overlay, full width, the page supplies the title and breadcrumb, and the
+   * action bar stays pinned to the bottom of the screen.
+   */
+  variant?: "modal" | "page";
 }
 
 /** ISO → value for a <input type="datetime-local"> (local time, minute precision). */
@@ -42,19 +49,9 @@ function toLocalInput(iso: string | Date | null | undefined): string {
 
 const REMINDER_OFFSETS_MIN: Record<string, number> = { at_due: 0, "1h": 60, "3h": 180, "1d": 1440, "2d": 2880, "1w": 10080 };
 
-const DEPARTMENTS: [string, string][] = [
-  ["sales", "Sales"],
-  ["operations", "Operations"],
-  ["back_office", "Back Office"],
-  ["compliance", "Compliance"],
-  ["marketing", "Marketing"],
-  ["advisory", "Advisory"],
-  ["support", "Support"],
-  ["leadership", "Leadership"],
-  ["other", "Other"],
-];
 
-export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, onClose, onUpdate }: TaskDetailDrawerProps) {
+export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, onClose, onUpdate, variant = "modal" }: TaskDetailDrawerProps) {
+  const isPage = variant === "page";
   const uid = useId();
   const toast = useToast();
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
@@ -77,19 +74,10 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
   // (so editing the title doesn't needlessly re-arm an already-fired reminder).
   const [reminderDirty, setReminderDirty] = useState(false);
 
-  // Tags.
-  const [tags, setTags] = useState<string[]>(Array.isArray(task.tags) ? (task.tags as string[]) : []);
-  const [tagInput, setTagInput] = useState("");
-  function addTag(raw: string) {
-    const v = raw.trim().replace(/,$/, "").slice(0, 40);
-    if (v && !tags.includes(v)) setTags((t) => [...t, v]);
-    setTagInput("");
-  }
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description ?? "");
   const [status, setStatus] = useState(task.status);
   const [priority, setPriority] = useState(task.priority);
-  const [department, setDepartment] = useState(task.department ?? "");
   const [assigneeId, setAssigneeId] = useState(task.assigneeId ?? "");
   const [dueDate, setDueDate] = useState(() => {
     if (!task.dueAt) return "";
@@ -206,7 +194,6 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
     setDescription(task.description ?? "");
     setStatus(task.status);
     setPriority(task.priority);
-    setDepartment(task.department ?? "");
     setAssigneeId(task.assigneeId ?? "");
     setDueDate(task.dueAt ? new Date(task.dueAt).toISOString().split("T")[0] : "");
     setSlaDate(task.slaDueAt ? new Date(task.slaDueAt).toISOString().split("T")[0] : "");
@@ -220,8 +207,6 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
     setReminderMode(task.remindAt ? "custom" : "none");
     setReminderCustom(toLocalInput(task.remindAt));
     setReminderDirty(false);
-    setTags(Array.isArray(task.tags) ? (task.tags as string[]) : []);
-    setTagInput("");
     // Re-initialise ONLY when switching to a different task — keyed on task.id,
     // not the whole object. A checklist add saves then triggers router.refresh,
     // which hands us a new (same-id) task object; depending on [task] here would
@@ -247,7 +232,9 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
         description: description || undefined,
         status,
         priority,
-        department: department || undefined,
+        // Department is no longer edited here (removed 2026-10-01), so it is
+        // not sent: a save keeps the task's department, which the Operations
+        // Dashboard reads to decide what is operations work.
         assigneeId: assigneeId || undefined,
         dueAt: dueDate ? new Date(dueDate).toISOString() : undefined,
         slaDueAt: slaDate ? new Date(slaDate).toISOString() : null,
@@ -255,7 +242,8 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
       };
       // Only send the reminder when the user changed it (avoids re-arming).
       if (reminderDirty) payload.remindAt = computeRemindAt();
-      payload.tags = tags;
+      // Tags are no longer edited here, so they are not sent: a save leaves a
+      // task's existing tags exactly as they were.
 
       const res = await fetch(`/api/tasks/${task.id}`, {
         method: "PATCH",
@@ -366,17 +354,25 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
     <>
       {/* Backdrop overlay — clicking outside closes the modal. */}
       <div
-        className="fixed inset-0 bg-black/40 backdrop-blur-[1px] z-40 transition-opacity flex items-start sm:items-center justify-center p-0 sm:p-6"
-        onClick={onClose}
+        className={
+          isPage
+            ? "w-full"
+            : "fixed inset-0 bg-black/40 backdrop-blur-[1px] z-40 transition-opacity flex items-start sm:items-center justify-center p-0 sm:p-6"
+        }
+        onClick={isPage ? undefined : onClose}
       >
-        {/* Centered modal */}
+        {/* Centered modal — or, as a page, a full-width card */}
         <div
           onClick={(e) => e.stopPropagation()}
-          className="relative w-full h-full sm:h-auto sm:max-h-[88vh] sm:w-[560px] sm:max-w-[calc(100vw-2rem)] bg-white text-foreground sm:rounded-xl border border-border shadow-2xl z-50 flex flex-col overflow-hidden animate-modal-in"
+          className={
+            isPage
+              ? "relative w-full bg-card text-foreground rounded-xl border border-border flex flex-col"
+              : "relative w-full h-full sm:h-auto sm:max-h-[88vh] sm:w-[560px] sm:max-w-[calc(100vw-2rem)] bg-white text-foreground sm:rounded-xl border border-border shadow-2xl z-50 flex flex-col overflow-hidden animate-modal-in"
+          }
         >
 
-        {/* Header */}
-        <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-secondary">
+        {/* Header — the page has its own title and breadcrumb */}
+        <div className={`px-5 py-4 border-b border-border flex items-center justify-between bg-secondary ${isPage ? "hidden" : ""}`}>
           <div>
             <h3 className="font-bold text-sm text-foreground uppercase tracking-wider">
               Task Details
@@ -393,7 +389,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-5 scrollbar-thin">
+        <div className={isPage ? "p-5 sm:p-6 space-y-5" : "flex-1 overflow-y-auto p-5 space-y-5 scrollbar-thin"}>
           {err && (
             <div className="p-3 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg flex items-center gap-1.5">
               <AlertCircle className="size-4 flex-shrink-0" />
@@ -416,7 +412,10 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
               placeholder="Task title"
               className="text-lg font-bold bg-transparent border-none focus:outline-none w-full border-b focus:border-slate-300 py-0.5"
             />
-            
+
+            {/* A financial / non-financial request's details (New task form). */}
+            <TaskRequestSummary type={task.type} meta={task.meta} />
+
             <div>
               <label htmlFor={`${uid}-description`} className="text-2xs uppercase font-bold text-muted-foreground block mb-1">Description</label>
               <textarea id={`${uid}-description`}
@@ -495,21 +494,6 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
                 size="sm"
                 className="w-full"
               />
-            </div>
-
-            <div className="col-span-2">
-              <label htmlFor={`${uid}-department`} className="text-2xs uppercase font-bold text-muted-foreground block mb-1">Department</label>
-              <SelectField id={`${uid}-department`}
-                value={department}
-                onChange={(e) => setDepartment(e.target.value)}
-                size="sm"
-                className="w-full"
-              >
-                <option value="">Select…</option>
-                {DEPARTMENTS.map(([k, l]) => (
-                  <option key={k} value={k}>{l}</option>
-                ))}
-              </SelectField>
             </div>
 
             <div className="col-span-2">
@@ -803,55 +787,21 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
 
           <hr className="border-slate-100" />
 
-          {/* Watchers + dependency (blocked by) */}
+          {/* Dependency (blocked by). Watchers, time tracking and tags were
+              taken off the editor at the firm's request (2026-10-01); a task's
+              existing watchers, time log and tags are kept, just not shown. */}
           <TaskWatchersDeps
             taskId={task.id}
             currentUserId={currentUserId}
             initialBlockedById={task.blockedByTaskId ?? null}
             onChanged={onUpdate}
-          />
-
-          <hr className="border-slate-100" />
-
-          {/* Time tracking */}
-          <TaskTimePanel
-            taskId={task.id}
-            initialEstimate={task.estimateMinutes ?? null}
-            initialSpent={task.timeSpentMinutes ?? 0}
-            initialRunningSince={task.startedAt ?? null}
-            onChanged={onUpdate}
+            showWatchers={false}
           />
 
           <hr className="border-slate-100" />
 
           {/* Attachments */}
           <TaskAttachments taskId={task.id} />
-
-          <hr className="border-slate-100" />
-
-          {/* Tags */}
-          <div className="space-y-2">
-            <h4 className="text-2xs uppercase font-bold text-muted-foreground">Tags</h4>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {tags.map((tg) => (
-                <span key={tg} className="chip text-2xs bg-secondary text-muted-foreground border border-border inline-flex items-center gap-1">
-                  {tg}
-                  <button type="button" onClick={() => setTags((t) => t.filter((x) => x !== tg))} className="hover:text-rose-600" aria-label={`Remove ${tg}`}>
-                    <X className="size-2.5" />
-                  </button>
-                </span>
-              ))}
-              <input
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addTag(tagInput); } }}
-                onBlur={() => tagInput.trim() && addTag(tagInput)}
-                placeholder="Add tag…"
-                className="input-base h-7 text-2xs w-24 bg-white"
-              />
-            </div>
-            <p className="text-2xs text-muted-foreground">Saved with the task.</p>
-          </div>
 
           <hr className="border-slate-100" />
 
@@ -888,7 +838,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
         </div>
 
         {/* Footer controls */}
-        <div className="px-5 py-4 border-t border-border bg-secondary flex justify-between gap-3 flex-shrink-0">
+        <div className={`px-5 py-4 border-t border-border bg-secondary flex justify-between gap-3 flex-shrink-0 ${isPage ? "sticky bottom-0 z-10 rounded-b-xl" : ""}`}>
           <button
             type="button"
             onClick={() => setConfirmCancelOpen(true)}

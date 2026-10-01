@@ -44,17 +44,17 @@ import { istToday, parseOpsFilter, parseOpsPeriod, parseRupees } from "@/lib/das
 import {
   AGE_BUCKETS, MODE_FILTERS, OPS_KINDS, OPS_ROLES, PENDING_WITH, PRIORITIES, SLA_STATES, STATUS_FILTERS, textArray, type OpsWindow,
 } from "@/lib/dashboard/ops/window";
-import { loadAttention, loadCommandStrip, loadDayCounts, loadQueue } from "@/lib/dashboard/ops/queue";
+import { loadDayCounts } from "@/lib/dashboard/ops/queue";
 import {
-  loadAgeing, loadCarryForward, loadFeedValue, loadFunnel, loadReview, loadSla, loadTatByKind, loadTrend, loadVolume,
+  loadCarryForward, loadFeedValue, loadSla, loadVolume,
 } from "@/lib/dashboard/ops/flow";
 import { loadRejections, loadSipControl } from "@/lib/dashboard/ops/sip";
 import {
   loadApprovals, loadBackOffice, loadBranchWise, loadFinancialTasks, loadNonFinancialTasks, loadProductivity, loadRmWise, loadTeam,
 } from "@/lib/dashboard/ops/people";
 import {
-  loadClientMaster, loadDocs, loadExternal, loadHighValue, loadNoUpdate, loadOpsDataQuality, loadPendingWith, loadQueries,
-  loadRejected, loadRework, loadUnassigned,
+  loadClientMaster, loadExternal, loadHighValue, loadNoUpdate, loadOpsDataQuality, loadPendingWith, loadQueries,
+  loadRejected, loadUnassigned,
 } from "@/lib/dashboard/ops/exceptions";
 import { SYSTEM_DASHBOARD_BY_KEY } from "@/lib/dashboards/system/definitions";
 import type { DataAccess } from "@/lib/dashboards/system/access";
@@ -63,10 +63,9 @@ import { CATEGORY_OPTIONS, type FilterOptions, type Option } from "@/lib/dashboa
 import { cn } from "@/lib/utils";
 
 import {
-  AgeingPanel, ApprovalsPanel, AttentionPanel, BackOfficePanel, BranchRmPanel, CommandStripPanel, DocsPanel, ExternalPanel,
-  FunnelPanel, HighValuePanel, NoUpdatePanel, OpsQuickActions, OpsTrend, PendingWithPanel, ProcessingQueue,
-  ProductivityPanel, QualityPanel, QueriesPanel, RejectedPanel, RejectionsPanel, ReviewPanel, SipControlPanel, SlaPanel,
-  StandupPanel, TaskQueuePanel, TatQualityPanel, TeamPanel, TimelinePanel, UnassignedPanel, ValuePanel, VolumePanel,
+  ApprovalsPanel, BackOfficePanel, BranchRmPanel, ExternalPanel, HighValuePanel, NoUpdatePanel, OpsQuickActions,
+  PendingWithPanel, ProductivityPanel, QualityPanel, QueriesPanel, RejectedPanel, RejectionsPanel, SipControlPanel,
+  SlaPanel, StandupPanel, TaskQueuePanel, TeamPanel, TimelinePanel, UnassignedPanel, ValuePanel, VolumePanel,
 } from "./ops";
 
 /* ───────────────────────────── tabs ───────────────────────────── */
@@ -244,7 +243,6 @@ export async function OperationsControlTower({
   const filter = parseOpsFilter(filterParams, session.userId);
   const p = parseOpsPeriod(filterParams, now);
   const today = istToday(now);
-  const fyStart = `${Number(today.slice(0, 4)) - (Number(today.slice(5, 7)) < 4 ? 1 : 0)}-04-01`;
   const w: OpsWindow = {
     tenantId: session.tenantId, userId: session.userId, scope: access.scope, filter,
     from: p.from, to: p.to, today, periodLabel: p.label, t,
@@ -291,7 +289,6 @@ export async function OperationsControlTower({
   const noUpdateDays = Number.isInteger(nuRaw) && nuRaw >= 1 && nuRaw <= 60 ? nuRaw : t.opsNoUpdateDays;
   const eod = one("eod") === "1";
   const vh = one("vh") === "week" || one("vh") === "mtd" ? one("vh") : "today";
-  const reviewMode = one("review") === "weekly" || one("review") === "monthly" ? (one("review") as "weekly" | "monthly") : null;
   const monday = (() => {
     const d = new Date(`${today}T00:00:00Z`);
     d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
@@ -329,7 +326,6 @@ export async function OperationsControlTower({
 
   const canEditAll = can(session.roles, "task.edit.all", session.permissions);
   const canEditOwn = can(session.roles, "task.edit.assigned", session.permissions);
-  const team = meta.execs.map((e) => ({ value: e.id, label: e.name ?? "—" }));
 
   // §45 — the escalation levels, beside the SLA tab rather than a paragraph on the page.
   const escalation = [
@@ -391,19 +387,6 @@ export async function OperationsControlTower({
             <Suspense fallback={<Loading order="standup" />}>
               <StandupBand run={run} w={w} highValue={highValue} eod={eod} hrefs={hrefs} />
             </Suspense>
-            {/* §1 */}
-            <Suspense fallback={<Loading order="strip" />}>
-              <StripBand run={run} w={w} hrefs={hrefs} />
-            </Suspense>
-            {/* §2 */}
-            <Suspense fallback={<Loading order="attention" />}>
-              <AttentionBand run={run} w={w} highValue={highValue} resolve={resolve} />
-            </Suspense>
-            {/* §3 */}
-            <Suspense fallback={<Loading order="queue" />}>
-              <QueueBand run={run} w={w} highValue={highValue} canEditAll={canEditAll} canEditOwn={canEditOwn}
-                userId={session.userId} team={team} exportQuery={exportQuery} />
-            </Suspense>
             {/* §16 */}
             <Suspense fallback={<Loading order="highValue" />}>
               <HighValueBand run={run} w={w} threshold={highValue}
@@ -436,10 +419,6 @@ export async function OperationsControlTower({
             <Suspense fallback={<Loading />}>
               <SlaBand run={run} w={w} hrefs={hrefs} />
             </Suspense>
-            {/* §33–35 */}
-            <Suspense fallback={<Loading />}>
-              <TatBand run={run} w={w} />
-            </Suspense>
             {/* §36–37 */}
             <Suspense fallback={<Loading />}>
               <CarryBand run={run} w={w} highValue={highValue} />
@@ -450,10 +429,6 @@ export async function OperationsControlTower({
                 presets={NU_PRESETS.map((v) => ({ value: v, href: at("no-update", { nu: String(v) }) }))}
                 customAction={`${basePath}#no-update`}
                 customHidden={[...params(TAB_OF["no-update"], { nu: null })]} />
-            </Suspense>
-            {/* §38–40 */}
-            <Suspense fallback={<Loading />}>
-              <ReviewBand run={run} w={w} mode={reviewMode} hrefs={hrefs} fyStart={fyStart} />
             </Suspense>
           </>
         )}
@@ -483,7 +458,7 @@ export async function OperationsControlTower({
             </Suspense>
             {/* §15, §13 */}
             <Suspense fallback={<Loading />}>
-              <RejectedDocsBand run={run} w={w} hrefs={hrefs} exportQuery={exportQuery} />
+              <RejectedDocsBand run={run} w={w} exportQuery={exportQuery} />
             </Suspense>
           </>
         )}
@@ -533,33 +508,6 @@ async function StandupBand({ run, w, highValue, eod, hrefs }: { run: Run; w: Ops
   return <Cell order="standup" id="standup"><StandupPanel counts={counts} eod={eod} hrefs={hrefs} /></Cell>;
 }
 
-async function StripBand({ run, w, hrefs }: { run: Run; w: OpsWindow; hrefs: Hrefs }) {
-  const s = await run((tx) => loadCommandStrip(tx, w));
-  return <Cell order="strip"><CommandStripPanel s={s} periodLabel={w.periodLabel} hrefs={hrefs} /></Cell>;
-}
-
-async function AttentionBand({ run, w, highValue, resolve }: { run: Run; w: OpsWindow; highValue: number; resolve: (h: string) => string }) {
-  const cards = await run((tx) => loadAttention(tx, w, highValue));
-  return (
-    <Cell order="attention" id="attention">
-      <AttentionPanel cards={cards.map((c) => ({ ...c, href: resolve(c.href) }))} />
-    </Cell>
-  );
-}
-
-async function QueueBand({ run, w, highValue, canEditAll, canEditOwn, userId, team, exportQuery }: {
-  run: Run; w: OpsWindow; highValue: number; canEditAll: boolean; canEditOwn: boolean; userId: string;
-  team: Array<{ value: string; label: string }>; exportQuery: string;
-}) {
-  const q = await run((tx) => loadQueue(tx, w, highValue, 200));
-  return (
-    <Cell order="queue" id="queue">
-      <ProcessingQueue items={q.items} total={q.total} canEditAll={canEditAll} canEditOwn={canEditOwn} userId={userId}
-        team={team} exportQuery={exportQuery} highValue={highValue} />
-    </Cell>
-  );
-}
-
 async function HighValueBand({ run, w, threshold, presets, customAction, customHidden }: {
   run: Run; w: OpsWindow; threshold: number; presets: Array<{ value: number; label: string; href: string }>;
   customAction: string; customHidden: Array<[string, string]>;
@@ -575,16 +523,14 @@ async function HighValueBand({ run, w, threshold, presets, customAction, customH
 async function VolumeBand({ run, w, vFrom, vLabel, vh, hrefs }: {
   run: Run; w: OpsWindow; vFrom: string; vLabel: string; vh: string; hrefs: Hrefs;
 }) {
-  const [vol, val, funnel] = await run(async (tx) => [
+  const [vol, val] = await run(async (tx) => [
     await loadVolume(tx, w, vFrom, w.today),
     await loadFeedValue(tx, w, vFrom, w.today),
-    await loadFunnel(tx, w),
   ] as const);
   return (
     <>
       <Cell wide={false} id="volume"><VolumePanel rows={vol} horizon={vh} horizonLabel={vLabel} hrefs={hrefs} /></Cell>
       <Cell wide={false}><ValuePanel data={val} horizonLabel={vLabel} /></Cell>
-      <Cell><FunnelPanel funnel={funnel} periodLabel={w.periodLabel} /></Cell>
     </>
   );
 }
@@ -621,22 +567,8 @@ async function UnassignedBand({ run, w, hrefs }: { run: Run; w: OpsWindow; hrefs
 }
 
 async function SlaBand({ run, w, hrefs }: { run: Run; w: OpsWindow; hrefs: Hrefs }) {
-  const [sla, ageing] = await run(async (tx) => [await loadSla(tx, w), await loadAgeing(tx, w)] as const);
-  return (
-    <>
-      <Cell wide={false} id="sla"><SlaPanel sla={sla} periodLabel={w.periodLabel} hrefs={hrefs} /></Cell>
-      <Cell wide={false}><AgeingPanel rows={ageing} /></Cell>
-    </>
-  );
-}
-
-async function TatBand({ run, w }: { run: Run; w: OpsWindow }) {
-  const [tat, rw] = await run(async (tx) => [await loadTatByKind(tx, w), await loadRework(tx, w)] as const);
-  return (
-    <Cell id="tat">
-      <TatQualityPanel tat={tat} rework={rw.rework} indicators={rw.indicators} periodLabel={w.periodLabel} />
-    </Cell>
-  );
+  const sla = await run((tx) => loadSla(tx, w));
+  return <Cell id="sla"><SlaPanel sla={sla} periodLabel={w.periodLabel} hrefs={hrefs} /></Cell>;
 }
 
 async function CarryBand({ run, w, highValue }: { run: Run; w: OpsWindow; highValue: number }) {
@@ -661,21 +593,6 @@ async function QualityBand({ run, w, noUpdateDays, resolve, presets, customActio
       <Cell id="quality">
         <QualityPanel cards={cards.map((c) => (c.href ? { ...c, href: resolve(c.href) } : c))} master={master} />
       </Cell>
-    </>
-  );
-}
-
-async function ReviewBand({ run, w, mode, hrefs, fyStart }: {
-  run: Run; w: OpsWindow; mode: "weekly" | "monthly" | null; hrefs: Hrefs; fyStart: string;
-}) {
-  const [review, trend] = await run(async (tx) => [
-    mode ? await loadReview(tx, w, mode) : null,
-    await loadTrend(tx, w, fyStart),
-  ] as const);
-  return (
-    <>
-      <Cell id="review"><ReviewPanel review={review} mode={mode} hrefs={hrefs} /></Cell>
-      <Cell><OpsTrend points={trend} /></Cell>
     </>
   );
 }
@@ -723,12 +640,7 @@ async function SipBand({ run, w, hrefs, exportQuery }: { run: Run; w: OpsWindow;
   );
 }
 
-async function RejectedDocsBand({ run, w, hrefs, exportQuery }: { run: Run; w: OpsWindow; hrefs: Hrefs; exportQuery: string }) {
-  const [rejected, docs] = await run(async (tx) => [await loadRejected(tx, w), await loadDocs(tx, w)] as const);
-  return (
-    <>
-      <Cell wide={false} id="rejected"><RejectedPanel d={rejected} periodLabel={w.periodLabel} exportQuery={exportQuery} /></Cell>
-      <Cell wide={false} id="docs"><DocsPanel d={docs} exportQuery={exportQuery} hrefs={hrefs} /></Cell>
-    </>
-  );
+async function RejectedDocsBand({ run, w, exportQuery }: { run: Run; w: OpsWindow; exportQuery: string }) {
+  const rejected = await run((tx) => loadRejected(tx, w));
+  return <Cell id="rejected"><RejectedPanel d={rejected} periodLabel={w.periodLabel} exportQuery={exportQuery} /></Cell>;
 }

@@ -153,6 +153,11 @@ export const reviewMeetings = pgTable(
           | "other";
         isExternal: boolean;
         notes?: string;
+        /** Looked up from the CRM (client / lead / team member) or a typed guest.
+         *  `refId` is what shows the meeting to that person — see
+         *  lib/review-meetings/attendees.ts. Absent on rows saved before the lookup. */
+        kind?: "client" | "lead" | "user" | "guest";
+        refId?: string;
       }>
     >().default([]),
     attachments: jsonb("attachments").$type<

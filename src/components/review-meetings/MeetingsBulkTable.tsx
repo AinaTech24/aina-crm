@@ -55,7 +55,11 @@ const clientCell = (m: Row) => {
     <div className="min-w-0">
       <div className="flex items-center gap-1.5">
         {m.party_name ? (
-          <Link href={isLead ? `/dashboard/leads/${m.lead_id}` : `/dashboard/investors/${m.investor_id}`} className="hover:underline font-medium truncate">
+          <Link
+            href={isLead ? `/dashboard/leads/${m.lead_id}` : `/dashboard/investors/${m.investor_id}`}
+            title={isLead ? "Open this lead" : "Open this client"}
+            className="font-medium text-primary hover:underline truncate"
+          >
             {m.party_name}
           </Link>
         ) : null}
@@ -71,6 +75,11 @@ const clientCell = (m: Row) => {
     </div>
   );
 };
+
+// Anywhere on a row opens the meeting; the client / lead name is its own link
+// (in the brand colour, so it reads as a different destination) and BulkTable
+// leaves clicks on links, buttons and the checkbox alone.
+const meetingHref = (m: Row) => `/dashboard/review-meetings/${m.id}`;
 
 const CANCELLABLE = new Set(["scheduled", "confirmed", "in_progress", "rescheduled"]);
 
@@ -262,7 +271,7 @@ export function MeetingsBulkTable({
           </button>
           <div className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${upcomingOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
             <div className="overflow-hidden">
-              <BulkTable rows={upcoming} columns={upcomingCols} endpoint="/api/review-meetings/bulk" actions={actions} itemLabel="meeting" />
+              <BulkTable rows={upcoming} columns={upcomingCols} endpoint="/api/review-meetings/bulk" actions={actions} itemLabel="meeting" rowHref={meetingHref} />
             </div>
           </div>
         </div>
@@ -302,7 +311,7 @@ export function MeetingsBulkTable({
             )}
           </div>
         ) : (
-          <BulkTable rows={past.slice(0, 50)} columns={pastCols} endpoint="/api/review-meetings/bulk" actions={actions} itemLabel="meeting" scrollBody />
+          <BulkTable rows={past.slice(0, 50)} columns={pastCols} endpoint="/api/review-meetings/bulk" actions={actions} itemLabel="meeting" scrollBody rowHref={meetingHref} />
         )}
       </div>
     </div>

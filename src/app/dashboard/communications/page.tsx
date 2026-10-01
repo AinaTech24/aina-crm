@@ -152,7 +152,7 @@ export default async function CommunicationsPage({
 
   return (
     <div className="space-y-5 max-w-6xl">
-      <PageHeaderCard title={<><Mail className="size-6 text-muted-foreground" /> Communications</>} subtitle={<>Every message sent and received, across WhatsApp, email and SMS.</>} actions={<><div className="flex items-center gap-2">
+      <PageHeaderCard breadcrumb={[{ label: "Settings", href: "/dashboard/settings" }, { label: "Communications" }]} title={<><Mail className="size-6 text-muted-foreground" /> Communications</>} subtitle={<>Every message sent and received, across WhatsApp, email and SMS.</>} actions={<><div className="flex items-center gap-2">
           <Link href="/dashboard/communications/responses" className="btn-secondary text-xs whitespace-nowrap">
             Client responses →
           </Link>

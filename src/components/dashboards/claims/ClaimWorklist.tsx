@@ -33,10 +33,10 @@ export function WorklistPanel({ rows, names, focusLabel, clearHref, can, limit =
     <Section title="Today's claim worklist"
       subtitle={focusLabel ? `${focusLabel} — ${formatCount(rows.length)} claim${rows.length === 1 ? "" : "s"}.` : `${formatCount(total)} open claim${total === 1 ? "" : "s"}: SLA breached first, then high value, then oldest, then largest.`}
       icon={<ListTodo className="size-4" />}
-      action={focusLabel ? <Link href={clearHref} scroll={false} className="text-xs font-medium text-primary hover:underline">Show every open claim</Link> : undefined}
+      action={focusLabel ? <Link href={clearHref} scroll={false} className="inline-flex min-h-6 items-center text-xs font-medium text-primary hover:underline">Show every open claim</Link> : undefined}
       note="Pending with is read from the status — the CRM has no pending-with field. The next action is the claim's earliest open follow-up; the CRM has no priority field, so high value stands in for it in the order.">
       {rows.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-xs text-muted-foreground">{focusLabel ? "No claim matches this card today." : "No open claims."}</p>
+        <p className="dash-empty">{focusLabel ? "No claim matches this card today." : "No open claims."}</p>
       ) : (
         <>
           {/* Desktop — overflow-x only: .table-scroll caps the height and would hide claims below the fold. */}

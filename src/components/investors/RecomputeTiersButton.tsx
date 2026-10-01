@@ -4,49 +4,48 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Layers, Loader2 } from "lucide-react";
 import { confirmDialog } from "@/components/ui/ConfirmProvider";
+import { notify } from "@/components/ui/Toast";
 
-export function RecomputeTiersButton() {
+/**
+ * Re-grade every active client's service tier (A/B/C) from AUM and SIP.
+ * Lives in the Clients page's More menu; the result is a toast, so nothing
+ * floats over the menu it was launched from.
+ */
+export function RecomputeTiersButton({ triggerClassName }: { triggerClassName?: string } = {}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ counts?: Record<string, number>; recomputed?: number } | null>(null);
 
   async function go() {
     if (!(await confirmDialog({ title: "Recompute service tiers for every active client?", message: "Each client is re-graded A, B or C from their current AUM and SIP. Tiers you set by hand will be overwritten.", confirmLabel: "Recompute" }))) return;
     setBusy(true);
     try {
       const res = await fetch("/api/investors/recompute-tiers", { method: "POST" });
-      const j = await res.json();
-      setResult(j);
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        notify.error(j.error ?? `That didn't go through (${res.status}).`, "Tiers not recomputed");
+        return;
+      }
+      const c = (j.counts ?? {}) as Record<string, number>;
+      notify.success(
+        `Tier A ${c.A ?? 0} · Tier B ${c.B ?? 0} · Tier C ${c.C ?? 0}`,
+        `${Number(j.recomputed ?? 0).toLocaleString("en-IN")} clients re-graded`,
+      );
       router.refresh();
-      setTimeout(() => setResult(null), 5000);
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div className="relative">
-      <button
-        onClick={go}
-        disabled={busy}
-        className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5 hover:bg-accent disabled:opacity-50"
-        title="Top 20% by AUM → A (quarterly), next 30% → B (half-yearly), rest → C (annual)"
-      >
-        {busy ? <Loader2 className="size-4 animate-spin" /> : <Layers className="size-4" />}
-        {busy ? "Recomputing…" : "Recompute tiers"}
-      </button>
-      {result && (
-        <div className="absolute right-0 top-full mt-1 border bg-card rounded-md shadow-md p-3 text-xs z-10 min-w-[200px]">
-          <div className="font-medium mb-1">✓ {result.recomputed} investors retiered</div>
-          {result.counts && (
-            <div className="text-muted-foreground space-y-0.5">
-              <div>Tier A: <span className="font-medium">{result.counts.A ?? 0}</span></div>
-              <div>Tier B: <span className="font-medium">{result.counts.B ?? 0}</span></div>
-              <div>Tier C: <span className="font-medium">{result.counts.C ?? 0}</span></div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+    <button
+      type="button"
+      onClick={go}
+      disabled={busy}
+      className={triggerClassName ?? "rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5 hover:bg-accent disabled:opacity-50"}
+      title="Top 20% by AUM → A (quarterly), next 30% → B (half-yearly), rest → C (annual)"
+    >
+      {busy ? <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" /> : <Layers className="size-4 shrink-0 text-muted-foreground" />}
+      {busy ? "Recomputing…" : "Recompute service tiers"}
+    </button>
   );
 }

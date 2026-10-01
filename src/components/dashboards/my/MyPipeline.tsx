@@ -139,8 +139,10 @@ export function FunnelBars({ funnel }: { funnel: LeadFunnel }) {
   return (
     <div className="space-y-1.5">
       {funnel.steps.map((s, i) => (
-        <div key={s.key} className="flex items-center gap-3">
-          <span className="w-36 shrink-0 truncate text-xs text-foreground">{s.label}</span>
+        <div key={s.key} className="flex items-center gap-2 sm:gap-3">
+          {/* Narrower columns on a phone: label, bar, step % and value were 340px
+              of fixed width in a ~300px card. */}
+          <span className="w-24 shrink-0 truncate text-xs text-foreground sm:w-36">{s.label}</span>
           <span className="h-6 flex-1 overflow-hidden rounded-md bg-secondary">
             <span
               className={cn(
@@ -154,19 +156,19 @@ export function FunnelBars({ funnel }: { funnel: LeadFunnel }) {
               {s.reached > 0 && formatCount(s.reached)}
             </span>
           </span>
-          <span className="w-16 shrink-0 text-right text-2xs tabular-nums text-muted-foreground">
+          <span className="w-10 shrink-0 text-right text-2xs tabular-nums text-muted-foreground sm:w-16">
             {s.stepConversion == null ? "—" : formatPercent(s.stepConversion * 100, 0)}
           </span>
-          <span className="w-24 shrink-0 text-right text-2xs tabular-nums text-muted-foreground" title="Potential business sitting at this step right now">
+          <span className="w-20 shrink-0 text-right text-2xs tabular-nums text-muted-foreground sm:w-24" title="Potential business sitting at this step right now">
             {s.value > 0 ? formatMoney(s.value) : "—"}
           </span>
         </div>
       ))}
-      <div className="flex items-center gap-3 pt-1 text-2xs text-muted-foreground">
-        <span className="w-36 shrink-0" />
+      <div className="flex items-center gap-2 pt-1 text-2xs text-muted-foreground sm:gap-3">
+        <span className="w-24 shrink-0 sm:w-36" />
         <span className="flex-1" />
-        <span className="w-16 shrink-0 text-right">Step %</span>
-        <span className="w-24 shrink-0 text-right">Value here</span>
+        <span className="w-10 shrink-0 text-right sm:w-16">Step %</span>
+        <span className="w-20 shrink-0 text-right sm:w-24">Value here</span>
       </div>
     </div>
   );

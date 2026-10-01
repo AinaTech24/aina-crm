@@ -38,7 +38,7 @@ export function ReviewModePanel({
   phasing: "linear" | "none";
 }) {
   const toggle = (
-    <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Review mode">
+    <div className="dash-seg flex-wrap" role="group" aria-label="Review mode">
       {(["weekly", "monthly"] as const).map((m) => (
         <Link
           key={m}

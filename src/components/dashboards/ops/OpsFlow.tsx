@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 
 function Toggle({ options, current }: { options: Array<{ key: string; label: string; href: string }>; current: string }) {
   return (
-    <div className="inline-flex rounded-lg border border-border bg-secondary/60 p-0.5 text-xs" role="group">
+    <div className="dash-seg" role="group">
       {options.map((o) => (
         <Link key={o.key} href={o.href} aria-current={o.key === current ? "page" : undefined}
               className={cn("rounded-md px-2.5 py-1 font-medium", o.key === current ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground")}>

@@ -35,7 +35,7 @@ export function TaskSide({
   hint: string;
 }) {
   return (
-    <div className="rounded-lg border border-border p-3">
+    <div className="rounded-lg bg-secondary/70 p-3">
       <div className="flex items-baseline justify-between gap-2">
         <h4 className="text-xs font-semibold text-foreground">{title}</h4>
         <span

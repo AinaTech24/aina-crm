@@ -34,9 +34,11 @@ export function InvestorSortSelect({ sort, dir }: { sort: string; dir: string })
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  const current = OPTIONS.some((o) => o.value === `${sort}:${dir}`) ? `${sort}:${dir}` : "aum:desc";
+  // The list's default is newest first (investors/page.tsx), not AUM — the
+  // menu used to tick "AUM — high to low" while the rows were sorted by date.
+  const current = OPTIONS.some((o) => o.value === `${sort}:${dir}`) ? `${sort}:${dir}` : "created:desc";
   // Non-default sort → tint the button, same cue the Filters button uses.
-  const active = current !== "aum:desc";
+  const active = current !== "created:desc";
 
   useEffect(() => {
     if (!open) return;
@@ -50,10 +52,9 @@ export function InvestorSortSelect({ sort, dir }: { sort: string; dir: string })
   function choose(v: string) {
     const [col, d] = v.split(":");
     const p = new URLSearchParams(sp.toString());
-    // AUM is the implicit default — keep the URL clean by dropping the param.
-    if (col === "aum") p.delete("sort");
-    else p.set("sort", col);
-    p.set("dir", d);
+    // Newest-first is the implicit default — keep the URL clean by dropping it.
+    if (col === "created" && d === "desc") { p.delete("sort"); p.delete("dir"); }
+    else { p.set("sort", col); p.set("dir", d); }
     p.delete("page");
     setOpen(false);
     router.push(`${pathname}?${p.toString()}`);
@@ -68,8 +69,8 @@ export function InvestorSortSelect({ sort, dir }: { sort: string; dir: string })
         aria-label="Sort investors"
         className={`inline-flex items-center justify-center rounded-lg border size-8 transition ${
           active
-            ? "bg-brand-cyan-light/40 border-brand-cyan/40 text-brand-cyan-deep"
-            : "bg-card border-border hover:bg-brand-cyan-light/40"
+            ? "border-primary/30 bg-accent text-primary"
+            : "border-border bg-card text-muted-foreground hover:bg-secondary hover:text-foreground"
         }`}
       >
         <ArrowDownUp className="size-4" />
@@ -86,7 +87,7 @@ export function InvestorSortSelect({ sort, dir }: { sort: string; dir: string })
                 type="button"
                 onClick={() => choose(o.value)}
                 className={`w-full text-left flex items-center gap-2 rounded px-2 py-1.5 text-xs transition ${
-                  isCur ? "bg-brand-cyan-light/50 text-brand-cyan-deep font-semibold" : "hover:bg-secondary/60"
+                  isCur ? "bg-accent text-foreground font-semibold" : "hover:bg-secondary/60"
                 }`}
               >
                 {isCur ? <Check className="size-3.5 shrink-0" /> : <span className="size-3.5 shrink-0" />}

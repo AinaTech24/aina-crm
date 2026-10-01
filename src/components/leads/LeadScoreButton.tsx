@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Sparkles, Loader2, Flame, ThermometerSun, Snowflake } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 
 type Result = {
   score: number;
@@ -17,9 +18,10 @@ const BAND = {
 } as const;
 
 /**
- * AI lead-score button on the lead detail page. Posts the lead's engagement
- * signals to /api/ai/lead-score and shows the score + reasoning + next action.
- * Advisory — does not persist on the lead.
+ * AI lead-score action on the lead detail page. Posts the lead's engagement
+ * signals to /api/ai/lead-score and shows the score + reasoning + next action
+ * in a dialog. Advisory — does not persist on the lead, and it is a second
+ * opinion beside the deterministic score in the header, not a replacement.
  */
 export function LeadScoreButton(props: {
   name: string;
@@ -28,7 +30,10 @@ export function LeadScoreButton(props: {
   ageInStageDays?: number | null;
   lastTouchDaysAgo?: number | null;
   estimatedAumInr?: number | null;
+  /** Replaces the trigger's look — a record menu passes its row class. */
+  triggerClassName?: string;
 }) {
+  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
@@ -60,38 +65,55 @@ export function LeadScoreButton(props: {
     }
   }
 
+  function start() {
+    setOpen(true);
+    if (!result && !busy) void score();
+  }
+
   const b = result ? BAND[result.band] : null;
   const BandIcon = b?.icon;
 
   return (
-    <div>
-      {!result && (
-        <button onClick={score} disabled={busy} className="btn-secondary text-xs">
-          {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
-          AI lead score
-        </button>
-      )}
-      {err && <p className="text-xs text-destructive mt-1">{err}</p>}
-      {result && b && (
-        <div className="rounded-lg border bg-card p-3 text-sm space-y-2 max-w-md">
-          <div className="flex items-center gap-2">
-            {BandIcon && <BandIcon className="size-4" />}
-            <span className={`chip border ${b.chip}`}>{b.label}</span>
-            <span className="font-bold tabular-nums">{result.score}/100</span>
-            <button onClick={score} disabled={busy} className="ml-auto text-2xs text-muted-foreground hover:underline">
-              {busy ? "…" : "re-score"}
-            </button>
+    <>
+      <button type="button" onClick={start} disabled={busy} className={props.triggerClassName ?? "btn-secondary text-xs"}>
+        {busy ? <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" /> : <Sparkles className="size-4 shrink-0 text-muted-foreground" />}
+        AI lead score
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>AI lead score — {props.name}</DialogTitle>
+            <DialogDescription>An AI estimate to weigh beside the score in the header. Your judgement decides.</DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 space-y-3 text-sm">
+            {busy && !result ? (
+              <div className="flex items-center gap-2 py-6 text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" /> Reading the lead…
+              </div>
+            ) : err ? (
+              <p className="text-destructive">{err}</p>
+            ) : result && b ? (
+              <>
+                <div className="flex items-center gap-2">
+                  {BandIcon && <BandIcon className="size-4" aria-hidden />}
+                  <span className={`chip border ${b.chip}`}>{b.label}</span>
+                  <span className="font-bold tabular-nums">{result.score}/100</span>
+                  <button type="button" onClick={score} disabled={busy} className="ml-auto text-2xs text-muted-foreground hover:underline">
+                    {busy ? "…" : "Score again"}
+                  </button>
+                </div>
+                <p className="text-xs leading-relaxed text-muted-foreground">{result.reasoning}</p>
+                {result.nextAction && (
+                  <p className="text-xs">
+                    <span className="font-semibold">Suggested next step: </span>
+                    {result.nextAction}
+                  </p>
+                )}
+              </>
+            ) : null}
           </div>
-          <p className="text-xs text-muted-foreground leading-relaxed">{result.reasoning}</p>
-          {result.nextAction && (
-            <div className="text-xs">
-              <span className="font-semibold">Next: </span>
-              {result.nextAction}
-            </div>
-          )}
-          <p className="text-2xs text-muted-foreground italic">AI estimate — your judgement decides.</p>
-        </div>
-      )}
-    </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

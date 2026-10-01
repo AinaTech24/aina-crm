@@ -239,6 +239,9 @@ export function ProposalBuilder({ proposalId: initialId }: { proposalId?: string
           body.familyId = recipient!.id;
           if (familyMemberId) body.investorId = familyMemberId;
         }
+        // Opened from an opportunity ("Prepare proposal"): link the proposal to it.
+        const opportunityId = new URLSearchParams(window.location.search).get("opportunityId");
+        if (opportunityId && /^[0-9a-f-]{36}$/i.test(opportunityId)) body.opportunityId = opportunityId;
         const r = await fetch("/api/proposals", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
         const j = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(describeError(j, r.status));

@@ -8,6 +8,7 @@
  */
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Loader2, X, ArrowRight, ArrowLeft, Check, ClipboardList, CheckCircle2 } from "lucide-react";
 
@@ -30,15 +31,26 @@ const LABELS: Record<string, string> = {
   riskProfile: "Risk profile", nomineeName: "Nominee name", nomineeRelation: "Nominee relation", bankName: "Bank name", bankAccountNumberMasked: "Account no.", bankIfsc: "IFSC",
 };
 
-export function OnboardingWizardButton({ investor, investorId }: { investor: Inv; investorId: string }) {
+export function OnboardingWizardButton({
+  investor, investorId, label, className,
+}: {
+  investor: Inv;
+  investorId: string;
+  /** Button text; defaults to "Onboarding (n/5)". */
+  label?: string;
+  className?: string;
+}) {
   const [open, setOpen] = useState(false);
   const doneCount = STEPS.filter((s) => s.required.every((f) => investor[f])).length;
   return (
     <>
-      <button onClick={() => setOpen(true)} className="btn-secondary text-xs inline-flex items-center gap-1" title="Guided onboarding">
-        <ClipboardList className="size-3.5" /> Onboarding {doneCount < STEPS.length ? `(${doneCount}/${STEPS.length})` : "✓"}
+      <button type="button" onClick={() => setOpen(true)} className={className ?? "btn-secondary text-xs inline-flex items-center gap-1"} title="Fill in contact, KYC, risk profile, nominee and bank details step by step">
+        <ClipboardList className="size-3.5" /> {label ?? <>Onboarding {doneCount < STEPS.length ? `(${doneCount}/${STEPS.length})` : "✓"}</>}
       </button>
-      {open && <Wizard investor={investor} investorId={investorId} onClose={() => setOpen(false)} />}
+      {open && typeof document !== "undefined" && createPortal(
+        <Wizard investor={investor} investorId={investorId} onClose={() => setOpen(false)} />,
+        document.body
+      )}
     </>
   );
 }
@@ -71,7 +83,7 @@ function Wizard({ investor, investorId, onClose }: { investor: Inv; investorId: 
     <div className="fixed inset-0 z-50 bg-black/40 flex justify-end" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} className="w-full max-w-lg h-full bg-card border-l shadow-2xl flex flex-col">
         <div className="px-5 py-3 border-b flex items-center justify-between">
-          <div className="font-semibold flex items-center gap-2"><ClipboardList className="size-4 text-brand-cyan" /> Client onboarding</div>
+          <div className="font-semibold flex items-center gap-2"><ClipboardList className="size-4 text-muted-foreground" /> Complete client setup</div>
           <button onClick={onClose} className="rounded p-1 hover:bg-accent"><X className="size-4" /></button>
         </div>
 

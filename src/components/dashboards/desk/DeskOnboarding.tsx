@@ -33,11 +33,11 @@ export function OnboardingPipeline({ data, fyLabel }: { data: Onboarding; fyLabe
         <>
           <ol className="grid gap-2 sm:grid-cols-7">
             {data.steps.map((s) => (
-              <li key={s.key} className="rounded-lg border border-border p-2.5">
+              <li key={s.key} className="rounded-lg bg-secondary/70 p-2.5">
                 <div className="text-2xs font-medium text-foreground">{s.label}</div>
                 <div className="mt-1 text-lg font-semibold tabular-nums">{formatCount(s.done)}</div>
-                <div className="mt-1 h-1 rounded-full bg-secondary" aria-hidden>
-                  <span className="block h-full rounded-full bg-primary/60" style={{ width: `${(s.done / top) * 100}%` }} />
+                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-border/70" aria-hidden>
+                  <span className="block h-full rounded-full bg-primary" style={{ width: `${(s.done / top) * 100}%` }} />
                 </div>
                 <div className={cn("mt-1 text-2xs", s.stuck > 0 ? "font-medium text-warning-foreground" : "text-muted-foreground")}>
                   {s.key === "lead" ? "came from a lead" : s.stuck > 0 ? `${s.stuck} stuck here` : "none stuck"}

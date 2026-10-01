@@ -15,6 +15,7 @@
 
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
+import { attendeeIs } from "@/lib/review-meetings/attendees";
 
 export type CalendarKind = "task" | "follow_up" | "meeting" | "review" | "sip" | "campaign" | "compliance";
 
@@ -65,7 +66,10 @@ export async function getCalendarItems(
     : sql` AND (assignee_id = ${scope.userId}::uuid OR created_by_id = ${scope.userId}::uuid)`;
   const leadScope = scope.leadsAll ? sql`` : sql` AND owner_id = ${scope.userId}::uuid`;
   const invScope = scope.investorsAll ? sql`` : sql` AND rm_id = ${scope.userId}::uuid`;
-  const meetingScope = scope.investorsAll ? sql`` : sql` AND rm.rm_id = ${scope.userId}::uuid`;
+  // A meeting is on my calendar when I own it or attend it.
+  const meetingScope = scope.investorsAll
+    ? sql``
+    : sql` AND (rm.rm_id = ${scope.userId}::uuid OR ${attendeeIs("user", scope.userId, sql.raw("rm.attendees"))})`;
   const sipScope = scope.investorsAll ? sql`` : sql` AND i.rm_id = ${scope.userId}::uuid`;
   const nismScope = scope.investorsAll ? sql`` : sql` AND id = ${scope.userId}::uuid`;
   const kycScope = scope.investorsAll ? sql`` : sql` AND rm_id = ${scope.userId}::uuid`;

@@ -36,6 +36,7 @@ async function leadPipeline(tx: Tx, ctx: WidgetCtx) {
   const s = leadScope(ctx);
   const [c, open] = await inOrder(() => getLeadStageCounts(tx, s, ctx.period), () => getOpenLeads(tx, s));
   if (c.total === 0 && open.open === 0) return { body: null };
+  const max = Math.max(...LEAD_PIPELINE.map((col) => c.byStage[col.key] ?? 0), 1);
   if (c.total === 0) {
     // No leads created in the period: say so once instead of a column of zeros.
     return {
@@ -62,17 +63,23 @@ async function leadPipeline(tx: Tx, ctx: WidgetCtx) {
   return {
     body: (
       <div className="space-y-3">
-        <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
+        <ul className="space-y-0.5">
           {LEAD_PIPELINE.map((col) => {
             const n = c.byStage[col.key] ?? 0;
+            // Won is the good end of the funnel and Lost the leak; the other
+            // stages share the brand colour. Colour marks outcome, not stage.
+            const fill = col.key === "won_lead" ? "bg-success" : col.key === "lost" ? "bg-muted-foreground/40" : "";
             return (
-              <li key={col.key} className="border-b border-border">
+              <li key={col.key}>
                 <Link
                   href={leadsHref(ctx, { stage: col.key, ...(col.key === "won_lead" ? { include_won: "1" } : {}) })}
-                  className="flex items-center justify-between gap-3 py-2 text-sm hover:underline"
+                  className="dash-row text-sm"
                 >
-                  <span className="text-foreground">{col.label}</span>
-                  <span className="font-semibold tabular-nums">{formatCount(n)}</span>
+                  <span className="w-32 shrink-0 truncate text-foreground sm:w-36">{col.label}</span>
+                  <span className="dash-bar flex-1" aria-hidden>
+                    <span className={fill} style={{ width: `${n ? Math.max(3, (n / max) * 100) : 0}%` }} />
+                  </span>
+                  <span className={`dash-count ${n === 0 ? "dash-count-zero" : ""}`}>{formatCount(n)}</span>
                 </Link>
               </li>
             );
@@ -90,7 +97,7 @@ async function leadPipeline(tx: Tx, ctx: WidgetCtx) {
             </Drill>
           </span>
           {open.followUpDue > 0 && (
-            <Link href={leadsHref(ctx, { followup_due: "1" }, false)} className="text-primary hover:underline">
+            <Link href={leadsHref(ctx, { followup_due: "1" }, false)} className="inline-flex min-h-6 items-center text-primary hover:underline">
               {formatCount(open.followUpDue)} need follow-up today
             </Link>
           )}
@@ -123,8 +130,8 @@ async function leadFunnel(tx: Tx, ctx: WidgetCtx) {
               className="grid grid-cols-12 items-center gap-2 text-sm group"
             >
               <span className="col-span-4 sm:col-span-3 truncate text-foreground group-hover:underline">{col.label}</span>
-              <span className="col-span-6 sm:col-span-7 h-2.5 rounded-full bg-secondary overflow-hidden">
-                <span className="block h-full rounded-full bg-primary/70" style={{ width: `${(n / max) * 100}%` }} />
+              <span className="dash-bar col-span-6 sm:col-span-7">
+                <span style={{ width: `${(n / max) * 100}%` }} />
               </span>
               <span className="col-span-2 text-right tabular-nums">{formatCount(n)}</span>
             </Link>
@@ -242,9 +249,9 @@ async function proposalPipeline(tx: Tx, ctx: WidgetCtx) {
             and a link must open the rows it counts. */}
         <ul className="grid grid-cols-2 gap-2">
           {groups.map((g) => (
-            <li key={g.key} className="rounded-lg border border-border px-3 py-2">
+            <li key={g.key} className="dash-tile">
               <div className="text-xs text-muted-foreground">{g.label}</div>
-              <div className="text-lg font-semibold tabular-nums">{formatCount(g.n)}</div>
+              <div className="text-xl font-semibold tabular-nums tracking-tight">{formatCount(g.n)}</div>
               <div className="text-xs text-muted-foreground tabular-nums">{g.amount > 0 ? formatMoney(g.amount) : "—"}</div>
             </li>
           ))}

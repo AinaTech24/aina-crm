@@ -163,10 +163,12 @@ export const OPS_ROLES = ["back_office", "ops", "service_team"] as const;
 const RM_ROLES = ["rm", "branch_head"] as const;
 
 /** Task types that are operations work whatever their department. */
-const OPS_TYPES = [
+export const OPS_TYPES = [
   ...FINANCIAL_TASK_TYPES,
   "back_office_work", "sip_rejection_followup", "collect_document", "document", "documents",
   "kyc_renewal", "nominee_update", "reconciliation", "transaction_execution", "ucc_creation", "onboarding",
+  // The New task form's non-financial requests (lib/tasks/request-types.ts).
+  "non_financial", "bank_change", "contact_change", "folio_consolidation", "account_statement", "service_other",
 ] as const;
 
 /* ───────────────────────────── SQL helpers ───────────────────────────── */
@@ -206,6 +208,9 @@ export const KIND_SQL: SQL = sql`CASE
   WHEN t.type = 'sip_stop' THEN 'sip_stop'
   WHEN t.type IN ('stp', 'swp') THEN t.type
   WHEN t.type IN ('mandate_renewal', 'mandate_create') THEN 'mandate'
+  WHEN t.type IN ('additional_purchase', 'sip_modification', 'pms', 'aif') THEN t.type
+  WHEN t.type IN ('nominee_update', 'bank_change', 'contact_change', 'folio_consolidation', 'account_statement', 'service_other') THEN 'service'
+  WHEN t.type = 'onboarding' THEN 'kyc'
   WHEN ${titleIs("additional purchase")} THEN 'additional_purchase'
   WHEN ${titleIs("\\mnfo\\M|lumpsum|one-time purchase|\\mpurchase\\M")} THEN 'purchase'
   WHEN ${titleIs("redemption|\\mredeem")} THEN 'redemption'

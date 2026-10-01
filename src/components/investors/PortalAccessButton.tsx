@@ -3,10 +3,17 @@
 import { useEffect, useState } from "react";
 import { Check, Copy, KeyRound, Link2Off, Loader2 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/Dialog";
 
 type AccessStatus = { active: boolean; access?: { expiresAt: string; lastAccessedAt: string | null } | null };
 
-export function PortalAccessButton({ investorId }: { investorId: string }) {
+export function PortalAccessButton({
+  investorId, triggerClassName,
+}: {
+  investorId: string;
+  /** Replaces the trigger's look — a record menu passes its row class. */
+  triggerClassName?: string;
+}) {
   const toast = useToast();
   const [status, setStatus] = useState<AccessStatus>({ active: false });
   const [busy, setBusy] = useState(false);
@@ -60,16 +67,20 @@ export function PortalAccessButton({ investorId }: { investorId: string }) {
     : null;
 
   return (
-    <details className="relative">
-      <summary className="btn-secondary cursor-pointer list-none text-xs">
-        <KeyRound className="size-3.5" /> Portal link
-      </summary>
-      <div className="absolute left-0 top-full z-40 mt-2 w-72 rounded-lg border bg-popover p-3 text-popover-foreground shadow-lg">
-        <div className="text-sm font-semibold">Investor portal</div>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {status.active ? `Active until ${expiry}. Creating a new link revokes the old one.` : "Create an expiring link for portfolio, goals and service requests."}
-        </p>
-        <div className="mt-3 flex gap-2">
+    <Dialog>
+      <DialogTrigger className={triggerClassName ?? "btn-secondary text-xs"}>
+        <KeyRound className="size-4 shrink-0 text-muted-foreground" /> Client portal link
+      </DialogTrigger>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Client portal link</DialogTitle>
+          <DialogDescription>
+            {status.active
+              ? `Active until ${expiry}. Creating a new link switches the old one off.`
+              : "A private link that lets the client see their portfolio, goals and service requests. It expires in 30 days."}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="mt-4 flex gap-2">
           <button type="button" onClick={createAndCopy} disabled={busy} className="btn-primary flex-1 justify-center text-xs">
             {busy ? <Loader2 className="size-3.5 animate-spin" /> : copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
             {copied ? "Copied" : status.active ? "Replace & copy" : "Create & copy"}
@@ -80,8 +91,8 @@ export function PortalAccessButton({ investorId }: { investorId: string }) {
             </button>
           )}
         </div>
-      </div>
-    </details>
+      </DialogContent>
+    </Dialog>
   );
 }
 

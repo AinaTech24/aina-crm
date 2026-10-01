@@ -176,7 +176,7 @@ export function ExternalPanel({ d }: { d: { groups: ExternalGroup[]; platforms: 
       {d.groups.length === 0 ? <Unavailable>External dependencies are outside your own-work view.</Unavailable> : (
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
           {d.groups.map((g) => (
-            <div key={g.key} className="rounded-lg border border-border p-3">
+            <div key={g.key} className="rounded-lg bg-secondary/70 p-3">
               <div className="text-xs font-semibold text-foreground">{g.label}</div>
               <div className="mt-1 text-2xl font-semibold tabular-nums">{formatCount(g.count)}</div>
               <div className="mt-1 space-y-0.5 text-2xs text-muted-foreground">
@@ -268,7 +268,7 @@ export function QueriesPanel({ d, periodLabel, exportQuery }: { d: QueryDesk; pe
       action={
         <span className="flex items-center gap-2">
           {d.open > 0 && <ExportButton kind="queries" query={exportQuery} label="service request ageing" />}
-          <Link href="/dashboard/service-requests" className="text-xs font-medium text-primary hover:underline">All service requests ↗</Link>
+          <Link href="/dashboard/service-requests" className="inline-flex min-h-6 items-center text-xs font-medium text-primary hover:underline">All service requests ↗</Link>
         </span>
       }
       note={`SLA is the resolution time the CRM sets by request type. Average resolution covers service requests resolved ${inPeriod(periodLabel)}.`}
@@ -314,7 +314,7 @@ export function QueriesPanel({ d, periodLabel, exportQuery }: { d: QueryDesk; pe
       <h3 className="mb-2 mt-5 text-xs font-semibold text-foreground">Service request ageing</h3>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         {d.ageing.map((b) => (
-          <div key={b.key} className={cn("rounded-lg border p-2.5", b.key === "q16" && b.count ? "border-destructive/40" : "border-border")}>
+          <div key={b.key} className={cn("rounded-lg border p-2.5", b.key === "q16" && b.count ? "border-destructive/30 bg-destructive/5" : "border-transparent bg-secondary/70")}>
             <div className="text-2xs text-muted-foreground">{b.label}</div>
             <div className={cn("text-lg font-semibold tabular-nums", b.key === "q16" && b.count ? "text-destructive" : "text-foreground")}>{formatCount(b.count)}</div>
             {b.count > 0 && <div className="text-2xs text-muted-foreground">{b.topType ?? "—"}{b.owner ? ` · ${b.owner}` : " · not assigned"}</div>}
@@ -346,8 +346,8 @@ export function QualityPanel({ cards, master }: { cards: QualityCard[]; master: 
             </>
           );
           return c.href
-            ? <Link key={c.key} href={c.href} className="rounded-lg border border-border p-3 transition-colors hover:bg-accent">{body}</Link>
-            : <div key={c.key} className="rounded-lg border border-border p-3">{body}</div>;
+            ? <Link key={c.key} href={c.href} className="rounded-lg border border-transparent bg-secondary/70 p-3 transition-colors hover:border-primary/25 hover:bg-accent">{body}</Link>
+            : <div key={c.key} className="rounded-lg border border-transparent bg-secondary/70 p-3">{body}</div>;
         })}
       </div>
       {master && (
@@ -357,7 +357,7 @@ export function QualityPanel({ cards, master }: { cards: QualityCard[]; master: 
           </h3>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {master.gaps.map((g) => (
-              <Link key={g.key} href={g.href} className="rounded-lg border border-border px-3 py-2 transition-colors hover:bg-accent">
+              <Link key={g.key} href={g.href} className="rounded-lg border border-transparent bg-secondary/70 px-3 py-2 transition-colors hover:border-primary/25 hover:bg-accent">
                 <div className={cn("text-base font-semibold tabular-nums", g.count && g.required ? "text-warning-foreground" : "text-foreground")}>{formatCount(g.count)}</div>
                 <div className="text-2xs text-muted-foreground">{g.label}{g.required ? "" : " · optional"}</div>
                 <div className="text-2xs font-medium text-primary">View records</div>

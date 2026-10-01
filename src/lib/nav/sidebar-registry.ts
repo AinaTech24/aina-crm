@@ -20,7 +20,6 @@ export const SIDEBAR_REGISTRY: SidebarEntry[] = [
   { group: "Home", href: "/dashboard/manage", label: "Manage dashboards" },
   { group: "Home", href: "/dashboard/team", label: "Team Dashboard" },
   { group: "Home", href: "/dashboard/team/scorecard", label: "Team Scorecard" },
-  { group: "Home", href: "/dashboard/command-center", label: "My Day" },
   { group: "Home", href: "/dashboard/next-best-action", label: "Next Best Action" },
   // Work
   { group: "Work", href: "/dashboard/tasks", label: "Tasks" },
@@ -28,7 +27,6 @@ export const SIDEBAR_REGISTRY: SidebarEntry[] = [
   { group: "Work", href: "/dashboard/review-meetings", label: "Meetings" },
   { group: "Work", href: "/dashboard/calendar", label: "Calendar" },
   { group: "Work", href: "/dashboard/service-requests", label: "Service Requests" },
-  { group: "Work", href: "/dashboard/operations", label: "Operations" },
   // Clients
   { group: "Clients", href: "/dashboard/leads", label: "Leads" },
   { group: "Clients", href: "/dashboard/investors", label: "Clients" },
@@ -52,6 +50,7 @@ export const SIDEBAR_REGISTRY: SidebarEntry[] = [
   { group: "Business", href: "/dashboard/sips/at-risk", label: "SIP At-Risk" },
   { group: "Business", href: "/dashboard/transactions", label: "MF Transactions" },
   { group: "Business", href: "/dashboard/business-entries", label: "Business Entries" },
+  { group: "Business", href: "/dashboard/fixed-deposits", label: "Fixed Deposits" },
   { group: "Business", href: "/dashboard/expected-inflows", label: "Expected Inflows" },
   // Insights
   { group: "Insights", href: "/dashboard/reports", label: "Reports" },
@@ -67,9 +66,9 @@ export const SIDEBAR_REGISTRY: SidebarEntry[] = [
   { group: "Automation", href: "/dashboard/workflows/actions", label: "Automation Actions" },
   { group: "Automation", href: "/dashboard/workflows/runs", label: "Automation Run History" },
   { group: "Automation", href: "/dashboard/templates", label: "Message Templates" },
-  { group: "Automation", href: "/dashboard/communications", label: "Communications" },
-  { group: "Automation", href: "/dashboard/aina-library", label: "Content Library" },
   { group: "Automation", href: "/dashboard/campaigns", label: "Marketing Campaigns" },
+  // In Settings → Connections, not the menu; kept here so its kill-switch stays.
+  { group: "Automation", href: "/dashboard/communications", label: "Communications" },
   // Compliance
   { group: "Compliance", href: "/dashboard/compliance/command-center", label: "Compliance Center" },
   { group: "Compliance", href: "/dashboard/compliance/amfi-circulars", label: "Circulars" },

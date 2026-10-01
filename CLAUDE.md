@@ -231,6 +231,98 @@ Append a function to `ALL_RULES` in `src/lib/comms/compliance.ts`. Each rule is 
 
 ---
 
+## Opportunities — an existing client wants another product
+
+A LEAD is a new person. An existing client asking for insurance, a new SIP,
+NPS or an FD is an **opportunity** on their client record (`client_opportunities`,
+migration 0224) — never a new lead, which would duplicate the person and fail
+at conversion on the PAN. Code: `src/lib/opportunities/` (products · stages ·
+journey · access), APIs under `/api/investors/[id]/opportunities` and
+`/api/opportunities/[id]` (+ `/advance`, `/sync`), UI `OpportunitiesPanel` on
+the client page's Overview tab.
+
+- **One open row per (client, product)**; several products can be open at
+  once. Products are the Cross-sell vocabulary plus "other"; creating one marks
+  the product "Interested" on the Cross-sell card, winning marks it "Held with
+  us", and the owner gets a follow-up task (closed with the opportunity).
+- **The journey is a blueprint** (subject_type `opportunity`, module
+  `opportunities`): identified → discussion → suitability → proposal → accepted
+  → the product branch (MF: KYC → UCC → mandate → transaction; insurance:
+  proposal form → underwriting → issued; general: executed) → won. Lost from
+  any open stage, with a reason and an optional revisit task.
+- **Skips**: a stage the client already satisfies (KYC verified, UCC on record,
+  lumpsum or a covering mandate, a sent / accepted proposal, a recorded
+  transaction or policy) is passed automatically with a history remark. The
+  people steps (identified, discussion) are never skipped — except when a
+  proposal has been shared, which proves they happened.
+- **Gates, never bypassed**: an MF proposal needs a client-CONFIRMED risk
+  profile signed in the last 12 months (a provisional, age-suggested one does
+  not count); an insurance quote needs a recorded needs analysis; an MF
+  transaction needs KYC, a UCC and, for a SIP, a mandate covering it.
+- **Entry points**: "New opportunity" on the client page, the Cross-sell
+  card's opportunity chips, and the new-lead form — `check-duplicate` also
+  matches existing clients and offers "Start opportunity" (a client outside the
+  viewer's book is reported only as "already a client", no name or RM).
+- **Proposals**: `proposals.opportunity_id` links a proposal to the
+  opportunity it answers; the proposals module calls
+  `onProposalEvent(tx, tenantId, proposalId, "sent" | "accepted" | "declined")`.
+- **Reporting**: Pipeline Board → "Existing clients"; the Owner Dashboard's
+  Cross-sell card (`lib/metrics/opportunities.ts`) — products per client counts
+  what the records prove (AUM → MF, in-force policy → its line, live FD → FD /
+  Bonds / NCD) plus the card.
+
+## Meetings — attendees and action items
+
+`review_meetings` (the Meetings module). Two rules since 2026-10-01:
+
+- **Attendees are looked up**, not typed: team members, clients and leads from
+  `GET /api/review-meetings/attendee-search` (client and lead results go
+  through `investorScopeSql` / `leadScopeSql`), or a typed guest for someone
+  outside the CRM. Each entry in the `attendees` jsonb carries `kind` + `refId`
+  (`lib/review-meetings/attendee-kinds.ts`), and that is what shows the meeting
+  to the person: a team member gets it in their meetings list (RM filter), the
+  list API, their calendar and the RM dashboard's Upcoming 7 days, and may open
+  and edit it (`hasUserAttendee`; cancelling stays with the owner). A client or
+  lead sees it on their own record. Query with `attendeeIs` /
+  `attendeeIsAnyUser` (`lib/review-meetings/attendees.ts`) — never read only
+  `rm_id` / `investor_id` / `lead_id` for "my meetings". Older rows have no
+  `kind` and read as guests.
+- **An action item IS a task.** Each row has an owner (any active team member)
+  and a due date, and `syncActionItemTasks` (`lib/review-meetings/sync.ts`)
+  creates its task on the first save — not on completion. Editing the row edits
+  the still-open task; removing the row cancels it; the row stores the task id,
+  which the API returns so a second save never duplicates. Assignees are
+  notified (`task.assigned`), and team attendees newly added get
+  `meeting.attendee_added`.
+
+The meeting page has no notes box and no Outcome card (removed at the firm's
+request), so completing a meeting no longer creates a "write up your notes"
+task. The columns and the server's outcome → lead-journey logic are untouched.
+
+## Fixed deposits
+
+Bank / corporate / NBFC / post-office FDs a client placed through the firm —
+`fixed_deposits` (migration 0226), one row per receipt. Code:
+`src/lib/fixed-deposits/` (terms · schema · form · service · hooks), APIs
+`/api/fixed-deposits` and `/api/fixed-deposits/[id]`, pages
+`/dashboard/fixed-deposits` (+ `/new`, `/[id]`, `/[id]/edit`), and the
+`ClientFdPanel` section on the client page's Portfolio tab.
+
+- **Maturity maths is pure** (`terms.ts`, tested): cumulative ≥ 181 days
+  compounds at the deposit's frequency (quarterly for banks), shorter is simple
+  interest, a payout FD returns the principal. The receipt's amount, when typed,
+  wins (`maturity_amount_entered`) and may not be below the deposit.
+- **Every write runs `syncFdAutomations`** (`hooks.ts`) in the same tx: a live
+  FD keeps an `fd_maturity` expected inflow (amount + date owned by the FD) whose
+  reminder task reaches the RM 15 days before maturity; renewed / closed early /
+  cancelled / deleted cancels it. An ACTIVE FD sets Cross-sell `fd_bonds_ncd` to
+  held_with_us and wins the client's open FD opportunity (`onProductBooked`);
+  any FD on record passes the opportunity's "Executed" step.
+- **Renewal** is `/new?renew=<id>`: the new row carries `renewed_from_id` and
+  the old one becomes `renewed`.
+- **Access follows the client** (`investorScopeSql` / `loadViewableInvestor`);
+  writes need `investor.edit.*`. Soft delete (`deleted_at`).
+
 ## Website complaint form
 
 Each firm gets one public link, `/complaint/<token>` (`tenants.complaint_form_token`,
@@ -478,6 +570,64 @@ client and made redemptions look unfollowed.
   approaching, neutral for everything else including every empty card. An empty
   card is never green: "0 SIP rejections" is not an achievement.
 
+### The dashboard canvas (how the six dashboards look)
+
+`/dashboard/[dashboardId]` wraps every dashboard in `.dash-canvas`; the block
+of that name at the end of `globals.css` holds the dashboards' visual layer, so
+the rest of the CRM keeps its flat look. Three things it encodes:
+
+- **A card lifts, a tile inside a card does not.** `.card-surface` gets a soft
+  shadow under `.dash-canvas`. A figure INSIDE a card is a soft fill —
+  `dash-tile`, or `bg-secondary/70` with no border — never a second hairline
+  box. Only a card that needs action carries a border, with a tint of its
+  severity (`border-destructive/30 bg-destructive/5`, `border-warning/50
+  bg-warning/5`).
+- **One headline tile anatomy**: label, icon chip in the metric's hue
+  (`dash-kpi-chip` + `--c`), the figure, then the facts under a hairline. The
+  Owner row is `KpiTile` (business.tsx), RM and Branch `MyKpiStrip`, Insurance
+  and Claims their own `Kpi`. A short last row shares the width — never one
+  tile alone.
+- **Lists of counts** are `dash-row` + `dash-count` (`dash-count-alarm` for
+  overdue work only); share-of-whole bars are `dash-bar`; a change against the
+  comparison period is a `dash-delta` pill; a person or client in a list gets
+  `<Initials>` (Shared.tsx) beside the name where the column has room.
+- **A row of tiles is `StatGrid`** (or `dash-stats` with `--cols-sm` /
+  `--cols-lg`): flex, not grid, so a short last row shares the width and
+  `balancedColumns` picks how many sit across — five asked to fit four take one
+  row of five, seven in three go four then three. Never a bare `grid-cols-*`
+  for a tile row.
+- **One segmented control**: any "this view or that" switch (Today ·
+  Tomorrow, MTD · QTD · FYTD, Weekly · Monthly) is a `dash-seg` track whose
+  items carry `aria-current` / `aria-pressed`; the chosen one is the raised
+  white pill. Filter CHIPS (a category, a threshold) stay tinted chips.
+- **An empty list is `dash-empty`**: a soft panel and one sentence, never a
+  dashed box.
+- **Size to the content, not the screen.** From `lg` the sidebar takes ~250px,
+  so a 1024px screen leaves a dashboard ~770px. What goes wide — the dashboard
+  header (title beside the filters), the RM/Branch KPI strip (two tiles to a
+  row below `xl`) — switches at `xl`, not `lg`. On a phone a card has ~300px:
+  fixed-width columns must add up to less (the lead funnel narrows its columns
+  below `sm`), a `dash-seg` scrolls inside its card instead of pushing the page
+  sideways, and a `Section`'s action slot wraps. A tappable chip is 24px tall
+  under `.dash-canvas`. Audited at 375 / 768 / 1024px on 2026-10-01: no page
+  scrolls sideways at any of them.
+- **A dashboard table shows every row its loader returned.** `.dash-canvas`
+  removes `.table-scroll`'s 30rem cap (it cut rows off the worklist and every
+  month-on-month table with no scrollbar to say so); a table that wants a cap
+  sets `--table-scroll-h` and gets a visible scrollbar.
+- **Charts are Recharts on `chart-palette.ts`**, including the RM/Branch trend
+  and the investment flow — a hand-drawn SVG in a fixed viewBox scales its
+  labels with the card width.
+- The centres' sticky toolbar is `dash-toolbar` (frosted); the RM jump links
+  are `dash-nav`; the page opens on a soft brand wash painted as the content
+  pane's background (`.dashboard-content:has(.dash-canvas)`) — never as a
+  layer that needs a stacking context on the canvas, which would put the
+  inline `fixed z-50` drawers under the shell's top bar.
+
+The `dash-*` rules sit AFTER Tailwind's utilities, so a utility cannot
+override a property they set — a quiet state needs its own modifier
+(`dash-kpi-value-empty`, `dash-count-zero`).
+
 ### Branch Head Dashboard (was `?scope=branch`)
 
 The Branch Business Command Centre (`BranchCommandCentre.tsx`) is the
@@ -536,8 +686,18 @@ rendered anywhere.
 "My Client & Business Dashboard" (`MyBusinessDashboard.tsx`) — the RM's work
 desk, client cockpit and target tracker, built from the 40-section RM brief.
 Action before analytics: morning priorities → My Day → Needs my attention →
-KPIs → targets → today's worklist + 7 days → meetings, reviews, book, leads,
-SIP, flows, tasks, queries, relationships → scorecards → FY performance.
+KPIs → targets → the next 7 days → meetings, reviews, book, leads, SIP, flows,
+tasks, queries, insurance, risk and data quality → month on month → FY
+performance.
+
+**The firm took seven things off it on 2026-10-01 — do not restore them from
+the brief:** today's client worklist table, client contact health, my key
+clients, relationships requiring attention, where my relationships came from,
+my scorecards (weekly / monthly) and the SIP debit health check. Their
+components (`Worklist`, `MyContactGap`, `MyKeyClients`, `MyOpportunities`,
+`SourceAnalysis`, `ReviewModePanel`, `SipDebitCheck`) stay in the tree for the
+Branch Head Dashboard and anything else that uses them; `loadWorklist` still
+feeds the morning brief's "Top actions".
 
 - **An RM lands here** (the RM and team member role default). It only ever
   shows the viewer's own book and work, so it needs no capability of its own:
@@ -575,7 +735,9 @@ pending work, exceptions and ageing first, analytics last. Loaders in
 
 - **Who lands here.** Operations, back office and service team roles default
   to it; anyone with `dashboard.view.ops` (owner included) opens it from the
-  dropdown or WORK → Operations (`/dashboard/operations` redirects to it).
+  Dashboard dropdown. It is NOT in the sidebar (the WORK → Operations item was
+  removed 2026-10-01 at the user's request); `/dashboard/operations` still
+  redirects to it for old links.
   Five tabs (`?tab=queue|sla|team|rejections|compliance`), only the active one
   loads. Compliance is the library's compliance gaps, complaints and expiries
   cards (`EmbeddedWidgets`), through the tower's scope.
@@ -617,6 +779,17 @@ issuance; the team and its targets; the pipeline; then lines, product,
 retention, lost business, clients, corporate, claims, data quality and the
 reviews. Loaders are in `src/lib/dashboard/insurance/`
 and components in `src/components/dashboards/insurance/`.
+
+**The firm took thirteen sections off it on 2026-10-01 — do not restore them
+from the brief:** renewal cycle, premium bands, year-on-year by product, the
+Personal and Commercial Lines product mix, business source, MF and insurance
+relationship, the corporate insurance pipeline and industry-wise commercial
+business, claim ageing, claim settlement, claims needing attention, and
+renewals and claims together. Their panels (`RenewalCyclePanel`, `BandsPanel`,
+`YoyPanel`, `InsMix`, `CoveragePanel`, `CorporatePanel`, `ClaimAgeingPanel`,
+`SettlementPanel`, `EscalationPanel`, `RenewalClaimPanel`) are no longer
+rendered; the attention cards' "claims needing escalation" link now opens the
+Claims Dashboard.
 
 - **One vocabulary, in `lib/insurance/book.ts`.** The policy register
   (`/dashboard/insurance`) reads the same file, so a tile's drill-down shows

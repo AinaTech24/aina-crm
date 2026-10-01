@@ -24,6 +24,7 @@ import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-adv
 import { findRmConflicts } from "@/lib/review-meetings/conflicts";
 import { formatDate } from "@/lib/format";
 import { mobileOwnerScope } from "@/lib/mobile/access";
+import { attendeeIs, attendeeIsAnyUser } from "@/lib/review-meetings/attendees";
 import { assertMobileAssignee } from "@/lib/mobile/record-access";
 import { loadViewableInvestor } from "@/lib/investors/access";
 import { loadViewableLead } from "@/lib/leads/access";
@@ -102,15 +103,17 @@ export async function GET(req: NextRequest) {
       session.tenantId,
       async (tx) => {
         const filters: any[] = [sql`m.tenant_id = ${session.tenantId}::uuid`];
-        if (session.mobile) filters.push(mobileOwnerScope(session, "m.rm_id"));
-        if (!canAll) filters.push(sql`m.rm_id = ${session.userId}::uuid`);
+        // A meeting I attend is mine too, alongside the ones I own.
+        const iAttend = attendeeIs("user", session.userId);
+        if (session.mobile) filters.push(sql`(${mobileOwnerScope(session, "m.rm_id")} OR ${iAttend})`);
+        if (!canAll) filters.push(sql`(m.rm_id = ${session.userId}::uuid OR ${iAttend})`);
         if (leadId) filters.push(sql`m.lead_id = ${leadId}::uuid`);
         if (q) filters.push(sql`(i.name ILIKE ${`%${q}%`} OR l.name ILIKE ${`%${q}%`} OR u.name ILIKE ${`%${q}%`} OR m.discussion_points ILIKE ${`%${q}%`} OR m.meeting_notes ILIKE ${`%${q}%`})`);
         if (categoryFilter.length) filters.push(sql`m.category IN (${sql.join(categoryFilter.map((v) => sql`${v}`), sql`, `)})`);
         if (statusFilter.length) filters.push(sql`m.status IN (${sql.join(statusFilter.map((v) => sql`${v}`), sql`, `)})`);
         if (modeFilter.length) filters.push(sql`m.meeting_mode IN (${sql.join(modeFilter.map((v) => sql`${v}`), sql`, `)})`);
         if (typeFilter.length) filters.push(sql`m.meeting_type IN (${sql.join(typeFilter.map((v) => sql`${v}`), sql`, `)})`);
-        if (rmFilter.length) filters.push(sql`m.rm_id IN (${sql.join(rmFilter.map((v) => sql`${v}::uuid`), sql`, `)})`);
+        if (rmFilter.length) filters.push(sql`(m.rm_id IN (${sql.join(rmFilter.map((v) => sql`${v}::uuid`), sql`, `)}) OR ${attendeeIsAnyUser(rmFilter)})`);
         if (isDate(mFrom)) filters.push(sql`m.meeting_date >= ${mFrom}::date`);
         if (isDate(mTo)) filters.push(sql`m.meeting_date < (${mTo}::date + interval '1 day')`);
         const whereSql = sql.join(filters, sql` AND `);
@@ -129,7 +132,10 @@ export async function GET(req: NextRequest) {
         `);
 
         // Stats ribbon — the 4 fixed metrics, scoped to tenant (+ RM for .assigned).
-        const scopeStats = session.mobile ? sql` AND ${mobileOwnerScope(session, "review_meetings.rm_id")}` : canAll ? sql`` : sql` AND rm_id = ${session.userId}::uuid`;
+        const iAttendStats = attendeeIs("user", session.userId, sql.raw("review_meetings.attendees"));
+        const scopeStats = session.mobile
+          ? sql` AND (${mobileOwnerScope(session, "review_meetings.rm_id")} OR ${iAttendStats})`
+          : canAll ? sql`` : sql` AND (rm_id = ${session.userId}::uuid OR ${iAttendStats})`;
         const statsRes = await tx.execute(sql`
           SELECT
             COUNT(*) FILTER (WHERE status IN ('scheduled','confirmed') AND meeting_date >= now())::int AS upcoming,

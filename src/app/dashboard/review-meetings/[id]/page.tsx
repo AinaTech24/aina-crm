@@ -54,7 +54,14 @@ export default async function ReviewMeetingDetailPage({
       `);
       prep = (p.rows[0] as any) ?? null;
     }
-    return { meeting: m, investor: inv, lead: ld, rm, prep };
+    // Who an action item can be given to: the firm's active team.
+    const team = (await tx.execute(sql`
+      SELECT id::text AS id, name FROM users
+       WHERE tenant_id = ${session.tenantId}::uuid AND deleted_at IS NULL AND status = 'active'
+         AND NOT ('platform_admin' = ANY(roles))
+       ORDER BY name
+    `)).rows as Array<{ id: string; name: string }>;
+    return { meeting: m, investor: inv, lead: ld, rm, prep, team };
   });
   if (!data) notFound();
   const subjectName = data.investor?.name ?? data.lead?.name ?? "Subject";
@@ -152,6 +159,7 @@ export default async function ReviewMeetingDetailPage({
       <ReviewMeetingDetailEditor
         meeting={JSON.parse(JSON.stringify(data.meeting))}
         investorName={subjectName}
+        team={data.team}
       />
     </div>
   );

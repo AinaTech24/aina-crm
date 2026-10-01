@@ -97,7 +97,7 @@ export function DeskMeetings({
             </td>
             <td className="py-2.5 text-right">
               {m.clientId
-                ? <Link href={`/dashboard/investors/${m.clientId}`} className="text-xs font-medium text-primary hover:underline">Open</Link>
+                ? <Link href={`/dashboard/investors/${m.clientId}`} className="inline-flex min-h-6 items-center text-xs font-medium text-primary hover:underline">Open</Link>
                 : <span className="text-2xs text-muted-foreground">—</span>}
             </td>
           </tr>

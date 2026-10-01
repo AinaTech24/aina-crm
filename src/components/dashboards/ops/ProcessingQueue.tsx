@@ -14,7 +14,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Download, MessageSquarePlus, PanelRightOpen } from "lucide-react";
+import { Download, ListChecks, MessageSquarePlus, PanelRightOpen } from "lucide-react";
 import type { QueueItem } from "@/lib/dashboard/ops/queue";
 import { fmtIstShort, SLA_LABEL, SLA_TONE, STATUS_TONE } from "@/lib/dashboard/ops/fmt";
 import { DownloadButton } from "@/components/common/SecureLinkButtons";
@@ -79,18 +79,18 @@ export function ProcessingQueue({
   return (
     <section className="card-surface p-5 sm:p-6" aria-label="Today's processing queue">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3 border-b border-border/60 pb-3">
-        <h2 className="section-title min-w-0">Today&apos;s processing queue</h2>
+        <h2 className="section-title flex min-w-0 items-center gap-2"><ListChecks className="size-4 shrink-0 text-muted-foreground" aria-hidden /> Today&apos;s processing queue</h2>
         <div className="flex items-center gap-2">
           <DownloadButton url={`/api/ops/export?kind=pending&${exportQuery}`} filename="operations-pending.csv"
             className={buttonClass("secondary", "sm")} ariaLabel="Export the pending queue as CSV">
             <Download className="size-3.5" aria-hidden /> Export
           </DownloadButton>
-          <Link href="/dashboard/tasks" className="text-xs font-medium text-primary hover:underline">All tasks ↗</Link>
+          <Link href="/dashboard/tasks" className="inline-flex min-h-6 items-center text-xs font-medium text-primary hover:underline">All tasks ↗</Link>
         </div>
       </div>
 
       {items.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-xs text-muted-foreground">
+        <p className="dash-empty">
           A clear queue. New operations requests appear here the moment they are raised.
         </p>
       ) : (

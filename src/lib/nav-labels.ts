@@ -11,18 +11,15 @@ export const NAV_LABELS: Record<string, string> = {
   "/dashboard": "Dashboard",
   "/dashboard/activities": "Activity Log",
   "/dashboard/ai-assistant": "Aina Copilot",
-  "/dashboard/aina-library": "Content Library",
   "/dashboard/amc-empanelments": "AMC Empanelments",
   "/dashboard/announcements": "Announcements",
   "/dashboard/attendance": "Attendance",
   "/dashboard/audit-log": "Audit Log",
   "/dashboard/manage": "Manage dashboards",
-  "/dashboard/operations": "Operations",
   "/dashboard/new": "New dashboard",
   "/dashboard/business-entries": "Business Entries",
   "/dashboard/calculators": "Calculators",
   "/dashboard/campaigns": "Marketing Campaigns",
-  "/dashboard/command-center": "My Day",
   "/dashboard/commission-reconciliation": "Brokerage Reconciliation",
   "/dashboard/communications": "Communications",
   "/dashboard/compliance": "DDQ Readiness",
@@ -34,6 +31,8 @@ export const NAV_LABELS: Record<string, string> = {
   "/dashboard/employees": "Team Members",
   "/dashboard/expected-inflows": "Expected Inflows",
   "/dashboard/families": "Families",
+  "/dashboard/fixed-deposits": "Fixed Deposits",
+  "/dashboard/fixed-deposits/new": "Add FD",
   "/dashboard/finances": "Practice Finances",
   "/dashboard/financial-plans": "Financial Plans",
   "/dashboard/goals": "Goals",
@@ -110,3 +109,17 @@ export const NAV_LABELS: Record<string, string> = {
   "/dashboard/reports/tax-harvesting": "Tax-harvesting",
   "/dashboard/reports/trail-forecast": "Trail Forecast",
 };
+
+/**
+ * Pages whose home is Settings rather than the sidebar (moved 2026-10-01).
+ * AutoBreadcrumb puts "Settings" in front of them, so the trail says where the
+ * page lives: Dashboard › Settings › Scheme Master.
+ */
+export const SETTINGS_HOMED: ReadonlySet<string> = new Set([
+  "/dashboard/communications",
+  "/dashboard/automations",
+  "/dashboard/templates",
+  "/dashboard/employees",
+  "/dashboard/schemes",
+  "/dashboard/amc-empanelments",
+]);

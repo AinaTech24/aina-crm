@@ -43,7 +43,7 @@ export function FunnelPanel({ funnels, periodLabel, lockedLine }: {
         )}
       </div>
       {top === 0 ? (
-        <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-xs text-muted-foreground">No claim intimated in {periodLabel}.</p>
+        <p className="dash-empty">No claim intimated in {periodLabel}.</p>
       ) : (
         <>
           <ol className="space-y-2">

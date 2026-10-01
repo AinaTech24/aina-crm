@@ -1,6 +1,6 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
-import { Plus, FileDown, LayoutGrid, List, FileUp } from "lucide-react";
+import { Plus, FileDown, LayoutGrid, List, FileUp, CopyPlus, ArrowRight } from "lucide-react";
 import { and, asc, desc, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { investors } from "@/db/schema";
@@ -17,7 +17,6 @@ import { InvestorsKanban, type InvestorRow } from "@/components/investors/Invest
 import { ColumnManager } from "@/components/common/ColumnManager";
 import { loadTenantLicense } from "@/lib/auth/license";
 import { isFieldAllowed } from "@/lib/auth/field-gate";
-// import { InvestorQuickFilters } from "@/components/investors/InvestorQuickFilters"; // hidden for now
 import { dormancyDays, type HealthBand } from "@/lib/investors/health";
 import { InvestorsTable, type InvestorTableRow } from "@/components/investors/InvestorsTable";
 import { InvestorSortSelect } from "@/components/investors/InvestorSortSelect";
@@ -25,8 +24,11 @@ import { buildInvestorWhere } from "@/lib/investors/list-filters";
 import { Pager } from "@/components/common/Pager";
 import { countPossibleDuplicates } from "@/lib/investors/duplicates";
 import { clientCompleteness } from "@/lib/investors/completeness";
-import { CopyPlus } from "lucide-react";
 import { DownloadButton } from "@/components/common/SecureLinkButtons";
+import { RecordMenu, RecordMenuSeparator } from "@/components/common/RecordMenu";
+import { TableDensitySwitch } from "@/components/common/TableDensityToggle";
+import { buttonClass } from "@/components/ui/button-class";
+import { MENU_ICON, MENU_ITEM } from "@/components/ui/menu-item-class";
 import { formatMoney } from "@/lib/format";
 import type { MassUpdateOptions } from "@/components/investors/MassUpdateDialog";
 import { ensureHealthFresh } from "@/lib/metrics/health";
@@ -123,6 +125,8 @@ export default async function InvestorsPage({
   const canViewAll = can(session.roles, "investor.view.all", session.permissions);
   // Same gate as POST /api/investors/bulk.
   const canBulkEdit = can(session.roles, "investor.edit.all", session.permissions);
+  // Same gate as POST /api/investors/recompute-tiers.
+  const canRecomputeTiers = can(session.roles, "settings.masters", session.permissions);
 
   // Query string for the Excel export link — carries the current filters so the
   // download matches exactly what's on screen (the export endpoint reuses the
@@ -349,6 +353,16 @@ export default async function InvestorsPage({
 
   const rmOptions = (rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
 
+  // Switching Table ⇄ Kanban keeps the filters; it used to drop them all.
+  const viewHref = (v: "table" | "kanban") => {
+    const q = new URLSearchParams(
+      Object.entries(sp).filter(([k, val]) => !!val && k !== "view" && k !== "page") as [string, string][],
+    );
+    if (v === "kanban") q.set("view", "kanban");
+    const qs = q.toString();
+    return `/dashboard/investors${qs ? `?${qs}` : ""}`;
+  };
+
   // Table rows read the PERSISTED health score (written on create/update +
   // refreshed nightly) so the displayed value matches the DB-level sort and
   // pagination exactly. `dormDays` stays live (cheap, derived).
@@ -372,78 +386,68 @@ export default async function InvestorsPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<>Clients</>} subtitle={<>Your whole client book — AUM, SIPs, KYC and profile health in one list.</>} actions={<><div className="flex gap-2 items-center flex-wrap">
-          {/* View toggle — Table vs Kanban. Mirrors the leads page pattern.
-              `view=kanban` query param drives the server-side query (loads
-              blueprint stages too) and which component renders below. */}
-          <div className="inline-flex rounded-lg border border-border bg-secondary/40 p-0.5 gap-0.5 mr-1">
+      {/* One primary action, the one import path, and everything occasional
+          (export, re-grading tiers, the duplicates tool) under More. */}
+      <PageHeaderCard
+        title={<>Clients</>}
+        subtitle={<>Your whole client book — AUM, SIPs, KYC and profile health in one list.</>}
+        actions={
+          <>
             <Link
-              href="/dashboard/investors"
-              className={`px-2.5 py-1 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors ${view === "table"
-                ? "bg-card shadow-sm text-foreground"
-                : "text-muted-foreground hover:text-foreground"
-                }`}
+              href="/dashboard/investors/import"
+              className={buttonClass("secondary", "md", "hidden sm:inline-flex")}
+              title="Bring clients in from an Excel or CSV file"
             >
-              <List className="size-3.5" /> Table
+              <FileUp className="size-4" /> Import
             </Link>
-            <Link
-              href="/dashboard/investors?view=kanban"
-              className={`px-2.5 py-1 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors ${view === "kanban"
-                ? "bg-card shadow-sm text-foreground"
-                : "text-muted-foreground hover:text-foreground"
-                }`}
-            >
-              <LayoutGrid className="size-3.5" /> Kanban
+            <Link href="/dashboard/investors/new" className={buttonClass("primary", "md")}>
+              <Plus className="size-4" /> Add client
             </Link>
-          </div>
-          <span className="hidden sm:block"><RecomputeTiersButton /></span>
-          {/* Export = data leaving the CRM (arrow down, you get a file);
-              Import = data coming in (arrow up, you send a file). These two
-              icons were the wrong way round. */}
-          <DownloadButton
-            url={`/api/investors/export${exportQs ? `?${exportQs}` : ""}`}
-            className="btn-secondary hidden sm:inline-flex px-3 py-1.5 "
-            title="Download the current (filtered) book as an Excel file"
-          >
-            <FileDown className="size-4" /> Export
-          </DownloadButton>
-          <Link
-            href="/dashboard/investors/import"
-            className="btn-secondary hidden sm:inline-flex px-3 py-1.5 "
-            title="Bring clients in from an Excel or CSV file"
-          >
-            <FileUp className="size-4" /> Import
-          </Link>
-          <Link
-            href="/dashboard/investors/new"
-            className="btn-primary px-3 py-1.5 "
-          >
-            <Plus className="size-4" /> Add client
-          </Link>
-        </div></>} />
+            <RecordMenu>
+              {/* Export = data leaving the CRM (arrow down, you get a file). */}
+              <DownloadButton
+                url={`/api/investors/export${exportQs ? `?${exportQs}` : ""}`}
+                className={MENU_ITEM}
+                title="Download the clients on screen (with your filters) as an Excel file"
+              >
+                <FileDown className={MENU_ICON} /> Export to Excel
+              </DownloadButton>
+              <Link href="/dashboard/investors/import" className={`${MENU_ITEM} sm:hidden`}>
+                <FileUp className={MENU_ICON} /> Import from Excel
+              </Link>
+              {canViewAll && (
+                <Link href="/dashboard/duplicates" className={MENU_ITEM}>
+                  <CopyPlus className={MENU_ICON} /> Find duplicate clients
+                </Link>
+              )}
+              {canRecomputeTiers && (
+                <>
+                  <RecordMenuSeparator />
+                  <RecomputeTiersButton triggerClassName={MENU_ITEM} />
+                </>
+              )}
+            </RecordMenu>
+          </>
+        }
+      />
 
-      {/* Possible-duplicate nudge — managers can merge from the duplicates tool.
-          Especially relevant now the importer allows duplicate PANs on purpose. */}
+      {/* Possible duplicates — a quiet line, not an alarm: nothing is wrong
+          with the book until someone confirms two records are one person. */}
       {canViewAll && (dupCount ?? 0) > 0 && (
         <Link
           href="/dashboard/duplicates"
-          className="flex items-center gap-2.5 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm hover:bg-amber-100/70 transition-colors"
+          className="flex items-center gap-2.5 rounded-xl border border-border bg-card px-4 py-2.5 text-sm transition-colors hover:bg-secondary"
         >
-          <CopyPlus className="size-4 text-amber-600 shrink-0" />
-          <span className="text-amber-800">
-            <strong>{dupCount}</strong> client{dupCount === 1 ? "" : "s"} look like possible duplicates (same PAN or mobile).
+          <CopyPlus className="size-4 shrink-0 text-warning" aria-hidden />
+          <span className="text-muted-foreground">
+            <strong className="font-semibold text-foreground">{dupCount}</strong> client{dupCount === 1 ? "" : "s"} may be
+            duplicates (same PAN or mobile).
           </span>
-          <span className="ml-auto text-xs font-medium text-amber-700">Review &amp; merge →</span>
+          <span className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-primary">
+            Review <ArrowRight className="size-3.5" />
+          </span>
         </Link>
       )}
-
-      {/* Quick-filter chips — hidden for now (re-enable later). */}
-      {/* <div className="card-surface p-3">
-        <InvestorQuickFilters
-          session={session}
-          active={sp as Record<string, string | undefined>}
-        />
-      </div> */}
 
       <CompactFilterBar
         totalCount={total}
@@ -471,7 +475,7 @@ export default async function InvestorsPage({
           {
             type: "multi",
             key: "category",
-            label: "Client Category",
+            label: "Client category",
             options: [
               { value: "A", label: "Category A" },
               { value: "B", label: "Category B" },
@@ -520,9 +524,37 @@ export default async function InvestorsPage({
         ]}
         rightSlot={
           <div className="flex items-center gap-2">
+            {/* Table ⇄ Kanban sits with the other "how to show the list" controls. */}
+            <div className="inline-flex gap-0.5 rounded-lg border border-border bg-secondary/40 p-0.5" role="group" aria-label="Layout">
+              <Link
+                href={viewHref("table")}
+                aria-current={view === "table" ? "page" : undefined}
+                title="Table"
+                className={`inline-flex size-7 items-center justify-center rounded-md transition-colors ${
+                  view === "table" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <List className="size-4" aria-hidden />
+                <span className="sr-only">Table</span>
+              </Link>
+              <Link
+                href={viewHref("kanban")}
+                aria-current={view === "kanban" ? "page" : undefined}
+                title="Kanban"
+                className={`inline-flex size-7 items-center justify-center rounded-md transition-colors ${
+                  view === "kanban" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <LayoutGrid className="size-4" aria-hidden />
+                <span className="sr-only">Kanban</span>
+              </Link>
+            </div>
             {view === "table" && <InvestorSortSelect sort={sortKey} dir={dir} />}
+            {/* Phones show cards, not the table — row spacing and columns
+                have nothing to act on there. */}
+            {view === "table" && <span className="hidden sm:contents"><TableDensitySwitch /></span>}
             {view === "table" && (
-              <ColumnManager compact moduleKey="investors" columns={allowedColumns} />
+              <span className="hidden sm:contents"><ColumnManager compact moduleKey="investors" columns={allowedColumns} /></span>
             )}
             <CustomViews
               compact
@@ -581,15 +613,15 @@ export default async function InvestorsPage({
               {activeFilterLabel ? (
                 <>
                   No <span className="font-medium text-foreground">{activeFilterLabel}</span> clients.{" "}
-                  <Link href="/dashboard/investors" className="text-brand-cyan-deep hover:underline">
+                  <Link href="/dashboard/investors" className="text-primary hover:underline">
                     Clear filters
                   </Link>
                 </>
               ) : (
                 <>
-                  No investors match these filters.{" "}
-                  <Link href="/dashboard/investors/new" className="text-brand-cyan-deep hover:underline">
-                    Add one manually
+                  No clients match these filters.{" "}
+                  <Link href="/dashboard/investors" className="text-primary hover:underline">
+                    Clear filters
                   </Link>
                 </>
               )}

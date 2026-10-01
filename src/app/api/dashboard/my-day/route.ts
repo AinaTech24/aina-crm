@@ -22,6 +22,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { mobileFirmAccess, mobileOwnerScope, mobileTaskScope } from "@/lib/mobile/access";
 import { can } from "@/lib/auth/rbac";
 
 export const dynamic = "force-dynamic";
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
     const roles = session.roles ?? [];
-    const seesAll = roles.some((r) => FIRM_WIDE.includes(r)) || can(roles, "dashboard.view.owner", (session as any).permissions);
+    const seesAll = session.mobile ? mobileFirmAccess(session) : roles.some((r) => FIRM_WIDE.includes(r)) || can(roles, "dashboard.view.owner", (session as any).permissions);
     const uid = session.userId;
     const dateParam = parseDate(req.nextUrl.searchParams.get("date"));
 
@@ -46,9 +47,9 @@ export async function GET(req: NextRequest) {
         const rows = async (q: any): Promise<any[]> => {
           try { return (await tx.execute(q)).rows as any[]; } catch { return []; }
         };
-        const rmScope = seesAll ? sql`` : sql` AND m.rm_id = ${uid}::uuid`;
-        const ownerScope = seesAll ? sql`` : sql` AND l.owner_id = ${uid}::uuid`;
-        const invScope = (a: string) => seesAll ? sql`` : sql` AND ${sql.raw(a)}.rm_id = ${uid}::uuid`;
+        const rmScope = session.mobile ? sql` AND ${mobileOwnerScope(session, "m.rm_id")}` : seesAll ? sql`` : sql` AND m.rm_id = ${uid}::uuid`;
+        const ownerScope = session.mobile ? sql` AND ${mobileOwnerScope(session, "l.owner_id")}` : seesAll ? sql`` : sql` AND l.owner_id = ${uid}::uuid`;
+        const invScope = (a: string) => session.mobile ? sql` AND ${mobileOwnerScope(session, `${a}.rm_id`)}` : seesAll ? sql`` : sql` AND ${sql.raw(a)}.rm_id = ${uid}::uuid`;
 
         // The selected day [dayStart, dayEnd) and whether it is today.
         const dayStart = dateParam ? sql`${dateParam}::date` : sql`date_trunc('day', now())::date`;
@@ -95,7 +96,7 @@ export async function GET(req: NextRequest) {
               AND t.deleted_at IS NULL
               AND t.due_at >= ${owedFrom}
               AND t.due_at < ${dayEnd}
-              AND (t.assignee_id = ${uid}::uuid OR ${seesAll})
+              AND ${session.mobile ? mobileTaskScope(session, "t") : sql`(t.assignee_id = ${uid}::uuid OR ${seesAll})`}
             ORDER BY t.due_at ASC
             LIMIT 50
           `),
@@ -142,7 +143,7 @@ export async function GET(req: NextRequest) {
                    AND t.deleted_at IS NULL
                    AND t.due_at >= (CASE WHEN d::date = current_date THEN '-infinity'::timestamptz ELSE d END)
                    AND t.due_at < d + interval '1 day'
-                   AND (t.assignee_id = ${uid}::uuid OR ${seesAll})
+                   AND ${session.mobile ? mobileTaskScope(session, "t") : sql`(t.assignee_id = ${uid}::uuid OR ${seesAll})`}
               )::int AS tasks
             FROM generate_series(date_trunc('day', now()), date_trunc('day', now()) + interval '13 days', interval '1 day') d
             ORDER BY d ASC
@@ -154,7 +155,7 @@ export async function GET(req: NextRequest) {
       { userId: session.userId, branchId: session.branchId, roles: session.roles }
     );
 
-    return NextResponse.json({ scope: seesAll ? "firm" : "me", date: dateParam, ...data });
+    return NextResponse.json({ scope: seesAll ? "firm" : session.mobile && roles.includes("branch_head") ? "branch" : "me", date: dateParam, ...data });
   } catch (err: any) {
     return handleApiError(err);
   }

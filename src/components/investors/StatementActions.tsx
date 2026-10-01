@@ -15,9 +15,12 @@ import { DownloadButton } from "@/components/common/SecureLinkButtons";
 export function StatementActions({
   investorId,
   statementCadence = "off",
+  extra,
 }: {
   investorId: string;
   statementCadence?: "off" | "monthly" | "quarterly";
+  /** More outputs for the same row — report pages, the review pack. */
+  extra?: React.ReactNode;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<null | string>(null);
@@ -95,9 +98,9 @@ export function StatementActions({
   }
 
   return (
-    <div className="card-surface p-4 space-y-3">
+    <div className="card-surface p-5 space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold">Statements &amp; sharing</h3>
+        <h3 className="section-title">Statements &amp; reports</h3>
         {done && (
           <span className="text-xs text-emerald-600 inline-flex items-center gap-1">
             <Check className="size-3.5" /> {done}
@@ -108,6 +111,7 @@ export function StatementActions({
 
       {/* Action buttons */}
       <div className="flex flex-wrap items-center gap-2">
+        {extra}
         <DownloadButton url={`/api/investors/${investorId}/statement/pdf?download=1`} className="btn-secondary text-xs">
           <FileDown className="size-3.5" /> Download statement
         </DownloadButton>

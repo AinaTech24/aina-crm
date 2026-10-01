@@ -143,7 +143,7 @@ export function ClaimList({ rows, cols, names, empty, limit = 12, more }: {
   more?: ReactNode;
 }) {
   if (rows.length === 0) {
-    return <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-xs text-muted-foreground">{empty}</p>;
+    return <p className="dash-empty">{empty}</p>;
   }
   const shown = rows.slice(0, limit);
   return (

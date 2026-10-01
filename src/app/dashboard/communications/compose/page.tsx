@@ -90,7 +90,7 @@ export default function ComposePage() {
         <ChevronLeft className="size-4" /> Back to communications
       </Link>
 
-      <PageHeaderCard title={<><Mail className="size-6 text-muted-foreground" /> Compose email</>} />
+      <PageHeaderCard breadcrumb={[{ label: "Settings", href: "/dashboard/settings" }, { label: "Communications", href: "/dashboard/communications" }, { label: "Compose" }]} title={<><Mail className="size-6 text-muted-foreground" /> Compose email</>} />
 
       <div className="card-surface p-5 space-y-4">
         {/* Recipient */}

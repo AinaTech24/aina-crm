@@ -131,6 +131,8 @@ const CreateBody = z
     investorId: z.string().uuid().optional(),
     leadId: z.string().uuid().optional(),
     familyId: z.string().uuid().optional(),
+    /** The client opportunity this proposal answers (lib/opportunities). */
+    opportunityId: z.string().uuid().optional(),
     /** Allow caller to override; otherwise we snapshot from the resolved record. */
     recipientName: z.string().max(200).optional(),
     recipientEmail: z.string().email().optional().or(z.literal("")),
@@ -293,10 +295,26 @@ export async function POST(req: NextRequest) {
       proposalNumber = await nextProposalNumber(tx, session.tenantId);
       const totals = proposalTotals(body.products);
 
+      // Only an opportunity of THIS client may be linked — for a family
+      // proposal, of any member of the family (resolvedInvestorId is only the
+      // head). Anything else is dropped.
+      let opportunityId: string | null = null;
+      if (body.opportunityId && (resolvedInvestorId || (body.recipientType === "family" && body.familyId))) {
+        const whose = body.recipientType === "family" && body.familyId
+          ? sql`o.investor_id IN (SELECT id FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND family_id = ${body.familyId}::uuid)`
+          : sql`o.investor_id = ${resolvedInvestorId}::uuid`;
+        const r = await tx.execute(sql`
+          SELECT o.id FROM client_opportunities o
+           WHERE o.id = ${body.opportunityId}::uuid AND o.tenant_id = ${session.tenantId}::uuid AND ${whose}
+        `);
+        opportunityId = (r.rows[0] as { id: string } | undefined)?.id ?? null;
+      }
+
       await tx.insert(proposals).values({
         id,
         tenantId: session.tenantId,
         branchId: session.branchId ?? null,
+        opportunityId,
         proposalNumber,
         recipientType: body.recipientType,
         investorId: resolvedInvestorId,

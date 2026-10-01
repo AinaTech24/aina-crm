@@ -16,7 +16,8 @@ import { assertInvestorAccess } from "@/lib/investors/access";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, or, sql } from "drizzle-orm";
+import { attendeeIs } from "@/lib/review-meetings/attendees";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { investors, reviewMeetings, users } from "@/db/schema";
@@ -94,7 +95,7 @@ export default async function InvestorMomPage({
       .where(
         and(
           eq(reviewMeetings.tenantId, session.tenantId),
-          eq(reviewMeetings.investorId, id)
+          or(eq(reviewMeetings.investorId, id), attendeeIs("client", id, sql`${reviewMeetings.attendees}`))
         )
       )
       .orderBy(desc(reviewMeetings.meetingDate));

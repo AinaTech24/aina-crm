@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronRight, Home } from "lucide-react";
-import { NAV_LABELS } from "@/lib/nav-labels";
+import { NAV_LABELS, SETTINGS_HOMED } from "@/lib/nav-labels";
 
 /**
  * Breadcrumb derived from the URL, for the 250 pages that never had one.
@@ -30,6 +30,8 @@ export function AutoBreadcrumb({ current }: { current?: string }) {
     crumbs.push({ label, href });
     acc = "";
   }
+  // A page that lives in Settings says so.
+  if (crumbs[0]?.href && SETTINGS_HOMED.has(crumbs[0].href)) crumbs.unshift({ label: "Settings", href: "/dashboard/settings" });
   if (crumbs.length === 0) crumbs.push({ label: current ?? "Overview" });
   else if (current) crumbs[crumbs.length - 1] = { label: current };
 

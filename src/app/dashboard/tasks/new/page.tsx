@@ -5,11 +5,11 @@ import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
  * New Task form — Module 18 spec.
  *
  *   1. Title + description + remarks
- *   2. Related-entity pickers — Client (InvestorLookup), Lead, Service Request, Meeting
- *   3. Department, Type, Priority, Due date
+ *   2. Related-entity pickers — Client (InvestorLookup), Lead, Meeting
+ *   3. Type, Priority, Due date (department comes from the assignee, server-side)
  *   4. Assignee (defaults to creator on backend)
  *
- * The four related-entity pickers all populate the same task row; whichever
+ * The related-entity pickers all populate the same task row; whichever
  * is set first also seeds the legacy subjectType/subjectId so existing
  * queries keep working.
  */
@@ -27,16 +27,15 @@ import {
   X,
   Search,
   Sparkles,
-  LifeBuoy,
   Calendar,
   LayoutTemplate,
   Plus,
   Bell,
   ShieldCheck,
-  Timer,
-  Tag as TagIcon,
 } from "lucide-react";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
+import { EMPTY_REQUEST, RequestPicker, type RequestValues } from "@/components/tasks/RequestPicker";
+import { REQUEST_TYPE_BY_KEY, categoryOfType, type TaskCategory } from "@/lib/tasks/request-types";
 import { RmSelector } from "@/components/common/RmSelector";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
@@ -53,28 +52,13 @@ type TaskTemplate = {
   isActive: boolean;
 };
 
-type ChecklistItem = { id: string; text: string; done: boolean };
+/** A sub-task: optionally delegated to a teammate with its own due date
+ *  (TaskChecklistItem.assigneeId / actionDate — the task drawer shows both). */
+type ChecklistItem = { id: string; text: string; done: boolean; assigneeId?: string | null; actionDate?: string };
 
-/** Type values the form's Type <SelectField> knows natively. */
-const KNOWN_TYPES = [
-  "follow_up",
-  "review_meeting",
-  "collect_document",
-  "kyc_renewal",
-  "mandate_renewal",
-];
-
-const DEPARTMENTS: [string, string][] = [
-  ["sales", "Sales"],
-  ["operations", "Operations"],
-  ["back_office", "Back Office"],
-  ["compliance", "Compliance"],
-  ["marketing", "Marketing"],
-  ["advisory", "Advisory"],
-  ["support", "Support"],
-  ["leadership", "Leadership"],
-  ["other", "Other"],
-];
+/** General types the form's Type <SelectField> knows natively. Financial and
+ *  non-financial requests are picked through RequestPicker instead. */
+const KNOWN_TYPES = ["follow_up"];
 
 export default function NewTaskPage() {
   const router = useRouter();
@@ -85,32 +69,31 @@ export default function NewTaskPage() {
     customType: "", // name entered when type === "custom"
     priority: "normal",
     dueDate: defaultDueDate(3),
-    department: "",
     assigneeId: "",
     remarks: "",
     requiresApproval: false,
     reminder: "none", // none | at_due | 1h | 3h | 1d | 2d | 1w  (relative to due)
-    estimateMinutes: "", // planned effort (minutes)
-    tags: [] as string[],
     recurrence: "", // "" = one-off
     recurrenceUntil: "",
     relatedInvestorId: "",
     relatedInvestorName: "",
     relatedLeadId: "",
     relatedLeadName: "",
-    relatedServiceRequestId: "",
-    relatedServiceRequestLabel: "",
     relatedMeetingId: "",
     relatedMeetingLabel: "",
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [tagInput, setTagInput] = useState("");
-  function addTag(raw: string) {
-    const v = raw.trim().replace(/,$/, "").slice(0, 40);
-    setForm((s) => (v && !s.tags.includes(v) ? { ...s, tags: [...s.tags, v] } : s));
-    setTagInput("");
-  }
+
+  // ── Financial / non-financial request ──
+  // The category picks the list; the request picks the fields, the starting
+  // checklist and the stored task type (lib/tasks/request-types).
+  const [category, setCategory] = useState<TaskCategory>("general");
+  const [requestKey, setRequestKey] = useState("");
+  const [requestValues, setRequestValues] = useState<RequestValues>(EMPTY_REQUEST);
+  /** The checklist a request put in, so switching request replaces it — but
+   *  never a checklist the user typed or a template brought. */
+  const [autoChecklistKey, setAutoChecklistKey] = useState<string | null>(null);
 
   // ── Task templates ──
   const [templates, setTemplates] = useState<TaskTemplate[]>([]);
@@ -149,12 +132,23 @@ export default function NewTaskPage() {
     }
     const t = templates.find((x) => x.id === id);
     if (!t) return;
+    // A template whose type is a financial / non-financial request opens that
+    // request in the picker (an old bare "financial" opens the category only).
+    const tplCategory = categoryOfType(t.taskType);
+    if (t.taskType && tplCategory !== "general") {
+      setCategory(tplCategory);
+      setRequestKey(REQUEST_TYPE_BY_KEY[t.taskType] ? t.taskType : "");
+    }
+    setAutoChecklistKey(null); // the template's own sub-tasks win
     setForm((s) => {
       const next = { ...s };
       if (!titleTouched || !s.title.trim()) next.title = t.name;
       if (t.description && !s.description.trim()) next.description = t.description;
       if (t.taskType) {
-        if (KNOWN_TYPES.includes(t.taskType)) {
+        if (tplCategory !== "general") {
+          next.type = REQUEST_TYPE_BY_KEY[t.taskType] ? t.taskType : "follow_up";
+          next.customType = "";
+        } else if (KNOWN_TYPES.includes(t.taskType)) {
           next.type = t.taskType;
           next.customType = "";
         } else {
@@ -164,8 +158,6 @@ export default function NewTaskPage() {
       }
       if (t.priority && ["low", "normal", "high", "urgent"].includes(t.priority))
         next.priority = t.priority;
-      if (t.department && DEPARTMENTS.some(([k]) => k === t.department))
-        next.department = t.department;
       if (t.dueOffsetDays != null) next.dueDate = defaultDueDate(t.dueOffsetDays);
       return next;
     });
@@ -182,6 +174,65 @@ export default function NewTaskPage() {
     setForm((s) => ({ ...s, [k]: v }));
   }
 
+  /** The title a request suggests — "Redemption — Rajesh Patel". */
+  const autoTitle = (key: string, client: string) => {
+    const r = REQUEST_TYPE_BY_KEY[key];
+    return r ? (client ? `${r.label} — ${client}` : r.label) : "";
+  };
+  /** Still the suggested title (or empty) — so a request change may replace it.
+   *  A title the user typed, or a template's, is never overwritten. */
+  const titleIsAuto = (title: string, key: string, client: string) =>
+    !titleTouched && (!title.trim() || title === autoTitle(key, client));
+
+  function changeCategory(c: TaskCategory) {
+    if (c === category) return;
+    setCategory(c);
+    setRequestKey("");
+    setRequestValues(EMPTY_REQUEST);
+    if (autoChecklistKey) {
+      setChecklist([]);
+      setAutoChecklistKey(null);
+    }
+    setForm((s) => ({
+      ...s,
+      type: "follow_up",
+      customType: "",
+      title: titleIsAuto(s.title, requestKey, s.relatedInvestorName) ? "" : s.title,
+    }));
+  }
+
+  function changeRequest(key: string) {
+    const prev = requestKey;
+    setRequestKey(key);
+    const r = REQUEST_TYPE_BY_KEY[key];
+    setForm((s) => ({
+      ...s,
+      type: key || "follow_up",
+      customType: "",
+      title: titleIsAuto(s.title, prev, s.relatedInvestorName) ? autoTitle(key, s.relatedInvestorName) : s.title,
+    }));
+    // The request's checklist fills an empty list, or replaces the one the
+    // previous request put in — never one the user or a template wrote.
+    if (checklist.length === 0 || autoChecklistKey) {
+      if (r?.checklist.length) {
+        setChecklist(r.checklist.map((text) => ({ id: crypto.randomUUID(), text, done: false })));
+        setAutoChecklistKey(key);
+      } else {
+        setChecklist([]);
+        setAutoChecklistKey(null);
+      }
+    }
+  }
+
+  function pickClient(id: string, name: string) {
+    setForm((s) => ({
+      ...s,
+      relatedInvestorId: id,
+      relatedInvestorName: name,
+      title: requestKey && titleIsAuto(s.title, requestKey, s.relatedInvestorName) ? autoTitle(requestKey, name) : s.title,
+    }));
+  }
+
   async function save() {
     if (!form.title.trim()) {
       setErr("Title is required.");
@@ -189,6 +240,22 @@ export default function NewTaskPage() {
     }
     if (form.type === "custom" && !form.customType.trim()) {
       setErr("Enter a name for the custom task type.");
+      return;
+    }
+    const req = requestKey ? REQUEST_TYPE_BY_KEY[requestKey] : undefined;
+    if (category !== "general") {
+      if (!req) {
+        setErr(`Pick the ${category === "financial" ? "financial" : "non-financial"} request.`);
+        return;
+      }
+      if (!form.relatedInvestorId) {
+        setErr("Pick the client this request is for.");
+        return;
+      }
+    }
+    const amount = requestValues.amount.trim() ? Number(requestValues.amount.replace(/,/g, "")) : null;
+    if (req?.fields.includes("amount") && amount != null && (!Number.isFinite(amount) || amount < 0)) {
+      setErr("Enter the amount as a number, e.g. 500000.");
       return;
     }
     setBusy(true);
@@ -200,12 +267,9 @@ export default function NewTaskPage() {
         type: form.type === "custom" ? form.customType.trim() : form.type,
         priority: form.priority,
         dueAt: form.dueDate ? new Date(form.dueDate).toISOString() : undefined,
-        department: form.department || undefined,
         assigneeId: form.assigneeId || undefined,
         remarks: form.remarks || undefined,
         requiresApproval: form.requiresApproval || undefined,
-        estimateMinutes: form.estimateMinutes ? Math.max(0, parseInt(form.estimateMinutes, 10) || 0) : undefined,
-        tags: form.tags.length ? form.tags : undefined,
       };
       // Reminder — computed relative to the due date.
       if (form.reminder !== "none" && form.dueDate) {
@@ -214,17 +278,36 @@ export default function NewTaskPage() {
         payload.remindAt = new Date(base - (offsetMin[form.reminder] ?? 0) * 60000).toISOString();
       }
       const cleanChecklist = checklist
-        .map((c) => ({ id: c.id.slice(0, 64), text: c.text.trim(), done: false }))
+        .map((c) => ({
+          id: c.id.slice(0, 64), text: c.text.trim(), done: false,
+          ...(c.assigneeId ? { assigneeId: c.assigneeId } : {}),
+          ...(c.actionDate ? { actionDate: c.actionDate } : {}),
+        }))
         .filter((c) => c.text.length > 0);
       if (cleanChecklist.length > 0) payload.checklist = cleanChecklist;
       if (form.recurrence) {
         payload.recurrence = form.recurrence;
         if (form.recurrenceUntil) payload.recurrenceUntil = form.recurrenceUntil;
       }
+      // A request's details: amount and mode where the Operations Dashboard
+      // already reads them (boValue / boChannel), the rest in meta.request.
+      if (req) {
+        const has = (f: string) => req.fields.includes(f as any);
+        if (has("amount") && amount != null) payload.boValue = amount;
+        if (has("mode") && requestValues.mode) payload.boChannel = requestValues.mode;
+        const v = requestValues;
+        payload.request = {
+          ...(has("scheme") && v.scheme.trim() ? { scheme: v.scheme.trim() } : {}),
+          ...(has("toScheme") && v.toScheme.trim() ? { toScheme: v.toScheme.trim() } : {}),
+          ...(has("folio") && v.folio.trim() ? { folio: v.folio.trim() } : {}),
+          ...(has("sipDate") && v.sipDate ? { sipDate: v.sipDate } : {}),
+          ...(has("frequency") && v.frequency ? { frequency: v.frequency } : {}),
+          ...(has("units") && v.allUnits ? { allUnits: true } : {}),
+          ...(has("units") && !v.allUnits && v.units.trim() ? { units: v.units.trim() } : {}),
+        };
+      }
       if (form.relatedInvestorId) payload.relatedInvestorId = form.relatedInvestorId;
       if (form.relatedLeadId) payload.relatedLeadId = form.relatedLeadId;
-      if (form.relatedServiceRequestId)
-        payload.relatedServiceRequestId = form.relatedServiceRequestId;
       if (form.relatedMeetingId) payload.relatedMeetingId = form.relatedMeetingId;
 
       const res = await fetch("/api/tasks", {
@@ -245,15 +328,11 @@ export default function NewTaskPage() {
 
   const advancedTouched =
     !!form.description.trim() ||
-    !!form.department ||
-    form.type !== "follow_up" ||
+    (category === "general" && form.type !== "follow_up") ||
     form.reminder !== "none" ||
     form.requiresApproval ||
-    !!form.estimateMinutes ||
-    form.tags.length > 0 ||
     !!form.recurrence ||
     !!form.relatedLeadId ||
-    !!form.relatedServiceRequestId ||
     !!form.relatedMeetingId ||
     checklist.length > 0;
   const showMore = moreOpen || advancedTouched;
@@ -346,6 +425,15 @@ export default function NewTaskPage() {
 
       {/* ── The three facts that make a task: what, for whom, by when. ── */}
       <div className="card-surface p-5 space-y-4">
+        <RequestPicker
+          category={category}
+          requestKey={requestKey}
+          values={requestValues}
+          onCategory={changeCategory}
+          onRequest={changeRequest}
+          onValues={setRequestValues}
+        />
+
         <label className="block">
           <div className="text-xs font-medium mb-1">
             What needs doing <span className="text-rose-600">*</span>
@@ -364,17 +452,18 @@ export default function NewTaskPage() {
 
         <div className="block">
           <div className="text-xs font-medium mb-1">
-            For client <span className="ml-1 text-2xs text-muted-foreground font-normal">· optional</span>
+            For client{" "}
+            {category === "general" ? (
+              <span className="ml-1 text-2xs text-muted-foreground font-normal">· optional</span>
+            ) : (
+              <span className="text-rose-600">*</span>
+            )}
           </div>
           <InvestorLookup
             value={form.relatedInvestorId || null}
             displayName={form.relatedInvestorName || null}
-            onSelect={(id, name) =>
-              setForm((s) => ({ ...s, relatedInvestorId: id, relatedInvestorName: name }))
-            }
-            onClear={() =>
-              setForm((s) => ({ ...s, relatedInvestorId: "", relatedInvestorName: "" }))
-            }
+            onSelect={pickClient}
+            onClear={() => pickClient("", "")}
             placeholder="Search clients by name, PAN or phone…"
           />
         </div>
@@ -469,19 +558,18 @@ export default function NewTaskPage() {
               />
             </label>
 
+            {/* General tasks only — financial and non-financial requests are
+                chosen at the top of the form, where they bring their own fields. */}
+            {category === "general" && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block">
-                <div className="text-xs font-medium mb-1">Type</div>
+                <div className="text-xs font-medium mb-1">Kind of general task</div>
                 <SelectField
                   value={form.type}
                   onChange={(e) => set("type", e.target.value)}
                   className="w-full"
                 >
                   <option value="follow_up">Follow-up</option>
-                  <option value="review_meeting">Review meeting</option>
-                  <option value="collect_document">Collect document</option>
-                  <option value="kyc_renewal">KYC renewal</option>
-                  <option value="mandate_renewal">Mandate renewal</option>
                   <option value="custom">Custom…</option>
                 </SelectField>
                 {form.type === "custom" && (
@@ -494,24 +582,10 @@ export default function NewTaskPage() {
                   />
                 )}
               </label>
-              <label className="block">
-                <div className="text-xs font-medium mb-1">Department</div>
-                <SelectField
-                  value={form.department}
-                  onChange={(e) => set("department", e.target.value)}
-                  className="w-full"
-                >
-                  <option value="">Not set</option>
-                  {DEPARTMENTS.map(([k, l]) => (
-                    <option key={k} value={k}>
-                      {l}
-                    </option>
-                  ))}
-                </SelectField>
-              </label>
             </div>
+            )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block">
                 <div className="text-xs font-medium mb-1 flex items-center gap-1">
                   <Bell className="size-3.5 text-brand-cyan" /> Reminder
@@ -531,19 +605,6 @@ export default function NewTaskPage() {
                   <option value="1w">1 week before</option>
                 </SelectField>
               </label>
-              <label className="block">
-                <div className="text-xs font-medium mb-1 flex items-center gap-1">
-                  <Timer className="size-3.5 text-brand-cyan" /> Estimate <span className="text-2xs text-muted-foreground font-normal">· minutes</span>
-                </div>
-                <input
-                  type="number"
-                  min={0}
-                  value={form.estimateMinutes}
-                  onChange={(e) => set("estimateMinutes", e.target.value)}
-                  placeholder="e.g. 30"
-                  className="input-base"
-                />
-              </label>
               <label className="flex items-start gap-2 sm:pt-6 cursor-pointer">
                 <input
                   type="checkbox"
@@ -558,30 +619,6 @@ export default function NewTaskPage() {
                   </span>
                 </span>
               </label>
-            </div>
-
-            <div className="block">
-              <div className="text-xs font-medium mb-1 flex items-center gap-1">
-                <TagIcon className="size-3.5 text-brand-cyan" /> Tags
-              </div>
-              <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1.5 min-h-[38px]">
-                {form.tags.map((tg) => (
-                  <span key={tg} className="chip text-2xs bg-secondary text-muted-foreground border border-border inline-flex items-center gap-1">
-                    {tg}
-                    <button type="button" onClick={() => set("tags", form.tags.filter((x) => x !== tg))} className="hover:text-rose-600" aria-label={`Remove ${tg}`}>
-                      <X className="size-2.5" />
-                    </button>
-                  </span>
-                ))}
-                <input
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addTag(tagInput); } }}
-                  onBlur={() => tagInput.trim() && addTag(tagInput)}
-                  placeholder="Add tag…"
-                  className="flex-1 min-w-[80px] bg-transparent text-xs focus:outline-none"
-                />
-              </div>
             </div>
 
             <div className="rounded-lg border border-border bg-secondary/30 p-3">
@@ -645,36 +682,6 @@ export default function NewTaskPage() {
                 }
                 onClear={() => setForm((s) => ({ ...s, relatedLeadId: "", relatedLeadName: "" }))}
               />
-              <RelatedSearch
-                label="Service request"
-                icon={LifeBuoy}
-                placeholder="Search SR by ticket no. or subject…"
-                pickedId={form.relatedServiceRequestId}
-                pickedLabel={form.relatedServiceRequestLabel}
-                searchFn={async (q) => {
-                  const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
-                  const j = await r.json();
-                  return (j.serviceRequests ?? []).map((sr: any) => ({
-                    id: sr.id,
-                    label: sr.ticket_no ?? sr.id,
-                    sub: `${sr.subject ?? "—"} · ${sr.status ?? "—"}`,
-                  }));
-                }}
-                onPick={(id, label) =>
-                  setForm((s) => ({
-                    ...s,
-                    relatedServiceRequestId: id,
-                    relatedServiceRequestLabel: label,
-                  }))
-                }
-                onClear={() =>
-                  setForm((s) => ({
-                    ...s,
-                    relatedServiceRequestId: "",
-                    relatedServiceRequestLabel: "",
-                  }))
-                }
-              />
               <MeetingPicker
                 pickedId={form.relatedMeetingId}
                 pickedLabel={form.relatedMeetingLabel}
@@ -697,7 +704,7 @@ export default function NewTaskPage() {
                   </span>
                 </div>
                 {checklist.map((c, i) => (
-                  <div key={c.id} className="flex items-center gap-2">
+                  <div key={c.id} className="flex flex-wrap items-center gap-2 xl:flex-nowrap">
                     <input
                       value={c.text}
                       onChange={(e) =>
@@ -706,7 +713,25 @@ export default function NewTaskPage() {
                         )
                       }
                       placeholder="Sub-task…"
-                      className="input-base flex-1"
+                      aria-label={`Sub-task ${i + 1}`}
+                      className="input-base min-w-0 w-full xl:w-auto xl:flex-1"
+                    />
+                    <RmSelector
+                      value={c.assigneeId ?? null}
+                      onChange={(v) =>
+                        setChecklist((list) => list.map((x, j) => (j === i ? { ...x, assigneeId: v } : x)))
+                      }
+                      placeholder="Assign to…"
+                      className="min-w-0 flex-1 xl:w-48 xl:flex-none"
+                    />
+                    <DateField
+                      value={c.actionDate ?? ""}
+                      onChange={(e) =>
+                        setChecklist((list) => list.map((x, j) => (j === i ? { ...x, actionDate: e.target.value } : x)))
+                      }
+                      aria-label={`Sub-task ${i + 1} due date`}
+                      placeholder="Due date"
+                      className="w-40 shrink-0"
                     />
                     <button
                       type="button"

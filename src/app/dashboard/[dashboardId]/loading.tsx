@@ -8,7 +8,7 @@ import { WidgetSkeleton } from "@/components/dashboards/system/WidgetCard";
 
 export default function DashboardLoading() {
   return (
-    <div className="space-y-4" aria-busy="true" aria-label="Loading dashboard">
+    <div className="dash-canvas space-y-4" aria-busy="true" aria-label="Loading dashboard">
       <div className="flex items-start justify-between gap-3 animate-pulse">
         <div className="space-y-2">
           <div className="h-7 w-56 rounded bg-secondary" />

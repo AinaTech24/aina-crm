@@ -5,12 +5,12 @@
  * Export CSV). SERVER component; the menu is the only client part.
  */
 
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { Info } from "lucide-react";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import type { WidgetSize } from "@/lib/dashboards/system/catalog";
 import { WidgetMenu } from "./WidgetMenu";
+import { SectionLink } from "@/components/dashboards/my/Shared";
 
 export const SIZE_CLASS: Record<WidgetSize, string> = {
   S: "col-span-12 md:col-span-6 xl:col-span-4",
@@ -75,11 +75,7 @@ export function WidgetCard({
           }
           action={
             <>
-              {href && (
-                <Link href={href} className="text-xs font-medium text-primary hover:underline whitespace-nowrap">
-                  {hrefLabel}
-                </Link>
-              )}
+              {href && <SectionLink href={href}>{hrefLabel}</SectionLink>}
               {menu && <WidgetMenu {...menu} />}
             </>
           }

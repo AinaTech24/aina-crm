@@ -12,6 +12,7 @@ import { SubDistributorLookup } from "@/components/common/SubDistributorLookup";
 import { SelectField } from "@/components/ui/SelectField";
 import { ThemeDate } from "@/components/ui/ThemeDate";
 import { CustomFieldsSection, missingRequired, type CustomFieldDef } from "@/components/common/CustomFieldInputs";
+import { fromLeadProduct } from "@/lib/opportunities/products";
 
 type DupMatch = {
   id: string;
@@ -23,6 +24,11 @@ type DupMatch = {
   createdAt: string;
   matchedOn: string[];
 };
+
+/** An EXISTING CLIENT with the same phone / email (check-duplicate `clients`). */
+type ClientMatch =
+  | { id: string; name: string; rmName: string | null; matchedOn: string[]; openOpportunities: number; outsideBook?: undefined }
+  | { outsideBook: true; matchedOn: string[] };
 
 /** Sources that require / suggest linking an existing client as the referrer. */
 const REFERRAL_SOURCES = new Set(["referral", "existing_client"]);
@@ -81,6 +87,7 @@ export default function NewLeadPage() {
   const [showAll, setShowAll] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [duplicates, setDuplicates] = useState<DupMatch[]>([]);
+  const [clientMatches, setClientMatches] = useState<ClientMatch[]>([]);
   const [dupChecking, setDupChecking] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -122,6 +129,7 @@ export default function NewLeadPage() {
     // Wait until the input is plausibly complete before bothering the API.
     if (phoneClean.length < 10 && emailClean.length < 5) {
       setDuplicates([]);
+      setClientMatches([]);
       return;
     }
     const ctl = new AbortController();
@@ -140,6 +148,7 @@ export default function NewLeadPage() {
         if (!res.ok) return;
         const j = await res.json();
         setDuplicates(j.matches ?? []);
+        setClientMatches(j.clients ?? []);
       } catch {
         // ignore — best-effort warning
       } finally {
@@ -260,6 +269,50 @@ export default function NewLeadPage() {
             type="email"
           />
         </div>
+
+        {/* Already a client — another product is an opportunity on their
+            record, not a new lead (a lead would duplicate the person and fail
+            at conversion on the PAN). */}
+        {clientMatches.length > 0 && (
+          <div className="sm:col-span-2 rounded-xl border border-primary/25 bg-accent p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <UserPlus className="size-4 text-primary flex-shrink-0" />
+              <span className="text-sm font-semibold text-foreground">
+                {clientMatches.length === 1 ? "This person is already a client" : "These people are already clients"}
+              </span>
+            </div>
+            <p className="text-2xs text-muted-foreground">
+              If they want another product — insurance, a new SIP, NPS — start an opportunity on their client record
+              instead of a new lead. KYC, UCC and mandate already on file are skipped.
+            </p>
+            <ul className="space-y-1">
+              {clientMatches.map((m, i) =>
+                m.outsideBook ? (
+                  <li key={`out-${i}`} className="rounded-md bg-card/80 px-2.5 py-1.5 text-xs text-muted-foreground">
+                    A client in another RM&apos;s book matches on {m.matchedOn.join(", ")}. Ask the branch to start the
+                    opportunity on that record rather than adding a lead.
+                  </li>
+                ) : (
+                  <li key={m.id} className="flex items-center justify-between gap-2 rounded-md bg-card/80 px-2.5 py-1.5 text-xs">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium truncate">{m.name}</div>
+                      <div className="text-2xs text-muted-foreground truncate">
+                        {m.rmName ? `RM ${m.rmName} · ` : ""}matched on {m.matchedOn.join(", ")}
+                        {m.openOpportunities > 0 ? ` · ${m.openOpportunities} open opportunit${m.openOpportunities === 1 ? "y" : "ies"}` : ""}
+                      </div>
+                    </div>
+                    <Link
+                      href={`/dashboard/investors/${m.id}?opportunity=new${form.interestProducts[0] ? `&product=${fromLeadProduct(form.interestProducts[0])}` : ""}#opportunities`}
+                      className="btn-primary !px-2.5 !py-1 text-xs whitespace-nowrap"
+                    >
+                      Start opportunity
+                    </Link>
+                  </li>
+                ),
+              )}
+            </ul>
+          </div>
+        )}
 
         {/* Live duplicate warning — shown when /check-duplicate returns matches.
             Doesn't block submission; just nudges the RM to confirm or open the

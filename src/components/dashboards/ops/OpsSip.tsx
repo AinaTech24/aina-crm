@@ -63,7 +63,7 @@ export function RejectionsPanel({ d, periodLabel, exportQuery, sla }: { d: Rejec
             className={buttonClass("secondary", "sm")} ariaLabel="Export SIP rejections as CSV">
             <Download className="size-3.5" aria-hidden /> Export
           </DownloadButton>
-          <Link href="/dashboard/sip-rejections" className="text-xs font-medium text-primary hover:underline">Register ↗</Link>
+          <Link href="/dashboard/sip-rejections" className="inline-flex min-h-6 items-center text-xs font-medium text-primary hover:underline">Register ↗</Link>
         </span>
       }
       note={`Past SLA: open and unchanged for more than ${sla} days (Settings → Dashboard thresholds).`}

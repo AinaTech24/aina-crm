@@ -25,7 +25,7 @@ import {
 } from "@/db/schema";
 import { BLUEPRINT_CATALOG } from "./catalog";
 
-export type SubjectType = "lead" | "service_request" | "complaint" | "sip_rejection" | "investor";
+export type SubjectType = "lead" | "service_request" | "complaint" | "sip_rejection" | "investor" | "opportunity";
 
 // ── Seeding ──────────────────────────────────────────────────────────────
 
@@ -97,6 +97,7 @@ const SUBJECT_TO_MODULE: Record<SubjectType, string> = {
   complaint: "complaints",
   sip_rejection: "sip_rejections",
   investor: "client_reviews",
+  opportunity: "opportunities",
 };
 
 async function activeBlueprintFor(tx: Tx, tenantId: string, subjectType: SubjectType) {
@@ -196,6 +197,12 @@ export interface PolyTransitionOpts {
   actorRoles?: string[];
   remarks?: string;
   systemBypass?: boolean;
+  /**
+   * The instance's status after this move. By default the LAST stage by
+   * order completes the instance; a journey with two terminals (won / lost)
+   * says which one it reached.
+   */
+  finalStatus?: "in_progress" | "completed" | "lost";
 }
 
 export async function transitionPoly(
@@ -289,8 +296,8 @@ export async function transitionPoly(
       stageEnteredAt: now,
       isDelayed: false,
       delayedSince: null,
-      status: isTerminal ? "completed" : "in_progress",
-      completedAt: isTerminal ? now : null,
+      status: opts.finalStatus ?? (isTerminal ? "completed" : "in_progress"),
+      completedAt: (opts.finalStatus ? opts.finalStatus !== "in_progress" : isTerminal) ? now : null,
       updatedAt: now,
     })
     .where(eq(blueprintInstances.id, inst.id));

@@ -60,7 +60,7 @@ export function BarRow({ label, value, max, right, href, tone = "primary", title
 /** Two-way toggle rendered as links (server) — the current key is highlighted. */
 export function LinkToggle({ current, options }: { current: string; options: Array<{ key: string; label: string; href: string }> }) {
   return (
-    <div className="inline-flex rounded-lg border border-border bg-secondary/60 p-0.5" role="group">
+    <div className="dash-seg" role="group">
       {options.map((o) => (
         <Link
           key={o.key}

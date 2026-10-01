@@ -13,6 +13,7 @@ import { requireSession } from "@/lib/auth/session";
 import { requireAny } from "@/lib/auth/rbac";
 import { financialDiscoveries } from "@/db/schema";
 import { createShareToken } from "@/lib/share-tokens";
+import { syncDiscoveryPrefill } from "@/lib/discovery/prefill";
 
 export const dynamic = "force-dynamic";
 
@@ -27,9 +28,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const { id } = await params;
     const { expiresInDays } = Body.parse(await req.json().catch(() => ({})));
 
-    const disc = await withTenant(session.tenantId, async (tx) =>
-      (await tx.select().from(financialDiscoveries).where(eq(financialDiscoveries.id, id)).limit(1))[0]
-    );
+    const disc = await withTenant(session.tenantId, async (tx) => {
+      const d = (await tx.select().from(financialDiscoveries).where(eq(financialDiscoveries.id, id)).limit(1))[0];
+      // The client's link opens on the same prefilled form the RM sees.
+      if (d) await syncDiscoveryPrefill(tx, d as any);
+      return d;
+    });
     if (!disc) return NextResponse.json({ error: "not found" }, { status: 404 });
 
     const link = await createShareToken({

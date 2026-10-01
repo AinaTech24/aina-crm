@@ -1,5 +1,5 @@
 /**
- * §20 new insurance clients · §21 business source · §22 / §40 MF and
+ * §20 new insurance clients · §22 / §40 MF and
  * insurance relationship coverage · §29 policy counts · §30 premium bands ·
  * §41 concentration.
  */
@@ -11,19 +11,17 @@ import { Section, Stat, StatGrid, Table, Num } from "@/components/dashboards/my/
 import { formatCount, formatMoney } from "@/lib/format";
 import { BarRow, pctOf } from "./parts";
 
-export function NewClientsPanel({ cur, fy, target, targetNote, sources, hrefs, periodLabel, lockedLine }: {
+export function NewClientsPanel({ cur, fy, target, targetNote, hrefs, periodLabel, lockedLine }: {
   cur: NewClients; fy: NewClients; target: number | null;
   /** Why `target` is null: not set, or a filtered view that the firm target does not describe. */
   targetNote: string;
-  sources: Array<{ source: string | null; clients: number; policies: number; premium: number }>;
   hrefs: Record<string, string>; periodLabel: string;
   /** The dashboard's own line filter — the other line's count was filtered out, not zero. */
   lockedLine?: "personal" | "commercial" | null;
 }) {
   const out = "Filtered out — the dashboard is showing one line only.";
-  const maxPremium = Math.max(0, ...sources.map((s) => s.premium));
+  // "Business source" sat beside this card; the firm removed it (2026-10-01).
   return (
-    <div className="grid gap-6 2xl:grid-cols-2">
       <Section title="New insurance clients" subtitle={`Clients whose first policy was booked in ${periodLabel}.`} icon={<Sparkles className="size-4" />} className="min-w-0"
         note="A new insurance client is one whose first issued policy — across all their policies — falls in the period. Line and client type are those of that first policy.">
         <StatGrid cols={4}>
@@ -41,18 +39,6 @@ export function NewClientsPanel({ cur, fy, target, targetNote, sources, hrefs, p
           </StatGrid>
         </div>
       </Section>
-      <Section title="Business source" subtitle={`${periodLabel} — where the business came from.`} icon={<Network className="size-4" />} className="min-w-0"
-        note="The source is the lead the client converted from (Leads → Source). A client who never came through a lead reads “Source not recorded”. The policy itself has no source field.">
-        {sources.length === 0 ? <p className="text-xs text-muted-foreground">No insurance business in this period.</p> : (
-          <>
-            {sources.map((s) => (
-              <BarRow key={s.source ?? "none"} label={sourceLabel(s.source)} value={s.premium} max={maxPremium} href={hrefs[`src:${s.source ?? "none"}`]}
-                right={<>{formatMoney(s.premium)} · {formatCount(s.policies)} pol · {formatCount(s.clients)} new</>} />
-            ))}
-          </>
-        )}
-      </Section>
-    </div>
   );
 }
 

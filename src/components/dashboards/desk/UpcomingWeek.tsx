@@ -47,7 +47,7 @@ export function UpcomingWeek({ items, today }: { items: UpcomingItem[]; today: s
           </h2>
           <p className="section-subtitle mt-1">What is coming, day by day — {items.length} item{items.length === 1 ? "" : "s"}.</p>
         </div>
-        <div className="flex items-center gap-1" role="group" aria-label="View">
+        <div className="dash-seg" role="group" aria-label="View">
           {(["day", "week"] as const).map((v) => (
             <button
               key={v}
@@ -66,7 +66,7 @@ export function UpcomingWeek({ items, today }: { items: UpcomingItem[]; today: s
       </div>
 
       {days.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-xs text-muted-foreground">
+        <p className="dash-empty">
           {view === "day" ? "Nothing scheduled for today." : "Nothing scheduled in the next seven days."}
         </p>
       ) : (
@@ -79,17 +79,20 @@ export function UpcomingWeek({ items, today }: { items: UpcomingItem[]; today: s
               </h3>
               <ul className="divide-y divide-border/60 rounded-lg border border-border">
                 {shown.filter((i) => i.date === d).map((i) => (
-                  <li key={i.key} className="flex items-center gap-3 px-3 py-2 text-xs">
+                  // One line from sm up. On a phone the fixed time / kind / Reschedule
+                  // columns left the client and title 12px, so the title takes a
+                  // second line of its own.
+                  <li key={i.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-xs sm:flex-nowrap">
                     <span className="w-16 shrink-0 tabular-nums text-muted-foreground">{i.time ?? "All day"}</span>
-                    <span className="inline-flex w-24 shrink-0 items-center gap-1 text-muted-foreground">
+                    <span className="inline-flex shrink-0 items-center gap-1 text-muted-foreground sm:w-24">
                       {KIND[i.kind].icon} {KIND[i.kind].label}
                     </span>
-                    <Link href={i.href} className="min-w-0 flex-1 truncate hover:text-primary hover:underline">
+                    <Link href={i.href} className="order-last w-full min-w-0 truncate py-1 hover:text-primary hover:underline sm:order-none sm:w-auto sm:flex-1">
                       <span className="font-medium text-foreground">{i.client ?? i.title}</span>
                       {i.client && <span className="text-muted-foreground"> — {i.title}</span>}
                     </Link>
                     {i.rescheduleHref && (
-                      <Link href={i.rescheduleHref} className="shrink-0 text-2xs font-medium text-primary hover:underline">
+                      <Link href={i.rescheduleHref} className="ml-auto inline-flex min-h-6 shrink-0 items-center text-2xs font-medium text-primary hover:underline sm:ml-0">
                         Reschedule
                       </Link>
                     )}

@@ -504,6 +504,12 @@ export const MEETING_UPCOMING = ["scheduled", "confirmed"] as const;
 export const FINANCIAL_TASK_TYPES = [
   "sip_retry", "sip_registration", "sip_stop", "mandate_renewal", "mandate_create",
   "transaction", "purchase", "lumpsum", "redemption", "switch", "stp", "swp",
+  // The New task form's financial requests (lib/tasks/request-types.ts), and
+  // the bare "financial" the form used to save — every task created as
+  // "Financial" before 2026-10-01 carries it and was counted as non-financial.
+  // SIP rejection follow-ups were already financial on the Operations
+  // Dashboard (KIND sip_rejection); now they are here too.
+  "financial", "additional_purchase", "sip_modification", "sip_rejection_followup", "pms", "aif",
 ] as const;
 
 /**

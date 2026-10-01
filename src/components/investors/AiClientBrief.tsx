@@ -19,7 +19,13 @@ function waNumber(phone?: string | null): string {
   return d.length === 10 ? `91${d}` : d;
 }
 
-export function AiClientBrief({ investorId, name, phone }: { investorId: string; name: string; phone?: string | null }) {
+export function AiClientBrief({
+  investorId, name, phone, triggerClassName,
+}: {
+  investorId: string; name: string; phone?: string | null;
+  /** Replaces the trigger's look — a record menu passes its row class. */
+  triggerClassName?: string;
+}) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [brief, setBrief] = useState<Brief | null>(null);
@@ -41,14 +47,14 @@ export function AiClientBrief({ investorId, name, phone }: { investorId: string;
 
   return (
     <>
-      <button onClick={load} className="btn-secondary text-xs inline-flex items-center gap-1" title="AI pre-call brief">
-        <Sparkles className="size-3.5 text-brand-cyan" /> AI Brief
+      <button type="button" onClick={load} className={triggerClassName ?? "btn-secondary text-xs inline-flex items-center gap-1"} title="A short brief to read before you call this client">
+        <Sparkles className="size-4 shrink-0 text-muted-foreground" /> AI brief
       </button>
       {open && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-50 bg-black/40 flex justify-end" onClick={() => setOpen(false)}>
           <div onClick={(e) => e.stopPropagation()} className="w-full max-w-lg h-full bg-card border-l shadow-2xl flex flex-col">
             <div className="px-5 py-3 border-b flex items-center justify-between">
-              <div className="font-semibold flex items-center gap-2"><Sparkles className="size-4 text-brand-cyan" /> AI Brief — {name}</div>
+              <div className="font-semibold flex items-center gap-2"><Sparkles className="size-4 text-muted-foreground" /> AI brief — {name}</div>
               <button onClick={() => setOpen(false)} className="rounded p-1 hover:bg-accent"><X className="size-4" /></button>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-4">

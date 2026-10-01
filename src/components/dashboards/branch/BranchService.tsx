@@ -51,7 +51,7 @@ export function BranchInsurance({
           </StatGrid>
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
             {data.byLine.map((l) => (
-              <div key={l.key} className="rounded-lg border border-border p-3">
+              <div key={l.key} className="rounded-lg bg-secondary/70 p-3">
                 <div className="text-2xs font-semibold text-muted-foreground">{l.label}</div>
                 <div className="mt-1 text-lg font-semibold tabular-nums">{formatMoney(l.premium)}</div>
                 <div className="text-2xs text-muted-foreground">new premium · {formatCount(l.policies)} active policies</div>
@@ -155,7 +155,7 @@ export function AttentionCentre({
     >
       <div id="attention" className="scroll-mt-40" />
       {items.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-xs text-muted-foreground">
+        <p className="dash-empty">
           No exceptions in this view. The cards appear here as soon as anything crosses a threshold.
         </p>
       ) : (
@@ -164,8 +164,8 @@ export function AttentionCentre({
             <div
               key={i.key}
               className={cn(
-                "flex flex-col rounded-lg border bg-card p-4",
-                i.severity === "critical" ? "border-destructive/40" : "border-warning/50",
+                "flex flex-col rounded-lg border p-4",
+                i.severity === "critical" ? "border-destructive/30 bg-destructive/5" : "border-warning/50 bg-warning/5",
               )}
             >
               <div className="flex items-start justify-between gap-2">

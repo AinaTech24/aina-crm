@@ -32,7 +32,6 @@ import {
   PieChart,
   Calculator,
   Wallet,
-  Inbox,
   // palette-only pages (PALETTE_ONLY)
   Zap, Activity, Megaphone, FileCheck, ScrollText, ClipboardCheck, Stamp, Network, Package, Copy, Trash2,
   // ── unique-icon replacements for the de-duplicated sidebar ──
@@ -40,7 +39,6 @@ import {
   Presentation,
   ShieldAlert,
   LayoutTemplate,
-  Library,
   Gauge,
   ClipboardList,
   Newspaper,
@@ -49,6 +47,7 @@ import {
   Building2,
   LifeBuoy,
   IndianRupee,
+  Landmark,
 } from "lucide-react";
 import { eq, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
@@ -127,8 +126,8 @@ const NAV: NavSection[] = [
       // above the groups; the module kill-switch still hides it, because
       // moduleControls is checked for every item below.
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/dashboard/command-center", label: "My Day", icon: Inbox,
-        roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
+      // My Day was removed 2026-10-01 at the firm's request; /dashboard/command-center
+      // now redirects here.
     ],
   },
   {
@@ -138,9 +137,9 @@ const NAV: NavSection[] = [
       { href: "/dashboard/review-meetings", label: "Meetings", icon: Presentation, module: "review_meetings",
         roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
       { href: "/dashboard/service-requests", label: "Service Requests", icon: LifeBuoy, module: "service_requests" },
-      // Pending work across the team (dashboard cleanup D5) — was ?scope=ops.
-      { href: "/dashboard/operations", label: "Operations", icon: Activity,
-        roles: ["owner", "ops", "back_office", "service_team"] },
+      // No "Operations" item: the Operations Dashboard lives in the Dashboard
+      // dropdown like every role dashboard (removed from WORK 2026-10-01).
+      // /dashboard/operations still redirects there for old links.
     ],
   },
   {
@@ -184,6 +183,8 @@ const NAV: NavSection[] = [
         roles: ["owner", "back_office", "ops", "rm", "branch_head", "compliance"] },
       { href: "/dashboard/business-entries", label: "Business Entries", icon: Briefcase, module: "business_entries",
         roles: ["owner", "branch_head", "rm", "back_office", "ops"] },
+      { href: "/dashboard/fixed-deposits", label: "Fixed Deposits", icon: Landmark,
+        roles: ["owner", "branch_head", "rm", "back_office", "ops", "compliance"] },
       { href: "/dashboard/expected-inflows", label: "Expected Inflows", icon: IndianRupee,
         roles: ["owner", "branch_head", "rm", "back_office", "ops"] },
     ],
@@ -198,16 +199,9 @@ const NAV: NavSection[] = [
       { href: "/dashboard/ai-assistant", label: "Aina Copilot", icon: Bot, module: "ai_assistant", beta: true },
     ],
   },
-  {
-    title: "Automation",
-    items: [
-      // Rules, Actions and Run history are tabs of /dashboard/automations.
-      { href: "/dashboard/automations", accessKey: "/dashboard/workflows/rules", label: "Automations", icon: Workflow, module: "automation_workflows" },
-      { href: "/dashboard/templates", label: "Message Templates", icon: LayoutTemplate, module: "broadcasts" },
-      { href: "/dashboard/communications", label: "Communications", icon: MessageSquare, module: "broadcasts" },
-      { href: "/dashboard/aina-library", label: "Content Library", icon: Library, roles: ["owner", "marketing", "rm", "branch_head", "back_office", "ops"] },
-    ],
-  },
+  // No "Automation" group: Automations, Message Templates and Communications
+  // are set up by an admin, so since 2026-10-01 they live in Settings (cards in
+  // SettingsDirectory) and in PALETTE_ONLY below for Ctrl/Cmd+K.
   {
     title: "Compliance",
     items: [
@@ -221,7 +215,7 @@ const NAV: NavSection[] = [
   {
     title: "Team",
     items: [
-      { href: "/dashboard/employees", label: "Team Members", icon: UserCog, module: "employees", roles: ["owner", "branch_head"] },
+      // Team Members is Settings → "Team & roles" (and Ctrl/Cmd+K), not the menu.
       // Attendance and Leave are each person's OWN record, so they stay open to
       // everyone; the admin views (grid, settings, approvals) are gated in-page.
       { href: "/dashboard/attendance", label: "Attendance", icon: CalendarCheck },
@@ -239,8 +233,8 @@ const NAV: NavSection[] = [
       { href: "/dashboard/rta-imports", label: "RTA File Imports", icon: FolderArchive, module: "transactions", roles: DATA_ADMIN_ROLES },
       { href: "/dashboard/reconciliation", label: "Holdings Reconciliation", icon: Scale, module: "transactions", roles: DATA_ADMIN_ROLES },
       { href: "/dashboard/commission-reconciliation", label: "Brokerage Reconciliation", icon: CreditCard, module: "reports", roles: DATA_ADMIN_ROLES },
-      { href: "/dashboard/schemes", label: "Scheme Master", icon: Boxes, roles: DATA_ADMIN_ROLES },
-      { href: "/dashboard/amc-empanelments", label: "AMC Empanelments", icon: Building2, roles: DATA_ADMIN_ROLES },
+      // Scheme Master and AMC Empanelments are master data: Settings → Clients &
+      // onboarding (and Ctrl/Cmd+K), not the menu.
       { href: "/dashboard/duplicates", label: "Find Duplicates", icon: CopyCheck, roles: DATA_ADMIN_ROLES },
       { href: "/dashboard/activities", label: "Activity Log", icon: PhoneCall, roles: DATA_ADMIN_ROLES },
       // Everyone else still reaches their own profile from the avatar menu.
@@ -271,6 +265,16 @@ const PALETTE_ONLY: NavSection[] = [
       { href: "/dashboard/automations/history", accessKey: "/dashboard/workflows/runs", label: "Automation Run History", icon: Activity, module: "automation_workflows",
         roles: ["owner", "compliance", "back_office", "ops"] },
       { href: "/dashboard/campaigns", label: "Marketing Campaigns", icon: Megaphone, module: "marketing_campaigns", roles: ["owner", "marketing"] },
+      // These four open from Settings; same access rules as when they were in the menu.
+      { href: "/dashboard/communications", label: "Communications", icon: MessageSquare, module: "broadcasts" },
+      { href: "/dashboard/automations", accessKey: "/dashboard/workflows/rules", label: "Automations", icon: Workflow, module: "automation_workflows" },
+      { href: "/dashboard/templates", label: "Message Templates", icon: LayoutTemplate, module: "broadcasts" },
+    ],
+  },
+  {
+    title: "Team",
+    items: [
+      { href: "/dashboard/employees", label: "Team Members", icon: UserCog, module: "employees", roles: ["owner", "branch_head"] },
     ],
   },
   {
@@ -289,6 +293,8 @@ const PALETTE_ONLY: NavSection[] = [
       { href: "/dashboard/product-offerings", label: "Products & services offered", icon: Package, roles: ["owner", "compliance"] },
       { href: "/dashboard/merge-clients", label: "Merge Clients", icon: Copy, roles: ["owner", "branch_head"] },
       { href: "/dashboard/trash", label: "Trash", icon: Trash2, roles: ["owner", "compliance"] },
+      { href: "/dashboard/schemes", label: "Scheme Master", icon: Boxes, roles: DATA_ADMIN_ROLES },
+      { href: "/dashboard/amc-empanelments", label: "AMC Empanelments", icon: Building2, roles: DATA_ADMIN_ROLES },
     ],
   },
 ];

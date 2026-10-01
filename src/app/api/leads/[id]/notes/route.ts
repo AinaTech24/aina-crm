@@ -6,6 +6,12 @@ import { handleApiError } from "@/lib/api/error-handler";
  * Appends a timestamped activity entry to the lead. The latest goes to the top
  * of the followUpNotes field; stage_changed_at + last_contact_at are bumped so
  * the lead doesn't go stale and the missed-follow-up automation doesn't fire.
+ *
+ * The same entry is mirrored into `activities`, the interaction log that the
+ * Activities page, the team scorecards ("calls logged today") and the lead's
+ * engagement score read. Before this, a call logged from the lead page counted
+ * for the blueprint but for nothing else, and the page offered a second
+ * "Log call / visit" button that did the opposite. One button, both stores.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -15,7 +21,7 @@ import { withTenant } from "@/db/client";
 import { withIdempotentMutation } from "@/lib/api/idempotent-mutation";
 import { requireSession } from "@/lib/auth/session";
 import { assertActiveLicense } from "@/lib/auth/license";
-import { leads, eventsOutbox } from "@/db/schema";
+import { leads, eventsOutbox, activities, type ActivityKind } from "@/db/schema";
 import { autoAdvance } from "@/lib/blueprints/auto-advance";
 import { loadEditableLead } from "@/lib/leads/access";
 import { formatDate } from "@/lib/format";
@@ -58,6 +64,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         } as any)
         .where(eq(leads.id, id))
         .returning();
+
+      // Mirror into the interaction log. A meeting is not one of its kinds (a
+      // held meeting is a review_meetings row), so it is filed as "other" with
+      // the subject saying what it was. A logged call is a conversation that
+      // happened — the blueprint treats it as one — so it is "answered". No
+      // follow-up date here: the lead's own next_follow_up_at carries that,
+      // and the desk would otherwise list the lead twice.
+      const ACTIVITY_KIND: Record<string, ActivityKind> = {
+        call: "call", meeting: "other", email: "email", whatsapp: "whatsapp", note: "note", other: "other",
+      };
+      const kind = ACTIVITY_KIND[parse.data.activityType] ?? "note";
+      await tx.insert(activities).values({
+        tenantId: session.tenantId,
+        branchId: session.branchId ?? null,
+        subjectType: "lead",
+        subjectId: id,
+        subjectName: lead.name ?? null,
+        subjectPhone: lead.phone ?? null,
+        kind,
+        direction: kind === "call" ? "outbound" : null,
+        status: kind === "call" ? "answered" : null,
+        subject: parse.data.activityType === "meeting" ? "Meeting" : null,
+        notes: parse.data.note,
+        occurredAt: ts,
+        ownerUserId: session.userId,
+      } as any);
 
       // Emit lead.updated so record_action "edit" workflow rules can react to a
       // logged activity (e.g. a contacted-lead follow-up cadence).

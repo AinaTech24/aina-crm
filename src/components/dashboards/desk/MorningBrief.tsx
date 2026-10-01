@@ -51,10 +51,12 @@ export function MorningBrief({
   const overdue = top.filter((t) => t.overdue).length;
   return (
     <section className="card-surface overflow-hidden border-primary/20" aria-label="Morning priorities">
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-primary/5 px-5 py-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <Sun className="size-4 shrink-0 text-primary" aria-hidden />
-          <h2 className="truncate text-base font-semibold text-foreground">{greeting}</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-5 py-3.5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-card text-primary shadow-sm" aria-hidden>
+            <Sun className="size-4" />
+          </span>
+          <h2 className="truncate text-lg font-semibold tracking-tight text-foreground">{greeting}</h2>
           {hidden && (
             <span className="truncate text-xs text-muted-foreground">
               {counts.filter((c) => (c.value ?? 0) > 0).map((c) => `${c.value} ${c.label.toLowerCase()}`).join(" · ") || "a clear day"}
@@ -73,12 +75,13 @@ export function MorningBrief({
         <div className="grid grid-cols-1 gap-4 p-5 lg:grid-cols-5">
           <div className="min-w-0 lg:col-span-2">
             <h3 className="mb-2 text-2xs font-semibold text-muted-foreground">Your day</h3>
-            <ul className="grid grid-cols-2 gap-2">
+            {/* Flex, so the seventh tile takes the last row rather than leaving a hole. */}
+            <ul className="dash-stats" style={{ ["--cols-sm" as string]: 2, ["--cols-lg" as string]: 2 }}>
               {counts.map((c) => (
                 <li key={c.label}>
-                  <Link href={c.href} className="flex items-baseline justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2 transition-colors hover:border-primary/40 hover:bg-accent">
-                    <span className="text-xs text-muted-foreground">{c.label}</span>
-                    <span className="text-lg font-semibold tabular-nums text-foreground">{c.value ?? "—"}</span>
+                  <Link href={c.href} className="flex h-full items-baseline justify-between gap-2 rounded-lg border border-transparent bg-secondary/70 px-3 py-2.5 transition-colors hover:border-primary/25 hover:bg-accent">
+                    <span className="text-xs font-medium text-foreground/80">{c.label}</span>
+                    <span className={cn("text-lg font-semibold tabular-nums", c.value ? "text-foreground" : "text-muted-foreground/60")}>{c.value ?? "—"}</span>
                   </Link>
                 </li>
               ))}
@@ -90,11 +93,11 @@ export function MorningBrief({
               Top actions{overdue ? ` — ${overdue} overdue` : ""}
             </h3>
             {top.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-xs text-muted-foreground">
+              <p className="dash-empty">
                 Nothing overdue and nothing due today.
               </p>
             ) : (
-              <ol className="divide-y divide-border/60 rounded-lg border border-border">
+              <ol className="divide-y divide-border/60 overflow-hidden rounded-lg border border-border/70">
                 {top.map((t, i) => (
                   <li key={t.key}>
                     <Link href={t.href} className="flex items-start gap-3 px-3 py-2 transition-colors hover:bg-accent">

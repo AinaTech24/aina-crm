@@ -29,6 +29,7 @@ import { autoAdvance, resolveLeadIdForInvestor, type BlueprintEvent } from "@/li
 import { sendDocChecklist } from "@/lib/onboarding/send-doc-checklist";
 import { createNotification } from "@/lib/notifications/create";
 import { proposalHref } from "./public-link";
+import { onProposalEvent } from "@/lib/opportunities/journey";
 
 type Tx = any;
 type P = Pick<Proposal, "id" | "tenantId" | "leadId" | "investorId" | "proposalNumber" | "recipientName">;
@@ -46,12 +47,31 @@ export async function advanceJourneyForProposal(
   tx: Tx,
   p: P,
   event: Extract<BlueprintEvent, "proposal.sent" | "proposal.accepted">,
-  remarks: string
+  remarks: string,
+  actorUserId?: string,
 ): Promise<string | null> {
+  // An existing client's opportunity moves on the same events as a lead's
+  // journey (partial acceptance arrives here as "proposal.accepted" too).
+  await notifyOpportunity(tx, p.tenantId, p.id, event === "proposal.sent" ? "sent" : "accepted", actorUserId);
   const leadId = await journeyLeadId(tx, p);
   if (!leadId) return null;
   await autoAdvance(tx, p.tenantId, leadId, event, { remarks, forwardOnly: true });
   return leadId;
+}
+
+/**
+ * Tell the opportunity this proposal answers (lib/opportunities) about it.
+ * Runs in a savepoint: a failure there must never roll back the proposal
+ * write it rides on.
+ */
+export async function notifyOpportunity(
+  tx: Tx, tenantId: string, proposalId: string, event: "sent" | "accepted" | "declined", actorUserId?: string,
+): Promise<void> {
+  try {
+    await tx.transaction(async (sp: Tx) => { await onProposalEvent(sp, tenantId, proposalId, event, actorUserId); });
+  } catch (e) {
+    console.warn("[proposals] opportunity update skipped:", (e as Error)?.message);
+  }
 }
 
 /** The lead journey's current stage, after any move. */

@@ -9,7 +9,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Save, Check, TrendingUp } from "lucide-react";
+import Link from "next/link";
+import { Loader2, Save, Check, TrendingUp, Plus } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import {
   CROSS_SELL_PRODUCTS,
@@ -95,13 +96,19 @@ export function CrossSellCard({
       {opps.length > 0 && (
         <div className="mt-4 pt-3 border-t">
           <div className="text-2xs uppercase tracking-wide text-muted-foreground mb-1.5">
-            Wallet-share opportunities
+            Wallet-share opportunities — click one to start its journey
           </div>
           <div className="flex flex-wrap gap-1.5">
             {opps.map((o) => (
-              <span key={o.key} className={`chip text-xs border ${crossSellStatusTone(o.status)}`}>
-                {o.label} · {crossSellStatusLabel(o.status)}
-              </span>
+              <Link
+                key={o.key}
+                href={`/dashboard/investors/${investorId}?opportunity=new&product=${o.key}#opportunities`}
+                scroll={false}
+                title={`Start a ${o.label} opportunity`}
+                className={`chip text-xs border hover:ring-1 hover:ring-primary/30 ${crossSellStatusTone(o.status)}`}
+              >
+                <Plus className="size-3" aria-hidden /> {o.label} · {crossSellStatusLabel(o.status)}
+              </Link>
             ))}
           </div>
         </div>

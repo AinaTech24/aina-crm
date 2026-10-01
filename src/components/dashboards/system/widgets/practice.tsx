@@ -27,13 +27,17 @@ const monthLabel = (ym: string) => `${MONTHS[Number(ym.slice(5, 7)) - 1]} ${ym.s
 function Tile({ label, value, href, tone, hint }: {
   label: string; value: ReactNode; href?: string; tone?: "danger" | "warning" | null; hint?: string;
 }) {
-  const valueClass = `text-lg font-semibold tabular-nums leading-tight ${tone === "danger" ? "text-rose-700" : tone === "warning" ? "text-amber-700" : "text-foreground"}`;
-  return (
-    <div className="min-w-0 rounded-lg border border-border bg-secondary/30 p-3" title={hint}>
-      {href ? <Link href={href} className={`${valueClass} hover:underline`}>{value}</Link> : <div className={valueClass}>{value}</div>}
-      <div className="mt-0.5 text-xs text-muted-foreground">{label}</div>
-    </div>
+  const valueClass = `text-xl font-semibold tabular-nums leading-tight tracking-tight ${tone === "danger" ? "text-rose-700" : tone === "warning" ? "text-amber-700" : "text-foreground"}`;
+  const inner = (
+    <>
+      <div className={valueClass}>{value}</div>
+      <div className="mt-1 text-xs leading-snug text-muted-foreground">{label}</div>
+    </>
   );
+  // The whole tile opens the list, not only the figure.
+  return href
+    ? <Link href={href} className="dash-tile" title={hint}>{inner}</Link>
+    : <div className="dash-tile" title={hint}>{inner}</div>;
 }
 
 /** A labelled share bar: name, amount and % of the whole. */
@@ -46,8 +50,8 @@ function ShareRow({ label, amount, pct, scaleFor }: { label: string; amount: num
           {formatMoney(amount, { scale: pickMoneyScale(scaleFor) })} · {formatPercent(pct, 0)}
         </span>
       </div>
-      <div className="h-1.5 rounded-full bg-secondary" aria-hidden>
-        <div className="h-1.5 rounded-full bg-primary/70" style={{ width: `${Math.max(2, Math.min(100, pct))}%` }} />
+      <div className="dash-bar" aria-hidden>
+        <span style={{ width: `${Math.max(2, Math.min(100, pct))}%` }} />
       </div>
     </li>
   );
@@ -230,7 +234,7 @@ async function brokerage(tx: Tx, ctx: WidgetCtx) {
         <div className="flex h-20 items-end gap-1" aria-label="Brokerage by month">
           {b.byMonth.map((m) => (
             <div key={m.month} className="flex min-w-0 flex-1 flex-col items-center gap-1" title={`${monthLabel(m.month)}: ${formatMoney(m.amount, { scale })}`}>
-              <div className="w-full rounded-t bg-primary/70" style={{ height: `${Math.max(4, (m.amount / max) * 64)}px` }} />
+              <div className="w-full rounded-t-md bg-primary/80" style={{ height: `${Math.max(4, (m.amount / max) * 64)}px` }} />
               <span className="text-2xs text-muted-foreground">{MONTHS[Number(m.month.slice(5, 7)) - 1]}</span>
             </div>
           ))}

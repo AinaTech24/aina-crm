@@ -39,11 +39,27 @@ export type DiscoveryData = {
   goals?: GoalRow[];
   /** Risk-profiling answers (the behavioural questions from RISK_QUESTIONS). */
   riskProfile?: Record<string, string>;
+  /** The risk profile on record in the Risk Profiles module. When present it
+   *  IS the client's risk profile here; the questionnaire is not asked again. */
+  recordedRisk?: RecordedRisk;
+  /** Fields and lists filled in from the client / lead record (lib/discovery/prefill). */
+  prefilledFromRecord?: string[];
   recommendations?: any[];
   assessment?: Record<string, any>;
 };
 
 import { computeRisk, type RiskResult } from "./risk";
+
+export type RecordedRisk = {
+  /** conservative | moderate | aggressive | very_aggressive */
+  category: string;
+  score: number | null;
+  /** ISO date it was signed / completed. */
+  date: string | null;
+  /** Suggested in bulk and not yet confirmed by the client. */
+  provisional: boolean;
+  responseId: string | null;
+};
 
 const n = (v: unknown): number => {
   if (v == null || v === "") return 0;
@@ -174,6 +190,7 @@ export function computeDiscovery(d: DiscoveryData, opts?: { currentYear?: number
   //    risk-profiling answers. ───────────────────────────────────────────────
   const risk = computeRisk({
     answers: d.riskProfile ?? {},
+    recordedCategory: d.recordedRisk?.category ?? null,
     age: ageFromDob(d.identification?.dob, year),
     grossAnnualIncome,
     netWorth,

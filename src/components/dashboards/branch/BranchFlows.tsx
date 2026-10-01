@@ -287,7 +287,7 @@ export function BranchAcquisition({
               {data.byRm.map((r) => (
                 <div key={r.id} className="text-xs">
                   <div className="flex items-baseline justify-between gap-2">
-                    <Link href={rmHref(r.id)} className="truncate hover:text-primary hover:underline">{r.name}</Link>
+                    <Link href={rmHref(r.id)} className="truncate py-1 hover:text-primary hover:underline">{r.name}</Link>
                     <span className="shrink-0 tabular-nums text-muted-foreground">
                       <span className="font-semibold text-foreground">{formatCount(r.actual)}</span>
                       {" / "}

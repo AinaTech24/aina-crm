@@ -56,8 +56,8 @@ export default async function TeamDashboardPage({
   if (!allowed) {
     return (
       <div className="max-w-2xl card-surface p-8 text-center text-sm text-muted-foreground">
-        The Team Dashboard is for owners and branch heads. Your daily worklist is the{" "}
-        <Link href="/dashboard/command-center" className="text-brand-cyan-deep hover:underline">Command Center</Link>.
+        The Team Dashboard is for owners and branch heads. Your daily work is on your{" "}
+        <Link href="/dashboard" className="text-brand-cyan-deep hover:underline">Dashboard</Link>.
       </div>
     );
   }

@@ -7,6 +7,10 @@
  * Server component; loads its own facts (lib/investors/summary.ts) inside
  * its own Suspense so the page header never waits on it. Fields the firm's
  * licence hides elsewhere on the page are hidden here too.
+ *
+ * Every cell that has a home lower on the page links to it. The tabs switch
+ * to whichever one holds the target (InvestorDetailTabs), so "Open tasks" on
+ * the Overview tab opens the task list on the Engagement tab.
  */
 
 import Link from "next/link";
@@ -16,17 +20,25 @@ import type { SessionUser } from "@/lib/auth/session";
 import { loadClientSummary } from "@/lib/investors/summary";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
-import { formatCount, formatDate, formatMoney } from "@/lib/format";
+import { formatCount, formatDate, formatMoney, humanise } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 type Show = { aum: boolean; sip: boolean; risk: boolean; category: boolean; rm: boolean };
 
 function Cell({ label, children, href }: { label: string; children: ReactNode; href?: string }) {
   const body = <dd className="mt-0.5 text-sm font-medium text-foreground">{children}</dd>;
+  // A hash link stays a plain anchor so the tab strip's handler owns the click.
+  const link = href?.startsWith("#") ? (
+    <a href={href} className="block rounded hover:text-primary hover:underline">{body}</a>
+  ) : href ? (
+    <Link href={href} className="block rounded hover:text-primary hover:underline">{body}</Link>
+  ) : (
+    body
+  );
   return (
     <div className="min-w-0">
       <dt className="text-2xs text-muted-foreground">{label}</dt>
-      {href ? <Link href={href} className="block rounded hover:text-primary hover:underline">{body}</Link> : body}
+      {link}
     </div>
   );
 }
@@ -36,10 +48,11 @@ const Gap = ({ children }: { children: ReactNode }) => (
 );
 
 export async function ClientSummaryStrip({
-  session, investorId, show,
+  session, investorId, investorName, show,
 }: {
   session: Pick<SessionUser, "tenantId" | "userId" | "branchId" | "roles">;
   investorId: string;
+  investorName: string;
   show: Show;
 }) {
   const s = await withTenant(session.tenantId, (tx) => loadClientSummary(tx, session.tenantId, investorId), {
@@ -53,6 +66,7 @@ export async function ClientSummaryStrip({
   // today "overdue" between midnight and 05:30.
   const istDay = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(d);
   const reviewLate = s.nextReview != null && istDay(new Date(s.nextReview)) < istDay(new Date());
+  const scheduleHref = `/dashboard/review-meetings/new?investorId=${investorId}`;
 
   return (
     <Card className="px-5 py-4">
@@ -79,17 +93,36 @@ export async function ClientSummaryStrip({
             {s.sipBook > 0 ? <span className="tabular-nums">{formatMoney(s.sipBook)} / month</span> : <Gap>No active SIP</Gap>}
           </Cell>
         )}
-        <Cell label="Last meeting">
+        <Cell label="Last meeting" href="#rel-activity">
           {s.lastMeeting ? formatDate(s.lastMeeting) : <Gap>No meeting recorded</Gap>}
         </Cell>
         <Cell label="Next review">
-          {s.nextReview
-            ? <span className={cn(reviewLate && "text-destructive")}>{formatDate(s.nextReview)}{reviewLate ? " · overdue" : ""}</span>
-            : <Gap>Not scheduled</Gap>}
+          {s.nextReview ? (
+            <span className={cn(reviewLate && "text-destructive")}>
+              {formatDate(s.nextReview)}
+              {reviewLate && (
+                <>
+                  {" · overdue"}
+                  <Link href={scheduleHref} className="ml-2 text-xs font-medium text-primary hover:underline">Schedule</Link>
+                </>
+              )}
+            </span>
+          ) : (
+            <Gap>Not scheduled</Gap>
+          )}
         </Cell>
         {show.risk && (
-          <Cell label="Risk profile">
-            <Badge raw tone={s.risk === "Completed" ? "success" : "warning"}>{s.risk}</Badge>
+          <Cell label="Risk profile" href="#rel-risk">
+            {s.riskCategory ? (
+              <span>
+                {humanise(s.riskCategory)}
+                {s.risk !== "Completed" && (
+                  <Badge raw tone="warning" className="ml-2">{s.risk}</Badge>
+                )}
+              </span>
+            ) : (
+              <Badge raw tone="warning">Not completed</Badge>
+            )}
           </Cell>
         )}
         <Cell label="Open tasks" href="#rel-tasks">
@@ -98,14 +131,14 @@ export async function ClientSummaryStrip({
         <Cell label="Open queries" href="#rel-srs">
           {s.openQueries > 0 ? <span className="tabular-nums">{formatCount(s.openQueries)}</span> : <Gap>None open</Gap>}
         </Cell>
-        <Cell label="Pending proposal">
+        <Cell label="Pending proposal" href={s.pendingProposals > 0 ? "/dashboard/proposals" : undefined}>
           {s.pendingProposals > 0
             ? <span className="tabular-nums">
                 {formatCount(s.pendingProposals)}{s.pendingProposalValue > 0 ? ` · ${formatMoney(s.pendingProposalValue)}` : ""}
               </span>
             : <Gap>None awaiting a decision</Gap>}
         </Cell>
-        <Cell label="Insurance">
+        <Cell label="Insurance" href={s.policies > 0 ? `/dashboard/insurance?q=${encodeURIComponent(investorName)}` : undefined}>
           {s.policies > 0
             ? <span>
                 {formatCount(s.policies)} active {s.policies === 1 ? "policy" : "policies"}

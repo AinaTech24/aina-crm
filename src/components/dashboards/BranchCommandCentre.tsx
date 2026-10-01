@@ -244,7 +244,7 @@ export async function BranchCommandCentre({
       )}
 
       {/* ── Row 1 · global filters — sticky under the top bar on desktop ── */}
-      <div className="space-y-2.5 border-b border-border bg-background pb-4 lg:sticky lg:top-16 lg:z-30 lg:pt-3">
+      <div className="dash-toolbar space-y-2.5 border-b border-border bg-background pb-4 lg:sticky lg:top-16 lg:z-30 lg:pt-3">
         {/* Which branch / RM / period, on the right. */}
         <div className="flex flex-wrap items-center justify-start gap-3 sm:justify-end">
           <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">

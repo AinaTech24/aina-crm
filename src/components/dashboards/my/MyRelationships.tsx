@@ -52,7 +52,7 @@ export function MyOpportunities({ items, voice = MY_VOICE }: { items: Opportunit
             <Link
               key={o.key}
               href={o.href}
-              className="flex flex-col rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary/40"
+              className="flex flex-col rounded-lg border border-transparent bg-secondary/70 p-4 transition-colors hover:border-primary/25 hover:bg-accent"
             >
               <div className="flex items-baseline justify-between gap-2">
                 <span className="text-xs font-semibold text-foreground">{o.label}</span>
@@ -259,7 +259,7 @@ export function MyRiskDesk({ data, voice = MY_VOICE, extra }: { data: RiskDesk; 
                   : <span className="text-muted-foreground">—</span>}
               </td>
               <td className="py-2.5">
-                <Link href={`/dashboard/investors/${r.id}`} className="text-xs font-medium text-primary hover:underline">
+                <Link href={`/dashboard/investors/${r.id}`} className="inline-flex min-h-6 items-center text-xs font-medium text-primary hover:underline">
                   {r.status === "Not completed" ? "Send questionnaire" : "Review"}
                 </Link>
               </td>
@@ -289,7 +289,7 @@ export function MyDataQuality({ data, voice = MY_VOICE, extra }: { data: DataQua
       )}
     >
       <div className="flex flex-wrap items-center gap-4">
-        <div className="rounded-lg border border-border bg-card px-4 py-3">
+        <div className="rounded-lg bg-secondary/70 px-4 py-3">
           <div
             className={cn(
               "text-2xl font-semibold leading-none tabular-nums",
@@ -309,12 +309,12 @@ export function MyDataQuality({ data, voice = MY_VOICE, extra }: { data: DataQua
         {required.length === 0 ? (
           <p className="text-xs text-muted-foreground">Every checked field is filled on every client. Nothing to fix.</p>
         ) : (
-          <div className="grid flex-1 grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="dash-stats flex-1" style={{ ["--cols-sm" as string]: Math.min(required.length, 3), ["--cols-lg" as string]: Math.min(required.length, 4) }}>
             {required.map((g) => (
               <Link
                 key={g.key}
                 href={g.href}
-                className="rounded-lg border border-border px-3 py-2 transition-colors hover:border-primary/40 hover:bg-accent"
+                className="rounded-lg border border-transparent bg-secondary/70 px-3 py-2 transition-colors hover:border-primary/25 hover:bg-accent"
               >
                 <div className="text-base font-semibold tabular-nums text-warning-foreground">{formatCount(g.missing)}</div>
                 <div className="text-2xs text-muted-foreground">missing {g.label}</div>
@@ -328,12 +328,12 @@ export function MyDataQuality({ data, voice = MY_VOICE, extra }: { data: DataQua
           <h3 className="mb-2 text-2xs font-semibold text-muted-foreground">
             Optional fields &mdash; for follow-up, not scored
           </h3>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="dash-stats" style={{ ["--cols-sm" as string]: Math.min(optional.length, 3), ["--cols-lg" as string]: Math.min(optional.length, 4) }}>
             {optional.map((g) => (
               <Link
                 key={g.key}
                 href={g.href}
-                className="rounded-lg border border-border px-3 py-2 transition-colors hover:border-primary/40 hover:bg-accent"
+                className="rounded-lg border border-transparent bg-secondary/70 px-3 py-2 transition-colors hover:border-primary/25 hover:bg-accent"
               >
                 <div className="text-base font-semibold tabular-nums text-foreground">{formatCount(g.missing)}</div>
                 <div className="text-2xs text-muted-foreground">{g.label}</div>

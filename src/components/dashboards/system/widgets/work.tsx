@@ -61,23 +61,20 @@ async function needsAttention(tx: Tx, ctx: WidgetCtx) {
   return {
     body: (
       <div className="flex flex-col h-full">
-        <ul className="divide-y divide-border">
+        <ul className="space-y-0.5">
           {rows.map((r) => {
             const [n, ...rest] = r.label.split(" ");
             return (
               <li key={r.key}>
-                <Link href={r.href} className="flex items-center gap-3 py-2.5 group">
-                  <span className={`w-12 text-right text-lg font-semibold tabular-nums ${r.alarm ? "text-rose-700" : "text-foreground"}`}>{n}</span>
-                  <span className="flex-1 text-sm text-foreground">{rest.join(" ")}</span>
-                  <ArrowRight className="size-4 text-muted-foreground group-hover:text-foreground" aria-hidden />
+                <Link href={r.href} className="dash-row group">
+                  <span className={`dash-count ${r.alarm ? "dash-count-alarm" : ""}`}>{n}</span>
+                  <span className="flex-1 text-sm font-medium text-foreground first-letter:uppercase">{rest.join(" ")}</span>
+                  <ArrowRight className="size-4 text-muted-foreground/60 transition-colors group-hover:text-primary" aria-hidden />
                 </Link>
               </li>
             );
           })}
         </ul>
-        <Link href="/dashboard/command-center" className="mt-auto pt-3 text-xs font-medium text-primary hover:underline">
-          See everything in My Day →
-        </Link>
       </div>
     ),
   };

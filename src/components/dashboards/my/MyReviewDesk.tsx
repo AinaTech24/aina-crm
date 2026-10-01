@@ -96,7 +96,7 @@ export function MyReviewDesk({ data }: { data: ReviewDesk }) {
                 <td className="py-2.5">
                   <Link
                     href={`/dashboard/review-meetings/new?investorId=${r.id}&category=review`}
-                    className="text-xs font-medium text-primary hover:underline"
+                    className="inline-flex min-h-6 items-center text-xs font-medium text-primary hover:underline"
                   >
                     {r.nextReview ? "Book" : "Schedule"}
                   </Link>

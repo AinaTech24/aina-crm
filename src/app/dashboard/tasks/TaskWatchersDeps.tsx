@@ -24,11 +24,14 @@ export function TaskWatchersDeps({
   currentUserId,
   initialBlockedById,
   onChanged,
+  showWatchers = true,
 }: {
   taskId: string;
   currentUserId: string;
   initialBlockedById: string | null;
   onChanged?: () => void;
+  /** false = only the "Blocked by" dependency (the task editor's setting). */
+  showWatchers?: boolean;
 }) {
   const toast = useToast();
   const [watchers, setWatchers] = useState<Watcher[]>([]);
@@ -128,7 +131,9 @@ export function TaskWatchersDeps({
 
   return (
     <div className="space-y-4">
-      {/* Watchers */}
+      {/* Watchers — taken off the task editor at the firm's request (2026-10-01);
+          kept behind showWatchers so existing watchers still get notified. */}
+      {showWatchers && (
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <h4 className="text-2xs uppercase font-bold text-muted-foreground flex items-center gap-1.5">
@@ -165,6 +170,7 @@ export function TaskWatchersDeps({
           </div>
         </div>
       </div>
+      )}
 
       {/* Blocked by */}
       <div className="space-y-2" ref={depBox}>

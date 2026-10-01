@@ -7,16 +7,20 @@
  *
  * Bars go UP for money in and DOWN for money out from a zero line, and the net
  * is a line of its own — a redemption is drawn as what it is, not coloured as
- * a failure (§20: "do not label all redemption as negative"). SVG paints are
- * Tailwind classes on currentColor, never hsl(var(--token)), which renders
- * black when it does not resolve.
+ * a failure (§20: "do not label all redemption as negative"). Recharts, like
+ * every other chart on the dashboards; paints are RESOLVED hex from
+ * chart-palette.ts, never hsl(var(--token)), which renders black in an SVG
+ * paint attribute when it does not resolve.
  */
 
 import { useState } from "react";
 import { ArrowLeftRight } from "lucide-react";
+import { Bar, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { FlowByMonth, FlowProduct } from "@/lib/dashboard/my/desk";
+import { CHART, CHART_INK, TOOLTIP_STYLE } from "@/lib/dashboard/chart-palette";
 import { formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { ChartMount } from "../ChartMount";
 
 const PRODUCTS: Array<{ key: FlowProduct; label: string }> = [
   { key: "all_mf", label: "Mutual fund" },
@@ -28,8 +32,6 @@ const PRODUCTS: Array<{ key: FlowProduct; label: string }> = [
   { key: "pms", label: "PMS" },
   { key: "other", label: "Other" },
 ];
-
-const W = 720, H = 200, PAD = { top: 12, right: 10, bottom: 24, left: 10 };
 
 export function FlowChart({ data }: { data: FlowByMonth }) {
   const [product, setProduct] = useState<FlowProduct>("all_mf");
@@ -45,14 +47,9 @@ export function FlowChart({ data }: { data: FlowByMonth }) {
     );
   }
   const s = data.series[product];
-  const nets = s.map((m) => m.purchase - m.redemption);
-  const peak = Math.max(1, ...s.map((m) => Math.max(m.purchase, m.redemption)), ...nets.map(Math.abs));
-  const innerW = W - PAD.left - PAD.right, innerH = H - PAD.top - PAD.bottom;
-  const mid = PAD.top + innerH / 2;
-  const scale = (v: number) => (v / peak) * (innerH / 2);
-  const slot = innerW / 12;
-  const x = (i: number) => PAD.left + slot * i + slot / 2;
-  const netPath = nets.map((v, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${(mid - scale(v)).toFixed(1)}`).join(" ");
+  // Redemption is plotted below the zero line, so it is stored negative here
+  // and shown as the amount it is in the tooltip.
+  const rows = s.map((m, i) => ({ m: data.months![i], purchase: m.purchase, redemption: -m.redemption, net: m.purchase - m.redemption }));
   const sum = (f: { purchase: number; redemption: number }) => ({ gross: f.purchase, red: f.redemption, net: f.purchase - f.redemption });
   const mtd = sum(data.mtd[product]), fytd = sum(data.fytd[product]);
   const empty = s.every((m) => m.purchase === 0 && m.redemption === 0);
@@ -80,7 +77,7 @@ export function FlowChart({ data }: { data: FlowByMonth }) {
       <dl className="mb-3 grid grid-cols-2 gap-2 text-2xs sm:grid-cols-6">
         {([["MTD gross", mtd.gross], ["MTD redemption", mtd.red], ["MTD net", mtd.net],
            ["FYTD gross", fytd.gross], ["FYTD redemption", fytd.red], ["FYTD net", fytd.net]] as const).map(([l, v]) => (
-          <div key={l} className="rounded-lg border border-border px-2.5 py-1.5">
+          <div key={l} className="rounded-lg bg-secondary/70 px-2.5 py-1.5">
             <dt className="text-muted-foreground">{l}</dt>
             <dd className={cn("font-semibold tabular-nums", l.endsWith("net") && v < 0 ? "text-warning-foreground" : "text-foreground")}>{formatMoney(v)}</dd>
           </div>
@@ -88,34 +85,36 @@ export function FlowChart({ data }: { data: FlowByMonth }) {
       </dl>
 
       {empty ? (
-        <p className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-xs text-muted-foreground">
+        <p className="dash-empty">
           No {PRODUCTS.find((p) => p.key === product)?.label} business recorded this financial year.
         </p>
       ) : (
-        <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label="Purchase and redemption by month">
-          <line x1={PAD.left} y1={mid} x2={W - PAD.right} y2={mid} className="stroke-border" strokeWidth={1} />
-          {s.map((m, i) => (
-            <g key={i}>
-              {m.purchase > 0 && (
-                <rect x={x(i) - slot * 0.3} y={mid - scale(m.purchase)} width={slot * 0.28} height={scale(m.purchase)}
-                      className="fill-primary/70"><title>{`${data.months![i]} purchase ${formatMoney(m.purchase)}`}</title></rect>
-              )}
-              {m.redemption > 0 && (
-                <rect x={x(i) + slot * 0.02} y={mid} width={slot * 0.28} height={scale(m.redemption)}
-                      className="fill-muted-foreground/40"><title>{`${data.months![i]} redemption ${formatMoney(m.redemption)}`}</title></rect>
-              )}
-            </g>
-          ))}
-          <path d={netPath} fill="none" className="stroke-foreground/70" strokeWidth={1.5} strokeDasharray="3 3" />
-          {data.months.map((m, i) => (
-            <text key={m} x={x(i)} y={H - 6} textAnchor="middle" className="fill-current text-2xs text-muted-foreground">{m}</text>
-          ))}
-        </svg>
+        <ChartMount className="h-56">
+          <ResponsiveContainer width="100%" height="100%">
+            {/* One stack with a sign offset: purchase rises from the zero line, redemption hangs below it, in the same month slot. */}
+            <ComposedChart data={rows} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} stackOffset="sign">
+              <CartesianGrid stroke={CHART_INK.grid} strokeDasharray="3 4" vertical={false} />
+              <XAxis dataKey="m" tick={{ fontSize: 12, fill: CHART_INK.tick }} tickLine={false} axisLine={false} />
+              <YAxis tick={{ fontSize: 12, fill: CHART_INK.tick }} tickLine={false} axisLine={false} width={76}
+                     tickFormatter={(v: number) => formatMoney(Math.abs(v), { decimals: 1 })} />
+              <ReferenceLine y={0} stroke={CHART_INK.reference} strokeOpacity={0.35} />
+              <Tooltip
+                contentStyle={TOOLTIP_STYLE}
+                cursor={{ fill: CHART_INK.cursor }}
+                formatter={(v, name) => [formatMoney(Math.abs(Number(v))), name === "purchase" ? "Purchase" : name === "redemption" ? "Redemption" : "Net"]}
+              />
+              <Bar dataKey="purchase" name="purchase" stackId="flow" fill={CHART.blue} radius={[4, 4, 0, 0]} maxBarSize={28} isAnimationActive={false} />
+              <Bar dataKey="redemption" name="redemption" stackId="flow" fill={CHART.slate} radius={[0, 0, 4, 4]} maxBarSize={28} isAnimationActive={false} />
+              <Line dataKey="net" name="net" type="monotone" stroke={CHART.ink} strokeWidth={1.5} strokeDasharray="3 3"
+                    dot={false} activeDot={{ r: 3 }} isAnimationActive={false} />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </ChartMount>
       )}
       <p className="mt-2 flex flex-wrap gap-x-4 text-2xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1"><span className="size-2 rounded-sm bg-primary/70" aria-hidden /> Purchase</span>
-        <span className="inline-flex items-center gap-1"><span className="size-2 rounded-sm bg-muted-foreground/40" aria-hidden /> Redemption</span>
-        <span className="inline-flex items-center gap-1"><span className="h-px w-4 border-t border-dashed border-foreground/70" aria-hidden /> Net</span>
+        <span className="inline-flex items-center gap-1"><span className="size-2 rounded-sm" style={{ background: CHART.blue }} aria-hidden /> Purchase</span>
+        <span className="inline-flex items-center gap-1"><span className="size-2 rounded-sm" style={{ background: CHART.slate }} aria-hidden /> Redemption</span>
+        <span className="inline-flex items-center gap-1"><span className="h-px w-4 border-t border-dashed" style={{ borderColor: CHART.ink }} aria-hidden /> Net</span>
         <span>From Business Entries (confirmed and e-mailed); switch and STP count as purchase into the target product.</span>
       </p>
     </section>

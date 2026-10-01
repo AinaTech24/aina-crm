@@ -42,6 +42,9 @@ export const proposals = pgTable(
      */
     recipientType: text("recipient_type", { enum: ["investor", "lead", "family"] }).notNull(),
     investorId: uuid("investor_id").references(() => investors.id),
+    /** The opportunity this proposal answers (migration 0224) — sending or
+     *  accepting it moves that journey: lib/opportunities/journey.ts. */
+    opportunityId: uuid("opportunity_id"),
     leadId: uuid("lead_id").references(() => leads.id),
     familyId: uuid("family_id").references(() => families.id),
     /** Snapshot of recipient details at creation (so doc is immutable). */

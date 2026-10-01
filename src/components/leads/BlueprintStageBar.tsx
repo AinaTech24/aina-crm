@@ -194,7 +194,7 @@ export function BlueprintStageBar({
   if (loading) {
     return (
       <div className="card-surface p-4 text-xs text-muted-foreground flex items-center gap-2">
-        <Loader2 className="size-3.5 animate-spin" /> Loading blueprint…
+        <Loader2 className="size-3.5 animate-spin" /> Loading the journey…
       </div>
     );
   }
@@ -248,8 +248,8 @@ export function BlueprintStageBar({
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <ShieldCheck className="size-4 text-muted-foreground" />
-          <h3 className="font-semibold text-sm">
-            {phase === "client" ? "Client Onboarding" : "Lead Journey"}
+          <h3 className="section-title">
+            {phase === "client" ? "Client onboarding" : "Lead journey"}
           </h3>
           <span className="text-xs text-muted-foreground">
             {leadStillInProgress
@@ -258,17 +258,6 @@ export function BlueprintStageBar({
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {/* Lead score badge — shows how hot the lead is, right where the RM
-              works the journey. Lead phase only (score is a lead-stage signal). */}
-          {phase !== "client" && data?.leadScore != null && (
-            <span
-              className={`chip inline-flex items-center gap-1 text-2xs ${scoreBandClasses(data.scoreBand)}`}
-              title={`Lead score ${data.leadScore}/100${data.scoreBand ? ` · ${data.scoreBand}` : ""}`}
-            >
-              {data.scoreBand === "hot" ? "🔥" : "★"} {data.leadScore}
-              {data.scoreBand ? ` · ${data.scoreBand}` : ""}
-            </span>
-          )}
           {slaTone === "overdue" && (
             <span className="chip bg-destructive/10 text-destructive inline-flex items-center gap-1 text-2xs">
               <AlertTriangle className="size-3" />
@@ -607,11 +596,4 @@ function humaniseDuration(sec: number): string {
   if (sec < 3600) return `${Math.round(sec / 60)}m`;
   if (sec < 86400) return `${(sec / 3600).toFixed(1)}h`;
   return `${(sec / 86400).toFixed(1)}d`;
-}
-
-/** Colour the lead-score chip by band (hot ≥70 / warm ≥40 / cold). */
-function scoreBandClasses(band?: string | null): string {
-  if (band === "hot") return "bg-rose-50 text-rose-700";
-  if (band === "warm") return "bg-amber-50 text-amber-700";
-  return "bg-secondary text-muted-foreground";
 }

@@ -14,10 +14,14 @@ export function DiscoveryEditor({
   id,
   initialData,
   status,
+  subjectType,
+  subjectId,
 }: {
   id: string;
   initialData: DiscoveryData;
   status: string;
+  subjectType?: string;
+  subjectId?: string;
 }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
@@ -87,6 +91,7 @@ export function DiscoveryEditor({
 
       <DiscoveryForm
         initialData={initialData}
+        subject={subjectType && subjectId ? { type: subjectType, id: subjectId } : undefined}
         onSave={(d) => { (window as any).__discoveryData = d; save(d); }}
         onSubmit={(d) => save(d, { markReviewed: true })}
         submitLabel="Mark reviewed"

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { IndianRupee, Loader2, TrendingUp } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/Dialog";
 
 const OUTCOMES = [
   ["aum_protected", "AUM protected"],
@@ -22,8 +23,15 @@ const SOURCES = [
   ["manual", "Manual follow-up"],
 ] as const;
 
-export function RecordBusinessImpact({ investorId }: { investorId: string }) {
+export function RecordBusinessImpact({
+  investorId, triggerClassName,
+}: {
+  investorId: string;
+  /** Replaces the trigger's look — a record menu passes its row class. */
+  triggerClassName?: string;
+}) {
   const toast = useToast();
+  const [open, setOpen] = useState(false);
   const [outcome, setOutcome] = useState<(typeof OUTCOMES)[number][0]>("aum_protected");
   const [sourceType, setSourceType] = useState<(typeof SOURCES)[number][0]>("next_best_action");
   const [amount, setAmount] = useState(0);
@@ -45,6 +53,7 @@ export function RecordBusinessImpact({ investorId }: { investorId: string }) {
       setAmount(0);
       setMonthlySipAmount(0);
       setNote("");
+      setOpen(false);
       toast.success("Business impact recorded", "It is now included in the impact-attribution report.");
     } catch (error) {
       toast.error("Could not record impact", error instanceof Error ? error.message : "Please try again.");
@@ -54,10 +63,16 @@ export function RecordBusinessImpact({ investorId }: { investorId: string }) {
   }
 
   return (
-    <details className="relative">
-      <summary className="btn-secondary cursor-pointer list-none text-xs"><TrendingUp className="size-3.5" /> Record outcome</summary>
-      <form onSubmit={submit} className="absolute right-0 top-full z-40 mt-2 w-[22rem] space-y-3 rounded-lg border bg-popover p-4 text-popover-foreground shadow-lg">
-        <div><div className="text-sm font-semibold">Record measurable impact</div><p className="mt-0.5 text-xs text-muted-foreground">Connect the team&apos;s action to retained or generated business.</p></div>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger className={triggerClassName ?? "btn-secondary text-xs"}>
+        <TrendingUp className="size-4 shrink-0 text-muted-foreground" /> Record business outcome
+      </DialogTrigger>
+      <DialogContent className="max-w-md">
+      <form onSubmit={submit} className="space-y-3">
+        <DialogHeader>
+          <DialogTitle>Record a business outcome</DialogTitle>
+          <DialogDescription>Link the team&apos;s action to the business it kept or brought in.</DialogDescription>
+        </DialogHeader>
         <div className="grid grid-cols-2 gap-2">
           <label className="text-xs font-medium">Outcome<select value={outcome} onChange={(event) => setOutcome(event.target.value as typeof outcome)} className="input-base mt-1 w-full text-xs">{OUTCOMES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label className="text-xs font-medium">Source<select value={sourceType} onChange={(event) => setSourceType(event.target.value as typeof sourceType)} className="input-base mt-1 w-full text-xs">{SOURCES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
@@ -65,9 +80,10 @@ export function RecordBusinessImpact({ investorId }: { investorId: string }) {
           <label className="text-xs font-medium">Monthly SIP<input type="number" min={0} value={monthlySipAmount || ""} onChange={(event) => setMonthlySipAmount(Number(event.target.value))} className="input-base mt-1 w-full text-xs" placeholder="₹ / month" /></label>
         </div>
         <label className="block text-xs font-medium">Evidence / note<textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={1000} rows={2} className="input-base mt-1 w-full resize-y text-xs" /></label>
-        <button type="submit" disabled={busy || (amount <= 0 && monthlySipAmount <= 0)} className="btn-primary w-full justify-center text-xs disabled:opacity-50">{busy ? <Loader2 className="size-3.5 animate-spin" /> : <IndianRupee className="size-3.5" />} Save impact</button>
+        <button type="submit" disabled={busy || (amount <= 0 && monthlySipAmount <= 0)} className="btn-primary w-full justify-center text-xs disabled:opacity-50">{busy ? <Loader2 className="size-3.5 animate-spin" /> : <IndianRupee className="size-3.5" />} Save outcome</button>
       </form>
-    </details>
+      </DialogContent>
+    </Dialog>
   );
 }
 

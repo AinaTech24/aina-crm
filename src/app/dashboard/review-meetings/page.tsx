@@ -1,6 +1,7 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
+import { attendeeIsAnyUser } from "@/lib/review-meetings/attendees";
 import { Calendar, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -114,8 +115,9 @@ export default async function ReviewMeetingsPage({
       );
     }
     if (rmFilter.length) {
+      // A person's meetings are the ones they own AND the ones they attend.
       filters.push(
-        sql`m.rm_id IN (${sql.join(rmFilter.map((v) => sql`${v}::uuid`), sql`, `)})`
+        sql`(m.rm_id IN (${sql.join(rmFilter.map((v) => sql`${v}::uuid`), sql`, `)}) OR ${attendeeIsAnyUser(rmFilter)})`
       );
     }
     const dr = dateRangeCond(sp, "meeting", "m.meeting_date");

@@ -28,7 +28,7 @@ function Side({ title, hint, backlog, cohort }: {
     ["Overdue", backlog.overdue, backlog.overdue > 0 ? "bad" : "neutral"],
   ];
   return (
-    <div className="rounded-lg border border-border p-3">
+    <div className="rounded-lg bg-secondary/70 p-3">
       <div className="flex items-baseline justify-between gap-2">
         <h4 className="text-xs font-semibold text-foreground">{title}</h4>
         <span className="text-sm font-semibold tabular-nums"
@@ -38,7 +38,9 @@ function Side({ title, hint, backlog, cohort }: {
         </span>
       </div>
       <p className="mt-0.5 text-2xs text-muted-foreground">{hint}</p>
-      <dl className="mt-2.5 grid grid-cols-5 gap-2 text-2xs">
+      {/* Five counts in three columns on a phone; side by side they ran into
+          each other ("CompletedPending"). */}
+      <dl className="mt-2.5 grid grid-cols-3 gap-2 text-2xs sm:grid-cols-5">
         {cells.map(([label, value, tone]) => (
           <div key={label}>
             <dt className="text-muted-foreground">{label}</dt>

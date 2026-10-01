@@ -25,6 +25,8 @@ export type ClientSummary = {
   lastMeeting: string | null;
   nextReview: string | null;
   risk: "Completed" | "Provisional" | "Due for review" | "Not completed";
+  /** The profile itself — conservative / moderate / aggressive — when one is on file. */
+  riskCategory: string | null;
   riskSigned: string | null;
   openTasks: number;
   openQueries: number;
@@ -92,6 +94,7 @@ export async function loadClientSummary(tx: Tx, tenantId: string, investorId: st
     lastMeeting: str(r.last_meeting),
     nextReview: str(r.next_review_at),
     risk,
+    riskCategory: str(r.risk_profile),
     riskSigned: signed,
     openTasks: num(r.open_tasks),
     openQueries: num(r.open_queries),

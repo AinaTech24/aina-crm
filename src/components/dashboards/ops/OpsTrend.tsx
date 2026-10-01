@@ -6,6 +6,7 @@
  * always "number of requests"; nothing in rupees ever shares it.
  */
 
+import { TrendingUp } from "lucide-react";
 import { useState } from "react";
 import type { TrendPoint } from "@/lib/dashboard/ops/flow";
 import { formatCount } from "@/lib/format";
@@ -28,7 +29,7 @@ export function OpsTrend({ points }: { points: TrendPoint[] }) {
     <section className="card-surface p-5 sm:p-6" aria-label="Operations trend">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3 border-b border-border/60 pb-3">
         <div>
-          <h2 className="section-title">Operations trend</h2>
+          <h2 className="section-title flex items-center gap-2"><TrendingUp className="size-4 shrink-0 text-muted-foreground" aria-hidden /> Operations trend</h2>
           <p className="section-subtitle mt-1">Month by month this financial year.</p>
         </div>
         <div className="flex flex-wrap gap-1" role="group" aria-label="Metric">
@@ -42,7 +43,7 @@ export function OpsTrend({ points }: { points: TrendPoint[] }) {
         </div>
       </div>
       {!any ? (
-        <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-xs text-muted-foreground">
+        <p className="dash-empty">
           Nothing recorded for {m.label.toLowerCase()} this financial year.
         </p>
       ) : (

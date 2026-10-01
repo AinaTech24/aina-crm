@@ -14,7 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3, Building2, Package, LifeBuoy, Settings, Users as UsersIcon,
-  Activity, Image as ImageIcon, Bot, PieChart, ChevronUp, LogOut,
+  Activity, Bot, PieChart, ChevronUp, LogOut,
   Loader2, ShieldCheck, RefreshCw, Mail, SlidersHorizontal, ServerCog,
   LayoutTemplate, Inbox, BookOpen, MailSearch,
 } from "lucide-react";
@@ -30,7 +30,6 @@ const NAV: NavItem[] = [
   { href: "/super-admin/landing-packages", label: "Landing packages", icon: LayoutTemplate },
   { href: "/super-admin/kb-articles", label: "Knowledge Base", icon: BookOpen },
   { href: "/super-admin/subscriptions", label: "Subscriptions", icon: Activity },
-  { href: "/super-admin/content-library", label: "Content Library", icon: ImageIcon },
   { href: "/super-admin/support", label: "Support tickets", icon: LifeBuoy },
   { href: "/super-admin/users", label: "Admins", icon: UsersIcon },
   { href: "/super-admin/ai", label: "AI & Models", icon: Bot },

@@ -51,7 +51,7 @@ export function InsMix({ rows, periodLabel, hrefs, lockedLine }: {
               </div>
             </div>
             {xs.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-xs text-muted-foreground">No {l.label.replace(" product mix", "")} business in {periodLabel}.</p>
+              <p className="dash-empty">No {l.label.replace(" product mix", "")} business in {periodLabel}.</p>
             ) : (
               <div className="space-y-1">
                 <div className="flex items-center gap-2 pb-1 text-2xs font-semibold text-muted-foreground">

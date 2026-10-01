@@ -8,6 +8,7 @@
 
 import Link from "next/link";
 import { sql } from "drizzle-orm";
+import { ArrowRight } from "lucide-react";
 import type { Tx } from "@/db/client";
 import {
   getInsuranceInForce, getInsurancePremium, getRenewalsDue, getExpiryPipeline, getComplianceGaps,
@@ -30,14 +31,14 @@ function Stat({ label, value, href, alarm = false, sub }: { label: string; value
   const inner = (
     <>
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={`text-lg font-semibold tabular-nums ${alarm ? "text-rose-700" : "text-foreground"}`}>{value}</div>
+      <div className={`text-xl font-semibold tabular-nums tracking-tight ${alarm ? "text-rose-700" : "text-foreground"}`}>{value}</div>
       {sub && <div className="text-xs text-muted-foreground">{sub}</div>}
     </>
   );
   return href ? (
-    <Link href={href} className="block rounded-lg border border-border px-3 py-2 hover:bg-secondary">{inner}</Link>
+    <Link href={href} className="dash-tile">{inner}</Link>
   ) : (
-    <div className="rounded-lg border border-border px-3 py-2">{inner}</div>
+    <div className="dash-tile">{inner}</div>
   );
 }
 
@@ -213,12 +214,13 @@ async function complianceGaps(tx: Tx, ctx: WidgetCtx) {
   if (!gaps.length) return { body: null };
   return {
     body: (
-      <ul className="divide-y divide-border">
+      <ul className="space-y-0.5">
         {gaps.map((g) => (
           <li key={g.key}>
-            <Link href={g.href} className="flex items-center gap-3 py-2.5 group">
-              <span className="w-14 text-right text-lg font-semibold tabular-nums">{formatCount(g.count)}</span>
-              <span className="flex-1 text-sm group-hover:underline">{g.label}</span>
+            <Link href={g.href} className="dash-row group">
+              <span className="dash-count">{formatCount(g.count)}</span>
+              <span className="flex-1 text-sm font-medium text-foreground">{g.label}</span>
+              <ArrowRight className="size-4 text-muted-foreground/60 transition-colors group-hover:text-primary" aria-hidden />
             </Link>
           </li>
         ))}

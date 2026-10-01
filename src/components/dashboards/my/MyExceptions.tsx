@@ -91,7 +91,8 @@ export function MySipHealth({ data, periodLabel }: { data: SipHealth; periodLabe
               <Num>{formatMoney(r.amount)}</Num>
               <td className="py-2.5 text-xs">{r.rejectedOn ? formatDate(r.rejectedOn) : "—"}</td>
               <td className="py-2.5 text-xs">
-                {r.reason ? humanise(r.reason) : <span className="text-muted-foreground" title="The feed carried no reason code.">Not recorded</span>}
+                {/* The one long text in the row wraps, so the Action column stays on screen. */}
+                {r.reason ? <span className="block max-w-56 whitespace-normal leading-snug">{humanise(r.reason)}</span> : <span className="text-muted-foreground" title="The feed carried no reason code.">Not recorded</span>}
               </td>
               <td className="py-2.5">
                 <span
@@ -121,7 +122,7 @@ export function MySipHealth({ data, periodLabel }: { data: SipHealth; periodLabe
                 <span className="flex items-center justify-end gap-1">
                   <ContactQuickActions phone={r.phone} email={r.email} show={["call", "whatsapp"]} />
                   <Link href={`/dashboard/sip-rejections?q=${encodeURIComponent(r.client)}`}
-                        className="whitespace-nowrap text-xs font-medium text-primary hover:underline">Update</Link>
+                        className="inline-flex min-h-6 items-center whitespace-nowrap text-xs font-medium text-primary hover:underline">Update</Link>
                 </span>
               </td>
             </tr>

@@ -49,35 +49,32 @@ import { loadDashboardThresholds, type DashboardThresholds } from "@/lib/dashboa
 import { clientIds, clientsWhere, loadBookTargets, num, type BookScope, type ClientFilter, type MyWindow } from "@/lib/dashboard/my/window";
 import { buildBookWindow } from "@/lib/dashboard/my/build-window";
 import { loadMonthlySummary, loadMyKpis, loadMyTrend, loadTargetMeters, monthLabels, phaseFraction } from "@/lib/dashboard/my/kpis";
-import {
-  loadClientBook, loadContactGap, loadDataQuality, loadKeyClients, loadOpportunities, loadReviewDesk,
-  loadRiskDesk, type KeyClientSort,
-} from "@/lib/dashboard/my/clients";
+import { loadClientBook, loadDataQuality, loadReviewDesk, loadRiskDesk } from "@/lib/dashboard/my/clients";
 import {
   loadInsuranceView, loadLeadFunnel, loadMeetingDesk, loadMyQueries, loadMyTasks, loadProposalDesk,
   loadRedemptionWatch, loadSipHealth,
 } from "@/lib/dashboard/my/pipeline";
 import {
   addDaysISO, loadFlowByMonth, loadLeadActions, loadMeetingPrep, loadMyDay, loadOnboarding, loadOverdue,
-  loadSipDebitHealth, loadSourceAnalysis, loadTodayProgress, loadUpcoming, loadWorklist,
+  loadTodayProgress, loadUpcoming, loadWorklist,
   type MyDay, type WorkItem,
 } from "@/lib/dashboard/my/desk";
-import { buildFyScorecard, loadReviewMode, loadWindowMetrics } from "@/lib/dashboard/branch/sections";
+import { buildFyScorecard, loadWindowMetrics } from "@/lib/dashboard/branch/sections";
 import { runLimit } from "@/lib/dashboard/run-limit";
 import { cn } from "@/lib/utils";
 
 import {
-  MyClientBook, MyContactGap, MyDataQuality, MyInsurance, MyKeyClients, MyKpiStrip, MyMonthlySummary,
-  MyOpportunities, MyQueryPanel, MyRiskDesk, MySipHealth, MyTrendChart, QuickActions,
+  MyClientBook, MyDataQuality, MyInsurance, MyKpiStrip, MyMonthlySummary,
+  MyQueryPanel, MyRiskDesk, MySipHealth, MyTrendChart, QuickActions,
 } from "./my";
 import { MY_VOICE } from "./my/voice";
 import {
   BranchFunnel, BranchProposals, BranchRedemptions, BranchReviews, BranchTargets, FyScorecard, HV_PRESETS,
-  ReviewModePanel, type Horizon,
+  type Horizon,
 } from "./branch";
 import {
   DeskFilters, DeskMeetings, DeskTasks, FlowChart, LeadsNeedingAction, MorningBrief, MyDayPanel,
-  NeedsMyAttention, OnboardingPipeline, SipDebitCheck, SourceAnalysis, UpcomingWeek, Worklist,
+  NeedsMyAttention, OnboardingPipeline, UpcomingWeek,
 } from "./desk";
 import { ParamSelect } from "./branch/ParamSelect";
 
@@ -105,11 +102,7 @@ function Loading({ order, wide = true }: { order: OrderKey; wide?: boolean }) {
 type Tx = Parameters<Parameters<typeof withTenant>[1]>[0];
 type Run = <T>(fn: (tx: Tx) => Promise<T>) => Promise<T>;
 
-const KEY_SORTS: KeyClientSort[] = ["aum", "sip", "interaction", "review", "category"];
 const UUID = /^[0-9a-f-]{36}$/i;
-
-/** An href ready for one more `key=value`: the page may have no query string yet. */
-const paramBase = (href: string) => `${href}${href.includes("?") ? "&" : "?"}`;
 
 /** The client filters in the URL, validated — anything unrecognised is dropped. */
 function parseClientFilter(sp: Record<string, string | string[] | undefined>, fyStart: string): ClientFilter | undefined {
@@ -225,16 +218,12 @@ export async function MyBusinessDashboard({
     ? phaseFraction(since, w.today, w.fyStart, "linear")
     : horizon === "fytd" ? 1 : null;
   const monthPhase = t.targetPhasing === "linear" ? phaseFraction(`${w.today.slice(0, 8)}01`, w.today, w.fyStart, "linear") : null;
-  const reviewMode = sp.review === "weekly" || sp.review === "monthly" ? sp.review : null;
   const hvNum = Number(sp.hv);
   const highValue = Number.isFinite(hvNum) && hvNum >= 10_000 && hvNum <= 1e10 ? Math.round(hvNum) : t.largeRedemptionAbsolute;
-  const keySort: KeyClientSort = KEY_SORTS.includes(sp.myclients as KeyClientSort) ? (sp.myclients as KeyClientSort) : "aum";
   const staffIds = w.staff.join(",");
 
   const perms = {
     complete: can(session.roles, "task.edit.assigned", session.permissions) || can(session.roles, "task.edit.all", session.permissions),
-    note: can(session.roles, "investor.note.add", session.permissions) || can(session.roles, "lead.edit.assigned", session.permissions),
-    schedule: can(session.roles, "review_meeting.manage.assigned", session.permissions) || can(session.roles, "review_meeting.manage.all", session.permissions),
   };
 
   // Loaded ONCE and shared: the morning brief reads My Day and the worklist.
@@ -262,7 +251,7 @@ export async function MyBusinessDashboard({
     const v = typeof sp[k] === "string" ? (sp[k] as string) : "";
     if (v) filters.push({ params: [k], label: names[k], value: label[k](v) });
   }
-  const touched = ["period", "day", "eod", "tgt", "review", "hv", "myclients", ...Object.keys(names)]
+  const touched = ["period", "day", "eod", "tgt", "hv", ...Object.keys(names)]
     .some((k) => typeof sp[k] === "string" && sp[k] !== "");
 
   return (
@@ -270,7 +259,7 @@ export async function MyBusinessDashboard({
       {/* ── One row: actions · period · Filters — sticky under the top bar on
           desktop. The client filters fold behind "Filters"; whatever is
           applied still shows as chips below. ── */}
-      <div className="space-y-2.5 border-b border-border bg-background pb-3 lg:sticky lg:top-16 lg:z-30 lg:pt-3">
+      <div className="dash-toolbar space-y-2.5 border-b border-border bg-background pb-3 lg:sticky lg:top-16 lg:z-30 lg:pt-3">
         <FilterDisclosure
           keys={["cat", "ctype", "cnew", "cstatus", "city", "src", "fam"]}
           start={<QuickActions session={session} />}
@@ -302,14 +291,13 @@ export async function MyBusinessDashboard({
           resetHref={basePath}
           showReset={touched}
         />
-        <nav aria-label="Jump to section" className="flex flex-wrap items-center gap-x-1 text-2xs">
+        <nav aria-label="Jump to section" className="dash-nav -mx-1 px-1">
           {([
-            ["my-day", "My Day"], ["attention", "Needs attention"], ["worklist", "Worklist"], ["meetings", "Meetings"],
+            ["my-day", "My Day"], ["attention", "Needs attention"], ["meetings", "Meetings"],
             ["reviews", "Reviews"], ["leads", "Leads"], ["sip", "SIP"], ["tasks", "Tasks & service requests"],
-            ["relationships", "Relationships"], ["scorecards", "Scorecards"], ["fy", "FY performance"],
+            ["insurance", "Insurance & risk"], ["month-on-month", "Month on month"], ["fy", "FY performance"],
           ] as const).map(([id, l]) => (
-            <a key={id} href={`#${id}`}
-               className="inline-flex min-h-6 items-center rounded px-1.5 text-muted-foreground hover:bg-accent hover:text-primary">{l}</a>
+            <a key={id} href={`#${id}`}>{l}</a>
           ))}
         </nav>
       </div>
@@ -347,10 +335,10 @@ export async function MyBusinessDashboard({
             hrefs={{ wtd: hrefWith({ tgt: "wtd" }, "#targets"), mtd: hrefWith({ tgt: null }, "#targets"), fytd: hrefWith({ tgt: "fytd" }, "#targets") }} />
         </Suspense>
 
-        {/* Row 6 · §5 worklist + §6 upcoming 7 days */}
+        {/* Row 6 · §6 upcoming 7 days. The §5 worklist table was removed at the
+            firm's request on 2026-10-01; the morning brief still shows its head. */}
         <Suspense fallback={<Loading order="work" />}>
-          <WorkBand workP={workP} run={run} w={w} dayWord={actionDay === w.today ? "today" : "tomorrow"}
-            perms={perms} firstName={firstName} />
+          <UpcomingBand run={run} w={w} />
         </Suspense>
 
         {/* Row 7 · §7–8 meetings + §9 reviews */}
@@ -358,9 +346,9 @@ export async function MyBusinessDashboard({
           <MeetingsBand run={run} w={w} periodLabel={periodLabel} staffIds={staffIds} monthPhase={monthPhase} />
         </Suspense>
 
-        {/* Row 8 · §10 client book + §12 contact health, then key clients */}
+        {/* Row 8 · §10 client book */}
         <Suspense fallback={<Loading order="rest" />}>
-          <BookBand run={run} w={w} keySort={keySort} keyBaseHref={paramBase(hrefWith({ myclients: null }))} />
+          <BookBand run={run} w={w} />
         </Suspense>
 
         {/* Row 9 · §13–14 leads + §15–16 proposals */}
@@ -368,9 +356,9 @@ export async function MyBusinessDashboard({
           <LeadsBand run={run} w={w} t={t} periodLabel={periodLabel} />
         </Suspense>
 
-        {/* Row 10 · §17–18 SIP health + §19 debit check */}
+        {/* Row 10 · §17–18 SIP health */}
         <Suspense fallback={<Loading order="sip" />}>
-          <SipBand run={run} w={w} periodLabel={periodLabel} tenantId={session.tenantId} />
+          <SipBand run={run} w={w} periodLabel={periodLabel} />
         </Suspense>
 
         {/* Row 11 · trend, §21 investment flow + §20 redemption watch */}
@@ -385,24 +373,19 @@ export async function MyBusinessDashboard({
           <TasksBand run={run} w={w} periodLabel={periodLabel} staffIds={staffIds} canComplete={perms.complete} />
         </Suspense>
 
-        {/* Row 13 · §22 relationships + §23 insurance; Row 14 · §26 risk + §27 data */}
+        {/* Row 13 · §23 insurance + §26 risk; Row 14 · §27 data */}
         <Suspense fallback={<Loading order="rest" />}>
           <RelationshipBand run={run} w={w} />
         </Suspense>
 
-        {/* §28 onboarding + §29 sources */}
+        {/* §28 onboarding */}
         <Suspense fallback={<Loading order="rest" />}>
-          <OnboardingBand run={run} w={w} periodLabel={periodLabel} />
+          <OnboardingBand run={run} w={w} />
         </Suspense>
 
-        {/* Row 15 · §30–31 scorecards + §33 month on month */}
+        {/* Row 15 · §33 month on month */}
         <Suspense fallback={<Loading order="rest" />}>
-          <ScorecardBand run={run} w={w} t={t} mode={reviewMode} now={now}
-            hrefs={{
-              weekly: hrefWith({ review: "weekly" }, "#review-mode"),
-              monthly: hrefWith({ review: "monthly" }, "#review-mode"),
-              off: hrefWith({ review: null }, "#scorecards"),
-            }} />
+          <MonthBand run={run} w={w} />
         </Suspense>
 
         {/* Row 16 · §32 FY performance */}
@@ -481,24 +464,11 @@ async function TargetsBand({
   );
 }
 
-async function WorkBand({
-  workP, run, w, dayWord, perms, firstName,
-}: {
-  workP: Promise<{ items: WorkItem[]; truncated: boolean }>; run: Run; w: MyWindow; dayWord: "today" | "tomorrow";
-  perms: { complete: boolean; note: boolean; schedule: boolean }; firstName: string;
-}) {
-  const [work, upcoming] = [await workP, await run((tx) => loadUpcoming(tx, w, 7))];
+async function UpcomingBand({ run, w }: { run: Run; w: MyWindow }) {
+  const upcoming = await run((tx) => loadUpcoming(tx, w, 7));
   return (
-    <Cell order="work" id="worklist">
-      <div className="grid items-start gap-6 2xl:grid-cols-3">
-        <div className="min-w-0 2xl:col-span-2">
-          <Worklist items={work.items} truncated={work.truncated} dayWord={dayWord}
-            canComplete={perms.complete} canNote={perms.note} canSchedule={perms.schedule} firstName={firstName} />
-        </div>
-        <div className="min-w-0">
-          <UpcomingWeek items={upcoming} today={w.today} />
-        </div>
-      </div>
+    <Cell order="work" id="upcoming">
+      <UpcomingWeek items={upcoming} today={w.today} />
     </Cell>
   );
 }
@@ -533,28 +503,12 @@ async function MeetingsBand({
   );
 }
 
-async function BookBand({
-  run, w, keySort, keyBaseHref,
-}: {
-  run: Run; w: MyWindow; keySort: KeyClientSort; keyBaseHref: string;
-}) {
-  const [book, contact, clients] = await run(async (tx) => [
-    await loadClientBook(tx, w),
-    await loadContactGap(tx, w),
-    await loadKeyClients(tx, w, keySort),
-  ] as const);
+async function BookBand({ run, w }: { run: Run; w: MyWindow }) {
+  const book = await run((tx) => loadClientBook(tx, w));
   return (
-    <>
-      <Cell order="rest" wide={false} id="client-book">
-        <MyClientBook book={book} voice={MY_VOICE} />
-      </Cell>
-      <Cell order="rest" wide={false}>
-        <MyContactGap data={contact} voice={MY_VOICE} />
-      </Cell>
-      <Cell order="rest">
-        <MyKeyClients clients={clients} sort={keySort} baseHref={keyBaseHref} today={w.today} voice={MY_VOICE} />
-      </Cell>
-    </>
+    <Cell order="rest" id="client-book">
+      <MyClientBook book={book} voice={MY_VOICE} />
+    </Cell>
   );
 }
 
@@ -580,20 +534,12 @@ async function LeadsBand({ run, w, t, periodLabel }: { run: Run; w: MyWindow; t:
   );
 }
 
-async function SipBand({ run, w, periodLabel, tenantId }: { run: Run; w: MyWindow; periodLabel: string; tenantId: string }) {
-  const [sip, debit] = await run(async (tx) => [
-    await loadSipHealth(tx, w),
-    await loadSipDebitHealth(tx, w, tenantId),
-  ] as const);
+async function SipBand({ run, w, periodLabel }: { run: Run; w: MyWindow; periodLabel: string }) {
+  const sip = await run((tx) => loadSipHealth(tx, w));
   return (
-    <>
-      <Cell order="sip" wide={false} id="sip">
-        <MySipHealth data={sip} periodLabel={periodLabel} />
-      </Cell>
-      <Cell order="sip" wide={false}>
-        <SipDebitCheck data={debit} />
-      </Cell>
-    </>
+    <Cell order="sip" id="sip">
+      <MySipHealth data={sip} periodLabel={periodLabel} />
+    </Cell>
   );
 }
 
@@ -646,71 +592,42 @@ async function TasksBand({
 }
 
 async function RelationshipBand({ run, w }: { run: Run; w: MyWindow }) {
-  const [opps, insurance, risk, quality] = await run(async (tx) => [
-    await loadOpportunities(tx, w),
+  const [insurance, risk, quality] = await run(async (tx) => [
     await loadInsuranceView(tx, w),
     await loadRiskDesk(tx, w),
     await loadDataQuality(tx, w),
   ] as const);
   return (
     <>
-      <Cell order="rest" wide={false} id="relationships">
-        <MyOpportunities items={opps} voice={MY_VOICE} />
-      </Cell>
-      <Cell order="rest" wide={false}>
+      <Cell order="rest" wide={false} id="insurance">
         <MyInsurance data={insurance} />
       </Cell>
       <Cell order="rest" wide={false}>
         <MyRiskDesk data={risk} voice={MY_VOICE} />
       </Cell>
-      <Cell order="rest" wide={false}>
+      <Cell order="rest">
         <MyDataQuality data={quality} voice={MY_VOICE} />
       </Cell>
     </>
   );
 }
 
-async function OnboardingBand({ run, w, periodLabel }: { run: Run; w: MyWindow; periodLabel: string }) {
-  const [onboarding, sources] = await run(async (tx) => [
-    await loadOnboarding(tx, w),
-    await loadSourceAnalysis(tx, w),
-  ] as const);
+async function OnboardingBand({ run, w }: { run: Run; w: MyWindow }) {
+  const onboarding = await run((tx) => loadOnboarding(tx, w));
   return (
-    <>
-      <Cell order="rest">
-        <OnboardingPipeline data={onboarding} fyLabel={w.fiscalYear} />
-      </Cell>
-      <Cell order="rest">
-        <SourceAnalysis rows={sources} periodLabel={periodLabel} />
-      </Cell>
-    </>
+    <Cell order="rest">
+      <OnboardingPipeline data={onboarding} fyLabel={w.fiscalYear} />
+    </Cell>
   );
 }
 
-async function ScorecardBand({
-  run, w, t, mode, hrefs, now,
-}: {
-  run: Run; w: MyWindow; t: DashboardThresholds; mode: "weekly" | "monthly" | null;
-  hrefs: { weekly: string; monthly: string; off: string }; now: Date;
-}) {
-  const [review, months] = await run(async (tx) => {
-    const targetOf = await loadBookTargets(tx, w);
-    return [
-      mode ? await loadReviewMode(tx, w, mode, targetOf, t.targetPhasing) : null,
-      await loadMonthlySummary(tx, w),
-    ] as const;
-  });
+async function MonthBand({ run, w }: { run: Run; w: MyWindow }) {
+  const months = await run((tx) => loadMonthlySummary(tx, w));
   const { monthLabel, prevMonthLabel } = monthLabels(w.to);
   return (
-    <>
-      <Cell order="rest" id="scorecards">
-        <ReviewModePanel data={review} hrefs={hrefs} phasing={t.targetPhasing} personal
-          balanceRows={months.filter((m) => m.key === "aum" || m.key === "sip_book")} />
-      </Cell>
-      <Cell order="rest">
-        <MyMonthlySummary rows={months} monthLabel={monthLabel} prevLabel={prevMonthLabel} />
-      </Cell>
-    </>
+    <Cell order="rest" id="month-on-month">
+      <MyMonthlySummary rows={months} monthLabel={monthLabel} prevLabel={prevMonthLabel} />
+    </Cell>
   );
 }
 

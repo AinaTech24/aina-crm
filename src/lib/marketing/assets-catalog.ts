@@ -57,7 +57,7 @@ export const MARKETING_ASSETS: AssetGroup[] = [
       { title: "FIRE / financial-freedom calculator", href: "/dashboard/calculators" },
       { title: "Investment portfolio review template", href: "/dashboard/review-meetings" },
       { title: "Insurance portfolio review template", href: "/dashboard/insurance" },
-      { title: "Educational images / videos / write-ups", href: "/dashboard/aina-library" },
+      { title: "Educational images / videos / write-ups" },
     ],
   },
   {

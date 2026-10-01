@@ -10,11 +10,11 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { Info } from "lucide-react";
+import { ArrowDownRight, ArrowRight, ArrowUpRight, Info, Minus, Repeat, Shield, TrendingUp, UserPlus, Users, Wallet } from "lucide-react";
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import {
-  getAUM, getSipBook, getNetBusiness, getNewClients, getInsurancePremium, getStockMonthAgo, getTarget,
+  getAUM, getSipBook, getNetBusiness, getNewClients, getInsurancePremium, getStockMonthAgo, getStockHistory, getTarget,
   getBookByRm, getBookByBranch, getSipBookByRm, getNetBusinessByRm, getNetBusinessByBranch,
   getNewClientsByRm, getNewClientsByBranch, getOverdueTasksByAssignee, getTargetsByUser, getTargetsByBranch,
   getMonthlyFlows, getLedgerCoverage, clientWhere, sipMonthlySql, targetPct, getActiveClients,
@@ -25,10 +25,12 @@ import type { WidgetCtx, WidgetImpl } from "../types";
 import { clientsHref, newClientsHref, qs, sipsHref, tasksHref, transactionsHref } from "../links";
 import { Drill } from "../Drill";
 import { MoneyMovementChart, type MoneyPoint } from "../MoneyMovementChart";
+import { Sparkline } from "../Sparkline";
+import { Initials } from "@/components/dashboards/my/Shared";
 
 /* ─────────────────────────────── pieces ─────────────────────────────── */
 
-/** "↗ 4.3%" — green only when up; a fall is not an alarm (D6: colour is a signal). */
+/** "↗ 4.3%" as a pill — green only when up; a fall is not an alarm (D6: colour is a signal). */
 function Change({ cur, prev, inverse = false }: { cur: number; prev: number | null | undefined; inverse?: boolean }) {
   if (prev == null || !Number.isFinite(prev) || prev === 0) return null;
   const pct = ((cur - prev) / Math.abs(prev)) * 100;
@@ -36,18 +38,25 @@ function Change({ cur, prev, inverse = false }: { cur: number; prev: number | nu
   const up = pct > 0.05;
   const down = pct < -0.05;
   const good = inverse ? down : up;
+  const Icon = up ? ArrowUpRight : down ? ArrowDownRight : Minus;
   return (
-    <span className={`tabular-nums font-medium ${good ? "text-emerald-700" : "text-muted-foreground"}`}>
-      {up ? "↗" : down ? "↘" : "→"} {Math.abs(pct).toFixed(1)}%
+    <span className={`dash-delta ${good ? "dash-delta-good" : ""}`}>
+      <Icon className="size-3.5" aria-hidden />
+      {Math.abs(pct).toFixed(1)}%
     </span>
   );
 }
 
+/** The hue of a tile's icon chip — the same set the RM and Branch Head tiles use. */
+type KpiHue = "indigo" | "violet" | "emerald" | "cyan" | "amber" | "rose";
+
 function KpiTile({
-  label, value, href, info, compare, footer, empty, when,
+  label, value, unit, href, info, compare, footer, empty, when, icon, hue = "indigo", progress, spark, className = "",
 }: {
   label: string;
   value: string;
+  /** A quiet suffix on the figure: "/mo". */
+  unit?: string;
   href?: string;
   info?: string;
   /** What the figure covers: "Today" for a balance, the period for money that moved. */
@@ -56,40 +65,78 @@ function KpiTile({
   footer?: ReactNode;
   /** No data at all: "—" and what to do about it (or only why, when nothing can be done here). */
   empty?: { hint: string; href?: string; cta?: string } | null;
+  icon: ReactNode;
+  hue?: KpiHue;
+  /** Share of a target reached, 0–1: drawn as a slim bar under the figure. */
+  progress?: number | null;
+  /** Recorded month-ends, oldest first — drawn beside the figure from three points up. */
+  spark?: number[] | null;
+  /** Grid placement. */
+  className?: string;
 }) {
-  return (
-    <div className="rounded-xl border border-border bg-card p-4 min-w-0 flex flex-col">
-      <div className="text-xs font-medium text-muted-foreground flex items-center gap-1" title={info}>
-        {label}
-        {info && <Info className="size-3.5 cursor-help" aria-label={info} />}
-        {when && <span className="ml-auto whitespace-nowrap pl-2 font-normal">{when}</span>}
+  const head = (
+    <div className="flex items-center gap-2.5">
+      <span className="dash-kpi-chip" aria-hidden>{icon}</span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1 text-sm font-medium leading-snug text-foreground" title={info}>
+          <span className="min-w-0">{label}</span>
+          {info && <Info className="size-3.5 shrink-0 cursor-help text-muted-foreground/70" aria-label={info} />}
+        </div>
+        {when && <div className="truncate text-2xs text-muted-foreground">{when}</div>}
       </div>
-      {empty ? (
-        <>
-          <div className="mt-1 text-2xl font-semibold text-muted-foreground" title={empty.hint}>—</div>
-          {empty.href && empty.cta
-            ? <Link href={empty.href} className="mt-1 text-xs font-medium text-primary hover:underline">{empty.cta}</Link>
-            : <div className="mt-1 text-xs text-muted-foreground">{empty.hint}</div>}
-        </>
-      ) : (
-        <>
-          {href ? (
-            <Link href={href} className="mt-1 text-xl xl:text-2xl font-semibold tabular-nums text-foreground hover:underline break-words">
-              {value}
-            </Link>
-          ) : (
-            <div className="mt-1 text-xl xl:text-2xl font-semibold tabular-nums text-foreground break-words">{value}</div>
-          )}
-          {compare && (
-            <div className="mt-1 text-xs text-muted-foreground">
-              {compare.node} <span>{compare.label}</span>
-            </div>
-          )}
-          {footer && <div className="mt-0.5 text-xs text-muted-foreground">{footer}</div>}
-        </>
-      )}
     </div>
   );
+  const shell = `dash-kpi card-surface ${className}`;
+  const showSpark = !!spark && spark.length >= 3;
+  const style = { ["--c" as string]: `hsl(var(--metric-${hue}))` };
+
+  if (empty) {
+    return (
+      <div className={shell} style={style}>
+        {head}
+        <div className="dash-kpi-value dash-kpi-value-empty mt-3" title={empty.hint}>—</div>
+        <div className="mt-auto pt-2 text-xs">
+          {empty.href && empty.cta ? (
+            <Link href={empty.href} className="inline-flex min-h-6 items-center gap-1 font-medium text-primary hover:underline">
+              {empty.cta}
+              <ArrowRight className="size-3.5" aria-hidden />
+            </Link>
+          ) : (
+            <span className="text-muted-foreground">{empty.hint}</span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const body = (
+    <>
+      {head}
+      <div className="dash-kpi-value mt-3 whitespace-nowrap">
+        {value}
+        {unit && <span className="dash-kpi-unit">{unit}</span>}
+      </div>
+      {progress != null && (
+        <div className="dash-bar mt-2.5" aria-hidden>
+          <span style={{ width: `${Math.max(2, Math.min(100, progress * 100))}%` }} />
+        </div>
+      )}
+      {(compare || footer || showSpark) && (
+        <div className="mt-auto flex items-end justify-between gap-3 pt-2.5">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+            {compare && <>{compare.node}<span>{compare.label}</span></>}
+            {footer && <span className={compare ? "basis-full" : ""}>{footer}</span>}
+          </div>
+          {/* Beside the comparison, not the figure: next to the figure it
+              pushed "₹16.23 Cr" onto two lines on a narrow tile. */}
+          {showSpark && <Sparkline values={spark!} width={64} height={22} className="shrink-0" style={{ color: "var(--c)" }} />}
+        </div>
+      )}
+    </>
+  );
+  return href
+    ? <Link href={href} className={shell} style={style}>{body}</Link>
+    : <div className={shell} style={style}>{body}</div>;
 }
 
 const money = (v: number | null | undefined, scale: MoneyScale = "auto") => formatMoney(v, { scale });
@@ -100,6 +147,16 @@ function vs(cur: number, prev: number | null | undefined, label: string, inverse
   return { node: <Change cur={cur} prev={prev} inverse={inverse} />, label };
 }
 
+/**
+ * Seven tiles on a twelve-column grid: four, then three that share the second
+ * row equally. On a plain four-column grid the last row stopped one tile short
+ * and left a hole at the end of the headline.
+ */
+const ROW_OF_FOUR = "col-span-6 xl:col-span-3";
+const ROW_OF_THREE = "col-span-6 xl:col-span-4";
+/** The seventh tile: alone on its row on a phone, so it takes the row. */
+const ROW_LAST = "col-span-12 xl:col-span-4";
+
 /** The period's own name for comparisons ("vs same period last year"). */
 const YOY = "vs same period last year";
 
@@ -109,10 +166,11 @@ async function kpiRow(tx: Tx, ctx: WidgetCtx) {
   const s = ctx.scope;
   const p = ctx.period;
   const fy = { from: p.fyStart, to: p.to };
-  const [aum, sip, then, biz, newCur, newPrev, newFy, target, ins, counts] = await inOrder(
+  const [aum, sip, then, history, biz, newCur, newPrev, newFy, target, ins, counts] = await inOrder(
     () => getAUM(tx, s),
     () => getSipBook(tx, s),
     () => getStockMonthAgo(tx, s),
+    () => getStockHistory(tx, s, 12),
     () => getNetBusiness(tx, s, p, p.prev),
     () => getNewClients(tx, s, p),
     () => getNewClients(tx, s, p.prev),
@@ -128,29 +186,47 @@ async function kpiRow(tx: Tx, ctx: WidgetCtx) {
     : undefined;
   const pct = targetPct(newFy, target);
   const isFy = p.key === "fy";
+  // The recorded month-ends, then today's live figure — the same series the
+  // Business trend card draws, folded into the tile as a sparkline.
+  const thisMonth = p.to.slice(0, 7);
+  const past = history.filter((h) => h.month < thisMonth);
+  const aumSpark = [...past.map((h) => h.aum), aum.aum];
+  const sipSpark = [...past.map((h) => h.sip), sip.monthly];
   // Balances are as they stand today; everything else moved in the period.
   const flow = p.key === "custom" ? "Custom range" : p.name;
 
   return {
     body: (
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-12 gap-3 sm:gap-4">
         <KpiTile
+          className={ROW_OF_FOUR}
+          icon={<TrendingUp className="size-4" />}
+          hue="indigo"
           label="AUM"
           when="Today"
+          spark={aumSpark}
           value={money(aum.aum)}
           href={clientsHref(ctx, { sort: "aum", dir: "desc" })}
           info="Assets under management of live clients, today. Moves with the market as well as with sales."
           compare={then ? vs(aum.aum, then.aum, `vs ${formatDate(then.date, "dayMonth")}`) : null}
         />
         <KpiTile
+          className={ROW_OF_FOUR}
+          icon={<Repeat className="size-4" />}
+          hue="violet"
           label="SIP book"
           when="Today"
-          value={`${money(sip.monthly)}/mo`}
+          spark={sipSpark}
+          value={money(sip.monthly)}
+          unit="/mo"
           href={sipsHref(ctx)}
           info="Active SIPs of live clients, converted to a monthly amount. The same total as the SIP Book page."
           compare={then ? vs(sip.monthly, then.sip, `vs ${formatDate(then.date, "dayMonth")}`) : null}
         />
         <KpiTile
+          className={ROW_OF_FOUR}
+          icon={<Wallet className="size-4" />}
+          hue="emerald"
           label="Net business"
           when={flow}
           value={money(cur?.net ?? null)}
@@ -160,9 +236,13 @@ async function kpiRow(tx: Tx, ctx: WidgetCtx) {
           compare={cur && prev ? vs(cur.net, prev.net, YOY) : null}
         />
         <KpiTile
+          className={ROW_OF_FOUR}
+          icon={<Repeat className="size-4" />}
+          hue="violet"
           label="Net SIP added"
           when={flow}
-          value={cur ? `${money(cur.netSip)}/mo` : "—"}
+          value={cur ? money(cur.netSip) : "—"}
+          unit={cur ? "/mo" : undefined}
           info={cur
             ? `New SIPs ${money(cur.newSip)} a month, minus SIPs stopped ${money(cur.stoppedSip)} a month, in the period.`
             : "New SIPs registered minus SIPs stopped, as a monthly amount."}
@@ -170,6 +250,10 @@ async function kpiRow(tx: Tx, ctx: WidgetCtx) {
           compare={cur && prev ? vs(cur.netSip, prev.netSip, YOY) : null}
         />
         <KpiTile
+          className={ROW_OF_THREE}
+          icon={<UserPlus className="size-4" />}
+          hue="cyan"
+          progress={isFy && target ? pct ?? 0 : null}
           label="New clients"
           when={flow}
           value={isFy && target ? `${formatCount(newCur)} / ${formatCount(target)}` : formatCount(newCur)}
@@ -185,6 +269,9 @@ async function kpiRow(tx: Tx, ctx: WidgetCtx) {
           }
         />
         <KpiTile
+          className={ROW_OF_THREE}
+          icon={<Users className="size-4" />}
+          hue="indigo"
           label="Clients"
           when="Today"
           value={formatCount(counts.clients)}
@@ -193,6 +280,9 @@ async function kpiRow(tx: Tx, ctx: WidgetCtx) {
           footer={`${formatCount(counts.active)} active · ${formatCount(counts.funded)} funded`}
         />
         <KpiTile
+          className={ROW_LAST}
+          icon={<Shield className="size-4" />}
+          hue="amber"
           label="Insurance premium"
           when={flow}
           value={money(ins.premium)}
@@ -254,7 +344,10 @@ function TeamTable({ rows, head, hasLedger }: { rows: TeamRow[]; head: string; h
             {rows.map((r) => (
               <tr key={r.key}>
                 <td className="px-3 py-2 font-medium max-w-0 w-1/4">
-                  {r.href ? <Link href={r.href} className="hover:underline truncate block">{r.name}</Link> : <span className="text-muted-foreground truncate block">{r.name}</span>}
+                  <span className="flex items-center gap-2.5">
+                    {r.key !== "none" && <Initials name={r.name} />}
+                    {r.href ? <Link href={r.href} className="hover:underline truncate">{r.name}</Link> : <span className="text-muted-foreground truncate">{r.name}</span>}
+                  </span>
                 </td>
                 <td className={td}><Drill href={r.links?.clients}>{formatCount(r.clients)}</Drill></td>
                 <td className={td}><Drill href={r.links?.aum}>{formatMoney(r.aum, { scale: aumScale })}</Drill></td>
@@ -478,15 +571,34 @@ async function moneyMovementCsv(tx: Tx, ctx: WidgetCtx) {
 
 /* ──────────────────────────── top clients ──────────────────────────── */
 
+/**
+ * The client health score as a short meter and the number. The band is the
+ * one the record carries (lib/investors/health.ts: 80 and over green, 60 and
+ * over amber, else red); a client never scored shows a dash, not a red bar.
+ */
+function HealthMeter({ score, band }: { score: number | null; band: string | null }) {
+  if (score == null) return <span className="text-muted-foreground">—</span>;
+  const b = band ?? (score >= 80 ? "green" : score >= 60 ? "amber" : "red");
+  const fill = b === "green" ? "bg-success" : b === "amber" ? "bg-warning" : "bg-destructive";
+  return (
+    <span className="inline-flex items-center justify-end gap-2" title={b === "green" ? "Healthy" : b === "amber" ? "Watch" : "At risk"}>
+      <span className="h-1.5 w-10 overflow-hidden rounded-full bg-secondary" aria-hidden>
+        <span className={`block h-full rounded-full ${fill}`} style={{ width: `${Math.max(4, Math.min(100, score))}%` }} />
+      </span>
+      <span className="w-6 text-right">{score}</span>
+    </span>
+  );
+}
+
 async function topClientRows(tx: Tx, ctx: WidgetCtx, limit: number) {
   return (await tx.execute(sql`
     SELECT i.id, i.name, COALESCE(i.aum, 0) AS aum, COALESCE(i.active_sip_amount, 0) AS sip,
-           i.last_contact_at, i.health_score
+           i.last_contact_at, i.health_score, i.health_band
       FROM investors i
      WHERE ${clientWhere(ctx.scope, "i")}
      ORDER BY COALESCE(i.aum, 0) DESC, i.name
      LIMIT ${limit}
-  `)).rows as Array<{ id: string; name: string; aum: string; sip: string; last_contact_at: string | null; health_score: number | null }>;
+  `)).rows as Array<{ id: string; name: string; aum: string; sip: string; last_contact_at: string | null; health_score: number | null; health_band: string | null }>;
 }
 
 async function topClients(tx: Tx, ctx: WidgetCtx) {
@@ -499,23 +611,24 @@ async function topClients(tx: Tx, ctx: WidgetCtx) {
         <thead>
           <tr>
             <th className="px-3 py-2 text-left">Client</th>
-            <th className="px-3 py-2 text-right">AUM</th>
-            <th className="px-3 py-2 text-right">SIP a month</th>
-            <th className="px-3 py-2 text-right hidden sm:table-cell">Last contact</th>
-            <th className="px-3 py-2 text-right hidden sm:table-cell">Health</th>
+            <th className="px-3 py-2 text-right whitespace-nowrap">AUM</th>
+            <th className="px-3 py-2 text-right whitespace-nowrap">SIP a month</th>
+            <th className="px-3 py-2 text-right whitespace-nowrap hidden sm:table-cell">Last contact</th>
+            <th className="px-3 py-2 text-right whitespace-nowrap hidden sm:table-cell">Health</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r) => (
             <tr key={r.id}>
               <td className="px-3 py-2 max-w-0 w-2/5">
-                <Link href={`/dashboard/investors/${r.id}`} className="font-medium hover:underline truncate block">{r.name}</Link>
+                {/* No initials here: five columns in a half-width card leave the name no room. */}
+                <Link href={`/dashboard/investors/${r.id}`} className="block truncate py-1 font-medium hover:underline">{r.name}</Link>
               </td>
               <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{formatMoney(Number(r.aum), { scale })}</td>
               <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{Number(r.sip) > 0 ? formatMoney(Number(r.sip)) : "—"}</td>
               <td className="px-3 py-2 text-right whitespace-nowrap hidden sm:table-cell">{r.last_contact_at ? formatDate(r.last_contact_at) : "Never"}</td>
               <td className="px-3 py-2 text-right tabular-nums hidden sm:table-cell">
-                {r.health_score ?? "—"}
+                <HealthMeter score={r.health_score} band={r.health_band} />
               </td>
             </tr>
           ))}

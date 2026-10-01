@@ -16,6 +16,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 import { NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
+import { mobileFirmAccess, mobileOwnerScope, mobileTaskScope } from "@/lib/mobile/access";
 import { requireSession } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
@@ -26,9 +27,9 @@ export async function GET() {
   try {
     const session = await requireSession();
     const roles = session.roles ?? [];
-    const seesAll = roles.some((r) => FIRM_WIDE.includes(r));
-    const mine = seesAll ? sql`` : sql` AND rm_id = ${session.userId}`;
-    const mineOwner = seesAll ? sql`` : sql` AND owner_id = ${session.userId}`;
+    const seesAll = session.mobile ? mobileFirmAccess(session) : roles.some((r) => FIRM_WIDE.includes(r));
+    const mine = session.mobile ? sql` AND ${mobileOwnerScope(session, "rm_id")}` : seesAll ? sql`` : sql` AND rm_id = ${session.userId}`;
+    const mineOwner = session.mobile ? sql` AND ${mobileOwnerScope(session, "owner_id")}` : seesAll ? sql`` : sql` AND owner_id = ${session.userId}`;
 
     const data = await withTenant(session.tenantId, async (tx) => {
       const one = async (query: any): Promise<number> => {
@@ -45,18 +46,18 @@ export async function GET() {
         one(sql`SELECT COALESCE(sum(aum),0)::float AS v FROM investors WHERE deleted_at IS NULL${mine}`),
         one(sql`SELECT COALESCE(sum(active_sip_amount),0)::float AS v FROM investors WHERE status = 'active' AND deleted_at IS NULL${mine}`),
         one(sql`SELECT count(*)::int AS v FROM leads WHERE converted_at IS NULL AND (stage IS NULL OR stage NOT IN ('lost','not_interested','not_qualified'))${mineOwner}`),
-        one(sql`SELECT count(*)::int AS v FROM tasks WHERE status IN ('open','in_progress','blocked') AND deleted_at IS NULL AND due_at < now() AND (assignee_id = ${session.userId} OR ${seesAll})`),
-        one(sql`SELECT count(*)::int AS v FROM tasks WHERE status IN ('open','in_progress','blocked') AND deleted_at IS NULL AND due_at >= date_trunc('day', now()) AND due_at < date_trunc('day', now()) + interval '1 day' AND (assignee_id = ${session.userId} OR ${seesAll})`),
+        one(sql`SELECT count(*)::int AS v FROM tasks WHERE status IN ('open','in_progress','blocked') AND deleted_at IS NULL AND due_at < now() AND ${session.mobile ? mobileTaskScope(session) : sql`(assignee_id = ${session.userId} OR ${seesAll})`}`),
+        one(sql`SELECT count(*)::int AS v FROM tasks WHERE status IN ('open','in_progress','blocked') AND deleted_at IS NULL AND due_at >= date_trunc('day', now()) AND due_at < date_trunc('day', now()) + interval '1 day' AND ${session.mobile ? mobileTaskScope(session) : sql`(assignee_id = ${session.userId} OR ${seesAll})`}`),
         one(sql`SELECT count(*)::int AS v FROM investors WHERE status = 'active' AND deleted_at IS NULL AND next_review_at IS NOT NULL AND next_review_at <= now()${mine}`),
         one(sql`SELECT count(*)::int AS v FROM leads WHERE converted_at IS NULL AND next_follow_up_at IS NOT NULL AND next_follow_up_at <= now()${mineOwner}`),
         one(sql`SELECT count(*)::int AS v FROM review_meetings WHERE status IN ('scheduled','confirmed') AND meeting_date >= date_trunc('day', now()) AND meeting_date < date_trunc('day', now()) + interval '1 day'${mine}`),
       ]);
 
       return { clients, aum, sipBook, leadsOpen, tasksOverdue, tasksToday, reviewsDue, followupsDue, meetingsToday };
-    });
+    }, { userId: session.userId, branchId: session.branchId, roles: session.roles });
 
     return NextResponse.json({
-      scope: seesAll ? "firm" : "me",
+      scope: seesAll ? "firm" : session.mobile && roles.includes("branch_head") ? "branch" : "me",
       kpis: [
         { key: "aum", label: "Total AUM", value: data.aum, format: "inr" },
         { key: "clients", label: "Active Clients", value: data.clients, format: "number" },
@@ -68,7 +69,7 @@ export async function GET() {
       worklist: [
         { key: "tasksOverdue", label: "Overdue tasks", count: data.tasksOverdue, icon: "alert-triangle", tone: "danger", href: "/(app)/(tabs)/tasks?due=overdue" },
         { key: "tasksToday", label: "Tasks due today", count: data.tasksToday, icon: "check-square", tone: "warning", href: "/(app)/(tabs)/tasks?due=today" },
-        { key: "followupsDue", label: "Follow-ups due", count: data.followupsDue, icon: "corner-up-right", tone: "warning", href: "/m/leads" },
+        { key: "followupsDue", label: "Follow-ups due", count: data.followupsDue, icon: "corner-up-right", tone: "warning", href: "/(app)/(tabs)/activities" },
         { key: "meetingsToday", label: "Meetings today", count: data.meetingsToday, icon: "video", tone: "info", href: "/m/review-meetings" },
         { key: "reviewsDue", label: "Client reviews due", count: data.reviewsDue, icon: "calendar", tone: "info", href: "/m/review-meetings" },
       ],

@@ -10,9 +10,14 @@ import { handleApiError } from "@/lib/api/error-handler";
  *   - Stamp the same review on every other live member of that client's FAMILY
  *     (each keeps their own cadence; contact dates are not propagated) —
  *     see lib/reviews/family-propagation.ts
- *   - Fan out actionItems[] → tasks for the RM (only items without a taskId yet)
+ *   - Fan out any action item still without a task (rows saved before action
+ *     items became tasks on save)
  *   - Stamp followUpTaskCreated = true
- *   - Create a "Write up your notes" task if meetingNotes still empty
+ *
+ * On EVERY save (lib/review-meetings/sync.ts):
+ *   - action items are tasks: created on first save, edited / cancelled with the row
+ *   - attendees are checked against the firm's clients, leads and team; a team
+ *     member newly added is notified, and the meeting is theirs to open and edit
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -29,6 +34,8 @@ import { recomputeFamilyHealth } from "@/lib/families/health-persist";
 import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
 import { computeNextReview } from "@/lib/investors/review-cadence";
 import { formatDate } from "@/lib/format";
+import { ATTENDEE_KINDS, hasUserAttendee } from "@/lib/review-meetings/attendees";
+import { cleanAttendees, notifyAddedTeam, syncActionItemTasks, type ActionItemIn } from "@/lib/review-meetings/sync";
 import {
   reviewMeetings,
   investors,
@@ -69,8 +76,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         `);
         const m = r.rows[0] as any;
         if (!m) return null;
-        // RMs (manage.assigned) may only view their own meetings.
-        if (!canAll && m.rm_id !== session.userId) return { forbidden: true as const };
+        // RMs (manage.assigned) may only view their own meetings — or one they attend.
+        if (!canAll && m.rm_id !== session.userId && !hasUserAttendee(m.attendees, session.userId)) return { forbidden: true as const };
 
         // Prep brief — only for upcoming/in-progress INVESTOR meetings.
         let prep: any = null;
@@ -131,6 +138,9 @@ const Attendee = z.object({
   ]),
   isExternal: z.boolean(),
   notes: z.string().max(500).optional(),
+  /** Looked up from the CRM, or a typed guest. */
+  kind: z.enum(ATTENDEE_KINDS).optional(),
+  refId: z.string().uuid().optional(),
 });
 
 const Patch = z.object({
@@ -173,10 +183,31 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const result = await withTenant(session.tenantId, async (tx) => {
       const before = (await tx.select().from(reviewMeetings).where(and(eq(reviewMeetings.id, id), eq(reviewMeetings.tenantId, session.tenantId))).limit(1))[0];
       if (!before) return null;
-      // RMs (manage.assigned) may only touch meetings they own.
-      if (!canAll && before.rmId !== session.userId) return { forbidden: true as const };
+      // RMs (manage.assigned) may only touch meetings they own — or attend.
+      if (!canAll && before.rmId !== session.userId && !hasUserAttendee(before.attendees, session.userId)) {
+        return { forbidden: true as const };
+      }
 
       const patch: any = { ...body, updatedAt: new Date() };
+      const meetingLabel = (body.subject ?? before.subject) || "a meeting";
+
+      // Attendees: only real clients / leads / team members keep their link.
+      const cleanedAttendees = body.attendees ? await cleanAttendees(tx, session.tenantId, body.attendees as any) : null;
+      if (cleanedAttendees) patch.attendees = cleanedAttendees;
+
+      // Action items are tasks from the first save, not only on completion.
+      let syncedItems: ActionItemIn[] | null = null;
+      if (body.actionItems) {
+        syncedItems = await syncActionItemTasks(tx, {
+          tenantId: session.tenantId,
+          actorId: session.userId,
+          meeting: before,
+          items: body.actionItems,
+          meetingLabel,
+        });
+        patch.actionItems = syncedItems;
+        if (syncedItems.length > 0) patch.followUpTaskCreated = "true";
+      }
       if (body.meetingDate) patch.meetingDate = new Date(body.meetingDate);
       // Stamp actualEndAt when transitioning to completed
       // Reference the auto-advance helper (imported below at module scope).
@@ -209,6 +240,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
 
       await tx.update(reviewMeetings).set(patch).where(and(eq(reviewMeetings.id, id), eq(reviewMeetings.tenantId, session.tenantId)));
+
+      if (cleanedAttendees) {
+        await notifyAddedTeam(tx, {
+          tenantId: session.tenantId,
+          meetingId: id,
+          actorId: session.userId,
+          title: meetingLabel,
+          when: patch.meetingDate ?? before.meetingDate,
+          before: before.attendees,
+          after: cleanedAttendees,
+        });
+      }
 
       // ─── Outcome → funnel ──────────────────────────────────────────────
       // The post-meeting outcome drives the lead's journey: ready → won,
@@ -320,7 +363,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }
 
         // ─── Automation: fan out action items into tasks ──────────────
-        const items = (body.actionItems ?? (before.actionItems as any[] | null) ?? []) as Array<{
+        // Saved items already carry their task (synced above); this only reaches
+        // rows stored before action items became tasks on save.
+        const items = (syncedItems ?? (before.actionItems as any[] | null) ?? []) as Array<{
           title: string;
           assigneeId?: string;
           dueAt?: string;
@@ -368,31 +413,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             .where(and(eq(reviewMeetings.id, id), eq(reviewMeetings.tenantId, session.tenantId)));
         }
 
-        // ─── Automation: nudge the RM if notes are still empty ─────────
-        const haveNotes = (body.meetingNotes ?? before.meetingNotes ?? "").trim().length > 0;
-        if (!haveNotes && !before.notesReminderTaskId) {
-          const notesTaskId = uuid();
-          await tx.insert(tasks).values({
-            id: notesTaskId,
-            tenantId: session.tenantId,
-            assigneeId: before.rmId ?? session.userId,
-            subjectType: taskSubjectType,
-            subjectId: taskSubjectId,
-            relatedInvestorId: before.investorId ?? null,
-            relatedLeadId: before.leadId ?? null,
-            relatedMeetingId: id,
-            type: "review_notes_pending",
-            title: `Write up notes for the review meeting`,
-            priority: "high",
-            status: "open",
-            dueAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-            slaDueAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-          } as any);
-          await tx
-            .update(reviewMeetings)
-            .set({ notesReminderTaskId: notesTaskId } as any)
-            .where(and(eq(reviewMeetings.id, id), eq(reviewMeetings.tenantId, session.tenantId)));
-        }
+        // (The "write up your notes" task is gone with the notes box: the
+        // meeting page no longer has one, so the task could never be done.)
 
         // ─── Auto-schedule the NEXT review (recurring cadence) ─────────
         // Reviews recur. On completing a review-category INVESTOR meeting,
@@ -504,6 +526,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return {
         ok: true,
         completed: becomingCompleted,
+        // The editor keeps these, so a second save edits the same tasks.
+        actionItems: syncedItems ?? undefined,
+        attendees: cleanedAttendees ?? undefined,
         familyAlsoReviewed: familyPropagation?.updated ?? 0,
         familyMembers: familyPropagation?.members.map((m) => m.name) ?? [],
       };

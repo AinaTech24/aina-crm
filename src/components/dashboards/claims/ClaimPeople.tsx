@@ -93,8 +93,12 @@ export function DistributionPanel({ owners, types, lines, labelOf }: {
   const maxB = Math.max(0, ...withOpen.map((o) => o.breached));
   const maxT = Math.max(0, ...types.map((t) => t.n));
   const maxL = Math.max(0, ...lines.map((t) => t.n));
+  // A heading with nothing under it reads as a broken chart; say what is missing.
   const block = (title: string, body: ReactNode) => (
-    <div className="min-w-0"><h3 className="mb-1.5 text-2xs font-semibold text-muted-foreground">{title}</h3>{body}</div>
+    <div className="min-w-0">
+      <h3 className="mb-1.5 text-2xs font-semibold text-muted-foreground">{title}</h3>
+      {Array.isArray(body) && body.length === 0 ? <p className="text-xs text-muted-foreground">No open claims.</p> : body}
+    </div>
   );
   return (
     <Section title="Workload distribution" subtitle="Open claims today." icon={<Workflow className="size-4" />}>
