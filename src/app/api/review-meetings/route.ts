@@ -19,6 +19,7 @@ import { requireSession } from "@/lib/auth/session";
 import { can, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { createNotification } from "@/lib/notifications/create";
 import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
 import { findRmConflicts } from "@/lib/review-meetings/conflicts";
 import { formatDate } from "@/lib/format";
@@ -46,6 +47,10 @@ const Body = z
     leadId: z.string().uuid().optional(),
     familyId: z.string().uuid().optional(),
     rmId: z.string().uuid().optional(),
+    /** Colleagues on a joint meeting, besides the RM. Saved as attendees
+     *  (kind "user") — the same shape the meeting page's attendee lookup
+     *  writes, which is what shows the meeting to each of them. */
+    coAttendeeIds: z.array(z.string().uuid()).max(10).default([]),
     category: z.enum(MEETING_CATEGORIES).default("review"),
     parentMeetingId: z.string().uuid().optional(),
     meetingType: z.enum(REVIEW_MEETING_TYPES),
@@ -185,6 +190,26 @@ export async function POST(req: NextRequest) {
       const id = uuid();
       const rmId = body.rmId ?? subjectRmId ?? session.userId;
       await assertMobileAssignee(tx, session, rmId);
+
+      // ─── Joint meeting: the colleagues joining the RM ──────────────
+      // Active team members of this firm only; the RM is not repeated.
+      const coIds = [...new Set(body.coAttendeeIds)].filter((u) => u !== rmId);
+      for (const u of coIds) await assertMobileAssignee(tx, session, u);
+      const coRows = coIds.length
+        ? ((await tx.execute(sql`
+            SELECT id, name, roles FROM users
+             WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
+               AND id IN (${sql.join(coIds.map((u) => sql`${u}::uuid`), sql`, `)})
+          `)).rows as Array<{ id: string; name: string | null; roles: string[] | null }>)
+        : [];
+      if (coRows.length !== coIds.length) throw Object.assign(new Error("A colleague on this meeting is not an active team member"), { status: 400 });
+      const coAttendees = coRows.map((u) => {
+        const roles = u.roles ?? [];
+        const role = roles.includes("rm") || roles.includes("branch_head") || roles.includes("owner") ? "rm"
+          : roles.includes("back_office") || roles.includes("ops") ? "back_office"
+          : roles.includes("compliance") ? "compliance" : "other";
+        return { name: u.name ?? "Team member", role, isExternal: false, kind: "user", refId: u.id };
+      });
       const meetingDate = new Date(body.meetingDate);
 
       // ─── Double-booking guard ──────────────────────────────────────
@@ -237,6 +262,7 @@ export async function POST(req: NextRequest) {
         locationOrLink: body.locationOrLink ?? null,
         discussionPoints: body.discussionPoints ?? null,
         status: body.status,
+        attendees: coAttendees,
         reminderTaskId,
       } as any);
 
@@ -275,9 +301,23 @@ export async function POST(req: NextRequest) {
           leadId: body.leadId ?? null,
           meetingType: body.meetingType,
           mode: body.meetingMode,
+          coAttendees: coAttendees.map((a) => a.refId),
         } as any,
         ...clientMeta,
       });
+
+      // Tell each colleague they are on it (the RM scheduled it or owns it).
+      for (const a of coAttendees) {
+        if (a.refId === session.userId) continue;
+        await createNotification(tx, {
+          tenantId: session.tenantId,
+          userId: a.refId,
+          kind: "review_meeting.joint",
+          title: `Joint meeting: ${labelForType(body.meetingType)} with ${subjectName}`,
+          body: `${formatDate(meetingDate)} · ${labelForMode(body.meetingMode)}${body.locationOrLink ? ` · ${body.locationOrLink}` : ""}`,
+          linkUrl: `/dashboard/review-meetings/${id}`,
+        });
+      }
 
       // ─── Smart blueprint advance ───────────────────────────────────
       // If this meeting was scheduled against a lead, push the lead's

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Calendar, Loader2, Save, Users, Sparkles, Home, ChevronsUpDown, Video, AlertTriangle } from "lucide-react";
 import { RmSelector } from "@/components/common/RmSelector";
+import { TeamMultiSelect } from "@/components/common/TeamMultiSelect";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
 
@@ -115,6 +116,8 @@ export function ScheduleMeetingForm({
     locationOrLink: "",
     discussionPoints: "",
     rmId: "" as string,
+    /** Colleagues joining the RM (a joint meeting). */
+    coAttendeeIds: [] as string[],
     status: "scheduled",
   });
   const [busy, setBusy] = useState(false);
@@ -157,6 +160,7 @@ export function ScheduleMeetingForm({
         locationOrLink: form.locationOrLink || undefined,
         discussionPoints: form.discussionPoints || undefined,
         rmId: form.rmId || undefined,
+        coAttendeeIds: form.coAttendeeIds,
         status: form.status,
         force,
       };
@@ -318,6 +322,17 @@ export function ScheduleMeetingForm({
           />
         </Field>
       </div>
+
+      {/* A joint meeting: colleagues attending with the RM. Each is told and
+          sees the meeting as theirs (it is saved in the attendee list). */}
+      <Field label="Joint meeting with (optional)">
+        <TeamMultiSelect
+          value={form.coAttendeeIds}
+          onChange={(ids) => set("coAttendeeIds", ids)}
+          exclude={[form.rmId]}
+          placeholder="+ Add a colleague attending with the RM"
+        />
+      </Field>
 
       <Field label="Location / link">
         <div className="flex gap-2">
