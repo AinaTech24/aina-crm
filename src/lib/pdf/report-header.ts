@@ -94,7 +94,7 @@ export function drawReportHeader(opts: {
     page.drawImage(logo, { x: M, y: topY - dh, width: dw, height: dh });
     leftBottom = topY - dh;
   } else {
-    page.drawText(ascii(opts.firmName ?? "Your Advisor"), {
+    page.drawText(ascii(opts.firmName ?? "Your Mutual Fund Distributor"), {
       x: M,
       y: topY - 16,
       size: 15,

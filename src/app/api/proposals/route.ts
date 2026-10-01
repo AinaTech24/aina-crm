@@ -14,7 +14,6 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
-import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
 import { proposals, investors, leads, families } from "@/db/schema";
 import { proposalTotals } from "@/lib/proposals/projections";
 
@@ -317,18 +316,10 @@ export async function POST(req: NextRequest) {
         ...clientMeta,
       });
 
-      // ─── Smart blueprint advance — proposal drafted ───────────────
-      // Push the lead's journey to `proposal_drafted`. Resolve the lead
-      // id from either the direct leadId or via the investor's source
-      // lead (for proposals authored against converted clients).
-      const advanceLeadId =
-        body.leadId ??
-        (resolvedInvestorId ? await resolveLeadIdForInvestor(tx, resolvedInvestorId) : null);
-      if (advanceLeadId) {
-        await autoAdvance(tx, session.tenantId, advanceLeadId, "proposal.created", {
-          remarks: `Auto: proposal ${proposalNumber} drafted.`,
-        });
-      }
+      // A draft deliberately does NOT move the journey. It used to mark the
+      // lead Won the moment an RM opened a blank proposal, before the client
+      // had seen anything. The journey moves when the proposal is SENT (to
+      // Proposal Sent) and when the client ACCEPTS it (to Won).
     });
 
     return NextResponse.json({ id }, { status: 201 });

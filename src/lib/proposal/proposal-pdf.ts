@@ -12,6 +12,7 @@
 import { PDFDocument, rgb, type PDFFont, type PDFPage, type PDFImage, type RGB } from "pdf-lib";
 import { drawReportHeader, drawContinuationHeader, drawPageNumbers } from "@/lib/pdf/report-header";
 import { embedPdfFonts, pdfSanitize } from "@/lib/pdf/fonts";
+import { recommendationType } from "@/lib/proposals/items";
 
 export type ProposalBrand = {
   displayName?: string | null;
@@ -46,6 +47,11 @@ const DEFAULT_PRIMARY: RGB = rgb(0.055, 0.145, 0.341);
 
 const KIND_TITLE: Record<string, string> = {
   mf: "Mutual Funds", insurance: "Insurance", pms: "Portfolio Management Services", aif: "Alternative Investment Funds",
+  other: "Other Investments",
+  // Mutual funds split by how the money goes in — the old recommendation
+  // worksheet's four sections, now part of the one list the client sees.
+  "mf:sip": "Mutual Funds - SIP", "mf:lumpsum": "Mutual Funds - Lumpsum",
+  "mf:swp": "Mutual Funds - Systematic Withdrawal (SWP)", "mf:stp": "Mutual Funds - Systematic Transfer (STP)",
 };
 const DISCLAIMER =
   "Mutual Fund investments are subject to market risks. Read all scheme related documents carefully. " +
@@ -81,16 +87,57 @@ function colsFor(kind: string): Col[] {
       { h: "Horizon", w: 0.09, align: "r", get: (it) => yrs(it.termYears) },
       { h: "Projected", w: 0.09, align: "r", get: (it) => amt(projected(it.proposedAmount, it.expectedReturn, it.termYears)) },
     ];
-  // mutual funds (default)
+  if (kind === "other")
+    return [
+      { h: "Product", w: 0.30, get: (it) => it.productName ?? "-" },
+      { h: "Company", w: 0.22, get: (it) => it.company ?? "-" },
+      { h: "Amount", w: 0.18, align: "r", get: (it) => amt(it.amount) },
+      { h: "Return", w: 0.14, align: "r", get: (it) => pctv(it.expectedReturn) },
+      { h: "Term", w: 0.16, align: "r", get: (it) => yrs(it.termYears) },
+    ];
+  if (kind === "mf:lumpsum")
+    return [
+      { h: "Scheme", w: 0.30, get: (it) => it.schemeName ?? "-" },
+      { h: "AMC", w: 0.18, get: (it) => it.amcName ?? "-" },
+      { h: "Amount", w: 0.15, align: "r", get: (it) => amt(it.lumpsum) },
+      { h: "Horizon", w: 0.11, align: "r", get: (it) => yrs(it.sipTermYears) },
+      { h: "Return", w: 0.11, align: "r", get: (it) => pctv(it.expectedReturn) },
+      { h: "Projected", w: 0.15, align: "r", get: (it) => amt(it.projectedCorpus ?? projected(it.lumpsum, it.expectedReturn, it.sipTermYears)) },
+    ];
+  if (kind === "mf:swp")
+    return [
+      { h: "Scheme", w: 0.30, get: (it) => it.schemeName ?? "-" },
+      { h: "AMC", w: 0.18, get: (it) => it.amcName ?? "-" },
+      { h: "Corpus", w: 0.16, align: "r", get: (it) => amt(it.corpusRequired) },
+      { h: "Withdrawal/mo", w: 0.17, align: "r", get: (it) => amt(it.monthlyWithdrawal) },
+      { h: "Period", w: 0.19, align: "r", get: (it) => (it.swpPeriodMonths ? `${it.swpPeriodMonths} months` : "-") },
+    ];
+  if (kind === "mf:stp")
+    return [
+      { h: "From scheme", w: 0.28, get: (it) => it.schemeName ?? "-" },
+      { h: "To scheme", w: 0.28, get: (it) => it.toSchemeName ?? "-" },
+      { h: "Transfer/mo", w: 0.15, align: "r", get: (it) => amt(it.monthlyTransfer) },
+      { h: "Instalments", w: 0.13, align: "r", get: (it) => (it.numInstallments ? String(it.numInstallments) : "-") },
+      { h: "Total", w: 0.16, align: "r", get: (it) => amt(it.monthlyTransfer && it.numInstallments ? Number(it.monthlyTransfer) * Number(it.numInstallments) : null) },
+    ];
+  // mutual funds — SIP (and any MF line from before the split). Lumpsum stays
+  // a column: an older line can carry both a starting lumpsum and a SIP.
   return [
     { h: "Scheme", w: 0.24, get: (it) => it.schemeName ?? "-" },
     { h: "AMC", w: 0.16, get: (it) => it.amcName ?? "-" },
-    { h: "Lumpsum", w: 0.13, align: "r", get: (it) => amt(it.lumpsum) },
-    { h: "SIP/mo", w: 0.13, align: "r", get: (it) => amt(it.monthlyAmount) },
-    { h: "Term", w: 0.09, align: "r", get: (it) => yrs(it.sipTermYears) },
-    { h: "Return", w: 0.09, align: "r", get: (it) => pctv(it.expectedReturn) },
-    { h: "Projected", w: 0.16, align: "r", get: (it) => amt(it.projectedCorpus) },
+    { h: "Lumpsum", w: 0.12, align: "r", get: (it) => amt(it.lumpsum) },
+    { h: "SIP/mo", w: 0.12, align: "r", get: (it) => amt(it.monthlyAmount) },
+    { h: "Step-up", w: 0.07, align: "r", get: (it) => pctv(it.stepUpPct) },
+    { h: "Term", w: 0.08, align: "r", get: (it) => yrs(it.sipTermYears) },
+    { h: "Return", w: 0.08, align: "r", get: (it) => pctv(it.expectedReturn) },
+    { h: "Projected", w: 0.13, align: "r", get: (it) => amt(it.projectedCorpus) },
   ];
+}
+
+/** Which table a line belongs in: its kind, with MF split by investment type. */
+function groupKey(it: any): string {
+  const kind = it?.kind ?? "mf";
+  return kind === "mf" ? `mf:${recommendationType(it) ?? "sip"}` : kind;
 }
 
 export async function renderProposalPdf(args: { proposal: ProposalData; brand: ProposalBrand; generatedAt?: string }): Promise<Buffer> {
@@ -183,7 +230,7 @@ export async function renderProposalPdf(args: { proposal: ProposalData; brand: P
   // ── Detailed per-kind product tables ──
   const products = (p.products ?? []) as any[];
   const groups: Record<string, any[]> = {};
-  for (const it of products) (groups[it?.kind ?? "mf"] ??= []).push(it);
+  for (const it of products) (groups[groupKey(it)] ??= []).push(it);
 
   for (const [kind, items] of Object.entries(groups)) {
     const cols = colsFor(kind);
@@ -221,7 +268,10 @@ export async function renderProposalPdf(args: { proposal: ProposalData; brand: P
           const fs = fitText(val, f, 8.5, cw - 8, 6);
           cur.page.drawText(val, { x: x + cw - 6 - f.widthOfTextAtSize(val, fs), y: cur.y, size: fs, font: f, color: isProjected ? GREEN : INK });
         } else {
-          cur.page.drawText(truncate(val, helv, 8.5, cw - 6), { x, y: cur.y, size: 8.5, font: c.h === cols[0].h ? bold : helv, color: INK });
+          // Measure with the font actually drawn: the first column is bold, and
+          // truncating it by the regular font's width ran it into the next column.
+          const f = c.h === cols[0].h ? bold : helv;
+          cur.page.drawText(truncate(val, f, 8.5, cw - 6), { x, y: cur.y, size: 8.5, font: f, color: INK });
         }
         x += cw;
       }
@@ -243,7 +293,8 @@ export async function renderProposalPdf(args: { proposal: ProposalData; brand: P
 function drawFooter(page: PDFPage, a: { helv: PDFFont; bold: PDFFont; brand: ProposalBrand; generatedAt: string; refId?: string | null }) {
   const W = page.getWidth();
   page.drawRectangle({ x: MARGIN, y: 52, width: W - 2 * MARGIN, height: 1, color: LINE });
-  const legal = ascii(a.brand.legalName ?? a.brand.displayName ?? "Your Advisor");
+  // A distributor, not an adviser — the firm asked for that word gone everywhere.
+  const legal = ascii(a.brand.legalName ?? a.brand.displayName ?? "Your Mutual Fund Distributor");
   const arn = ascii(`ARN-${(a.brand.arn ?? "—").toString().replace(/^ARN-?/i, "")}`);
   page.drawText(`${legal}  -  ${arn}`, { x: MARGIN, y: 40, size: 8, font: a.bold, color: SLATE });
   const gen = ascii(`Generated ${fmtDate(a.generatedAt)}${a.refId ? ` - Ref ${a.refId}` : ""}`);

@@ -1,25 +1,57 @@
 /**
  * Public proposal approval — POST /api/public/proposals/accept.
  *
- * Records SEBI-grade evidence into proposal_approvals + flips the proposal
- * status to 'accepted'. Pushes an outbox event so a workflow can fire the
- * "send KYC docs collection form" comm or whatever the firm has configured.
+ * Body: { tokenId, signatureName, acceptedItems?: number[] }
+ *
+ * Records SEBI-grade evidence into proposal_approvals, sets the proposal to
+ * `accepted` — or `partially_approved` when the client took only some of the
+ * recommendations — and moves the journey to Won.
+ *
+ * Three things this used to get wrong:
+ *  - It moved the journey to a stage called `proposal_approved` that was
+ *    retired in an earlier redesign. The move failed, the error was swallowed,
+ *    and the client's yes never appeared in the journey's history.
+ *  - It stored the acceptance text the BROWSER sent, so the "exact agreed
+ *    text" in the audit record was whatever the request claimed.
+ *  - Accepting was all-or-nothing, so a client who wanted two of three funds
+ *    had no honest way to say so.
+ *
+ * After the commit, a LEAD's onboarding starts by itself: the document-
+ * collection link goes out exactly as the "Send Doc Checklist" button sends it
+ * (lib/onboarding/send-doc-checklist.ts), unless the firm already runs the
+ * workflow recipe that does the same. If the send can't happen, the RM gets a
+ * task instead — onboarding is never silently skipped.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
 import { eq } from "drizzle-orm";
-import { withSystem, withTenant } from "@/db/client";
-import { shareTokens, proposals, proposalApprovals, eventsOutbox, leads } from "@/db/schema";
+import { withTenant } from "@/db/client";
+import { proposals, proposalApprovals, eventsOutbox, leads } from "@/db/schema";
 import { claimShareToken, releaseShareToken, finalizeShareToken } from "@/lib/share-tokens";
-import { transitionTo } from "@/lib/blueprints/engine";
+import { autoAdvance } from "@/lib/blueprints/auto-advance";
 import { enforce, enforceLinkToken, PUBLIC_LINK_IP_CEILING } from "@/lib/rate-limit";
+import {
+  PROPOSAL_ACCEPTANCE_TEXT,
+  assertOpenForClient,
+  loadProposalLink,
+  proposalOwnerId,
+} from "@/lib/proposals/public-link";
+import {
+  advanceJourneyForProposal,
+  createProposalTask,
+  currentStage,
+  firmRunsDocRecipe,
+  firstName,
+  notifyProposalOwner,
+} from "@/lib/proposals/journey";
+import { sendDocChecklist } from "@/lib/onboarding/send-doc-checklist";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   try {
-    // 10 acceptances per IP per hour. A real client clicks "Accept" once.
     // Coarse brake only — see PUBLIC_LINK_IP_CEILING.
     const limited = enforce(req, "public.proposal-accept", PUBLIC_LINK_IP_CEILING);
     if (limited) return limited;
@@ -28,105 +60,123 @@ export async function POST(req: NextRequest) {
     const tokenId = String(body.tokenId ?? "");
     const perToken = enforceLinkToken("public.proposal-accept", tokenId, 10);
     if (perToken) return perToken;
-    // Bound the untrusted input — these land in proposal_approvals text columns.
+    // Bound the untrusted input — it lands in proposal_approvals text columns.
     const signatureName = String(body.signatureName ?? "").trim().slice(0, 120);
-    const acceptanceText = String(body.acceptanceText ?? "").trim().slice(0, 5000);
     if (!tokenId) return NextResponse.json({ error: "missing tokenId" }, { status: 400 });
-    if (!signatureName) return NextResponse.json({ error: "Signature required" }, { status: 400 });
-    if (!acceptanceText) return NextResponse.json({ error: "Missing acceptance text" }, { status: 400 });
+    if (!signatureName) return NextResponse.json({ error: "Please type your full name to sign." }, { status: 400 });
 
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "";
     const ua = req.headers.get("user-agent") ?? "";
 
-    // Step 1: token lookup (cross-tenant — no session yet).
-    const tk = await withSystem(async (tx) => {
-      const [t] = await tx.select().from(shareTokens).where(eq(shareTokens.id, tokenId));
-      if (!t) throw new Error("Invalid token");
-      if (t.revokedAt) throw new Error("This link was revoked");
-      if (t.usedAt) throw new Error("This link has already been used");
-      if (new Date(t.expiresAt as any) < new Date()) throw new Error("This link has expired");
-      if (t.kind !== "proposal_approval") throw new Error("Not a proposal-approval token");
-      return t;
-    });
+    // Step 1: resolve the link (cross-tenant — no session) and check the
+    // proposal can still take an answer.
+    const link = await loadProposalLink(tokenId, { allowUsed: false });
+    assertOpenForClient(link.proposal);
+
+    const products = Array.isArray(link.proposal.products) ? link.proposal.products : [];
+    // Which recommendations the client took. Absent (an older cached page) =
+    // everything, which is what that page's single checkbox meant.
+    const requested: unknown = body.acceptedItems;
+    let accepted: number[];
+    if (requested === undefined || requested === null) {
+      accepted = products.map((_, i) => i);
+    } else if (Array.isArray(requested)) {
+      accepted = [...new Set(requested.map(Number))]
+        .filter((i) => Number.isInteger(i) && i >= 0 && i < products.length)
+        .sort((a, b) => a - b);
+    } else {
+      return NextResponse.json({ error: "invalid acceptedItems" }, { status: 400 });
+    }
+    if (products.length > 0 && accepted.length === 0) {
+      return NextResponse.json(
+        { error: "Tick at least one recommendation to accept, or use “Ask for a change”." },
+        { status: 400 }
+      );
+    }
+    const partial = products.length > 0 && accepted.length < products.length;
 
     // Step 1b: atomically CLAIM the single-use token before doing any work, so
-    // two concurrent accepts can't both record a (SEBI-grade) approval +
-    // double-fire the downstream "send KYC docs" workflow. The loser aborts.
+    // two concurrent accepts can't both record an approval + double-fire the
+    // downstream onboarding. The loser aborts.
     const claimed = await claimShareToken(tokenId);
     if (!claimed) {
-      return NextResponse.json({ error: "This link has already been used" }, { status: 409 });
+      return NextResponse.json({ error: "You have already responded to this proposal." }, { status: 409 });
     }
 
-    // Step 2: writes happen inside the token's tenant scope so RLS blocks
-    // any cross-tenant write even if a future bug leaks tokenId across
-    // tenants. If the work throws after the claim, release the token so the
-    // client can retry.
-    let out;
+    const p = link.proposal;
+    const tenantId = link.token.tenantId!;
+    const acceptedNames = accepted.map((i) => productName(products[i]));
+
+    // Step 2: writes inside the token's tenant scope, so RLS blocks any
+    // cross-tenant write even if a future bug leaks a token id. If the work
+    // throws after the claim, release the token so the client can retry.
+    let out: { approvalId: string; ownerId: string | null; leadId: string | null; stage: string | null };
     try {
-      out = await withTenant(tk.tenantId!, async (tx) => {
-      const [proposal] = await tx.select().from(proposals).where(eq(proposals.id, tk.subjectId));
-      if (!proposal) throw new Error("Proposal not found");
+      out = await withTenant(tenantId, async (tx) => {
+        const approvalId = uuid();
+        const now = new Date();
 
-      const approvalId = uuid();
-      const now = new Date();
-
-      await tx.insert(proposalApprovals).values({
-        id: approvalId,
-        tenantId: tk.tenantId,
-        proposalId: tk.subjectId,
-        acceptanceText,
-        signatureName,
-        channel: "portal" as any,
-        ipAddress: ip,
-        userAgent: ua,
-        shareTokenId: tk.id,
-        acceptedAt: now,
-      } as any);
-
-      await tx
-        .update(proposals)
-        .set({
-          status: "accepted" as any,
+        await tx.insert(proposalApprovals).values({
+          id: approvalId,
+          tenantId,
+          proposalId: p.id,
+          // The SERVER's text — what the page showed — never the request's.
+          acceptanceText: PROPOSAL_ACCEPTANCE_TEXT,
+          signatureName,
+          channel: "portal" as any,
+          ipAddress: ip,
+          userAgent: ua,
+          shareTokenId: link.token.id,
           acceptedAt: now,
-          updatedAt: now,
-        } as any)
-        .where(eq(proposals.id, tk.subjectId));
+          meta: {
+            acceptedItems: accepted,
+            acceptedNames,
+            totalItems: products.length,
+            partial,
+          },
+        } as any);
 
-      // If the proposal was for a lead, advance that lead's stage too
-      if ((proposal as any).leadId) {
         await tx
-          .update(leads)
+          .update(proposals)
           .set({
-            stage: "proposal_approved" as any,
-            stageChangedAt: now,
+            status: (partial ? "partially_approved" : "accepted") as any,
+            acceptedItems: accepted,
+            acceptedAt: now,
             updatedAt: now,
           } as any)
-          .where(eq(leads.id, (proposal as any).leadId));
-        // Advance blueprint instance
-        try {
-          await transitionTo(tx, tk.tenantId!, (proposal as any).leadId, "proposal_approved", {
-            systemBypass: true,
-            remarks: `Client approved proposal ${(proposal as any).proposalNumber} via secure link.`,
-          });
-        } catch (e) {
-          console.error("[proposals/accept] blueprint advance failed:", e);
-        }
-      }
+          .where(eq(proposals.id, p.id));
 
-      await tx.insert(eventsOutbox).values({
-        tenantId: tk.tenantId,
-        kind: "proposal.accepted",
-        entityType: "proposal",
-        entityId: tk.subjectId,
-        after: { approvalId, signature: signatureName, leadId: (proposal as any).leadId ?? null },
-        meta: { tokenId, ip, userAgent: ua } as any,
-      } as any);
+        const leadId = await advanceJourneyForProposal(
+          tx,
+          p,
+          "proposal.accepted",
+          `Client ${partial ? `accepted ${accepted.length} of ${products.length} recommendations in` : "accepted"} proposal ${p.proposalNumber} via secure link.`
+        );
 
-      // Token already claimed up front; finalized after the tx commits below.
-      return { approvalId };
+        // Kept for firms that built workflows on it (including the
+        // request-documents recipe), now with what was accepted.
+        await tx.insert(eventsOutbox).values({
+          tenantId,
+          kind: "proposal.accepted",
+          entityType: "proposal",
+          entityId: p.id,
+          after: { approvalId, signature: signatureName, leadId: p.leadId ?? null, acceptedItems: accepted, partial },
+          meta: { tokenId, ip, userAgent: ua } as any,
+        } as any);
+
+        const ownerId = await proposalOwnerId(tx, p);
+        await notifyProposalOwner(tx, p, ownerId, {
+          kind: "proposal.accepted",
+          title: partial
+            ? `${firstName(p.recipientName)} accepted ${accepted.length} of ${products.length} recommendations`
+            : `${firstName(p.recipientName)} accepted your proposal`,
+          body: `${p.proposalNumber}${partial ? ` · accepted: ${acceptedNames.join(", ")}` : ""}`,
+          severity: "success",
+        });
+
+        return { approvalId, ownerId, leadId, stage: leadId ? await currentStage(tx, leadId) : null };
       });
     } catch (e) {
-      // Work failed after the claim — release so the client can retry.
       await releaseShareToken(tokenId).catch(() => {});
       throw e;
     }
@@ -134,13 +184,87 @@ export async function POST(req: NextRequest) {
     // Confirm the claim by storing the result payload (used_at already set).
     await finalizeShareToken({
       id: tokenId,
-      result: { approvalId: out.approvalId, signature: signatureName },
+      result: { approvalId: out.approvalId, signature: signatureName, acceptedItems: accepted },
       ipAddress: ip,
       userAgent: ua,
     });
 
-    return NextResponse.json(out, { status: 201 });
+    // Step 3: a lead's onboarding starts now (design decision 3). Outside the
+    // transaction on purpose — it sends email and WhatsApp, and a send must
+    // never sit inside a transaction that could still roll back.
+    const onboarding = await startOnboarding(tenantId, p, out).catch((e) => {
+      console.error("[proposals/accept] onboarding start failed:", e?.message ?? e);
+      return "failed" as const;
+    });
+
+    return NextResponse.json(
+      { approvalId: out.approvalId, status: partial ? "partially_approved" : "accepted", acceptedItems: accepted, onboarding },
+      { status: 201 }
+    );
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: 400 });
+    const status = typeof err?.status === "number" ? err.status : 400;
+    return NextResponse.json({ error: err?.message ?? "Something went wrong" }, { status });
   }
+}
+
+/**
+ * Send the document-collection link to a lead who just accepted.
+ *
+ * Only for a lead that is still at Won — a client already converted needs no
+ * KYC documents, and a lead already past Won has had the link. If the firm
+ * runs the workflow recipe that does this, stand aside. Anything that stops the
+ * send becomes a task, so onboarding is never silently skipped.
+ */
+async function startOnboarding(
+  tenantId: string,
+  p: Awaited<ReturnType<typeof loadProposalLink>>["proposal"],
+  out: { ownerId: string | null; leadId: string | null; stage: string | null }
+): Promise<"sent" | "recipe" | "task" | "not_needed"> {
+  if (!p.leadId || !out.leadId || out.stage !== "won_lead") return "not_needed";
+
+  const gate = await withTenant(tenantId, async (tx) => {
+    const [l] = await tx.select({ converted: leads.convertedInvestorId }).from(leads).where(eq(leads.id, p.leadId!)).limit(1);
+    if (l?.converted) return "not_needed" as const;
+    if (await firmRunsDocRecipe(tx, tenantId)) return "recipe" as const;
+    return "go" as const;
+  });
+  if (gate !== "go") return gate;
+
+  const fallbackTask = async (why: string) => {
+    await withTenant(tenantId, (tx) =>
+      createProposalTask(tx, p, {
+        assigneeId: out.ownerId,
+        title: `${firstName(p.recipientName)} accepted ${p.proposalNumber} — send the document checklist`,
+        description: `The document link could not be sent automatically (${why}). Open the lead and use “Send Doc Checklist”.`,
+        priority: "high",
+        dueInHours: 4,
+        kind: "onboarding_send_failed",
+      })
+    );
+    return "task" as const;
+  };
+
+  if (!out.ownerId) return fallbackTask("nobody is recorded as preparing this proposal");
+
+  let result;
+  try {
+    result = await sendDocChecklist({ tenantId, leadId: p.leadId, actorUserId: out.ownerId });
+  } catch (e: any) {
+    return fallbackTask(String(e?.message ?? "send failed").replace(/\.$/, ""));
+  }
+  if (!result.ok) return fallbackTask(result.summary.replace(/[📧💬⏳]/gu, "").trim());
+
+  await withTenant(tenantId, (tx) =>
+    autoAdvance(tx, tenantId, p.leadId!, "docs.requested", {
+      remarks: `Auto: document checklist sent after the client accepted ${p.proposalNumber}.`,
+      forwardOnly: true,
+    })
+  );
+  return "sent";
+}
+
+function productName(item: any): string {
+  return String(
+    item?.schemeName ?? item?.policyName ?? item?.strategyName ?? item?.fundName ?? item?.productName ?? "Recommendation"
+  );
 }

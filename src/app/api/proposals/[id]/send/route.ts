@@ -30,7 +30,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { createShareToken } from "@/lib/share-tokens";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { gateClientSend } from "@/lib/comms/guarded-send";
-import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
+import { advanceJourneyForProposal } from "@/lib/proposals/journey";
 import { proposals, tenants, communications, investors } from "@/db/schema";
 import { checkAlignment } from "@/lib/proposal/risk-alignment";
 import { resolveEmailSender } from "@/lib/comms/sender";
@@ -461,15 +461,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         ...clientMeta,
       });
 
-      // ─── Smart blueprint advance — proposal sent ──────────────────
-      const advanceLeadId =
-        p.leadId ??
-        (p.investorId ? await resolveLeadIdForInvestor(tx, p.investorId) : null);
-      if (advanceLeadId) {
-        await autoAdvance(tx, session.tenantId, advanceLeadId, "proposal.sent", {
-          remarks: `Auto: proposal ${p.proposalNumber} sent via ${channel}.`,
-        });
-      }
+      // ─── Journey: Proposal Sent (forward only) ─────────────────────
+      // A fresh proposal to a client already in onboarding or fully active
+      // must not pull their journey back — see lib/proposals/journey.ts.
+      await advanceJourneyForProposal(tx, p as any, "proposal.sent", `Auto: proposal ${p.proposalNumber} sent via ${channel}.`);
 
       return NextResponse.json({
         ok: true,

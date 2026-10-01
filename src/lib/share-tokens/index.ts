@@ -94,7 +94,13 @@ export async function createShareToken(input: CreateShareTokenInput): Promise<Cr
  * client clicking the link is unauthenticated. Returns the underlying row +
  * validates that it's usable; throws on any issue.
  */
-export async function resolveShareToken(token: string): Promise<{
+export async function resolveShareToken(
+  token: string,
+  /** Let a page open a link that has already been answered, read-only — a
+   *  client coming back to see what they agreed and download their copy. The
+   *  page is then responsible for not offering the form again. */
+  opts: { allowUsed?: boolean } = {}
+): Promise<{
   id: string;
   tenantId: string;
   kind: ShareTokenKind;
@@ -102,6 +108,7 @@ export async function resolveShareToken(token: string): Promise<{
   subjectId: string;
   payload: Record<string, unknown> | null;
   expiresAt: Date;
+  usedAt: Date | null;
 }> {
   if (!token || token.length < 16) throw new Error("Invalid token");
   const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
@@ -112,7 +119,7 @@ export async function resolveShareToken(token: string): Promise<{
   });
   if (!row) throw new Error("Token not found");
   if (row.revokedAt) throw new Error("This link was revoked");
-  if (row.usedAt && !MULTI_USE_KINDS.includes(row.kind as ShareTokenKind))
+  if (row.usedAt && !opts.allowUsed && !MULTI_USE_KINDS.includes(row.kind as ShareTokenKind))
     throw new Error("This link has already been used");
   if (new Date(row.expiresAt as any) < new Date()) throw new Error("This link has expired");
   return {
@@ -123,6 +130,7 @@ export async function resolveShareToken(token: string): Promise<{
     subjectId: row.subjectId,
     payload: (row.payload as any) ?? null,
     expiresAt: row.expiresAt as any,
+    usedAt: (row.usedAt as any) ?? null,
   };
 }
 

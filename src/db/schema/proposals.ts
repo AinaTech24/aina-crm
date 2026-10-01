@@ -1,5 +1,6 @@
 import {
   index,
+  integer,
   jsonb,
   numeric,
   pgTable,
@@ -92,7 +93,13 @@ export const proposals = pgTable(
       // two, a half-accepted proposal had to be logged as fully accepted and a
       // transacted one stayed "accepted" forever, so conversion reporting could
       // not tell intent from money actually invested.
-      enum: ["draft", "ready", "sent", "viewed", "accepted", "partially_approved", "rejected", "expired", "executed"],
+      // `changes_requested` = the client asked for a change instead of
+      // deciding; `superseded` = a newer version of this proposal exists
+      // (migration 0225). Neither counts as open, won or lost.
+      enum: [
+        "draft", "ready", "sent", "viewed", "accepted", "partially_approved", "rejected", "expired", "executed",
+        "changes_requested", "superseded",
+      ],
     })
       .notNull()
       .default("draft"),
@@ -113,6 +120,24 @@ export const proposals = pgTable(
     suitabilityNote: text("suitability_note"),
     suitabilityOverrideReason: text("suitability_override_reason"),
 
+    // ── Journey (migration 0225) ─────────────────────────────────────────
+    /** Once sent, a proposal is revised as a new version, never edited in
+     *  place — the sent version is the record of what the client saw. */
+    version: integer("version").notNull().default(1),
+    parentProposalId: uuid("parent_proposal_id"),
+    supersededById: uuid("superseded_by_id"),
+    /** Indices into `products` the client accepted; null until they decide. */
+    acceptedItems: jsonb("accepted_items").$type<number[]>(),
+    changeRequestNote: text("change_request_note"),
+    changeRequestedAt: timestamp("change_requested_at", { withTimezone: true }),
+    /** viewedAt (above) is the FIRST open; these track the rest. */
+    viewCount: integer("view_count").notNull().default(0),
+    lastViewedAt: timestamp("last_viewed_at", { withTimezone: true }),
+    /** Filled by matching RTA transactions after acceptance. */
+    executedAt: timestamp("executed_at", { withTimezone: true }),
+    executedAmount: numeric("executed_amount", { precision: 16, scale: 2 }),
+    execution: jsonb("execution").$type<ProposalExecution>(),
+
     ...timestamps,
   },
   (t) => ({
@@ -125,6 +150,21 @@ export const proposals = pgTable(
 );
 
 export type Proposal = typeof proposals.$inferSelect;
+
+/** What the execution matcher found: per accepted line, the money that landed. */
+export type ProposalExecution = {
+  matchedAt: string;
+  lines: Array<{
+    index: number;
+    schemeName: string;
+    proposed: number;
+    invested: number;
+    transactionIds: string[];
+  }>;
+};
+
+/** How an MF recommendation is to be invested — the old worksheet's four kinds. */
+export type RecommendationType = "sip" | "lumpsum" | "swp" | "stp";
 export type NewProposal = typeof proposals.$inferInsert;
 
 /**
@@ -138,12 +178,29 @@ export type ProposalLineItem =
       amcName?: string;
       schemeCode?: string;
       category?: string;
+      /** SIP (default) / lumpsum / SWP / STP — the worksheet's four kinds,
+       *  now part of the one recommendation list the client sees. */
+      recommendationType?: RecommendationType;
+      planType?: "regular" | "direct";
       monthlyAmount?: number;
       lumpsum?: number;
       sipTermYears?: number;
+      stepUpPct?: number;
       expectedReturn?: number;
-      riskRating?: "low" | "moderate" | "high" | "very_high";
+      riskRating?: "low" | "low_to_moderate" | "moderate" | "moderately_high" | "high" | "very_high";
       projectedCorpus?: number;
+      goal?: string;
+      // SWP
+      corpusRequired?: number;
+      monthlyWithdrawal?: number;
+      swpPeriodMonths?: number;
+      // STP — transfers FROM schemeName TO toSchemeName
+      toSchemeName?: string;
+      toSchemeCode?: string;
+      monthlyTransfer?: number;
+      numInstallments?: number;
+      /** Why the RM kept a scheme above the client's risk band. */
+      suitabilityReason?: string;
       notes?: string;
     }
   | {
