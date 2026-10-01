@@ -38,9 +38,17 @@ export function clientsHref(ctx: WidgetCtx, extra: Record<string, Val> = {}): st
   return `/dashboard/investors${qs({ alive: "1", ...clientParams(ctx), ...extra })}`;
 }
 
+/** Every client RECORD in scope, closed included — the Client book's "By
+ *  status" counts these (clientRecordWhere), so it must not add `alive=1`. */
+export function clientRecordsHref(ctx: WidgetCtx, extra: Record<string, Val> = {}): string {
+  return `/dashboard/investors${qs({ ...clientParams(ctx), ...extra })}`;
+}
+
 /** Clients onboarded in the period — the New clients figure. */
-export function newClientsHref(ctx: WidgetCtx, from = ctx.period.from, to = ctx.period.to): string {
-  return `/dashboard/investors${qs({ ...clientParams(ctx), onboarded_from: from, onboarded_to: to })}`;
+export function newClientsHref(
+  ctx: WidgetCtx, from = ctx.period.from, to = ctx.period.to, extra: Record<string, Val> = {},
+): string {
+  return `/dashboard/investors${qs({ ...clientParams(ctx), onboarded_from: from, onboarded_to: to, ...extra })}`;
 }
 
 /** The SIP Book on active SIPs of clients in scope. */

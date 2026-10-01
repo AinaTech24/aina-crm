@@ -37,7 +37,13 @@ const inList = (xs: readonly string[]) => sql.raw(xs.map((x) => `'${x.replace(/'
 export type TaskStateCounts = { total: number; pending: number; completed: number; awaiting: number; cancelled: number };
 export type TaskSummary = { financial: TaskStateCounts; nonFinancial: TaskStateCounts; all: TaskStateCounts };
 
-const awaitingSql = sql`(t.status = 'blocked' OR (COALESCE(t.approval_status, '') = 'pending' AND t.status NOT IN ('completed', 'cancelled')))`;
+/** "Awaiting input": blocked, or waiting for an approver. Exported so the
+ *  Tasks list's `state=awaiting` drill-down opens exactly these rows. */
+export function taskAwaitingSql(alias = "t") {
+  const c = (n: string) => sql.raw(`${alias}.${n}`);
+  return sql`(${c("status")} = 'blocked' OR (COALESCE(${c("approval_status")}, '') = 'pending' AND ${c("status")} NOT IN ('completed', 'cancelled')))`;
+}
+const awaitingSql = taskAwaitingSql("t");
 
 export async function getTaskSummary(tx: Tx, scope: MetricScope, p: MetricPeriod): Promise<TaskSummary> {
   const rows = (await tx.execute(sql`

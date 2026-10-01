@@ -17,7 +17,8 @@ import { CLAIM_OPEN, CLAIM_STATUS_LABEL, GROUP_LABEL, STATUS_IN_FORCE, groupSql,
 import { formatCount, formatDate, formatMoney } from "@/lib/format";
 import { indiaToday } from "@/lib/dashboards/system/period";
 import type { WidgetCtx, WidgetImpl } from "../types";
-import { qs } from "../links";
+import { qs, sipsHref } from "../links";
+import { Drill } from "../Drill";
 
 const insScope = (ctx: WidgetCtx) => ({ tenantId: ctx.tenantId, rmIds: ctx.scope.rmIds, branchIds: ctx.scope.branchIds });
 
@@ -233,6 +234,13 @@ async function expiryPipeline(tx: Tx, ctx: WidgetCtx) {
   const rows = (await getExpiryPipeline(tx, ctx.scope)).filter((r) => r.d30 + r.d60 + r.d90 > 0);
   if (!rows.length) return { body: null };
   const td = "px-3 py-2 text-right tabular-nums";
+  // A bucket opens its rows where a list can show exactly them: SIP end dates
+  // on the SIP list (end_from / end_to). The other lists have no matching
+  // date filter, so their buckets stay plain and the row's own link stands.
+  const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10); // India date
+  const day = (n: number) => new Date(Date.parse(`${today}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+  const bucket = (key: string, from: number, to: number) =>
+    key === "sip_end" ? sipsHref(ctx, { end_from: day(from), end_to: day(to) }) : null;
   return {
     body: (
       <table className="w-full text-sm">
@@ -251,9 +259,9 @@ async function expiryPipeline(tx: Tx, ctx: WidgetCtx) {
                 <Link href={r.href} className="font-medium hover:underline">{r.label}</Link>
                 <div className="text-xs text-muted-foreground">{r.consequence}</div>
               </td>
-              <td className={td}>{r.d30 ? formatCount(r.d30) : "·"}</td>
-              <td className={td}>{r.d60 ? formatCount(r.d60) : "·"}</td>
-              <td className={td}>{r.d90 ? formatCount(r.d90) : "·"}</td>
+              <td className={td}>{r.d30 ? <Drill href={bucket(r.key, 0, 30)}>{formatCount(r.d30)}</Drill> : "·"}</td>
+              <td className={td}>{r.d60 ? <Drill href={bucket(r.key, 31, 60)}>{formatCount(r.d60)}</Drill> : "·"}</td>
+              <td className={td}>{r.d90 ? <Drill href={bucket(r.key, 61, 90)}>{formatCount(r.d90)}</Drill> : "·"}</td>
             </tr>
           ))}
         </tbody>

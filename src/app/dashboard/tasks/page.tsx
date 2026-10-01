@@ -15,7 +15,8 @@ import { TaskViewSelect } from "./TaskViewSelect";
 import { TaskList } from "./TaskList";
 import { TaskKanban } from "./TaskKanban";
 import { buttonClass } from "@/components/ui/button-class";
-import { overdueTaskSql, staffWhere } from "@/lib/metrics";
+import { overdueTaskSql, staffWhere, taskAwaitingSql } from "@/lib/metrics";
+import { FINANCIAL_TASK_TYPES } from "@/lib/dashboard/my/window";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +54,13 @@ export default async function TasksPage({
   // Due filter — CSV multi-select: today | overdue | sla_risk
   const dueFilter = (sp.due ?? "").split(",").filter(Boolean);
   const approval = sp.approval ?? ""; // '' | 'pending' | 'mine' (awaiting sign-off)
+  // The dashboard's Task summary drill-down (lib/metrics/work-summary.ts):
+  //   fin=1|0  financial task types or not (FINANCIAL_TASK_TYPES)
+  //   state=   all | pending | awaiting | completed — the card's own columns.
+  //            "Awaiting input" is derived (blocked, or waiting on an
+  //            approver), so it cannot be expressed as a status filter.
+  const fin = sp.fin === "1" || sp.fin === "0" ? sp.fin : "";
+  const state = (["all", "pending", "awaiting", "completed"] as const).includes(sp.state as any) ? (sp.state as string) : "";
   // Quick tab — WHEN: overdue (past its due time), today (due later today),
   // upcoming (due after today), completed. No tab = everything still open.
   const tab: Tab = (["overdue", "today", "upcoming", "completed"] as const).includes(sp.tab as any)
@@ -115,13 +123,21 @@ export default async function TasksPage({
       if (tab === "upcoming") tabConds.push(sql`${DUE_DAY} > ${IST_TODAY}`);
       if (statusFilter.length) {
         conds.push(inArray(tasks.status, statusFilter as any));
-      } else if (!tab && !approval) {
+      } else if (!tab && !approval && !state) {
         // Default: everything still open — in progress and blocked included,
         // they are work too (this used to mean status = 'open' only). Not when
         // filtering by approval, where pending tasks are usually in progress.
         conds.push(inArray(tasks.status, [...OPEN_STATUSES]));
       }
     }
+    if (!isKanban && !statusFilter.length) {
+      if (state === "pending") conds.push(sql`tasks.status IN ('open', 'in_progress') AND NOT ${taskAwaitingSql("tasks")}`);
+      else if (state === "awaiting") conds.push(taskAwaitingSql("tasks"));
+      else if (state === "completed") conds.push(eq(tasks.status, "completed"));
+    }
+    if (fin === "1") conds.push(inArray(tasks.type, [...FINANCIAL_TASK_TYPES] as any));
+    else if (fin === "0") conds.push(sql`(tasks.type IS NULL OR tasks.type NOT IN (${sql.join(FINANCIAL_TASK_TYPES.map((t) => sql`${t}`), sql`, `)}))`);
+
     // Awaiting sign-off. 'pending' = any; 'mine' = ones this user approves.
     if (approval === "pending") conds.push(eq(tasks.approvalStatus, "pending"));
     else if (approval === "mine") {
@@ -156,7 +172,9 @@ export default async function TasksPage({
       if (dueFilter.includes("sla_risk")) dueConds.push(sql`sla_due_at IS NOT NULL AND sla_due_at < now() + interval '24 hours'`);
       if (dueConds.length) conds.push(dueConds.length === 1 ? dueConds[0] : or(...dueConds)!);
     }
-    const dr = dateRangeCond(sp, "created", "tasks.created_at");
+    // On the India date, as the dashboard counts "created in the period"
+    // (lib/metrics/work-summary.ts) — a task keyed at 00:30 IST is that day's.
+    const dr = dateRangeCond(sp, "created", "(tasks.created_at AT TIME ZONE 'Asia/Kolkata')::date");
     if (dr) conds.push(dr);
 
     // Overdue (n) on its tab: every other filter the user set, tab aside.

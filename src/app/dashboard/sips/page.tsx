@@ -156,6 +156,10 @@ export default async function SipsPage({
     if (freqFilter.length) conds.push(inArray(sips.frequency, freqFilter as any));
     const dr = dateRangeCond(sp, "created", "sips.created_at");
     if (dr) conds.push(dr);
+    // end_from / end_to — the dashboard's Expiries card: SIPs whose end date
+    // falls in a 30-day bucket (lib/metrics/compliance.ts getExpiryPipeline).
+    const endDr = dateRangeCond(sp, "end", "sips.end_date");
+    if (endDr) conds.push(endDr);
     const where = conds.length ? and(...conds) : undefined;
 
     const rowsQuery = tx

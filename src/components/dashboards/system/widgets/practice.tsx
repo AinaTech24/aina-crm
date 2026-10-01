@@ -17,6 +17,7 @@ import { loadTenantLicense } from "@/lib/auth/license";
 import { isDashboardWidgetVisible } from "@/config/dashboard-widgets";
 import type { WidgetCtx, WidgetImpl } from "../types";
 import { clientsHref, newClientsHref, sipsHref } from "../links";
+import { Drill } from "../Drill";
 import { StockTrendChart, type StockTrendPoint } from "../StockTrendChart";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -74,7 +75,18 @@ async function businessTrend(tx: Tx, ctx: WidgetCtx) {
     return { body: <p className="text-sm text-muted-foreground">{why}</p>, subtitle: "Not enough history yet" };
   }
   return {
-    body: <StockTrendChart data={points} />,
+    // Past months are recorded totals with no list behind them; today's
+    // figures open the clients and SIPs they are made of.
+    body: (
+      <div className="space-y-2">
+        <StockTrendChart data={points} />
+        <p className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <span>Today:</span>
+          <Drill href={clientsHref(ctx, { sort: "aum", dir: "desc" })} title="Clients, largest AUM first">AUM {formatMoney(aum.aum)}</Drill>
+          <Drill href={sipsHref(ctx)} title="Active SIPs">SIP book {formatMoney(sip.monthly)} a month</Drill>
+        </p>
+      </div>
+    ),
     subtitle: `Month-end, recorded · ${points.length} months`,
     info: "AUM and the SIP book on the last recorded day of each month (nightly snapshots), and today's live figure. A balance moves with the market as well as with sales.",
   };

@@ -16,6 +16,7 @@ import {
 import { formatCount, formatMoney, formatPercent, humanise } from "@/lib/format";
 import type { WidgetCtx, WidgetImpl } from "../types";
 import { leadsHref } from "../links";
+import { Drill } from "../Drill";
 import { stripRole } from "./business";
 
 const pct = (x: number | null) => (x == null ? "—" : formatPercent(x * 100, 0));
@@ -26,6 +27,10 @@ function leadScope(ctx: WidgetCtx) {
 }
 
 /* ─────────────────────────── lead pipeline ─────────────────────────── */
+
+/** Every stage still in play — the card's "open" (not Won, not Lost). */
+// The Lost column's key is "not_qualified" (lib/leads/stages.ts).
+const OPEN_STAGES = LEAD_PIPELINE.filter((col) => !["won_lead", "not_qualified", "lost"].includes(col.key)).map((col) => col.key);
 
 async function leadPipeline(tx: Tx, ctx: WidgetCtx) {
   const s = leadScope(ctx);
@@ -74,8 +79,16 @@ async function leadPipeline(tx: Tx, ctx: WidgetCtx) {
           })}
         </ul>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-          <span><span className="font-semibold tabular-nums">{formatCount(c.open)}</span> open</span>
-          <span>Conversion <span className="font-semibold tabular-nums">{pct(c.conversion)}</span></span>
+          <span>
+            <Drill href={leadsHref(ctx, { stage: OPEN_STAGES })}>
+              <span className="font-semibold tabular-nums">{formatCount(c.open)}</span> open
+            </Drill>
+          </span>
+          <span>Conversion{" "}
+            <Drill href={leadsHref(ctx, { stage: "won_lead", include_won: "1" })} title="The won leads">
+              <span className="font-semibold tabular-nums">{pct(c.conversion)}</span>
+            </Drill>
+          </span>
           {open.followUpDue > 0 && (
             <Link href={leadsHref(ctx, { followup_due: "1" }, false)} className="text-primary hover:underline">
               {formatCount(open.followUpDue)} need follow-up today
@@ -173,8 +186,12 @@ async function leadSources(tx: Tx, ctx: WidgetCtx) {
                   </Link>
                 )}
               </td>
-              <td className="px-3 py-2 text-right tabular-nums">{formatCount(r.total)}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{formatCount(r.won)}</td>
+              <td className="px-3 py-2 text-right tabular-nums">
+                <Drill href={r.source === "unknown" ? null : leadsHref(ctx, { source: r.source, include_won: "1" })}>{formatCount(r.total)}</Drill>
+              </td>
+              <td className="px-3 py-2 text-right tabular-nums">
+                <Drill href={r.source === "unknown" || !r.won ? null : leadsHref(ctx, { source: r.source, stage: "won_lead", include_won: "1" })}>{formatCount(r.won)}</Drill>
+              </td>
               <td className="px-3 py-2 text-right tabular-nums">{pct(r.conversion)}</td>
             </tr>
           ))}

@@ -23,7 +23,8 @@ import {
 import { RISK_BUCKETS } from "@/lib/risk-profile/buckets";
 import { formatCount, formatDate, formatMoney, formatPercent, pickMoneyScale } from "@/lib/format";
 import type { WidgetCtx, WidgetImpl } from "../types";
-import { clientsHref, newClientsHref, qs, riskProfilesHref, tasksHref } from "../links";
+import { clientRecordsHref, clientsHref, newClientsHref, qs, riskProfilesHref, tasksHref } from "../links";
+import { Drill } from "../Drill";
 
 /* ─────────────────────────────── shared parts ─────────────────────────────── */
 
@@ -45,7 +46,7 @@ function Bar({ label, figure, pct, href }: { label: string; figure: string; pct:
     <li className="space-y-1">
       <div className="flex items-baseline justify-between gap-3 text-sm">
         {href ? <Link href={href} className="truncate hover:underline">{label}</Link> : <span className="truncate">{label}</span>}
-        <span className="whitespace-nowrap tabular-nums text-muted-foreground">{figure}</span>
+        <span className="whitespace-nowrap tabular-nums text-muted-foreground"><Drill href={href}>{figure}</Drill></span>
       </div>
       <div className="h-1.5 rounded-full bg-secondary" aria-hidden>
         <div className="h-1.5 rounded-full bg-primary/70" style={{ width: `${Math.max(pct > 0 ? 2 : 0, Math.min(100, pct))}%` }} />
@@ -211,14 +212,16 @@ async function newClientsByCategory(tx: Tx, ctx: WidgetCtx) {
 
 /* ─────────────────────────────── Client book ─────────────────────────────── */
 
-function BookList({ b, money }: { b: BookBreakdown; money: boolean }) {
+/** `hrefFor` opens each row's clients on the Clients list (the same
+ *  definition the breakdown counts with). */
+function BookList({ b, money, hrefFor }: { b: BookBreakdown; money: boolean; hrefFor?: (key: string) => string }) {
   const scale = pickMoneyScale(b.rows.map((r) => r.aum));
   return (
     <ul className="space-y-2.5">
       {b.rows.map((r) => (
         <Bar key={r.key} label={`${r.label}${r.newCount ? ` · ${formatCount(r.newCount)} new` : ""}`}
           figure={`${formatCount(r.count)}${money ? ` · ${formatMoney(r.aum, { scale })}` : ""}`}
-          pct={pctOf(r.count, b.total)} />
+          pct={pctOf(r.count, b.total)} href={hrefFor?.(r.key)} />
       ))}
     </ul>
   );
@@ -234,9 +237,9 @@ async function clientBook(tx: Tx, ctx: WidgetCtx) {
   return {
     body: (
       <div className="grid gap-5 md:grid-cols-3">
-        <section className="min-w-0"><SectionTitle>By category · clients · AUM</SectionTitle><BookList b={cat} money /></section>
-        <section className="min-w-0"><SectionTitle>By client type</SectionTitle><BookList b={type} money={false} /></section>
-        <section className="min-w-0"><SectionTitle>By status</SectionTitle><BookList b={status} money={false} /></section>
+        <section className="min-w-0"><SectionTitle>By category · clients · AUM</SectionTitle><BookList b={cat} money hrefFor={(k) => clientsHref(ctx, { category: k === "NONE" ? "none" : k })} /></section>
+        <section className="min-w-0"><SectionTitle>By client type</SectionTitle><BookList b={type} money={false} hrefFor={(k) => clientsHref(ctx, { ctype: k })} /></section>
+        <section className="min-w-0"><SectionTitle>By status</SectionTitle><BookList b={status} money={false} hrefFor={(k) => clientRecordsHref(ctx, { status: k })} /></section>
       </div>
     ),
     subtitle: `${formatCount(cat.total)} live clients · ${formatCount(cat.newTotal)} onboarded in the period`,
@@ -487,9 +490,13 @@ async function taskSummary(tx: Tx, ctx: WidgetCtx) {
   const t = await getTaskSummary(tx, ctx.scope, ctx.period);
   if (!t.all.total) return { body: null };
   const rows = [
-    { key: "fin", label: "Financial", c: t.financial },
-    { key: "non", label: "Non-financial", c: t.nonFinancial },
+    { key: "fin", label: "Financial", c: t.financial, fin: "1" },
+    { key: "non", label: "Non-financial", c: t.nonFinancial, fin: "0" },
   ];
+  // Each cell opens its own tasks: created in the period, financial or not,
+  // in the card's state bucket (the Tasks list's fin / state params).
+  const go = (fin: string | undefined, state: string) =>
+    tasksHref(ctx, { created_from: ctx.period.from, created_to: ctx.period.to, fin, state });
   return {
     body: (
       <div className="overflow-x-auto">
@@ -507,18 +514,18 @@ async function taskSummary(tx: Tx, ctx: WidgetCtx) {
             {rows.map((r) => (
               <tr key={r.key}>
                 <td className="px-3 py-2 font-medium">{r.label}</td>
-                <td className={`${td} font-semibold`}>{formatCount(r.c.total)}</td>
-                <td className={td}>{formatCount(r.c.pending)}</td>
-                <td className={`${td} ${r.c.awaiting ? "text-amber-700" : ""}`}>{formatCount(r.c.awaiting)}</td>
-                <td className={td}>{formatCount(r.c.completed)}</td>
+                <td className={`${td} font-semibold`}><Drill href={go(r.fin, "all")}>{formatCount(r.c.total)}</Drill></td>
+                <td className={td}><Drill href={r.c.pending ? go(r.fin, "pending") : null}>{formatCount(r.c.pending)}</Drill></td>
+                <td className={`${td} ${r.c.awaiting ? "text-amber-700" : ""}`}><Drill href={r.c.awaiting ? go(r.fin, "awaiting") : null}>{formatCount(r.c.awaiting)}</Drill></td>
+                <td className={td}><Drill href={r.c.completed ? go(r.fin, "completed") : null}>{formatCount(r.c.completed)}</Drill></td>
               </tr>
             ))}
             <tr className="border-t border-border">
               <td className="px-3 py-2 font-semibold">All tasks</td>
-              <td className={`${td} font-semibold`}>{formatCount(t.all.total)}</td>
-              <td className={td}>{formatCount(t.all.pending)}</td>
-              <td className={td}>{formatCount(t.all.awaiting)}</td>
-              <td className={td}>{formatCount(t.all.completed)}</td>
+              <td className={`${td} font-semibold`}><Drill href={go(undefined, "all")}>{formatCount(t.all.total)}</Drill></td>
+              <td className={td}><Drill href={t.all.pending ? go(undefined, "pending") : null}>{formatCount(t.all.pending)}</Drill></td>
+              <td className={td}><Drill href={t.all.awaiting ? go(undefined, "awaiting") : null}>{formatCount(t.all.awaiting)}</Drill></td>
+              <td className={td}><Drill href={t.all.completed ? go(undefined, "completed") : null}>{formatCount(t.all.completed)}</Drill></td>
             </tr>
           </tbody>
         </table>

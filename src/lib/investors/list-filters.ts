@@ -113,14 +113,38 @@ export function buildInvestorConditions(
     conditions.push(parts.length === 1 ? parts[0] : or(...parts)!);
   }
   if (tier.length) conditions.push(inArray(investors.serviceTier, tier as any));
-  if (status.length) conditions.push(inArray(investors.status, status as any));
+  // Status as the dashboard's Client book counts it (lib/metrics/book.ts):
+  // "closed" includes exited, and "none" is a client with no status recorded.
+  if (status.length) {
+    const named = status.filter((s) => s !== "none");
+    if (named.includes("closed") && !named.includes("exited")) named.push("exited");
+    const parts: any[] = [];
+    if (named.length) parts.push(inArray(investors.status, named as any));
+    if (named.length !== status.length) parts.push(sql`COALESCE(${investors.status}, '') = ''`);
+    conditions.push(parts.length === 1 ? parts[0] : or(...parts)!);
+  }
+  // ctype — the Client book's "By client type" (lib/metrics/book.ts
+  // clientTypeSql, restated over the investors table): corporate, else the
+  // family's primary member as head, else another family member, else
+  // individual.
+  const ctype = csv(sp.ctype).filter((v) => ["head", "member", "individual", "corporate"].includes(v));
+  if (ctype.length) {
+    conditions.push(sql`(CASE WHEN ${investors.investorCategory} IN ('corporate', 'company') THEN 'corporate'
+      WHEN EXISTS (SELECT 1 FROM families f WHERE f.tenant_id = ${investors.tenantId}
+                     AND f.primary_investor_id = ${investors.id}) THEN 'head'
+      WHEN ${investors.familyId} IS NOT NULL THEN 'member'
+      ELSE 'individual' END) IN (${textList(ctype)})`);
+  }
   if (kyc.length) conditions.push(inArray(investors.kycStatus, kyc as any));
   // RM (owning team member) filter — lets an owner slice the book by RM.
   // Explicit ::uuid casts mirror the meetings/SR/leads filter pattern.
+  // `rm=none` is the dashboard Team table's "No RM assigned" row.
   if (rm.length) {
-    conditions.push(
-      sql`${investors.rmId} IN (${sql.join(rm.map((v) => sql`${v}::uuid`), sql`, `)})`
-    );
+    const ids = rm.filter((v) => /^[0-9a-f-]{36}$/i.test(v));
+    const parts: any[] = [];
+    if (ids.length) parts.push(sql`${investors.rmId} IN (${sql.join(ids.map((v) => sql`${v}::uuid`), sql`, `)})`);
+    if (rm.includes("none")) parts.push(sql`${investors.rmId} IS NULL`);
+    if (parts.length) conditions.push(parts.length === 1 ? parts[0] : or(...parts)!);
   }
 
   // Branch filter — the branch command centre's drill-down. It only NARROWS:

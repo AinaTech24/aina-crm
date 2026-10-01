@@ -23,6 +23,7 @@ import {
 import { formatCount, formatDate, formatMoney, pickMoneyScale, type MoneyScale } from "@/lib/format";
 import type { WidgetCtx, WidgetImpl } from "../types";
 import { clientsHref, newClientsHref, qs, sipsHref, tasksHref, transactionsHref } from "../links";
+import { Drill } from "../Drill";
 import { MoneyMovementChart, type MoneyPoint } from "../MoneyMovementChart";
 
 /* ─────────────────────────────── pieces ─────────────────────────────── */
@@ -211,6 +212,9 @@ type TeamRow = {
   key: string;
   name: string;
   href?: string;
+  /** Each figure's drill-down; a column with no list that opens exactly
+   *  its rows (e.g. the SIP book of clients with no RM) has none. */
+  links?: Partial<Record<"clients" | "aum" | "sip" | "net" | "newClients" | "overdue", string>>;
   clients: number;
   aum: number;
   sip: number;
@@ -252,12 +256,12 @@ function TeamTable({ rows, head, hasLedger }: { rows: TeamRow[]; head: string; h
                 <td className="px-3 py-2 font-medium max-w-0 w-1/4">
                   {r.href ? <Link href={r.href} className="hover:underline truncate block">{r.name}</Link> : <span className="text-muted-foreground truncate block">{r.name}</span>}
                 </td>
-                <td className={td}>{formatCount(r.clients)}</td>
-                <td className={td}>{formatMoney(r.aum, { scale: aumScale })}</td>
-                <td className={td}>{formatMoney(r.sip, { scale: sipScale })}</td>
-                <td className={td}>{hasLedger && r.net != null ? formatMoney(r.net, { scale: netScale }) : "—"}</td>
-                <td className={td}>{formatCount(r.newClients)}</td>
-                <td className={`${td} ${r.overdue ? "text-rose-700 font-medium" : ""}`}>{r.overdue == null ? "—" : formatCount(r.overdue)}</td>
+                <td className={td}><Drill href={r.links?.clients}>{formatCount(r.clients)}</Drill></td>
+                <td className={td}><Drill href={r.links?.aum}>{formatMoney(r.aum, { scale: aumScale })}</Drill></td>
+                <td className={td}><Drill href={r.links?.sip}>{formatMoney(r.sip, { scale: sipScale })}</Drill></td>
+                <td className={td}>{hasLedger && r.net != null ? <Drill href={r.links?.net}>{formatMoney(r.net, { scale: netScale })}</Drill> : "—"}</td>
+                <td className={td}><Drill href={r.newClients ? r.links?.newClients : null}>{formatCount(r.newClients)}</Drill></td>
+                <td className={`${td} ${r.overdue ? "text-rose-700 font-medium" : ""}`}>{r.overdue == null ? "—" : <Drill href={r.overdue ? r.links?.overdue : null}>{formatCount(r.overdue)}</Drill>}</td>
                 <td className={td}>{pct(r)}</td>
               </tr>
             ))}
@@ -273,10 +277,10 @@ function TeamTable({ rows, head, hasLedger }: { rows: TeamRow[]; head: string; h
               <span className="text-xs text-muted-foreground whitespace-nowrap">{formatCount(r.clients)} clients</span>
             </div>
             <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
-              <div><dt className="text-muted-foreground">AUM</dt><dd className="tabular-nums">{formatMoney(r.aum, { scale: aumScale })}</dd></div>
-              <div><dt className="text-muted-foreground">SIP book</dt><dd className="tabular-nums">{formatMoney(r.sip, { scale: sipScale })}</dd></div>
+              <div><dt className="text-muted-foreground">AUM</dt><dd className="tabular-nums"><Drill href={r.links?.aum}>{formatMoney(r.aum, { scale: aumScale })}</Drill></dd></div>
+              <div><dt className="text-muted-foreground">SIP book</dt><dd className="tabular-nums"><Drill href={r.links?.sip}>{formatMoney(r.sip, { scale: sipScale })}</Drill></dd></div>
               <div><dt className="text-muted-foreground">Net business</dt><dd className="tabular-nums">{hasLedger && r.net != null ? formatMoney(r.net, { scale: netScale }) : "—"}</dd></div>
-              <div><dt className="text-muted-foreground">New clients</dt><dd className="tabular-nums">{formatCount(r.newClients)}</dd></div>
+              <div><dt className="text-muted-foreground">New clients</dt><dd className="tabular-nums"><Drill href={r.newClients ? r.links?.newClients : null}>{formatCount(r.newClients)}</Drill></dd></div>
               <div><dt className="text-muted-foreground">Overdue tasks</dt><dd className={`tabular-nums ${r.overdue ? "text-rose-700" : ""}`}>{r.overdue == null ? "—" : formatCount(r.overdue)}</dd></div>
               <div><dt className="text-muted-foreground">Target</dt><dd className="tabular-nums">{pct(r)}</dd></div>
             </dl>
@@ -340,6 +344,14 @@ async function teamTable(tx: Tx, ctx: WidgetCtx, dashboardHref: string) {
       net: net.hasData ? net.byRm.get(u.id) ?? 0 : null,
       newClients: newc.get(u.id) ?? 0,
       overdue: overdue.get(u.id) ?? 0,
+      links: {
+        clients: clientsHref(ctx, { rm: u.id }),
+        aum: clientsHref(ctx, { rm: u.id, sort: "aum", dir: "desc" }),
+        sip: sipsHref(ctx, { rm: u.id }),
+        net: transactionsHref(ctx, { rm: u.id }),
+        newClients: newClientsHref(ctx, undefined, undefined, { rm: u.id }),
+        overdue: tasksHref(ctx, { assignee: u.id, tab: "overdue" }),
+      },
       target,
       targetPct: targetPct(fyNet, target),
     };
@@ -358,6 +370,9 @@ async function teamTable(tx: Tx, ctx: WidgetCtx, dashboardHref: string) {
       overdue: null,
       target: null,
       targetPct: null,
+      // Only the Clients list can open "no RM" (rm=none); the SIP and
+      // transaction lists cannot, so those figures stay plain.
+      links: { clients: clientsHref(ctx, { rm: "none" }), aum: clientsHref(ctx, { rm: "none", sort: "aum", dir: "desc" }) },
     });
   }
   rows.sort((a, b) => (a.key === "none" ? 1 : b.key === "none" ? -1 : b.aum - a.aum));
@@ -407,6 +422,14 @@ async function branchTable(tx: Tx, ctx: WidgetCtx, dashboardHref: string) {
       net: net.hasData ? net.byBranch.get(id) ?? 0 : null,
       newClients: newc.get(id) ?? 0,
       overdue: overdue.get(id) ?? 0,
+      links: {
+        clients: clientsHref(ctx, { branch: id }),
+        aum: clientsHref(ctx, { branch: id, sort: "aum", dir: "desc" }),
+        sip: sipsHref(ctx, { branch: id }),
+        net: transactionsHref(ctx, { branch: id }),
+        newClients: newClientsHref(ctx, undefined, undefined, { branch: id }),
+        overdue: tasksHref(ctx, { branch: id, tab: "overdue" }),
+      },
       target,
       targetPct: targetPct(fyNet, target),
     };
