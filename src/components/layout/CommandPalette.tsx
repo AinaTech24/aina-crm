@@ -41,6 +41,7 @@ import {
 } from "lucide-react";
 import { ICONS } from "./CustomizableNav";
 import { ALL_REPORTS, reportHaystack } from "@/lib/reports/catalog";
+import { formatDate, formatMoney, humanise } from "@/lib/format";
 
 type PaletteNavItem = {
   href: string;
@@ -109,6 +110,7 @@ type SearchResults = {
   sips?: any[];
   policies?: any[];
   tasks?: any[];
+  meetings?: any[];
   serviceRequests?: any[];
   documents?: any[];
 };
@@ -123,7 +125,14 @@ type Row = {
   icon: LucideIcon;
 };
 
-type Section = { id: string; label: string; icon: LucideIcon; rows: Row[] };
+/** The chip a recently visited record carries, by the section it was picked from. */
+const RECORD_CHIP: Record<string, string> = {
+  clients: "Client", leads: "Lead", families: "Family", tasks: "Task", meetings: "Meeting",
+  requests: "Service request", policies: "Policy", folios: "Folio", sips: "SIP", documents: "Document",
+};
+
+/** `count` is the number of matches behind the rows shown (header badge). */
+type Section = { id: string; label: string; icon: LucideIcon; rows: Row[]; count?: number };
 
 export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
   const router = useRouter();
@@ -209,15 +218,15 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
     };
   }, [q, open]);
 
-  const saveRecent = (row: Row) => {
-    if (row.key.startsWith("act:") || row.key.startsWith("nav:") || row.key.startsWith("report:")) return;
+  const saveRecent = (row: Row, chip?: string) => {
+    if (row.key.startsWith("act:") || row.key.startsWith("nav:") || row.key.startsWith("report:") || row.key.startsWith("all:")) return;
     try {
       const rec: RecentRecord = {
         id: row.key,
         href: row.href,
         title: row.title,
         sub: row.sub,
-        chip: row.chip,
+        chip: row.chip ?? chip,
       };
       const updated = [rec, ...recentRecords.filter((r) => r.href !== row.href)].slice(0, 5);
       setRecentRecords(updated);
@@ -285,81 +294,137 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
             icon: ICONS[r.icon] ?? BarChart3,
           }));
 
-    const recordRows: Row[] = [
-      ...(results.investors ?? []).map((r): Row => ({
-        key: `inv:${r.id}`,
-        href: `/dashboard/investors/${r.id}`,
-        title: r.name,
-        sub: `${r.pan ?? "—"} · ${r.segment_tag ?? "—"} · AUM: ₹${r.aum ? (r.aum / 100000).toFixed(1) + "L" : "0"}`,
-        chip: "Client",
-        icon: Users,
-      })),
-      ...(results.leads ?? []).map((r): Row => ({
-        key: `lead:${r.id}`,
-        href: `/dashboard/leads/${r.id}`,
-        title: r.name,
-        sub: `${r.stage} · ${r.source}`,
-        chip: "Lead",
-        icon: Sparkles,
-      })),
-      ...(results.families ?? []).map((r): Row => ({
-        key: `fam:${r.id}`,
-        href: `/dashboard/families/${r.id}`,
-        // Same fallback as the Families list: many households only have a head name.
-        title: r.family_name || r.head_name || "Unnamed family",
-        sub: [r.family_name ? r.head_name : null, r.family_code].filter(Boolean).join(" · ") || undefined,
-        chip: "Family",
-        icon: HeartHandshake,
-      })),
-      ...(results.folios ?? []).map((r): Row => ({
-        key: `folio:${r.id}`,
-        href: r.investor_id ? `/dashboard/investors/${r.investor_id}` : "/dashboard/investors",
-        title: `Folio: ${r.folio_number}`,
-        sub: `${r.amc_name} · ${r.investor_name ?? "—"}`,
-        chip: "Folio",
-        icon: FileText,
-      })),
-      ...(results.sips ?? []).map((r): Row => ({
-        key: `sip:${r.id}`,
-        href: "/dashboard/sips",
-        title: r.scheme_name,
-        sub: `₹${r.amount}/mo · ${r.investor_name ?? "—"}`,
-        chip: "SIP",
-        icon: Repeat,
-      })),
-      ...(results.policies ?? []).map((r): Row => ({
-        key: `pol:${r.id}`,
-        href: `/dashboard/insurance/${r.id}`,
-        title: r.policy_number ?? "(no number)",
-        sub: `${r.insurer ?? "—"} · ${r.policy_type ?? "—"} · ${r.investor_name ?? "—"}`,
-        chip: "Policy",
-        icon: Shield,
-      })),
-      ...(results.tasks ?? []).map((r): Row => ({
-        key: `task:${r.id}`,
-        href: `/dashboard/tasks?task=${r.id}`,
-        title: r.title,
-        sub: `${r.status} · ${r.priority ?? "—"}${r.investor_name ? ` · ${r.investor_name}` : ""}`,
-        chip: "Task",
-        icon: ListChecks,
-      })),
-      ...(results.serviceRequests ?? []).map((r): Row => ({
-        key: `sr:${r.id}`,
-        href: "/dashboard/service-requests",
-        title: r.subject,
-        sub: `${r.ticket_no} · ${r.investor_name ?? "—"}`,
-        chip: "SR",
-        icon: LifeBuoy,
-      })),
-      ...(results.documents ?? []).map((r): Row => ({
-        key: `doc:${r.id}`,
-        href: "/dashboard/documents",
-        title: r.name,
-        sub: r.category ?? undefined,
-        chip: "Document",
-        icon: FolderArchive,
-      })),
+    // Records, one section per kind — Clients, Leads, Families, Tasks,
+    // Meetings… — each showing up to 5 and its full match count, ending in a
+    // "See all" row onto that list (searched for the same text) when there
+    // are more. A single mixed "Matching records" list made a client's tasks
+    // and documents read as more clients.
+    const enc = encodeURIComponent(q.trim());
+    const totalOf = (rows: any[] | undefined) => Number(rows?.[0]?.total ?? rows?.length ?? 0);
+    const kinds: Array<{
+      id: string; label: string; noun: string; icon: LucideIcon; data: any[] | undefined;
+      list?: string; row: (r: any) => Omit<Row, "icon" | "key"> & { key: string };
+    }> = [
+      {
+        id: "clients", label: "Clients", noun: "clients", icon: Users, data: results.investors, list: `/dashboard/investors?q=${enc}`,
+        row: (r) => ({
+          key: `inv:${r.id}`,
+          href: `/dashboard/investors/${r.id}`,
+          title: r.name,
+          suffix: r.client_category ? `Cat ${r.client_category}` : undefined,
+          sub: [
+            r.pan_display ?? (r.minor ? "Minor" : null),
+            r.rm_name ? `RM ${r.rm_name}` : null,
+            Number(r.aum) > 0 ? `AUM ${formatMoney(Number(r.aum))}` : null,
+            r.status && r.status !== "active" ? humanise(r.status) : null,
+          ].filter(Boolean).join(" · ") || undefined,
+        }),
+      },
+      {
+        id: "leads", label: "Leads", noun: "leads", icon: Sparkles, data: results.leads, list: `/dashboard/leads?q=${enc}`,
+        row: (r) => ({
+          key: `lead:${r.id}`,
+          href: `/dashboard/leads/${r.id}`,
+          title: r.name,
+          sub: [r.stage ? humanise(r.stage) : null, r.source ? humanise(r.source) : null, r.owner_name].filter(Boolean).join(" · ") || undefined,
+        }),
+      },
+      {
+        id: "families", label: "Families", noun: "families", icon: HeartHandshake, data: results.families, list: `/dashboard/families?q=${enc}`,
+        row: (r) => ({
+          key: `fam:${r.id}`,
+          href: `/dashboard/families/${r.id}`,
+          // Same fallback as the Families list: many households only have a head name.
+          title: r.family_name || r.head_name || "Unnamed family",
+          sub: [r.family_name ? r.head_name : null, r.family_code].filter(Boolean).join(" · ") || undefined,
+        }),
+      },
+      {
+        id: "tasks", label: "Tasks", noun: "tasks", icon: ListChecks, data: results.tasks, list: `/dashboard/tasks?q=${enc}`,
+        row: (r) => ({
+          key: `task:${r.id}`,
+          href: `/dashboard/tasks?task=${r.id}`,
+          title: r.title,
+          sub: [
+            r.investor_name,
+            r.status ? humanise(r.status) : null,
+            r.due_at ? `Due ${formatDate(r.due_at)}` : null,
+            r.assignee_name,
+          ].filter(Boolean).join(" · ") || undefined,
+        }),
+      },
+      {
+        id: "meetings", label: "Meetings", noun: "meetings", icon: Calendar, data: results.meetings, list: `/dashboard/review-meetings?q=${enc}`,
+        row: (r) => ({
+          key: `mtg:${r.id}`,
+          href: `/dashboard/review-meetings/${r.id}`,
+          title: r.subject || `${humanise(r.category ?? "meeting")} with ${r.person_name ?? "—"}`,
+          sub: [
+            r.meeting_date ? formatDate(r.meeting_date) : null,
+            r.subject ? r.person_name : null,
+            r.status ? humanise(r.status) : null,
+            r.rm_name,
+          ].filter(Boolean).join(" · ") || undefined,
+        }),
+      },
+      {
+        id: "requests", label: "Service requests", noun: "service requests", icon: LifeBuoy, data: results.serviceRequests,
+        list: `/dashboard/service-requests?q=${enc}`,
+        row: (r) => ({
+          key: `sr:${r.id}`,
+          href: `/dashboard/service-requests/${r.id}`,
+          title: r.subject,
+          sub: [r.ticket_no, r.investor_name, r.status ? humanise(r.status) : null].filter(Boolean).join(" · ") || undefined,
+        }),
+      },
+      {
+        id: "policies", label: "Insurance policies", noun: "policies", icon: Shield, data: results.policies, list: `/dashboard/insurance?q=${enc}`,
+        row: (r) => ({
+          key: `pol:${r.id}`,
+          href: `/dashboard/insurance/${r.id}`,
+          title: r.policy_number ?? "(no number)",
+          sub: [r.insurer, r.policy_type ? humanise(r.policy_type) : null, r.investor_name].filter(Boolean).join(" · ") || undefined,
+        }),
+      },
+      {
+        id: "folios", label: "Folios", noun: "folios", icon: FileText, data: results.folios,
+        row: (r) => ({
+          key: `folio:${r.id}`,
+          href: r.investor_id ? `/dashboard/investors/${r.investor_id}` : "/dashboard/investors",
+          title: r.folio_number,
+          sub: [r.amc_name, r.investor_name].filter(Boolean).join(" · ") || undefined,
+        }),
+      },
+      {
+        id: "sips", label: "SIPs", noun: "SIPs", icon: Repeat, data: results.sips, list: `/dashboard/sips?q=${enc}`,
+        row: (r) => ({
+          key: `sip:${r.id}`,
+          href: r.investor_id ? `/dashboard/investors/${r.investor_id}` : "/dashboard/sips",
+          title: r.scheme_name,
+          sub: [r.amount ? `${formatMoney(Number(r.amount))} a month` : null, r.investor_name, r.status ? humanise(r.status) : null]
+            .filter(Boolean).join(" · ") || undefined,
+        }),
+      },
+      {
+        id: "documents", label: "Documents", noun: "documents", icon: FolderArchive, data: results.documents,
+        row: (r) => ({
+          key: `doc:${r.id}`,
+          href: "/dashboard/documents",
+          title: r.name,
+          sub: r.category ? humanise(r.category) : undefined,
+        }),
+      },
     ];
+    const recordSections: Section[] = kinds
+      .filter((k) => (k.data?.length ?? 0) > 0)
+      .map((k) => {
+        const rows: Row[] = k.data!.map((r) => ({ ...k.row(r), icon: k.icon }));
+        const count = totalOf(k.data);
+        if (k.list && count > rows.length) {
+          rows.push({ key: `all:${k.id}`, href: k.list, title: `See all ${count} ${k.noun}`, icon: ArrowRight });
+        }
+        return { id: k.id, label: k.label, icon: k.icon, rows, count };
+      });
 
     const out: Section[] = [];
     if (recentRows.length > 0) {
@@ -371,9 +436,7 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
     if (navRows.length > 0) {
       out.push({ id: "nav", label: "Pages", icon: ArrowRight, rows: navRows });
     }
-    if (recordRows.length > 0) {
-      out.push({ id: "records", label: "Matching Records", icon: Search, rows: recordRows });
-    }
+    out.push(...recordSections);
     if (reportRows.length > 0) {
       out.push({ id: "reports", label: "Reports", icon: BarChart3, rows: reportRows });
     }
@@ -387,8 +450,15 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
     if (active >= flatRows.length) setActive(Math.max(0, flatRows.length - 1));
   }, [flatRows.length, active]);
 
+  /** Which section a row sits in, so a recent record keeps its kind as a chip. */
+  const sectionOf = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const sec of sections) for (const r of sec.rows) m.set(r.key, sec.id);
+    return m;
+  }, [sections]);
+
   function pick(row: Row) {
-    saveRecent(row);
+    saveRecent(row, RECORD_CHIP[sectionOf.get(row.key) ?? ""]);
     setOpen(false);
     router.push(row.href);
   }
@@ -432,8 +502,8 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
               setActive(0);
             }}
             onKeyDown={onKeyDown}
-            aria-label="Search clients, leads, folios and pages"
-            placeholder="Search clients, leads, folios or pages (type > for actions)…"
+            aria-label="Search clients, leads, tasks, meetings and pages"
+            placeholder="Search clients, leads, tasks, meetings or pages (type > for actions)…"
             className="w-full bg-transparent border-0 outline-hidden text-sm placeholder:text-muted-foreground focus:ring-0"
           />
           {busy ? (
@@ -458,6 +528,9 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
                 <div className="px-3 py-1 text-2xs font-bold tracking-wider uppercase text-muted-foreground flex items-center gap-1.5">
                   <section.icon className="size-3 text-brand-navy" />
                   <span>{section.label}</span>
+                  {section.count != null && section.count > 0 && (
+                    <span className="ml-0.5 rounded bg-muted px-1.5 font-semibold tabular-nums normal-case tracking-normal">{section.count}</span>
+                  )}
                 </div>
                 {section.rows.map((row) => {
                   flatIndex++;
