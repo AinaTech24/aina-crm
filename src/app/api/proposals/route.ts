@@ -23,18 +23,34 @@ export const dynamic = "force-dynamic";
  * Discriminated union for product line items.
  * Mirrors the ProposalLineItem TS union in src/db/schema/proposals.ts.
  */
+// z.object STRIPS keys it doesn't list, so every field the builder sends has
+// to be here — otherwise a SIP's step-up or an SWP's withdrawal is silently
+// dropped on save and the client is shown a different proposal.
 const LineMF = z.object({
   kind: z.literal("mf"),
   schemeName: z.string().min(1).max(200),
   amcName: z.string().max(120).optional(),
   schemeCode: z.string().max(40).optional(),
   category: z.string().max(60).optional(),
+  recommendationType: z.enum(["sip", "lumpsum", "swp", "stp"]).optional(),
+  planType: z.enum(["regular", "direct"]).optional(),
   monthlyAmount: z.number().min(0).optional(),
   lumpsum: z.number().min(0).optional(),
   sipTermYears: z.number().min(0).max(50).optional(),
+  stepUpPct: z.number().min(0).max(100).optional(),
   expectedReturn: z.number().min(0).max(60).optional(),
-  riskRating: z.enum(["low", "moderate", "high", "very_high"]).optional(),
+  // The AMFI riskometer's six levels.
+  riskRating: z.enum(["low", "low_to_moderate", "moderate", "moderately_high", "high", "very_high"]).optional(),
   projectedCorpus: z.number().min(0).optional(),
+  goal: z.string().max(120).optional(),
+  corpusRequired: z.number().min(0).optional(),
+  monthlyWithdrawal: z.number().min(0).optional(),
+  swpPeriodMonths: z.number().int().min(0).max(600).optional(),
+  toSchemeName: z.string().max(200).optional(),
+  toSchemeCode: z.string().max(40).optional(),
+  monthlyTransfer: z.number().min(0).optional(),
+  numInstallments: z.number().int().min(0).max(600).optional(),
+  suitabilityReason: z.string().max(1000).optional(),
   notes: z.string().max(500).optional(),
 });
 
@@ -200,6 +216,7 @@ export async function POST(req: NextRequest) {
     }
     const body = parse.data;
     const id = uuid();
+    let proposalNumber: string | null = null;
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     await withTenant(session.tenantId, async (tx) => {
@@ -273,7 +290,7 @@ export async function POST(req: NextRequest) {
         throw Object.assign(new Error("recipient name unresolved"), { status: 400 });
       }
 
-      const proposalNumber = await nextProposalNumber(tx, session.tenantId);
+      proposalNumber = await nextProposalNumber(tx, session.tenantId);
       const totals = proposalTotals(body.products);
 
       await tx.insert(proposals).values({
@@ -322,7 +339,7 @@ export async function POST(req: NextRequest) {
       // Proposal Sent) and when the client ACCEPTS it (to Won).
     });
 
-    return NextResponse.json({ id }, { status: 201 });
+    return NextResponse.json({ id, proposalNumber }, { status: 201 });
   } catch (err: any) {
     return handleApiError(err);
   }

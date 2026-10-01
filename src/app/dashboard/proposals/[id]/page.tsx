@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import {
   ChevronLeft,
   Download,
@@ -21,6 +21,8 @@ import { ProposalSendActions } from "@/components/proposals/ProposalSendActions"
 import { ProposalSuitabilityPanel } from "@/components/proposals/ProposalSuitabilityPanel";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
 import { DownloadButton } from "@/components/common/SecureLinkButtons";
+import { ProposalTimeline } from "@/components/proposals/ProposalTimeline";
+import { itemAmountText, itemKindLabel } from "@/lib/proposals/items";
 
 const TYPE_LABEL: Record<string, string> = {
   comprehensive: "Comprehensive",
@@ -37,9 +39,16 @@ const STATUS_TONE: Record<string, string> = {
   sent: "bg-amber-50 text-amber-700",
   viewed: "bg-cyan-50 text-cyan-700",
   accepted: "bg-emerald-50 text-emerald-700",
+  partially_approved: "bg-emerald-50 text-emerald-700",
+  executed: "bg-emerald-100 text-emerald-800",
+  changes_requested: "bg-amber-50 text-amber-800",
   rejected: "bg-rose-50 text-rose-700",
   expired: "bg-secondary text-foreground",
+  superseded: "bg-secondary text-muted-foreground",
 };
+
+/** Statuses the send route refuses (api/proposals/[id]/send). */
+const CLOSED_FOR_SENDING = ["superseded", "accepted", "partially_approved", "executed", "rejected"];
 
 const KIND_LABEL: Record<string, string> = {
   mf: "Mutual Fund",
@@ -67,11 +76,20 @@ export default async function ProposalDetailPage({
     const inv = p.investorId
       ? (await tx.select().from(investors).where(eq(investors.id, p.investorId)).limit(1))[0]
       : null;
-    return { p, u, inv };
+    // Every version of this proposal, oldest first.
+    const versions = await tx
+      .select({ id: proposals.id, version: proposals.version, status: proposals.status, sentAt: proposals.sentAt })
+      .from(proposals)
+      .where(and(eq(proposals.tenantId, p.tenantId), eq(proposals.proposalNumber, p.proposalNumber)))
+      .orderBy(asc(proposals.version));
+    return { p, u, inv, versions };
   });
   if (!data) notFound();
-  const { p, u, inv } = data;
+  const { p, u, inv, versions } = data;
   const products = (p.products ?? []) as any[];
+  const accepted = Array.isArray(p.acceptedItems) ? new Set(p.acceptedItems as number[]) : null;
+  const latest = versions[versions.length - 1];
+  const firstName = String(p.recipientName ?? "").split(" ")[0] || "The client";
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -97,6 +115,7 @@ export default async function ProposalDetailPage({
             <div>
               <div className="text-2xs uppercase tracking-[0.18em] text-white/70 font-semibold font-mono">
                 {p.proposalNumber}
+                {(p.version ?? 1) > 1 || versions.length > 1 ? ` · v${p.version ?? 1}` : ""}
               </div>
               <h1 className="page-title mt-1">{p.title}</h1>
               <div className="text-white/85 text-sm mt-1 flex items-center gap-3 flex-wrap">
@@ -122,6 +141,13 @@ export default async function ProposalDetailPage({
           </div>
         </div>
       </div>
+
+      {p.status === "superseded" && latest && latest.id !== p.id && (
+        <div className="rounded-lg border border-border bg-secondary/60 p-3 text-sm flex items-center justify-between gap-3 flex-wrap">
+          <span>This is version {p.version ?? 1}. It was replaced by version {latest.version}, and its client link was withdrawn.</span>
+          <Link href={`/dashboard/proposals/${latest.id}`} className="btn-secondary text-xs">Open version {latest.version}</Link>
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-4 gap-3">
@@ -171,13 +197,6 @@ export default async function ProposalDetailPage({
             on <span className="font-medium text-foreground">{formatDate(p.preparedAt)}</span>
           </div>
           <div className="flex items-center gap-2">
-            <Link
-              href={`/dashboard/proposals/${p.id}/recommendation`}
-              className="btn-ghost text-xs"
-              title="Build the 4-section SIP/Lumpsum/SWP/STP worksheet"
-            >
-              Recommendation →
-            </Link>
             {/* Real PDF (Content-Disposition: attachment) — saves directly, no new tab. */}
             <DownloadButton
               url={`/api/proposals/${p.id}/pdf?download=1`}
@@ -186,10 +205,13 @@ export default async function ProposalDetailPage({
             >
               <Download className="size-3.5" /> Download PDF
             </DownloadButton>
-            <ProposalStatusActions id={p.id} status={p.status} />
+            <ProposalStatusActions id={p.id} status={p.status} version={p.version ?? 1} />
           </div>
         </div>
-        {/* Send to client — email + WhatsApp */}
+        {/* Send to client — email + WhatsApp. Not once the client has answered
+            or a newer version replaced it: the send route refuses those, so
+            the buttons would only lead to an error. */}
+        {!CLOSED_FOR_SENDING.includes(p.status as string) && (
         <div className="border-t border-border pt-3 flex items-start justify-between gap-3 flex-wrap">
           <div className="text-xs text-muted-foreground">
             Share with{" "}
@@ -213,6 +235,33 @@ export default async function ProposalDetailPage({
             hasPhone={!!p.recipientPhone}
             status={p.status}
           />
+        </div>
+        )}
+      </div>
+
+      {/* What the client did */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="card-surface p-5 md:col-span-2">
+          <h2 className="section-title mb-3">What {firstName} did</h2>
+          <ProposalTimeline proposal={p as any} />
+        </div>
+        <div className="card-surface p-5">
+          <h2 className="section-title mb-3">Versions</h2>
+          <ol className="space-y-1.5 text-sm">
+            {versions.map((v) => (
+              <li key={v.id} className="flex items-center justify-between gap-2">
+                {v.id === p.id ? (
+                  <span className="font-semibold">Version {v.version} (this one)</span>
+                ) : (
+                  <Link href={`/dashboard/proposals/${v.id}`} className="hover:underline">Version {v.version}</Link>
+                )}
+                <span className="chip text-2xs capitalize">{String(v.status).replace(/_/g, " ")}</span>
+              </li>
+            ))}
+          </ol>
+          {versions.length === 1 && (
+            <p className="text-2xs text-muted-foreground mt-2">Once sent, changes go into a new version so this one stays as the client saw it.</p>
+          )}
         </div>
       </div>
 
@@ -250,7 +299,12 @@ export default async function ProposalDetailPage({
                 key={i}
                 className="rounded-xl border border-border/70 bg-background p-4"
               >
-                <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  {accepted && (
+                    <span className={`chip text-2xs font-semibold ${accepted.has(i) ? "bg-emerald-50 text-emerald-700" : "bg-secondary text-muted-foreground"}`}>
+                      {accepted.has(i) ? "Accepted" : "Not taken"}
+                    </span>
+                  )}
                   <span
                     className={`chip text-2xs ${
                       it.kind === "mf"
@@ -264,7 +318,7 @@ export default async function ProposalDetailPage({
                         : "bg-rose-50 text-rose-700"
                     }`}
                   >
-                    {KIND_LABEL[it.kind] ?? it.kind}
+                    {it.kind === "mf" ? `Mutual Fund · ${itemKindLabel(it)}` : KIND_LABEL[it.kind] ?? it.kind}
                   </span>
                   <span className="font-semibold text-sm">
                     {it.schemeName ?? it.policyName ?? it.strategyName ?? it.fundName ?? it.productName}
@@ -273,6 +327,9 @@ export default async function ProposalDetailPage({
                 <ProductDetails it={it} />
                 {it.notes && (
                   <p className="mt-2 text-xs text-muted-foreground italic">{it.notes}</p>
+                )}
+                {it.suitabilityReason && (
+                  <p className="mt-1 text-xs text-warning">Kept above the risk band: {it.suitabilityReason}</p>
                 )}
               </li>
             ))}
@@ -295,8 +352,13 @@ function ProductDetails({ it }: { it: any }) {
   if (it.kind === "mf") {
     if (it.amcName) kv.push(["AMC", it.amcName]);
     if (it.category) kv.push(["Category", it.category]);
+    if (it.recommendationType === "swp" || it.recommendationType === "stp") kv.push([it.recommendationType.toUpperCase(), itemAmountText(it)]);
+    if (it.corpusRequired) kv.push(["Corpus", formatINR(Number(it.corpusRequired))]);
     if (it.lumpsum) kv.push(["Lumpsum", formatINR(Number(it.lumpsum))]);
     if (it.monthlyAmount) kv.push(["SIP", `${formatINR(Number(it.monthlyAmount))}/mo`]);
+    if (it.stepUpPct) kv.push(["Step-up", `${it.stepUpPct}% a year`]);
+    if (it.goal) kv.push(["Goal", it.goal]);
+    if (it.planType) kv.push(["Plan", it.planType === "direct" ? "Direct" : "Regular"]);
     if (it.sipTermYears) kv.push(["Term", `${it.sipTermYears} yrs`]);
     if (it.expectedReturn) kv.push(["Expected return", `${it.expectedReturn}% p.a.`]);
     if (it.riskRating) kv.push(["Risk", String(it.riskRating).replace(/_/g, " ")]);

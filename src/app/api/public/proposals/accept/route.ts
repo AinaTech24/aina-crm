@@ -27,9 +27,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
 import { eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
-import { proposals, proposalApprovals, eventsOutbox, leads } from "@/db/schema";
+import { proposals, proposalApprovals, eventsOutbox } from "@/db/schema";
 import { claimShareToken, releaseShareToken, finalizeShareToken } from "@/lib/share-tokens";
-import { autoAdvance } from "@/lib/blueprints/auto-advance";
 import { enforce, enforceLinkToken, PUBLIC_LINK_IP_CEILING } from "@/lib/rate-limit";
 import {
   PROPOSAL_ACCEPTANCE_TEXT,
@@ -39,13 +38,11 @@ import {
 } from "@/lib/proposals/public-link";
 import {
   advanceJourneyForProposal,
-  createProposalTask,
   currentStage,
-  firmRunsDocRecipe,
   firstName,
   notifyProposalOwner,
+  startOnboarding,
 } from "@/lib/proposals/journey";
-import { sendDocChecklist } from "@/lib/onboarding/send-doc-checklist";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -205,62 +202,6 @@ export async function POST(req: NextRequest) {
     const status = typeof err?.status === "number" ? err.status : 400;
     return NextResponse.json({ error: err?.message ?? "Something went wrong" }, { status });
   }
-}
-
-/**
- * Send the document-collection link to a lead who just accepted.
- *
- * Only for a lead that is still at Won — a client already converted needs no
- * KYC documents, and a lead already past Won has had the link. If the firm
- * runs the workflow recipe that does this, stand aside. Anything that stops the
- * send becomes a task, so onboarding is never silently skipped.
- */
-async function startOnboarding(
-  tenantId: string,
-  p: Awaited<ReturnType<typeof loadProposalLink>>["proposal"],
-  out: { ownerId: string | null; leadId: string | null; stage: string | null }
-): Promise<"sent" | "recipe" | "task" | "not_needed"> {
-  if (!p.leadId || !out.leadId || out.stage !== "won_lead") return "not_needed";
-
-  const gate = await withTenant(tenantId, async (tx) => {
-    const [l] = await tx.select({ converted: leads.convertedInvestorId }).from(leads).where(eq(leads.id, p.leadId!)).limit(1);
-    if (l?.converted) return "not_needed" as const;
-    if (await firmRunsDocRecipe(tx, tenantId)) return "recipe" as const;
-    return "go" as const;
-  });
-  if (gate !== "go") return gate;
-
-  const fallbackTask = async (why: string) => {
-    await withTenant(tenantId, (tx) =>
-      createProposalTask(tx, p, {
-        assigneeId: out.ownerId,
-        title: `${firstName(p.recipientName)} accepted ${p.proposalNumber} — send the document checklist`,
-        description: `The document link could not be sent automatically (${why}). Open the lead and use “Send Doc Checklist”.`,
-        priority: "high",
-        dueInHours: 4,
-        kind: "onboarding_send_failed",
-      })
-    );
-    return "task" as const;
-  };
-
-  if (!out.ownerId) return fallbackTask("nobody is recorded as preparing this proposal");
-
-  let result;
-  try {
-    result = await sendDocChecklist({ tenantId, leadId: p.leadId, actorUserId: out.ownerId });
-  } catch (e: any) {
-    return fallbackTask(String(e?.message ?? "send failed").replace(/\.$/, ""));
-  }
-  if (!result.ok) return fallbackTask(result.summary.replace(/[📧💬⏳]/gu, "").trim());
-
-  await withTenant(tenantId, (tx) =>
-    autoAdvance(tx, tenantId, p.leadId!, "docs.requested", {
-      remarks: `Auto: document checklist sent after the client accepted ${p.proposalNumber}.`,
-      forwardOnly: true,
-    })
-  );
-  return "sent";
 }
 
 function productName(item: any): string {

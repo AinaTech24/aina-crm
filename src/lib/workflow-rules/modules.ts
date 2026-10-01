@@ -519,7 +519,8 @@ export const MODULES: Record<ModuleKey, ModuleCatalog> = {
         label: "Status",
         type: "enum",
         writable: true,
-        enumValues: ["draft", "ready", "sent", "viewed", "accepted", "rejected", "expired"],
+        // `superseded` is left out on purpose: only Revise may set it.
+        enumValues: ["draft", "ready", "sent", "viewed", "changes_requested", "accepted", "partially_approved", "executed", "rejected", "expired"],
       },
       { key: "total_investment", label: "Total Investment", type: "currency" },
       { key: "valid_until", label: "Valid Until", type: "date", dateAnchor: true },

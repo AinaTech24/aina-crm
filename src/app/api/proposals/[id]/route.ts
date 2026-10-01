@@ -16,6 +16,18 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { proposals } from "@/db/schema";
 import { proposalTotals } from "@/lib/proposals/projections";
+import { advanceJourneyForProposal, startOnboarding, currentStage, journeyLeadId } from "@/lib/proposals/journey";
+import { proposalOwnerId } from "@/lib/proposals/public-link";
+
+/**
+ * Fields that ARE the proposal's content. Once it has been sent these are
+ * frozen: the sent version is the record of exactly what the client saw (and
+ * may have approved), so a change goes into a new version — Revise — instead
+ * of being written over the top. Status, validity and suitability notes stay
+ * editable; they describe the proposal's life, not its content.
+ */
+const CONTENT_FIELDS = ["title", "summary", "coverLetter", "disclaimer", "type", "products", "totalInvestment", "expectedCorpus", "riskRating", "attachments"] as const;
+const EDITABLE_STATUSES = ["draft", "ready"];
 
 export const dynamic = "force-dynamic";
 
@@ -32,8 +44,10 @@ const Patch = z
     totalInvestment: z.number().optional(),
     expectedCorpus: z.number().optional(),
     riskRating: z.enum(["conservative", "moderate", "aggressive", "mixed"]).optional(),
+    // `superseded` is set only by Revise; an RM can record a client's change
+    // request taken by phone as `changes_requested`.
     status: z
-      .enum(["draft", "ready", "sent", "viewed", "accepted", "partially_approved", "rejected", "expired", "executed"])
+      .enum(["draft", "ready", "sent", "viewed", "accepted", "partially_approved", "rejected", "expired", "executed", "changes_requested"])
       .optional(),
     validUntil: z.string().optional(),
     rejectionReason: z.string().max(500).optional(),
@@ -76,12 +90,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       );
     }
     const clientMeta = clientMetaFromHeaders(req.headers);
+    // Same rule as GET: managers edit any proposal, everyone else their own.
+    const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
 
+    // Filled inside the transaction, acted on after it commits.
+    const journey: { onboard: null | { ownerId: string | null; leadId: string | null; stage: string | null } } = { onboard: null };
     const result = await withTenant(session.tenantId, async (tx) => {
       const before = (
         await tx.select().from(proposals).where(and(eq(proposals.id, id), eq(proposals.tenantId, session.tenantId))).limit(1)
       )[0];
       if (!before) return null;
+      if (!seesAll && before.preparedByUserId !== session.userId) return null;
+      if (before.status === "superseded") {
+        throw Object.assign(new Error("This is an older version — a newer one replaced it. Open the latest version instead."), { status: 409 });
+      }
+      const changesContent = CONTENT_FIELDS.some((f) => (parse.data as any)[f] !== undefined);
+      if (changesContent && !EDITABLE_STATUSES.includes(before.status)) {
+        throw Object.assign(
+          new Error(`This proposal has been sent, so it is kept as the client saw it. Revise it to create version ${(before.version ?? 1) + 1}.`),
+          { status: 409 }
+        );
+      }
 
       const patch: any = { ...parse.data, updatedAt: new Date() };
 
@@ -90,7 +119,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         const now = new Date();
         if (patch.status === "sent" && !before.sentAt) patch.sentAt = now;
         if (patch.status === "viewed" && !before.viewedAt) patch.viewedAt = now;
-        if (patch.status === "accepted" && !before.acceptedAt) patch.acceptedAt = now;
+        if ((patch.status === "accepted" || patch.status === "partially_approved") && !before.acceptedAt) patch.acceptedAt = now;
+        // Marked accepted in the CRM (in person, by phone): all lines unless
+        // the client already chose some through their link.
+        if (patch.status === "accepted" && !before.acceptedItems) {
+          patch.acceptedItems = (Array.isArray(before.products) ? before.products : []).map((_: unknown, i: number) => i);
+        }
         if (patch.status === "rejected" && !before.rejectedAt) patch.rejectedAt = now;
       }
 
@@ -100,8 +134,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // If products are updated, compute the new totals.
       if (patch.products) {
         const totals = proposalTotals(patch.products);
-        patch.totalInvestment = String(totals.totalInvestment ?? 0);
-        patch.expectedCorpus = String(totals.expectedCorpus ?? 0);
+        patch.totalInvestment = totals.totalInvestment != null ? String(totals.totalInvestment) : null;
+        patch.expectedCorpus = totals.expectedCorpus != null ? String(totals.expectedCorpus) : null;
       } else {
         if (patch.totalInvestment != null) patch.totalInvestment = String(patch.totalInvestment);
         if (patch.expectedCorpus != null) patch.expectedCorpus = String(patch.expectedCorpus);
@@ -135,6 +169,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }
       }
 
+      // ── The journey moves the same way whoever records the step ──────
+      // A proposal marked sent or accepted here (given in person, accepted
+      // over the phone) used to move nothing; only the client's own link did.
+      if (patch.status && patch.status !== before.status) {
+        const after = { ...before, ...patch };
+        if (patch.status === "sent") {
+          await advanceJourneyForProposal(tx, after, "proposal.sent", `Proposal ${before.proposalNumber} marked sent.`);
+        } else if (patch.status === "accepted" || patch.status === "partially_approved") {
+          const leadId = await advanceJourneyForProposal(tx, after, "proposal.accepted", `Proposal ${before.proposalNumber} marked ${patch.status === "accepted" ? "accepted" : "partly accepted"} by ${session.userId === before.preparedByUserId ? "its RM" : "a colleague"}.`);
+          journey.onboard = {
+            ownerId: (await proposalOwnerId(tx, after)) ?? session.userId,
+            leadId: leadId ?? (await journeyLeadId(tx, after)),
+            stage: leadId ? await currentStage(tx, leadId) : null,
+          };
+        }
+      }
+
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,
@@ -148,6 +199,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return r[0];
     });
     if (!result) return NextResponse.json({ error: "not found" }, { status: 404 });
+
+    // Acceptance starts a lead's onboarding — after the commit, because it
+    // sends email and WhatsApp (see lib/proposals/journey.ts startOnboarding).
+    if (journey.onboard) {
+      await startOnboarding(session.tenantId, result as any, journey.onboard).catch((e) =>
+        console.error("[proposals] onboarding start failed:", e?.message ?? e)
+      );
+    }
     return NextResponse.json(result);
   } catch (err: any) {
     return handleApiError(err);

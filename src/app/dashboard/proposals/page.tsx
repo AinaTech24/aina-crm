@@ -21,6 +21,7 @@ import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
 import { Pager } from "@/components/common/Pager";
 import { ProposalsBulkTable } from "@/components/proposals/ProposalsBulkTable";
+import { ProposalsBoard, boardTotals, type BoardRow } from "@/components/proposals/ProposalsBoard";
 
 const PROPOSALS_COLUMNS = [
   { key: "number", label: "Proposal number", required: true },
@@ -45,17 +46,24 @@ const COLUMNS_VERSION = 2;
 const PAST = sql`(p.valid_until IS NOT NULL AND (p.valid_until AT TIME ZONE 'Asia/Kolkata')::date < (now() AT TIME ZONE 'Asia/Kolkata')::date)`;
 
 /**
- * Status tabs. Together they cover every status, so no proposal is in none of
- * them. A draft or sent proposal past its valid-till date is Expired whatever
- * its stored status says: the nightly expiry job flips only sent / viewed /
- * ready, so a lapsed draft used to sit under Draft for good.
+ * Status tabs. Together they cover every status a CURRENT proposal can have,
+ * so no proposal is in none of them. A draft or sent proposal past its
+ * valid-till date is Expired whatever its stored status says: the nightly
+ * expiry job flips only sent / viewed / ready, so a lapsed draft used to sit
+ * under Draft for good.
+ *
+ * A client's change request is still open work for the RM, so it sits under
+ * Sent. A superseded proposal is an older VERSION of one that is listed — it
+ * is reached from that proposal's version history, and is left out of every
+ * tab and count so a revised proposal isn't counted twice (CURRENT below).
  */
+const CURRENT = sql`p.status <> 'superseded'`;
 const TABS = [
   { key: "draft", label: "Draft", where: sql`(p.status IN ('draft', 'ready') AND NOT ${PAST})` },
-  { key: "sent", label: "Sent", where: sql`(p.status IN ('sent', 'viewed') AND NOT ${PAST})` },
+  { key: "sent", label: "Sent", where: sql`(p.status IN ('sent', 'viewed', 'changes_requested') AND NOT ${PAST})` },
   { key: "accepted", label: "Accepted", where: sql`p.status IN ('accepted', 'partially_approved', 'executed')` },
   { key: "rejected", label: "Rejected", where: sql`p.status = 'rejected'` },
-  { key: "expired", label: "Expired", where: sql`(p.status = 'expired' OR (p.status IN ('draft', 'ready', 'sent', 'viewed') AND ${PAST}))` },
+  { key: "expired", label: "Expired", where: sql`(p.status = 'expired' OR (p.status IN ('draft', 'ready', 'sent', 'viewed', 'changes_requested') AND ${PAST}))` },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
@@ -77,6 +85,8 @@ export default async function ProposalsPage({
   const tab: TabKey | null = statusFilter.length
     ? null
     : (TABS.find((t) => t.key === sp.tab)?.key ?? "draft");
+  // Board: the whole pipeline at once, so it ignores the tab (not ?status=).
+  const view: "list" | "board" = sp.view === "board" ? "board" : "list";
   const canRenew = can(session.roles, "proposal.write", session.permissions);
   const typeFilter = (sp.type ?? "").split(",").filter(Boolean);
   const riskFilter = (sp.risk ?? "").split(",").filter(Boolean);
@@ -95,7 +105,7 @@ export default async function ProposalsPage({
           : sql`p.created_at DESC`;
 
   const data = await withTenant(session.tenantId, async (tx) => {
-    const filters: any[] = [sql`p.tenant_id = ${session.tenantId}::uuid`];
+    const filters: any[] = [sql`p.tenant_id = ${session.tenantId}::uuid`, CURRENT];
     if (q) {
       filters.push(
         sql`(p.proposal_number ILIKE ${`%${q}%`} OR p.title ILIKE ${`%${q}%`} OR p.recipient_name ILIKE ${`%${q}%`})`
@@ -120,8 +130,26 @@ export default async function ProposalsPage({
         sql`p.status IN (${sql.join(statusFilter.map((v) => sql`${v}`), sql`, `)})`
       );
     }
+    // The board shows every column, so it shares the filters but not the tab.
+    const boardWhere = sql` WHERE ${sql.join(filters, sql` AND `)} AND p.status NOT IN ('rejected', 'expired')`;
     if (tab) filters.push(TABS.find((t) => t.key === tab)!.where);
     const whereSql = sql` WHERE ${sql.join(filters, sql` AND `)}`;
+
+    const board =
+      view === "board"
+        ? ((
+            await tx.execute(sql`
+              SELECT p.id, p.proposal_number, p.version, p.recipient_name, p.status, p.products,
+                     p.sent_at, p.viewed_at, p.accepted_items, p.executed_amount::numeric AS executed_amount,
+                     u.name AS prepared_by
+                FROM proposals p
+                LEFT JOIN users u ON u.id = p.prepared_by_user_id
+                ${boardWhere}
+               ORDER BY COALESCE(p.sent_at, p.created_at) DESC
+               LIMIT 400
+            `)
+          ).rows as BoardRow[])
+        : [];
 
     const rows = await tx.execute(sql`
       SELECT p.id, p.proposal_number, p.title, p.type, p.status,
@@ -173,6 +201,7 @@ export default async function ProposalsPage({
       FROM proposals
     `);
     return {
+      board,
       rows: rows.rows as any[],
       s: stats.rows[0] as any,
       filteredTotal: Number((filtered.rows[0] as any)?.c ?? 0),
@@ -192,18 +221,32 @@ export default async function ProposalsPage({
   const hasFilters = !!q || statusFilter.length > 0 || typeFilter.length > 0 || riskFilter.length > 0
     || !!dateRangeCond(sp, "created", "p.created_at");
   const tabLabel = tab ? TABS.find((t) => t.key === tab)!.label.toLowerCase() : null;
+  const viewHref = (v: "list" | "board") => {
+    const p = new URLSearchParams();
+    for (const [k, val] of Object.entries(sp)) if (val && k !== "view" && k !== "page") p.set(k, val);
+    if (v === "board") p.set("view", "board");
+    const qs = p.toString();
+    return qs ? `/dashboard/proposals?${qs}` : "/dashboard/proposals";
+  };
+  const bt = boardTotals(data.board);
+  const lakhs = (n: number) => (n >= 1e7 ? `₹${(n / 1e7).toFixed(2)} Cr` : `₹${(n / 1e5).toFixed(1)} L`);
   const emptyMessage = tabLabel && anyProposal
     ? `No ${tabLabel} proposals${hasFilters ? " match these filters" : ""}.`
     : "No proposals match these filters.";
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><FileSignature className="size-6 text-muted-foreground" /> Proposals</>} subtitle={<>Investment proposals you have sent, and whether the client approved them.</>} actions={<><Link href="/dashboard/proposals/new" className="btn-primary">
+      <PageHeaderCard title={<><FileSignature className="size-6 text-muted-foreground" /> Proposals</>} subtitle={<>Investment proposals you have sent, and whether the client approved them.</>} actions={<>
+        <div className="inline-flex rounded-lg bg-secondary p-0.5 gap-0.5" role="group" aria-label="View">
+          <Link href={viewHref("list")} aria-pressed={view === "list"} className={`px-3 py-1.5 text-sm rounded-md ${view === "list" ? "bg-card shadow-sm font-medium" : "text-muted-foreground"}`}>List</Link>
+          <Link href={viewHref("board")} aria-pressed={view === "board"} className={`px-3 py-1.5 text-sm rounded-md ${view === "board" ? "bg-card shadow-sm font-medium" : "text-muted-foreground"}`}>Pipeline</Link>
+        </div>
+        <Link href="/dashboard/proposals/new" className="btn-primary">
           <Plus className="size-4" /> New proposal
         </Link></>} />
 
       {/* Status tabs, with counts under the current filters. */}
-      <nav role="tablist" aria-label="Proposal status" className="inline-flex flex-wrap items-center gap-1 rounded-lg border border-border bg-secondary/40 p-1">
+      {view === "list" && <nav role="tablist" aria-label="Proposal status" className="inline-flex flex-wrap items-center gap-1 rounded-lg border border-border bg-secondary/40 p-1">
         {TABS.map((t) => {
           const active = tab === t.key;
           const n = Number(data.counts[t.key] ?? 0);
@@ -224,10 +267,10 @@ export default async function ProposalsPage({
             </Link>
           );
         })}
-      </nav>
+      </nav>}
 
       <CompactFilterBar
-        totalCount={data.filteredTotal}
+        totalCount={view === "board" ? data.board.length : data.filteredTotal}
         filters={[
           { type: "search", key: "q", placeholder: "Search by number, title, recipient…" },
           {
@@ -250,7 +293,10 @@ export default async function ProposalsPage({
               { value: "ready", label: "Ready" },
               { value: "sent", label: "Sent" },
               { value: "viewed", label: "Viewed" },
+              { value: "changes_requested", label: "Changes requested" },
               { value: "accepted", label: "Accepted" },
+              { value: "partially_approved", label: "Partly accepted" },
+              { value: "executed", label: "Executed" },
               { value: "rejected", label: "Rejected" },
               { value: "expired", label: "Expired" },
             ],
@@ -282,7 +328,7 @@ export default async function ProposalsPage({
         ]}
         rightSlot={
           <div className="flex items-center gap-2">
-            <ColumnManager moduleKey="proposals" columns={PROPOSALS_COLUMNS} version={COLUMNS_VERSION} />
+            {view === "list" && <ColumnManager moduleKey="proposals" columns={PROPOSALS_COLUMNS} version={COLUMNS_VERSION} />}
             <CustomViews
               viewsKey="views:proposals"
               presets={[
@@ -296,7 +342,18 @@ export default async function ProposalsPage({
         }
       />
 
-      <div className="card-surface">
+      {view === "board" && (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            {bt.count} proposal{bt.count === 1 ? "" : "s"} sent · {bt.proposed > 0 ? lakhs(bt.proposed) : "₹0"} proposed ·{" "}
+            <span className="text-foreground font-medium">{bt.executed > 0 ? lakhs(bt.executed) : "₹0"} executed</span>
+            <span className="text-2xs"> (first-year values: a year of SIPs plus one-time money)</span>
+          </p>
+          <ProposalsBoard rows={data.board} />
+        </div>
+      )}
+
+      {view === "list" && <div className="card-surface">
         {data.rows.length === 0 && (anyProposal || hasFilters) ? (
           <InlineEmpty icon={FileSignature} message={emptyMessage} />
         ) : data.rows.length === 0 ? (
@@ -321,7 +378,7 @@ export default async function ProposalsPage({
             </div>
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

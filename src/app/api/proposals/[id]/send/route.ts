@@ -209,11 +209,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (!seesAll && p.preparedByUserId !== session.userId) {
         return NextResponse.json({ error: "you can only send proposals you prepared" }, { status: 403 });
       }
-      if (["accepted", "rejected"].includes(p.status as string)) {
+      if (p.status === "superseded") {
+        return NextResponse.json({ error: "A newer version replaced this proposal — send the latest version instead." }, { status: 409 });
+      }
+      if (["accepted", "partially_approved", "executed", "rejected"].includes(p.status as string)) {
         return NextResponse.json(
-          { error: `cannot send a ${p.status} proposal` },
+          { error: `cannot send a ${String(p.status).replace(/_/g, " ")} proposal` },
           { status: 409 }
         );
+      }
+      // The client's page refuses a proposal past its validity, so don't send
+      // them a link that can only say "expired". Extending the date is allowed.
+      if (p.validUntil && new Date(p.validUntil as any) < new Date()) {
+        return NextResponse.json({ error: "This proposal's validity date has passed — set a new date before sending, or revise it." }, { status: 409 });
       }
 
       const hasNote = !!((p as any).suitabilityNote ?? "").toString().trim();

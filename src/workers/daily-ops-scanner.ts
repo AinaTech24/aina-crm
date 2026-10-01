@@ -54,6 +54,7 @@ import { refreshActiveSipAmount } from "@/lib/metrics/sip";
 import { recomputeAllFamilyHealth } from "@/lib/families/health-persist";
 import { recomputeAllGoals } from "@/lib/goal-planning/recompute";
 import { recomputeCombinedAum, revalueAllFolios } from "@/lib/finance/aum-persist";
+import { matchProposalExecutions } from "@/lib/proposals/execution";
 import { completeExpiredSips } from "@/lib/finance/sip-lifecycle";
 import { eventsOutbox, investors, folios, suitabilityMatrixEntries } from "@/db/schema";
 
@@ -697,6 +698,20 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
             `(Rs ${Math.round(folioVal.unpricedValue / 100000)} lakh); ` +
             `priced ${folioVal.pricedByCode} by code, ${folioVal.pricedByName} by name`
         );
+      }
+
+      // ── Proposals: did the client invest what they accepted? ──────────
+      // Matches accepted proposals to the purchases the RTA feed has brought
+      // in, so "Executed" is a fact, not a status someone set
+      // (lib/proposals/execution.ts). Its own savepoint: a bad row must not
+      // abort the rest of this firm's scan.
+      try {
+        const ex = await tx.transaction((sp) => matchProposalExecutions(sp, tenantId));
+        if (ex.newlyExecuted > 0) {
+          console.log(`[daily-ops] tenant ${tenantId}: ${ex.newlyExecuted} proposal(s) newly executed (${ex.executed} with money landed)`);
+        }
+      } catch (e) {
+        console.warn(`[daily-ops] tenant ${tenantId}: proposal execution matching failed:`, (e as Error)?.message);
       }
 
       // ── CS5: AUM "moments that matter" ────────────────────────────────

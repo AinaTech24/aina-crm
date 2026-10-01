@@ -6,17 +6,21 @@
  *   - "Mark as Sent"   → status='sent', stamps sentAt
  *   - "Mark Accepted"  → status='accepted', stamps acceptedAt
  *   - "Mark Rejected"  → status='rejected', stamps rejectedAt + reason
+ *   - "Edit"           → the builder, while it is still a draft
+ *   - "Revise"         → a new version once it has been sent; the sent one is
+ *                        kept as the record of what the client saw
  *
  * Server enforces the same transitions through PATCH /api/proposals/[id].
  */
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Send, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { Send, CheckCircle2, XCircle, Loader2, Pencil, GitBranch } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { promptDialog } from "@/components/ui/ConfirmProvider";
 
-export function ProposalStatusActions({ id, status }: { id: string; status: string }) {
+export function ProposalStatusActions({ id, status, version = 1 }: { id: string; status: string; version?: number }) {
   const router = useRouter();
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
@@ -45,11 +49,50 @@ export function ProposalStatusActions({ id, status }: { id: string; status: stri
   }
 
   const canSend = status === "draft" || status === "ready";
-  const canAccept = status === "sent" || status === "viewed";
-  const canReject = status === "sent" || status === "viewed";
+  const canEdit = canSend;
+  // A client who asked for changes may still agree by phone — or say no.
+  const canAccept = status === "sent" || status === "viewed" || status === "changes_requested";
+  const canReject = canAccept;
+  const canRevise = ["sent", "viewed", "changes_requested", "rejected", "expired"].includes(status);
+  // The client asked for a change: revising is what the RM came here to do.
+  const askedForChange = status === "changes_requested";
+
+  async function revise() {
+    setBusy("revise");
+    try {
+      const res = await fetch(`/api/proposals/${id}/revise`, { method: "POST" });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(j.error ?? `Failed (${res.status})`, "Couldn't revise");
+        return;
+      }
+      toast.success(`Version ${j.version} created — the old link is withdrawn.`);
+      router.push(`/dashboard/proposals/${j.id}/edit`);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Network error", "Couldn't revise");
+    } finally {
+      setBusy(null);
+    }
+  }
 
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-1.5 flex-wrap">
+      {canEdit && (
+        <Link href={`/dashboard/proposals/${id}/edit`} className="btn-secondary text-xs">
+          <Pencil className="size-3.5" /> Edit
+        </Link>
+      )}
+      {canRevise && (
+        <button
+          onClick={revise}
+          disabled={!!busy}
+          className={`${askedForChange ? "btn-primary" : "btn-secondary"} text-xs`}
+          title="The sent version is kept as the record of what the client saw"
+        >
+          {busy === "revise" ? <Loader2 className="size-3.5 animate-spin" /> : <GitBranch className="size-3.5" />}
+          Revise (creates v{version + 1})
+        </button>
+      )}
       {canSend && (
         <button
           onClick={() => transition("sent")}
@@ -68,8 +111,8 @@ export function ProposalStatusActions({ id, status }: { id: string; status: stri
         <button
           onClick={() => transition("accepted")}
           disabled={!!busy}
-          className="btn-primary text-xs"
-          style={{ backgroundImage: "linear-gradient(135deg,hsl(165 70% 35%),hsl(165 75% 28%))" }}
+          className={`${askedForChange ? "btn-secondary" : "btn-primary"} text-xs`}
+          style={askedForChange ? undefined : { backgroundImage: "linear-gradient(135deg,hsl(165 70% 35%),hsl(165 75% 28%))" }}
         >
           {busy === "accepted" ? (
             <Loader2 className="size-3.5 animate-spin" />

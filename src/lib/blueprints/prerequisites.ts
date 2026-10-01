@@ -176,7 +176,8 @@ const hasProposalDraft: RuleFn = async (tx, _tenantId, leadId) => {
 const hasProposalSent: RuleFn = async (tx, _tenantId, leadId) => {
   const r = await tx.execute(sql`
     SELECT COUNT(*)::int AS c FROM proposals
-    WHERE lead_id = ${leadId}::uuid AND status IN ('sent', 'viewed', 'accepted')
+    WHERE lead_id = ${leadId}::uuid
+      AND status IN ('sent', 'viewed', 'accepted', 'partially_approved', 'executed', 'changes_requested', 'superseded')
   `);
   const c = (r.rows[0] as any)?.c ?? 0;
   return {

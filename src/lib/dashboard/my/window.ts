@@ -530,7 +530,10 @@ export const LEAD_CLOSED_STAGES = [...LEAD_WON_STAGES, ...LEAD_DEAD_STAGES] as c
  * silent zero on every conversion figure.
  */
 export const PROPOSAL_WON = ["accepted", "partially_approved", "executed"] as const;
-export const PROPOSAL_LIVE = ["sent", "viewed", "ready"] as const;
+// `changes_requested` is open work — the client answered "change it" and the
+// RM owes them a revised version. `superseded` is in none of these sets: it is
+// an older version of a proposal that is counted through its latest version.
+export const PROPOSAL_LIVE = ["sent", "viewed", "ready", "changes_requested"] as const;
 export const PROPOSAL_LOST = ["rejected", "expired"] as const;
 
 /**

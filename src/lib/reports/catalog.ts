@@ -119,6 +119,7 @@ export const REPORTS: ReportGroup[] = [
   {
     group: "Lead Blueprint", items: [
       { key: "lead_funnel", label: "Lead Funnel & Conversion (Source × RM)", icon: "Filter", href: "/dashboard/reports/lead-funnel", desc: "Where leads come from and who converts them", aliases: ["funnel", "conversion", "pipeline", "prospect"] },
+      { key: "proposal_conversion", label: "Proposal Conversion — Proposed vs Invested", icon: "CheckCircle2", href: "/dashboard/reports/proposal-conversion", desc: "How much of what you propose clients accept, and actually invest", aliases: ["proposal", "proposals", "conversion", "executed", "take-up", "win rate"] },
       { key: "blueprint_drop_off", label: "Lead Drop-off Analysis", icon: "TrendingDown", desc: "Which stage loses the most leads" },
       { key: "blueprint_lost_reasons", label: "Lead Loss Reasons", icon: "Filter", desc: "Why leads say no" },
       { key: "blueprint_delayed_leads", label: "SLA-overdue Leads", icon: "AlertTriangle", desc: "Leads stuck past their stage deadline" },

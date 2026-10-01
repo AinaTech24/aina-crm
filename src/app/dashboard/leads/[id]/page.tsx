@@ -35,6 +35,7 @@ import { stageBadgeClass, stageLabel } from "@/lib/leads/stages";
 import { bandBadgeClass, bandLabel } from "@/lib/leads/score";
 import { OnboardingActions } from "@/components/leads/OnboardingActions";
 import { BlueprintStageBar } from "@/components/leads/BlueprintStageBar";
+import { ProposalJourneyCard } from "@/components/proposals/ProposalJourneyCard";
 import { STAGE_ACTIONS } from "@/lib/blueprints/stage-actions";
 import { OverflowMenu, NextStepBanner } from "@/components/leads/LeadHeaderTools";
 import {
@@ -334,6 +335,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
           phase="lead"
           convertedInvestorId={l.convertedInvestorId ?? null}
         />
+        <ProposalJourneyCard leadId={l.id} />
         </div>
       </RelatedListSection>
 
