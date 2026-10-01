@@ -14,6 +14,7 @@ import { TaskComments } from "./TaskComments";
 import { TaskTimePanel } from "./TaskTimePanel";
 import { TaskAttachments } from "./TaskAttachments";
 import { TaskWatchersDeps } from "./TaskWatchersDeps";
+import { TaskRelatedEntities } from "./TaskRelatedEntities";
 import { formatDate } from "@/lib/format";
 import { DateTimeField } from "@/components/ui/DateTimeField";
 
@@ -666,85 +667,9 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
 
           <hr className="border-slate-100" />
 
-          {/* Related Entities Card Links */}
-          <div className="space-y-2.5">
-            <h4 className="text-2xs uppercase font-bold text-muted-foreground">Related Entities</h4>
-            
-            <div className="grid grid-cols-1 gap-2">
-              {task.relatedInvestorId && (
-                <Link
-                  href={`/dashboard/investors/${task.relatedInvestorId}`}
-                  className="flex items-center justify-between p-2.5 border rounded-lg hover:bg-secondary border-brand-cyan/20 bg-brand-cyan-light/10 transition-colors"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <User className="size-4 text-brand-cyan-deep flex-shrink-0" />
-                    <div className="truncate text-xs font-medium">
-                      {task.investorName ?? "Client Profile"}
-                    </div>
-                  </div>
-                  <span className="text-2xs uppercase font-semibold text-brand-cyan-deep bg-brand-cyan-light/40 px-1.5 py-0.5 rounded">
-                    Client
-                  </span>
-                </Link>
-              )}
-
-              {task.relatedLeadId && (
-                <Link
-                  href={`/dashboard/leads/${task.relatedLeadId}`}
-                  className="flex items-center justify-between p-2.5 border rounded-lg hover:bg-secondary border-amber-200 bg-amber-50/10 transition-colors"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Sparkles className="size-4 text-amber-600 flex-shrink-0" />
-                    <div className="truncate text-xs font-medium">
-                      {task.leadName ?? "Lead Details"}
-                    </div>
-                  </div>
-                  <span className="text-2xs uppercase font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
-                    Lead
-                  </span>
-                </Link>
-              )}
-
-              {task.relatedServiceRequestId && (
-                <div
-                  className="flex items-center justify-between p-2.5 border rounded-lg border-blue-100 bg-blue-50/10"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <LifeBuoy className="size-4 text-blue-600 flex-shrink-0" />
-                    <div className="truncate text-xs font-medium">
-                      Service Ticket
-                    </div>
-                  </div>
-                  <span className="text-2xs uppercase font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
-                    Service Req
-                  </span>
-                </div>
-              )}
-
-              {task.relatedMeetingId && (
-                <Link
-                  href={`/dashboard/review-meetings/${task.relatedMeetingId}`}
-                  className="flex items-center justify-between p-2.5 border rounded-lg hover:bg-secondary border-emerald-100 bg-emerald-50/10 transition-colors"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Calendar className="size-4 text-emerald-600 flex-shrink-0" />
-                    <div className="truncate text-xs font-medium">
-                      Review Meeting File
-                    </div>
-                  </div>
-                  <span className="text-2xs uppercase font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
-                    Meeting
-                  </span>
-                </Link>
-              )}
-
-              {!task.relatedInvestorId && !task.relatedLeadId && !task.relatedServiceRequestId && !task.relatedMeetingId && (
-                <div className="text-xs text-muted-foreground p-3 border border-dashed rounded-lg text-center bg-secondary">
-                  No entities linked to this task.
-                </div>
-              )}
-            </div>
-          </div>
+          {/* Related records — linked and unlinked from here; reads both of a
+              task's links to a client or lead (TaskRelatedEntities). */}
+          <TaskRelatedEntities taskId={task.id} onChanged={onUpdate} />
 
           <hr className="border-slate-100" />
 

@@ -8,7 +8,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { withIdempotentMutation } from "@/lib/api/idempotent-mutation";
@@ -18,6 +18,8 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { createNotification } from "@/lib/notifications/create";
 import { assertMobileAssignee, assertMobileSubjects } from "@/lib/mobile/record-access";
+import { loadViewableInvestor } from "@/lib/investors/access";
+import { loadViewableLead } from "@/lib/leads/access";
 import { spawnNextOccurrence } from "@/lib/tasks/recurrence";
 import { notifyWatchers } from "@/lib/tasks/watchers";
 import { tasks, users, taskChecklist } from "@/db/schema";
@@ -44,10 +46,11 @@ const Patch = z.object({
   dueAt: z.string().optional(),
   slaDueAt: z.string().nullable().optional(),
   // Module 18 — explicit related entity + department + remarks
-  relatedInvestorId: z.string().uuid().optional(),
-  relatedLeadId: z.string().uuid().optional(),
-  relatedServiceRequestId: z.string().uuid().optional(),
-  relatedMeetingId: z.string().uuid().optional(),
+  // null unlinks (the task page's Related section).
+  relatedInvestorId: z.string().uuid().nullable().optional(),
+  relatedLeadId: z.string().uuid().nullable().optional(),
+  relatedServiceRequestId: z.string().uuid().nullable().optional(),
+  relatedMeetingId: z.string().uuid().nullable().optional(),
   department: z
     .enum([
       "sales",
@@ -160,7 +163,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if ("remindAt" in rest) patch.reminderFiredAt = null;
 
     const result = await withIdempotentMutation(session, req, parse.data, async (tx) => {
-      await assertMobileSubjects(tx, session, parse.data);
+      await assertMobileSubjects(tx, session, parse.data as any);
+      // Linking a record is a claim to know it: the client or lead must be one
+      // this user may see, the meeting or ticket one of this firm's. (The
+      // mobile check above was the only guard, so on the web any id went in.)
+      if (parse.data.relatedInvestorId && !(await loadViewableInvestor(tx, session, parse.data.relatedInvestorId))) {
+        throw Object.assign(new Error("Client not found"), { status: 404 });
+      }
+      if (parse.data.relatedLeadId && !(await loadViewableLead(tx, session, parse.data.relatedLeadId).catch(() => null))) {
+        throw Object.assign(new Error("Lead not found"), { status: 404 });
+      }
+      if (parse.data.relatedMeetingId) {
+        const r = await tx.execute(sql`SELECT 1 FROM review_meetings WHERE id = ${parse.data.relatedMeetingId}::uuid AND tenant_id = ${session.tenantId}::uuid`);
+        if (!r.rows.length) throw Object.assign(new Error("Meeting not found"), { status: 404 });
+      }
+      if (parse.data.relatedServiceRequestId) {
+        const r = await tx.execute(sql`SELECT 1 FROM service_requests WHERE id = ${parse.data.relatedServiceRequestId}::uuid AND tenant_id = ${session.tenantId}::uuid`);
+        if (!r.rows.length) throw Object.assign(new Error("Service request not found"), { status: 404 });
+      }
       if (parse.data.assigneeId) await assertMobileAssignee(tx, session, parse.data.assigneeId);
       for (const item of checklist ?? []) if (item.assigneeId) await assertMobileAssignee(tx, session, item.assigneeId);
       const before = (await tx
