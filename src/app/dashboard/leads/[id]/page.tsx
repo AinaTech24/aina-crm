@@ -20,6 +20,7 @@ import { formatDate, formatRelative } from "@/lib/utils";
 import { Stat } from "@/components/dashboards/DashboardShared";
 import { LeadActions } from "@/components/leads/LeadActions";
 import { EmailRelatedList } from "@/components/comms/EmailRelatedList";
+import { can } from "@/lib/auth/rbac";
 import { WhatsAppRelatedList } from "@/components/comms/WhatsAppRelatedList";
 import { InvestorDetailTabs } from "@/components/investors/InvestorDetailTabs";
 import { CheckInButton, LogActivityButton } from "@/components/activities/ActivityLogger";
@@ -399,7 +400,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       </RelatedListSection>
 
       <RelatedListSection moduleKey="leads-detail" sectionKey="emails">
-        <EmailRelatedList entityType="lead" entityId={l.id} entityName={l.name} entityEmail={l.email} />
+        <EmailRelatedList entityType="lead" entityId={l.id} entityName={l.name} entityEmail={l.email} canSend={can(session.roles, "communication.send", session.permissions)} />
       </RelatedListSection>
 
       </RelatedListsContainer>

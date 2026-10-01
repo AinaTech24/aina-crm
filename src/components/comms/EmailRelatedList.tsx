@@ -84,16 +84,25 @@ function statusChip(status: string, direction: string): { label: string; cls: st
   return { label: status || "—", cls: muted };
 }
 
+/** What a 403 from the send route means, in words a user can act on. */
+const NO_SEND_PERMISSION =
+  "You don’t have permission to send messages to clients. Ask your firm admin to enable “Send messages to clients” for you under Team → your profile → Customize Access Permissions.";
+
 export function EmailRelatedList({
   entityType,
   entityId,
   entityName,
   entityEmail,
+  canSend = true,
 }: {
   entityType: "investor" | "lead";
   entityId: string;
   entityName?: string;
   entityEmail?: string | null;
+  /** The viewer holds `communication.send`. Without it the send buttons are
+   *  replaced by a note saying which setting to ask for — the server refuses
+   *  the send anyway, and offering it only to fail read as a bug. */
+  canSend?: boolean;
 }) {
   const toast = useToast();
   const [emails, setEmails] = useState<EmailRow[]>([]);
@@ -179,12 +188,20 @@ export function EmailRelatedList({
           <button type="button" onClick={load} className="btn-icon" title="Refresh" aria-label="Refresh emails">
             <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
           </button>
-          <button type="button" onClick={() => setFreeCompose({ subject: "", threadId: null, inReplyTo: null })} className="btn-secondary text-xs px-2.5 py-1.5">
-            <PenLine className="size-3.5" /> Write email
-          </button>
-          <button type="button" onClick={() => setComposeOpen(true)} className="btn-primary text-xs px-2.5 py-1.5">
-            <Send className="size-3.5" /> Send email
-          </button>
+          {canSend ? (
+            <>
+              <button type="button" onClick={() => setFreeCompose({ subject: "", threadId: null, inReplyTo: null })} className="btn-secondary text-xs px-2.5 py-1.5">
+                <PenLine className="size-3.5" /> Write email
+              </button>
+              <button type="button" onClick={() => setComposeOpen(true)} className="btn-primary text-xs px-2.5 py-1.5">
+                <Send className="size-3.5" /> Send email
+              </button>
+            </>
+          ) : (
+            <span className="text-2xs text-muted-foreground" title={NO_SEND_PERMISSION}>
+              Sending email isn’t enabled for you
+            </span>
+          )}
         </div>
       </div>
 
@@ -359,7 +376,7 @@ function FreeComposeModal({
         }),
       });
       const j = await res.json();
-      if (!res.ok) { setErr(j.error ?? "Failed to send"); return; }
+      if (!res.ok) { setErr(res.status === 403 ? NO_SEND_PERMISSION : (j.error ?? "Failed to send")); return; }
       if (j.status === "skipped") { onSkipped(`Email blocked: ${j.skipped?.detail ?? j.reason ?? "compliance/consent check"}`, j.skipped?.reason ?? j.reason); return; }
       onSent(j.status === "queued" ? "Email queued." : "Email sent.");
     } catch (e: any) {
@@ -463,7 +480,7 @@ function ComposeModal({
         body: JSON.stringify({ mode: "template", type: entityType, id: entityId, templateKey: selectedKey, variables: filledVars }),
       });
       const j = await res.json();
-      if (!res.ok) { setErr(j.error ?? "Failed to send"); return; }
+      if (!res.ok) { setErr(res.status === 403 ? NO_SEND_PERMISSION : (j.error ?? "Failed to send")); return; }
       if (j.status === "skipped") { onSkipped(`Email blocked: ${j.skipped?.detail ?? j.skipped?.reason ?? "compliance/consent check"}`, j.skipped?.reason); return; }
       onSent(j.status === "queued" ? "Email queued for sending." : "Email sent.");
     } catch (e: any) {

@@ -44,6 +44,8 @@ export function BulkAssignByAge({ initialBands }: { initialBands: AgeBand[] }) {
   const [assigned, setAssigned] = useState<string[] | null>(null);
   const [busy, setBusy] = useState<null | "preview" | "assign" | "notify">(null);
   const [err, setErr] = useState<string | null>(null);
+  /** Clients done so far while Assign works through a large book in batches. */
+  const [progress, setProgress] = useState<number | null>(null);
 
   function reset() {
     setPreview(null);
@@ -84,17 +86,31 @@ export function BulkAssignByAge({ initialBands }: { initialBands: AgeBand[] }) {
   async function doAssign() {
     setBusy("assign");
     setErr(null);
+    // The route applies at most 500 per call. A large book used to need the
+    // button pressed again for every 500; carry on until nothing is left.
+    // Safe to repeat: a client already at the ladder's category is skipped, so
+    // each round only sees what the last one did not reach.
+    const all: string[] = [];
     try {
-      const j = await call({ bands, refreshProvisional, saveBands });
-      setAssigned(j.assigned ?? []);
+      let remaining = 0;
+      for (let round = 0; round < 100; round++) {
+        const j = await call({ bands, refreshProvisional, saveBands: saveBands && round === 0 });
+        all.push(...(j.assigned ?? []));
+        remaining = j.remaining ?? 0;
+        setAssigned([...all]);
+        if (!remaining || !j.assignedCount) break;
+        setProgress(all.length);
+      }
       toast.success(
-        `Suggested a profile for ${j.assignedCount} client${j.assignedCount === 1 ? "" : "s"}` +
-          (j.remaining ? ` · ${j.remaining} left — run again` : "")
+        `Suggested a profile for ${all.length} client${all.length === 1 ? "" : "s"}` +
+          (remaining ? ` · ${remaining} could not be assigned` : "")
       );
       router.refresh();
     } catch (e: any) {
-      setErr(e?.message ?? "Assignment failed");
+      const done = all.length ? ` ${all.length} were assigned before it stopped — press Assign again to continue.` : "";
+      setErr((e?.message ?? "Assignment failed") + done);
     } finally {
+      setProgress(null);
       setBusy(null);
     }
   }
@@ -104,13 +120,25 @@ export function BulkAssignByAge({ initialBands }: { initialBands: AgeBand[] }) {
     setBusy("notify");
     setErr(null);
     try {
-      const res = await fetch("/api/risk-profiles/bulk-notify", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ investorIds: assigned }),
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok || j.error) throw new Error(j.error ?? `Send failed (${res.status})`);
+      // The route sends at most 300 per call, so send in slices of 300 —
+      // each slice is a different set of clients, so nobody is emailed twice.
+      const j = { sent: 0, skipped: 0, noEmail: 0, failed: [] as unknown[] };
+      for (let i = 0; i < assigned.length; i += 300) {
+        const res = await fetch("/api/risk-profiles/bulk-notify", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ investorIds: assigned.slice(i, i + 300) }),
+        });
+        const r = await res.json().catch(() => ({}));
+        if (!res.ok || r.error) {
+          const done = j.sent ? ` (${j.sent} already sent)` : "";
+          throw new Error((r.error ?? `Send failed (${res.status})`) + done);
+        }
+        j.sent += r.sent ?? 0;
+        j.skipped += r.skipped ?? 0;
+        j.noEmail += r.noEmail ?? 0;
+        j.failed.push(...(r.failed ?? []));
+      }
       const bits = [`${j.sent} email${j.sent === 1 ? "" : "s"} sent`];
       if (j.skipped) bits.push(`${j.skipped} skipped (consent / compliance)`);
       if (j.noEmail) bits.push(`${j.noEmail} have no email`);
@@ -265,7 +293,9 @@ export function BulkAssignByAge({ initialBands }: { initialBands: AgeBand[] }) {
                 title={!preview ? "Preview first" : undefined}
               >
                 {busy === "assign" ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
-                Assign {preview ? preview.counts.assign : ""}
+                {busy === "assign" && progress
+                  ? `Assigning… ${progress} of ${preview?.counts.assign ?? "?"}`
+                  : `Assign ${preview ? preview.counts.assign : ""}`}
               </button>
             </>
           )}

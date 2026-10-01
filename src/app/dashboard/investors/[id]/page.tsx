@@ -61,6 +61,7 @@ import { RelatedModulesRail } from "@/components/investors/RelatedModulesRail";
 import { InvestorDocumentsSection } from "@/components/investors/InvestorDocumentsSection";
 import { InvestorAvatarEditor } from "@/components/investors/InvestorAvatarEditor";
 import { EmailRelatedList } from "@/components/comms/EmailRelatedList";
+import { can } from "@/lib/auth/rbac";
 import { WhatsAppRelatedList } from "@/components/comms/WhatsAppRelatedList";
 import { InvestorDetailTabs } from "@/components/investors/InvestorDetailTabs";
 import { MasterRecordEditor } from "@/components/investors/MasterRecordEditor";
@@ -798,7 +799,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
       </RelatedListSection>
 
       <RelatedListSection moduleKey="investors-detail" sectionKey="emails">
-        <EmailRelatedList entityType="investor" entityId={inv.id} entityName={inv.name} entityEmail={inv.email} />
+        <EmailRelatedList entityType="investor" entityId={inv.id} entityName={inv.name} entityEmail={inv.email} canSend={can(session.roles, "communication.send", session.permissions)} />
       </RelatedListSection>
 
       <RelatedListSection moduleKey="investors-detail" sectionKey="whatsapp">
