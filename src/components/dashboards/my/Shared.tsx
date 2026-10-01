@@ -20,8 +20,9 @@
  */
 
 import Link from "next/link";
-import { useId, type ReactNode } from "react";
-import { ArrowUpRight, Info } from "lucide-react";
+import { type ReactNode } from "react";
+import { ArrowUpRight } from "lucide-react";
+import { InfoTip } from "./InfoTip";
 import { formatCount, formatMoney, formatPercent } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -36,35 +37,15 @@ import { cn } from "@/lib/utils";
  * every visit they are noise, and they made the pages feel crowded to people
  * who just want the numbers. They now live here: one tap away, never in the way.
  *
- * Server-safe (only `useId`, which Server Components may call) and CSS-only:
- * hover opens it with a mouse, and a tap focuses the button, which opens it on
- * a phone. The text is the button's DESCRIPTION, so a screen reader hears
+ * A client component in ./InfoTip.tsx: hover opens it with a mouse, and a tap
+ * focuses the button, which opens it on a phone. Closed it takes no layout
+ * space, and open it turns towards the side with room — an invisible popup near
+ * a card's right edge used to widen the whole page. The text is the button's DESCRIPTION, so a screen reader hears
  * "What this shows" and then the explanation while the heading around it keeps
  * its short name; a link inside a note stays valid because it never sits inside
  * the button. No arbitrary Tailwind values — they fail silently in this repo.
  */
-export function InfoTip({ children, label = "What this shows" }: { children: ReactNode; label?: string }) {
-  const id = useId();
-  return (
-    <span className="group/info relative inline-flex align-middle">
-      <button
-        type="button"
-        aria-label={label}
-        aria-describedby={id}
-        className="inline-grid size-6 place-items-center rounded-full text-muted-foreground/70 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <Info className="size-3.5" aria-hidden />
-      </button>
-      <span
-        id={id}
-        role="tooltip"
-        className="invisible absolute left-0 top-full z-50 mt-1 w-72 rounded-lg border border-border bg-card p-3 text-2xs font-normal normal-case leading-relaxed tracking-normal text-muted-foreground opacity-0 shadow-lg transition-opacity duration-150 group-hover/info:visible group-hover/info:opacity-100 group-focus-within/info:visible group-focus-within/info:opacity-100"
-      >
-        {children}
-      </span>
-    </span>
-  );
-}
+export { InfoTip };
 
 /* ────────────────────────────── section shell ────────────────────────────── */
 
