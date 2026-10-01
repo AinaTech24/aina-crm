@@ -119,7 +119,10 @@ export function BirthdayBell() {
       </Tooltip>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 border bg-card rounded-lg shadow-lg w-80 z-40 overflow-hidden">
+        // 24rem: the client's full name and the three tab labels ("Tomorrow
+        // (12)") need the room beside Send wish. The bell only shows from sm up
+        // (layout.tsx), where 24rem still clears the left edge.
+        <div className="absolute right-0 top-full mt-2 border bg-card rounded-lg shadow-lg w-96 z-40 overflow-hidden">
           {/* Tabs */}
           <div className="grid grid-cols-3 border-b">
             {TABS.map((t) => (
@@ -163,7 +166,8 @@ export function BirthdayBell() {
                       <Cake className="size-4" />
                     </span>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">{it.name}</div>
+                      {/* The full name, wrapping if it must — never cut to "Rajinder Kumar …". */}
+                      <div className="text-sm font-medium break-words">{it.name}</div>
                       <div className="text-2xs text-muted-foreground">
                         {tab === "today"
                           ? it.turning ? `Turns ${it.turning} today 🎉` : "Birthday today 🎉"

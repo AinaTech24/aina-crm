@@ -231,6 +231,34 @@ Append a function to `ALL_RULES` in `src/lib/comms/compliance.ts`. Each rule is 
 
 ---
 
+## Website complaint form
+
+Each firm gets one public link, `/complaint/<token>` (`tenants.complaint_form_token`,
+migration 0227), to put on its own website: Service Requests → ⋯ → "Complaint
+form for your website" (`/dashboard/complaints/website-form`). Code:
+`src/lib/complaints/` (`submission.ts` reads the form, `web-form.ts` the rest),
+`POST /api/public/complaints/[token]`, and `PATCH /api/complaints/website-form`
+(owner / compliance: switch off, or replace the link — the old one dies at once).
+
+- **A ticket starts in ONE place**: `openServiceRequest`
+  (`lib/service-requests/open.ts`), shared with the CRM's own form — ticket
+  number, SLA clocks (21 days for a complaint), the `complaint.created` event
+  and the client acknowledgement. A website complaint is type complaint,
+  channel form, source `website`.
+- **It goes to the compliance officer, else the owner** — never the client's
+  RM by default, since a complaint can be about the RM. The handler gets a
+  notification.
+- **It is linked to a client only when the email or mobile typed matches
+  exactly one live client**, and the acknowledgement goes out only when it was
+  the EMAIL that matched, so the form can never make the firm write to a third
+  party. PAN and folio are recorded for staff, never used to link.
+- **Abuse controls**: 20/hour per IP (wide on purpose — mobile networks share
+  addresses), 60/hour per link, and a honeypot field answered with a fake
+  success.
+- The monthly complaint disclosure page was removed at the firm's request
+  (2026-10-01); `/dashboard/complaints/disclosure` redirects to the register.
+  Do not restore it.
+
 ## Webhook handlers
 
 | Provider | Path | Verifies |
@@ -367,7 +395,7 @@ action today, the team, then the analysis and the reviews.
 | Dashboard | Default for | What it is | Was |
 |---|---|---|---|
 | **Owner Dashboard** | owner, compliance, marketing | widgets: KPI row (AUM, SIP book, net business, net SIP added, new clients vs target, clients, insurance premium) · needs attention · lead pipeline · team · branches · business trend · money movement · SIP health · AUM mix · client mix · top clients · brokerage · premium book · compliance gaps · expiries · automation | `?scope=firm`, Practice Overview, Reports › Practice health |
-| **Branch Head Dashboard** | branch head | `BranchCommandCentre` (32 sections) | `?scope=branch`, Reports › Branch review |
+| **Branch Head Dashboard** | branch head | `BranchCommandCentre` (19 sections) | `?scope=branch`, Reports › Branch review |
 | **Relationship Manager Dashboard** | RM, team member | `MyBusinessDashboard` (40 sections) | `?scope=mine`, Reports › My desk |
 | **Operations Dashboard** | ops, back office, service team | `OperationsControlTower` (50 sections; tabs Queue · SLA & escalations · Team load · Rejections · Compliance) | `?scope=ops`, `/dashboard/operations` |
 | **Insurance Team Dashboard** | insurance team | `InsuranceCommandCentre` (58 sections) | `?scope=insurance`, Insurance › Overview |
@@ -453,11 +481,19 @@ client and made redemptions look unfollowed.
 ### Branch Head Dashboard (was `?scope=branch`)
 
 The Branch Business Command Centre (`BranchCommandCentre.tsx`) is the
-branch head's view — 32 sections, in this order: the KPI strip; the attention
-centre, SIP exceptions, tasks and service requests, meetings and reviews;
-targets, the RM scoreboard and target matrix; the lead funnel, flows,
-redemptions, trend, book, insurance and operations, data quality; the weekly
-/ monthly review and the FY scorecard.
+branch head's view — 19 sections, in this order: the KPI strip; SIP
+exceptions, tasks and service requests, meetings, reviews and proposals;
+targets; new clients and the lead funnel, investment flow, book, insurance and
+operations, data quality and risk; month on month and the FY scorecard.
+
+**The firm took ten things off it on 2026-09-30 — do not restore them from the
+brief:** the jump links, the quick-action buttons (Schedule meeting / Add
+task / More), the attention centre and its header chip, the RM scoreboard and
+target matrix, redemption watch, the business trend, SIP performance,
+relationship opportunities, RM activity and the weekly / monthly review. Their
+branch-only components (`AttentionCentre`, `RmScoreboard`, `RmTargetMatrix`,
+`BranchSipPerformance`, `BranchActivity`, `BranchQuickActions`) are no longer
+rendered anywhere.
 
 - **The branch lock.** A branch head (`isBranchScoped`: branch head, not owner,
   with a branch) WITHOUT `dashboard.view.all_branches` is locked to
@@ -485,8 +521,8 @@ redemptions, trend, book, insurance and operations, data quality; the weekly
   month or quarter has no target ("Not phased") and the FY scorecard shows no
   "expected by today". Bands (achieved / near / short) come from
   `lib/dashboard/branch/targets.ts`; there is no overall RM score.
-- **Drill-down is branch → RM → client → record.** A KPI tile opens the RM-wise
-  view, an RM name opens the one-on-one view (`?rm=`), client names open the
+- **Drill-down is branch → RM → client → record.** A KPI tile opens its own
+  list, an RM name opens the one-on-one view (`?rm=`), client names open the
   record. List pages read `branch=` (investors, leads, SIP rejections) so a
   count opens onto the same rows — a filter only ever NARROWS; the viewer's
   access scope still applies on top. Build list links with `clientsHref` /

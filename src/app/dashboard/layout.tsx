@@ -659,8 +659,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
     {/* h-screen + overflow-hidden on the outer wrapper means the page itself
         never scrolls — the sidebar and the main pane each get their own
         scrollbar from the `overflow-y-auto` they already declare. Print mode
-        reverts to block flow so the whole document prints in one stream. */}
-    <div className="h-screen flex bg-background overflow-hidden print:block print:h-auto print:overflow-visible">
+        reverts to block flow so the whole document prints in one stream.
+
+        `relative` here and on <main> is what makes that hold. An absolutely
+        positioned element with no positioned ancestor (an `sr-only` label is
+        one) is placed against the BODY, so overflow-hidden here never clipped
+        it: one such label deep in a dashboard made the document 6,741px tall,
+        and the window scrolled the whole shell away into blank space. */}
+    <div className="relative h-screen flex bg-background overflow-hidden print:static print:block print:h-auto print:overflow-visible">
       {/* ───────────── Desktop sidebar (hidden below lg — mobile uses drawer) ─────────────
           Hover-expand + click-to-pin icon rail. State lives in DesktopSidebar. */}
       <DesktopSidebar>{sidebarInner}</DesktopSidebar>
@@ -668,7 +674,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       {/* ────────────────────────── Main ────────────────────────── */}
       {/* h-full + overflow-y-auto = independent scroll, sticky topbar stays
           pinned inside this pane (not at viewport top). */}
-      <main id="main-content" tabIndex={-1} className="flex-1 min-w-0 h-full overflow-y-auto print:overflow-visible print:h-auto">
+      <main id="main-content" tabIndex={-1} className="relative flex-1 min-w-0 h-full overflow-y-auto print:static print:overflow-visible print:h-auto">
         {/* Topbar — glass, sticky; hidden when printing */}
         <div className="sticky top-0 z-40 border-b border-border bg-card px-4 sm:px-6 h-16 flex items-center gap-3 sm:gap-4 print:hidden">
           <div className="flex items-center gap-3 min-w-0">

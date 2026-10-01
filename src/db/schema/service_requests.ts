@@ -4,8 +4,8 @@ import { tenants } from "./tenants";
 import { users } from "./users";
 import { investors } from "./investors";
 
-/** Standardized SEBI complaint categories (drive the register filter + monthly
- *  disclosure). Kept in sync with the create form + workspace dropdowns. */
+/** Standardized SEBI complaint categories (drive the register filter and the
+ *  category report). Kept in sync with the create form + workspace dropdowns. */
 export const SEBI_COMPLAINT_CATEGORIES = [
   { value: "service", label: "Service / TAT" },
   { value: "mis_selling", label: "Mis-selling" },
@@ -25,6 +25,8 @@ export const COMPLAINT_SOURCES = [
   { value: "email", label: "Email" },
   { value: "phone", label: "Phone" },
   { value: "walk_in", label: "Walk-in" },
+  /** The firm's public complaint form (/complaint/<token>). */
+  { value: "website", label: "Website form" },
   { value: "other", label: "Other" },
 ] as const;
 

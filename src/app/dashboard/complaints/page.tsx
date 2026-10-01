@@ -33,7 +33,8 @@ const CATEGORY_LABEL: Record<string, string> = {
   fee: "Fee / commission", kyc: "KYC / documents", communication: "Communication", other: "Other",
 };
 const SOURCE_LABEL: Record<string, string> = {
-  direct: "Direct", scores: "SCORES", amfi: "AMFI", amc: "AMC", email: "Email", phone: "Phone", walk_in: "Walk-in", other: "Other",
+  direct: "Direct", scores: "SCORES", amfi: "AMFI", amc: "AMC", email: "Email", phone: "Phone", walk_in: "Walk-in",
+  website: "Website form", other: "Other",
 };
 
 export const dynamic = "force-dynamic";
@@ -151,9 +152,6 @@ export default async function ComplaintsPage({
   return (
     <div className="space-y-6 max-w-7xl">
       <PageHeaderCard title={<><Shield className="size-6 text-muted-foreground" /> Complaint Register</>} subtitle={<>SEBI-format complaint log · 21-day TAT clock · required for DDQ readiness.</>} actions={<><div className="flex items-center gap-2">
-          <Link href="/dashboard/complaints/disclosure" className="btn-secondary text-xs">
-            <FileText className="size-3.5" /> Monthly disclosure
-          </Link>
           <Link href="/dashboard/reports/complaint_category" className="btn-secondary text-xs">
             <FileText className="size-3.5" /> Category report
           </Link>
@@ -224,6 +222,7 @@ export default async function ComplaintsPage({
               { value: "email", label: "Email" },
               { value: "phone", label: "Phone" },
               { value: "walk_in", label: "Walk-in" },
+              { value: "website", label: "Website form" },
             ],
           },
           dateRangeFilter("created", "Logged"),

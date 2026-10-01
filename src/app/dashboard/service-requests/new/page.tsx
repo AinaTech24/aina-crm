@@ -45,6 +45,7 @@ const COMPLAINT_SOURCES = [
   { value: "email", label: "Email" },
   { value: "phone", label: "Phone" },
   { value: "walk_in", label: "Walk-in" },
+  { value: "website", label: "Website form" },
   { value: "other", label: "Other" },
 ];
 
@@ -225,7 +226,7 @@ export default function NewServiceRequestPage() {
                 </label>
               )}
             </div>
-            <p className="text-2xs text-amber-700">Complaints carry a 21-day resolution SLA and feed the monthly disclosure statement.</p>
+            <p className="text-2xs text-amber-700">Complaints carry a 21-day resolution SLA.</p>
           </div>
         )}
         {err && <div className="text-sm text-rose-600">{err}</div>}

@@ -97,6 +97,10 @@ const PUBLIC_PATH_PREFIXES = [
   // single-use + expiry. Without this the feedback email's button 307s to the
   // FIRM's login page, which no client can pass.
   "/f/",
+  // /complaint/* — the firm's public complaint form, linked from the firm's
+  // own website. The random per-firm token is the only credential; the submit
+  // endpoint (/api/public/complaints/) is rate-limited and honeypotted.
+  "/complaint/",
   "/portal/",
   "/knowledge-base/",
   // /induction/letter/* — the training confirmation letter. Unauthenticated by

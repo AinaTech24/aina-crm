@@ -52,7 +52,7 @@ const SEBI_CATEGORIES = [
 ] as const;
 const COMPLAINT_SOURCES = [
   ["direct", "Direct (client)"], ["scores", "SCORES (SEBI)"], ["amfi", "AMFI"], ["amc", "AMC"],
-  ["email", "Email"], ["phone", "Phone"], ["walk_in", "Walk-in"], ["other", "Other"],
+  ["email", "Email"], ["phone", "Phone"], ["walk_in", "Walk-in"], ["website", "Website form"], ["other", "Other"],
 ] as const;
 
 type TimelineEntry = { at: string; by: string; event: string; note?: string };

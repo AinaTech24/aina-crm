@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import { Plus, LifeBuoy } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { ServiceRequestsTable } from "@/components/service-requests/ServiceRequestsTable";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { dateRangeCond } from "@/lib/filters/date-range";
@@ -69,6 +70,9 @@ export default async function ServiceRequestsPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const session = await requireSession();
+  // The firm's public complaint link — for whoever runs the firm's tickets.
+  const canSeeComplaintForm = (["service_request.view.all", "service_request.manage", "compliance.view"] as const)
+    .some((cap) => can(session.roles, cap, session.permissions));
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const status = (sp.status ?? "").split(",").filter(Boolean);
@@ -176,18 +180,20 @@ export default async function ServiceRequestsPage({
   return (
     <div className="space-y-6 max-w-7xl">
       <PageHeaderCard title={<><LifeBuoy className="size-6 text-muted-foreground" /> Service Requests</>} subtitle={<>Track every client request and complaint with a deadline — overdue tickets escalate automatically.</>} actions={<><div className="flex items-center gap-2">
-          <MoreMenu
-            label="More"
-            items={[
-              {
-                href: "/dashboard/complaints/disclosure",
-                label: "SEBI complaint disclosure (monthly)",
-                description: "The complaints statement distributors publish each month",
-                tooltip:
-                  "SEBI requires distributors to publish their complaint data every month: received, resolved and pending, with average resolution time. Built from the complaints logged here.",
-              },
-            ]}
-          />
+          {canSeeComplaintForm && (
+            <MoreMenu
+              label="More"
+              items={[
+                {
+                  href: "/dashboard/complaints/website-form",
+                  label: "Complaint form for your website",
+                  description: "One link clients can use to send you a complaint",
+                  tooltip:
+                    "Put this link on your website. Every complaint sent through it arrives here as a complaint, with the 21-day clock started.",
+                },
+              ]}
+            />
+          )}
           <Link href="/dashboard/service-requests/new" className={buttonClass("primary")}>
             <Plus className="size-4" /> New request
           </Link>

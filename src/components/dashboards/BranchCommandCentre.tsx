@@ -6,12 +6,18 @@
  * ── One page, read top to bottom ─────────────────────────────────────────────
  *
  *   The headline                    KPI strip
- *   What needs me today?            attention centre, SIP exceptions, tasks and
- *                                   service requests, meetings and reviews
- *   Which RM, on which metric?      targets, scoreboard, target matrix
- *   The analysis                    pipeline, flows, trend, book, insurance and
- *                                   operations, data quality; then the weekly /
- *                                   monthly review and the FY scorecard
+ *   What needs me today?            SIP exceptions, tasks and service requests,
+ *                                   meetings and reviews
+ *   Against target                  targets
+ *   The analysis                    pipeline, investment flow, book, insurance
+ *                                   and operations, data quality; then month on
+ *                                   month and the FY scorecard
+ *
+ * Taken off at the firm's request (2026-09-30), so do not restore them from the
+ * brief: the jump links, the quick-action buttons, the attention centre, the RM
+ * scoreboard and target matrix, redemption watch, the business trend, SIP
+ * performance, relationship opportunities, RM activity and the weekly /
+ * monthly review.
  *
  * Every figure follows the brief's drill-down: branch → RM (the one-on-one
  * view, `?rm=`) → client (the lists and priority tables) → the record itself.
@@ -31,14 +37,14 @@
  * ── Layout ───────────────────────────────────────────────────────────────────
  *
  * One CSS grid. On a phone the cells take the brief's MOBILE priority through
- * `order-*` (attention first, then KPIs, RM performance, SIP exceptions…); from
+ * `order-*` (KPIs first, then SIP exceptions, reviews, targets…); from
  * `lg` up `order-none` restores document order, the desktop order above; from
  * `2xl` the paired rows sit side by side. Suspense renders no element of its
  * own, so each band's cells are the grid's real items.
  */
 
 import { Suspense, type ReactNode } from "react";
-import { AlertOctagon, Lock, UserRound } from "lucide-react";
+import { Lock, UserRound } from "lucide-react";
 
 import { withTenant } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
@@ -50,33 +56,32 @@ import type { Period } from "@/lib/dashboard/period";
 import { loadDashboardThresholds, type DashboardThresholds } from "@/lib/dashboard/thresholds";
 import { buildBookWindow } from "@/lib/dashboard/my/build-window";
 import { clientsHref, loadBookTargets, type BookScope, type MyWindow } from "@/lib/dashboard/my/window";
-import { loadMonthlySummary, loadMyKpis, loadMyTrend, loadTargetMeters, monthLabels, phaseFraction, type MyKpi } from "@/lib/dashboard/my/kpis";
+import { loadMonthlySummary, loadMyKpis, loadTargetMeters, monthLabels, phaseFraction } from "@/lib/dashboard/my/kpis";
 import {
-  loadClientBook, loadContactGap, loadDataQuality, loadKeyClients, loadOpportunities,
+  loadClientBook, loadContactGap, loadDataQuality, loadKeyClients,
   loadReviewDesk, loadRiskDesk, type KeyClientSort,
 } from "@/lib/dashboard/my/clients";
 import {
-  loadLeadFunnel, loadMeetingDesk, loadMyQueries, loadMyTasks, loadProposalDesk, loadRedemptionWatch,
+  loadLeadFunnel, loadMeetingDesk, loadMyQueries, loadMyTasks, loadProposalDesk,
 } from "@/lib/dashboard/my/pipeline";
 import { loadRmLedger, sumLedger, type RmLedgerRow } from "@/lib/dashboard/branch/rm-ledger";
 import {
-  buildFyScorecard, loadAcquisition, loadAttention, loadInsuranceSnapshot, loadInvestmentFlow,
-  loadOpsSnapshot, loadReviewMode, loadSipPerformance, loadWindowMetrics, type AttentionItem,
+  buildFyScorecard, loadAcquisition, loadInsuranceSnapshot, loadInvestmentFlow,
+  loadOpsSnapshot, loadWindowMetrics,
 } from "@/lib/dashboard/branch/sections";
 import { runLimit } from "@/lib/dashboard/run-limit";
 import { cn } from "@/lib/utils";
 
 import {
-  MyClientBook, MyContactGap, MyDataQuality, MyKeyClients, MyKpiStrip, MyMonthlySummary,
-  MyOpportunities, MyRiskDesk, MyTrendChart,
+  MyClientBook, MyContactGap, MyDataQuality, MyKeyClients, MyKpiStrip, MyMonthlySummary, MyRiskDesk,
 } from "./my";
 import { voiceFor, type Voice } from "./my/voice";
 import {
-  AttentionCentre, BranchAcquisition, BranchActivity, BranchFunnel, BranchInsurance, BranchInvestmentFlow,
-  BranchMeetings, BranchOps, BranchProposals, BranchQueries, BranchQuickActions, BranchRedemptions,
-  BranchReviews, BranchSipExceptions, BranchSipPerformance, BranchTargets, BranchTasks, ClientBookByRm,
-  ContactByRm, DataQualityByRm, FyScorecard, HV_PRESETS, ParamSelect, ReviewModePanel, RiskByRm,
-  RmOneOnOne, RmScoreboard, RmTargetMatrix, SCORE_SORTS, type Horizon, type ScoreSort,
+  BranchAcquisition, BranchFunnel, BranchInsurance, BranchInvestmentFlow,
+  BranchMeetings, BranchOps, BranchProposals, BranchQueries,
+  BranchReviews, BranchSipExceptions, BranchTargets, BranchTasks, ClientBookByRm,
+  ContactByRm, DataQualityByRm, FyScorecard, ParamSelect, RiskByRm,
+  RmOneOnOne, type Horizon,
 } from "./branch";
 
 /* ─────────────────────────────── layout cells ─────────────────────────────── */
@@ -84,17 +89,13 @@ import {
 /** Mobile priority (the brief's list). From `lg` up every cell is `order-none`. */
 const ORDER = {
   one: "order-first",
-  attention: "order-1",
-  kpi: "order-2",
-  rm: "order-3",
-  sipx: "order-4",
-  reviews: "order-5",
-  redemptions: "order-6",
-  targets: "order-7",
-  work: "order-8",
-  meetings: "order-9",
-  trend: "order-10",
-  rest: "order-11",
+  kpi: "order-1",
+  sipx: "order-2",
+  reviews: "order-3",
+  targets: "order-4",
+  work: "order-5",
+  meetings: "order-6",
+  rest: "order-7",
 } as const;
 type OrderKey = keyof typeof ORDER;
 
@@ -211,24 +212,14 @@ export async function BranchCommandCentre({
     : horizon === "fytd" ? 1 : null;
 
   /* ── toggles ─────────────────────────────────────────────────────────── */
-  const sort: ScoreSort = SCORE_SORTS.some((s) => s.key === sp.rmsort) ? (sp.rmsort as ScoreSort) : "aum";
   const flowH: "mtd" | "fytd" = sp.flow === "fytd" ? "fytd" : "mtd";
-  const hvNum = Number(sp.hv);
-  const highValue = Number.isFinite(hvNum) && hvNum >= 10_000 && hvNum <= 1e10 ? Math.round(hvNum) : t.largeRedemptionAbsolute;
-  const reviewMode = sp.review === "weekly" || sp.review === "monthly" ? sp.review : null;
-
-  // The attention centre loads ONCE and feeds both its band and the header
-  // chip — the one line a branch head should be able to read in ten seconds.
-  const attentionP = ledgerP.then((ledger) =>
-    run((tx) => loadAttention(tx, w, ledger, t, { highValue, phase: periodPhase })));
-  attentionP.catch(() => {});
   const keySort = (["aum", "sip", "interaction", "review", "category"] as KeyClientSort[])
     .includes(sp.myclients as KeyClientSort) ? (sp.myclients as KeyClientSort) : "aum";
 
   /* ── header ──────────────────────────────────────────────────────────── */
   const filters: AppliedFilter[] = [];
   if (oneRm && !rmLocked && rmAll) filters.push({ params: ["rm", "myclients"], label: "RM", value: oneRm.name });
-  const touched = ["period", "rm", "tgt", "rmsort", "flow", "hv", "review", ...(branchOptions ? ["branch"] : [])]
+  const touched = ["period", "rm", "tgt", "flow", ...(branchOptions ? ["branch"] : [])]
     .some((k) => typeof sp[k] === "string" && sp[k] !== "");
   const canQueries = can(session.roles, "service_request.view.all", session.permissions)
     || can(session.roles, "service_request.view.assigned", session.permissions);
@@ -236,41 +227,27 @@ export async function BranchCommandCentre({
   return (
     <div className="max-w-screen-2xl space-y-6">
       {/* The dashboard header above names the dashboard and the branch; this
-          line is the branch's state: whose view it is and the one-line verdict. */}
-      <div className="flex flex-wrap items-center gap-2">
-        {!branchOptions && (
-          <span className="chip bg-secondary text-secondary-foreground" title="Your access covers your own branch only. Another branch needs cross-branch permission from an administrator.">
-            <Lock className="size-3" aria-hidden /> Your branch only
-          </span>
-        )}
-        {oneRm && (
-          <span className="chip bg-secondary text-secondary-foreground">
-            <UserRound className="size-3" aria-hidden /> RM: {oneRm.name}
-          </span>
-        )}
-        <Suspense fallback={
-          <a href="#attention" className="chip bg-secondary text-secondary-foreground hover:bg-accent">
-            <AlertOctagon className="size-3" aria-hidden /> Needs attention
-          </a>
-        }>
-          <AttentionChip p={attentionP} />
-        </Suspense>
-      </div>
+          line is whose view it is. */}
+      {(!branchOptions || oneRm) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {!branchOptions && (
+            <span className="chip bg-secondary text-secondary-foreground" title="Your access covers your own branch only. Another branch needs cross-branch permission from an administrator.">
+              <Lock className="size-3" aria-hidden /> Your branch only
+            </span>
+          )}
+          {oneRm && (
+            <span className="chip bg-secondary text-secondary-foreground">
+              <UserRound className="size-3" aria-hidden /> RM: {oneRm.name}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* ── Row 1 · global filters — sticky under the top bar on desktop ── */}
       <div className="space-y-2.5 border-b border-border bg-background pb-4 lg:sticky lg:top-16 lg:z-30 lg:pt-3">
-        {/* One row: actions on the left, which branch / RM / period on the right. */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <BranchQuickActions
-            session={session}
-            hrefs={{
-              sipRejections: `/dashboard/sip-rejections?branch=${branch.id}${oneRm ? `&rm=${oneRm.id}` : ""}`,
-              pendingReviews: clientsHref(scope, "review=due"),
-              overdueTasks: `/dashboard/tasks?assignee=${w.staff.join(",")}&due=overdue`,
-              clients: clientsHref(scope),
-            }}
-          />
-          <div className="flex flex-wrap items-center justify-end gap-2">
+        {/* Which branch / RM / period, on the right. */}
+        <div className="flex flex-wrap items-center justify-start gap-3 sm:justify-end">
+          <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
             {branchOptions && (
               <ParamSelect
                 param="branch"
@@ -301,20 +278,6 @@ export async function BranchCommandCentre({
           resetHref={basePath}
           showReset={touched}
         />
-        {/* Thirty-odd sections is a long page; these are the ways into it. */}
-        <nav aria-label="Jump to section" className="flex flex-wrap items-center gap-x-1 text-2xs">
-          {([
-            ["attention", "Attention"], ["tasks", "Tasks & service requests"], ["reviews", "Reviews"],
-            ["targets", "Targets"], [oneRm ? "rm-targets" : "rm-scoreboard", "RMs"], ["redemptions", "Redemptions"],
-            ["sip-performance", "SIP"], ["client-book", "Clients"], ["insurance", "Insurance & ops"],
-            ["review-mode", "Weekly / monthly"], ["scorecard", "FY scorecard"],
-          ] as const).map(([id, label]) => (
-            <a key={id} href={`#${id}`}
-               className="inline-flex min-h-6 items-center rounded px-1.5 text-muted-foreground hover:bg-accent hover:text-primary">
-              {label}
-            </a>
-          ))}
-        </nav>
       </div>
 
       <div className="grid grid-cols-1 items-start gap-6 2xl:grid-cols-2">
@@ -327,13 +290,7 @@ export async function BranchCommandCentre({
 
         {/* The headline · KPI strip */}
         <Suspense fallback={<Loading order="kpi" />}>
-          <KpiBand run={run} w={w} periodLabel={periodLabel} oneRm={oneRm?.name ?? null}
-            hrefFor={(k) => kpiHref(k, hrefWith)} />
-        </Suspense>
-
-        {/* Today · management attention centre */}
-        <Suspense fallback={<Loading order="attention" />}>
-          <AttentionBand attentionP={attentionP} highValue={highValue} rmHref={rmHref} />
+          <KpiBand run={run} w={w} periodLabel={periodLabel} oneRm={oneRm?.name ?? null} />
         </Suspense>
 
         {/* Today · SIP exception centre */}
@@ -361,30 +318,15 @@ export async function BranchCommandCentre({
             phasing={t.targetPhasing} oneRm={oneRm?.name ?? null} />
         </Suspense>
 
-        {/* The team · RM scoreboard + target matrix */}
-        <Suspense fallback={<Loading order="rm" />}>
-          <ScoreboardBand ledgerP={ledgerP} t={t} periodPhase={periodPhase} noPhase={noPhase} sort={sort}
-            sortHrefs={Object.fromEntries(SCORE_SORTS.map((s) => [s.key, hrefWith({ rmsort: s.key }, "#rm-scoreboard")])) as Record<ScoreSort, string>}
-            rmHref={rmHref} periodLabel={periodLabel} fyLabel={w.fiscalYear} oneRm={!!oneRm} />
-        </Suspense>
-
         {/* Pipeline · new clients + lead funnel */}
         <Suspense fallback={<Loading order="rest" />}>
           <AcquisitionBand run={run} w={w} ledgerP={ledgerP} t={t} voice={voice} rmHref={rmHref} periodLabel={periodLabel} />
         </Suspense>
 
-        {/* Analysis · investment flow + redemption watch */}
-        <Suspense fallback={<Loading order="redemptions" />}>
-          <FlowBand run={run} w={w} flowH={flowH} highValue={highValue} rmHref={rmHref} periodLabel={periodLabel}
-            flowHrefs={{ mtd: hrefWith({ flow: "mtd" }), fytd: hrefWith({ flow: "fytd" }) }}
-            presetHrefs={HV_PRESETS.map((v) => ({ value: v, href: hrefWith({ hv: String(v) }, "#redemptions") }))}
-            customAction={basePath} customHidden={[...base.entries()].filter(([k]) => k !== "hv")}
-            showRm={voice.showRm} />
-        </Suspense>
-
-        {/* Analysis · business trend + SIP performance */}
-        <Suspense fallback={<Loading order="trend" />}>
-          <TrendBand run={run} w={w} ledgerP={ledgerP} t={t} rmHref={rmHref} periodLabel={periodLabel} oneRm={oneRm?.name ?? null} />
+        {/* Analysis · investment flow */}
+        <Suspense fallback={<Loading order="rest" />}>
+          <FlowBand run={run} w={w} flowH={flowH} rmHref={rmHref}
+            flowHrefs={{ mtd: hrefWith({ flow: "mtd" }), fytd: hrefWith({ flow: "fytd" }) }} />
         </Suspense>
 
         {/* Analysis · client book + contact health (+ key clients for one RM) */}
@@ -399,20 +341,14 @@ export async function BranchCommandCentre({
             opsHref={can(session.roles, "dashboard.view.ops", session.permissions) ? "/dashboard/operations" : null} />
         </Suspense>
 
-        {/* Analysis · data quality + risk profile, then relationships and activity */}
+        {/* Analysis · data quality + risk profile */}
         <Suspense fallback={<Loading order="rest" />}>
-          <QualityBand run={run} w={w} ledgerP={ledgerP} voice={voice} rmHref={rmHref} periodLabel={periodLabel} />
+          <QualityBand run={run} w={w} ledgerP={ledgerP} voice={voice} rmHref={rmHref} />
         </Suspense>
 
-        {/* Reviews · weekly / monthly, month on month */}
+        {/* Reviews · month on month */}
         <Suspense fallback={<Loading order="rest" />}>
-          <ReviewBand run={run} w={w} t={t} mode={reviewMode}
-            hrefs={{
-              weekly: hrefWith({ review: "weekly" }, "#review-mode"),
-              monthly: hrefWith({ review: "monthly" }, "#review-mode"),
-              off: hrefWith({ review: null }),
-            }}
-            now={now} />
+          <MonthOnMonthBand run={run} w={w} />
         </Suspense>
 
         {/* Reviews · FY scorecard */}
@@ -422,42 +358,6 @@ export async function BranchCommandCentre({
       </div>
     </div>
   );
-}
-
-/** The header's one-line verdict: how many exceptions, how many critical. */
-async function AttentionChip({ p }: { p: Promise<AttentionItem[]> }) {
-  const items = await p;
-  const critical = items.filter((i) => i.severity === "critical").length;
-  const rest = items.length - critical;
-  return (
-    <a
-      href="#attention"
-      className={cn(
-        "chip hover:opacity-90",
-        critical > 0 ? "bg-destructive/10 text-destructive"
-        : rest > 0 ? "bg-warning/10 text-warning-foreground"
-        : "bg-secondary text-secondary-foreground",
-      )}
-    >
-      <AlertOctagon className="size-3" aria-hidden />
-      {items.length === 0
-        ? "Nothing needs attention"
-        : [critical ? `${critical} critical` : null, rest ? `${rest} for attention` : null].filter(Boolean).join(" · ")}
-    </a>
-  );
-}
-
-/** KPI tiles open the RM-wise view of the same figure — the first drill-down step. */
-function kpiHref(key: MyKpi["key"], hrefWith: (o: Record<string, string | null>, h?: string) => string): string {
-  switch (key) {
-    case "aum": return hrefWith({ rmsort: "aum" }, "#rm-scoreboard");
-    case "sip_book": return hrefWith({ rmsort: "sip" }, "#rm-scoreboard");
-    case "gross_sip": case "sip_stop": case "net_sip": return hrefWith({}, "#sip-performance");
-    case "gross_investment": case "redemption": case "net_business": return hrefWith({ rmsort: "net_business" }, "#rm-scoreboard");
-    case "new_clients": return hrefWith({ rmsort: "new_clients" }, "#rm-scoreboard");
-    case "meetings": return hrefWith({ rmsort: "meetings" }, "#rm-scoreboard");
-    case "insurance": return hrefWith({}, "#insurance");
-  }
 }
 
 /* ──────────────────────────────── bands ──────────────────────────────── */
@@ -488,17 +388,16 @@ async function OneOnOneBand({
 }
 
 async function KpiBand({
-  run, w, periodLabel, oneRm, hrefFor,
+  run, w, periodLabel, oneRm,
 }: {
-  run: Run; w: MyWindow; periodLabel: string; oneRm: string | null; hrefFor: (k: MyKpi["key"]) => string;
+  run: Run; w: MyWindow; periodLabel: string; oneRm: string | null;
 }) {
+  // Each tile opens its own list (clients, SIPs, transactions), where the
+  // viewer's access scope applies.
   const kpis = await run((tx) => loadMyKpis(tx, w));
-  // Narrowed to one RM there is no scoreboard to drill into; the tiles keep
-  // their list links (that RM's clients, SIPs, transactions).
-  const tiles = oneRm ? kpis : kpis.map((k) => ({ ...k, href: hrefFor(k.key) }));
   return (
     <Cell order="kpi">
-      <MyKpiStrip kpis={tiles} periodLabel={periodLabel} title={oneRm ? `${oneRm} — business` : "Branch business"} />
+      <MyKpiStrip kpis={kpis} periodLabel={periodLabel} title={oneRm ? `${oneRm} — business` : "Branch business"} />
     </Cell>
   );
 }
@@ -519,78 +418,18 @@ async function TargetsBand({
   );
 }
 
-async function ScoreboardBand({
-  ledgerP, t, periodPhase, noPhase, sort, sortHrefs, rmHref, periodLabel, fyLabel, oneRm,
-}: {
-  ledgerP: Promise<RmLedgerRow[]>; t: DashboardThresholds; periodPhase: number | null; noPhase: string;
-  sort: ScoreSort; sortHrefs: Record<ScoreSort, string>; rmHref: (id: string) => string;
-  periodLabel: string; fyLabel: string; oneRm: boolean;
-}) {
-  const ledger = await ledgerP;
-  const rows = ledger.filter((r) => r.isRm);
-  return (
-    <>
-      {!oneRm && (
-        <Cell order="rm" id="rm-scoreboard">
-          <RmScoreboard rows={rows} phase={periodPhase} near={t.targetNearFraction} noPhase={noPhase}
-            sort={sort} sortHrefs={sortHrefs} rmHref={rmHref} periodLabel={periodLabel} />
-        </Cell>
-      )}
-      <Cell order="rm">
-        <RmTargetMatrix rows={rows} phase={periodPhase} near={t.targetNearFraction} noPhase={noPhase}
-          rmHref={rmHref} periodLabel={periodLabel} fyLabel={fyLabel} />
-      </Cell>
-    </>
-  );
-}
-
-async function TrendBand({
-  run, w, ledgerP, t, rmHref, periodLabel, oneRm,
-}: {
-  run: Run; w: MyWindow; ledgerP: Promise<RmLedgerRow[]>; t: DashboardThresholds;
-  rmHref: (id: string) => string; periodLabel: string; oneRm: string | null;
-}) {
-  const ledger = await ledgerP;
-  const [trend, sip] = await run(async (tx) => {
-    const targetOf = await loadBookTargets(tx, w);
-    return [
-      await loadMyTrend(tx, w),
-      await loadSipPerformance(tx, w, ledger, targetOf("net_sip"), t.targetPhasing),
-    ] as const;
-  });
-  return (
-    <>
-      <Cell order="trend" wide={false}>
-        <MyTrendChart trend={trend} title={oneRm ? `Business trend — ${oneRm}` : "Branch business trend"} showBalances />
-      </Cell>
-      <Cell order="rest" wide={false}>
-        <BranchSipPerformance data={sip} rmHref={rmHref} periodLabel={periodLabel} />
-      </Cell>
-    </>
-  );
-}
-
 async function FlowBand({
-  run, w, flowH, highValue, rmHref, periodLabel, flowHrefs, presetHrefs, customAction, customHidden, showRm,
+  run, w, flowH, rmHref, flowHrefs,
 }: {
-  run: Run; w: MyWindow; flowH: "mtd" | "fytd"; highValue: number; rmHref: (id: string) => string;
-  periodLabel: string; flowHrefs: Record<"mtd" | "fytd", string>;
-  presetHrefs: Array<{ value: number; href: string }>; customAction: string; customHidden: Array<[string, string]>; showRm: boolean;
+  run: Run; w: MyWindow; flowH: "mtd" | "fytd"; rmHref: (id: string) => string;
+  flowHrefs: Record<"mtd" | "fytd", string>;
 }) {
-  const [flow, red] = await run(async (tx) => [
-    await loadInvestmentFlow(tx, w, flowH),
-    await loadRedemptionWatch(tx, w, highValue),
-  ] as const);
+  const flow = await run((tx) => loadInvestmentFlow(tx, w, flowH));
+  // Full width: the card it used to share a row with (redemption watch) is gone.
   return (
-    <>
-      <Cell order="rest" wide={false}>
-        <BranchInvestmentFlow data={flow} hrefs={flowHrefs} rmHref={rmHref} />
-      </Cell>
-      <Cell order="redemptions" wide={false} id="redemptions">
-        <BranchRedemptions data={red} periodLabel={periodLabel} presetHrefs={presetHrefs}
-          customAction={customAction} customHidden={customHidden} showRm={showRm} />
-      </Cell>
-    </>
+    <Cell order="rest">
+      <BranchInvestmentFlow data={flow} hrefs={flowHrefs} rmHref={rmHref} />
+    </Cell>
   );
 }
 
@@ -746,15 +585,14 @@ async function ServiceBand({
 }
 
 async function QualityBand({
-  run, w, ledgerP, voice, rmHref, periodLabel,
+  run, w, ledgerP, voice, rmHref,
 }: {
-  run: Run; w: MyWindow; ledgerP: Promise<RmLedgerRow[]>; voice: Voice; rmHref: (id: string) => string; periodLabel: string;
+  run: Run; w: MyWindow; ledgerP: Promise<RmLedgerRow[]>; voice: Voice; rmHref: (id: string) => string;
 }) {
   const ledger = await ledgerP;
-  const [quality, risk, opps] = await run(async (tx) => [
+  const [quality, risk] = await run(async (tx) => [
     await loadDataQuality(tx, w),
     await loadRiskDesk(tx, w),
-    await loadOpportunities(tx, w),
   ] as const);
   const scope = w.scope as Extract<BookScope, { kind: "branch" }>;
   const clientsOf = (r: RmLedgerRow) =>
@@ -769,55 +607,17 @@ async function QualityBand({
         <MyRiskDesk data={risk} voice={voice}
           extra={voice.showRm ? <RiskByRm ledger={ledger} rmHref={rmHref} clientsOf={clientsOf} /> : undefined} />
       </Cell>
-      <Cell order="rest">
-        <MyOpportunities items={opps} voice={voice} />
-      </Cell>
-      {voice.showRm && (
-        <Cell order="rest">
-          <BranchActivity ledger={ledger} rmHref={rmHref} periodLabel={periodLabel} />
-        </Cell>
-      )}
     </>
   );
 }
 
-async function AttentionBand({
-  attentionP, highValue, rmHref,
-}: {
-  attentionP: Promise<AttentionItem[]>; highValue: number; rmHref: (id: string) => string;
-}) {
-  const items = await attentionP;
-  return (
-    <Cell order="attention">
-      <AttentionCentre items={items} rmHref={rmHref} highValue={highValue} />
-    </Cell>
-  );
-}
-
-async function ReviewBand({
-  run, w, t, mode, hrefs, now,
-}: {
-  run: Run; w: MyWindow; t: DashboardThresholds; mode: "weekly" | "monthly" | null;
-  hrefs: { weekly: string; monthly: string; off: string }; now: Date;
-}) {
-  const [review, months] = await run(async (tx) => {
-    const targetOf = await loadBookTargets(tx, w);
-    return [
-      mode ? await loadReviewMode(tx, w, mode, targetOf, t.targetPhasing) : null,
-      await loadMonthlySummary(tx, w),
-    ] as const;
-  });
+async function MonthOnMonthBand({ run, w }: { run: Run; w: MyWindow }) {
+  const months = await run((tx) => loadMonthlySummary(tx, w));
   const { monthLabel, prevMonthLabel } = monthLabels(w.to);
   return (
-    <>
-      <Cell order="rest">
-        <ReviewModePanel data={review} hrefs={hrefs} phasing={t.targetPhasing}
-          balanceRows={months.filter((m) => m.key === "aum" || m.key === "sip_book")} />
-      </Cell>
-      <Cell order="rest" id="month-on-month">
-        <MyMonthlySummary rows={months} monthLabel={monthLabel} prevLabel={prevMonthLabel} />
-      </Cell>
-    </>
+    <Cell order="rest" id="month-on-month">
+      <MyMonthlySummary rows={months} monthLabel={monthLabel} prevLabel={prevMonthLabel} />
+    </Cell>
   );
 }
 

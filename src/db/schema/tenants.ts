@@ -155,6 +155,12 @@ export const tenants = pgTable(
      *  `marketingFreqWindowDays` days. NULL cap = disabled. */
     marketingFreqCap: integer("marketing_freq_cap").default(6),
     marketingFreqWindowDays: integer("marketing_freq_window_days").default(7),
+    /** The firm's public complaint form, /complaint/<token> (migration 0227).
+     *  A random token so the link can be replaced if it is ever spammed; NULL
+     *  until someone first opens Service Requests → "Complaint form for your
+     *  website". Off = the link answers "not taking complaints online". */
+    complaintFormToken: text("complaint_form_token"),
+    complaintFormEnabled: boolean("complaint_form_enabled").notNull().default(true),
     /** Soft delete — set by a platform admin from the super-admin panel. A
      *  non-null value hides the tenant from the list and blocks its logins. */
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -163,6 +169,7 @@ export const tenants = pgTable(
   },
   (t) => ({
     arnUnique: uniqueIndex("tenants_arn_unique").on(t.arn),
+    complaintFormTokenUnique: uniqueIndex("tenants_complaint_form_token_unique").on(t.complaintFormToken),
   })
 );
 
