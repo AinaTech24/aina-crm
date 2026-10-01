@@ -5,6 +5,7 @@
  * edit, delete. Data from GET /api/leads/[id]/full.
  */
 
+import { toast } from "../../../../src/lib/toast";
 import { FollowUpField } from "../../../../src/components/form/FollowUpField";
 import React, { useState, useEffect } from "react";
 import { View, ScrollView, Pressable, Linking, RefreshControl, StyleSheet } from "react-native";

@@ -13,6 +13,12 @@ jobs:
   quality:
     name: Typecheck · RBAC · Calc · Tests
     runs-on: ubuntu-latest
+    env:
+      # `tsc --noEmit` over the whole app outgrew Node's default ~2 GB heap on
+      # the runner (2026-10-01: "JavaScript heap out of memory" after ~2 min,
+      # which failed verify and so skipped every deploy). A standard runner
+      # has at least 7 GB; give the checks 6 GB of it.
+      NODE_OPTIONS: --max-old-space-size=6144
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

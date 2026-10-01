@@ -117,11 +117,13 @@ const MUTATION = /export\s+async\s+function\s+(POST|PUT|PATCH|DELETE)/g;
 //   isPlatformAdmin(roles)       - inline platform check + 403 in route
 //   isManager(roles)             - owner/branch_head manager gate (widely used)
 //   loadEditableLead/Viewable…   - lead ownership gate (throws 403/404)
+//   requireFamilyEdit / assertFamilyEditable - family edit caps (requireAny)
+//                                  + visibility (lib/families/access, 403/404)
 //   ["owner", …] / .includes("owner") - inline owner/manager role allowlist
 // Keep this in lock-step with the real gating vocabulary so the guard catches
 // genuinely UNGATED mutations, not false-positive on a non-require idiom.
 const HAS_REQUIRE =
-  /\b(?:require|requireCap|requireAny|requirePlatform|isPlatformAdmin|isManager|loadEditableLead|loadViewableLead)\s*\(|\.includes\(\s*["']owner["']\s*\)|\[\s*["']owner["']/;
+  /\b(?:require|requireCap|requireAny|requirePlatform|isPlatformAdmin|isManager|loadEditableLead|loadViewableLead|requireFamilyEdit|assertFamilyEditable)\s*\(|\.includes\(\s*["']owner["']\s*\)|\[\s*["']owner["']/;
 
 // `can(roles, cap)` + an explicit 403 is an equally valid gate — several routes
 // (rta/import, team/targets, integrations/rta-mailback, …) use it to return a

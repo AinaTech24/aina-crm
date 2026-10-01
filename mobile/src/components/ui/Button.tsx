@@ -17,6 +17,8 @@ type Size = "md" | "sm" | "lg";
 
 interface ButtonProps {
   label: string;
+  /** Spoken name when the visible label is a symbol (e.g. a ‹ / › arrow). */
+  accessibilityLabel?: string;
   onPress?: () => void;
   variant?: Variant;
   size?: Size;
@@ -76,7 +78,7 @@ function AnimatedButton(p: ButtonProps) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={p.label}
+      accessibilityLabel={p.accessibilityLabel ?? p.label}
       accessibilityState={{ disabled: !!isDisabled, busy: !!p.loading }}
       disabled={isDisabled}
       onPress={() => fire(p.haptic, p.onPress)}
@@ -98,7 +100,7 @@ function StaticButton(p: ButtonProps) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={p.label}
+      accessibilityLabel={p.accessibilityLabel ?? p.label}
       accessibilityState={{ disabled: !!isDisabled, busy: !!p.loading }}
       disabled={isDisabled}
       onPress={() => fire(p.haptic, p.onPress)}
