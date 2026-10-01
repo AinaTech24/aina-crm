@@ -243,10 +243,17 @@ export async function loadClientLinkTokens(
         import("@/lib/investors/asset-class"),
         import("@/db/schema"),
       ]);
-      const folioRows = await tx
-        .select({ aum: foliosTable.aum, schemes: foliosTable.schemes })
-        .from(foliosTable)
-        .where(and(eq(foliosTable.tenantId, tenantId), eq(foliosTable.investorId, subjectId)));
+      const { withSchemeCategories } = await import("@/lib/investors/scheme-categories");
+      // Holdings stored without a category take it from the AMFI master —
+      // without that, most of a book can be "unclassified" and the email
+      // printed an equity share from a sliver of it beside an empty list.
+      const folioRows = await withSchemeCategories(
+        tx,
+        await tx
+          .select({ aum: foliosTable.aum, schemes: foliosTable.schemes })
+          .from(foliosTable)
+          .where(and(eq(foliosTable.tenantId, tenantId), eq(foliosTable.investorId, subjectId)))
+      );
 
       const exposure = assetClassExposure(folioRows as any);
       // assessSuitability keys off the canonical `investors.risk_profile` enum,
@@ -279,6 +286,18 @@ export async function loadClientLinkTokens(
         // Plain text only. The email renderer HTML-escapes every merge value,
         // so a token carrying markup would render its own tags to the client.
         out["suitability.scheme_list"] = top.map(([n]) => n).join(", ");
+      }
+      // Never a blank under "The schemes this relates to": say why there is
+      // no list. (Under the band, no single scheme is the cause; within it,
+      // nothing is out of line.)
+      if (!out["suitability.scheme_list"] && s.band && s.severity !== "unknown") {
+        const e = exposure.equityPct ?? 0;
+        out["suitability.scheme_list"] =
+          e > s.band.ceiling
+            ? "Your equity share comes from several holdings together rather than any single scheme."
+            : e < s.band.floor
+              ? "No single scheme — your equity share is below the usual range for this profile, not above it."
+              : "None — your holdings sit within the usual range for this profile.";
       }
     } catch (e) {
       console.warn("[comms] suitability token load skipped:", (e as Error)?.message);

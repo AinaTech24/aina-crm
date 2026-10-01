@@ -13,6 +13,12 @@ const EQUITY_RX = [/equity/i, /large.?cap/i, /mid.?cap/i, /small.?cap/i, /flexi.
 const HYBRID_RX = [/hybrid/i, /balanced/i];
 const DEFENSIVE_RX = [/debt/i, /bond/i, /gilt/i, /income/i, /credit.?risk/i, /duration/i, /banking.?psu/i, /liquid/i, /overnight/i, /money.?market/i, /ultra.?short/i];
 
+/** Exported as `assetClassOf` so lib/investors/scheme-categories can tell which
+ *  legs need a category looked up — the same test exposure uses. */
+export function assetClassOf(category: string | undefined): "equity" | "hybrid" | "defensive" | "other" {
+  return classOf(category);
+}
+
 function classOf(category: string | undefined): "equity" | "hybrid" | "defensive" | "other" {
   if (!category) return "other";
   if (EQUITY_RX.some((r) => r.test(category))) return "equity";

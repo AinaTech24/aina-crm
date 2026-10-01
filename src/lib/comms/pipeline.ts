@@ -187,6 +187,10 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
       // Non-fatal, exactly as it was when it ran later: a query hiccup must not
       // block a send that has nothing to do with these namespaces.
       const clientLinkTokens: Record<string, string> = {};
+      // Set when the body states the client's equity share but the CRM cannot
+      // actually work it out (no profile, or too little of the book has a known
+      // asset class). Sending would put a made-up figure in front of a client.
+      let unstatableExposure: string | null = null;
       try {
         // Test the declared variable KEYS too, not just the body: a template can
         // declare `risk.category` while the body renders it only via the subject.
@@ -211,9 +215,18 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
           for (const [k, val] of Object.entries(auto)) {
             if (val && String(val).trim() !== "") clientLinkTokens[k] = val;
           }
+          if (subjectType === "investor" && bodyStr.includes("suitability.equity_pct") && auto["suitability.status"] === "unknown") {
+            unstatableExposure = auto["suitability.summary"] || "This client's equity exposure cannot be worked out yet.";
+          }
         }
       } catch (e) {
         console.warn("[comms] client-link pre-fill skipped:", (e as Error)?.message);
+      }
+      if (unstatableExposure) {
+        throw Object.assign(
+          new Error(`Not sent — this email quotes the client's equity exposure, which the CRM can't work out yet. ${unstatableExposure}`),
+          { status: 422 }
+        );
       }
 
       const tokens = resolveTokens(version.variables as VariableDef[], {

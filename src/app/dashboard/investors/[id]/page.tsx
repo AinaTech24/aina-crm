@@ -80,6 +80,7 @@ import { SuitabilityCard } from "@/components/investors/SuitabilityCard";
 import { KycDataViewer } from "@/components/investors/KycDataViewer";
 import { clientCompleteness } from "@/lib/investors/completeness";
 import { assetClassExposure } from "@/lib/investors/asset-class";
+import { withSchemeCategories } from "@/lib/investors/scheme-categories";
 import { assessSuitability } from "@/lib/investors/suitability";
 import { getClientHealth } from "@/lib/metrics/health";
 import {
@@ -347,7 +348,11 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
   const inv = data.investor;
   // Derived client-360 insights (all from already-loaded data).
   const completeness = clientCompleteness(inv as any);
-  const exposure = assetClassExposure(data.folios as any);
+  // Holdings stored without a category take it from the AMFI master, so this
+  // equity share matches the suitability email and the proposal builder.
+  const exposure = assetClassExposure(
+    (await withTenant(session.tenantId, (tx) => withSchemeCategories(tx, data.folios as any))) as any
+  );
   const suitability = assessSuitability((inv as any).riskProfile ?? null, exposure.equityPct, exposure.classifiedPct);
   const isRiskProfileMissing = !inv.riskProfile;
 
