@@ -637,6 +637,20 @@ and branches carrying them; then lifecycle, ageing, SLA/TAT, settlement,
 rejections, lines, insurers, trends and reviews. Logic is in `src/lib/dashboard/claims/`, components in
 `src/components/dashboards/claims/`.
 
+**The firm took most of it off on 2026-10-01 — do not restore them from the
+brief:** the attention cards and escalation levels, the escalation centre,
+pending with, client service, insurer / TPA queries, owner workload and
+workload distribution, branch-wise and RM-wise claims, the lifecycle, TAT and
+SLA, TAT by claim type and by insurer, cashless and reimbursement, claimed vs
+settled, settlement monitoring, grievance and legal, claim type and mode
+analysis, data quality, the trend, the daily flow and today's closure, the
+weekly / monthly review and the FY scorecard. What stays: the KPI strip and
+value summary, the worklist, high-value, stale and no-next-action claims,
+documents, the status breakdown, ageing, rejected claims, the two line panels
+and insurers. The removed sections' components and analysis functions are no
+longer rendered anywhere (the claim drawer and filters still use the shared
+vocabulary).
+
 - **One read, then pure functions.** `loadClaimSet` (`set.ts`) loads every
   claim the page can say anything about — open now, or intimated / closed
   since the earliest date any section looks back to — with its status

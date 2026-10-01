@@ -21,7 +21,6 @@
  */
 
 import { Suspense, type ReactNode } from "react";
-import { FileText, Landmark } from "lucide-react";
 
 import { withTenant } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
@@ -39,32 +38,23 @@ import {
 } from "@/lib/insurance/claims-book";
 import { claimsAccess } from "@/lib/dashboard/claims/access";
 import {
-  CLAIM_FILTER_KEYS, CLIENT_UPDATE_PRESETS, HIGH_VALUE_PRESETS, NO_UPDATE_PRESETS, parseClaimFilter, parseClaimView, type WorklistFocus,
+  CLAIM_FILTER_KEYS, HIGH_VALUE_PRESETS, NO_UPDATE_PRESETS, parseClaimFilter, parseClaimView, type WorklistFocus,
 } from "@/lib/dashboard/claims/params";
-import { addDays, fyLabelOf, fyStartOf, hasFilter, monthBefore, monthStart, type ClaimWindow, type Tx } from "@/lib/dashboard/claims/window";
+import { addDays, fyStartOf, hasFilter, monthBefore, monthStart, type ClaimWindow, type Tx } from "@/lib/dashboard/claims/window";
 import { applyDerived, loadClaimSet, type ClaimRec } from "@/lib/dashboard/claims/set";
 import { loadClaimNames } from "@/lib/dashboard/claims/search";
 import {
-  FOCUS_LABEL, ageing, attention, byMode, documents, escalationCentre, funnel, groupBy, insurerName, kpiStrip, legal, levels, lineSummary,
-  pendingWith, quality, queries, rejected, settledRows, settlement, slaTat, statusDistribution, tatBy, valueSummary, withoutNextAction, worklist,
+  FOCUS_LABEL, ageing, documents, groupBy, insurerName, kpiStrip, lineSummary, rejected, statusDistribution, valueSummary, withoutNextAction, worklist,
 } from "@/lib/dashboard/claims/analysis";
-import { dailyFlow, fyScorecard, monthlyReview, monthlyTrend, weeklyReview } from "@/lib/dashboard/claims/review";
 import { istToday, parseInsPeriod } from "@/lib/dashboard/insurance/params";
 
 import { ClaimFilters } from "./claims/ClaimFilters";
 import { ClaimDrawer } from "./claims/ClaimDrawer";
 import { KpiStrip, ValueSummary } from "./claims/ClaimKpis";
-import { AttentionPanel, EscalationCentre } from "./claims/ClaimAttention";
 import { WorklistPanel } from "./claims/ClaimWorklist";
-import { FunnelPanel } from "./claims/ClaimFunnel";
-import {
-  AgeingPanel, ClaimedVsSettledPanel, DocumentsPanel, LegalPanel, LinePanel, ModePanel, PendingWithPanel, QueriesPanel, RejectedPanel,
-  SettlementPanel, SlaPanel, StatusPanel, TatTable,
-} from "./claims/ClaimPanels";
-import { BranchPanel, DistributionPanel, InsurerPanel, OwnerPanel, RmPanel, TypeModePanel } from "./claims/ClaimPeople";
-import { ClientServicePanel, HighValuePanel, NoActionPanel, QualityPanel, StalePanel } from "./claims/ClaimWatch";
-import { ClaimTrend } from "./claims/ClaimTrend";
-import { DailyFlowPanel, FyPanel, ReviewPanel } from "./claims/ClaimReview";
+import { AgeingPanel, DocumentsPanel, LinePanel, RejectedPanel, StatusPanel } from "./claims/ClaimPanels";
+import { InsurerPanel } from "./claims/ClaimPeople";
+import { HighValuePanel, NoActionPanel, StalePanel } from "./claims/ClaimWatch";
 import { ClaimQuickActions } from "./claims/ClaimTop";
 import { FilterDisclosure } from "./FilterDisclosure";
 import type { Names } from "./claims/parts";
@@ -165,7 +155,7 @@ export async function ClaimsControlCentre({ session, sp, basePath }: {
       {/* One row: register · search · More · period · Filters — pinned under
           the top bar on desktop. The filters fold behind "Filters"; what is
           applied still shows as chips below. */}
-      <div className="space-y-2.5 border-b border-border bg-background pb-3 lg:sticky lg:top-16 lg:z-30 lg:pt-3">
+      <div className="dash-toolbar space-y-2.5 border-b border-border bg-background pb-3 lg:sticky lg:top-16 lg:z-30 lg:pt-3">
         <FilterDisclosure
           keys={CLAIM_FILTER_KEYS}
           start={
@@ -218,27 +208,21 @@ async function Body({ setP, w, view, names, hrefWith, focusHref, can }: {
   const set = applyDerived(await setP, w);
   const open = set.filter((c) => c.isOpen);
   const P = w.periodLabel;
-  const fyLabel = fyLabelOf(w.today);
   const lockedLine = w.filter.line ?? null;
 
   const k = kpiStrip(set, w);
   const wl = worklist(set, w, view.focus);
   const docs = documents(set, w);
-  const q = queries(set, w);
-  const settle = settlement(set, w);
   const hv = open.filter((c) => c.highValue).sort((a, b) => b.claimed - a.claimed);
   const stale = open.filter((c) => c.noUpdate);
-  const due = open.filter((c) => c.clientUpdateDue).sort((a, b) => (b.daysSinceContact ?? 9999) - (a.daysSinceContact ?? 9999));
-  const owners = groupBy(set, w, (c) => c.ownerId);
   const ageSorted = [...open].sort((a, b) =>
     view.ageSort === "amount" ? b.claimed - a.claimed
     : view.ageSort === "insurer" ? (a.insurer ?? "~").localeCompare(b.insurer ?? "~") || (b.ageDays ?? 0) - (a.ageDays ?? 0)
     : view.ageSort === "type" ? claimTypeLabel(a.type).localeCompare(claimTypeLabel(b.type)) || (b.ageDays ?? 0) - (a.ageDays ?? 0)
     : (b.ageDays ?? 0) - (a.ageDays ?? 0));
-  const userLabel = (id: string | null) => (id ? names.user[id] ?? "Former user" : "Owner missing");
   const hrefs = {
-    logged: hrefWith({}, "#lifecycle"), open: hrefWith({ wf: null }, "#worklist"), settled: hrefWith({}, "#settlement"),
-    pending: hrefWith({}, "#status"), fnr: focusHref("fnr"), rejected: hrefWith({}, "#rejected"), settlement: hrefWith({}, "#settlement"),
+    logged: hrefWith({}, "#status"), open: hrefWith({ wf: null }, "#worklist"), settled: hrefWith({}, "#status"),
+    pending: hrefWith({}, "#status"), fnr: focusHref("fnr"), rejected: hrefWith({}, "#rejected"), settlement: hrefWith({}, "#status"),
     sla: focusHref("sla"), focusFnr: focusHref("fnr"), focusSla: focusHref("sla"), focusHv: focusHref("hv"),
   };
   const toggle = (param: string, current: number, presets: readonly number[], label: (n: number) => string, firm: number, hash: string) => ({
@@ -247,27 +231,12 @@ async function Body({ setP, w, view, names, hrefWith, focusHref, can }: {
       key: String(n), label: `${label(n)}${n === firm ? " · firm" : ""}`, href: hrefWith({ [param]: n === firm ? null : String(n) }, hash),
     })),
   });
-  const types = [...new Set(open.map((c) => c.type ?? "none"))].map((ty) => {
-    const xs = open.filter((c) => (c.type ?? "none") === ty);
-    return { label: ty === "none" ? "Type not recorded" : claimTypeLabel(ty), n: xs.length, amount: xs.reduce((a, c) => a + c.claimed, 0) };
-  }).sort((a, b) => b.n - a.n);
-  const lines = (["personal", "commercial", "unlinked", "unclassified"] as const).map((l) => {
-    const xs = open.filter((c) => c.line === l);
-    return { label: l === "personal" ? "Personal Lines" : l === "commercial" ? "Commercial Lines" : l === "unlinked" ? "No policy linked" : "Type not recognised", n: xs.length, amount: xs.reduce((a, c) => a + c.claimed, 0) };
-  }).filter((x) => x.n > 0);
 
   return (
     <div className="grid grid-cols-1 items-start gap-6 2xl:grid-cols-2">
       {/* The headline · §1–2 */}
       <Cell order="open" id="kpis"><KpiStrip k={k} periodLabel={P} hrefs={hrefs} /></Cell>
       <Cell order="rest"><ValueSummary v={valueSummary(set, w)} periodLabel={P} /></Cell>
-      {/* Today · §3 + §39 attention */}
-      <Cell order="attention" id="attention">
-        <AttentionPanel cards={attention(set, w)} names={names} focusHref={focusHref} lv={levels(set)}
-          t={{ sla: w.t.claimSlaDays, warn: w.t.claimSlaWarnDays, escalate: w.t.claimEscalateDays }} />
-      </Cell>
-      {/* Today · §40 escalation centre */}
-      <Cell order="rest" id="escalations"><EscalationCentre cards={escalationCentre(set, w)} names={names} focusHref={focusHref} /></Cell>
       {/* Today · §4 worklist */}
       <Cell order="worklist" id="worklist">
         <WorklistPanel rows={wl} names={names} focusLabel={view.focus ? FOCUS_LABEL[view.focus] : null} clearHref={hrefWith({ wf: null }, "#worklist")}
@@ -283,72 +252,19 @@ async function Body({ setP, w, view, names, hrefWith, focusHref, can }: {
           toggle={toggle("nu", w.noUpdateDays, NO_UPDATE_PRESETS, (n) => `${n} day${n === 1 ? "" : "s"}`, w.t.claimNoUpdateDays, "#stale")} />
       </Cell>
       <Cell order="rest"><NoActionPanel n={withoutNextAction(set)} focusHref={focusHref} /></Cell>
-      {/* Today · §12, §14, §41–42 documents, pending with, client updates */}
+      {/* Today · §12 documents */}
       <Cell order="docs" id="documents"><DocumentsPanel d={docs} names={names} periodLabel={P} docsDays={w.t.claimDocsDays} focusHref={focusHref} /></Cell>
-      <Cell order="rest" id="pending-with"><PendingWithPanel rows={pendingWith(set)} focusHref={(pw) => hrefWith({ pw, wf: null }, "#worklist")} /></Cell>
-      <Cell order="rest" id="client-service">
-        <ClientServicePanel open={open.length} due={due} names={names} days={w.clientUpdateDays}
-          clientsDue={new Set(due.map((c) => c.investorId ?? c.id)).size}
-          actionToday={open.filter((c) => c.actionState === "today").length} actionOverdue={open.filter((c) => c.actionState === "overdue").length}
-          noContact={open.filter((c) => c.daysSinceContact == null).length}
-          toggle={toggle("cu", w.clientUpdateDays, CLIENT_UPDATE_PRESETS, (n) => `${n} days`, w.t.claimClientUpdateDays, "#client-service")}
-          focusHref={focusHref} />
-      </Cell>
-      {/* Today · §15 queries */}
-      <Cell order="queries" id="queries"><QueriesPanel q={q} names={names} periodLabel={P} queryDays={w.t.claimQueryDays} focusHref={focusHref} /></Cell>
-      {/* The team · §28–29 owners */}
-      <Cell order="rest" id="owners">
-        <OwnerPanel rows={owners} periodLabel={P}
-          labelOf={(k) => (k ? names.user[k] ?? "Former user" : <span className="text-warning-foreground">Owner missing</span>)}
-          hrefOf={(k) => hrefWith({ own: k })} />
-      </Cell>
-      <Cell order="rest"><DistributionPanel owners={owners} types={types} lines={lines} labelOf={userLabel} /></Cell>
-      {/* The team · §26–27 branches and RMs */}
-      <Cell order="rest" wide={false} id="branches">
-        <BranchPanel rows={groupBy(set, w, (c) => c.branchId)} periodLabel={P}
-          labelOf={(k) => (k ? names.branch[k] ?? "Branch" : <span className="text-muted-foreground">No branch recorded</span>)}
-          hrefOf={(k) => hrefWith({ branch: k })} />
-      </Cell>
-      <Cell order="rest" wide={false} id="rms">
-        <RmPanel rows={groupBy(set, w, (c) => c.clientRmId)} periodLabel={P}
-          labelOf={(k) => (k ? names.user[k] ?? "Former user" : <span className="text-muted-foreground">No RM / no client</span>)}
-          hrefOf={(k) => hrefWith({ rm: k })} />
-      </Cell>
-      {/* Analysis · §5–6 lifecycle */}
-      <Cell order="rest" wide={false} id="lifecycle">
-        <FunnelPanel periodLabel={P} lockedLine={lockedLine}
-          funnels={{ all: funnel(set, w, "all"), personal: funnel(set, w, "personal"), commercial: funnel(set, w, "commercial") }} />
-      </Cell>
-      <Cell order="rest" wide={false} id="status"><StatusPanel rows={statusDistribution(set, w)} periodLabel={P} /></Cell>
-      {/* Analysis · §7–11 ageing, SLA, TAT */}
+      {/* Analysis · status */}
+      <Cell order="rest" id="status"><StatusPanel rows={statusDistribution(set, w)} periodLabel={P} /></Cell>
+      {/* Analysis · §7 ageing */}
       <Cell order="ageing" id="ageing">
         <AgeingPanel buckets={ageing(set)} rows={ageSorted} names={names} sort={view.ageSort}
           sortOptions={[["oldest", "Oldest"], ["amount", "Highest amount"], ["insurer", "Insurer"], ["type", "Claim type"]].map(([key, label]) => ({
             key, label, href: hrefWith({ as: key === "oldest" ? null : key }, "#ageing-detail"),
           }))} />
       </Cell>
-      <Cell order="sla" id="sla"><SlaPanel s={slaTat(set, w)} periodLabel={P} slaDays={w.t.claimSlaDays} warnDays={w.t.claimSlaWarnDays} focusHref={focusHref} /></Cell>
-      <Cell order="rest" wide={false}>
-        <TatTable title="TAT by claim type" subtitle={`Logged and settled in ${P}; open today.`} keyLabel="Claim type" icon={<FileText className="size-4" />}
-          rows={tatBy(set, w, (c) => c.type ?? "none", (key) => (key === "none" ? "Type not recorded" : claimTypeLabel(key)))}
-          note="The CRM's own claim types. TAT is intimation to settlement or rejection, for claims closed in the period; grievance cases are left out."
-          hrefFor={(key) => hrefWith({ ctyp: key === "none" ? null : key })} />
-      </Cell>
-      <Cell order="rest" wide={false}>
-        <TatTable title="TAT by insurer / TPA" subtitle={`Logged and settled in ${P}; open today.`} keyLabel="Insurer" icon={<Landmark className="size-4" />}
-          rows={tatBy(set, w, (c) => c.insurerKey, insurerName)}
-          note="Descriptive operational data — no insurer is rated. The CRM records the insurer only; a TPA is not a field."
-          hrefFor={(key) => hrefWith({ insurer: key || null })} />
-      </Cell>
-      {/* Analysis · §16–18 cashless and reimbursement */}
-      <Cell order="rest" wide={false}><ModePanel mode="cashless" m={byMode(set, w, "cashless")} names={names} periodLabel={P} /></Cell>
-      <Cell order="rest" wide={false}><ModePanel mode="reimbursement" m={byMode(set, w, "reimbursement")} names={names} periodLabel={P} /></Cell>
-      <Cell order="rest"><ClaimedVsSettledPanel rows={settledRows(set, w)} names={names} periodLabel={P} /></Cell>
-      {/* Analysis · §19–20 settlement */}
-      <Cell order="settlement" id="settlement"><SettlementPanel s={settle} periodLabel={P} /></Cell>
-      {/* Analysis · §21–23 rejected and legal */}
-      <Cell order="rest" wide={false} id="rejected"><RejectedPanel r={rejected(set, w)} names={names} periodLabel={P} focusHref={focusHref} /></Cell>
-      <Cell order="rest" wide={false} id="legal"><LegalPanel l={legal(set, w)} names={names} periodLabel={P} /></Cell>
+      {/* Analysis · §21 rejected */}
+      <Cell order="rest" id="rejected"><RejectedPanel r={rejected(set, w)} names={names} periodLabel={P} focusHref={focusHref} /></Cell>
       {/* Analysis · §24–25 lines */}
       {lockedLine !== "commercial" && (
         <Cell order="rest" wide={lockedLine === "personal"}><LinePanel line="personal" s={lineSummary(set, w, "personal")} periodLabel={P} groupHref={(g) => hrefWith({ grp: g })} /></Cell>
@@ -356,29 +272,12 @@ async function Body({ setP, w, view, names, hrefWith, focusHref, can }: {
       {lockedLine !== "personal" && (
         <Cell order="rest" wide={lockedLine === "commercial"}><LinePanel line="commercial" s={lineSummary(set, w, "commercial")} periodLabel={P} groupHref={(g) => hrefWith({ grp: g })} /></Cell>
       )}
-      {/* Analysis · §30, §51–52 insurers, types, modes */}
+      {/* Analysis · §30 insurers */}
       <Cell order="rest" id="insurers">
         <InsurerPanel rows={groupBy(set, w, (c) => c.insurerKey || null)} periodLabel={P}
           labelOf={(k) => (k ? insurerName(k, set.filter((c) => c.insurerKey === k)) : <span className="text-muted-foreground">Insurer not recorded</span>)}
           hrefOf={(k) => hrefWith({ insurer: k })} />
       </Cell>
-      <Cell order="rest">
-        <TypeModePanel periodLabel={P}
-          types={groupBy(set, w, (c) => c.type)} modes={groupBy(set, w, (c) => c.mode)}
-          labelOfType={(k) => (k ? claimTypeLabel(k) : "Type not recorded")} labelOfMode={(k) => claimModeLabel(k)}
-          typeHref={(k) => hrefWith({ ctyp: k })} modeHref={(k) => hrefWith({ mode: k })} />
-      </Cell>
-      {/* Analysis · §34–35 data quality */}
-      <Cell order="rest" id="quality"><QualityPanel q={quality(set, w)} periodLabel={P} /></Cell>
-      {/* Analysis · §43–45 trend */}
-      <Cell order="rest" id="trend"><ClaimTrend points={monthlyTrend(set, w)} fyLabel={fyLabel} lockedLine={lockedLine} /></Cell>
-      {/* Reviews · §46–50 the day, the week or month, the FY */}
-      <Cell order="today" id="today"><DailyFlowPanel d={dailyFlow(set, w)} /></Cell>
-      <Cell order="rest" id="review">
-        <ReviewPanel mode={view.review} r={view.review === "weekly" ? weeklyReview(set, w) : monthlyReview(set, w)}
-          toggle={[{ key: "weekly", label: "Weekly", href: hrefWith({ rv: "weekly" }, "#review") }, { key: "monthly", label: "Monthly", href: hrefWith({ rv: null }, "#review") }]} />
-      </Cell>
-      <Cell order="rest" id="fy"><FyPanel s={fyScorecard(set, w)} fyLabel={fyLabel} /></Cell>
     </div>
   );
 }
