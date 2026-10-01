@@ -144,7 +144,9 @@ const Patch = z.object({
   actionItems: z.array(ActionItem).optional(),
   attendees: z.array(Attendee).max(30).optional(),
   attachments: z
-    .array(z.object({ name: z.string(), url: z.string(), size: z.number().optional() }))
+    // fileId: an uploaded file (lib/review-meetings/files.ts) — kept on save.
+    .array(z.object({ name: z.string(), url: z.string(), size: z.number().optional(),
+      fileId: z.string().uuid().optional(), uploadedAt: z.string().optional() }))
     .optional(),
   nextReviewDate: z.string().optional(),
   /** Post-meeting outcome — drives the lead-to-client funnel. */

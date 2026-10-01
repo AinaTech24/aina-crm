@@ -18,6 +18,7 @@ import { REVIEW_MEETING_STATUSES } from "@/db/schema/review_meetings";
 import { BulkTable, type BulkColumn, type BulkAction } from "@/components/common/BulkTable";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
+import { DeleteMeetingButton } from "./DeleteMeetingButton";
 
 const TYPE_LABEL: Record<string, string> = {
   portfolio_review: "Portfolio Review", goal_review: "Goal Review", new_investment_discussion: "New Investment",
@@ -133,8 +134,15 @@ function actionsFor(rmOptions: { value: string; label: string }[]): BulkAction[]
 }
 
 const cancelColumn: BulkColumn<Row> = {
-  key: "cancel", header: "", thClass: "text-right py-2 w-10", tdClass: "py-2.5 pr-3 text-right",
-  render: (m) => <CancelMeetingButton id={m.id} disabled={!CANCELLABLE.has(m.status)} />,
+  key: "cancel", header: "", thClass: "text-right py-2 w-20", tdClass: "py-2.5 pr-3 text-right",
+  // Cancel a meeting that was called off; delete one keyed by mistake (a
+  // completed meeting is a record and keeps only Cancel's slot).
+  render: (m) => (
+    <span className="inline-flex items-center justify-end gap-0.5">
+      <CancelMeetingButton id={m.id} disabled={!CANCELLABLE.has(m.status)} />
+      {m.status !== "completed" && <DeleteMeetingButton id={m.id} />}
+    </span>
+  ),
 };
 
 export function MeetingsBulkTable({

@@ -9,6 +9,7 @@ import { requireSession } from "@/lib/auth/session";
 import { formatINR, formatRelative } from "@/lib/utils";
 import { ReviewMeetingDetailEditor } from "@/components/review-meetings/ReviewMeetingDetailEditor";
 import { MeetingPrepButton } from "@/components/review-meetings/MeetingPrepButton";
+import { DeleteMeetingButton } from "@/components/review-meetings/DeleteMeetingButton";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
 
 export const dynamic = "force-dynamic";
@@ -103,7 +104,10 @@ export default async function ReviewMeetingDetailPage({
             className="mt-1"
           />
 </div>
-        <MeetingPrepButton meetingId={data.meeting.id} className="shrink-0" />
+        <div className="flex shrink-0 items-center gap-1">
+          <MeetingPrepButton meetingId={data.meeting.id} className="shrink-0" />
+          {data.meeting.status !== "completed" && <DeleteMeetingButton id={data.meeting.id} variant="button" />}
+        </div>
       </div>
 
       {data.prep && (

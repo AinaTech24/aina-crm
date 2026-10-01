@@ -17,6 +17,7 @@
  *   - creates a "write up your notes" task if notes are empty
  */
 
+import { MeetingAttachments, type MeetingAttachment } from "./MeetingAttachments";
 import { useId, useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Save, Plus, Trash2, CheckCircle2, X, Sparkles, ListChecks, CalendarPlus, Target, CalendarClock, ChevronDown, Download } from "lucide-react";
@@ -76,7 +77,8 @@ const MODES = [
 ] as const;
 
 type ActionItem = { title: string; dueAt?: string; taskId?: string };
-type Attachment = { name: string; url: string };
+// Links and uploaded files (lib/review-meetings/files.ts); a file has `fileId`.
+type Attachment = MeetingAttachment;
 type Attendee = {
   name: string;
   role:
@@ -286,15 +288,6 @@ export function ReviewMeetingDetailEditor({
     setItems((s) => s.filter((_, idx) => idx !== i));
   }
 
-  function addAttachment() {
-    setAtts((s) => [...s, { name: "", url: "" }]);
-  }
-  function patchAttachment(i: number, k: keyof Attachment, v: string) {
-    setAtts((s) => s.map((it, idx) => (idx === i ? { ...it, [k]: v } : it)));
-  }
-  function removeAttachment(i: number) {
-    setAtts((s) => s.filter((_, idx) => idx !== i));
-  }
 
   async function save(overrideStatus?: string) {
     setBusy(true);
@@ -307,7 +300,8 @@ export function ReviewMeetingDetailEditor({
         discussionPoints: discussion || undefined,
         meetingNotes: notes || undefined,
         actionItems: items.filter((i) => i.title.trim().length > 0),
-        attachments: atts.filter((a) => a.url.trim().length > 0),
+        // An uploaded file has no URL — keep it by its fileId.
+        attachments: atts.filter((a) => a.fileId || a.url.trim().length > 0),
         attendees: attendees.filter((a) => a.name.trim().length > 0),
         nextReviewDate: nextReview || undefined,
         outcome: outcome || undefined,
@@ -840,45 +834,8 @@ export function ReviewMeetingDetailEditor({
         )}
       </div>
 
-      {/* Attachments */}
-      <div className="card-surface p-5 space-y-2">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold">Attachments ({atts.length})</h3>
-          <button onClick={addAttachment} className="btn-ghost text-xs">
-            <Plus className="size-3.5" /> Add link
-          </button>
-        </div>
-        {atts.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-3">
-            Paste a link to a presentation, report, or signed document.
-          </p>
-        ) : (
-          <ul className="space-y-2">
-            {atts.map((a, i) => (
-              <li key={i} className="flex items-center gap-2">
-                <input
-                  value={a.name}
-                  onChange={(e) => patchAttachment(i, "name", e.target.value)}
-                  placeholder="Display name"
-                  className="input-base w-1/3"
-                />
-                <input
-                  value={a.url}
-                  onChange={(e) => patchAttachment(i, "url", e.target.value)}
-                  placeholder="https://…"
-                  className="input-base flex-1"
-                />
-                <button
-                  onClick={() => removeAttachment(i)}
-                  className="p-2 text-muted-foreground hover:text-rose-600 hover:bg-rose-50 rounded-md"
-                >
-                  <Trash2 className="size-3.5" />
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      {/* Attachments — uploaded files and links */}
+      <MeetingAttachments meetingId={meeting.id} items={atts} onChange={setAtts} />
 
       {/* Next review */}
       <div className="card-surface p-5 space-y-2">
