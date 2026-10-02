@@ -36,6 +36,7 @@ import { RecordTimeline } from "@/components/common/RecordTimeline";
 import { RecordAutomations } from "@/components/sales-ops/RecordAutomations";
 import { SignalScoreCard } from "@/components/leads/SignalScoreCard";
 import { LeadEditPanel } from "@/components/leads/LeadEditPanel";
+import { LeadAttachments } from "@/components/leads/LeadAttachments";
 import { CustomFieldsCard } from "@/components/common/CustomFieldsCard";
 import { LeadScoreButton } from "@/components/leads/LeadScoreButton";
 import { stageBadgeClass, stageLabel } from "@/lib/leads/stages";
@@ -62,6 +63,7 @@ const LEAD_DETAIL_SECTIONS: RelatedListDef[] = [
   { key: "onboarding", label: "Client links (risk profile / proposal / tracker)" },
   { key: "signals", label: "Engagement signals" },
   { key: "edit_panel", label: "Lead record" },
+  { key: "attachments", label: "Attachments" },
   { key: "custom_fields", label: "Custom fields" },
   { key: "activity", label: "Activity" },
   { key: "whatsapp", label: "WhatsApp" },
@@ -72,7 +74,7 @@ const LEAD_DETAIL_SECTIONS: RelatedListDef[] = [
 function leadDetailTabs({ activityCount }: { activityCount: number }) {
   return [
     { key: "overview", label: "Overview", sections: ["converted_banner", "blueprint", "onboarding", "signals"] },
-    { key: "details", label: "Details", sections: ["edit_panel", "custom_fields"] },
+    { key: "details", label: "Details", sections: ["edit_panel", "attachments", "custom_fields"] },
     { key: "activity", label: "Activity", sections: ["activity", "whatsapp", "emails"], count: activityCount },
   ];
 }
@@ -373,6 +375,11 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             className="px-1"
           />
         </div>
+      </RelatedListSection>
+
+      {/* Files and proposals for this lead (files move to the client on conversion). */}
+      <RelatedListSection moduleKey="leads-detail" sectionKey="attachments">
+        <LeadAttachments leadId={l.id} leadName={l.name} />
       </RelatedListSection>
 
       {/* MFD-defined custom fields (renders only if the firm has defined any). */}

@@ -70,6 +70,7 @@ import { OpportunitiesPanel } from "@/components/opportunities/OpportunitiesPane
 import { ClientFdPanel } from "@/components/fixed-deposits/ClientFdPanel";
 import { canEditFds } from "@/lib/fixed-deposits/service";
 import { InvestorDocumentsSection } from "@/components/investors/InvestorDocumentsSection";
+import { RecordNotes } from "@/components/common/RecordNotes";
 import { InvestorAvatarEditor } from "@/components/investors/InvestorAvatarEditor";
 import { EmailRelatedList } from "@/components/comms/EmailRelatedList";
 import { can } from "@/lib/auth/rbac";
@@ -113,6 +114,7 @@ const INVESTOR_DETAIL_SECTIONS: RelatedListDef[] = [
   { key: "recommended", label: "Recommended actions" },
   { key: "opportunities", label: "Opportunities — products the client wants next" },
   { key: "summary", label: "Review schedule" },
+  { key: "notes", label: "Notes" },
   // Portfolio
   { key: "valuation", label: "Portfolio summary, statements & reports" },
   { key: "holdings", label: "Holdings" },
@@ -147,7 +149,7 @@ const INVESTOR_DETAIL_SECTIONS: RelatedListDef[] = [
  */
 function investorDetailTabs(counts: { holdings: number }) {
   return [
-    { key: "overview", label: "Overview", sections: ["health", "recommended", "opportunities", "summary"] },
+    { key: "overview", label: "Overview", sections: ["health", "recommended", "opportunities", "summary", "notes"] },
     {
       key: "portfolio",
       label: "Portfolio",
@@ -593,6 +595,12 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
         />
       </RelatedListSection>
 
+      {/* Every note on the client — added here, or on a logged call or visit —
+          with the record's internal note under them. */}
+      <RelatedListSection moduleKey="investors-detail" sectionKey="notes">
+        <RecordNotes subject={{ type: "investor", id: inv.id }} internalNote={inv.notes} />
+      </RelatedListSection>
+
       {/* ──────────────────────────── Portfolio ───────────────────────────── */}
 
       {/* No holdings or history loaded — say so once, with the way to load them,
@@ -984,13 +992,6 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
             <KV label="Redemption-risk reason" value={inv.redemptionRiskReason} colSpan={2} />
           )}
         </Group>
-
-        {inv.notes && (
-          <div className="mt-4 pt-4 border-t">
-            <div className="text-xs text-muted-foreground mb-1">Notes</div>
-            <p className="text-sm whitespace-pre-wrap">{inv.notes}</p>
-          </div>
-        )}
 
         {/* Record metadata — who created and last changed it, and the id to
             quote to support. Quiet, at the foot of the record. */}

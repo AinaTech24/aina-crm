@@ -1,5 +1,6 @@
 import { handleApiError } from "@/lib/api/error-handler";
 /**
+ * GET  /api/leads/[id]/notes — the lead's notes, newest first (lib/notes).
  * POST /api/leads/[id]/notes
  * Body: { note, activityType?: 'call'|'meeting'|'email'|'whatsapp'|'note'|'other' }
  *
@@ -23,7 +24,8 @@ import { requireSession } from "@/lib/auth/session";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { leads, eventsOutbox, activities, type ActivityKind } from "@/db/schema";
 import { autoAdvance } from "@/lib/blueprints/auto-advance";
-import { loadEditableLead } from "@/lib/leads/access";
+import { loadEditableLead, loadViewableLead } from "@/lib/leads/access";
+import { loadRecordNotes } from "@/lib/notes/record-notes";
 import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +35,22 @@ const Body = z.object({
   activityType: z.enum(["call", "meeting", "email", "whatsapp", "note", "other"]).default("note"),
   nextFollowUpAt: z.string().datetime().optional(),
 });
+
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  try {
+    const session = await requireSession();
+    const notes = await withTenant(session.tenantId, async (tx) => {
+      const lead = await loadViewableLead(tx, session, id);
+      if (!lead) return null;
+      return loadRecordNotes(tx, session.tenantId, { type: "lead", id }, lead.followUpNotes);
+    });
+    if (!notes) return NextResponse.json({ error: "lead not found" }, { status: 404 });
+    return NextResponse.json({ notes });
+  } catch (err: any) {
+    return handleApiError(err);
+  }
+}
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

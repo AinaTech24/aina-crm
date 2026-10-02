@@ -16,6 +16,7 @@ import { useRouter } from "next/navigation";
 import { Pencil, Save, X, Loader2 } from "lucide-react";
 import { formatDate } from "@/lib/format";
 import { DateField } from "@/components/ui/DateField";
+import { RecordNotes } from "@/components/common/RecordNotes";
 
 const SOURCES = [
   ["referral", "Referral"],
@@ -331,6 +332,11 @@ export function LeadEditPanel({ lead }: { lead: any }) {
       </div>
 
       {/* ----------------- Follow-up notes + Internal notes ----------------- */}
+      {/* Reading: every note on the lead, with "Add note" (RecordNotes).
+          Editing: the two text fields, as before. */}
+      {!editing ? (
+        <RecordNotes subject={{ type: "lead", id: lead.id }} internalNote={lead.notes} />
+      ) : (
       <div className="border rounded-lg bg-card p-5 space-y-3">
         <h3 className="font-semibold">Notes</h3>
         <div>
@@ -363,6 +369,7 @@ export function LeadEditPanel({ lead }: { lead: any }) {
           )}
         </div>
       </div>
+      )}
     </div>
   );
 }
