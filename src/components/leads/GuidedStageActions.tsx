@@ -387,6 +387,21 @@ export function GuidedStageActions({
         // like LastContactAt. So we deliberately do NOT intercept them here even
         // when the target stage lists missing fields — the dialog supplies them.
         if (action.behaviour.kind === "advance_only") {
+          // Nothing to fill in, nothing to ask: move straight on. The pop-up
+          // takes no notes (removed at the firm's request), so it opens only
+          // for a step's required fields.
+          if (!(pre.missingFields ?? []).length) {
+            const moved = await advance(action.targetStage, `Action: ${action.label}`);
+            if (!moved) {
+              setOutcome({ kind: "error", message: "Couldn't move to this step. Please try again." });
+              return;
+            }
+            router.refresh();
+            window.dispatchEvent(new CustomEvent("blueprint:refresh"));
+            onAfterAdvance?.();
+            setOutcome({ kind: "advanced" });
+            return;
+          }
           setTransitioningAction(action);
           setMissingFields(pre.missingFields ?? []);
           setFieldValues({});
@@ -987,20 +1002,6 @@ export function GuidedStageActions({
                 </div>
               </div>
             )}
-
-            {/* Remarks / Notes */}
-            <div className="space-y-1">
-              <label htmlFor={`${uid}-transition-notes-remarks-optional`} className="text-xs text-foreground font-medium">
-                Transition Notes / Remarks (Optional)
-              </label>
-              <textarea id={`${uid}-transition-notes-remarks-optional`}
-                value={remarks}
-                onChange={(e) => setRemarks(e.target.value)}
-                rows={3}
-                placeholder="Capture notes about this status update..."
-                className="input-base text-xs w-full"
-              />
-            </div>
 
             {error && (
               <div className="text-xs text-rose-500 bg-rose-500/10 border border-rose-500/20 rounded-lg p-2.5 flex items-start gap-1.5">
