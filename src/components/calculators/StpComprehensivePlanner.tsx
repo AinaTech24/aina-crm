@@ -14,6 +14,7 @@
 
 import { useMemo, useState } from "react";
 import { ClientNameField } from "./ClientNameField";
+import { SchemeAutocomplete } from "@/components/mf/SchemeAutocomplete";
 import { SelectField } from "@/components/ui/SelectField";
 import {
   computeStpComprehensive, STP_FREQUENCIES, type StpFrequency, type StpTransferMode,
@@ -134,13 +135,19 @@ export function StpComprehensivePlanner() {
             <input type="checkbox" checked={addSchemes} onChange={(e) => setAddSchemes(e.target.checked)} /> Add suggested schemes
           </label>
           {addSchemes && (
-            <textarea
-              value={schemes}
-              onChange={(e) => setSchemes(e.target.value)}
-              rows={2}
-              placeholder="e.g. Debt: XYZ Liquid Fund · Equity: ABC Flexi Cap"
-              className="input-base text-sm w-full mt-1"
-            />
+            <div className="mt-1">
+              <SchemeAutocomplete
+                size="sm"
+                placeholder="Search your Scheme Master to add…"
+                onSelect={(s) => setSchemes(schemes ? `${schemes}, ${s.schemeName}` : s.schemeName)}
+              />
+              {schemes && (
+                <div className="mt-1 flex items-start gap-1.5 text-2xs text-muted-foreground">
+                  <span className="flex-1">{schemes}</span>
+                  <button type="button" onClick={() => setSchemes("")} className="text-rose-600 hover:underline shrink-0">clear</button>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>

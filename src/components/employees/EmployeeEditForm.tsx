@@ -29,6 +29,7 @@ import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
 import { DownloadButton } from "@/components/common/SecureLinkButtons";
 import { confirmDialog } from "@/components/ui/ConfirmProvider";
+import { AmcMultiSelect } from "@/components/mf/AmcSelect";
 
 const DEPARTMENTS = [
   { value: "sales", label: "Sales" },
@@ -863,20 +864,11 @@ export function EmployeeEditForm({
                   placeholder="e.g. EMP-001"
                 />
               </Field>
-              <Field label="Distributing AMCs (comma-separated)">
-                <input
-                  value={v.distributingAmcs.join(", ")}
-                  onChange={(e) =>
-                    update(
-                      "distributingAmcs",
-                      e.target.value
-                        .split(",")
-                        .map((s) => s.trim())
-                        .filter(Boolean)
-                    )
-                  }
-                  className="input-base text-sm w-full"
-                  placeholder="HDFC, ICICI, SBI, Axis"
+              <Field label="Distributing AMCs">
+                {/* Picked from the AMC master (Scheme Master module), never typed. */}
+                <AmcMultiSelect
+                  values={v.distributingAmcs}
+                  onChange={(next) => update("distributingAmcs", next)}
                 />
               </Field>
             </div>

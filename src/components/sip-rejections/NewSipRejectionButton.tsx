@@ -13,6 +13,8 @@ import { Plus, Loader2, X } from "lucide-react";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
 import { DateField } from "@/components/ui/DateField";
 import { SelectField } from "@/components/ui/SelectField";
+import { SchemeAutocomplete } from "@/components/mf/SchemeAutocomplete";
+import { AmcSelect } from "@/components/mf/AmcSelect";
 import { useToast } from "@/components/ui/Toast";
 
 const REASONS = [
@@ -122,15 +124,26 @@ export function NewSipRejectionButton() {
             </SelectField>
           </label>
 
+          {/* Scheme and AMC are picked from the firm's Scheme Master, never typed. */}
           <div className="grid grid-cols-2 gap-3">
-            <label className="block">
+            <div className="col-span-2">
               <div className="text-xs font-medium mb-1">Scheme</div>
-              <input value={form.schemeName} onChange={(e) => set("schemeName", e.target.value)} placeholder="Scheme name" className="input-base" />
-            </label>
-            <label className="block">
+              <SchemeAutocomplete
+                defaultValue={form.schemeName}
+                amc={form.amcName || null}
+                onSelect={(sc) => setForm((f) => ({ ...f, schemeName: sc.schemeName, amcName: sc.amc ?? f.amcName }))}
+                onClear={() => set("schemeName", "")}
+                placeholder="Search your Scheme Master…"
+              />
+            </div>
+            <div>
               <div className="text-xs font-medium mb-1">AMC</div>
-              <input value={form.amcName} onChange={(e) => set("amcName", e.target.value)} placeholder="AMC" className="input-base" />
-            </label>
+              <AmcSelect
+                value={form.amcName}
+                aria-label="AMC"
+                onChange={(v) => setForm((f) => ({ ...f, amcName: v, schemeName: v !== f.amcName ? "" : f.schemeName }))}
+              />
+            </div>
             <label className="block">
               <div className="text-xs font-medium mb-1">Folio no.</div>
               <input value={form.folioNumber} onChange={(e) => set("folioNumber", e.target.value)} className="input-base" />

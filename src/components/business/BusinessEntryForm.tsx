@@ -42,7 +42,7 @@ interface ProductConfig {
   lockAssetClass?: boolean;
 }
 const PRODUCT_CONFIG: Record<string, ProductConfig> = {
-  mutual_fund: { schemeLabel: "Scheme", schemePlaceholder: "Search catalog or type a name…", catalog: true,
+  mutual_fund: { schemeLabel: "Scheme", schemePlaceholder: "Search your Scheme Master…", catalog: true,
     txnTypes: ["lumpsum", "additional_purchase", "sip", "sip_topup", "sip_stop", "switch", "stp", "swp", "redemption", "other"] },
   // Direct Equity is bought/sold, not SIP'd/switched — show Buy/Sell, not the MF set.
   direct_equity: { schemeLabel: "Stock / scrip", schemePlaceholder: "Stock name or symbol (e.g. RELIANCE)…", catalog: false,
@@ -349,7 +349,7 @@ export function BusinessEntryForm({
                     <SchemeAutocomplete
                       size="sm"
                       defaultValue={l.schemeName}
-                      onQueryChange={(v) => patchLine(i, { schemeName: v, schemeCode: "" })}
+                      onClear={() => patchLine(i, { schemeName: "", schemeCode: "", amcName: "" })}
                       onSelect={(s) => patchLine(i, {
                         schemeName: s.schemeName, schemeCode: s.schemeCode, amcName: s.amc ?? "",
                         assetCategory: s.category ?? "", assetClass: classifyAssetClass(s.category, s.schemeName),
@@ -432,7 +432,7 @@ export function BusinessEntryForm({
                         <div className="lg:col-span-6">
                           <Label sm>From scheme (source)</Label>
                           <SchemeAutocomplete size="sm" defaultValue={l.fromSchemeName}
-                            onQueryChange={(v) => patchLine(i, { fromSchemeName: v, fromSchemeCode: "" })}
+                            onClear={() => patchLine(i, { fromSchemeName: "", fromSchemeCode: "" })}
                             onSelect={(s) => patchLine(i, { fromSchemeName: s.schemeName, fromSchemeCode: s.schemeCode, fromAssetClass: classifyAssetClass(s.category, s.schemeName) })}
                             placeholder="Source scheme…" />
                         </div>

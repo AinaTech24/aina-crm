@@ -376,10 +376,17 @@ function SchemeFormDrawer({ mode, scheme, amcs, onClose, onSaved }: { mode: "new
           <div className="sm:col-span-2">
             <Field label="Search AMFI scheme">
               <SchemeAutocomplete
+                // Adding TO the master: search the whole AMFI list, not the master itself.
+                source="universe"
+                placeholder="Search all AMFI schemes…"
                 onSelect={(p: SchemePick) => {
                   set("schemeCode", p.schemeCode);
                   set("schemeName", p.schemeName);
                   if (p.category && !f.category) set("category", p.category);
+                  // The scheme's AMC, when it is in this firm's AMC master — the
+                  // drawer otherwise defaults to the first AMC in the list.
+                  const amc = p.amc ? amcs.find((x) => x.code.toLowerCase() === p.amc!.toLowerCase() || x.name.toLowerCase() === p.amc!.toLowerCase()) : null;
+                  if (amc) set("amcCode", amc.code);
                 }}
               />
             </Field>

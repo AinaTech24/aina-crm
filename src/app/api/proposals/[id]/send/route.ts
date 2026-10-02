@@ -36,7 +36,6 @@ import { checkAlignment } from "@/lib/proposal/risk-alignment";
 import { resolveEmailSender } from "@/lib/comms/sender";
 import { emailAdapter } from "@/lib/comms/adapters/resend";
 import { renderProposalPdf } from "@/lib/proposal/proposal-pdf";
-import { loadProposalPdfPeople, proposalBrand } from "@/lib/proposal/pdf-context";
 import { formatDate, formatINR } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -329,8 +328,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // Resend directly from an unverified "no-reply@…" From, which bounced.
         let pdf: Buffer | null = null;
         try {
-          const people = await loadProposalPdfPeople(tx, p);
-          pdf = await renderProposalPdf({ proposal: p as any, brand: proposalBrand(tenant), ...people });
+          pdf = await renderProposalPdf({
+            proposal: p as any,
+            brand: {
+              displayName: (tenant as any)?.displayName, legalName: (tenant as any)?.legalName,
+              arn: (tenant as any)?.arn, euin: (tenant as any)?.euin,
+              primaryColor: (tenant as any)?.primaryColor, secondaryColor: (tenant as any)?.secondaryColor,
+              logoUrl: (tenant as any)?.logoUrl,
+            },
+          });
         } catch (e) {
           console.warn("[proposal.send] PDF generation failed; sending without attachment:", (e as Error)?.message);
         }

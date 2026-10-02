@@ -18,6 +18,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { SchemeAutocomplete } from "@/components/mf/SchemeAutocomplete";
+import { AmcSelect } from "@/components/mf/AmcSelect";
 import { SelectField } from "@/components/ui/SelectField";
 import type { ProposalLineItem, RecommendationType } from "@/db/schema/proposals";
 import type { ProposalSnapshot } from "@/lib/proposals/snapshot";
@@ -303,9 +304,11 @@ function MFRow({ item, onPatch, goals }: { item: MF; onPatch: (p: Partial<MF>) =
           {rt === "stp" ? "From scheme" : "Scheme"} <span className="text-rose-500">*</span>
         </span>
         <div className="mt-1">
+          {/* Picked from the firm's Scheme Master only (narrowed to the AMC when one is chosen). */}
           <SchemeAutocomplete
             defaultValue={item.schemeName}
-            onQueryChange={(v) => onPatch({ schemeName: v })}
+            amc={item.amcName || null}
+            onClear={() => onPatch({ schemeName: "", schemeCode: undefined })}
             onSelect={(s) =>
               onPatch({
                 schemeName: s.schemeName,
@@ -314,11 +317,23 @@ function MFRow({ item, onPatch, goals }: { item: MF; onPatch: (p: Partial<MF>) =
                 category: mapSchemeCategory(s.category) ?? item.category,
               })
             }
-            placeholder="Search the live MF catalogue — or type a name…"
+            placeholder="Search your Scheme Master…"
           />
         </div>
       </div>
-      <Text label="AMC" value={item.amcName ?? ""} onChange={(v) => onPatch({ amcName: v })} placeholder="HDFC AMC" />
+      <label className="block">
+        <span className="text-2xs font-medium text-muted-foreground">AMC</span>
+        <div className="mt-1">
+          <AmcSelect
+            value={item.amcName}
+            aria-label="AMC"
+            // A scheme belongs to one AMC: changing the AMC drops a scheme from another one.
+            onChange={(v) => onPatch(v !== (item.amcName ?? "") && item.schemeName
+              ? { amcName: v, schemeName: "", schemeCode: undefined }
+              : { amcName: v })}
+          />
+        </div>
+      </label>
 
       <label className="block">
         <span className="text-2xs font-medium text-muted-foreground">Category</span>
@@ -394,7 +409,7 @@ function MFRow({ item, onPatch, goals }: { item: MF; onPatch: (p: Partial<MF>) =
             <div className="mt-1">
               <SchemeAutocomplete
                 defaultValue={item.toSchemeName ?? ""}
-                onQueryChange={(v) => onPatch({ toSchemeName: v })}
+                onClear={() => onPatch({ toSchemeName: "", toSchemeCode: undefined })}
                 onSelect={(s) => onPatch({ toSchemeName: s.schemeName, toSchemeCode: (s as any).schemeCode ?? item.toSchemeCode })}
                 placeholder="The scheme the money moves into…"
               />

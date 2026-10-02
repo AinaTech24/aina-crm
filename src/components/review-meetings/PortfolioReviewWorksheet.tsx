@@ -20,6 +20,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Save, Printer } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
+import { SchemeAutocomplete } from "@/components/mf/SchemeAutocomplete";
 
 type RecommendedAction =
   | "hold"
@@ -277,13 +278,14 @@ export function PortfolioReviewWorksheet({
                 <tr key={r.folioId} className="border-t align-top">
                   <td className="px-2 py-2 text-muted-foreground">{i + 1}</td>
                   <td className="px-2 py-2">
-                    <input
-                      value={r.schemeName ?? ""}
-                      onChange={(e) =>
-                        setItem(i, { schemeName: e.target.value || null })
-                      }
-                      placeholder="Scheme name"
-                      className="input-base text-xs w-full"
+                    {/* Picked from the Scheme Master; pre-filled with the folio's own scheme. */}
+                    <SchemeAutocomplete
+                      size="sm"
+                      className="min-w-56"
+                      defaultValue={r.schemeName ?? ""}
+                      onSelect={(sc) => setItem(i, { schemeName: sc.schemeName, ...(r.fundCategory ? {} : { fundCategory: sc.category }) })}
+                      onClear={() => setItem(i, { schemeName: null })}
+                      placeholder="Search your Scheme Master…"
                     />
                     <div className="text-2xs text-muted-foreground mt-0.5 font-mono">
                       {folio?.amcName ?? "—"} · {folio?.folioNumber ?? "—"}

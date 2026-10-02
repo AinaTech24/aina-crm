@@ -14,7 +14,6 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
 import { proposals, tenants } from "@/db/schema";
 import { renderProposalPdf } from "@/lib/proposal/proposal-pdf";
-import { loadProposalPdfPeople, proposalBrand } from "@/lib/proposal/pdf-context";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -39,8 +38,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       if (!p) return null;
       if (!seesAll && p.preparedByUserId !== session.userId) return null;
       const [t] = await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1);
-      const people = await loadProposalPdfPeople(tx, p);
-      const pdf = await renderProposalPdf({ proposal: p as any, brand: proposalBrand(t), ...people });
+      const pdf = await renderProposalPdf({
+        proposal: p as any,
+        brand: {
+          displayName: (t as any)?.displayName,
+          legalName: (t as any)?.legalName,
+          arn: (t as any)?.arn,
+          euin: (t as any)?.euin,
+          primaryColor: (t as any)?.primaryColor,
+          secondaryColor: (t as any)?.secondaryColor,
+          logoUrl: (t as any)?.logoUrl,
+        },
+      });
       return { pdf, num: p.proposalNumber ?? id };
     });
 

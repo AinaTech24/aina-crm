@@ -189,9 +189,9 @@ export function FundOverlapCalculator() {
                     <SchemeAutocomplete
                       size="sm"
                       defaultValue={r.fundName}
-                      placeholder="Search fund (live)…"
+                      placeholder="Search your Scheme Master…"
                       onSelect={(s) => applyScheme(r.id, s)}
-                      onQueryChange={(q) => update(r.id, { fundName: q })}
+                      onClear={() => update(r.id, { fundName: "" })}
                     />
                   </td>
                   <td className="p-1.5">

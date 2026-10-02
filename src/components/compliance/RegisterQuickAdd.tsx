@@ -11,6 +11,8 @@ import { useRouter } from "next/navigation";
 import { Plus, Loader2, X } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { DateField } from "@/components/ui/DateField";
+import { SchemeAutocomplete } from "@/components/mf/SchemeAutocomplete";
+import { AmcSelect } from "@/components/mf/AmcSelect";
 
 type Register = "dsc" | "incident" | "unsuitability";
 
@@ -111,7 +113,10 @@ export function RegisterQuickAdd({ register, defaultFy }: { register: Register; 
                 </Field>
                 <div className="grid grid-cols-2 gap-2">
                   <Field label="Occurred on"><DateField className="input-base" onChange={(e) => set("occurredOn", e.target.value)} required /></Field>
-                  <Field label="AMC (if any)"><input className="input-base" onChange={(e) => set("amcName", e.target.value)} /></Field>
+                  <div className="block">
+                    <div className="text-2xs font-medium text-muted-foreground mb-1">AMC (if any)</div>
+                    <div><AmcSelect value={f.amcName ?? ""} aria-label="AMC (if any)" placeholder="None" onChange={(v) => set("amcName", v)} /></div>
+                  </div>
                 </div>
                 <Field label="What happened"><input className="input-base" onChange={(e) => set("title", e.target.value)} required /></Field>
                 <Field label="Remedial action taken"><textarea rows={2} className="input-base" onChange={(e) => set("remedialAction", e.target.value)} /></Field>
@@ -127,8 +132,18 @@ export function RegisterQuickAdd({ register, defaultFy }: { register: Register; 
                 <Field label="Client ID (UUID)">
                   <input className="input-base font-mono text-xs" onChange={(e) => set("investorId", e.target.value)} placeholder="paste from the client page URL" required />
                 </Field>
+                <div className="block">
+                  <div className="text-2xs font-medium text-muted-foreground mb-1">Scheme</div>
+                  <div>
+                    <SchemeAutocomplete
+                      defaultValue={f.schemeName ?? ""}
+                      onSelect={(sc) => set("schemeName", sc.schemeName)}
+                      onClear={() => set("schemeName", "")}
+                      placeholder="Search your Scheme Master…"
+                    />
+                  </div>
+                </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <Field label="Scheme"><input className="input-base" onChange={(e) => set("schemeName", e.target.value)} /></Field>
                   <Field label="Communicated on"><DateField className="input-base" onChange={(e) => set("communicatedOn", e.target.value)} required /></Field>
                 </div>
                 <Field label="Why it's unsuitable"><textarea rows={2} className="input-base" onChange={(e) => set("reason", e.target.value)} required /></Field>

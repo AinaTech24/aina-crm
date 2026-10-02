@@ -169,9 +169,9 @@ export function ReviewOfInvestments() {
                   <SchemeAutocomplete
                     size="sm"
                     defaultValue={r.scheme}
-                    placeholder="Search scheme (live from MFAPI)…"
+                    placeholder="Search your Scheme Master…"
                     onSelect={(s) => applyScheme(r.id, s)}
-                    onQueryChange={(q) => updateRow(r.id, { scheme: q })}
+                    onClear={() => updateRow(r.id, { scheme: "" })}
                   />
                 </td>
                 {shownPeriods.map((p) => (

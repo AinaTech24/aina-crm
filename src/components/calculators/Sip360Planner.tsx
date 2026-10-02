@@ -171,7 +171,7 @@ export function Sip360Planner() {
         <Field label="Suggested schemes (optional)">
           <SchemeAutocomplete
             size="sm"
-            placeholder="Search a real scheme to add…"
+            placeholder="Search your Scheme Master to add…"
             onSelect={(s) => setSchemes(schemes ? `${schemes}, ${s.schemeName}` : s.schemeName)}
           />
           {schemes && (

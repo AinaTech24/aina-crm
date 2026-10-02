@@ -90,9 +90,9 @@ export function ManualSipForm({ members, currentUserId }: { members: { id: strin
           <Label>Scheme</Label>
           <SchemeAutocomplete
             defaultValue={schemeName}
-            onQueryChange={(v) => { setSchemeName(v); setSchemeCode(""); }}
+            onClear={() => { setSchemeName(""); setSchemeCode(""); setAmcName(""); }}
             onSelect={(s) => { setSchemeName(s.schemeName); setSchemeCode(s.schemeCode); setAmcName(s.amc ?? ""); }}
-            placeholder="Search catalog or type a scheme name…"
+            placeholder="Search your Scheme Master…"
           />
           {amcName && <div className="text-2xs text-muted-foreground mt-1 truncate"><span className="font-medium text-foreground/70">AMC:</span> {amcName}</div>}
         </div>
