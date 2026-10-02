@@ -13,6 +13,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, CheckCircle2, Loader2, ShieldCheck, Download, Mail, KeyRound, Upload } from "lucide-react";
 import { DownloadButton, OpenDocButton } from "@/components/common/SecureLinkButtons";
+import { ageBandOption, ageFromDob } from "@/lib/risk-profile/age-band";
+import { formatDate } from "@/lib/format";
 
 type Option = { value: string; label: string; score: number };
 type Question = { key: string; label: string; helperText?: string; type: "single"; options: Option[] };
@@ -29,7 +31,9 @@ export function RiskProfileWizard({
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [age, setAge] = useState<string>(deriveAge(investor.dob) ?? "");
+  // The age question answers itself from the date of birth on file.
+  const dobAge = ageFromDob(investor.dob);
+  const [age, setAge] = useState<string>(dobAge != null ? String(dobAge) : "");
   const [remarks, setRemarks] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -141,21 +145,14 @@ export function RiskProfileWizard({
     }
   }
 
-  // Auto-sync exact age value with the template's age category options
+  // The exact age (from the date of birth, or typed) picks the age answer —
+  // matched against the firm's own options (lib/risk-profile/age-band).
   useEffect(() => {
-    if (age) {
-      const numAge = Number(age);
-      let choice = "";
-      if (numAge < 30) choice = "under_30";
-      else if (numAge <= 45) choice = "30_to_45";
-      else if (numAge <= 55) choice = "45_to_55";
-      else if (numAge <= 65) choice = "55_to_65";
-      else choice = "over_65";
-
-      if (template.questions.some((q) => q.key === "age") && answers.age !== choice) {
-        setAnswers((prev) => ({ ...prev, age: choice }));
-      }
-    }
+    if (!age) return;
+    const ageQuestion = template.questions.find((q) => q.key === "age");
+    if (!ageQuestion) return;
+    const choice = ageBandOption(Number(age), ageQuestion.options);
+    if (choice && answers.age !== choice) setAnswers((prev) => ({ ...prev, age: choice }));
   }, [age, template.questions, answers.age]);
 
   const questions = template.questions;
@@ -370,6 +367,19 @@ export function RiskProfileWizard({
                     className="input-base max-w-xs"
                   />
                 </label>
+                {dobAge != null ? (
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    Filled from the client&apos;s date of birth ({formatDate(investor.dob)}).
+                  </p>
+                ) : (
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    No date of birth on file.{" "}
+                    <Link href={`/dashboard/investors/${investor.id}/edit`} className="text-primary hover:underline">
+                      Add it to the client&apos;s details
+                    </Link>{" "}
+                    and this answers itself next time.
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -609,17 +619,3 @@ export function RiskProfileWizard({
   );
 }
 
-function deriveAge(dob: string | null): string | null {
-  if (!dob) return null;
-  try {
-    const d = new Date(dob);
-    if (isNaN(d.getTime())) return null; // malformed dob → no derived age (never "NaN")
-    const now = new Date();
-    let age = now.getFullYear() - d.getFullYear();
-    const m = now.getMonth() - d.getMonth();
-    if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age -= 1;
-    return age >= 1 && age <= 120 ? String(age) : null;
-  } catch {
-    return null;
-  }
-}
