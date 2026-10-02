@@ -546,7 +546,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
 
       {/* The client journey (blueprint) — where this client is on the
           onboarding path. Above the tabs, so it is seen on every tab. */}
-      <InvestorBlueprintStageBar investorId={inv.id} />
+      <InvestorBlueprintStageBar investorId={inv.id} investorName={inv.name} />
 
       {/* Category tabs — group the sections so the page shows one clean group at
           a time. Renders right under the header (which stays pinned). */}

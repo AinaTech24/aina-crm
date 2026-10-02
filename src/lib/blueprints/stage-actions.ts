@@ -31,7 +31,9 @@ export type DialogKind =
   | "send_doc_checklist"
   | "capture_approval"
   | "won_lead_product"
-  | "mark_lost";
+  | "mark_lost"
+  /** Add the client to an existing family or start one (MapFamilyDialog). */
+  | "map_family";
 
 export type StageAction = {
   key: string;
@@ -705,8 +707,9 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       label: "Map Family",
       tone: "primary",
       targetStage: "family_mapping",
-      hint: "Link spouse / parents / children for household view.",
-      behaviour: { kind: "navigate", hrefPattern: "/dashboard/families/new?investorId={id}" },
+      hint: "Add the client to an existing family or start a new one.",
+      // Mapping the family moves the journey on (lib/families/journey.ts).
+      behaviour: { kind: "open_dialog", dialog: "map_family" },
     },
   ],
 

@@ -20,6 +20,7 @@ import { familyHealthFields } from "@/lib/families/health";
 import { nextFamilyReview } from "@/lib/families/cadence";
 import { applyFamilyNamePattern, loadFamilySettings } from "@/lib/families/master";
 import { loadViewableInvestor } from "@/lib/investors/access";
+import { onClientFamilyMapped } from "@/lib/families/journey";
 import { familyScopeSql, requireFamilyView } from "@/lib/families/access";
 import { LIVE_MEMBER_JOIN } from "@/lib/families/live";
 import { WEALTH_BANDS, bandBounds, type WealthBand } from "@/lib/families/wealth-band";
@@ -320,6 +321,8 @@ export async function POST(req: NextRequest) {
         if (!linked.rows.length) {
           throw Object.assign(new Error("That client was just added to another household. Refresh and try again."), { status: 409 });
         }
+        // The head is mapped: their onboarding's "Map Family" step is done.
+        await onClientFamilyMapped(tx, session.tenantId, parse.data.primaryInvestorId);
       }
 
       await recordAudit(tx, {

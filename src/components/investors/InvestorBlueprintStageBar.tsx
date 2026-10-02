@@ -18,6 +18,7 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, ShieldCheck, Sparkles } from "lucide-react";
 import { BlueprintStageBar } from "@/components/leads/BlueprintStageBar";
+import { MapFamilyHost } from "@/components/families/MapFamilyDialog";
 
 type ApiData = {
   leadId: string | null;
@@ -32,7 +33,7 @@ type ApiData = {
   current?: { name: string; order: number };
 };
 
-export function InvestorBlueprintStageBar({ investorId }: { investorId: string }) {
+export function InvestorBlueprintStageBar({ investorId, investorName }: { investorId: string; investorName?: string }) {
   const [data, setData] = useState<ApiData | null>(null);
   const [err, setErr] = useState(false);
 
@@ -63,11 +64,15 @@ export function InvestorBlueprintStageBar({ investorId }: { investorId: string }
   // Real lead-backed blueprint → reuse the full component with phase=client.
   if (!data.synthetic && data.leadId) {
     return (
-      <BlueprintStageBar
-        leadId={data.leadId}
-        phase="client"
-        convertedInvestorId={investorId}
-      />
+      <>
+        <BlueprintStageBar
+          leadId={data.leadId}
+          phase="client"
+          convertedInvestorId={investorId}
+        />
+        {/* The journey's "Map Family" button opens this (MapFamilyDialog). */}
+        <MapFamilyHost investorId={investorId} investorName={investorName ?? "this client"} />
+      </>
     );
   }
 

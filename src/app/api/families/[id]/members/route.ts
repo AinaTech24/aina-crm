@@ -32,6 +32,7 @@ import { recomputeFamilyHealth } from "@/lib/families/health-persist";
 import { assertFamilyEditable } from "@/lib/families/access";
 import { loadViewableInvestor } from "@/lib/investors/access";
 import { HEAD_ROLE, isHeadRole } from "@/lib/families/roles";
+import { onClientFamilyMapped } from "@/lib/families/journey";
 
 export const dynamic = "force-dynamic";
 
@@ -86,6 +87,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const inv = await loadViewableInvestor(tx, session, investorId);
         if (!inv) throw Object.assign(new Error("client not found"), { status: 404 });
         if ((inv as any).mergedIntoId) throw Object.assign(new Error(`${inv.name} was merged into another record`), { status: 409 });
+        // Mapped to this family — newly or already: either way the client's
+        // onboarding "Map Family" step is done (lib/families/journey).
+        await onClientFamilyMapped(tx, session.tenantId, investorId);
         if (inv.familyId === familyId) continue;
 
         // Leaving a family they headed: that family loses its head, rather than
