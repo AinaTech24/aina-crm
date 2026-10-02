@@ -100,10 +100,10 @@ const M = 40;
 const FLOOR = 76;
 
 const KIND_TITLE: Record<string, string> = {
-  insurance: "Insurance", pms: "Portfolio Management Services", aif: "Alternative Investment Funds",
+  insurance: "Insurance cover", pms: "Portfolio Management Services", aif: "Alternative Investment Funds",
   other: "Other investments",
-  "mf:sip": "Mutual funds - SIP", "mf:lumpsum": "Mutual funds - Lumpsum",
-  "mf:swp": "Mutual funds - Systematic Withdrawal Plan (SWP)", "mf:stp": "Mutual funds - Systematic Transfer Plan (STP)",
+  "mf:sip": "Mutual funds: SIP", "mf:lumpsum": "Mutual funds: Lumpsum",
+  "mf:swp": "Mutual funds: Systematic Withdrawal Plan (SWP)", "mf:stp": "Mutual funds: Systematic Transfer Plan (STP)",
 };
 const KIND_ORDER = ["mf:sip", "mf:lumpsum", "mf:stp", "mf:swp", "pms", "aif", "insurance", "other"];
 
@@ -141,11 +141,10 @@ const n = (v: any): number | null => {
 function colsFor(kind: string): Col[] {
   if (kind === "insurance")
     return [
-      { h: "Policy", w: 0.32, get: (it) => it.policyName ?? "-" },
-      { h: "Insurer / type", w: 0.24, get: (it) => [it.insurer, typeLabel(it.policyType)].filter(Boolean).join(" - ") || "-" },
-      { h: "Sum assured", w: 0.16, align: "r", get: (it) => amt(it.sumAssured), sum: (it) => n(it.sumAssured) },
-      { h: "Annual premium", w: 0.16, align: "r", get: (it) => amt(it.annualPremium), sum: (it) => n(it.annualPremium) },
-      { h: "Term", w: 0.12, align: "r", optional: true, get: (it) => yrs(it.termYears) },
+      { h: "Policy", w: 0.46, get: (it) => insuranceName(it) },
+      { h: "Sum assured", w: 0.2, align: "r", get: (it) => amt(it.sumAssured), sum: (it) => n(it.sumAssured) },
+      { h: "Annual premium", w: 0.2, align: "r", get: (it) => amt(it.annualPremium), sum: (it) => n(it.annualPremium) },
+      { h: "Term", w: 0.14, align: "r", optional: true, get: (it) => yrs(it.termYears) },
     ];
   if (kind === "pms" || kind === "aif")
     return [
@@ -153,10 +152,10 @@ function colsFor(kind: string): Col[] {
       { h: "Manager", w: 0.17, get: (it) => it.manager ?? "-" },
       { h: "Minimum", w: 0.12, align: "r", optional: true, get: (it) => amt(it.minInvestment) },
       { h: "Proposed", w: 0.13, align: "r", get: (it) => amt(it.proposedAmount), sum: (it) => n(it.proposedAmount) },
-      { h: "Assumed return", w: 0.11, align: "r", get: (it) => pctv(it.expectedReturn ?? it.targetIrr) },
-      { h: "Years", w: 0.08, align: "r", get: (it) => yrs(it.termYears ?? it.lockInYears) },
+      { h: "Assumed return", w: 0.11, align: "r", optional: true, get: (it) => pctv(it.expectedReturn ?? it.targetIrr) },
+      { h: "Years", w: 0.08, align: "r", optional: true, get: (it) => yrs(it.termYears ?? it.lockInYears) },
       {
-        h: "Illustrative*", w: 0.12, align: "r", illus: true,
+        h: "Illustrative*", w: 0.12, align: "r", illus: true, optional: true,
         get: (it) => amt(projected(it.proposedAmount, it.expectedReturn ?? it.targetIrr, it.termYears ?? it.lockInYears)),
         sum: (it) => projected(it.proposedAmount, it.expectedReturn ?? it.targetIrr, it.termYears ?? it.lockInYears),
       },
@@ -173,10 +172,10 @@ function colsFor(kind: string): Col[] {
     return [
       { h: "Scheme", w: 0.40, get: (it) => it.schemeName ?? "-" },
       { h: "Amount", w: 0.15, align: "r", get: (it) => amt(it.lumpsum), sum: (it) => n(it.lumpsum) },
-      { h: "Years", w: 0.09, align: "r", get: (it) => yrs(it.sipTermYears) },
-      { h: "Assumed return", w: 0.14, align: "r", get: (it) => pctv(it.expectedReturn) },
+      { h: "Years", w: 0.09, align: "r", optional: true, get: (it) => yrs(it.sipTermYears) },
+      { h: "Assumed return", w: 0.14, align: "r", optional: true, get: (it) => pctv(it.expectedReturn) },
       {
-        h: "Illustrative value*", w: 0.22, align: "r", illus: true,
+        h: "Illustrative value*", w: 0.22, align: "r", illus: true, optional: true,
         get: (it) => amt(lumpsumValue(it)), sum: (it) => lumpsumValue(it),
       },
     ];
@@ -202,9 +201,9 @@ function colsFor(kind: string): Col[] {
     { h: "Lumpsum", w: 0.12, align: "r", optional: true, get: (it) => amt(it.lumpsum), sum: (it) => n(it.lumpsum) },
     { h: "SIP / month", w: 0.12, align: "r", get: (it) => amt(it.monthlyAmount), sum: (it) => n(it.monthlyAmount) },
     { h: "Step-up", w: 0.08, align: "r", optional: true, get: (it) => pctv(it.stepUpPct) },
-    { h: "Years", w: 0.08, align: "r", get: (it) => yrs(it.sipTermYears) },
-    { h: "Assumed return", w: 0.12, align: "r", get: (it) => pctv(it.expectedReturn) },
-    { h: "Illustrative value*", w: 0.18, align: "r", illus: true, get: (it) => amt(it.projectedCorpus), sum: (it) => n(it.projectedCorpus) },
+    { h: "Years", w: 0.08, align: "r", optional: true, get: (it) => yrs(it.sipTermYears) },
+    { h: "Assumed return", w: 0.12, align: "r", optional: true, get: (it) => pctv(it.expectedReturn) },
+    { h: "Illustrative value*", w: 0.18, align: "r", illus: true, optional: true, get: (it) => amt(it.projectedCorpus), sum: (it) => n(it.projectedCorpus) },
   ];
 }
 
@@ -226,7 +225,23 @@ function subLine(it: any): string | null {
     ].filter(Boolean).join("  |  ") || null;
   }
   if (it?.kind === "aif" && it.category) return `Category ${String(it.category).replace(/^cat/i, "")} AIF`;
+  if (it?.kind === "insurance" && insuranceName(it) === clean(String(it.policyName ?? ""))) {
+    return [it.insurer, typeLabel(it.policyType) ? `${typeLabel(it.policyType)} plan` : null].filter(Boolean).join("  |  ") || null;
+  }
   return null;
+}
+
+/**
+ * The policy's name. When the RM typed the insurer as the policy name
+ * ("HDFC" beside "HDFC - Term"), the name is built from the insurer and the
+ * plan type instead, so the table never says the same thing twice.
+ */
+function insuranceName(it: any): string {
+  const name = clean(String(it?.policyName ?? "")).trim();
+  const insurer = clean(String(it?.insurer ?? "")).trim();
+  if (name && name.toLowerCase() !== insurer.toLowerCase()) return name;
+  const type = typeLabel(it?.policyType);
+  return [insurer, type ? `${type} plan` : null].filter(Boolean).join(" ") || name || "Insurance policy";
 }
 
 /** Free-text notes the RM attached to a line. */
@@ -486,12 +501,15 @@ export async function renderProposalPdf(args: {
           for (const ln of nameLines) { text(ln, x, y, 8.6, bold, INK); y -= 11; }
           for (const ln of subLines) { text(ln, x, y + 1, 6.8, helv, MUTED); y -= 9; }
         } else {
-          const val = clean(String(c.get(it) ?? "-"));
+          const raw = clean(String(c.get(it) ?? "-"));
+          const blank = raw === "-";
+          // A required amount the RM left blank is said, not dashed.
+          const val = blank && c.sum && !c.illus ? "Not specified" : raw;
           if (c.align === "r") {
             // Money is never chopped — "Rs 11,5..." reads as a wrong amount.
-            const f = c.illus ? bold : helv;
-            const fs = fitText(val, f, 8.6, cw - 12, 6);
-            text(val, x + cw - 12 - f.widthOfTextAtSize(val, fs), firstY, fs, f, INK);
+            const f = c.illus && !blank ? bold : helv;
+            const fs = fitText(val, f, blank ? 7.6 : 8.6, cw - 12, 6);
+            text(val, x + cw - 12 - f.widthOfTextAtSize(val, fs), firstY, fs, f, blank ? MUTED : INK);
           } else {
             const ls = wrapParas(val, helv, 8.6, cw - 10).slice(0, 2);
             let y = firstY;
@@ -554,6 +572,7 @@ export async function renderProposalPdf(args: {
 
   // ── Important disclosures (SEBI / AMFI) ──
   {
+    if (cur.y - FLOOR < 230) newPage();
     sectionTitle("Important disclosures");
     para("Issued in line with SEBI and AMFI requirements for mutual fund distributors. Please read before you invest.", { size: 8.2, color: MUTED });
     cur.y -= 4;
