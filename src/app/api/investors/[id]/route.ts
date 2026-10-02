@@ -21,6 +21,7 @@ import { withIdempotentMutation } from "@/lib/api/idempotent-mutation";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, requireAny, can } from "@/lib/auth/rbac";
 import { cleanUccCodes } from "@/lib/investors/ucc";
+import { isMinorKey, ownPan } from "@/lib/investors/pan-display";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { healthFields } from "@/lib/investors/health";
 import { computeNextReview } from "@/lib/investors/review-cadence";
@@ -57,6 +58,9 @@ import {
 
 export const dynamic = "force-dynamic";
 
+const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
+const PAN_TAKEN = "Another client already has this PAN. If they are the same person, use Merge Clients instead.";
+
 /** Client-phase stages BEFORE "UCC Activated" — see the KYC route's identical
  *  PRE_KYC_STAGES for why this guard exists (forward-only advance). */
 const PRE_UCC_STAGES = new Set([
@@ -75,9 +79,9 @@ const Patch = z.object({
    *  clobber each other. Optional: callers that don't send it skip the check. */
   expectedUpdatedAt: z.string().optional(),
   name: z.string().optional(),
-  // Master identity — editable so RMs can fix typos. PAN is uppercased + length-
-  // capped; empty string clears it. (DOB is below.)
-  pan: z.string().max(10).nullable().optional().or(z.literal("")),
+  // Master identity — editable so RMs can fix typos. PAN is checked and
+  // uppercased in the handler; an empty value leaves it unchanged. (DOB is below.)
+  pan: z.string().max(20).nullable().optional(),
   email: z.string().email().optional().or(z.literal("")),
   // Nullable: the edit modal sends `null` to CLEAR a phone (it builds
   // `f.phone || null`), and a client with no number on file round-trips the
@@ -333,6 +337,32 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         if (!u) return "bad_rm" as const;
       }
 
+      // PAN. Never cleared — the RTA import and the duplicate check find the
+      // client by it — and never written over an import key: a minor filed
+      // under the guardian's PAN keeps `MINOR:<guardian>:<name>`, and a minor
+      // keyed on their own PAN keeps the MINOR: prefix. A PAN another client
+      // holds is refused the way the unique index would refuse it, with a
+      // message instead of a constraint error (and no name: that client may be
+      // outside the editor's book).
+      const { pan: typedPan, ...fields } = parse.data;
+      const panPatch: { pan?: string } = {};
+      const pan = (typedPan ?? "").replace(/\s+/g, "").toUpperCase();
+      if (pan && pan !== ownPan(before.pan)) {
+        if (!PAN_RE.test(pan)) return "bad_pan" as const;
+        const minor = isMinorKey(before.pan);
+        if (minor && !ownPan(before.pan)) return "pan_locked" as const;
+        const next = minor ? `MINOR:${pan}` : pan;
+        if ((before as any).dedupPan !== false) {
+          const clash = await tx.execute(sql`
+            SELECT 1 FROM investors
+            WHERE tenant_id = ${session.tenantId}::uuid AND id <> ${id}::uuid
+              AND dedup_pan AND pan = ${next}
+            LIMIT 1`);
+          if (clash.rows.length) return "pan_taken" as const;
+        }
+        panPatch.pan = next;
+      }
+
       // Stamp KYC audit fields when any KYC-related column is touched.
       const touchingKyc =
         parse.data.kycStatus !== undefined ||
@@ -361,7 +391,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         mirror.bankAccountNumberMasked = b0?.accountMasked ?? null;
         mirror.bankIfsc = b0?.ifsc ?? null;
       }
-      const merged = { ...before, ...parse.data, ...mirror };
+      const merged = { ...before, ...fields, ...panPatch, ...mirror };
       const health = healthFields(merged as any);
 
       // When the review cadence changes (preset OR custom days), re-derive the
@@ -406,7 +436,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const after = await tx
         .update(investors)
         .set({
-          ...parse.data,
+          ...fields,
+          ...panPatch,
           ...reviewPatch,
           ...datePatch,
           ...mirror,
@@ -501,10 +532,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
 
     if (result === "bad_rm") return NextResponse.json({ error: "selected RM is not a user in this firm" }, { status: 400 });
+    if (result === "bad_pan") return NextResponse.json({ error: "PAN should look like ABCDE1234F.", field: "pan" }, { status: 400 });
+    if (result === "pan_locked")
+      return NextResponse.json({ error: "This minor is filed under the guardian's PAN by the RTA import, so the PAN can't be changed here.", field: "pan" }, { status: 400 });
+    if (result === "pan_taken") return NextResponse.json({ error: PAN_TAKEN, field: "pan" }, { status: 409 });
     if (result === "stale") return NextResponse.json({ error: "This client was changed by someone else since you opened it. Reload and re-apply your edits." }, { status: 409 });
     if (!result) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json(result);
   } catch (err: any) {
+    // The unique index is the backstop when two saves race past the check above.
+    const pg = `${err?.message ?? ""} ${err?.cause?.message ?? ""} ${err?.cause?.constraint ?? ""}`;
+    if (pg.includes("investors_tenant_pan_unique")) return NextResponse.json({ error: PAN_TAKEN, field: "pan" }, { status: 409 });
     return handleApiError(err);
   }
 }

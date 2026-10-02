@@ -75,7 +75,7 @@ import { EmailRelatedList } from "@/components/comms/EmailRelatedList";
 import { can } from "@/lib/auth/rbac";
 import { WhatsAppRelatedList } from "@/components/comms/WhatsAppRelatedList";
 import { InvestorDetailTabs } from "@/components/investors/InvestorDetailTabs";
-import { MasterRecordEditor } from "@/components/investors/MasterRecordEditor";
+import { EditClientDetailsLink } from "@/components/investors/EditClientDetailsLink";
 import { InlineEditField, type InlineEditSpec } from "@/components/investors/InlineEditField";
 import { BlueprintStatusKV } from "@/components/investors/BlueprintStatusKV";
 import { ReviewCadenceEditor } from "@/components/investors/ReviewCadenceEditor";
@@ -841,25 +841,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
             <User2 className="size-4 text-muted-foreground" /> Client details
           </h2>
           <div className="flex items-center gap-3">
-            <MasterRecordEditor
-              investor={JSON.parse(JSON.stringify(inv))}
-              flags={{
-                showDob,
-                showPhone,
-                showEmail,
-                showAddress,
-                showSegment,
-                showKyc,
-                showRisk,
-                showNominee,
-                showBank,
-                showStatus,
-                showRm,
-                showAum,
-                showSip,
-                showInflow,
-              }}
-            />
+            <EditClientDetailsLink investorId={inv.id} />
           </div>
         </div>
 
