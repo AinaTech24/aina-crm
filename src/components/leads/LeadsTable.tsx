@@ -181,7 +181,8 @@ export function LeadsTable({ rows, sort, dir = "desc" }: { rows: Row[]; sort: st
                   key={l.id}
                   onClick={(e) => {
                     if ((e.target as HTMLElement).closest("a, button, input, select, [role='menu'], [data-no-row-nav]")) return;
-                    setSidePeekLead(l);
+                    // One click opens the lead workspace; the eye button keeps the quick preview.
+                    router.push(`/dashboard/leads/${l.id}`);
                   }}
                   className={`border-b last:border-0 hover:bg-accent/40 cursor-pointer transition-colors ${
                     isSel ? "bg-brand-cyan-light/30" : ""
@@ -200,7 +201,7 @@ export function LeadsTable({ rows, sort, dir = "desc" }: { rows: Row[]; sort: st
                     <div className="flex items-center gap-2">
                       <Avatar src={l.avatarUrl ? `/api/leads/${l.id}/avatar` : null} name={l.name} size={isCompact ? 22 : 28} />
                       <div>
-                        <span className="hover:text-brand-navy hover:underline">{l.name}</span>
+                        <Link href={`/dashboard/leads/${l.id}`} className="hover:text-brand-navy hover:underline">{l.name}</Link>
                         {(l.phone || l.email) && (
                           <div className="text-2xs text-muted-foreground mt-0.5 space-x-2 font-mono">
                             {l.phone && <span>{l.phone}</span>}
