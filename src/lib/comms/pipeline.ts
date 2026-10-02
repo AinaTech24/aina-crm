@@ -33,6 +33,7 @@ import {
 } from "@/db/schema";
 import { runComplianceChecks, missingMandatoryLines, type ComplianceResult } from "./compliance";
 import { resolveTokens, resolveTokenPath, renderTemplateText, type VariableDef } from "./tokens";
+import { consentDecision } from "./consent-rule";
 import { whatsappAdapter, whatsappProviderId } from "./adapters/whatsapp";
 import { emailAdapter } from "./adapters/resend";
 import { smsAdapter } from "./adapters/msg91";
@@ -366,18 +367,21 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
   // -----------------------------------------------------------
   // 3. Consent check
   // -----------------------------------------------------------
-  // Explicit channel/scope grants are required for client messages. A service
-  // reply within a customer-initiated WhatsApp session and an approved OTP
-  // template have specific, bounded exceptions; callers cannot invent one.
+  // One rule for every client send (lib/comms/consent-rule): an opt-out always
+  // stops it; MARKETING needs a recorded grant; a transactional / utility message
+  // goes out unless the client opted out. The snapshot is recorded either way.
+  // An approved OTP template is the one bounded exception; callers cannot invent one.
   let consentSnapshot: Consent | null = null;
   const effectiveCategory = input.category === "marketing" || templateCategory === "marketing" ? "marketing" : templateCategory ?? input.category;
   const authentication = templateCategory === "authentication" && input.category === "authentication" && !input.freeformText;
-  const sessionReply = input.channel === "whatsapp" && input.freeformText != null && effectiveCategory !== "marketing";
+  // (A free-form WhatsApp reply inside an open chat used to be a special case
+  // here; it is a transactional message, so the general rule now covers it.)
   if (input.bypassConsent && !authentication) return skip(tx, communicationId, input, "skipped_consent", "Consent exception is limited to approved authentication templates");
   if (!authentication) {
     consentSnapshot = input.investorId ? await getConsent(tx, input.tenantId, input.investorId, input.channel, effectiveCategory === "marketing" ? "marketing" : "transactional") : null;
-    if (consentSnapshot?.status === "revoked" || (!sessionReply && consentSnapshot?.status !== "granted")) {
-      return skip(tx, communicationId, input, "skipped_consent", "A recorded channel and scope consent grant is required");
+    const decision = consentDecision(effectiveCategory, consentSnapshot, input.channel);
+    if (decision.blocked) {
+      return skip(tx, communicationId, input, "skipped_consent", decision.message);
     }
   }
 

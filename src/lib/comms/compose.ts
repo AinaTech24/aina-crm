@@ -23,6 +23,7 @@ import { runComplianceChecks, type ComplianceResult } from "./compliance";
 import { emailAdapter } from "./adapters/resend";
 import { renderTemplateText } from "./tokens";
 import { getConsent, loadTenant } from "./pipeline";
+import { consentDecision } from "./consent-rule";
 import { resolveEmailSender } from "./sender";
 import { emailLogoHeaderHtml } from "./email-logo";
 import { durableDelivery } from "./durable-delivery";
@@ -132,16 +133,17 @@ async function performEmailSend(
     return { communicationId: args.commId, status: "skipped", reason: `suppressed_${supp.reason}` };
   }
 
-  // 1. Client mail requires recorded consent for this channel and scope.
+  // 1. Consent — the one rule (lib/comms/consent-rule): an opt-out stops it,
+  //    marketing needs a recorded grant, transactional mail goes out otherwise.
   let consentSnapshot: any = null;
   {
     const scope = args.category === "marketing" ? "marketing" : "transactional";
     const c = args.investorId ? await getConsent(tx, args.tenantId, args.investorId, "email", scope) : null;
-    const blocked = c?.status !== "granted";
-    if (blocked) {
+    const decision = consentDecision(args.category, c, "email");
+    if (decision.blocked) {
       await tx
         .update(communications)
-        .set({ status: "skipped_consent", statusReason: `no email ${args.category} consent` })
+        .set({ status: "skipped_consent", statusReason: decision.message })
         .where(eq(communications.id, args.commId));
       return { communicationId: args.commId, status: "skipped", reason: "skipped_consent" };
     }

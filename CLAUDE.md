@@ -167,7 +167,7 @@ Validation in `validateGraph()` enforces: every node id unique; every edge endpo
 
 1. Resolve template + version (must be `approved`)
 2. Render — resolve typed variables, format (INR, dates, etc.)
-3. Consent check (per channel × scope) — `transactional` consent is required for utility; `marketing` for marketing
+3. Consent check (per channel × scope) — one rule, `consentDecision()` in `lib/comms/consent-rule.ts` (the firm's decision of 2026-09-29): an opt-out always blocks; marketing needs a recorded granted consent; a transactional / utility message goes out unless the client opted out
 4. WhatsApp session window check (for WA only)
 5. **Compliance gate** — 11 deterministic rules, blocks send on any `block` finding
 6. Insert `communications` row (status `queued`) with consent + compliance snapshot

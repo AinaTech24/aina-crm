@@ -9,16 +9,15 @@
  * consent semantics, returning the snapshots the caller persists on its
  * `communications` row. Callers keep their own send + audit logic.
  *
- * Consent semantics (deliberately not demo-breaking):
- *   - marketing  → requires an explicitly GRANTED marketing consent row (block if absent/revoked).
- *   - transactional/utility → an explicit REVOKED/denied row blocks (respect opt-out);
- *     a missing row is allowed (transactional service messages are permitted),
- *     and the snapshot is recorded either way.
+ * Consent: the one rule every send uses (lib/comms/consent-rule) — an opt-out
+ * blocks, marketing needs a GRANTED row, transactional / utility is allowed
+ * otherwise. The snapshot is recorded either way.
  */
 import { and, eq } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { consents, tenants } from "@/db/schema";
 import { runComplianceChecks, type ComplianceFinding } from "./compliance";
+import { consentDecision } from "./consent-rule";
 
 export type GateChannel = "email" | "whatsapp" | "sms";
 export type GateCategory = "transactional" | "utility" | "marketing";
@@ -70,13 +69,9 @@ export async function gateClientSend(
       )
       .limit(1);
     consentSnapshot = c ?? null;
-    if (args.category === "marketing") {
-      if (!c || c.status !== "granted") {
-        return { allowed: false, reason: "consent_missing", detail: `marketing consent for ${args.channel} not granted` };
-      }
-    } else if (c && c.status !== "granted") {
-      // Explicit opt-out on a transactional channel — respect it.
-      return { allowed: false, reason: "consent_missing", detail: `client has opted out of ${args.channel}` };
+    const decision = consentDecision(args.category, c ?? null, args.channel);
+    if (decision.blocked) {
+      return { allowed: false, reason: "consent_missing", detail: decision.message };
     }
   }
 

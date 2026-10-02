@@ -117,7 +117,9 @@ export function EmailRelatedList({
   // was NO way to record email consent anywhere in the app — the consent API
   // was only ever called from the WhatsApp list — so every email to every
   // client was refused permanently and clicking Send again could not help.
-  const [consentBlocked, setConsentBlocked] = useState(false);
+  // Under the consent rule (lib/comms/consent-rule) only two things stop an
+  // email: the client opted out, or it is MARKETING without a recorded grant.
+  const [consentBlocked, setConsentBlocked] = useState<null | "opted_out" | "marketing">(null);
   const [recordingConsent, setRecordingConsent] = useState(false);
 
   async function recordEmailConsent() {
@@ -126,20 +128,19 @@ export function EmailRelatedList({
       const res = await fetch("/api/comms/consent", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        // `transactional`, deliberately NOT `all`. This records that the client
-        // agreed to service email — statements, risk-profile results, review
-        // notes. Marketing is a separate, stronger claim under DPDP/TRAI and
-        // must be granted on its own. getConsent() treats an `all` grant as
-        // covering both, which is exactly what we do not want one click to do.
-        body: JSON.stringify({ investorId: entityId, channel: "email", scope: "transactional", status: "granted" }),
+        // `marketing`, deliberately NOT `all`: this banner only offers the
+        // button when a MARKETING email was stopped, and marketing is the claim
+        // the client must have agreed to. Service email needs no recorded
+        // consent; an opt-out is the client's own and is never overturned here.
+        body: JSON.stringify({ investorId: entityId, channel: "email", scope: "marketing", status: "granted" }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
         toast.error(j.error ?? "Could not record consent");
         return;
       }
-      setConsentBlocked(false);
-      toast.success("Email consent recorded — send again.");
+      setConsentBlocked(null);
+      toast.success("Marketing consent recorded — send again.");
       load();
     } catch (e: any) {
       toast.error(e?.message ?? "Network error");
@@ -151,7 +152,7 @@ export function EmailRelatedList({
   /** Surface a skip, and offer the fix when the reason is a missing consent. */
   const handleSkipped = useCallback((msg: string, reason?: string) => {
     toast.error(msg);
-    if (reason === "skipped_consent" && entityType === "investor") setConsentBlocked(true);
+    if (reason === "skipped_consent" && entityType === "investor") setConsentBlocked(/opted out/i.test(msg) ? "opted_out" : "marketing");
   }, [toast, entityType]);
 
   const load = useCallback(async () => {
@@ -209,23 +210,37 @@ export function EmailRelatedList({
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 flex items-start gap-2.5">
           <ShieldCheck className="size-4 text-amber-700 shrink-0 mt-0.5" />
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold text-amber-900">No email consent on record for this client</p>
-            <p className="text-2xs text-amber-800 mt-0.5">
-              Every outbound email needs a recorded opt-in. Record it here once the client has agreed — verbally or in
-              writing — and the send will go through. This covers service email only; marketing consent is separate.
-            </p>
+            {consentBlocked === "opted_out" ? (
+              <>
+                <p className="text-xs font-semibold text-amber-900">This client has opted out of email</p>
+                <p className="text-2xs text-amber-800 mt-0.5">
+                  They asked not to be emailed, so nothing is sent until they agree again. Change it in the client&apos;s
+                  Messaging consent card only when they have.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-xs font-semibold text-amber-900">Marketing email needs the client&apos;s consent</p>
+                <p className="text-2xs text-amber-800 mt-0.5">
+                  Service emails go out without it. This one is marketing: record the client&apos;s consent once they have
+                  agreed — verbally or in writing — and send again.
+                </p>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              type="button"
-              onClick={recordEmailConsent}
-              disabled={recordingConsent}
-              className="btn-primary text-2xs px-2.5 py-1.5"
-            >
-              {recordingConsent ? <Loader2 className="size-3 animate-spin" /> : <ShieldCheck className="size-3" />}
-              Record consent
-            </button>
-            <button type="button" onClick={() => setConsentBlocked(false)} className="btn-icon" aria-label="Dismiss">
+            {consentBlocked === "marketing" && (
+              <button
+                type="button"
+                onClick={recordEmailConsent}
+                disabled={recordingConsent}
+                className="btn-primary text-2xs px-2.5 py-1.5"
+              >
+                {recordingConsent ? <Loader2 className="size-3 animate-spin" /> : <ShieldCheck className="size-3" />}
+                Record marketing consent
+              </button>
+            )}
+            <button type="button" onClick={() => setConsentBlocked(null)} className="btn-icon" aria-label="Dismiss">
               <X className="size-3.5" />
             </button>
           </div>
