@@ -4,8 +4,10 @@
  * which no dashboard counted as financial — these tests stop that drift.
  */
 import { describe, expect, it } from "vitest";
+import { TXN_FREQUENCIES, TXN_TYPES } from "@/db/schema/business_entries";
 import {
   FINANCIAL_REQUEST_KEYS,
+  FREQUENCIES,
   REQUEST_TYPES,
   REQUEST_TYPE_BY_KEY,
   categoryOfType,
@@ -44,8 +46,28 @@ describe("task request types", () => {
     expect(categoryOfType(null)).toBe("general");
   });
 
-  it("gives every financial request an amount field", () => {
-    for (const r of requestTypesFor("financial")) expect(r.fields, r.key).toContain("amount");
-    expect(REQUEST_TYPE_BY_KEY.switch.fields).toContain("toScheme");
+  it("asks every financial request for an amount — per scheme row, or once for a mandate", () => {
+    for (const r of requestTypesFor("financial")) {
+      if (!r.fields.length && !r.rowFields.length) continue; // e.g. nothing to capture
+      expect([...r.fields, ...r.rowFields], r.key).toContain("amount");
+    }
+    expect(REQUEST_TYPE_BY_KEY.switch.rowFields).toEqual(expect.arrayContaining(["fromScheme", "scheme"]));
+  });
+
+  it("books Business entries only with valid transaction types, from scheme rows", () => {
+    const txn = new Set<string>(TXN_TYPES);
+    for (const r of REQUEST_TYPES.filter((x) => x.business)) {
+      expect(txn.has(r.business!.txnType), r.key).toBe(true);
+      expect(r.rowFields, r.key).toContain("scheme");
+      expect(r.category, r.key).toBe("financial");
+    }
+    // Mandates and rejection follow-ups are not booked business.
+    expect(REQUEST_TYPE_BY_KEY.mandate_create.business).toBeUndefined();
+    expect(REQUEST_TYPE_BY_KEY.sip_rejection_followup.business).toBeUndefined();
+  });
+
+  it("offers only frequencies a Business entry line accepts", () => {
+    const allowed = new Set<string>(TXN_FREQUENCIES);
+    for (const [k] of FREQUENCIES) expect(allowed.has(k), k).toBe(true);
   });
 });

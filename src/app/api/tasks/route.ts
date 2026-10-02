@@ -13,6 +13,7 @@ import { mobileTaskScope } from "@/lib/mobile/access";
 import { assertMobileAssignee, assertMobileSubjects } from "@/lib/mobile/record-access";
 import { withIdempotentMutation } from "@/lib/api/idempotent-mutation";
 import { tasks, users, investors, leads } from "@/db/schema";
+import { bookBusinessFromTask } from "@/lib/tasks/book-business";
 
 export const dynamic = "force-dynamic";
 
@@ -85,9 +86,30 @@ const Body = z.object({
    *  — stored in meta.request. Amount and mode travel as boValue / boChannel. */
   request: z
     .object({
+      /** One row per scheme (a client often invests in several at once). */
+      rows: z
+        .array(
+          z.object({
+            schemeName: z.string().min(1).max(250),
+            schemeCode: z.string().max(40).optional(),
+            amcName: z.string().max(150).optional(),
+            assetCategory: z.string().max(150).optional(),
+            fromSchemeName: z.string().max(250).optional(),
+            fromSchemeCode: z.string().max(40).optional(),
+            amount: z.number().min(0).max(1e13).optional(),
+            units: z.number().min(0).optional(),
+            allUnits: z.boolean().optional(),
+            folio: z.string().max(60).optional(),
+            sipDay: z.string().regex(/^([1-9]|[12]\d|2[0-8])$/).optional(),
+            frequency: z.enum(["weekly", "monthly", "quarterly", "half_yearly", "yearly"]).optional(),
+          }),
+        )
+        .max(50)
+        .optional(),
+      folio: z.string().max(60).optional(),
+      // Single-scheme shape of 2026-10-01 (still accepted from an open form).
       scheme: z.string().max(200).optional(),
       toScheme: z.string().max(200).optional(),
-      folio: z.string().max(60).optional(),
       sipDate: z.string().max(20).optional(),
       frequency: z.string().max(20).optional(),
       units: z.string().max(30).optional(),
@@ -267,6 +289,24 @@ export async function POST(req: NextRequest) {
       const slaHours = SLA_HOURS_BY_PRIORITY[body.priority] ?? 72;
       const slaDueAt = new Date(Date.now() + slaHours * 60 * 60 * 1000);
 
+      // A financial request with a business mapping books its Business entry
+      // (draft, the client's RM) from the same scheme rows — Operations never
+      // keys it twice. lib/tasks/book-business.
+      const booking = body.request?.rows?.length
+        ? await bookBusinessFromTask(
+            tx,
+            { tenantId: session.tenantId, userId: session.userId, roles: session.roles, clientMeta: meta },
+            {
+              taskId: id,
+              type: body.type,
+              title: body.title,
+              investorId: body.relatedInvestorId,
+              rows: body.request.rows,
+              mode: body.boChannel ?? null,
+            },
+          )
+        : null;
+
       await tx.insert(tasks).values({
         id,
         tenantId: session.tenantId,
@@ -314,6 +354,7 @@ export async function POST(req: NextRequest) {
             );
             if (Object.keys(r).length) m.request = r;
           }
+          if (booking?.booked) m.businessEntryId = booking.entryId;
           return Object.keys(m).length ? m : undefined;
         })(),
       } as any);
@@ -365,7 +406,10 @@ export async function POST(req: NextRequest) {
           meta: { task_id: id, assigned_by: session.userId },
         });
       }
-      return { id };
+      return {
+        id,
+        ...(booking ? { businessEntryId: booking.booked ? booking.entryId : null, businessNotBooked: booking.booked ? undefined : booking.reason } : {}),
+      };
     });
     return NextResponse.json(result, { status: 201 });
   } catch (err: any) {

@@ -22,6 +22,7 @@ import { loadViewableInvestor } from "@/lib/investors/access";
 import { loadViewableLead } from "@/lib/leads/access";
 import { spawnNextOccurrence } from "@/lib/tasks/recurrence";
 import { notifyWatchers } from "@/lib/tasks/watchers";
+import { syncTaskBusinessEntry } from "@/lib/business/create-entry";
 import { tasks, users, taskChecklist } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
@@ -396,6 +397,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // (which sets patch.status='completed'). A submit-for-approval does not
       // complete the task, so it correctly does not spawn.
       const finalStatus = patch.status ?? before.status;
+
+      // A task that booked a Business entry keeps it in step: completed →
+      // the draft entry is confirmed (and its SIPs join the SIP book),
+      // cancelled → the entry is cancelled, reopened → back to draft.
+      if (finalStatus !== before.status) {
+        const ctx = { tenantId: session.tenantId, userId: session.userId, clientMeta };
+        if (finalStatus === "completed") await syncTaskBusinessEntry(tx, ctx, before, "completed");
+        else if (finalStatus === "cancelled") await syncTaskBusinessEntry(tx, ctx, before, "cancelled");
+        else if (before.status === "cancelled" || before.status === "completed")
+          await syncTaskBusinessEntry(tx, ctx, before, "reopened");
+      }
+
       const spawnedId =
         finalStatus === "completed" && before.status !== "completed"
           ? await spawnNextOccurrence(tx, before, session.userId, clientMeta)
@@ -432,6 +445,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         .limit(1))[0];
       if (!before) return "not_found" as const;
       if (!canEditAll && !ownsTask(before, session.userId)) return "forbidden" as const;
+      // Trashing (or purging) a task cancels the Business entry it booked.
+      await syncTaskBusinessEntry(tx, { tenantId: session.tenantId, userId: session.userId, clientMeta }, before, "cancelled");
       if (permanent) {
         await tx.delete(tasks).where(and(eq(tasks.id, id), eq(tasks.tenantId, session.tenantId)));
       } else {

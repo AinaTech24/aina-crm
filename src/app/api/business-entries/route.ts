@@ -7,17 +7,15 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { v4 as uuid } from "uuid";
 import { and, desc, eq, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
-import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
-import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
-import { businessEntries, businessEntryLines, investors, users, sips, eventsOutbox } from "@/db/schema";
-import { EntryInput, normalizeLine, computeTotals } from "@/lib/business/entry-input";
-import { refreshActiveSipAmount } from "@/lib/metrics/sip";
+import { clientMetaFromHeaders } from "@/lib/audit";
+import { businessEntries, investors, users } from "@/db/schema";
+import { EntryInput } from "@/lib/business/entry-input";
+import { insertBusinessEntry } from "@/lib/business/create-entry";
 
 export const dynamic = "force-dynamic";
 
@@ -29,25 +27,6 @@ const canManage = (roles: string[]) => roles.some((r) => MANAGE_ROLES.includes(r
  *  the entries they booked. */
 const seesAllEntries = (s: { roles: string[]; permissions?: string[] | null }) =>
   can(s.roles, "investor.view.all", s.permissions) || can(s.roles, "reports.business", s.permissions);
-
-/** A business line's frequency as a SIP frequency. Every real SIP frequency
- *  maps to itself — half-yearly used to fall through to monthly, which counted
- *  a ₹60,000 half-yearly SIP as ₹60,000 a month in the SIP book. `one_time`
- *  is not a SIP frequency at all; it stays monthly as before. */
-function toSipFrequency(f: string | null | undefined): "monthly" | "quarterly" | "weekly" | "fortnightly" | "half_yearly" | "yearly" {
-  return f === "quarterly" || f === "weekly" || f === "fortnightly" || f === "half_yearly" || f === "yearly" ? f : "monthly";
-}
-
-/** First debit date: the next occurrence of `sipDay` (1..28) on/after the SIP's
- *  start date. Returns the start date itself if no day was captured. */
-function nextInstallmentDate(startISO: string, sipDay: string | null | undefined): string {
-  if (!sipDay) return startISO;
-  const day = Math.min(28, Math.max(1, Number(sipDay)));
-  const base = new Date(`${startISO}T00:00:00Z`);
-  let d = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), day));
-  if (d.getTime() < base.getTime()) d = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, day));
-  return d.toISOString().slice(0, 10);
-}
 
 export async function GET(req: NextRequest) {
   try {
@@ -100,11 +79,6 @@ export async function POST(req: NextRequest) {
     const b = parse.data;
     const meta = clientMetaFromHeaders(req.headers);
 
-    const lines = b.lines.map(normalizeLine);
-    const totals = computeTotals(lines);
-    const rmId = b.rmId ?? session.userId;
-    const entryId = uuid();
-
     const outcome = await withTenant(session.tenantId, async (tx) => {
       if (b.investorId) {
         const [inv] = await tx
@@ -112,134 +86,21 @@ export async function POST(req: NextRequest) {
           .from(investors)
           .where(and(eq(investors.id, b.investorId), eq(investors.tenantId, session.tenantId)))
           .limit(1);
-        if (!inv) return "no_client" as const;
+        if (!inv) return { kind: "no_client" as const };
       }
-
-      await tx.insert(businessEntries).values({
-        id: entryId,
-        tenantId: session.tenantId,
-        investorId: b.investorId ?? null,
-        clientName: b.clientName,
-        productType: b.productType,
-        platform: b.platform ?? null,
-        businessDate: b.businessDate,
-        status: b.status,
-        rmId,
-        amcName: b.amcName ?? null,
-        folioNo: b.folioNo ?? null,
-        totalAmount: String(totals.total),
-        assetBreakup: totals.assetBreakup,
-        liquidNet: String(totals.liquidNet),
-        notes: b.notes ?? null,
-        createdById: session.userId,
-      } as any);
-
-      await tx.insert(businessEntryLines).values(
-        lines.map((l, i) => ({
-          id: uuid(),
-          tenantId: session.tenantId,
-          entryId,
-          schemeCode: l.schemeCode ?? null,
-          schemeName: l.schemeName,
-          amcName: l.amcName ?? null,
-          assetCategory: l.assetCategory ?? null,
-          assetClass: l.assetClass,
-          txnType: l.txnType,
-          amount: String(l.amount),
-          units: l.units != null ? String(l.units) : null,
-          frequency: l.frequency ?? null,
-          sipDate: l.txnType === "sip" ? l.sipDate ?? null : null,
-          fromSchemeCode: l.fromSchemeCode ?? null,
-          fromSchemeName: l.fromSchemeName ?? null,
-          fromAssetClass: l.fromAssetClass ?? null,
-          folioNo: l.folioNo ?? null,
-          notes: l.notes ?? null,
-          sortOrder: i,
-        })) as any
+      // One implementation for the form and for financial tasks
+      // (lib/business/create-entry). The form registers SIP lines at once.
+      const r = await insertBusinessEntry(
+        tx,
+        { tenantId: session.tenantId, userId: session.userId, clientMeta: meta },
+        b,
+        { registerSips: true },
       );
-
-      // Auto-register a SIP in the SIP book for every SIP line on a real client,
-      // so it shows in the SIP Tracker AND its installment day drives the
-      // reminder workflows (date rules on sips.next_installment_at). Only on
-      // create + only when the entry has a linked investor.
-      if (b.investorId) {
-        const sipRows = lines
-          .filter((l) => l.txnType === "sip")
-          .map((l) => {
-            const id = uuid();
-            return {
-              row: {
-                id,
-                tenantId: session.tenantId,
-                investorId: b.investorId!,
-                schemeCode: l.schemeCode ?? null,
-                schemeName: l.schemeName,
-                amcName: l.amcName ?? null,
-                folioNumber: l.folioNo ?? b.folioNo ?? null,
-                amount: String(l.amount),
-                frequency: toSipFrequency(l.frequency),
-                sipDate: l.sipDate ?? null,
-                startDate: b.businessDate,
-                nextInstallmentAt: nextInstallmentDate(b.businessDate, l.sipDate),
-                status: "active" as const,
-                rmId,
-              },
-              id,
-            };
-          });
-        if (sipRows.length) {
-          await tx.insert(sips).values(sipRows.map((s) => s.row) as any);
-          await refreshActiveSipAmount(tx, { tenantId: session.tenantId, investorIds: [b.investorId!] });
-          await tx.insert(eventsOutbox).values(
-            sipRows.map((s) => ({
-              tenantId: session.tenantId,
-              kind: "sip.created",
-              entityType: "sip",
-              entityId: s.id,
-              after: s.row as any,
-              meta: { source: "business_entry", entryId } as any,
-            })) as any
-          );
-        }
-      }
-
-      // Emit business_entry.created so workflow rules can react (e.g. send the
-      // client a transaction confirmation). The snapshot carries the fields the
-      // rule's criteria + template tokens read.
-      await tx.insert(eventsOutbox).values({
-        tenantId: session.tenantId,
-        kind: "business_entry.created",
-        entityType: "business_entry",
-        entityId: entryId,
-        after: {
-          id: entryId,
-          investor_id: b.investorId ?? null,
-          client_name: b.clientName,
-          product_type: b.productType,
-          status: b.status,
-          total_amount: String(totals.total),
-          amc_name: b.amcName ?? null,
-          platform: b.platform ?? null,
-          rm_id: rmId,
-          business_date: b.businessDate,
-        } as any,
-        meta: { userId: session.userId } as any,
-      } as any);
-
-      await recordAudit(tx, {
-        tenantId: session.tenantId,
-        actorUserId: session.userId,
-        action: "business_entry.create",
-        entityType: "business_entry",
-        entityId: entryId,
-        after: { clientName: b.clientName, productType: b.productType, total: totals.total, lines: lines.length } as any,
-        ...meta,
-      });
-      return "ok" as const;
+      return { kind: "ok" as const, entryId: r.entryId };
     });
 
-    if (outcome === "no_client") return NextResponse.json({ error: "client not found in this firm" }, { status: 400 });
-    return NextResponse.json({ id: entryId }, { status: 201 });
+    if (outcome.kind === "no_client") return NextResponse.json({ error: "client not found in this firm" }, { status: 400 });
+    return NextResponse.json({ id: outcome.entryId }, { status: 201 });
   } catch (err: any) {
     return handleApiError(err);
   }

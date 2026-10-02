@@ -13,6 +13,7 @@ import { can, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { tasks } from "@/db/schema";
+import { syncTaskBusinessEntry } from "@/lib/business/create-entry";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         .update(tasks)
         .set({ deletedAt: null, deletedBy: null, updatedAt: new Date() } as any)
         .where(and(eq(tasks.id, id), eq(tasks.tenantId, session.tenantId)));
+      // Restoring a task brings back the Business entry trashing it cancelled
+      // (unless the task itself is cancelled).
+      if (before.status !== "cancelled") {
+        await syncTaskBusinessEntry(tx, { tenantId: session.tenantId, userId: session.userId, clientMeta: meta }, before, "reopened");
+      }
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,

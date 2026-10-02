@@ -34,8 +34,9 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
-import { EMPTY_REQUEST, RequestPicker, type RequestValues } from "@/components/tasks/RequestPicker";
+import { EMPTY_REQUEST, RequestPicker, emptyRow, num, type RequestValues } from "@/components/tasks/RequestPicker";
 import { REQUEST_TYPE_BY_KEY, categoryOfType, type TaskCategory } from "@/lib/tasks/request-types";
+import { notify } from "@/components/ui/Toast";
 import { RmSelector } from "@/components/common/RmSelector";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
@@ -205,6 +206,11 @@ export default function NewTaskPage() {
     const prev = requestKey;
     setRequestKey(key);
     const r = REQUEST_TYPE_BY_KEY[key];
+    // A request with scheme rows starts with one row; one without has none.
+    setRequestValues((v) => ({
+      ...v,
+      rows: r?.rowFields.length ? (v.rows.length ? v.rows : [emptyRow()]) : [],
+    }));
     setForm((s) => ({
       ...s,
       type: key || "follow_up",
@@ -253,10 +259,35 @@ export default function NewTaskPage() {
         return;
       }
     }
-    const amount = requestValues.amount.trim() ? Number(requestValues.amount.replace(/,/g, "")) : null;
-    if (req?.fields.includes("amount") && amount != null && (!Number.isFinite(amount) || amount < 0)) {
+    const amount = num(requestValues.amount);
+    if (req?.fields.includes("amount") && requestValues.amount.trim() && amount == null) {
       setErr("Enter the amount as a number, e.g. 500000.");
       return;
+    }
+    // Scheme rows: every row needs its scheme (a blank last row is dropped),
+    // and amounts / units must be numbers.
+    const rows = req?.rowFields.length
+      ? requestValues.rows.filter((r, i, all) => r.schemeName.trim() || r.amount.trim() || i < all.length - 1)
+      : [];
+    if (req?.rowFields.length) {
+      if (rows.length === 0) {
+        setErr("Add at least one scheme.");
+        return;
+      }
+      for (const [i, r] of rows.entries()) {
+        if (!r.schemeName.trim()) {
+          setErr(`Scheme ${i + 1}: pick the scheme.`);
+          return;
+        }
+        if (req.rowFields.includes("fromScheme") && !r.fromSchemeName.trim()) {
+          setErr(`Scheme ${i + 1}: pick the scheme it moves from.`);
+          return;
+        }
+        if ((r.amount.trim() && num(r.amount) == null) || (r.units.trim() && !r.allUnits && num(r.units) == null)) {
+          setErr(`Scheme ${i + 1}: enter amounts and units as numbers.`);
+          return;
+        }
+      }
     }
     setBusy(true);
     setErr(null);
@@ -289,21 +320,35 @@ export default function NewTaskPage() {
         payload.recurrence = form.recurrence;
         if (form.recurrenceUntil) payload.recurrenceUntil = form.recurrenceUntil;
       }
-      // A request's details: amount and mode where the Operations Dashboard
-      // already reads them (boValue / boChannel), the rest in meta.request.
+      // A request's details: the total amount and mode where the Operations
+      // Dashboard already reads them (boValue / boChannel), the scheme rows and
+      // folio in meta.request. The API also books the Business entry.
       if (req) {
-        const has = (f: string) => req.fields.includes(f as any);
-        if (has("amount") && amount != null) payload.boValue = amount;
-        if (has("mode") && requestValues.mode) payload.boChannel = requestValues.mode;
-        const v = requestValues;
+        const hasF = (f: string) => req.fields.includes(f as any);
+        const hasR = (f: string) => req.rowFields.includes(f as any);
+        const rowTotal = rows.reduce((t, r) => t + (num(r.amount) ?? 0), 0);
+        if (hasF("amount") && amount != null) payload.boValue = amount;
+        else if (rowTotal > 0) payload.boValue = rowTotal;
+        if (hasF("mode") && requestValues.mode) payload.boChannel = requestValues.mode;
         payload.request = {
-          ...(has("scheme") && v.scheme.trim() ? { scheme: v.scheme.trim() } : {}),
-          ...(has("toScheme") && v.toScheme.trim() ? { toScheme: v.toScheme.trim() } : {}),
-          ...(has("folio") && v.folio.trim() ? { folio: v.folio.trim() } : {}),
-          ...(has("sipDate") && v.sipDate ? { sipDate: v.sipDate } : {}),
-          ...(has("frequency") && v.frequency ? { frequency: v.frequency } : {}),
-          ...(has("units") && v.allUnits ? { allUnits: true } : {}),
-          ...(has("units") && !v.allUnits && v.units.trim() ? { units: v.units.trim() } : {}),
+          ...(hasF("folio") && requestValues.folio.trim() ? { folio: requestValues.folio.trim() } : {}),
+          ...(rows.length
+            ? {
+                rows: rows.map((r) => ({
+                  schemeName: r.schemeName.trim(),
+                  ...(r.schemeCode ? { schemeCode: r.schemeCode } : {}),
+                  ...(r.amcName ? { amcName: r.amcName } : {}),
+                  ...(r.assetCategory ? { assetCategory: r.assetCategory } : {}),
+                  ...(hasR("fromScheme") ? { fromSchemeName: r.fromSchemeName.trim(), ...(r.fromSchemeCode ? { fromSchemeCode: r.fromSchemeCode } : {}) } : {}),
+                  ...(hasR("amount") && num(r.amount) != null ? { amount: num(r.amount)! } : {}),
+                  ...(hasR("units") && r.allUnits ? { allUnits: true } : {}),
+                  ...(hasR("units") && !r.allUnits && num(r.units) != null ? { units: num(r.units)! } : {}),
+                  ...(hasR("folio") && r.folio.trim() ? { folio: r.folio.trim() } : {}),
+                  ...(hasR("sipDay") && r.sipDay ? { sipDay: r.sipDay } : {}),
+                  ...(hasR("frequency") && r.frequency ? { frequency: r.frequency } : {}),
+                })),
+              }
+            : {}),
         };
       }
       if (form.relatedInvestorId) payload.relatedInvestorId = form.relatedInvestorId;
@@ -319,6 +364,12 @@ export default function NewTaskPage() {
       if (!res.ok) {
         setErr(j.error ?? `Save failed (${res.status})`);
         return;
+      }
+      // Say what happened to the Business entry a financial request books.
+      if (j.businessEntryId) {
+        notify.success("Booked in Business entries as a draft — it is confirmed when the task is completed.", "Task created");
+      } else if (j.businessNotBooked === "not_allowed") {
+        notify.warning("Task created, but your role cannot book Business entries — ask Operations to add it.", "Not booked");
       }
       router.push(`/dashboard/tasks`);
     } finally {

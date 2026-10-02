@@ -2,46 +2,80 @@
 
 /**
  * "What kind of task?" — General · Financial · Non-financial, then the
- * request within the category, then only the details that request needs.
+ * request within the category, then only what that request needs: request
+ * fields (mode, a mandate's amount, a folio) and, for a financial request,
+ * one or more SCHEME ROWS — a client often invests in several schemes at once.
+ * Schemes come from the MF scheme catalog (free text for PMS / AIF).
  * The list, the fields and the starting checklists are lib/tasks/request-types.
  *
  * Controlled: the New task form owns the state and decides what a change
  * means for the title and the checklist.
  */
 
+import { Plus, Trash2 } from "lucide-react";
 import { ThemeSelect } from "@/components/ui/ThemeSelect";
-import { DateField } from "@/components/ui/DateField";
+import { SchemeAutocomplete } from "@/components/mf/SchemeAutocomplete";
+import { formatMoney } from "@/lib/format";
 import {
   FIELD_LABEL,
   FREQUENCIES,
   REQUEST_TYPE_BY_KEY,
   requestTypesFor,
-  type RequestField,
+  rowFieldLabel,
+  type RequestType,
+  type RowField,
   type TaskCategory,
 } from "@/lib/tasks/request-types";
 
-export type RequestValues = {
+/** A scheme row as edited (strings, so a half-typed number survives). */
+export type RowValues = {
+  key: string;
+  schemeCode: string;
+  schemeName: string;
+  amcName: string;
+  assetCategory: string;
+  fromSchemeCode: string;
+  fromSchemeName: string;
   amount: string;
-  scheme: string;
-  toScheme: string;
-  folio: string;
-  mode: "" | "online" | "offline";
-  sipDate: string;
-  frequency: string;
   units: string;
   allUnits: boolean;
+  folio: string;
+  sipDay: string;
+  frequency: string;
 };
 
-export const EMPTY_REQUEST: RequestValues = {
+export type RequestValues = {
+  amount: string;
+  folio: string;
+  mode: "" | "online" | "offline";
+  rows: RowValues[];
+};
+
+let rowSeq = 0;
+export const emptyRow = (): RowValues => ({
+  key: `r${++rowSeq}`,
+  schemeCode: "",
+  schemeName: "",
+  amcName: "",
+  assetCategory: "",
+  fromSchemeCode: "",
+  fromSchemeName: "",
   amount: "",
-  scheme: "",
-  toScheme: "",
-  folio: "",
-  mode: "",
-  sipDate: "",
-  frequency: "monthly",
   units: "",
   allUnits: false,
+  folio: "",
+  sipDay: "",
+  frequency: "monthly",
+});
+
+export const EMPTY_REQUEST: RequestValues = { amount: "", folio: "", mode: "", rows: [] };
+
+/** Parse a typed rupee / unit figure ("5,00,000" → 500000); null when blank or bad. */
+export const num = (s: string): number | null => {
+  const t = s.replace(/,/g, "").trim();
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isFinite(n) && n >= 0 ? n : null;
 };
 
 const CATEGORIES: Array<[TaskCategory, string]> = [
@@ -49,6 +83,8 @@ const CATEGORIES: Array<[TaskCategory, string]> = [
   ["financial", "Financial"],
   ["non_financial", "Non-financial"],
 ];
+
+const DAYS: [string, string][] = [["", "—"], ...Array.from({ length: 28 }, (_, i) => [String(i + 1), String(i + 1)] as [string, string])];
 
 export function RequestPicker({
   category,
@@ -67,6 +103,9 @@ export function RequestPicker({
 }) {
   const req = requestKey ? REQUEST_TYPE_BY_KEY[requestKey] : undefined;
   const set = <K extends keyof RequestValues>(k: K, v: RequestValues[K]) => onValues({ ...values, [k]: v });
+  const setRow = (i: number, patch: Partial<RowValues>) =>
+    onValues({ ...values, rows: values.rows.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
+  const total = values.rows.reduce((s, r) => s + (num(r.amount) ?? 0), 0);
 
   return (
     <div className="space-y-3">
@@ -103,18 +142,67 @@ export function RequestPicker({
             />
           </label>
 
-          {req && req.fields.length > 0 && (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {req.fields.map((f) => (
-                <Field key={f} field={f} values={values} set={set} />
+          {req && req.rowFields.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-medium">
+                  Schemes <span className="text-destructive">*</span>
+                </div>
+                {total > 0 && <div className="text-xs text-muted-foreground">Total {formatMoney(total)}</div>}
+              </div>
+              {values.rows.map((row, i) => (
+                <SchemeRow
+                  key={row.key}
+                  req={req}
+                  row={row}
+                  index={i}
+                  onChange={(p) => setRow(i, p)}
+                  onRemove={values.rows.length > 1 ? () => set("rows", values.rows.filter((_, j) => j !== i)) : undefined}
+                />
               ))}
+              <button
+                type="button"
+                onClick={() => set("rows", [...values.rows, emptyRow()])}
+                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+              >
+                <Plus className="size-3.5" /> Add another scheme
+              </button>
             </div>
           )}
+
+          {req && req.fields.length > 0 && (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {req.fields.includes("amount") && (
+                <label className="block">
+                  <div className="mb-1 text-xs font-medium">{FIELD_LABEL.amount}</div>
+                  <input value={values.amount} onChange={(e) => set("amount", e.target.value)} inputMode="decimal" placeholder="e.g. 25000" className="input-base" />
+                </label>
+              )}
+              {req.fields.includes("folio") && (
+                <label className="block">
+                  <div className="mb-1 text-xs font-medium">{FIELD_LABEL.folio}</div>
+                  <input value={values.folio} onChange={(e) => set("folio", e.target.value)} maxLength={60} placeholder="Folio number" className="input-base" />
+                </label>
+              )}
+              {req.fields.includes("mode") && (
+                <label className="block">
+                  <div className="mb-1 text-xs font-medium">{FIELD_LABEL.mode}</div>
+                  <ThemeSelect
+                    value={values.mode}
+                    onChange={(v) => set("mode", v as RequestValues["mode"])}
+                    options={[["", "Not set"], ["online", "Online"], ["offline", "Offline (physical form)"]]}
+                  />
+                </label>
+              )}
+            </div>
+          )}
+
           {req && (
             <p className="text-2xs text-muted-foreground">
               {req.checklist.length > 0
                 ? `Adds ${req.checklist.length} sub-tasks for this request under More options — edit them as you need.`
                 : "Add sub-tasks under More options if you need them."}
+              {req.business && " Saving also books it in Business entries (as a draft, confirmed when the task is completed)."}
             </p>
           )}
         </div>
@@ -123,77 +211,128 @@ export function RequestPicker({
   );
 }
 
-function Field({
-  field,
-  values,
-  set,
+function SchemeRow({
+  req,
+  row,
+  index,
+  onChange,
+  onRemove,
 }: {
-  field: RequestField;
-  values: RequestValues;
-  set: <K extends keyof RequestValues>(k: K, v: RequestValues[K]) => void;
+  req: RequestType;
+  row: RowValues;
+  index: number;
+  onChange: (p: Partial<RowValues>) => void;
+  onRemove?: () => void;
 }) {
-  const label = FIELD_LABEL[field];
-  const input = (k: "amount" | "scheme" | "toScheme" | "folio" | "units", props: React.InputHTMLAttributes<HTMLInputElement> = {}) => (
-    <label className="block">
-      <div className="mb-1 text-xs font-medium">{label}</div>
-      <input value={values[k]} onChange={(e) => set(k, e.target.value)} className="input-base" {...props} />
-    </label>
-  );
+  const has = (f: RowField) => req.rowFields.includes(f);
+  const lbl = (f: RowField) => rowFieldLabel(f, req);
 
-  switch (field) {
-    case "amount":
-      return input("amount", { inputMode: "decimal", placeholder: "e.g. 500000" });
-    case "scheme":
-      return input("scheme", { placeholder: "e.g. HDFC Flexi Cap Fund – Regular Growth", maxLength: 200 });
-    case "toScheme":
-      return input("toScheme", { placeholder: "Scheme it moves into", maxLength: 200 });
-    case "folio":
-      return input("folio", { placeholder: "Folio number", maxLength: 60 });
-    case "units":
-      return (
-        <div>
-          <div className="mb-1 text-xs font-medium">{label}</div>
-          <div className="flex items-center gap-3">
-            <input
-              value={values.units}
-              onChange={(e) => set("units", e.target.value)}
-              disabled={values.allUnits}
-              inputMode="decimal"
-              placeholder="Units, or leave blank for an amount"
-              aria-label="Units"
-              className="input-base min-w-0 flex-1"
-            />
-            <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs">
-              <input type="checkbox" checked={values.allUnits} onChange={(e) => set("allUnits", e.target.checked)} className="size-3.5 rounded" />
-              All units
-            </label>
-          </div>
-        </div>
-      );
-    case "mode":
-      return (
-        <label className="block">
-          <div className="mb-1 text-xs font-medium">{label}</div>
-          <ThemeSelect
-            value={values.mode}
-            onChange={(v) => set("mode", v as RequestValues["mode"])}
-            options={[["", "Not set"], ["online", "Online"], ["offline", "Offline (physical form)"]]}
+  const schemeInput = (which: "scheme" | "fromScheme") => {
+    const name = which === "scheme" ? row.schemeName : row.fromSchemeName;
+    return (
+      <div className="min-w-0">
+        <div className="mb-1 text-xs font-medium">{lbl(which)}</div>
+        {req.catalog !== false ? (
+          <SchemeAutocomplete
+            size="sm"
+            defaultValue={name}
+            placeholder="Search schemes…"
+            onClear={() =>
+              onChange(which === "scheme" ? { schemeName: "", schemeCode: "", amcName: "", assetCategory: "" } : { fromSchemeName: "", fromSchemeCode: "" })
+            }
+            onSelect={(s) =>
+              onChange(
+                which === "scheme"
+                  ? { schemeName: s.schemeName, schemeCode: s.schemeCode, amcName: s.amc ?? "", assetCategory: s.category ?? "" }
+                  : { fromSchemeName: s.schemeName, fromSchemeCode: s.schemeCode },
+              )
+            }
           />
-        </label>
-      );
-    case "sipDate":
-      return (
-        <div className="block">
-          <div className="mb-1 text-xs font-medium">{label}</div>
-          <DateField value={values.sipDate} onChange={(e: any) => set("sipDate", e.target.value)} className="w-full" aria-label={label} />
-        </div>
-      );
-    case "frequency":
-      return (
-        <label className="block">
-          <div className="mb-1 text-xs font-medium">{label}</div>
-          <ThemeSelect value={values.frequency} onChange={(v) => set("frequency", v)} options={FREQUENCIES} />
-        </label>
-      );
-  }
+        ) : (
+          <input
+            value={name}
+            onChange={(e) => onChange({ schemeName: e.target.value, schemeCode: "" })}
+            maxLength={250}
+            placeholder={req.key === "aif" ? "AIF name" : "PMS strategy / provider"}
+            aria-label={lbl(which)}
+            className="input-base h-8 text-xs"
+          />
+        )}
+        {which === "scheme" && row.amcName && <div className="mt-0.5 truncate text-2xs text-muted-foreground">{row.amcName}</div>}
+      </div>
+    );
+  };
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-2.5">
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Scheme {index + 1}</span>
+        {onRemove && (
+          <button type="button" onClick={onRemove} className="btn-icon text-muted-foreground hover:text-destructive" aria-label={`Remove scheme ${index + 1}`} title="Remove">
+            <Trash2 className="size-4" />
+          </button>
+        )}
+      </div>
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+        {has("fromScheme") && schemeInput("fromScheme")}
+        {has("scheme") && schemeInput("scheme")}
+        {has("amount") && (
+          <label className="block">
+            <div className="mb-1 text-xs font-medium">{lbl("amount")}</div>
+            <input
+              value={row.amount}
+              onChange={(e) => onChange({ amount: e.target.value })}
+              inputMode="decimal"
+              placeholder="e.g. 500000"
+              className="input-base h-8 text-xs"
+            />
+          </label>
+        )}
+        {has("units") && (
+          <div>
+            <div className="mb-1 text-xs font-medium">{lbl("units")}</div>
+            <div className="flex items-center gap-3">
+              <input
+                value={row.units}
+                onChange={(e) => onChange({ units: e.target.value })}
+                disabled={row.allUnits}
+                inputMode="decimal"
+                placeholder="Units (optional)"
+                aria-label={`Scheme ${index + 1} units`}
+                className="input-base h-8 min-w-0 flex-1 text-xs"
+              />
+              <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs">
+                <input type="checkbox" checked={row.allUnits} onChange={(e) => onChange({ allUnits: e.target.checked })} className="size-3.5 rounded" />
+                All units
+              </label>
+            </div>
+          </div>
+        )}
+        {has("sipDay") && (
+          <label className="block">
+            <div className="mb-1 text-xs font-medium">{lbl("sipDay")}</div>
+            <ThemeSelect value={row.sipDay} onChange={(v) => onChange({ sipDay: v })} options={DAYS} className="h-8 py-0 text-xs" />
+          </label>
+        )}
+        {has("frequency") && (
+          <label className="block">
+            <div className="mb-1 text-xs font-medium">{lbl("frequency")}</div>
+            <ThemeSelect value={row.frequency} onChange={(v) => onChange({ frequency: v })} options={FREQUENCIES} className="h-8 py-0 text-xs" />
+          </label>
+        )}
+        {has("folio") && (
+          <label className="block">
+            <div className="mb-1 text-xs font-medium">{lbl("folio")}</div>
+            <input
+              value={row.folio}
+              onChange={(e) => onChange({ folio: e.target.value })}
+              maxLength={60}
+              placeholder="Folio number (optional)"
+              className="input-base h-8 text-xs"
+            />
+          </label>
+        )}
+      </div>
+    </div>
+  );
 }
