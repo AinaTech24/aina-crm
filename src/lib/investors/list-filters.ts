@@ -43,6 +43,10 @@ export function buildInvestorConditions(
 
   // Trash bin: soft-deleted clients never appear in the list / export / counts.
   conditions.push(sql`${investors.deletedAt} IS NULL`);
+  // Nor does a duplicate merged into another client: the merge only marks it
+  // inactive + merged_into_id, so without this every merge left both records
+  // in the Clients list. Merged records are listed under Merge Clients → Merged.
+  conditions.push(sql`${investors.mergedIntoId} IS NULL`);
 
   const q = (sp.q ?? "").trim();
   const segment = csv(sp.segment);
