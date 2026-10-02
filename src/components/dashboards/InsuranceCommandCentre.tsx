@@ -230,7 +230,9 @@ export async function InsuranceCommandCentre({
     // "Claims needing attention" was removed from this dashboard (2026-10-01);
     // the Claims Dashboard's escalation centre is where those claims are worked.
     escalations: claimsHref ?? "/dashboard/insurance-claims",
-    board: "/dashboard/pipeline-board?p=insurance",
+    // Open insurance proposals — what loadInsuranceProposals counts.
+    insProposals: "/dashboard/proposals?status=draft,ready,sent,viewed&type=insurance",
+    leads: "/dashboard/leads",
     meetings: "/dashboard/review-meetings",
     clients: "/dashboard/investors",
     gapClients: "/dashboard/insurance/protection-gap",
@@ -457,12 +459,12 @@ async function PrioritiesBand({ run, w, shared, hrefs }: BandProps) {
     { key: "today", label: "Renewals due today", count: b("today").count, amount: b("today").premium, href: hrefs["bucket:today"], tone: "warn" },
     { key: "overdue", label: "Renewals overdue", count: b("overdue").count, amount: b("overdue").premium, href: hrefs["bucket:overdue"], tone: "bad" },
     { key: "d7", label: "Renewals due in the next 7 days", count: b("d7").count, amount: b("d7").premium, href: hrefs["bucket:d7"], tone: "warn" },
-    { key: "proposals", label: "High-value proposals pending", count: proposals.large, amount: proposals.largePremium, href: hrefs.board, tone: "warn" },
+    { key: "proposals", label: "High-value proposals pending", count: proposals.large, amount: proposals.largePremium, href: hrefs.insProposals, tone: "warn" },
     { key: "issuance", label: "Policy issuance delayed", count: issuance.breached, amount: null, href: hrefs.pending, tone: "bad" },
     { key: "lost", label: "Lost / cancelled this period", count: lost.count, amount: lost.premium, href: hrefs.lostTable, tone: "bad" },
     { key: "claims", label: "Claims needing escalation", count: esc.total, amount: null, href: hrefs.escalations, tone: "bad" },
     { key: "targets", label: "Branches behind their insurance target", count: gaps.length, amount: gaps.reduce((a, g) => a + (g.expected - g.actual), 0), href: hrefs.targets, tone: "warn" },
-    { key: "corporate", label: "Corporate follow-ups due", count: num(corporate?.n), amount: null, href: hrefs.board, tone: "warn" },
+    { key: "corporate", label: "Corporate follow-ups due", count: num(corporate?.n), amount: null, href: hrefs.leads, tone: "warn" },
     { key: "data", label: "Insurance data missing", count: gapCount, amount: null, href: hrefs.quality, tone: "warn" },
   ];
   const dateLabel = formatDate(w.today, "weekday");
@@ -509,7 +511,7 @@ async function DrillBand({ run, w, shared, meta, hrefs }: BandProps & { meta: { 
     { label: "Meetings", value: meetings.total, format: "count" as const, href: hrefs.meetings },
     { label: "Lost business", value: lost.premium, format: "currency" as const, href: hrefs.lostTable, tone: lost.count ? "bad" as const : undefined },
     { label: "Open claims", value: claims.all.open, format: "count" as const, href: hrefs.claims },
-    { label: "Pending proposals", value: proposals.open, format: "count" as const, href: hrefs.board },
+    { label: "Pending proposals", value: proposals.open, format: "count" as const, href: hrefs.insProposals },
   ];
   return <Cell order="people"><DrillSummary kind={kind} name={name} facts={facts} /></Cell>;
 }
@@ -613,7 +615,7 @@ async function TeamBand({ run, w, hrefs }: { run: Run; w: InsWindow; hrefs: Href
 async function PipelineBand({ run, shared, hrefs }: BandProps) {
   const p = await shared.pipeline;
   const names = await namesFor(run, p.rows.map((r) => r.ownerId));
-  return <Cell order="pipeline" id="pipeline"><PipelinePanel p={p} names={names} boardHref={hrefs.board} /></Cell>;
+  return <Cell order="pipeline" id="pipeline"><PipelinePanel p={p} names={names} /></Cell>;
 }
 
 async function RenewalBand({ run, w, shared, hrefs }: BandProps) {

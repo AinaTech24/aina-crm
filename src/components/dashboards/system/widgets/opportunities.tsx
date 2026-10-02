@@ -27,13 +27,12 @@ function Tile({ label, value, hint, href }: { label: string; value: ReactNode; h
 async function crossSell(tx: Tx, ctx: WidgetCtx) {
   const m = await getOpportunityMetrics(tx, ctx.scope, ctx.period);
   if (!m.open && !m.won && !m.lost && !m.clientsWithCard) return { body: null };
-  const board = "/dashboard/pipeline-board?view=existing";
   const max = Math.max(1, ...m.byProduct.map((b) => b.open));
   return {
     body: (
       <div className="space-y-4">
         <div className="dash-stats" style={{ ["--cols-sm" as string]: 3, ["--cols-lg" as string]: 5 }}>
-          <Tile label={`Open opportunities${m.openValue ? ` · ${formatMoney(m.openValue)}` : ""}`} value={formatCount(m.open)} href={board} />
+          <Tile label={`Open opportunities${m.openValue ? ` · ${formatMoney(m.openValue)}` : ""}`} value={formatCount(m.open)} />
           <Tile label={`Won in the period${m.wonValue ? ` · ${formatMoney(m.wonValue)}` : ""}`} value={formatCount(m.won)} />
           <Tile label="Conversion (won ÷ closed)" value={m.conversion == null ? "—" : formatPercent(m.conversion * 100, 0)}
             hint={m.conversion == null ? "Nothing was won or lost in the period." : `${m.won} won, ${m.lost} lost in the period.`} />
@@ -60,8 +59,6 @@ async function crossSell(tx: Tx, ctx: WidgetCtx) {
       </div>
     ),
     subtitle: `${formatCount(m.open)} open`,
-    href: board,
-    hrefLabel: "Board",
     info: "Opportunities are existing clients who want another product. Won and lost count those closed in the period; conversion is won ÷ (won + lost). Products per client counts the lines each live client holds with the firm: mutual funds when AUM is above zero, an insurance line per in-force policy, FD / Bonds / NCD for a live fixed deposit, and the Cross-sell card's \"Held with us\".",
   };
 }

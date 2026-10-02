@@ -266,10 +266,12 @@ the client page's Overview tab.
 - **Proposals**: `proposals.opportunity_id` links a proposal to the
   opportunity it answers; the proposals module calls
   `onProposalEvent(tx, tenantId, proposalId, "sent" | "accepted" | "declined")`.
-- **Reporting**: Pipeline Board → "Existing clients"; the Owner Dashboard's
+- **Reporting**: the Owner Dashboard's
   Cross-sell card (`lib/metrics/opportunities.ts`) — products per client counts
   what the records prove (AUM → MF, in-force policy → its line, live FD → FD /
-  Bonds / NCD) plus the card.
+  Bonds / NCD) plus the card. The Pipeline Board (`/dashboard/pipeline-board`)
+  was removed at the firm's request on 2026-10-02 and redirects to Leads —
+  do not restore it.
 
 ## Meetings — attendees and action items
 

@@ -52,7 +52,6 @@ export const NAV_ACCESS_GROUPS: NavAccessGroup[] = [
   {
     title: "Clients",
     items: [
-      { key: "/dashboard/pipeline-board", label: "Pipeline Board", module: "lead_management" },
       { key: "/dashboard/leads", label: "Leads", module: "lead_management" },
       { key: "/dashboard/investors", label: "Clients", module: "client_master" },
       { key: "/dashboard/families", label: "Families", module: "family_mapping" },

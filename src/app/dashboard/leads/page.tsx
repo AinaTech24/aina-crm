@@ -63,7 +63,6 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Header "⋯": the other lead views the old "Module" dropdown switched to. */
 const MORE_ITEMS = [
-  { href: "/dashboard/pipeline-board", label: "Pipeline Board", description: "Separate stage flows for each sales process" },
   { href: "/dashboard/lifecycle", label: "Lead-to-client lifecycle", description: "Each lead's path through to becoming a client" },
   { href: "/dashboard/leads/nurture", label: "Lead Nurturing", description: "Keep not-yet-ready leads warm" },
 ];

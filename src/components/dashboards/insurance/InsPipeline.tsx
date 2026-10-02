@@ -1,7 +1,7 @@
 /**
  * §12–13 new-business pipeline and ageing · §26 corporate pipeline · §27
  * industry · §31–32 policy issuance. Summary only: detailed processing is the
- * policy register and the insurance leads board.
+ * policy register and the Leads page.
  */
 
 import { Building, Factory, FileClock, GitBranch, Hourglass } from "lucide-react";
@@ -16,11 +16,11 @@ import { ClientLink } from "./InsClientDrawer";
 
 const potential = (v: number | null) => (v == null ? <span className="text-muted-foreground" title="No expected amount keyed on the lead">—</span> : formatMoney(v));
 
-export function PipelinePanel({ p, names, boardHref }: { p: Pipeline; names: Map<string, string>; boardHref: string }) {
+export function PipelinePanel({ p, names }: { p: Pipeline; names: Map<string, string> }) {
   const top = Math.max(1, ...p.stages.map((s) => s.count));
   return (
     <Section title="New business pipeline" subtitle={`${formatCount(p.open.count)} open insurance lead${p.open.count === 1 ? "" : "s"}${p.open.potential != null ? ` · ${formatMoney(p.open.potential)} potential premium` : ""}, by the CRM's insurance stages.`}
-      icon={<GitBranch className="size-4" />} action={<SectionLink href={boardHref}>Insurance pipeline board</SectionLink>}
+      icon={<GitBranch className="size-4" />}
       note="Stages are the CRM's insurance pipeline. Days in stage is known where the lead workflow stamped the stage; otherwise it is the lead's age. Corporate leads count as Commercial Lines, all others as Personal. Meeting, payment and client confirmation are not separate stages in the CRM.">
       <div className="space-y-1.5">
         {p.stages.map((s) => (
