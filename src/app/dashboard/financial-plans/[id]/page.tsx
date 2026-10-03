@@ -232,7 +232,7 @@ export default async function FinancialPlanDetailPage({
                 </span>
 </div>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Financial Plan: <span className="font-semibold text-brand-navy">{plan.planNumber}</span> · Generated {formatDate(plan.preparedAt)}
+                Financial Health Check: <span className="font-semibold text-brand-navy">{plan.planNumber}</span> · Generated {formatDate(plan.preparedAt)}
               </p>
             </div>
           </div>
@@ -300,7 +300,7 @@ export default async function FinancialPlanDetailPage({
         >
           <div>
             <div className="text-sm font-bold">
-              {feasibility.feasible ? "Plan is fundable from surplus" : "Plan is under-funded"}
+              {feasibility.feasible ? "Goals are fundable from surplus" : "Goals are under-funded"}
             </div>
             <p className="text-xs mt-0.5 opacity-90 max-w-2xl">
               Investable surplus <strong>{formatINR(feasibility.investableSurplus)}/mo</strong> vs new SIP required{" "}

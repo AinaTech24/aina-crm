@@ -40,6 +40,7 @@ import { InlineEmpty } from "@/components/common/EmptyState";
 import { formatDate, formatRelative } from "@/lib/format";
 import type { TimelineItem } from "@/lib/timeline";
 import { cn } from "@/lib/utils";
+import { TimelineStatusControl } from "./TimelineStatusControl";
 
 const ICON: Record<TimelineItem["kind"], LucideIcon> = {
   call: Phone,
@@ -126,7 +127,13 @@ export function RecordTimeline({
                         ) : (
                           <span className="text-sm font-medium text-foreground">{it.title}</span>
                         )}
-                        {it.status && <Badge raw tone={it.status.tone}>{it.status.label}</Badge>}
+                        {/* A task's or meeting's status changes right here; the
+                            control asks for anything a change needs first. */}
+                        {it.control && it.status ? (
+                          <TimelineStatusControl control={it.control} label={it.status.label} tone={it.status.tone} />
+                        ) : (
+                          it.status && <Badge raw tone={it.status.tone}>{it.status.label}</Badge>
+                        )}
                       </div>
                       <div className="mt-0.5 text-xs text-muted-foreground">
                         <time dateTime={it.at} title={when}>{formatRelative(it.at)}</time>

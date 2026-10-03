@@ -24,7 +24,7 @@ export const CAPABILITY_GROUP_ORDER = [
   "Transactions & Operations",
   "Tasks & Service",
   "Documents & Onboarding",
-  "Advice & Products",
+  "Planning & Products",
   "Workflows & Marketing",
   "Compliance",
   "Reports & Dashboards",
@@ -98,16 +98,16 @@ export const CAPABILITY_CATALOG: Record<Capability, CapabilityMeta> = {
   "induction.view": { group: "Documents & Onboarding", label: "View induction / training" },
   "induction.manage": { group: "Documents & Onboarding", label: "Manage induction / training" },
 
-  // ── Advice & Products ───────────────────────────────────────────────────
-  "proposal.view": { group: "Advice & Products", label: "View proposals" },
-  "proposal.write": { group: "Advice & Products", label: "Create & edit proposals" },
-  "proposal.send": { group: "Advice & Products", label: "Send proposals to clients" },
-  "financial_plan.view": { group: "Advice & Products", label: "View financial plans" },
-  "financial_plan.manage": { group: "Advice & Products", label: "Create & edit financial plans" },
-  "insurance.view": { group: "Advice & Products", label: "View insurance policies" },
-  "insurance.write": { group: "Advice & Products", label: "Create & edit insurance policies" },
-  "insurance.view.all": { group: "Advice & Products", label: "See the whole firm's insurance book", hint: "For an Insurance Head" },
-  "goal.manage": { group: "Advice & Products", label: "Manage client goals" },
+  // ── Planning & Products ─────────────────────────────────────────────────
+  "proposal.view": { group: "Planning & Products", label: "View proposals" },
+  "proposal.write": { group: "Planning & Products", label: "Create & edit proposals" },
+  "proposal.send": { group: "Planning & Products", label: "Send proposals to clients" },
+  "financial_plan.view": { group: "Planning & Products", label: "View financial health checks" },
+  "financial_plan.manage": { group: "Planning & Products", label: "Create & edit financial health checks" },
+  "insurance.view": { group: "Planning & Products", label: "View insurance policies" },
+  "insurance.write": { group: "Planning & Products", label: "Create & edit insurance policies" },
+  "insurance.view.all": { group: "Planning & Products", label: "See the whole firm's insurance book", hint: "For an Insurance Head" },
+  "goal.manage": { group: "Planning & Products", label: "Manage client goals" },
 
   // ── Workflows & Marketing ───────────────────────────────────────────────
   "workflow.view": { group: "Workflows & Marketing", label: "View workflow rules" },

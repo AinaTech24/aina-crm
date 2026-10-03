@@ -160,8 +160,8 @@ export default async function FinancialPlansPage({
   return (
     <div className="space-y-6 max-w-7xl">
       {/* Page Header */}
-      <PageHeaderCard title={<><ScrollText className="size-6 text-muted-foreground" /> Financial Plans</>} actions={<><Link href="/dashboard/financial-plans/new" className="btn-primary">
-          <Plus className="size-4" /> Create Financial Plan
+      <PageHeaderCard title={<><ScrollText className="size-6 text-muted-foreground" /> Financial Health Check</>} actions={<><Link href="/dashboard/financial-plans/new" className="btn-primary">
+          <Plus className="size-4" /> New Health Check
         </Link></>} />
 
       {/* Filter and Table Container */}
@@ -170,7 +170,7 @@ export default async function FinancialPlansPage({
           totalCount={data.filteredTotal}
           rightSlot={<CustomViews viewsKey="views:financial-plans" />}
           filters={[
-            { type: "search", key: "q", placeholder: "Search by plan # or client name..." },
+            { type: "search", key: "q", placeholder: "Search by reference no. or client name..." },
             {
               type: "multi",
               key: "status",
@@ -187,9 +187,9 @@ export default async function FinancialPlansPage({
         {data.filteredTotal === 0 && !hasFilters ? (
           <EmptyState
             icon={ScrollText}
-            title="No financial plans yet"
-            description="A financial plan puts a client's cash flow, assets, protection and goals in one document, with a roadmap you can print and share."
-            primary={{ href: "/dashboard/financial-plans/new", label: "Create financial plan" }}
+            title="No financial health checks yet"
+            description="A financial health check puts a client's cash flow, assets, protection and goals in one document you can print and share."
+            primary={{ href: "/dashboard/financial-plans/new", label: "New health check" }}
             secondaryNode={factFindItems.length > 0
               ? <MoreMenu text="Start from a fact-find" label="Start from a fact-find" items={factFindItems} />
               : undefined}
@@ -199,11 +199,11 @@ export default async function FinancialPlansPage({
           {filteredRows.length === 0 ? (
             <div className="p-12 text-center text-sm text-muted-foreground">
               <ScrollText className="size-8 mx-auto text-muted-foreground/50 mb-2" />
-              <div className="font-semibold text-foreground">No financial plans found</div>
+              <div className="font-semibold text-foreground">No financial health checks found</div>
               <p className="mt-1 max-w-sm mx-auto text-xs text-muted-foreground">
                 {q || statusFilter.length
                   ? "Try adjusting your filters or search term to see other plans."
-                  : "Click 'Create Financial Plan' to generate your first detailed financial proposal for a client."}
+                  : "Click 'New Health Check' to review a client's finances in one place."}
               </p>
             </div>
           ) : (
@@ -211,7 +211,7 @@ export default async function FinancialPlansPage({
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10 bg-card">
                   <tr className="border-b text-xs text-muted-foreground bg-secondary/20">
-                    <th className="text-left font-semibold py-3 px-4">Plan Number</th>
+                    <th className="text-left font-semibold py-3 px-4">Reference No.</th>
                     <th className="text-left font-semibold py-3 px-4">Client Name</th>
                     <th className="text-right font-semibold py-3 px-4">Monthly Income</th>
                     <th className="text-right font-semibold py-3 px-4">Monthly Expenses</th>
@@ -230,7 +230,7 @@ export default async function FinancialPlansPage({
                     return (
                       <PdfRow
                         key={p.id}
-                        title={`Financial Plan · ${p.investorName ?? p.leadName ?? p.planNumber ?? ""}`}
+                        title={`Financial Health Check · ${p.investorName ?? p.leadName ?? p.planNumber ?? ""}`}
                         pdfUrl={`/dashboard/financial-plans/${p.id}/print`}
                         className="hover:bg-secondary/20 transition-colors"
                       >
@@ -280,7 +280,7 @@ export default async function FinancialPlansPage({
                               inline
                               editHref={`/dashboard/financial-plans/new?edit=${p.id}`}
                               deleteUrl={`/api/financial-plans/${p.id}`}
-                              itemLabel="financial plan"
+                              itemLabel="financial health check"
                               itemName={p.planNumber}
                             />
                           </div>

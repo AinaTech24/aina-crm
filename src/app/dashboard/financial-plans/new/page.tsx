@@ -137,7 +137,7 @@ function PlanFormContent() {
     setErr(null);
     fetch(`/api/financial-plans/${editId}`)
       .then(async (res) => {
-        if (!res.ok) throw new Error("Failed to load financial plan");
+        if (!res.ok) throw new Error("Failed to load the health check");
         const data = await res.json();
         const p = data.plan;
 
@@ -185,7 +185,7 @@ function PlanFormContent() {
     setErr(null);
     fetch(`/api/discovery/${discoveryId}`)
       .then(async (res) => {
-        if (!res.ok) throw new Error("Could not load that fact-find. Start the plan by hand, or open the fact-find to check it.");
+        if (!res.ok) throw new Error("Could not load that fact-find. Start the health check by hand, or open the fact-find to check it.");
         const { discovery } = await res.json();
         const p = planFromFactFind(discovery);
         setRecipient(p.recipient);
@@ -549,7 +549,7 @@ function PlanFormContent() {
     return (
       <div className="flex flex-col items-center justify-center py-20 space-y-4">
         <Loader2 className="size-8 text-brand-cyan animate-spin" />
-        <p className="text-sm text-muted-foreground">{discoveryId ? "Loading the fact-find…" : "Loading financial plan..."}</p>
+        <p className="text-sm text-muted-foreground">{discoveryId ? "Loading the fact-find…" : "Loading the health check..."}</p>
       </div>
     );
   }
@@ -563,7 +563,7 @@ function PlanFormContent() {
         <ChevronLeft className="size-4" /> Back to list
       </Link>
 
-      <PageHeaderCard title={<><ScrollText className="size-6 text-muted-foreground" /> {editId ? "Edit" : "New"} Financial Plan</>} actions={<><div className="flex items-center gap-3">
+      <PageHeaderCard title={<><ScrollText className="size-6 text-muted-foreground" /> {editId ? "Edit" : "New"} Financial Health Check</>} actions={<><div className="flex items-center gap-3">
           {/* Real-time Health Score Badge */}
           <div className="flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-brand-navy-light/10 to-secondary/30 border border-brand-cyan/20 rounded-lg text-xs">
             <span className="text-2xs text-muted-foreground uppercase font-bold">Health Score:</span>
@@ -1414,7 +1414,7 @@ function PlanFormContent() {
               >
                 <div>
                   <div className="font-bold">
-                    {sipShortfall > 0 ? "Plan is under-funded" : "Plan is fundable from surplus"}
+                    {sipShortfall > 0 ? "Goals are under-funded" : "Goals are fundable from surplus"}
                   </div>
                   <div className="text-xs mt-0.5 opacity-90">
                     Investable surplus {formatINR(investableSurplus)}/mo vs new SIP {formatINR(totalRequiredSip)}/mo.
@@ -1677,7 +1677,7 @@ function PlanFormContent() {
             ) : (
               <Save className="size-3.5" />
             )}
-            {busy ? "Saving Plan..." : "Save Financial Plan"}
+            {busy ? "Saving..." : "Save Health Check"}
           </button>
         )}
       </div>

@@ -1,7 +1,7 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { ShieldCheck, AlertTriangle, Plus, ArrowRight } from "lucide-react";
+import { ShieldCheck, AlertTriangle, Plus, ArrowRight, Search, X } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireAny, can } from "@/lib/auth/rbac";
@@ -70,6 +70,9 @@ export default async function RiskProfilesPage({
   const filters = [...new Set((sp.filter ?? "").split(",").map((f) => f.trim()).filter((f) => RISK_BUCKETS.some((b) => b.key === f)))] as RiskBucket[];
   const combined = filters.length > 1;
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
+  // Search by client name (or PAN). Narrows the tab counts as well as the list,
+  // so the tabs show where a searched client sits.
+  const q = (sp.q ?? "").trim().slice(0, 80);
 
   const data = await withTenant(session.tenantId, async (tx) => {
     // The clients the page lists — active clients of this firm, an RM's own
@@ -80,6 +83,9 @@ export default async function RiskProfilesPage({
       rmIds: canViewAll ? (sp.rm ? sp.rm.split(",") : undefined) : [session.userId],
       branchIds: sp.branch ? sp.branch.split(",") : undefined,
     });
+    const search = q
+      ? sql`(i.name ILIKE ${`%${q}%`} OR i.pan ILIKE ${`%${q.toUpperCase()}%`})`
+      : sql`TRUE`;
     // Tab counts — one aggregate over the active book. The buckets are
     // mutually exclusive, so the tabs add up to the book.
     const stats = await tx.execute(sql`
@@ -89,7 +95,7 @@ export default async function RiskProfilesPage({
         COUNT(*) FILTER (WHERE ${riskBucketSql("current")})::int AS current,
         COUNT(*) FILTER (WHERE ${riskBucketSql("expired")})::int AS expired,
         COUNT(*) FILTER (WHERE ${riskBucketSql("awaiting")})::int AS awaiting
-      FROM investors i WHERE ${base}
+      FROM investors i WHERE ${base} AND ${search}
     `);
     const s = (stats.rows[0] ?? {}) as Partial<Record<RiskBucket, number>>;
     const counts = Object.fromEntries(RISK_BUCKETS.map((b) => [b.key, Number(s[b.key] ?? 0)])) as Record<RiskBucket, number>;
@@ -102,7 +108,7 @@ export default async function RiskProfilesPage({
     // join needed since the filter is on the investor mirror columns.
     const c = await tx.execute(sql`
       SELECT COUNT(*)::int AS c FROM investors i
-      WHERE ${base} AND ${predicate}
+      WHERE ${base} AND ${search} AND ${predicate}
     `);
     const total = Number((c.rows[0] as any)?.c ?? 0);
 
@@ -125,7 +131,7 @@ export default async function RiskProfilesPage({
         ORDER BY r.signed_at DESC NULLS LAST
         LIMIT 1
       ) rp ON TRUE
-      WHERE ${base} AND ${predicate}
+      WHERE ${base} AND ${search} AND ${predicate}
       ORDER BY ${orderClause(filter)}
       LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}
     `);
@@ -146,8 +152,13 @@ export default async function RiskProfilesPage({
     };
   });
 
-  const tabHref = (key: RiskBucket) =>
-    key === "not_profiled" ? "/dashboard/risk-profiles" : `/dashboard/risk-profiles?filter=${key}`;
+  const tabHref = (key: RiskBucket) => {
+    const p = new URLSearchParams();
+    if (key !== "not_profiled") p.set("filter", key);
+    if (q) p.set("q", q);
+    const qs = p.toString();
+    return qs ? `/dashboard/risk-profiles?${qs}` : "/dashboard/risk-profiles";
+  };
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -158,8 +169,29 @@ export default async function RiskProfilesPage({
           </Link>
         </div></>} />
 
-      {/* Filter tabs */}
+      {/* Search + filter tabs */}
       <div className="flex flex-wrap items-center gap-1.5">
+        <form action="/dashboard/risk-profiles" className="relative mr-2" role="search">
+          {sp.filter && <input type="hidden" name="filter" value={sp.filter} />}
+          <Search className="size-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden />
+          <input
+            name="q"
+            defaultValue={q}
+            placeholder="Search client name or PAN…"
+            aria-label="Search risk profiles by client name"
+            className="input-base h-9 w-64 pl-8 pr-8 text-sm"
+          />
+          {q && (
+            <Link
+              href={sp.filter ? `/dashboard/risk-profiles?filter=${encodeURIComponent(sp.filter)}` : "/dashboard/risk-profiles"}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              aria-label="Clear search"
+              title="Clear search"
+            >
+              <X className="size-4" />
+            </Link>
+          )}
+        </form>
         {RISK_BUCKETS.map((f) => {
           const active = !combined && f.key === filter;
           return (
@@ -182,7 +214,7 @@ export default async function RiskProfilesPage({
 
       {/* Table */}
       {/* Keyed on tab + page: a selection never carries over to rows you can't see. */}
-      <RiskSelectionProvider key={`${filter}:${page}`} pageIds={data.rows.map((r: any) => String(r.id))}>
+      <RiskSelectionProvider key={`${filter}:${page}:${q}`} pageIds={data.rows.map((r: any) => String(r.id))}>
       <div className="card-surface">
         <div className="border-b border-border px-4 py-2.5 font-semibold flex items-center justify-between">
           <span>{combined
@@ -191,7 +223,7 @@ export default async function RiskProfilesPage({
         </div>
         {canManage && <RiskBulkBar notProfiledCount={data.counts.not_profiled} />}
         {data.rows.length === 0 ? (
-          <InlineEmpty message={EMPTY[filter]} />
+          <InlineEmpty message={q ? `No client matching “${q}” in this list.` : EMPTY[filter]} />
         ) : (
           <>
             <div className="table-scroll">

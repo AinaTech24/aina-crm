@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import { STAGE_ACTIONS, type StageAction, type DialogKind } from "@/lib/blueprints/stage-actions";
 import { isFieldVisible, validateNomineeAllocations, type KycField } from "@/lib/onboarding/kyc-fields";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 import { ScheduleMeetingModal } from "@/components/review-meetings/ScheduleMeetingModal";
 import { CompleteMeetingModal } from "@/components/review-meetings/CompleteMeetingModal";
 import { DateTimeField } from "@/components/ui/DateTimeField";
@@ -157,6 +158,19 @@ export function GuidedStageActions({
   // Complete-meeting popup — opened from the "mark meeting completed" prereq so
   // the RM completes the meeting inline instead of opening the meetings page.
   const [completeMeetingOpen, setCompleteMeetingOpen] = useState(false);
+  // The lead's current proposal — drives the proposal buttons at Meeting Done
+  // and Proposal Sent (Create → Send → Approved). undefined = not loaded yet.
+  const [leadProposal, setLeadProposal] = useState<{ id: string; number: string; status: string } | null | undefined>(undefined);
+  const usesProposal = (STAGE_ACTIONS[currentStage] ?? []).some((a) => a.behaviour.kind === "proposal");
+  useEffect(() => {
+    if (!usesProposal) return;
+    let cancelled = false;
+    fetch(`/api/leads/${leadId}/proposal`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : { proposal: null }))
+      .then((j) => { if (!cancelled) setLeadProposal(j?.proposal ?? null); })
+      .catch(() => { if (!cancelled) setLeadProposal(null); });
+    return () => { cancelled = true; };
+  }, [usesProposal, leadId, currentStage]);
 
   // Load the client's saved bank accounts when a mandate-activation modal opens,
   // so the "select bank" picker is populated.
@@ -311,7 +325,11 @@ export function GuidedStageActions({
   // everyone; tagged ones (e.g. Won-Lead's "Request Documents" vs "Start
   // Insurance Onboarding") show only for their matching pipeline.
   const lp = pipeline ?? "mf";
-  const actions = (STAGE_ACTIONS[currentStage] ?? []).filter((a) => !a.pipelines || a.pipelines.includes(lp));
+  const actions = (STAGE_ACTIONS[currentStage] ?? [])
+    .filter((a) => !a.pipelines || a.pipelines.includes(lp))
+    // "View Proposal" needs a proposal to open.
+    .filter((a) => !(a.behaviour.kind === "proposal" && a.behaviour.step === "open" && !leadProposal))
+    .map((a) => proposalAware(a, leadProposal));
 
   if (actions.length === 0) {
     return null; // terminal / boundary stage — nothing to do here
@@ -355,7 +373,65 @@ export function GuidedStageActions({
     return true;
   }
 
+  // The proposal steps go straight to the proposal module — no prerequisite
+  // checklist: the proposal IS the prerequisite, and these buttons create it.
+  async function handleProposal(action: StageAction, step: "create_or_send" | "open" | "accept") {
+    const p = leadProposal;
+    if (step === "create_or_send" || step === "open") {
+      const reusable = p && !["rejected", "expired"].includes(p.status);
+      router.push(reusable ? `/dashboard/proposals/${p!.id}` : `/dashboard/proposals/new?leadId=${leadId}`);
+      return;
+    }
+    // accept
+    if (!p) {
+      // Moved to Proposal Sent by hand, with nothing on file: the old path.
+      onOpenDialog?.("won_lead_product");
+      return;
+    }
+    if (p.status === "draft" || p.status === "ready") {
+      setOutcome({ kind: "error", message: `Proposal ${p.number} has not been sent to the client yet. Open it and send it first.` });
+      return;
+    }
+    if (!["sent", "viewed", "changes_requested"].includes(p.status)) {
+      router.push(`/dashboard/proposals/${p.id}`);
+      return;
+    }
+    const ok = await confirmDialog({
+      title: `Mark proposal ${p.number} approved?`,
+      message: "The lead becomes Won and the client is sent the document checklist to start onboarding.",
+      confirmLabel: "Yes, client approved",
+    });
+    if (!ok) return;
+    setBusy(action.key);
+    setOutcome(null);
+    try {
+      const res = await fetch(`/api/proposals/${p.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status: "accepted" }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setOutcome({ kind: "error", message: j.error ?? "Could not mark the proposal approved." });
+        return;
+      }
+      setOutcome({ kind: "advanced" });
+      router.refresh();
+      window.dispatchEvent(new CustomEvent("blueprint:refresh"));
+      onAfterAdvance?.();
+    } catch (e: any) {
+      setOutcome({ kind: "error", message: e?.message ?? "Network error" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function handleClick(action: StageAction) {
+    if (action.behaviour.kind === "proposal") {
+      await handleProposal(action, action.behaviour.step);
+      return;
+    }
+
     // "Documents Received" / "Documents Already Received" → instead of the
     // generic prereq checklist, open a popup so the MFD can fill the client's
     // required details on their behalf. Submitting saves them to the client
@@ -379,6 +455,19 @@ export function GuidedStageActions({
           return;
         }
         if (!pre.ok) {
+          // The only thing missing is the meeting itself → open the meeting
+          // form straight away. Clicking "Schedule Meeting" used to show a
+          // "Before moving on" checklist whose one item was… "schedule a
+          // meeting", a second click away. Same for "mark the meeting completed".
+          const open = pre.items.filter((p) => !p.satisfied);
+          if (open.length > 0 && open.every((p) => p.cta && isMeetingHref(p.cta.href))) {
+            setMeetingModalOpen(true);
+            return;
+          }
+          if (open.length > 0 && open.every((p) => p.cta && isCompleteMeetingHref(p.cta.href))) {
+            setCompleteMeetingOpen(true);
+            return;
+          }
           // Show the checklist of unsatisfied items.
           setOutcome({
             kind: "needs_action",
@@ -396,6 +485,20 @@ export function GuidedStageActions({
         // saving that artefact auto-advances the stage and fills required fields
         // like LastContactAt. So we deliberately do NOT intercept them here even
         // when the target stage lists missing fields — the dialog supplies them.
+        // "KYC Validated" asks for nothing: one click sets the client's KYC
+        // status to verified (server, blueprint/advance) and moves on.
+        if (action.behaviour.kind === "advance_only" && NO_NOTES_STAGES.has(action.targetStage) && !(pre.missingFields ?? []).length) {
+          const moved = await advance(action.targetStage, `Action: ${action.label}`);
+          if (!moved) {
+            setOutcome({ kind: "error", message: "Couldn't move to this step. Please try again." });
+            return;
+          }
+          router.refresh();
+          window.dispatchEvent(new CustomEvent("blueprint:refresh"));
+          onAfterAdvance?.();
+          setOutcome({ kind: "advanced" });
+          return;
+        }
         if (action.behaviour.kind === "advance_only") {
           // Nothing to fill in, nothing to ask: move straight on. The pop-up
           // takes no notes (removed at the firm's request), so it opens only
@@ -1309,6 +1412,30 @@ function toLocalInput(ms: number): string {
   const d = new Date(ms);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T10:00`;
+}
+
+/** Steps that move in one click, with no "Transition notes" pop-up — the click
+ *  itself is the record (KYC Validated also sets the client's KYC status). */
+const NO_NOTES_STAGES = new Set(["kyc_validated"]);
+
+/**
+ * "Create Proposal" says what the click will do once a proposal exists: a
+ * draft is opened to be sent, a sent one is opened to look at.
+ */
+function proposalAware(
+  a: StageAction,
+  p: { id: string; number: string; status: string } | null | undefined,
+): StageAction {
+  if (a.behaviour.kind !== "proposal" || a.behaviour.step !== "create_or_send" || !p) return a;
+  if (p.status === "rejected" || p.status === "expired") return a;
+  if (p.status === "draft" || p.status === "ready") {
+    return {
+      ...a,
+      label: "Send Proposal",
+      hint: `Proposal ${p.number} is ready. Open it and send it to the client by email or WhatsApp — the journey moves to Proposal Sent.`,
+    };
+  }
+  return { ...a, label: "Open Proposal", tone: "secondary", hint: `Proposal ${p.number} is with the client.` };
 }
 
 function toneClass(tone: StageAction["tone"]): string {

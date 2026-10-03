@@ -77,6 +77,23 @@ async function storeClientUcc(tx: any, tenantId: string, leadId: string, ucc: st
   `);
 }
 
+/** "KYC Validated" on the journey IS the KYC record: set the client's KYC
+ *  status to verified, stamped with who and when. A client already verified
+ *  keeps its original validation date. */
+async function storeClientKycValidated(tx: any, tenantId: string, leadId: string, userId: string): Promise<void> {
+  await tx.execute(sql`
+    UPDATE investors SET
+      kyc_status = 'verified',
+      kyc_validated_at = COALESCE(kyc_validated_at, (now() AT TIME ZONE 'Asia/Kolkata')::date),
+      kyc_last_updated_by = ${userId}::uuid,
+      updated_at = now()
+    WHERE tenant_id = ${tenantId}::uuid
+      AND kyc_status IS DISTINCT FROM 'verified'
+      AND (id = (SELECT converted_investor_id FROM leads WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid)
+           OR id = ${leadId}::uuid)
+  `);
+}
+
 /** Store the activated SIP mandate on the client master: status → active, the
  *  approval reference, the max debit amount, and the bank it's drawn on (which
  *  also fills the client's primary bank columns). */
@@ -229,6 +246,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         if (toStageKey === "ucc_activated" && uccNumber) {
           await storeClientUcc(tx, session.tenantId, id, uccNumber);
         }
+        if (toStageKey === "kyc_validated") {
+          await storeClientKycValidated(tx, session.tenantId, id, session.userId);
+        }
         if (toStageKey === "mandate_activated") {
           await storeClientMandate(tx, session.tenantId, id, {
             bank: mandateBank?.trim() || undefined,
@@ -305,6 +325,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           ...clientMeta,
         });
         if (!last.ok) return last;
+      }
+      if (toStageKey === "kyc_validated") {
+        await storeClientKycValidated(tx, session.tenantId, id, session.userId);
       }
       return last;
     });

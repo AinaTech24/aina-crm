@@ -17,7 +17,7 @@ export const EFFORT_METRICS: EffortMetric[] = [
   { key: "lead_meetings", label: "Leads Meetings", auto: false },
   { key: "iaps_fwps", label: "No. of FWPs / IAPs", auto: false },
   { key: "new_leads", label: "No. of New Leads", auto: true },
-  { key: "fbps", label: "No. of FBPs (Financial Plans)", auto: true },
+  { key: "fbps", label: "No. of FBPs (Financial Health Checks)", auto: true },
 ];
 
 export type EffortRow = { key: string; label: string; auto: boolean; planned: number; actual: number; computed: number | null };

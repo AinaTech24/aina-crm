@@ -29,7 +29,7 @@ export function PlanPrintHelper({
   return (
     <div className="print:hidden bg-secondary/40 border-b border-border px-6 py-3 flex items-center justify-between sticky top-0 z-10 backdrop-blur">
       <div className="text-sm text-muted-foreground">
-        Financial Plan PDF · <span className="font-medium text-foreground">{recipientName}</span>
+        Financial Health Check PDF · <span className="font-medium text-foreground">{recipientName}</span>
       </div>
       <div className="flex items-center gap-2">
         <Link href={`/dashboard/financial-plans/${planId}`} className="btn-secondary text-xs">

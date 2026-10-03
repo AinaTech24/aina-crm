@@ -2,16 +2,15 @@
 
 /**
  * Financial Discovery form — the shared fact-find UI used both in-meeting (RM,
- * full form incl. advisor assessment) and by the client via the public link
- * (clientMode hides the assessment). Every keystroke recomputes the live
+ * full form) and by the client via the public link (clientMode). Every keystroke recomputes the live
  * Financial Health Snapshot. Adapted from the workbook's five sections.
  *
  * What the CRM already knows is filled in before anyone types (see
  * lib/discovery/prefill): identity, goals, insurance, holdings — each section
  * that was says so, so the client checks rather than re-keys. The risk profile
  * on record in the Risk Profiles module IS the risk profile here; when there is
- * one, section 10 shows it and asks only the three product-suitability
- * questions, instead of a second questionnaire that could disagree with it.
+ * one, section 10 shows it and asks nothing more, instead of a second
+ * questionnaire that could disagree with it.
  */
 
 import { useMemo, useState } from "react";
@@ -53,7 +52,6 @@ export function DiscoveryForm({
   const setExp = (k: string, v: any) => set({ expenses: { ...(data.expenses ?? {}), [k]: v } });
   const setSurp = (k: string, v: any) => set({ surplusInputs: { ...(data.surplusInputs ?? {}), [k]: v } });
   const setRisk = (k: string, v: any) => set({ riskProfile: { ...(data.riskProfile ?? {}), [k]: v } });
-  const setAssess = (k: string, v: any) => set({ assessment: { ...(data.assessment ?? {}), [k]: v } });
 
   // What came from the CRM record, to say so on each section.
   const from = new Set(data.prefilledFromRecord ?? []);
@@ -61,8 +59,10 @@ export function DiscoveryForm({
   const who = clientMode ? "your details with us" : subject?.type === "lead" ? "the lead record" : "the client record";
   const note = (on: boolean) => (on ? `Filled in from ${who} — check and correct if anything has changed.` : undefined);
   const rec = data.recordedRisk;
-  const SUITABILITY_KEYS = new Set(["horizon", "lumpSum", "liquidity"]);
-  const riskQuestions = rec ? RISK_QUESTIONS.filter((q) => SUITABILITY_KEYS.has(q.key)) : RISK_QUESTIONS;
+  // A risk profile on record means the questionnaire is not asked again — not
+  // even its horizon / lump-sum / liquidity questions (the firm's call,
+  // 2026-10-02). Without one, the full questionnaire is the profile.
+  const riskQuestions = rec ? [] : RISK_QUESTIONS;
 
   return (
     <div className="grid lg:grid-cols-[1fr_320px] gap-5 items-start">
@@ -263,33 +263,19 @@ export function DiscoveryForm({
               </p>
             )
           )}
-          {rec && <div className="pt-1 text-xs font-medium text-muted-foreground">For product suitability</div>}
-          <Grid>
-            {riskQuestions.map((q) => (
-              <F key={q.key} label={q.label}>
-                <S v={data.riskProfile?.[q.key]} on={(x) => setRisk(q.key, x)} opts={q.options.map((o) => o.value)} />
-              </F>
-            ))}
-          </Grid>
+          {riskQuestions.length > 0 && (
+            <Grid>
+              {riskQuestions.map((q) => (
+                <F key={q.key} label={q.label}>
+                  <S v={data.riskProfile?.[q.key]} on={(x) => setRisk(q.key, x)} opts={q.options.map((o) => o.value)} />
+                </F>
+              ))}
+            </Grid>
+          )}
           {!rec && (
             <p className="text-2xs text-muted-foreground">Age, annual income &amp; net worth are taken automatically from the fact-find above — no need to re-enter.</p>
           )}
         </Section>
-
-        {/* 11 · Advisor assessment — internal only */}
-        {!clientMode && (
-          <Section title="11 · Advisor assessment" subtitle="Internal — not shown to the client">
-            <Grid>
-              <F label="Assessed risk profile"><S v={data.assessment?.riskProfile} on={(x) => setAssess("riskProfile", x)} opts={O.RISK_PROFILES} /></F>
-              <F label="Advisory service required"><S v={data.assessment?.advisoryService} on={(x) => setAssess("advisoryService", x)} opts={O.ADVICE_TYPES} /></F>
-              <F label="Recommended next action"><S v={data.assessment?.nextAction} on={(x) => setAssess("nextAction", x)} opts={O.NEXT_STEPS} /></F>
-              <F label="Follow-up date"><DateField className="input-base text-sm w-full" value={data.assessment?.followUpDate ?? ""} onChange={(e) => setAssess("followUpDate", e.target.value)} /></F>
-              <F label="RM conviction (1–5)"><S v={data.assessment?.convictionRating} on={(x) => setAssess("convictionRating", x)} opts={O.RM_RATINGS} /></F>
-              <F label="Review type"><S v={data.assessment?.reviewType} on={(x) => setAssess("reviewType", x)} opts={O.REVIEW_TYPES} /></F>
-            </Grid>
-            <F label="Key client concerns / notes"><textarea className="input-base text-sm w-full min-h-[72px]" value={data.assessment?.concerns ?? ""} onChange={(e) => setAssess("concerns", e.target.value)} /></F>
-          </Section>
-        )}
 
         {/* Actions */}
         <div className="flex items-center justify-end gap-2 pt-2">

@@ -4,7 +4,7 @@ import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, UserPlus, Loader2, AlertTriangle, ExternalLink, Camera, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronDown, ChevronUp, PlusCircle, UserPlus, Loader2, AlertTriangle, ExternalLink, Camera, Trash2 } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
 import { RmSelector } from "@/components/common/RmSelector";
@@ -43,6 +43,7 @@ const LEAD_TYPES: [string, string][] = [
   ["individual", "Individual"],
   ["hni", "HNI"],
   ["nri", "NRI"],
+  ["huf", "HUF"],
   ["corporate", "Corporate"],
   ["minor", "Minor"],
 ];
@@ -479,13 +480,33 @@ export default function NewLeadPage() {
         {/* Everything below is optional detail — hidden until asked for, so a
             lead can be captured mid-phone-call in four fields. */}
         <div className="sm:col-span-2">
+          {/* Tinted in the brand colour with a "click here" line, so people see
+              there is more to fill in — a grey dashed box read as decoration. */}
           <button
             type="button"
             onClick={() => setShowAll((v) => !v)}
-            className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-border py-2.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+            className={`w-full flex items-center justify-center gap-2.5 rounded-lg border py-3 px-4 transition-colors ${
+              showAll
+                ? "border-border text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                : "border-primary/40 bg-primary/5 text-primary hover:bg-primary/10"
+            }`}
             aria-expanded={showAll}
           >
-            {showAll ? "Hide extra details" : "Add full details — photo, email, products, amounts & more"}
+            {showAll ? (
+              <>
+                <ChevronUp className="size-4 shrink-0" aria-hidden />
+                <span className="text-xs font-semibold">Hide extra details</span>
+              </>
+            ) : (
+              <>
+                <PlusCircle className="size-5 shrink-0" aria-hidden />
+                <span className="text-left">
+                  <span className="block text-sm font-semibold">Add full details — photo, email, products, amounts &amp; more</span>
+                  <span className="block text-xs font-normal opacity-80">Click here to write more info</span>
+                </span>
+                <ChevronDown className="size-4 shrink-0" aria-hidden />
+              </>
+            )}
           </button>
         </div>
 

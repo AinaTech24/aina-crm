@@ -153,7 +153,8 @@ describe("Lead → Client SOP: Proposal Sent is a real stage", () => {
   });
 
   it("offers buttons on Proposal Sent and still closes lost leads", () => {
-    expect(STAGE_ACTIONS.proposal_sent?.map((a) => a.targetStage)).toEqual(["won_lead", "meeting_scheduled", "not_qualified"]);
+    // Approved → Won, View Proposal stays on the step, then follow-up / declined.
+    expect(STAGE_ACTIONS.proposal_sent?.map((a) => a.targetStage)).toEqual(["won_lead", "proposal_sent", "meeting_scheduled", "not_qualified"]);
     expect(stageDisposition("not_qualified")).toBe("lost");
     expect(stageDisposition("proposal_sent")).toBe("in_progress");
   });

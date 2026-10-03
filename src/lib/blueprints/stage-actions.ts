@@ -20,7 +20,17 @@ export type StageActionBehaviour =
   | { kind: "open_dialog"; dialog: DialogKind }
   | { kind: "navigate"; hrefPattern: string }
   | { kind: "advance_only" }
-  | { kind: "call_api"; endpoint: string; body?: Record<string, unknown>; afterStage?: string };
+  | { kind: "call_api"; endpoint: string; body?: Record<string, unknown>; afterStage?: string }
+  /**
+   * Works through the lead's current proposal (GET /api/leads/[id]/proposal):
+   *  - create_or_send: no proposal → the builder; a draft → open it to Send.
+   *    Sending moves the lead to Proposal Sent (proposal.sent auto-advance).
+   *  - open: open the current proposal (hidden when there is none).
+   *  - accept: mark the sent proposal accepted → the lead becomes Won and the
+   *    document checklist goes out (lib/proposals/journey.ts). With no
+   *    proposal on file it falls back to the Won Lead product dialog.
+   */
+  | { kind: "proposal"; step: "create_or_send" | "open" | "accept" };
 
 export type DialogKind =
   | "log_call"
@@ -254,25 +264,28 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
     },
   ],
 
-  // 8. Meeting Done — qualify or kill
+  // 8. Meeting Done — propose, skip the proposal, or kill. The firm's flow
+  // (2026-10-02): meeting → create the proposal → send it → the client
+  // approves → Won. "Skip Proposal" is the firm's way past it when the client
+  // has already decided without one.
   meeting_done: [
     {
-      key: "won_lead",
-      label: "Qualified — Won Lead",
-      tone: "success",
-      targetStage: "won_lead",
-      hint: "Pick which product(s) the client is investing in — the onboarding flow adapts to it.",
-      // Opens the product-interest dialog; on save it records the product, sets
-      // the pipeline and advances to Won Lead (then the right onboarding branch).
-      behaviour: { kind: "open_dialog", dialog: "won_lead_product" },
+      key: "proposal",
+      label: "Create Proposal",
+      tone: "primary",
+      targetStage: "proposal_sent",
+      hint: "Build the proposal for this lead. Sending it to the client moves the journey to Proposal Sent.",
+      behaviour: { kind: "proposal", step: "create_or_send" },
     },
     {
-      key: "proposal_sent",
-      label: "Proposal Sent",
+      key: "skip_proposal",
+      label: "Skip Proposal — Won Lead",
       tone: "secondary",
-      targetStage: "proposal_sent",
-      hint: "The proposal has gone to the client — wait for their decision.",
-      behaviour: { kind: "advance_only" },
+      targetStage: "won_lead",
+      hint: "The client has decided without a proposal. Pick the product(s) they are investing in — the onboarding flow adapts to it.",
+      // The product-interest dialog: records the product, sets the pipeline
+      // and advances to Won Lead (then the right onboarding branch).
+      behaviour: { kind: "open_dialog", dialog: "won_lead_product" },
     },
     {
       key: "not_qualified",
@@ -288,11 +301,19 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
   proposal_sent: [
     {
       key: "won_lead",
-      label: "Proposal Accepted — Won Lead",
+      label: "Proposal Approved — Won Lead",
       tone: "success",
       targetStage: "won_lead",
-      hint: "Pick which product(s) the client is investing in — the onboarding flow adapts to it.",
-      behaviour: { kind: "open_dialog", dialog: "won_lead_product" },
+      hint: "The client approved the proposal (by phone or in person). Marks it accepted, wins the lead and sends the document checklist. If they approve through the proposal link, this happens by itself.",
+      behaviour: { kind: "proposal", step: "accept" },
+    },
+    {
+      key: "open_proposal",
+      label: "View Proposal",
+      tone: "secondary",
+      targetStage: "proposal_sent",
+      hint: "Open the proposal the client has — resend it, or revise it.",
+      behaviour: { kind: "proposal", step: "open" },
     },
     {
       key: "follow_up_meeting",

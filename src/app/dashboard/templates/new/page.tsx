@@ -81,6 +81,12 @@ export default function NewTemplatePage() {
   const [keyEdited, setKeyEdited] = useState(false);
   const [description, setDescription] = useState("");
   const [channel, setChannel] = useState<Channel>("email");
+  // "Create new template" in a record's Send mail / Send WhatsApp dialog links
+  // here with ?channel=, so the designer opens on that channel.
+  useEffect(() => {
+    const c = new URLSearchParams(window.location.search).get("channel");
+    if (c === "email" || c === "whatsapp" || c === "sms") setChannel(c);
+  }, []);
   const [category, setCategory] = useState<Category>("transactional");
   const [locale, setLocale] = useState("en-IN");
   const [attachments, setAttachments] = useState<Array<{ name: string; url: string }>>([]);

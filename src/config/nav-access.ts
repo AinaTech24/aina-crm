@@ -61,11 +61,11 @@ export const NAV_ACCESS_GROUPS: NavAccessGroup[] = [
     ],
   },
   {
-    title: "Advice",
+    title: "Planning Tools",
     items: [
       { key: "/dashboard/calculators", label: "Calculators" },
       { key: "/dashboard/goals", label: "Goals", module: "goal_planning" },
-      { key: "/dashboard/financial-plans", label: "Financial Plans", module: "goal_planning" },
+      { key: "/dashboard/financial-plans", label: "Financial Health Check", module: "goal_planning" },
       { key: "/dashboard/proposals", label: "Proposals", module: "proposals" },
       { key: "/dashboard/insurance", label: "Insurance", module: "insurance" },
       { key: "/dashboard/insurance-claims", label: "Insurance Claims", module: "insurance" },

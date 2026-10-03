@@ -215,8 +215,9 @@ export function computeRisk(inp: RiskInput): RiskResult {
   }
 
   // A risk profile on record is the client's risk profile — one answer across
-  // the CRM. The questions then only feed the product-suitability inputs
-  // (horizon, lump sum, liquidity).
+  // the CRM. The form then asks nothing (2026-10-02), so suitability rests on
+  // the recorded band; horizon / lump sum / liquidity count only where an
+  // older fact-find already answered them ("na" is ignored by rollup).
   const recordedId = inp.recordedCategory ? RECORDED_BAND[inp.recordedCategory] : undefined;
   const band = recordedId ? RISK_BANDS.find((b) => b.id === recordedId)! : bandForScore(score);
 

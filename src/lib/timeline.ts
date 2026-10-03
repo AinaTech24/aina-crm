@@ -36,6 +36,18 @@ export type TimelineItem = {
   href?: string | null;
   /** What the detail dialog shows when the item has no page of its own. */
   detail?: TimelineDetail | null;
+  /** A task or meeting whose status can be changed from the timeline
+   *  (components/common/TimelineStatusControl). */
+  control?: TimelineControl | null;
+};
+
+export type TimelineControl = {
+  entity: "task" | "meeting";
+  id: string;
+  /** The raw stored status. */
+  status: string;
+  /** A meeting with a lead — completing it asks for the outcome, which moves the lead. */
+  lead?: boolean;
 };
 
 export type TimelineDetail = {
@@ -143,6 +155,7 @@ export function fromTasks(rows: Row[], opts?: { href?: (t: Row) => string }): Ti
       meta: meta || null,
       status,
       href: opts?.href ? opts.href(t) : t.id ? `/dashboard/tasks/${t.id}` : null,
+      control: t.id ? { entity: "task", id: String(t.id), status: s } : null,
     }];
   });
 }
@@ -189,11 +202,14 @@ export function fromMeetings(rows: Row[]): TimelineItem[] {
       id: `meeting-${m.id}`,
       kind: "meeting",
       at,
-      title: `Meeting · ${humanise(String(m.meetingType ?? "review"))}`,
+      // The subject the user typed ("Intro meeting — Riya Kapoor") is how they
+      // know the meeting; the type is the fallback.
+      title: `Meeting · ${m.subject ? String(m.subject) : humanise(String(m.meetingType ?? "review"))}`,
       body: m.discussionPoints ? String(m.discussionPoints) : m.outcomeNotes ? String(m.outcomeNotes) : null,
       meta: meta || null,
       status,
       href: m.id ? `/dashboard/review-meetings/${m.id}` : null,
+      control: m.id ? { entity: "meeting", id: String(m.id), status: s, lead: !!(m.leadId ?? m.lead_id) } : null,
     }];
   });
 }

@@ -31,7 +31,7 @@ const VALID_SOURCES = new Set([
   "webinar", "event", "walk_in", "manual", "other",
 ]);
 const VALID_AUM = new Set(["under_10l", "10l_50l", "50l_2cr", "hni_2cr_plus"]);
-const VALID_LEAD_TYPE = new Set(["individual", "hni", "nri", "corporate", "minor"]);
+const VALID_LEAD_TYPE = new Set(["individual", "hni", "nri", "huf", "corporate", "minor"]);
 
 const numOrNull = (v: string) => { const n = Number(String(v).replace(/[,₹\s]/g, "")); return Number.isFinite(n) && n >= 0 ? n : null; };
 /** Split a "a, b; c" cell into a clean string array (for jsonb columns). */

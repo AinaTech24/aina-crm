@@ -53,7 +53,7 @@ const CreateBody = z.object({
   /** Canonical pipeline value in rupees (preferred over the free-text amount). */
   expectedBusinessAmount: z.number().min(0).max(1e12).optional(),
   aumPotential: z.enum(["under_10l", "10l_50l", "50l_2cr", "hni_2cr_plus"]).optional(),
-  leadType: z.enum(["individual", "hni", "nri", "corporate", "minor"]).optional(),
+  leadType: z.enum(["individual", "hni", "nri", "huf", "corporate", "minor"]).optional(),
   /** Products of interest (multi). The column already existed — now captured. */
   interestProducts: z.array(z.string().max(60)).max(20).optional(),
   occupation: z.string().max(120).optional(),

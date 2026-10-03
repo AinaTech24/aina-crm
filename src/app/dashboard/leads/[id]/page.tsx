@@ -33,7 +33,6 @@ import { RecordProvenance } from "@/components/common/RecordProvenance";
 import { RowActions } from "@/components/common/RowActions";
 import { RecordMenu, RecordMenuSeparator } from "@/components/common/RecordMenu";
 import { RecordTimeline } from "@/components/common/RecordTimeline";
-import { RecordAutomations } from "@/components/sales-ops/RecordAutomations";
 import { SignalScoreCard } from "@/components/leads/SignalScoreCard";
 import { LeadEditPanel } from "@/components/leads/LeadEditPanel";
 import { LeadAttachments } from "@/components/leads/LeadAttachments";
@@ -216,7 +215,6 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                   triggerClassName={MENU_ITEM}
                 />
                 <ChangeLogButton entityType="lead" entityId={l.id} triggerClassName={MENU_ITEM} />
-                <RecordAutomations subject={{ type: "lead", id: l.id }} />
                 <RecordMenuSeparator />
                 <RelatedListsManager moduleKey="leads-detail" sections={LEAD_DETAIL_SECTIONS} triggerClassName={MENU_ITEM} />
                 <RecordMenuSeparator />

@@ -163,12 +163,12 @@ const NAV: NavSection[] = [
     ],
   },
   {
-    title: "Advice",
+    title: "Planning Tools",
     items: [
       { href: "/dashboard/calculators", label: "Calculators", icon: Calculator },
       { href: "/dashboard/goals", label: "Goals", icon: Target, module: "goal_planning",
         roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
-      { href: "/dashboard/financial-plans", label: "Financial Plans", icon: ClipboardList, module: "goal_planning",
+      { href: "/dashboard/financial-plans", label: "Financial Health Check", icon: ClipboardList, module: "goal_planning",
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
       { href: "/dashboard/proposals", label: "Proposals", icon: FileSignature, module: "proposals",
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },

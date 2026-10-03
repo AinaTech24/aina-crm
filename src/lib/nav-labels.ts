@@ -34,7 +34,7 @@ export const NAV_LABELS: Record<string, string> = {
   "/dashboard/fixed-deposits": "Fixed Deposits",
   "/dashboard/fixed-deposits/new": "Add FD",
   "/dashboard/finances": "Practice Finances",
-  "/dashboard/financial-plans": "Financial Plans",
+  "/dashboard/financial-plans": "Financial Health Check",
   "/dashboard/goals": "Goals",
   "/dashboard/induction": "Induction",
   "/dashboard/insurance": "Insurance",

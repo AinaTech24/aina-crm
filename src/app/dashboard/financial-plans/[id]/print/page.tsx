@@ -195,7 +195,7 @@ export default async function FinancialPlanPrintPage({
 
         {/* Title */}
         <div className="fp-h2" style={{ marginBottom: 2 }}>Detailed Wealth Roadmap</div>
-        <div className="fp-h1">Personal Financial Plan</div>
+        <div className="fp-h1">Financial Health Check</div>
 
         {/* Prepared For / Prepared By / Health Score Info */}
         <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1.2fr", gap: 16, marginTop: 16 }}>
@@ -514,7 +514,7 @@ export default async function FinancialPlanPrintPage({
           </div>
           <div style={{ marginTop: 6, display: "flex", justifyContent: "space-between" }}>
             <span>{tenant?.displayName} · ARN-{(tenant?.arn ?? "").replace(/^ARN-?/i, "")}</span>
-            <span>Plan {p.planNumber}</span>
+            <span>Ref. {p.planNumber}</span>
           </div>
         </div>
       </div>

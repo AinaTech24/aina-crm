@@ -121,6 +121,15 @@ function buildDefault(items: NavItemData[]): Group[] {
   return groups;
 }
 
+/** Default group titles the product has renamed. A saved layout keeps the
+ *  user's own order and groups; only a title still at its old DEFAULT is
+ *  carried over, so a name the user typed is never touched (and no VERSION
+ *  bump is needed to wipe everyone's customised sidebar). */
+const RENAMED_GROUPS: Record<string, string> = {
+  // 2026-10-02: a mutual fund distributor does not give advice.
+  Advice: "Planning Tools",
+};
+
 /** Merge a saved layout with the currently-available items. */
 function reconcile(saved: SavedLayout | null, items: NavItemData[]): Group[] {
   if (!saved || saved.v !== VERSION || !Array.isArray(saved.groups)) return buildDefault(items);
@@ -128,7 +137,7 @@ function reconcile(saved: SavedLayout | null, items: NavItemData[]): Group[] {
   const seen = new Set<string>();
   const groups: Group[] = saved.groups.map((g) => ({
     id: g.id,
-    title: g.title ?? "",
+    title: RENAMED_GROUPS[g.title ?? ""] ?? g.title ?? "",
     items: (g.items || []).filter((h) => {
       if (available.has(h) && !seen.has(h)) {
         seen.add(h);

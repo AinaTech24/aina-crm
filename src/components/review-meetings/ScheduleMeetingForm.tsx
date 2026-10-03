@@ -92,7 +92,15 @@ export function ScheduleMeetingForm({
   /** When provided (e.g. in a modal), called on save instead of navigating to
    *  the review-meetings list — lets the host close the modal & refresh. The
    *  saved meeting's key details are passed back for a confirmation / invite. */
-  onSuccess?: (meeting?: { id?: string; day?: string; time?: string; subject?: string }) => void;
+  onSuccess?: (meeting?: {
+    id?: string;
+    day?: string;
+    time?: string;
+    subject?: string;
+    startIso?: string;
+    durationMinutes?: number;
+    location?: string;
+  }) => void;
   /** Pre-fills the subject line (e.g. "Intro meeting — {lead name}"). */
   defaultSubject?: string;
   /** "new" | "review" | "follow_up" — defaults the Meeting type dropdown. */
@@ -188,7 +196,16 @@ export function ScheduleMeetingForm({
         setErr(j.error ?? `Save failed (${res.status})`);
         return;
       }
-      if (onSuccess) onSuccess({ id: j?.id, day: form.meetingDay, time: form.meetingTime, subject: form.subject });
+      if (onSuccess)
+        onSuccess({
+          id: j?.id,
+          day: form.meetingDay,
+          time: form.meetingTime,
+          subject: form.subject,
+          startIso: body.meetingDate,
+          durationMinutes: body.durationMinutes,
+          location: form.locationOrLink || undefined,
+        });
       else router.push("/dashboard/review-meetings");
     } finally {
       setBusy(false);

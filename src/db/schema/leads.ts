@@ -160,7 +160,7 @@ export const leads = pgTable(
     }),
     /** Lead classification — drives routing, segmentation, scoring inputs. */
     leadType: text("lead_type", {
-      enum: ["individual", "hni", "nri", "corporate", "minor"],
+      enum: ["individual", "hni", "nri", "huf", "corporate", "minor"],
     }),
     /** Qualification context the RM gathers up-front: occupation + what the
      *  lead already holds elsewhere (for the pitch). JSONB so it can grow. */
