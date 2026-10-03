@@ -192,8 +192,7 @@ export default async function TrashPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeaderCard title={<><Trash2 className="size-5 text-muted-foreground" /> Trash</>} subtitle={<>Deleted items are kept here, grouped by module. Restore one to bring it back exactly as it was,
-          or delete it permanently. Clients are auto-removed {retention} days after deletion.</>} />
+      <PageHeaderCard title={<><Trash2 className="size-5 text-muted-foreground" /> Trash</>} subtitle={<>Clients are removed for good {retention} days after deletion.</>} />
 
       {isEmpty ? (
         <div className="card-surface flex flex-col items-center justify-center gap-2 py-16 text-center">

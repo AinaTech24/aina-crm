@@ -233,10 +233,7 @@ export function RealStatement() {
     <div className="card-surface p-5 space-y-6">
       <div>
         <h2 className="text-base font-semibold">The REAL Statement — Net Worth &amp; Cashflow</h2>
-        <p className="text-xs text-muted-foreground">
-          A complete financial-discovery snapshot: <strong>R</strong>evenue, <strong>E</strong>xpenses, <strong>A</strong>ssets &amp; <strong>L</strong>iabilities — with
-          savings surplus, net worth (Notional &amp; Actual) and key health ratios. Enter monthly amounts for income &amp; expenses; present values for assets.
-        </p>
+        
       </div>
 
       {/* ── Headline ── */}

@@ -61,7 +61,7 @@ export default async function CalendarPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><Calendar className="size-6 text-muted-foreground" /> Calendar</>} subtitle={<>Meetings, reviews, follow-ups and SIP dates on one calendar.</>} actions={<><div className="flex items-center gap-2">
+      <PageHeaderCard title={<><Calendar className="size-6 text-muted-foreground" /> Calendar</>} actions={<><div className="flex items-center gap-2">
           <Link
             href={`/dashboard/calendar?month=${prevMonth.getFullYear()}-${String(prevMonth.getMonth() + 1).padStart(2, "0")}`}
             className="rounded-md border px-2.5 py-1.5 text-sm hover:bg-accent"

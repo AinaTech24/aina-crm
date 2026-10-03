@@ -29,7 +29,7 @@ export default async function ClaimsScorecardPage() {
 
   return (
     <div className="space-y-5 max-w-7xl">
-      <PageHeaderCard title={<><Clock className="size-6 text-muted-foreground" /> Settlement Scorecard</>} subtitle={<>Open-claim aging and per-insurer settlement performance (TAT & approval rate).</>} />
+      <PageHeaderCard title={<><Clock className="size-6 text-muted-foreground" /> Settlement Scorecard</>} />
 
       {/* Aging buckets */}
       <div>

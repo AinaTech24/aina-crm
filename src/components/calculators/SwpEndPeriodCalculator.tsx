@@ -57,11 +57,7 @@ export function SwpEndPeriodCalculator() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">SWP End Period Calculator</h2>
-        <p className="text-xs text-muted-foreground">
-          How long will the money last? Estimate how many years a lumpsum or
-          SIP-built corpus can sustain regular withdrawals (SWP), with optional
-          deferment and inflation-rising withdrawals.
-        </p>
+        
       </div>
 
       {/* Accumulation inputs */}

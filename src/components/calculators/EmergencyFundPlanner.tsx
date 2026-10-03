@@ -43,9 +43,7 @@ export function EmergencyFundPlanner() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Emergency Fund Planner</h2>
-        <p className="text-xs text-muted-foreground">
-          The financial seatbelt — before any goal investing. How big it should be, and how fast to build it.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

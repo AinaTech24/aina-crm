@@ -58,7 +58,7 @@ export default async function LeadNurturePage() {
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><Heart className="size-6 text-muted-foreground" /> Lead Nurturing</>} subtitle={<>Leads that aren't quite ready yet — keep them warm with periodic content + check-ins. Once they're ready, push them through to the proposal stage.</>} />
+      <PageHeaderCard title={<><Heart className="size-6 text-muted-foreground" /> Lead Nurturing</>} />
 
       <Section title="Overdue follow-ups" tone="rose" rows={buckets.overdue} />
       <Section title="Today" tone="amber" rows={buckets.today} />

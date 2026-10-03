@@ -116,8 +116,7 @@ export default async function CrossSellReportPage() {
 
   return (
     <div className="space-y-6 max-w-6xl">
-      <PageHeaderCard title={<><TrendingUp className="size-6 text-violet-600" /> Cross-sell opportunities</>} subtitle={<>Wallet-share growth worklist — clients who hold products elsewhere, are interested, or don't hold
-          them yet. Deepen the book product-by-product.</>} />
+      <PageHeaderCard title={<><TrendingUp className="size-6 text-violet-600" /> Cross-sell opportunities</>} />
 
       {/* Headline */}
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-3">

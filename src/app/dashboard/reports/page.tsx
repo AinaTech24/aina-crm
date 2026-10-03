@@ -36,7 +36,6 @@ export default function ReportsPage() {
             </HelpTip>
           </>
         }
-        subtitle="Every report your firm can run, grouped by the question it answers."
         actions={
           <Link href="/dashboard/reports/custom" className="btn-primary whitespace-nowrap">
             <BarChart3 className="size-4" /> Custom Reports

@@ -26,9 +26,7 @@ export function WealthDoublingCalculator() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Wealth Doubling — Rule of 72</h2>
-        <p className="text-xs text-muted-foreground">
-          How fast does money double? The simple rule every investor should know — and the milestones it unlocks.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

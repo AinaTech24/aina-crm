@@ -48,9 +48,7 @@ export function RentVsBuyPlanner() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Rent vs Buy — & Invest the Difference</h2>
-        <p className="text-xs text-muted-foreground">
-          Buy a home, or rent and invest the down-payment plus the monthly gap? See net worth on each path.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

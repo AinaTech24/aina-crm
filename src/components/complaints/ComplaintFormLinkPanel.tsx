@@ -86,7 +86,6 @@ export function ComplaintFormLinkPanel({
       <Card className="space-y-4 p-5">
         <CardHeader
           title="Your complaint link"
-          subtitle="Put it on your website — a Complaints or Contact us page is the usual place."
           action={<Badge tone={enabled ? "success" : "neutral"}>{enabled ? "Taking complaints" : "Switched off"}</Badge>}
         />
         <div className="flex flex-wrap items-center gap-2">
@@ -109,7 +108,6 @@ export function ComplaintFormLinkPanel({
       <Card className="space-y-4 p-5">
         <CardHeader
           title="Add it to your website"
-          subtitle="Whoever looks after your website pastes one of these into the page's HTML."
         />
         <Snippet label="As a link or button" code={linkSnippet} />
         <Snippet label="As the form itself, inside your page" code={frameSnippet} />

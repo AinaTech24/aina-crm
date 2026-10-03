@@ -70,7 +70,6 @@ export default async function ProposalConversionPage({ searchParams }: { searchP
     <div className="space-y-6 max-w-6xl">
       <PageHeaderCard
         title={<><FileSignature className="size-6 text-muted-foreground" /> Proposal Conversion</>}
-        subtitle="Of what you proposed, how much clients accepted — and how much was actually invested."
         actions={
           <nav className="inline-flex flex-wrap rounded-lg bg-secondary p-0.5 gap-0.5" aria-label="Period">
             {Object.entries(WINDOWS).map(([k, w]) => (

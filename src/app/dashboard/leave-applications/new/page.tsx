@@ -41,7 +41,7 @@ export default async function NewLeavePage() {
         <div className="size-12 rounded-lg bg-brand-cyan-light grid place-items-center">
           <CalendarOff className="size-6 text-muted-foreground" />
         </div>
-        <PageHeaderCard title={<>File a leave request</>} subtitle={<>Your reporting manager (or an owner) is notified to approve. Balances are shown against this year's policy.</>} />
+        <PageHeaderCard title={<>File a leave request</>} />
       </div>
 
       <LeaveForm

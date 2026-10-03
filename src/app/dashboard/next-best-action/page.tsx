@@ -108,7 +108,7 @@ export default async function NextBestActionPage({ searchParams }: { searchParam
             <HelpTip title="Next Best Action">
               A prioritised, one-at-a-time worklist of the highest-value action for each client
               right now — so nothing slips and your team always knows what to do next.
-            </HelpTip></>} subtitle={<>The highest-value next action for each client, ranked for you.</>} actions={<><div className="flex items-center gap-2 flex-wrap">
+            </HelpTip></>} actions={<><div className="flex items-center gap-2 flex-wrap">
           <div className="inline-flex rounded-lg border border-border bg-card p-0.5 gap-0.5">
             <Link href={hrefWith({ focus: undefined })} className={`px-2.5 py-1 rounded-md text-xs font-medium inline-flex items-center gap-1.5 ${!focusMode ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
               <Rows3 className="size-3" /> List

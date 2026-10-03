@@ -86,9 +86,7 @@ export function EmailSenderForm({
     <form onSubmit={save} className="border rounded-lg bg-card p-5 space-y-4">
       <div>
         <div className="font-semibold">Your email identity</div>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          How client emails (statements, proposals, automations) appear in your clients&apos; inbox.
-        </p>
+        
       </div>
 
       {/* Live From preview */}

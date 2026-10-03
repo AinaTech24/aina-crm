@@ -83,7 +83,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastCtx.Provider value={api}>
       {children}
-      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex flex-col items-center gap-2 w-[min(92vw,26rem)] pointer-events-none print:hidden">
+      {/* Below the 64px top bar (h-16), so a toast never sits on the search box
+          or the Add button — top-4 put it right over them. */}
+      <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[100] flex flex-col items-center gap-2 w-[min(92vw,26rem)] pointer-events-none print:hidden">
         {items.map((t) => (
           <ToastCard key={t.id} item={t} onDismiss={dismiss} />
         ))}
@@ -139,12 +141,12 @@ const META: Record<
 function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: number) => void }) {
   const m = META[item.type];
   const Icon = m.icon;
+  // The tint (`bg-*/10`) is see-through on its own — whatever is under the
+  // toast showed through its text. A solid card underneath keeps the colour
+  // and makes it readable over anything.
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      className={`pointer-events-auto w-full rounded-xl border ${m.ring} ${m.bg} shadow-lg px-3.5 py-2.5 flex items-start gap-2.5 animate-scale-in`}
-    >
+    <div role="status" aria-live="polite" className="pointer-events-auto w-full rounded-xl bg-card shadow-lg animate-scale-in">
+    <div className={`rounded-xl border ${m.ring} ${m.bg} px-3.5 py-2.5 flex items-start gap-2.5`}>
       <Icon className={`size-5 ${m.iconC} mt-0.5 shrink-0`} />
       <div className="min-w-0 flex-1">
         {item.title && <div className={`text-sm font-semibold ${m.text}`}>{item.title}</div>}
@@ -155,11 +157,12 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: numbe
       <button
         type="button"
         onClick={() => onDismiss(item.id)}
-        className={`${m.iconC} hover:opacity-70 shrink-0 -mr-0.5`}
+        className={`${m.iconC} hover:opacity-70 shrink-0 -mr-1.5 -mt-0.5 grid size-6 place-items-center rounded`}
         aria-label="Dismiss"
       >
         <X className="size-3.5" />
       </button>
+    </div>
     </div>
   );
 }

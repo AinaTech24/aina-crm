@@ -48,10 +48,7 @@ export function InsuranceTargetsManager({ metrics, initial, fiscalYear }: { metr
   return (
     <section id="insurance" className="card-surface scroll-mt-24 p-5 sm:p-6" aria-label="Insurance targets">
       <h2 className="section-title flex items-center gap-2"><ShieldCheck className="size-4 text-muted-foreground" /> Insurance targets · FY {fiscalYear}</h2>
-      <p className="section-subtitle mb-4 mt-1">
-        The whole firm&apos;s insurance targets for the year — the Insurance Business Command Centre phases them to the month and quarter.
-        Premium in rupees; clients and policies as counts. Leave a field empty for “Not set”.
-      </p>
+      
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {metrics.map((m) => (
           <label key={m.key} className="block">

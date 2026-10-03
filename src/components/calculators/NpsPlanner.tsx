@@ -32,11 +32,7 @@ export function NpsPlanner() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">NPS Retirement &amp; Tax Planner</h2>
-        <p className="text-xs text-muted-foreground">
-          Project the NPS corpus at retirement, the tax-free lump sum and the
-          monthly pension from the mandatory annuity — plus the extra ₹50,000
-          80CCD(1B) tax deduction.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

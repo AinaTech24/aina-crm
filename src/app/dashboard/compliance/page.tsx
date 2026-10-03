@@ -221,7 +221,7 @@ export default async function CompliancePage() {
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<>Compliance & DDQ readiness</>} subtitle={<>How ready your firm is for a due-diligence questionnaire, and what is still missing.</>} actions={<><HelpTip title="Compliance / DDQ">
+      <PageHeaderCard title={<>Compliance & DDQ readiness</>} actions={<><HelpTip title="Compliance / DDQ">
           Your firm&apos;s audit-readiness score. It checks the documents and records SEBI/AMFI
           expect in a due-diligence review (DDQ = Due Diligence Questionnaire) and shows what&apos;s
           missing, so you&apos;re always inspection-ready.
@@ -238,10 +238,7 @@ export default async function CompliancePage() {
           </div>
           <div>
             <div className="font-semibold text-sm">AMFI DDQ audit checklist</div>
-            <div className="text-xs text-muted-foreground">
-              All 40 due-diligence items across 6 sections — mapped to where the evidence lives,
-              with live readiness tracking.
-            </div>
+            
           </div>
         </div>
         <span className="inline-flex items-center gap-1 text-sm font-semibold text-brand-cyan-deep whitespace-nowrap">
@@ -261,10 +258,7 @@ export default async function CompliancePage() {
           </div>
           <div>
             <div className="font-semibold text-sm">DDQ compliance registers</div>
-            <div className="text-xs text-muted-foreground">
-              Annual self-certification (4.26), mis-selling / third-party-payment / legal incidents
-              (4.17–4.20b, 6.x) and unsuitability acknowledgements (2.4b).
-            </div>
+            
           </div>
         </div>
         <span className="inline-flex items-center gap-1 text-sm font-semibold text-brand-cyan-deep whitespace-nowrap">

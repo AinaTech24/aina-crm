@@ -49,10 +49,7 @@ export function AssetAllocationReview() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Asset Allocation Review — Existing vs Suggested</h2>
-        <p className="text-xs text-muted-foreground">
-          Map the client&apos;s current portfolio across asset sleeves, propose a rebalanced mix, and show the projected
-          wealth at two horizons. The SIP sleeve is grown monthly; lumpsum sleeves compound annually.
-        </p>
+        
       </div>
 
       {/* Top inputs (captured as PDF assumptions) */}

@@ -269,7 +269,6 @@ export default async function FamiliesPage({
     <div className="space-y-6 max-w-7xl">
       <PageHeaderCard
         title={<>Families</>}
-        subtitle={<>Group clients into households to see a family&apos;s whole portfolio together.</>}
         actions={
           <>
             <FamiliesMoreMenu />

@@ -100,9 +100,7 @@ export function AumOpportunityCalculator() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">AUM Opportunity Calculator</h2>
-        <p className="text-xs text-muted-foreground">
-          Size the next-business opportunity from idle money, FDs, stopped SIPs, bonus cash and family wallet share.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

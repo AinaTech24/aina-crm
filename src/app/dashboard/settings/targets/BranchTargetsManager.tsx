@@ -98,10 +98,7 @@ export function BranchTargetsManager({
           <Building2 className="size-4 text-muted-foreground" />
           Branch targets — FY {fiscalYear}
         </h2>
-        <p className="section-subtitle mt-0.5">
-          These fill the target columns on the director dashboard&apos;s branch scoreboard. Leave a
-          box empty for no target — the scoreboard shows &ldquo;Not set&rdquo; rather than 0%.
-        </p>
+        
       </div>
 
       <div className="table-scroll">

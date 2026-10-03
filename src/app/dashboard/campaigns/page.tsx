@@ -183,7 +183,7 @@ export default async function CampaignsPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><Megaphone className="size-6 text-muted-foreground" /> Marketing Campaigns</>} subtitle={<>Send a WhatsApp or email campaign to a group of clients and see who opened it.</>} actions={<><div className="flex items-center gap-2">
+      <PageHeaderCard title={<><Megaphone className="size-6 text-muted-foreground" /> Marketing Campaigns</>} actions={<><div className="flex items-center gap-2">
           <Link href="/dashboard/reports/campaign_conversion" className="btn-secondary text-xs">
             <FileText className="size-3.5" /> Conversion report
           </Link>

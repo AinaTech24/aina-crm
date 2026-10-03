@@ -39,11 +39,7 @@ export function AnnualLumpsumRequiredCalculator() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Annual Lumpsum for Target Future Value</h2>
-        <p className="text-xs text-muted-foreground">
-          How much to invest as a lumpsum each year to reach a goal — compare the
-          yearly amount needed across return scenarios. You can stop paying before
-          the horizon ends and let the corpus keep growing.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

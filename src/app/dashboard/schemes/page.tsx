@@ -111,7 +111,7 @@ export default async function SchemesPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><Boxes className="size-6 text-muted-foreground" /> Scheme Master</>} subtitle={<>The scheme master — every fund you can transact in, with its details.</>} actions={<>{canManage && <SyncSchemesButton />}</>} />
+      <PageHeaderCard title={<><Boxes className="size-6 text-muted-foreground" /> Scheme Master</>} actions={<>{canManage && <SyncSchemesButton />}</>} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat icon={Boxes} label={showDirect ? "Schemes (all plans)" : "Schemes (regular plans)"} value={s.total ?? 0} />

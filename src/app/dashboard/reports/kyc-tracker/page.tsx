@@ -123,11 +123,7 @@ export default async function KycTrackerPage() {
           </Link>
         </div>
         <h1 className="page-title">KYC tracker</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Active client KYC status at a glance — validation state,
-          PAN-Aadhaar link, residency, CKYC expiry. Click any name to
-          update.
-        </p>
+        
       </div>
 
       <KycTrackerClient initialRows={serialised} summary={summary} />

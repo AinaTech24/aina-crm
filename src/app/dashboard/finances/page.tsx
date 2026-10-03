@@ -90,7 +90,7 @@ export default async function FinancesHubPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <PageHeaderCard title={<><Wallet className="size-6 text-muted-foreground" /> Practice Finances</>} subtitle={<>Your practice&apos;s own money — revenue, expenses and profit.</>} actions={<><span className="text-xs text-muted-foreground">FY {fy}</span></>} />
+      <PageHeaderCard title={<><Wallet className="size-6 text-muted-foreground" /> Practice Finances</>} actions={<><span className="text-xs text-muted-foreground">FY {fy}</span></>} />
 
       {/* Live overview */}
       {hasData ? (

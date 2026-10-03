@@ -138,8 +138,7 @@ export default function ImportPage() {
 
   return (
     <div className="space-y-4 max-w-4xl">
-<PageHeaderCard title={<>Import clients from Excel</>} subtitle={<>Upload a .xlsx or .csv file, then choose to <strong>add new</strong> clients, <strong>update existing</strong>{" "}
-        clients, or <strong>both</strong> — matching existing clients on Client ID, Email, PAN or Mobile.</>} />
+<PageHeaderCard title={<>Import clients from Excel</>} />
 <ol className="flex items-center gap-4 text-xs">
         <Step label="Upload file" active={step === "upload"} done={step !== "upload"} />
         <Step label="Map columns" active={step === "map"} done={step === "commit" || step === "done"} />

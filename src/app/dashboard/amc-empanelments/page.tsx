@@ -68,7 +68,7 @@ export default async function AmcEmpanelmentsListPage({
 
   return (
     <div className="space-y-5">
-      <PageHeaderCard title={<>AMC Empanelments</>} subtitle={<>Which fund houses you are empanelled with, and when each empanelment expires.</>} actions={<><Link href="/dashboard/amc-empanelments/new" className="btn-primary text-sm">
+      <PageHeaderCard title={<>AMC Empanelments</>} actions={<><Link href="/dashboard/amc-empanelments/new" className="btn-primary text-sm">
           <Plus className="size-4" /> Add empanelment
         </Link></>} />
 

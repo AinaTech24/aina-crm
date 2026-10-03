@@ -50,7 +50,7 @@ export default async function SipExpiryPage({
 
   return (
     <div className="space-y-5 max-w-6xl">
-      <PageHeaderCard title={<><CalendarClock className="size-6 text-muted-foreground" /> SIP Expiry</>} subtitle={<>Active SIPs reaching the end of their term. Renew before the last instalment, not after.</>} />
+      <PageHeaderCard title={<><CalendarClock className="size-6 text-muted-foreground" /> SIP Expiry</>} />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Kpi label="Expiring in 30 days" value={String(summary.expiring30)} sub={inr(summary.amount30) + "/mo at risk"} tone="rose" />

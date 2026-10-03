@@ -21,6 +21,7 @@ import { TableDensityToggle, useTableDensity } from "@/components/common/TableDe
 import { FloatingBulkBar } from "@/components/common/FloatingBulkBar";
 import { LeadSidePeek, type SidePeekLead } from "@/components/leads/LeadSidePeek";
 import { leadSourceLabel } from "@/lib/leads/sources";
+import type { LeadExtraColumn } from "@/lib/leads/table-columns";
 
 type Row = {
   id: string;
@@ -38,6 +39,8 @@ type Row = {
   createdAt: string | null;
   owner: string | null;
   score: number;
+  /** Every other lead field, formatted on the server (null = blank). */
+  cells: Record<string, string | null>;
 };
 
 const toneStyles: Record<string, string> = {
@@ -64,7 +67,17 @@ const sourceColors: Record<string, string> = {
   other: "bg-secondary text-foreground border-border",
 };
 
-export function LeadsTable({ rows, sort, dir = "desc" }: { rows: Row[]; sort: string; dir?: "asc" | "desc" }) {
+export function LeadsTable({
+  rows,
+  extraColumns,
+  sort,
+  dir = "desc",
+}: {
+  rows: Row[];
+  extraColumns: LeadExtraColumn[];
+  sort: string;
+  dir?: "asc" | "desc";
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -169,6 +182,9 @@ export function LeadsTable({ rows, sort, dir = "desc" }: { rows: Row[]; sort: st
                   Created <ArrowUpDown className="size-3" /> {sortArrow("recent")}
                 </button>
               </th>
+              {extraColumns.map((c) => (
+                <th key={c.key} data-col={c.key} className={`${isCompact ? "py-1.5" : "py-2.5"} font-medium whitespace-nowrap`}>{c.label}</th>
+              ))}
               <th data-col="actions" className={`px-4 ${isCompact ? "py-1.5" : "py-2.5"} text-right font-medium`}>Actions</th>
             </tr>
           </thead>
@@ -231,6 +247,19 @@ export function LeadsTable({ rows, sort, dir = "desc" }: { rows: Row[]; sort: st
                   <td data-col="createdAt" className={`${isCompact ? "py-1.5" : "py-2.5"} text-xs text-muted-foreground tabular-nums`}>
                     {l.createdAt ? formatDate(l.createdAt) : "—"}
                   </td>
+                  {extraColumns.map((c) => {
+                    const v = l.cells[c.key];
+                    return (
+                      <td
+                        key={c.key}
+                        data-col={c.key}
+                        title={c.long && v ? v : undefined}
+                        className={`${isCompact ? "py-1.5" : "py-2.5"} text-xs ${v ? "" : "text-muted-foreground"} ${c.long ? "max-w-xs truncate" : "whitespace-nowrap"}`}
+                      >
+                        {v ?? "—"}
+                      </td>
+                    );
+                  })}
                   <td data-col="actions" className={`px-4 ${isCompact ? "py-1.5" : "py-2.5"} text-right`}>
                     <div className="flex items-center justify-end gap-1" data-no-row-nav>
                       <button

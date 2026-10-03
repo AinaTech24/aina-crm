@@ -54,12 +54,7 @@ export default async function SuitabilityMatrixPage() {
           </Link>
         </div>
         <h1 className="page-title">MF suitability matrix</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Investment-committee 3×3 grid mapping client risk profile and
-          time horizon to recommended scheme categories. Each cell's
-          coarse categories feed proposal generation when matched to a
-          client.
-        </p>
+        
       </div>
 
       <SuitabilityMatrixEditor initialEntries={serialised} />

@@ -86,7 +86,7 @@ export default async function MergeClientsPage({
 
   return (
     <div className="space-y-5 max-w-7xl">
-      <PageHeaderCard title={<><GitMerge className="size-6 text-primary" /> Merge Clients</>} subtitle={<>One client, one record. Merge duplicates, separate mistakes, and review what the system did on its own.</>} actions={<><Link href="/dashboard/duplicates?module=family" className="btn-secondary text-xs inline-flex items-center gap-1.5">
+      <PageHeaderCard title={<><GitMerge className="size-6 text-primary" /> Merge Clients</>} actions={<><Link href="/dashboard/duplicates?module=family" className="btn-secondary text-xs inline-flex items-center gap-1.5">
           <HeartHandshake className="size-3.5" /> Duplicate families
         </Link></>} />
 

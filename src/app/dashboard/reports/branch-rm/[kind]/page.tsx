@@ -12,8 +12,7 @@ export default async function BranchRmPage({ params }: { params: Promise<{ kind:
 
   return (
     <div className="space-y-5 max-w-5xl">
-      <PageHeaderCard title={<>{meta.title} — Branch &amp; RM-wise</>} subtitle={<>Per-RM {meta.title} for a branch and month, with an “Outside to our” residual and total —
-          computed live from your data.</>} />
+      <PageHeaderCard title={<>{meta.title} — Branch &amp; RM-wise</>} />
 
       <BranchRmMatrix kind={meta.key} />
     </div>

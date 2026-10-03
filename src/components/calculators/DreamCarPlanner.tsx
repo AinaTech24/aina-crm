@@ -39,9 +39,7 @@ export function DreamCarPlanner() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Dream Car — Invest First</h2>
-        <p className="text-xs text-muted-foreground">
-          Borrow now for a depreciating asset, or invest first and buy it in cash? See the real cost of the EMI.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

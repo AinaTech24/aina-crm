@@ -487,7 +487,7 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
         </FieldSection>
       )}
 
-      <FieldSection title="Financials" description="AUM and lifetime flows are computed from holdings and transactions.">
+      <FieldSection title="Financials">
         <Field label="Service tier">
           {(id) => (
             <SelectField id={id} value={f.serviceTier} onChange={(e) => set("serviceTier", e.target.value)} className="w-full" placeholder="Select">

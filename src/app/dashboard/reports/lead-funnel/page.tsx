@@ -155,7 +155,7 @@ export default async function LeadFunnelReport({
         <ChevronLeft className="size-4" /> Back to reports
       </Link>
 
-      <PageHeaderCard title={<>Lead Funnel &amp; Conversion</>} subtitle={<>Which source is worth your money, which RM actually closes, and whose follow-ups have slipped.</>} actions={<><div className="flex items-center gap-1 rounded-lg border border-border bg-card p-1">
+      <PageHeaderCard title={<>Lead Funnel &amp; Conversion</>} actions={<><div className="flex items-center gap-1 rounded-lg border border-border bg-card p-1">
           {Object.entries(WINDOWS).map(([k, v]) => (
             <Link
               key={k}

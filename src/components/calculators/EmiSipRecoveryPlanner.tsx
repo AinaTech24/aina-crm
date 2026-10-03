@@ -42,10 +42,7 @@ export function EmiSipRecoveryPlanner() {
     <div className="card-surface p-5 space-y-4">
       <div>
         <h2 className="text-base font-semibold">Recover Your EMIs through SIP{addClientName && clientName ? ` · ${clientName}` : ""}</h2>
-        <p className="text-xs text-muted-foreground">
-          Run a SIP alongside the loan EMI so that, by the end of the tenure, it grows to everything you&apos;ll have repaid —
-          turning a liability into a wealth habit.
-        </p>
+        
       </div>
 
       {/* Mode toggle */}

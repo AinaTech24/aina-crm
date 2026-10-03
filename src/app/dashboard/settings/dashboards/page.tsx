@@ -73,7 +73,7 @@ export default async function DashboardDefaultsPage() {
 
   return (
     <div className="space-y-4 max-w-4xl">
-      <PageHeaderCard title="Dashboards" subtitle="Which dashboard opens when someone clicks Dashboard." />
+      <PageHeaderCard title="Dashboards" />
       <DefaultsEditor roles={data.roleRows} users={data.userRows} />
     </div>
   );

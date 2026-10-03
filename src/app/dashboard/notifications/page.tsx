@@ -70,7 +70,7 @@ export default function NotificationsPage() {
 
   return (
     <div className="space-y-4 max-w-3xl">
-      <PageHeaderCard title={<><Bell className="size-6" /> Notifications</>} subtitle={<>Everything the CRM has told you, newest first.</>} actions={<><button onClick={markAllRead} className="btn-secondary text-xs">
+      <PageHeaderCard title={<><Bell className="size-6" /> Notifications</>} actions={<><button onClick={markAllRead} className="btn-secondary text-xs">
           <Check className="size-3.5" /> Mark all read
         </button></>} />
 

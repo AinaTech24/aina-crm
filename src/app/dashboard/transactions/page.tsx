@@ -234,7 +234,7 @@ export default async function TransactionsPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><Repeat className="size-6 text-muted-foreground" /> MF Transactions</>} subtitle={<>Every mutual-fund purchase, redemption, switch and SIP instalment.</>} actions={<><div className="flex items-center gap-2">
+      <PageHeaderCard title={<><Repeat className="size-6 text-muted-foreground" /> MF Transactions</>} actions={<><div className="flex items-center gap-2">
           <a href={exportHref} className="btn-secondary" title="Download the filtered list as Excel">
             <FileDown className="size-4" /> Export
           </a>

@@ -66,8 +66,7 @@ export default async function TaskTemplatesPage() {
         <ChevronLeft className="size-4" /> Back to settings
       </Link>
 
-      <PageHeaderCard title={<><ListChecks className="size-5" /> Task templates</>} subtitle={<>Predefined tasks with sub-task checklists — your team applies them
-          from the New Task form.</>} />
+      <PageHeaderCard title={<><ListChecks className="size-5" /> Task templates</>} />
 
       <TaskTemplatesManager templates={templates} />
     </div>

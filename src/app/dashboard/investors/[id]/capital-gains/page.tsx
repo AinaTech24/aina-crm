@@ -42,7 +42,7 @@ export default async function CapitalGainsPage({
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-5 print:p-0">
-      <PageHeaderCard title={<>Capital Gains Statement</>} subtitle={<>Realized STCG/LTCG (FIFO) for {inv.name}. Use Ctrl/Cmd+P to save as PDF.</>} actions={<><div className="flex items-center gap-2">
+      <PageHeaderCard title={<>Capital Gains Statement</>} subtitle={inv.name} actions={<><div className="flex items-center gap-2">
           {years.map((y) => (
             <Link
               key={y}

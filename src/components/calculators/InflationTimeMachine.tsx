@@ -36,9 +36,7 @@ export function InflationTimeMachine() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Inflation Time Machine</h2>
-        <p className="text-xs text-muted-foreground">
-          See what money is really worth across the years — why &ldquo;safe&rdquo; cash quietly loses, and growth investing wins.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

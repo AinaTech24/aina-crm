@@ -156,9 +156,7 @@ export function FundOverlapCalculator() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Fund Overlap Calculator</h2>
-        <p className="text-xs text-muted-foreground">
-          Show whether many funds are truly diversifying the portfolio or simply repeating the same exposure.
-        </p>
+        
       </div>
 
       <div className="grid md:grid-cols-3 gap-3">

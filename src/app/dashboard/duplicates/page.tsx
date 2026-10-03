@@ -117,7 +117,6 @@ export default async function DuplicatesPage({ searchParams }: { searchParams: P
     <div className="space-y-6 max-w-4xl">
       <PageHeaderCard
         title={<><Copy className="size-6 text-muted-foreground" /> Find Duplicates</>}
-        subtitle={<>Records that are the same person — the same PAN, or the same name and date of birth. Review, compare, then merge.</>}
       />
 
       <nav aria-label="Duplicate views" className="border-b border-border">

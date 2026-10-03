@@ -318,17 +318,27 @@ export function GuidedStageActions({
   }
 
   async function checkPrereq(targetStage: string): Promise<{ ok: boolean; items: Prereq[]; missingFields?: any[] }> {
-    const res = await fetch(
-      `/api/leads/${leadId}/blueprint/can-advance?to=${encodeURIComponent(targetStage)}`
-    );
+    const url = `/api/leads/${leadId}/blueprint/can-advance?to=${encodeURIComponent(targetStage)}`;
     // A non-OK response (session expiry, 404, 500) is a TRANSPORT failure, not
     // "prerequisites unmet" — throw so the caller can show a real error instead
-    // of a misleading empty checklist.
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      throw new Error(j?.error ?? `Couldn't check prerequisites (HTTP ${res.status}). Please try again.`);
+    // of a misleading empty checklist. One that is not the API's own answer (no
+    // `error` in a JSON body: the server mid-restart or recompiling, a dropped
+    // connection) is retried once first — a busy server answered a valid route
+    // with a bare 404 and stranded the user on "Couldn't check this step".
+    for (let attempt = 1; ; attempt++) {
+      const res = await fetch(url).catch(() => null);
+      if (res?.ok) return (await res.json()) as { ok: boolean; items: Prereq[]; missingFields?: any[] };
+      const j = res ? await res.json().catch(() => ({})) : {};
+      if (j?.error) throw new Error(j.error);
+      if (attempt >= 2) {
+        throw new Error(
+          res
+            ? `Couldn't check prerequisites (HTTP ${res.status}). Please try again.`
+            : "Couldn't reach the server. Check your connection and try again.",
+        );
+      }
+      await new Promise((r) => setTimeout(r, 1500));
     }
-    return (await res.json()) as { ok: boolean; items: Prereq[]; missingFields?: any[] };
   }
 
   async function advance(targetStage: string, remarks?: string): Promise<boolean> {

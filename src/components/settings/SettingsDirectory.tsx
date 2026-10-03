@@ -120,16 +120,16 @@ export function SettingsDirectory({ hidden = [] }: {
                 {cards.map((s) => {
                   const Icon = s.icon;
                   return (
+                    // Name only (the firm asked for less text); the description is
+                    // the hover title and still feeds the search above.
                     <Link
                       key={s.href}
                       href={s.href}
-                      className="border rounded-lg p-4 bg-card hover:bg-accent/40 transition-colors flex items-start gap-3"
+                      title={s.desc}
+                      className="border rounded-lg p-4 bg-card hover:bg-accent/40 transition-colors flex items-center gap-3"
                     >
-                      <Icon className="size-5 text-muted-foreground mt-0.5" />
-                      <div className="flex-1">
-                        <div className="font-medium">{s.title}</div>
-                        <div className="text-xs text-muted-foreground mt-1">{s.desc}</div>
-                      </div>
+                      <Icon className="size-5 text-muted-foreground" />
+                      <div className="flex-1 font-medium">{s.title}</div>
                     </Link>
                   );
                 })}

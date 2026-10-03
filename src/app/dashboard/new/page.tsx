@@ -16,7 +16,7 @@ export default async function NewDashboardPage() {
     .map((d) => ({ key: d.key, name: d.name, layout: d.layout }));
   return (
     <div className="space-y-4">
-      <PageHeaderCard title="New dashboard" subtitle="Pick the widgets you want and arrange them." />
+      <PageHeaderCard title="New dashboard" />
       <DashboardBuilder
         mode="new"
         initial={{ name: "", description: "", layout: [], filters: { fields: EXTRA_FILTERS, defaults: { period: "fy" } } }}

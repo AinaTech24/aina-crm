@@ -79,7 +79,7 @@ export function DefaultsEditor({
       <div className="card-surface">
         <div className="px-5 pt-4 pb-2">
           <h2 className="section-title">Assigned to a person</h2>
-          <p className="section-subtitle">Beats the role default. The person can still pick their own default.</p>
+          
         </div>
         <table className="w-full text-sm">
           <thead>

@@ -58,7 +58,7 @@ export default async function RegularizationsPage() {
         </Link>
       </div>
 
-      <PageHeaderCard title={<><ClipboardCheck className="size-6 text-muted-foreground" /> Attendance Corrections</>} subtitle={<>Regularization requests · missed punches · wrong-status fixes · approval workflow.</>} />
+      <PageHeaderCard title={<><ClipboardCheck className="size-6 text-muted-foreground" /> Attendance Corrections</>} />
 
       <RegularizationForm
         employees={data.employees}

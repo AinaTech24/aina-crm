@@ -31,7 +31,7 @@ export default async function EditDashboardPage({ params }: { params: Promise<{ 
 
   return (
     <div className="space-y-4">
-      <PageHeaderCard title={`Edit ${data.name}`} subtitle="Change the widgets, their order and size." />
+      <PageHeaderCard title={`Edit ${data.name}`} />
       <DashboardBuilder
         mode="edit"
         dashboardId={dashboardId}

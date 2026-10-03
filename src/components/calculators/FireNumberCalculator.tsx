@@ -32,10 +32,7 @@ export function FireNumberCalculator() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">FIRE — Financial Independence Number</h2>
-        <p className="text-xs text-muted-foreground">
-          The corpus that lets your client live off investments — and the earliest
-          age they reach it on their current savings plan.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

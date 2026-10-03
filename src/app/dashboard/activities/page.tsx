@@ -76,7 +76,7 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><ActivityIcon className="size-6 text-muted-foreground" /> Activity Log</>} subtitle={<>Every call, meeting, email and WhatsApp your team logged against a client or lead.</>} actions={<><LogActivityButton /></>} />
+      <PageHeaderCard title={<><ActivityIcon className="size-6 text-muted-foreground" /> Activity Log</>} actions={<><LogActivityButton /></>} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat icon={ActivityIcon} label="Activities (total)" value={s?.total ?? 0} />

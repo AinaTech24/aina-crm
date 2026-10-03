@@ -42,8 +42,7 @@ export default async function TechStackPage() {
 
   return (
     <div className="space-y-5 max-w-5xl">
-      <PageHeaderCard title={<><Server className="size-6 text-muted-foreground" /> MFD Tech Stack</>} subtitle={<>A single register of the platforms and software your firm uses — purpose, access, cost and
-          renewals. Doubles as your AMFI DDQ evidence for "platform used" and "software/apps list".</>} />
+      <PageHeaderCard title={<><Server className="size-6 text-muted-foreground" /> MFD Tech Stack</>} />
 
       <TechStackRegister initial={serialised} />
     </div>

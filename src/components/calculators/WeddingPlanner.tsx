@@ -34,9 +34,7 @@ export function WeddingPlanner() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Dream Wedding Planner</h2>
-        <p className="text-xs text-muted-foreground">
-          A wedding the family will remember — funded calmly, starting today. Pick a style or set your own budget.
-        </p>
+        
       </div>
 
       <div className="flex flex-wrap gap-1.5">

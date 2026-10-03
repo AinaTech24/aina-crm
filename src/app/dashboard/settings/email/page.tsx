@@ -81,10 +81,7 @@ export default async function EmailSettingsPage({
       <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground pt-1 flex items-center gap-1.5">
         <User2 className="size-3.5" /> My mailbox
       </div>
-      <p className="text-xs text-muted-foreground -mt-2">
-        Connect your personal inbox so emails you send to clients go out as <em>you</em>, and their replies come straight
-        back to you. Used ahead of the firm mailbox for anything you send.
-      </p>
+      
       <MailboxForm
         scope="user"
         oauth={oauthOf(userMailbox)}
@@ -149,11 +146,7 @@ export default async function EmailSettingsPage({
         </div>
       )}
 
-      <div className="border rounded-lg bg-card p-4 text-xs text-muted-foreground">
-        Transactional and marketing emails stay on separate sending streams for deliverability. A marketing
-        unsubscribe footer is auto-injected. Every send still passes the consent + compliance gate regardless of which
-        mailbox it leaves from.
-      </div>
+      
 </div>
   );
 }

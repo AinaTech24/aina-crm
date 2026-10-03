@@ -58,7 +58,7 @@ export default async function BillingPage() {
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <PageHeaderCard title={<>Billing & Subscription</>} subtitle={<>Your license, package, and payment history.</>} />
+      <PageHeaderCard title={<>Billing & Subscription</>} />
 
       {sub && pkg ? (
         <>

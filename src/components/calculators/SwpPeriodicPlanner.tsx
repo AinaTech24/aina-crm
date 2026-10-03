@@ -71,10 +71,7 @@ export function SwpPeriodicPlanner() {
     <div className="card-surface p-5 space-y-4">
       <div>
         <h2 className="text-base font-semibold">{customHeaderOn && customHeader ? customHeader : "SWP Periodic Withdrawal Planner"}</h2>
-        <p className="text-xs text-muted-foreground">
-          Invest a lumpsum or SIP, let it grow (optionally for a deferment period), then withdraw a fixed amount at periodic
-          intervals while the rest keeps compounding. See the year-by-year fund value and the end value.
-        </p>
+        
       </div>
 
       {/* Header + client */}

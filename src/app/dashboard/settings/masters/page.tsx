@@ -25,7 +25,7 @@ export const dynamic = "force-dynamic";
 export default function MastersPage() {
   return (
     <div className="space-y-6 max-w-5xl">
-      <PageHeaderCard title={<>Master settings</>} subtitle={<>Look-up values used across the app. System defaults are seeded on signup; you can add custom entries.</>} />
+      <PageHeaderCard title={<>Master settings</>} />
 
       <div className="grid grid-cols-2 gap-3">
         {MASTER_TYPES.map((m) => (

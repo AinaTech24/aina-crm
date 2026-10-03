@@ -111,7 +111,6 @@ export default async function UnmappedClientsPage({
       <PageHeaderCard
         breadcrumb={[{ label: "Families", href: "/dashboard/families" }, { label: "Unmapped clients" }]}
         title={<>Unmapped clients</>}
-        subtitle={<>Live clients not linked to any household yet. Map them to see combined AUM, run household reviews and spot next-generation prospects.</>}
         actions={
           <Link href="/dashboard/families" className={buttonClass("secondary", "md", "shrink-0")}>
             <HeartHandshake className="size-4" /> Family mapping

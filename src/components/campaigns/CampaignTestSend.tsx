@@ -45,9 +45,7 @@ export function CampaignTestSend({ campaignId, channel, hasVariantB }: { campaig
       <h2 className="font-semibold mb-1 flex items-center gap-2">
         <Beaker className="size-4 text-brand-cyan" /> Send a test
       </h2>
-      <p className="text-xs text-muted-foreground mb-3">
-        Preview the real rendered message before launching. Goes through the full compliance gate; doesn&apos;t affect campaign stats.
-      </p>
+      
       <div className="flex flex-wrap items-center gap-2">
         <input
           value={recipient}

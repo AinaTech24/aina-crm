@@ -502,10 +502,7 @@ export async function LeadInsightsSection({ session }: { session: SessionUser })
               ))}
             </ul>
           )}
-          <p className="text-2xs text-muted-foreground mt-3">
-            Capture a lost reason on every closure — it's the cheapest market
-            research you'll do.
-          </p>
+          
         </div>
       </div>
 

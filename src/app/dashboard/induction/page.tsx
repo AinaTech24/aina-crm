@@ -51,7 +51,6 @@ export default async function InductionPage() {
   const header = (
     <PageHeaderCard
       title={<><GraduationCap className="size-6 text-muted-foreground" /> Induction</>}
-      subtitle={<>Training for new team members: lessons to walk through, and an exam that unlocks full access.</>}
       actions={
         isAdmin ? (
           <Link href="/dashboard/settings/induction" className={buttonClass("primary")}>

@@ -48,10 +48,7 @@ export function DebtFundBenefitCalculator() {
     <div className="card-surface p-5 space-y-4">
       <div>
         <h2 className="text-base font-semibold">Debt Fund — Hold vs Sell Benefit</h2>
-        <p className="text-xs text-muted-foreground">
-          Sell a debt fund now (short-term, taxed at slab) or hold it past the LTCG window (indexed, lower tax)? See the
-          post-tax outcome of each — and the effective return earned just by waiting.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 gap-3">

@@ -130,9 +130,7 @@ export function ExpectedInflowsCard({ investorId }: { investorId: string }) {
           <Plus className="size-3.5" /> Add
         </button>
       </div>
-      <p className="text-2xs text-muted-foreground mt-1">
-        &ldquo;My FD matures in March&rdquo; — capture it here and the CRM reminds the owner before the date.
-      </p>
+      
 
       {open && (
         <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50/30 p-3 space-y-2.5">

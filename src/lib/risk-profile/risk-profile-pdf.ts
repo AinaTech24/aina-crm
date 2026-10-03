@@ -76,8 +76,20 @@ export type RiskProfilePdfData = {
   questions?: RiskPdfQuestion[] | null;
   /** Optional template description (admin-facing; not printed). */
   templateDescription?: string | null;
-  /** Client's uploaded signature / signed form, when it is a PNG or JPEG. */
+  /** Client's uploaded signature / signed form, when it is a PNG or JPEG.
+   *  Printed in "Client confirmation" as the CLIENT's signature. */
   signatureImage?: { bytes: Uint8Array; mime: string } | null;
+  /**
+   * How the client confirmed the profile (risk_profile_responses): for an OTP
+   * confirmation the address the code went to, when it was verified and the
+   * IP address it came from — printed beside the client's signature.
+   */
+  verification?: {
+    email?: string | null;
+    verifiedAt?: string | null;
+    ip?: string | null;
+    reference?: string | null;
+  } | null;
   /** The client's goals, shown as chips. */
   investmentGoals?: string[] | null;
 };
@@ -109,6 +121,7 @@ const LINE: RGB = rgb(0.87, 0.89, 0.92);
 const WHITE: RGB = rgb(1, 1, 1);
 const PAPER: RGB = rgb(0.976, 0.98, 0.985);
 const DEFAULT_PRIMARY: RGB = rgb(0.9, 0.32, 0.06);
+const SUCCESS: RGB = rgb(0.09, 0.5, 0.3);
 
 const W = 595.28;
 const H = 841.89; // A4
@@ -452,6 +465,11 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
   ].filter(Boolean) as string[];
 
   const signerName = args.adviserName?.trim() || profile.signedByName?.trim() || firmName;
+
+  // ── Client confirmation ─────────────────────────────────────────────────
+  // The client's own signature (the uploaded image) and how they confirmed the
+  // answers. An OTP confirmation says so with the address, time and IP it came
+  // from; nothing here claims a verification the record does not hold.
   let sigImg: PDFImage | null = null;
   if (profile.signatureImage?.bytes?.length) {
     try {
@@ -462,21 +480,74 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
       sigImg = null;
     }
   }
-  const sigImgH = sigImg ? 42 : 0;
-  ensure(40 + sigImgH + regLines.length * 14 + 40);
+  const method = profile.verificationMethod ?? "rm_entry";
+  const v = profile.verification ?? {};
+  const signedOn = profile.signedAt ?? profile.profileDate ?? null;
+  const proof: { title: string; tone: RGB; rows: Array<[string, string]> } =
+    method === "client_otp"
+      ? {
+          title: "VERIFIED BY OTP",
+          tone: SUCCESS,
+          rows: [
+            ["OTP sent to", v.email ?? ""],
+            ["Verified on", fmtDateTimeIst(v.verifiedAt ?? profile.signedAt)],
+            ["IP address", v.ip ?? ""],
+            ["OTP reference", v.reference ?? ""],
+          ],
+        }
+      : method === "client_link"
+        ? { title: "SUBMITTED ONLINE BY THE CLIENT", tone: primary, rows: [["Submitted on", fmtDateTimeIst(profile.signedAt)], ["IP address", v.ip ?? ""]] }
+        : method === "client_physical"
+          ? { title: "SIGNED PHYSICAL FORM", tone: primary, rows: [["Signed on", fmtDateLong(signedOn)]] }
+          : { title: "RECORDED BY THE ADVISER", tone: SLATE, rows: [["Recorded on", fmtDateLong(signedOn)]] };
+  proof.rows = proof.rows.filter(([, val]) => val && val !== "-");
 
+  const colGap = 18;
+  const colW = (CONTENT_W - colGap) / 2;
+  const sigBoxH = 46;
+  const proofH = 30 + proof.rows.length * 15;
+  const blockH = Math.max(sigBoxH + 52, proofH);
+  ensure(30 + blockH + 20);
+  y = sectionRule(page, ctx, y, "Client confirmation") - 14;
+  const top = y;
+
+  // Left: the client's signature over a line, then who and when.
+  if (sigImg) {
+    const k = Math.min(190 / sigImg.width, sigBoxH / sigImg.height);
+    page.drawImage(sigImg, { x: MARGIN, y: top - sigBoxH, width: sigImg.width * k, height: sigImg.height * k });
+  } else if (method === "client_otp") {
+    page.drawText("Confirmed electronically", { x: MARGIN, y: top - sigBoxH + 8, size: 10, font: helv, color: MUTED });
+  }
+  let ly = top - sigBoxH - 4;
+  page.drawRectangle({ x: MARGIN, y: ly, width: colW - 10, height: 0.8, color: SLATE });
+  ly -= 13;
+  page.drawText("Client's signature", { x: MARGIN, y: ly, size: 8, font: helv, color: MUTED });
+  ly -= 14;
+  page.drawText(ascii(truncate(clientName, bold, 10.5, colW - 10)), { x: MARGIN, y: ly, size: 10.5, font: bold, color: INK });
+  ly -= 13;
+  page.drawText(ascii(`Date: ${fmtDateLong(signedOn)}`), { x: MARGIN, y: ly, size: 9, font: helv, color: SLATE });
+
+  // Right: how it was confirmed.
+  const px = MARGIN + colW + colGap;
+  page.drawRectangle({ x: px, y: top - proofH, width: colW, height: proofH, color: PAPER, borderColor: LINE, borderWidth: 0.8 });
+  page.drawRectangle({ x: px, y: top - proofH, width: 3, height: proofH, color: proof.tone });
+  page.drawText(ascii(proof.title), { x: px + 12, y: top - 17, size: 9, font: bold, color: proof.tone });
+  let ry = top - 33;
+  for (const [label, val] of proof.rows) {
+    page.drawText(ascii(label), { x: px + 12, y: ry, size: 8.5, font: helv, color: MUTED });
+    const text = ascii(truncate(ascii(val), bold, 9, colW - 104));
+    page.drawText(text, { x: px + 92, y: ry, size: 9, font: bold, color: INK });
+    ry -= 15;
+  }
+  y = top - blockH - 22;
+
+  // ── Adviser sign-off ────────────────────────────────────────────────────
+  ensure(40 + regLines.length * 14 + 40);
   page.drawText("Warm Regards,", { x: MARGIN, y, size: 11, font: helv, color: SLATE });
   const dateStr = ascii(fmtDateLong(profile.profileDate ?? args.generatedAt));
   const dw = helv.widthOfTextAtSize(dateStr, 11);
   page.drawText(dateStr, { x: MARGIN + CONTENT_W - dw, y, size: 11, font: helv, color: SLATE });
-  y -= sigImg ? 8 : 22;
-
-  if (sigImg) {
-    const maxW = 190;
-    const k = Math.min(maxW / sigImg.width, sigImgH / sigImg.height);
-    page.drawImage(sigImg, { x: MARGIN, y: y - sigImgH, width: sigImg.width * k, height: sigImg.height * k });
-    y -= sigImgH + 8;
-  }
+  y -= 22;
 
   const nameSize = fitSize(ascii(signerName), bold, CONTENT_W, 16, 12);
   page.drawText(ascii(signerName), { x: MARGIN, y, size: nameSize, font: bold, color: INK });
@@ -791,6 +862,16 @@ function fmtDateLong(iso: string | null | undefined): string {
   const d = new Date(String(iso).length === 10 ? `${iso}T00:00:00` : String(iso));
   if (isNaN(d.getTime())) return "-";
   return d.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
+}
+
+/** "2 Oct 2026, 3:03 pm IST" — India time whatever the server's zone. */
+function fmtDateTimeIst(iso: string | null | undefined): string {
+  if (!iso) return "-";
+  const d = new Date(String(iso));
+  if (isNaN(d.getTime())) return "-";
+  return `${d.toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit",
+  })} IST`;
 }
 
 function titleCase(s: string): string {

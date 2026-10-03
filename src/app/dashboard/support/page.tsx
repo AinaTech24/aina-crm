@@ -37,7 +37,7 @@ export default function SupportPage() {
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <PageHeaderCard title={<>Support</>} subtitle={<>Get help from AINA — bugs, billing, feature requests, training.</>} />
+      <PageHeaderCard title={<>Support</>} />
 
       <div className="grid grid-cols-2 gap-4">
         <form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-3">

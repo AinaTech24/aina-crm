@@ -187,8 +187,7 @@ export default async function ReferralRadarPage() {
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><Radar className="size-6 text-emerald-600" /> Referral Radar</>} subtitle={<>Referrals are the #1 growth channel for MFDs — this is your ask-worklist: who to ask right now,
-          and who already sends you business.</>} />
+      <PageHeaderCard title={<><Radar className="size-6 text-emerald-600" /> Referral Radar</>} />
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -285,9 +284,7 @@ export default async function ReferralRadarPage() {
           <h2 className="font-semibold text-sm flex items-center gap-2">
             <Trophy className="size-4 text-amber-500" /> Referral leaderboard
           </h2>
-          <p className="text-2xs text-muted-foreground mt-0.5">
-            Clients who already sent business — thank them, and keep the flywheel spinning.
-          </p>
+          
         </div>
         {data.leaders.length === 0 ? (
           <div className="p-12 text-center text-sm text-muted-foreground">
@@ -348,10 +345,7 @@ export default async function ReferralRadarPage() {
         )}
       </div>
 
-      <p className="text-2xs text-muted-foreground italic">
-        The “Ask for referral” button creates a follow-up task for the client's RM with the happy-client
-        signals attached — the client then disappears from this list for 90 days so nobody is over-asked.
-      </p>
+      
     </div>
   );
 }

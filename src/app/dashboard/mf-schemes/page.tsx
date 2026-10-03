@@ -52,8 +52,7 @@ export default async function MfSchemeCatalogPage({
 
   return (
     <div className="space-y-5 max-w-5xl">
-      <PageHeaderCard title={<><BookOpen className="size-5 text-brand-cyan" /> MF Scheme Catalog</>} subtitle={<>Live mutual-fund scheme, AMC &amp; NAV data — shared across the platform, refreshed daily from{" "}
-          <span className="font-medium text-foreground">mfapi.in</span>. Used wherever a scheme or AMC is picked.</>} />
+      <PageHeaderCard title={<><BookOpen className="size-5 text-brand-cyan" /> MF Scheme Catalog</>} />
 
       <div className="flex flex-wrap items-center gap-3 text-xs">
         <span className="chip bg-brand-cyan-light text-brand-cyan-deep">{Number(stats.total).toLocaleString("en-IN")} schemes</span>

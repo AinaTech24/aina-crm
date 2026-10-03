@@ -49,10 +49,7 @@ export function YouthBucketStrategy() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">4-Bucket Strategy — Financial Freedom</h2>
-        <p className="text-xs text-muted-foreground">
-          Fund a lifetime of freedom across four buckets of rising return — and see how much smaller the corpus and SIP become
-          versus a single safe fund.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

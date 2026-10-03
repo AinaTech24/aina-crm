@@ -236,7 +236,7 @@ export default async function ProposalsPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><FileSignature className="size-6 text-muted-foreground" /> Proposals</>} subtitle={<>Investment proposals you have sent, and whether the client approved them.</>} actions={<>
+      <PageHeaderCard title={<><FileSignature className="size-6 text-muted-foreground" /> Proposals</>} actions={<>
         <div className="inline-flex rounded-lg bg-secondary p-0.5 gap-0.5" role="group" aria-label="View">
           <Link href={viewHref("list")} aria-pressed={view === "list"} className={`px-3 py-1.5 text-sm rounded-md ${view === "list" ? "bg-card shadow-sm font-medium" : "text-muted-foreground"}`}>List</Link>
           <Link href={viewHref("board")} aria-pressed={view === "board"} className={`px-3 py-1.5 text-sm rounded-md ${view === "board" ? "bg-card shadow-sm font-medium" : "text-muted-foreground"}`}>Pipeline</Link>

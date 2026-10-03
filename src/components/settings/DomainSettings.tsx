@@ -53,7 +53,7 @@ export function DomainSettings() {
         <Globe className="size-5 text-brand-cyan" />
         <div>
           <h2 className="font-semibold">White-label URL</h2>
-          <p className="text-xs text-muted-foreground">Serve the CRM on your own branded address. Your firm's logo &amp; colours already carry through.</p>
+          
         </div>
       </div>
 

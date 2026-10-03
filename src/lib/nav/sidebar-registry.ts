@@ -30,6 +30,7 @@ export const SIDEBAR_REGISTRY: SidebarEntry[] = [
   // Clients
   { group: "Clients", href: "/dashboard/leads", label: "Leads" },
   { group: "Clients", href: "/dashboard/investors", label: "Clients" },
+  { group: "Clients", href: "/dashboard/opportunities", label: "Opportunities" },
   { group: "Clients", href: "/dashboard/families", label: "Families" },
   { group: "Clients", href: "/dashboard/risk-profiles", label: "Risk Profiles" },
   { group: "Clients", href: "/dashboard/discovery", label: "Discovery (Fact-find)" },

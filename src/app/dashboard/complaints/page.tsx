@@ -151,7 +151,7 @@ export default async function ComplaintsPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><Shield className="size-6 text-muted-foreground" /> Complaint Register</>} subtitle={<>SEBI-format complaint log · 21-day TAT clock · required for DDQ readiness.</>} actions={<><div className="flex items-center gap-2">
+      <PageHeaderCard title={<><Shield className="size-6 text-muted-foreground" /> Complaint Register</>} actions={<><div className="flex items-center gap-2">
           <Link href="/dashboard/reports/complaint_category" className="btn-secondary text-xs">
             <FileText className="size-3.5" /> Category report
           </Link>

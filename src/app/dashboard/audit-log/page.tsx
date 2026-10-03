@@ -113,7 +113,7 @@ export default async function AuditLogPage({
 
   return (
     <div className="space-y-6 max-w-6xl">
-      <PageHeaderCard title={<>Audit log</>} subtitle={<>Who changed what, and when — the permanent record for audits and disputes.</>} actions={<><a href={exportHref} className="inline-flex items-center gap-1.5 rounded-md border bg-card px-3 py-1.5 text-xs font-medium hover:bg-accent">
+      <PageHeaderCard title={<>Audit log</>} actions={<><a href={exportHref} className="inline-flex items-center gap-1.5 rounded-md border bg-card px-3 py-1.5 text-xs font-medium hover:bg-accent">
           <Download className="size-3.5" /> Export CSV
         </a></>} />
 

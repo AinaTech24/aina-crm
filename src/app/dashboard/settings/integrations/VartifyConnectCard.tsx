@@ -124,10 +124,7 @@ export default function VartifyConnectCard() {
           <h3 className="font-semibold flex items-center gap-2">
             <MessageCircle className="size-4 text-emerald-600" /> Vartify WhatsApp
           </h3>
-          <p className="text-sm text-muted-foreground mt-1">
-            Connect your Vartify account once. After that, every WhatsApp message just
-            needs a template name — the CRM uses this key automatically.
-          </p>
+          
         </div>
         <span
           className={`text-xs px-2 py-1 rounded-full flex items-center gap-1 ${

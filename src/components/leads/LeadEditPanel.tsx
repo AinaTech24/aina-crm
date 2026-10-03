@@ -17,15 +17,18 @@ import { Pencil, Save, X, Loader2 } from "lucide-react";
 import { formatDate } from "@/lib/format";
 import { DateField } from "@/components/ui/DateField";
 import { RecordNotes } from "@/components/common/RecordNotes";
+import { leadSourceLabel } from "@/lib/leads/sources";
+
+/** "Existing Client Reference" was a second Client Referral; an old lead opens as Client Referral. */
+const editableSource = (s: string | null | undefined) => (s === "existing_client" ? "referral" : s ?? "manual");
 
 const SOURCES = [
-  ["referral", "Referral"],
+  ["referral", "Client Referral"],
   ["website", "Website"],
   ["social_media", "Social Media"],
   ["webinar", "Webinar"],
   ["seminar", "Seminar"],
   ["walk_in", "Walk-in"],
-  ["existing_client", "Existing Client Reference"],
   ["google", "Google"],
   ["cold_call", "Cold Call"],
   ["other", "Other"],
@@ -48,7 +51,7 @@ export function LeadEditPanel({ lead }: { lead: any }) {
     email: lead.email ?? "",
     phone: lead.phone ?? "",
     city: lead.city ?? "",
-    source: lead.source ?? "manual",
+    source: editableSource(lead.source),
     sourceCampaign: lead.sourceCampaign ?? "",
     intendedAmount: lead.intendedAmount ?? "",
     score: String(lead.score ?? ""),
@@ -103,7 +106,7 @@ export function LeadEditPanel({ lead }: { lead: any }) {
       email: lead.email ?? "",
       phone: lead.phone ?? "",
       city: lead.city ?? "",
-      source: lead.source ?? "manual",
+      source: editableSource(lead.source),
       sourceCampaign: lead.sourceCampaign ?? "",
       intendedAmount: lead.intendedAmount ?? "",
       score: String(lead.score ?? ""),
@@ -296,7 +299,7 @@ export function LeadEditPanel({ lead }: { lead: any }) {
                 ))}
               </select>
             ) : (
-              <span className="capitalize">{lead.source.replace(/_/g, " ")}</span>
+              <span>{leadSourceLabel(lead.source)}</span>
             )}
           </Row>
 

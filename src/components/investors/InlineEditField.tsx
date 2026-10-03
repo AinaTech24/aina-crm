@@ -5,7 +5,7 @@
  * on click, turns into the right control (text / email / tel / date / select),
  * PATCHes just that one field to /api/investors/[id], then refreshes so any
  * computed fields (health, review dates) re-derive. Read-only fields keep using
- * plain <KV>; the full multi-step drawer (MasterRecordEditor) still exists for
+ * plain <KV>; the full-page editor (/dashboard/investors/[id]/edit) is for
  * bulk edits — this is the "click any field, edit here" affordance.
  *
  * Nullability matters: the PATCH zod schema rejects null on non-nullable string

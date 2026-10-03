@@ -66,7 +66,7 @@ export function AdvisorAlphaSimulator({
           <Shield className="size-5 text-brand-cyan-deep" />
           <div>
             <h3 className="text-sm font-extrabold text-brand-navy">Interactive Advisor's Alpha Compounding Simulator</h3>
-            <p className="text-2xs text-muted-foreground">See the long-term wealth value of investing through a professional MFD partner</p>
+            
           </div>
         </div>
         <span className="text-2xs bg-brand-cyan-deep text-white font-bold px-2 py-0.5 rounded">

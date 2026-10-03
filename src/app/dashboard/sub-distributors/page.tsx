@@ -76,7 +76,7 @@ export default async function SubDistributorsListPage({
 
   return (
     <div className="space-y-5">
-      <PageHeaderCard title={<>Sub-distributors</>} subtitle={<>Partners who bring business under your ARN, and what they are owed.</>} actions={<><Link href="/dashboard/sub-distributors/new" className="btn-primary text-sm">
+      <PageHeaderCard title={<>Sub-distributors</>} actions={<><Link href="/dashboard/sub-distributors/new" className="btn-primary text-sm">
           <Plus className="size-4" /> Add sub-distributor
         </Link></>} />
 

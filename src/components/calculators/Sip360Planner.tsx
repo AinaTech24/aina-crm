@@ -75,11 +75,7 @@ export function Sip360Planner() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">SIP 360° Planner</h2>
-        <p className="text-xs text-muted-foreground">
-          A complete 360° view of a SIP: normal vs step-up growth, limited-period
-          investing, inflation-adjusted value and the cost of delaying — across two
-          return scenarios.
-        </p>
+        
       </div>
 
       {/* ─────────── Core inputs ─────────── */}

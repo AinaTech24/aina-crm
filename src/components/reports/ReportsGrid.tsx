@@ -130,7 +130,7 @@ export function ReportsGrid({ sections }: { sections: Section[] }) {
     () => [...favorites].map((k) => itemByKey.get(k)).filter((i): i is Item => !!i && !hidden.has(i.key)),
     [favorites, itemByKey, hidden]
   );
-  const { mostUsed, usedCount } = useMemo(() => {
+  const { mostUsed } = useMemo(() => {
     const eligible = (k: string) => itemByKey.has(k) && !hidden.has(k) && !favorites.has(k);
     const used = Object.entries(opens)
       .filter(([k, n]) => n > 0 && eligible(k))
@@ -171,7 +171,6 @@ export function ReportsGrid({ sections }: { sections: Section[] }) {
         <>
           <TopRow
             title="Most used"
-            note={usedCount === 0 ? "Common starting points. This fills with what you open most." : usedCount < MOST_USED ? "What you open most, topped up with common picks." : "What you open most on this device."}
           >
             {mostUsed.map((r) => (
               <ReportCard key={r.key} r={r} favorite={false} onOpen={recordOpen} onToggleFavorite={toggleFavorite} />
@@ -260,12 +259,9 @@ export function ReportsGrid({ sections }: { sections: Section[] }) {
                 const isHidden = ready && hidden.has(r.key);
                 return (
                   <div key={r.key} className={`group flex items-center ${isHidden ? "opacity-50" : ""}`}>
-                    <Link href={r.href} onClick={() => recordOpen(r.key)} className="flex-1 flex items-center gap-3 px-3 py-2.5 hover:bg-accent/40 transition-colors min-w-0">
+                    <Link href={r.href} onClick={() => recordOpen(r.key)} title={r.desc ?? undefined} className="flex-1 flex items-center gap-3 px-3 py-2.5 hover:bg-accent/40 transition-colors min-w-0">
                       <Icon className="size-4 text-muted-foreground shrink-0" />
-                      <span className="min-w-0">
-                        <span className="block text-sm font-medium truncate">{r.label}</span>
-                        {r.desc && <span className="block text-2xs text-muted-foreground truncate">{r.desc}</span>}
-                      </span>
+                      <span className="min-w-0 block text-sm font-medium truncate">{r.label}</span>
                       <ChevronRight className="size-4 text-muted-foreground/40 ml-auto shrink-0" />
                     </Link>
                     {ready && (
@@ -334,14 +330,11 @@ function ReportCard({
   const Icon = ICONS[r.iconName] ?? BarChart3;
   return (
     <div className="relative rounded-lg border border-border bg-card transition-colors hover:bg-accent/40">
-      <Link href={r.href} onClick={() => onOpen(r.key)} className="flex items-start gap-3 p-3 pr-11 min-w-0">
+      <Link href={r.href} onClick={() => onOpen(r.key)} title={r.desc ?? undefined} className="flex items-center gap-3 p-3 pr-11 min-w-0">
         <span className="grid size-8 shrink-0 place-items-center rounded-md bg-secondary">
           <Icon className="size-4 text-muted-foreground" aria-hidden />
         </span>
-        <span className="min-w-0">
-          <span className="block text-sm font-medium text-foreground truncate">{r.label}</span>
-          {r.desc && <span className="block text-xs text-muted-foreground truncate">{r.desc}</span>}
-        </span>
+        <span className="min-w-0 block text-sm font-medium text-foreground truncate">{r.label}</span>
       </Link>
       <FavoriteButton label={r.label} on={favorite} onClick={() => onToggleFavorite(r.key)} className="absolute right-1.5 top-1.5 size-8 rounded-md" />
     </div>

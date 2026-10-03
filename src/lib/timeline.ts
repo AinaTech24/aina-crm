@@ -11,6 +11,11 @@
  * The page turns its rows into plain `TimelineItem`s here (server side, so
  * Date and numeric columns never reach the client) and RecordTimeline draws
  * them. Sorted newest first.
+ *
+ * Every item opens something: one with its own page carries `href` (task,
+ * meeting, service request); one without (a call, a visit, a note, a message)
+ * carries `detail`, which RecordTimeline shows in a dialog — every fact the
+ * row holds and the full text, which the list cuts short.
  */
 
 import { formatDate, humanise } from "@/lib/format";
@@ -29,9 +34,26 @@ export type TimelineItem = {
   meta?: string | null;
   status?: { label: string; tone: TimelineTone } | null;
   href?: string | null;
+  /** What the detail dialog shows when the item has no page of its own. */
+  detail?: TimelineDetail | null;
+};
+
+export type TimelineDetail = {
+  /** Label → value, in reading order; empty values are left out. */
+  facts: Array<[string, string]>;
+  /** The full text — the list shows only the start of a long message. */
+  body?: string | null;
 };
 
 type Row = Record<string, any>;
+
+/** Facts without the blanks. */
+const facts = (pairs: Array<[string, unknown]>): Array<[string, string]> =>
+  pairs.flatMap(([k, v]) => (v == null || String(v).trim() === "" ? [] : [[k, String(v)] as [string, string]]));
+const when = (v: unknown) => {
+  const at = iso(v);
+  return at ? formatDate(at, "dateTime") : null;
+};
 
 const iso = (v: unknown): string | null => {
   if (v == null || v === "") return null;
@@ -63,6 +85,7 @@ export function fromCommunications(rows: Row[]): TimelineItem[] {
     const meta = [c.templateKey ? `Template ${c.templateKey}` : null, c.statusReason ? String(c.statusReason) : null]
       .filter(Boolean)
       .join(" · ");
+    const subject = typeof rendered === "object" && rendered?.subject && rendered?.text ? String(rendered.subject) : null;
     return [{
       id: `comm-${c.id}`,
       kind: c.channel === "email" ? "email" : "message",
@@ -71,6 +94,23 @@ export function fromCommunications(rows: Row[]): TimelineItem[] {
       body: text ? String(text).slice(0, 240) : null,
       meta: meta || null,
       status,
+      detail: {
+        facts: facts([
+          ["Channel", channel],
+          ["Direction", outbound ? "Sent to the client" : "Received from the client"],
+          ["Status", status?.label],
+          ["Why", c.statusReason],
+          ["Template", c.templateKey],
+          ["Subject", subject],
+          ["Queued", when(c.queuedAt)],
+          ["Sent", when(c.sentAt)],
+          ["Delivered", when(c.deliveredAt)],
+          ["Read", when(c.readAt)],
+          ["Replied", when(c.repliedAt)],
+          ["Failed", when(c.failedAt)],
+        ]),
+        body: text ? String(text) : null,
+      },
     }];
   });
 }
@@ -102,7 +142,7 @@ export function fromTasks(rows: Row[], opts?: { href?: (t: Row) => string }): Ti
       body: t.description ? String(t.description) : null,
       meta: meta || null,
       status,
-      href: opts?.href ? opts.href(t) : null,
+      href: opts?.href ? opts.href(t) : t.id ? `/dashboard/tasks/${t.id}` : null,
     }];
   });
 }
@@ -126,6 +166,7 @@ export function fromServiceRequests(rows: Row[]): TimelineItem[] {
       body: sr.description ? String(sr.description) : null,
       meta: sr.category ? humanise(String(sr.category)) : null,
       status,
+      href: sr.id ? `/dashboard/service-requests/${sr.id}` : null,
     }];
   });
 }
@@ -152,6 +193,7 @@ export function fromMeetings(rows: Row[]): TimelineItem[] {
       body: m.discussionPoints ? String(m.discussionPoints) : m.outcomeNotes ? String(m.outcomeNotes) : null,
       meta: meta || null,
       status,
+      href: m.id ? `/dashboard/review-meetings/${m.id}` : null,
     }];
   });
 }
@@ -186,6 +228,19 @@ export function fromActivities(rows: Row[]): TimelineItem[] {
       followup ? `Follow up ${formatDate(followup)}` : null,
     ].filter(Boolean).join(" · ");
     const body = [a.subject, a.notes].filter((x) => x && String(x).trim()).join("\n");
+    const detail: TimelineDetail = {
+      facts: facts([
+        ["Type", title],
+        ["Direction", direction ? humanise(direction) : null],
+        ["Outcome", s ? humanise(s) : null],
+        ["When", when(at)],
+        ["Logged by", owner],
+        ["Duration", duration > 0 ? `${Math.floor(duration / 60)} min ${duration % 60} s` : null],
+        ["Where", a.locationLabel ?? a.location_label],
+        ["Next follow-up", followup ? formatDate(followup) : null],
+      ]),
+      body: body || null,
+    };
     return [{
       id: `act-${a.id}`,
       kind: kind === "call" ? "call" : kind === "visit" ? "visit" : kind === "note" ? "note" : kind === "email" ? "email" : kind === "whatsapp" || kind === "sms" ? "message" : "other",
@@ -194,6 +249,7 @@ export function fromActivities(rows: Row[]): TimelineItem[] {
       body: body || null,
       meta: meta || null,
       status,
+      detail,
     }];
   });
 }
@@ -227,6 +283,7 @@ export function fromLeadNotes(text: string | null | undefined): TimelineItem[] {
       title: NOTE_TITLE[type] ?? "Activity logged",
       body: body || null,
       meta: author ? `by ${author}` : null,
+      detail: { facts: facts([["Type", humanise(type)], ["When", when(at)], ["Logged by", author]]), body: body || null },
     }];
   });
 }

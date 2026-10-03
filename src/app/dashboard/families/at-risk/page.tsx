@@ -81,7 +81,6 @@ export default async function NextGenerationPage() {
       <PageHeaderCard
         breadcrumb={[{ label: "Families", href: "/dashboard/families" }, { label: "Next generation view" }]}
         title={<>Next generation view</>}
-        subtitle={<>Families of ₹50 L or more where someone is 60+ or no one is under 35 — and whether the next generation already invests with you.</>}
       />
 
       <div className="grid gap-3 sm:grid-cols-3">

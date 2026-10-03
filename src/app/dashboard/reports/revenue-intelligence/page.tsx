@@ -277,9 +277,7 @@ export default async function RevenueIntelligencePage() {
         <h1 className="page-title">
           <PieChart className="size-6 text-muted-foreground" /> Revenue Intelligence
         </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Estimated trail revenue per client — who actually pays for the practice, and where big AUM earns thin trail.
-        </p>
+        
       </div>
 
       {clients.length === 0 ? (

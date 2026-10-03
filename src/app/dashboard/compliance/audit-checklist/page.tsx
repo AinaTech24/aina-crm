@@ -47,10 +47,7 @@ export default async function AuditChecklistPage() {
           </Link>
         </div>
         <h1 className="page-title">AMFI DDQ audit checklist</h1>
-        <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-          The full AMFI due-diligence audit master — every item mapped to its DDQ reference and the
-          place in the platform where the evidence lives. Mark each as you prepare; readiness updates live.
-        </p>
+        
       </div>
 
       <DdqAuditChecklist initialRecords={initialRecords} />

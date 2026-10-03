@@ -97,7 +97,7 @@ export default async function ExpectedInflowsPage() {
 
   return (
     <div className="space-y-5 max-w-6xl">
-      <PageHeaderCard title={<><IndianRupee className="size-6 text-emerald-600" /> Expected Inflows</>} subtitle={<>Money your clients have told you is coming — FD maturities, bonuses, property sales — with a reminder already set.</>} actions={<><Link href="/dashboard/investors" className="btn-secondary text-sm inline-flex items-center gap-1.5">
+      <PageHeaderCard title={<><IndianRupee className="size-6 text-emerald-600" /> Expected Inflows</>} actions={<><Link href="/dashboard/investors" className="btn-secondary text-sm inline-flex items-center gap-1.5">
           <Plus className="size-4" /> Add from a client
         </Link></>} />
 
@@ -184,10 +184,7 @@ export default async function ExpectedInflowsPage() {
         </div>
       )}
 
-      <p className="text-2xs text-muted-foreground">
-        Adding an inflow automatically creates a reminder task for the owner, due{" "}
-        <strong>before</strong> the money date. Mark it <em>invested</em> once the money is deployed — that is what the capture % measures.
-      </p>
+      
     </div>
   );
 }

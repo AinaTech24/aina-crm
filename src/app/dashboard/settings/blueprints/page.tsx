@@ -38,9 +38,7 @@ export default async function BlueprintsAdminPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <PageHeaderCard title={<><Workflow className="size-6 text-muted-foreground" /> Blueprint Editor</>} subtitle={<>Customise the stage machines that drive every journey in the CRM — leads, service requests, complaints,
-          SIP rejections, client reviews. Each blueprint is a sequence of stages with required fields, SLAs, and
-          automation hooks.</>} />
+      <PageHeaderCard title={<><Workflow className="size-6 text-muted-foreground" /> Blueprint Editor</>} />
 
       <div className="space-y-3">
         {blueprints.map(({ def, stages }) => (

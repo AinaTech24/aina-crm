@@ -68,11 +68,7 @@ export default async function FinancialChecklistPage() {
         ))}
       </div>
 
-      <p className="text-2xs text-muted-foreground border-t pt-3">
-        Adapted from the Network FP "8.6 Financial Checklist". The CRM already automates several of
-        these — commission capture &amp; reconciliation (Commission Reconciliation) and SIP / asset
-        tracking (SIP Tracker &amp; Reports).
-      </p>
+      
     </div>
   );
 }

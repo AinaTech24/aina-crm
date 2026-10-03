@@ -60,7 +60,7 @@ export default async function OrgChartPage() {
       <Link href="/dashboard/employees" className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1">
         <ChevronLeft className="size-3" /> Back to employees
       </Link>
-      <PageHeaderCard title={<><Network className="size-6 text-muted-foreground" /> Org chart</>} subtitle={<>Reporting hierarchy built from each employee&apos;s reporting manager.</>} />
+      <PageHeaderCard title={<><Network className="size-6 text-muted-foreground" /> Org chart</>} />
 
       {roots.length === 0 ? (
         <div className="card-surface p-12 text-center text-sm text-muted-foreground">No employees yet.</div>

@@ -99,9 +99,7 @@ export default async function TargetsSettingsPage() {
       <Link href="/dashboard/settings" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
         <ChevronLeft className="size-4" /> Back to settings
       </Link>
-      <PageHeaderCard title={<><Target className="size-5 text-brand-cyan" /> Targets &amp; quota</>} subtitle={<>Set monthly business, new-meeting and renewal-meeting targets{" "}
-          {manager ? "for your team" : "for yourself"}. Achievement is for{" "}
-          <span className="font-medium text-foreground">{label}</span> (month-to-date).</>} />
+      <PageHeaderCard title={<><Target className="size-5 text-brand-cyan" /> Targets &amp; quota</>} subtitle={<>Month-to-date: <span className="font-medium text-foreground">{label}</span></>} />
 
       <TargetsManager members={members} canEditAll={manager} selfId={session.userId} monthLabel={label} />
 

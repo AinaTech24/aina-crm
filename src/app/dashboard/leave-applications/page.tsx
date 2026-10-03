@@ -142,7 +142,7 @@ export default async function LeaveApplicationsPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><CalendarOff className="size-6 text-muted-foreground" /> Leave</>} subtitle={<>Apply for leave, and approve what your team has requested.</>} actions={<><div className="flex items-center gap-3">
+      <PageHeaderCard title={<><CalendarOff className="size-6 text-muted-foreground" /> Leave</>} actions={<><div className="flex items-center gap-3">
           <div className="flex items-center gap-1 bg-secondary/30 border border-border p-0.5 rounded-lg text-xs">
             <Link
               href={getToggleUrl("list")}

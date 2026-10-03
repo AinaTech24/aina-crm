@@ -45,7 +45,7 @@ export const dynamic = "force-dynamic";
 export default function IntegrationsPage() {
   return (
     <div className="space-y-4 max-w-4xl">
-<PageHeaderCard title={<><Webhook className="size-5" /> Integrations</>} subtitle={<>Connect external services. Most integrations are configured by AINA on your behalf during onboarding.</>} />
+<PageHeaderCard title={<><Webhook className="size-5" /> Integrations</>} />
 {/* Self-serve: the firm connects its own WhatsApp sender once. */}
       <VartifyConnectCard />
 

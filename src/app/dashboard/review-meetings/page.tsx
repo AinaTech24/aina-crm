@@ -195,7 +195,7 @@ export default async function ReviewMeetingsPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><Calendar className="size-6 text-muted-foreground" /> Meetings</>} subtitle={<>Portfolio reviews — schedule them, prepare, and record what you agreed.</>} actions={<><div className="flex items-center gap-2">
+      <PageHeaderCard title={<><Calendar className="size-6 text-muted-foreground" /> Meetings</>} actions={<><div className="flex items-center gap-2">
           <div className="inline-flex rounded-lg border border-border overflow-hidden text-xs">
             <Link
               href={viewHref("table")}

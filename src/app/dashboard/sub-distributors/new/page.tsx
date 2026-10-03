@@ -11,8 +11,7 @@ export default async function NewSubDistributorPage() {
 
   return (
     <div className="space-y-5 max-w-3xl">
-      <PageHeaderCard title={<>Register a sub-distributor</>} subtitle={<>External channel partner who sources business under your ARN. ARN /
-          EUIN / NISM details feed the daily expiry tracker.</>} />
+      <PageHeaderCard title={<>Register a sub-distributor</>} />
       <SubDistributorForm mode="create" />
     </div>
   );

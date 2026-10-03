@@ -131,7 +131,7 @@ export default async function RtaImportsPage() {
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><FileText className="size-6 text-muted-foreground" /> RTA File Imports</>} subtitle={<>Upload CAMS and KFintech files to bring transactions into the CRM.</>} actions={<><div className="flex items-center gap-2 flex-wrap">
+      <PageHeaderCard title={<><FileText className="size-6 text-muted-foreground" /> RTA File Imports</>} actions={<><div className="flex items-center gap-2 flex-wrap">
           <RtaMailboxSyncButton />
           <RtaUploadButton />
         </div></>} />

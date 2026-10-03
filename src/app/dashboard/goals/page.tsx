@@ -111,7 +111,6 @@ export default async function GoalsPage({
           so the header does not repeat it. */}
       <PageHeaderCard
         title={<><Target className="size-6 text-muted-foreground" /> Goals</>}
-        subtitle={<>Client goals — retirement, education, a home — and whether they are on track.</>}
         actions={
           stats.total > 0 ? (
             <Link href="/dashboard/goals/new" className={buttonClass("primary")}>

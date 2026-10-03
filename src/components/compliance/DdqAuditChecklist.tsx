@@ -247,9 +247,7 @@ export function DdqAuditChecklist({
                 )}
                 <span className="text-muted-foreground font-mono">({DDQ_ITEMS.length} items total)</span>
               </div>
-              <div className="text-2xs text-muted-foreground mt-2">
-                Readiness score computes dynamic in-app verifications and manual uploads. Excludes N/A items.
-              </div>
+              
             </div>
           </div>
 
@@ -464,11 +462,7 @@ export function DdqAuditChecklist({
         })}
       </div>
 
-      <p className="text-2xs text-muted-foreground border-t pt-3">
-        Adapted from the AMFI Due-Diligence audit checklist. Mark each item as you assemble evidence;
-        readiness updates live. "In-app" items are produced by this platform; "Document" items are
-        files/SOPs you maintain (upload under Documents / SOP Library).
-      </p>
+      
     </div>
   );
 }

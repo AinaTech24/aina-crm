@@ -42,7 +42,7 @@ export default async function DiscoveryListPage() {
               A guided fact-find you fill with (or send to) a client before advising — goals,
               income, risk appetite. It produces a suitability view so your recommendations are
               documented and defensible.
-            </HelpTip></>} subtitle={<>A guided fact-find you complete with the client before recommending anything.</>} actions={<><NewDiscoveryDialog /></>} />
+            </HelpTip></>} actions={<><NewDiscoveryDialog /></>} />
 
       {submitted > 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-2 text-sm text-amber-800">

@@ -179,7 +179,7 @@ export default async function ServiceRequestsPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><LifeBuoy className="size-6 text-muted-foreground" /> Service Requests</>} subtitle={<>Track every client request and complaint with a deadline — overdue tickets escalate automatically.</>} actions={<><div className="flex items-center gap-2">
+      <PageHeaderCard title={<><LifeBuoy className="size-6 text-muted-foreground" /> Service Requests</>} actions={<><div className="flex items-center gap-2">
           {canSeeComplaintForm && (
             <MoreMenu
               label="More"

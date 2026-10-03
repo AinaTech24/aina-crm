@@ -97,8 +97,7 @@ export default function HelpPage() {
   return (
     <div className="space-y-6 max-w-5xl">
       {/* Header */}
-      <PageHeaderCard title={<><BookOpen className="size-6 text-muted-foreground" /> Help &amp; glossary</>} subtitle={<>Plain-English explanations for every term, plus quick guides for the
-          most common tasks.</>} />
+      <PageHeaderCard title={<><BookOpen className="size-6 text-muted-foreground" /> Help &amp; glossary</>} />
 
       {/* How do I... */}
       <section>

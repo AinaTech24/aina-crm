@@ -91,7 +91,7 @@ export default async function BusinessEntriesPage({
 
   return (
     <div className="space-y-6 max-w-6xl">
-      <PageHeaderCard title={<><Briefcase className="size-6 text-muted-foreground" /> Business Entries</>} subtitle={<>Log booked business (MF / PMS / AIF / SIF…), email clients, and report.</>} actions={<><div className="flex items-center gap-2">
+      <PageHeaderCard title={<><Briefcase className="size-6 text-muted-foreground" /> Business Entries</>} actions={<><div className="flex items-center gap-2">
           <Link href="/dashboard/business-entries/dashboard" className="btn-secondary text-sm inline-flex items-center gap-1.5">
             <LayoutDashboard className="size-4" /> Dashboard
           </Link>

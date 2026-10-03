@@ -202,7 +202,7 @@ export default async function ProductOfferingsListPage({
 
   return (
     <div className="space-y-5">
-      <PageHeaderCard title={<>Products &amp; services offered</>} subtitle={<>The products and services your firm sells, and who is allowed to sell them.</>} actions={<>{canEdit && (
+      <PageHeaderCard title={<>Products &amp; services offered</>} actions={<>{canEdit && (
           <Link
             href="/dashboard/product-offerings/new"
             className="btn-primary text-sm"

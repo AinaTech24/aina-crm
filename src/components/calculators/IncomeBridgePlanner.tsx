@@ -106,10 +106,7 @@ export function IncomeBridgePlanner() {
     <div className="card-surface p-5 space-y-4">
       <div>
         <h2 className="text-base font-semibold">Income Bridge Planner · SIP → SWP</h2>
-        <p className="text-xs text-muted-foreground">
-          Build a corpus with a SIP / lumpsum, then draw an inflation-adjusted monthly income (SWP) from it — and see exactly
-          how much income it gives, or how much you must invest for the income you want.
-        </p>
+        
       </div>
 
       {/* Step 1 — what to calculate */}

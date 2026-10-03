@@ -49,8 +49,7 @@ export default async function TargetsPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <PageHeaderCard title={<><Target className="size-6 text-muted-foreground" /> KRA targets</>} subtitle={<>Annual targets for FY {fy}. The scorecard pro-rates each to the selected period (e.g. month-to-date) and
-          scores actual vs target. Leave blank to keep that KPI on relative (leaderboard) scoring.</>} />
+      <PageHeaderCard title={<><Target className="size-6 text-muted-foreground" /> KRA targets</>} subtitle={<>FY {fy}</>} />
 
       <section className="space-y-2">
         <h2 className="text-sm font-bold uppercase tracking-wide">Sales team</h2>

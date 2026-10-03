@@ -3,7 +3,10 @@
  *
  *   createOpportunity   one open row per (client, product); marks the product
  *                       "Interested" on the client's Cross-sell card and gives
- *                       the owner a follow-up task.
+ *                       the owner a follow-up task, due on the follow-up date
+ *                       picked when it was opened (else in two days).
+ *   setFollowUp         move the next follow-up: the open follow-up task's due
+ *                       date, or a new task when none is open.
  *   advanceOpportunity  moves to the next stage of the product's path (or to
  *                       Lost), refusing when a compliance gate is not met, and
  *                       then lets the journey skip what is already on file.
@@ -32,6 +35,12 @@
  * "Need identified" and "Discussion" are people talking and are never skipped
  * — except when a proposal has already been shared, which proves they happened.
  *
+ * ── Follow-ups ARE tasks ─────────────────────────────────────────────────
+ * An opportunity's "next follow-up" is the earliest open task carrying its id
+ * (meta.opportunityId) — not a column. Completing the task clears it, moving
+ * the date moves the task, and the list can never disagree with the worklist.
+ * An open opportunity with no open task has no follow-up, and says so.
+ *
  * A blank field is a record gap, not a need: nothing here opens an
  * opportunity because a column is empty. Opportunities are opened by people
  * (or, later, by named automations).
@@ -50,6 +59,10 @@ import {
 import { isClosedStage, nextStage, OPPORTUNITY_PATHS, stageName, type OpportunityStageKey } from "./stages";
 
 export type Actor = { tenantId: string; userId: string };
+
+/** 10:00 India time on a YYYY-MM-DD day — when a follow-up task falls due. */
+export const followUpDue = (day: string) => new Date(`${day}T10:00:00+05:30`);
+const OPEN_TASK = sql`status IN ('open', 'in_progress', 'blocked')`;
 
 export type Prerequisite = {
   label: string;
@@ -277,6 +290,8 @@ export type CreateInput = {
   ownerId?: string | null;
   coOwnerId?: string | null;
   sourceLeadId?: string | null;
+  /** YYYY-MM-DD — when the owner first follows up. Default: two days from now. */
+  followUpOn?: string | null;
 };
 
 export async function createOpportunity(
@@ -337,7 +352,7 @@ export async function createOpportunity(
     priority: "normal",
     status: "open",
     assigneeId: ownerId,
-    dueAt: new Date(Date.now() + 2 * 864e5),
+    dueAt: input.followUpOn ? followUpDue(input.followUpOn) : new Date(Date.now() + 2 * 864e5),
     createdById: actor.userId,
     meta: { opportunityId: opp.id },
   } as any);
@@ -354,6 +369,38 @@ export async function createOpportunity(
   } as any);
 
   return { opportunity: opp, created: true };
+}
+
+/* ───────────────────────────── follow-up ───────────────────────────── */
+
+/**
+ * Set the next follow-up of an open opportunity to `day` (YYYY-MM-DD): the
+ * earliest open task of the opportunity moves to it, or — when the owner has
+ * none open — a new follow-up task is created for them.
+ */
+export async function setFollowUp(tx: Tx, actor: Actor, opp: ClientOpportunity, day: string) {
+  const due = followUpDue(day);
+  const [open] = (await tx.execute(sql`
+    SELECT id, due_at FROM tasks
+     WHERE tenant_id = ${opp.tenantId}::uuid AND meta ->> 'opportunityId' = ${opp.id} AND ${OPEN_TASK}
+     ORDER BY due_at ASC NULLS LAST LIMIT 1
+  `)).rows as Array<{ id: string; due_at: string | null }>;
+  if (open) {
+    await tx.update(tasks).set({ dueAt: due, updatedAt: new Date() } as any).where(eq(tasks.id, open.id));
+  } else {
+    const inv = (await tx.execute(sql`SELECT name FROM investors WHERE id = ${opp.investorId}::uuid`)).rows[0] as { name: string } | undefined;
+    await tx.insert(tasks).values({
+      tenantId: opp.tenantId, subjectType: "investor", subjectId: opp.investorId, relatedInvestorId: opp.investorId,
+      type: "follow_up", title: `${productLabel(opp.product)} — follow up with ${inv?.name ?? "client"}`,
+      priority: "normal", status: "open", assigneeId: opp.ownerId ?? actor.userId, dueAt: due, createdById: actor.userId,
+      meta: { opportunityId: opp.id },
+    } as any);
+  }
+  await recordAudit(tx, {
+    tenantId: opp.tenantId, actorUserId: actor.userId, action: "opportunity.follow_up",
+    entityType: "opportunity", entityId: opp.id,
+    before: { followUpAt: open?.due_at ?? null }, after: { followUpOn: day },
+  } as any);
 }
 
 /* ─────────────────────────────── advance ─────────────────────────────── */
@@ -598,6 +645,8 @@ export type OpportunityView = {
   needsAnalysis: NeedsAnalysis | null;
   lostReason: string | null;
   revisitOn: string | null;
+  /** The earliest open task of the opportunity — its next follow-up. */
+  followUpAt: string | null;
   createdAt: string;
   closedAt: string | null;
   current: { key: string; name: string; enteredAt: string; slaDays: number | null; delayed: boolean };
@@ -628,6 +677,16 @@ export async function listOpportunities(
     const us = (await tx.execute(sql`SELECT id, name FROM users WHERE id IN (${sql.join(userIds.map((u) => sql`${u}::uuid`), sql`, `)})`)).rows as Array<{ id: string; name: string }>;
     for (const u of us) names.set(u.id, u.name.replace(/\s*\([^)]*\)\s*$/, ""));
   }
+
+  // Next follow-up per opportunity: its earliest open task (see the header).
+  const followUps = new Map<string, string>();
+  const fu = (await tx.execute(sql`
+    SELECT meta ->> 'opportunityId' AS oid, min(due_at) AS due FROM tasks
+     WHERE tenant_id = ${tenantId}::uuid AND ${OPEN_TASK} AND due_at IS NOT NULL
+       AND meta ->> 'opportunityId' IN (${sql.join(rows.map((r) => sql`${r.id}`), sql`, `)})
+     GROUP BY 1
+  `)).rows as Array<{ oid: string; due: string | Date }>;
+  for (const r of fu) followUps.set(r.oid, new Date(r.due).toISOString());
 
   const out: OpportunityView[] = [];
   for (const opp of rows) {
@@ -683,6 +742,7 @@ export async function listOpportunities(
       needsAnalysis: opp.needsAnalysis ?? null,
       lostReason: opp.lostReason,
       revisitOn: opp.revisitOn,
+      followUpAt: opp.status === "open" ? followUps.get(opp.id) ?? null : null,
       createdAt: opp.createdAt.toISOString(),
       closedAt: (opp.wonAt ?? opp.lostAt)?.toISOString() ?? null,
       current: {

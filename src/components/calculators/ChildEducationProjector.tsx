@@ -40,10 +40,7 @@ export function ChildEducationProjector() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Child Education Cost Projector</h2>
-        <p className="text-xs text-muted-foreground">
-          Education costs rise ~10%/yr — faster than general inflation. Project each
-          milestone at education inflation and the SIP needed to fund it on time.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

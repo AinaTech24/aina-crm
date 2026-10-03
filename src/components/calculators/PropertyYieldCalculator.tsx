@@ -49,10 +49,7 @@ export function PropertyYieldCalculator() {
     <div className="card-surface p-5 space-y-4">
       <div>
         <h2 className="text-base font-semibold">Property Rental Yield &amp; Reinvestment</h2>
-        <p className="text-xs text-muted-foreground">
-          See the real return on a property — appreciation <em>plus</em> the net rental surplus reinvested as a SIP — and the
-          blended yield it produces. The real magic isn&apos;t the rent; it&apos;s what you do with it.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 gap-3">

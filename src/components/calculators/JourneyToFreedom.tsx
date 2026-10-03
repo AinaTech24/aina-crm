@@ -55,10 +55,7 @@ export function JourneyToFreedom() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">The Journey to Freedom</h2>
-        <p className="text-xs text-muted-foreground">
-          Invest the gap between income and spending, and watch the corpus grow until it funds your lifestyle forever — the moment of
-          Financial Freedom.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

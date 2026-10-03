@@ -47,8 +47,7 @@ export default async function OnboardingFieldsPage() {
 
   return (
     <div className="space-y-6 max-w-3xl">
-      <PageHeaderCard title={<>Onboarding form fields</>} subtitle={<>Choose which fields your team must fill on the client account-opening /
-          &ldquo;Confirm documents received&rdquo; form. Changes apply firm-wide.</>} />
+      <PageHeaderCard title={<>Onboarding form fields</>} />
 
       <OnboardingFieldsEditor fields={fields} overrides={overrides} />
     </div>

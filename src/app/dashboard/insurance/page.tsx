@@ -291,7 +291,7 @@ export default async function InsurancePage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><Shield className="size-6 text-muted-foreground" /> Insurance</>} subtitle={<>Every policy you service — premium, cover, renewal date and claims.</>} actions={<><div className="flex items-center gap-2">
+      <PageHeaderCard title={<><Shield className="size-6 text-muted-foreground" /> Insurance</>} actions={<><div className="flex items-center gap-2">
           <Link href="/dashboard/insurance/import" className="btn-secondary"><FileUp className="size-4" /> Import</Link>
           <Link href="/dashboard/insurance/new" className="btn-primary">
             <Plus className="size-4" /> New policy

@@ -62,10 +62,7 @@ export function HumanLifeValueCalculator() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Human Life Value Calculator</h2>
-        <p className="text-xs text-muted-foreground">
-          Size the term cover a family needs to stay financially secure — by
-          replacing future income, or by adding up specific financial needs.
-        </p>
+        
       </div>
 
       <Segmented

@@ -37,9 +37,7 @@ export function BtidCalculator() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Term + MF vs ULIP / Endowment</h2>
-        <p className="text-xs text-muted-foreground">
-          Same yearly outgo: a pure term plan + mutual funds, or a traditional/ULIP policy. Compare wealth <em>and</em> cover.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

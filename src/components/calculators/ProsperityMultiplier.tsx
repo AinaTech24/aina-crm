@@ -50,10 +50,7 @@ export function ProsperityMultiplier() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Prosperity Multiplier (SIP → SWP)</h2>
-        <p className="text-xs text-muted-foreground">
-          Build a corpus with a SIP, then draw a growing monthly income for decades — and see whether the corpus keeps
-          multiplying even while it pays you. The classic &ldquo;invest, then live off it forever&rdquo; story.
-        </p>
+        
       </div>
 
       <Section n={1} title="Accumulation — build the corpus">

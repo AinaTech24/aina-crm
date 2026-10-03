@@ -126,9 +126,7 @@ export function MoneyPersonalityQuiz() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Money Personality Quiz</h2>
-        <p className="text-xs text-muted-foreground">
-          8 quick questions reveal an investor archetype and a starting asset mix. A great ice-breaker for a first meeting.
-        </p>
+        
       </div>
 
 

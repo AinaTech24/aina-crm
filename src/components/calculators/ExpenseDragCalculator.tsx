@@ -27,11 +27,7 @@ export function ExpenseDragCalculator() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Expense-Ratio Drag</h2>
-        <p className="text-xs text-muted-foreground">
-          A small difference in expense ratio compounds into a big difference in
-          wealth. See exactly what a costlier fund (or plan) takes from a portfolio
-          over time.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

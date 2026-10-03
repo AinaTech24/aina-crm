@@ -93,9 +93,7 @@ export default async function WhatsAppSettingsPage() {
           <Stat label="Pending" value={data.templates.pending ?? 0} tone="amber" />
           <Stat label="Rejected" value={data.templates.rejected ?? 0} tone="rose" />
         </div>
-        <p className="text-xs text-muted-foreground mt-3">
-          Template sync runs every 15 minutes. Templates also go through our internal compliance gate before being submitted to Meta.
-        </p>
+        
       </div>
 </div>
   );

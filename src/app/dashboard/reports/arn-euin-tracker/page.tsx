@@ -134,11 +134,7 @@ export default async function ArnEuinTrackerPage({
           </Link>
         </div>
         <h1 className="page-title">ARN / EUIN / NISM / DSC tracker</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          One row per team member with all licensing fields. Tap any row to
-          jump to the employee detail page to update. Use the chips below to
-          filter by what's expiring soon.
-        </p>
+        
       </div>
 
       <ArnEuinTrackerClient initialRows={serialised} initialWithin={within} />

@@ -62,7 +62,6 @@ export default async function NewGoalPage({
         </Link>
         <PageHeaderCard
           title={<>New goal</>}
-          subtitle={<>Step 1 of 2: choose the client. You&apos;ll pick the goal type next.</>}
         />
         <form method="get" className="flex gap-2" role="search">
           <label htmlFor="goal-client-q" className="sr-only">Search clients by name or PAN</label>

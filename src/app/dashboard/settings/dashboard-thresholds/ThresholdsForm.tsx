@@ -116,9 +116,7 @@ export function ThresholdsForm({
       <div className="p-5 sm:p-6">
         <div className="mb-5">
           <h2 className="section-title">Judgement thresholds</h2>
-          <p className="section-subtitle mt-0.5">
-            Where the dashboards draw their lines. Leave a field blank to use the default shown beside it.
-          </p>
+          
         </div>
         <div className="grid gap-x-8 gap-y-6 md:grid-cols-2">
             {fields.map((f) => (

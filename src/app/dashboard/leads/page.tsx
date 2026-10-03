@@ -1,6 +1,7 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
-import { eq, sql } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import {
   Plus,
   Sparkles,
@@ -11,7 +12,7 @@ import {
   List,
 } from "lucide-react";
 import { withTenant } from "@/db/client";
-import { leads, users } from "@/db/schema";
+import { branches, customFieldDefs, investors, leads, subDistributors, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { requireLeadView, leadScopeSql } from "@/lib/leads/access";
 
@@ -33,6 +34,8 @@ import { CustomViews } from "@/components/common/CustomViews";
 import { EmptyState } from "@/components/common/EmptyState";
 import { RowActions } from "@/components/common/RowActions";
 import { ColumnManager } from "@/components/common/ColumnManager";
+import { leadExtraCells, leadExtraColumns, type LeadCustomFieldDef } from "@/lib/leads/table-columns";
+import { leadFieldFilterConds, leadFieldFilterDefs, loadLeadFilterOptions } from "@/lib/leads/field-filters";
 
 /**
  * Kanban columns and stage filter options — the six-step pipeline from
@@ -63,7 +66,6 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Header "⋯": the other lead views the old "Module" dropdown switched to. */
 const MORE_ITEMS = [
-  { href: "/dashboard/lifecycle", label: "Lead-to-client lifecycle", description: "Each lead's path through to becoming a client" },
   { href: "/dashboard/leads/nurture", label: "Lead Nurturing", description: "Keep not-yet-ready leads warm" },
 ];
 
@@ -77,8 +79,12 @@ const LEADS_COLUMNS = [
   { key: "lastContactAt", label: "Last Contacted" },
   { key: "owner", label: "Owner (RM)" },
   { key: "createdAt", label: "Created At" },
-  { key: "actions", label: "Actions", required: true },
 ];
+// Every other lead field follows (lib/leads/table-columns.ts), then Actions.
+const ACTIONS_COLUMN = { key: "actions", label: "Actions", required: true };
+
+/** The lead who referred this one may be a client: their name, when no name was typed. */
+const referredClient = alias(investors, "referred_client");
 
 export const dynamic = "force-dynamic";
 
@@ -163,6 +169,15 @@ export default async function LeadsPage({
     ];
     // include_won=1 lifts "on the board" only; deletion and role scope stay.
     const conds: any[] = includeWon ? [bookConds[0], bookConds[2]] : [...bookConds];
+    // The firm's own lead fields — one list column and one filter each.
+    const customDefs: (LeadCustomFieldDef & { options: string[] | null })[] = await tx
+      .select({ key: customFieldDefs.key, label: customFieldDefs.label, type: customFieldDefs.type, options: customFieldDefs.options })
+      .from(customFieldDefs)
+      .where(sql`${customFieldDefs.tenantId} = ${session.tenantId}::uuid AND ${customFieldDefs.entity} = 'lead'`)
+      .orderBy(asc(customFieldDefs.sortOrder), asc(customFieldDefs.label));
+    // Every other lead field's filter (lib/leads/field-filters.ts).
+    const fieldConds = leadFieldFilterConds(sp, customDefs);
+    conds.push(...fieldConds);
     if (q) {
       conds.push(
         sql`(leads.name ILIKE ${`%${q}%`} OR leads.phone ILIKE ${`%${q}%`} OR leads.email ILIKE ${`%${q}%`} OR users.name ILIKE ${`%${q}%`})`
@@ -237,9 +252,18 @@ export default async function LeadsPage({
     }
 
     const baseQuery = tx
-      .select({ lead: leads, owner: users.name })
+      .select({
+        lead: leads,
+        owner: users.name,
+        branch: branches.name,
+        subDistributor: subDistributors.name,
+        referredClient: referredClient.name,
+      })
       .from(leads)
-      .leftJoin(users, eq(users.id, leads.ownerId));
+      .leftJoin(users, eq(users.id, leads.ownerId))
+      .leftJoin(branches, eq(branches.id, leads.branchId))
+      .leftJoin(subDistributors, eq(subDistributors.id, leads.subDistributorId))
+      .leftJoin(referredClient, eq(referredClient.id, leads.referredByInvestorId));
     // Default ordering: hottest (highest persisted score) first, recency as
     // tiebreaker. Index-backed via leads_score_idx (tenant_id, lead_score DESC).
     const dirSql = sql.raw(dir === "asc" ? "ASC" : "DESC");
@@ -267,7 +291,10 @@ export default async function LeadsPage({
       WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
       ORDER BY name ASC
     `);
-    return { rows, rms: rmRows.rows as any[], total, view };
+    // Pick lists for the field filters — values from the viewer's own book
+    // (not deleted, role scope), won and lost leads included.
+    const filterOptions = await loadLeadFilterOptions(tx, session.tenantId, sql.join([bookConds[0], bookConds[2]], sql` AND `));
+    return { rows, rms: rmRows.rows as any[], total, view, customDefs, filterOptions, fieldFilterCount: fieldConds.length };
   });
 
   const rmOptions = (data.rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
@@ -283,6 +310,13 @@ export default async function LeadsPage({
   // Enrich rows for the table view with a deterministic priority score, and
   // sort hottest-first by default (or most-recent when ?sort=recent).
   const toIso = (v: any) => (v ? new Date(v as any).toISOString() : null);
+  const extraColumns = leadExtraColumns(data.customDefs);
+  const anyFiltering = filtering || data.fieldFilterCount > 0;
+  const columnDefs = [
+    ...LEADS_COLUMNS,
+    ...extraColumns.map((c) => ({ key: c.key, label: c.label, group: c.group })),
+    ACTIONS_COLUMN,
+  ];
   const tableRows = data.rows.map((r) => {
     const l = r.lead as any;
     const column = leadPipelineColumn(l.stage);
@@ -304,6 +338,11 @@ export default async function LeadsPage({
       // Persisted deterministic score (src/lib/leads/score.ts) — written on
       // create + every stage transition, backfilled for historic rows.
       score: l.leadScore ?? 0,
+      cells: leadExtraCells(
+        l,
+        { branch: r.branch ?? null, subDistributor: r.subDistributor ?? null, referredClient: r.referredClient ?? null },
+        data.customDefs,
+      ),
     };
   });
   if (sortKey === "score") tableRows.sort((a, b) => (dir === "asc" ? a.score - b.score : b.score - a.score));
@@ -313,7 +352,7 @@ export default async function LeadsPage({
       {/* Restores the last-used view (kanban/list) when arriving with no ?view param. */}
       <LeadsViewPersist explicitView={sp.view ?? null} />
       {/* Header */}
-      <PageHeaderCard title={<><UserPlus className="size-6 text-muted-foreground" /> Leads</>} subtitle={<>Prospects you are working on, from first contact through to conversion.</>} actions={<><div className="flex gap-2 items-center">
+      <PageHeaderCard title={<><UserPlus className="size-6 text-muted-foreground" /> Leads</>} actions={<><div className="flex gap-2 items-center">
           {/* One primary action, one secondary, the rest behind ⋯. The old
               "Module" dropdown (Pipeline Board, Lifecycle) lives in ⋯ now, and
               the Kanban / List toggle sits with the other view controls in the
@@ -349,6 +388,7 @@ export default async function LeadsPage({
             ? [{ type: "multi" as const, key: "owner", label: "Owner (RM)", options: rmOptions }]
             : []),
           dateRangeFilter("created", "Created"),
+          ...leadFieldFilterDefs(data.filterOptions, data.customDefs),
         ]}
         rightSlot={
           <div className="flex items-center gap-2">
@@ -376,7 +416,7 @@ export default async function LeadsPage({
               </Link>
             </div>
             {view === "table" && (
-              <ColumnManager compact moduleKey="leads" columns={LEADS_COLUMNS} />
+              <ColumnManager compact moduleKey="leads" columns={columnDefs} />
             )}
             <CustomViews
               compact
@@ -402,7 +442,7 @@ export default async function LeadsPage({
       {/* Kanban — drag-and-drop enabled. Show a friendly empty-state when
           there are no leads yet AND no filters are active, so a brand-new
           tenant sees a clear "Add your first lead" path. */}
-      {data.rows.length === 0 && !filtering ? (
+      {data.rows.length === 0 && !anyFiltering ? (
         <EmptyState
           icon={Sparkles}
           title="No leads yet — let's add the first one"
@@ -482,7 +522,7 @@ export default async function LeadsPage({
         </div>
       ) : (
         <div>
-          <LeadsTable rows={tableRows} sort={sortKey} dir={dir} />
+          <LeadsTable rows={tableRows} extraColumns={extraColumns} sort={sortKey} dir={dir} />
           <Pager page={page} totalPages={Math.ceil(data.total / PAGE_SIZE)} total={data.total} pageSize={PAGE_SIZE} />
         </div>
       )}

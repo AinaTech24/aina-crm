@@ -30,9 +30,7 @@ export default async function LeavePolicyPage() {
         <CalendarCog className="size-6 text-muted-foreground" />
         <h1 className="page-title">Leave policy</h1>
       </div>
-      <p className="text-sm text-muted-foreground">
-        Firm-wide annual entitlement (days) per leave type. Per-employee overrides still apply.
-      </p>
+      
       <LeaveSettingsForm initial={data} canManage={canManage} />
     </div>
   );

@@ -37,9 +37,7 @@ export function NpsVsMfCalculator() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">NPS vs Mutual Fund</h2>
-        <p className="text-xs text-muted-foreground">
-          Same monthly contribution to retirement: NPS (tax break, lower cost, forced annuity) vs an equity MF (flexible, fully liquid).
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

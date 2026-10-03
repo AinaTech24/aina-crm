@@ -91,8 +91,7 @@ export default async function ReferralsPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><Heart className="size-6 text-muted-foreground" /> Referral Tracking</>} subtitle={<>Which clients are referring new business — and how much of it converts. Use this list to schedule
-          thank-you calls and identify your top advocates.</>} />
+      <PageHeaderCard title={<><Heart className="size-6 text-muted-foreground" /> Referral Tracking</>} />
 
       <div className="grid grid-cols-4 gap-3">
         <Stat

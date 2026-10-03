@@ -21,7 +21,7 @@ import { DateRangeField } from "@/components/ui/DateRangeField";
  * search box, `sort` becomes the icon-only sort dropdown, and select/multi/
  * date_range become sections inside the single Filters dropdown.
  */
-export type CompactFilter =
+export type CompactFilter = (
   | { type: "search"; key: string; placeholder?: string }
   | { type: "select"; key: string; label: string; options: { value: string; label: string }[]; allLabel?: string }
   | { type: "multi"; key: string; label: string; options: { value: string; label: string }[] }
@@ -36,7 +36,16 @@ export type CompactFilter =
       type: "flags";
       label: string;
       options: { key: string; label: string; count?: number }[];
-    };
+    }
+  /** Free text: the list keeps rows whose field CONTAINS what was typed. */
+  | { type: "text"; key: string; label: string; placeholder?: string }
+) & {
+  /** Heading the filter sits under in the panel (consecutive filters share it). */
+  group?: string;
+};
+
+/** Past this many filters the panel gets a "Find a filter" box. */
+const FIND_THRESHOLD = 12;
 
 export type AmountPreset = { label: string; min?: number; max?: number };
 
@@ -80,8 +89,8 @@ export function CompactFilterBar({
   const searchDef = allFilters.find((f) => f.type === "search") as Extract<CompactFilter, { type: "search" }> | undefined;
   const sortDef = allFilters.find((f) => f.type === "sort") as Extract<CompactFilter, { type: "sort" }> | undefined;
   const filters = allFilters.filter(
-    (f) => f.type === "multi" || f.type === "select" || f.type === "date_range" || f.type === "flags" || f.type === "amount_range"
-  ) as Array<Extract<CompactFilter, { type: "multi" | "select" | "date_range" | "flags" | "amount_range" }>>;
+    (f) => f.type === "multi" || f.type === "select" || f.type === "date_range" || f.type === "flags" || f.type === "amount_range" || f.type === "text"
+  ) as Array<Extract<CompactFilter, { type: "multi" | "select" | "date_range" | "flags" | "amount_range" | "text" }>>;
   const searchKey = searchKeyProp ?? searchDef?.key ?? "q";
   const searchPlaceholder = searchPlaceholderProp ?? searchDef?.placeholder ?? "Search…";
   const sort = sortProp ?? (sortDef ? { key: sortDef.key, options: sortDef.options } : undefined);
@@ -91,6 +100,7 @@ export function CompactFilterBar({
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [openSection, setOpenSection] = useState<string | null>(null);
+  const [find, setFind] = useState("");
   const [sortOpen, setSortOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const sortRef = useRef<HTMLDivElement>(null);
@@ -101,7 +111,7 @@ export function CompactFilterBar({
       if (f.type === "multi") {
         const v = sp.get(f.key);
         out[f.key] = v ? v.split(",").filter(Boolean) : [];
-      } else if (f.type === "select") {
+      } else if (f.type === "select" || f.type === "text") {
         out[f.key] = sp.get(f.key) ?? "";
       } else if (f.type === "date_range") {
         out[`${f.key}_from`] = sp.get(`${f.key}_from`) ?? "";
@@ -151,7 +161,7 @@ export function CompactFilterBar({
   const activeCount = filters.reduce((n, f) => {
     if (f.type === "flags") return n + f.options.filter((o) => values[o.key]).length;
     if (f.type === "multi") return n + ((values[f.key] as string[]).length > 0 ? 1 : 0);
-    if (f.type === "select") return n + (values[f.key] ? 1 : 0);
+    if (f.type === "select" || f.type === "text") return n + (values[f.key] ? 1 : 0);
     if (f.type === "amount_range") return n + (values[`${f.key}_min`] || values[`${f.key}_max`] ? 1 : 0);
     return n + (values[`${f.key}_from`] || values[`${f.key}_to`] ? 1 : 0);
   }, 0);
@@ -161,7 +171,7 @@ export function CompactFilterBar({
     for (const f of filters) {
       if (f.type === "flags") for (const o of f.options) next[o.key] = "";
       else if (f.type === "multi") next[f.key] = [];
-      else if (f.type === "select") next[f.key] = "";
+      else if (f.type === "select" || f.type === "text") next[f.key] = "";
       else if (f.type === "amount_range") {
         next[`${f.key}_min`] = "";
         next[`${f.key}_max`] = "";
@@ -172,6 +182,12 @@ export function CompactFilterBar({
     }
     pushParams(next);
   }
+
+  // The panel's sections, narrowed by "Find a filter" (label or group).
+  const needle = find.trim().toLowerCase();
+  const shown = needle
+    ? filters.filter((f) => f.label.toLowerCase().includes(needle) || (f.group ?? "").toLowerCase().includes(needle))
+    : filters;
 
   /** Short summary of a section's active selection, shown on its collapsed row. */
   function summaryFor(f: (typeof filters)[number]): string {
@@ -191,6 +207,7 @@ export function CompactFilterBar({
       return v ? f.options.find((o) => o.value === v)?.label ?? v : "";
     }
     if (f.type === "amount_range") return amountSummary(values[`${f.key}_min`], values[`${f.key}_max`], f.presets);
+    if (f.type === "text") return values[f.key] ? `“${values[f.key]}”` : "";
     const from = values[`${f.key}_from`];
     const to = values[`${f.key}_to`];
     if (!from && !to) return "";
@@ -236,15 +253,33 @@ export function CompactFilterBar({
 
           {open && (
             <div className="absolute right-0 top-full mt-1 z-50 w-[300px] card-elevated bg-card p-1.5">
+              {filters.length > FIND_THRESHOLD && (
+                <div className="relative p-1 pb-1.5">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
+                  <input
+                    value={find}
+                    onChange={(e) => setFind(e.target.value)}
+                    placeholder="Find a filter…"
+                    aria-label="Find a filter"
+                    className="input-base h-8 pl-8 text-xs w-full"
+                  />
+                </div>
+              )}
               <div className="max-h-[60vh] overflow-y-auto scrollbar-thin">
-                {filters.map((f) => {
+                {shown.length === 0 && <p className="px-2 py-2 text-xs text-muted-foreground">No filter by that name.</p>}
+                {shown.map((f, i) => {
                   // A flags section owns several URL keys, so it is identified
                   // by its label rather than a single key.
                   const sectionId = f.type === "flags" ? `flags:${f.label}` : f.key;
                   const isOpen = openSection === sectionId;
                   const summary = summaryFor(f);
+                  // A heading where the group changes among the filters shown.
+                  const heading = f.group && shown[i - 1]?.group !== f.group ? f.group : null;
                   return (
                     <div key={sectionId} className="border-b border-border last:border-0">
+                      {heading && (
+                        <div className="px-2 pt-2 pb-0.5 text-2xs uppercase tracking-wider text-muted-foreground font-semibold">{heading}</div>
+                      )}
                       <button
                         type="button"
                         onClick={() => setOpenSection(isOpen ? null : sectionId)}
@@ -342,6 +377,13 @@ export function CompactFilterBar({
                                 );
                               })}
                             </ul>
+                          ) : f.type === "text" ? (
+                            <TextFilterSection
+                              label={f.label}
+                              placeholder={f.placeholder}
+                              value={values[f.key]}
+                              onApply={(v) => pushParams({ [f.key]: v })}
+                            />
                           ) : f.type === "amount_range" ? (
                             <AmountRangeSection
                               filterKey={f.key}
@@ -562,6 +604,42 @@ function AmountRangeSection({
           <p className="text-2xs text-muted-foreground">Leave one side empty for “and above” or “under”.</p>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Free-text filter: nothing is pushed while typing; Enter or Apply sends it. */
+function TextFilterSection({
+  label,
+  placeholder,
+  value,
+  onApply,
+}: {
+  label: string;
+  placeholder?: string;
+  value: string;
+  onApply: (v: string) => void;
+}) {
+  const [v, setV] = useState(value);
+  useEffect(() => setV(value), [value]);
+  return (
+    <div className="flex items-center gap-1.5">
+      <input
+        value={v}
+        onChange={(e) => setV(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && onApply(v.trim())}
+        placeholder={placeholder ?? "Contains…"}
+        aria-label={`${label} contains`}
+        className="input-base h-7 text-2xs flex-1 min-w-0"
+      />
+      <button type="button" onClick={() => onApply(v.trim())} className="btn-secondary h-7 px-2 text-2xs">
+        Apply
+      </button>
+      {value && (
+        <button type="button" onClick={() => onApply("")} className="btn-ghost h-7 px-1.5 text-2xs" aria-label={`Clear ${label}`}>
+          <X className="size-3" />
+        </button>
+      )}
     </div>
   );
 }

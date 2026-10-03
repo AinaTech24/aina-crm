@@ -73,7 +73,6 @@ export default async function ManageDashboardsPage({
     <div className="space-y-4">
       <PageHeaderCard
         title="Manage dashboards"
-        subtitle="Every dashboard you can open, who it is shared with and who opens it by default."
         actions={
           <div className="flex items-center gap-2">
             {data.list.canManage && (

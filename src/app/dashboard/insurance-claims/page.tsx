@@ -120,7 +120,7 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
 
   return (
     <div className="space-y-5 max-w-7xl">
-      <PageHeaderCard title={<><FileText className="size-6 text-muted-foreground" /> Insurance Claims</>} subtitle={<>Claims your clients have raised, and where each one is stuck.</>} actions={<><div className="flex items-center gap-2">
+      <PageHeaderCard title={<><FileText className="size-6 text-muted-foreground" /> Insurance Claims</>} actions={<><div className="flex items-center gap-2">
           <Link href="/dashboard/insurance-claims/scorecard" className="btn-secondary"><Clock className="size-4" /> Settlement scorecard</Link>
           <Link href="/dashboard/insurance-claims/new" className="btn-primary"><Plus className="size-4" /> New claim</Link>
         </div></>} />

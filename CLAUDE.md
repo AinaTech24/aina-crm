@@ -272,6 +272,21 @@ the client page's Overview tab.
   Bonds / NCD) plus the card. The Pipeline Board (`/dashboard/pipeline-board`)
   was removed at the firm's request on 2026-10-02 and redirects to Leads —
   do not restore it.
+- **The Opportunities module** (`/dashboard/opportunities`, sidebar Clients,
+  2026-10-02): every opportunity the viewer can see — access follows the
+  client (`investorScopeSql`) — on a board by journey step (the five people
+  steps, then one "Processing" column for the product branch, then Won /
+  Lost) or as a list, with filters and the headline figures (open, follow-ups
+  overdue / today / not set, won this month). Loader `lib/opportunities/board.ts`.
+  Each opens `/dashboard/opportunities/[id]`, where the journey runs: the same
+  `OpportunityCard` the client page uses, plus history, details (Edit), the
+  client and its tasks. "New opportunity" there picks the client.
+- **Follow-ups ARE tasks.** An opportunity's next follow-up is its earliest
+  open task with `meta.opportunityId` — there is no column. The follow-up date
+  chosen at creation is the first task's due date (10:00 IST; default two
+  days), and `setFollowUp` (PATCH `followUpOn`) moves the open one or creates
+  one. Completing the task clears it; an open opportunity with none reads
+  "No follow-up set".
 
 ## Meetings — attendees and action items
 

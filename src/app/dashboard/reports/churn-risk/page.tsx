@@ -122,10 +122,7 @@ export default async function ChurnRiskPage() {
         )}
       </div>
 
-      <p className="text-2xs text-muted-foreground italic">
-        Scores are a transparent weighted scorecard, not a black box — open any client to see every
-        contributing factor. Use it to prioritise retention calls, not to make automated decisions.
-      </p>
+      
     </div>
   );
 }

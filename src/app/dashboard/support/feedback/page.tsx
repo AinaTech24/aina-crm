@@ -78,7 +78,7 @@ export default async function FeedbackPage() {
   return (
     <div className="space-y-6 max-w-7xl">
       <PageHeaderCard title={<><MessageSquare className="size-6 text-violet-600" />
-            Client Feedback</>} subtitle={<>Net Promoter Score (NPS) and what your clients say about your service.</>} actions={<div className="flex items-center gap-2">{/* Branded PDF of the score, its breakdown and every response.
+            Client Feedback</>} actions={<div className="flex items-center gap-2">{/* Branded PDF of the score, its breakdown and every response.
             DownloadButton keeps the /api path out of the anchor href. */}
         <DownloadButton
           url="/api/support/feedback/pdf?download=1"

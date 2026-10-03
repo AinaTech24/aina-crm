@@ -29,7 +29,6 @@ export default async function AutomationsLayout({ children }: { children: React.
     <div className="space-y-5 max-w-7xl">
       <PageHeaderCard
         title={<><Workflow className="size-6 text-muted-foreground" /> Automations</>}
-        subtitle={<>Rules that do the repetitive work for you, what each one does, and every time they ran.</>}
         actions={canEdit ? <NewAutomationButton /> : undefined}
       />
       <AutomationTabs tabs={tabs} />

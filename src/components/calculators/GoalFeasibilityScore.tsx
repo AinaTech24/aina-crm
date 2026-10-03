@@ -44,10 +44,7 @@ export function GoalFeasibilityScore() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Goal-Feasibility Score</h2>
-        <p className="text-xs text-muted-foreground">
-          One number that answers &quot;are my goals achievable on my current plan?&quot; —
-          with the exact monthly shortfall if they&apos;re not.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

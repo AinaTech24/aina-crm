@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export default function GrowthMisPage() {
   return (
     <div className="space-y-5 max-w-5xl">
-      <PageHeaderCard title={<>Growth MIS</>} subtitle={<>One screen tying efforts to results — the monthly review at a glance.</>} />
+      <PageHeaderCard title={<>Growth MIS</>} />
 
       <GrowthMisBoard />
     </div>

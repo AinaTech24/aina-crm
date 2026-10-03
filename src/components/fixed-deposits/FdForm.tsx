@@ -149,7 +149,7 @@ export function FdForm({
 
   return (
     <form onSubmit={submit} className="space-y-5" noValidate>
-      <FieldSection title="Client" description="Whose deposit this is, and the RM who follows it up at maturity.">
+      <FieldSection title="Client">
         <Field label="Client" required error={errors.investor}>
           {() => lockClient ? (
             <div className="input-base flex w-full items-center bg-secondary/60">{v.investorName}</div>
@@ -174,7 +174,7 @@ export function FdForm({
         </Field>
       </FieldSection>
 
-      <FieldSection title="Deposit" description="As printed on the deposit receipt.">
+      <FieldSection title="Deposit">
         <Field label="Bank or company" required error={errors.issuer}>
           {(id, d) => (
             <>
@@ -208,7 +208,7 @@ export function FdForm({
         </Field>
       </FieldSection>
 
-      <FieldSection title="Tenure and interest" description="Type a tenure or pick the maturity date — the other follows.">
+      <FieldSection title="Tenure and interest">
         <Field label="Deposit date" required error={errors.depositDate}>
           {(id) => <DateField id={id} value={v.depositDate} onChange={(e) => fromDeposit(e.target.value)} />}
         </Field>

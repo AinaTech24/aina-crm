@@ -37,11 +37,7 @@ export function GoalCollisionTimeline() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Goal-Collision Timeline</h2>
-        <p className="text-xs text-muted-foreground">
-          Every goal demands a monthly SIP. Stack them on one timeline to see the
-          years where multiple goals overlap and the household&apos;s commitment peaks —
-          before the crunch arrives.
-        </p>
+        
       </div>
 
 

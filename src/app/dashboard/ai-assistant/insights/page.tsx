@@ -138,7 +138,7 @@ export default async function CopilotInsightsPage() {
       {/* Miss queue */}
       <section className="rounded-xl border border-border bg-card p-4">
         <div className="text-sm font-semibold mb-1">Miss queue — questions it couldn't answer</div>
-        <p className="text-xs text-muted-foreground mb-3">These are the gaps. Tell us which of these matter and we'll teach the copilot to handle them.</p>
+        
         {data.misses.length === 0 ? (
           <div className="text-sm text-muted-foreground py-2">🎉 Nothing here — every question so far was answered.</div>
         ) : (

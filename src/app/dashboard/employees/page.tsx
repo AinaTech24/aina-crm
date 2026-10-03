@@ -106,7 +106,7 @@ export default async function EmployeesPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><UserCog className="size-6 text-muted-foreground" /> Team Members</>} subtitle={<>Your team — roles, joining details, documents and what each person can open.</>} actions={<><div className="flex items-center gap-2">
+      <PageHeaderCard title={<><UserCog className="size-6 text-muted-foreground" /> Team Members</>} actions={<><div className="flex items-center gap-2">
           <TeamPresence members={data.map((e) => ({ id: e.id, name: e.name }))} />
           <Link href="/dashboard/employees/org" className="rounded-md border px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 hover:bg-secondary">
             <Network className="size-4" /> Org chart

@@ -71,11 +71,7 @@ export function GoalPlannerCalculator() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Goal Planner</h2>
-        <p className="text-xs text-muted-foreground">
-          What to invest today to reach future goals — as a lumpsum, a monthly
-          SIP, a limited-period SIP, or a lumpsum + SIP combination. Add multiple
-          goals for a full plan.
-        </p>
+        
       </div>
 
       <div className="grid md:grid-cols-2 gap-3">

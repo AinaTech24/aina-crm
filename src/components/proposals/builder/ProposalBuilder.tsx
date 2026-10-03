@@ -351,7 +351,7 @@ export function ProposalBuilder({ proposalId: initialId }: { proposalId?: string
       {step === 0 && (
         <>
           <Card>
-            <CardHeader title="Who is this for?" subtitle="A client, a family, or a lead." />
+            <CardHeader title="Who is this for?" />
             <div className="px-5 pb-5">
               <RecipientPicker value={recipient} onChange={setRecipient} familyMemberId={familyMemberId} onFamilyMember={setFamilyMemberId} locked={!!proposalId} />
             </div>
@@ -445,7 +445,7 @@ export function ProposalBuilder({ proposalId: initialId }: { proposalId?: string
 
       {step === 3 && (
         <Card>
-          <CardHeader title="Send" subtitle="Set how long the offer stands, then go to the send page to choose email or WhatsApp." />
+          <CardHeader title="Send" />
           <div className="px-5 pb-5 space-y-4">
             <label className="block max-w-xs">
               <span className="text-xs font-medium">Valid until</span>

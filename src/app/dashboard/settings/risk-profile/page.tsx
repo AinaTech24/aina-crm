@@ -13,9 +13,7 @@ export default async function RiskProfileSettingsPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <PageHeaderCard title={<><ShieldCheck className="size-6 text-muted-foreground" /> Risk Profile Questionnaire</>} subtitle={<>Customise the questions, scoring, and risk categories for your firm. The published version
-          is used for every new risk profile capture. Historical profiles keep the version they were
-          captured with — they're not retroactively re-scored.</>} />
+      <PageHeaderCard title={<><ShieldCheck className="size-6 text-muted-foreground" /> Risk Profile Questionnaire</>} />
 
       <RiskTemplateEditor
         initial={{

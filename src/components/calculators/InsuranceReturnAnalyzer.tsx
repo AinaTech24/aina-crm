@@ -61,10 +61,7 @@ export function InsuranceReturnAnalyzer() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Insurance Return Analyzer (IRR)</h2>
-        <p className="text-xs text-muted-foreground">
-          Find the real return (IRR) hidden inside a traditional or guaranteed
-          insurance plan — then compare it, rupee-for-rupee, with a mutual fund.
-        </p>
+        
       </div>
 
       {/* Basic policy details */}

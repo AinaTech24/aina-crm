@@ -33,11 +33,7 @@ export function XirrCalculator() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">XIRR Calculator</h2>
-        <p className="text-xs text-muted-foreground">
-          The true annualised return on any series of dated cashflows — investments
-          (negative) and redemptions / current value (positive). Handles lumpy,
-          irregular contributions a simple CAGR can&apos;t.
-        </p>
+        
       </div>
 
       <div className="space-y-2">

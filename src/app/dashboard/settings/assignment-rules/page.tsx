@@ -31,8 +31,7 @@ export default async function AssignmentRulesPage() {
       <Link href="/dashboard/settings" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
         <ChevronLeft className="size-4" /> Back to settings
       </Link>
-      <PageHeaderCard title={<><GitBranch className="size-5" /> Auto-assignment rules</>} subtitle={<>Automatically route new leads &amp; clients to your team — round-robin or to whoever has the lightest load.
-          Lower-priority rules run first.</>} />
+      <PageHeaderCard title={<><GitBranch className="size-5" /> Auto-assignment rules</>} />
 
       <AssignmentRulesManager team={team} />
     </div>

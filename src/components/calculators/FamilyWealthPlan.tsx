@@ -49,9 +49,7 @@ export function FamilyWealthPlan() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Family Wealth Plan</h2>
-        <p className="text-xs text-muted-foreground">
-          Project a couple&rsquo;s lumpsum + monthly SIP across a 4-class portfolio and watch the total fund value grow to the target age.
-        </p>
+        
       </div>
 
       {/* Cashflow → surplus helper */}

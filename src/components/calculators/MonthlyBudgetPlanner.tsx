@@ -140,9 +140,7 @@ export function MonthlyBudgetPlanner() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Monthly Budget Planner</h2>
-        <p className="text-xs text-muted-foreground">
-          Map where every rupee goes, get a 50/30/20-style health check, and see what redirecting the surplus could become.
-        </p>
+        
       </div>
 
       {/* Inflows */}

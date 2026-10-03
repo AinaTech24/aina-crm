@@ -376,7 +376,6 @@ export default function NewLeadPage() {
             }}
           >
             <option value="referral">Client Referral</option>
-            <option value="existing_client">Existing Client Reference</option>
             <option value="website">Website</option>
             <option value="social_media">Social Media</option>
             <option value="webinar">Webinar</option>

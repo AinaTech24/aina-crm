@@ -56,7 +56,6 @@ export default async function FixedDepositsPage({ searchParams }: { searchParams
     <div className="space-y-6">
       <PageHeaderCard
         title="Fixed Deposits"
-        subtitle="Bank and company FDs placed through you — what is live, and what matures next."
         actions={canEdit ? (
           <Link href="/dashboard/fixed-deposits/new" className={buttonClass("primary")}>
             <Plus className="size-4" aria-hidden /> Add FD

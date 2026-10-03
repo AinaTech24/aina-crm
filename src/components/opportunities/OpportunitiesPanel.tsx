@@ -11,14 +11,18 @@
  *
  * `?opportunity=new&product=…` on the page URL opens the "New opportunity"
  * dialog pre-filled — the new-lead form and the Cross-sell card link here.
+ *
+ * OpportunityCard and NewOpportunityDialog are shared with the Opportunities
+ * module (/dashboard/opportunities): the card is the journey on the detail
+ * page, and the dialog picks the client there when none is given.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  AlertTriangle, Check, CheckCircle2, ChevronDown, ChevronRight, Circle, CircleDashed, Loader2, Plus, RefreshCw,
-  Sparkles, Target, XCircle,
+  AlertTriangle, CalendarClock, Check, CheckCircle2, ChevronDown, ChevronRight, Circle, CircleDashed, ExternalLink,
+  Loader2, Plus, RefreshCw, Sparkles, Target, XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -27,12 +31,18 @@ import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import { notify } from "@/components/ui/Toast";
+import { InvestorLookup } from "@/components/common/InvestorLookup";
 import { formatDate, formatMoney } from "@/lib/format";
 import { OPPORTUNITY_PRODUCTS, productPipeline } from "@/lib/opportunities/products";
 import type { OpportunityView, Prerequisite } from "@/lib/opportunities/journey";
 import { cn } from "@/lib/utils";
 
-type Staff = { id: string; name: string; insurance: boolean };
+export type Staff = { id: string; name: string; insurance: boolean };
+
+/** Today in India, and `n` days on — YYYY-MM-DD. */
+const istDay = (n = 0) => new Date(Date.now() + 5.5 * 36e5 + n * 864e5).toISOString().slice(0, 10);
+/** The India day of an instant. */
+const dayOf = (iso: string) => new Date(new Date(iso).getTime() + 5.5 * 36e5).toISOString().slice(0, 10);
 
 const PIPELINE_LABEL = { mf: "Mutual fund", insurance: "Insurance", general: "Other product" } as const;
 const SOURCE_LABEL: Record<string, string> = {
@@ -115,9 +125,6 @@ export function OpportunitiesPanel({ investorId, investorName }: { investorId: s
           <h2 className="section-title flex items-center gap-2">
             <Target className="size-4 shrink-0 text-muted-foreground" aria-hidden /> Opportunities
           </h2>
-          <p className="section-subtitle mt-0.5">
-            Products {investorName.split(" ")[0]} wants next. Steps already on file are skipped.
-          </p>
         </div>
         {canWork && (
           <Button size="sm" icon={<Plus className="size-4" />} onClick={() => setCreating({ product: "" })}>
@@ -137,7 +144,8 @@ export function OpportunitiesPanel({ investorId, investorName }: { investorId: s
       ) : (
         <div className="space-y-4">
           {open.map((o) => (
-            <OpportunityCard key={o.id} o={o} canWork={canWork} staff={staff} onChange={replace} onReload={load} />
+            <OpportunityCard key={o.id} o={o} canWork={canWork} staff={staff} onChange={replace} onReload={load}
+              detailHref={`/dashboard/opportunities/${o.id}`} />
           ))}
         </div>
       )}
@@ -187,9 +195,11 @@ export function OpportunitiesPanel({ investorId, investorName }: { investorId: s
 
 /* ─────────────────────────────── one opportunity ─────────────────────────────── */
 
-function OpportunityCard({ o, canWork, staff, onChange, onReload }: {
+export function OpportunityCard({ o, canWork, staff, onChange, onReload, detailHref }: {
   o: OpportunityView; canWork: boolean; staff: Staff[];
   onChange: (v: OpportunityView | undefined) => void; onReload: () => Promise<unknown>;
+  /** "Open" link to the opportunity's own page (on the client page). */
+  detailHref?: string;
 }) {
   const [busy, setBusy] = useState<"advance" | "sync" | null>(null);
   const [blocked, setBlocked] = useState<Prerequisite[] | null>(null);
@@ -258,6 +268,11 @@ function OpportunityCard({ o, canWork, staff, onChange, onReload }: {
           </p>
         </div>
         <div className="text-right text-xs">
+          {detailHref && (
+            <Link href={detailHref} className="mb-1 inline-flex items-center gap-1 font-medium text-primary hover:underline">
+              Open <ExternalLink className="size-3" aria-hidden />
+            </Link>
+          )}
           <div className="font-medium text-foreground">{o.current.name}</div>
           <div className={cn("text-muted-foreground", o.current.delayed && "font-medium text-warning-foreground")}>
             {daysIn === 0 ? "since today" : `${daysIn} day${daysIn === 1 ? "" : "s"} in this step`}
@@ -267,6 +282,8 @@ function OpportunityCard({ o, canWork, staff, onChange, onReload }: {
       </div>
 
       <StageRail stages={o.stages} />
+
+      {o.status === "open" && <FollowUpRow o={o} canWork={canWork} onChange={onChange} />}
 
       {o.notes && <p className="mt-3 text-xs text-muted-foreground">{o.notes}</p>}
 
@@ -330,6 +347,65 @@ function OpportunityCard({ o, canWork, staff, onChange, onReload }: {
   );
 }
 
+/* ─────────────────────────────── follow-up ─────────────────────────────── */
+
+/**
+ * The next follow-up — the opportunity's earliest open task — and a way to
+ * move it. Overdue is red, today amber; none at all is a gap worth filling.
+ */
+function FollowUpRow({ o, canWork, onChange }: {
+  o: OpportunityView; canWork: boolean; onChange: (v: OpportunityView | undefined) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [day, setDay] = useState(o.followUpAt ? dayOf(o.followUpAt) : istDay(2));
+  const [busy, setBusy] = useState(false);
+  const today = istDay();
+  const due = o.followUpAt ? dayOf(o.followUpAt) : null;
+  const tone = !due ? "text-warning-foreground" : due < today ? "text-destructive" : due === today ? "text-warning-foreground" : "text-foreground";
+
+  async function save() {
+    if (!day) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/opportunities/${o.id}`, {
+        method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ followUpOn: day }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) return notify.error(j.error ?? "Could not set the follow-up");
+      notify.success(`Follow-up set for ${formatDate(day)}`);
+      setEditing(false);
+      onChange(j.opportunity);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs">
+      <CalendarClock className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+      <span className="text-muted-foreground">Next follow-up</span>
+      {editing ? (
+        <>
+          <DateField value={day} onChange={(e) => setDay(e.target.value)} min={today} size="sm" aria-label="Next follow-up date" />
+          <Button size="sm" variant="primary" loading={busy} onClick={save}>Save</Button>
+          <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
+        </>
+      ) : (
+        <>
+          <span className={cn("font-medium", tone)}>
+            {due ? `${formatDate(due)}${due < today ? " · overdue" : due === today ? " · today" : ""}` : "Not set"}
+          </span>
+          {canWork && (
+            <button type="button" onClick={() => setEditing(true)} className="min-h-6 rounded px-1 font-medium text-primary hover:underline">
+              {due ? "Change" : "Set one"}
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ─────────────────────────────── stage rail ─────────────────────────────── */
 
 function StageRail({ stages }: { stages: OpportunityView["stages"] }) {
@@ -366,26 +442,48 @@ function StageRail({ stages }: { stages: OpportunityView["stages"] }) {
 
 /* ─────────────────────────────── dialogs ─────────────────────────────── */
 
-function NewOpportunityDialog({ investorId, investorName, initialProduct, openProducts, staff, onClose, onCreated }: {
-  investorId: string; investorName: string; initialProduct: string; openProducts: Set<string>; staff: Staff[];
-  onClose: () => void; onCreated: () => void;
+export function NewOpportunityDialog({ investorId: fixedInvestorId, investorName: fixedInvestorName, initialProduct, openProducts: fixedOpen, staff: fixedStaff, onClose, onCreated }: {
+  /** The client — omitted in the Opportunities module, where the dialog picks one. */
+  investorId?: string; investorName?: string;
+  initialProduct: string; openProducts?: Set<string>; staff?: Staff[];
+  onClose: () => void; onCreated: (opportunity?: OpportunityView) => void;
 }) {
+  const [client, setClient] = useState<{ id: string; name: string } | null>(
+    fixedInvestorId ? { id: fixedInvestorId, name: fixedInvestorName ?? "" } : null,
+  );
+  // Picked in the module: what that client already has open, and who can co-own.
+  const [picked, setPicked] = useState<{ open: Set<string>; staff: Staff[] } | null>(null);
   const [product, setProduct] = useState(initialProduct);
   const [value, setValue] = useState("");
   const [mode, setMode] = useState<"" | "sip" | "lumpsum">("");
   const [coOwnerId, setCoOwnerId] = useState("");
+  const [followUpOn, setFollowUpOn] = useState(istDay(2));
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const pipeline = product ? productPipeline(product) : null;
+  const openProducts = fixedOpen ?? picked?.open ?? new Set<string>();
+  const staff = fixedStaff ?? picked?.staff ?? [];
   const insuranceTeam = useMemo(() => staff.filter((s) => s.insurance), [staff]);
 
+  async function pickClient(id: string, name: string) {
+    setClient({ id, name });
+    setPicked(null);
+    const res = await fetch(`/api/investors/${id}/opportunities`, { cache: "no-store" }).catch(() => null);
+    const j = res?.ok ? await res.json().catch(() => ({})) : {};
+    const open = new Set<string>(((j.items ?? []) as OpportunityView[]).filter((o) => o.status === "open").map((o) => o.product));
+    setPicked({ open, staff: j.staff ?? [] });
+    if (open.has(product)) setProduct("");
+  }
+
   async function save() {
+    if (!client) return setErr("Pick the client.");
     if (!product) return setErr("Pick a product.");
+    if (followUpOn && followUpOn < istDay()) return setErr("The follow-up date can't be in the past.");
     setBusy(true);
     setErr(null);
     try {
-      const res = await fetch(`/api/investors/${investorId}/opportunities`, {
+      const res = await fetch(`/api/investors/${client.id}/opportunities`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -395,12 +493,15 @@ function NewOpportunityDialog({ investorId, investorName, initialProduct, openPr
           coOwnerId: coOwnerId || null,
           notes: notes.trim() || null,
           source: initialProduct ? "cross_sell" : "manual",
+          followUpOn: followUpOn || null,
         }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) return setErr(j.error ?? "Could not start it");
-      notify.success(j.created ? "Opportunity started — a follow-up task is on the owner's list" : "Already open — showing that one");
-      onCreated();
+      notify.success(j.created
+        ? `Opportunity started — follow-up on ${formatDate(followUpOn || istDay(2))} is on the owner's list`
+        : "Already open — showing that one");
+      onCreated(j.opportunity);
     } finally {
       setBusy(false);
     }
@@ -410,10 +511,24 @@ function NewOpportunityDialog({ investorId, investorName, initialProduct, openPr
     <Dialog open onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>New opportunity for {investorName}</DialogTitle>
+          <DialogTitle>{fixedInvestorId ? `New opportunity for ${fixedInvestorName}` : "New opportunity"}</DialogTitle>
           <DialogDescription>An existing client wants another product. Steps already on file (KYC, UCC, mandate) will be skipped.</DialogDescription>
         </DialogHeader>
         <div className="mt-4 space-y-3">
+          {!fixedInvestorId && (
+            <Field label="Client" required>
+              {() => (
+                <InvestorLookup
+                  value={client?.id ?? null}
+                  displayName={client?.name ?? null}
+                  onSelect={(id, name) => void pickClient(id, name)}
+                  onClear={() => { setClient(null); setPicked(null); }}
+                  placeholder="Search client by name, PAN, mobile…"
+                  required
+                />
+              )}
+            </Field>
+          )}
           <Field label="Product" required>
             {(id, d) => (
             <SelectField id={id} aria-describedby={d} value={product} onChange={(e) => setProduct(e.target.value)} className="w-full">
@@ -454,6 +569,11 @@ function NewOpportunityDialog({ investorId, investorName, initialProduct, openPr
               </Field>
             )}
           </div>
+          <Field label="Follow-up date" hint="The owner gets a follow-up task due that day.">
+            {(id, d) => (
+            <DateField id={id} aria-describedby={d} value={followUpOn} onChange={(e) => setFollowUpOn(e.target.value)} min={istDay()} />
+            )}
+          </Field>
           <Field label="What did the client say?" optional>
             {(id, d) => (
             <textarea id={id} aria-describedby={d} className="input-base" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)}

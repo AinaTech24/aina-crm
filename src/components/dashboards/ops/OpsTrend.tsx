@@ -30,7 +30,7 @@ export function OpsTrend({ points }: { points: TrendPoint[] }) {
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3 border-b border-border/60 pb-3">
         <div>
           <h2 className="section-title flex items-center gap-2"><TrendingUp className="size-4 shrink-0 text-muted-foreground" aria-hidden /> Operations trend</h2>
-          <p className="section-subtitle mt-1">Month by month this financial year.</p>
+          
         </div>
         <div className="flex flex-wrap gap-1" role="group" aria-label="Metric">
           {METRICS.map((x) => (

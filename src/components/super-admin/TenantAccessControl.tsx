@@ -178,9 +178,7 @@ export function TenantAccessControl({
       <div className="flex items-center justify-between border-b pb-3">
         <div>
           <h2 className="text-lg font-bold tracking-tight">Module & Field Access Control</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Configure tenant-specific module availability and restricted data fields.
-          </p>
+          
         </div>
         <button
           onClick={save}

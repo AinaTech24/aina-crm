@@ -332,9 +332,7 @@ export default async function AutomationRunHistoryPage({
               <RetryButton endpoint="/api/automation/outbox/retry-all" label="Retry all" doneLabel="Re-queued all" title="Try every stuck change again" />
             )}
           </div>
-          <p className="text-xs text-muted-foreground mb-3">
-            New and changed records (a lead added, a SIP rejected…) queue here until your automations pick them up.
-          </p>
+          
           <div className="flex gap-4 mb-3">
             <MiniStat label="Waiting" value={health.outbox.pending} tone={health.outbox.pending > 0 ? "amber" : undefined} />
             <MiniStat label="Stuck over 1 hour" value={health.outbox.stuck} tone={health.outbox.stuck > 0 ? "rose" : undefined} />

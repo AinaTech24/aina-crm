@@ -1,7 +1,9 @@
 /**
  *   GET   /api/opportunities/[id]   one opportunity's view (stages, next step, gates)
  *   PATCH /api/opportunities/[id]   edit details while it is open:
- *         { expectedValue?, investmentMode?, notes?, ownerId?, coOwnerId?, needsAnalysis? }
+ *         { expectedValue?, investmentMode?, notes?, ownerId?, coOwnerId?, needsAnalysis?, followUpOn? }
+ * followUpOn (YYYY-MM-DD) moves the next follow-up — the opportunity's open
+ * follow-up task, or a new one when none is open.
  * Saving a needs analysis can clear the insurance suitability gate, so a PATCH
  * re-checks the journey and moves it on if it can.
  */
@@ -15,12 +17,16 @@ import { requireSession } from "@/lib/auth/session";
 import { handleApiError } from "@/lib/api/error-handler";
 import { recordAudit } from "@/lib/audit";
 import { loadViewableOpportunity, requireWorkOpportunities } from "@/lib/opportunities/access";
-import { listOpportunities, syncOpportunity } from "@/lib/opportunities/journey";
+import { listOpportunities, setFollowUp, syncOpportunity } from "@/lib/opportunities/journey";
 
 export const dynamic = "force-dynamic";
 
 const uuid = z.string().uuid();
 const money = z.coerce.number().nonnegative().max(1e12).nullish();
+
+/** A follow-up date: YYYY-MM-DD, today (India) or later. */
+const followUpDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a follow-up date")
+  .refine((d) => d >= new Date(Date.now() + 5.5 * 36e5).toISOString().slice(0, 10), "The follow-up date can't be in the past");
 
 const Body = z.object({
   expectedValue: money,
@@ -36,6 +42,7 @@ const Body = z.object({
     liabilities: money,
     notes: z.string().max(2000).nullish(),
   }).nullish(),
+  followUpOn: followUpDay.optional(),
 });
 
 const ctx = (session: Awaited<ReturnType<typeof requireSession>>) => ({
@@ -88,6 +95,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           : null;
       }
       await tx.update(clientOpportunities).set(set as any).where(eq(clientOpportunities.id, id));
+      if (b.followUpOn) {
+        await setFollowUp(tx, { tenantId: session.tenantId, userId: session.userId }, { ...opp, ownerId: (set.ownerId as string) ?? opp.ownerId }, b.followUpOn);
+      }
       await recordAudit(tx, {
         tenantId: session.tenantId, actorUserId: session.userId, action: "opportunity.update",
         entityType: "opportunity", entityId: id, before: { ...opp } as any, after: b as any,

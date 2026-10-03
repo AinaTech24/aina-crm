@@ -49,9 +49,7 @@ export function CrorepatiCountdown() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Crorepati Countdown</h2>
-        <p className="text-xs text-muted-foreground">
-          The exact month your client becomes a crorepati — and the milestones along the way.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

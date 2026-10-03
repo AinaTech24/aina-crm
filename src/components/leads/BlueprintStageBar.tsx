@@ -206,20 +206,17 @@ export function BlueprintStageBar({
     : data.allStages;
 
   /**
-   * The header used to read "Stage 12 of 20", counting EVERY stage in the
-   * phase. Most of them are not steps: the three KYC entries are mutually
-   * exclusive branches, the call-back entries are loops back to the same place,
-   * and "Not Qualified" is a dead end. Counting them told a firm it was 60%
-   * through an onboarding when it had simply reached stage 12 of a branching
-   * SOP. The denominator is now the main path only — loops and dead ends are
-   * still drawn on the rail, just not counted as progress toward the end.
+   * Every icon on the rail carries its number — its place on the rail, 1 … N
+   * left to right — and the header's "step X of N" counts the same way, so the
+   * two always agree. The firm asked for a number in every icon (2026-10-02):
+   * a rail that numbered only the main path and drew loops and dead ends as
+   * ↺ / ✕ read as missing numbers. What KIND of stage it is stays visible in
+   * the icon's shape and colour — a dashed diamond is a loop (call back later),
+   * a red one a dead end (lost) — just no longer instead of the number.
    */
-  const mainPath = allStages.filter((s) => (s.flavour ?? "default") === "default");
-  const mainPathTotal = mainPath.length;
-  const mainPathPosition = Math.max(
-    1,
-    mainPath.filter((s) => s.order <= current.order).length
-  );
+  const stepNo = new Map<string, number>(allStages.map((s, i) => [s.key, i + 1] as const));
+  const railTotal = allStages.length;
+  const railPosition = stepNo.get(current.key) ?? Math.max(1, allStages.filter((s) => s.order <= current.order).length);
 
   /**
    * Two boundary conditions:
@@ -254,7 +251,7 @@ export function BlueprintStageBar({
           <span className="text-xs text-muted-foreground">
             {leadStillInProgress
               ? "Onboarding will start once the lead is converted"
-              : `${current.name} · step ${mainPathPosition} of ${mainPathTotal}`}
+              : `${current.name} · step ${railPosition} of ${railTotal}`}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -336,7 +333,7 @@ export function BlueprintStageBar({
                       title={`${s.name}${note}`}
                     >
                       <span className={fl === "default" ? "" : "-rotate-45"}>
-                        {s.status === "done" ? "✓" : fl === "loop" ? "↺" : s.order}
+                        {s.status === "done" ? "✓" : stepNo.get(s.key)}
                       </span>
                     </div>
                   );

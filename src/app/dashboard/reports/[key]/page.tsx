@@ -1371,7 +1371,7 @@ export default async function ReportPage({ params }: { params: Promise<{ key: st
         <ChevronLeft className="size-4" /> Back to reports
       </Link>
 
-      <PageHeaderCard title={<><BarChart3 className="size-5" /> {report.title}</>} subtitle={<>{report.desc}</>} actions={<><div className="flex items-center gap-3">
+      <PageHeaderCard title={<><BarChart3 className="size-5" /> {report.title}</>} actions={<><div className="flex items-center gap-3">
           <span className="text-xs text-muted-foreground">{rows.length} rows</span>
           <ReportExportButtons
             rows={JSON.parse(JSON.stringify(rows))}

@@ -119,7 +119,7 @@ export default async function TemplatesPage({
   return (
     <div className="space-y-6 max-w-7xl">
       {/* Header */}
-      <PageHeaderCard title={<><FileText className="size-6 text-muted-foreground" /> Message Templates</>} subtitle={<>Reusable WhatsApp, email and SMS messages — approved and ready to send.</>} actions={<><div className="flex items-center gap-2">
+      <PageHeaderCard title={<><FileText className="size-6 text-muted-foreground" /> Message Templates</>} actions={<><div className="flex items-center gap-2">
           <FetchWhatsappTemplatesButton />
           <Link href="/dashboard/templates/new" className="btn-primary">
             <Plus className="size-4" /> New template

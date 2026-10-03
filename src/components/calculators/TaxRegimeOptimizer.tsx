@@ -38,10 +38,7 @@ export function TaxRegimeOptimizer() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Old vs New Tax Regime Optimizer <span className="text-xs font-normal text-muted-foreground">(FY 2025-26)</span></h2>
-        <p className="text-xs text-muted-foreground">
-          Which regime costs your client less tax — and how much wealth the saving
-          builds if invested as an SIP.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

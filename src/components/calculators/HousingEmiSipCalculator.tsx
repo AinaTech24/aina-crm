@@ -46,9 +46,7 @@ export function HousingEmiSipCalculator() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">EMI → SIP — Home-Buying Wealth Strategy</h2>
-        <p className="text-xs text-muted-foreground">
-          Same home, same monthly outgo — three ways to fund it. See which builds the most wealth over the loan tenure.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

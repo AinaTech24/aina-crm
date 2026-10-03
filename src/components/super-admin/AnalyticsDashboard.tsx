@@ -155,7 +155,7 @@ export function AnalyticsDashboard({ mfds, extendedCount }: { mfds: MfdRow[]; ex
     <div className="space-y-6 max-w-7xl">
       <div>
         <h1 className="page-title">Analytics</h1>
-        <p className="text-muted-foreground text-sm">Platform-wide MFD, license and client intelligence — switch any chart's visualization.</p>
+        
       </div>
 
       {/* KPI ribbon */}

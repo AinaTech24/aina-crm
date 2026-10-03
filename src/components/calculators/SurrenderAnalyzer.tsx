@@ -69,10 +69,7 @@ export function SurrenderAnalyzer() {
     <div className="card-surface p-5 space-y-4">
       <div>
         <h2 className="text-base font-semibold">Policy Surrender vs. Reinvest Analyzer</h2>
-        <p className="text-xs text-muted-foreground">
-          Keep paying a low-yield endowment policy, or surrender it and invest the proceeds — plus the premiums you&apos;d
-          save — elsewhere? Compare both, side by side, at the end of the policy term.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 gap-3">

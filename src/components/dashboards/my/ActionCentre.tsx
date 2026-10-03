@@ -128,10 +128,7 @@ export function ActionCentre({ cards, today }: { cards: ActionCard[]; today: str
             <CalendarClock className="size-4 shrink-0 text-muted-foreground" aria-hidden />
             Today&rsquo;s action centre
           </h2>
-          <p className="section-subtitle mt-1">
-            What needs you today, on your own book. Not filtered by the period above &mdash;
-            a to-do list is always about now.
-          </p>
+          
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           {totalCritical > 0 ? (

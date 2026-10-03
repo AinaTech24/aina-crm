@@ -143,7 +143,6 @@ export function LeadAttachments({ leadId, leadName }: { leadId: string; leadName
     <Card>
       <CardHeader
         title={`Attachments${docs && !failed ? ` (${count})` : ""}`}
-        subtitle="Files for this lead, and every proposal prepared for them. Files move to the client record on conversion."
         icon={<Paperclip className="size-4" />}
         action={
           <>

@@ -113,11 +113,7 @@ export function ReviewOfInvestments() {
     <div className="card-surface p-5 space-y-4">
       <div>
         <h2 className="text-base font-semibold">Review of Investments</h2>
-        <p className="text-xs text-muted-foreground">
-          A periodic side-by-side performance review of a client&apos;s existing
-          mutual-fund holdings. Add a row per scheme and record its trailing
-          returns; show or hide the periods you want on the report.
-        </p>
+        
       </div>
 
       {/* Period visibility toggles */}

@@ -281,7 +281,6 @@ export default async function TasksPage({
     <div className="space-y-6 max-w-6xl">
       <PageHeaderCard
         title={<><ListChecks className="size-6 text-muted-foreground" /> Tasks</>}
-        subtitle={<>Everything your team has to do — assigned, due-dated and tracked to done.</>}
         actions={
           <Link href="/dashboard/tasks/new" className={buttonClass("primary")}>
             <Plus className="size-4" /> New task

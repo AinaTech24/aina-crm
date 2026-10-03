@@ -137,9 +137,7 @@ export default async function TeamDashboardPage({
     <div className="space-y-6 max-w-7xl">
       {/* Keep team workload/accountability fresh as actions complete elsewhere. */}
       <AutoRefresh intervalMs={60000} />
-      <PageHeaderCard title={<><Users2 className="size-6 text-muted-foreground" /> Team Dashboard</>} subtitle={<>{selectedMember
-              ? `Open workload, today's activity, and results — scoped to ${selectedMember.name}.`
-              : "Open workload, today's activity, and results — firm-wide, with who's accountable."}</>} actions={<><div className="flex items-center gap-3 flex-wrap">
+      <PageHeaderCard title={<><Users2 className="size-6 text-muted-foreground" /> Team Dashboard</>} subtitle={selectedMember ? selectedMember.name : undefined} actions={<><div className="flex items-center gap-3 flex-wrap">
           <Link
             href="/dashboard/team/scorecard"
             className="rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 hover:bg-secondary/60"

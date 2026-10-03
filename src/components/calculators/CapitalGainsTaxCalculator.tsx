@@ -62,10 +62,7 @@ export function CapitalGainsTaxCalculator() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Capital Gains Tax Calculator</h2>
-        <p className="text-xs text-muted-foreground">
-          Long-term capital gains tax on property and other assets, with CII
-          indexation — for assets purchased before or after FY 2001-02.
-        </p>
+        
       </div>
 
       <Segmented

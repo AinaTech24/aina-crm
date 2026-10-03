@@ -67,10 +67,7 @@ export function StepUpReckoner() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Step-Up SIP Reckoner</h2>
-        <p className="text-xs text-muted-foreground">
-          One starting SIP, three growth paths — Regular, a yearly % step-up, and a
-          fixed ₹ step-up — projected side by side across several timeframes.
-        </p>
+        
       </div>
 
       {/* Inputs */}

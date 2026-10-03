@@ -25,6 +25,7 @@
  */
 
 import { sql, type SQL } from "drizzle-orm";
+import { expandLeadSources } from "@/lib/leads/sources";
 
 export type MetricScope = {
   tenantId: string;
@@ -93,7 +94,7 @@ function clientFilterParts(scope: MetricScope, alias: string): SQL[] {
   if (scope.leadSources?.length) {
     parts.push(sql`${col(alias, "id")} IN (SELECT converted_investor_id FROM leads
       WHERE tenant_id = ${scope.tenantId}::uuid AND converted_investor_id IS NOT NULL
-        AND source IN (${textList(scope.leadSources)}))`);
+        AND source IN (${textList(expandLeadSources(scope.leadSources))}))`);
   }
   return parts;
 }

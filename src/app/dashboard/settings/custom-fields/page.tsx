@@ -10,7 +10,7 @@ export default async function CustomFieldsPage() {
   requireCap(session.roles, "settings.users", session.permissions);
   return (
     <div className="max-w-3xl space-y-4">
-      <PageHeaderCard title={<>Custom fields</>} subtitle={<>Define your own fields on leads &amp; clients — they appear on each record's detail page.</>} />
+      <PageHeaderCard title={<>Custom fields</>} />
       <CustomFieldsManager />
     </div>
   );

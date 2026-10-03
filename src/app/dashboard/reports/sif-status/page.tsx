@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export default function SifStatusPage() {
   return (
     <div className="space-y-5 max-w-3xl">
-      <PageHeaderCard title={<>SIF Business — Target vs Actual</>} subtitle={<>FY achievement of SIF (Specialized Investment Fund) business, rolled up desk → branch → firm.</>} />
+      <PageHeaderCard title={<>SIF Business — Target vs Actual</>} />
 
       <SifStatusBoard />
     </div>

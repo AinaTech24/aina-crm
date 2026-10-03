@@ -49,7 +49,7 @@ export default async function ProductReadinessPage() {
   return (
     <div className="max-w-6xl space-y-6">
       <PageHeaderCard title={<><Activity className="size-6 text-muted-foreground" /> Product readiness</>}>
-<p className="mt-1 text-sm text-muted-foreground">One honest view of what is live, configured, demo-only, blocked or not available.</p>
+
 </PageHeaderCard>
 
       <div className="grid gap-3 sm:grid-cols-3">

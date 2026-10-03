@@ -201,7 +201,7 @@ export default async function SipsPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><TrendingUp className="size-6 text-muted-foreground" /> SIP Book</>} subtitle={<>Every live SIP, what it is worth each month, and which ones are at risk.</>} actions={<><div className="flex items-center gap-2 flex-wrap">
+      <PageHeaderCard title={<><TrendingUp className="size-6 text-muted-foreground" /> SIP Book</>} actions={<><div className="flex items-center gap-2 flex-wrap">
           {can(session.roles, "transactions.execute", session.permissions) && (
             <Link href="/dashboard/sips/new" className="btn-primary text-sm inline-flex items-center gap-1.5">
               <Plus className="size-4" /> Add SIP

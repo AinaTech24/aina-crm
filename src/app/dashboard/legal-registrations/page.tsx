@@ -89,7 +89,7 @@ export default async function LegalRegistrationsPage({
 
   return (
     <div className="space-y-5">
-      <PageHeaderCard title={<>Legal registrations</>} subtitle={<>ARN, EUIN, GST and your other registrations, with renewal reminders.</>} actions={<><Link
+      <PageHeaderCard title={<>Legal registrations</>} actions={<><Link
           href="/dashboard/legal-registrations/new"
           className="btn-primary text-sm"
         >

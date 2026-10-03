@@ -54,7 +54,6 @@ export default async function WebsiteComplaintFormPage() {
     <div className="max-w-4xl space-y-6">
       <PageHeaderCard
         title={<><Globe className="size-6 text-muted-foreground" /> Complaint form for your website</>}
-        subtitle={<>One link for your website. Every complaint sent through it arrives in Service Requests with the 21-day clock started.</>}
       />
 
       <ComplaintFormLinkPanel origin={origin} token={link.token} enabled={link.enabled} canManage={canManage} />

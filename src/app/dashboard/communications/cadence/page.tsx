@@ -37,11 +37,7 @@ export default async function CommunicationCadencePage() {
             </Link>
           </div>
           <h1 className="page-title">Client communication cadence</h1>
-          <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-            The firm's standard touchpoint policy — what we communicate, how often, on
-            which channel — plus response-time SLAs. Strengthen relationships through
-            consistent, meaningful touchpoints. This is the SOP your workflows should honour.
-          </p>
+          
         </div>
         <PrintReportButton />
       </div>
@@ -134,10 +130,7 @@ export default async function CommunicationCadencePage() {
         </div>
       </div>
 
-      <p className="text-2xs text-muted-foreground border-t pt-3">
-        Adapted from the Network FP "5.5 Client Communication Checklist". Use it as the
-        baseline cadence; the workflow engine automates the rows marked Automatable.
-      </p>
+      
     </div>
   );
 }

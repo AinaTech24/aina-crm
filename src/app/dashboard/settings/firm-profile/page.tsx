@@ -131,8 +131,7 @@ export default async function FirmProfilePage() {
 
   return (
     <div className="space-y-6 max-w-5xl print:max-w-none">
-      <PageHeaderCard title={<>Firm profile</>} subtitle={<>Every regulator-facing data point about the firm in one place.
-            Print this for SEBI inspection or DDQ submission.</>} actions={<><PrintButton /></>} />
+      <PageHeaderCard title={<>Firm profile</>} actions={<><PrintButton /></>} />
 
       {/* Print-only title */}
       <div className="hidden print:block">

@@ -39,10 +39,7 @@ export function RebalanceCalculator() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Portfolio Rebalancing</h2>
-        <p className="text-xs text-muted-foreground">
-          The exact amount to buy or sell in each asset class to get back to the
-          target mix — using fresh money first so you sell (and trigger tax) less.
-        </p>
+        
       </div>
 
       <NumberField label="New money to invest (₹, optional)" value={newMoney} setValue={setNewMoney} step={50000} />

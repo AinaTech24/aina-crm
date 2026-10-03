@@ -96,7 +96,7 @@ export default async function ComplianceRegistersPage() {
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><ShieldCheck className="size-6 text-muted-foreground" /> DDQ Compliance Registers</>} subtitle={<>The evidence AMFI's Due Diligence Questionnaire asks for. Each block cites its DDQ question.</>} />
+      <PageHeaderCard title={<><ShieldCheck className="size-6 text-muted-foreground" /> DDQ Compliance Registers</>} />
 
       {/* Firm declarations — 2.1c / 2.4c / 5.8 / 5.9 */}
       <section className="card-surface p-4">
@@ -197,11 +197,7 @@ export default async function ComplianceRegistersPage() {
           <AlertTriangle className="size-4 text-amber-600" /> Third-party payment scan
           <span className="text-2xs text-muted-foreground font-normal">DDQ 4.20b — automatic</span>
         </h2>
-        <p className="text-xs text-muted-foreground mb-3">
-          Active mandates whose debit account doesn&apos;t match a bank registered against the client. The DDQ requires you
-          to monitor that subscription funds come from the investor&apos;s <span className="font-medium">own</span> account.
-          Review each one — genuine third-party payments must be logged above and reported to the AMC.
-        </p>
+        
         {data.suspects.length === 0 ? (
           <div className="text-sm text-emerald-700 py-4 text-center">
             No mismatches found — every active mandate debits a bank registered to that client.

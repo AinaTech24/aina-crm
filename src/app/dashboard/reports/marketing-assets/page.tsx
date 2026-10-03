@@ -27,11 +27,7 @@ export default async function MarketingAssetsPage() {
           <h1 className="page-title">
             <Megaphone className="size-6 text-muted-foreground" /> Marketing assets & trust builders
           </h1>
-          <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-            The brand, trust and lead-generation assets a scaling MFD should have in place. Use it as
-            a readiness checklist; several link to where they're produced in the app. Also serves as
-            AMFI DDQ evidence for marketing materials.
-          </p>
+          
         </div>
         <PrintReportButton />
       </div>
@@ -66,10 +62,7 @@ export default async function MarketingAssetsPage() {
         ))}
       </div>
 
-      <p className="text-2xs text-muted-foreground border-t pt-3">
-        Adapted from the Network FP "Marketing Assets" template. Items with a link are produced inside
-        the platform; the rest are assets you create and store.
-      </p>
+      
     </div>
   );
 }

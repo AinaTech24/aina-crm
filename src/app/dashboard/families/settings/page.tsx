@@ -27,7 +27,7 @@ export default async function FamilySettingsPage() {
 
   return (
     <div className="space-y-4 max-w-4xl">
-      <PageHeaderCard title={<>Family settings</>} subtitle={<>Defaults for new households and the relationship options your team can choose from.</>} actions={<><Link href="/dashboard/families" className="btn-secondary text-sm shrink-0">
+      <PageHeaderCard title={<>Family settings</>} actions={<><Link href="/dashboard/families" className="btn-secondary text-sm shrink-0">
           <HeartHandshake className="size-4" /> Family mapping
         </Link></>} />
 

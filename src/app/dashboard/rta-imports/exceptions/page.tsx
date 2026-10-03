@@ -43,7 +43,6 @@ export default async function RtaExceptionsPage({
       <PageHeaderCard
         breadcrumb={[{ label: "RTA File Imports", href: "/dashboard/rta-imports" }, { label: "Row exceptions" }]}
         title={<><ListChecks className="size-6 text-muted-foreground" /> Row exceptions</>}
-        subtitle={<>Rows from your last 30 uploads that were skipped or could not be saved, grouped by why.</>}
       />
 
       {data.exceptionRows === 0 ? (

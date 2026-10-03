@@ -99,7 +99,7 @@ export function CompleteMeetingModal({
             </div>
             <div>
               <h2 className="text-lg font-bold tracking-tight">Mark meeting completed</h2>
-              <p className="text-xs text-muted-foreground">Capture the outcome and complete it here — no need to open the meetings page.</p>
+              
             </div>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="Close">

@@ -30,9 +30,7 @@ export function FdVsEquityGap() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">FD vs Equity — the Wealth Gap</h2>
-        <p className="text-xs text-muted-foreground">
-          The same money, parked in a bank FD versus invested in equity. See the gap your client is leaving on the table.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

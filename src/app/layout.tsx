@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { NavProgress } from "@/components/layout/NavProgress";
+import { NumberWheelGuard } from "@/components/layout/NumberWheelGuard";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -74,6 +75,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         className="min-h-screen bg-background text-foreground antialiased scrollbar-none"
       >
         <NavProgress />
+        <NumberWheelGuard />
         {children}
       </body>
     </html>

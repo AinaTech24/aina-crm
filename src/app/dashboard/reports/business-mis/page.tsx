@@ -95,8 +95,7 @@ export default async function BusinessMisPage({
 
   return (
     <div className="space-y-5 max-w-6xl">
-      <PageHeaderCard title={<>Results MIS — Business Summary</>} subtitle={<>Product × asset-class AUM, Gross Sales, Redemption and Net Sales for the full financial
-          year. Flows come from Business Entries; AUM from your RTA-imported folios.</>} />
+      <PageHeaderCard title={<>Results MIS — Business Summary</>} />
 
       <MisFyPicker fy={fy} options={opts} />
 

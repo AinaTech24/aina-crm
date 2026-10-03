@@ -39,7 +39,7 @@ export default async function SettingsPage() {
   }
   return (
     <div className="space-y-6 max-w-5xl">
-      <PageHeaderCard title={<>Settings</>} subtitle={<>Configure your firm's workspace.</>} />
+      <PageHeaderCard title={<>Settings</>} />
       <SettingsDirectory hidden={hidden} />
     </div>
   );

@@ -62,10 +62,7 @@ export function SalaryWealthBuilder() {
     <div className="card-surface p-5 space-y-4">
       <div>
         <h2 className="text-base font-semibold">Salary-Linked Wealth Builder</h2>
-        <p className="text-xs text-muted-foreground">
-          Invest a slice of your salary every month as a SIP that steps up with each yearly increment. See the wealth it
-          builds by retirement — or flip it to find the saving rate you need for a target.
-        </p>
+        
       </div>
 
       <Segmented label="I want to find" value={mode} onChange={(v) => setMode(v as SalaryWealthMode)} options={MODES} />

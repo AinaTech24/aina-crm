@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export default function SipHealthPage() {
   return (
     <div className="space-y-5 max-w-3xl">
-      <PageHeaderCard title={<>SIP Health &amp; Efforts</>} subtitle={<>Live SIP book, net SIP movement, maturities and bounces — plus this month's activity.</>} />
+      <PageHeaderCard title={<>SIP Health &amp; Efforts</>} />
 
       <SipHealthBoard />
     </div>

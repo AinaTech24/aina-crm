@@ -56,8 +56,7 @@ export default async function NotificationTemplatesPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <PageHeaderCard title={<><Mail className="size-6 text-muted-foreground" /> Notification Templates</>} subtitle={<>The 14 templates that drive every automated message in the lead-to-client journey. Each gets a
-          fully-branded designer-mode email + a Meta-approved WhatsApp variant.</>} />
+      <PageHeaderCard title={<><Mail className="size-6 text-muted-foreground" /> Notification Templates</>} />
 
       <div className="card-surface overflow-hidden">
         <table className="w-full text-sm">
@@ -109,13 +108,7 @@ export default async function NotificationTemplatesPage() {
         </table>
       </div>
 
-      <p className="text-2xs text-muted-foreground italic">
-        Templates use the Email Designer (block-based) for email and Meta-approved WhatsApp templates. Each one supports
-        merge fields like <code className="bg-secondary px-1 rounded">{`{{lead_name}}`}</code>,{" "}
-        <code className="bg-secondary px-1 rounded">{`{{rm_name}}`}</code>,{" "}
-        <code className="bg-secondary px-1 rounded">{`{{proposal_link}}`}</code>,{" "}
-        <code className="bg-secondary px-1 rounded">{`{{portal_login_link}}`}</code>, etc.
-      </p>
+      
     </div>
   );
 }

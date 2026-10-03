@@ -86,10 +86,7 @@ export default async function TaglineCheckPage() {
         <ChevronLeft className="size-4" /> Back to compliance
       </Link>
 
-      <PageHeaderCard title={<><ShieldCheck className="size-6" /> SEBI May 2026 tagline check</>} subtitle={<>AMFI Master Circular requires every outbound communication to display{" "}
-          <strong>"AMFI Registered Mutual Fund Distributor"</strong>, your firm's <strong>ARN number</strong>,
-          and (for marketing) the standard <strong>market-risk disclaimer</strong> — effective May 1, 2026.
-          This page scans every approved template; the live compliance gate also blocks any send that doesn't include these phrases.</>} />
+      <PageHeaderCard title={<><ShieldCheck className="size-6" /> SEBI May 2026 tagline check</>} />
 
       <div className="grid grid-cols-3 gap-3">
         <Stat label="Approved templates" value={audited.length} icon={ShieldCheck} />

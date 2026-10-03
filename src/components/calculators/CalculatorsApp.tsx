@@ -750,12 +750,13 @@ function CalcGallery({
       ) : (
         <>
           <section className="space-y-2.5">
-            <div><h2 className="text-sm font-semibold">Meeting packs</h2><p className="text-xs text-muted-foreground">Start with a client conversation instead of choosing from the full catalog.</p></div>
+            {/* Names only — the firm asked for less text here (2026-10-02); a
+                pack's purpose and a card's description are their hover titles. */}
+            <h2 className="text-sm font-semibold">Meeting packs</h2>
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
               {MEETING_PACKS.map((pack) => (
-                <div key={pack.title} className="rounded-lg border bg-card p-4">
+                <div key={pack.title} className="rounded-lg border bg-card p-4" title={pack.purpose}>
                   <h3 className="font-semibold text-sm">{pack.title}</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">{pack.purpose}</p>
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {pack.keys.map((key, index) => {
                       const calc = CALC_META[key];
@@ -788,14 +789,14 @@ function CalcCard({ c, onPick }: { c: CalcMeta; onPick: (k: TabKey) => void }) {
     <button
       type="button"
       onClick={() => onPick(c.key)}
-      className="group text-left rounded-xl border border-border bg-card p-3.5 flex gap-3 items-start hover:border-primary/50 hover:shadow-md hover:-translate-y-0.5 transition-all"
+      title={c.desc}
+      className="group text-left rounded-xl border border-border bg-card p-3.5 flex gap-3 items-center hover:border-primary/50 hover:shadow-md hover:-translate-y-0.5 transition-all"
     >
       <span className="shrink-0 grid place-items-center size-9 rounded-lg bg-primary/10 text-primary group-hover:bg-primary/15 transition-colors">
         <c.icon className="size-5" />
       </span>
       <span className="min-w-0">
         <span className="block font-semibold text-sm leading-tight group-hover:text-primary">{c.name}</span>
-        <span className="block text-xs text-muted-foreground mt-1 leading-snug">{c.desc}</span>
       </span>
     </button>
   );
@@ -1395,10 +1396,8 @@ function CalcShell({
 }) {
   return (
     <div className="card-surface p-5 space-y-3">
-      <div>
-        <h2 className="text-base font-semibold">{title}</h2>
-        <p className="text-xs text-muted-foreground">{purpose}</p>
-      </div>
+      {/* The purpose is the title's tooltip — less text on screen (2026-10-02). */}
+      <h2 className="text-base font-semibold" title={purpose}>{title}</h2>
       {children}
     </div>
   );

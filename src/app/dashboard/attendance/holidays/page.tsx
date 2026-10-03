@@ -42,7 +42,7 @@ export default async function HolidaysPage() {
         >
           <ArrowLeft className="size-3.5" /> Back to Attendance
         </Link>
-        <PageHeaderCard title={<><CalendarOff className="size-6 text-muted-foreground" /> Holiday Master</>} subtitle={<>Per-firm non-working days · attendance auto-marks these for every active employee.</>} />
+        <PageHeaderCard title={<><CalendarOff className="size-6 text-muted-foreground" /> Holiday Master</>} />
       </div>
 
       <HolidayManager holidays={list} canManage={canManage} />

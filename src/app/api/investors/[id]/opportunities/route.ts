@@ -3,7 +3,8 @@
  *
  *   GET  /api/investors/[id]/opportunities   open first, then recently closed
  *   POST /api/investors/[id]/opportunities   start one
- *        { product, expectedValue?, investmentMode?, source?, notes?, ownerId?, coOwnerId?, sourceLeadId? }
+ *        { product, expectedValue?, investmentMode?, source?, notes?, ownerId?, coOwnerId?, sourceLeadId?, followUpOn? }
+ *        followUpOn (YYYY-MM-DD): when the owner's first follow-up task falls due.
  *        201 { opportunity, created: true } — or 200 { created: false } with
  *        the open one when the client already has it for this product.
  */
@@ -23,6 +24,10 @@ export const dynamic = "force-dynamic";
 
 const uuid = z.string().uuid();
 
+/** A follow-up date: YYYY-MM-DD, today (India) or later. */
+const followUpDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a follow-up date")
+  .refine((d) => d >= new Date(Date.now() + 5.5 * 36e5).toISOString().slice(0, 10), "The follow-up date can't be in the past");
+
 const Body = z.object({
   product: z.string().refine(isOpportunityProduct, "Unknown product"),
   expectedValue: z.coerce.number().positive().max(1e12).nullish(),
@@ -32,6 +37,7 @@ const Body = z.object({
   ownerId: uuid.nullish(),
   coOwnerId: uuid.nullish(),
   sourceLeadId: uuid.nullish(),
+  followUpOn: followUpDay.nullish(),
 });
 
 const ctx = (session: Awaited<ReturnType<typeof requireSession>>) => ({

@@ -30,10 +30,7 @@ export function EarlyStartChildSip() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Early-Start Child SIP</h2>
-        <p className="text-xs text-muted-foreground">
-          Invest a monthly SIP into a child&apos;s name through the early years, then stop and let the corpus compound. See
-          what a limited-period SIP becomes decades later — the power of starting at birth.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">

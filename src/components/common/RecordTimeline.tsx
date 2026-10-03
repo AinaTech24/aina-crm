@@ -11,10 +11,16 @@
  *
  * Colour is a signal: the icon chips are neutral, and only a status that asks
  * for attention (overdue, failed, not sent) is tinted.
+ *
+ * Every row opens: a task, meeting or service request goes to its own page
+ * (`href`); a call, visit, note or message opens a dialog with everything the
+ * row recorded and its full text (`detail`). The whole row is the target —
+ * clicks on its own controls (the title link, the status menu) stay theirs.
  */
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Calendar,
   ClipboardList,
@@ -29,9 +35,11 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import { InlineEmpty } from "@/components/common/EmptyState";
 import { formatDate, formatRelative } from "@/lib/format";
 import type { TimelineItem } from "@/lib/timeline";
+import { cn } from "@/lib/utils";
 
 const ICON: Record<TimelineItem["kind"], LucideIcon> = {
   call: Phone,
@@ -47,6 +55,9 @@ const ICON: Record<TimelineItem["kind"], LucideIcon> = {
 
 const INITIAL = 8;
 
+/** A click that lands on one of the row's own controls is that control's. */
+const OWN_CONTROL = "a, button, select, input, textarea, [role='menu'], [role='menuitem'], [role='listbox'], [data-no-row-click]";
+
 export function RecordTimeline({
   items,
   title = "Activity",
@@ -56,8 +67,11 @@ export function RecordTimeline({
   title?: string;
   emptyMessage?: string;
 }) {
+  const router = useRouter();
   const [all, setAll] = useState(false);
+  const [opened, setOpened] = useState<TimelineItem | null>(null);
   const shown = all ? items : items.slice(0, INITIAL);
+  const open = (it: TimelineItem) => (it.href ? router.push(it.href) : setOpened(it));
 
   return (
     <Card>
@@ -74,6 +88,7 @@ export function RecordTimeline({
               {shown.map((it) => {
                 const Icon = ICON[it.kind] ?? ClipboardList;
                 const when = formatDate(it.at, "dateTime");
+                const clickable = !!(it.href || it.detail);
                 return (
                   <li key={it.id} className="relative">
                     <span
@@ -82,7 +97,29 @@ export function RecordTimeline({
                     >
                       <Icon className="size-3.5" />
                     </span>
-                    <div className="min-w-0">
+                    <div
+                      className={cn(
+                        "min-w-0",
+                        clickable && "-mx-2 -my-1 cursor-pointer rounded-lg px-2 py-1 transition-colors hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      )}
+                      {...(clickable ? {
+                        role: it.href ? "link" : "button",
+                        tabIndex: 0,
+                        "aria-label": `${it.title} — open`,
+                        onClick: (e: React.MouseEvent<HTMLDivElement>) => {
+                          // A dialog the status menu opens is portalled, but React
+                          // still bubbles its clicks here: only clicks inside the row count.
+                          if (!e.currentTarget.contains(e.target as Node)) return;
+                          if ((e.target as HTMLElement).closest(OWN_CONTROL)) return;
+                          open(it);
+                        },
+                        onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => {
+                          if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
+                          e.preventDefault();
+                          open(it);
+                        },
+                      } : {})}
+                    >
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                         {it.href ? (
                           <Link href={it.href} className="text-sm font-medium text-foreground hover:underline">{it.title}</Link>
@@ -115,6 +152,42 @@ export function RecordTimeline({
           </>
         )}
       </CardBody>
+      {opened && <TimelineDetailDialog item={opened} onClose={() => setOpened(null)} />}
     </Card>
+  );
+}
+
+/** A call, visit, note or message in full — the items that have no page of their own. */
+function TimelineDetailDialog({ item, onClose }: { item: TimelineItem; onClose: () => void }) {
+  const Icon = ICON[item.kind] ?? ClipboardList;
+  const body = item.detail?.body ?? item.body;
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+            {item.title}
+            {item.status && <Badge raw tone={item.status.tone}>{item.status.label}</Badge>}
+          </DialogTitle>
+          <DialogDescription>{formatDate(item.at, "dateTime")}</DialogDescription>
+        </DialogHeader>
+        {item.detail && item.detail.facts.length > 0 && (
+          <dl className="mt-4 grid gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
+            {item.detail.facts.map(([k, v]) => (
+              <div key={k} className="min-w-0">
+                <dt className="text-xs text-muted-foreground">{k}</dt>
+                <dd className="break-words font-medium text-foreground">{v}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+        {body && (
+          <div className="mt-4 max-h-80 overflow-y-auto whitespace-pre-wrap rounded-lg bg-secondary/60 p-3 text-sm leading-relaxed text-foreground">
+            {body}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

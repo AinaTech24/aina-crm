@@ -47,10 +47,7 @@ export function AssetAllocationFvPlanner() {
     <div className="card-surface p-5 space-y-4">
       <div>
         <h2 className="text-base font-semibold">Asset Allocation — Future Value</h2>
-        <p className="text-xs text-muted-foreground">
-          Build a portfolio across asset classes and see its future value and blended return. Compare two allocation
-          strategies to show the impact of a smarter mix.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

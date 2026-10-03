@@ -63,7 +63,7 @@ export default async function WhatsNewPage() {
 
   return (
     <div className="space-y-6 max-w-3xl">
-      <PageHeaderCard title={<><Sparkles className="size-6 text-muted-foreground" /> What&apos;s new</>} subtitle={<>Everything we&apos;ve shipped to your CRM, newest first.</>} />
+      <PageHeaderCard title={<><Sparkles className="size-6 text-muted-foreground" /> What&apos;s new</>} />
 
       {notes.length === 0 ? (
         <div className="card-surface p-12 text-center text-sm text-muted-foreground">

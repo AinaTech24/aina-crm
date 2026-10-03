@@ -41,9 +41,7 @@ export function HabitCorpusCalculator() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Small Habit, Big Corpus</h2>
-        <p className="text-xs text-muted-foreground">
-          What a tiny daily spend becomes if you invest it instead. Pick a habit — or enter your own.
-        </p>
+        
       </div>
 
       <div className="flex flex-wrap gap-1.5">

@@ -117,33 +117,53 @@ function freePort(port) {
   }
 }
 
-/** Poll /api/health until it returns 200, or timeout. */
+/**
+ * Poll /api/health until it returns 200, or timeout. ONE probe in flight at a
+ * time: a timed-out request fires both "timeout" and (after destroy()) "error",
+ * and when both scheduled a retry the probes doubled on every timeout — on a
+ * busy server thousands of /api/health requests piled onto it, wedged it
+ * completely (2026-10-02) and spammed the log with one "didn't become healthy"
+ * line per probe chain.
+ */
 function waitForHealthy() {
   const startedAt = Date.now();
+  let finished = false;
   return new Promise((resolve) => {
+    const finish = (ok) => {
+      if (finished) return;
+      finished = true;
+      resolve(ok);
+    };
     const tick = () => {
+      let settled = false;
+      const next = () => {
+        if (settled) return;
+        settled = true;
+        retry();
+      };
       const req = http.get(
         { hostname: "127.0.0.1", port: PORT, path: HEALTH_PATH, timeout: 5_000 },
         (res) => {
-          if (res.statusCode === 200) {
-            log(`healthy at ${HEALTH_PATH} (${Math.round((Date.now() - startedAt) / 1000)}s)`);
-            res.resume();
-            return resolve(true);
-          }
           res.resume();
-          retry();
+          if (res.statusCode === 200) {
+            settled = true;
+            log(`healthy at ${HEALTH_PATH} (${Math.round((Date.now() - startedAt) / 1000)}s)`);
+            return finish(true);
+          }
+          next();
         }
       );
-      req.on("error", retry);
+      req.on("error", next);
       req.on("timeout", () => {
         req.destroy();
-        retry();
+        next();
       });
     };
     const retry = () => {
+      if (finished) return;
       if (Date.now() - startedAt > HEALTH_TIMEOUT_MS) {
-        err(`server didn't become healthy in ${HEALTH_TIMEOUT_MS / 1000}s — will restart`);
-        return resolve(false);
+        err(`server didn't become healthy in ${HEALTH_TIMEOUT_MS / 1000}s`);
+        return finish(false);
       }
       setTimeout(tick, HEALTH_INTERVAL_MS);
     };

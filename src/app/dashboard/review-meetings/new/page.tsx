@@ -64,7 +64,7 @@ export default async function NewReviewMeetingPage({
         <div className="size-12 rounded-lg bg-brand-cyan-light grid place-items-center">
           <Calendar className="size-6 text-muted-foreground" />
         </div>
-        <PageHeaderCard title={<>Schedule review meeting</>} subtitle={<>A reminder task auto-fires the day before. After completion, action items become tasks.</>} />
+        <PageHeaderCard title={<>Schedule review meeting</>} />
       </div>
 
       <ScheduleMeetingForm

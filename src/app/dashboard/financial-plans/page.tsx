@@ -160,7 +160,7 @@ export default async function FinancialPlansPage({
   return (
     <div className="space-y-6 max-w-7xl">
       {/* Page Header */}
-      <PageHeaderCard title={<><ScrollText className="size-6 text-muted-foreground" /> Financial Plans</>} subtitle={<>Full financial plans with cash-flow, goals and recommendations you can print.</>} actions={<><Link href="/dashboard/financial-plans/new" className="btn-primary">
+      <PageHeaderCard title={<><ScrollText className="size-6 text-muted-foreground" /> Financial Plans</>} actions={<><Link href="/dashboard/financial-plans/new" className="btn-primary">
           <Plus className="size-4" /> Create Financial Plan
         </Link></>} />
 

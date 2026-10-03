@@ -32,7 +32,7 @@ import {
   FileCheck, UserCheck, ClipboardList, Newspaper, Stamp, BellRing, Package, FolderOpen,
   LineChart, Scissors, Shuffle, Building2, TrendingDown, Network, IndianRupee,
   LifeBuoy, MessageSquareWarning, Zap, GraduationCap,
-  CopyCheck, Settings, Trash2, Landmark,
+  CopyCheck, Settings, Trash2, Landmark, Crosshair,
   type LucideIcon,
 } from "lucide-react";
 import { confirmDialog } from "@/components/ui/ConfirmProvider";
@@ -55,7 +55,7 @@ const ICON_LIST: LucideIcon[] = [
   FileCheck, UserCheck, ClipboardList, Newspaper, Stamp, BellRing, Package, FolderOpen,
   LineChart, Scissors, Shuffle, Building2, TrendingDown, Network, IndianRupee,
   LifeBuoy, MessageSquareWarning, Zap, GraduationCap,
-  CopyCheck, Settings, Trash2, Landmark,
+  CopyCheck, Settings, Trash2, Landmark, Crosshair,
 ];
 
 /* Keyed by each icon's lucide `displayName` (the canonical name) — which is

@@ -285,9 +285,7 @@ export default async function FinancialPlanDetailPage({
               }`}
             />
           </div>
-          <p className="text-2xs text-muted-foreground leading-tight">
-            Covers Savings, Debt, Emergency Fund, Life and Health insurance adequacy.
-          </p>
+          
         </div>
       </div>
 

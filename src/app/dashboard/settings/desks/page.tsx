@@ -15,8 +15,7 @@ export default function DesksSettingsPage() {
         <ChevronLeft className="size-4" /> Back to settings
       </Link>
 
-      <PageHeaderCard title={<><Network className="size-5" /> Desks (sub-branch teams)</>} subtitle={<>Group each branch into desks (e.g. DK, RC, 1) and assign every RM to a desk. The monthly
-          MIS reports roll up RM → desk → branch → firm.</>} />
+      <PageHeaderCard title={<><Network className="size-5" /> Desks (sub-branch teams)</>} />
 
       <DeskManager />
     </div>

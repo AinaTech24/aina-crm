@@ -44,9 +44,7 @@ export function RealReturnCalculator() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Real Return Calculator <span className="text-xs font-normal text-muted-foreground">(inflation + tax)</span></h2>
-        <p className="text-xs text-muted-foreground">
-          A 7% FD isn&apos;t really 7%. See what each instrument earns <em>after</em> tax and inflation — the return that actually grows your wealth.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

@@ -35,7 +35,7 @@ export default async function PortfolioIntelligencePage({ searchParams }: { sear
 
   return (
     <div className="space-y-6 max-w-6xl">
-      <PageHeaderCard title={<><PieChart className="size-6 text-muted-foreground" /> Portfolio Insights</>} subtitle={<>How your clients&apos; money is actually invested, and where it is concentrated.</>} actions={<><div className="flex items-center gap-2">
+      <PageHeaderCard title={<><PieChart className="size-6 text-muted-foreground" /> Portfolio Insights</>} actions={<><div className="flex items-center gap-2">
           {intel.totalAum > 0 && (
             <DownloadButton url={`/api/portfolio-intelligence/export${mine ? "?mine=1" : ""}`} className="btn-secondary text-xs inline-flex items-center gap-1.5">
               <Download className="size-3.5" /> Export CSV

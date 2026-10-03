@@ -44,10 +44,7 @@ export function FvAnnualLumpsumPlanner() {
     <div className="card-surface p-5 space-y-4">
       <div>
         <h2 className="text-base font-semibold">Future Value of Annual Lumpsum</h2>
-        <p className="text-xs text-muted-foreground">
-          Estimate the future value of a fixed amount invested every year — invest for the payment period, then let it keep
-          compounding to the end of the investment period. Compare two return scenarios.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 gap-3">

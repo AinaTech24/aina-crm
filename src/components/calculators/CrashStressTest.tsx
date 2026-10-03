@@ -29,10 +29,7 @@ export function CrashStressTest() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Market-Crash Stress Test</h2>
-        <p className="text-xs text-muted-foreground">
-          What happens to a goal when the market crashes mid-journey — and the real
-          cost of panic-selling versus staying invested and SI-ing through it.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

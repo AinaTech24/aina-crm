@@ -39,7 +39,7 @@ export async function SignalScoreCard({ session, leadId }: { session: { tenantId
           ))}
         </ul>
       )}
-      <p className="text-2xs text-muted-foreground mt-2">Points earned from real contact, on top of the lead score in the header.</p>
+      
     </div>
   );
 }

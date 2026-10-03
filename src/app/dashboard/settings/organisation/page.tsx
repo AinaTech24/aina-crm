@@ -43,7 +43,7 @@ export default async function OrganisationProfilePage() {
         <ChevronLeft className="size-4" /> Back to settings
       </Link>
 
-      <PageHeaderCard title={<><Building2 className="size-5" /> Organisation profile</>} subtitle={<>Identity, branding, AUM range. ARN, EUIN, package, and license are managed by AINA.</>} />
+      <PageHeaderCard title={<><Building2 className="size-5" /> Organisation profile</>} />
 
       <OrganisationProfileForm
         tenant={JSON.parse(JSON.stringify(tenant))}

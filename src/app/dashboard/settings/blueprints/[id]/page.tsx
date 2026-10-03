@@ -31,7 +31,7 @@ export default async function BlueprintEditPage({ params }: { params: Promise<{ 
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <PageHeaderCard title={<><Workflow className="size-6 text-muted-foreground" /> {data.def.blueprintName}</>} subtitle={<>Edit stages, SLA days, required fields, and on-enter automations.</>} />
+      <PageHeaderCard title={<><Workflow className="size-6 text-muted-foreground" /> {data.def.blueprintName}</>} />
 
       <BlueprintDesigner
         blueprintId={data.def.id}

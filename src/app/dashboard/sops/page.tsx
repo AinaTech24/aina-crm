@@ -37,7 +37,7 @@ export default async function SopsPage() {
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<>SOP library</>} subtitle={<>The written procedures your team follows, versioned and searchable.</>} actions={<>{canManage && (
+      <PageHeaderCard title={<>SOP library</>} actions={<>{canManage && (
           <Link
             href="/dashboard/sops/new"
             className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium flex items-center gap-1.5"

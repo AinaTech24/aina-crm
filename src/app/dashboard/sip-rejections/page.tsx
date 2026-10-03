@@ -172,7 +172,7 @@ export default async function SipRejectionsPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><XOctagon className="size-6 text-muted-foreground" /> SIP Rejections</>} subtitle={<>SIPs that bounced — chase the client and get the mandate working again.</>} actions={<><div className="flex items-center gap-2">
+      <PageHeaderCard title={<><XOctagon className="size-6 text-muted-foreground" /> SIP Rejections</>} actions={<><div className="flex items-center gap-2">
           <NewSipRejectionButton />
           <Link href="/dashboard/reports/sip_recovery_monthly" className="btn-secondary text-xs">
             Monthly recovery report →
@@ -245,9 +245,7 @@ export default async function SipRejectionsPage({
             <AgeBucket label="3–7 days" value={data.aging.a3_7} tone="amber" />
             <AgeBucket label="> 7 days" value={data.aging.a7p} tone="rose" />
           </div>
-          <p className="text-2xs text-muted-foreground mt-3">
-            Past 2 days breaches SLA — the daily scanner pings the RM &amp; branch head and bumps the task to urgent.
-          </p>
+          
         </div>
 
         <div className="card-surface p-5">

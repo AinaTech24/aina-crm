@@ -56,7 +56,7 @@ export function CustomFieldsManager() {
         <SlidersHorizontal className="size-5 text-brand-cyan" />
         <div>
           <h2 className="font-semibold">Custom fields</h2>
-          <p className="text-xs text-muted-foreground">Add your own fields to leads &amp; clients. They appear on the record's detail page.</p>
+          
         </div>
       </div>
 

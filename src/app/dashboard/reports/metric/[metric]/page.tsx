@@ -16,8 +16,7 @@ export default async function MetricStatusPage({
 
   return (
     <div className="space-y-5 max-w-6xl">
-      <PageHeaderCard title={<>{meta.title} — Branch-wise</>} subtitle={<>Month-end {meta.label} by branch and external source, with FY target achievement and
-          month-on-month movement — the figures your monthly review needs.</>} />
+      <PageHeaderCard title={<>{meta.title} — Branch-wise</>} />
 
       <MetricStatusBoard metricKey={meta.key} />
     </div>

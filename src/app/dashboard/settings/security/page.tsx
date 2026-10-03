@@ -28,8 +28,7 @@ export default async function SecuritySettingsPage() {
   return (
     <div className="space-y-5 max-w-3xl">
       <PageHeaderCard title={<><ShieldCheck className="size-6 text-primary" />
-          Security</>} subtitle={<>Protect your account with a second factor. Signed in as{" "}
-          <span className="font-medium">{session.email}</span>.</>} />
+          Security</>} subtitle={<>Signed in as <span className="font-medium">{session.email}</span></>} />
 
       <TwoFactorSetup initialEnabled={enabled} />
     </div>

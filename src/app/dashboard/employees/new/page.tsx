@@ -52,7 +52,7 @@ export default function InviteEmployeePage() {
 
   return (
     <div className="space-y-4 max-w-2xl">
-<PageHeaderCard title={<>Invite team member</>} subtitle={<>Generates a one-time invite link valid for 7 days. Share it with the invitee — they'll set their own password on accepting.</>} />
+<PageHeaderCard title={<>Invite team member</>} />
 {!inviteUrl ? (
         <form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-3">
           <label className="block">

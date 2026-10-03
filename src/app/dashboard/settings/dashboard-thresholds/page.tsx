@@ -46,7 +46,6 @@ export default async function DashboardThresholdsPage() {
     <div className="max-w-4xl space-y-6">
       <PageHeaderCard
         title="Dashboard thresholds"
-        subtitle="Where the dashboards draw their lines — target bands, phasing, stale leads, ageing and SLAs. Applies to every dashboard in the firm."
         breadcrumb={[{ label: "Settings", href: "/dashboard/settings" }, { label: "Dashboard thresholds" }]}
       />
       <ThresholdsForm

@@ -14,7 +14,7 @@ export const MASTER_SEEDS: Record<string, SeedRow[]> = {
     { key: "webinar", label: "Webinar" },
     { key: "seminar", label: "Seminar" },
     { key: "walk_in", label: "Walk-in" },
-    { key: "existing_client", label: "Existing Client Reference" },
+    // No "Existing Client Reference": it was a second "Referral" (removed 2026-10-02).
     { key: "google", label: "Google" },
     { key: "meta_ads", label: "Meta Ads" },
     { key: "google_ads", label: "Google Ads" },

@@ -60,7 +60,7 @@ export function FamilyTreeVisualizer({ members, primaryInvestorId }: { members: 
 
   return (
     <Card>
-      <CardHeader title="Family wealth map" subtitle="The household by generation, with each member's book." />
+      <CardHeader title="Family wealth map" />
       <CardBody>
         {ancestors.length > 0 && (
           <>

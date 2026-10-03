@@ -19,6 +19,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { LEAD_PIPELINE } from "@/lib/leads/stages";
+import { expandLeadSources } from "@/lib/leads/sources";
 import { cleanIds, col, textList, uuidList, type MetricPeriod, type MetricScope } from "./scope";
 
 export const LEAD_OPEN_KEYS = ["new", "call_done", "meeting_scheduled", "meeting_done", "proposal_sent"] as const;
@@ -41,7 +42,8 @@ export function leadWhere(scope: MetricScope, alias = "l"): SQL {
       OR (${col(alias, "branch_id")} IS NULL AND ${col(alias, "owner_id")} IN (
         SELECT id FROM users WHERE tenant_id = ${scope.tenantId}::uuid AND branch_id IN (${uuidList(branches)}))))`);
   }
-  if (scope.leadSources?.length) parts.push(sql`${col(alias, "source")} IN (${textList(scope.leadSources)})`);
+  // Client Referral also matches the old "Existing Client Reference" value.
+  if (scope.leadSources?.length) parts.push(sql`${col(alias, "source")} IN (${textList(expandLeadSources(scope.leadSources))})`);
   return sql.join(parts, sql` AND `);
 }
 

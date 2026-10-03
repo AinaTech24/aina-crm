@@ -23,8 +23,7 @@ export default async function LiquidReportPage() {
       <Link href="/dashboard/business-entries" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
         <ChevronLeft className="size-4" /> Back to entries
       </Link>
-      <PageHeaderCard title={<><Droplets className="size-6 text-sky-500" /> Liquid-for-switching report</>} subtitle={<>Net money each client has parked in <strong>Liquid</strong> funds via booked business (liquid inflows − amounts
-          switched/redeemed out). This is the dry powder ready to deploy into <strong>Equity</strong> on a market dip.</>} />
+      <PageHeaderCard title={<><Droplets className="size-6 text-sky-500" /> Liquid-for-switching report</>} />
 
       <div className="grid sm:grid-cols-2 gap-3">
         <div className="card-surface p-4 bg-sky-50/60">

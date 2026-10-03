@@ -25,8 +25,7 @@ export default async function AppearanceSettingsPage() {
         <ChevronLeft className="size-4" /> Back to settings
       </Link>
 
-      <PageHeaderCard title={<><Palette className="size-5" /> Appearance &amp; theme</>} subtitle={<>Re-skin the CRM to your brand. Pick a preset or two custom colours — the change applies to your whole
-          workspace and to the creatives you download.</>} />
+      <PageHeaderCard title={<><Palette className="size-5" /> Appearance &amp; theme</>} />
 
       <AppearanceThemeForm tenant={JSON.parse(JSON.stringify(tenant))} />
     </div>

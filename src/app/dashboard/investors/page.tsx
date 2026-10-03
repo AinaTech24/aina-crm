@@ -390,7 +390,6 @@ export default async function InvestorsPage({
           (export, re-grading tiers, the duplicates tool) under More. */}
       <PageHeaderCard
         title={<>Clients</>}
-        subtitle={<>Your whole client book — AUM, SIPs, KYC and profile health in one list.</>}
         actions={
           <>
             <Link

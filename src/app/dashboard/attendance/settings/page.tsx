@@ -27,8 +27,7 @@ export default async function AttendanceSettingsPage() {
 
   return (
     <div className="space-y-6 max-w-3xl">
-      <PageHeaderCard title={<><Settings2 className="size-6 text-muted-foreground" /> Attendance settings</>} subtitle={<>Work hours, grace period, half/full-day thresholds, and weekly offs. Drives late /
-          early-out flags across the firm.</>} />
+      <PageHeaderCard title={<><Settings2 className="size-6 text-muted-foreground" /> Attendance settings</>} />
 
       <AttendanceSettingsForm initial={settings} canManage={canManage} />
     </div>

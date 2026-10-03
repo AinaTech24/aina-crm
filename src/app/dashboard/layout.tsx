@@ -48,6 +48,7 @@ import {
   LifeBuoy,
   IndianRupee,
   Landmark,
+  Crosshair,
 } from "lucide-react";
 import { eq, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
@@ -148,6 +149,9 @@ const NAV: NavSection[] = [
       { href: "/dashboard/leads", label: "Leads", icon: UserPlus, module: "lead_management",
         roles: ["owner", "marketing", "rm", "branch_head", "back_office", "ops", "compliance"] },
       { href: "/dashboard/investors", label: "Clients", icon: Users, module: "client_master",
+        roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
+      // An existing client who wants another product (lib/opportunities).
+      { href: "/dashboard/opportunities", label: "Opportunities", icon: Crosshair, module: "client_master",
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
       { href: "/dashboard/families", label: "Families", icon: HeartHandshake, module: "family_mapping",
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },

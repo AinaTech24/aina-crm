@@ -34,11 +34,7 @@ export function OpmHousePlanner() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Unconventional SWP — OPM to Buy a House</h2>
-        <p className="text-xs text-muted-foreground">
-          Borrow for the house, invest the same amount in an equity fund, and run an SWP that pays every EMI.
-          When the fund earns more than the loan costs, the corpus outlives the loan — the house funded by the
-          bank&rsquo;s money while your capital keeps compounding.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

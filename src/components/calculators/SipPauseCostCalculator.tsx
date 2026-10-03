@@ -29,9 +29,7 @@ export function SipPauseCostCalculator() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">The Cost of Pausing Your SIP</h2>
-        <p className="text-xs text-muted-foreground">
-          Skipping a few SIPs feels harmless — but those are the rupees with the most years to compound. See the real damage.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

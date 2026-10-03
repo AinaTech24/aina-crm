@@ -53,10 +53,7 @@ export function StpComprehensivePlanner() {
     <div className="card-surface p-5 space-y-4">
       <div>
         <h2 className="text-base font-semibold">STP Comprehensive Planner{addClientName && clientName ? ` · ${clientName}` : ""}</h2>
-        <p className="text-xs text-muted-foreground">
-          Future value of a lumpsum moved Debt → Equity through a Systematic Transfer Plan — pick the transfer mode, frequency
-          and installments, and see the blended annualised return.
-        </p>
+        
       </div>
 
       {/* Core inputs */}

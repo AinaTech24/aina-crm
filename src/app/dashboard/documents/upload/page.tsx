@@ -130,7 +130,7 @@ export default function UploadDocumentPage() {
 
   return (
     <div className="space-y-4 max-w-4xl mx-auto">
-<PageHeaderCard title={<>Upload document{files.length > 1 ? "s" : ""}</>} subtitle={<>Files are stored encrypted in S3 (ap-south-1, DPDP-compliant). Drag &amp; drop multiple files to batch-upload them under one category.</>} />
+<PageHeaderCard title={<>Upload document{files.length > 1 ? "s" : ""}</>} />
 <form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-4">
         <label
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}

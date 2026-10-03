@@ -17,8 +17,7 @@ export default async function RuleLibraryPage() {
       <Link href="/dashboard/automations" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
         <ChevronLeft className="size-4" /> Back to Automations
       </Link>
-      <PageHeaderCard title={<><BookMarked className="size-6 text-muted-foreground" /> Rule Library</>} subtitle={<>Ready-made automations. Add one to your rules — it&apos;s created <strong>disabled</strong> so you can review it,
-          pick your message template, then turn it on.</>} />
+      <PageHeaderCard title={<><BookMarked className="size-6 text-muted-foreground" /> Rule Library</>} />
       <RuleLibraryGrid />
     </div>
   );

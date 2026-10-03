@@ -231,6 +231,23 @@ function NewInsuranceForm() {
   const rowsOf = (k: string): Record<string, any>[] =>
     Array.isArray(details[k]) ? (details[k] as Record<string, any>[]) : [];
 
+  // Gross premium is the total of the premium rows and keeps up as rows are
+  // added, edited or removed — until someone types a different figure, which
+  // is then left alone.
+  function setPremiumRows(rows: Record<string, any>[]) {
+    setDetails((s) => {
+      const gross = s.grossPremium == null ? "" : String(s.grossPremium).trim();
+      const before = premiumRowsTotal(s.premiumBreakdown);
+      const follows = gross === "" || (before != null && Number(gross) === before);
+      const after = premiumRowsTotal(rows);
+      return {
+        ...s,
+        premiumBreakdown: rows,
+        ...(follows ? { grossPremium: after == null ? "" : String(after) } : {}),
+      };
+    });
+  }
+
   // Country defaults to India unless the document / user says otherwise.
   useEffect(() => {
     setDetails((s) => (s.country ? s : { ...s, country: "India" }));
@@ -726,8 +743,6 @@ function NewInsuranceForm() {
       <Section title="Policyholder details & address">
         <div className="grid grid-cols-3 gap-3">
           <Field label="Policyholder name" placeholder="As on policy" value={d("holderName")} setValue={(v) => setD("holderName", v)} />
-          <Field label="Customer ID" placeholder="" value={d("customerId")} setValue={(v) => setD("customerId", v)} />
-          <Field label="UIN" placeholder="" value={d("uin")} setValue={(v) => setD("uin", v)} />
           <Field label="Email ID" type="email" placeholder="" value={d("email")} setValue={(v) => setD("email", v)} />
           <Field label="Mobile no" placeholder="" value={d("mobile")} setValue={(v) => setD("mobile", v)} />
         </div>
@@ -807,7 +822,7 @@ function NewInsuranceForm() {
             { key: "amount", label: "Amount (₹)", width: "w-32" },
           ]}
           rows={rowsOf("premiumBreakdown")}
-          onChange={(r) => setD("premiumBreakdown", r)}
+          onChange={setPremiumRows}
         />
         <div className="grid grid-cols-3 gap-3">
           <Field label="Gross premium (₹)" type="number" placeholder="" value={d("grossPremium")} setValue={(v) => setD("grossPremium", v)} />
@@ -999,6 +1014,28 @@ function DateField({ label, value, setValue }: { label: string; value: string; s
       <DatePicker value={value} onChange={setValue} className="w-full" ariaLabel={label} />
     </div>
   );
+}
+
+/**
+ * Total of the premium rows' amounts, or null when no row has a number yet. A
+ * row the policy itself labels as the total or gross premium is left out, so
+ * it is not counted twice.
+ */
+function premiumRowsTotal(rows: unknown): number | null {
+  if (!Array.isArray(rows)) return null;
+  let total = 0;
+  let any = false;
+  for (const r of rows as Record<string, any>[]) {
+    const desc = String(r?.description?.value ?? r?.description ?? "");
+    if (/\b(total|gross)\b/i.test(desc)) continue;
+    const raw = r?.amount;
+    const n = parseFloat(String(raw && typeof raw === "object" ? raw.value ?? "" : raw ?? "").replace(/[₹,\s]/g, ""));
+    if (Number.isFinite(n)) {
+      total += n;
+      any = true;
+    }
+  }
+  return any ? Math.round(total * 100) / 100 : null;
 }
 
 /** Generic editable table bound to a details[] array — add / edit / remove rows.

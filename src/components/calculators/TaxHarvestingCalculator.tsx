@@ -26,11 +26,7 @@ export function TaxHarvestingCalculator() {
     <div className="card-surface p-5 space-y-5">
       <div>
         <h2 className="text-base font-semibold">Equity LTCG Tax-Harvesting</h2>
-        <p className="text-xs text-muted-foreground">
-          Long-term equity gains up to ₹1.25 lakh a year are tax-free. Redeeming and
-          re-buying to &quot;harvest&quot; that exemption each year resets your cost base —
-          and cuts the tax due when you finally sell.
-        </p>
+        
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

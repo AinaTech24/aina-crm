@@ -45,11 +45,7 @@ export default async function MfSelectionCriteriaPage() {
             </Link>
           </div>
           <h1 className="page-title">MF selection criteria</h1>
-          <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-            The firm's standardised investment-committee checklist for shortlisting
-            schemes, by category. Quantitative benchmarks here are applied automatically
-            when you run a scheme's IC scorecard.
-          </p>
+          
         </div>
         <PrintReportButton />
       </div>
