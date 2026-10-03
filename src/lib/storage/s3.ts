@@ -8,7 +8,14 @@
  * Region: ap-south-1 (Mumbai) — DPDP data localization requirement.
  */
 
-import { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import {
+  S3Client,
+  GetObjectCommand,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  ListObjectsV2Command,
+  CopyObjectCommand,
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import fs from "fs";
 import path from "path";
@@ -294,4 +301,29 @@ export async function putObject(key: string, body: Buffer | Uint8Array, contentT
       ServerSideEncryption: "AES256",
     })
   );
+}
+
+/**
+ * Keys under a prefix, oldest first, at most `max`. S3 only — the local-disk
+ * fallback has no inbound mail to list, so it returns nothing.
+ */
+export async function listObjectKeys(prefix: string, max = 50): Promise<string[]> {
+  if (!isS3Configured()) return [];
+  const res = await client().send(
+    new ListObjectsV2Command({ Bucket: bucket(), Prefix: prefix, MaxKeys: Math.min(1000, Math.max(1, max)) })
+  );
+  return (res.Contents ?? [])
+    .filter((o) => o.Key && !o.Key.endsWith("/"))
+    .sort((a, b) => (a.LastModified?.getTime() ?? 0) - (b.LastModified?.getTime() ?? 0))
+    .map((o) => o.Key as string);
+}
+
+/** Move an object to a new key within the bucket (copy, then delete the original). */
+export async function moveObject(fromKey: string, toKey: string): Promise<void> {
+  if (!isS3Configured()) return;
+  const b = bucket();
+  await client().send(
+    new CopyObjectCommand({ Bucket: b, Key: toKey, CopySource: `${b}/${fromKey.split("/").map(encodeURIComponent).join("/")}` })
+  );
+  await client().send(new DeleteObjectCommand({ Bucket: b, Key: fromKey }));
 }

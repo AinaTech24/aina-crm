@@ -146,6 +146,10 @@ async function logInbound(
     duplicates?: number;
   }
 ): Promise<void> {
+  // Tell the caller what was decided — the S3 inbound reader keeps the stored
+  // mail only when it could not be routed. Set before the insert so a failed
+  // log write cannot hide the outcome.
+  msg.outcome = fields.outcome;
   try {
     const atts = fields.attachments ?? [];
     await withSystem(async (tx) => {
@@ -583,12 +587,106 @@ export async function pollRtaInboxOnce(): Promise<{ processed: number; configure
   }
 }
 
+// ── Amazon SES → S3 inbound ─────────────────────────────────────────────────
+//
+// The shared mailbox lived on Hostinger, which caps how many mails one mailbox
+// accepts per hour. Registrars deliver in bursts, so it started answering
+// `451 4.7.1 Ratelimit "hostinger_inc_ratelimit"`; Gmail retried, gave up and
+// bounced, and reports were lost for every firm at once.
+//
+// SES receiving has no per-mailbox cap and no inbox to fill: a receipt rule
+// writes each mail for crm.ainatech.in, raw, into the uploads bucket under
+// INBOUND_PREFIX. This reader feeds those files through the SAME handleMessage
+// the IMAP reader uses, so routing, unzip, passwords and import are unchanged.
+//
+// It also closes the hole where routing failure meant data loss: with IMAP the
+// attachment was only stored once routing succeeded, so an unroutable mail kept
+// its log row and lost its bytes. Here the mail is already in S3 before routing
+// runs. If it cannot be routed it moves to HELD_PREFIX and is retried hourly, so
+// registering the firm's forwarding mailbox later recovers it. The bucket's
+// lifecycle rule deletes anything left in these folders after 30 days.
+const INBOUND_PREFIX = "rta-inbound/";
+const HELD_PREFIX = "rta-inbound-held/";
+const FAILED_PREFIX = "rta-inbound-failed/";
+const INBOUND_BATCH = 25;
+
+async function readStoredMail(key: string, seq: number): Promise<InboundRawMessage> {
+  const { getObjectBytes } = await import("@/lib/storage/s3");
+  const { parseInboundSource } = await import("@/lib/comms/imap");
+  return parseInboundSource(await getObjectBytes(key), seq);
+}
+
+/**
+ * Drain new mail from S3. A routed mail is deleted (its attachments are already
+ * stored per firm by ingestAttachment); an unroutable one is held; a mail the
+ * handler threw on is parked under FAILED_PREFIX so it can't loop every tick.
+ */
+export async function pollS3InboundOnce(): Promise<{ processed: number; held: number; failed: number }> {
+  const { isS3Configured, listObjectKeys, deleteObject, moveObject } = await import("@/lib/storage/s3");
+  if (!isS3Configured()) return { processed: 0, held: 0, failed: 0 };
+  const keys = await listObjectKeys(INBOUND_PREFIX, INBOUND_BATCH);
+  let processed = 0, held = 0, failed = 0;
+  for (const key of keys) {
+    // SES writes a zero-byte "AMAZON_SES_SETUP_NOTIFICATION" object when the
+    // rule is created; it is not mail.
+    if (key.endsWith("AMAZON_SES_SETUP_NOTIFICATION")) {
+      await deleteObject(key).catch(() => {});
+      continue;
+    }
+    const name = key.slice(INBOUND_PREFIX.length);
+    try {
+      const msg = await readStoredMail(key, processed + 1);
+      await handleMessage(msg);
+      if (msg.outcome === "unroutable") {
+        await moveObject(key, HELD_PREFIX + name);
+        held++;
+      } else {
+        await deleteObject(key);
+      }
+    } catch (e) {
+      captureError("[rta-inbox] S3 inbound mail failed", e, { key });
+      await moveObject(key, FAILED_PREFIX + name).catch(() => {});
+      failed++;
+    }
+    processed++;
+  }
+  return { processed, held, failed };
+}
+
+/**
+ * Retry held mail. Typically a firm forwards from a mailbox it has not yet
+ * registered; once it is registered, the next retry routes and imports it.
+ * Mail that still cannot be routed stays held until the lifecycle rule
+ * removes it.
+ */
+export async function retryHeldS3Inbound(): Promise<{ retried: number; recovered: number }> {
+  const { isS3Configured, listObjectKeys, deleteObject } = await import("@/lib/storage/s3");
+  if (!isS3Configured()) return { retried: 0, recovered: 0 };
+  const keys = await listObjectKeys(HELD_PREFIX, 200);
+  let retried = 0, recovered = 0;
+  for (const key of keys) {
+    try {
+      const msg = await readStoredMail(key, retried + 1);
+      await handleMessage(msg);
+      retried++;
+      if (msg.outcome !== "unroutable") {
+        await deleteObject(key);
+        recovered++;
+      }
+    } catch (e) {
+      captureError("[rta-inbox] held S3 mail retry failed", e, { key });
+    }
+  }
+  return { retried, recovered };
+}
+
 export function startRtaInboxPollerWorker() {
   const interval = Number(process.env.RTA_INBOX_POLLER_INTERVAL_MS ?? 120_000);
   const SWEEP_INTERVAL_MS = 60 * 60 * 1000; // hourly
   let running = false;
   let warnedIdle = false;
   let lastSweep = 0;
+  let lastHeldRetry = 0;
 
   const tick = async () => {
     if (running) return;
@@ -600,20 +698,39 @@ export function startRtaInboxPollerWorker() {
     let outcome: "ok" | "error" = "ok";
     let detail = "";
     try {
+      // S3 (Amazon SES) first, and independent of the IMAP settings: once the
+      // domain's MX points at SES this is the only source, and the old mailbox
+      // can be removed from Aina Admin without stopping ingestion.
+      try {
+        const s3 = await pollS3InboundOnce();
+        if (s3.processed) {
+          console.log(`[rta-inbox] S3: ${s3.processed} mail(s), ${s3.held} held (unroutable), ${s3.failed} failed`);
+        }
+        detail = `s3 ${s3.processed}`;
+        if (Date.now() - lastHeldRetry > SWEEP_INTERVAL_MS) {
+          lastHeldRetry = Date.now();
+          const r = await retryHeldS3Inbound();
+          if (r.recovered) console.log(`[rta-inbox] S3: recovered ${r.recovered} of ${r.retried} held mail(s)`);
+        }
+      } catch (e) {
+        outcome = "error";
+        detail = `s3 inbound: ${(e as Error).message}`;
+        console.error(`[rta-inbox] S3 inbound poll failed: ${(e as Error).message}`);
+      }
+
       const rc = await loadRtaInboxConfig();
       if (!rc.configured) {
         if (!warnedIdle) {
-          console.log("[rta-inbox] inbox not configured (Aina Admin → RTA Mailbox, or RTA_INBOX_* env) — poller idle");
+          console.log("[rta-inbox] IMAP inbox not configured — reading S3 (Amazon SES) inbound only");
           warnedIdle = true;
         }
-        detail = "not configured";
         return;
       }
       warnedIdle = false;
       const cfg: ImapConfig = { host: rc.host!, port: rc.port, secure: rc.secure, user: rc.user!, pass: rc.pass! };
       const { processed } = await processUnseenMailback(cfg, handleMessage);
       if (processed) console.log(`[rta-inbox] processed ${processed} message(s) (domain=${rc.domain})`);
-      detail = `processed ${processed}`;
+      detail = `${detail}; imap ${processed}`;
 
       if (rc.deleteAfterImport && Date.now() - lastSweep > SWEEP_INTERVAL_MS) {
         lastSweep = Date.now();
