@@ -53,7 +53,7 @@ import {
 import { eq, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { tenants, users, tenantUiLayouts } from "@/db/schema";
-import { requireSession } from "@/lib/auth/session";
+import { requireSession, requirePageSession } from "@/lib/auth/session";
 import { primaryRoleLabel, can } from "@/lib/auth/rbac";
 import { loadTenantLicense, isPathAllowedWhenRestricted } from "@/lib/auth/license";
 import { tenantAccessibleNavKeys, isGatableNav, gatedNavKeyForPath } from "@/config/nav-access";
@@ -350,7 +350,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const session = await requireSession();
+  const session = await requirePageSession();
   const license = await loadTenantLicense(session.tenantId, session.roles);
   // Brand-new tenant that hasn't chosen/paid for a plan yet — send them to
   // plan selection, never the dashboard.

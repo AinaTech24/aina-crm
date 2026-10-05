@@ -17,6 +17,7 @@
 
 import { cache } from "react";
 import { cookies, headers } from "next/headers";
+import { redirect } from "next/navigation";
 import {
   SESSION_COOKIE,
   ADMIN_SESSION_COOKIE,
@@ -128,6 +129,29 @@ export async function requireSession(): Promise<SessionUser> {
   const session = await getSession();
   if (!session) throw new AuthError("not authenticated", 401);
   return session;
+}
+
+/**
+ * requireSession for LAYOUTS and PAGES. Middleware can only check the token's
+ * signature (Edge, no DB), so a token that was revoked server-side — an owner
+ * changing this user's access, a password reset, "log out this device", an
+ * offboarding — still reaches the render. There requireSession's throw escaped
+ * every error boundary and the user got the global "The app hit a problem"
+ * screen instead of the login form. Send them to /login?next=… instead; the
+ * middleware lets that bounce render the form rather than ping-pong back.
+ * API routes keep requireSession: they must answer 401, not redirect.
+ */
+export async function requirePageSession(): Promise<SessionUser> {
+  const session = await getSession();
+  if (session) return session;
+  let next = "/dashboard";
+  try {
+    const p = (await headers()).get("x-pathname");
+    if (p && p.startsWith("/") && !p.startsWith("//")) next = p;
+  } catch {
+    /* no request context — keep the default */
+  }
+  redirect(`/login?next=${encodeURIComponent(next)}`);
 }
 
 export class AuthError extends Error {

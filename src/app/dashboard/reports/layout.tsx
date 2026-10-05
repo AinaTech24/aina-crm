@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { requireSession } from "@/lib/auth/session";
+import { requirePageSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 
 /**
@@ -16,7 +16,7 @@ import { can } from "@/lib/auth/rbac";
  *   - RM tools scope their own queries to the caller's book.
  */
 export default async function ReportsLayout({ children }: { children: React.ReactNode }) {
-  const session = await requireSession();
+  const session = await requirePageSession();
   const allowed =
     can(session.roles, "reports.business", session.permissions) ||
     can(session.roles, "reports.manage", session.permissions) ||
