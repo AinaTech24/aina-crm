@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { requireSession } from "@/lib/auth/session";
+import { requirePageSession } from "@/lib/auth/session";
 import { AdminShell } from "@/components/super-admin/AdminShell";
 import { ToastProvider } from "@/components/ui/Toast";
 import { ConfirmProvider } from "@/components/ui/ConfirmProvider";
@@ -7,7 +7,7 @@ import { ConfirmProvider } from "@/components/ui/ConfirmProvider";
 export const dynamic = "force-dynamic";
 
 export default async function SuperAdminLayout({ children }: { children: React.ReactNode }) {
-  const session = await requireSession();
+  const session = await requirePageSession();
   if (!session.isPlatformAdmin) {
     redirect("/dashboard");
   }

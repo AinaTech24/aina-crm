@@ -8,14 +8,14 @@
  */
 import { Workflow } from "lucide-react";
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
-import { requireSession } from "@/lib/auth/session";
+import { requirePageSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { canViewMonitor } from "@/lib/automation/control-tower";
 import { AutomationTabs, type AutomationTab } from "@/components/automations/AutomationTabs";
 import { NewAutomationButton } from "@/components/automations/NewAutomationButton";
 
 export default async function AutomationsLayout({ children }: { children: React.ReactNode }) {
-  const session = await requireSession();
+  const session = await requirePageSession();
   const canEdit = can(session.roles, "workflow.edit", session.permissions);
   // Run history carries run errors and record snapshots — the same ops /
   // compliance audience the old monitor had.
