@@ -17,7 +17,7 @@ import { withTenant, type Tx } from "@/db/client";
 import { users, branches } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, areAssignableRoles, areKnownCapabilities } from "@/lib/auth/rbac";
-import { areKnownNavKeys } from "@/config/nav-access";
+import { knownNavKeys } from "@/config/nav-access";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { offboardUser, type OffboardSummary } from "@/lib/offboarding";
 import { clearSessionRevocationCache, clearDeviceSessionCache } from "@/lib/auth/revocation";
@@ -139,9 +139,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (body.permissions != null && !areKnownCapabilities(body.permissions)) {
       return NextResponse.json({ error: "one or more permissions are not recognised" }, { status: 400 });
     }
-    if (body.enabledModules != null && !areKnownNavKeys(body.enabledModules)) {
-      return NextResponse.json({ error: "one or more sidebar items are not recognised" }, { status: 400 });
-    }
+    // Sidebar items removed since this user was last saved come back from the
+    // form; drop them rather than refuse the whole save.
+    body.enabledModules = knownNavKeys(body.enabledModules);
 
     const meta = clientMetaFromHeaders(req.headers);
 
@@ -217,7 +217,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const accessChanged =
         (body.permissions !== undefined && !sameList(body.permissions, (existing as any).permissions)) ||
         (body.roles !== undefined && !sameList(body.roles, (existing as any).roles)) ||
-        (body.enabledModules !== undefined && !sameList(body.enabledModules, (existing as any).enabledModules));
+        // Stale keys never granted anything, so cleaning them up is not an access change.
+        (body.enabledModules !== undefined &&
+          !sameList(body.enabledModules, knownNavKeys((existing as any).enabledModules as string[] | null)));
       // users.sessions_invalid_after is the revocation epoch the token check
       // actually reads — revoking the user_sessions rows alone only tidies the
       // device list and would leave the old token working.

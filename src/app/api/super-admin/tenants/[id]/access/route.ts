@@ -6,7 +6,7 @@ import { withPlatformAdmin } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requirePlatform } from "@/lib/auth/rbac";
 import { subscriptions, subscriptionEvents } from "@/db/schema";
-import { areKnownNavKeys } from "@/config/nav-access";
+import { knownNavKeys } from "@/config/nav-access";
 import { areKnownWidgetKeys } from "@/config/dashboard-widgets";
 import { sanitizeFeatureFlagOverride } from "@/config/feature-flags";
 
@@ -33,10 +33,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!parse.success) {
       return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
     }
-    const { modulesOverride, allowedFields, allowedNav, allowedDashboardWidgets, featureFlags } = parse.data;
-    if (allowedNav != null && !areKnownNavKeys(allowedNav)) {
-      return NextResponse.json({ error: "one or more sidebar items are not recognised" }, { status: 400 });
-    }
+    const { modulesOverride, allowedFields, allowedDashboardWidgets, featureFlags } = parse.data;
+    // Sidebar items removed since this firm was last saved come back from the
+    // form; drop them rather than refuse the whole save.
+    const allowedNav = knownNavKeys(parse.data.allowedNav);
     if (allowedDashboardWidgets != null && !areKnownWidgetKeys(allowedDashboardWidgets)) {
       return NextResponse.json({ error: "one or more dashboard widgets are not recognised" }, { status: 400 });
     }

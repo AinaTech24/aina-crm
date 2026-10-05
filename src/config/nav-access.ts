@@ -168,9 +168,18 @@ export function isGatableNav(href: string): boolean {
 }
 
 /** Validate a stored grant — every key must be a known nav item (null = "all"). */
-export function areKnownNavKeys(keys: string[] | null | undefined): boolean {
-  if (!keys) return true;
-  return keys.every((k) => NAV_KEY_SET.has(k));
+/**
+ * A saved sidebar grant with only the keys the catalog still knows. Items get
+ * removed from the sidebar (Pipeline Board, My Day, Operations, Content
+ * Library, My Dashboards…) but their hrefs stay in `users.enabled_modules` and
+ * `subscriptions.allowed_nav`; the edit forms send the stored list back, so
+ * rejecting unknown keys made every user or tenant saved before a removal
+ * impossible to save again ("one or more sidebar items are not recognised").
+ * An unknown key grants nothing, so dropping it is always safe.
+ */
+export function knownNavKeys<T extends string[] | null | undefined>(keys: T): T {
+  if (!keys) return keys;
+  return keys.filter((k) => NAV_KEY_SET.has(k)) as T;
 }
 
 /**
