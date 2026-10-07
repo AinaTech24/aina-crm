@@ -12,6 +12,10 @@ import { handleApiError } from "@/lib/api/error-handler";
  *   SYNC_BATCH per call. The response says how many are `remaining`, and the
  *   page calls again until none are, so a firm with thousands of breaks never
  *   holds one request open for minutes.
+ *
+ *   Every break goes through checkSyncable first: one the CRM already holds
+ *   under another scheme code, or with no single folio, is `refused`, the
+ *   reason written on it, and "Sync all" never picks it again.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -22,7 +26,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { reconciliationExceptions, transactions } from "@/db/schema";
-import { RECON_TOLERANCE as TOLERANCE, syncableWhere } from "@/lib/reconciliation/syncable";
+import { RECON_TOLERANCE as TOLERANCE, SYNC_REFUSED, checkSyncable, syncableWhere } from "@/lib/reconciliation/syncable";
 
 export const dynamic = "force-dynamic";
 
@@ -72,7 +76,7 @@ export async function POST(req: NextRequest) {
                  LIMIT ${SYNC_BATCH}
               `)).rows as Array<{ id: string }>).map((r) => r.id)
             : body.ids;
-        if (!ids.length) return { updated: 0, skipped: 0, remaining: 0 };
+        if (!ids.length) return { updated: 0, skipped: 0, refused: 0, remaining: 0 };
         const scope = and(
           eq(reconciliationExceptions.tenantId, session.tenantId),
           inArray(reconciliationExceptions.id, ids)
@@ -107,12 +111,22 @@ export async function POST(req: NextRequest) {
         const today = new Date().toISOString().slice(0, 10);
         let synced = 0;
         let skipped = 0;
+        let refused = 0;
         for (const ex of exs) {
           const crmUnits = Number(ex.crmUnits ?? 0);
           const feedUnits = Number(ex.feedUnits ?? 0);
           const addUnits = Math.round((feedUnits - crmUnits) * 10000) / 10000;
           if (!ex.investorId || addUnits <= TOLERANCE) {
             skipped++;
+            continue;
+          }
+          const check = await checkSyncable(tx, session.tenantId, ex);
+          if (!check.ok) {
+            await tx
+              .update(reconciliationExceptions)
+              .set({ notes: `${ex.notes ? ex.notes + " " : ""}${SYNC_REFUSED} ${check.reason}]`, updatedAt: new Date() } as any)
+              .where(eq(reconciliationExceptions.id, ex.id));
+            refused++;
             continue;
           }
           const feedValue = ex.feedValue != null ? Number(ex.feedValue) : null;
@@ -123,7 +137,7 @@ export async function POST(req: NextRequest) {
             .values({
               tenantId: session.tenantId,
               investorId: ex.investorId,
-              folioNumber: ex.folioNumber ?? null,
+              folioNumber: check.folioNumber,
               schemeCode: ex.schemeCode ?? null,
               schemeName: ex.schemeName ?? null,
               type: "purchase",
@@ -157,7 +171,7 @@ export async function POST(req: NextRequest) {
           action: "reconciliation.exception.bulk_sync",
           entityType: "reconciliation_exception",
           entityId: session.tenantId,
-          after: { synced, skipped, all: "all" in body } as any,
+          after: { synced, skipped, refused, all: "all" in body } as any,
           ...meta,
         });
         const remaining =
@@ -167,7 +181,7 @@ export async function POST(req: NextRequest) {
                  WHERE ${syncableWhere(session.tenantId, body.filter)}
               `)).rows[0] as any)?.c ?? 0)
             : 0;
-        return { updated: synced, skipped, remaining };
+        return { updated: synced, skipped, refused, remaining };
       },
       { userId: session.userId, branchId: session.branchId, roles: session.roles }
     );
