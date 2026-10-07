@@ -48,6 +48,11 @@ export function canViewAllInvestors(session: SessionUser) {
   return can(session.roles, "investor.view.all", session.permissions);
 }
 
+/** The owner chose this person's permissions explicitly (an allow-list). */
+export function hasCustomPermissions(session?: SessionUser): boolean {
+  return !!session && !session.roles.includes("owner") && (session.permissions?.length ?? 0) > 0;
+}
+
 /**
  * Is the per-tenant data wall switched on? Read inside the CALLER's existing
  * transaction so it costs one cheap indexed read and needs no second pool
@@ -55,7 +60,13 @@ export function canViewAllInvestors(session: SessionUser) {
  * missing → false, i.e. fail OPEN to the long-standing firm-wide behaviour
  * rather than hiding a firm's own clients from it on a transient error.
  */
-export async function isDataScopeRestricted(tx: any, tenantId: string): Promise<boolean> {
+export async function isDataScopeRestricted(tx: any, tenantId: string, session?: SessionUser): Promise<boolean> {
+  // An owner who ticked "Customize access permissions" for this person has
+  // said exactly what they may see. Honour it whatever the firm switch says:
+  // the switch is set from the AINA console, so with it off an owner who
+  // unticked "View all clients" saw nothing change. Users who were never
+  // customised keep the firm's shared-book default.
+  if (hasCustomPermissions(session)) return true;
   try {
     const r = await tx.execute(sql`
       SELECT restrict_user_data_scope AS on FROM tenants WHERE id = ${tenantId}::uuid LIMIT 1
@@ -78,7 +89,7 @@ export async function investorScopeCondition(tx: any, session: SessionUser) {
     if (session.roles.includes("branch_head")) return session.branchId ? eq(investors.branchId, session.branchId) : sql`FALSE`;
     if (session.roles.includes("rm")) return eq(investors.rmId, session.userId);
   }
-  if (!(await isDataScopeRestricted(tx, session.tenantId))) return undefined;
+  if (!(await isDataScopeRestricted(tx, session.tenantId, session))) return undefined;
   if (isBranchScoped(session)) return eq(investors.branchId, session.branchId!);
   if (canViewAllInvestors(session)) return undefined;
   return eq(investors.rmId, session.userId);
@@ -95,7 +106,7 @@ export async function investorScopeSql(tx: any, session: SessionUser, alias = "i
     if (session.roles.includes("branch_head")) return session.branchId ? sql`${sql.raw(`${alias}.branch_id`)} = ${session.branchId}::uuid` : sql`FALSE`;
     if (session.roles.includes("rm")) return sql`${sql.raw(`${alias}.rm_id`)} = ${session.userId}::uuid`;
   }
-  if (!(await isDataScopeRestricted(tx, session.tenantId))) return sql`TRUE`;
+  if (!(await isDataScopeRestricted(tx, session.tenantId, session))) return sql`TRUE`;
   if (isBranchScoped(session)) {
     return sql`${sql.raw(`${alias}.branch_id`)} = ${session.branchId}::uuid`;
   }

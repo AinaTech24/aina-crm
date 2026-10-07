@@ -66,7 +66,7 @@ export async function familyScopeSql(tx: any, session: SessionUser, alias = "f")
   // households only — never the members' book.
   if (!hasInvestorView(session)) return sql`${rm} = ${session.userId}::uuid`;
 
-  if (!session.mobile && !(await isDataScopeRestricted(tx, session.tenantId))) return sql`TRUE`;
+  if (!session.mobile && !(await isDataScopeRestricted(tx, session.tenantId, session))) return sql`TRUE`;
 
   const memberScope = await investorScopeSql(tx, session, "fm_scope");
   const branchPart = isBranchScoped(session) && session.branchId
