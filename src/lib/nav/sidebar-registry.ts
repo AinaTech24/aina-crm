@@ -71,8 +71,6 @@ export const SIDEBAR_REGISTRY: SidebarEntry[] = [
   // In Settings → Connections, not the menu; kept here so its kill-switch stays.
   { group: "Automation", href: "/dashboard/communications", label: "Communications" },
   // Compliance
-  { group: "Compliance", href: "/dashboard/compliance/command-center", label: "Compliance Center" },
-  { group: "Compliance", href: "/dashboard/compliance/amfi-circulars", label: "Circulars" },
   { group: "Compliance", href: "/dashboard/documents", label: "Documents" },
   { group: "Compliance", href: "/dashboard/compliance", label: "DDQ Readiness" },
   { group: "Compliance", href: "/dashboard/reports/nomination-tracker", label: "Nomination Tracker" },
