@@ -42,7 +42,7 @@ import {
 import { extractRtaDownloadLinks, fetchRtaDownload } from "@/lib/rta/mailback-download";
 import {
   getMailbackPasswords,
-  passwordCandidates,
+  passwordsToTry,
   resolveTenantByAddresses,
   resolveTenantBySenders,
   stampReceived,
@@ -223,10 +223,11 @@ async function ingestAttachment(
   const key = `tenants/${tenantId}/rta/${Date.now()}-${safe}`;
   await putObject(key, att.content, att.contentType || "application/octet-stream");
 
-  // Every password this firm has saved for the registrar, tried in order until
-  // one opens the archive — a firm with more than one ARN can have more than
-  // one mailback subscription (and password) per registrar.
-  const passwords = passwordCandidates(pw, cls.source).map((e) => e.password);
+  // Every password this firm has saved, tried in order until one opens the
+  // archive — a firm with more than one ARN can have more than one mailback
+  // subscription (and password) per registrar, and the registrar a password
+  // is saved under is not always the one whose files it opens.
+  const passwords = passwordsToTry(pw, cls.source);
 
   const importId = await withTenant(tenantId, async (tx) => {
     const r = await tx.execute(sql`

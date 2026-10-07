@@ -78,6 +78,23 @@ export function passwordCandidates(pw: MailbackPasswords, source: string): Passw
 }
 
 /**
+ * Every password the firm has saved, to try on an archive from `source`: that
+ * registrar's own first, then the other's. A label names a mailbox for people;
+ * it does not decide which file a password opens, and they get mixed up — one
+ * firm's CAMS reports opened only with the password saved under KFintech, and
+ * every one of them was rejected as "not this firm's file".
+ */
+export function passwordsToTry(pw: MailbackPasswords, source: string): string[] {
+  const other = source === "cams" ? "kfintech" : "cams";
+  return [
+    ...new Set([
+      ...passwordCandidates(pw, source).map((e) => e.password),
+      ...passwordCandidates(pw, other).map((e) => e.password),
+    ]),
+  ];
+}
+
+/**
  * Every saved entry for a source, in stored order, WITHOUT de-duplicating by
  * password — so two ARNs/mailboxes that happen to share the same ZIP password
  * each keep their own labelled row. This is what the settings UI shows and what

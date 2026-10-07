@@ -15,7 +15,7 @@ import { sql } from "drizzle-orm";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { withTenant } from "@/db/client";
-import { getMailbackPasswords, passwordCandidates } from "@/lib/rta/mailback-config";
+import { getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { Q } from "@/workers/queues";
 
@@ -56,12 +56,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const cfg = await withTenant(session.tenantId, async (tx) => getMailbackPasswords(tx, session.tenantId));
   // Offer every saved secret regardless of the label it sits under — labels name
   // mailboxes for humans, they do not route, and they get mixed up in practice.
-  const passwords = [
-    ...new Set([
-      ...passwordCandidates(cfg, "cams").map((e) => e.password),
-      ...passwordCandidates(cfg, "kfintech").map((e) => e.password),
-    ]),
-  ];
+  const passwords = passwordsToTry(cfg, row.source);
 
   const opts = { attempts: 1, removeOnComplete: true, removeOnFail: { age: 3600 } } as const;
   if (RICH_KINDS.has(row.kind)) {

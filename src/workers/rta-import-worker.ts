@@ -37,7 +37,7 @@ import { Q } from "./queues";
 import { importRtaFolios, type RtaImportSummary } from "@/lib/rta/import";
 import { isSpreadsheet, readSpreadsheetToRows } from "@/lib/rta/xls";
 import { RICH_KINDS } from "@/lib/rta/classify-mailback";
-import { getMailbackPasswords, passwordCandidates } from "@/lib/rta/mailback-config";
+import { getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config";
 
 export type RtaImportJob = {
   importId: string;
@@ -784,20 +784,22 @@ export async function runRejectedRescanJob(
   job: RtaRescanJob
 ): Promise<{ requeued: number; stillLocked: number; scanned: number }> {
   const cfg = await withTenant(job.tenantId, async (tx) => getMailbackPasswords(tx, job.tenantId));
-  const passwords = passwordCandidates(cfg, job.source).map((e) => e.password);
+  // Every saved password, not just the ones saved under this registrar: a
+  // password saved under KFintech can be the one a firm's CAMS reports open
+  // with, so a new password of either kind is retried on every locked archive.
+  const passwords = passwordsToTry(cfg, job.source);
   if (!passwords.length) return { requeued: 0, stillLocked: 0, scanned: 0 };
 
   const rows = await withTenant(job.tenantId, async (tx) => {
     const r = await tx.execute(sql`
-      SELECT id, kind, file_name, file_key
+      SELECT id, source, kind, file_name, file_key
       FROM rta_file_imports
       WHERE deleted_at IS NULL
-        AND source = ${job.source}
         AND status = 'rejected'
         AND file_key IS NOT NULL
       ORDER BY created_at ASC
       LIMIT ${RESCAN_MAX_FILES}`);
-    return r.rows as Array<{ id: string; kind: RtaFileKind; file_name: string; file_key: string }>;
+    return r.rows as Array<{ id: string; source: RtaSource; kind: RtaFileKind; file_name: string; file_key: string }>;
   });
 
   let requeued = 0;
@@ -833,7 +835,7 @@ export async function runRejectedRescanJob(
         "rich-import",
         {
           mode: "rich", importId: r.id, tenantId: job.tenantId, key: r.file_key,
-          filename: r.file_name, passwords, rta: job.source, reportType: "",
+          filename: r.file_name, passwords, rta: r.source, reportType: "",
           dryRun: false, assignToMe: false, userId: SYSTEM_USER, roles: [],
         },
         jobOpts
@@ -842,7 +844,7 @@ export async function runRejectedRescanJob(
       await Q.rtaImport().add(
         "import",
         {
-          importId: r.id, tenantId: job.tenantId, source: job.source, kind: r.kind,
+          importId: r.id, tenantId: job.tenantId, source: r.source, kind: r.kind,
           key: r.file_key, filename: r.file_name, passwords,
           userId: SYSTEM_USER, roles: [],
         },

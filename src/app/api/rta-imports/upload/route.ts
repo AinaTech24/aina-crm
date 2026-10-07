@@ -7,7 +7,7 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { RTA_FILE_KINDS, RTA_SOURCES } from "@/db/schema/rta_imports";
-import { getMailbackPasswords, passwordCandidates } from "@/lib/rta/mailback-config";
+import { getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config";
 import { Q } from "@/workers/queues";
 import { RTA_FILE_TYPE_BY_KIND } from "@/lib/rta/file-types";
 
@@ -159,12 +159,7 @@ export async function POST(req: NextRequest) {
     session.tenantId,
     async (tx) => {
       const cfg = await getMailbackPasswords(tx, session.tenantId);
-      return [
-        ...new Set([
-          ...passwordCandidates(cfg, source).map((e) => e.password),
-          ...passwordCandidates(cfg, source === "cams" ? "kfintech" : "cams").map((e) => e.password),
-        ]),
-      ];
+      return passwordsToTry(cfg, source);
     },
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   ).catch(() => [] as string[]);
