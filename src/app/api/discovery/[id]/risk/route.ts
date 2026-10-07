@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { requireAny } from "@/lib/auth/rbac";
 import { financialDiscoveries } from "@/db/schema";
 import { assertCanEditSubject, discoveryScopeSql } from "@/lib/discovery/access";
 import { computeDiscovery, type DiscoveryData } from "@/lib/discovery/calc";
@@ -28,6 +29,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
+    requireAny(session.roles, ["investor.edit.all", "investor.edit.assigned"], session.permissions);
     const { id } = await params;
 
     const out = await withTenant(session.tenantId, async (tx) => {

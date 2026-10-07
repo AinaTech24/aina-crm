@@ -13,6 +13,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { requireAny } from "@/lib/auth/rbac";
 import { financialDiscoveries } from "@/db/schema";
 import { assertCanEditSubject, discoveryScopeSql } from "@/lib/discovery/access";
 import { applyRecordDiffs } from "@/lib/discovery/record-diff";
@@ -26,6 +27,7 @@ const Body = z.object({ fields: z.array(z.string().max(40)).min(1).max(20) });
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
+    requireAny(session.roles, ["investor.edit.all", "investor.edit.assigned", "lead.edit.all", "lead.edit.assigned"], session.permissions);
     const { id } = await params;
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return NextResponse.json({ error: "invalid body" }, { status: 400 });
