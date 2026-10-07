@@ -18,6 +18,7 @@ import { proposals } from "@/db/schema";
 import { proposalTotals } from "@/lib/proposals/projections";
 import { advanceJourneyForProposal, startOnboarding, currentStage, journeyLeadId, notifyOpportunity } from "@/lib/proposals/journey";
 import { proposalOwnerId } from "@/lib/proposals/public-link";
+import { loadViewableProposal } from "@/lib/proposals/access";
 
 /**
  * Fields that ARE the proposal's content. Once it has been sent these are
@@ -63,9 +64,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const session = await requireSession();
     requireCap(session.roles, "proposal.view", session.permissions);
     const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
-    const row = await withTenant(session.tenantId, async (tx) =>
-      (await tx.select().from(proposals).where(and(eq(proposals.id, id), eq(proposals.tenantId, session.tenantId))).limit(1))[0] ?? null
-    );
+    // Own-proposals rule + the recipient's scope (404 when not visible).
+    const row = await withTenant(session.tenantId, async (tx) => loadViewableProposal(tx, session, id));
     // Non-managers only see proposals they prepared (mirrors the collection GET).
     if (!row || (!seesAll && row.preparedByUserId !== session.userId)) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
@@ -96,9 +96,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // Filled inside the transaction, acted on after it commits.
     const journey: { onboard: null | { ownerId: string | null; leadId: string | null; stage: string | null } } = { onboard: null };
     const result = await withTenant(session.tenantId, async (tx) => {
-      const before = (
-        await tx.select().from(proposals).where(and(eq(proposals.id, id), eq(proposals.tenantId, session.tenantId))).limit(1)
-      )[0];
+      const before = await loadViewableProposal(tx, session, id);
       if (!before) return null;
       if (!seesAll && before.preparedByUserId !== session.userId) return null;
       if (before.status === "superseded") {
@@ -224,11 +222,11 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     requireCap(session.roles, "proposal.write", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const clientMeta = clientMetaFromHeaders(req.headers);
-    await withTenant(session.tenantId, async (tx) => {
-      const before = (
-        await tx.select().from(proposals).where(and(eq(proposals.id, id), eq(proposals.tenantId, session.tenantId))).limit(1)
-      )[0];
-      if (!before) return;
+    const found = await withTenant(session.tenantId, async (tx) => {
+      // Same rule as GET / PATCH: only a proposal the caller may see — their
+      // own unless they see all, and its client / lead / family in scope.
+      const before = await loadViewableProposal(tx, session, id);
+      if (!before) return false;
       await tx
         .update(proposals)
         .set({
@@ -247,7 +245,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         before: { proposalNumber: before.proposalNumber, status: before.status },
         ...clientMeta,
       });
+      return true;
     });
+    if (!found) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return handleApiError(err);

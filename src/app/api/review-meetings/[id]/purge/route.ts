@@ -29,6 +29,7 @@ import { can, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { reviewMeetings } from "@/db/schema";
+import { canSeeMeeting } from "@/lib/review-meetings/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +52,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         .limit(1);
       if (!m) return { status: 404, error: "Meeting not found" } as const;
       if (!canAll && m.rmId !== session.userId) return { status: 403, error: "You can only delete your own meetings" } as const;
+      if (!(await canSeeMeeting(tx, session, id))) return { status: 404, error: "Meeting not found" } as const;
 
       const actionItems = Array.isArray(m.actionItems) ? m.actionItems : [];
       if (m.status === "completed" || m.outcome || hasText(m.meetingNotes) || hasText(m.outcomeNotes) || actionItems.length > 0) {

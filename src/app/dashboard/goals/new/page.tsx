@@ -9,7 +9,7 @@ import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { ChevronLeft, Search, Target } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { investors } from "@/db/schema";
@@ -19,6 +19,7 @@ import { GoalCreateForm } from "@/components/goal-planning/GoalCreateForm";
 import { InlineEmpty } from "@/components/common/EmptyState";
 import { buttonClass } from "@/components/ui/button-class";
 import { displayPan } from "@/lib/investors/pan-display";
+import { goalClientScopeSql } from "@/lib/goal-planning/access";
 
 const PICKER_LIMIT = 50;
 
@@ -45,6 +46,7 @@ export default async function NewGoalPage({
           (SELECT COUNT(*)::int FROM goals WHERE investor_id = investors.id) AS goal_count
         FROM investors WHERE status = 'active' AND deleted_at IS NULL
           ${seesAll ? sql`` : sql`AND rm_id = ${session.userId}::uuid`}
+          AND ${await goalClientScopeSql(tx, session, "investors")}
           ${q ? sql`AND (name ILIKE ${like} OR pan ILIKE ${like})` : sql``}
         ORDER BY name LIMIT ${PICKER_LIMIT + 1}
       `);
@@ -114,7 +116,12 @@ export default async function NewGoalPage({
   }
 
   const inv = await withTenant(session.tenantId, async (tx) =>
-    (await tx.select().from(investors).where(eq(investors.id, sp.investorId!)).limit(1))[0] ?? null
+    (await tx.select().from(investors).where(and(
+      eq(investors.id, sp.investorId!),
+      isNull(investors.deletedAt),
+      // Only a client in the viewer's book.
+      await goalClientScopeSql(tx, session, "investors"),
+    )).limit(1))[0] ?? null
   );
   if (!inv) notFound();
 

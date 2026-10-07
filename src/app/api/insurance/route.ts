@@ -7,16 +7,17 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
+import { insuranceClientScopeSql } from "@/lib/insurance/register-access";
+import { loadViewableInvestor } from "@/lib/investors/access";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import {
   insurancePolicies,
-  investors,
   POLICY_TYPES,
   POLICY_STATUSES,
   PREMIUM_FREQUENCIES,
@@ -81,7 +82,10 @@ export async function GET() {
       ? undefined
       : sql`(${insurancePolicies.soldByUserId} = ${session.userId}::uuid OR ${insurancePolicies.investorId} IN (SELECT id FROM investors WHERE rm_id = ${session.userId}::uuid))`;
     const rows = await withTenant(session.tenantId, async (tx) =>
-      tx.select().from(insurancePolicies).where(scope).orderBy(desc(insurancePolicies.createdAt)).limit(500)
+      tx.select().from(insurancePolicies)
+        // + the client's scope (firm switch / customised "assigned only" / branch).
+        .where(and(scope, await insuranceClientScopeSql(tx, session, sql`${insurancePolicies.investorId}`)))
+        .orderBy(desc(insurancePolicies.createdAt)).limit(500)
     );
     return NextResponse.json({ policies: rows });
   } catch (err: any) {
@@ -106,12 +110,9 @@ export async function POST(req: NextRequest) {
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     await withTenant(session.tenantId, async (tx) => {
-      const clientExists = await tx
-        .select({ id: investors.id })
-        .from(investors)
-        .where(eq(investors.id, body.investorId))
-        .limit(1);
-      if (clientExists.length === 0) {
+      // The client must be in the caller's book.
+      const clientExists = await loadViewableInvestor(tx, session, body.investorId);
+      if (!clientExists) {
         throw Object.assign(new Error("Client investor not found in this tenant context"), { status: 404 });
       }
 

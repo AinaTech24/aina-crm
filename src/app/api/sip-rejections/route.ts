@@ -11,14 +11,16 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
-import { sipRejections, investors, tasks, notifications, eventsOutbox } from "@/db/schema";
+import { sipRejections, tasks, notifications, eventsOutbox } from "@/db/schema";
+import { visibleClientSql } from "@/lib/transactions/client-scope";
+import { loadViewableInvestor } from "@/lib/investors/access";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +49,7 @@ export async function GET() {
         LEFT JOIN investors i ON i.id = r.investor_id
         LEFT JOIN users u ON u.id = r.assigned_rm_id
         WHERE r.tenant_id = ${session.tenantId}::uuid
+          AND ${await visibleClientSql(tx, session, "i")}
         ORDER BY r.rejection_date DESC, r.created_at DESC
         LIMIT 500
       `);
@@ -81,7 +84,9 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      const inv = (await tx.select().from(investors).where(eq(investors.id, body.investorId)).limit(1))[0];
+      // The client must be one this viewer may see — never a rejection (and a
+      // task + notification naming the client) on someone else's book.
+      const inv = await loadViewableInvestor(tx, session, body.investorId);
       if (!inv) throw Object.assign(new Error("investor not found"), { status: 404 });
 
       const id = uuid();

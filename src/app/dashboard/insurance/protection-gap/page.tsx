@@ -5,6 +5,7 @@ import { ShieldAlert, HeartPulse, Umbrella, IndianRupee, Users, FileText } from 
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { investorScopeSql } from "@/lib/investors/access";
 import { formatINR } from "@/lib/utils";
 import { ContactQuickActions } from "@/components/common/ContactQuickActions";
 import { ModuleTabs, INSURANCE_TABS } from "@/components/common/ModuleTabs";
@@ -21,7 +22,11 @@ export default async function ProtectionGapPage({ searchParams }: { searchParams
   const data = await withTenant(
     session.tenantId,
     async (tx) => {
-      const own = mine ? sql` AND i.rm_id = ${session.userId}::uuid` : sql``;
+      // The client scope always applies (firm switch / customised "assigned
+      // only" / branch lock); "My book" narrows further. No client view → none.
+      const hasClientView = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "investor.view.assigned", session.permissions);
+      const clientScope = hasClientView ? await investorScopeSql(tx, session, "i") : sql`FALSE`;
+      const own = mine ? sql` AND i.rm_id = ${session.userId}::uuid AND ${clientScope}` : sql` AND ${clientScope}`;
       // A "covered" policy = active OR mid-purchase (proposed / in_underwriting),
       // so a client buying a policy isn't flagged as a gap (and nagged).
       const COVERED = sql`('active','proposed','in_underwriting')`;

@@ -18,6 +18,9 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can, requireAny } from "@/lib/auth/rbac";
 import { taskChecklist } from "@/db/schema";
+import { taskInScope } from "@/lib/tasks/scope";
+import { investorScopeSql } from "@/lib/investors/access";
+import { leadScopeSql } from "@/lib/leads/access";
 
 export const dynamic = "force-dynamic";
 
@@ -52,18 +55,29 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       const own = t.assignee_id === session.userId || t.created_by_id === session.userId;
       const sub = taskChecklist(t.meta).some((c) => c.assigneeId === session.userId);
       if (!canViewAll && !own && !sub) return null;
+      if (!(await taskInScope(tx, session, id))) return null;
 
       const subjectClient = t.subject_type === "investor" ? t.subject_id : null;
       const subjectLead = t.subject_type === "lead" ? t.subject_id : null;
       const clientIds = [...new Set([t.related_investor_id, subjectClient].filter(Boolean))] as string[];
       const leadIds = [...new Set([t.related_lead_id, subjectLead].filter(Boolean))] as string[];
 
+      // A linked client / lead outside the viewer's scope is shown as such —
+      // no name, category, RM or link (CLAUDE.md: "Not in your book").
+      const cap = (c: Parameters<typeof can>[1]) => can(session.roles, c, session.permissions);
+      const invScope = cap("investor.view.all") || cap("investor.view.assigned") ? await investorScopeSql(tx, session, "i") : sql`FALSE`;
+      const leadScope = cap("lead.view.all") || cap("lead.view.assigned") ? leadScopeSql(session, "leads") : sql`FALSE`;
       const links: RelatedLink[] = [];
       for (const cid of clientIds) {
         const r = (await tx.execute(sql`
-          SELECT i.name, i.client_category, u.name AS rm_name FROM investors i LEFT JOIN users u ON u.id = i.rm_id
+          SELECT i.name, i.client_category, u.name AS rm_name, (${invScope}) AS visible
+            FROM investors i LEFT JOIN users u ON u.id = i.rm_id
            WHERE i.id = ${cid}::uuid AND i.tenant_id = ${session.tenantId}::uuid
         `)).rows[0] as Record<string, any> | undefined;
+        if (r && !r.visible) {
+          links.push({ kind: "client", id: cid, name: "Not in your book", sub: null, href: "#", fixed: cid === subjectClient && cid !== t.related_investor_id });
+          continue;
+        }
         links.push({
           kind: "client", id: cid, name: r?.name ?? "Client no longer on record",
           sub: [r?.client_category ? `Cat ${r.client_category}` : null, r?.rm_name ? `RM ${r.rm_name}` : null].filter(Boolean).join(" · ") || null,
@@ -73,8 +87,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       }
       for (const lid of leadIds) {
         const r = (await tx.execute(sql`
-          SELECT name, stage FROM leads WHERE id = ${lid}::uuid AND tenant_id = ${session.tenantId}::uuid
+          SELECT name, stage, (${leadScope}) AS visible FROM leads WHERE id = ${lid}::uuid AND tenant_id = ${session.tenantId}::uuid
         `)).rows[0] as Record<string, any> | undefined;
+        if (r && !r.visible) {
+          links.push({ kind: "lead", id: lid, name: "Not in your pipeline", sub: null, href: "#", fixed: lid === subjectLead && lid !== t.related_lead_id });
+          continue;
+        }
         links.push({
           kind: "lead", id: lid, name: r?.name ?? "Lead no longer on record", sub: r?.stage ?? null,
           href: `/dashboard/leads/${lid}`,

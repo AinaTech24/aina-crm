@@ -14,6 +14,8 @@ import { sql, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { ignoredDuplicates } from "@/db/schema";
+import { investorScopeSql } from "@/lib/investors/access";
+import { familyScopeSql } from "@/lib/families/access";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -28,12 +30,15 @@ export async function GET() {
     }
 
     const payload = await withTenant(session.tenantId, async (tx) => {
+      // Data scope: only clients / families in the viewer's book.
+      const clientScope = await investorScopeSql(tx, session, "i");
+      const famScope = await familyScopeSql(tx, session, "f");
       const cli = (
         await tx.execute(sql`
           WITH base AS (
             SELECT i.id, i.name, i.pan, i.phone, i.email, COALESCE(i.aum,0)::numeric AS aum, u.name AS rm_name
             FROM investors i LEFT JOIN users u ON u.id = i.rm_id
-            WHERE i.tenant_id = ${session.tenantId}::uuid AND i.merged_into_id IS NULL
+            WHERE i.tenant_id = ${session.tenantId}::uuid AND i.merged_into_id IS NULL AND ${clientScope}
           ),
           pan_g AS (SELECT 'PAN' AS kind, upper(pan) AS gkey, id, name, pan, phone, email, aum, rm_name, count(*) OVER (PARTITION BY upper(pan)) AS grp FROM base WHERE pan IS NOT NULL AND pan <> ''),
           phone_g AS (SELECT 'Phone' AS kind, regexp_replace(phone,'\D','','g') AS gkey, id, name, pan, phone, email, aum, rm_name, count(*) OVER (PARTITION BY regexp_replace(phone,'\D','','g')) AS grp FROM base WHERE phone IS NOT NULL AND length(regexp_replace(phone,'\D','','g')) >= 10),
@@ -54,7 +59,7 @@ export async function GET() {
                    COUNT(i.id) FILTER (WHERE i.status = 'active')::int AS member_count,
                    COALESCE(SUM(i.aum::numeric) FILTER (WHERE i.status = 'active'), 0)::numeric AS family_aum
             FROM families f LEFT JOIN investors i ON i.family_id = f.id
-            WHERE f.tenant_id = ${session.tenantId}::uuid
+            WHERE f.tenant_id = ${session.tenantId}::uuid AND ${famScope}
             GROUP BY f.id
           )
           SELECT nkey AS gkey, id, name, member_count, family_aum FROM base b

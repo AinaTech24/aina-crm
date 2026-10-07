@@ -18,7 +18,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { previewMerge } from "@/lib/investors/merge";
+import { allInMergeScope, previewMerge } from "@/lib/investors/merge";
 
 export const dynamic = "force-dynamic";
 
@@ -42,12 +42,17 @@ export async function POST(req: NextRequest) {
 
     const result = await withTenant(
       session.tenantId,
-      (tx) =>
-        previewMerge(tx, {
+      async (tx) => {
+        // Data scope: every record must be in the viewer's book (and branch).
+        if (!(await allInMergeScope(tx, session, [parse.data.survivorId, ...parse.data.loserIds]))) {
+          return { error: "one or both clients not found" as const };
+        }
+        return previewMerge(tx, {
           tenantId: session.tenantId,
           survivorId: parse.data.survivorId,
           loserIds: parse.data.loserIds,
-        }),
+        });
+      },
       { userId: session.userId, branchId: session.branchId, roles: session.roles }
     );
 

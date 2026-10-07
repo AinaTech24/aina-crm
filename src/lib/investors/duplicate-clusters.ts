@@ -21,7 +21,7 @@
  * every pair in it is marked "not duplicates" (ignored_duplicates).
  */
 
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 
 export type ClusterMember = {
@@ -46,7 +46,9 @@ const RULE_ORDER: Record<ClusterKind, number> = { PAN: 0, NameDob: 1, Email: 2, 
 
 export async function loadClientDuplicateClusters(
   tx: Tx,
-  tenantId: string
+  tenantId: string,
+  /** The viewer's client data scope over alias `i` (investorScopeSql); default unrestricted. */
+  scope: SQL = sql`TRUE`
 ): Promise<{ clusters: DuplicateCluster[]; shared: DuplicateCluster[]; ruleCounts: Record<string, number> }> {
   // "\\s" / "\\D" reach Postgres as \s / \D. Phones compare on their last ten
   // digits so +91 and 0 prefixes still match.
@@ -60,6 +62,7 @@ export async function loadClientDuplicateClusters(
              lower(trim(i.email)) AS ekey
         FROM investors i LEFT JOIN users u ON u.id = i.rm_id
        WHERE i.tenant_id = ${tenantId}::uuid AND i.merged_into_id IS NULL AND i.deleted_at IS NULL
+         AND ${scope}
     ),
     pan_keys AS (
       SELECT vpan FROM base WHERE vpan IS NOT NULL AND NOT is_minor GROUP BY vpan HAVING count(*) > 1

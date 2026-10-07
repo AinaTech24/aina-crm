@@ -11,6 +11,8 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
+import { insuranceClientScopeSql } from "@/lib/insurance/register-access";
+import { loadViewableInvestor } from "@/lib/investors/access";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { insuranceCommissionEntries, COMMISSION_TYPES } from "@/db/schema";
@@ -41,12 +43,15 @@ export async function GET() {
       can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
     const rows = await withTenant(session.tenantId, async (tx) => {
       const scope = seesAll ? sql`` : sql` AND recorded_by_user_id = ${session.userId}::uuid`;
+      // An entry against a client is visible only when that client is.
+      const clientScope = await insuranceClientScopeSql(tx, session, sql`ce.investor_id`);
       const r = await tx.execute(sql`
         SELECT ce.*, COALESCE(i.name, '') AS investor_name, COALESCE(u.name, '') AS recorded_by_name
         FROM insurance_commission_entries ce
         LEFT JOIN investors i ON i.id = ce.investor_id
         LEFT JOIN users u ON u.id = ce.recorded_by_user_id
         WHERE ce.tenant_id = ${session.tenantId}::uuid${scope}
+          AND (ce.investor_id IS NULL OR ${clientScope})
         ORDER BY ce.entry_date DESC, ce.created_at DESC
         LIMIT 500
       `);
@@ -71,6 +76,10 @@ export async function POST(req: NextRequest) {
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     await withTenant(session.tenantId, async (tx) => {
+      // A client named on the entry must be in the caller's book.
+      if (b.investorId && !(await loadViewableInvestor(tx, session, b.investorId))) {
+        throw Object.assign(new Error("client not found"), { status: 404 });
+      }
       await tx.insert(insuranceCommissionEntries).values({
         id,
         tenantId: session.tenantId,

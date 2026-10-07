@@ -28,6 +28,7 @@ import {
   activities,
 } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { loadViewableInvestor } from "@/lib/investors/access";
 import { formatINR, formatDate, formatRelative, formatPhone, isValidIndianMobile } from "@/lib/utils";
 import { formatMoney, formatPercent } from "@/lib/format";
 import { fromActivities, fromCommunications, fromMeetings, fromServiceRequests, fromTasks, mergeTimeline } from "@/lib/timeline";
@@ -207,8 +208,10 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
   const showRm = isFieldAllowed(license, "investor", "rm_id") || isFieldAllowed(license, "investor", "rm");
 
   const data = await withTenant(session.tenantId, async (tx) => {
-    const inv = (await tx.select().from(investors)
-      .where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId))).limit(1))[0];
+    // Data scope: a client outside the viewer's book (or no client capability
+    // at all) reads as not found — never confirm it exists.
+    const inv = await loadViewableInvestor(tx, session, id)
+      .catch((e: any) => { if (e?.status === 403) return null; throw e; });
     if (!inv) return null;
     // Soft-deleted clients live in the Trash bin, not on the detail page.
     if ((inv as any).deletedAt) return null;

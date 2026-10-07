@@ -18,6 +18,7 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { sipRejections, SIP_RECOVERY_STATUSES } from "@/db/schema";
+import { isClientVisible } from "@/lib/transactions/client-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +42,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const result = await withTenant(session.tenantId, async (tx) => {
       const before = (await tx.select().from(sipRejections).where(and(eq(sipRejections.id, id), eq(sipRejections.tenantId, session.tenantId))).limit(1))[0];
-      if (!before) return null;
+      // Viewer scope: a rejection on a client this viewer cannot see is not found.
+      if (!before || !(await isClientVisible(tx, session, before.investorId))) return null;
 
       const patch: any = { ...parse.data, updatedAt: new Date() };
 
@@ -87,7 +89,14 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     requireCap(session.roles, "transactions.execute", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const clientMeta = clientMetaFromHeaders(req.headers);
-    await withTenant(session.tenantId, async (tx) => {
+    const found = await withTenant(session.tenantId, async (tx) => {
+      const [row] = await tx
+        .select({ investorId: sipRejections.investorId })
+        .from(sipRejections)
+        .where(and(eq(sipRejections.id, id), eq(sipRejections.tenantId, session.tenantId)))
+        .limit(1);
+      // Viewer scope: a rejection on a client this viewer cannot see is not found.
+      if (!row || !(await isClientVisible(tx, session, row.investorId))) return false;
       await tx
         .update(sipRejections)
         .set({ recoveryStatus: "not_recoverable", statusChangedAt: new Date(), updatedAt: new Date() } as any)
@@ -100,7 +109,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         entityId: id,
         ...clientMeta,
       });
+      return true;
     });
+    if (!found) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return handleApiError(err);

@@ -13,10 +13,11 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
+import { investorScopeCondition } from "@/lib/investors/access";
 import { investors, publicEmailOtps, tenants } from "@/db/schema";
 import { emailAdapter } from "@/lib/comms/adapters/resend";
 import { resolveEmailSender } from "@/lib/comms/sender";
@@ -55,10 +56,11 @@ export async function POST(req: NextRequest) {
     const now = new Date();
 
     const outcome = await withTenant(session.tenantId, async (tx) => {
+      // Data scope: only a client in the viewer's book.
       const [inv] = await tx
         .select({ id: investors.id, email: investors.email })
         .from(investors)
-        .where(eq(investors.id, investorId))
+        .where(and(eq(investors.id, investorId), await investorScopeCondition(tx, session)))
         .limit(1);
       if (!inv) return { kind: "error" as const, status: 404, error: "Client not found." };
 

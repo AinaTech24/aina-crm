@@ -20,6 +20,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
+import { loadViewablePolicy } from "@/lib/insurance/register-access";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { insurancePolicies, investors, eventsOutbox } from "@/db/schema";
@@ -50,6 +51,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const inv = (await tx.select({ rmId: investors.rmId }).from(investors).where(eq(investors.id, p.investorId)).limit(1))[0];
         if (p.soldByUserId !== session.userId && inv?.rmId !== session.userId) return { error: "forbidden" as const };
       }
+      // The client must be in the caller's scope (firm switch / customised
+      // "assigned only" / branch).
+      if (!(await loadViewablePolicy(tx, session, id))) return { error: "not_found" as const };
 
       const months = FREQ_MONTHS[p.premiumFrequency ?? "annual"];
       if (!months) return { error: "single_pay" as const };

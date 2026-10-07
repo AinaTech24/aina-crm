@@ -15,6 +15,8 @@ import {
 import { withTenant } from "@/db/client";
 import { proposals, users, investors } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap } from "@/lib/auth/rbac";
+import { loadViewableProposal } from "@/lib/proposals/access";
 import { formatDate, formatINR } from "@/lib/utils";
 import { ProposalStatusActions } from "@/components/proposals/ProposalStatusActions";
 import { ProposalSendActions } from "@/components/proposals/ProposalSendActions";
@@ -67,8 +69,11 @@ export default async function ProposalDetailPage({
 }) {
   const { id } = await params;
   const session = await requireSession();
+  // Same gate and scope as GET /api/proposals/[id]: own proposals unless the
+  // viewer sees all, and the client / lead / family in scope (404 otherwise).
+  requireCap(session.roles, "proposal.view", session.permissions);
   const data = await withTenant(session.tenantId, async (tx) => {
-    const p = (await tx.select().from(proposals).where(eq(proposals.id, id)).limit(1))[0];
+    const p = await loadViewableProposal(tx, session, id);
     if (!p) return null;
     const u = p.preparedByUserId
       ? (await tx.select().from(users).where(eq(users.id, p.preparedByUserId)).limit(1))[0]

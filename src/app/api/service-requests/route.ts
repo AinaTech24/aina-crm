@@ -9,7 +9,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { desc } from "drizzle-orm";
+import { desc, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -17,6 +17,8 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { serviceRequests } from "@/db/schema";
 import { openServiceRequest } from "@/lib/service-requests/open";
+import { serviceRequestScopeSql } from "@/lib/service-requests/access";
+import { loadViewableInvestor } from "@/lib/investors/access";
 
 export const dynamic = "force-dynamic";
 
@@ -62,7 +64,9 @@ export async function GET() {
   try {
     const session = await requireSession();
     const rows = await withTenant(session.tenantId, async (tx) => {
-      return tx.select().from(serviceRequests).orderBy(desc(serviceRequests.createdAt));
+      // Only the tickets this viewer may see (lib/service-requests/access.ts).
+      const scope = await serviceRequestScopeSql(tx, session, "service_requests");
+      return tx.select().from(serviceRequests).where(sql`${scope}`).orderBy(desc(serviceRequests.createdAt));
     });
     return NextResponse.json({ serviceRequests: rows });
   } catch (err: any) {
@@ -79,8 +83,12 @@ export async function POST(req: NextRequest) {
     if (!parse.success) return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
     const body = parse.data;
 
-    const { id } = await withTenant(session.tenantId, (tx) =>
-      openServiceRequest(tx, {
+    const { id } = await withTenant(session.tenantId, async (tx) => {
+      // A ticket may only be raised for a client the caller can see.
+      if (body.investorId && !(await loadViewableInvestor(tx, session, body.investorId))) {
+        throw Object.assign(new Error("client not found"), { status: 404 });
+      }
+      return openServiceRequest(tx, {
         tenantId: session.tenantId,
         type: body.type,
         subject: body.subject,
@@ -96,8 +104,8 @@ export async function POST(req: NextRequest) {
         remarks: body.remarks,
         createdBy: { by: session.userId, note: `Created by ${session.name}` },
         eventMeta: { userId: session.userId },
-      }),
-    );
+      });
+    });
 
     return NextResponse.json({ id }, { status: 201 });
   } catch (err: any) {

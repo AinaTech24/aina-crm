@@ -12,8 +12,11 @@ import {
   Pencil,
 } from "lucide-react";
 import { withTenant } from "@/db/client";
-import { insurancePolicies, investors } from "@/db/schema";
+import { investors } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap } from "@/lib/auth/rbac";
+import { seesWholeInsuranceBook } from "@/lib/dashboard/insurance/access";
+import { loadViewablePolicy } from "@/lib/insurance/register-access";
 import { formatDate, formatINR } from "@/lib/utils";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
 
@@ -53,10 +56,11 @@ export default async function InsuranceDetailPage({
 }) {
   const { id } = await params;
   const session = await requireSession();
+  // Same gate and book as the register (the page had neither): own book
+  // unless a manager, and the client in the viewer's scope — else 404.
+  requireCap(session.roles, "insurance.view", session.permissions);
   const data = await withTenant(session.tenantId, async (tx) => {
-    const p = (
-      await tx.select().from(insurancePolicies).where(eq(insurancePolicies.id, id)).limit(1)
-    )[0];
+    const p = await loadViewablePolicy(tx, session, id, { seesAll: seesWholeInsuranceBook(session) });
     if (!p) return null;
     const inv = (
       await tx.select().from(investors).where(eq(investors.id, p.investorId)).limit(1)

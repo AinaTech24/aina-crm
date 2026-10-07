@@ -12,6 +12,7 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
+import { loadViewablePolicy } from "@/lib/insurance/register-access";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import {
@@ -64,9 +65,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     requireCap(session.roles, "insurance.view", session.permissions);
     const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
     const row = await withTenant(session.tenantId, async (tx) => {
-      const p = (
-        await tx.select().from(insurancePolicies).where(and(eq(insurancePolicies.id, id), eq(insurancePolicies.tenantId, session.tenantId))).limit(1)
-      )[0];
+      // Own book unless a manager, and the client in scope (404 otherwise).
+      const p = await loadViewablePolicy(tx, session, id);
       if (!p) return null;
 
       const inv = (
@@ -108,9 +108,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     const result = await withTenant(session.tenantId, async (tx) => {
-      const before = (
-        await tx.select().from(insurancePolicies).where(and(eq(insurancePolicies.id, id), eq(insurancePolicies.tenantId, session.tenantId))).limit(1)
-      )[0];
+      // Same scope as GET (own book unless a manager, client in scope) — the
+      // write skipped the ownership check the read and renew make.
+      const before = await loadViewablePolicy(tx, session, id);
       if (!before) return null;
 
       const patch: any = { ...parse.data, updatedAt: new Date() };
@@ -156,11 +156,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     requireCap(session.roles, "insurance.write", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const clientMeta = clientMetaFromHeaders(req.headers);
-    await withTenant(session.tenantId, async (tx) => {
-      const before = (
-        await tx.select().from(insurancePolicies).where(and(eq(insurancePolicies.id, id), eq(insurancePolicies.tenantId, session.tenantId))).limit(1)
-      )[0];
-      if (!before) return;
+    const found = await withTenant(session.tenantId, async (tx) => {
+      // Same scope as GET / PATCH (404 when not visible).
+      const before = await loadViewablePolicy(tx, session, id);
+      if (!before) return false;
       await tx
         .update(insurancePolicies)
         .set({
@@ -177,7 +176,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         before: { planName: before.planName, status: before.status },
         ...clientMeta,
       });
+      return true;
     });
+    if (!found) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return handleApiError(err);

@@ -11,7 +11,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -20,6 +20,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { communications, investors, leads } from "@/db/schema";
 import { retryEmail } from "@/lib/comms/compose";
+import { commsScopeSql } from "@/lib/comms/inbox-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -79,6 +80,15 @@ export async function POST(req: NextRequest) {
             )
           );
         scopedIds = owned.map((r) => r.id);
+      } else {
+        // Oversight viewers act within their client / lead scope too
+        // (lib/comms/inbox-scope.ts) — the same rows the list shows them.
+        const scope = await commsScopeSql(tx, session, "communications");
+        const visible = await tx
+          .select({ id: communications.id })
+          .from(communications)
+          .where(and(tenantPred, inArray(communications.id, ids), sql`${scope}`));
+        scopedIds = visible.map((r) => r.id);
       }
 
       if (scopedIds.length === 0) return { affected: 0 };

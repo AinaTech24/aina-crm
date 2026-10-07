@@ -23,6 +23,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { spawnNextOccurrence } from "@/lib/tasks/recurrence";
 import { tasks, users } from "@/db/schema";
+import { taskInScopeSql } from "@/lib/tasks/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -88,6 +89,9 @@ export async function POST(req: NextRequest) {
       // Assigned-only editors can only touch their own tasks.
       if (!canEditAll) {
         conds.push(or(eq(tasks.assigneeId, session.userId), eq(tasks.createdById, session.userId))!);
+      } else {
+        // edit.all reaches only tasks whose client / lead is in scope.
+        conds.push(await taskInScopeSql(tx, session, "tasks"));
       }
 
       // Bulk delete — soft-delete to Trash (recoverable), matching the single

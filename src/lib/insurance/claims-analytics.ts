@@ -7,7 +7,7 @@
  * rate (settled vs decided) and average turnaround (intimation → settlement).
  */
 
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { OPEN_CLAIM_STATUSES } from "@/lib/insurance/claim-status";
 
@@ -33,7 +33,7 @@ const OPEN_LIST = sql.join(
 );
 
 /** Counts + claimed-amount sums of OPEN claims bucketed by age since intimation. */
-export async function loadAgingBuckets(tx: Tx, tenantId: string): Promise<AgingBucket[]> {
+export async function loadAgingBuckets(tx: Tx, tenantId: string, scope: SQL = sql`TRUE`): Promise<AgingBucket[]> {
   const res = await tx.execute(sql`
     SELECT
       COUNT(*) FILTER (WHERE current_date - intimation_date <= 30) AS c0,
@@ -48,6 +48,7 @@ export async function loadAgingBuckets(tx: Tx, tenantId: string): Promise<AgingB
     WHERE tenant_id = ${tenantId}::uuid
       AND claim_status IN (${OPEN_LIST})
       AND intimation_date IS NOT NULL
+      AND ${scope}
   `);
   const r = (res.rows[0] as any) ?? {};
   return [
@@ -59,7 +60,7 @@ export async function loadAgingBuckets(tx: Tx, tenantId: string): Promise<AgingB
 }
 
 /** Per-insurer settlement scorecard: approval rate + average TAT. */
-export async function loadInsurerScorecard(tx: Tx, tenantId: string): Promise<InsurerScore[]> {
+export async function loadInsurerScorecard(tx: Tx, tenantId: string, scope: SQL = sql`TRUE`): Promise<InsurerScore[]> {
   const res = await tx.execute(sql`
     SELECT
       insurer,
@@ -75,6 +76,7 @@ export async function loadInsurerScorecard(tx: Tx, tenantId: string): Promise<In
     FROM insurance_claims
     WHERE tenant_id = ${tenantId}::uuid
       AND insurer IS NOT NULL
+      AND ${scope}
     GROUP BY insurer
     ORDER BY total DESC
     LIMIT 30

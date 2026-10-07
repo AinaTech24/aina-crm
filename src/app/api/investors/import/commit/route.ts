@@ -32,6 +32,7 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, requireAny, can } from "@/lib/auth/rbac";
+import { investorScopeSql } from "@/lib/investors/access";
 import { assertActiveLicense, loadTenantLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { healthFields } from "@/lib/investors/health";
@@ -159,16 +160,21 @@ export async function POST(req: NextRequest) {
       // For update/both/skip we need to look existing clients up by the chosen
       // key. Load the lightweight identity columns (+ address & custom fields,
       // for the merge) once and index them in memory rather than querying per row.
-      const keyToExisting = new Map<string, { id: string; rmId: string | null; address: any; customFields: any; riskProfile: string | null }>();
+      const keyToExisting = new Map<string, { id: string; rmId: string | null; address: any; customFields: any; riskProfile: string | null; inScope: boolean }>();
       if (matchBy !== "none") {
+        // Data scope: an existing client outside the importer's book (branch /
+        // own book) is matched — so it is not re-inserted as a duplicate — but
+        // never updated.
+        const dataScope = await investorScopeSql(tx, session, "investors")
+          .catch((e: any) => { if (e?.status === 403) return sql`TRUE`; throw e; });
         const existing = await tx.execute(
-          sql`SELECT id, rm_id, pan, email, phone, address, custom_fields, risk_profile FROM investors WHERE tenant_id = ${session.tenantId}::uuid`
+          sql`SELECT id, rm_id, pan, email, phone, address, custom_fields, risk_profile, (${dataScope}) AS in_scope FROM investors WHERE tenant_id = ${session.tenantId}::uuid`
         );
         for (const e of existing.rows as any[]) {
           const src =
             matchBy === "clientId" ? e.id : matchBy === "pan" ? e.pan : matchBy === "phone" ? e.phone : e.email;
           const k = normKey(matchBy, String(src ?? ""));
-          if (k && !keyToExisting.has(k)) keyToExisting.set(k, { id: e.id, rmId: e.rm_id ?? null, address: e.address ?? {}, customFields: e.custom_fields ?? {}, riskProfile: e.risk_profile ?? null });
+          if (k && !keyToExisting.has(k)) keyToExisting.set(k, { id: e.id, rmId: e.rm_id ?? null, address: e.address ?? {}, customFields: e.custom_fields ?? {}, riskProfile: e.risk_profile ?? null, inScope: e.in_scope !== false });
         }
       }
 
@@ -215,7 +221,7 @@ export async function POST(req: NextRequest) {
             skipped++;
             continue;
           }
-          if (!editsAll && existing.rmId !== session.userId) {
+          if (!existing.inScope || (!editsAll && existing.rmId !== session.userId)) {
             errors.push({ rowIndex: i, error: "This client is assigned to another RM — you can only update your own clients." });
             continue;
           }
@@ -238,7 +244,7 @@ export async function POST(req: NextRequest) {
         }
 
         if (mode === "both" && existing) {
-          if (!editsAll && existing.rmId !== session.userId) {
+          if (!existing.inScope || (!editsAll && existing.rmId !== session.userId)) {
             errors.push({ rowIndex: i, error: "This client is assigned to another RM — you can only update your own clients." });
             continue;
           }
@@ -412,7 +418,7 @@ export async function POST(req: NextRequest) {
           // Record this row's key so a later duplicate row in the same file is
           // skipped (add mode) or updated rather than re-inserted (both mode).
           if (matchBy !== "none" && key && !keyToExisting.has(key)) {
-            keyToExisting.set(key, { id: newId, rmId: session.userId, address: core.address, customFields: cleanCf, riskProfile: rowRisk });
+            keyToExisting.set(key, { id: newId, rmId: session.userId, address: core.address, customFields: cleanCf, riskProfile: rowRisk, inScope: true });
           }
         } catch (err: any) {
           errors.push({ rowIndex: i, error: String(err.message ?? "insert failed"), pan, name });

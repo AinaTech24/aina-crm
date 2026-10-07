@@ -3,6 +3,7 @@ import { ArrowLeft, ShieldAlert, Activity, CheckCircle2, AlertTriangle } from "l
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { visibleClientSql } from "@/lib/transactions/client-scope";
 import { formatINR, formatDate } from "@/lib/utils";
 import { computeSipInstallmentWatch, type RiskLevel } from "@/lib/finance/sip-installment-watch";
 import { InstallmentWatchGrid } from "@/components/sips/InstallmentWatchGrid";
@@ -31,7 +32,13 @@ export default async function NewSipWatchPage() {
 
   // RMs see only their own recently-started SIPs; managers/ops see the firm.
   const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "reports.business", session.permissions);
-  const { rows, kpis } = await withTenant(session.tenantId, (tx) => computeSipInstallmentWatch(tx, session.tenantId, { rmId: seesAll ? null : session.userId }));
+  const { rows, kpis } = await withTenant(session.tenantId, async (tx) =>
+    computeSipInstallmentWatch(tx, session.tenantId, {
+      rmId: seesAll ? null : session.userId,
+      // Viewer scope: only SIPs of clients this viewer may see (only narrows).
+      clientScope: await visibleClientSql(tx, session, "i"),
+    })
+  );
 
   return (
     <div className="space-y-6 max-w-7xl">

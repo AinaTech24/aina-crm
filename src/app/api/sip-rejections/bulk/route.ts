@@ -15,7 +15,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { inArray } from "drizzle-orm";
+import { and, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -23,6 +23,7 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { sipRejections } from "@/db/schema";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { visibleClientExists } from "@/lib/transactions/client-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -67,7 +68,8 @@ export async function POST(req: NextRequest) {
       const updated = await tx
         .update(sipRejections)
         .set(patch as any)
-        .where(inArray(sipRejections.id, ids))
+        // Viewer scope: only rejections on clients this viewer may see.
+        .where(and(inArray(sipRejections.id, ids), await visibleClientExists(tx, session, sql.raw("sip_rejections.investor_id"))))
         .returning({ id: sipRejections.id });
       await recordAudit(tx, {
         tenantId: session.tenantId,

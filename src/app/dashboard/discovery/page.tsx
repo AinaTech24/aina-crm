@@ -12,6 +12,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireAny } from "@/lib/auth/rbac";
 import { financialDiscoveries } from "@/db/schema";
+import { discoveryScopeCondition } from "@/lib/discovery/access";
 import { formatRelative } from "@/lib/utils";
 import { NewDiscoveryDialog } from "@/components/discovery/NewDiscoveryDialog";
 import { HelpTip } from "@/components/common/HelpTip";
@@ -29,8 +30,11 @@ export default async function DiscoveryListPage() {
   const session = await requireSession();
   requireAny(session.roles, ["investor.view.all", "investor.view.assigned", "lead.view.all", "lead.view.assigned"], session.permissions);
 
-  const rows = await withTenant(session.tenantId, (tx) =>
-    tx.select().from(financialDiscoveries).orderBy(desc(financialDiscoveries.updatedAt)).limit(300)
+  // Data scope: only discoveries about leads / clients the viewer can see.
+  const rows = await withTenant(session.tenantId, async (tx) =>
+    tx.select().from(financialDiscoveries)
+      .where(await discoveryScopeCondition(tx, session))
+      .orderBy(desc(financialDiscoveries.updatedAt)).limit(300)
   );
 
   const submitted = rows.filter((r) => r.status === "submitted").length;

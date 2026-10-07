@@ -9,13 +9,36 @@
 import { sql, type SQL } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { firmSnapshot } from "@/lib/ai/firm-snapshot";
+import { buildAiScope } from "@/lib/ai/scope";
+import type { SessionUser } from "@/lib/auth/session";
 
 export type AssistantCtx = {
   tenantId: string;
   userId: string;
   branchId: string | null;
   roles: string[];
+  /** The user's custom permission list (allow-list) — narrows what they see. */
+  permissions?: string[] | null;
+  mobile?: boolean;
 };
+
+/**
+ * The caller as a session, for the shared access helpers. Every tool scopes
+ * its rows to what this user may see (lib/ai/scope.ts) — the assistant must
+ * never answer with a client, lead, task or meeting the user could not open.
+ */
+export function ctxSession(ctx: AssistantCtx): SessionUser {
+  return {
+    tenantId: ctx.tenantId,
+    userId: ctx.userId,
+    branchId: ctx.branchId ?? undefined,
+    roles: ctx.roles,
+    permissions: ctx.permissions ?? undefined,
+    mobile: ctx.mobile || undefined,
+    email: "",
+    name: "",
+  } as SessionUser;
+}
 
 export type AssistantTool = {
   name: string;
@@ -50,7 +73,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
     description:
       "Get the firm-wide snapshot: active clients, total AUM, monthly SIP book, active SIPs, open leads, open/overdue tasks, KYC-pending, clients without nominee, dormant clients, HNI count, new clients this month, top clients by AUM, AUM by RM, KYC breakdown. Use for broad 'how is my firm doing' questions.",
     input_schema: { type: "object", properties: {}, additionalProperties: false },
-    run: (ctx) => withTenant(ctx.tenantId, (tx) => firmSnapshot(tx, ctx.tenantId), txOpts(ctx)),
+    run: (ctx) => withTenant(ctx.tenantId, (tx) => firmSnapshot(tx, ctx.tenantId, ctxSession(ctx)), txOpts(ctx)),
   },
 
   {
@@ -79,11 +102,13 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
       withTenant(
         ctx.tenantId,
         async (tx) => {
+          const sc = await buildAiScope(tx, ctxSession(ctx));
           const conds: SQL[] = [
             sql`tenant_id = ${ctx.tenantId}::uuid`,
             sql`deleted_at IS NULL`,
             sql`status <> 'closed'`,
             sql`merged_into_id IS NULL`,
+            sc.inv("investors"),
           ];
           if (a?.query) conds.push(sql`(name ILIKE ${"%" + String(a.query) + "%"} OR pan ILIKE ${"%" + String(a.query) + "%"})`);
           if (a?.segment) conds.push(sql`segment_tag = ${a.segment}`);
@@ -151,11 +176,13 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
             : dim === "kyc_status" ? sql`COALESCE(i.kyc_status,'unknown')`
             : sql`COALESCE(u.name,'— unassigned —')`;
           const join = dim === "rm" ? sql`LEFT JOIN users u ON u.id = i.rm_id` : sql``;
+          const sc = await buildAiScope(tx, ctxSession(ctx));
           const conds: SQL[] = [
             sql`i.tenant_id = ${ctx.tenantId}::uuid`,
             sql`i.deleted_at IS NULL`,
             sql`i.status <> 'closed'`,
             sql`i.merged_into_id IS NULL`,
+            sc.inv("i"),
           ];
           if (a?.dormant) conds.push(dormantCond(sql`i.last_transaction_at`, ctx));
           if (a?.kyc_pending) conds.push(sql`i.kyc_status NOT IN ('verified','registered')`);
@@ -195,7 +222,8 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
       withTenant(
         ctx.tenantId,
         async (tx) => {
-          const conds: SQL[] = [sql`tenant_id = ${ctx.tenantId}::uuid`];
+          const sc = await buildAiScope(tx, ctxSession(ctx));
+          const conds: SQL[] = [sql`tenant_id = ${ctx.tenantId}::uuid`, sc.leads];
           if (a?.stage) conds.push(sql`stage = ${String(a.stage)}`);
           if (a?.open_only !== false) conds.push(sql`stage NOT IN ('converted','lost','not_interested','not_qualified')`);
           const limit = clampLimit(a?.limit, 15, 50);
@@ -227,7 +255,8 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
       withTenant(
         ctx.tenantId,
         async (tx) => {
-          const conds: SQL[] = [sql`t.tenant_id = ${ctx.tenantId}::uuid`, sql`t.status IN ('open','in_progress','blocked')`];
+          const sc = await buildAiScope(tx, ctxSession(ctx));
+          const conds: SQL[] = [sql`t.tenant_id = ${ctx.tenantId}::uuid`, sql`t.status IN ('open','in_progress','blocked')`, sc.task("t")];
           if (a?.overdue_only) conds.push(sql`t.due_at < now()`);
           if (a?.due_within_days != null) conds.push(sql`t.due_at <= now() + make_interval(days => ${Number(a.due_within_days)})`);
           const limit = clampLimit(a?.limit, 15, 50);
@@ -253,6 +282,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
       withTenant(
         ctx.tenantId,
         async (tx) => {
+          const sc = await buildAiScope(tx, ctxSession(ctx));
           const r = await tx.execute(sql`
             SELECT
               COUNT(*) FILTER (WHERE status = 'active')::int AS active_sips,
@@ -260,7 +290,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
               COUNT(*) FILTER (WHERE status IN ('stopped','cancelled'))::int AS stopped_sips,
               COUNT(*) FILTER (WHERE status = 'paused')::int AS paused_sips,
               COUNT(*) FILTER (WHERE status = 'active' AND created_at >= date_trunc('month', now()))::int AS added_this_month
-            FROM sips WHERE tenant_id = ${ctx.tenantId}::uuid
+            FROM sips WHERE tenant_id = ${ctx.tenantId}::uuid AND ${sc.clientOf("sips.investor_id")}
           `);
           const s = r.rows[0] as any;
           return {
@@ -282,13 +312,14 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
       withTenant(
         ctx.tenantId,
         async (tx) => {
+          const sc = await buildAiScope(tx, ctxSession(ctx));
           const r = await tx.execute(sql`
             SELECT
               COUNT(*) FILTER (WHERE status = 'active')::int AS active_policies,
               COALESCE(SUM(annual_premium::numeric) FILTER (WHERE status = 'active'),0)::numeric AS annual_premium,
               COUNT(*) FILTER (WHERE status = 'active' AND next_premium_due_date IS NOT NULL
                 AND next_premium_due_date BETWEEN current_date AND current_date + interval '30 days')::int AS renewals_30d
-            FROM insurance_policies WHERE tenant_id = ${ctx.tenantId}::uuid
+            FROM insurance_policies WHERE tenant_id = ${ctx.tenantId}::uuid AND ${sc.clientOf("insurance_policies.investor_id")}
           `);
           const s = r.rows[0] as any;
           return {
@@ -316,6 +347,10 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
         ctx.tenantId,
         async (tx) => {
           const period = ["mtd", "lm", "qtd", "fytd"].includes(a?.period) ? a.period : "mtd";
+          const sc = await buildAiScope(tx, ctxSession(ctx));
+          // Own entries, or entries for a client in scope; firm-wide viewers
+          // also get entries keyed without a client record.
+          const entryScope = sql`(e.rm_id = ${ctx.userId}::uuid OR ${sc.clientOf("e.investor_id")} OR (e.investor_id IS NULL AND ${sc.firmWide ? sql`TRUE` : sql`FALSE`}))`;
           // India FY starts in April. Compute the window start/end.
           const range =
             period === "lm"
@@ -331,7 +366,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
               COALESCE(SUM(l.amount::numeric) FILTER (WHERE l.txn_type IN ('lumpsum','additional_purchase')),0)::numeric AS lumpsum,
               COALESCE(SUM(l.amount::numeric) FILTER (WHERE l.txn_type IN ('redemption','swp')),0)::numeric AS redemption
             FROM business_entry_lines l JOIN business_entries e ON e.id = l.entry_id
-            WHERE e.tenant_id = ${ctx.tenantId}::uuid AND e.status <> 'cancelled' AND ${range}
+            WHERE e.tenant_id = ${ctx.tenantId}::uuid AND e.status <> 'cancelled' AND ${range} AND ${entryScope}
           `);
           const s = r.rows[0] as any;
           const sipAdded = num(s.sip_added), lumpsum = num(s.lumpsum), redemption = num(s.redemption);
@@ -356,6 +391,8 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
         ctx.tenantId,
         async (tx) => {
           const n = clampLimit(a?.months, 6, 24);
+          const sc = await buildAiScope(tx, ctxSession(ctx));
+          const entryScope = sql`(e.rm_id = ${ctx.userId}::uuid OR ${sc.clientOf("e.investor_id")} OR (e.investor_id IS NULL AND ${sc.firmWide ? sql`TRUE` : sql`FALSE`}))`;
           const r = await tx.execute(sql`
             WITH months AS (
               SELECT generate_series(
@@ -371,7 +408,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
             FROM months
             LEFT JOIN business_entries e
               ON date_trunc('month', e.business_date) = months.m
-              AND e.tenant_id = ${ctx.tenantId}::uuid AND e.status <> 'cancelled'
+              AND e.tenant_id = ${ctx.tenantId}::uuid AND e.status <> 'cancelled' AND ${entryScope}
             LEFT JOIN business_entry_lines l ON l.entry_id = e.id
             GROUP BY months.m ORDER BY months.m
           `);
@@ -401,6 +438,11 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
         ctx.tenantId,
         async (tx) => {
           const n = clampLimit(a?.months, 6, 24);
+          // firm_snapshots are FIRM totals — only for someone who sees the firm's book.
+          const sc = await buildAiScope(tx, ctxSession(ctx));
+          if (!sc.firmWide) {
+            return { not_available: true, reason: "The AUM history is recorded for the whole firm only, and your access covers part of the book." };
+          }
           const r = await tx.execute(sql`
             SELECT to_char(m, 'Mon YYYY') AS label, total_aum, monthly_sip, active_clients
             FROM (
@@ -445,11 +487,12 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
         async (tx) => {
           const days = clampLimit(a?.days, 30, 365);
           const limit = clampLimit(a?.limit, 20, 50);
+          const sc = await buildAiScope(tx, ctxSession(ctx));
           const r = await tx.execute(sql`
             SELECT i.name AS client, p.insurer, p.plan_name, p.policy_type,
                    COALESCE(p.annual_premium, 0)::numeric AS premium, p.next_premium_due_date AS due
             FROM insurance_policies p JOIN investors i ON i.id = p.investor_id
-            WHERE p.tenant_id = ${ctx.tenantId}::uuid AND p.status = 'active'
+            WHERE p.tenant_id = ${ctx.tenantId}::uuid AND p.status = 'active' AND ${sc.inv("i")}
               AND p.next_premium_due_date IS NOT NULL
               AND p.next_premium_due_date BETWEEN current_date AND current_date + make_interval(days => ${days})
             ORDER BY p.next_premium_due_date ASC LIMIT ${limit}
@@ -476,6 +519,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
       withTenant(
         ctx.tenantId,
         async (tx) => {
+          const sc = await buildAiScope(tx, ctxSession(ctx));
           const r = await tx.execute(sql`
             SELECT
               COUNT(*)::int AS total,
@@ -486,6 +530,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
               COUNT(*) FILTER (WHERE ${dormantCond(sql`last_transaction_at`, ctx)})::int AS dormant
             FROM investors
             WHERE tenant_id = ${ctx.tenantId}::uuid AND deleted_at IS NULL AND status <> 'closed' AND merged_into_id IS NULL
+              AND ${sc.inv("investors")}
           `);
           const s = r.rows[0] as any;
           return {
@@ -516,11 +561,12 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
         async (tx) => {
           const within = Math.min(Math.max(0, Math.trunc(Number(a?.within_days) || 0)), 60);
           const limit = clampLimit(a?.limit, 25, 50);
+          const sc = await buildAiScope(tx, ctxSession(ctx));
           const r = await tx.execute(sql`
             SELECT name, to_char(dob, 'DD Mon') AS day_label, dob
             FROM investors
             WHERE tenant_id = ${ctx.tenantId}::uuid AND deleted_at IS NULL AND status <> 'closed'
-              AND merged_into_id IS NULL AND dob IS NOT NULL
+              AND merged_into_id IS NULL AND dob IS NOT NULL AND ${sc.inv("investors")}
               AND (
                 (
                   to_char(current_date + make_interval(days => ${within}), 'MM-DD') >= to_char(current_date, 'MM-DD')
@@ -563,13 +609,16 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
         async (tx) => {
           const q = String(a?.name ?? "").trim();
           if (!q) return { error: "no name" };
+          // Only a client this user may open — the lookup never matches
+          // someone else's client, so it cannot confirm they exist.
+          const sc = await buildAiScope(tx, ctxSession(ctx));
           const ir = await tx.execute(sql`
             SELECT id, name, COALESCE(aum,0)::numeric AS aum, COALESCE(active_sip_amount,0)::numeric AS sip,
                    kyc_status, segment_tag, service_tier, (address->>'city') AS city, nominee_name,
                    last_transaction_at::date AS last_txn, rm_id
             FROM investors
             WHERE tenant_id = ${ctx.tenantId}::uuid AND deleted_at IS NULL AND merged_into_id IS NULL AND status <> 'closed'
-              AND name ILIKE ${"%" + q + "%"}
+              AND name ILIKE ${"%" + q + "%"} AND ${sc.inv("investors")}
             ORDER BY (lower(name) = lower(${q})) DESC, COALESCE(aum,0)::numeric DESC
             LIMIT 1
           `);
@@ -578,7 +627,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
           const [rm, pol, tsk, mtg] = await Promise.all([
             inv.rm_id ? tx.execute(sql`SELECT name FROM users WHERE id = ${inv.rm_id}::uuid LIMIT 1`) : Promise.resolve({ rows: [] } as any),
             tx.execute(sql`SELECT COUNT(*) FILTER (WHERE status='active')::int AS c, COALESCE(SUM(annual_premium::numeric) FILTER (WHERE status='active'),0)::numeric AS prem FROM insurance_policies WHERE tenant_id=${ctx.tenantId}::uuid AND investor_id=${inv.id}::uuid`),
-            tx.execute(sql`SELECT COUNT(*)::int AS c FROM tasks WHERE tenant_id=${ctx.tenantId}::uuid AND related_investor_id=${inv.id}::uuid AND status IN ('open','in_progress','blocked')`),
+            tx.execute(sql`SELECT COUNT(*)::int AS c FROM tasks WHERE tenant_id=${ctx.tenantId}::uuid AND related_investor_id=${inv.id}::uuid AND status IN ('open','in_progress','blocked') AND deleted_at IS NULL`),
             tx.execute(sql`SELECT meeting_date AS at FROM review_meetings WHERE tenant_id=${ctx.tenantId}::uuid AND investor_id=${inv.id}::uuid AND meeting_date>=now() AND status NOT IN ('cancelled','completed','no_show') ORDER BY meeting_date ASC LIMIT 1`),
           ]);
           const p = pol.rows[0] as any;
@@ -605,6 +654,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
         ctx.tenantId,
         async (tx) => {
           const limit = clampLimit(a?.limit, 15, 50);
+          const sc = await buildAiScope(tx, ctxSession(ctx));
           const r = await tx.execute(sql`
             SELECT COALESCE(u.name,'— unassigned —') AS rm, COUNT(*)::int AS clients,
               COALESCE(SUM(i.aum::numeric),0)::numeric AS aum,
@@ -613,6 +663,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
               COUNT(*) FILTER (WHERE i.kyc_status IS NULL OR i.kyc_status NOT IN ('verified','registered'))::int AS kyc_pending
             FROM investors i LEFT JOIN users u ON u.id = i.rm_id
             WHERE i.tenant_id = ${ctx.tenantId}::uuid AND i.deleted_at IS NULL AND i.status <> 'closed' AND i.merged_into_id IS NULL
+              AND ${sc.inv("i")}
             GROUP BY COALESCE(u.name,'— unassigned —') ORDER BY aum DESC LIMIT ${limit}
           `);
           return {
@@ -650,10 +701,11 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
             : w === "overdue" ? sql`m.meeting_date < now() AND m.status NOT IN ('completed','cancelled','no_show')`
             : sql`m.meeting_date >= now() AND m.meeting_date <= now() + interval '30 days' AND m.status NOT IN ('cancelled','completed','no_show')`;
           const limit = clampLimit(a?.limit, 20, 50);
+          const sc = await buildAiScope(tx, ctxSession(ctx));
           const r = await tx.execute(sql`
             SELECT COALESCE(i.name, '—') AS client, m.meeting_date AS at, m.status, m.category
             FROM review_meetings m LEFT JOIN investors i ON i.id = m.investor_id
-            WHERE m.tenant_id = ${ctx.tenantId}::uuid AND ${range}
+            WHERE m.tenant_id = ${ctx.tenantId}::uuid AND ${range} AND ${sc.meeting("m")}
             ORDER BY m.meeting_date ASC LIMIT ${limit}
           `);
           return {

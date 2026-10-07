@@ -11,6 +11,7 @@ import { requireSession } from "@/lib/auth/session";
 import { can, requireAny } from "@/lib/auth/rbac";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { taskComments } from "@/db/schema";
+import { taskInScope } from "@/lib/tasks/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         .limit(1);
       if (!c) return "not_found" as const;
       if (!canEditAll && c.authorId !== session.userId) return "forbidden" as const;
+      if (!(await taskInScope(tx, session, id))) return "not_found" as const;
       await tx
         .update(taskComments)
         .set({ deletedAt: new Date(), updatedAt: new Date() } as any)

@@ -12,6 +12,7 @@ import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { Pager } from "@/components/common/Pager";
 import { CommsList, type CommRow } from "@/components/communications/CommsList";
+import { commsScopeSql } from "@/lib/comms/inbox-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +53,9 @@ export default async function CommunicationsPage({
   for (const s of statusesRaw) (s === "skipped" ? statuses.push(...SKIPPED) : statuses.push(s));
 
   const data = await withTenant(session.tenantId, async (tx) => {
+    // One rule for the counts and the list (lib/comms/inbox-scope.ts): the
+    // firm for oversight viewers, narrowed by client / lead scope; else own.
+    const scope = await commsScopeSql(tx, session, "communications");
     // Tenant-wide headline counts (NOT page-scoped — the previous bug).
     const k = (
       await tx.execute(sql`
@@ -62,12 +66,7 @@ export default async function CommunicationsPage({
           count(*) FILTER (WHERE status IN ('read','replied'))::int AS read,
           count(*) FILTER (WHERE status = 'failed')::int AS failed
         FROM communications
-        WHERE tenant_id = ${session.tenantId}::uuid${seesAll
-          ? sql``
-          : sql` AND (user_id = ${me}::uuid
-                OR investor_id IN (SELECT id FROM investors WHERE rm_id = ${me}::uuid)
-                OR lead_id IN (SELECT id FROM leads WHERE owner_id = ${me}::uuid))`
-        }
+        WHERE tenant_id = ${session.tenantId}::uuid AND ${scope}
       `)
     ).rows[0] as any;
 
@@ -84,6 +83,8 @@ export default async function CommunicationsPage({
           eq(leads.ownerId, me)
         )!
       );
+    } else {
+      conds.push(scope);
     }
     if (channels.length) conds.push(inArray(communications.channel, channels as any));
     if (statuses.length) conds.push(inArray(communications.status, statuses as any));

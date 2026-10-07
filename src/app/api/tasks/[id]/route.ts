@@ -22,6 +22,7 @@ import { loadViewableInvestor } from "@/lib/investors/access";
 import { loadViewableLead } from "@/lib/leads/access";
 import { spawnNextOccurrence } from "@/lib/tasks/recurrence";
 import { notifyWatchers } from "@/lib/tasks/watchers";
+import { taskInScope } from "@/lib/tasks/scope";
 import { syncTaskBusinessEntry } from "@/lib/business/create-entry";
 import { tasks, users, taskChecklist } from "@/db/schema";
 
@@ -108,13 +109,15 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const session = await requireSession();
     requireAny(session.roles, ["task.view.all", "task.view.assigned"], session.permissions);
     const canViewAll = can(session.roles, "task.view.all", session.permissions);
-    const row = await withTenant(session.tenantId, async (tx) =>
-      (await tx
+    const row = await withTenant(session.tenantId, async (tx) => {
+      // Own, or its client / lead in the viewer's scope (lib/tasks/scope.ts).
+      if (!(await taskInScope(tx, session, id))) return null;
+      return (await tx
         .select()
         .from(tasks)
         .where(and(eq(tasks.id, id), eq(tasks.tenantId, session.tenantId)))
-        .limit(1))[0] ?? null
-    );
+        .limit(1))[0] ?? null;
+    });
     if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
     // Assigned-only viewers can't read other people's tasks — unless a sub-task
     // is delegated to them (then they may open + update the parent task).
@@ -195,6 +198,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (!canEditAll && !ownsTask(before, session.userId) && !isSubtaskAssignee(before, session.userId)) {
         return { forbidden: true as const };
       }
+      // edit.all reaches only tasks whose client / lead is in scope.
+      if (!(await taskInScope(tx, session, id))) return null;
       // Merge the action-point checklist into meta (read-modify-write inside the
       // tx so we keep any other meta keys the task already carries).
       if (checklist !== undefined) {
@@ -445,6 +450,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         .limit(1))[0];
       if (!before) return "not_found" as const;
       if (!canEditAll && !ownsTask(before, session.userId)) return "forbidden" as const;
+      if (!(await taskInScope(tx, session, id))) return "not_found" as const;
       // Trashing (or purging) a task cancels the Business entry it booked.
       await syncTaskBusinessEntry(tx, { tenantId: session.tenantId, userId: session.userId, clientMeta }, before, "cancelled");
       if (permanent) {

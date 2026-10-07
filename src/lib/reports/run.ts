@@ -14,6 +14,7 @@ import type { Tx } from "@/db/client";
 import { and, type FilterAST } from "@/lib/filter/ast";
 import { getCatalog, getField, type FieldType } from "@/lib/filter/catalog";
 import { compileToSql, bindCompiled } from "@/lib/filter/compiler";
+import { sql as dsql, type SQL } from "drizzle-orm";
 
 export type ReportSubject = "investor" | "lead" | "task" | "user" | "transaction" | "sip" | "insurance" | "goal" | "service_request" | "claim";
 
@@ -166,18 +167,24 @@ export async function runDetailed(
     tenantId: string;
     limit?: number;
     offset?: number;
+    /** Row scope over the subject's catalog alias (lib/reports/scope.ts) — the viewer's access. */
+    scope?: SQL;
   }
 ): Promise<DetailedResult> {
   const cat = getCatalog(opts.subject);
   const where = compileToSql(opts.ast ?? and(), opts.subject);
   const params = [...where.params, opts.tenantId];
   const tp = `$${params.length}`;
+  // The viewer's row scope rides as one more "param": bindCompiled embeds an
+  // SQL chunk as SQL, so it is never a bound literal.
+  params.push(opts.scope ?? dsql`TRUE`);
+  const sp = `$${params.length}`;
 
   const keys = opts.columns?.length ? opts.columns : defaultColumns(opts.subject);
   const colDefs = keys.map((k) => getField(opts.subject, k));
   const colSql = colDefs.map((d) => `${d.sql} AS "${d.key}"`).join(", ");
 
-  let text = `SELECT ${colSql} FROM ${cat.table} ${cat.alias} WHERE ${cat.alias}.tenant_id = ${tp} AND ${where.sql}`;
+  let text = `SELECT ${colSql} FROM ${cat.table} ${cat.alias} WHERE ${cat.alias}.tenant_id = ${tp} AND ${where.sql} AND ${sp}`;
   if (opts.sort?.field) {
     const sd = getField(opts.subject, opts.sort.field);
     text += ` ORDER BY ${sd.sql} ${opts.sort.dir === "desc" ? "DESC" : "ASC"} NULLS LAST`;
@@ -194,12 +201,16 @@ export async function runDetailed(
 
 export async function runMatrix(
   tx: Tx,
-  opts: { subject: string; ast: FilterAST | null | undefined; matrix: MatrixDef; tenantId: string }
+  opts: { subject: string; ast: FilterAST | null | undefined; matrix: MatrixDef; tenantId: string; scope?: SQL }
 ): Promise<MatrixResult> {
   const cat = getCatalog(opts.subject);
   const where = compileToSql(opts.ast ?? and(), opts.subject);
   const params = [...where.params, opts.tenantId];
   const tp = `$${params.length}`;
+  // The viewer's row scope rides as one more "param": bindCompiled embeds an
+  // SQL chunk as SQL, so it is never a bound literal.
+  params.push(opts.scope ?? dsql`TRUE`);
+  const sp = `$${params.length}`;
 
   const groupDef = getField(opts.subject, opts.matrix.groupBy);
   const measureSql =
@@ -214,12 +225,12 @@ export async function runMatrix(
     const pivotDef = getField(opts.subject, opts.matrix.pivot!);
     text = `SELECT (${groupDef.sql})::text AS row_key, (${pivotDef.sql})::text AS col_key, ${agg}::numeric AS val
             FROM ${cat.table} ${cat.alias}
-            WHERE ${cat.alias}.tenant_id = ${tp} AND ${where.sql}
+            WHERE ${cat.alias}.tenant_id = ${tp} AND ${where.sql} AND ${sp}
             GROUP BY row_key, col_key ORDER BY row_key`;
   } else {
     text = `SELECT (${groupDef.sql})::text AS row_key, ${agg}::numeric AS val
             FROM ${cat.table} ${cat.alias}
-            WHERE ${cat.alias}.tenant_id = ${tp} AND ${where.sql}
+            WHERE ${cat.alias}.tenant_id = ${tp} AND ${where.sql} AND ${sp}
             GROUP BY row_key ORDER BY row_key`;
   }
 
@@ -266,12 +277,16 @@ export async function runMatrix(
  */
 export async function runSummary(
   tx: Tx,
-  opts: { subject: string; ast: FilterAST | null | undefined; summary: SummaryDef; tenantId: string }
+  opts: { subject: string; ast: FilterAST | null | undefined; summary: SummaryDef; tenantId: string; scope?: SQL }
 ): Promise<SummaryResult> {
   const cat = getCatalog(opts.subject);
   const where = compileToSql(opts.ast ?? and(), opts.subject);
   const params = [...where.params, opts.tenantId];
   const tp = `$${params.length}`;
+  // The viewer's row scope rides as one more "param": bindCompiled embeds an
+  // SQL chunk as SQL, so it is never a bound literal.
+  params.push(opts.scope ?? dsql`TRUE`);
+  const sp = `$${params.length}`;
 
   const groupBy = (opts.summary.groupBy ?? []).slice(0, 3);
   const groupDefs = groupBy.map((k) => getField(opts.subject, k));
@@ -295,7 +310,7 @@ export async function runSummary(
 
   const text = `SELECT ${groupSel}, ${groupingSel}, COUNT(*)::numeric AS _cnt${aggDefs.length ? ", " + aggSel : ""}
     FROM ${cat.table} ${cat.alias}
-    WHERE ${cat.alias}.tenant_id = ${tp} AND ${where.sql}
+    WHERE ${cat.alias}.tenant_id = ${tp} AND ${where.sql} AND ${sp}
     GROUP BY ROLLUP (${groupExprs})
     ORDER BY ${groupDefs.map((_, i) => `g${i} NULLS LAST`).join(", ")}`;
 
@@ -353,7 +368,7 @@ export async function runSummary(
     const pathSel = groupDefs.map((d, i) => `(${d.sql})::text AS gp${i}`).join(", ");
     const colSql = colDefs.map((d) => `${d.sql} AS "${d.key}"`).join(", ");
     let dtext = `SELECT ${pathSel}, ${colSql} FROM ${cat.table} ${cat.alias}
-      WHERE ${cat.alias}.tenant_id = ${tp} AND ${where.sql}
+      WHERE ${cat.alias}.tenant_id = ${tp} AND ${where.sql} AND ${sp}
       ORDER BY ${groupDefs.map((_, i) => `gp${i} NULLS LAST`).join(", ")}`;
     if (opts.summary.sort?.field) {
       const sd = getField(opts.subject, opts.summary.sort.field);

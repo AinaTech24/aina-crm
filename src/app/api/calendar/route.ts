@@ -43,6 +43,7 @@ export async function GET(req: NextRequest) {
             tasksAll: can(session.roles, "task.view.all", session.permissions),
             leadsAll: can(session.roles, "lead.view.all", session.permissions),
             investorsAll: can(session.roles, "investor.view.all", session.permissions),
+        session,
           },
         }),
       { userId: session.userId, branchId: session.branchId, roles: session.roles }

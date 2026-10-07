@@ -29,22 +29,38 @@
  * instead of inventing a stricter rule of its own.
  */
 
-import { and, eq, sql, type SQL } from "drizzle-orm";
+import { and, eq, or, sql, type SQL } from "drizzle-orm";
 import { can } from "@/lib/auth/rbac";
 import { complianceDocuments } from "@/db/schema";
-import { investorScopeSql } from "@/lib/investors/access";
+import { hasCustomPermissions, investorScopeSql } from "@/lib/investors/access";
 import type { SessionUser } from "@/lib/auth/session";
 
 /**
- * Sees every document in the firm, including documents not tied to a client.
- * `can()` grants the owner everything, so owners land here.
+ * Sees the firm's own documents (ARN certificate, audit reports, complaints —
+ * anything not filed against a client).
  */
-export function seesWholeVault(s: SessionUser): boolean {
+function seesFirmDocuments(s: SessionUser): boolean {
   return (
     can(s.roles, "compliance.view", s.permissions) ||
     can(s.roles, "kyc.manage", s.permissions) ||
     can(s.roles, "investor.view.all", s.permissions)
   );
+}
+
+const hasClientView = (s: SessionUser) =>
+  can(s.roles, "investor.view.all", s.permissions) || can(s.roles, "investor.view.assigned", s.permissions);
+
+/**
+ * Sees every document in the firm, including documents not tied to a client.
+ * `can()` grants the owner everything, so owners land here.
+ *
+ * A person whose permissions the owner CUSTOMISED never does: their client
+ * documents always go through the client data scope (lib/investors/access),
+ * so "View assigned clients only" also limits the vault to their own book.
+ */
+export function seesWholeVault(s: SessionUser): boolean {
+  if (hasCustomPermissions(s)) return false;
+  return seesFirmDocuments(s);
 }
 
 /**
@@ -57,7 +73,7 @@ export function seesWholeVault(s: SessionUser): boolean {
  * client-view capability.
  */
 export function canOpenVault(s: SessionUser): boolean {
-  if (seesWholeVault(s)) return true;
+  if (seesWholeVault(s) || seesFirmDocuments(s)) return true;
   return (
     can(s.roles, "document.view", s.permissions) &&
     can(s.roles, "investor.view.assigned", s.permissions)
@@ -71,13 +87,19 @@ export function canOpenVault(s: SessionUser): boolean {
  */
 export async function vaultScopeCondition(tx: any, s: SessionUser): Promise<SQL | undefined> {
   if (seesWholeVault(s)) return undefined;
-  const clients = await investorScopeSql(tx, s);
-  return and(
-    eq(complianceDocuments.relatedEntityType, "investor"),
-    sql`${complianceDocuments.relatedEntityId} IN (
-      SELECT id FROM investors
-      WHERE tenant_id = ${s.tenantId}::uuid AND deleted_at IS NULL AND ${clients}
-    )`
+  const clientDocs = hasClientView(s)
+    ? and(
+        eq(complianceDocuments.relatedEntityType, "investor"),
+        sql`${complianceDocuments.relatedEntityId} IN (
+          SELECT id FROM investors
+          WHERE tenant_id = ${s.tenantId}::uuid AND deleted_at IS NULL AND ${await investorScopeSql(tx, s)}
+        )`
+      )
+    : sql`FALSE`;
+  if (!seesFirmDocuments(s)) return clientDocs;
+  return or(
+    sql`${complianceDocuments.relatedEntityType} IS DISTINCT FROM 'investor'`,
+    clientDocs
   );
 }
 
@@ -88,12 +110,15 @@ export async function vaultScopeCondition(tx: any, s: SessionUser): Promise<SQL 
  */
 export async function vaultScopeFragment(tx: any, s: SessionUser): Promise<SQL> {
   if (seesWholeVault(s)) return sql`TRUE`;
-  const clients = await investorScopeSql(tx, s);
-  return sql`(
-    related_entity_type = 'investor'
-    AND related_entity_id IN (
-      SELECT id FROM investors
-      WHERE tenant_id = ${s.tenantId}::uuid AND deleted_at IS NULL AND ${clients}
-    )
-  )`;
+  const clientDocs = hasClientView(s)
+    ? sql`(
+        related_entity_type = 'investor'
+        AND related_entity_id IN (
+          SELECT id FROM investors
+          WHERE tenant_id = ${s.tenantId}::uuid AND deleted_at IS NULL AND ${await investorScopeSql(tx, s)}
+        )
+      )`
+    : sql`FALSE`;
+  if (!seesFirmDocuments(s)) return clientDocs;
+  return sql`(related_entity_type IS DISTINCT FROM 'investor' OR ${clientDocs})`;
 }

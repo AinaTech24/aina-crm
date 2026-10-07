@@ -11,6 +11,7 @@ import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { StatusChip, type Tone } from "@/components/common/StatusChip";
 import { clientRecordWhere } from "@/lib/metrics";
+import { serviceRequestScopeSql, srClientVisibleSql } from "@/lib/service-requests/access";
 
 const STATUS_TONE: Record<string, Tone> = {
   open: "info",
@@ -61,7 +62,13 @@ export default async function ComplaintsPage({
   const branchFilter = (sp.branch ?? "").split(",").filter(Boolean);
 
   const data = await withTenant(session.tenantId, async (tx) => {
-    const filters: any[] = [sql`sr.type = 'complaint'`, sql`sr.tenant_id = ${session.tenantId}::uuid`];
+    // Only complaints this viewer may see (lib/service-requests/access.ts):
+    // assigned / escalated to them, about a client in their scope, or — for
+    // complaint handlers — unlinked ones. A complaint visible only because it
+    // is assigned to them does not print the client's name or PAN.
+    const scope = await serviceRequestScopeSql(tx, session, "sr");
+    const clientVisible = await srClientVisibleSql(tx, session, "sr");
+    const filters: any[] = [sql`sr.type = 'complaint'`, sql`sr.tenant_id = ${session.tenantId}::uuid`, scope];
     if (q) {
       filters.push(
         sql`(sr.ticket_no ILIKE ${`%${q}%`} OR sr.subject ILIKE ${`%${q}%`} OR sr.description ILIKE ${`%${q}%`} OR i.name ILIKE ${`%${q}%`})`
@@ -113,20 +120,22 @@ export default async function ComplaintsPage({
             FILTER (WHERE resolved_at IS NOT NULL)::numeric,
           1
         ) AS avg_resolution_days
-      FROM service_requests
-      WHERE tenant_id = ${session.tenantId}::uuid AND type = 'complaint'
+      FROM service_requests sr
+      WHERE sr.tenant_id = ${session.tenantId}::uuid AND sr.type = 'complaint' AND ${scope}
     `);
     const s = stats.rows[0] as any;
 
     const rows = await tx.execute(sql`
-      SELECT sr.id, sr.ticket_no, sr.investor_id, sr.subject, sr.description,
+      SELECT sr.id, sr.ticket_no, CASE WHEN ${clientVisible} THEN sr.investor_id END AS investor_id,
+             sr.subject, sr.description,
              sr.sebi_category, sr.sebi_sub_category, sr.complaint_source, sr.scores_ref_no,
              sr.status, sr.priority, sr.assigned_to_user_id,
              sr.sla_resolution_at, sr.resolved_at, sr.escalated_at, sr.escalated_to_user_id,
              sr.resolution_notes,
              jsonb_array_length(COALESCE(sr.attachments, '[]'::jsonb)) AS attach_count,
              sr.created_at,
-             i.name AS investor_name, i.pan AS investor_pan,
+             CASE WHEN ${clientVisible} THEN i.name END AS investor_name,
+             CASE WHEN ${clientVisible} THEN i.pan END AS investor_pan,
              u.name AS assignee_name, u2.name AS escalated_to_name,
              (sr.status NOT IN ('resolved','closed') AND sr.sla_resolution_at < now()) AS breached,
              EXTRACT(DAY FROM COALESCE(sr.resolved_at, now()) - sr.created_at)::int AS tat_days

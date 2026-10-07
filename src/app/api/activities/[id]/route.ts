@@ -19,6 +19,7 @@ import { can } from "@/lib/auth/rbac";
 import { mobileActivityScope } from "@/lib/mobile/access";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { ACTIVITY_DIRECTIONS, ACTIVITY_STATUSES, activities } from "@/db/schema";
+import { activityScopeSql } from "@/lib/activities/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         LEFT JOIN users u ON u.id = a.owner_user_id
         WHERE a.tenant_id = ${session.tenantId}::uuid AND a.id = ${id}::uuid
           AND ${session.mobile ? mobileActivityScope(session) : sql`TRUE`}
+          AND ${await activityScopeSql(tx, session, "a")}
         LIMIT 1
       `);
       return r.rows[0] ?? null;
@@ -73,6 +75,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         )[0];
         if (!before) return null;
         if (!isManager && before.ownerUserId !== session.userId) return "forbidden" as const;
+        // A manager reaches only entries whose client / lead / family is in scope.
+        const inScope = await tx.execute(sql`SELECT 1 FROM activities a WHERE a.id = ${id}::uuid AND ${await activityScopeSql(tx, session, "a")}`);
+        if (!inScope.rows.length) return null;
 
         const patch: any = { updatedAt: new Date() };
         const d = parse.data;
@@ -125,6 +130,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         )[0];
         if (!before) return null;
         if (!isManager && before.ownerUserId !== session.userId) return "forbidden" as const;
+        // A manager reaches only entries whose client / lead / family is in scope.
+        const inScope = await tx.execute(sql`SELECT 1 FROM activities a WHERE a.id = ${id}::uuid AND ${await activityScopeSql(tx, session, "a")}`);
+        if (!inScope.rows.length) return null;
         await tx.delete(activities).where(and(eq(activities.id, id), eq(activities.tenantId, session.tenantId)));
         await recordAudit(tx, {
           tenantId: session.tenantId,

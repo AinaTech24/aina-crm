@@ -19,6 +19,7 @@ import { goals, investors } from "@/db/schema";
 import { computeGoal, monthsBetween } from "@/lib/goal-planning/calc";
 import { expectedProgressPct } from "@/lib/goal-planning/recompute";
 import { effectiveGlideReturn } from "@/lib/goal-planning/glide-path";
+import { goalClientScopeSql, visibleGoalInvestorIdsSql } from "@/lib/goal-planning/access";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +69,8 @@ export async function GET(req: NextRequest) {
       async (tx) => {
         const conds: any[] = [isNull(investors.deletedAt)];
         if (!canViewAll) conds.push(eq(investors.rmId, session.userId));
+        // Shared client scope (firm switch / customised "assigned only" / branch).
+        conds.push(await goalClientScopeSql(tx, session, "investors"));
         if (q) conds.push(or(ilike(goals.name, `%${q}%`), ilike(investors.name, `%${q}%`)));
         if (statusFilter.length) conds.push(inArray(goals.status, statusFilter as any));
 
@@ -81,9 +84,7 @@ export async function GET(req: NextRequest) {
 
         // KPI ribbon — over the full scope (not the filtered/searched slice),
         // mirroring the web goals page.
-        const scope = canViewAll
-          ? sql`(g.investor_id IS NULL OR g.investor_id IN (SELECT id FROM investors WHERE deleted_at IS NULL))`
-          : sql`g.investor_id IN (SELECT id FROM investors WHERE rm_id = ${session.userId}::uuid AND deleted_at IS NULL)`;
+        const scope = sql`g.investor_id IN ${await visibleGoalInvestorIdsSql(tx, session)}`;
         const statsRes = await tx.execute(sql`
           SELECT
             COUNT(*)::int AS total,
@@ -139,7 +140,12 @@ export async function POST(req: NextRequest) {
     });
 
     await withTenant(session.tenantId, async (tx) => {
-      const inv = (await tx.select().from(investors).where(eq(investors.id, body.investorId)).limit(1))[0];
+      // The client must be in the caller's book (and live).
+      const inv = (await tx
+        .select({ id: investors.id })
+        .from(investors)
+        .where(and(eq(investors.id, body.investorId), isNull(investors.deletedAt), await goalClientScopeSql(tx, session, "investors")))
+        .limit(1))[0];
       if (!inv) throw Object.assign(new Error("investor not found"), { status: 404 });
 
       await tx.insert(goals).values({

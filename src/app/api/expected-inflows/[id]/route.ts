@@ -13,6 +13,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { expectedInflows, tasks } from "@/db/schema";
 import { InflowPatchBody } from "@/lib/inflows/schema";
 import { syncInflowReminder } from "@/lib/inflows/reminder";
+import { isClientVisible } from "@/lib/transactions/client-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -45,7 +46,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           .from(expectedInflows)
           .where(and(eq(expectedInflows.id, id), eq(expectedInflows.tenantId, session.tenantId)))
           .limit(1);
-        if (!before) return { notFound: true as const };
+        // Viewer scope: an inflow on a client this viewer cannot see is not found.
+        if (!before || !(await isClientVisible(tx, session, before.investorId))) return { notFound: true as const };
 
         await tx.update(expectedInflows).set(patch).where(eq(expectedInflows.id, id));
         const merged = { ...before, ...patch };
@@ -83,14 +85,16 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     requireAny(session.roles, ["investor.edit.all", "investor.edit.assigned"], session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
 
-    await withTenant(
+    const found = await withTenant(
       session.tenantId,
       async (tx) => {
         const [row] = await tx
-          .select({ reminderTaskId: expectedInflows.reminderTaskId })
+          .select({ reminderTaskId: expectedInflows.reminderTaskId, investorId: expectedInflows.investorId })
           .from(expectedInflows)
           .where(and(eq(expectedInflows.id, id), eq(expectedInflows.tenantId, session.tenantId)))
           .limit(1);
+        // Viewer scope: an inflow on a client this viewer cannot see is not found.
+        if (!row || !(await isClientVisible(tx, session, row.investorId))) return false;
         if (row?.reminderTaskId) {
           await tx
             .update(tasks)
@@ -100,9 +104,11 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
         await tx
           .delete(expectedInflows)
           .where(and(eq(expectedInflows.id, id), eq(expectedInflows.tenantId, session.tenantId)));
+        return true;
       },
       { userId: session.userId, branchId: session.branchId ?? undefined, roles: session.roles }
     );
+    if (!found) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({ ok: true });
   } catch (err) {
     return handleApiError(err);

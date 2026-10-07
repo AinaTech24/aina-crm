@@ -11,6 +11,8 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
+import { claimClientScopeSql, insuranceClientScopeSql } from "@/lib/insurance/register-access";
+import { loadViewableInvestor } from "@/lib/investors/access";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { insuranceClaims, insurancePolicies, investors, CLAIM_STATUSES, CLAIM_TYPES, CLAIM_MODES, INTIMATION_MODES, SUBMITTED_MODES } from "@/db/schema";
@@ -85,7 +87,8 @@ export async function GET() {
         })
         .from(insuranceClaims)
         .leftJoin(investors, eq(insuranceClaims.investorId, investors.id))
-        .where(scope)
+        // + the client's scope (firm switch / customised "assigned only" / branch).
+        .where(and(scope, await claimClientScopeSql(tx, session, sql`${insuranceClaims.investorId}`, sql`${insuranceClaims.rmId}`)))
         .orderBy(desc(insuranceClaims.createdAt))
         .limit(500)
     );
@@ -108,8 +111,17 @@ export async function POST(req: NextRequest) {
 
     await withTenant(session.tenantId, async (tx) => {
       if (b.investorId) {
-        const inv = await tx.select({ id: investors.id }).from(investors).where(eq(investors.id, b.investorId)).limit(1);
-        if (inv.length === 0) throw Object.assign(new Error("Client not found in this tenant"), { status: 404 });
+        // The client must be in the caller's book.
+        const inv = await loadViewableInvestor(tx, session, b.investorId);
+        if (!inv) throw Object.assign(new Error("Client not found in this tenant"), { status: 404 });
+      }
+      // A linked policy must be one whose client the caller may see (the claim
+      // moves that policy's status below).
+      if (b.policyId) {
+        const [pol] = await tx.select({ id: insurancePolicies.id }).from(insurancePolicies)
+          .where(and(eq(insurancePolicies.id, b.policyId), await insuranceClientScopeSql(tx, session, sql`${insurancePolicies.investorId}`)))
+          .limit(1);
+        if (!pol) throw Object.assign(new Error("Policy not found"), { status: 404 });
       }
       await tx.insert(insuranceClaims).values({
         id,

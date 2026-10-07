@@ -8,6 +8,8 @@
 
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
+import type { SessionUser } from "@/lib/auth/session";
+import { buildAiScope } from "@/lib/ai/scope";
 
 export type FirmSnapshot = {
   active_clients: number;
@@ -35,8 +37,13 @@ export type FirmSnapshot = {
   kyc_status_breakdown: Array<{ status: string; clients: number }>;
 };
 
-/** Run inside withTenant(tenantId, …) so RLS + the explicit tenant filter agree. */
-export async function firmSnapshot(tx: Tx, tenantId: string): Promise<FirmSnapshot> {
+/**
+ * Run inside withTenant(tenantId, …) so RLS + the explicit tenant filter agree.
+ * Pass the viewer's `session` and every figure is over what THEY may see
+ * (lib/ai/scope.ts) — their book, leads, tasks, meetings — not the whole firm.
+ */
+export async function firmSnapshot(tx: Tx, tenantId: string, session?: SessionUser): Promise<FirmSnapshot> {
+  const sc = await buildAiScope(tx, session);
   const inv = (
     await tx.execute(sql`
       SELECT
@@ -48,20 +55,20 @@ export async function firmSnapshot(tx: Tx, tenantId: string): Promise<FirmSnapsh
         COUNT(*) FILTER (WHERE segment_tag = 'HNI' AND deleted_at IS NULL)::int AS hni_clients,
         COUNT(*) FILTER (WHERE last_transaction_at < now() - make_interval(days => (SELECT dormancy_window_days FROM tenants WHERE id = ${tenantId}::uuid)) AND deleted_at IS NULL AND status <> 'closed')::int AS dormant_clients,
         (SELECT dormancy_window_days FROM tenants WHERE id = ${tenantId}::uuid)::int AS dormancy_window_days
-      FROM investors WHERE tenant_id = ${tenantId}::uuid
+      FROM investors WHERE tenant_id = ${tenantId}::uuid AND ${sc.inv("investors")}
     `)
   ).rows[0] as any;
 
   const top = (
     await tx.execute(sql`
       SELECT name, COALESCE(aum,0)::numeric AS aum FROM investors
-      WHERE tenant_id = ${tenantId}::uuid AND status <> 'closed' AND merged_into_id IS NULL AND deleted_at IS NULL
+      WHERE tenant_id = ${tenantId}::uuid AND status <> 'closed' AND merged_into_id IS NULL AND deleted_at IS NULL AND ${sc.inv("investors")}
       ORDER BY aum DESC NULLS LAST LIMIT 10
     `)
   ).rows as any[];
 
   const leads = (
-    await tx.execute(sql`SELECT COUNT(*)::int AS open_leads FROM leads WHERE tenant_id = ${tenantId}::uuid AND stage NOT IN ('converted','lost','not_interested','not_qualified')`)
+    await tx.execute(sql`SELECT COUNT(*)::int AS open_leads FROM leads WHERE tenant_id = ${tenantId}::uuid AND ${sc.leads} AND stage NOT IN ('converted','lost','not_interested','not_qualified')`)
   ).rows[0] as any;
 
   const tasks = (
@@ -69,31 +76,31 @@ export async function firmSnapshot(tx: Tx, tenantId: string): Promise<FirmSnapsh
       SELECT
         COUNT(*) FILTER (WHERE status IN ('open','in_progress','blocked'))::int AS open_tasks,
         COUNT(*) FILTER (WHERE status IN ('open','in_progress','blocked') AND due_at < now())::int AS overdue_tasks
-      FROM tasks WHERE tenant_id = ${tenantId}::uuid
+      FROM tasks WHERE tenant_id = ${tenantId}::uuid AND ${sc.task("tasks")}
     `)
   ).rows[0] as any;
 
   const sips = (
-    await tx.execute(sql`SELECT COUNT(*)::int AS active_sips FROM sips WHERE tenant_id = ${tenantId}::uuid AND status = 'active'`)
+    await tx.execute(sql`SELECT COUNT(*)::int AS active_sips FROM sips WHERE tenant_id = ${tenantId}::uuid AND status = 'active' AND ${sc.clientOf("sips.investor_id")}`)
   ).rows[0] as any;
 
   const ins = (
     await tx.execute(sql`
       SELECT COUNT(*) FILTER (WHERE status = 'active')::int AS active_policies,
              COALESCE(SUM(annual_premium) FILTER (WHERE status = 'active'),0)::numeric AS active_annual_premium
-      FROM insurance_policies WHERE tenant_id = ${tenantId}::uuid
+      FROM insurance_policies WHERE tenant_id = ${tenantId}::uuid AND ${sc.clientOf("insurance_policies.investor_id")}
     `)
   ).rows[0] as any;
 
   const meetings = (
-    await tx.execute(sql`SELECT COUNT(*)::int AS upcoming_meetings FROM review_meetings WHERE tenant_id = ${tenantId}::uuid AND status IN ('scheduled','confirmed') AND meeting_date >= now()`)
+    await tx.execute(sql`SELECT COUNT(*)::int AS upcoming_meetings FROM review_meetings WHERE tenant_id = ${tenantId}::uuid AND ${sc.meeting("review_meetings")} AND status IN ('scheduled','confirmed') AND meeting_date >= now()`)
   ).rows[0] as any;
 
   const byRm = (
     await tx.execute(sql`
       SELECT u.name, COALESCE(SUM(i.aum),0)::numeric AS aum, COUNT(*)::int AS clients
       FROM investors i JOIN users u ON u.id = i.rm_id
-      WHERE i.tenant_id = ${tenantId}::uuid AND i.status <> 'closed' AND i.deleted_at IS NULL AND i.merged_into_id IS NULL
+      WHERE i.tenant_id = ${tenantId}::uuid AND i.status <> 'closed' AND i.deleted_at IS NULL AND i.merged_into_id IS NULL AND ${sc.inv("i")}
       GROUP BY u.name ORDER BY aum DESC LIMIT 8
     `)
   ).rows as any[];
@@ -101,7 +108,7 @@ export async function firmSnapshot(tx: Tx, tenantId: string): Promise<FirmSnapsh
   const kyc = (
     await tx.execute(sql`
       SELECT COALESCE(kyc_status,'unknown') AS status, COUNT(*)::int AS n
-      FROM investors WHERE tenant_id = ${tenantId}::uuid AND deleted_at IS NULL AND status <> 'closed'
+      FROM investors WHERE tenant_id = ${tenantId}::uuid AND deleted_at IS NULL AND status <> 'closed' AND ${sc.inv("investors")}
       GROUP BY COALESCE(kyc_status,'unknown') ORDER BY n DESC
     `)
   ).rows as any[];
@@ -111,7 +118,7 @@ export async function firmSnapshot(tx: Tx, tenantId: string): Promise<FirmSnapsh
       SELECT
         COUNT(*) FILTER (WHERE created_at >= date_trunc('month', now()))::int AS new_clients_this_month,
         COUNT(*) FILTER (WHERE created_at >= now() - interval '30 days')::int AS new_clients_30d
-      FROM investors WHERE tenant_id = ${tenantId}::uuid AND deleted_at IS NULL
+      FROM investors WHERE tenant_id = ${tenantId}::uuid AND deleted_at IS NULL AND ${sc.inv("investors")}
     `)
   ).rows[0] as any;
 
@@ -150,7 +157,7 @@ export function assistantSystemPrompt(snapshot: FirmSnapshot): string {
 
 SCOPE — you exist ONLY to help this MFD firm understand and act on their own CRM data. Politely decline anything outside that (general trivia, coding, world knowledge). You CANNOT and MUST NOT change any data, settings, or code — you are strictly read-only. If asked to modify/create/delete something, explain that you can't act, and point them to the right screen.
 
-TRUTH — answer using ONLY the JSON metrics below. They are LIVE, real figures for THIS firm right now. NEVER invent, estimate, or extrapolate a number that isn't present. If a metric isn't in the snapshot, say you don't track that yet and list 2-3 things you CAN answer.
+TRUTH — answer using ONLY the JSON metrics below. They are LIVE, real figures for the part of THIS firm the user is allowed to see (their own book when their access is limited) right now. NEVER invent, estimate, or extrapolate a number that isn't present. If a metric isn't in the snapshot, say you don't track that yet and list 2-3 things you CAN answer.
 
 FORMAT —
 - Use GitHub-flavored **Markdown**. When presenting more than ~3 related numbers (top clients, AUM by RM, KYC breakdown, etc.), use a Markdown **table**. Keep prose tight.

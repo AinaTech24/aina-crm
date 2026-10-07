@@ -9,11 +9,12 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextResponse } from "next/server";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { transactions, investors } from "@/db/schema";
+import { visibleClientSql } from "@/lib/transactions/client-scope";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -49,7 +50,9 @@ export async function GET() {
           })
           .from(transactions)
           .leftJoin(investors, eq(investors.id, transactions.investorId))
-          .where(scope)
+          // The hand-rolled own-book slice above, AND the shared client scope
+          // (branch wall, "View assigned only" allow-lists) — only narrows.
+          .where(and(scope, await visibleClientSql(tx, session, "investors")))
           .orderBy(
             desc(transactions.orderDate),
             desc(transactions.createdAt),

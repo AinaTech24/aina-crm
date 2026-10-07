@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
-import { financialPlans, tenants, users, investors, leads } from "@/db/schema";
+import { tenants, users, investors, leads } from "@/db/schema";
+import { loadViewablePlan } from "@/lib/financial-plans/access";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
 import { formatDate, formatINR } from "@/lib/utils";
@@ -27,9 +28,8 @@ export default async function FinancialPlanPrintPage({
   const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
 
   const data = await withTenant(session.tenantId, async (tx) => {
-    const p = (
-      await tx.select().from(financialPlans).where(eq(financialPlans.id, id)).limit(1)
-    )[0];
+    // Own-plans rule + the client's / lead's scope (404 when not visible).
+    const p = await loadViewablePlan(tx, session, id);
     if (!p) return null;
     // Non-managers may only view plans they prepared.
     if (!seesAll && p.preparedByUserId !== session.userId) return null;

@@ -15,8 +15,9 @@ import { notFound } from "next/navigation";
 import { and, desc, eq } from "drizzle-orm";
 import { ChevronLeft, Target, Printer, FileText } from "lucide-react";
 import { withTenant } from "@/db/client";
-import { goals, investors, folios, sips } from "@/db/schema";
+import { folios, sips } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { loadViewableGoal } from "@/lib/goal-planning/access";
 import { categoryLabel } from "@/lib/goal-planning/calc";
 import { GoalDetailCalculator } from "@/components/goal-planning/GoalDetailCalculator";
 import { LinkedInvestmentsPicker } from "@/components/goal-planning/LinkedInvestmentsPicker";
@@ -30,9 +31,10 @@ export default async function GoalDetailPage({ params }: { params: Promise<{ id:
   const { id } = await params;
   const session = await requireSession();
   const data = await withTenant(session.tenantId, async (tx) => {
-    const g = (await tx.select().from(goals).where(eq(goals.id, id)).limit(1))[0];
-    if (!g) return null;
-    const inv = (await tx.select().from(investors).where(eq(investors.id, g.investorId)).limit(1))[0];
+    // A goal is visible only when its client is in the viewer's book.
+    const viewable = await loadViewableGoal(tx, session, id);
+    if (!viewable) return null;
+    const { goal: g, investor: inv } = viewable;
 
     // Investor's portfolio for the picker
     const investorFolios = await tx

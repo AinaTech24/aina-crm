@@ -15,6 +15,7 @@ import { requireSession } from "@/lib/auth/session";
 import { requireAny } from "@/lib/auth/rbac";
 import { financialDiscoveries } from "@/db/schema";
 import { computeDiscovery, type DiscoveryData } from "@/lib/discovery/calc";
+import { loadViewableDiscovery } from "@/lib/discovery/access";
 
 export const dynamic = "force-dynamic";
 
@@ -32,9 +33,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const session = await requireSession();
     requireAny(session.roles, [...VIEW_CAPS], session.permissions);
     const { id } = await params;
-    const row = await withTenant(session.tenantId, async (tx) =>
-      (await tx.select().from(financialDiscoveries).where(eq(financialDiscoveries.id, id)).limit(1))[0]
-    );
+    // Data scope: only a discovery about a lead / client the viewer can see.
+    const row = await withTenant(session.tenantId, async (tx) => loadViewableDiscovery(tx, session, id));
     if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({ discovery: row });
   } catch (err: any) {
@@ -54,7 +54,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const b = parsed.data;
 
     const updated = await withTenant(session.tenantId, async (tx) => {
-      const existing = (await tx.select().from(financialDiscoveries).where(eq(financialDiscoveries.id, id)).limit(1))[0];
+      // Data scope: only a discovery about a lead / client the viewer can see.
+      const existing = await loadViewableDiscovery(tx, session, id);
       if (!existing) return null;
 
       const data: DiscoveryData = (b.data ?? existing.data ?? {}) as DiscoveryData;

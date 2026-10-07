@@ -7,15 +7,19 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
-import { proposals, investors, leads, families } from "@/db/schema";
+import { proposals, investors, families } from "@/db/schema";
 import { proposalTotals } from "@/lib/proposals/projections";
+import { proposalScopeSql } from "@/lib/proposals/access";
+import { loadViewableInvestor } from "@/lib/investors/access";
+import { loadViewableLead } from "@/lib/leads/access";
+import { loadViewableFamily } from "@/lib/families/access";
 
 export const dynamic = "force-dynamic";
 
@@ -191,10 +195,12 @@ export async function GET() {
     const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
 
     const rows = await withTenant(session.tenantId, async (tx) => {
+      // Own-proposals rule + the recipient's (client / lead / family) scope.
+      const scope = await proposalScopeSql(tx, session);
       if (seesAll) {
-        return tx.select().from(proposals).orderBy(desc(proposals.createdAt));
+        return tx.select().from(proposals).where(scope).orderBy(desc(proposals.createdAt));
       } else {
-        return tx.select().from(proposals).where(eq(proposals.preparedByUserId, session.userId)).orderBy(desc(proposals.createdAt));
+        return tx.select().from(proposals).where(and(eq(proposals.preparedByUserId, session.userId), scope)).orderBy(desc(proposals.createdAt));
       }
     });
     return NextResponse.json({ proposals: rows });
@@ -232,24 +238,28 @@ export async function POST(req: NextRequest) {
       let resolvedInvestorId = body.investorId ?? null;
 
       if (body.recipientType === "investor" && body.investorId) {
-        const inv = (
-          await tx.select().from(investors).where(eq(investors.id, body.investorId)).limit(1)
-        )[0];
+        // The client must be in the caller's book.
+        const inv = await loadViewableInvestor(tx, session, body.investorId);
+        if (!inv) throw Object.assign(new Error("client not found"), { status: 404 });
         if (inv) {
           name = name || inv.name;
           email = email || (inv as any).email || null;
           phone = phone || (inv as any).phone || (inv as any).mobile || null;
         }
       } else if (body.recipientType === "lead" && body.leadId) {
-        const ld = (
-          await tx.select().from(leads).where(eq(leads.id, body.leadId)).limit(1)
-        )[0];
+        // The lead must be one the caller may see.
+        const ld = await loadViewableLead(tx, session, body.leadId);
+        if (!ld) throw Object.assign(new Error("lead not found"), { status: 404 });
         if (ld) {
           name = name || ld.name;
           email = email || (ld as any).email || null;
           phone = phone || (ld as any).phone || null;
         }
       } else if (body.recipientType === "family" && body.familyId) {
+        // The family must be one the caller may see.
+        if (!(await loadViewableFamily(tx, session, body.familyId))) {
+          throw Object.assign(new Error("family not found"), { status: 404 });
+        }
         const fam = (
           await tx.select().from(families).where(eq(families.id, body.familyId)).limit(1)
         )[0];

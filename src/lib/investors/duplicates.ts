@@ -8,10 +8,11 @@
  * (dedup_pan=false), so duplicates accumulate and need a visible nudge.
  */
 
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 
-export async function countPossibleDuplicates(tx: Tx, tenantId: string): Promise<number> {
+/** `scope` — the viewer's client data scope over alias `investors` (investorScopeSql); default unrestricted. */
+export async function countPossibleDuplicates(tx: Tx, tenantId: string, scope: SQL = sql`TRUE`): Promise<number> {
   const r = await tx.execute(sql`
     WITH live AS (
       SELECT id,
@@ -19,6 +20,7 @@ export async function countPossibleDuplicates(tx: Tx, tenantId: string): Promise
              NULLIF(regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g'), '') AS phone
       FROM investors
       WHERE tenant_id = ${tenantId}::uuid AND merged_into_id IS NULL AND status <> 'closed' AND deleted_at IS NULL
+        AND ${scope}
     ),
     dup_pan AS (SELECT pan FROM live WHERE pan IS NOT NULL GROUP BY pan HAVING count(*) > 1),
     dup_phone AS (SELECT phone FROM live WHERE phone IS NOT NULL AND length(phone) >= 10 GROUP BY phone HAVING count(*) > 1)

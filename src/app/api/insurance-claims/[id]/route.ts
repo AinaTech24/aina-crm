@@ -6,11 +6,13 @@ import { handleApiError } from "@/lib/api/error-handler";
  *   DELETE /api/insurance-claims/[id]
  */
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
+import { insuranceClientScopeSql, loadViewableClaim } from "@/lib/insurance/register-access";
+import { loadViewableInvestor } from "@/lib/investors/access";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { insuranceClaims, insurancePolicies, investors, CLAIM_STATUSES, CLAIM_TYPES, CLAIM_MODES, INTIMATION_MODES, SUBMITTED_MODES } from "@/db/schema";
@@ -62,7 +64,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const session = await requireSession();
     requireCap(session.roles, "insurance.view", session.permissions);
     const row = await withTenant(session.tenantId, async (tx) => {
-      const c = (await tx.select().from(insuranceClaims).where(and(eq(insuranceClaims.id, id), eq(insuranceClaims.tenantId, session.tenantId))).limit(1))[0];
+      // Only a claim whose client is in the viewer's scope (404 otherwise).
+      const c = await loadViewableClaim(tx, session, id);
       if (!c) return null;
       const inv = c.investorId
         ? (await tx.select({ name: investors.name }).from(investors).where(eq(investors.id, c.investorId)).limit(1))[0]
@@ -87,8 +90,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     const result = await withTenant(session.tenantId, async (tx) => {
-      const before = (await tx.select().from(insuranceClaims).where(and(eq(insuranceClaims.id, id), eq(insuranceClaims.tenantId, session.tenantId))).limit(1))[0];
+      const before = await loadViewableClaim(tx, session, id);
       if (!before) return null;
+      // Re-linking: the new client / policy must be in the caller's scope too.
+      if (parse.data.investorId && !(await loadViewableInvestor(tx, session, parse.data.investorId))) {
+        throw Object.assign(new Error("Client not found"), { status: 404 });
+      }
+      if (parse.data.policyId) {
+        const [pol] = await tx.select({ id: insurancePolicies.id }).from(insurancePolicies)
+          .where(and(eq(insurancePolicies.id, parse.data.policyId), await insuranceClientScopeSql(tx, session, sql`${insurancePolicies.investorId}`)))
+          .limit(1);
+        if (!pol) throw Object.assign(new Error("Policy not found"), { status: 404 });
+      }
       const patch: any = { ...parse.data, updatedAt: new Date() };
       for (const k of ["claimedAmount", "settledAmount"] as const) {
         if (patch[k] != null) patch[k] = String(patch[k]);
@@ -137,7 +150,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     await assertActiveLicense(session.tenantId, session.roles);
     const clientMeta = clientMetaFromHeaders(req.headers);
     const ok = await withTenant(session.tenantId, async (tx) => {
-      const before = (await tx.select().from(insuranceClaims).where(and(eq(insuranceClaims.id, id), eq(insuranceClaims.tenantId, session.tenantId))).limit(1))[0];
+      const before = await loadViewableClaim(tx, session, id);
       if (!before) return false;
       await tx.delete(insuranceClaims).where(and(eq(insuranceClaims.id, id), eq(insuranceClaims.tenantId, session.tenantId)));
       await recordAudit(tx, {

@@ -20,6 +20,7 @@ import { requireSession } from "@/lib/auth/session";
 import { can, requireAny } from "@/lib/auth/rbac";
 import { generateMeetingPrepPoints } from "@/lib/ai/assistant";
 import { isAiConfigured } from "@/lib/ai/provider";
+import { canSeeMeeting } from "@/lib/review-meetings/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
         `)).rows[0] as any;
         if (!m) return null;
         if (!canAll && m.rm_id !== session.userId) return { forbidden: true as const };
+        if (!(await canSeeMeeting(tx, session, id))) return null;
 
         const isLead = !m.investor_id && !!m.lead_id;
 

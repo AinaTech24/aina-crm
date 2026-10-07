@@ -16,7 +16,7 @@ import { sql, eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { can, requireAny } from "@/lib/auth/rbac";
+import { requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { createNotification } from "@/lib/notifications/create";
@@ -25,6 +25,7 @@ import { findRmConflicts } from "@/lib/review-meetings/conflicts";
 import { formatDate } from "@/lib/format";
 import { mobileOwnerScope } from "@/lib/mobile/access";
 import { attendeeIs, attendeeIsAnyUser } from "@/lib/review-meetings/attendees";
+import { meetingScopeSql } from "@/lib/review-meetings/scope";
 import { assertMobileAssignee } from "@/lib/mobile/record-access";
 import { loadViewableInvestor } from "@/lib/investors/access";
 import { loadViewableLead } from "@/lib/leads/access";
@@ -78,7 +79,6 @@ export async function GET(req: NextRequest) {
     // Was wide-open to any session. Require the meeting capability, and scope
     // RMs (manage.assigned, not .all) to their OWN meetings.
     requireAny(session.roles, ["review_meeting.manage.all", "review_meeting.manage.assigned"], session.permissions);
-    const canAll = can(session.roles, "review_meeting.manage.all", session.permissions);
 
     // Full filter set, mirroring the web list page (/dashboard/review-meetings).
     const url = req.nextUrl;
@@ -106,7 +106,9 @@ export async function GET(req: NextRequest) {
         // A meeting I attend is mine too, alongside the ones I own.
         const iAttend = attendeeIs("user", session.userId);
         if (session.mobile) filters.push(sql`(${mobileOwnerScope(session, "m.rm_id")} OR ${iAttend})`);
-        if (!canAll) filters.push(sql`(m.rm_id = ${session.userId}::uuid OR ${iAttend})`);
+        // Own + attended meetings; with manage.all, also those whose client /
+        // lead the viewer may see (lib/review-meetings/scope.ts).
+        filters.push(await meetingScopeSql(tx, session, "m"));
         if (leadId) filters.push(sql`m.lead_id = ${leadId}::uuid`);
         if (q) filters.push(sql`(i.name ILIKE ${`%${q}%`} OR l.name ILIKE ${`%${q}%`} OR u.name ILIKE ${`%${q}%`} OR m.discussion_points ILIKE ${`%${q}%`} OR m.meeting_notes ILIKE ${`%${q}%`})`);
         if (categoryFilter.length) filters.push(sql`m.category IN (${sql.join(categoryFilter.map((v) => sql`${v}`), sql`, `)})`);
@@ -135,14 +137,15 @@ export async function GET(req: NextRequest) {
         const iAttendStats = attendeeIs("user", session.userId, sql.raw("review_meetings.attendees"));
         const scopeStats = session.mobile
           ? sql` AND (${mobileOwnerScope(session, "review_meetings.rm_id")} OR ${iAttendStats})`
-          : canAll ? sql`` : sql` AND (rm_id = ${session.userId}::uuid OR ${iAttendStats})`;
+          : sql``;
+        const statsScope = await meetingScopeSql(tx, session, "review_meetings");
         const statsRes = await tx.execute(sql`
           SELECT
             COUNT(*) FILTER (WHERE status IN ('scheduled','confirmed') AND meeting_date >= now())::int AS upcoming,
             COUNT(*) FILTER (WHERE status IN ('scheduled','confirmed') AND meeting_date >= date_trunc('week', now()) AND meeting_date < date_trunc('week', now()) + interval '7 days')::int AS this_week,
             COUNT(*) FILTER (WHERE status = 'completed' AND meeting_date >= date_trunc('month', now()))::int AS completed_mtd,
             COUNT(*) FILTER (WHERE status IN ('scheduled','confirmed','in_progress') AND meeting_date < now())::int AS overdue
-          FROM review_meetings WHERE tenant_id = ${session.tenantId}::uuid${scopeStats}
+          FROM review_meetings WHERE tenant_id = ${session.tenantId}::uuid${scopeStats} AND ${statsScope}
         `);
 
         return { meetings: meetings.rows, stats: (statsRes.rows[0] ?? { upcoming: 0, this_week: 0, completed_mtd: 0, overdue: 0 }) };
@@ -170,8 +173,9 @@ export async function POST(req: NextRequest) {
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     const result = await withTenant(session.tenantId, async (tx) => {
-      if (session.mobile && body.investorId && !await loadViewableInvestor(tx, session, body.investorId)) throw Object.assign(new Error("Client not found"), { status: 404 });
-      if (session.mobile && body.leadId && !await loadViewableLead(tx, session, body.leadId)) throw Object.assign(new Error("Lead not found"), { status: 404 });
+      // A meeting may only be booked with a client / lead the caller can see.
+      if (body.investorId && !await loadViewableInvestor(tx, session, body.investorId)) throw Object.assign(new Error("Client not found"), { status: 404 });
+      if (body.leadId && !await loadViewableLead(tx, session, body.leadId)) throw Object.assign(new Error("Lead not found"), { status: 404 });
       // Resolve the subject — investor OR lead. The XOR was enforced by zod.
       let subjectName = "";
       let subjectRmId: string | null = null;

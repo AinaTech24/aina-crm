@@ -8,11 +8,11 @@ import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { ChevronLeft, Users } from "lucide-react";
 import { withTenant } from "@/db/client";
-import { investors } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { investorScopeSql, loadViewableInvestor } from "@/lib/investors/access";
 import { RiskProfileWizard } from "@/components/risk-profile/RiskProfileWizard";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { loadActiveTemplate } from "@/lib/risk-profile/template";
@@ -39,10 +39,13 @@ export default async function NewRiskProfilePage({
       : sql``;
 
     const list = await withTenant(session.tenantId, async (tx) => {
+      // Data scope: only clients in the viewer's book (none without client view).
+      const scope = await investorScopeSql(tx, session, "i")
+        .catch((e: any) => { if (e?.status === 403) return sql`FALSE`; throw e; });
       const r = await tx.execute(sql`
         SELECT i.id, i.name, i.pan, i.segment_tag, i.risk_profile, i.risk_profile_signed_at
         FROM investors i
-        WHERE i.status = 'active' AND i.deleted_at IS NULL
+        WHERE i.status = 'active' AND i.deleted_at IS NULL AND ${scope}
         ${searchCond}
         ORDER BY (i.risk_profile_signed_at IS NULL) DESC, i.risk_profile_signed_at ASC NULLS FIRST, i.name
         LIMIT 200
@@ -110,7 +113,11 @@ export default async function NewRiskProfilePage({
 
   // Load the investor + the active tenant template + launch wizard
   const { investor, template } = await withTenant(session.tenantId, async (tx) => {
-    const inv = (await tx.select().from(investors).where(eq(investors.id, sp.investorId!)).limit(1))[0] ?? null;
+    // Data scope: only a client in the viewer's book (404 otherwise).
+    const inv = /^[0-9a-f-]{36}$/i.test(sp.investorId!)
+      ? await loadViewableInvestor(tx, session, sp.investorId!)
+          .catch((e: any) => { if (e?.status === 403) return null; throw e; })
+      : null;
     const tpl = await loadActiveTemplate(tx, session.tenantId);
     return { investor: inv, template: tpl };
   });

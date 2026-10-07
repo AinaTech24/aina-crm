@@ -5,11 +5,15 @@ import { Heart, Clock, Calendar, Phone } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatDate, formatRelative } from "@/lib/utils";
+import { leadScopeSql } from "@/lib/leads/access";
 
 export const dynamic = "force-dynamic";
 
 export default async function LeadNurturePage() {
   const session = await requireSession();
+  // The same lead scope as the Leads board (own / branch / firm). Throws 403
+  // for a viewer with no lead capability at all.
+  const scope = leadScopeSql(session, "l");
 
   const rows = await withTenant(session.tenantId, async (tx) => {
     const r = await tx.execute(sql`
@@ -18,7 +22,8 @@ export default async function LeadNurturePage() {
              u.name AS rm_name
       FROM leads l
       LEFT JOIN users u ON u.id = l.owner_id
-      WHERE l.stage IN ('follow_up', 'contacted', 'meeting_scheduled', 'meeting_done')
+      WHERE l.tenant_id = ${session.tenantId}::uuid AND ${scope}
+        AND l.stage IN ('follow_up', 'contacted', 'meeting_scheduled', 'meeting_done')
         AND l.converted_investor_id IS NULL
         AND (l.next_follow_up_at IS NOT NULL OR l.last_contact_at < now() - interval '14 days')
       ORDER BY

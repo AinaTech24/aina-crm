@@ -12,7 +12,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { inArray } from "drizzle-orm";
+import { and, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -20,6 +20,7 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { serviceRequests } from "@/db/schema";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { serviceRequestScopeSql } from "@/lib/service-requests/access";
 
 export const dynamic = "force-dynamic";
 
@@ -61,10 +62,12 @@ export async function POST(req: NextRequest) {
     }
 
     const count = await withTenant(session.tenantId, async (tx) => {
+      // Only tickets the caller can see — an id outside their scope is skipped.
+      const scope = await serviceRequestScopeSql(tx, session, "service_requests");
       const updated = await tx
         .update(serviceRequests)
         .set(patch as any)
-        .where(inArray(serviceRequests.id, ids))
+        .where(and(inArray(serviceRequests.id, ids), sql`${scope}`))
         .returning({ id: serviceRequests.id });
       await recordAudit(tx, {
         tenantId: session.tenantId,

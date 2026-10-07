@@ -26,6 +26,7 @@ import { v4 as uuid } from "uuid";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
+import { proposalRecipientScopeSql } from "@/lib/proposals/access";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { proposals, shareTokens, tasks } from "@/db/schema";
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const [old] = await tx
         .select()
         .from(proposals)
-        .where(and(eq(proposals.id, id), eq(proposals.tenantId, session.tenantId)))
+        .where(and(eq(proposals.id, id), eq(proposals.tenantId, session.tenantId), await proposalRecipientScopeSql(tx, session)))
         .for("update")
         .limit(1);
       if (!old || (!seesAll && old.preparedByUserId !== session.userId)) {

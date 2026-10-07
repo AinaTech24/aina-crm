@@ -17,6 +17,7 @@ import { requireAny } from "@/lib/auth/rbac";
 import { financialDiscoveries } from "@/db/schema";
 import { loadDiscoveryPrefill, mergeDiscoveryPrefill } from "@/lib/discovery/prefill";
 import { computeDiscovery } from "@/lib/discovery/calc";
+import { canSeeDiscoverySubject, discoveryScopeCondition } from "@/lib/discovery/access";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,8 @@ export async function GET() {
   try {
     const session = await requireSession();
     requireAny(session.roles, [...VIEW_CAPS], session.permissions);
-    const rows = await withTenant(session.tenantId, (tx) =>
+    // Data scope: only discoveries about leads / clients the viewer can see.
+    const rows = await withTenant(session.tenantId, async (tx) =>
       tx
         .select({
           id: financialDiscoveries.id,
@@ -46,6 +48,7 @@ export async function GET() {
           submittedAt: financialDiscoveries.submittedAt,
         })
         .from(financialDiscoveries)
+        .where(await discoveryScopeCondition(tx, session))
         .orderBy(desc(financialDiscoveries.updatedAt))
         .limit(300)
     );
@@ -68,6 +71,11 @@ export async function POST(req: NextRequest) {
     const created = await withTenant(session.tenantId, async (tx) => {
       // Start from everything the CRM already holds on this person, so the
       // client only fills what is genuinely new.
+      // Data scope: only a lead / client the viewer can see — the prefill
+      // copies their whole record into the draft.
+      if (!(await canSeeDiscoverySubject(tx, session, subjectType, subjectId))) {
+        throw Object.assign(new Error("not found"), { status: 404 });
+      }
       const table = subjectType === "lead" ? "leads" : "investors";
       const subj = (
         await tx.execute(sql`

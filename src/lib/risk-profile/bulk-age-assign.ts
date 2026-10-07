@@ -15,7 +15,7 @@
  * client had a birthday) — that is the only overwrite, and only when asked for.
  */
 
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { applyRiskCategory, type RiskCategory } from "@/lib/risk-profile/apply";
 import { categoryForAge, type AgeBand } from "@/lib/risk-profile/age-bands";
@@ -49,9 +49,10 @@ export type AssignmentPlan = {
  */
 export async function planAgeAssignment(
   tx: Tx,
-  opts: { tenantId: string; bands: AgeBand[]; rmId?: string; refreshProvisional?: boolean }
+  /** `scope`: the viewer's client data scope over alias `i` (investorScopeSql). */
+  opts: { tenantId: string; bands: AgeBand[]; rmId?: string; refreshProvisional?: boolean; scope?: SQL }
 ): Promise<AssignmentPlan> {
-  const rmScope = opts.rmId ? sql` AND i.rm_id = ${opts.rmId}::uuid` : sql``;
+  const rmScope = sql`${opts.rmId ? sql` AND i.rm_id = ${opts.rmId}::uuid` : sql``}${opts.scope ? sql` AND ${opts.scope}` : sql``}`;
   const res = await tx.execute(sql`
     SELECT i.id, i.name, i.risk_profile, i.risk_profile_provisional,
            CASE WHEN i.dob IS NULL THEN NULL

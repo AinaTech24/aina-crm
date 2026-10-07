@@ -12,6 +12,7 @@ import {
 import { withTenant } from "@/db/client";
 import { formatINR } from "@/lib/utils";
 import type { SessionUser } from "@/lib/auth/session";
+import { investorScopeSql } from "@/lib/investors/access";
 
 /**
  * KPI strip for the Investors list page.
@@ -29,6 +30,8 @@ export async function InvestorKpiStrip({
   const data = await withTenant(
     session.tenantId,
     async (tx) => {
+      // Data scope: count only the viewer's book, the same rows as the list.
+      const scope = await investorScopeSql(tx, session, "investors");
       const r = await tx.execute(sql`
         SELECT
           COUNT(*) FILTER (WHERE status = 'active')::int AS total_active,
@@ -60,7 +63,7 @@ export async function InvestorKpiStrip({
         -- Trashed (soft-deleted) clients must NOT inflate the counts/AUM — the
         -- list excludes them (deleted_at IS NULL), so the KPI strip must match,
         -- otherwise an emptied book still shows the old totals.
-        WHERE deleted_at IS NULL
+        WHERE deleted_at IS NULL AND ${scope}
       `);
       return r.rows[0] as any;
     },

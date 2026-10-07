@@ -6,6 +6,8 @@ import { ChevronLeft } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { businessEntries, businessEntryLines } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
+import { isClientVisible } from "@/lib/transactions/client-scope";
 import { BusinessEntryForm } from "@/components/business/BusinessEntryForm";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +26,11 @@ export default async function EditBusinessEntryPage({ params }: { params: Promis
       .where(and(eq(businessEntries.id, id), eq(businessEntries.tenantId, session.tenantId)))
       .limit(1);
     if (!entry) return null;
+    // Same rule as GET /api/business-entries/[id]: an RM opens only their own
+    // bookings, and nobody opens one on a client outside their scope.
+    const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "reports.business", session.permissions);
+    if (!seesAll && entry.rmId !== session.userId) return null;
+    if (entry.rmId !== session.userId && !(await isClientVisible(tx, session, entry.investorId))) return null;
     const lines = await tx
       .select()
       .from(businessEntryLines)

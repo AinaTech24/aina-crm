@@ -9,12 +9,13 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireAny } from "@/lib/auth/rbac";
 import { riskProfileResponses } from "@/db/schema";
 import { presignedGetUrl } from "@/lib/storage/s3";
+import { riskSubjectScopeSql } from "@/lib/risk-profile/access";
 
 export const dynamic = "force-dynamic";
 
@@ -30,10 +31,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     );
 
     const key = await withTenant(session.tenantId, async (tx) => {
+      if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+      // Data scope: only a profile whose client (or lead) the viewer can see.
+      const scope = await riskSubjectScopeSql(tx, session, sql`${riskProfileResponses.investorId}`);
       const [row] = await tx
         .select({ documentUrl: riskProfileResponses.documentUrl })
         .from(riskProfileResponses)
-        .where(eq(riskProfileResponses.id, id))
+        .where(and(eq(riskProfileResponses.id, id), eq(riskProfileResponses.tenantId, session.tenantId), scope))
         .limit(1);
       return row?.documentUrl ?? null;
     });

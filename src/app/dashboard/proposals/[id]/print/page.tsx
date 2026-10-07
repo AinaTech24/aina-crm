@@ -12,8 +12,10 @@ import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { FirmLogo } from "@/components/common/FirmLogo";
 import { withTenant } from "@/db/client";
-import { proposals, tenants, users } from "@/db/schema";
+import { tenants, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap } from "@/lib/auth/rbac";
+import { loadViewableProposal } from "@/lib/proposals/access";
 import { formatDate, formatINR } from "@/lib/utils";
 import { ProposalPrintHelper } from "@/components/proposals/ProposalPrintHelper";
 import { fvLumpAnnual } from "@/lib/proposals/projections";
@@ -49,10 +51,10 @@ export default async function ProposalPrintPage({
 }) {
   const { id } = await params;
   const session = await requireSession();
+  // Same gate and scope as GET /api/proposals/[id] (404 when not visible).
+  requireCap(session.roles, "proposal.view", session.permissions);
   const data = await withTenant(session.tenantId, async (tx) => {
-    const p = (
-      await tx.select().from(proposals).where(eq(proposals.id, id)).limit(1)
-    )[0];
+    const p = await loadViewableProposal(tx, session, id);
     if (!p) return null;
     const tenant = (
       await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1)

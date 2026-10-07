@@ -20,7 +20,8 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
 import { formatDate, formatINR } from "@/lib/utils";
-import { financialPlans, investors, leads, users } from "@/db/schema";
+import { investors, leads, users } from "@/db/schema";
+import { loadViewablePlan } from "@/lib/financial-plans/access";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
 import {
   recommendedLifeCover,
@@ -45,13 +46,10 @@ export default async function FinancialPlanDetailPage({
   const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
 
   const data = await withTenant(session.tenantId, async (tx) => {
-    const p = await tx
-      .select()
-      .from(financialPlans)
-      .where(eq(financialPlans.id, id))
-      .limit(1);
-
-    if (p.length === 0) return null;
+    // Own-plans rule + the client's / lead's scope (404 when not visible).
+    const one = await loadViewablePlan(tx, session, id);
+    if (!one) return null;
+    const p = [one];
     // Non-managers may only view plans they prepared.
     if (!seesAll && p[0].preparedByUserId !== session.userId) return null;
 

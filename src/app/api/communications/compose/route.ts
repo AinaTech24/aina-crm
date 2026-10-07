@@ -20,6 +20,8 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { investors, leads } from "@/db/schema";
 import { composeAndSendEmail, scheduleEmail } from "@/lib/comms/compose";
+import { loadViewableInvestor } from "@/lib/investors/access";
+import { loadViewableLead } from "@/lib/leads/access";
 
 export const dynamic = "force-dynamic";
 
@@ -79,6 +81,10 @@ export async function POST(req: NextRequest) {
         if (!seesAll && inv.rmId !== session.userId) {
           throw Object.assign(new Error("not your client"), { status: 403 });
         }
+        // Oversight viewers compose only within their client scope.
+        if (seesAll && !(await loadViewableInvestor(tx, session, b.investorId))) {
+          throw Object.assign(new Error("investor not found"), { status: 404 });
+        }
         if (!inv.email) throw Object.assign(new Error("investor has no email on file"), { status: 400 });
         recipient = inv.email;
         recipientName = inv.name;
@@ -91,6 +97,10 @@ export async function POST(req: NextRequest) {
         if (!ld) throw Object.assign(new Error("lead not found"), { status: 404 });
         if (!seesAll && ld.ownerId !== session.userId) {
           throw Object.assign(new Error("not your lead"), { status: 403 });
+        }
+        if (seesAll && (can(session.roles, "lead.view.all", session.permissions) || can(session.roles, "lead.view.assigned", session.permissions))
+          && !(await loadViewableLead(tx, session, b.leadId))) {
+          throw Object.assign(new Error("lead not found"), { status: 404 });
         }
         if (!ld.email) throw Object.assign(new Error("lead has no email on file"), { status: 400 });
         recipient = ld.email;

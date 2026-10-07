@@ -17,6 +17,11 @@ import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { aiMessagesClient, isAiConfigured } from "@/lib/ai/provider";
+import { can } from "@/lib/auth/rbac";
+import { investorScopeSql } from "@/lib/investors/access";
+import { leadScopeSql } from "@/lib/leads/access";
+import { taskScopeSql } from "@/lib/tasks/scope";
+import { meetingScopeSql } from "@/lib/review-meetings/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +46,18 @@ export async function POST(req: NextRequest) {
 
     // ── Live metric snapshot (RLS-scoped to this tenant) ───────────────────
     const snapshot = await withTenant(session.tenantId, async (tx) => {
+      // Every figure is over what THIS viewer may see — their client book,
+      // their leads, tasks and meetings — never the whole firm by default.
+      // (The model only ever sees this snapshot, so scoping it scopes the AI.)
+      const cap = (c: Parameters<typeof can>[1]) => can(session.roles, c, session.permissions);
+      const invAllowed = cap("investor.view.all") || cap("investor.view.assigned");
+      const invScope = invAllowed ? await investorScopeSql(tx, session, "investors") : sql`FALSE`;
+      const invScopeI = invAllowed ? await investorScopeSql(tx, session, "i") : sql`FALSE`;
+      const clientScope = invAllowed ? await investorScopeSql(tx, session, "ai_i") : sql`FALSE`;
+      const clientOf = (col: string) => sql`EXISTS (SELECT 1 FROM investors ai_i WHERE ai_i.id = ${sql.raw(col)} AND ${clientScope})`;
+      const leadScope = cap("lead.view.all") || cap("lead.view.assigned") ? leadScopeSql(session, "leads") : sql`FALSE`;
+      const taskScope = cap("task.view.all") || cap("task.view.assigned") ? await taskScopeSql(tx, session, "tasks") : sql`tasks.assignee_id = ${session.userId}::uuid`;
+      const meetingScope = await meetingScopeSql(tx, session, "review_meetings");
       const inv = (
         await tx.execute(sql`
           SELECT
@@ -52,20 +69,20 @@ export async function POST(req: NextRequest) {
             COUNT(*) FILTER (WHERE segment_tag = 'HNI' AND deleted_at IS NULL)::int AS hni_clients,
             COUNT(*) FILTER (WHERE last_transaction_at < now() - make_interval(days => (SELECT dormancy_window_days FROM tenants WHERE id = ${session.tenantId}::uuid)) AND deleted_at IS NULL AND status <> 'closed')::int AS dormant_clients,
             (SELECT dormancy_window_days FROM tenants WHERE id = ${session.tenantId}::uuid)::int AS dormancy_window_days
-          FROM investors WHERE tenant_id = ${session.tenantId}::uuid
+          FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND ${invScope}
         `)
       ).rows[0] as any;
 
       const top = (
         await tx.execute(sql`
           SELECT name, COALESCE(aum,0)::numeric AS aum FROM investors
-          WHERE tenant_id = ${session.tenantId}::uuid AND status <> 'closed' AND merged_into_id IS NULL AND deleted_at IS NULL
+          WHERE tenant_id = ${session.tenantId}::uuid AND status <> 'closed' AND merged_into_id IS NULL AND deleted_at IS NULL AND ${invScope}
           ORDER BY aum DESC NULLS LAST LIMIT 10
         `)
       ).rows as any[];
 
       const leads = (
-        await tx.execute(sql`SELECT COUNT(*)::int AS open_leads FROM leads WHERE tenant_id = ${session.tenantId}::uuid AND stage NOT IN ('converted','lost','not_interested','not_qualified')`)
+        await tx.execute(sql`SELECT COUNT(*)::int AS open_leads FROM leads WHERE tenant_id = ${session.tenantId}::uuid AND ${leadScope} AND stage NOT IN ('converted','lost','not_interested','not_qualified')`)
       ).rows[0] as any;
 
       const tasks = (
@@ -73,24 +90,24 @@ export async function POST(req: NextRequest) {
           SELECT
             COUNT(*) FILTER (WHERE status IN ('open','in_progress','blocked'))::int AS open_tasks,
             COUNT(*) FILTER (WHERE status IN ('open','in_progress','blocked') AND due_at < now())::int AS overdue_tasks
-          FROM tasks WHERE tenant_id = ${session.tenantId}::uuid
+          FROM tasks WHERE tenant_id = ${session.tenantId}::uuid AND deleted_at IS NULL AND ${taskScope}
         `)
       ).rows[0] as any;
 
       const sips = (
-        await tx.execute(sql`SELECT COUNT(*)::int AS active_sips FROM sips WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'`)
+        await tx.execute(sql`SELECT COUNT(*)::int AS active_sips FROM sips WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active' AND ${clientOf("sips.investor_id")}`)
       ).rows[0] as any;
 
       const ins = (
         await tx.execute(sql`
           SELECT COUNT(*) FILTER (WHERE status = 'active')::int AS active_policies,
                  COALESCE(SUM(annual_premium) FILTER (WHERE status = 'active'),0)::numeric AS active_annual_premium
-          FROM insurance_policies WHERE tenant_id = ${session.tenantId}::uuid
+          FROM insurance_policies WHERE tenant_id = ${session.tenantId}::uuid AND ${clientOf("insurance_policies.investor_id")}
         `)
       ).rows[0] as any;
 
       const meetings = (
-        await tx.execute(sql`SELECT COUNT(*)::int AS upcoming_meetings FROM review_meetings WHERE tenant_id = ${session.tenantId}::uuid AND status IN ('scheduled','confirmed') AND meeting_date >= now()`)
+        await tx.execute(sql`SELECT COUNT(*)::int AS upcoming_meetings FROM review_meetings WHERE tenant_id = ${session.tenantId}::uuid AND ${meetingScope} AND status IN ('scheduled','confirmed') AND meeting_date >= now()`)
       ).rows[0] as any;
 
       // AUM by RM (top 8) — answers "who's my biggest RM by book?".
@@ -98,7 +115,7 @@ export async function POST(req: NextRequest) {
         await tx.execute(sql`
           SELECT u.name, COALESCE(SUM(i.aum),0)::numeric AS aum, COUNT(*)::int AS clients
           FROM investors i JOIN users u ON u.id = i.rm_id
-          WHERE i.tenant_id = ${session.tenantId}::uuid AND i.status <> 'closed' AND i.deleted_at IS NULL AND i.merged_into_id IS NULL
+          WHERE i.tenant_id = ${session.tenantId}::uuid AND i.status <> 'closed' AND i.deleted_at IS NULL AND i.merged_into_id IS NULL AND ${invScopeI}
           GROUP BY u.name ORDER BY aum DESC LIMIT 8
         `)
       ).rows as any[];
@@ -107,7 +124,7 @@ export async function POST(req: NextRequest) {
       const kyc = (
         await tx.execute(sql`
           SELECT COALESCE(kyc_status,'unknown') AS status, COUNT(*)::int AS n
-          FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND deleted_at IS NULL AND status <> 'closed'
+          FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND deleted_at IS NULL AND status <> 'closed' AND ${invScope}
           GROUP BY COALESCE(kyc_status,'unknown') ORDER BY n DESC
         `)
       ).rows as any[];
@@ -117,7 +134,7 @@ export async function POST(req: NextRequest) {
           SELECT
             COUNT(*) FILTER (WHERE created_at >= date_trunc('month', now()))::int AS new_clients_this_month,
             COUNT(*) FILTER (WHERE created_at >= now() - interval '30 days')::int AS new_clients_30d
-          FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND deleted_at IS NULL
+          FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND deleted_at IS NULL AND ${invScope}
         `)
       ).rows[0] as any;
 
@@ -150,7 +167,7 @@ export async function POST(req: NextRequest) {
     });
 
     const system = `You are the analytics assistant inside an Indian Mutual Fund Distributor's CRM.
-Answer the user's question using ONLY the JSON metrics below — these are LIVE, real figures for THIS firm.
+Answer the user's question using ONLY the JSON metrics below — these are LIVE, real figures for the part of this firm the user is allowed to see (their own book when access is limited).
 Rules:
 - Use ONLY these numbers. NEVER invent or estimate a figure that isn't present.
 - If the question needs a metric that's not in the snapshot, say you don't track that yet and list 2-3 things you CAN answer.

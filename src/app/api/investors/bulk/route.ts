@@ -28,6 +28,7 @@ import { investors, users } from "@/db/schema";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { purgeInvestorsChunk, PURGE_REQUEST_MAX, PURGE_TX_CHUNK } from "@/lib/investors/purge";
 import { applyBulkField, BulkFieldError } from "@/lib/investors/bulk-update";
+import { investorScopeCondition } from "@/lib/investors/access";
 
 export const dynamic = "force-dynamic";
 
@@ -74,6 +75,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "ids required" }, { status: 400 });
     }
 
+    // Data scope: only clients in the viewer's book (branch / own book) are
+    // touched — edit.all is a capability, not a licence to act outside it.
+    const inScope = async (tx: any, list: string[]): Promise<string[]> => {
+      const dataScope = await investorScopeCondition(tx, session);
+      if (!dataScope || list.length === 0) return list;
+      const rows = await tx
+        .select({ id: investors.id })
+        .from(investors)
+        .where(and(inArray(investors.id, list), dataScope));
+      return rows.map((r: { id: string }) => r.id);
+    };
+
     // ── Permanent erasure ────────────────────────────────────────────────
     // Bounded per request and chunked per transaction, so emptying a Trash of
     // any size is a handful of set-based statements per batch rather than one
@@ -82,14 +95,15 @@ export async function POST(req: NextRequest) {
       const result = await withTenant(session.tenantId, async (tx) => {
         let targets: string[];
         if (bodyScope === "trash") {
+          const dataScope = await investorScopeCondition(tx, session);
           const rows = await tx
             .select({ id: investors.id })
             .from(investors)
-            .where(and(eq(investors.tenantId, session.tenantId), isNotNull(investors.deletedAt)))
+            .where(and(eq(investors.tenantId, session.tenantId), isNotNull(investors.deletedAt), dataScope))
             .limit(PURGE_REQUEST_MAX + 1);
           targets = rows.map((r) => r.id);
         } else {
-          targets = (ids ?? []).slice(0, PURGE_REQUEST_MAX + 1);
+          targets = await inScope(tx, (ids ?? []).slice(0, PURGE_REQUEST_MAX + 1));
         }
 
         // One more than the cap tells us work remains without a second count.
@@ -115,7 +129,9 @@ export async function POST(req: NextRequest) {
       if (!parsed.data.field) return NextResponse.json({ error: "field required" }, { status: 400 });
       try {
         const result = await withTenant(session.tenantId, async (tx) => {
-          const r = await applyBulkField(tx, { tenantId: session.tenantId, ids: ids ?? [], field: parsed.data.field!, value });
+          const visible = await inScope(tx, ids ?? []);
+          if (visible.length === 0) throw new BulkFieldError("None of the selected clients are in your book.");
+          const r = await applyBulkField(tx, { tenantId: session.tenantId, ids: visible, field: parsed.data.field!, value });
           await recordAudit(tx, {
             tenantId: session.tenantId,
             actorUserId: session.userId,
@@ -192,7 +208,7 @@ export async function POST(req: NextRequest) {
     const count = await withTenant(session.tenantId, async (tx) => {
       // Tenant predicate (defense-in-depth) — a destructive bulk op must never
       // touch another firm's clients even if RLS is bypassed (superuser role).
-      const scope = and(eq(investors.tenantId, session.tenantId), inArray(investors.id, ids ?? []));
+      const scope = and(eq(investors.tenantId, session.tenantId), inArray(investors.id, ids ?? []), await investorScopeCondition(tx, session));
       let updated: { id: string }[];
       if (action === "delete") {
         // Soft delete into the Trash bin — preserves all related data.

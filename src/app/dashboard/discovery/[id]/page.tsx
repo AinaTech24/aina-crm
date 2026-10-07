@@ -13,6 +13,7 @@ import { requireAny } from "@/lib/auth/rbac";
 import { financialDiscoveries } from "@/db/schema";
 import { DiscoveryEditor } from "@/components/discovery/DiscoveryEditor";
 import { syncDiscoveryPrefill } from "@/lib/discovery/prefill";
+import { loadViewableDiscovery } from "@/lib/discovery/access";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,8 @@ export default async function DiscoveryDetailPage({ params }: { params: Promise<
   const { id } = await params;
 
   const loaded = await withTenant(session.tenantId, async (tx) => {
-    const d = (await tx.select().from(financialDiscoveries).where(eq(financialDiscoveries.id, id)).limit(1))[0];
+    // Data scope: only a discovery about a lead / client the viewer can see.
+    const d = await loadViewableDiscovery(tx, session, id);
     if (!d) return null;
     // Fill any blanks from the client / lead record and refresh the risk
     // profile on record — a draft opened today shows today's record.

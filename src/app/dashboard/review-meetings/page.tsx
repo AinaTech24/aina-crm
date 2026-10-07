@@ -2,6 +2,7 @@ import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { attendeeIsAnyUser } from "@/lib/review-meetings/attendees";
+import { meetingScopeSql } from "@/lib/review-meetings/scope";
 import { Calendar, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -88,7 +89,10 @@ export default async function ReviewMeetingsPage({
   };
 
   const data = await withTenant(session.tenantId, async (tx) => {
-    const filters: any[] = [sql`m.tenant_id = ${session.tenantId}::uuid`];
+    // Own + attended meetings; with manage.all, also those whose client / lead
+    // the viewer may see (lib/review-meetings/scope.ts) — same rule as the API.
+    const scope = await meetingScopeSql(tx, session, "m");
+    const filters: any[] = [sql`m.tenant_id = ${session.tenantId}::uuid`, scope];
     if (q) {
       filters.push(
         sql`(i.name ILIKE ${`%${q}%`} OR l.name ILIKE ${`%${q}%`} OR u.name ILIKE ${`%${q}%`} OR m.discussion_points ILIKE ${`%${q}%`} OR m.meeting_notes ILIKE ${`%${q}%`})`
@@ -162,8 +166,8 @@ export default async function ReviewMeetingsPage({
           AND meeting_date >= date_trunc('month', now()))::int AS completed_mtd,
         COUNT(*) FILTER (WHERE status IN ('scheduled','confirmed','in_progress')
           AND meeting_date < now())::int AS overdue
-      FROM review_meetings
-      WHERE tenant_id = ${session.tenantId}::uuid
+      FROM review_meetings m
+      WHERE m.tenant_id = ${session.tenantId}::uuid AND ${scope}
     `);
     const s = stats.rows[0] as any;
     // RM roster for the "RM" filter dropdown (so the MFD can see meetings by RM).

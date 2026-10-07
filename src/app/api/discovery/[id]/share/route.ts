@@ -14,6 +14,7 @@ import { requireAny } from "@/lib/auth/rbac";
 import { financialDiscoveries } from "@/db/schema";
 import { createShareToken } from "@/lib/share-tokens";
 import { syncDiscoveryPrefill } from "@/lib/discovery/prefill";
+import { loadViewableDiscovery } from "@/lib/discovery/access";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const { expiresInDays } = Body.parse(await req.json().catch(() => ({})));
 
     const disc = await withTenant(session.tenantId, async (tx) => {
-      const d = (await tx.select().from(financialDiscoveries).where(eq(financialDiscoveries.id, id)).limit(1))[0];
+      // Data scope: only a discovery about a lead / client the viewer can see.
+      const d = await loadViewableDiscovery(tx, session, id);
       // The client's link opens on the same prefilled form the RM sees.
       if (d) await syncDiscoveryPrefill(tx, d as any);
       return d;

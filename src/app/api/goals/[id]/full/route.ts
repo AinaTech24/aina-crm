@@ -13,6 +13,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireAny, can } from "@/lib/auth/rbac";
 import { goals, investors, folios, sips } from "@/db/schema";
+import { loadViewableInvestor } from "@/lib/investors/access";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         if (!inv) return { goal, investor: null, folios: [], sips: [] };
         // Non-managers only see their own clients' goals.
         if (!canViewAll && inv.rmId !== session.userId) return { forbidden: true as const };
+        // Shared client scope (firm switch / customised "assigned only" / branch).
+        if (!(await loadViewableInvestor(tx, session, inv.id))) return null;
 
         const fol = await tx
           .select({ id: folios.id, amcName: folios.amcName, folioNumber: folios.folioNumber, aum: folios.aum })

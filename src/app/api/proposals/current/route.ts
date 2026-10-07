@@ -15,6 +15,7 @@ import { and, desc, eq, ne } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
+import { proposalRecipientScopeSql } from "@/lib/proposals/access";
 import { proposals } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +42,8 @@ export async function GET(req: NextRequest) {
             eq(proposals.tenantId, session.tenantId),
             subject,
             ne(proposals.status, "superseded"),
-            seesAll ? undefined : eq(proposals.preparedByUserId, session.userId)
+            seesAll ? undefined : eq(proposals.preparedByUserId, session.userId),
+            await proposalRecipientScopeSql(tx, session)
           )
         )
         .orderBy(desc(proposals.createdAt))

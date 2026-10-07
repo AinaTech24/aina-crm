@@ -11,6 +11,7 @@ import { and, desc, eq, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { isClientVisible, visibleClientOrOwnSql } from "@/lib/transactions/client-scope";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { clientMetaFromHeaders } from "@/lib/audit";
 import { businessEntries, investors, users } from "@/db/schema";
@@ -45,6 +46,8 @@ export async function GET(req: NextRequest) {
       const conds: any[] = [eq(businessEntries.tenantId, session.tenantId)];
       // RMs see only the entries they booked; managers/ops see the whole firm.
       if (!seesAllEntries(session)) conds.push(eq(businessEntries.rmId, session.userId));
+      // Viewer scope: their own bookings, or entries on clients they may see.
+      conds.push(await visibleClientOrOwnSql(tx, session, businessEntries.investorId, businessEntries.rmId));
       if (q) conds.push(or(ilike(businessEntries.clientName, `%${q}%`), ilike(businessEntries.amcName, `%${q}%`))!);
       if (productType.length) conds.push(inArray(businessEntries.productType, productType as any));
       if (status.length) conds.push(inArray(businessEntries.status, status as any));
@@ -86,7 +89,8 @@ export async function POST(req: NextRequest) {
           .from(investors)
           .where(and(eq(investors.id, b.investorId), eq(investors.tenantId, session.tenantId)))
           .limit(1);
-        if (!inv) return { kind: "no_client" as const };
+        // …and is a client this viewer may see.
+        if (!inv || !(await isClientVisible(tx, session, b.investorId))) return { kind: "no_client" as const };
       }
       // One implementation for the form and for financial tasks
       // (lib/business/create-entry). The form registers SIP lines at once.

@@ -13,6 +13,7 @@ import { requireAny, can } from "@/lib/auth/rbac";
 import { renderRiskProfilePdf } from "@/lib/risk-profile/risk-profile-pdf";
 import { loadActiveTemplate } from "@/lib/risk-profile/template";
 import { loadSignatureImage } from "@/lib/risk-profile/signature-image";
+import { riskSubjectScopeSql } from "@/lib/risk-profile/access";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         LEFT JOIN users u ON u.id = i.rm_id
         WHERE r.id = ${id}::uuid AND r.tenant_id = ${session.tenantId}::uuid
           AND ${ownerScope}
+          AND ${await riskSubjectScopeSql(tx, session, sql.raw("r.investor_id"))}
         LIMIT 1
       `);
       const row = r.rows[0] as any;

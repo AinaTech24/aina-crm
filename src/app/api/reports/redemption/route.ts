@@ -10,6 +10,7 @@ import { requireAny } from "@/lib/auth/rbac";
 import { handleApiError } from "@/lib/api/error-handler";
 import { loadRedemptionReport } from "@/lib/business/redemption-report";
 import { listBranches } from "@/lib/business/rm-matrix";
+import { assertClientReportAccess, reportBranchLock } from "@/lib/reports/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -28,10 +29,14 @@ export async function GET(req: NextRequest) {
     requireAny(session.roles, ["reports.business", "reports.manage"], session.permissions);
     const raw = req.nextUrl.searchParams.get("period") ?? "";
     const period = PERIOD_RE.test(raw) ? raw : defaultPeriod();
-    const branch = req.nextUrl.searchParams.get("branch") || null;
+    // A branch-locked head always gets their own branch (lib/reports/scope.ts).
+    const lock = reportBranchLock(session);
+    const branch = lock ?? (req.nextUrl.searchParams.get("branch") || null);
 
     const data = await withTenant(session.tenantId, async (tx) => {
-      const branchList = await listBranches(tx);
+      // Lists clients by name — refused to a viewer limited to their own book.
+      await assertClientReportAccess(tx, session);
+      const branchList = (await listBranches(tx)).filter((b) => !lock || b.id === lock);
       const report = await loadRedemptionReport(tx, period, branch);
       return { branches: branchList, ...report };
     });

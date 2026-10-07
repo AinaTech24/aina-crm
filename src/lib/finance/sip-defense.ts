@@ -14,7 +14,7 @@
  * the trail that's exposed, so the owner can prioritise the biggest savings.
  */
 
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { sipAnnualAmount, FALLBACK_TRAIL } from "@/lib/finance/trail-rates";
 
@@ -62,13 +62,15 @@ const HIGH_REASONS: SipRiskReason[] = ["dead_mandate", "repeated_failures"];
 export async function findAtRiskSips(
   tx: Tx,
   tenantId: string,
-  opts: { rmId?: string | null } = {}
+  /** clientScope: a predicate over the investors alias `i` (the viewer's client scope). */
+  opts: { rmId?: string | null; clientScope?: SQL } = {}
 ): Promise<SipDefenceSummary> {
   // When rmId is set (a non-manager), restrict to that RM's book — the SIPs they
   // own OR for a client they manage.
   const scope = opts.rmId
     ? sql` AND (s.rm_id = ${opts.rmId}::uuid OR i.rm_id = ${opts.rmId}::uuid)`
     : sql``;
+  const clientScope = opts.clientScope ? sql` AND ${opts.clientScope}` : sql``;
   const res = await tx.execute(sql`
     SELECT s.id,
            s.amount::numeric AS amount,
@@ -88,7 +90,7 @@ export async function findAtRiskSips(
     FROM sips s
     JOIN investors i ON i.id = s.investor_id
     LEFT JOIN mandates m ON m.id = s.mandate_id
-    WHERE s.tenant_id = ${tenantId} AND s.status = 'active' AND i.deleted_at IS NULL${scope}
+    WHERE s.tenant_id = ${tenantId} AND s.status = 'active' AND i.deleted_at IS NULL${scope}${clientScope}
   `);
 
   const rmRes = await tx.execute(sql`SELECT id, name FROM users WHERE tenant_id = ${tenantId}`);

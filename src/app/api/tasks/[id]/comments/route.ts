@@ -18,6 +18,7 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { createNotification } from "@/lib/notifications/create";
 import { tasks, taskComments, users } from "@/db/schema";
 import { notifyWatchers } from "@/lib/tasks/watchers";
+import { taskInScope } from "@/lib/tasks/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         .limit(1);
       if (!task) return null;
       if (!canViewAll && !ownsTask(task, session.userId)) return null;
+      if (!(await taskInScope(tx, session, id))) return null;
       return tx
         .select({ c: taskComments, authorName: users.name, authorAvatarUrl: users.avatarUrl })
         .from(taskComments)
@@ -81,6 +83,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         .limit(1);
       if (!task) return "not_found" as const;
       if (!canViewAll && !ownsTask(task, session.userId)) return "not_found" as const;
+      if (!(await taskInScope(tx, session, id))) return "not_found" as const;
 
       // Keep only mention ids that are real users in this tenant.
       let mentions: string[] = [];

@@ -18,6 +18,7 @@ import { requireSession } from "@/lib/auth/session";
 import { can, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { tasks, taskTimeLogs, users } from "@/db/schema";
+import { taskInScope } from "@/lib/tasks/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +47,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         .limit(1);
       if (!t) return null;
       if (!canViewAll && !ownsTask(t, session.userId)) return null;
+      if (!(await taskInScope(tx, session, id))) return null;
       const logs = await tx
         .select({ l: taskTimeLogs, userName: users.name })
         .from(taskTimeLogs)
@@ -92,6 +94,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         .limit(1);
       if (!t) return "not_found" as const;
       if (!canEditAll && !ownsTask(t, session.userId)) return "forbidden" as const;
+      if (!(await taskInScope(tx, session, id))) return "not_found" as const;
 
       if (action === "start") {
         if (t.startedAt) return { running: t.startedAt } as const; // already running — no-op

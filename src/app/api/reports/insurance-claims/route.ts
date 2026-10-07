@@ -10,6 +10,7 @@ import { requireAny } from "@/lib/auth/rbac";
 import { handleApiError } from "@/lib/api/error-handler";
 import { loadClaimsSummary } from "@/lib/insurance/claims-summary";
 import { listBranches } from "@/lib/business/rm-matrix";
+import { reportBranchLock } from "@/lib/reports/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -28,10 +29,12 @@ export async function GET(req: NextRequest) {
     requireAny(session.roles, ["reports.business", "reports.manage"], session.permissions);
     const raw = req.nextUrl.searchParams.get("period") ?? "";
     const period = PERIOD_RE.test(raw) ? raw : defaultPeriod();
-    const branch = req.nextUrl.searchParams.get("branch") || null;
+    // A branch-locked head always gets their own branch (lib/reports/scope.ts).
+    const lock = reportBranchLock(session);
+    const branch = lock ?? (req.nextUrl.searchParams.get("branch") || null);
 
     const data = await withTenant(session.tenantId, async (tx) => {
-      const branches = await listBranches(tx);
+      const branches = (await listBranches(tx)).filter((b) => !lock || b.id === lock);
       const summary = await loadClaimsSummary(tx, period, branch);
       return { branches, ...summary };
     });

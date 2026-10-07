@@ -14,8 +14,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
-import { goals, investors, tenants } from "@/db/schema";
+import { tenants } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { loadViewableGoal } from "@/lib/goal-planning/access";
 import { FirmLogo } from "@/components/common/FirmLogo";
 import {
   computeGoal,
@@ -49,9 +50,10 @@ export default async function GoalPrintPage({
   const session = await requireSession();
 
   const data = await withTenant(session.tenantId, async (tx) => {
-    const g = (await tx.select().from(goals).where(eq(goals.id, id)).limit(1))[0];
-    if (!g) return null;
-    const inv = (await tx.select().from(investors).where(eq(investors.id, g.investorId)).limit(1))[0];
+    // A goal is visible only when its client is in the viewer's book.
+    const viewable = await loadViewableGoal(tx, session, id);
+    if (!viewable) return null;
+    const { goal: g, investor: inv } = viewable;
     const t = (await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1))[0];
     return { goal: g, investor: inv, tenant: t };
   });

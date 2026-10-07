@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import {
   ChevronLeft,
   FileText,
@@ -15,9 +15,10 @@ import {
   User,
 } from "lucide-react";
 import { withTenant } from "@/db/client";
-import { insuranceClaims, insurancePolicies, investors, users } from "@/db/schema";
+import { insurancePolicies, investors, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
+import { loadViewableClaim } from "@/lib/insurance/register-access";
 import { formatDate, formatINR } from "@/lib/utils";
 import { claimTatDays, claimAgeDays, OPEN_CLAIM_STATUSES } from "@/lib/insurance/claim-status";
 import { ClaimDocuments } from "@/components/insurance/ClaimDocuments";
@@ -54,13 +55,8 @@ export default async function ClaimDetailPage({ params }: { params: Promise<{ id
   requireCap(session.roles, "insurance.view", session.permissions);
 
   const data = await withTenant(session.tenantId, async (tx) => {
-    const c = (
-      await tx
-        .select()
-        .from(insuranceClaims)
-        .where(and(eq(insuranceClaims.id, id), eq(insuranceClaims.tenantId, session.tenantId)))
-        .limit(1)
-    )[0];
+    // Only a claim whose client is in the viewer's scope (404 otherwise).
+    const c = await loadViewableClaim(tx, session, id);
     if (!c) return null;
     const inv = c.investorId
       ? (await tx.select({ id: investors.id, name: investors.name }).from(investors).where(eq(investors.id, c.investorId)).limit(1))[0]

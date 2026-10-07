@@ -1,4 +1,4 @@
-import { assertInvestorAccess } from "@/lib/investors/access";
+import { assertInvestorAccess, investorScopeCondition } from "@/lib/investors/access";
 import { handleApiError } from "@/lib/api/error-handler";
 /**
  * Single investor endpoints.
@@ -298,7 +298,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
 
     const result = await withIdempotentMutation(session, req, parse.data, async (tx) => {
-      const before = (await tx.select().from(investors).where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId))).limit(1))[0];
+      // Data scope: a client outside the viewer's book reads as not found.
+      const scope = await investorScopeCondition(tx, session);
+      const before = (await tx.select().from(investors).where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId), scope)).limit(1))[0];
       if (!before) return null;
 
       // Row scope. PATCH used to require investor.edit.all, a firm-wide
@@ -561,10 +563,12 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const purge = req.nextUrl.searchParams.get("purge") === "1";
 
     const outcome = await withTenant(session.tenantId, async (tx) => {
+      // Data scope (also covers a trashed client being purged).
+      const scope = await investorScopeCondition(tx, session);
       const [inv] = await tx
         .select({ name: investors.name, pan: investors.pan })
         .from(investors)
-        .where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId)))
+        .where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId), scope))
         .limit(1);
       if (!inv) return "not_found" as const;
 

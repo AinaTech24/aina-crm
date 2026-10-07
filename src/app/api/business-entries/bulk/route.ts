@@ -18,6 +18,7 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { visibleClientOrOwnSql } from "@/lib/transactions/client-scope";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { businessEntries, eventsOutbox, users } from "@/db/schema";
@@ -53,6 +54,8 @@ export async function POST(req: NextRequest) {
       // Scope: RMs may only act on the entries they booked.
       const conds: any[] = [eq(businessEntries.tenantId, session.tenantId), inArray(businessEntries.id, ids)];
       if (!seesAllEntries(session)) conds.push(eq(businessEntries.rmId, session.userId));
+      // Viewer scope: their own bookings, or entries on clients they may see.
+      conds.push(await visibleClientOrOwnSql(tx, session, businessEntries.investorId, businessEntries.rmId));
       const where = and(...conds);
 
       const patch: Record<string, any> = { updatedAt: new Date() };

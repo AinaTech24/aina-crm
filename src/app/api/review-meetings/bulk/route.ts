@@ -23,6 +23,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { reviewMeetings, users } from "@/db/schema";
 import { REVIEW_MEETING_STATUSES } from "@/db/schema/review_meetings";
+import { meetingScopeSql } from "@/lib/review-meetings/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -71,6 +72,8 @@ export async function POST(req: NextRequest) {
       const conds: any[] = [eq(reviewMeetings.tenantId, session.tenantId), inArray(reviewMeetings.id, ids)];
       // Assigned-only managers can only touch meetings they own.
       if (!canAll) conds.push(eq(reviewMeetings.rmId, session.userId));
+      // manage.all reaches only meetings whose client / lead is in scope.
+      else conds.push(await meetingScopeSql(tx, session, "review_meetings"));
 
       const upd = await tx
         .update(reviewMeetings)

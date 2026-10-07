@@ -6,6 +6,8 @@ import { requireSession } from "@/lib/auth/session";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { ignoredDuplicates, investors, families } from "@/db/schema";
 import { handleApiError } from "@/lib/api/error-handler";
+import { investorScopeCondition } from "@/lib/investors/access";
+import { familyScopeSql } from "@/lib/families/access";
 
 export const dynamic = "force-dynamic";
 
@@ -34,10 +36,11 @@ export async function POST(req: NextRequest) {
     await withTenant(session.tenantId, async (tx) => {
       // Validate every id is a real entity in THIS tenant before recording
       // ignore pairs — avoids junk rows for foreign / bogus ids.
+      // Data scope: every record must be in the viewer's book.
       const found =
         entityType === "client"
-          ? await tx.select({ id: investors.id }).from(investors).where(and(eq(investors.tenantId, session.tenantId), inArray(investors.id, ids)))
-          : await tx.select({ id: families.id }).from(families).where(and(eq(families.tenantId, session.tenantId), inArray(families.id, ids)));
+          ? await tx.select({ id: investors.id }).from(investors).where(and(eq(investors.tenantId, session.tenantId), inArray(investors.id, ids), await investorScopeCondition(tx, session)))
+          : await tx.select({ id: families.id }).from(families).where(and(eq(families.tenantId, session.tenantId), inArray(families.id, ids), await familyScopeSql(tx, session, "families")));
       if (found.length !== ids.length) {
         throw Object.assign(new Error("one or more records not found in this firm"), { status: 400 });
       }

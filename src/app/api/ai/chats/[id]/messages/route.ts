@@ -97,7 +97,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         } as any);
       }
 
-      const snapshot = await firmSnapshot(tx, session.tenantId);
+      // Scoped to what this user may see (lib/ai/scope.ts).
+      const snapshot = await firmSnapshot(tx, session.tenantId, session);
       const fr = await tx.execute(sql`SELECT display_name FROM tenants WHERE id = ${session.tenantId}::uuid LIMIT 1`);
       const firmName = ((fr.rows[0] as any)?.display_name as string) || "your firm";
 
@@ -118,7 +119,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if ((prep as any)?.badRequest) return NextResponse.json({ error: "empty message" }, { status: 400 });
     const { chat, prompt, snapshot, history, firmName } = prep as Extract<typeof prep, { snapshot: FirmSnapshot }>;
 
-    const ctx = { tenantId: session.tenantId, userId: session.userId, branchId: session.branchId ?? null, roles: session.roles };
+    // permissions + mobile let every assistant tool apply the viewer's access.
+    const ctx = { tenantId: session.tenantId, userId: session.userId, branchId: session.branchId ?? null, roles: session.roles, permissions: session.permissions ?? null, mobile: !!session.mobile };
     const userName = (session.name ?? "there").split(" ")[0];
 
     // ── Phase 2 (NO open tx): answer the message. The LOCAL engine handles the

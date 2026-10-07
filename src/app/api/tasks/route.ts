@@ -14,6 +14,7 @@ import { assertMobileAssignee, assertMobileSubjects } from "@/lib/mobile/record-
 import { withIdempotentMutation } from "@/lib/api/idempotent-mutation";
 import { tasks, users, investors, leads } from "@/db/schema";
 import { bookBusinessFromTask } from "@/lib/tasks/book-business";
+import { taskClientVisibleSql, taskLeadVisibleSql, taskScopeSql } from "@/lib/tasks/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -158,6 +159,9 @@ export async function GET(req: NextRequest) {
         const conds: any[] = [eq(tasks.tenantId, session.tenantId), isNull(tasks.deletedAt)];
         if (session.mobile) conds.push(mobileTaskScope(session));
         if (!canViewAll) conds.push(or(eq(tasks.assigneeId, session.userId), eq(tasks.createdById, session.userId))!);
+        // view.all reaches other people's tasks only when their client / lead
+        // is in the viewer's scope (lib/tasks/scope.ts).
+        else conds.push(await taskScopeSql(tx, session, "tasks"));
         if (view === "to_me") conds.push(eq(tasks.assigneeId, session.userId));
         else if (view === "by_me") conds.push(eq(tasks.createdById, session.userId));
         // Kanban shows every status; the list defaults to open when no status
@@ -194,9 +198,19 @@ export async function GET(req: NextRequest) {
             : sortKey === "due_desc" ? sql`${tasks.dueAt} desc nulls last, ${tasks.createdAt} desc`
             : sql`${tasks.dueAt} asc nulls last, ${tasks.createdAt} desc`;
 
+        // A task of mine about a client / lead outside my scope keeps its own
+        // title but does not name the client.
+        const clientVisible = await taskClientVisibleSql(tx, session, "tasks");
+        const leadVisible = taskLeadVisibleSql(session, "tasks");
         const totalRow = await tx.select({ c: sql<number>`count(*)::int` }).from(tasks).leftJoin(users, eq(users.id, tasks.assigneeId)).where(where as any);
         const rows = await tx
-          .select({ task: tasks, assignee: users.name, investorName: investors.name, investorAvatarUrl: investors.avatarUrl, leadName: leads.name, leadAvatarUrl: leads.avatarUrl })
+          .select({
+            task: tasks, assignee: users.name,
+            investorName: sql<string | null>`CASE WHEN ${clientVisible} THEN ${investors.name} END`,
+            investorAvatarUrl: sql<string | null>`CASE WHEN ${clientVisible} THEN ${investors.avatarUrl} END`,
+            leadName: sql<string | null>`CASE WHEN ${leadVisible} THEN ${leads.name} END`,
+            leadAvatarUrl: sql<string | null>`CASE WHEN ${leadVisible} THEN ${leads.avatarUrl} END`,
+          })
           .from(tasks)
           .leftJoin(users, eq(users.id, tasks.assigneeId))
           .leftJoin(investors, eq(investors.id, tasks.relatedInvestorId))

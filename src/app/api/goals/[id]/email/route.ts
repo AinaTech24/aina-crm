@@ -16,6 +16,7 @@ import { emailAdapter } from "@/lib/comms/adapters/resend";
 import { resolveEmailSender } from "@/lib/comms/sender";
 import { emailLogoHeaderHtml } from "@/lib/comms/email-logo";
 import { renderGoalPdf } from "@/lib/goal-planning/goal-pdf";
+import { loadViewableInvestor } from "@/lib/investors/access";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -39,6 +40,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const [inv] = await tx.select().from(investors).where(eq(investors.id, goal.investorId)).limit(1);
       // Ownership: an RM may only email their own clients' plans.
       if (!canViewAll && inv && inv.rmId !== session.userId) return { error: "forbidden" as const };
+      // Shared client scope (firm switch / customised "assigned only" / branch).
+      if (!inv || !(await loadViewableInvestor(tx, session, inv.id))) return { error: "not_found" as const };
       // Compliance: this path doesn't go through dispatch(), so enforce the same
       // opt-out rule the pipeline does — never email a client who has REVOKED
       // transactional email consent.

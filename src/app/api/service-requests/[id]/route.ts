@@ -17,6 +17,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { sql } from "drizzle-orm";
 import { serviceRequests, eventsOutbox } from "@/db/schema";
+import { canSeeServiceRequest } from "@/lib/service-requests/access";
 
 export const dynamic = "force-dynamic";
 
@@ -47,9 +48,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
-    const row = await withTenant(session.tenantId, async (tx) =>
-      (await tx.select().from(serviceRequests).where(and(eq(serviceRequests.id, id), eq(serviceRequests.tenantId, session.tenantId))).limit(1))[0] ?? null
-    );
+    const row = await withTenant(session.tenantId, async (tx) => {
+      if (!(await canSeeServiceRequest(tx, session, id))) return null;
+      return (await tx.select().from(serviceRequests).where(and(eq(serviceRequests.id, id), eq(serviceRequests.tenantId, session.tenantId))).limit(1))[0] ?? null;
+    });
     if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json(row);
   } catch (err: any) {
@@ -69,6 +71,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const d = parse.data;
 
     const result = await withTenant(session.tenantId, async (tx) => {
+      if (!(await canSeeServiceRequest(tx, session, id))) return null;
       const before = (await tx.select().from(serviceRequests).where(and(eq(serviceRequests.id, id), eq(serviceRequests.tenantId, session.tenantId))).limit(1))[0];
       if (!before) return null;
 
@@ -164,7 +167,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     requireCap(session.roles, "service_request.manage", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const clientMeta = clientMetaFromHeaders(req.headers);
-    await withTenant(session.tenantId, async (tx) => {
+    const found = await withTenant(session.tenantId, async (tx) => {
+      if (!(await canSeeServiceRequest(tx, session, id))) return false;
       await tx
         .update(serviceRequests)
         .set({ status: "closed", updatedAt: new Date() } as any)
@@ -177,7 +181,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         entityId: id,
         ...clientMeta,
       });
+      return true;
     });
+    if (!found) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return handleApiError(err);
