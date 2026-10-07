@@ -9,6 +9,10 @@
  * step needs, and the actions — move on, record a needs analysis, mark lost.
  * Closed ones fold into one line each underneath.
  *
+ * "Client wants it later" parks one until a date or until money comes in
+ * (LaterControls, lib/opportunities/later.ts); a parked card shows when it
+ * comes back in place of the follow-up row.
+ *
  * `?opportunity=new&product=…` on the page URL opens the "New opportunity"
  * dialog pre-filled — the new-lead form and the Cross-sell card link here.
  *
@@ -22,7 +26,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle, CalendarClock, Check, CheckCircle2, ChevronDown, ChevronRight, Circle, CircleDashed, ExternalLink,
-  Loader2, Plus, RefreshCw, Sparkles, Target, XCircle,
+  Hourglass, Loader2, Plus, RefreshCw, Sparkles, Target, XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -36,6 +40,7 @@ import { formatDate, formatMoney } from "@/lib/format";
 import { OPPORTUNITY_PRODUCTS, productPipeline } from "@/lib/opportunities/products";
 import type { OpportunityView, Prerequisite } from "@/lib/opportunities/journey";
 import { cn } from "@/lib/utils";
+import { LaterBanner, LaterDialog, LaterFields, laterError, laterPayload, newLaterDraft, type LaterDraft } from "./LaterControls";
 
 export type Staff = { id: string; name: string; insurance: boolean };
 
@@ -205,6 +210,7 @@ export function OpportunityCard({ o, canWork, staff, onChange, onReload, detailH
   const [blocked, setBlocked] = useState<Prerequisite[] | null>(null);
   const [losing, setLosing] = useState(false);
   const [needsOpen, setNeedsOpen] = useState(false);
+  const [laterOpen, setLaterOpen] = useState(false);
 
   const gate = blocked ?? o.gate;
   const gateOpen = gate.some((p) => !p.satisfied);
@@ -283,11 +289,13 @@ export function OpportunityCard({ o, canWork, staff, onChange, onReload, detailH
 
       <StageRail stages={o.stages} />
 
-      {o.status === "open" && <FollowUpRow o={o} canWork={canWork} onChange={onChange} />}
+      {o.status === "open" && (o.later
+        ? <LaterBanner o={o} canWork={canWork} onChange={onChange} onNewDate={() => setLaterOpen(true)} onLose={() => setLosing(true)} />
+        : <FollowUpRow o={o} canWork={canWork} onChange={onChange} />)}
 
       {o.notes && <p className="mt-3 text-xs text-muted-foreground">{o.notes}</p>}
 
-      {gate.length > 0 && o.next && (
+      {gate.length > 0 && o.next && !o.later && (
         <div className={cn("mt-3 rounded-lg px-3 py-2.5", gateOpen ? "bg-warning/10" : "bg-success/10")}>
           <div className="mb-1 text-xs font-semibold text-foreground">
             {gateOpen ? `Before "${o.next.name}"` : `Ready for "${o.next.name}"`}
@@ -311,7 +319,7 @@ export function OpportunityCard({ o, canWork, staff, onChange, onReload, detailH
         </div>
       )}
 
-      {canWork && (
+      {canWork && !o.later && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {o.next && (
             <Button variant="primary" size="sm" loading={busy === "advance"} disabled={gateOpen || busy != null}
@@ -335,13 +343,18 @@ export function OpportunityCard({ o, canWork, staff, onChange, onReload, detailH
               Check again
             </Button>
           )}
-          <Button variant="ghost" size="sm" className="ml-auto text-muted-foreground" onClick={() => setLosing(true)}>
+          <Button variant="ghost" size="sm" className="ml-auto text-muted-foreground" icon={<Hourglass className="size-3.5" />}
+            onClick={() => setLaterOpen(true)}>
+            Client wants it later
+          </Button>
+          <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setLosing(true)}>
             Mark lost
           </Button>
         </div>
       )}
 
       {losing && <LostDialog o={o} onClose={() => setLosing(false)} onDone={(v) => { setLosing(false); onChange(v); void onReload(); }} />}
+      {laterOpen && <LaterDialog o={o} onClose={() => setLaterOpen(false)} onDone={(v) => { setLaterOpen(false); onChange(v); }} />}
       {needsOpen && <NeedsAnalysisDialog o={o} onClose={() => setNeedsOpen(false)} onDone={(v) => { setNeedsOpen(false); onChange(v); }} />}
     </article>
   );
@@ -458,6 +471,9 @@ export function NewOpportunityDialog({ investorId: fixedInvestorId, investorName
   const [mode, setMode] = useState<"" | "sip" | "lumpsum">("");
   const [coOwnerId, setCoOwnerId] = useState("");
   const [followUpOn, setFollowUpOn] = useState(istDay(2));
+  // "Later": the client wants it, but not yet — started parked.
+  const [when, setWhen] = useState<"now" | "later">("now");
+  const [later, setLater] = useState<LaterDraft>(() => newLaterDraft());
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -479,7 +495,9 @@ export function NewOpportunityDialog({ investorId: fixedInvestorId, investorName
   async function save() {
     if (!client) return setErr("Pick the client.");
     if (!product) return setErr("Pick a product.");
-    if (followUpOn && followUpOn < istDay()) return setErr("The follow-up date can't be in the past.");
+    if (when === "now" && followUpOn && followUpOn < istDay()) return setErr("The follow-up date can't be in the past.");
+    const laterErr = when === "later" ? laterError(later) : null;
+    if (laterErr) return setErr(laterErr);
     setBusy(true);
     setErr(null);
     try {
@@ -493,14 +511,17 @@ export function NewOpportunityDialog({ investorId: fixedInvestorId, investorName
           coOwnerId: coOwnerId || null,
           notes: notes.trim() || null,
           source: initialProduct ? "cross_sell" : "manual",
-          followUpOn: followUpOn || null,
+          followUpOn: when === "now" ? followUpOn || null : null,
+          later: when === "later" ? laterPayload(later) : null,
         }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) return setErr(j.error ?? "Could not start it");
-      notify.success(j.created
-        ? `Opportunity started — follow-up on ${formatDate(followUpOn || istDay(2))} is on the owner's list`
-        : "Already open — showing that one");
+      notify.success(!j.created
+        ? "Already open — showing that one"
+        : when === "later"
+          ? `Saved for later — back on ${formatDate(later.day)}, with a reminder before it`
+          : `Opportunity started — follow-up on ${formatDate(followUpOn || istDay(2))} is on the owner's list`);
       onCreated(j.opportunity);
     } finally {
       setBusy(false);
@@ -569,11 +590,22 @@ export function NewOpportunityDialog({ investorId: fixedInvestorId, investorName
               </Field>
             )}
           </div>
-          <Field label="Follow-up date" hint="The owner gets a follow-up task due that day.">
-            {(id, d) => (
-            <DateField id={id} aria-describedby={d} value={followUpOn} onChange={(e) => setFollowUpOn(e.target.value)} min={istDay()} />
-            )}
-          </Field>
+          <div className="space-y-2">
+            <div className="text-sm font-medium text-foreground">When does the client want to go ahead?</div>
+            <nav className="dash-seg" aria-label="When">
+              <button type="button" aria-pressed={when === "now"} onClick={() => setWhen("now")}>Now</button>
+              <button type="button" aria-pressed={when === "later"} onClick={() => setWhen("later")}>Later</button>
+            </nav>
+          </div>
+          {when === "now" ? (
+            <Field label="Follow-up date" hint="The owner gets a follow-up task due that day.">
+              {(id, d) => (
+              <DateField id={id} aria-describedby={d} value={followUpOn} onChange={(e) => setFollowUpOn(e.target.value)} min={istDay()} />
+              )}
+            </Field>
+          ) : (
+            <LaterFields draft={later} onChange={setLater} pipeline={pipeline} />
+          )}
           <Field label="What did the client say?" optional>
             {(id, d) => (
             <textarea id={id} aria-describedby={d} className="input-base" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)}
@@ -584,7 +616,7 @@ export function NewOpportunityDialog({ investorId: fixedInvestorId, investorName
         </div>
         <DialogFooter>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" loading={busy} onClick={save}>Start opportunity</Button>
+          <Button variant="primary" loading={busy} onClick={save}>{when === "later" ? "Save for later" : "Start opportunity"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -11,7 +11,7 @@
 
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { AlarmClock, CalendarClock, CalendarX2, Crosshair, LayoutGrid, List, Trophy } from "lucide-react";
+import { AlarmClock, CalendarClock, CalendarX2, Crosshair, Hourglass, LayoutGrid, List, Trophy } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireInvestorView } from "@/lib/investors/access";
@@ -87,15 +87,15 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
         />
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            {/* Full width while the tiles sit two to a row, so five never leave one alone. */}
-            <div className="sm:col-span-2 xl:col-span-1">
-              <Kpi icon={Crosshair} label="Open" value={formatCount(kpis.open)}
-                sub={kpis.openValue > 0 ? `${formatMoney(kpis.openValue)} expected` : undefined} href={tile({})} />
-            </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+            <Kpi icon={Crosshair} label="Open" value={formatCount(kpis.open)}
+              sub={kpis.openValue > 0 ? `${formatMoney(kpis.openValue)} expected` : undefined} href={tile({})} />
             <Kpi icon={AlarmClock} accent="amber" label="Follow-ups overdue" value={formatCount(kpis.overdue)} href={tile({ fu: "overdue" })} />
             <Kpi icon={CalendarClock} accent="violet" label="Follow up today" value={formatCount(kpis.dueToday)} href={tile({ fu: "today" })} />
             <Kpi icon={CalendarX2} accent="amber" label="No follow-up set" value={formatCount(kpis.noFollowUp)} href={tile({ fu: "none" })} />
+            <Kpi icon={Hourglass} accent="violet" label="Later" value={formatCount(kpis.later)}
+              sub={[kpis.laterNext30 ? `${formatCount(kpis.laterNext30)} back within 30 days` : null, kpis.laterValue > 0 ? formatMoney(kpis.laterValue) : null].filter(Boolean).join(" · ") || undefined}
+              href={tile({ stage: "later" })} />
             <Kpi icon={Trophy} accent="emerald" label="Won this month" value={formatCount(kpis.wonThisMonth)}
               sub={kpis.wonValueThisMonth > 0 ? formatMoney(kpis.wonValueThisMonth) : undefined} href={tile({ status: "won" })} />
           </div>

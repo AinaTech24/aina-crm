@@ -287,6 +287,20 @@ the client page's Overview tab.
   days), and `setFollowUp` (PATCH `followUpOn`) moves the open one or creates
   one. Completing the task clears it; an open opportunity with none reads
   "No follow-up set".
+- **"Later" — the client wants it, but not yet** (2026-10-07, migration 0231,
+  `lib/opportunities/later.ts` + `later-core.ts`). "After Diwali", "in three
+  months", "when my FD matures": the opportunity is PARKED — still open (one
+  open row per product holds; Cross-sell still says Interested) with
+  `parked_at`, `revisit_on`, `parked_reason`, `park_count`. Its open tasks end
+  and ONE reminder task (meta `revisit: true`) falls due 7 days before the
+  revisit date for MF / other, 15 for insurance. Waiting for MONEY records an
+  expected inflow (`expected_inflow_id`) whose own reminder task is that
+  reminder — never two. A reminder 3 days overdue notifies the client's branch
+  head once (task reminder scanner, `escalateOverdueRevisits`). Resume, moving
+  the journey on, or a proposal being shared brings it back; the Opportunities
+  board has a "Later" column and tile. Started from the card ("Client wants it
+  later") or the New opportunity dialog (Now / Later). Diwali dates are a
+  table in later-core — add the next year as the calendar rolls on.
 
 ## Meetings — attendees and action items
 

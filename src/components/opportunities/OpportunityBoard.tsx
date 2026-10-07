@@ -11,7 +11,7 @@
  */
 
 import Link from "next/link";
-import { CalendarClock, Clock } from "lucide-react";
+import { CalendarClock, Clock, Hourglass } from "lucide-react";
 import { formatDate, formatMoney } from "@/lib/format";
 import type { BoardRow } from "@/lib/opportunities/board";
 import { cn } from "@/lib/utils";
@@ -75,6 +75,12 @@ export function OpportunityBoard({ columns, rows }: {
                           )}
                         </div>
                         {col.key === "processing" && <div className="mt-1 text-xs text-muted-foreground">{r.stageName}</div>}
+                        {r.later && (
+                          <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                            <Hourglass className="size-3 shrink-0" aria-hidden />
+                            <span className="truncate">Back {formatDate(r.later.revisitOn)}{r.later.reason ? ` · ${r.later.reason}` : ""}</span>
+                          </div>
+                        )}
                         <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs">
                           {fu && (
                             <span className={cn(

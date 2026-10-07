@@ -20,6 +20,7 @@ const COLUMNS: Column<BoardRow>[] = [
     key: "stage", header: "Step",
     cell: (r) => r.status === "won" ? <Badge tone="success" raw>Won</Badge>
       : r.status === "lost" ? <Badge tone="neutral" raw>Lost</Badge>
+      : r.later ? <span title={r.later.reason ?? undefined}>Later · back {formatDate(r.later.revisitOn)}</span>
       : <span className={cn(r.delayed && "font-medium text-warning-foreground")}>{r.stageName}</span>,
   },
   {

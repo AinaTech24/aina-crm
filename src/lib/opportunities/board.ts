@@ -10,7 +10,8 @@
  * The board's columns group the journey's stages: the five people steps each
  * get a column, the product branch (KYC → UCC → mandate → transaction, the
  * insurer's proposal form → underwriting → issue, "executed") is one
- * "Processing" column, then Won and Lost.
+ * "Processing" column, then "Later" — open ones the client has put off
+ * (lib/opportunities/later.ts), whatever step they stood at — then Won and Lost.
  */
 
 import { sql, type SQL } from "drizzle-orm";
@@ -30,6 +31,8 @@ export const BOARD_COLUMNS = [
     key: "processing", label: "Processing",
     stages: ["mf_kyc", "mf_ucc", "mf_mandate", "mf_transaction", "ins_proposal_form", "ins_underwriting", "ins_issued", "gen_executed"],
   },
+  // Not a journey step: an open opportunity the client asked to revisit later.
+  { key: "later", label: "Later", stages: [] },
   { key: "won", label: "Won", stages: ["won"] },
   { key: "lost", label: "Lost", stages: ["lost"] },
 ] as const;
@@ -61,6 +64,8 @@ export type BoardRow = {
   createdAt: string;
   closedAt: string | null;
   lostReason: string | null;
+  /** Parked: when the client said they would go ahead, and their words. */
+  later: { revisitOn: string; reason: string | null } | null;
 };
 
 export type BoardFilters = {
@@ -85,6 +90,10 @@ export type BoardKpis = {
   noFollowUp: number;
   wonThisMonth: number;
   wonValueThisMonth: number;
+  /** Parked ("Later"), and how many of them are due back in the next 30 days. */
+  later: number;
+  laterValue: number;
+  laterNext30: number;
 };
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -107,7 +116,8 @@ async function baseQuery(tx: any, session: SessionUser, where: SQL[], limit: num
            o.expected_value, o.investment_mode, o.owner_id, u.name AS owner_name,
            COALESCE(bi.current_stage_key, 'identified') AS stage_key, bi.stage_entered_at,
            COALESCE(bi.is_delayed, false) AS delayed, fu.due AS follow_up_at,
-           o.created_at, COALESCE(o.won_at, o.lost_at) AS closed_at, o.lost_reason
+           o.created_at, COALESCE(o.won_at, o.lost_at) AS closed_at, o.lost_reason,
+           o.parked_at, o.revisit_on::text AS revisit_on, o.parked_reason
       FROM client_opportunities o
       JOIN investors i ON i.id = o.investor_id AND i.tenant_id = o.tenant_id
       LEFT JOIN users u ON u.id = o.owner_id
@@ -128,7 +138,14 @@ function filterSql(f: BoardFilters, userId: string): SQL[] {
   if (status !== "all") w.push(sql`o.status = ${status}`);
   if (f.q?.trim()) w.push(sql`i.name ILIKE ${`%${f.q.trim().replace(/[\\%_]/g, (c) => `\\${c}`)}%`}`);
   const stages = (f.stage ?? []).flatMap((k) => BOARD_COLUMNS.find((c) => c.key === k)?.stages ?? []);
-  if (stages.length) w.push(sql`COALESCE(bi.current_stage_key, 'identified') IN (${textList([...stages])})`);
+  const wantLater = (f.stage ?? []).includes("later");
+  if (stages.length || wantLater) {
+    // A parked opportunity sits in "Later", not in the step it stood at.
+    const parts: SQL[] = [];
+    if (stages.length) parts.push(sql`(o.parked_at IS NULL AND COALESCE(bi.current_stage_key, 'identified') IN (${textList([...stages])}))`);
+    if (wantLater) parts.push(sql`(o.status = 'open' AND o.parked_at IS NOT NULL)`);
+    w.push(sql`(${sql.join(parts, sql` OR `)})`);
+  }
   const products = (f.product ?? []).filter((p) => OPPORTUNITY_PRODUCTS.some((x) => x.key === p));
   if (products.length) w.push(sql`o.product IN (${textList(products)})`);
   const owners = (f.owner ?? []).map((o) => (o === "me" ? userId : o)).filter((o) => UUID.test(o));
@@ -161,13 +178,14 @@ function toRow(r: any): BoardRow {
     ownerName: r.owner_name ? String(r.owner_name).replace(/\s*\([^)]*\)\s*$/, "") : null,
     stageKey: r.stage_key,
     stageName: stageName(r.stage_key),
-    column: columnOf(r.stage_key),
+    column: r.status === "open" && r.parked_at ? "later" : columnOf(r.stage_key),
     stageEnteredAt: iso(r.stage_entered_at),
     delayed: !!r.delayed,
     followUpAt: r.status === "open" ? iso(r.follow_up_at) : null,
     createdAt: iso(r.created_at)!,
     closedAt: iso(r.closed_at),
     lostReason: r.lost_reason ?? null,
+    later: r.status === "open" && r.parked_at && r.revisit_on ? { revisitOn: r.revisit_on, reason: r.parked_reason ?? null } : null,
   };
 }
 
@@ -203,7 +221,10 @@ export async function loadBoardKpis(tx: any, session: SessionUser): Promise<Boar
       count(*) FILTER (WHERE status = 'open' AND (due AT TIME ZONE 'Asia/Kolkata')::date = ${TODAY})::int AS due_today,
       count(*) FILTER (WHERE status = 'open' AND due IS NULL)::int AS no_follow_up,
       count(*) FILTER (WHERE status = 'won' AND date_trunc('month', won_at AT TIME ZONE 'Asia/Kolkata') = date_trunc('month', now() AT TIME ZONE 'Asia/Kolkata'))::int AS won_month,
-      COALESCE(sum(expected_value) FILTER (WHERE status = 'won' AND date_trunc('month', won_at AT TIME ZONE 'Asia/Kolkata') = date_trunc('month', now() AT TIME ZONE 'Asia/Kolkata')), 0)::float8 AS won_value_month
+      COALESCE(sum(expected_value) FILTER (WHERE status = 'won' AND date_trunc('month', won_at AT TIME ZONE 'Asia/Kolkata') = date_trunc('month', now() AT TIME ZONE 'Asia/Kolkata')), 0)::float8 AS won_value_month,
+      count(*) FILTER (WHERE status = 'open' AND parked_at IS NOT NULL)::int AS later,
+      COALESCE(sum(expected_value) FILTER (WHERE status = 'open' AND parked_at IS NOT NULL), 0)::float8 AS later_value,
+      count(*) FILTER (WHERE status = 'open' AND parked_at IS NOT NULL AND revisit_on <= ${TODAY} + 30)::int AS later_30
     FROM mine
   `)).rows[0] as any;
   return {
@@ -214,6 +235,9 @@ export async function loadBoardKpis(tx: any, session: SessionUser): Promise<Boar
     noFollowUp: r?.no_follow_up ?? 0,
     wonThisMonth: r?.won_month ?? 0,
     wonValueThisMonth: Number(r?.won_value_month ?? 0),
+    later: r?.later ?? 0,
+    laterValue: Number(r?.later_value ?? 0),
+    laterNext30: r?.later_30 ?? 0,
   };
 }
 

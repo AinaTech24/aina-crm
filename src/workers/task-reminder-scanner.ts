@@ -14,6 +14,10 @@
  *               >24h, nudge the approver (creator) once; `approval_escalated_at`
  *               dedups.
  *
+ *   LATER      → the reminder of a parked opportunity ("after Diwali") left
+ *               overdue for days goes to the client's branch head once
+ *               (lib/opportunities/later.ts, meta.escalatedAt dedups).
+ *
  * Loop-safety: task CREATION emits no events; `task.overdue` is terminal +
  * notify-only, so it can't feed an automation loop.
  */
@@ -24,6 +28,7 @@ import { eventsOutbox } from "@/db/schema";
 import { createNotification } from "@/lib/notifications/create";
 import { sendStaffEmails, type StaffEmailJob } from "@/lib/tasks/staff-email";
 import { createMeetingReminders, deliverMobileAlerts } from "@/lib/notifications/mobile";
+import { escalateOverdueRevisits } from "@/lib/opportunities/later";
 
 function fmtDue(due: string | Date | null): string {
   if (!due) return "";
@@ -220,6 +225,11 @@ export async function runTaskReminderScan(): Promise<{ overdue: number; reminder
       escalations += await scanTenantApprovalEscalations(t);
     } catch (err) {
       console.error(`[task-scan] approval-escalation scan failed for tenant ${t}:`, (err as Error).message);
+    }
+    try {
+      escalations += await withTenant(t, (tx) => escalateOverdueRevisits(tx, t));
+    } catch (err) {
+      console.error(`[task-scan] revisit escalation failed for tenant ${t}:`, (err as Error).message);
     }
     try {
       await createMeetingReminders(t);

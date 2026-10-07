@@ -41,6 +41,12 @@
  * the date moves the task, and the list can never disagree with the worklist.
  * An open opportunity with no open task has no follow-up, and says so.
  *
+ * ── Later ────────────────────────────────────────────────────────────────
+ * A client who wants it but not yet ("after Diwali", "when my FD matures")
+ * PARKS it (later.ts): still open, one reminder task ahead of the revisit
+ * date. Moving the journey on — by hand, or a proposal being shared — brings
+ * it back; closing it ends the wait.
+ *
  * A blank field is a record gap, not a need: nothing here opens an
  * opportunity because a column is empty. Opportunities are opened by people
  * (or, later, by named automations).
@@ -57,6 +63,8 @@ import {
   isCrossSellProduct, productLabel, productPipeline, proposalTypesFor, type OpportunityPipeline, type OpportunitySource,
 } from "./products";
 import { isClosedStage, nextStage, OPPORTUNITY_PATHS, stageName, type OpportunityStageKey } from "./stages";
+import { resumeOpportunity } from "./later";
+import { INFLOW_SOURCE_LABELS, type InflowSourceType } from "@/db/schema";
 
 export type Actor = { tenantId: string; userId: string };
 
@@ -452,6 +460,8 @@ export async function advanceOpportunity(tx: Tx, actor: Actor, id: string, input
     finalStatus: target === "won" ? "completed" : "in_progress",
   });
   if (!r.ok) return { ok: false, error: (r as any).reason ?? "Could not move", status: 409 };
+  // Moving it on means the client is ready: it is no longer waiting.
+  if (opp.parkedAt && target !== "won") await resumeOpportunity(tx, actor, opp, { quiet: true });
   if (target === "won") {
     await closeOpportunity(tx, actor, opp, "won");
     return { ok: true, stage: "won", skipped: [] };
@@ -497,8 +507,8 @@ async function closeOpportunity(
 ) {
   const now = new Date();
   await tx.update(clientOpportunities).set(outcome === "won"
-    ? { status: "won", wonAt: now, updatedAt: now }
-    : { status: "lost", lostAt: now, lostReason: extra.lostReason ?? null, revisitOn: extra.revisitOn || null, updatedAt: now },
+    ? { status: "won", wonAt: now, parkedAt: null, updatedAt: now }
+    : { status: "lost", lostAt: now, lostReason: extra.lostReason ?? null, revisitOn: extra.revisitOn || null, parkedAt: null, updatedAt: now },
   ).where(eq(clientOpportunities.id, opp.id));
 
   if (outcome === "won" && isCrossSellProduct(opp.product)) {
@@ -601,6 +611,9 @@ export async function onProposalEvent(
     return { stage: null, skipped: [] };
   }
 
+  // A proposal shared or accepted: the client is engaging again.
+  if (opp.parkedAt) await resumeOpportunity(tx, actor, opp, { quiet: true });
+
   // A shared proposal proves the conversation happened: carry the journey
   // past the people steps, then let the gates and skips decide the rest.
   const inst = await ensureInstanceFor(tx, tenantId, "opportunity", opp.id);
@@ -647,6 +660,16 @@ export type OpportunityView = {
   revisitOn: string | null;
   /** The earliest open task of the opportunity — its next follow-up. */
   followUpAt: string | null;
+  /** Parked: the client wants it, but later (later.ts). Null when active. */
+  later: null | {
+    since: string;
+    revisitOn: string;
+    reason: string | null;
+    /** Times it has been put off. */
+    count: number;
+    /** The money it waits for. */
+    money: { sourceType: string; label: string; amount: number | null; expectedOn: string; status: string } | null;
+  };
   createdAt: string;
   closedAt: string | null;
   current: { key: string; name: string; enteredAt: string; slaDays: number | null; delayed: boolean };
@@ -687,6 +710,17 @@ export async function listOpportunities(
      GROUP BY 1
   `)).rows as Array<{ oid: string; due: string | Date }>;
   for (const r of fu) followUps.set(r.oid, new Date(r.due).toISOString());
+
+  // The money a parked opportunity waits for.
+  const inflowIds = rows.map((r) => r.expectedInflowId).filter(Boolean) as string[];
+  const inflows = new Map<string, { source_type: string; expected_amount: string | null; expected_on: string; status: string }>();
+  if (inflowIds.length) {
+    const rs = (await tx.execute(sql`
+      SELECT id, source_type, expected_amount, expected_on::text AS expected_on, status FROM expected_inflows
+       WHERE tenant_id = ${tenantId}::uuid AND id IN (${sql.join(inflowIds.map((i) => sql`${i}::uuid`), sql`, `)})
+    `)).rows as Array<{ id: string; source_type: string; expected_amount: string | null; expected_on: string; status: string }>;
+    for (const r of rs) inflows.set(r.id, r);
+  }
 
   const out: OpportunityView[] = [];
   for (const opp of rows) {
@@ -743,6 +777,26 @@ export async function listOpportunities(
       lostReason: opp.lostReason,
       revisitOn: opp.revisitOn,
       followUpAt: opp.status === "open" ? followUps.get(opp.id) ?? null : null,
+      later: opp.status === "open" && opp.parkedAt && opp.revisitOn
+        ? {
+            since: opp.parkedAt.toISOString(),
+            revisitOn: opp.revisitOn,
+            reason: opp.parkedReason,
+            count: opp.parkCount ?? 0,
+            money: (() => {
+              const m = opp.expectedInflowId ? inflows.get(opp.expectedInflowId) : undefined;
+              return m
+                ? {
+                    sourceType: m.source_type,
+                    label: INFLOW_SOURCE_LABELS[m.source_type as InflowSourceType] ?? "Money",
+                    amount: m.expected_amount == null ? null : Number(m.expected_amount),
+                    expectedOn: m.expected_on,
+                    status: m.status,
+                  }
+                : null;
+            })(),
+          }
+        : null,
       createdAt: opp.createdAt.toISOString(),
       closedAt: (opp.wonAt ?? opp.lostAt)?.toISOString() ?? null,
       current: {

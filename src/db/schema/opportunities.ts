@@ -5,13 +5,14 @@
  * subject_type 'opportunity'). See src/lib/opportunities/.
  */
 
-import { date, index, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { date, index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { id, tenantId, timestamps } from "./_shared";
 import { tenants } from "./tenants";
 import { investors } from "./investors";
 import { users } from "./users";
 import { leads } from "./leads";
+import { expectedInflows } from "./expected_inflows";
 
 export const clientOpportunities = pgTable(
   "client_opportunities",
@@ -36,7 +37,17 @@ export const clientOpportunities = pgTable(
     needsAnalysis: jsonb("needs_analysis").$type<NeedsAnalysis>(),
     notes: text("notes"),
     lostReason: text("lost_reason"),
+    /** Lost: when to look again. Open + parked ("Later"): when the client
+     *  said they would go ahead (lib/opportunities/later.ts, migration 0231). */
     revisitOn: date("revisit_on"),
+    /** Set while the client has put it off ("Later"); null when active. */
+    parkedAt: timestamp("parked_at", { withTimezone: true }),
+    /** What the client said: "after Diwali", "when the FD matures". */
+    parkedReason: text("parked_reason"),
+    /** Times it has been put off. */
+    parkCount: integer("park_count").notNull().default(0),
+    /** The money it waits for, when it waits for money. */
+    expectedInflowId: uuid("expected_inflow_id").references(() => expectedInflows.id, { onDelete: "set null" }),
     wonAt: timestamp("won_at", { withTimezone: true }),
     lostAt: timestamp("lost_at", { withTimezone: true }),
     createdBy: uuid("created_by").references(() => users.id),

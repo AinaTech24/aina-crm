@@ -5,6 +5,8 @@
  *   POST /api/investors/[id]/opportunities   start one
  *        { product, expectedValue?, investmentMode?, source?, notes?, ownerId?, coOwnerId?, sourceLeadId?, followUpOn? }
  *        followUpOn (YYYY-MM-DD): when the owner's first follow-up task falls due.
+ *        later { revisitOn, reason, money? }: the client wants it, but not yet —
+ *        started parked (lib/opportunities/later.ts) instead of a follow-up.
  *        201 { opportunity, created: true } — or 200 { created: false } with
  *        the open one when the client already has it for this product.
  */
@@ -19,6 +21,7 @@ import { loadViewableInvestor } from "@/lib/investors/access";
 import { canWorkOpportunities, requireWorkOpportunities } from "@/lib/opportunities/access";
 import { createOpportunity, listOpportunities } from "@/lib/opportunities/journey";
 import { isOpportunityProduct, OPPORTUNITY_SOURCES } from "@/lib/opportunities/products";
+import { LaterBody, parkOpportunity } from "@/lib/opportunities/later";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +41,7 @@ const Body = z.object({
   coOwnerId: uuid.nullish(),
   sourceLeadId: uuid.nullish(),
   followUpOn: followUpDay.nullish(),
+  later: LaterBody.nullish(),
 });
 
 const ctx = (session: Awaited<ReturnType<typeof requireSession>>) => ({
@@ -89,9 +93,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         )).rows.length;
         if (!ok) throw Object.assign(new Error("The chosen owner is not an active user in this firm."), { status: 400 });
       }
-      const r = await createOpportunity(tx, { tenantId: session.tenantId, userId: session.userId }, {
-        investorId: id, ...parsed.data,
-      });
+      const { later, ...input } = parsed.data;
+      const actor = { tenantId: session.tenantId, userId: session.userId };
+      const r = await createOpportunity(tx, actor, { investorId: id, ...input });
+      if (r.created && later) await parkOpportunity(tx, actor, r.opportunity, later);
       const [view] = await listOpportunities(tx, session.tenantId, { ids: [r.opportunity.id] });
       return { opportunity: view, created: r.created };
     }, ctx(session));
