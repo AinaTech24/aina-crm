@@ -44,9 +44,15 @@ const KIND_LABEL: Record<string, string> = {
   Email: "Same email",
 };
 
-/** Biggest book, then most folios — the record with the most to lose. */
+const hasPan = (m: Member) => !!m.pan?.trim();
+
+/** A record holding the PAN first (a merge never moves a PAN, so keeping a
+ *  PAN-less record would leave the client without one), then the biggest
+ *  book, then most folios — the record with the most to lose. */
 const defaultSurvivor = (members: Member[]) =>
-  [...members].sort((a, b) => b.aum - a.aum || (b.folios ?? 0) - (a.folios ?? 0))[0]?.id ?? members[0]?.id;
+  [...members].sort(
+    (a, b) => Number(hasPan(b)) - Number(hasPan(a)) || b.aum - a.aum || (b.folios ?? 0) - (a.folios ?? 0),
+  )[0]?.id ?? members[0]?.id;
 
 const distinctValidPans = (members: Member[]) =>
   new Set(members.filter((m) => m.pan_valid && m.pan).map((m) => m.pan!.toUpperCase())).size;
@@ -363,6 +369,12 @@ export function MergeCompareDialog({ members, onClose, onMerged }: { members: Me
           </ul>
           {losers.length === 0 && (
             <p className="mt-2 text-xs text-muted-foreground">Tick at least one other record to merge into {survivor.name}.</p>
+          )}
+          {!hasPan(survivor) && losers.some(hasPan) && (
+            <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-warning/50 bg-warning/5 px-3 py-2 text-xs">
+              <ShieldAlert className="mt-0.5 size-3.5 shrink-0 text-amber-700" aria-hidden />
+              <span>The primary record has no PAN, and a PAN is never moved by a merge — the merged client would have none. Keep the record that holds the PAN instead.</span>
+            </p>
           )}
         </fieldset>
 
