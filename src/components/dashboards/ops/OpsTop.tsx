@@ -32,28 +32,28 @@ export function StandupPanel({
   hrefs: Record<string, string>;
 }) {
   const morning: DayItem[] = [
-    { label: "Yesterday's carry forward", value: counts.carryForward, href: hrefs.queue, hint: "open at the start of today" },
+    { label: "Yesterday's carry forward", value: counts.carryForward, href: hrefs.carry, hint: "open at the start of today" },
     { label: "SLA breached", value: counts.breached, href: hrefs.breached, tone: counts.breached ? "bad" : "neutral" },
-    { label: "Due today", value: counts.dueToday, href: hrefs.queue, tone: counts.dueToday ? "warn" : "neutral" },
-    { label: "High-value pending", value: counts.highValue, href: hrefs.highValue, tone: counts.highValue ? "warn" : "neutral" },
-    { label: "SIP rejections open", value: counts.sipOpen, href: hrefs.sip, tone: counts.sipOpen ? "warn" : "neutral" },
+    { label: "Due today", value: counts.dueToday, href: hrefs.dueToday, tone: counts.dueToday ? "warn" : "neutral" },
+    { label: "High-value pending", value: counts.highValue, href: hrefs.highValueList, tone: counts.highValue ? "warn" : "neutral" },
+    { label: "SIP rejections open", value: counts.sipOpen, href: hrefs.sipOpen, tone: counts.sipOpen ? "warn" : "neutral" },
     { label: "Documents pending", value: counts.documents, href: hrefs.docs },
     { label: "Unassigned", value: counts.unassigned, href: hrefs.unassigned, tone: counts.unassigned ? "warn" : "neutral" },
-    { label: "Service requests overdue", value: counts.queriesOverdue, href: hrefs.queries, tone: counts.queriesOverdue ? "bad" : "neutral" },
-    { label: "New requests today", value: counts.receivedToday, href: hrefs.queue },
-    { label: "Completed today", value: counts.completedToday, href: hrefs.queue, tone: counts.completedToday ? "good" : "neutral" },
+    { label: "Service requests overdue", value: counts.queriesOverdue, href: hrefs.queriesOverdue, tone: counts.queriesOverdue ? "bad" : "neutral" },
+    { label: "New requests today", value: counts.receivedToday, href: hrefs.receivedToday },
+    { label: "Completed today", value: counts.completedToday, href: hrefs.completedToday, tone: counts.completedToday ? "good" : "neutral" },
   ];
   const closure: DayItem[] = [
-    { label: "Opening pending", value: counts.carryForward, href: hrefs.queue },
-    { label: "New received", value: counts.receivedToday, href: hrefs.queue },
-    { label: "Completed", value: counts.completedToday, href: hrefs.queue, tone: counts.completedToday ? "good" : "neutral" },
+    { label: "Opening pending", value: counts.carryForward, href: hrefs.carry },
+    { label: "New received", value: counts.receivedToday, href: hrefs.receivedToday },
+    { label: "Completed", value: counts.completedToday, href: hrefs.completedToday, tone: counts.completedToday ? "good" : "neutral" },
     { label: "Rejected on the feed", value: counts.rejectedToday, href: hrefs.rejected, tone: counts.rejectedToday ? "bad" : "neutral" },
     { label: "Pending now", value: counts.pendingNow, href: hrefs.queue },
     { label: "Overdue", value: counts.breached, href: hrefs.breached, tone: counts.breached ? "bad" : "neutral" },
     { label: "Carry forward to tomorrow", value: counts.pendingNow, href: hrefs.queue, hint: "everything still open tonight" },
-    { label: "SIP exceptions unresolved", value: counts.sipOpen, href: hrefs.sip, tone: counts.sipOpen ? "warn" : "neutral" },
-    { label: "Service requests unresolved", value: counts.queriesOpen, href: hrefs.queries, tone: counts.queriesOverdue ? "bad" : "neutral" },
-    { label: "Due and unresolved", value: counts.tasksDueUnresolved, href: hrefs.queue, tone: counts.tasksDueUnresolved ? "warn" : "neutral" },
+    { label: "SIP exceptions unresolved", value: counts.sipOpen, href: hrefs.sipOpen, tone: counts.sipOpen ? "warn" : "neutral" },
+    { label: "Service requests unresolved", value: counts.queriesOpen, href: hrefs.queriesOpen, tone: counts.queriesOverdue ? "bad" : "neutral" },
+    { label: "Due and unresolved", value: counts.tasksDueUnresolved, href: hrefs.dueUnresolved, tone: counts.tasksDueUnresolved ? "warn" : "neutral" },
   ];
   const items = eod ? closure : morning;
   return (
@@ -128,8 +128,8 @@ export function CommandStripPanel({ s, periodLabel, hrefs }: { s: CommandStrip; 
         <p className="text-2xs text-muted-foreground">Received, completed and TAT cover {periodNoun(periodLabel)}; pending, overdue and waiting are as they stand now.</p>
       </div>
       <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4 xl:grid-cols-8">
-        <Tile label="Requests received" value={formatCount(s.received.count)} href={hrefs.queue} sub={valueLine(s.received)} />
-        <Tile label="Completed" value={formatCount(s.completed.count)} href={hrefs.queue} tone={s.completed.count ? "good" : "neutral"}
+        <Tile label="Requests received" value={formatCount(s.received.count)} href={hrefs.received} sub={valueLine(s.received)} />
+        <Tile label="Completed" value={formatCount(s.completed.count)} href={hrefs.completed} tone={s.completed.count ? "good" : "neutral"}
           sub={<>
             {valueLine(s.completed)}
             <div title="Completed ÷ (pending at the start + received)">
