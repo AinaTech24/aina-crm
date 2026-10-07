@@ -11,12 +11,15 @@
  *   - Without it (an RM), only their own and attended ones — unchanged.
  *
  * Callers still add their own mobile owner scope on top where they had one.
+ *
+ * The client / lead part applies only under the data wall (`dataWallApplies`):
+ * without it `manage.all` sees every meeting, as it always did.
  */
 
 import { sql, type SQL } from "drizzle-orm";
 import type { SessionUser } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
-import { investorScopeSql } from "@/lib/investors/access";
+import { clientScopeNarrows, dataWallApplies, investorScopeSql } from "@/lib/investors/access";
 import { leadScopeSql } from "@/lib/leads/access";
 import { attendeeIs } from "./attendees";
 
@@ -26,14 +29,19 @@ export function canManageAllMeetings(session: SessionUser) {
 
 /** TRUE when the meeting's client and lead (whichever it has) are visible to the viewer. */
 export async function meetingSubjectVisibleSql(tx: any, session: SessionUser, alias = "m"): Promise<SQL> {
+  if (!(await dataWallApplies(tx, session))) return sql`TRUE`;
   const cap = (c: Parameters<typeof can>[1]) => can(session.roles, c, session.permissions);
-  const invScope = cap("investor.view.all") || cap("investor.view.assigned")
-    ? await investorScopeSql(tx, session, "ms_i") : sql`FALSE`;
+  const invAllowed = cap("investor.view.all") || cap("investor.view.assigned");
+  const invScope = invAllowed ? await investorScopeSql(tx, session, "ms_i") : sql`FALSE`;
   const leadScope = cap("lead.view.all") || cap("lead.view.assigned")
     ? leadScopeSql(session, "ms_l") : sql`FALSE`;
   const col = (c: string) => sql.raw(`${alias}.${c}`);
+  // A firm-wide client viewer keeps meetings whose client was since deleted.
+  const inv = invAllowed && !(await clientScopeNarrows(tx, session))
+    ? sql`TRUE`
+    : sql`(${col("investor_id")} IS NULL OR EXISTS (SELECT 1 FROM investors ms_i WHERE ms_i.id = ${col("investor_id")} AND ${invScope}))`;
   return sql`(
-    (${col("investor_id")} IS NULL OR EXISTS (SELECT 1 FROM investors ms_i WHERE ms_i.id = ${col("investor_id")} AND ${invScope}))
+    ${inv}
     AND (${col("lead_id")} IS NULL OR EXISTS (SELECT 1 FROM leads ms_l WHERE ms_l.id = ${col("lead_id")} AND ${leadScope}))
   )`;
 }

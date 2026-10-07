@@ -20,7 +20,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { investors, leads } from "@/db/schema";
 import { composeAndSendEmail, scheduleEmail } from "@/lib/comms/compose";
-import { loadViewableInvestor } from "@/lib/investors/access";
+import { dataWallApplies, loadViewableInvestor } from "@/lib/investors/access";
 import { loadViewableLead } from "@/lib/leads/access";
 
 export const dynamic = "force-dynamic";
@@ -65,6 +65,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "scheduledAt must be in the future" }, { status: 400 });
     }
 
+    const hasInvestorView =
+      can(session.roles, "investor.view.all", session.permissions) ||
+      can(session.roles, "investor.view.assigned", session.permissions);
+
     const out = await withTenant(session.tenantId, async (tx) => {
       // Resolve recipient email + display name.
       let recipient = b.toEmail ?? "";
@@ -81,8 +85,11 @@ export async function POST(req: NextRequest) {
         if (!seesAll && inv.rmId !== session.userId) {
           throw Object.assign(new Error("not your client"), { status: 403 });
         }
-        // Oversight viewers compose only within their client scope.
-        if (seesAll && !(await loadViewableInvestor(tx, session, b.investorId))) {
+        // Under the data wall, oversight viewers compose only within their
+        // client scope (a viewer with no client capability has none to apply —
+        // loadViewableInvestor would throw a 403).
+        if (seesAll && hasInvestorView && (await dataWallApplies(tx, session))
+          && !(await loadViewableInvestor(tx, session, b.investorId))) {
           throw Object.assign(new Error("investor not found"), { status: 404 });
         }
         if (!inv.email) throw Object.assign(new Error("investor has no email on file"), { status: 400 });
@@ -99,6 +106,7 @@ export async function POST(req: NextRequest) {
           throw Object.assign(new Error("not your lead"), { status: 403 });
         }
         if (seesAll && (can(session.roles, "lead.view.all", session.permissions) || can(session.roles, "lead.view.assigned", session.permissions))
+          && (await dataWallApplies(tx, session))
           && !(await loadViewableLead(tx, session, b.leadId))) {
           throw Object.assign(new Error("lead not found"), { status: 404 });
         }

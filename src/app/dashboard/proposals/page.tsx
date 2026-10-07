@@ -1,5 +1,6 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { sql } from "drizzle-orm";
 import {
   Plus,
@@ -12,7 +13,8 @@ import {
 } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { can, require as requireCap } from "@/lib/auth/rbac";
+import { can } from "@/lib/auth/rbac";
+import { dataWallAppliesFor } from "@/lib/investors/access";
 import { proposalScopeSql } from "@/lib/proposals/access";
 import { InlineEmpty } from "@/components/common/EmptyState";
 import { formatINR } from "@/lib/utils";
@@ -76,9 +78,10 @@ export default async function ProposalsPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const session = await requireSession();
-  // Same gate as GET /api/proposals (the page had none and listed every
-  // proposal in the firm to any role).
-  requireCap(session.roles, "proposal.view", session.permissions);
+  // Under the data wall, the same gate as GET /api/proposals (the page had
+  // none and listed every proposal in the firm to any role). A page never
+  // throws a 403 — it sends the viewer back to their dashboard.
+  if (!can(session.roles, "proposal.view", session.permissions) && (await dataWallAppliesFor(session))) redirect("/dashboard");
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   // status — comma-separated: the dashboard's Proposal pipeline links each

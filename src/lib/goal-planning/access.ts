@@ -9,10 +9,10 @@
 
 import { and, eq, sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
-import { goals } from "@/db/schema";
+import { goals, investors } from "@/db/schema";
 import type { SessionUser } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
-import { investorScopeSql, loadViewableInvestor } from "@/lib/investors/access";
+import { dataWallApplies, investorScopeSql, loadViewableInvestor } from "@/lib/investors/access";
 
 /** SQL condition over an `investors` alias: this client's goals are visible. */
 export async function goalClientScopeSql(tx: any, session: SessionUser, alias = "i") {
@@ -29,7 +29,12 @@ export async function visibleGoalInvestorIdsSql(tx: any, session: SessionUser) {
   return sql`(SELECT i.id FROM investors i WHERE i.deleted_at IS NULL AND ${scope})`;
 }
 
-/** One goal + its client, or null when either is missing or out of scope. */
+/**
+ * One goal + its client, or null when either is missing or out of scope.
+ * The client scope and the own-clients rule apply only under the data wall
+ * (`dataWallApplies`); without it the goal opens as it always did. A viewer
+ * with no client capability gets null (→ 404), never a thrown 403.
+ */
 export async function loadViewableGoal(tx: Tx, session: SessionUser, id: string) {
   const [goal] = await tx
     .select()
@@ -37,6 +42,11 @@ export async function loadViewableGoal(tx: Tx, session: SessionUser, id: string)
     .where(and(eq(goals.id, id), eq(goals.tenantId, session.tenantId)))
     .limit(1);
   if (!goal) return null;
+  if (!(await dataWallApplies(tx, session))) {
+    const [investor] = await tx.select().from(investors).where(eq(investors.id, goal.investorId)).limit(1);
+    return { goal, investor };
+  }
+  if (!can(session.roles, "investor.view.all", session.permissions) && !can(session.roles, "investor.view.assigned", session.permissions)) return null;
   const investor = await loadViewableInvestor(tx, session, goal.investorId);
   if (!investor) return null;
   if (!can(session.roles, "investor.view.all", session.permissions) && investor.rmId !== session.userId) return null;

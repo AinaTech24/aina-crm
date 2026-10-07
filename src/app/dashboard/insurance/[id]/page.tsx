@@ -14,7 +14,8 @@ import {
 import { withTenant } from "@/db/client";
 import { investors } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { can } from "@/lib/auth/rbac";
+import { dataWallAppliesFor } from "@/lib/investors/access";
 import { seesWholeInsuranceBook } from "@/lib/dashboard/insurance/access";
 import { loadViewablePolicy } from "@/lib/insurance/register-access";
 import { formatDate, formatINR } from "@/lib/utils";
@@ -56,9 +57,10 @@ export default async function InsuranceDetailPage({
 }) {
   const { id } = await params;
   const session = await requireSession();
-  // Same gate and book as the register (the page had neither): own book
-  // unless a manager, and the client in the viewer's scope — else 404.
-  requireCap(session.roles, "insurance.view", session.permissions);
+  // Under the data wall, the same gate and book as the register (the page had
+  // neither): own book unless a manager (a branch-locked head: their branch),
+  // and the client in the viewer's scope — else 404, never a thrown 403.
+  if (!can(session.roles, "insurance.view", session.permissions) && (await dataWallAppliesFor(session))) notFound();
   const data = await withTenant(session.tenantId, async (tx) => {
     const p = await loadViewablePolicy(tx, session, id, { seesAll: seesWholeInsuranceBook(session) });
     if (!p) return null;

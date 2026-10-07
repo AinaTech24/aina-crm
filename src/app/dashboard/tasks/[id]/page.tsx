@@ -7,7 +7,7 @@ import { can, requireAny } from "@/lib/auth/rbac";
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { TaskDetailPage } from "./TaskDetailPage";
 import { taskInScope } from "@/lib/tasks/scope";
-import { investorScopeCondition } from "@/lib/investors/access";
+import { dataWallApplies, investorScopeCondition } from "@/lib/investors/access";
 import { loadViewableLead } from "@/lib/leads/access";
 
 /**
@@ -48,17 +48,20 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
     // lead through the explicit link OR the legacy subject columns.
     const investorId = task.relatedInvestorId ?? (task.subjectType === "investor" ? task.subjectId : null);
     const leadId = task.relatedLeadId ?? (task.subjectType === "lead" ? task.subjectId : null);
-    // A client / lead outside the viewer's scope is not named.
+    // A client / lead outside the viewer's scope is not named — only under
+    // the data wall; without it every task names its client / lead, as before.
+    const wallOn = await dataWallApplies(tx, session);
     const cap = (c: Parameters<typeof can>[1]) => can(session.roles, c, session.permissions);
-    const invScope = investorId && (cap("investor.view.all") || cap("investor.view.assigned"))
+    const invAllowed = !wallOn || cap("investor.view.all") || cap("investor.view.assigned");
+    const invScope = wallOn && investorId && invAllowed
       ? await investorScopeCondition(tx, session) : undefined;
-    const leadVisible = leadId && (cap("lead.view.all") || cap("lead.view.assigned"))
+    const leadVisible = !wallOn ? true : leadId && (cap("lead.view.all") || cap("lead.view.assigned"))
       ? !!(await loadViewableLead(tx, session, leadId)) : !leadId;
     const [assignee, investor, lead] = await Promise.all([
       task.assigneeId
         ? tx.select({ name: users.name }).from(users).where(eq(users.id, task.assigneeId)).limit(1)
         : Promise.resolve([]),
-      investorId && (cap("investor.view.all") || cap("investor.view.assigned"))
+      investorId && invAllowed
         ? tx.select({ name: investors.name }).from(investors).where(and(eq(investors.id, investorId), invScope)).limit(1)
         : Promise.resolve([]),
       leadId && leadVisible ? tx.select({ name: leads.name }).from(leads).where(eq(leads.id, leadId)).limit(1) : Promise.resolve([]),

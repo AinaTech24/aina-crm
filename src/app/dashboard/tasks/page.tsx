@@ -233,7 +233,7 @@ export default async function TasksPage({
     // Join related entity profiles (Client/Investor and Lead). A task of mine
     // about a client / lead outside my scope keeps its title but names nobody.
     const clientVisible = await taskClientVisibleSql(tx, session, "tasks");
-    const leadVisible = taskLeadVisibleSql(session, "tasks");
+    const leadVisible = await taskLeadVisibleSql(tx, session, "tasks");
     const rows = await tx
       .select({
         task: tasks,

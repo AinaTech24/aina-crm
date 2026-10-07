@@ -17,7 +17,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import type { SessionUser } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
-import { investorScopeSql, loadViewableInvestor } from "@/lib/investors/access";
+import { dataWallApplies, investorScopeSql, loadViewableInvestor } from "@/lib/investors/access";
 import { leadScopeSql, loadViewableLead } from "@/lib/leads/access";
 
 export function commsSeesAll(session: SessionUser) {
@@ -57,7 +57,8 @@ export async function commsScopeSql(tx: any, session: SessionUser, alias = "comm
  * A per-person conversation thread (WhatsApp / email) — readable and sendable
  * only for a client or lead the caller may see, and only by someone who may
  * use the Communications surfaces. Throws 403 / 404 (never confirms the record
- * exists).
+ * exists). Only under the data wall (`dataWallApplies`); without it the
+ * threads are open as they always were.
  */
 export async function assertThreadAccess(
   tx: any,
@@ -65,6 +66,7 @@ export async function assertThreadAccess(
   type: "investor" | "lead",
   id: string,
 ): Promise<void> {
+  if (!(await dataWallApplies(tx, session))) return;
   if (!canViewComms(session)) throw Object.assign(new Error("forbidden: missing communication access"), { status: 403 });
   const found = type === "investor"
     ? await loadViewableInvestor(tx, session, id)

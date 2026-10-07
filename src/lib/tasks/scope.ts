@@ -14,12 +14,17 @@
  * `taskClientVisibleSql` says whether the task's client may be NAMED to the
  * viewer — a task assigned to me about a colleague's client shows the title it
  * carries and nothing of the client.
+ *
+ * None of this applies when the data wall does not (`dataWallApplies`: the
+ * owner, or a firm with the shared book and a user who was not customised):
+ * `task.view.all` then sees every task and every name, as it always did — a
+ * task about a purged client never vanishes for them.
  */
 
 import { sql, type SQL } from "drizzle-orm";
 import type { SessionUser } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
-import { investorScopeSql } from "@/lib/investors/access";
+import { clientScopeNarrows, dataWallApplies, investorScopeSql } from "@/lib/investors/access";
 import { leadScopeSql } from "@/lib/leads/access";
 import { taskInvestor, taskLead } from "@/lib/dashboard/my/window";
 
@@ -37,22 +42,25 @@ function own(session: SessionUser, alias: string): SQL {
 export async function taskClientVisibleSql(tx: any, session: SessionUser, alias = "t"): Promise<SQL> {
   const cap = (c: Parameters<typeof can>[1]) => can(session.roles, c, session.permissions);
   if (!(cap("investor.view.all") || cap("investor.view.assigned"))) return sql`TRUE`;
+  if (!(await clientScopeNarrows(tx, session))) return sql`TRUE`;
   const invScope = await investorScopeSql(tx, session, "ts_i");
   const inv = taskInvestor(alias);
   return sql`(${inv} IS NULL OR EXISTS (SELECT 1 FROM investors ts_i WHERE ts_i.id = ${inv} AND ${invScope}))`;
 }
 
 /** The task's lead is visible to the viewer (or it has none). */
-export function taskLeadVisibleSql(session: SessionUser, alias = "t"): SQL {
+export async function taskLeadVisibleSql(tx: any, session: SessionUser, alias = "t"): Promise<SQL> {
   const cap = (c: Parameters<typeof can>[1]) => can(session.roles, c, session.permissions);
   if (!(cap("lead.view.all") || cap("lead.view.assigned"))) return sql`TRUE`;
+  if (!(await dataWallApplies(tx, session))) return sql`TRUE`;
   const lead = taskLead(alias);
   return sql`(${lead} IS NULL OR EXISTS (SELECT 1 FROM leads ts_l WHERE ts_l.id = ${lead} AND ${leadScopeSql(session, "ts_l")}))`;
 }
 
 /** Own tasks, or a task whose client and lead are both in the viewer's scope. */
 export async function taskInScopeSql(tx: any, session: SessionUser, alias = "t"): Promise<SQL> {
-  return sql`(${own(session, alias)} OR (${await taskClientVisibleSql(tx, session, alias)} AND ${taskLeadVisibleSql(session, alias)}))`;
+  if (!(await dataWallApplies(tx, session))) return sql`TRUE`;
+  return sql`(${own(session, alias)} OR (${await taskClientVisibleSql(tx, session, alias)} AND ${await taskLeadVisibleSql(tx, session, alias)}))`;
 }
 
 /** Row filter for a task LIST: `task.view.all` → in scope; otherwise own only. */

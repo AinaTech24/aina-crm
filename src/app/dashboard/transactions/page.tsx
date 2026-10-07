@@ -1,11 +1,13 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { desc, eq, sql } from "drizzle-orm";
 import { Repeat, FileDown, ArrowDownToLine, TrendingUp, AlertCircle, FileUp } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { transactions, investors, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { can } from "@/lib/auth/rbac";
+import { dataWallApplies, hasCustomPermissions } from "@/lib/investors/access";
 import { visibleClientSql } from "@/lib/transactions/client-scope";
 import { formatINR, formatDate } from "@/lib/utils";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
@@ -99,8 +101,10 @@ export default async function TransactionsPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const session = await requireSession();
-  // Transactions are client holdings — the same gate as the SIP book.
-  requireCap(session.roles, "transactions.view", session.permissions);
+  // Transactions are client holdings — the same gate as the SIP book, for a
+  // user whose permissions the owner customised (everyone else keeps the page
+  // they had). A page never throws a 403.
+  if (hasCustomPermissions(session) && !can(session.roles, "transactions.view", session.permissions)) redirect("/dashboard");
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const dateFrom = sp.date_from ?? "";
@@ -133,9 +137,10 @@ export default async function TransactionsPage({
   }
 
   const data = await withTenant(session.tenantId, async (tx) => {
-    // Viewer scope: only transactions of clients this viewer may see (the
-    // investors table is always joined — transactionFiltersNeedInvestors).
-    const scope = await visibleClientSql(tx, session, "investors");
+    // Viewer scope under the data wall: only transactions of clients this
+    // viewer may see (the investors table is always joined —
+    // transactionFiltersNeedInvestors). Without it, every transaction, as before.
+    const scope = (await dataWallApplies(tx, session)) ? await visibleClientSql(tx, session, "investors") : sql`TRUE`;
     baseConds.push(scope);
     conds.push(scope);
     // KPI cards reflect the CURRENT filter selection (period-aware) — picking a

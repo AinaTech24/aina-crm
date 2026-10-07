@@ -6,14 +6,26 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatDate, formatRelative } from "@/lib/utils";
 import { leadScopeSql } from "@/lib/leads/access";
+import { dataWallAppliesFor } from "@/lib/investors/access";
+import { can } from "@/lib/auth/rbac";
+import type { SessionUser } from "@/lib/auth/session";
+import { redirect } from "next/navigation";
+
+const canViewLeads = (s: SessionUser) =>
+  can(s.roles, "lead.view.all", s.permissions) || can(s.roles, "lead.view.assigned", s.permissions);
 
 export const dynamic = "force-dynamic";
 
 export default async function LeadNurturePage() {
   const session = await requireSession();
-  // The same lead scope as the Leads board (own / branch / firm). Throws 403
-  // for a viewer with no lead capability at all.
-  const scope = leadScopeSql(session, "l");
+  // Under the data wall, the same lead scope as the Leads board (own / branch
+  // / firm); a viewer with no lead capability goes back to their dashboard
+  // rather than hitting a thrown 403. Without the wall, every lead, as before.
+  let scope = sql`TRUE`;
+  if (await dataWallAppliesFor(session)) {
+    if (!canViewLeads(session)) redirect("/dashboard");
+    scope = leadScopeSql(session, "l");
+  }
 
   const rows = await withTenant(session.tenantId, async (tx) => {
     const r = await tx.execute(sql`

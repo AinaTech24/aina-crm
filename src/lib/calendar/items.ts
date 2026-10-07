@@ -17,7 +17,7 @@ import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { attendeeIs } from "@/lib/review-meetings/attendees";
 import type { SessionUser } from "@/lib/auth/session";
-import { investorScopeSql } from "@/lib/investors/access";
+import { dataWallApplies, investorScopeSql } from "@/lib/investors/access";
 import { leadScopeSql } from "@/lib/leads/access";
 import { meetingSubjectVisibleSql } from "@/lib/review-meetings/scope";
 import { taskScopeSql } from "@/lib/tasks/scope";
@@ -86,13 +86,14 @@ export async function getCalendarItems(
   const nismScope = scope.investorsAll ? sql`` : sql` AND id = ${scope.userId}::uuid`;
   let kycScope = scope.investorsAll ? sql`` : sql` AND rm_id = ${scope.userId}::uuid`;
 
-  // Narrow the firm-wide branches by the shared access rules.
+  // Narrow the firm-wide branches by the shared access rules — only under the
+  // data wall; without it the flags alone decide, as before.
   let taskScopeF = taskScope;
   let leadScopeF = leadScope;
   let invScopeF = invScope;
   let meetingScopeF = meetingScope;
   const s = scope.session;
-  if (s) {
+  if (s && (await dataWallApplies(tx, s))) {
     if (scope.tasksAll) taskScopeF = sql` AND ${await taskScopeSql(tx, s, "tasks")}`;
     if (scope.leadsAll) leadScopeF = sql` AND ${leadScopeSql(s, "leads")}`;
     if (scope.investorsAll) {

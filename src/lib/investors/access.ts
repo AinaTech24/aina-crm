@@ -78,6 +78,42 @@ export async function isDataScopeRestricted(tx: any, tenantId: string, session?:
 }
 
 /**
+ * Does the per-user data wall apply to this viewer at all? False for the owner
+ * (never customised, sees everything) and for anyone at a firm with the switch
+ * off who was not customised. Every narrowing the "every module honours own
+ * clients" change added BEYOND the shared client scope — own-only rules,
+ * prepared-by-me rules, own-bookings locks, page capability gates — applies
+ * only when this is true; otherwise the screen keeps its earlier behaviour.
+ */
+export async function dataWallApplies(tx: any, session: SessionUser): Promise<boolean> {
+  if (session.roles.includes("owner")) return false;
+  return isDataScopeRestricted(tx, session.tenantId, session);
+}
+
+/** `dataWallApplies` for code outside a transaction (page gates). */
+export async function dataWallAppliesFor(session: SessionUser): Promise<boolean> {
+  if (session.roles.includes("owner")) return false;
+  return withTenant(session.tenantId, (tx) => isDataScopeRestricted(tx, session.tenantId, session));
+}
+
+/**
+ * Does the client scope actually NARROW this viewer's book? False when the
+ * wall does not apply to them (`dataWallApplies`) and for a firm-wide client
+ * viewer even with the wall on. Callers that wrap the client scope in an
+ * `EXISTS (SELECT 1 FROM investors …)` skip the EXISTS when this is false, so
+ * a record whose client is missing, deleted or purged never disappears for a
+ * viewer who was never narrowed (the owner above all).
+ */
+export async function clientScopeNarrows(tx: any, session: SessionUser): Promise<boolean> {
+  if (!(await dataWallApplies(tx, session))) return false;
+  if (!can(session.roles, "investor.view.all", session.permissions) && !can(session.roles, "investor.view.assigned", session.permissions)) return true;
+  if (session.mobile && !session.roles.some(r => ["owner", "ops", "back_office"].includes(r))
+    && (session.roles.includes("branch_head") || session.roles.includes("rm"))) return true;
+  if (isBranchScoped(session)) return true;
+  return !canViewAllInvestors(session);
+}
+
+/**
  * Drizzle condition restricting a client query to what this session may see.
  * `undefined` means "no restriction" — either the tenant has the switch off or
  * the caller is a firm-wide viewer — so callers can drop it into an `and(...)`

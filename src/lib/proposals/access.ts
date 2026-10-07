@@ -8,6 +8,10 @@
  *     client is (`investorScopeSql`), for a LEAD when the lead is
  *     (`leadScopeSql`), for a FAMILY when the family is (`familyScopeSql`).
  *     No capability for that kind of recipient → none of those proposals.
+ *
+ * Both apply only under the data wall (`dataWallApplies`). Without it the
+ * pages list every proposal, as they always did; the API routes keep their
+ * own long-standing prepared-by-me check for non-managers.
  */
 
 import { and, eq, sql } from "drizzle-orm";
@@ -15,7 +19,7 @@ import type { Tx } from "@/db/client";
 import { proposals } from "@/db/schema";
 import type { SessionUser } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
-import { investorScopeSql } from "@/lib/investors/access";
+import { clientScopeNarrows, dataWallApplies, investorScopeSql } from "@/lib/investors/access";
 import { leadScopeSql } from "@/lib/leads/access";
 import { familyScopeSql } from "@/lib/families/access";
 
@@ -36,8 +40,11 @@ export async function proposalInvestorScopeSql(tx: any, session: SessionUser, al
 
 /** Recipient part only (rule 2), over a `proposals` alias. */
 export async function proposalRecipientScopeSql(tx: any, session: SessionUser, alias = "proposals") {
+  if (!(await dataWallApplies(tx, session))) return sql`TRUE`;
   const col = (c: string) => sql.raw(`${alias}.${c}`);
   const inv = await proposalInvestorScopeSql(tx, session, "pr_i");
+  // A firm-wide client viewer keeps proposals whose client was since deleted.
+  const clientsFree = hasCap(session, ["investor.view.all", "investor.view.assigned"]) && !(await clientScopeNarrows(tx, session));
   const lead = hasCap(session, ["lead.view.all", "lead.view.assigned"]) ? leadScopeSql(session, "pr_l") : sql`FALSE`;
   const fam = hasCap(session, ["family.view", "investor.view.all", "investor.view.assigned"])
     ? await familyScopeSql(tx, session, "pr_f")
@@ -46,7 +53,7 @@ export async function proposalRecipientScopeSql(tx: any, session: SessionUser, a
     (${col("recipient_type")} = 'family' AND ${col("family_id")} IS NOT NULL
       AND EXISTS (SELECT 1 FROM families pr_f WHERE pr_f.id = ${col("family_id")} AND ${fam}))
     OR (${col("recipient_type")} <> 'family' AND ${col("investor_id")} IS NOT NULL
-      AND EXISTS (SELECT 1 FROM investors pr_i WHERE pr_i.id = ${col("investor_id")} AND ${inv}))
+      AND ${clientsFree ? sql`TRUE` : sql`EXISTS (SELECT 1 FROM investors pr_i WHERE pr_i.id = ${col("investor_id")} AND ${inv})`})
     OR (${col("recipient_type")} <> 'family' AND ${col("investor_id")} IS NULL AND ${col("lead_id")} IS NOT NULL
       AND EXISTS (SELECT 1 FROM leads pr_l WHERE pr_l.id = ${col("lead_id")} AND ${lead}))
     OR (${col("investor_id")} IS NULL AND ${col("lead_id")} IS NULL AND ${col("family_id")} IS NULL)
@@ -55,7 +62,7 @@ export async function proposalRecipientScopeSql(tx: any, session: SessionUser, a
 
 /** Full condition over a `proposals` alias (rules 1 + 2). */
 export async function proposalScopeSql(tx: any, session: SessionUser, alias = "proposals") {
-  const own = proposalSeesAll(session)
+  const own = proposalSeesAll(session) || !(await dataWallApplies(tx, session))
     ? sql`TRUE`
     : sql`${sql.raw(`${alias}.prepared_by_user_id`)} = ${session.userId}::uuid`;
   return sql`(${own} AND ${await proposalRecipientScopeSql(tx, session, alias)})`;

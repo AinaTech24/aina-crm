@@ -201,7 +201,7 @@ export async function GET(req: NextRequest) {
         // A task of mine about a client / lead outside my scope keeps its own
         // title but does not name the client.
         const clientVisible = await taskClientVisibleSql(tx, session, "tasks");
-        const leadVisible = taskLeadVisibleSql(session, "tasks");
+        const leadVisible = await taskLeadVisibleSql(tx, session, "tasks");
         const totalRow = await tx.select({ c: sql<number>`count(*)::int` }).from(tasks).leftJoin(users, eq(users.id, tasks.assigneeId)).where(where as any);
         const rows = await tx
           .select({

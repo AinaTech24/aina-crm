@@ -11,7 +11,7 @@ import { and, eq, sql, type SQL } from "drizzle-orm";
 import type { SessionUser } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { financialDiscoveries } from "@/db/schema";
-import { investorScopeSql } from "@/lib/investors/access";
+import { clientScopeNarrows, dataWallApplies, investorScopeSql } from "@/lib/investors/access";
 import { leadScopeSql } from "@/lib/leads/access";
 
 const seesClients = (s: SessionUser) =>
@@ -21,7 +21,10 @@ const seesLeads = (s: SessionUser) =>
 
 /** SQL condition over a subject (type + id column expressions): visible to this session. */
 async function subjectScope(tx: any, session: SessionUser, subjectType: SQL, subjectId: SQL): Promise<SQL> {
-  const client = seesClients(session)
+  if (!(await dataWallApplies(tx, session))) return sql`TRUE`;
+  const client = seesClients(session) && !(await clientScopeNarrows(tx, session))
+    ? sql`(${subjectType} = 'investor')`
+    : seesClients(session)
     ? sql`(${subjectType} = 'investor' AND EXISTS (
         SELECT 1 FROM investors ds_i WHERE ds_i.id = ${subjectId} AND ds_i.deleted_at IS NULL
            AND ${await investorScopeSql(tx, session, "ds_i")}))`

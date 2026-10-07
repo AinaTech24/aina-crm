@@ -27,7 +27,7 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { dispatch } from "@/lib/comms/pipeline";
 import { ACTION_TEMPLATE_KEYS } from "@/lib/comms/follow-through";
 import { commsScopeSql } from "@/lib/comms/inbox-scope";
-import { investorScopeSql } from "@/lib/investors/access";
+import { dataWallApplies, investorScopeSql } from "@/lib/investors/access";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -54,10 +54,13 @@ export async function POST(req: NextRequest) {
       async (tx) => {
         const keyList = sql.join(ACTION_TEMPLATE_KEYS.map((k) => sql`${k}`), sql`, `);
         const idList = sql.join(ids.map((x) => sql`${x}::uuid`), sql`, `);
-        // Only messages the caller may see, about a client in their scope.
-        const scope = await commsScopeSql(tx, session, "c");
-        const clientScope = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "investor.view.assigned", session.permissions)
-          ? await investorScopeSql(tx, session, "i") : sql`FALSE`;
+        // Under the data wall: only messages the caller may see, about a client
+        // in their scope. Without it, any of these messages, as before.
+        const wallOn = await dataWallApplies(tx, session);
+        const scope = wallOn ? await commsScopeSql(tx, session, "c") : sql`TRUE`;
+        const clientScope = !wallOn ? sql`TRUE`
+          : can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "investor.view.assigned", session.permissions)
+            ? await investorScopeSql(tx, session, "i") : sql`FALSE`;
         return (await tx.execute(sql`
           SELECT c.id, c.template_key, c.investor_id, i.name, i.email
             FROM communications c

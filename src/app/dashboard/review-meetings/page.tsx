@@ -3,6 +3,7 @@ import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { attendeeIsAnyUser } from "@/lib/review-meetings/attendees";
 import { meetingScopeSql } from "@/lib/review-meetings/scope";
+import { dataWallApplies } from "@/lib/investors/access";
 import { Calendar, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -89,9 +90,10 @@ export default async function ReviewMeetingsPage({
   };
 
   const data = await withTenant(session.tenantId, async (tx) => {
-    // Own + attended meetings; with manage.all, also those whose client / lead
-    // the viewer may see (lib/review-meetings/scope.ts) — same rule as the API.
-    const scope = await meetingScopeSql(tx, session, "m");
+    // Under the data wall: own + attended meetings; with manage.all, also
+    // those whose client / lead the viewer may see (lib/review-meetings/scope.ts)
+    // — same rule as the API. Without it the page lists every meeting, as before.
+    const scope = (await dataWallApplies(tx, session)) ? await meetingScopeSql(tx, session, "m") : sql`TRUE`;
     const filters: any[] = [sql`m.tenant_id = ${session.tenantId}::uuid`, scope];
     if (q) {
       filters.push(

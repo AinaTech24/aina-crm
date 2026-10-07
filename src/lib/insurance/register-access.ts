@@ -12,6 +12,10 @@
  *     permissions, branch lock). No client capability at all → none.
  *     `insurance.view.all` (the Insurance Head's grant) skips rule 2 only;
  *     each surface still applies its own rule 1.
+ *
+ * Both apply only under the data wall (`dataWallApplies`). Without it a
+ * policy or claim is visible as it was before — the routes that always had an
+ * own-book check (policy GET, renew) keep theirs.
  */
 
 import { and, eq, sql, type SQL } from "drizzle-orm";
@@ -19,7 +23,8 @@ import type { Tx } from "@/db/client";
 import { insuranceClaims, insurancePolicies } from "@/db/schema";
 import type { SessionUser } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
-import { investorScopeCondition, investorScopeSql } from "@/lib/investors/access";
+import { clientScopeNarrows, dataWallApplies, investorScopeSql } from "@/lib/investors/access";
+import { isBranchScoped } from "@/lib/leads/access";
 
 /** The register's "manager" test (rule 1 off). */
 export function registerSeesAll(session: SessionUser) {
@@ -34,6 +39,9 @@ export async function insuranceClientScopeSql(tx: any, session: SessionUser, inv
   // `insurance.view.all` is the Insurance Head's explicit grant of the whole
   // insurance book; an owner who ticked it meant it.
   if (can(session.roles, "insurance.view.all", session.permissions)) return sql`TRUE`;
+  // Not narrowed (no wall, or a firm-wide client viewer): every policy, even
+  // one whose client was since deleted.
+  if (!(await clientScopeNarrows(tx, session))) return sql`TRUE`;
   const hasClientView = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "investor.view.assigned", session.permissions);
   if (!hasClientView) return sql`FALSE`;
   const scope = await investorScopeSql(tx, session, "ins_scope_i");
@@ -43,12 +51,18 @@ export async function insuranceClientScopeSql(tx: any, session: SessionUser, inv
 /**
  * One policy (rules 1 + 2), or null when missing or out of scope (→ 404).
  * `seesAll` overrides rule 1's manager test for a surface that has its own
- * (the register page counts `insurance.view.all` as a manager).
+ * (the register page counts `insurance.view.all` as a manager). A
+ * branch-locked head's own book is their branch's clients — the Insurance
+ * Team Dashboard links them to their colleagues' policies.
  */
 export async function loadViewablePolicy(tx: Tx, session: SessionUser, id: string, opts: { seesAll?: boolean } = {}) {
-  const own = (opts.seesAll ?? registerSeesAll(session))
+  const wallOn = await dataWallApplies(tx, session);
+  const branch = isBranchScoped(session) && session.branchId
+    ? sql` OR ${insurancePolicies.investorId} IN (SELECT id FROM investors WHERE branch_id = ${session.branchId}::uuid)`
+    : sql``;
+  const own = !wallOn || (opts.seesAll ?? registerSeesAll(session))
     ? undefined
-    : sql`(${insurancePolicies.soldByUserId} = ${session.userId}::uuid OR ${insurancePolicies.investorId} IN (SELECT id FROM investors WHERE rm_id = ${session.userId}::uuid))`;
+    : sql`(${insurancePolicies.soldByUserId} = ${session.userId}::uuid OR ${insurancePolicies.investorId} IN (SELECT id FROM investors WHERE rm_id = ${session.userId}::uuid)${branch})`;
   const [row] = await tx
     .select()
     .from(insurancePolicies)
@@ -70,9 +84,8 @@ export async function loadViewablePolicy(tx: Tx, session: SessionUser, id: strin
  */
 export async function claimClientScopeSql(tx: any, session: SessionUser, investorIdSql: SQL, rmIdSql: SQL): Promise<SQL> {
   const linked = await insuranceClientScopeSql(tx, session, investorIdSql);
-  const hasClientView = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "investor.view.assigned", session.permissions);
   const unrestricted = can(session.roles, "insurance.view.all", session.permissions)
-    || (hasClientView && (await investorScopeCondition(tx, session)) === undefined);
+    || !(await clientScopeNarrows(tx, session));
   const unlinked = unrestricted ? sql`TRUE` : sql`${rmIdSql} = ${session.userId}::uuid`;
   return sql`((${investorIdSql} IS NOT NULL AND ${linked}) OR (${investorIdSql} IS NULL AND ${unlinked}))`;
 }

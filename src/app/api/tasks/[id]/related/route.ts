@@ -19,7 +19,7 @@ import { requireSession } from "@/lib/auth/session";
 import { can, requireAny } from "@/lib/auth/rbac";
 import { taskChecklist } from "@/db/schema";
 import { taskInScope } from "@/lib/tasks/scope";
-import { investorScopeSql } from "@/lib/investors/access";
+import { dataWallApplies, investorScopeSql } from "@/lib/investors/access";
 import { leadScopeSql } from "@/lib/leads/access";
 
 export const dynamic = "force-dynamic";
@@ -64,9 +64,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
       // A linked client / lead outside the viewer's scope is shown as such —
       // no name, category, RM or link (CLAUDE.md: "Not in your book").
+      // Only under the data wall — without it every link is named, as before.
+      const wallOn = await dataWallApplies(tx, session);
       const cap = (c: Parameters<typeof can>[1]) => can(session.roles, c, session.permissions);
-      const invScope = cap("investor.view.all") || cap("investor.view.assigned") ? await investorScopeSql(tx, session, "i") : sql`FALSE`;
-      const leadScope = cap("lead.view.all") || cap("lead.view.assigned") ? leadScopeSql(session, "leads") : sql`FALSE`;
+      const invScope = !wallOn ? sql`TRUE`
+        : cap("investor.view.all") || cap("investor.view.assigned") ? await investorScopeSql(tx, session, "i") : sql`FALSE`;
+      const leadScope = !wallOn ? sql`TRUE`
+        : cap("lead.view.all") || cap("lead.view.assigned") ? leadScopeSql(session, "leads") : sql`FALSE`;
       const links: RelatedLink[] = [];
       for (const cid of clientIds) {
         const r = (await tx.execute(sql`

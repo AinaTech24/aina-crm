@@ -31,6 +31,7 @@ import {
 import { PortfolioReviewWorksheet } from "@/components/review-meetings/PortfolioReviewWorksheet";
 import { formatDate } from "@/lib/format";
 import { canSeeMeeting } from "@/lib/review-meetings/scope";
+import { dataWallApplies } from "@/lib/investors/access";
 
 export const dynamic = "force-dynamic";
 
@@ -59,7 +60,7 @@ export default async function MeetingPortfolioPage({
     // manage.assigned RMs may only open their OWN meeting's worksheet.
     if (!canAll && meeting.rmId !== session.userId) return null;
     // manage.all reaches only meetings whose client / lead is in scope.
-    if (!(await canSeeMeeting(tx, session, id))) return null;
+    if ((await dataWallApplies(tx, session)) && !(await canSeeMeeting(tx, session, id))) return null;
 
     const [investor] = meeting.investorId
       ? await tx

@@ -7,7 +7,8 @@ import { requireSession } from "@/lib/auth/session";
 import { formatINR, formatDate } from "@/lib/utils";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
-import { investorScopeSql } from "@/lib/investors/access";
+import { dataWallApplies, investorScopeSql } from "@/lib/investors/access";
+import { can } from "@/lib/auth/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -23,8 +24,14 @@ export default async function ReferralsPage({
 
   const data = await withTenant(session.tenantId, async (tx) => {
     // Only referrers (clients) in the viewer's book — the same client scope as
-    // the Clients list; throws 403 without any client capability.
-    const scope = await investorScopeSql(tx, session, "i");
+    // the Clients list — and only under the data wall; a viewer with no client
+    // capability then sees no referrers (never a thrown 403). Without the
+    // wall, every referrer, as before.
+    const scope = !(await dataWallApplies(tx, session))
+      ? sql`TRUE`
+      : can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "investor.view.assigned", session.permissions)
+        ? await investorScopeSql(tx, session, "i")
+        : sql`FALSE`;
     // Aggregate referrals per existing investor.
     const conds: any[] = [sql`i.deleted_at IS NULL`, sql`i.tenant_id = ${session.tenantId}::uuid`, scope];
     if (q) conds.push(sql`i.name ILIKE ${`%${q}%`}`);
