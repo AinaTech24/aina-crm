@@ -1054,7 +1054,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
                   {data.riskHistory.map((h) => (
                     <tr key={h.id} className="hover:bg-secondary/40">
                       <td className="px-4 py-3 text-xs font-medium tabular-nums">
-                        {h.signedAt ? formatDate(h.signedAt) : formatDate(h.profileDate)}
+                        {h.signedAt ? formatDate(h.signedAt, "dateTime") : formatDate(h.profileDate)}
                       </td>
                       <td className="px-4 py-3">
                         <Badge>{h.finalCategory}</Badge>

@@ -292,7 +292,7 @@ export default async function RiskProfilesPage({
                         </td>
                         <td className="py-3 tabular-nums">{score ?? "—"}</td>
                         <td className="py-3 text-xs text-muted-foreground">
-                          {signed ? formatDate(signed) : "Not yet"}
+                          {signed ? formatDate(signed, "dateTime") : "Not yet"}
                         </td>
                         <td className="py-3 text-xs text-muted-foreground">
                           {r.next_review_at ? formatDate(r.next_review_at) : "—"}

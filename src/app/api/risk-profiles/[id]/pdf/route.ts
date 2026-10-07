@@ -38,7 +38,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       const r = await tx.execute(sql`
         SELECT
           r.final_category, r.total_score, r.responses, r.profile_date, r.age,
-          r.signed_at, r.signed_by_name, r.next_review_at, r.verification_method, r.document_url,
+          r.signed_at, r.signed_by_name, r.next_review_at, r.verification_method, r.document_url, r.created_at,
           r.verified_email, r.email_verified_at, r.client_ip, r.otp_transaction_id,
           i.name AS investor_name, i.pan AS investor_pan,
           i.address AS investor_address, i.email AS investor_email, i.phone AS investor_phone,
@@ -90,6 +90,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           maxScore,
           profileDate: row.profile_date ?? null,
           signedAt: row.signed_at ? new Date(row.signed_at).toISOString() : null,
+          recordedAt: row.created_at ? new Date(row.created_at).toISOString() : null,
           signedByName: row.signed_by_name ?? null,
           nextReviewAt: row.next_review_at ?? null,
           age: row.age != null ? Number(row.age) : null,
