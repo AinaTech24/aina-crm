@@ -795,10 +795,25 @@ async function processSipBook(
     // completeExpiredSips in lib/finance/sip-lifecycle.ts, which closes those
     // only on evidence that the instalments stopped). A cease date IS that
     // evidence.
-    // CAMS does not reliably say "STP" in AUT_TRNTYP, but only a transfer has
-    // a TARGET scheme — Rs 1,90,000 a month out of an ultra-short fund came in
-    // as a SIP on Nimesh C Shah's book until this check.
-    if ((r.registrationType && /^(STP|SWP)/i.test(r.registrationType.trim())) || r.targetScheme) {
+    // Only a purchase registration is a SIP. CAMS WBR49 codes AUT_TRNTYP:
+    //   P   SIP (systematic purchase)      SO  STP out (switch to a target)
+    //   DTP dividend transfer plan         R   SWP (systematic redemption)
+    // and only a transfer has a TARGET scheme. On Nimesh C Shah's 7 Oct file
+    // the SO rows alone were Rs 68.56 L a month — they had all come in as SIPs.
+    const regType = (r.registrationType ?? "").trim();
+    const isSipType = !regType || /^(p|sip|isip|xsip|csip|micro ?sip|purchase|systematic purchase)$/i.test(regType);
+    if (!isSipType || r.targetScheme) {
+      // An earlier import may have stored it as a SIP: take that copy out of
+      // the book, so re-importing the report also cleans up after itself.
+      if (r.folioNumber && (r.schemeCode || r.schemeName)) {
+        await tx.execute(sql`
+          UPDATE sips SET status = 'stopped', remarks = ${NOT_A_SIP_REMARK}, updated_at = now()
+           WHERE tenant_id = ${args.tenantId}::uuid AND folio_number = ${r.folioNumber} AND status = 'active'
+             AND (scheme_code = ${r.schemeCode || r.schemeName}
+                  OR lower(regexp_replace(COALESCE(scheme_name, ''), '[^a-zA-Z0-9]', '', 'g'))
+                   = lower(regexp_replace(${r.schemeName || r.schemeCode}, '[^a-zA-Z0-9]', '', 'g')))
+        `);
+      }
       skipped++;
       continue;
     }
@@ -992,6 +1007,23 @@ async function processSipBook(
   // The SIP book changed underneath the clients' cached "Monthly SIP" — and a
   // match by folio number can move a SIP between client records — so refresh
   // the whole firm's cache in one set-based pass (lib/metrics/sip.ts).
+  // A Rs 0 copy of a registration this or an earlier report stored again WITH
+  // its amount (a file keyed on scheme name, then one with a code column) is a
+  // duplicate, not a second SIP.
+  await tx.execute(sql`
+    UPDATE sips z
+       SET status = 'stopped', updated_at = now(),
+           remarks = 'Duplicate: the same registration was re-imported with its amount'
+     WHERE z.tenant_id = ${args.tenantId}::uuid AND z.status = 'active' AND COALESCE(z.amount, 0) = 0
+       AND EXISTS (
+         SELECT 1 FROM sips o
+          WHERE o.tenant_id = z.tenant_id AND o.id <> z.id AND o.status = 'active'
+            AND o.folio_number = z.folio_number AND COALESCE(o.amount, 0) > 0
+            AND lower(regexp_replace(COALESCE(o.scheme_name, ''), '[^a-zA-Z0-9]', '', 'g'))
+              = lower(regexp_replace(COALESCE(z.scheme_name, ''), '[^a-zA-Z0-9]', '', 'g'))
+       )
+  `);
+
   // Registrations the ledger shows to be STPs/SWPs leave the book
   // (lib/finance/sip-lifecycle.ts) before the cache is refreshed.
   const transfers = await markSystematicTransfers(tx, args.tenantId);

@@ -460,7 +460,13 @@ export function parseSipBook(
  * before 1950 is that artefact, not a real SIP date.
  */
 function realDate(d?: string): string | undefined {
-  const iso = normaliseDate(d);
+  // CAMS WBR49 writes US dates with a clock — "2/9/2010 12:00 AM" is 9 FEB.
+  // The general reader takes d/m first, which misread every such date whose
+  // day is 12 or less (cease and end dates included).
+  const us = d?.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)$/i);
+  const iso = us
+    ? `${us[3]}-${us[1].padStart(2, "0")}-${us[2].padStart(2, "0")}`
+    : normaliseDate(d);
   return iso && iso >= "1950-01-01" ? iso : undefined;
 }
 
@@ -589,6 +595,13 @@ function splitLine(line: string, delim: string): string[] {
 
 function normaliseFrequency(freq: string): "monthly" | "quarterly" | "weekly" | "fortnightly" | "yearly" {
   const f = freq.toLowerCase();
+  // CAMS WBR49 codes: OM once a month, OW once a week, Q quarterly, OF / FN
+  // fortnightly, OY / Y yearly. (D, daily, has no slot and stays monthly.)
+  const code = f.trim();
+  if (code === "ow" || code === "w") return "weekly";
+  if (code === "q" || code === "oq") return "quarterly";
+  if (code === "of" || code === "fn") return "fortnightly";
+  if (code === "oy" || code === "y") return "yearly";
   if (f.includes("quarter")) return "quarterly";
   if (f.includes("weekly")) return "weekly";
   if (f.includes("fortnight")) return "fortnightly";
