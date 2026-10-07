@@ -7,7 +7,7 @@ import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 
 import Link from "next/link";
 import { ClipboardList } from "lucide-react";
-import { desc } from "drizzle-orm";
+import { desc, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireAny } from "@/lib/auth/rbac";
@@ -15,6 +15,7 @@ import { financialDiscoveries } from "@/db/schema";
 import { formatRelative } from "@/lib/utils";
 import { NewDiscoveryDialog } from "@/components/discovery/NewDiscoveryDialog";
 import { HelpTip } from "@/components/common/HelpTip";
+import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 
 export const dynamic = "force-dynamic";
 
@@ -25,12 +26,38 @@ const STATUS_STYLE: Record<string, string> = {
   reviewed: "bg-emerald-50 text-emerald-700",
 };
 
-export default async function DiscoveryListPage() {
+export default async function DiscoveryListPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | undefined>>;
+}) {
   const session = await requireSession();
   requireAny(session.roles, ["investor.view.all", "investor.view.assigned", "lead.view.all", "lead.view.assigned"], session.permissions);
 
+  const sp = await searchParams;
+  const q = (sp.q ?? "").trim().slice(0, 100);
+
+  // Search: every word must match the client or lead's name, the discovery's
+  // title or its review type — "adesh manocha" finds "ADESH KUMAR MANOCHA".
+  // The client / lead are read by the discovery's own subject, so a name typed
+  // here can only find discoveries this firm already has.
+  const words = q.split(/\s+/).filter(Boolean).slice(0, 6);
+  const where = words.length
+    ? sql.join(
+        words.map((w) => {
+          const p = `%${w.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+          return sql`(${financialDiscoveries.title} ILIKE ${p} OR ${financialDiscoveries.reviewType} ILIKE ${p}
+            OR (${financialDiscoveries.subjectType} = 'investor' AND EXISTS (
+                  SELECT 1 FROM investors i WHERE i.id = ${financialDiscoveries.subjectId} AND i.name ILIKE ${p}))
+            OR (${financialDiscoveries.subjectType} = 'lead' AND EXISTS (
+                  SELECT 1 FROM leads l WHERE l.id = ${financialDiscoveries.subjectId} AND l.name ILIKE ${p})))`;
+        }),
+        sql` AND `
+      )
+    : undefined;
+
   const rows = await withTenant(session.tenantId, (tx) =>
-    tx.select().from(financialDiscoveries).orderBy(desc(financialDiscoveries.updatedAt)).limit(300)
+    tx.select().from(financialDiscoveries).where(where).orderBy(desc(financialDiscoveries.updatedAt)).limit(300)
   );
 
   const submitted = rows.filter((r) => r.status === "submitted").length;
@@ -50,8 +77,14 @@ export default async function DiscoveryListPage() {
         </div>
       )}
 
+      <CompactFilterBar totalCount={rows.length} searchPlaceholder="Search by client, lead or title…" filters={[]} />
+
       <div className="card-surface overflow-hidden">
-        {rows.length === 0 ? (
+        {rows.length === 0 && q ? (
+          <div className="p-12 text-center text-sm text-muted-foreground">
+            No discoveries match <span className="font-medium text-foreground">&ldquo;{q}&rdquo;</span>.
+          </div>
+        ) : rows.length === 0 ? (
           <div className="p-12 text-center text-sm text-muted-foreground">
             <ClipboardList className="size-8 mx-auto text-muted-foreground/50" />
             <div className="mt-2 font-medium">No discoveries yet.</div>
