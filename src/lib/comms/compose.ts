@@ -48,6 +48,9 @@ export interface ComposeEmailInput {
   inReplyTo?: string | null;
   /** Reply-To override — routes the client's reply to the sending RM's inbox. */
   replyTo?: string | null;
+  /** Files sent with the mail (e.g. a MOM's supporting documents). Send-now
+   *  only — the bytes are not stored, so a scheduled or retried send has none. */
+  attachments?: Array<{ filename: string; content: Buffer }>;
 }
 
 export interface ComposeResult {
@@ -117,6 +120,7 @@ async function performEmailSend(
     replyTo?: string | null;
     /** The sending RM — picks their personal mailbox over the firm default. */
     actorUserId?: string | null;
+    attachments?: Array<{ filename: string; content: Buffer }>;
   }
 ): Promise<ComposeResult> {
   // 0. Suppression — never send to a hard-bounced / unsubscribed address.
@@ -213,6 +217,7 @@ async function performEmailSend(
       // Stable per-row key → Resend dedupes a re-fired send (retry / scheduled
       // race) provider-side instead of delivering a duplicate.
       idempotencyKey: args.commId,
+      attachments: args.attachments?.length ? args.attachments : undefined,
     });
     });
     await tx
@@ -249,7 +254,14 @@ export async function composeAndSendEmail(tx: Tx, input: ComposeEmailInput): Pro
     status: "queued",
     threadId,
     inReplyTo: input.inReplyTo ?? null,
-    payload: { rendered, recipient: input.recipient, category: input.category, compose: true } as any,
+    payload: {
+      rendered,
+      recipient: input.recipient,
+      category: input.category,
+      compose: true,
+      // Names only — the timeline shows what went with the mail.
+      attachments: input.attachments?.length ? input.attachments.map((a) => ({ filename: a.filename, bytes: a.content.length })) : undefined,
+    } as any,
     queuedAt: new Date(),
   } as any);
 
@@ -262,6 +274,7 @@ export async function composeAndSendEmail(tx: Tx, input: ComposeEmailInput): Pro
     rendered,
     replyTo: input.replyTo,
     actorUserId: input.actorUserId,
+    attachments: input.attachments,
   });
 }
 
