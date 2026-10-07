@@ -63,6 +63,10 @@ export type CanonicalSipRow = {
   endDate?: string;
   nextInstallmentAt?: string;
   mandateRefNo?: string;
+  /** The day the registration was cancelled (CAMS CEASE_DATE). */
+  ceaseDate?: string;
+  /** The registrar's registration type (CAMS AUT_TRNTYP): SIP, STP, SWP… */
+  registrationType?: string;
 };
 
 export type CanonicalMandateRow = {
@@ -199,13 +203,22 @@ const SIP_BOOK_ALIASES: Record<string, string[]> = {
   // — because resolveHeader returns ONLY what it detected, never merged with the
   // positional fallback — `cols[undefined]` yielded "" for every row, so
   // `parseFloat("") || 0` wrote 8,140 SIPs at amount 0 with no error anywhere.
-  amount: ["AMOUNT", "AMT", "TXN_AMT", "TXN_AMOUNT", "TRANS_AMT", "SIP_AMOUNT", "INSTALLMENT_AMOUNT", "AUTO_AMOUNT", "AUTO_AMT"],
-  frequency: ["FREQUENCY", "FREQ", "SIP_FREQ", "SIP_FREQUENCY", "PERIODICITY"],
+  // CAMS also ships this report with every header cut to TEN characters
+  // (dBase-style): AUTO_AMOUN, PERIODICIT. Without those spellings a
+  // 1,001-row CAMS book on Nimesh C Shah Financial Services imported every SIP
+  // at Rs 0 (6 Oct 2026).
+  amount: ["AMOUNT", "AMT", "TXN_AMT", "TXN_AMOUNT", "TRANS_AMT", "SIP_AMOUNT", "INSTALLMENT_AMOUNT", "AUTO_AMOUNT", "AUTO_AMT", "AUTO_AMOUN"],
+  frequency: ["FREQUENCY", "FREQ", "SIP_FREQ", "SIP_FREQUENCY", "PERIODICITY", "PERIODICIT"],
   sipDate: ["SIP_DATE", "DATE", "SIP_DAY", "DAY", "PERIOD_DAY"],
   startDate: ["START_DATE", "SIP_START_DATE", "FROM_DATE", "FROM DATE", "START DATE"],
   endDate: ["END_DATE", "SIP_END_DATE", "TO_DATE", "TO DATE", "END DATE"],
   nextInstallmentAt: ["NEXT_DEBIT_DATE", "NEXT_INSTALLMENT_DATE", "NEXT_DUE_DATE", "NEXT_DATE", "NEXT_DEBIT", "NEXT_DT"],
   mandateRefNo: ["MANDATE_ID", "UMRN", "MANDATE_REF", "MANDATE_REF_NO", "MANDATE REF", "UMRN_NO"],
+  // A registration report lists cancelled and finished SIPs too. Without the
+  // cease date every row imported as 'active', and the SIP book counted SIPs
+  // that stopped years ago.
+  ceaseDate: ["CEASE_DATE", "CEASED_DATE", "SIP_CEASE_DATE", "CANCEL_DATE", "CANCELLATION_DATE", "TERMINATION_DATE"],
+  registrationType: ["AUT_TRNTYP", "AUTO_TRNTYP", "AUTO_TRN_TYPE", "REGISTRATION_TYPE"],
 };
 
 const DEFAULT_MANDATE_STATUS_MAP = {
@@ -426,13 +439,25 @@ export function parseSipBook(
       amount: parseFloat(val("amount").replace(/[, ]/g, "")) || 0,
       frequency: normaliseFrequency(val("frequency")),
       sipDate: val("sipDate") || undefined,
-      startDate: normaliseDate(val("startDate")) ?? undefined,
-      endDate: normaliseDate(val("endDate")) ?? undefined,
+      startDate: realDate(val("startDate")),
+      endDate: realDate(val("endDate")),
       nextInstallmentAt: normaliseDate(val("nextInstallmentAt")) ?? undefined,
       mandateRefNo: val("mandateRefNo") || undefined,
+      ceaseDate: realDate(val("ceaseDate")),
+      registrationType: val("registrationType") || undefined,
     });
   }
   return out;
+}
+
+/**
+ * A date that means something. A blank spreadsheet cell comes out as Excel's
+ * day zero (1899-12-30 / 1900-01-01), which read as "ended in 1899"; anything
+ * before 1950 is that artefact, not a real SIP date.
+ */
+function realDate(d?: string): string | undefined {
+  const iso = normaliseDate(d);
+  return iso && iso >= "1950-01-01" ? iso : undefined;
 }
 
 // ── NACH Mandate Status ─────────────────────────────────────────────────

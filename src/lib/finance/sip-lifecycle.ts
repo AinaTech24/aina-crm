@@ -240,6 +240,53 @@ export async function completeExpiredSips(
   };
 }
 
+/** The remark that marks a registration as a transfer, not a SIP. Imports
+ *  check for it so a later registrar report cannot bring the row back. */
+export const NOT_A_SIP_REMARK = "Not a SIP: an STP/SWP registration — money leaves this scheme each month";
+
+/**
+ * Take STP and SWP registrations out of the SIP book.
+ *
+ * The registrar's "systematic registrations" report (KFintech MFSD243/313,
+ * CAMS WBR49) lists SIPs, STPs and SWPs together, and they all imported as
+ * SIPs. An STP out of a liquid fund then counted as a SIP INTO it: on Nimesh C
+ * Shah Financial Services, 225 such rows were Rs 68.28 L of a Rs 1.10 Cr
+ * "SIP book" — e.g. Rs 2,00,000 a month leaving Nippon Ultra Short Duration
+ * for an equity fund, booked as a Rs 2 L SIP.
+ *
+ * Positive evidence only, from the transaction ledger, on the same folio and
+ * scheme code: at least two OUTFLOWS of the registered amount (within 1%) and
+ * not a single SIP instalment, ever. A SIP brings money in; a scheme that only
+ * ever sends the instalment out is the source of a transfer or withdrawal. A
+ * registration with no transactions at all is left alone — no evidence either
+ * way.
+ *
+ * Marked 'stopped' with {@link NOT_A_SIP_REMARK}; the caller refreshes
+ * `active_sip_amount`.
+ */
+export async function markSystematicTransfers(tx: Tx, tenantId: string): Promise<number> {
+  const res = await tx.execute(sql`
+    UPDATE sips s
+       SET status = 'stopped', remarks = ${NOT_A_SIP_REMARK}, updated_at = now()
+     WHERE s.tenant_id = ${tenantId}::uuid
+       AND s.status = 'active'
+       AND COALESCE(s.amount, 0) > 0
+       AND NOT EXISTS (
+         SELECT 1 FROM transactions x
+          WHERE x.tenant_id = s.tenant_id AND x.folio_number = s.folio_number
+            AND x.scheme_code = s.scheme_code AND x.type = 'sip'
+       )
+       AND (
+         SELECT count(*) FROM transactions x
+          WHERE x.tenant_id = s.tenant_id AND x.folio_number = s.folio_number
+            AND x.scheme_code = s.scheme_code AND x.direction = 'outflow'
+            AND x.amount BETWEEN s.amount * 0.99 AND s.amount * 1.01
+       ) >= 2
+    RETURNING s.id
+  `);
+  return res.rows.length;
+}
+
 /** Headline counts for the worklist header. */
 export type SipExpirySummary = {
   expiring30: number;
