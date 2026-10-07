@@ -303,7 +303,7 @@ export function LeadEditPanel({ lead }: { lead: any }) {
             )}
           </Row>
 
-          <Row label="Campaign">
+          <Row label={(editing ? form.source : lead.source) === "other" ? "Other source" : "Campaign"}>
             {editing ? (
               <input
                 value={form.sourceCampaign}

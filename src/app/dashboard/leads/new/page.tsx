@@ -65,6 +65,8 @@ export default function NewLeadPage() {
     phone: "",
     city: "",
     source: "manual",
+    /** "Other" source, in the lead's words — saved as source_campaign. */
+    sourceOther: "",
     expectedBusinessAmount: "",
     leadType: "",
     aumPotential: "",
@@ -178,6 +180,8 @@ export default function NewLeadPage() {
         phone: form.phone || undefined,
         city: form.city || undefined,
         source: form.source,
+        // An "Other" source says what it was (shown as "Other source" on the lead).
+        sourceCampaign: form.source === "other" && form.sourceOther.trim() ? form.sourceOther.trim() : undefined,
         notes: form.notes || undefined,
         leadType: form.leadType || undefined,
         aumPotential: form.aumPotential || undefined,
@@ -387,6 +391,17 @@ export default function NewLeadPage() {
             <option value="other">Other</option>
             <option value="manual">Manual entry</option>
           </SelectField>
+          {form.source === "other" && (
+            <input
+              value={form.sourceOther}
+              onChange={(e) => set("sourceOther", e.target.value)}
+              maxLength={200}
+              placeholder="Where did this lead come from?"
+              aria-label="Other source"
+              className="input-base mt-2 w-full"
+              autoFocus
+            />
+          )}
         </div>
 
         {/* Conditional referrer lookup — appears only for referral / existing-client sources */}
