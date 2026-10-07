@@ -6,6 +6,10 @@
  * mini-CRM mockup instantly. Saving PATCHes the tenant's primary/secondary
  * colours (the same fields the branding compositor uses), then refreshes so the
  * real layout picks up the new theme.
+ *
+ * The theme is the whole firm's, so saving it needs `settings.users` (the
+ * owner). Anyone else sees it read-only — it used to let them edit every
+ * colour and then fail on Save with "forbidden: missing settings.users".
  */
 
 import { useMemo, useState } from "react";
@@ -20,7 +24,7 @@ import {
   UI_DENSITIES,
 } from "@/lib/branding/theme";
 
-export function AppearanceThemeForm({ tenant }: { tenant: any }) {
+export function AppearanceThemeForm({ tenant, canEdit = true }: { tenant: any; canEdit?: boolean }) {
   const router = useRouter();
   // Stock equivalents of the app's light-mode --foreground / --secondary.
   const TEXT_DEFAULT = "#0f172a";
@@ -91,7 +95,12 @@ export function AppearanceThemeForm({ tenant }: { tenant: any }) {
   return (
     <div className="grid lg:grid-cols-[1fr_360px] gap-5 items-start">
       {/* ── Controls ── */}
-      <div className="space-y-5">
+      <fieldset disabled={!canEdit} className="space-y-5 min-w-0">
+        {!canEdit && (
+          <div className="rounded-lg bg-secondary px-4 py-3 text-sm">
+            Only the firm owner can change the theme — it applies to everyone in the firm.
+          </div>
+        )}
         {/* Typography & density */}
         <div className="border rounded-xl bg-card p-5 space-y-3">
           <h2 className="font-semibold text-sm uppercase tracking-wide text-muted-foreground">Typography &amp; density</h2>
@@ -181,6 +190,7 @@ export function AppearanceThemeForm({ tenant }: { tenant: any }) {
 
         {err && <div className="text-sm text-rose-600">{err}</div>}
 
+        {canEdit && (
         <div className="flex items-center gap-2">
           <button onClick={save} disabled={busy || !dirty} className="btn-primary disabled:opacity-50">
             {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
@@ -195,7 +205,8 @@ export function AppearanceThemeForm({ tenant }: { tenant: any }) {
             </span>
           )}
         </div>
-      </div>
+        )}
+      </fieldset>
 
       {/* ── Live preview (scoped theme via inline CSS vars) ── */}
       <div className="lg:sticky lg:top-4">
