@@ -618,7 +618,7 @@ function PlanFormContent() {
         <div className="rounded-lg border border-info/30 bg-info/5 px-4 py-3 text-sm text-foreground">
           <span className="font-semibold">Started from {fromFactFind.name}&apos;s fact-find</span>
           {" "}({fromFactFind.status === "reviewed" ? "reviewed" : "submitted"} {formatDate(fromFactFind.at)}).
-          {" "}Goals come across in future rupees at the fact-find&apos;s {FACT_FIND_GOAL_RETURN}% return, so their
+          {" "}Goals come across in future rupees at the fact-find&apos;s own return (7–{FACT_FIND_GOAL_RETURN}% by horizon), so their
           inflation is 0%.
           {fromFactFind.undatedGoals > 0 && (
             <>

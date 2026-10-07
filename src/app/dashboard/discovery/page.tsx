@@ -7,11 +7,12 @@ import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 
 import Link from "next/link";
 import { ClipboardList } from "lucide-react";
-import { desc, sql } from "drizzle-orm";
+import { and, desc, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireAny } from "@/lib/auth/rbac";
 import { financialDiscoveries } from "@/db/schema";
+import { discoveryScopeSql } from "@/lib/discovery/access";
 import { formatRelative } from "@/lib/utils";
 import { NewDiscoveryDialog } from "@/components/discovery/NewDiscoveryDialog";
 import { HelpTip } from "@/components/common/HelpTip";
@@ -56,8 +57,11 @@ export default async function DiscoveryListPage({
       )
     : undefined;
 
-  const rows = await withTenant(session.tenantId, (tx) =>
-    tx.select().from(financialDiscoveries).where(where).orderBy(desc(financialDiscoveries.updatedAt)).limit(300)
+  // Only fact-finds whose client / lead the viewer can see (lib/discovery/access).
+  const rows = await withTenant(session.tenantId, async (tx) =>
+    tx.select().from(financialDiscoveries)
+      .where(and(await discoveryScopeSql(tx, session), where))
+      .orderBy(desc(financialDiscoveries.updatedAt)).limit(300)
   );
 
   const submitted = rows.filter((r) => r.status === "submitted").length;

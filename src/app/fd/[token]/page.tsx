@@ -11,6 +11,7 @@ import { tenants, financialDiscoveries } from "@/db/schema";
 import { resolveShareToken } from "@/lib/share-tokens";
 import { PublicDiscoveryForm } from "@/components/public/PublicDiscoveryForm";
 import type { DiscoveryData } from "@/lib/discovery/calc";
+import { forClientLink } from "@/lib/discovery/mask";
 
 export const dynamic = "force-dynamic";
 
@@ -35,9 +36,8 @@ export default async function PublicDiscoveryPage({ params }: { params: Promise<
   if (!data.disc) return <ErrorScreen message="This form could not be found." />;
 
   const already = data.disc.status === "submitted" || data.disc.status === "reviewed";
-  const initial = { ...(data.disc.data as any) };
-  delete initial.assessment;
-  delete initial.recommendations;
+  // No advisor assessment; PAN and mobile masked — the link gets forwarded.
+  const initial = forClientLink(data.disc.data);
 
   return (
     <div className="min-h-screen bg-secondary/30">
@@ -64,7 +64,7 @@ export default async function PublicDiscoveryPage({ params }: { params: Promise<
           <>
             <p className="text-sm text-muted-foreground mb-4 max-w-2xl">
               This helps {data.tenant?.name ?? "your advisor"} understand your finances before you meet. It takes about
-              10 minutes. Nothing is shared with anyone else — and your live financial health score updates as you fill it.
+              10 minutes, and your progress is saved as you go, so you can come back to this link. Nothing is shared with anyone else.
             </p>
             <PublicDiscoveryForm token={token} initialData={initial as DiscoveryData} firmName={data.tenant?.name ?? "your advisor"} />
           </>
