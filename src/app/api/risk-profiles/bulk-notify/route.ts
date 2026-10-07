@@ -26,6 +26,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { dispatch } from "@/lib/comms/pipeline";
 import { installClientEmailTemplates } from "@/lib/templates/install-client-emails";
+import { investorScopeSql } from "@/lib/investors/access";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -60,12 +61,15 @@ export async function POST(req: NextRequest) {
           ? sql` AND i.id IN (${sql.join(ids.map((x) => sql`${x}::uuid`), sql`, `)})`
           : sql``;
         const rmScope = seesAll ? sql`` : sql` AND i.rm_id = ${session.userId}::uuid`;
+        // Plus the shared client data scope (branch / own book).
+        const dataScope = await investorScopeSql(tx, session, "i");
         const rows = (await tx.execute(sql`
           SELECT i.id, i.name, i.email
             FROM investors i
            WHERE i.tenant_id = ${session.tenantId}::uuid
              AND i.status = 'active' AND i.deleted_at IS NULL AND i.merged_into_id IS NULL
              AND i.risk_profile_provisional = true${idScope}${rmScope}
+             AND ${dataScope}
            ORDER BY i.name ASC
         `)).rows as Array<{ id: string; name: string; email: string | null }>;
         return rows.map((r) => ({ id: String(r.id), name: r.name ?? "", email: (r.email ?? "").trim() || null }));

@@ -21,11 +21,13 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { requireAny } from "@/lib/auth/rbac";
+import { can, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { dispatch } from "@/lib/comms/pipeline";
 import { ACTION_TEMPLATE_KEYS } from "@/lib/comms/follow-through";
+import { commsScopeSql } from "@/lib/comms/inbox-scope";
+import { dataWallApplies, investorScopeSql } from "@/lib/investors/access";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -52,6 +54,13 @@ export async function POST(req: NextRequest) {
       async (tx) => {
         const keyList = sql.join(ACTION_TEMPLATE_KEYS.map((k) => sql`${k}`), sql`, `);
         const idList = sql.join(ids.map((x) => sql`${x}::uuid`), sql`, `);
+        // Under the data wall: only messages the caller may see, about a client
+        // in their scope. Without it, any of these messages, as before.
+        const wallOn = await dataWallApplies(tx, session);
+        const scope = wallOn ? await commsScopeSql(tx, session, "c") : sql`TRUE`;
+        const clientScope = !wallOn ? sql`TRUE`
+          : can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "investor.view.assigned", session.permissions)
+            ? await investorScopeSql(tx, session, "i") : sql`FALSE`;
         return (await tx.execute(sql`
           SELECT c.id, c.template_key, c.investor_id, i.name, i.email
             FROM communications c
@@ -61,6 +70,7 @@ export async function POST(req: NextRequest) {
              AND c.id IN (${idList})
              AND c.template_key IN (${keyList})
              AND c.channel = 'email'
+             AND ${scope} AND ${clientScope}
         `)).rows as Array<{ id: string; template_key: string; investor_id: string; name: string; email: string | null }>;
       },
       { userId: session.userId, branchId: session.branchId, roles: session.roles }

@@ -266,14 +266,12 @@ export default function NewLeadPage() {
           setValue={(v) => set("phone", v)}
         // placeholder="+919XXXXXXXXX"
         />
-        <div className={showAll ? "contents" : "hidden"}>
-          <Row
-            label="Email"
-            value={form.email}
-            setValue={(v) => set("email", v)}
-            type="email"
-          />
-        </div>
+        <Row
+          label="Email"
+          value={form.email}
+          setValue={(v) => set("email", v)}
+          type="email"
+        />
 
         {/* Already a client — another product is an opportunity on their
             record, not a new lead (a lead would duplicate the person and fail
@@ -493,7 +491,7 @@ export default function NewLeadPage() {
         </div>
 
         {/* Everything below is optional detail — hidden until asked for, so a
-            lead can be captured mid-phone-call in four fields. */}
+            lead can be captured mid-phone-call in a few fields. */}
         <div className="sm:col-span-2">
           {/* Tinted in the brand colour with a "click here" line, so people see
               there is more to fill in — a grey dashed box read as decoration. */}
@@ -516,7 +514,7 @@ export default function NewLeadPage() {
               <>
                 <PlusCircle className="size-5 shrink-0" aria-hidden />
                 <span className="text-left">
-                  <span className="block text-sm font-semibold">Add full details — photo, email, products, amounts &amp; more</span>
+                  <span className="block text-sm font-semibold">Add full details — photo, city, products, amounts &amp; more</span>
                   <span className="block text-xs font-normal opacity-80">Click here to write more info</span>
                 </span>
                 <ChevronDown className="size-4 shrink-0" aria-hidden />

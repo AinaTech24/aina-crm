@@ -5,7 +5,7 @@
  * relationship manager.
  */
 
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 
 export type BusinessSummary = {
   gross: number;
@@ -23,12 +23,17 @@ function rmCond(rmId?: string | null) {
   return rmId ? sql` AND e.rm_id = ${rmId}::uuid` : sql``;
 }
 
+/** The viewer's scope — a predicate over business_entries alias `e`. */
+function scopeCond(scope?: SQL) {
+  return scope ? sql` AND ${scope}` : sql``;
+}
+
 export async function getBusinessSummary(
   tx: any,
   tenantId: string,
-  opts: { fromISO: string; toISO: string; rmId?: string | null; productType?: string | null; status?: string | null }
+  opts: { fromISO: string; toISO: string; rmId?: string | null; productType?: string | null; status?: string | null; scope?: SQL }
 ): Promise<BusinessSummary> {
-  const { fromISO, toISO, rmId, productType, status } = opts;
+  const { fromISO, toISO, rmId, productType, status, scope } = opts;
   // A specific status narrows to exactly that; otherwise show all booked business
   // (everything except cancelled) — the dashboard's default.
   const statusCond = status ? sql` AND e.status = ${status}` : sql` AND e.status <> 'cancelled'`;
@@ -38,7 +43,7 @@ export async function getBusinessSummary(
     JOIN business_entries e ON e.id = l.entry_id
     WHERE e.tenant_id = ${tenantId}::uuid${statusCond}
       AND e.business_date >= ${fromISO}::date
-      AND e.business_date <= ${toISO}::date${rmCond(rmId)}${productCond}
+      AND e.business_date <= ${toISO}::date${rmCond(rmId)}${productCond}${scopeCond(scope)}
   `;
 
   const totals = (await tx.execute(sql`
@@ -95,7 +100,7 @@ export type LiquidRow = {
 export async function getLiquidParkingReport(
   tx: any,
   tenantId: string,
-  opts: { rmId?: string | null } = {}
+  opts: { rmId?: string | null; scope?: SQL } = {}
 ): Promise<LiquidRow[]> {
   const rows = (await tx.execute(sql`
     SELECT * FROM (
@@ -112,7 +117,7 @@ export async function getLiquidParkingReport(
       FROM business_entry_lines l
       JOIN business_entries e ON e.id = l.entry_id
       WHERE e.tenant_id = ${tenantId}::uuid
-        AND e.status <> 'cancelled'${rmCond(opts.rmId)}
+        AND e.status <> 'cancelled'${rmCond(opts.rmId)}${scopeCond(opts.scope)}
       GROUP BY e.investor_id
     ) t
     WHERE t.liquid_in - t.liquid_out > 0

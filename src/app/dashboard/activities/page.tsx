@@ -11,6 +11,7 @@ import { CustomViews } from "@/components/common/CustomViews";
 import { ContactQuickActions } from "@/components/common/ContactQuickActions";
 import { LogActivityButton } from "@/components/activities/ActivityLogger";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
+import { activityScopeSql } from "@/lib/activities/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +44,9 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
       if (q) conds.push(sql`(a.subject_name ILIKE ${`%${q}%`} OR a.subject ILIKE ${`%${q}%`} OR a.notes ILIKE ${`%${q}%`})`);
       if (kind.length) conds.push(sql`a.kind IN (${sql.join(kind.map((k) => sql`${k}`), sql`, `)})`);
       if (mine) conds.push(sql`a.owner_user_id = ${session.userId}::uuid`);
+      // Own entries, or (firm-wide) entries whose client / lead / family is in
+      // the viewer's scope (lib/activities/scope.ts).
+      conds.push(await activityScopeSql(tx, session, "a"));
       const dr = dateRangeCond(sp, "created", "a.occurred_at");
       if (dr) conds.push(dr);
       const whereSql = sql`WHERE ${sql.join(conds, sql` AND `)}`;
@@ -65,6 +69,7 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
           COUNT(*) FILTER (WHERE kind = 'visit' AND occurred_at >= current_date - 6)::int AS visits_week,
           COUNT(*) FILTER (WHERE next_followup_at IS NOT NULL AND next_followup_at::date <= current_date)::int AS followups_due
         FROM activities WHERE tenant_id = ${session.tenantId}::uuid ${mineSql}
+          AND ${await activityScopeSql(tx, session, "activities")}
       `);
       return { rows: rows.rows as any[], stats: stats.rows[0] as any };
     },

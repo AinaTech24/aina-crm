@@ -16,6 +16,11 @@
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { attendeeIs } from "@/lib/review-meetings/attendees";
+import type { SessionUser } from "@/lib/auth/session";
+import { dataWallApplies, investorScopeSql } from "@/lib/investors/access";
+import { leadScopeSql } from "@/lib/leads/access";
+import { meetingSubjectVisibleSql } from "@/lib/review-meetings/scope";
+import { taskScopeSql } from "@/lib/tasks/scope";
 
 export type CalendarKind = "task" | "follow_up" | "meeting" | "review" | "sip" | "campaign" | "compliance";
 
@@ -45,6 +50,13 @@ export type CalendarScope = {
   leadsAll: boolean;
   /** can(roles, "investor.view.all") — also gates compliance (NISM/KYC). */
   investorsAll: boolean;
+  /**
+   * The viewer. When given, the "all" branches above are narrowed by the
+   * shared access rules — a customised "own clients only" user, a branch head,
+   * a client outside the book never reaches the calendar through a
+   * firm-wide capability. Without it the flags alone decide (legacy callers).
+   */
+  session?: SessionUser;
 };
 
 /** Normalise a pg date/timestamp value to YYYY-MM-DD. */
@@ -70,9 +82,28 @@ export async function getCalendarItems(
   const meetingScope = scope.investorsAll
     ? sql``
     : sql` AND (rm.rm_id = ${scope.userId}::uuid OR ${attendeeIs("user", scope.userId, sql.raw("rm.attendees"))})`;
-  const sipScope = scope.investorsAll ? sql`` : sql` AND i.rm_id = ${scope.userId}::uuid`;
+  let sipScope = scope.investorsAll ? sql`` : sql` AND i.rm_id = ${scope.userId}::uuid`;
   const nismScope = scope.investorsAll ? sql`` : sql` AND id = ${scope.userId}::uuid`;
-  const kycScope = scope.investorsAll ? sql`` : sql` AND rm_id = ${scope.userId}::uuid`;
+  let kycScope = scope.investorsAll ? sql`` : sql` AND rm_id = ${scope.userId}::uuid`;
+
+  // Narrow the firm-wide branches by the shared access rules — only under the
+  // data wall; without it the flags alone decide, as before.
+  let taskScopeF = taskScope;
+  let leadScopeF = leadScope;
+  let invScopeF = invScope;
+  let meetingScopeF = meetingScope;
+  const s = scope.session;
+  if (s && (await dataWallApplies(tx, s))) {
+    if (scope.tasksAll) taskScopeF = sql` AND ${await taskScopeSql(tx, s, "tasks")}`;
+    if (scope.leadsAll) leadScopeF = sql` AND ${leadScopeSql(s, "leads")}`;
+    if (scope.investorsAll) {
+      invScopeF = sql` AND ${await investorScopeSql(tx, s, "investors")}`;
+      kycScope = invScopeF;
+      sipScope = sql` AND ${await investorScopeSql(tx, s, "i")}`;
+      meetingScopeF = sql` AND (rm.rm_id = ${scope.userId}::uuid OR ${attendeeIs("user", scope.userId, sql.raw("rm.attendees"))}
+        OR ${await meetingSubjectVisibleSql(tx, s, "rm")})`;
+    }
+  }
 
   const [tasks, leads, meetings, reviews, sips, campaigns, compliance] = await Promise.all([
     tx.execute(sql`
@@ -81,7 +112,7 @@ export async function getCalendarItems(
       WHERE due_at IS NOT NULL
         AND deleted_at IS NULL
         AND due_at::date >= ${fromIso} AND due_at::date <= ${toIso}
-        AND status NOT IN ('completed', 'cancelled')${taskScope}
+        AND status NOT IN ('completed', 'cancelled')${taskScopeF}
       ORDER BY due_at ASC LIMIT 500
     `),
     tx.execute(sql`
@@ -89,7 +120,7 @@ export async function getCalendarItems(
       FROM leads
       WHERE next_follow_up_at IS NOT NULL
         AND next_follow_up_at::date >= ${fromIso} AND next_follow_up_at::date <= ${toIso}
-        AND converted_investor_id IS NULL AND stage NOT IN ('lost')${leadScope}
+        AND converted_investor_id IS NULL AND stage NOT IN ('lost')${leadScopeF}
       LIMIT 500
     `),
     // Actually-scheduled meetings (from the Meetings module / review_meetings
@@ -106,7 +137,7 @@ export async function getCalendarItems(
       LEFT JOIN investors i ON i.id = rm.investor_id
       LEFT JOIN leads l ON l.id = rm.lead_id
       WHERE rm.meeting_date::date >= ${fromIso} AND rm.meeting_date::date <= ${toIso}
-        AND rm.status <> 'cancelled'${meetingScope}
+        AND rm.status <> 'cancelled'${meetingScopeF}
       ORDER BY rm.meeting_date ASC LIMIT 500
     `),
     tx.execute(sql`
@@ -114,7 +145,7 @@ export async function getCalendarItems(
       FROM investors
       WHERE next_review_at IS NOT NULL
         AND deleted_at IS NULL
-        AND next_review_at::date >= ${fromIso} AND next_review_at::date <= ${toIso}${invScope}
+        AND next_review_at::date >= ${fromIso} AND next_review_at::date <= ${toIso}${invScopeF}
       LIMIT 500
     `),
     tx.execute(sql`

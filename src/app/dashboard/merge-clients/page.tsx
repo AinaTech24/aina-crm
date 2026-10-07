@@ -1,33 +1,35 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 /**
- * Merge Clients — the de-duplication utility, in five fixed options:
+ * Merge Clients — the de-duplication utility, in three tabs:
  *
- *   Merge Client                search → summary table → preview → merge (N into 1)
- *   Differ Clients              separate a merge that was wrong (reversible merges only)
- *   View All Merged Clients     every merge on record, who did it and why
- *   Unmerged Suggestion List    likely duplicates (PAN / phone / email / name) awaiting a decision,
- *                               plus the one thing the system may do alone: exact-PAN groups
- *   Client Merged By System     merges nobody reviewed at the time — the set worth spot-checking
+ *   Suggested duplicates   groups the CRM found (PAN / name + date of birth) →
+ *                          Compare & merge, or "Not duplicates"; plus the exact-PAN
+ *                          auto-merge, the one thing the system may do alone
+ *   Merge by search        find records yourself → the same Compare & merge
+ *   Merge history          every merge (filter: automatic only), each undoable
  *
- * Everything runs through src/lib/investors/merge.ts, so a manual merge, an
- * N-way merge and a system merge move the same rows and are undone by the same
- * un-merge. Merging is restricted to owners / branch heads; other roles see the
- * history read-only.
+ * Both merge entry points open ONE dialog (MergeCompareDialog): tick the
+ * records, choose the primary, choose each field's value. Everything runs
+ * through src/lib/investors/merge.ts, so a manual merge, an N-way merge and a
+ * system merge move the same rows and are undone by the same un-merge. Merging
+ * is restricted to owners / branch heads; other roles see the history
+ * read-only. The old five ?tab= values still resolve (resolveMergeHubTab).
  */
 
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { GitMerge, HeartHandshake, Search, ShieldCheck } from "lucide-react";
+import { GitMerge, HeartHandshake, Search, ShieldCheck, Copy } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { investorScopeSql } from "@/lib/investors/access";
 import { loadMergeCounts, loadMergedClients, type MergedClient } from "@/lib/investors/merged";
 import { loadClientDuplicateClusters, type DuplicateCluster } from "@/lib/investors/duplicate-clusters";
 import { UnmergeButton } from "@/components/investors/MergePicker";
 import { MergeClientTool } from "@/components/investors/MergeClientTool";
 import { AutoMergeButton } from "@/components/investors/AutoMergeButton";
 import { DuplicateGroup } from "@/components/investors/DuplicateMerge";
-import { MergeHubNav, MERGE_HUB_TABS, type MergeHubTab } from "@/components/investors/MergeHubNav";
+import { MergeHubNav, MERGE_HUB_TABS, resolveMergeHubTab, type MergeHubTab } from "@/components/investors/MergeHubNav";
 import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -41,8 +43,6 @@ const fmtDate = (v: string | null) => {
   return isNaN(d.getTime()) ? "—" : formatDate(d);
 };
 
-const TAB_KEYS = MERGE_HUB_TABS.map((t) => t.key);
-
 export default async function MergeClientsPage({
   searchParams,
 }: {
@@ -50,62 +50,73 @@ export default async function MergeClientsPage({
 }) {
   const session = await requireSession();
   const sp = await searchParams;
-  const tab = (TAB_KEYS.includes((sp.tab ?? "") as MergeHubTab) ? sp.tab : "merge") as MergeHubTab;
+  const { tab, systemOnly: systemFromOldLink } = resolveMergeHubTab(sp.tab);
+  const systemOnly = systemFromOldLink || sp.by === "system";
   const q = (sp.q ?? "").trim();
   const canMerge = can(session.roles, "dashboard.view.owner", session.permissions);
 
   const data = await withTenant(
     session.tenantId,
     async (tx) => {
-      const counts = await loadMergeCounts(tx);
-      const reversible = Number(
-        ((await tx.execute(sql`SELECT count(*)::int AS n FROM investor_merges WHERE reversed_at IS NULL AND reversible = true`)).rows[0] as any)?.n ?? 0
-      );
+      // Data scope: merges and suggestions only for clients in the viewer's
+      // book (a merged record follows its surviving client). No client
+      // capability at all → nothing.
+      const scopeOn = async (alias: string) =>
+        investorScopeSql(tx, session, alias).catch((e: any) => { if (e?.status === 403) return sql`FALSE`; throw e; });
+      const survivorScope = await scopeOn("s");
+      const counts = await loadMergeCounts(tx, survivorScope);
       // Only the active tab's list is loaded; the others contribute counts only.
       let rows: MergedClient[] = [];
-      let clusters: DuplicateCluster[] = [];
-      let ruleCounts: Record<string, number> = {};
-      if (tab === "merged") rows = await loadMergedClients(tx, { source: "all", q });
-      if (tab === "system") rows = await loadMergedClients(tx, { source: "system", q });
-      if (tab === "differ") rows = (await loadMergedClients(tx, { source: "all", q })).filter((r) => r.mergeId && r.reversible);
-      const dupe = await loadClientDuplicateClusters(tx, session.tenantId);
-      clusters = tab === "suggestions" ? dupe.clusters : [];
-      ruleCounts = dupe.ruleCounts;
-      return { counts, reversible, rows, clusters, ruleCounts, suggestionCount: dupe.clusters.length, panGroups: dupe.ruleCounts.PAN ?? 0 };
+      if (tab === "history") rows = await loadMergedClients(tx, { source: systemOnly ? "system" : "all", q, scope: survivorScope });
+      const dupe = await loadClientDuplicateClusters(tx, session.tenantId, await scopeOn("i"));
+      const clusters: DuplicateCluster[] = tab === "suggestions" ? dupe.clusters : [];
+      return { counts, rows, clusters, ruleCounts: dupe.ruleCounts, suggestionCount: dupe.clusters.length, panGroups: dupe.ruleCounts.PAN ?? 0 };
     },
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
 
   const navCounts: Partial<Record<MergeHubTab, number>> = {
-    differ: data.reversible,
-    merged: data.counts.all,
     suggestions: data.suggestionCount,
-    system: data.counts.system,
+    history: data.counts.all,
   };
   const active = MERGE_HUB_TABS.find((t) => t.key === tab)!;
 
   return (
     <div className="space-y-5 max-w-7xl">
-      <PageHeaderCard title={<><GitMerge className="size-6 text-primary" /> Merge Clients</>} actions={<><Link href="/dashboard/duplicates?module=family" className="btn-secondary text-xs inline-flex items-center gap-1.5">
-          <HeartHandshake className="size-3.5" /> Duplicate families
-        </Link></>} />
+      <PageHeaderCard
+        title={<><GitMerge className="size-6 text-primary" /> Merge Clients</>}
+        actions={<>
+          <Link href="/dashboard/duplicates" className="btn-secondary text-xs inline-flex items-center gap-1.5">
+            <Copy className="size-3.5" /> Find duplicates
+          </Link>
+          <Link href="/dashboard/duplicates?tab=families" className="btn-secondary text-xs inline-flex items-center gap-1.5">
+            <HeartHandshake className="size-3.5" /> Duplicate families
+          </Link>
+        </>}
+      />
 
-      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-5 items-start">
-        <MergeHubNav active={tab} counts={navCounts} />
+      <MergeHubNav active={tab} counts={navCounts} />
 
         <div className="min-w-0 space-y-4">
-          {/* Section title + (for list tabs) search, both URL-driven so a view is shareable. */}
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <h2 className="text-lg font-semibold">{active.label}</h2>
-              <p className="text-xs text-muted-foreground">{active.hint}</p>
-            </div>
-            {(tab === "merged" || tab === "system" || tab === "differ") && (
-              <form className="relative" action="/dashboard/merge-clients">
-                <input type="hidden" name="tab" value={tab} />
-                <Search className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <input name="q" defaultValue={q} placeholder="Name, PAN, email, mobile…" className="input-base h-8 text-xs pl-8 w-64" />
-              </form>
+            <p className="text-xs text-muted-foreground max-w-2xl">{active.hint}</p>
+            {tab === "history" && (
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="dash-seg" role="group" aria-label="Which merges">
+                  <Link href={`/dashboard/merge-clients?tab=history${q ? `&q=${encodeURIComponent(q)}` : ""}`} aria-current={!systemOnly ? "page" : undefined}>
+                    All ({data.counts.all})
+                  </Link>
+                  <Link href={`/dashboard/merge-clients?tab=history&by=system${q ? `&q=${encodeURIComponent(q)}` : ""}`} aria-current={systemOnly ? "page" : undefined}>
+                    Done automatically ({data.counts.system})
+                  </Link>
+                </div>
+                <form className="relative" action="/dashboard/merge-clients">
+                  <input type="hidden" name="tab" value="history" />
+                  {systemOnly && <input type="hidden" name="by" value="system" />}
+                  <Search className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden />
+                  <input name="q" defaultValue={q} placeholder="Name, PAN, email, mobile…" aria-label="Search merges" className="input-base h-8 text-xs pl-8 w-64" />
+                </form>
+              </div>
             )}
           </div>
 
@@ -133,7 +144,7 @@ export default async function MergeClientsPage({
                     <DuplicateGroup key={`${c.kind}-${c.gkey}`} kind={c.kind} gkey={c.gkey} members={c.members} />
                   ))}
                   <p className="text-2xs text-muted-foreground">
-                    “Not duplicates” hides a group for good. Merging here is logged as manual and can be separated later.
+                    “Not duplicates” hides a group for good. A merge can be undone from Merge history.
                   </p>
                 </div>
               ) : (
@@ -142,21 +153,17 @@ export default async function MergeClientsPage({
             </>
           )}
 
-          {tab === "system" && data.counts.system > 0 && (
+          {tab === "history" && systemOnly && data.counts.system > 0 && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
-              <strong>{data.counts.system}</strong> client{data.counts.system === 1 ? " was" : "s were"} merged automatically on an
-              exact-PAN match, with nobody reviewing the pair. Spot-check that each really is the same person — anything wrong can be
-              separated from here.
+              These {data.counts.system} merge{data.counts.system === 1 ? " was" : "s were"} done automatically on an exact-PAN match, with nobody
+              reviewing the pair. Spot-check that each really is the same person — anything wrong can be undone here.
             </div>
           )}
 
-          {(tab === "merged" || tab === "system" || tab === "differ") && (
-            <MergedTable rows={data.rows} tab={tab} q={q} canMerge={canMerge} />
-          )}
+          {tab === "history" && <MergedTable rows={data.rows} q={q} canMerge={canMerge} />}
 
-          {!canMerge && tab !== "merge" && tab !== "suggestions" && <ReadOnlyNote />}
+          {!canMerge && tab === "history" && <ReadOnlyNote />}
         </div>
-      </div>
     </div>
   );
 }
@@ -169,22 +176,18 @@ function ReadOnlyNote() {
   );
 }
 
-function MergedTable({ rows, tab, q, canMerge }: { rows: MergedClient[]; tab: MergeHubTab; q: string; canMerge: boolean }) {
-  const emptyTitle =
-    q ? "No merges match that search."
-    : tab === "differ" ? "Nothing to separate — no reversible merges on record."
-    : tab === "system" ? "The system hasn't merged any clients yet."
-    : "No clients have been merged yet.";
+function MergedTable({ rows, q, canMerge }: { rows: MergedClient[]; q: string; canMerge: boolean }) {
+  const emptyTitle = q ? "No merges match that search." : "No clients have been merged yet.";
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       {rows.length === 0 ? (
         <div className="p-12 text-center text-sm text-muted-foreground">
           <GitMerge className="size-8 mx-auto text-muted-foreground/40" />
           <div className="mt-2 font-medium">{emptyTitle}</div>
-          {!q && tab !== "differ" && (
+          {!q && (
             <p className="mt-1 text-xs">
               Start from{" "}
-              <Link href="/dashboard/merge-clients?tab=suggestions" className="text-primary hover:underline">the suggestion list</Link>
+              <Link href="/dashboard/merge-clients" className="text-primary hover:underline">the suggested duplicates</Link>
               {" "}or{" "}
               <Link href="/dashboard/merge-clients?tab=merge" className="text-primary hover:underline">merge by search</Link>.
             </p>
@@ -195,13 +198,13 @@ function MergedTable({ rows, tab, q, canMerge }: { rows: MergedClient[]; tab: Me
           <table className="w-full text-sm">
             <thead className="text-xs text-muted-foreground border-b bg-secondary/30">
               <tr>
-                <th className="text-left py-2.5 px-4 font-medium">Merged record</th>
-                <th className="text-left py-2.5 px-4 font-medium">Kept as</th>
+                <th className="text-left py-2.5 px-4 font-medium">Merged away</th>
+                <th className="text-left py-2.5 px-4 font-medium">Into (kept record)</th>
                 <th className="text-left py-2.5 px-4 font-medium">Why</th>
                 <th className="text-left py-2.5 px-4 font-medium">By</th>
                 <th className="text-right py-2.5 px-4 font-medium">Survivor AUM</th>
                 <th className="text-right py-2.5 px-4 font-medium">When</th>
-                <th className="text-right py-2.5 px-4 font-medium"></th>
+                <th className="relative text-right py-2.5 px-4 font-medium"><span className="sr-only">Undo</span></th>
               </tr>
             </thead>
             <tbody>
@@ -228,7 +231,7 @@ function MergedTable({ rows, tab, q, canMerge }: { rows: MergedClient[]; tab: Me
                   <td className="py-2.5 px-4 text-right text-xs text-muted-foreground whitespace-nowrap">{fmtDate(r.mergedAt)}</td>
                   <td className="py-2.5 px-4 text-right whitespace-nowrap">
                     {canMerge && r.mergeId ? (
-                      <UnmergeButton mergeId={r.mergeId} reversible={r.reversible} label={tab === "differ" ? "Separate" : "Undo"} />
+                      <UnmergeButton mergeId={r.mergeId} reversible={r.reversible} label="Undo" />
                     ) : (
                       <span className="text-2xs text-muted-foreground" title="Merged before the merge log existed — nothing recorded what moved, so it cannot be separated automatically.">
                         —

@@ -14,6 +14,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { tasks } from "@/db/schema";
 import { syncTaskBusinessEntry } from "@/lib/business/create-entry";
+import { taskInScope } from "@/lib/tasks/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (!canEditAll && before.assigneeId !== session.userId && before.createdById !== session.userId) {
         return "forbidden" as const;
       }
+      if (!(await taskInScope(tx, session, id))) return "not_found" as const;
       await tx
         .update(tasks)
         .set({ deletedAt: null, deletedBy: null, updatedAt: new Date() } as any)

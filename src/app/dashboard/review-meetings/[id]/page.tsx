@@ -11,6 +11,8 @@ import { ReviewMeetingDetailEditor } from "@/components/review-meetings/ReviewMe
 import { MeetingPrepButton } from "@/components/review-meetings/MeetingPrepButton";
 import { DeleteMeetingButton } from "@/components/review-meetings/DeleteMeetingButton";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
+import { canSeeMeeting } from "@/lib/review-meetings/scope";
+import { dataWallApplies } from "@/lib/investors/access";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +26,9 @@ export default async function ReviewMeetingDetailPage({
   const data = await withTenant(session.tenantId, async (tx) => {
     const m = (await tx.select().from(reviewMeetings).where(and(eq(reviewMeetings.id, id), eq(reviewMeetings.tenantId, session.tenantId))).limit(1))[0];
     if (!m) return null;
+    // Same visibility as the list: own / attended, or (manage.all) a meeting
+    // whose client / lead is in the viewer's scope.
+    if ((await dataWallApplies(tx, session)) && !(await canSeeMeeting(tx, session, id))) return null;
     // The meeting subject is either an investor (client) or a lead — exactly one.
     const inv = m.investorId
       ? (await tx.select().from(investors).where(and(eq(investors.id, m.investorId), eq(investors.tenantId, session.tenantId))).limit(1))[0]

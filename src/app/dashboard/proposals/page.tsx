@@ -1,5 +1,6 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { sql } from "drizzle-orm";
 import {
   Plus,
@@ -13,6 +14,8 @@ import {
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { dataWallAppliesFor } from "@/lib/investors/access";
+import { proposalScopeSql } from "@/lib/proposals/access";
 import { InlineEmpty } from "@/components/common/EmptyState";
 import { formatINR } from "@/lib/utils";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
@@ -75,6 +78,10 @@ export default async function ProposalsPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const session = await requireSession();
+  // Under the data wall, the same gate as GET /api/proposals (the page had
+  // none and listed every proposal in the firm to any role). A page never
+  // throws a 403 — it sends the viewer back to their dashboard.
+  if (!can(session.roles, "proposal.view", session.permissions) && (await dataWallAppliesFor(session))) redirect("/dashboard");
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   // status — comma-separated: the dashboard's Proposal pipeline links each
@@ -105,7 +112,10 @@ export default async function ProposalsPage({
           : sql`p.created_at DESC`;
 
   const data = await withTenant(session.tenantId, async (tx) => {
-    const filters: any[] = [sql`p.tenant_id = ${session.tenantId}::uuid`, CURRENT];
+    // Own proposals unless the viewer sees all, and only those whose client /
+    // lead / family is in their scope — the API's rule.
+    const scope = await proposalScopeSql(tx, session, "p");
+    const filters: any[] = [sql`p.tenant_id = ${session.tenantId}::uuid`, CURRENT, scope];
     if (q) {
       filters.push(
         sql`(p.proposal_number ILIKE ${`%${q}%`} OR p.title ILIKE ${`%${q}%`} OR p.recipient_name ILIKE ${`%${q}%`})`
@@ -198,7 +208,8 @@ export default async function ProposalsPage({
             WHERE status IN ('sent','viewed')
           ), 0
         )::numeric AS outstanding_value
-      FROM proposals
+      FROM proposals p
+      WHERE ${scope}
     `);
     return {
       board,

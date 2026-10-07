@@ -5,6 +5,7 @@ import { withSystem, withTenant } from "@/db/client";
 import { users } from "@/db/schema";
 import { can } from "@/lib/auth/rbac";
 import { getCalendarItems } from "@/lib/calendar/items";
+import type { SessionUser } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +62,11 @@ export async function GET(req: NextRequest) {
           tasksAll: can(roles, "task.view.all", perms),
           leadsAll: can(roles, "lead.view.all", perms),
           investorsAll: can(roles, "investor.view.all", perms),
+          // The feed has no cookie — narrow by the same rules as the in-app calendar.
+          session: {
+            userId: user.id, tenantId: user.tenantId, branchId: (user as any).branchId ?? undefined,
+            roles, permissions: perms ?? undefined, email: user.email, name: user.name,
+          } as SessionUser,
         },
       })
     );

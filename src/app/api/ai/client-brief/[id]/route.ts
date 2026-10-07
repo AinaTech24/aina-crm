@@ -13,6 +13,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { buildNextBestActions } from "@/lib/nba/engine";
 import { generateClientBrief } from "@/lib/ai/assistant";
+import { loadViewableInvestor } from "@/lib/investors/access";
 
 export const dynamic = "force-dynamic";
 
@@ -24,11 +25,14 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     const ctx = await withTenant(
       session.tenantId,
       async (tx) => {
+        // Only a client the caller may open (403 with no client access, 404
+        // outside their book) — the brief is that client's whole picture.
+        if (!(await loadViewableInvestor(tx, session, id))) return null;
         const inv = (await tx.execute(sql`
           SELECT name, service_tier, risk_profile, segment_tag,
                  COALESCE(aum,0)::numeric AS aum, COALESCE(active_sip_amount,0)::numeric AS sip,
                  last_contact_at, onboarded_at, nominee_name, email, risk_profile_signed_at
-          FROM investors WHERE id = ${id}::uuid LIMIT 1
+          FROM investors WHERE id = ${id}::uuid AND tenant_id = ${session.tenantId}::uuid LIMIT 1
         `)).rows[0] as any;
         if (!inv) return null;
 

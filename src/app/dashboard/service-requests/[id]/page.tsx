@@ -8,6 +8,9 @@ import { serviceRequests, investors, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { ServiceRequestDetailEditor } from "@/components/service-requests/ServiceRequestDetailEditor";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
+import { canSeeServiceRequest } from "@/lib/service-requests/access";
+import { clientScopeNarrows, loadViewableInvestor } from "@/lib/investors/access";
+import { can } from "@/lib/auth/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -31,11 +34,21 @@ export default async function ServiceRequestDetailPage({ params }: { params: Pro
   const { id } = await params;
   const session = await requireSession();
   const data = await withTenant(session.tenantId, async (tx) => {
+    if (!(await canSeeServiceRequest(tx, session, id))) return null;
     const sr = (await tx.select().from(serviceRequests).where(and(eq(serviceRequests.id, id), eq(serviceRequests.tenantId, session.tenantId))).limit(1))[0];
     if (!sr) return null;
-    const inv = sr.investorId
-      ? (await tx.select().from(investors).where(eq(investors.id, sr.investorId)).limit(1))[0]
-      : null;
+    // Under the data wall the client shows only when the viewer may see that
+    // client; a ticket assigned to them about someone else's client stays
+    // anonymous. Without the wall the ticket names its client, as before.
+    const mayViewClients = can(session.roles, "investor.view.all", session.permissions)
+      || can(session.roles, "investor.view.assigned", session.permissions);
+    const inv = !sr.investorId
+      ? null
+      : !(await clientScopeNarrows(tx, session))
+        ? (await tx.select().from(investors).where(eq(investors.id, sr.investorId)).limit(1))[0] ?? null
+        : mayViewClients
+          ? await loadViewableInvestor(tx, session, sr.investorId)
+          : null;
     // userId → name map for the activity timeline + assignee display.
     const us = await tx.execute(sql`SELECT id, name FROM users WHERE tenant_id = ${session.tenantId}::uuid`);
     const userMap: Record<string, string> = {};
@@ -65,7 +78,7 @@ export default async function ServiceRequestDetailPage({ params }: { params: Pro
             {investor ? (
               <Link href={`/dashboard/investors/${investor.id}`} className="hover:underline">{investor.name}</Link>
             ) : (
-              <span>No client linked</span>
+              <span>{sr.investorId ? "Client not in your book" : "No client linked"}</span>
             )}
             {sr.channel && <><span>·</span><span className="capitalize">{sr.channel.replace(/_/g, " ")}</span></>}
           </div>

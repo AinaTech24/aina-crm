@@ -18,6 +18,7 @@ import { TaskKanban } from "./TaskKanban";
 import { buttonClass } from "@/components/ui/button-class";
 import { overdueTaskSql, staffWhere, taskAwaitingSql } from "@/lib/metrics";
 import { FINANCIAL_TASK_TYPES } from "@/lib/dashboard/my/window";
+import { taskClientVisibleSql, taskLeadVisibleSql, taskScopeSql } from "@/lib/tasks/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -107,6 +108,10 @@ export default async function TasksPage({
     const conds: any[] = [eq(tasks.tenantId, session.tenantId), isNull(tasks.deletedAt)];
     if (!canViewAll) {
       conds.push(or(eq(tasks.assigneeId, session.userId), eq(tasks.createdById, session.userId))!);
+    } else {
+      // view.all reaches other people's tasks only when their client / lead
+      // is in the viewer's scope (lib/tasks/scope.ts).
+      conds.push(await taskScopeSql(tx, session, "tasks"));
     }
 
     // View-tab scope: tasks assigned TO me, or tasks I assigned (created).
@@ -225,7 +230,10 @@ export default async function TasksPage({
       .where(where as any);
     const total = Number(totalRow[0]?.c ?? 0);
 
-    // Join related entity profiles (Client/Investor and Lead)
+    // Join related entity profiles (Client/Investor and Lead). A task of mine
+    // about a client / lead outside my scope keeps its title but names nobody.
+    const clientVisible = await taskClientVisibleSql(tx, session, "tasks");
+    const leadVisible = await taskLeadVisibleSql(tx, session, "tasks");
     const rows = await tx
       .select({
         task: tasks,
@@ -233,12 +241,12 @@ export default async function TasksPage({
         createdBy: taskCreator.name,
         // The record the task is about: the explicit related_* link, else the
         // older subject_type / subject_id pair that workflows still write.
-        investorId: investors.id,
-        investorName: investors.name,
-        investorAvatarUrl: investors.avatarUrl,
-        leadId: leads.id,
-        leadName: leads.name,
-        leadAvatarUrl: leads.avatarUrl,
+        investorId: sql<string | null>`CASE WHEN ${clientVisible} THEN ${investors.id} END`,
+        investorName: sql<string | null>`CASE WHEN ${clientVisible} THEN ${investors.name} END`,
+        investorAvatarUrl: sql<string | null>`CASE WHEN ${clientVisible} THEN ${investors.avatarUrl} END`,
+        leadId: sql<string | null>`CASE WHEN ${leadVisible} THEN ${leads.id} END`,
+        leadName: sql<string | null>`CASE WHEN ${leadVisible} THEN ${leads.name} END`,
+        leadAvatarUrl: sql<string | null>`CASE WHEN ${leadVisible} THEN ${leads.avatarUrl} END`,
       })
       .from(tasks)
       .leftJoin(users, eq(users.id, tasks.assigneeId))

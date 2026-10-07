@@ -25,6 +25,7 @@ import { communications, templates, templateVersions, investors, leads, users } 
 import { dispatch } from "@/lib/comms/pipeline";
 import { composeAndSendEmail } from "@/lib/comms/compose";
 import { findUndeclaredPlaceholders } from "@/lib/comms/tokens";
+import { assertThreadAccess } from "@/lib/comms/inbox-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +44,8 @@ export async function GET(req: NextRequest) {
     }
 
     const data = await withTenant(session.tenantId, async (tx) => {
+      // Only a client / lead the caller may see (lib/comms/inbox-scope.ts).
+      await assertThreadAccess(tx, session, type, id);
       const emailRows = await tx
         .select({
           id: communications.id,
@@ -209,6 +212,8 @@ export async function POST(req: NextRequest) {
     // ── Free-form reply / forward ──────────────────────────────────────────
     if (data.mode === "compose") {
       const result = await withTenant(session.tenantId, async (tx) => {
+        // Only a client / lead the caller may see (lib/comms/inbox-scope.ts).
+        await assertThreadAccess(tx, session, type, id);
         let recipient = data.to ?? "";
         let recipientName: string | null = null;
         if (type === "investor") {
@@ -248,6 +253,8 @@ export async function POST(req: NextRequest) {
 
     const { templateKey, variables } = data;
     const result = await withTenant(session.tenantId, async (tx) => {
+      // Only a client / lead the caller may see (lib/comms/inbox-scope.ts).
+      await assertThreadAccess(tx, session, type, id);
       let recipient = "";
       if (type === "investor") {
         const [inv] = await tx

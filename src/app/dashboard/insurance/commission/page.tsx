@@ -4,6 +4,7 @@ import { IndianRupee, TrendingUp, FileText, Repeat, Shield, Wallet } from "lucid
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
+import { insuranceClientScopeSql } from "@/lib/insurance/register-access";
 import { formatINR } from "@/lib/utils";
 import { AddCommissionEntry } from "@/components/insurance/AddCommissionEntry";
 import { CommissionLedger } from "@/components/insurance/CommissionLedger";
@@ -25,9 +26,11 @@ export default async function InsuranceCommissionPage() {
 
   const data = await withTenant(session.tenantId, async (tx) => {
     // Own-book slice for non-managers (policies they sold OR for their clients).
-    const scope = seesAll
+    const ownScope = seesAll
       ? sql``
       : sql` AND (sold_by_user_id = ${session.userId}::uuid OR investor_id IN (SELECT id FROM investors WHERE rm_id = ${session.userId}::uuid))`;
+    // + only policies whose client is in the viewer's client scope.
+    const scope = sql`${ownScope} AND ${await insuranceClientScopeSql(tx, session, sql`insurance_policies.investor_id`)}`;
     const totals = (await tx.execute(sql`
       SELECT
         COALESCE(SUM(commission_paisa::numeric), 0)::numeric AS recorded,
@@ -49,7 +52,9 @@ export default async function InsuranceCommissionPage() {
 
     // Manual commission ledger — actual receipts. Scoped to own entries for
     // non-managers (matches the policy-book scope above).
-    const entryScope = seesAll ? sql`` : sql` AND recorded_by_user_id = ${session.userId}::uuid`;
+    const entryOwn = seesAll ? sql`` : sql` AND recorded_by_user_id = ${session.userId}::uuid`;
+    // An entry against a client only when that client is visible.
+    const entryScope = sql`${entryOwn} AND (insurance_commission_entries.investor_id IS NULL OR ${await insuranceClientScopeSql(tx, session, sql`insurance_commission_entries.investor_id`)})`;
     const received = (await tx.execute(sql`
       SELECT COALESCE(SUM(net_amount::numeric), 0)::numeric AS net_total,
              COALESCE(SUM(net_amount::numeric) FILTER (WHERE date_trunc('year', entry_date) = date_trunc('year', current_date)), 0)::numeric AS net_ytd
@@ -62,7 +67,8 @@ export default async function InsuranceCommissionPage() {
       FROM insurance_commission_entries ce
       LEFT JOIN investors i ON i.id = ce.investor_id
       LEFT JOIN users u ON u.id = ce.recorded_by_user_id
-      WHERE ce.tenant_id = ${session.tenantId}::uuid${entryScope}
+      WHERE ce.tenant_id = ${session.tenantId}::uuid${entryOwn}
+        AND (ce.investor_id IS NULL OR ${await insuranceClientScopeSql(tx, session, sql`ce.investor_id`)})
       ORDER BY ce.entry_date DESC, ce.created_at DESC LIMIT 200
     `)).rows as any[];
 

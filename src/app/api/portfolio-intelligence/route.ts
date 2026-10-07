@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { visibleClientSql } from "@/lib/transactions/client-scope";
 import { getPortfolioIntel } from "@/lib/portfolio/intelligence";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +25,14 @@ export async function GET(req: NextRequest) {
 
     const intel = await withTenant(
       session.tenantId,
-      (tx) => getPortfolioIntel(tx as any, { tenantId: session.tenantId, userId: session.userId, firmWide: !mine }),
+      async (tx) =>
+      getPortfolioIntel(tx as any, {
+        tenantId: session.tenantId,
+        userId: session.userId,
+        firmWide: !mine,
+        // Viewer scope: only clients this viewer may see (only narrows).
+        clientScope: await visibleClientSql(tx, session, "i"),
+      }),
       { userId: session.userId, branchId: session.branchId, roles: session.roles }
     );
 

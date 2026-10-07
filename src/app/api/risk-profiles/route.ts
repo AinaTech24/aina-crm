@@ -21,6 +21,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { riskProfileResponses, investors, eventsOutbox, publicEmailOtps } from "@/db/schema";
 import { loadActiveTemplate, scoreAnswersAgainst } from "@/lib/risk-profile/template";
+import { investorScopeSql, loadViewableInvestor } from "@/lib/investors/access";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +49,9 @@ export async function GET() {
     const canViewAll = can(session.roles, "investor.view.all", session.permissions);
     const rows = await withTenant(session.tenantId, async (tx) => {
       // Non-managers only see profiles for clients assigned to them.
-      const scope = canViewAll ? sql`TRUE` : sql`i.rm_id = ${session.userId}::uuid`;
+      const ownScope = canViewAll ? sql`TRUE` : sql`i.rm_id = ${session.userId}::uuid`;
+      // Plus the shared client data scope (branch / own book).
+      const scope = sql`${ownScope} AND ${await investorScopeSql(tx, session, "i")}`;
       // One row per investor — latest signed profile
       const r = await tx.execute(sql`
         SELECT DISTINCT ON (rp.investor_id)
@@ -107,7 +110,8 @@ export async function POST(req: NextRequest) {
       const nextReview = new Date(now);
       nextReview.setDate(nextReview.getDate() + reviewDays);
 
-      const inv = (await tx.select().from(investors).where(eq(investors.id, body.investorId)).limit(1))[0];
+      // Data scope: only a client in the viewer's book.
+      const inv = await loadViewableInvestor(tx, session, body.investorId);
       if (!inv) throw Object.assign(new Error("investor not found"), { status: 404 });
 
       // Mandatory client sign-off. Two accepted routes, and the stored

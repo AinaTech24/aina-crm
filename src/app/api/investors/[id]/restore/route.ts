@@ -12,6 +12,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { investors, auditLog } from "@/db/schema";
+import { investorScopeCondition } from "@/lib/investors/access";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,8 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     requireCap(session.roles, "investor.delete", session.permissions);
 
     const outcome = await withTenant(session.tenantId, async (tx) => {
+      // Data scope: only a client in the viewer's book.
+      const scope = await investorScopeCondition(tx, session);
       const restored = await tx
         .update(investors)
         .set({ deletedAt: null, deletedBy: null, updatedAt: new Date() } as any)
@@ -29,7 +32,8 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
           and(
             eq(investors.id, id),
             eq(investors.tenantId, session.tenantId),
-            isNotNull(investors.deletedAt)
+            isNotNull(investors.deletedAt),
+            scope
           )
         )
         .returning({ id: investors.id, name: investors.name });

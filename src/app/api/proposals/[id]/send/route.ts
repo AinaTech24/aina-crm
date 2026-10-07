@@ -38,6 +38,7 @@ import { Resend } from "resend";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
+import { loadViewableProposal } from "@/lib/proposals/access";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { createShareToken } from "@/lib/share-tokens";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
@@ -276,6 +277,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return await withTenant(session.tenantId, async (tx) => {
       const p = (await tx.select().from(proposals).where(and(eq(proposals.id, id), eq(proposals.tenantId, session.tenantId))).limit(1))[0];
       if (!p) return NextResponse.json({ error: "not found" }, { status: 404 });
+      // The recipient (client / lead / family) must be in the caller's scope.
+      if (!(await loadViewableProposal(tx, session, id))) {
+        if (!seesAll && p.preparedByUserId !== session.userId) {
+          return NextResponse.json({ error: "you can only send proposals you prepared" }, { status: 403 });
+        }
+        return NextResponse.json({ error: "not found" }, { status: 404 });
+      }
       if (!seesAll && p.preparedByUserId !== session.userId) {
         return NextResponse.json({ error: "you can only send proposals you prepared" }, { status: 403 });
       }

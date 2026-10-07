@@ -11,6 +11,8 @@ import { Loader2, Plus, Trash2 } from "lucide-react";
 import { formatINR, formatDate } from "@/lib/utils";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
+import { notify } from "@/components/ui/Toast";
+import { fyBounds } from "@/lib/finance/fiscal-year";
 
 const CATEGORIES: Array<{ value: string; label: string }> = [
   { value: "office_rent", label: "Office Rent" },
@@ -86,10 +88,26 @@ export function ExpenseLedger({
     return [...m.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1));
   }, [rows]);
 
+  /** The API's reply, as a sentence a person can act on. */
+  function saveError(status: number, j: any): string {
+    if (status === 401) return "Your session has ended. Sign in again, then add the expense.";
+    if (status === 403) return "Your access does not include Practice Finances. Ask the owner to grant it.";
+    if (status === 400 && Array.isArray(j?.issues)) {
+      const LABEL: Record<string, string> = { expenseDate: "date", description: "description", category: "category", paidFrom: "paid from", amount: "amount", notes: "notes" };
+      const fields = [...new Set(j.issues.map((i: any) => LABEL[i?.path?.[0]] ?? i?.path?.[0]).filter(Boolean))];
+      if (fields.length) return `Check the ${fields.join(", ")} and try again.`;
+    }
+    return j?.error && j.error !== "invalid body" ? String(j.error) : `The expense could not be saved (error ${status}). Try again.`;
+  }
+
   async function add() {
     const amt = parseFloat(form.amount.replace(/[^0-9.]/g, ""));
+    if (!form.expenseDate) {
+      setErr("Pick the date of the expense.");
+      return;
+    }
     if (!form.description.trim() || !amt || amt <= 0) {
-      setErr("Enter a description and a positive amount.");
+      setErr(!form.description.trim() ? "Enter a description." : "Enter an amount above ₹0.");
       return;
     }
     setBusy(true);
@@ -107,16 +125,33 @@ export function ExpenseLedger({
           notes: form.notes.trim() || undefined,
         }),
       });
-      const j = await res.json();
-      if (!res.ok) {
-        setErr(j.error ?? `Save failed (${res.status})`);
+      // A proxy or a crash can answer with HTML — never let that read as a
+      // silent "nothing happened".
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j.expense) {
+        const msg = saveError(res.status, j);
+        setErr(msg);
+        notify.error(msg, "Expense not saved");
+        if (res.status === 401) window.location.assign(`/login?next=${encodeURIComponent(window.location.pathname)}`);
         return;
       }
-      setRows((s) => [j.expense, ...s]);
+      const saved: Expense = j.expense;
+      const label = `${saved.description} · ${formatINR(Number(saved.amount))} on ${formatDate(saved.expenseDate)}`;
+      // Only list it here if it belongs to the year on screen; otherwise say
+      // where it went, so it never looks like it vanished.
+      const { startISO, endISO } = fyBounds(fy);
+      if (saved.expenseDate >= startISO && saved.expenseDate <= endISO) {
+        setRows((s) => [saved, ...s]);
+        notify.success(label, "Expense added");
+      } else {
+        notify.success(`${label}. It is in a different financial year — switch the year above to see it.`, "Expense added");
+      }
       setForm((s) => ({ ...s, description: "", amount: "", notes: "" }));
       router.refresh();
-    } catch (e: any) {
-      setErr(e?.message ?? "Network error");
+    } catch {
+      const msg = "Could not reach the server. Check your connection and try again.";
+      setErr(msg);
+      notify.error(msg, "Expense not saved");
     } finally {
       setBusy(false);
     }
@@ -191,7 +226,7 @@ export function ExpenseLedger({
           </label>
         </div>
         <div className="flex items-center justify-between mt-3">
-          {err ? <span className="text-xs text-rose-600">{err}</span> : <span />}
+          {err ? <span role="alert" className="text-sm font-medium text-destructive">{err}</span> : <span />}
           <button onClick={add} disabled={busy} className="btn-primary text-sm">
             {busy ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
             Add expense

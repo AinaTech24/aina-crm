@@ -24,6 +24,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { handleApiError } from "@/lib/api/error-handler";
 import { communications, templates, templateVersions, investors, leads } from "@/db/schema";
 import { dispatch, hasActiveWhatsappSession } from "@/lib/comms/pipeline";
+import { assertThreadAccess } from "@/lib/comms/inbox-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +43,8 @@ export async function GET(req: NextRequest) {
     }
 
     const data = await withTenant(session.tenantId, async (tx) => {
+      // Only a client / lead the caller may see (lib/comms/inbox-scope.ts).
+      await assertThreadAccess(tx, session, type, id);
       const msgRows = await tx
         .select({
           id: communications.id,
@@ -161,6 +164,8 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await withTenant(session.tenantId, async (tx) => {
+      // Only a client / lead the caller may see (lib/comms/inbox-scope.ts).
+      await assertThreadAccess(tx, session, type, id);
       let recipient = "";
       if (type === "investor") {
         const [inv] = await tx

@@ -16,6 +16,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { publicEmailOtps } from "@/db/schema";
+import { loadViewableInvestor } from "@/lib/investors/access";
 import { otpHashMatches, maskEmail, OTP_MAX_ATTEMPTS } from "@/lib/public-otp";
 import { enforce } from "@/lib/rate-limit";
 
@@ -39,6 +40,8 @@ export async function POST(req: NextRequest) {
     const { investorId, code } = parsed.data;
 
     const res = await withTenant(session.tenantId, async (tx) => {
+      // Data scope: only a client in the viewer's book.
+      if (!(await loadViewableInvestor(tx, session, investorId))) return { ok: false as const, status: 404, error: "Client not found." };
       const [row] = await tx.select().from(publicEmailOtps).where(eq(publicEmailOtps.tokenId, investorId));
       if (!row) return { ok: false as const, status: 400, error: "Request a code first." };
       if (row.verifiedAt) return { ok: true as const, email: row.email };

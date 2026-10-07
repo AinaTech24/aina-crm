@@ -11,7 +11,7 @@
  * gracefully when scheme detail is sparse.
  */
 
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 
 type Tx = { execute: (q: any) => Promise<{ rows: any[] }> };
 
@@ -56,11 +56,13 @@ const IS_DIRECT = `(${CLASS_TEXT} ILIKE '%direct%')`;
 
 export async function getPortfolioIntel(
   tx: Tx,
-  opts: { tenantId: string; userId: string; firmWide: boolean }
+  /** clientScope: the viewer's client scope, a predicate over investors alias `i`. */
+  opts: { tenantId: string; userId: string; firmWide: boolean; clientScope?: SQL }
 ): Promise<PortfolioIntel> {
+  const viewer = opts.clientScope ? sql` AND ${opts.clientScope}` : sql``;
   const scope = opts.firmWide
-    ? sql` AND i.deleted_at IS NULL`
-    : sql` AND i.deleted_at IS NULL AND i.rm_id = ${opts.userId}::uuid`;
+    ? sql` AND i.deleted_at IS NULL${viewer}`
+    : sql` AND i.deleted_at IS NULL AND i.rm_id = ${opts.userId}::uuid${viewer}`;
 
   const totals = (await tx.execute(sql`
     SELECT COALESCE(SUM(f.aum::numeric),0)::numeric AS total,

@@ -30,6 +30,9 @@ import {
   ACTIVITY_SUBJECT_TYPES,
   activities,
 } from "@/db/schema";
+import { activityScopeSql } from "@/lib/activities/scope";
+import { loadViewableInvestor } from "@/lib/investors/access";
+import { loadViewableLead } from "@/lib/leads/access";
 
 export const dynamic = "force-dynamic";
 
@@ -77,6 +80,10 @@ export async function GET(req: NextRequest) {
         if (from) conds.push(sql`a.occurred_at >= ${from}::timestamptz`);
         if (to) conds.push(sql`a.occurred_at < (${to}::date + 1)`);
         if (mine || (!session.mobile && !firmWide)) conds.push(sql`a.owner_user_id = ${session.userId}::uuid`);
+        // Own entries, or (firm-wide) entries whose client / lead / family is
+        // in the viewer's scope (lib/activities/scope.ts).
+        const actScope = await activityScopeSql(tx, session, "a");
+        conds.push(actScope);
         const whereSql = sql`WHERE ${sql.join(conds, sql` AND `)}`;
 
         const r = await tx.execute(sql`
@@ -99,7 +106,7 @@ export async function GET(req: NextRequest) {
             COUNT(*) FILTER (WHERE kind = 'call' AND occurred_at::date = current_date)::int AS calls_today,
             COUNT(*) FILTER (WHERE kind = 'visit' AND occurred_at >= current_date - 6)::int AS visits_week,
             COUNT(*) FILTER (WHERE next_followup_at IS NOT NULL AND next_followup_at::date <= current_date)::int AS followups_due
-          FROM activities WHERE tenant_id = ${session.tenantId}::uuid${scope}
+          FROM activities WHERE tenant_id = ${session.tenantId}::uuid${scope} AND ${await activityScopeSql(tx, session, "activities")}
         `);
         return { activities: r.rows as any[], stats: (statsRes.rows[0] ?? {}) as any };
       },
@@ -142,6 +149,13 @@ export async function POST(req: NextRequest) {
           if (!session.roles.includes("branch_head") && session.roles.includes("rm") && (b.subjectType === "investor" ? sr.rm_id : sr.owner_id) !== session.userId) return { forbidden: true as const };
         }
 
+        // The subject must be one the caller can see (client / lead scope).
+        if (b.subjectType === "investor" && seesAllInvestors && !(await loadViewableInvestor(tx, session, b.subjectId))) {
+          return { forbidden: true as const };
+        }
+        if (b.subjectType === "lead" && seesAllLeads && !(await loadViewableLead(tx, session, b.subjectId))) {
+          return { forbidden: true as const };
+        }
         // Enforce RM assignment checking for non-manager RMs
         if (b.subjectType === "investor" && !seesAllInvestors && sr.rm_id !== session.userId) {
           return { forbidden: true as const };

@@ -14,7 +14,7 @@
  * un-merge is likely to be needed.
  */
 
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 
 export type MergeSource = "manual" | "system" | "import";
@@ -47,7 +47,8 @@ const num = (v: unknown): number => {
 
 export async function loadMergedClients(
   tx: Tx,
-  opts: { source?: MergeSource | "all"; q?: string; limit?: number } = {}
+  /** `scope`: the viewer's client data scope over the SURVIVOR, alias `s` (investorScopeSql). */
+  opts: { source?: MergeSource | "all"; q?: string; limit?: number; scope?: SQL } = {}
 ): Promise<MergedClient[]> {
   const limit = Math.min(Math.max(opts.limit ?? 200, 1), 1000);
   // A merge performed before migration 0201 has no recorded source. Those were
@@ -86,6 +87,7 @@ export async function loadMergedClients(
       LEFT JOIN investor_merges m ON m.loser_id = l.id AND m.reversed_at IS NULL
      WHERE l.merged_into_id IS NOT NULL
        AND l.deleted_at IS NULL${sourceFilter}${search}
+       AND ${opts.scope ?? sql`TRUE`}
      ORDER BY l.merged_at DESC NULLS LAST
      LIMIT ${limit}
   `)).rows as any[];
@@ -110,13 +112,20 @@ export async function loadMergedClients(
 }
 
 /** Counts per source, for the tab badges. */
-export async function loadMergeCounts(tx: Tx): Promise<{ all: number; manual: number; system: number }> {
+export async function loadMergeCounts(
+  tx: Tx,
+  /** The viewer's client data scope over the SURVIVOR, alias `s` (investorScopeSql). */
+  scope?: SQL
+): Promise<{ all: number; manual: number; system: number }> {
+  const scoped = scope
+    ? sql` AND EXISTS (SELECT 1 FROM investors s WHERE s.id = investors.merged_into_id AND ${scope})`
+    : sql``;
   const r = (await tx.execute(sql`
     SELECT count(*)::int AS all,
            count(*) FILTER (WHERE COALESCE(merge_source, 'manual') = 'manual')::int AS manual,
            count(*) FILTER (WHERE COALESCE(merge_source, 'manual') IN ('system', 'import'))::int AS system
       FROM investors
-     WHERE merged_into_id IS NOT NULL AND deleted_at IS NULL
+     WHERE merged_into_id IS NOT NULL AND deleted_at IS NULL${scoped}
   `)).rows[0] as any;
   return { all: num(r?.all), manual: num(r?.manual), system: num(r?.system) };
 }
@@ -146,7 +155,8 @@ export type MergeCandidate = {
   folios: number;
 };
 
-export async function searchMergeCandidates(tx: Tx, q: string, limit = 25): Promise<MergeCandidate[]> {
+/** `scope` — the viewer's client data scope over alias `i` (investorScopeSql); default unrestricted. */
+export async function searchMergeCandidates(tx: Tx, q: string, limit = 25, scope: SQL = sql`TRUE`): Promise<MergeCandidate[]> {
   const term = q.trim();
   if (term.length < 2) return [];
   const like = `%${term}%`;
@@ -169,6 +179,7 @@ export async function searchMergeCandidates(tx: Tx, q: string, limit = 25): Prom
       FROM investors i
      WHERE i.deleted_at IS NULL
        AND i.merged_into_id IS NULL
+       AND ${scope}
        AND (
          i.name ILIKE ${like} OR i.pan ILIKE ${like} OR i.email ILIKE ${like}
          OR i.address->>'line1' ILIKE ${like} OR i.address->>'city' ILIKE ${like}${phoneClause}

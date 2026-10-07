@@ -5,6 +5,7 @@ import { sql } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { visibleClientSql } from "@/lib/transactions/client-scope";
 import { BusinessEntryForm } from "@/components/business/BusinessEntryForm";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +37,7 @@ export default async function NewBusinessEntryPage({
           WHERE tenant_id = ${session.tenantId}::uuid
             AND (id = ${subjectId}::uuid
                  OR id = (SELECT converted_investor_id FROM leads WHERE id = ${subjectId}::uuid AND tenant_id = ${session.tenantId}::uuid))
+            AND ${await visibleClientSql(tx, session, "investors")}
           LIMIT 1
         `)
       ).rows[0] as { id: string; name: string | null } | undefined;

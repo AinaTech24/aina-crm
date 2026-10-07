@@ -2,8 +2,12 @@ import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ChevronLeft, Droplets, TrendingUp } from "lucide-react";
+import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
+import { visibleClientOrOwnSql } from "@/lib/transactions/client-scope";
+import { dataWallApplies } from "@/lib/investors/access";
 import { formatDate, formatINR } from "@/lib/utils";
 import { getLiquidParkingReport } from "@/lib/business/report";
 
@@ -15,7 +19,17 @@ export default async function LiquidReportPage() {
   const session = await requireSession();
   if (!session.roles.some((r) => MANAGE_ROLES.includes(r))) redirect("/dashboard");
 
-  const rows = await withTenant(session.tenantId, (tx) => getLiquidParkingReport(tx, session.tenantId));
+  // Under the data wall, the entries list's own-book rule: an RM sees their
+  // own bookings; everyone only entries they booked or on clients they may
+  // see. Without it, the whole firm's report, as before.
+  const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "reports.business", session.permissions);
+  const rows = await withTenant(session.tenantId, async (tx) => {
+    const wallOn = await dataWallApplies(tx, session);
+    return getLiquidParkingReport(tx, session.tenantId, {
+      rmId: seesAll || !wallOn ? null : session.userId,
+      scope: wallOn ? await visibleClientOrOwnSql(tx, session, sql.raw("e.investor_id"), sql.raw("e.rm_id")) : undefined,
+    });
+  });
   const totalDryPowder = rows.reduce((s, r) => s + r.liquidNet, 0);
 
   return (

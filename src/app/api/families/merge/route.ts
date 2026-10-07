@@ -17,6 +17,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { recomputeFamilyHealth } from "@/lib/families/health-persist";
+import { familyScopeSql } from "@/lib/families/access";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +39,9 @@ export async function POST(req: NextRequest) {
     const result = await withTenant(
       session.tenantId,
       async (tx) => {
-        const both = await tx.execute(sql`SELECT id FROM families WHERE tenant_id = ${session.tenantId}::uuid AND id IN (${survivorId}::uuid, ${loserId}::uuid)`);
+        // Data scope: both families must be visible to the viewer.
+        const famScope = await familyScopeSql(tx, session, "f");
+        const both = await tx.execute(sql`SELECT f.id FROM families f WHERE f.tenant_id = ${session.tenantId}::uuid AND f.id IN (${survivorId}::uuid, ${loserId}::uuid) AND ${famScope}`);
         if (both.rows.length !== 2) return { error: "one or both families not found" as const };
 
         const tcols = await tx.execute(sql`

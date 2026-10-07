@@ -12,6 +12,7 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { visibleClientSql } from "@/lib/transactions/client-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -40,10 +41,13 @@ export async function POST(req: NextRequest) {
       const own = await tx.execute(sql`
         SELECT s.rm_id, i.rm_id AS inv_rm
           FROM sips s LEFT JOIN investors i ON i.id = s.investor_id
-         WHERE s.id = ${sipId}::uuid LIMIT 1
+         WHERE s.id = ${sipId}::uuid
+           AND ${await visibleClientSql(tx, session, "i")}
+         LIMIT 1
       `);
       const row = own.rows[0] as { rm_id: string | null; inv_rm: string | null } | undefined;
-      if (!row) throw new Error("SIP not found");
+      // Not found also when the SIP's client is outside the viewer's scope.
+      if (!row) throw Object.assign(new Error("SIP not found"), { status: 404 });
       if (!seesAllEntries(session) && row.rm_id !== session.userId && row.inv_rm !== session.userId) {
         throw Object.assign(new Error("you can only mark SIPs in your book"), { status: 403 });
       }

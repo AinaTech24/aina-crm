@@ -4,6 +4,7 @@ import { ModuleTabs, SIP_TABS } from "@/components/common/ModuleTabs";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { visibleClientSql } from "@/lib/transactions/client-scope";
 import { findAtRiskSips, SIP_RISK_LABEL, type SipRiskReason } from "@/lib/finance/sip-defense";
 import { formatINR, formatDate } from "@/lib/utils";
 import { DefendSipButton } from "@/components/sip-rejections/DefendSipButton";
@@ -41,7 +42,11 @@ export default async function SipAtRiskPage() {
   const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "reports.business", session.permissions);
   const data = await withTenant(
     session.tenantId,
-    async (tx) => findAtRiskSips(tx, session.tenantId, { rmId: seesAll ? null : session.userId }),
+    async (tx) => findAtRiskSips(tx, session.tenantId, {
+      rmId: seesAll ? null : session.userId,
+      // Viewer scope: only SIPs of clients this viewer may see (only narrows).
+      clientScope: await visibleClientSql(tx, session, "i"),
+    }),
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
 

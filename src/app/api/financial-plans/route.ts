@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -10,6 +10,9 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { financialPlans, investors, leads } from "@/db/schema";
 import { handleApiError } from "@/lib/api/error-handler";
 import { recomputePlanGoals, numOrNull } from "@/lib/financial-plans/compute";
+import { planScopeSql } from "@/lib/financial-plans/access";
+import { loadViewableInvestor } from "@/lib/investors/access";
+import { loadViewableLead } from "@/lib/leads/access";
 
 export const dynamic = "force-dynamic";
 
@@ -122,8 +125,10 @@ export async function GET() {
     // (incl. marketing) read every client's full financials.
     const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
 
-    const rows = await withTenant(session.tenantId, async (tx) =>
-      tx
+    const rows = await withTenant(session.tenantId, async (tx) => {
+      // Own-plans rule above + the subject's scope (client / lead book).
+      const scope = await planScopeSql(tx, session);
+      return tx
         .select({
           id: financialPlans.id,
           planNumber: financialPlans.planNumber,
@@ -141,10 +146,10 @@ export async function GET() {
         .from(financialPlans)
         .leftJoin(investors, eq(financialPlans.investorId, investors.id))
         .leftJoin(leads, eq(financialPlans.leadId, leads.id))
-        .where(seesAll ? undefined : eq(financialPlans.preparedByUserId, session.userId))
+        .where(and(seesAll ? undefined : eq(financialPlans.preparedByUserId, session.userId), scope))
         .orderBy(desc(financialPlans.createdAt))
-        .limit(500)
-    );
+        .limit(500);
+    });
 
     return NextResponse.json({ plans: rows });
   } catch (err: any) {
@@ -172,17 +177,15 @@ export async function POST(req: NextRequest) {
 
     await withTenant(session.tenantId, async (tx) => {
       if (data.leadId) {
-        const leadExists = await tx.select({ id: leads.id }).from(leads).where(eq(leads.id, data.leadId)).limit(1);
-        if (leadExists.length === 0) {
+        // The lead must be one the caller may see.
+        const leadExists = await loadViewableLead(tx, session, data.leadId);
+        if (!leadExists) {
           throw Object.assign(new Error("Lead not found in this tenant context"), { status: 404 });
         }
       } else {
-        const clientExists = await tx
-          .select({ id: investors.id })
-          .from(investors)
-          .where(eq(investors.id, data.investorId!))
-          .limit(1);
-        if (clientExists.length === 0) {
+        // The client must be in the caller's book.
+        const clientExists = await loadViewableInvestor(tx, session, data.investorId!);
+        if (!clientExists) {
           throw Object.assign(new Error("Client investor not found in this tenant context"), { status: 404 });
         }
       }

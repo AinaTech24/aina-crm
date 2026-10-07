@@ -148,9 +148,14 @@ export async function GET(req: NextRequest) {
         : cap("task.view.assigned")
           ? sql`(t.assignee_id = ${session.userId} OR t.created_by_id = ${session.userId})`
           : sql`FALSE`;
+      // A task about a client / lead outside the caller's book still shows (task
+      // scope is the tasks module's), but never that person's name — and is not
+      // found by it.
+      const taskLeadScope = leadAllowed ? leadScopeSql(session, "l") : sql`FALSE`;
       const tasks = await group("tasks", sql`
           SELECT t.id, t.title, t.status, t.priority, t.due_at,
-                 COALESCE(i.name, l.name) AS investor_name, u.name AS assignee_name,
+                 COALESCE(CASE WHEN ${invScope} THEN i.name END, CASE WHEN ${taskLeadScope} THEN l.name END) AS investor_name,
+                 u.name AS assignee_name,
                  COUNT(*) OVER () AS total
           FROM tasks t
           LEFT JOIN investors i ON i.id = COALESCE(t.related_investor_id,
@@ -158,7 +163,8 @@ export async function GET(req: NextRequest) {
           LEFT JOIN leads l ON l.id = CASE WHEN t.subject_type = 'lead' THEN t.subject_id END
           LEFT JOIN users u ON u.id = t.assignee_id
           WHERE t.tenant_id = ${session.tenantId}::uuid AND ${taskScope}
-            AND t.deleted_at IS NULL AND (t.title ILIKE ${like} OR i.name ILIKE ${like} OR l.name ILIKE ${like})
+            AND t.deleted_at IS NULL AND (t.title ILIKE ${like}
+                 OR (i.name ILIKE ${like} AND ${invScope}) OR (l.name ILIKE ${like} AND ${taskLeadScope}))
           ORDER BY (t.status IN ('open', 'in_progress', 'blocked')) DESC, t.due_at ASC NULLS LAST
           LIMIT 5
         `);

@@ -34,6 +34,7 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
+import { investorScopeSql } from "@/lib/investors/access";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { dispatch } from "@/lib/comms/pipeline";
@@ -91,6 +92,8 @@ export async function POST(req: NextRequest) {
         // An RM mails their own book; only someone who sees every client can
         // mail outside it.
         const rmScope = seesAll ? sql`` : sql` AND i.rm_id = ${session.userId}::uuid`;
+        // Plus the shared client data scope (branch / own book).
+        const dataScope = await investorScopeSql(tx, session, "i");
         const rows = (await tx.execute(sql`
           SELECT i.id, i.name, i.email, i.risk_profile_provisional AS provisional,
                  EXISTS (
@@ -104,6 +107,7 @@ export async function POST(req: NextRequest) {
            WHERE i.tenant_id = ${session.tenantId}::uuid
              AND i.status = 'active' AND i.deleted_at IS NULL AND i.merged_into_id IS NULL
              ${pick}${rmScope}
+             AND ${dataScope}
            ORDER BY i.name ASC
         `)).rows as Array<{ id: string; name: string | null; email: string | null; provisional: boolean | null; recent: boolean | null }>;
 

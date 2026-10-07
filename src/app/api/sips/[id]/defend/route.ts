@@ -18,6 +18,7 @@ import { requireSession } from "@/lib/auth/session";
 import { requireAny, can } from "@/lib/auth/rbac";
 import { sips, tasks, investors } from "@/db/schema";
 import { formatINR } from "@/lib/utils";
+import { isClientVisible } from "@/lib/transactions/client-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           await tx.select().from(sips).where(and(eq(sips.id, id), eq(sips.tenantId, session.tenantId))).limit(1)
         )[0];
         if (!sip) return { notFound: true as const };
+        // Viewer scope: a SIP on a client this viewer cannot see is not found.
+        if (sip.investorId && !(await isClientVisible(tx, session, sip.investorId))) return { notFound: true as const };
 
         const investor = sip.investorId
           ? (await tx.select({ name: investors.name, rmId: investors.rmId }).from(investors).where(eq(investors.id, sip.investorId)).limit(1))[0]

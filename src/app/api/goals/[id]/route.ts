@@ -19,6 +19,7 @@ import { goals } from "@/db/schema";
 import { computeGoal, monthsBetween } from "@/lib/goal-planning/calc";
 import { expectedProgressPct } from "@/lib/goal-planning/recompute";
 import { effectiveGlideReturn } from "@/lib/goal-planning/glide-path";
+import { loadViewableGoal } from "@/lib/goal-planning/access";
 
 export const dynamic = "force-dynamic";
 
@@ -68,8 +69,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const session = await requireSession();
     requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
+    // A goal is visible only when its client is (404 otherwise).
     const row = await withTenant(session.tenantId, async (tx) =>
-      (await tx.select().from(goals).where(and(eq(goals.id, id), eq(goals.tenantId, session.tenantId))).limit(1))[0] ?? null
+      (await loadViewableGoal(tx, session, id))?.goal ?? null
     );
     if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json(row);
@@ -89,7 +91,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     const result = await withTenant(session.tenantId, async (tx) => {
-      const before = (await tx.select().from(goals).where(and(eq(goals.id, id), eq(goals.tenantId, session.tenantId))).limit(1))[0];
+      const before = (await loadViewableGoal(tx, session, id))?.goal;
       if (!before) return null;
 
       const patch: any = { ...parse.data, updatedAt: new Date() };
@@ -199,7 +201,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     requireCap(session.roles, "goal.manage", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const clientMeta = clientMetaFromHeaders(req.headers);
-    await withTenant(session.tenantId, async (tx) => {
+    const found = await withTenant(session.tenantId, async (tx) => {
+      if (!(await loadViewableGoal(tx, session, id))) return false;
       await tx.update(goals).set({ status: "abandoned", updatedAt: new Date() } as any).where(and(eq(goals.id, id), eq(goals.tenantId, session.tenantId)));
       await recordAudit(tx, {
         tenantId: session.tenantId,
@@ -209,7 +212,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         entityId: id,
         ...clientMeta,
       });
+      return true;
     });
+    if (!found) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return handleApiError(err);

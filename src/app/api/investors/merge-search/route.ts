@@ -18,6 +18,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireAny } from "@/lib/auth/rbac";
 import { searchMergeCandidates } from "@/lib/investors/merged";
+import { investorScopeSql } from "@/lib/investors/access";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -32,7 +33,8 @@ export async function GET(req: NextRequest) {
 
     const results = await withTenant(
       session.tenantId,
-      (tx) => searchMergeCandidates(tx, q, 25),
+      // Data scope: only clients in the viewer's book (branch / own book).
+      async (tx) => searchMergeCandidates(tx, q, 25, await investorScopeSql(tx, session, "i")),
       { userId: session.userId, branchId: session.branchId, roles: session.roles }
     );
     return NextResponse.json({ results });

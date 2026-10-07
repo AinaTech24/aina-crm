@@ -15,6 +15,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { goals } from "@/db/schema";
 import { recomputeOneGoal } from "@/lib/goal-planning/recompute";
+import { loadViewableGoal } from "@/lib/goal-planning/access";
 import { handleApiError } from "@/lib/api/error-handler";
 
 export const dynamic = "force-dynamic";
@@ -28,13 +29,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     const result = await withTenant(session.tenantId, async (tx) => {
-      const before = (
-        await tx
-          .select()
-          .from(goals)
-          .where(and(eq(goals.id, id), eq(goals.tenantId, session.tenantId)))
-          .limit(1)
-      )[0];
+      // Only a goal whose client is in the caller's book (404 otherwise).
+      const before = (await loadViewableGoal(tx, session, id))?.goal;
       if (!before) return null;
 
       await recomputeOneGoal(tx, id);

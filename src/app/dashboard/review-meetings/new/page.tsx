@@ -1,10 +1,10 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
-import { sql } from "drizzle-orm";
 import { ChevronLeft, Calendar } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { ScheduleMeetingForm } from "@/components/review-meetings/ScheduleMeetingForm";
+import { loadMeetingSubjects } from "@/lib/review-meetings/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -21,35 +21,11 @@ export default async function NewReviewMeetingPage({
 
   // Load both subject lists in parallel — the form decides which to show
   // based on the Lead | Client toggle.
-  const { investors, leads, families } = await withTenant(session.tenantId, async (tx) => {
-    const [invRes, leadRes, famRes] = await Promise.all([
-      tx.execute(sql`
-        SELECT id, name, pan, segment_tag, last_review_at, next_review_at
-        FROM investors
-        WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active' AND deleted_at IS NULL
-        ORDER BY (next_review_at IS NULL) DESC, next_review_at ASC NULLS FIRST, name
-        LIMIT 300
-      `),
-      tx.execute(sql`
-        SELECT id, name, phone, stage
-        FROM leads
-        WHERE tenant_id = ${session.tenantId}::uuid AND converted_investor_id IS NULL AND stage NOT IN ('lost', 'cold', 'not_interested')
-        ORDER BY updated_at DESC
-        LIMIT 300
-      `),
-      // Families that have a primary investor — a family meeting attaches to the
-      // primary investor + the familyId (family_review path).
-      tx.execute(sql`
-        SELECT f.id, COALESCE(f.family_name, f.head_name) AS family_name, f.primary_investor_id, i.name AS primary_name
-        FROM families f
-        JOIN investors i ON i.id = f.primary_investor_id
-        WHERE f.tenant_id = ${session.tenantId}::uuid AND f.primary_investor_id IS NOT NULL
-        ORDER BY (f.id = ${familyId}::uuid) DESC NULLS LAST, f.family_name
-        LIMIT 300
-      `),
-    ]);
-    return { investors: invRes.rows as any[], leads: leadRes.rows as any[], families: famRes.rows as any[] };
-  });
+  // Only clients / leads / families this viewer may see
+  // (lib/review-meetings/scope.ts) — the picker used to list 300 of the firm's.
+  const { investors, leads, families } = await withTenant(session.tenantId, (tx) =>
+    loadMeetingSubjects(tx, session, { familyId }),
+  );
 
   return (
     <div className="max-w-3xl mx-auto space-y-4">

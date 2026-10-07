@@ -12,6 +12,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can, requireAny } from "@/lib/auth/rbac";
 import { tasks, users } from "@/db/schema";
+import { taskScopeSql } from "@/lib/tasks/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,8 @@ export async function GET(req: NextRequest) {
     const out = await withTenant(session.tenantId, async (tx) => {
       const conds: any[] = [eq(tasks.tenantId, session.tenantId), isNull(tasks.deletedAt)];
       if (!canViewAll) conds.push(or(eq(tasks.assigneeId, session.userId), eq(tasks.createdById, session.userId))!);
+      // view.all reaches other people's tasks only when their client / lead is in scope.
+      else conds.push(await taskScopeSql(tx, session, "tasks"));
       if (view === "to_me") conds.push(eq(tasks.assigneeId, session.userId));
       else if (view === "by_me") conds.push(eq(tasks.createdById, session.userId));
       if (statusFilter.length) conds.push(inArray(tasks.status, statusFilter as any));

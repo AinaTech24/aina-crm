@@ -14,6 +14,7 @@ import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireAny, can } from "@/lib/auth/rbac";
+import { investorScopeSql } from "@/lib/investors/access";
 import { renderClientFeedbackPdf } from "@/lib/support/client-feedback-pdf";
 import { handleApiError } from "@/lib/api/error-handler";
 
@@ -29,12 +30,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const built = await withTenant(session.tenantId, async (tx) => {
       const ownerScope = canViewAll ? sql`TRUE` : sql`i.rm_id = ${session.userId}::uuid`;
+      // The shared client data scope (branch / own book) on top.
+      const dataScope = await investorScopeSql(tx, session, "i");
 
       const invRes = await tx.execute(sql`
         SELECT i.name, i.pan, u.name AS rm_name
         FROM investors i
         LEFT JOIN users u ON u.id = i.rm_id
-        WHERE i.id = ${id}::uuid AND i.tenant_id = ${session.tenantId}::uuid AND ${ownerScope}
+        WHERE i.id = ${id}::uuid AND i.tenant_id = ${session.tenantId}::uuid AND ${ownerScope} AND ${dataScope}
         LIMIT 1
       `);
       const inv = invRes.rows[0] as { name?: string; pan?: string; rm_name?: string } | undefined;

@@ -13,6 +13,7 @@ import { ChevronLeft, FileText, Printer } from "lucide-react";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { loadViewableInvestor } from "@/lib/investors/access";
 import { loadAccountStatement } from "@/lib/finance/account-statement";
 import { formatDate } from "@/lib/format";
 import { toLocalISODate } from "@/lib/dashboard/period";
@@ -55,6 +56,11 @@ export default async function StatementPage({
   const data = await withTenant(
     session.tenantId,
     async (tx) => {
+      // Data scope: only a client in the viewer's book (404 otherwise).
+      if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+      const viewable = await loadViewableInvestor(tx, session, id)
+        .catch((e: any) => { if (e?.status === 403) return null; throw e; });
+      if (!viewable) return null;
       const inv = (await tx.execute(sql`
         SELECT id, name, pan, email, phone FROM investors
          WHERE id = ${id}::uuid AND deleted_at IS NULL

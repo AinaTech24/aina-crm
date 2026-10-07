@@ -10,6 +10,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { savedReports } from "@/db/schema";
 import { runDetailed, runMatrix, runSummary } from "@/lib/reports/run";
+import { reportSubjectScope } from "@/lib/reports/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -26,12 +27,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       const r = (await tx.select().from(savedReports).where(and(eq(savedReports.id, id), eq(savedReports.tenantId, session.tenantId))).limit(1))[0];
       if (!r) return null;
       if (r.reportType === "matrix") {
-        return runMatrix(tx, { subject: r.subject, ast: r.ast as any, matrix: r.matrix as any, tenantId: session.tenantId });
+        return runMatrix(tx, { subject: r.subject, ast: r.ast as any, matrix: r.matrix as any, tenantId: session.tenantId, scope: await reportSubjectScope(tx, session, r.subject) });
       }
       if (r.reportType === "summary") {
-        return runSummary(tx, { subject: r.subject, ast: r.ast as any, summary: r.summary as any, tenantId: session.tenantId });
+        return runSummary(tx, { subject: r.subject, ast: r.ast as any, summary: r.summary as any, tenantId: session.tenantId, scope: await reportSubjectScope(tx, session, r.subject) });
       }
       return runDetailed(tx, {
+        scope: await reportSubjectScope(tx, session, r.subject),
         subject: r.subject,
         ast: r.ast as any,
         columns: r.columns as string[] | null,

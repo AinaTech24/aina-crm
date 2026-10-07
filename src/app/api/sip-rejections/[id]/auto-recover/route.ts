@@ -6,6 +6,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { sipRejections, investors, tasks, eventsOutbox } from "@/db/schema";
+import { isClientVisible } from "@/lib/transactions/client-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           .where(and(eq(sipRejections.id, id), eq(sipRejections.tenantId, session.tenantId)))
           .limit(1);
 
-        if (!rej) {
+        // Viewer scope: a rejection on a client this viewer cannot see is not found.
+        if (!rej || !(await isClientVisible(tx, session, rej.investorId))) {
           return { notFound: true };
         }
 

@@ -8,6 +8,8 @@ import { DuplicateGroup, FamilyDuplicateGroup, SharedContactGroup, UndoMergeButt
 import { ignoredDuplicates } from "@/db/schema";
 import { formatDate } from "@/lib/format";
 import { loadClientDuplicateClusters } from "@/lib/investors/duplicate-clusters";
+import { investorScopeSql } from "@/lib/investors/access";
+import { familyScopeSql } from "@/lib/families/access";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +33,10 @@ export default async function DuplicatesPage({ searchParams }: { searchParams: P
   const tab: Tab = sp.tab === "shared" ? "shared" : sp.tab === "families" || sp.module === "family" ? "families" : "duplicates";
 
   const { dupe, fam, ignoredList, recent } = await withTenant(session.tenantId, async (tx) => {
+    // Data scope: only clients / families in the viewer's book.
+    const famScope = await familyScopeSql(tx, session, "f");
+    const clientScope = await investorScopeSql(tx, session, "i");
+    const survivorScope = await investorScopeSql(tx, session, "s");
     const famRes = await tx.execute(sql`
       WITH base AS (
         SELECT f.id, COALESCE(f.family_name, f.head_name) AS name,
@@ -38,7 +44,7 @@ export default async function DuplicatesPage({ searchParams }: { searchParams: P
                COUNT(i.id) FILTER (WHERE i.status = 'active')::int AS member_count,
                COALESCE(SUM(i.aum::numeric) FILTER (WHERE i.status = 'active'), 0)::numeric AS family_aum
         FROM families f LEFT JOIN investors i ON i.family_id = f.id
-        WHERE f.tenant_id = ${session.tenantId}::uuid
+        WHERE f.tenant_id = ${session.tenantId}::uuid AND ${famScope}
         GROUP BY f.id
       )
       SELECT nkey AS gkey, id, name, member_count, family_aum FROM base b
@@ -46,7 +52,7 @@ export default async function DuplicatesPage({ searchParams }: { searchParams: P
     `);
 
     // Both client tabs, by the rules in lib/investors/duplicate-clusters.
-    const dupe = await loadClientDuplicateClusters(tx, session.tenantId);
+    const dupe = await loadClientDuplicateClusters(tx, session.tenantId, clientScope);
 
     // Families only — the client loader applies its own ignored pairs.
     const ignored = await tx
@@ -67,6 +73,7 @@ export default async function DuplicatesPage({ searchParams }: { searchParams: P
        WHERE m.tenant_id = ${session.tenantId}::uuid
          AND m.reversed_at IS NULL
          AND m.created_at > now() - interval '7 days'
+         AND ${survivorScope}
        ORDER BY m.created_at DESC
        LIMIT 50
     `);

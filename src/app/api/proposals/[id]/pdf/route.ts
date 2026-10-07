@@ -12,6 +12,7 @@ import { and, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
+import { loadViewableProposal } from "@/lib/proposals/access";
 import { proposals, tenants } from "@/db/schema";
 import { renderProposalPdf } from "@/lib/proposal/proposal-pdf";
 import { loadProposalPdfPeople, proposalBrand } from "@/lib/proposal/pdf-context";
@@ -38,6 +39,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         .limit(1);
       if (!p) return null;
       if (!seesAll && p.preparedByUserId !== session.userId) return null;
+      // The recipient (client / lead / family) must be in the caller's scope.
+      if (!(await loadViewableProposal(tx, session, id))) return null;
       const [t] = await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1);
       const people = await loadProposalPdfPeople(tx, p);
       const pdf = await renderProposalPdf({ proposal: p as any, brand: proposalBrand(t), ...people });

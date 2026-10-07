@@ -48,6 +48,11 @@ export function canViewAllInvestors(session: SessionUser) {
   return can(session.roles, "investor.view.all", session.permissions);
 }
 
+/** The owner chose this person's permissions explicitly (an allow-list). */
+export function hasCustomPermissions(session?: SessionUser): boolean {
+  return !!session && !session.roles.includes("owner") && (session.permissions?.length ?? 0) > 0;
+}
+
 /**
  * Is the per-tenant data wall switched on? Read inside the CALLER's existing
  * transaction so it costs one cheap indexed read and needs no second pool
@@ -55,7 +60,13 @@ export function canViewAllInvestors(session: SessionUser) {
  * missing → false, i.e. fail OPEN to the long-standing firm-wide behaviour
  * rather than hiding a firm's own clients from it on a transient error.
  */
-export async function isDataScopeRestricted(tx: any, tenantId: string): Promise<boolean> {
+export async function isDataScopeRestricted(tx: any, tenantId: string, session?: SessionUser): Promise<boolean> {
+  // An owner who ticked "Customize access permissions" for this person has
+  // said exactly what they may see. Honour it whatever the firm switch says:
+  // the switch is set from the AINA console, so with it off an owner who
+  // unticked "View all clients" saw nothing change. Users who were never
+  // customised keep the firm's shared-book default.
+  if (hasCustomPermissions(session)) return true;
   try {
     const r = await tx.execute(sql`
       SELECT restrict_user_data_scope AS on FROM tenants WHERE id = ${tenantId}::uuid LIMIT 1
@@ -64,6 +75,42 @@ export async function isDataScopeRestricted(tx: any, tenantId: string): Promise<
   } catch {
     return true;
   }
+}
+
+/**
+ * Does the per-user data wall apply to this viewer at all? False for the owner
+ * (never customised, sees everything) and for anyone at a firm with the switch
+ * off who was not customised. Every narrowing the "every module honours own
+ * clients" change added BEYOND the shared client scope — own-only rules,
+ * prepared-by-me rules, own-bookings locks, page capability gates — applies
+ * only when this is true; otherwise the screen keeps its earlier behaviour.
+ */
+export async function dataWallApplies(tx: any, session: SessionUser): Promise<boolean> {
+  if (session.roles.includes("owner")) return false;
+  return isDataScopeRestricted(tx, session.tenantId, session);
+}
+
+/** `dataWallApplies` for code outside a transaction (page gates). */
+export async function dataWallAppliesFor(session: SessionUser): Promise<boolean> {
+  if (session.roles.includes("owner")) return false;
+  return withTenant(session.tenantId, (tx) => isDataScopeRestricted(tx, session.tenantId, session));
+}
+
+/**
+ * Does the client scope actually NARROW this viewer's book? False when the
+ * wall does not apply to them (`dataWallApplies`) and for a firm-wide client
+ * viewer even with the wall on. Callers that wrap the client scope in an
+ * `EXISTS (SELECT 1 FROM investors …)` skip the EXISTS when this is false, so
+ * a record whose client is missing, deleted or purged never disappears for a
+ * viewer who was never narrowed (the owner above all).
+ */
+export async function clientScopeNarrows(tx: any, session: SessionUser): Promise<boolean> {
+  if (!(await dataWallApplies(tx, session))) return false;
+  if (!can(session.roles, "investor.view.all", session.permissions) && !can(session.roles, "investor.view.assigned", session.permissions)) return true;
+  if (session.mobile && !session.roles.some(r => ["owner", "ops", "back_office"].includes(r))
+    && (session.roles.includes("branch_head") || session.roles.includes("rm"))) return true;
+  if (isBranchScoped(session)) return true;
+  return !canViewAllInvestors(session);
 }
 
 /**
@@ -78,7 +125,7 @@ export async function investorScopeCondition(tx: any, session: SessionUser) {
     if (session.roles.includes("branch_head")) return session.branchId ? eq(investors.branchId, session.branchId) : sql`FALSE`;
     if (session.roles.includes("rm")) return eq(investors.rmId, session.userId);
   }
-  if (!(await isDataScopeRestricted(tx, session.tenantId))) return undefined;
+  if (!(await isDataScopeRestricted(tx, session.tenantId, session))) return undefined;
   if (isBranchScoped(session)) return eq(investors.branchId, session.branchId!);
   if (canViewAllInvestors(session)) return undefined;
   return eq(investors.rmId, session.userId);
@@ -95,7 +142,7 @@ export async function investorScopeSql(tx: any, session: SessionUser, alias = "i
     if (session.roles.includes("branch_head")) return session.branchId ? sql`${sql.raw(`${alias}.branch_id`)} = ${session.branchId}::uuid` : sql`FALSE`;
     if (session.roles.includes("rm")) return sql`${sql.raw(`${alias}.rm_id`)} = ${session.userId}::uuid`;
   }
-  if (!(await isDataScopeRestricted(tx, session.tenantId))) return sql`TRUE`;
+  if (!(await isDataScopeRestricted(tx, session.tenantId, session))) return sql`TRUE`;
   if (isBranchScoped(session)) {
     return sql`${sql.raw(`${alias}.branch_id`)} = ${session.branchId}::uuid`;
   }

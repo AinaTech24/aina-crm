@@ -5,6 +5,9 @@ import { ChevronLeft, Droplets, Filter, X } from "lucide-react";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
+import { visibleClientOrOwnSql } from "@/lib/transactions/client-scope";
+import { dataWallApplies } from "@/lib/investors/access";
 import { formatDate, formatINR } from "@/lib/utils";
 import { getBusinessSummary } from "@/lib/business/report";
 import { ASSET_CLASS_LABELS, type AssetClass } from "@/lib/business/asset-class";
@@ -67,17 +70,23 @@ export default async function BusinessDashboardPage({
   const status = sp.status && (BUSINESS_ENTRY_STATUSES as readonly string[]).includes(sp.status) ? sp.status : null;
   const customRange = Boolean(sp.from || sp.to);
 
-  const { summary, rmUsers, rmId } = await withTenant(session.tenantId, async (tx) => {
+  const { summary, rmUsers, rmId, rmLocked } = await withTenant(session.tenantId, async (tx) => {
     const rmUsers = (
       await tx.execute(sql`SELECT id, name FROM users WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active' ORDER BY name`)
     ).rows as Array<{ id: string; name: string }>;
     // Only honour an rm filter that matches a real tenant user (avoids a bad ::uuid cast).
-    const rmId = sp.rm && rmUsers.some((u) => u.id === sp.rm) ? sp.rm : null;
-    const summary = await getBusinessSummary(tx, session.tenantId, { fromISO, toISO, rmId, productType: product, status });
-    return { summary, rmUsers, rmId };
+    // Under the data wall, the entries list's own-book rule: an RM is locked
+    // to their own bookings; everyone sees only entries they booked or on
+    // clients they may see. Without it, firm totals and any RM, as before.
+    const wallOn = await dataWallApplies(tx, session);
+    const seesAll = !wallOn || can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "reports.business", session.permissions);
+    const rmId = !seesAll ? session.userId : sp.rm && rmUsers.some((u) => u.id === sp.rm) ? sp.rm : null;
+    const scope = wallOn ? await visibleClientOrOwnSql(tx, session, sql.raw("e.investor_id"), sql.raw("e.rm_id")) : undefined;
+    const summary = await getBusinessSummary(tx, session.tenantId, { fromISO, toISO, rmId, productType: product, status, scope });
+    return { summary, rmUsers, rmId, rmLocked: !seesAll };
   });
 
-  const anyFilter = customRange || Boolean(rmId || product || status);
+  const anyFilter = customRange || Boolean((rmId && !rmLocked) || product || status);
   const rangeLabel = customRange ? `${fmtDate(fromISO)} – ${fmtDate(toISO)}` : `${fy.label} (to date)`;
 
   return (

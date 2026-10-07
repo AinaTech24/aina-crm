@@ -5,6 +5,8 @@ import { and, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
+import { registerSeesAll } from "@/lib/insurance/register-access";
+import { loadViewableInvestor } from "@/lib/investors/access";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { insuranceCommissionEntries } from "@/db/schema";
@@ -23,6 +25,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         await tx.select().from(insuranceCommissionEntries).where(and(eq(insuranceCommissionEntries.id, id), eq(insuranceCommissionEntries.tenantId, session.tenantId))).limit(1)
       )[0];
       if (!before) return false;
+      // Same scope as the list: non-managers only their own entries, and an
+      // entry against a client only when that client is visible.
+      if (!registerSeesAll(session) && before.recordedByUserId !== session.userId) return false;
+      if (before.investorId && !(await loadViewableInvestor(tx, session, before.investorId))) return false;
       await tx.delete(insuranceCommissionEntries).where(and(eq(insuranceCommissionEntries.id, id), eq(insuranceCommissionEntries.tenantId, session.tenantId)));
       await recordAudit(tx, {
         tenantId: session.tenantId,

@@ -5,11 +5,27 @@ import { Heart, Clock, Calendar, Phone } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatDate, formatRelative } from "@/lib/utils";
+import { leadScopeSql } from "@/lib/leads/access";
+import { dataWallAppliesFor } from "@/lib/investors/access";
+import { can } from "@/lib/auth/rbac";
+import type { SessionUser } from "@/lib/auth/session";
+import { redirect } from "next/navigation";
+
+const canViewLeads = (s: SessionUser) =>
+  can(s.roles, "lead.view.all", s.permissions) || can(s.roles, "lead.view.assigned", s.permissions);
 
 export const dynamic = "force-dynamic";
 
 export default async function LeadNurturePage() {
   const session = await requireSession();
+  // Under the data wall, the same lead scope as the Leads board (own / branch
+  // / firm); a viewer with no lead capability goes back to their dashboard
+  // rather than hitting a thrown 403. Without the wall, every lead, as before.
+  let scope = sql`TRUE`;
+  if (await dataWallAppliesFor(session)) {
+    if (!canViewLeads(session)) redirect("/dashboard");
+    scope = leadScopeSql(session, "l");
+  }
 
   const rows = await withTenant(session.tenantId, async (tx) => {
     const r = await tx.execute(sql`
@@ -18,7 +34,8 @@ export default async function LeadNurturePage() {
              u.name AS rm_name
       FROM leads l
       LEFT JOIN users u ON u.id = l.owner_id
-      WHERE l.stage IN ('follow_up', 'contacted', 'meeting_scheduled', 'meeting_done')
+      WHERE l.tenant_id = ${session.tenantId}::uuid AND ${scope}
+        AND l.stage IN ('follow_up', 'contacted', 'meeting_scheduled', 'meeting_done')
         AND l.converted_investor_id IS NULL
         AND (l.next_follow_up_at IS NOT NULL OR l.last_contact_at < now() - interval '14 days')
       ORDER BY

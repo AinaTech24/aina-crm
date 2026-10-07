@@ -8,6 +8,10 @@
  * completed inline (PATCH status=completed), without leaving the lead page.
  * Completing a meeting auto-advances the blueprint to "Meeting Done".
  *
+ * Once a meeting is completed the popup asks whether to send the client the
+ * minutes of meeting (MomComposer): agenda, an editable preview, attachments,
+ * send. Closing it at any point still refreshes the host — the meeting IS done.
+ *
  * Next actions are the meeting's action items: each one becomes a task for the
  * person it is given to (`syncActionItemTasks` on the server). The list starts
  * with the meeting's existing items and is sent back whole — the server cancels
@@ -20,6 +24,7 @@ import { createPortal } from "react-dom";
 import { Calendar, X, Loader2, CheckCircle2, ExternalLink, Plus, Trash2 } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
+import { MomComposer, type MomActionItem } from "@/components/review-meetings/MomComposer";
 
 type ActionItem = { title: string; assigneeId?: string; dueAt?: string; taskId?: string };
 
@@ -52,9 +57,17 @@ export function CompleteMeetingModal({
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [me, setMe] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  /** The meeting just completed — the MOM step runs for it. */
+  const [mom, setMom] = useState<{ meeting: Meeting; agenda: string; items: MomActionItem[] } | null>(null);
+
+  // The meeting is already completed once `mom` is set, so any way out of the
+  // popup must let the host refresh the journey.
+  const close = () => {
+    if (mom) { setMom(null); onSuccess?.(); } else onClose();
+  };
 
   useEffect(() => {
-    if (!open) { setMeetings(null); setErr(null); return; }
+    if (!open) { setMeetings(null); setErr(null); setMom(null); return; }
     let alive = true;
     (async () => {
       try {
@@ -78,10 +91,10 @@ export function CompleteMeetingModal({
 
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  });
 
   if (!open) return null;
 
@@ -93,7 +106,7 @@ export function CompleteMeetingModal({
   // so the form opened squeezed inside it.
   if (typeof document === "undefined") return null;
   return createPortal(
-    <div className="fixed inset-0 z-[60] bg-black/40 flex items-start justify-center overflow-y-auto p-4 sm:p-6" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] bg-black/40 flex items-start justify-center overflow-y-auto p-4 sm:p-6" onClick={close}>
       <div className="card-surface w-full max-w-2xl my-4 sm:my-8" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 p-5 border-b">
           <div className="flex items-center gap-3">
@@ -101,11 +114,11 @@ export function CompleteMeetingModal({
               <Calendar className="size-5 text-brand-cyan" />
             </div>
             <div>
-              <h2 className="text-lg font-bold tracking-tight">Mark meeting completed</h2>
+              <h2 className="text-lg font-bold tracking-tight">{mom ? "Minutes of meeting" : "Mark meeting completed"}</h2>
               
             </div>
           </div>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="Close">
+          <button onClick={close} className="text-muted-foreground hover:text-foreground" aria-label="Close">
             <X className="size-5" />
           </button>
         </div>
@@ -113,7 +126,17 @@ export function CompleteMeetingModal({
         <div className="p-5 space-y-3">
           {err && <div className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-3 py-2">{err}</div>}
 
-          {!meetings ? (
+          {mom ? (
+            <MomComposer
+              leadId={leadId}
+              meeting={mom.meeting}
+              agenda={mom.agenda}
+              items={mom.items}
+              team={team}
+              me={me}
+              onFinish={close}
+            />
+          ) : !meetings ? (
             !err && (
               <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
                 <Loader2 className="size-4 animate-spin" /> Loading meetings…
@@ -133,7 +156,7 @@ export function CompleteMeetingModal({
                 meeting={m}
                 team={team}
                 defaultAssignee={m.rm_id ?? me ?? undefined}
-                onDone={() => onSuccess?.()}
+                onDone={(agenda, items) => setMom({ meeting: m, agenda, items })}
               />
             ))
           )}
@@ -153,7 +176,7 @@ function MeetingCompleteCard({
   meeting: Meeting;
   team: TeamMember[];
   defaultAssignee?: string;
-  onDone: () => void;
+  onDone: (agenda: string, items: MomActionItem[]) => void;
 }) {
   const [agenda, setAgenda] = useState(m.discussion_points ?? "");
   const [items, setItems] = useState<ActionItem[]>(Array.isArray(m.action_items) ? m.action_items : []);
@@ -189,8 +212,9 @@ function MeetingCompleteCard({
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) { setErr(j.error ?? "Could not mark completed."); return; }
-      // Completing auto-advances the blueprint to Meeting Done — refresh the host.
-      onDone();
+      // Completing auto-advances the blueprint to Meeting Done; the host is
+      // refreshed when the MOM step (next) ends.
+      onDone(agenda, kept.map((it) => ({ title: it.title.trim(), assigneeId: it.assigneeId, dueAt: it.dueAt })));
     } catch (e: any) {
       setErr(e?.message ?? "Could not mark completed.");
     } finally {

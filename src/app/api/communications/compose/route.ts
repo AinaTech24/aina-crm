@@ -20,8 +20,14 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { investors, leads } from "@/db/schema";
 import { composeAndSendEmail, scheduleEmail } from "@/lib/comms/compose";
+import { dataWallApplies, loadViewableInvestor } from "@/lib/investors/access";
+import { loadViewableLead } from "@/lib/leads/access";
 
 export const dynamic = "force-dynamic";
+
+/** Mail providers cap a message at ~25-40 MB; stay well under, base64 inflates ~4/3. */
+const MAX_ATTACHMENTS = 5;
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
 const Body = z
   .object({
@@ -33,6 +39,16 @@ const Body = z
     category: z.enum(["transactional", "marketing"]).default("transactional"),
     /** ISO datetime; when present + future → scheduled instead of sent now. */
     scheduledAt: z.string().datetime().optional(),
+    /** Files to send with the mail (send-now only), base64-encoded. */
+    attachments: z
+      .array(
+        z.object({
+          filename: z.string().min(1).max(200),
+          contentBase64: z.string().min(1),
+        })
+      )
+      .max(MAX_ATTACHMENTS)
+      .optional(),
   })
   .refine((b) => b.investorId || b.leadId || b.toEmail, {
     message: "one of investorId / leadId / toEmail is required",
@@ -63,6 +79,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "scheduledAt must be in the future" }, { status: 400 });
     }
 
+    // Attachments are sent now or not at all — a scheduled row keeps no bytes.
+    const attachments = (b.attachments ?? []).map((a) => ({
+      // A bare file name: no path, no control characters.
+      filename: a.filename.replace(/[\\/]/g, "_").replace(/[\u0000-\u001f]/g, "").trim() || "attachment",
+      content: Buffer.from(a.contentBase64, "base64"),
+    }));
+    if (attachments.length && scheduledAt) {
+      return NextResponse.json({ error: "Attachments can only be sent now, not scheduled." }, { status: 400 });
+    }
+    if (attachments.reduce((n, a) => n + a.content.length, 0) > MAX_ATTACHMENT_BYTES) {
+      return NextResponse.json({ error: "Attachments are larger than 10 MB in total." }, { status: 413 });
+    }
+
+    const hasInvestorView =
+      can(session.roles, "investor.view.all", session.permissions) ||
+      can(session.roles, "investor.view.assigned", session.permissions);
+
     const out = await withTenant(session.tenantId, async (tx) => {
       // Resolve recipient email + display name.
       let recipient = b.toEmail ?? "";
@@ -79,8 +112,17 @@ export async function POST(req: NextRequest) {
         if (!seesAll && inv.rmId !== session.userId) {
           throw Object.assign(new Error("not your client"), { status: 403 });
         }
-        if (!inv.email) throw Object.assign(new Error("investor has no email on file"), { status: 400 });
-        recipient = inv.email;
+        // Under the data wall, oversight viewers compose only within their
+        // client scope (a viewer with no client capability has none to apply —
+        // loadViewableInvestor would throw a 403).
+        if (seesAll && hasInvestorView && (await dataWallApplies(tx, session))
+          && !(await loadViewableInvestor(tx, session, b.investorId))) {
+          throw Object.assign(new Error("investor not found"), { status: 404 });
+        }
+        // An address typed in the composer wins (the record may hold none, or
+        // an old one); the mail stays linked to the client either way.
+        if (!inv.email && !b.toEmail) throw Object.assign(new Error("investor has no email on file"), { status: 400 });
+        recipient = b.toEmail ?? inv.email!;
         recipientName = inv.name;
       } else if (b.leadId) {
         const [ld] = await tx
@@ -92,8 +134,13 @@ export async function POST(req: NextRequest) {
         if (!seesAll && ld.ownerId !== session.userId) {
           throw Object.assign(new Error("not your lead"), { status: 403 });
         }
-        if (!ld.email) throw Object.assign(new Error("lead has no email on file"), { status: 400 });
-        recipient = ld.email;
+        if (seesAll && (can(session.roles, "lead.view.all", session.permissions) || can(session.roles, "lead.view.assigned", session.permissions))
+          && (await dataWallApplies(tx, session))
+          && !(await loadViewableLead(tx, session, b.leadId))) {
+          throw Object.assign(new Error("lead not found"), { status: 404 });
+        }
+        if (!ld.email && !b.toEmail) throw Object.assign(new Error("lead has no email on file"), { status: 400 });
+        recipient = b.toEmail ?? ld.email!;
         recipientName = ld.name;
       }
 
@@ -107,6 +154,7 @@ export async function POST(req: NextRequest) {
         investorId: b.investorId ?? null,
         leadId: b.leadId ?? null,
         actorUserId: session.userId,
+        attachments,
       };
 
       const result = scheduledAt

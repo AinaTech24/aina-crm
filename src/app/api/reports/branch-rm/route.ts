@@ -12,6 +12,7 @@ import { requireAny } from "@/lib/auth/rbac";
 import { handleApiError } from "@/lib/api/error-handler";
 import { listBranches, loadRmMatrix } from "@/lib/business/rm-matrix";
 import { isRmMatrixKey } from "@/lib/business/rm-matrix-config";
+import { reportBranchLock } from "@/lib/reports/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +38,9 @@ export async function GET(req: NextRequest) {
     const branchParam = req.nextUrl.searchParams.get("branch") ?? "";
 
     const data = await withTenant(session.tenantId, async (tx) => {
-      const branchList = await listBranches(tx);
+      // A branch-locked head sees only their own branch (lib/reports/scope.ts).
+      const lock = reportBranchLock(session);
+      const branchList = (await listBranches(tx)).filter((b) => !lock || b.id === lock);
       if (branchList.length === 0) return { branches: [], matrix: null };
       const branchId =
         branchParam && branchList.some((b) => b.id === branchParam) ? branchParam : branchList[0].id;

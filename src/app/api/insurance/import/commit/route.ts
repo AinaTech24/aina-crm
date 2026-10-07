@@ -15,6 +15,7 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
+import { insuranceClientScopeSql } from "@/lib/insurance/register-access";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 
@@ -105,6 +106,8 @@ export async function POST(req: NextRequest) {
     const errors: Array<{ rowIndex: number; error: string }> = [];
 
     await withTenant(session.tenantId, async (tx) => {
+      // Only clients in the importer's book can be matched by PAN.
+      const clientScope = await insuranceClientScopeSql(tx, session, sql`investors.id`);
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         const pan = pick(row, reverse.clientPan).toUpperCase();
@@ -112,7 +115,7 @@ export async function POST(req: NextRequest) {
         const planName = pick(row, reverse.planName);
         if (!pan || !insurer || !planName) { errors.push({ rowIndex: i, error: "missing PAN, insurer, or plan" }); continue; }
 
-        const inv = (await tx.execute(sql`SELECT id FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND pan = ${pan} LIMIT 1`)).rows[0] as any;
+        const inv = (await tx.execute(sql`SELECT id FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND pan = ${pan} AND ${clientScope} LIMIT 1`)).rows[0] as any;
         if (!inv) { errors.push({ rowIndex: i, error: `no client with PAN ${pan}` }); continue; }
 
         const policyNumber = pick(row, reverse.policyNumber) || null;

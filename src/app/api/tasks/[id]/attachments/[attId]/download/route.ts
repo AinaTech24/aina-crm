@@ -12,6 +12,7 @@ import { requireSession } from "@/lib/auth/session";
 import { can, requireAny } from "@/lib/auth/rbac";
 import { tasks, taskAttachments } from "@/db/schema";
 import { getObjectBytes } from "@/lib/storage/s3";
+import { taskInScope } from "@/lib/tasks/scope";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -31,6 +32,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         .limit(1);
       if (!t) return null;
       if (!canViewAll && t.assigneeId !== session.userId && t.createdById !== session.userId) return null;
+      if (!(await taskInScope(tx, session, id))) return null;
       const [a] = await tx
         .select()
         .from(taskAttachments)

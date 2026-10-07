@@ -19,6 +19,7 @@ import { withTenant } from "@/db/client";
 import { handleApiError } from "@/lib/api/error-handler";
 import { requireSession } from "@/lib/auth/session";
 import { can, require as requireCap, requireAny } from "@/lib/auth/rbac";
+import { loadViewableClaim } from "@/lib/insurance/register-access";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { createNotification } from "@/lib/notifications/create";
@@ -58,6 +59,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         .where(and(eq(insuranceClaims.id, id), eq(insuranceClaims.tenantId, session.tenantId)))
         .limit(1);
       if (!claim) return null;
+      // Only a claim whose client is in the caller's scope.
+      if (!(await loadViewableClaim(tx, session, id))) return null;
       const [u] = await tx.select({ id: users.id }).from(users)
         .where(and(eq(users.id, assigneeId), eq(users.tenantId, session.tenantId))).limit(1);
       if (!u) throw Object.assign(new Error("That person is not in this firm."), { status: 400 });

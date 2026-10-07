@@ -15,6 +15,9 @@ import {
 import { withTenant } from "@/db/client";
 import { proposals, users, investors } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
+import { dataWallAppliesFor } from "@/lib/investors/access";
+import { loadViewableProposal } from "@/lib/proposals/access";
 import { formatDate, formatINR } from "@/lib/utils";
 import { ProposalStatusActions } from "@/components/proposals/ProposalStatusActions";
 import { ProposalSendActions } from "@/components/proposals/ProposalSendActions";
@@ -67,8 +70,12 @@ export default async function ProposalDetailPage({
 }) {
   const { id } = await params;
   const session = await requireSession();
+  // Under the data wall, the same gate and scope as GET /api/proposals/[id]:
+  // own proposals unless the viewer sees all, and the client / lead / family
+  // in scope — 404 otherwise, never a thrown 403.
+  if (!can(session.roles, "proposal.view", session.permissions) && (await dataWallAppliesFor(session))) notFound();
   const data = await withTenant(session.tenantId, async (tx) => {
-    const p = (await tx.select().from(proposals).where(eq(proposals.id, id)).limit(1))[0];
+    const p = await loadViewableProposal(tx, session, id);
     if (!p) return null;
     const u = p.preparedByUserId
       ? (await tx.select().from(users).where(eq(users.id, p.preparedByUserId)).limit(1))[0]

@@ -13,7 +13,8 @@
  *      denylist) to the survivor, RECORDING the moved ids so it can be undone;
  *   2. fixes the special columns the generic pass misses (lead referrals,
  *      family head, activity subject);
- *   3. fills the survivor's blank contact fields from the loser;
+ *   3. fills the survivor's blank fields (MERGE_FIELDS) from the loser and
+ *      applies the operator's per-field picks;
  *   4. retires the loser (status 'inactive', merged_into_id, provenance) and
  *      ZEROES its cached AUM/SIP so nothing double-counts;
  *   5. logs the merge in investor_merges with everything the un-merge needs;
@@ -24,13 +25,42 @@
  * would be impossible to un-merge with the same code.
  */
 
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
+import type { SessionUser } from "@/lib/auth/session";
+import { investorScopeSql } from "@/lib/investors/access";
+import { isBranchScoped } from "@/lib/leads/access";
 import { recordAudit } from "@/lib/audit";
 import { recomputeInvestorAum } from "@/lib/finance/aum-persist";
 import { recomputeInvestorHealth } from "@/lib/investors/health-persist";
 
 export type MergeSource = "manual" | "system" | "import";
+
+/**
+ * Data scope for merging (alias `alias` over investors): a record may be
+ * merged / un-merged only by someone who can see it (lib/investors/access),
+ * and a branch head locked to a branch only ever merges inside that branch —
+ * a merge rewrites both records, so it must never reach across branches.
+ */
+export async function mergeScopeSql(tx: Tx, session: SessionUser, alias = "i"): Promise<SQL> {
+  const scope = await investorScopeSql(tx, session, alias);
+  if (!isBranchScoped(session)) return scope;
+  return sql`(${scope} AND ${sql.raw(`${alias}.branch_id`)} = ${session.branchId}::uuid)`;
+}
+
+/** True when every id is a client of this tenant inside the viewer's merge scope. */
+export async function allInMergeScope(tx: Tx, session: SessionUser, ids: string[]): Promise<boolean> {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return true;
+  const scope = await mergeScopeSql(tx, session, "i");
+  const r = await tx.execute(sql`
+    SELECT count(*)::int AS n FROM investors i
+     WHERE i.tenant_id = ${session.tenantId}::uuid
+       AND i.id IN (${sql.join(unique.map((id) => sql`${id}::uuid`), sql`, `)})
+       AND ${scope}
+  `);
+  return Number((r.rows[0] as any)?.n ?? 0) === unique.length;
+}
 
 /** Above this many moved rows we log counts only and mark the merge irreversible. */
 const MOVED_ID_CAP = 20_000;
@@ -39,19 +69,101 @@ const MOVED_ID_CAP = 20_000;
  *  is consent/PII that shouldn't silently move; rows stay on the (inactive) loser. */
 const DENYLIST = new Set(["investors", "consents", "communications", "campaigns", "risk_profiles", "onboarding"]);
 
-/** Survivor columns an operator may take from the loser when the two disagree.
- *  Deliberately excludes `pan` — a merge must never change who the surviving
- *  record legally is. */
-export const MERGEABLE_FIELDS = ["name", "phone", "email", "whatsapp_phone", "dob"] as const;
-export type MergeableField = (typeof MERGEABLE_FIELDS)[number];
+/**
+ * The client fields a merge reconciles — everything that describes the person
+ * (profile, contact, address, KYC, bank, nominee, relationship). A blank field
+ * on the kept record is filled from a merged one; where both hold a value the
+ * operator picks which one the kept record ends up with (fieldOverrides).
+ *
+ * Deliberately excluded: `pan` (a merge must never change who the surviving
+ * record legally is — different PANs are refused outright), family membership
+ * (changed from the family page, it re-shapes a household), and everything the
+ * CRM computes or records about the merge itself (AUM, SIP book, health,
+ * status, merge provenance, timestamps).
+ */
+export type MergeFieldKind = "text" | "date" | "json" | "user" | "branch";
+export const MERGE_FIELDS = [
+  // Profile
+  { key: "name", label: "Name", group: "Profile", kind: "text" },
+  { key: "dob", label: "Date of birth", group: "Profile", kind: "date" },
+  { key: "gender", label: "Gender", group: "Profile", kind: "text" },
+  { key: "marital_status", label: "Marital status", group: "Profile", kind: "text" },
+  { key: "anniversary_date", label: "Anniversary", group: "Profile", kind: "date" },
+  { key: "occupation", label: "Occupation", group: "Profile", kind: "text" },
+  { key: "employer_name", label: "Employer", group: "Profile", kind: "text" },
+  { key: "income_range", label: "Income range", group: "Profile", kind: "text" },
+  { key: "tax_status", label: "Tax status", group: "Profile", kind: "text" },
+  { key: "residency_status", label: "Residency", group: "Profile", kind: "text" },
+  { key: "birth_place", label: "Place of birth", group: "Profile", kind: "text" },
+  { key: "mother_name", label: "Mother's name", group: "Profile", kind: "text" },
+  { key: "language_pref", label: "Language", group: "Profile", kind: "text" },
+  { key: "mode_of_holding", label: "Mode of holding", group: "Profile", kind: "text" },
+  // Contact
+  { key: "phone", label: "Mobile", group: "Contact", kind: "text" },
+  { key: "mobile_relation", label: "Mobile belongs to", group: "Contact", kind: "text" },
+  { key: "alternate_phone", label: "Alternate phone", group: "Contact", kind: "text" },
+  { key: "whatsapp_phone", label: "WhatsApp number", group: "Contact", kind: "text" },
+  { key: "email", label: "Email", group: "Contact", kind: "text" },
+  { key: "email_relation", label: "Email belongs to", group: "Contact", kind: "text" },
+  { key: "address", label: "Address", group: "Contact", kind: "json" },
+  // KYC & codes
+  { key: "kyc_status", label: "KYC status", group: "KYC", kind: "text" },
+  { key: "name_as_per_pan", label: "Name as per PAN", group: "KYC", kind: "text" },
+  { key: "kra_name", label: "KRA", group: "KYC", kind: "text" },
+  { key: "ckyc_number", label: "CKYC number", group: "KYC", kind: "text" },
+  { key: "pan_aadhaar_link_status", label: "PAN–Aadhaar link", group: "KYC", kind: "text" },
+  { key: "aadhaar_last4", label: "Aadhaar (last 4)", group: "KYC", kind: "text" },
+  { key: "fatca_status", label: "FATCA", group: "KYC", kind: "text" },
+  { key: "bse_ucc_code", label: "BSE UCC", group: "KYC", kind: "text" },
+  { key: "nse_can_code", label: "NSE CAN", group: "KYC", kind: "text" },
+  // Bank
+  { key: "bank_name", label: "Bank", group: "Bank", kind: "text" },
+  { key: "bank_account_masked", label: "Account number", group: "Bank", kind: "text" },
+  { key: "bank_ifsc", label: "IFSC", group: "Bank", kind: "text" },
+  { key: "bank_accounts", label: "Bank accounts", group: "Bank", kind: "json" },
+  // Nominee
+  { key: "nominee_name", label: "Nominee", group: "Nominee", kind: "text" },
+  { key: "nominee_relation", label: "Nominee relation", group: "Nominee", kind: "text" },
+  { key: "nominee_dob", label: "Nominee date of birth", group: "Nominee", kind: "date" },
+  { key: "nominees", label: "Nominees", group: "Nominee", kind: "json" },
+  // Second holder
+  { key: "second_holder_first_name", label: "Second holder first name", group: "Second holder", kind: "text" },
+  { key: "second_holder_last_name", label: "Second holder last name", group: "Second holder", kind: "text" },
+  // Relationship
+  { key: "rm_id", label: "Relationship manager", group: "Relationship", kind: "user" },
+  { key: "branch_id", label: "Branch", group: "Relationship", kind: "branch" },
+  { key: "investor_category", label: "Category", group: "Relationship", kind: "text" },
+  { key: "client_category", label: "Client category", group: "Relationship", kind: "text" },
+  { key: "relationship_category", label: "Relationship category", group: "Relationship", kind: "text" },
+  { key: "review_frequency", label: "Review frequency", group: "Relationship", kind: "text" },
+  { key: "notes", label: "Notes", group: "Relationship", kind: "text" },
+] as const satisfies ReadonlyArray<{ key: string; label: string; group: string; kind: MergeFieldKind }>;
 
-export const FIELD_LABELS: Record<MergeableField, string> = {
-  name: "Name",
-  phone: "Mobile",
-  email: "Email",
-  whatsapp_phone: "WhatsApp number",
-  dob: "Date of birth",
-};
+export type MergeableField = (typeof MERGE_FIELDS)[number]["key"];
+export const MERGEABLE_FIELDS: readonly MergeableField[] = MERGE_FIELDS.map((f) => f.key);
+export const FIELD_LABELS = Object.fromEntries(MERGE_FIELDS.map((f) => [f.key, f.label])) as Record<MergeableField, string>;
+
+/**
+ * The catalog fields this database actually has. Every column above is created
+ * by a migration, but a merge must never fail on one that a lagging database
+ * lacks — it simply isn't reconciled there.
+ */
+async function presentMergeFields(tx: Tx) {
+  const r = await tx.execute(sql`
+    SELECT column_name FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'investors'
+  `);
+  const cols = new Set((r.rows as Array<{ column_name: string }>).map((x) => x.column_name));
+  return MERGE_FIELDS.filter((f) => cols.has(f.key));
+}
+
+/** SQL: is column `col` of row alias `a` blank (null, empty text, empty json)? */
+function blankSql(a: string, f: { key: string; kind: MergeFieldKind }): SQL {
+  const c = sql.raw(`${a}."${f.key}"`);
+  if (f.kind === "text") return sql`NULLIF(trim(${c}), '') IS NULL`;
+  if (f.kind === "json") return sql`(${c} IS NULL OR ${c} = 'null'::jsonb OR ${c} = '{}'::jsonb OR ${c} = '[]'::jsonb)`;
+  return sql`${c} IS NULL`;
+}
 
 /** snake_case table name -> something an operator can read. */
 export function tableLabel(table: string): string {
@@ -222,46 +334,37 @@ export async function mergeInvestors(tx: Tx, input: MergeInput): Promise<MergeRe
      WHERE f.primary_investor_id = ${loserId}::uuid${tf("families")}`);
   await tx.execute(sql`UPDATE activities SET subject_id = ${survivorId}::uuid WHERE subject_type = 'investor' AND subject_id = ${loserId}::uuid${tf("activities")}`);
 
-  // Snapshot the survivor's mergeable fields BEFORE anything writes to them.
-  // The fill below (and any operator override) changes the surviving record,
-  // and un-merge has to be able to put it back exactly as it was.
-  const survivorBeforeRow = (
-    await tx.execute(sql`
-      SELECT name, phone, email, whatsapp_phone, dob::text AS dob
-        FROM investors WHERE id = ${survivorId}::uuid
-    `)
-  ).rows[0] as Record<string, unknown> | undefined;
-  const survivorBefore = survivorBeforeRow
-    ? Object.fromEntries(MERGEABLE_FIELDS.map((f) => [f, survivorBeforeRow[f] ?? null]))
-    : null;
+  // Snapshot the survivor's reconciled fields BEFORE anything writes to them.
+  // The fill below (and any operator pick) changes the surviving record, and
+  // un-merge has to be able to put it back exactly as it was.
+  const fields = await presentMergeFields(tx);
+  const keyList = sql.join(fields.map((f) => sql`${f.key}`), sql`, `);
+  const survivorBefore = (
+    (
+      await tx.execute(sql`
+        SELECT (SELECT jsonb_object_agg(k, v) FROM jsonb_each(to_jsonb(i)) AS e(k, v) WHERE k IN (${keyList})) AS before
+          FROM investors i WHERE i.id = ${survivorId}::uuid
+      `)
+    ).rows[0] as { before: Record<string, unknown> | null } | undefined
+  )?.before ?? null;
 
-  // Fill the survivor's blank contact fields from the loser.
-  await tx.execute(sql`
-    UPDATE investors s SET
-      phone = COALESCE(s.phone, l.phone),
-      email = COALESCE(s.email, l.email),
-      whatsapp_phone = COALESCE(s.whatsapp_phone, l.whatsapp_phone),
-      dob = COALESCE(s.dob, l.dob),
-      updated_at = now()
-    FROM investors l
-    WHERE s.id = ${survivorId}::uuid AND l.id = ${loserId}::uuid
-  `);
-
-  // Then apply the operator's explicit picks, which OVERWRITE a value the
-  // survivor already had (the COALESCE above can only fill blanks). This is how
-  // "the duplicate has their current mobile" gets resolved.
-  const picked = (Object.keys(input.fieldOverrides ?? {}) as MergeableField[]).filter(
-    (f) => input.fieldOverrides?.[f] && (MERGEABLE_FIELDS as readonly string[]).includes(f)
+  // Fill the survivor's blank fields from the loser, then apply the operator's
+  // explicit picks, which OVERWRITE a value the survivor already had (a fill
+  // can only fill blanks). A pick falls back to the survivor's own value when
+  // the loser's is blank, so it can never blank a field out.
+  const picked = new Set(
+    (Object.keys(input.fieldOverrides ?? {}) as MergeableField[]).filter(
+      (f) => input.fieldOverrides?.[f] && (MERGEABLE_FIELDS as readonly string[]).includes(f)
+    )
   );
-  if (picked.length) {
-    // Each field falls back to the survivor's own value when the loser's is
-    // blank, so picking two fields where only one is populated can never blank
-    // out the other.
-    const assignments = picked.map((f) => {
-      const col = sql.raw(`"${f}"`);
-      return f === "dob"
-        ? sql`${col} = COALESCE(l.${col}, s.${col})`
-        : sql`${col} = COALESCE(NULLIF(trim(l.${col}), ''), s.${col})`;
+  if (fields.length) {
+    const assignments = fields.map((f) => {
+      const col = sql.raw(`"${f.key}"`);
+      const s = sql.raw(`s."${f.key}"`);
+      const l = sql.raw(`l."${f.key}"`);
+      return picked.has(f.key)
+        ? sql`${col} = CASE WHEN ${blankSql("l", f)} THEN ${s} ELSE ${l} END`
+        : sql`${col} = CASE WHEN ${blankSql("s", f)} THEN ${l} ELSE ${s} END`;
     });
     await tx.execute(sql`
       UPDATE investors s SET ${sql.join(assignments, sql`, `)}, updated_at = now()
@@ -316,6 +419,26 @@ export async function mergeInvestors(tx: Tx, input: MergeInput): Promise<MergeRe
 
 /* ─────────────────────────── Dry-run preview ─────────────────────────── */
 
+/** A json field (address, nominees, bank accounts) as one readable line. */
+function jsonSummary(v: unknown): string {
+  const flat = (o: unknown): string => {
+    if (o == null) return "";
+    if (typeof o !== "object") return String(o).trim();
+    // Postgres returns jsonb keys shortest-first ("city" before "line1"), so
+    // put the parts of an address back in reading order.
+    const ORDER = ["line1", "line2", "line3", "address", "city", "district", "state", "pincode", "pin", "country"];
+    const rank = (k: string) => (ORDER.includes(k) ? ORDER.indexOf(k) : ORDER.length);
+    return Object.entries(o as Record<string, unknown>)
+      .sort(([a], [b]) => rank(a) - rank(b))
+      .map(([, x]) => x)
+      .filter((x) => x != null && typeof x !== "object" && String(x).trim() !== "")
+      .map((x) => String(x).trim())
+      .join(", ");
+  };
+  if (Array.isArray(v)) return v.map(flat).filter(Boolean).join(" · ");
+  return flat(v);
+}
+
 export type MergePreview = {
   survivor: { id: string; name: string; pan: string | null };
   losers: Array<{ id: string; name: string; pan: string | null }>;
@@ -323,6 +446,16 @@ export type MergePreview = {
   moves: Array<{ table: string; label: string; count: number }>;
   /** Child rows deliberately left on the retired record (see DENYLIST). */
   stays: Array<{ table: string; label: string; count: number }>;
+  /** Every reconciled field, with each record's value (survivor first), whether
+   *  they disagree, and whose value the kept record gets if nobody chooses. */
+  fields: Array<{
+    field: MergeableField;
+    label: string;
+    group: string;
+    values: Array<{ id: string; value: string }>;
+    differs: boolean;
+    defaultId: string | null;
+  }>;
   /** Fields where the records disagree and the operator must choose. */
   conflicts: Array<{
     field: MergeableField;
@@ -351,15 +484,52 @@ export async function previewMerge(
   const loserIds = args.loserIds.filter((id) => id !== survivorId);
   const ids = [survivorId, ...loserIds];
 
+  const fieldDefs = await presentMergeFields(tx);
+  const keyList = sql.join(fieldDefs.map((f) => sql`${f.key}`), sql`, `);
   const people = await tx.execute(sql`
-    SELECT id, name, upper(nullif(trim(pan), '')) AS pan, phone, email, whatsapp_phone, dob
-      FROM investors
-     WHERE tenant_id = ${tenantId}::uuid
-       AND id IN (${sql.join(ids.map((i) => sql`${i}::uuid`), sql`, `)})
+    SELECT i.id, i.name, upper(nullif(trim(i.pan), '')) AS pan,
+           (SELECT jsonb_object_agg(k, v) FROM jsonb_each(to_jsonb(i)) AS e(k, v) WHERE k IN (${keyList})) AS fields
+      FROM investors i
+     WHERE i.tenant_id = ${tenantId}::uuid
+       AND i.id IN (${sql.join(ids.map((i) => sql`${i}::uuid`), sql`, `)})
   `);
   const byId = new Map((people.rows as any[]).map((r) => [String(r.id), r]));
   const survivorRow = byId.get(survivorId);
   if (!survivorRow || loserIds.some((id) => !byId.has(id))) return { error: "one or both clients not found" };
+
+  // RM and branch are ids — show the operator names.
+  const refIds = new Set<string>();
+  for (const r of people.rows as any[]) {
+    for (const f of fieldDefs) if ((f.kind === "user" || f.kind === "branch") && r.fields?.[f.key]) refIds.add(String(r.fields[f.key]));
+  }
+  const names = new Map<string, string>();
+  if (refIds.size) {
+    const list = sql.join([...refIds].map((i) => sql`${i}::uuid`), sql`, `);
+    const nr = await tx.execute(sql`
+      SELECT id, name FROM users WHERE tenant_id = ${tenantId}::uuid AND id IN (${list})
+      UNION ALL
+      SELECT id, name FROM branches WHERE tenant_id = ${tenantId}::uuid AND id IN (${list})
+    `);
+    for (const r of nr.rows as Array<{ id: string; name: string | null }>) names.set(String(r.id), r.name ?? "—");
+  }
+  const display = (f: { kind: MergeFieldKind }, v: unknown): string => {
+    if (v == null) return "";
+    if (f.kind === "user" || f.kind === "branch") return names.get(String(v)) ?? "(no longer on the team)";
+    if (f.kind === "json") return jsonSummary(v);
+    return String(v).trim();
+  };
+  const sameKey = (f: { kind: MergeFieldKind }, v: unknown) =>
+    f.kind === "json" ? (jsonSummary(v) ? JSON.stringify(v) : "") : display(f, v).toLowerCase();
+
+  const fields: MergePreview["fields"] = fieldDefs.map((f) => {
+    const raw = ids.map((id) => byId.get(id)?.fields?.[f.key] ?? null);
+    const values = ids.map((id, n) => ({ id, value: display(f, raw[n]) }));
+    const keys = new Set(raw.map((v) => sameKey(f, v)).filter(Boolean));
+    // What happens with no choice: the kept record's value, else the first
+    // merged record that has one (the order the merges run in).
+    const defaultId = values.find((v) => v.value)?.id ?? null;
+    return { field: f.key, label: f.label, group: f.group, values, differs: keys.size > 1, defaultId };
+  });
 
   const { moves: moveTables, stays: stayTables } = await investorChildTables(tx);
 
@@ -393,20 +563,21 @@ export async function previewMerge(
   const moves = await countFor(moveTables);
   const stays = await countFor(stayTables);
 
-  // Field disagreements the operator should resolve deliberately.
-  const conflicts: MergePreview["conflicts"] = [];
-  for (const field of MERGEABLE_FIELDS) {
-    const norm = (v: unknown) => (v == null ? "" : String(v).trim());
-    const survivorValue = norm(survivorRow[field]);
-    const loserValues = loserIds
-      .map((id) => ({ id, name: String(byId.get(id)?.name ?? "—"), value: norm(byId.get(id)?.[field]) }))
-      .filter((l) => l.value && l.value.toLowerCase() !== survivorValue.toLowerCase());
-    // Only a real disagreement is a conflict: a blank survivor field is filled
-    // automatically and needs no decision.
-    if (survivorValue && loserValues.length) {
-      conflicts.push({ field, label: FIELD_LABELS[field], survivorValue, loserValues });
-    }
-  }
+  // Field disagreements the operator should resolve deliberately: the kept
+  // record has a value and a merged one has a different one. (A blank on the
+  // kept record is filled automatically.)
+  const conflicts: MergePreview["conflicts"] = fields
+    .filter((f) => f.differs && f.values[0].value)
+    .map((f) => ({
+      field: f.field,
+      label: f.label,
+      survivorValue: f.values[0].value,
+      loserValues: f.values
+        .slice(1)
+        .filter((v) => v.value && v.value.toLowerCase() !== f.values[0].value.toLowerCase())
+        .map((v) => ({ id: v.id, name: String(byId.get(v.id)?.name ?? "—"), value: v.value })),
+    }))
+    .filter((c) => c.loserValues.length > 0);
 
   const survivorPan = survivorRow.pan ?? null;
   const panMismatch = loserIds.some((id) => {
@@ -423,6 +594,7 @@ export async function previewMerge(
     })),
     moves,
     stays,
+    fields,
     conflicts,
     panMismatch,
     totals: {
@@ -450,7 +622,8 @@ export type PanGroup = {
   losers: Array<{ id: string; name: string }>;
 };
 
-export async function loadExactPanGroups(tx: Tx, tenantId: string, cap = 500): Promise<PanGroup[]> {
+/** `scope` — mergeScopeSql over alias `i`; default unrestricted. */
+export async function loadExactPanGroups(tx: Tx, tenantId: string, cap = 500, scope: SQL = sql`TRUE`): Promise<PanGroup[]> {
   const r = await tx.execute(sql`
     WITH live AS (
       SELECT i.id, i.name, upper(trim(i.pan)) AS pan, i.created_at,
@@ -460,6 +633,7 @@ export async function loadExactPanGroups(tx: Tx, tenantId: string, cap = 500): P
        WHERE i.tenant_id = ${tenantId}::uuid
          AND i.deleted_at IS NULL AND i.merged_into_id IS NULL AND i.status <> 'closed'
          AND NULLIF(trim(i.pan), '') IS NOT NULL
+         AND ${scope}
     ),
     dup AS (SELECT pan FROM live GROUP BY pan HAVING count(*) > 1)
     SELECT l.id, l.name, l.pan, l.aum, l.folios, l.created_at

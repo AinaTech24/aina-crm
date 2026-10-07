@@ -23,6 +23,7 @@ import {
   portfolioReviewItems,
 } from "@/db/schema";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { canSeeMeeting } from "@/lib/review-meetings/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -94,6 +95,7 @@ export async function GET(
         .limit(1);
       if (!meeting) return null;
       if (!canAll && meeting.rmId !== session.userId) return { forbidden: true as const };
+      if (!(await canSeeMeeting(tx, session, id))) return null;
 
       const items = await tx
         .select()
@@ -163,6 +165,9 @@ export async function PUT(
       if (!meeting) throw new Error("meeting not found");
       if (!canAll && meeting.rmId !== session.userId) {
         throw Object.assign(new Error("forbidden"), { status: 403 });
+      }
+      if (!(await canSeeMeeting(tx, session, id))) {
+        throw Object.assign(new Error("meeting not found"), { status: 404 });
       }
 
       const existing = await tx

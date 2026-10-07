@@ -26,6 +26,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { AgeBandsSchema, resolveAgeBands } from "@/lib/risk-profile/age-bands";
 import { planAgeAssignment, applyAgeAssignment } from "@/lib/risk-profile/bulk-age-assign";
+import { investorScopeSql } from "@/lib/investors/access";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -71,6 +72,8 @@ export async function POST(req: NextRequest) {
           tenantId: session.tenantId,
           bands,
           rmId: seesAll ? undefined : session.userId,
+          // Data scope: only clients in the viewer's book (branch / own book).
+          scope: await investorScopeSql(tx, session, "i"),
           refreshProvisional,
         });
 

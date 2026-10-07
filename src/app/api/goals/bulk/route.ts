@@ -11,7 +11,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -19,6 +19,7 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { goals } from "@/db/schema";
+import { visibleGoalInvestorIdsSql } from "@/lib/goal-planning/access";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +45,12 @@ export async function POST(req: NextRequest) {
       const upd = await tx
         .update(goals)
         .set({ status: "abandoned", updatedAt: new Date() } as any)
-        .where(and(eq(goals.tenantId, session.tenantId), inArray(goals.id, ids)))
+        // Only goals whose client is in the caller's book; others are skipped.
+        .where(and(
+          eq(goals.tenantId, session.tenantId),
+          inArray(goals.id, ids),
+          sql`${goals.investorId} IN ${await visibleGoalInvestorIdsSql(tx, session)}`,
+        ))
         .returning({ id: goals.id });
 
       await recordAudit(tx, {

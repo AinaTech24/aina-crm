@@ -10,7 +10,7 @@
  * by the exchange/AMC, so this replaces the manual Excel watch.
  */
 
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 
 export type CellStatus = "deducted" | "bounced" | "pending" | "missing";
@@ -85,12 +85,14 @@ type FeedTxn = { schemeCode: string | null; schemeName: string | null; folio: st
 export async function computeSipInstallmentWatch(
   tx: Tx,
   tenantId: string,
-  opts: { rmId?: string | null } = {}
+  /** clientScope: a predicate over the investors alias `i` (the viewer's client scope). */
+  opts: { rmId?: string | null; clientScope?: SQL } = {}
 ): Promise<SipInstallmentWatch> {
   // Non-managers see only their own book (SIPs they own OR for their clients).
   const scope = opts.rmId
     ? sql` AND (s.rm_id = ${opts.rmId}::uuid OR i.rm_id = ${opts.rmId}::uuid)`
     : sql``;
+  const clientScope = opts.clientScope ? sql` AND ${opts.clientScope}` : sql``;
   // Recently-started SIPs still inside their first-6-installments window.
   const sipsRows = (
     await tx.execute(sql`
@@ -104,7 +106,7 @@ export async function computeSipInstallmentWatch(
          AND i.deleted_at IS NULL
          AND s.start_date IS NOT NULL
          AND s.start_date >= current_date - interval '7 months'
-         AND s.status NOT IN ('completed','expired')${scope}
+         AND s.status NOT IN ('completed','expired')${scope}${clientScope}
        ORDER BY s.start_date DESC
     `)
   ).rows as any[];

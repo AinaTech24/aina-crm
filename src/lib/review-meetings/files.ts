@@ -17,6 +17,7 @@ import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { canSeeMeeting } from "./scope";
 
 export const MEETING_FILE_MAX_BYTES = 25 * 1024 * 1024; // 25 MB, as task attachments
 
@@ -39,6 +40,8 @@ export async function loadMeetingForFiles(
   const attends = Array.isArray(r.attendees)
     && (r.attendees as Array<Record<string, unknown>>).some((a) => a?.kind === "user" && a?.refId === session.userId);
   if (!canAll && r.rm_id !== session.userId && !attends) return null;
+  // manage.all reaches only meetings whose client / lead is in scope.
+  if (!(await canSeeMeeting(tx, session, meetingId))) return null;
   return { attachments: Array.isArray(r.attachments) ? (r.attachments as Array<Record<string, unknown>>) : [] };
 }
 

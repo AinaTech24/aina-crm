@@ -13,6 +13,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { expectedInflows, investors, users } from "@/db/schema";
 import { InflowBody } from "@/lib/inflows/schema";
 import { syncInflowReminder } from "@/lib/inflows/reminder";
+import { investorScopeSql, loadViewableInvestor } from "@/lib/investors/access";
 
 export const dynamic = "force-dynamic";
 
@@ -24,8 +25,10 @@ export async function GET(req: NextRequest) {
 
     const rows = await withTenant(
       session.tenantId,
-      async (tx) =>
-        tx
+      async (tx) => {
+        // Viewer scope: only inflows of clients this viewer may see.
+        const scope = await investorScopeSql(tx, session, "investors");
+        return tx
           .select({
             id: expectedInflows.id,
             investorId: expectedInflows.investorId,
@@ -48,11 +51,12 @@ export async function GET(req: NextRequest) {
           .leftJoin(users, eq(users.id, expectedInflows.ownerId))
           .where(
             investorId
-              ? and(eq(expectedInflows.tenantId, session.tenantId), eq(expectedInflows.investorId, investorId))
-              : eq(expectedInflows.tenantId, session.tenantId)
+              ? and(eq(expectedInflows.tenantId, session.tenantId), eq(expectedInflows.investorId, investorId), scope)
+              : and(eq(expectedInflows.tenantId, session.tenantId), scope)
           )
           .orderBy(asc(expectedInflows.expectedOn))
-          .limit(1000),
+          .limit(1000);
+      },
       { userId: session.userId, branchId: session.branchId ?? undefined, roles: session.roles }
     );
     return NextResponse.json({ inflows: rows });
@@ -75,12 +79,8 @@ export async function POST(req: NextRequest) {
     const out = await withTenant(
       session.tenantId,
       async (tx) => {
-        // The client must belong to this tenant (RLS scopes, but be explicit).
-        const [client] = await tx
-          .select({ id: investors.id, rmId: investors.rmId })
-          .from(investors)
-          .where(and(eq(investors.id, d.investorId), eq(investors.tenantId, session.tenantId)))
-          .limit(1);
+        // The client must belong to this tenant AND be one this viewer may see.
+        const client = await loadViewableInvestor(tx, session, d.investorId);
         if (!client) return { notFound: true as const };
 
         const [row] = await tx

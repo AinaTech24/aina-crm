@@ -36,6 +36,7 @@ import { computeNextReview } from "@/lib/investors/review-cadence";
 import { formatDate } from "@/lib/format";
 import { ATTENDEE_KINDS, hasUserAttendee } from "@/lib/review-meetings/attendees";
 import { cleanAttendees, notifyAddedTeam, syncActionItemTasks, type ActionItemIn } from "@/lib/review-meetings/sync";
+import { canSeeMeeting } from "@/lib/review-meetings/scope";
 import {
   reviewMeetings,
   investors,
@@ -78,6 +79,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         if (!m) return null;
         // RMs (manage.assigned) may only view their own meetings — or one they attend.
         if (!canAll && m.rm_id !== session.userId && !hasUserAttendee(m.attendees, session.userId)) return { forbidden: true as const };
+        // manage.all reaches only meetings whose client / lead is in scope.
+        if (!(await canSeeMeeting(tx, session, id))) return null;
 
         // Prep brief — only for upcoming/in-progress INVESTOR meetings.
         let prep: any = null;
@@ -187,6 +190,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (!canAll && before.rmId !== session.userId && !hasUserAttendee(before.attendees, session.userId)) {
         return { forbidden: true as const };
       }
+      // manage.all reaches only meetings whose client / lead is in scope.
+      if (!(await canSeeMeeting(tx, session, id))) return null;
 
       const patch: any = { ...body, updatedAt: new Date() };
       const meetingLabel = (body.subject ?? before.subject) || "a meeting";
@@ -553,6 +558,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       const before = (await tx.select().from(reviewMeetings).where(and(eq(reviewMeetings.id, id), eq(reviewMeetings.tenantId, session.tenantId))).limit(1))[0];
       if (!before) return "not_found" as const;
       if (!canAll && before.rmId !== session.userId) return "forbidden" as const;
+      if (!(await canSeeMeeting(tx, session, id))) return "not_found" as const;
       await tx
         .update(reviewMeetings)
         .set({ status: "cancelled", updatedAt: new Date() } as any)

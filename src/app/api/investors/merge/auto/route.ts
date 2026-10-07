@@ -11,7 +11,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  * Body: { dryRun?: boolean }
  *   dryRun → counts + a sample, for the confirmation dialog. Nothing changes.
  *   else   → merges, source 'system', reason 'Same PAN <pan>'. Every merge is
- *            logged in investor_merges and reversible from "Differ Clients".
+ *            logged in investor_merges and reversible from Merge history.
  *
  * Owner / branch-head only. Capped per call so one click can't lock the book
  * for minutes — the response says how many groups remain.
@@ -22,7 +22,7 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { clientMetaFromHeaders } from "@/lib/audit";
-import { loadExactPanGroups, mergeInvestors } from "@/lib/investors/merge";
+import { loadExactPanGroups, mergeInvestors, mergeScopeSql } from "@/lib/investors/merge";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -46,7 +46,8 @@ export async function POST(req: NextRequest) {
     const result = await withTenant(
       session.tenantId,
       async (tx) => {
-        const groups = await loadExactPanGroups(tx, session.tenantId);
+        // Data scope: only duplicate groups inside the viewer's book (and branch).
+        const groups = await loadExactPanGroups(tx, session.tenantId, 500, await mergeScopeSql(tx, session, "i"));
         const totalLosers = groups.reduce((n, g) => n + g.losers.length, 0);
 
         if (dryRun) {

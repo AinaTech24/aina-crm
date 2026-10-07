@@ -14,6 +14,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { communications, investors, leads } from "@/db/schema";
+import { canViewComms, commsScopeSql } from "@/lib/comms/inbox-scope";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -25,10 +26,13 @@ export async function GET() {
     const session = await requireSession();
     // Messages carry client/lead PII. Managers see all; everyone else only
     // messages tied to a client they manage (investors.rm_id) or a lead they own.
+    // Same rule as the web inbox (lib/comms/inbox-scope.ts), narrowed by the
+    // viewer's client / lead scope for oversight roles.
+    if (!canViewComms(session)) throw Object.assign(new Error("forbidden"), { status: 403 });
     const seesAll =
       can(session.roles, "investor.view.all", session.permissions) ||
       can(session.roles, "compliance.view", session.permissions);
-    const scope = seesAll
+    const legacy = seesAll
       ? undefined
       : sql`(${communications.investorId} IN (SELECT id FROM investors WHERE rm_id = ${session.userId}::uuid)
              OR ${communications.leadId} IN (SELECT id FROM leads WHERE owner_id = ${session.userId}::uuid))`;
@@ -36,6 +40,7 @@ export async function GET() {
     const rows = await withTenant(
       session.tenantId,
       async (tx) => {
+        const scope = and(legacy, sql`${await commsScopeSql(tx, session, "communications")}`);
         return tx
           .select({
             id: communications.id,

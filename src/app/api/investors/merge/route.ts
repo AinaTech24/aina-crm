@@ -18,7 +18,7 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { clientMetaFromHeaders } from "@/lib/audit";
-import { mergeInvestors } from "@/lib/investors/merge";
+import { allInMergeScope, mergeInvestors } from "@/lib/investors/merge";
 
 export const dynamic = "force-dynamic";
 
@@ -51,8 +51,10 @@ export async function POST(req: NextRequest) {
 
     const result = await withTenant(
       session.tenantId,
-      (tx) =>
-        mergeInvestors(tx, {
+      async (tx) => {
+        // Data scope: both records must be in the viewer's book (and branch).
+        if (!(await allInMergeScope(tx, session, [survivorId, loserId]))) return { error: "one or both clients not found" as const };
+        return mergeInvestors(tx, {
           tenantId: session.tenantId,
           survivorId,
           loserId,
@@ -62,7 +64,8 @@ export async function POST(req: NextRequest) {
           auditMeta: meta as any,
           fieldOverrides: parse.data.fieldOverrides as any,
           allowPanMismatch: parse.data.allowPanMismatch,
-        }),
+        });
+      },
       { userId: session.userId, branchId: session.branchId, roles: session.roles }
     );
 

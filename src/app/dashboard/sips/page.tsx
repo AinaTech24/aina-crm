@@ -15,6 +15,7 @@ import { Pager } from "@/components/common/Pager";
 import { ModuleTabs, SIP_TABS } from "@/components/common/ModuleTabs";
 import { sipNextDue, indiaToday } from "@/lib/sips/next-due";
 import { clientWhere, sipMonthlySql, textList, type MetricScope } from "@/lib/metrics";
+import { visibleClientSql } from "@/lib/transactions/client-scope";
 
 const SIPS_COLUMNS = [
   { key: "investor", label: "Investor", required: true },
@@ -131,6 +132,7 @@ export default async function SipsPage({
       FROM sips s JOIN investors i ON i.id = s.investor_id
       WHERE s.tenant_id = ${session.tenantId}::uuid
         AND ${clientWhere(bookScope, "i")}${amcs.length ? sql` AND s.amc_name IN (${textList(amcs)})` : sql``}${statsScope}
+        AND ${await visibleClientSql(tx, session, "i")}
     `);
     const s = stats.rows[0] as any;
 
@@ -142,6 +144,8 @@ export default async function SipsPage({
     // amc — the dashboard's AMC filter, on the SIP itself.
     if (amcs.length) conds.push(inArray(sips.amcName, amcs));
     if (!seesAll) conds.push(or(eq(sips.rmId, session.userId), eq(investors.rmId, session.userId))!);
+    // Viewer scope: a SIP is visible only when its client is (only narrows).
+    conds.push(await visibleClientSql(tx, session, "investors"));
     if (q) {
       conds.push(
         or(

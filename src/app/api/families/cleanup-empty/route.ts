@@ -23,6 +23,7 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireAny, can } from "@/lib/auth/rbac";
+import { familyScopeSql } from "@/lib/families/access";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 
@@ -53,7 +54,13 @@ export async function POST(req: NextRequest) {
     const ctx = { userId: session.userId, branchId: session.branchId, roles: session.roles };
 
     const noClients = sql`NOT EXISTS (SELECT 1 FROM investors i WHERE i.family_id = f.id AND i.deleted_at IS NULL)`;
-    const scope = seesAll ? sql`` : sql` AND f.rm_id = ${session.userId}::uuid`;
+    const ownScope = seesAll ? sql`` : sql` AND f.rm_id = ${session.userId}::uuid`;
+    // Plus the shared family data scope (branch / own book).
+    const scopeIn = async (tx: any) => {
+      const famScope = await familyScopeSql(tx, session, "f")
+        .catch((e: any) => { if (e?.status === 403) return sql`TRUE`; throw e; });
+      return sql`${ownScope} AND ${famScope}`;
+    };
 
     if (parsed.data.dryRun) {
       const n = await withTenant(
@@ -62,7 +69,7 @@ export async function POST(req: NextRequest) {
           Number(
             ((await tx.execute(sql`
               SELECT COUNT(*)::int AS c FROM families f
-               WHERE f.tenant_id = ${session.tenantId}::uuid AND ${noClients}${scope}
+               WHERE f.tenant_id = ${session.tenantId}::uuid AND ${noClients}${await scopeIn(tx)}
             `)).rows[0] as { c?: number } | undefined)?.c ?? 0
           ),
         ctx
@@ -76,7 +83,7 @@ export async function POST(req: NextRequest) {
         const candidates = (await tx.execute(sql`
           SELECT f.id, f.head_name, f.family_name, f.family_code, f.rm_id, f.notes, f.created_at
             FROM families f
-           WHERE f.tenant_id = ${session.tenantId}::uuid AND ${noClients}${scope}
+           WHERE f.tenant_id = ${session.tenantId}::uuid AND ${noClients}${await scopeIn(tx)}
         `)).rows as unknown as Row[];
 
         let deleted = 0;

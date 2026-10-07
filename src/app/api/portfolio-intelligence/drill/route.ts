@@ -12,6 +12,7 @@ import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { visibleClientSql } from "@/lib/transactions/client-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -36,13 +37,15 @@ export async function GET(req: NextRequest) {
     if (!key) return NextResponse.json({ error: "key required" }, { status: 400 });
     const canFirm = can(session.roles, "dashboard.view.owner", (session as any).permissions);
     const mine = sp.get("mine") === "1" || !canFirm;
-    const scope = mine
+    const ownBook = mine
       ? sql` AND i.deleted_at IS NULL AND i.rm_id = ${session.userId}::uuid`
       : sql` AND i.deleted_at IS NULL`;
 
     const holders = await withTenant(
       session.tenantId,
       async (tx) => {
+        // Viewer scope on top of the own-book slice: only clients this viewer may see.
+        const scope = sql`${ownBook} AND ${await visibleClientSql(tx, session, "i")}`;
         if (by === "amc") {
           return (await tx.execute(sql`
             SELECT i.id AS investor_id, i.name, COALESCE(SUM(f.aum::numeric),0)::numeric AS value

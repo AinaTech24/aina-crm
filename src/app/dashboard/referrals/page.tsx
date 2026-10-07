@@ -7,6 +7,8 @@ import { requireSession } from "@/lib/auth/session";
 import { formatINR, formatDate } from "@/lib/utils";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
+import { dataWallApplies, investorScopeSql } from "@/lib/investors/access";
+import { can } from "@/lib/auth/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -21,8 +23,17 @@ export default async function ReferralsPage({
   const minOnly = sp.min === "2";
 
   const data = await withTenant(session.tenantId, async (tx) => {
+    // Only referrers (clients) in the viewer's book — the same client scope as
+    // the Clients list — and only under the data wall; a viewer with no client
+    // capability then sees no referrers (never a thrown 403). Without the
+    // wall, every referrer, as before.
+    const scope = !(await dataWallApplies(tx, session))
+      ? sql`TRUE`
+      : can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "investor.view.assigned", session.permissions)
+        ? await investorScopeSql(tx, session, "i")
+        : sql`FALSE`;
     // Aggregate referrals per existing investor.
-    const conds: any[] = [sql`i.deleted_at IS NULL`];
+    const conds: any[] = [sql`i.deleted_at IS NULL`, sql`i.tenant_id = ${session.tenantId}::uuid`, scope];
     if (q) conds.push(sql`i.name ILIKE ${`%${q}%`}`);
     const whereSql = conds.length ? sql` WHERE ${sql.join(conds, sql` AND `)}` : sql``;
     const minSql = minOnly ? sql` HAVING COUNT(l.id) >= 2 ` : sql``;
@@ -67,7 +78,7 @@ export default async function ReferralsPage({
       FROM investors i
       JOIN leads l ON l.referred_by_investor_id = i.id
       LEFT JOIN investors inv ON inv.id = l.converted_investor_id
-      WHERE i.deleted_at IS NULL
+      WHERE i.deleted_at IS NULL AND i.tenant_id = ${session.tenantId}::uuid AND ${scope}
     `);
     // Advocates to ask — your best clients who have NEVER referred anyone.
     // High AUM + active + not flagged redemption-risk = happy, sticky, untapped.
@@ -79,6 +90,7 @@ export default async function ReferralsPage({
       LEFT JOIN leads l ON l.referred_by_investor_id = i.id
       WHERE i.status = 'active'
         AND i.deleted_at IS NULL
+        AND i.tenant_id = ${session.tenantId}::uuid AND ${scope}
         AND i.redemption_risk_flagged_at IS NULL
       GROUP BY i.id, i.name, i.phone, i.aum, i.service_tier, i.last_contact_at
       HAVING COUNT(l.id) = 0

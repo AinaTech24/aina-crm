@@ -9,6 +9,7 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { financialPlans, investors, leads } from "@/db/schema";
 import { handleApiError } from "@/lib/api/error-handler";
 import { recomputePlanGoals, numOrNull } from "@/lib/financial-plans/compute";
+import { loadViewablePlan } from "@/lib/financial-plans/access";
 
 // Zod schemas for sub-items
 const ChildDetailSchema = z.object({
@@ -98,13 +99,10 @@ export async function GET(
     const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
 
     const row = await withTenant(session.tenantId, async (tx) => {
-      const p = await tx
-        .select()
-        .from(financialPlans)
-        .where(and(eq(financialPlans.id, id), eq(financialPlans.tenantId, session.tenantId)))
-        .limit(1);
-
-      if (p.length === 0) return null;
+      // Own-plans rule + the client's / lead's scope (404 when not visible).
+      const one = await loadViewablePlan(tx, session, id);
+      if (!one) return null;
+      const p = [one];
       // Non-managers only see plans they prepared.
       if (!seesAll && p[0].preparedByUserId !== session.userId) return null;
 
@@ -166,7 +164,7 @@ export async function PATCH(
         .where(and(eq(financialPlans.id, id), eq(financialPlans.tenantId, session.tenantId)))
         .limit(1);
 
-      if (existing.length === 0) {
+      if (existing.length === 0 || !(await loadViewablePlan(tx, session, id))) {
         throw Object.assign(new Error("not found"), { status: 404 });
       }
       // Non-managers may only edit plans they prepared.
@@ -246,7 +244,7 @@ export async function DELETE(
         .where(and(eq(financialPlans.id, id), eq(financialPlans.tenantId, session.tenantId)))
         .limit(1);
 
-      if (existing.length === 0) {
+      if (existing.length === 0 || !(await loadViewablePlan(tx, session, id))) {
         throw Object.assign(new Error("not found"), { status: 404 });
       }
       // Permanent delete — non-managers may only delete plans they prepared.

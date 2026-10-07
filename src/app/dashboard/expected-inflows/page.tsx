@@ -13,6 +13,7 @@ import { IndianRupee, CalendarClock, AlertTriangle, CheckCircle2, TrendingUp, Pl
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireAny } from "@/lib/auth/rbac";
+import { investorScopeSql } from "@/lib/investors/access";
 import { expectedInflows, investors, users, INFLOW_SOURCE_LABELS } from "@/db/schema";
 import { CollapsibleKpiStrip } from "@/components/investors/CollapsibleKpiStrip";
 import { formatDate } from "@/lib/format";
@@ -43,8 +44,10 @@ export default async function ExpectedInflowsPage() {
 
   const rows = await withTenant(
     session.tenantId,
-    async (tx) =>
-      tx
+    async (tx) => {
+      // Viewer scope: only inflows of clients this viewer may see.
+      const scope = await investorScopeSql(tx, session, "investors");
+      return tx
         .select({
           id: expectedInflows.id,
           investorId: expectedInflows.investorId,
@@ -61,9 +64,10 @@ export default async function ExpectedInflowsPage() {
         .from(expectedInflows)
         .leftJoin(investors, eq(investors.id, expectedInflows.investorId))
         .leftJoin(users, eq(users.id, expectedInflows.ownerId))
-        .where(eq(expectedInflows.tenantId, session.tenantId))
+        .where(and(eq(expectedInflows.tenantId, session.tenantId), scope))
         .orderBy(asc(expectedInflows.expectedOn))
-        .limit(1000),
+        .limit(1000);
+    },
     { userId: session.userId, branchId: session.branchId ?? undefined, roles: session.roles }
   );
 

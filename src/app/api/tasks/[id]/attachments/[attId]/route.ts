@@ -12,6 +12,7 @@ import { can, requireAny } from "@/lib/auth/rbac";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { taskAttachments } from "@/db/schema";
 import { deleteObject } from "@/lib/storage/s3";
+import { taskInScope } from "@/lib/tasks/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         .limit(1);
       if (!a) return "not_found" as const;
       if (!canEditAll && a.uploadedBy !== session.userId) return "forbidden" as const;
+      if (!(await taskInScope(tx, session, id))) return "not_found" as const;
       if (a.storageKey) await deleteObject(a.storageKey).catch(() => {});
       await tx
         .update(taskAttachments)

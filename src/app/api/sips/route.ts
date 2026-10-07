@@ -18,6 +18,8 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { sips, investors, users, eventsOutbox } from "@/db/schema";
 import { refreshActiveSipAmount } from "@/lib/metrics/sip";
+import { loadViewableInvestor } from "@/lib/investors/access";
+import { visibleClientSql } from "@/lib/transactions/client-scope";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -61,7 +63,8 @@ export async function GET() {
           })
           .from(sips)
           .leftJoin(investors, eq(investors.id, sips.investorId))
-          .where(and(isNull(investors.deletedAt), ownScope))
+          // Own-book slice above AND the shared client scope — only narrows.
+          .where(and(isNull(investors.deletedAt), ownScope, await visibleClientSql(tx, session, "investors")))
           .orderBy(desc(sips.nextInstallmentAt), desc(sips.createdAt))
           .limit(200);
       },
@@ -164,15 +167,10 @@ export async function POST(req: NextRequest) {
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     await withTenant(session.tenantId, async (tx) => {
-      // Confirm the investor belongs to this tenant (RLS already scopes, but we
-      // also want a clean 404 rather than an FK error) and fall back to their RM.
-      const inv = (
-        await tx
-          .select({ id: investors.id, rmId: investors.rmId })
-          .from(investors)
-          .where(and(eq(investors.id, b.investorId), eq(investors.tenantId, session.tenantId)))
-          .limit(1)
-      )[0];
+      // Confirm the investor belongs to this tenant AND is a client this
+      // viewer may see (a clean 404 otherwise, never a SIP on someone else's
+      // book), and fall back to their RM.
+      const inv = await loadViewableInvestor(tx, session, b.investorId);
       if (!inv) {
         throw Object.assign(new Error("investor not found"), { status: 404 });
       }

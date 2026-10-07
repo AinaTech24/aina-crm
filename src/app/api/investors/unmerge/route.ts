@@ -24,6 +24,7 @@ import { requireSession } from "@/lib/auth/session";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { recomputeInvestorAum } from "@/lib/finance/aum-persist";
 import { recomputeInvestorHealth } from "@/lib/investors/health-persist";
+import { allInMergeScope, MERGEABLE_FIELDS } from "@/lib/investors/merge";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -69,6 +70,8 @@ export async function POST(req: NextRequest) {
 
         const survivorId = String(row.survivor_id);
         const loserId = String(row.loser_id);
+        // Data scope: both records must be in the viewer's book (and branch).
+        if (!(await allInMergeScope(tx, session, [survivorId, loserId]))) return { error: "merge not found" as const };
         const moved = (row.moved ?? {}) as Record<string, string[]>;
 
         let restored = 0;
@@ -95,17 +98,21 @@ export async function POST(req: NextRequest) {
         // so without this an "undone" merge leaves the surviving client carrying
         // the other person's email or mobile. Null for merges recorded before
         // survivor_before existed — those simply skip this step.
-        const before = (row.survivor_before ?? null) as Record<string, string | null> | null;
-        if (before) {
+        // Older merges snapshot five fields, newer ones every reconciled field
+        // (MERGEABLE_FIELDS); restore exactly the keys that were recorded.
+        // jsonb_populate_record casts each value to its column's type.
+        const before = (row.survivor_before ?? null) as Record<string, unknown> | null;
+        const restore = before ? MERGEABLE_FIELDS.filter((f) => f in before) : [];
+        if (before && restore.length) {
+          const sets = restore.map((f) => {
+            const col = sql.raw(`"${f}"`);
+            return f === "name" ? sql`${col} = COALESCE(r.${col}, i.${col})` : sql`${col} = r.${col}`;
+          });
           await tx.execute(sql`
-            UPDATE investors
-               SET name = COALESCE(${before.name ?? null}, name),
-                   phone = ${before.phone ?? null},
-                   email = ${before.email ?? null},
-                   whatsapp_phone = ${before.whatsapp_phone ?? null},
-                   dob = ${before.dob ?? null}::date,
-                   updated_at = now()
-             WHERE id = ${survivorId}::uuid AND tenant_id = ${session.tenantId}::uuid
+            UPDATE investors i
+               SET ${sql.join(sets, sql`, `)}, updated_at = now()
+              FROM jsonb_populate_record(NULL::investors, ${JSON.stringify(before)}::jsonb) r
+             WHERE i.id = ${survivorId}::uuid AND i.tenant_id = ${session.tenantId}::uuid
           `);
         }
 

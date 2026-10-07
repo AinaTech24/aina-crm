@@ -1,8 +1,10 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { Clock, Building2 } from "lucide-react";
+import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
+import { claimClientScopeSql } from "@/lib/insurance/register-access";
 import { formatINR } from "@/lib/utils";
 import { loadAgingBuckets, loadInsurerScorecard, type AgingBucket } from "@/lib/insurance/claims-analytics";
 
@@ -20,9 +22,11 @@ export default async function ClaimsScorecardPage() {
   requireCap(session.roles, "insurance.view", session.permissions);
 
   const { aging, scorecard } = await withTenant(session.tenantId, async (tx) => {
+    // Only claims whose client is in the viewer's scope (as on the register).
+    const scope = await claimClientScopeSql(tx, session, sql`insurance_claims.investor_id`, sql`insurance_claims.rm_id`);
     const [aging, scorecard] = await Promise.all([
-      loadAgingBuckets(tx, session.tenantId),
-      loadInsurerScorecard(tx, session.tenantId),
+      loadAgingBuckets(tx, session.tenantId, scope),
+      loadInsurerScorecard(tx, session.tenantId, scope),
     ]);
     return { aging, scorecard };
   });

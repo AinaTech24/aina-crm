@@ -12,6 +12,7 @@ import { eq, and } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { reviewMeetings, investors, leads } from "@/db/schema";
+import { canSeeMeeting } from "@/lib/review-meetings/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +55,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         await tx.select().from(reviewMeetings).where(and(eq(reviewMeetings.id, id), eq(reviewMeetings.tenantId, session.tenantId))).limit(1)
       )[0];
       if (!m) return null;
+      // Same visibility as the meeting itself (lib/review-meetings/scope.ts).
+      if (!(await canSeeMeeting(tx, session, id))) return null;
       const inv = m.investorId
         ? (await tx.select().from(investors).where(eq(investors.id, m.investorId)).limit(1))[0]
         : null;

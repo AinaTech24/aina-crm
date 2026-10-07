@@ -2,6 +2,7 @@ import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
+import { investorScopeSql } from "@/lib/investors/access";
 
 /**
  * Quick-filter chip strip for the Investors list page.
@@ -32,6 +33,8 @@ export async function InvestorQuickFilters({
   const counts = await withTenant(
     session.tenantId,
     async (tx) => {
+      // Data scope: chip counts cover only the viewer's book, like the list.
+      const scope = await investorScopeSql(tx, session, "investors");
       const r = await tx.execute(sql`
         SELECT
           COUNT(*) FILTER (
@@ -80,7 +83,7 @@ export async function InvestorQuickFilters({
             )
           )::int AS cross_sell_opp
         FROM investors
-        WHERE deleted_at IS NULL
+        WHERE deleted_at IS NULL AND ${scope}
       `);
       return r.rows[0] as any;
     },

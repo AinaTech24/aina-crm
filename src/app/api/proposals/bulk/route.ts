@@ -16,6 +16,7 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
+import { proposalScopeSql } from "@/lib/proposals/access";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { proposals } from "@/db/schema";
@@ -49,7 +50,9 @@ export async function POST(req: NextRequest) {
           rejectedAt: new Date(),
           updatedAt: new Date(),
         } as any)
-        .where(and(eq(proposals.tenantId, session.tenantId), inArray(proposals.id, ids)))
+        // Only proposals the caller may see (their own unless they see all, and
+        // the recipient in scope) — the rest are skipped, as in the single DELETE.
+        .where(and(eq(proposals.tenantId, session.tenantId), inArray(proposals.id, ids), await proposalScopeSql(tx, session)))
         .returning({ id: proposals.id });
 
       await recordAudit(tx, {

@@ -19,7 +19,7 @@ import { withTenant } from "@/db/client";
 import { loadAiConfig } from "@/lib/ai/provider";
 import { firmSnapshot } from "@/lib/ai/firm-snapshot";
 import { buildSystemPrompt } from "./instructions";
-import { ANTHROPIC_TOOLS, runAssistantTool, type AssistantCtx } from "./tools";
+import { ANTHROPIC_TOOLS, ctxSession, runAssistantTool, type AssistantCtx } from "./tools";
 
 const MAX_ROUNDS = 7;
 const MAX_TOKENS = 2200;
@@ -67,7 +67,7 @@ export async function runAssistant(opts: {
   const { snapshot, firmName } = await withTenant(
     opts.ctx.tenantId,
     async (tx) => {
-      const snap = await firmSnapshot(tx, opts.ctx.tenantId);
+      const snap = await firmSnapshot(tx, opts.ctx.tenantId, ctxSession(opts.ctx));
       const r = await tx.execute(sql`SELECT display_name FROM tenants WHERE id = ${opts.ctx.tenantId}::uuid LIMIT 1`);
       return { snapshot: snap, firmName: ((r.rows[0] as any)?.display_name as string) || "your firm" };
     },

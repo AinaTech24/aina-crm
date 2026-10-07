@@ -4,9 +4,10 @@
  * Find Duplicates — the groups, and the merge itself.
  *
  * A merge retires records and moves one person's folios onto another, so it is
- * never one click: "Compare & merge" opens the records side by side, the
- * operator picks the one to keep and, where they disagree, which value to keep
- * for each field, then types MERGE. The server counts what will move before
+ * never one click: "Compare & merge" opens the group, the operator ticks the
+ * records that are one person, picks the primary to keep and, field by field
+ * (profile, contact, KYC, bank, nominee, RM…), whose value the merged record
+ * keeps, then types MERGE. The server counts what will move before
  * anything does (POST /api/investors/merge/preview, the same engine as the
  * merge) and every merge can be undone for 7 days from the page.
  */
@@ -43,9 +44,15 @@ const KIND_LABEL: Record<string, string> = {
   Email: "Same email",
 };
 
-/** Biggest book, then most folios — the record with the most to lose. */
+const hasPan = (m: Member) => !!m.pan?.trim();
+
+/** A record holding the PAN first (a merge never moves a PAN, so keeping a
+ *  PAN-less record would leave the client without one), then the biggest
+ *  book, then most folios — the record with the most to lose. */
 const defaultSurvivor = (members: Member[]) =>
-  [...members].sort((a, b) => b.aum - a.aum || (b.folios ?? 0) - (a.folios ?? 0))[0]?.id ?? members[0]?.id;
+  [...members].sort(
+    (a, b) => Number(hasPan(b)) - Number(hasPan(a)) || b.aum - a.aum || (b.folios ?? 0) - (a.folios ?? 0),
+  )[0]?.id ?? members[0]?.id;
 
 const distinctValidPans = (members: Member[]) =>
   new Set(members.filter((m) => m.pan_valid && m.pan).map((m) => m.pan!.toUpperCase())).size;
@@ -185,35 +192,51 @@ function MemberList({ members }: { members: Member[] }) {
 type MergePreview = {
   moves: Array<{ table: string; label: string; count: number }>;
   stays: Array<{ table: string; label: string; count: number }>;
-  conflicts: Array<{ field: string; label: string; survivorValue: string | null; loserValues: Array<{ id: string; name: string; value: string }> }>;
+  fields: Array<{
+    field: string;
+    label: string;
+    group: string;
+    values: Array<{ id: string; value: string }>;
+    differs: boolean;
+    defaultId: string | null;
+  }>;
   panMismatch: boolean;
   totals: { moving: number; staying: number };
 };
 
 const CONFIRM_WORD = "MERGE";
 
-function MergeCompareDialog({ members, onClose, onMerged }: { members: Member[]; onClose: () => void; onMerged: () => void }) {
+export function MergeCompareDialog({ members, onClose, onMerged }: { members: Member[]; onClose: () => void; onMerged: () => void }) {
   const [survivorId, setSurvivorId] = useState<string>(() => defaultSurvivor(members));
+  /** Records taking part. Everything starts included; the kept one always is. */
+  const [included, setIncluded] = useState<Set<string>>(() => new Set(members.map((m) => m.id)));
   const [preview, setPreview] = useState<MergePreview | null>(null);
   const [previewing, setPreviewing] = useState(false);
-  /** field → the loser whose value the kept record takes (absent = keep its own). */
+  /** field → the record whose value the kept record ends up with. */
   const [picks, setPicks] = useState<Record<string, string>>({});
+  const [showAll, setShowAll] = useState(false);
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const survivor = members.find((m) => m.id === survivorId)!;
-  const losers = members.filter((m) => m.id !== survivorId);
+  // Columns: the kept record first, then the others taking part, in list order.
+  const cols = useMemo(
+    () => [survivor, ...members.filter((m) => m.id !== survivorId && included.has(m.id))],
+    [members, survivor, survivorId, included],
+  );
+  const losers = cols.slice(1);
+  const loserKey = losers.map((m) => m.id).join(",");
 
-  const loadPreview = useCallback(async (keepId: string) => {
+  const loadPreview = useCallback(async (keepId: string, loserIds: string[]) => {
     setPreviewing(true);
     setPreview(null);
     try {
       const res = await fetch("/api/investors/merge/preview", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ survivorId: keepId, loserIds: members.filter((m) => m.id !== keepId).map((m) => m.id) }),
+        body: JSON.stringify({ survivorId: keepId, loserIds }),
       });
       const j = await res.json().catch(() => ({}));
       setPreview(res.ok ? j : null);
@@ -222,38 +245,61 @@ function MergeCompareDialog({ members, onClose, onMerged }: { members: Member[];
     } finally {
       setPreviewing(false);
     }
-  }, [members]);
+  }, []);
 
-  // "What moves" and "which values disagree" are relative to the record kept.
+  // What moves, and which values disagree, depend on the kept record and on
+  // which records take part — re-ask whenever either changes.
   useEffect(() => {
     setPicks({});
-    void loadPreview(survivorId);
-  }, [survivorId, loadPreview]);
+    if (!loserKey) { setPreview(null); return; }
+    void loadPreview(survivorId, loserKey.split(","));
+  }, [survivorId, loserKey, loadPreview]);
 
-  const rows = useMemo(
-    () => [
-      { label: "PAN", get: (m: Member) => m.pan ?? "" },
-      { label: "Date of birth", get: (m: Member) => (m.dob ? formatDate(m.dob) : "") },
-      { label: "Mobile", get: (m: Member) => m.phone ?? "" },
-      { label: "Email", get: (m: Member) => m.email ?? "" },
-      { label: "RM", get: (m: Member) => m.rm_name ?? "" },
-      { label: "AUM", get: (m: Member) => (m.aum > 0 ? fmtINR(m.aum) : "") },
-      { label: "Folios", get: (m: Member) => (typeof m.folios === "number" ? String(m.folios) : "") },
-    ],
-    [],
-  );
+  function chooseKeep(id: string) {
+    setSurvivorId(id);
+    setIncluded((s) => new Set(s).add(id));
+  }
+  function toggleIncluded(id: string) {
+    if (id === survivorId) return;
+    setIncluded((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  }
 
-  const ready = !!preview && !preview.panMismatch && typed.trim().toUpperCase() === CONFIRM_WORD && !busy;
+  const chosen = (f: MergePreview["fields"][number]) => picks[f.field] ?? f.defaultId;
+  const differing = preview?.fields.filter((f) => f.differs) ?? [];
+  const sameCount = (preview?.fields.length ?? 0) - differing.length;
+  const shown = showAll ? preview?.fields ?? [] : differing;
+  const groups = useMemo(() => {
+    const out: Array<{ group: string; fields: MergePreview["fields"] }> = [];
+    for (const f of shown) {
+      const g = out.find((x) => x.group === f.group);
+      if (g) g.fields.push(f); else out.push({ group: f.group, fields: [f] });
+    }
+    return out;
+  }, [shown]);
+  const changedCount = preview
+    ? preview.fields.filter((f) => chosen(f) && chosen(f) !== survivorId && f.values.find((v) => v.id === chosen(f))?.value).length
+    : 0;
+
+  const ready = losers.length > 0 && !!preview && !preview.panMismatch && typed.trim().toUpperCase() === CONFIRM_WORD && !busy;
 
   async function confirm() {
-    if (!ready) return;
+    if (!ready || !preview) return;
     setBusy(true); setErr(null);
     let done = 0;
     try {
       for (const loser of losers) {
         setProgress(`Merging ${loser.name}… (${done + 1} of ${losers.length})`);
-        // Only the fields where THIS record's value was chosen.
-        const overrides = Object.fromEntries(Object.entries(picks).filter(([, id]) => id === loser.id).map(([f]) => [f, true]));
+        // The fields whose chosen value is THIS record's. Blank fields on the
+        // kept record are filled from the first merged record automatically, and
+        // a later pick overwrites that, so running the merges in order lands
+        // exactly the values chosen.
+        const overrides = Object.fromEntries(
+          preview.fields.filter((f) => chosen(f) === loser.id).map((f) => [f.field, true]),
+        );
         const res = await fetch("/api/investors/merge", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -284,120 +330,159 @@ function MergeCompareDialog({ members, onClose, onMerged }: { members: Member[];
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o && !busy) onClose(); }}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-w-4xl">
         <DialogHeader>
           <DialogTitle>Compare and merge</DialogTitle>
           <DialogDescription>
-            Choose the record to keep. The others&apos; folios, transactions and history move to it and they are retired. You can undo this for 7 days.
+            Tick the records that are the same person and choose the one to keep. The others&apos; folios, transactions and history move to it and they are retired. You can undo this for 7 days.
           </DialogDescription>
         </DialogHeader>
 
-        {/* Side by side */}
-        <div className="table-scroll mt-4 rounded-lg border border-border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr>
-                <th className="relative w-28 px-3 py-2 text-left text-xs font-medium text-muted-foreground"><span className="sr-only">Field</span></th>
-                {members.map((m) => (
-                  <th key={m.id} className={`px-3 py-2 text-left align-top ${m.id === survivorId ? "bg-secondary" : ""}`}>
-                    <label className="flex cursor-pointer items-start gap-2">
-                      <input
-                        type="radio"
-                        name="merge-keep"
-                        checked={m.id === survivorId}
-                        onChange={() => setSurvivorId(m.id)}
-                        disabled={busy}
-                        className="mt-1"
-                      />
-                      <span className="min-w-0">
-                        <span className="block font-medium !whitespace-normal">{m.name}</span>
-                        <span className="block text-2xs font-normal text-muted-foreground">{m.id === survivorId ? "Keep this record" : "Merge into the kept record"}</span>
-                      </span>
-                    </label>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => {
-                const values = members.map((m) => r.get(m));
-                const filled = values.filter(Boolean);
-                const differs = new Set(filled.map((v) => v.toLowerCase())).size > 1;
-                return (
-                  <tr key={r.label}>
-                    <th scope="row" className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
-                      {r.label}
-                      {differs && <span className="ml-1 text-amber-700" title="The records disagree">· differs</span>}
-                    </th>
-                    {members.map((m, i) => (
-                      <td key={m.id} className={`px-3 py-2 text-xs !whitespace-normal break-all ${m.id === survivorId ? "bg-secondary" : ""}`}>
-                        {values[i] || <span className="text-muted-foreground">—</span>}
-                      </td>
-                    ))}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        {/* 1 · Which records, and which one is kept */}
+        <fieldset className="mt-4">
+          <legend className="text-xs font-semibold">1. Records to merge</legend>
+          <ul className="mt-2 space-y-1.5">
+            {members.map((m) => {
+              const keep = m.id === survivorId;
+              const inMerge = included.has(m.id);
+              return (
+                <li key={m.id} className={`flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2 ${keep ? "border-foreground/30 bg-secondary" : inMerge ? "border-border" : "border-dashed border-border opacity-70"}`}>
+                  <label className="inline-flex items-center gap-2 text-xs">
+                    <input type="checkbox" checked={inMerge} disabled={keep || busy} onChange={() => toggleIncluded(m.id)} />
+                    <span className="sr-only">Include {m.name} in the merge</span>
+                  </label>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium">{m.name}</div>
+                    <div className="text-2xs text-muted-foreground">
+                      {m.pan ? <span className="font-mono">{m.pan}</span> : "no PAN"}
+                      {m.rm_name ? ` · RM ${m.rm_name}` : ""} · {m.aum > 0 ? fmtINR(m.aum) : "No AUM"}
+                      {typeof m.folios === "number" ? ` · ${m.folios} folio${m.folios === 1 ? "" : "s"}` : ""}
+                    </div>
+                  </div>
+                  <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs">
+                    <input type="radio" name="merge-keep" checked={keep} onChange={() => chooseKeep(m.id)} disabled={busy} />
+                    {keep ? <span className="font-semibold">Primary — keep this record</span> : "Keep this one"}
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+          {losers.length === 0 && (
+            <p className="mt-2 text-xs text-muted-foreground">Tick at least one other record to merge into {survivor.name}.</p>
+          )}
+          {!hasPan(survivor) && losers.some(hasPan) && (
+            <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-warning/50 bg-warning/5 px-3 py-2 text-xs">
+              <ShieldAlert className="mt-0.5 size-3.5 shrink-0 text-amber-700" aria-hidden />
+              <span>The primary record has no PAN, and a PAN is never moved by a merge — the merged client would have none. Keep the record that holds the PAN instead.</span>
+            </p>
+          )}
+        </fieldset>
 
         {/* What the server says will happen */}
-        <div className="mt-4 rounded-lg border border-border p-3 text-xs">
-          {previewing ? (
-            <span className="inline-flex items-center gap-1.5 text-muted-foreground"><Loader2 className="size-3.5 animate-spin" /> Counting what moves…</span>
-          ) : !preview ? (
-            <span className="text-muted-foreground">Couldn&apos;t load the preview. Close and try again.</span>
-          ) : preview.panMismatch ? (
-            <div className="flex items-start gap-2 text-destructive">
-              <ShieldAlert className="size-4 shrink-0" aria-hidden />
-              <span>These records have different PANs, so they are different people and can&apos;t be merged here.</span>
-            </div>
-          ) : (
-            <>
-              <div className="font-medium">
-                {preview.totals.moving} record{preview.totals.moving === 1 ? "" : "s"} move to {survivor.name}
+        {losers.length > 0 && (
+          <div className="mt-4 rounded-lg border border-border p-3 text-xs">
+            {previewing ? (
+              <span className="inline-flex items-center gap-1.5 text-muted-foreground"><Loader2 className="size-3.5 animate-spin" /> Counting what moves…</span>
+            ) : !preview ? (
+              <span className="text-muted-foreground">Couldn&apos;t load the preview. Close and try again.</span>
+            ) : preview.panMismatch ? (
+              <div className="flex items-start gap-2 text-destructive">
+                <ShieldAlert className="size-4 shrink-0" aria-hidden />
+                <span>These records have different PANs, so they are different people and can&apos;t be merged. Untick the record with the other PAN.</span>
               </div>
-              {preview.moves.length > 0 && (
-                <div className="mt-1 text-muted-foreground">
-                  {preview.moves.slice(0, 6).map((m) => `${m.count} ${m.label.toLowerCase()}`).join(" · ")}
-                  {preview.moves.length > 6 ? ` · and ${preview.moves.length - 6} more` : ""}
+            ) : (
+              <>
+                <div className="font-medium">
+                  {preview.totals.moving} record{preview.totals.moving === 1 ? "" : "s"} move to {survivor.name}
                 </div>
-              )}
-              {preview.stays.length > 0 && (
-                <div className="mt-1 text-muted-foreground">
-                  Stays on the retired record: {preview.stays.map((m) => m.label.toLowerCase()).join(", ")} (tied to the person who gave them).
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Field picker */}
-        {preview && !preview.panMismatch && preview.conflicts.length > 0 && (
-          <fieldset className="mt-4 rounded-lg border border-border p-3">
-            <legend className="px-1 text-xs font-semibold">Which value should the kept record have?</legend>
-            <p className="text-2xs text-muted-foreground">Blank fields are filled from the other record automatically. These disagree, so choose.</p>
-            <div className="mt-2 space-y-2.5">
-              {preview.conflicts.map((c) => (
-                <div key={c.field} className="grid gap-1.5 sm:grid-cols-4 sm:items-start">
-                  <div className="pt-1 text-xs font-medium">{c.label}</div>
-                  <div className="flex flex-wrap gap-1.5 sm:col-span-3">
-                    <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-xs">
-                      <input type="radio" name={`pick-${c.field}`} checked={!picks[c.field]} onChange={() => setPicks((p) => { const n = { ...p }; delete n[c.field]; return n; })} />
-                      <span className="font-medium break-all">{c.survivorValue}</span>
-                      <span className="text-2xs text-muted-foreground">kept record</span>
-                    </label>
-                    {c.loserValues.map((lv) => (
-                      <label key={lv.id} className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-xs">
-                        <input type="radio" name={`pick-${c.field}`} checked={picks[c.field] === lv.id} onChange={() => setPicks((p) => ({ ...p, [c.field]: lv.id }))} />
-                        <span className="font-medium break-all">{lv.value}</span>
-                        <span className="text-2xs text-muted-foreground">from {lv.name}</span>
-                      </label>
-                    ))}
+                {preview.moves.length > 0 && (
+                  <div className="mt-1 text-muted-foreground">
+                    {preview.moves.slice(0, 6).map((m) => `${m.count} ${m.label.toLowerCase()}`).join(" · ")}
+                    {preview.moves.length > 6 ? ` · and ${preview.moves.length - 6} more` : ""}
                   </div>
-                </div>
-              ))}
+                )}
+                {preview.stays.length > 0 && (
+                  <div className="mt-1 text-muted-foreground">
+                    Stays on the retired record: {preview.stays.map((m) => m.label.toLowerCase()).join(", ")} (tied to the person who gave them).
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* 2 · Field by field: which value the merged record keeps */}
+        {preview && !preview.panMismatch && losers.length > 0 && (
+          <fieldset className="mt-4">
+            <legend className="text-xs font-semibold">2. Which value should the merged record keep?</legend>
+            <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-2xs text-muted-foreground">
+              <span>
+                Click the value to keep. Blank fields are filled from another record automatically.
+                {changedCount > 0 && <> <strong className="text-foreground">{changedCount}</strong> field{changedCount === 1 ? "" : "s"} will take a value from a merged record.</>}
+              </span>
+              {sameCount > 0 && (
+                <button type="button" onClick={() => setShowAll((v) => !v)} className={buttonClass("ghost", "sm")}>
+                  {showAll ? "Show only fields that differ" : `Show all fields (${sameCount} identical)`}
+                </button>
+              )}
             </div>
+            {shown.length === 0 ? (
+              <p className="mt-2 rounded-lg bg-secondary/60 px-3 py-2 text-xs text-muted-foreground">These records agree on every field — nothing to choose.</p>
+            ) : (
+              <div className="mt-2 max-h-[45vh] overflow-auto rounded-lg border border-border">
+                <table className="table-raw w-full text-xs">
+                  <thead className="sticky top-0 z-10 bg-card">
+                    <tr className="border-b border-border">
+                      <th className="relative w-36 px-3 py-2 text-left font-medium text-muted-foreground"><span className="sr-only">Field</span></th>
+                      {cols.map((m) => (
+                        <th key={m.id} className={`px-3 py-2 text-left font-medium ${m.id === survivorId ? "bg-secondary" : ""}`}>
+                          <span className="block !whitespace-normal">{m.name}</span>
+                          <span className="block text-2xs font-normal text-muted-foreground">{m.id === survivorId ? "Primary" : "Merging in"}</span>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  {groups.map((g) => (
+                    <tbody key={g.group}>
+                      <tr>
+                        <th colSpan={cols.length + 1} className="bg-secondary/50 px-3 py-1 text-left text-2xs font-semibold uppercase tracking-wide text-muted-foreground">{g.group}</th>
+                      </tr>
+                      {g.fields.map((f) => (
+                        <tr key={f.field} className="border-t border-border align-top">
+                          <th scope="row" className="px-3 py-2 text-left font-medium text-muted-foreground">
+                            {f.label}
+                            {f.differs && <span className="block text-2xs font-normal text-amber-700">differs</span>}
+                          </th>
+                          {cols.map((m) => {
+                            const v = f.values.find((x) => x.id === m.id)?.value ?? "";
+                            const isChosen = chosen(f) === m.id;
+                            return (
+                              <td key={m.id} className={`px-2 py-1.5 ${m.id === survivorId ? "bg-secondary/60" : ""}`}>
+                                {v ? (
+                                  <label className={`flex cursor-pointer items-start gap-1.5 rounded-md border px-2 py-1 ${isChosen ? "border-primary bg-primary/5" : "border-transparent hover:border-border"}`}>
+                                    <input
+                                      type="radio"
+                                      name={`pick-${f.field}`}
+                                      checked={isChosen}
+                                      disabled={busy}
+                                      onChange={() => setPicks((p) => ({ ...p, [f.field]: m.id }))}
+                                      className="mt-0.5"
+                                    />
+                                    <span className="min-w-0 break-words">{/^\d{4}-\d{2}-\d{2}$/.test(v) ? formatDate(v) : v}</span>
+                                  </label>
+                                ) : (
+                                  <span className="block px-2 py-1 text-muted-foreground">—</span>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  ))}
+                </table>
+              </div>
+            )}
           </fieldset>
         )}
 
@@ -411,7 +496,7 @@ function MergeCompareDialog({ members, onClose, onMerged }: { members: Member[];
             value={typed}
             onChange={(e) => setTyped(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") void confirm(); }}
-            disabled={busy || !preview || preview.panMismatch}
+            disabled={busy || !preview || preview.panMismatch || losers.length === 0}
             autoComplete="off"
             className="input-base mt-1 w-full font-mono sm:w-48"
           />

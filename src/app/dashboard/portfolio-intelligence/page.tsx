@@ -4,6 +4,7 @@ import { PieChart, Building2, Layers, AlertTriangle, IndianRupee, Boxes, Downloa
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { visibleClientSql } from "@/lib/transactions/client-scope";
 import { getPortfolioIntel, type Slice } from "@/lib/portfolio/intelligence";
 import { PortfolioDrillBar } from "@/components/portfolio/PortfolioDrillBar";
 import { DownloadButton } from "@/components/common/SecureLinkButtons";
@@ -27,7 +28,14 @@ export default async function PortfolioIntelligencePage({ searchParams }: { sear
 
   const intel = await withTenant(
     session.tenantId,
-    (tx) => getPortfolioIntel(tx as any, { tenantId: session.tenantId, userId: session.userId, firmWide: !mine }),
+    async (tx) =>
+      getPortfolioIntel(tx as any, {
+        tenantId: session.tenantId,
+        userId: session.userId,
+        firmWide: !mine,
+        // Viewer scope: only clients this viewer may see (only narrows).
+        clientScope: await visibleClientSql(tx, session, "i"),
+      }),
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
 

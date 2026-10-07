@@ -15,6 +15,7 @@ import { requireSession } from "@/lib/auth/session";
 import { can, requireAny } from "@/lib/auth/rbac";
 import { tasks, taskWatchers, users } from "@/db/schema";
 import { createNotification } from "@/lib/notifications/create";
+import { taskInScope } from "@/lib/tasks/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       const t = await loadTask(tx, session.tenantId, id);
       if (!t) return null;
       if (!canViewAll && !ownsTask(t, session.userId)) return null;
+      if (!(await taskInScope(tx, session, id))) return null;
       const rows = await tx
         .select({ userId: taskWatchers.userId, name: users.name })
         .from(taskWatchers)
@@ -73,6 +75,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const t = await loadTask(tx, session.tenantId, id);
       if (!t) return "not_found" as const;
       if (!canViewAll && !ownsTask(t, session.userId)) return "forbidden" as const;
+      if (!(await taskInScope(tx, session, id))) return "not_found" as const;
       // Target must be a real user in this tenant.
       const [u] = await tx.select({ id: users.id, name: users.name }).from(users).where(and(eq(users.id, target), eq(users.tenantId, session.tenantId))).limit(1);
       if (!u) return "bad_user" as const;

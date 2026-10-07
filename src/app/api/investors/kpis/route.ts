@@ -11,6 +11,7 @@ import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { investorScopeSql } from "@/lib/investors/access";
 import { assertModuleEnabled } from "@/lib/auth/license";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +28,8 @@ export async function GET() {
     const data = await withTenant(
       session.tenantId,
       async (tx) => {
+        // Data scope: the tiles count only the viewer's book (same as the list).
+        const scope = await investorScopeSql(tx, session, "investors");
         const r = await tx.execute(sql`
           SELECT
             COUNT(*) FILTER (WHERE status = 'active')::int AS total_active,
@@ -50,7 +53,7 @@ export async function GET() {
               WHERE status = 'active' AND (last_transaction_at IS NULL OR last_transaction_at < now() - make_interval(days => COALESCE((SELECT dormancy_window_days FROM tenants WHERE id = investors.tenant_id), 180)))
             )::int AS dormant
           FROM investors
-          WHERE deleted_at IS NULL
+          WHERE deleted_at IS NULL AND ${scope}
         `);
         return (r.rows[0] ?? {}) as any;
       },

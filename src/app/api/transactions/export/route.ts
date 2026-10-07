@@ -12,6 +12,9 @@ import { desc, eq, sql } from "drizzle-orm";
 import * as XLSX from "xlsx";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap } from "@/lib/auth/rbac";
+import { visibleClientSql } from "@/lib/transactions/client-scope";
+import { dataWallApplies, hasCustomPermissions } from "@/lib/investors/access";
 import { transactions, investors, users } from "@/db/schema";
 import { buildTransactionConditions, transactionClientCondition } from "@/lib/transactions/list-filters";
 
@@ -29,6 +32,9 @@ function ymd(v: unknown): string {
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
+    // Same gate as the page (a customised user needs transactions.view); a
+    // bulk download of client holdings.
+    if (hasCustomPermissions(session)) requireCap(session.roles, "transactions.view", session.permissions);
 
     const sp: Record<string, string | undefined> = {};
     req.nextUrl.searchParams.forEach((v, k) => {
@@ -42,6 +48,9 @@ export async function GET(req: NextRequest) {
         sql`${transactions.tenantId} = ${session.tenantId}::uuid`,
         ...buildTransactionConditions(sp),
         transactionClientCondition(sp, session.tenantId),
+        // Viewer scope under the data wall — only clients this viewer may
+        // see, as on the page.
+        (await dataWallApplies(tx, session)) ? await visibleClientSql(tx, session, "investors") : sql`TRUE`,
       ];
       const baseQ = tx
         .select({ tx: transactions, investorName: investors.name, rmName: users.name })

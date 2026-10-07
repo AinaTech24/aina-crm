@@ -18,6 +18,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { tasks, taskAttachments, users } from "@/db/schema";
 import { putObject } from "@/lib/storage/s3";
+import { taskInScope } from "@/lib/tasks/scope";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -42,6 +43,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         .limit(1);
       if (!t) return null;
       if (!canViewAll && !ownsTask(t, session.userId)) return null;
+      if (!(await taskInScope(tx, session, id))) return null;
       return tx
         .select({ a: taskAttachments, uploaderName: users.name })
         .from(taskAttachments)
@@ -83,6 +85,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         .limit(1);
       if (!t) return "not_found" as const;
       if (!canEditAll && !ownsTask(t, session.userId)) return "forbidden" as const;
+      if (!(await taskInScope(tx, session, id))) return "not_found" as const;
 
       await putObject(storageKey, buf, file.type || "application/octet-stream");
 
