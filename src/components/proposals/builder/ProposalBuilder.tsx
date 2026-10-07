@@ -5,8 +5,9 @@
  *
  *   1. Client       who it's for, and what the CRM already knows about them
  *   2. Recommend    the one recommendation list, checked against the profile
- *   3. Review       exactly what the client will see and sign
- *   4. Send         validity, then on to the send page
+ *   3. Review       the PDF exactly as the client gets it (rendered, not saved)
+ *   4. Send         validity, the suitability note, then email / WhatsApp /
+ *                   a link to copy — each previewed before it goes
  *
  * It replaces a single 1,300-line form that started blank every time, and a
  * separate recommendation worksheet whose rows the client never saw.
@@ -18,7 +19,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Check, Copy, FileSignature, Link2, Loader2, Save, Send, Lock } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Copy, FileSignature, Link2, Loader2, Mail, MessageCircle, Plus, RefreshCw, Save, Send, Lock } from "lucide-react";
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -30,7 +31,7 @@ import { buttonClass } from "@/components/ui/button-class";
 import Link from "next/link";
 import type { ProposalSnapshot } from "@/lib/proposals/snapshot";
 import { PROPOSAL_ACCEPTANCE_TEXT } from "@/lib/proposals/acceptance";
-import { itemAmountText, itemKindLabel, itemName, itemRiskLabel } from "@/lib/proposals/items";
+import { itemKindLabel, itemName } from "@/lib/proposals/items";
 import { RecipientPicker, type Recipient } from "./RecipientPicker";
 import { RecommendStep, type Item } from "./RecommendStep";
 
@@ -39,7 +40,13 @@ type RiskRating = "conservative" | "moderate" | "aggressive" | "mixed";
 
 const STEPS = ["Client", "Recommend", "Review as client", "Send"] as const;
 
-const DEFAULT_DISCLAIMER =
+/**
+ * What the disclaimer box used to start with. The PDF now prints the full
+ * SEBI / AMFI disclosures itself, so a new proposal starts with no extra one —
+ * this text only meant the same lines printed twice. A saved proposal keeps
+ * whatever it has.
+ */
+const OLD_DEFAULT_DISCLAIMER =
   "Mutual Fund investments are subject to market risks. Read all scheme-related documents carefully. Past performance is not indicative of future returns. Insurance is the subject matter of solicitation. The information provided here is for illustrative purposes only.";
 
 const EDITABLE = ["draft", "ready"];
@@ -92,12 +99,13 @@ export function ProposalBuilder({ proposalId: initialId }: { proposalId?: string
 
   const [title, setTitle] = useState("Investment Proposal");
   const [type, setType] = useState<ProposalType>("mutual_fund");
-  const typeTouched = useRef(false);
   const [riskRating, setRiskRating] = useState<RiskRating>("moderate");
   const riskTouched = useRef(false);
   const [validUntil, setValidUntil] = useState(inDays(30));
   const [coverLetter, setCoverLetter] = useState("");
-  const [disclaimer, setDisclaimer] = useState(DEFAULT_DISCLAIMER);
+  const [disclaimer, setDisclaimer] = useState("");
+  /** Why it suits the client — the send route requires it. */
+  const [suitabilityNote, setSuitabilityNote] = useState("");
   const [items, setItems] = useState<Item[]>([]);
 
   const [step, setStep] = useState(0);
@@ -119,7 +127,6 @@ export function ProposalBuilder({ proposalId: initialId }: { proposalId?: string
         }
         const p = await r.json();
         if (dead) return;
-        typeTouched.current = true;
         riskTouched.current = true;
         setMeta({ number: p.proposalNumber ?? null, version: p.version ?? 1, status: p.status, sentAt: p.sentAt ?? null });
         setRecipient({
@@ -133,7 +140,8 @@ export function ProposalBuilder({ proposalId: initialId }: { proposalId?: string
         setRiskRating(p.riskRating ?? "moderate");
         setValidUntil(p.validUntil ? String(p.validUntil).slice(0, 10) : inDays(30));
         setCoverLetter(p.coverLetter ?? "");
-        setDisclaimer(p.disclaimer ?? DEFAULT_DISCLAIMER);
+        setDisclaimer(p.disclaimer ?? "");
+        setSuitabilityNote(p.suitabilityNote ?? "");
         setItems(Array.isArray(p.products) ? p.products : []);
         setLoading(false);
         return;
@@ -191,9 +199,10 @@ export function ProposalBuilder({ proposalId: initialId }: { proposalId?: string
     };
   }, [recipient, familyMemberId]);
 
-  // The type follows the products until the RM picks one.
+  // The type follows the products (there is no picker — the firm's call,
+  // 2026-10-07): Mutual Fund, Insurance, … or Mixed when they differ.
   useEffect(() => {
-    if (!typeTouched.current) setType(typeFor(items));
+    setType(typeFor(items));
   }, [items]);
 
   // ── Validation per step ─────────────────────────────────────────────────
@@ -211,52 +220,73 @@ export function ProposalBuilder({ proposalId: initialId }: { proposalId?: string
     return out;
   }, [recipient, title, items]);
 
-  async function save(intent: "draft" | "send") {
+  /** What stops a SEND (a draft saves without these). Mirrors the send route. */
+  const sendBlockers = useMemo(() => {
+    const out = [...missing];
+    if (items.some((it) => it.kind === "mf") && snapshot && snapshot.risk.status !== "Completed") {
+      out.push(
+        snapshot.risk.status === "Provisional"
+          ? "The client's risk profile is only provisional — they must confirm it before a mutual fund proposal goes out."
+          : snapshot.risk.status === "Due for review"
+            ? "The client's risk profile is more than a year old — they must redo it before a mutual fund proposal goes out."
+            : "A mutual fund proposal needs the client's confirmed risk profile — send them the link from the Client step."
+      );
+    }
+    if (!suitabilityNote.trim()) out.push("Write why this proposal suits the client (suitability note).");
+    return out;
+  }, [missing, items, snapshot, suitabilityNote]);
+
+  /** The builder's content, as the preview and the save both send it. */
+  const content = () => ({
+    title: title.trim(),
+    type,
+    riskRating,
+    validUntil,
+    coverLetter: coverLetter || undefined,
+    disclaimer,
+    suitabilityNote: suitabilityNote.trim() || undefined,
+    products: items,
+  });
+
+  /** Save the proposal (create it the first time); returns its id, or null when it could not. */
+  async function persist(): Promise<string | null> {
     if (missing.length) {
       setErr(missing[0]);
-      return;
+      return null;
     }
-    setBusy(intent);
     setErr(null);
+    const body: Record<string, unknown> = content();
+    let id = proposalId;
+    if (id) {
+      const r = await fetch(`/api/proposals/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(describeError(j, r.status));
+      return id;
+    }
+    Object.assign(body, { recipientType: recipient!.type });
+    if (recipient!.type === "investor") body.investorId = recipient!.id;
+    else if (recipient!.type === "lead") body.leadId = recipient!.id;
+    else {
+      body.familyId = recipient!.id;
+      if (familyMemberId) body.investorId = familyMemberId;
+    }
+    // Opened from an opportunity ("Prepare proposal"): link the proposal to it.
+    const opportunityId = new URLSearchParams(window.location.search).get("opportunityId");
+    if (opportunityId && /^[0-9a-f-]{36}$/i.test(opportunityId)) body.opportunityId = opportunityId;
+    const r = await fetch("/api/proposals", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(describeError(j, r.status));
+    id = j.id as string;
+    setProposalId(id);
+    setMeta((m) => ({ ...m, number: j.proposalNumber ?? null, version: 1, status: "draft" }));
+    window.history.replaceState(null, "", `/dashboard/proposals/${id}/edit`);
+    return id;
+  }
+
+  async function saveDraft() {
+    setBusy("draft");
     try {
-      const body: Record<string, unknown> = {
-        title: title.trim(),
-        type,
-        riskRating,
-        validUntil,
-        coverLetter: coverLetter || undefined,
-        disclaimer,
-        products: items,
-      };
-      let id = proposalId;
-      if (id) {
-        const r = await fetch(`/api/proposals/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(describeError(j, r.status));
-      } else {
-        Object.assign(body, { recipientType: recipient!.type });
-        if (recipient!.type === "investor") body.investorId = recipient!.id;
-        else if (recipient!.type === "lead") body.leadId = recipient!.id;
-        else {
-          body.familyId = recipient!.id;
-          if (familyMemberId) body.investorId = familyMemberId;
-        }
-        // Opened from an opportunity ("Prepare proposal"): link the proposal to it.
-        const opportunityId = new URLSearchParams(window.location.search).get("opportunityId");
-        if (opportunityId && /^[0-9a-f-]{36}$/i.test(opportunityId)) body.opportunityId = opportunityId;
-        const r = await fetch("/api/proposals", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(describeError(j, r.status));
-        id = j.id as string;
-        setProposalId(id);
-        setMeta((m) => ({ ...m, number: j.proposalNumber ?? null, version: 1, status: "draft" }));
-        window.history.replaceState(null, "", `/dashboard/proposals/${id}/edit`);
-      }
-      if (intent === "send") {
-        router.push(`/dashboard/proposals/${id}`);
-      } else {
-        toast.success("Draft saved");
-      }
+      if (await persist()) toast.success("Draft saved");
     } catch (e: any) {
       setErr(e?.message ?? "Could not save the proposal.");
     } finally {
@@ -286,24 +316,6 @@ export function ProposalBuilder({ proposalId: initialId }: { proposalId?: string
           snapshot?.rm
             ? `RM ${snapshot.rm}${snapshot.family ? ` · ${snapshot.family} family` : ""}`
             : undefined
-        }
-        actions={
-          !locked && (
-            <div className="flex items-center gap-2 shrink-0">
-              <button type="button" onClick={() => save("draft")} disabled={busy !== null || !recipient} className="btn-secondary text-sm">
-                {busy === "draft" ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} Save draft
-              </button>
-              {step < STEPS.length - 1 ? (
-                <button type="button" onClick={() => setStep(step + 1)} disabled={!recipient} className="btn-primary text-sm">
-                  Next: {STEPS[step + 1]} <ArrowRight className="size-4" />
-                </button>
-              ) : (
-                <button type="button" onClick={() => save("send")} disabled={busy !== null || missing.length > 0} className="btn-primary text-sm">
-                  {busy === "send" ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />} Save and send
-                </button>
-              )}
-            </div>
-          )
         }
       />
 
@@ -369,24 +381,6 @@ export function ProposalBuilder({ proposalId: initialId }: { proposalId?: string
                 <input value={title} onChange={(e) => setTitle(e.target.value)} className="input-base mt-1" placeholder="Retirement plan" />
               </label>
               <label className="block">
-                <span className="text-xs font-medium">Type</span>
-                <SelectField
-                  value={type}
-                  onChange={(e) => {
-                    typeTouched.current = true;
-                    setType(e.target.value as ProposalType);
-                  }}
-                  className="input-base mt-1"
-                >
-                  <option value="mutual_fund">Mutual Fund</option>
-                  <option value="insurance">Insurance</option>
-                  <option value="pms">PMS</option>
-                  <option value="aif">AIF</option>
-                  <option value="comprehensive">Comprehensive</option>
-                  <option value="mixed">Mixed</option>
-                </SelectField>
-              </label>
-              <label className="block">
                 <span className="text-xs font-medium">Overall risk rating</span>
                 <SelectField
                   value={riskRating}
@@ -433,12 +427,15 @@ export function ProposalBuilder({ proposalId: initialId }: { proposalId?: string
         </Card>
       )}
 
-      {step === 2 && (
+      {step === 2 && recipient && (
         <ReviewStep
-          name={recipient?.name ?? ""}
-          title={title}
-          coverLetter={coverLetter}
-          items={items}
+          name={recipient.name}
+          previewBody={() => ({
+            ...content(),
+            recipient: { type: recipient.type, id: recipient.id, ...(familyMemberId ? { memberId: familyMemberId } : {}) },
+            proposalNumber: meta.number ?? undefined,
+            version: meta.version,
+          })}
           disclaimer={disclaimer}
           setDisclaimer={setDisclaimer}
           locked={locked}
@@ -449,43 +446,218 @@ export function ProposalBuilder({ proposalId: initialId }: { proposalId?: string
         <Card>
           <CardHeader title="Send" />
           <div className="px-5 pb-5 space-y-4">
-            <label className="block max-w-xs">
-              <span className="text-xs font-medium">Valid until</span>
-              <DateField value={validUntil} onChange={(e) => setValidUntil(e.target.value)} className="input-base mt-1" disabled={locked} />
-            </label>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="block">
+                <span className="text-xs font-medium">Valid until</span>
+                <DateField value={validUntil} onChange={(e) => setValidUntil(e.target.value)} className="input-base mt-1" disabled={locked} />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="text-xs font-medium">
+                  Why this suits {recipient?.name?.split(" ")[0] ?? "the client"} <span className="text-destructive">*</span>
+                </span>
+                <textarea
+                  value={suitabilityNote}
+                  onChange={(e) => setSuitabilityNote(e.target.value.slice(0, 2000))}
+                  rows={2}
+                  disabled={locked}
+                  placeholder="e.g. 15-year retirement goal; equity within the client's aggressive band; discussed the volatility."
+                  className="input-base mt-1"
+                />
+              </label>
+            </div>
             {snapshot && !snapshot.hasEmail && !snapshot.hasPhone && (
               <div className="rounded-lg border border-warning/50 bg-warning/5 text-sm p-3">
-                {recipient?.name} has no email or phone on file. Add one before sending, or the proposal can't reach them.
+                {recipient?.name} has no email or phone on file — only a link can reach them.
               </div>
             )}
-            <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
-              <li>Sending moves {recipient?.type === "lead" ? "this lead" : "the journey"} to <b className="text-foreground">Proposal Sent</b> and sets a follow-up task for you.</li>
-              <li>You'll be told when {recipient?.name?.split(" ")[0] ?? "the client"} opens it.</li>
-              <li>They can accept all of it, part of it, or ask for a change. Accepting moves a lead to Won and sends them the document link.</li>
-            </ul>
-            {missing.length > 0 && (
-              <div className="text-sm text-destructive">
-                Before sending: {missing.join(" ")}
-              </div>
+            {sendBlockers.length > 0 ? (
+              <ul className="space-y-1 text-sm text-destructive">
+                {sendBlockers.map((b) => <li key={b}>{b}</li>)}
+              </ul>
+            ) : (
+              !locked && (
+                <SendChannels
+                  firstName={recipient?.name?.split(" ")[0] ?? "the client"}
+                  hasEmail={!!snapshot?.hasEmail}
+                  hasPhone={!!snapshot?.hasPhone}
+                  persist={persist}
+                  onSent={(id) => router.push(`/dashboard/proposals/${id}`)}
+                  onError={setErr}
+                />
+              )
             )}
-            {!locked && (
-              <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={() => save("draft")} disabled={busy !== null || !recipient} className="btn-secondary text-sm">
-                  {busy === "draft" ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} Save draft
-                </button>
-                <button type="button" onClick={() => save("send")} disabled={busy !== null || missing.length > 0} className="btn-primary text-sm">
-                  {busy === "send" ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />} Save and send
-                </button>
-              </div>
-            )}
+            <p className="text-2xs text-muted-foreground">
+              Sending marks it Proposal Sent and sets you a follow-up; you'll see when it is opened.
+            </p>
           </div>
         </Card>
       )}
 
-      {step > 0 && (
-        <div className="flex justify-start">
-          <button type="button" onClick={() => setStep(step - 1)} className="btn-ghost text-sm">
-            <ArrowLeft className="size-4" /> Back to {STEPS[step - 1]}
+      {/* One bar for moving through the steps — always in reach. */}
+      <div className="sticky bottom-0 z-20 -mx-1 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card/95 px-3 py-2.5 shadow-sm backdrop-blur">
+        <div>
+          {step > 0 && (
+            <button type="button" onClick={() => setStep(step - 1)} className={buttonClass("ghost", "sm", "gap-1.5")}>
+              <ArrowLeft className="size-4" /> {STEPS[step - 1]}
+            </button>
+          )}
+        </div>
+        {!locked && (
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={saveDraft} disabled={busy !== null || !recipient} className={buttonClass("secondary", "sm", "gap-1.5")}>
+              {busy === "draft" ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} Save draft
+            </button>
+            {step < STEPS.length - 1 && (
+              <button type="button" onClick={() => setStep(step + 1)} disabled={!recipient} className={buttonClass("primary", "sm", "gap-1.5")}>
+                {STEPS[step + 1]} <ArrowRight className="size-4" />
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Step 4's three ways out. Picking one shows exactly what goes (POST
+ * /api/proposals/[id]/send with preview — nothing is sent or changed), then
+ * the button sends it: email from the firm's mailbox with the PDF attached,
+ * WhatsApp through the RM's own WhatsApp (wa.me), or the client's proposal
+ * link to copy. The proposal is saved first each time.
+ */
+function SendChannels({
+  firstName, hasEmail, hasPhone, persist, onSent, onError,
+}: {
+  firstName: string;
+  hasEmail: boolean;
+  hasPhone: boolean;
+  persist: () => Promise<string | null>;
+  onSent: (id: string) => void;
+  onError: (msg: string | null) => void;
+}) {
+  const toast = useToast();
+  const [channel, setChannel] = useState<"email" | "whatsapp" | "link" | null>(null);
+  const [preview, setPreview] = useState<any>(null);
+  const [busy, setBusy] = useState<"preview" | "send" | null>(null);
+  const [sentLink, setSentLink] = useState<{ id: string; url: string } | null>(null);
+
+  async function pick(next: "email" | "whatsapp" | "link") {
+    setChannel(next);
+    setPreview(null);
+    onError(null);
+    setBusy("preview");
+    try {
+      const id = await persist();
+      if (!id) return;
+      const r = await fetch(`/api/proposals/${id}/send`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ channel: next, preview: true }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error ?? `Couldn't prepare it (${r.status})`);
+      setPreview(j);
+    } catch (e: any) {
+      onError(e?.message ?? "Couldn't prepare the message.");
+      setChannel(null);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function send() {
+    if (!channel) return;
+    setBusy("send");
+    onError(null);
+    // Open the WhatsApp tab inside the click, before any await — a tab opened
+    // after one is blocked as a pop-up.
+    const waTab = channel === "whatsapp" ? window.open("", "_blank") : null;
+    try {
+      const id = await persist();
+      if (!id) { waTab?.close(); return; }
+      const r = await fetch(`/api/proposals/${id}/send`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ channel }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error ?? `Couldn't send (${r.status})`);
+      if (channel === "whatsapp" && j.waUrl) {
+        if (waTab) waTab.location.href = j.waUrl;
+        else window.open(j.waUrl, "_blank");
+        toast.success("WhatsApp opened with the message — press send there");
+        onSent(id);
+      } else if (channel === "link" && j.url) {
+        try { await navigator.clipboard.writeText(j.url); toast.success("Link copied"); } catch {}
+        setSentLink({ id, url: j.url });
+      } else {
+        toast.success(`Emailed to ${firstName}, with the PDF attached`);
+        onSent(id);
+      }
+    } catch (e: any) {
+      waTab?.close();
+      onError(e?.message ?? "Couldn't send the proposal.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  if (sentLink) {
+    return (
+      <div className="space-y-2 rounded-lg border border-success/40 bg-success/5 p-3">
+        <div className="text-sm font-medium">Proposal marked sent. Paste this link to {firstName}:</div>
+        <div className="flex gap-1">
+          <input readOnly value={sentLink.url} onFocus={(e) => e.target.select()} aria-label="Proposal link" className="input-base w-full text-xs" />
+          <button type="button" onClick={() => navigator.clipboard.writeText(sentLink.url).then(() => toast.success("Link copied"), () => {})} className={buttonClass("secondary", "sm", "gap-1.5")}>
+            <Copy className="size-3.5" /> Copy
+          </button>
+          <button type="button" onClick={() => onSent(sentLink.id)} className={buttonClass("primary", "sm")}>Done</button>
+        </div>
+      </div>
+    );
+  }
+
+  const options = [
+    { key: "email" as const, label: "Email", icon: Mail, off: !hasEmail && "No email on file" },
+    { key: "whatsapp" as const, label: "WhatsApp", icon: MessageCircle, off: !hasPhone && "No phone on file" },
+    { key: "link" as const, label: "Copy link", icon: Link2, off: false as const },
+  ];
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2" role="group" aria-label="How to send">
+        {options.map((o) => (
+          <button
+            key={o.key}
+            type="button"
+            onClick={() => pick(o.key)}
+            disabled={!!o.off || busy !== null}
+            title={o.off || undefined}
+            aria-pressed={channel === o.key}
+            className={buttonClass(channel === o.key ? "primary" : "secondary", "sm", "gap-1.5")}
+          >
+            <o.icon className="size-4" /> {o.label}
+          </button>
+        ))}
+      </div>
+
+      {busy === "preview" && (
+        <div className="text-sm text-muted-foreground"><Loader2 className="mr-1.5 inline size-4 animate-spin" /> Preparing the message…</div>
+      )}
+
+      {preview && channel && (
+        <div className="space-y-2">
+          {preview.to && <div className="text-xs text-muted-foreground">To {preview.to}{preview.subject ? ` · ${preview.subject}` : ""}</div>}
+          {preview.html ? (
+            <iframe title="Email preview" sandbox="" srcDoc={preview.html} className="h-80 w-full rounded-lg border border-border bg-white" />
+          ) : (
+            <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-lg border border-border bg-secondary/40 p-3 text-sm font-sans">{preview.text}</pre>
+          )}
+          {preview.attachment && <div className="text-2xs text-muted-foreground">Attached: {preview.attachment}</div>}
+          <button type="button" onClick={send} disabled={busy !== null} className={buttonClass("primary", "md", "gap-1.5")}>
+            {busy === "send" ? <Loader2 className="size-4 animate-spin" /> : channel === "link" ? <Copy className="size-4" /> : <Send className="size-4" />}
+            {channel === "email" ? "Send email" : channel === "whatsapp" ? "Open WhatsApp and send" : "Mark sent and copy link"}
           </button>
         </div>
       )}
@@ -621,68 +793,107 @@ function Tile({ label, value, hint, warn }: { label: string; value: string; hint
   );
 }
 
-// ─── Step 3: what the client will see ──────────────────────────────────────
+// ─── Step 3: the PDF the client gets ────────────────────────────────────────
 
+/**
+ * The proposal PDF rendered from what is in the builder (POST
+ * /api/proposals/preview-pdf — nothing is saved), shown inline, so what the
+ * RM checks is the document the client receives. Below it, the words the
+ * client signs, and the firm's own extra disclosure behind "Add a disclosure".
+ */
 function ReviewStep({
   name,
-  title,
-  coverLetter,
-  items,
+  previewBody,
   disclaimer,
   setDisclaimer,
   locked,
 }: {
   name: string;
-  title: string;
-  coverLetter: string;
-  items: Item[];
+  previewBody: () => Record<string, unknown>;
   disclaimer: string;
   setDisclaimer: (s: string) => void;
   locked: boolean;
 }) {
   const first = name.split(" ")[0] || "The client";
+  const [url, setUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showDisclaimer, setShowDisclaimer] = useState(!!disclaimer.trim() && disclaimer.trim() !== OLD_DEFAULT_DISCLAIMER);
+  const bodyRef = useRef(previewBody);
+  bodyRef.current = previewBody;
+
+  async function render() {
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await fetch("/api/proposals/preview-pdf", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(bodyRef.current()),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error ?? `Couldn't render the PDF (${r.status})`);
+      }
+      const blob = await r.blob();
+      setUrl((old) => {
+        if (old) URL.revokeObjectURL(old);
+        return URL.createObjectURL(blob);
+      });
+    } catch (e: any) {
+      setError(e?.message ?? "Couldn't render the PDF.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Render on arrival; release the blob on the way out.
+  useEffect(() => {
+    void render();
+    return () => setUrl((old) => { if (old) URL.revokeObjectURL(old); return null; });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        This is what {first} sees on their phone or laptop. They tick the recommendations they accept, sign, or ask for a change.
-      </p>
-      <Card className="p-5 space-y-3">
-        <div>
-          <h2 className="page-title">{title || "Investment Proposal"}</h2>
-          <p className="text-sm text-muted-foreground">For {name}</p>
+      <Card className="overflow-hidden">
+        <CardHeader
+          title={`What ${first} receives`}
+          action={
+            <button type="button" onClick={render} disabled={loading} className={buttonClass("ghost", "sm", "gap-1.5")}>
+              {loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />} Refresh
+            </button>
+          }
+        />
+        <div className="px-5 pb-5">
+          {error ? (
+            <p className="text-sm text-destructive">{error}</p>
+          ) : url ? (
+            <iframe title="Proposal PDF" src={url} className="h-[80vh] w-full rounded-lg border border-border" />
+          ) : (
+            <div className="grid h-60 place-items-center text-sm text-muted-foreground">
+              <span><Loader2 className="mr-1.5 inline size-4 animate-spin" /> Rendering the PDF…</span>
+            </div>
+          )}
         </div>
-        {coverLetter && <p className="text-sm whitespace-pre-line leading-relaxed">{coverLetter}</p>}
-        <ul className="divide-y">
-          {items.map((it, i) => (
-            <li key={i} className="flex items-start gap-3 py-3">
-              <span className="mt-1 size-4 rounded border-2 border-primary bg-primary grid place-items-center text-primary-foreground shrink-0">
-                <Check className="size-3" />
-              </span>
-              <div className="flex-1 min-w-0 flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold">{itemName(it)}</div>
-                  <div className="text-2xs text-muted-foreground">
-                    {[itemKindLabel(it), (it as any).amcName ?? (it as any).insurer ?? (it as any).manager ?? (it as any).company, (it as any).goal ? `for ${(it as any).goal}` : null, itemRiskLabel(it) ? `${itemRiskLabel(it)} risk` : null]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </div>
-                </div>
-                <div className="text-sm font-semibold tabular-nums text-right shrink-0">{itemAmountText(it)}</div>
-              </div>
-            </li>
-          ))}
-          {items.length === 0 && <li className="py-3 text-sm text-muted-foreground">No recommendations yet — add them in the previous step.</li>}
-        </ul>
+      </Card>
+      <Card className="p-5 space-y-3">
         <div>
           <div className="text-xs font-semibold mb-1">What {first} signs</div>
           <div className="rounded-lg border bg-secondary p-3 text-sm leading-relaxed">{PROPOSAL_ACCEPTANCE_TEXT}</div>
         </div>
-      </Card>
-      <Card className="p-5">
-        <label className="block">
-          <span className="text-xs font-medium">Disclaimer (PDF footer)</span>
-          <textarea value={disclaimer} onChange={(e) => setDisclaimer(e.target.value)} rows={3} className="input-base text-xs mt-1" disabled={locked} />
-        </label>
+        {showDisclaimer ? (
+          <label className="block">
+            <span className="text-xs font-medium">Additional disclosure</span>
+            <textarea value={disclaimer} onChange={(e) => setDisclaimer(e.target.value)} rows={3} className="input-base text-xs mt-1" disabled={locked} />
+          </label>
+        ) : (
+          !locked && (
+            <button type="button" onClick={() => setShowDisclaimer(true)} className={buttonClass("ghost", "sm", "gap-1.5")}>
+              <Plus className="size-3.5" /> Add a disclosure
+            </button>
+          )
+        )}
       </Card>
     </div>
   );

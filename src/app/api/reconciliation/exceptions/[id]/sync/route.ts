@@ -9,7 +9,9 @@ import { handleApiError } from "@/lib/api/error-handler";
  * deliberately NOT auto-applied: that's an investigate-manually case.
  *
  * Idempotent: the posted transaction's dedup_key is keyed to the exception id,
- * so re-syncing never double-posts.
+ * so re-syncing never double-posts. checkSyncable refuses a break whose units
+ * the CRM already holds under another scheme code, or with no single folio;
+ * the refusal is written on the break.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -19,10 +21,9 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { reconciliationExceptions, transactions } from "@/db/schema";
+import { RECON_TOLERANCE as TOLERANCE, SYNC_REFUSED, checkSyncable } from "@/lib/reconciliation/syncable";
 
 export const dynamic = "force-dynamic";
-
-const TOLERANCE = 0.5;
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -50,6 +51,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           return { kind: "not_additive" as const };
         }
 
+        const check = await checkSyncable(tx, session.tenantId, ex);
+        if (!check.ok) {
+          await tx
+            .update(reconciliationExceptions)
+            .set({ notes: `${ex.notes ? ex.notes + " " : ""}${SYNC_REFUSED} ${check.reason}]`, updatedAt: new Date() } as any)
+            .where(and(eq(reconciliationExceptions.id, id), eq(reconciliationExceptions.tenantId, session.tenantId)));
+          return { kind: "refused" as const, reason: check.reason };
+        }
+
         const feedValue = ex.feedValue != null ? Number(ex.feedValue) : null;
         const nav = feedUnits > 0 && feedValue != null ? feedValue / feedUnits : null;
         const amount = nav != null ? Math.round(addUnits * nav * 100) / 100 : null;
@@ -60,7 +70,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           .values({
             tenantId: session.tenantId,
             investorId: ex.investorId,
-            folioNumber: ex.folioNumber ?? null,
+            folioNumber: check.folioNumber,
             schemeCode: ex.schemeCode ?? null,
             schemeName: ex.schemeName ?? null,
             type: "purchase",
@@ -108,6 +118,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (result.kind === "not_found") return NextResponse.json({ error: "not found" }, { status: 404 });
     if (result.kind === "no_investor")
       return NextResponse.json({ error: "break has no linked client" }, { status: 400 });
+    if (result.kind === "refused")
+      return NextResponse.json({ error: `Not synced: ${result.reason}. Check this one by hand.` }, { status: 409 });
     if (result.kind === "not_additive")
       return NextResponse.json(
         { error: "CRM already holds ≥ the feed units — investigate manually (sync only adds units)." },

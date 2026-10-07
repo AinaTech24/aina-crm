@@ -136,7 +136,7 @@ export function ReconTable({ rows, syncable = 0, filter = {} }: {
       }
       toast.success(
         action === "sync"
-          ? `Synced ${j.updated} break(s)${j.skipped ? `, skipped ${j.skipped} non-additive` : ""}`
+          ? `Synced ${j.updated} break(s)${j.skipped ? `, skipped ${j.skipped} non-additive` : ""}${j.refused ? `, ${j.refused} left to check by hand (see notes)` : ""}`
           : `Updated ${j.updated} break(s)`
       );
       setSel(new Set());
@@ -157,6 +157,7 @@ export function ReconTable({ rows, syncable = 0, filter = {} }: {
     if (!ok) return;
     setBusy("all");
     let done = 0;
+    let refused = 0;
     try {
       for (let round = 0; round < 100; round++) {
         setProgress(`Syncing… ${done.toLocaleString("en-IN")} of ${syncable.toLocaleString("en-IN")}`);
@@ -171,9 +172,14 @@ export function ReconTable({ rows, syncable = 0, filter = {} }: {
           break;
         }
         done += Number(j.updated ?? 0);
-        if (!j.remaining || !j.updated) break;
+        refused += Number(j.refused ?? 0);
+        if (!j.remaining || !(Number(j.updated ?? 0) + Number(j.refused ?? 0))) break;
       }
-      if (done) toast.success(`Synced ${done.toLocaleString("en-IN")} break${done === 1 ? "" : "s"} to CRM`);
+      if (done || refused)
+        toast.success(
+          `Synced ${done.toLocaleString("en-IN")} break${done === 1 ? "" : "s"} to CRM` +
+            (refused ? ` · ${refused.toLocaleString("en-IN")} not synced — the CRM may already hold them under another scheme code; the reason is in each break's notes` : "")
+        );
       setSel(new Set());
       router.refresh();
     } finally {

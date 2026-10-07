@@ -176,7 +176,10 @@ export const HEADER_ALIASES: Record<string, string[]> = {
   // that arrives before its folio master can still name the investor.
   investorName: ["INVNAME", "INV_NAME", "INVESTOR NAME", "INVESTOR_NAME", "FIRST HOLDER", "FIRST_HOLDER", "HOLDER NAME", "HOLDER_NAME", "INVESTORNAME", "BENEFICIARY NAME"],
   schemeCode: ["SCH_CODE", "SCHEME_CODE", "SCHEME CODE", "PRODUCT_CODE", "PRODUCT CODE", "SCHCOD", "PRODCODE", "SCH_CD", "PRODUCT", "SCHEME", "FMCODE"],
-  schemeName: ["SCH_NAME", "SCHEME_NAME", "SCHEME NAME", "PRODUCT_NAME", "PRODUCT NAME", "SCHNAME", "PRODNAME", "FUND DESCRIPTION", "FUND_DESCRIPTION", "SCHEME", "FUNDDESC"],
+  // Not plain `SCHEME`: in KFintech's MFSD307 that column is the 2-letter
+  // scheme code ("EQ", "FM"), and as an alias it beat `FUNDDESC` whenever it came
+  // first — 80k transactions were stored named "EQ". It is a fallback below.
+  schemeName: ["SCH_NAME", "SCHEME_NAME", "SCHEME NAME", "PRODUCT_NAME", "PRODUCT NAME", "SCHNAME", "PRODNAME", "FUND DESCRIPTION", "FUND_DESCRIPTION", "FUNDDESC"],
   type: ["TR_TYPE", "TXN_TYPE", "TRANS_TYPE", "TRTYPE", "TXNTYPE", "TRANSTYPE", "TYPE", "TRANSACTION TYPE", "TRANSACTION HEAD", "TRANSACTION_HEAD", "TRXN_TYPE", "TD_TRTYPE"],
   typeDesc: ["TRANS_DESC", "TRANS DESCRIPTION", "TRANSACTION DESCRIPTION", "TRANSACTION_DESCRIPTION", "TXN_DESC_CAMS", "TRXN_NATURE", "TRDESC"],
   typeSub: ["TRANSACTION SUB", "TRANSACTION_SUB", "TRXNSUBTYP", "SUB_TYPE", "TRANSACTION_TYPE"],
@@ -248,6 +251,12 @@ export function parseReverseFeed(text: string, refPrefix = "feed"): CanonicalTra
   if (looksLikeFeedHeader(lines[0] ?? "")) {
     dataStart = 1;
     indexMap = buildHeaderIndexMap(split(lines[0]));
+    // A file whose only scheme column is `SCHEME` (some CAMS layouts put the
+    // name there) still gets a name — but only once the precise aliases failed.
+    if (indexMap.schemeName === undefined) {
+      const generic = buildHeaderIndexMap(split(lines[0]), { schemeName: ["SCHEME"] });
+      if (generic.schemeName !== undefined && generic.schemeName !== indexMap.schemeCode) indexMap.schemeName = generic.schemeName;
+    }
     // If alias matching found nothing useful, fall back to positional defaults.
     if (indexMap.folioNumber === undefined && indexMap.pan === undefined) {
       indexMap = { ...DEFAULT_CAMS_MAP, ...indexMap };

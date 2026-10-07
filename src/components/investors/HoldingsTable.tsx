@@ -4,7 +4,7 @@
  * Per-scheme holdings table for the investor-360 page — the full portfolio view.
  *
  * One row per scheme with: folio, start date, units, avg NAV, invested cost,
- * dividend, latest NAV + date, current value, unrealised gain, realised gain,
+ * dividend, latest NAV (+ date), current value, unrealised gain, realised gain,
  * scheme weight %, avg holding days, absolute return %, and XIRR — plus a totals
  * row and per-row selection ("Show selected schemes").
  *
@@ -13,8 +13,11 @@
  *     RTA holdings import, even without transactions).
  *   - invested cost / avg NAV / unrealised gain / abs return / XIRR / start date /
  *     avg days / realised gain / dividend  → derived from the TRANSACTION history
- *     (valueInvestor). They render "—" until a transaction feed is imported, then
- *     populate automatically. Unpriced schemes (no live NAV) render dimmed.
+ *     (valueInvestor). Unpriced schemes (no live NAV) render dimmed.
+ *
+ * A column no row has a value for is not drawn (a page of "—" said nothing),
+ * and fully redeemed schemes sit behind "Show redeemed" — they are history,
+ * not holdings.
  */
 
 import { useMemo, useState } from "react";
@@ -61,14 +64,11 @@ function fmtMoney(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
   return "₹" + Math.round(n).toLocaleString("en-IN");
 }
-function fmtPct(n: number | null | undefined, digits = 2): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return n.toFixed(digits);
-}
+const dash = <span className="text-muted-foreground">—</span>;
 
 /** Signed ₹ with colour (green up / red down). */
 function Money({ v }: { v: number | null | undefined }) {
-  if (v == null || !Number.isFinite(v)) return <span className="text-muted-foreground">—</span>;
+  if (v == null || !Number.isFinite(v)) return dash;
   const up = v >= 0;
   return (
     <span className={`tabular-nums ${up ? "text-emerald-600" : "text-rose-600"}`}>
@@ -78,10 +78,24 @@ function Money({ v }: { v: number | null | undefined }) {
 }
 /** Signed % with colour. */
 function Pct({ v, digits = 2 }: { v: number | null | undefined; digits?: number }) {
-  if (v == null || !Number.isFinite(v)) return <span className="text-muted-foreground">—</span>;
+  if (v == null || !Number.isFinite(v)) return dash;
   const up = v >= 0;
-  return <span className={`tabular-nums ${up ? "text-emerald-600" : "text-rose-600"}`}>{up ? "+" : ""}{v.toFixed(digits)}</span>;
+  return <span className={`tabular-nums ${up ? "text-emerald-600" : "text-rose-600"}`}>{up ? "+" : ""}{v.toFixed(digits)}%</span>;
 }
+
+type Row = { h: Holding; i: number; avgNav: number | null; weight: number | null; absRet: number | null };
+type Totals = { invested: number | null; current: number; unrealised: number | null; realised: number; dividend: number; units: number; absRet: number | null };
+type Col = {
+  key: string;
+  label: string;
+  align: "left" | "right";
+  /** Does this row have a value? A column with none in the whole list is dropped. */
+  has: (r: Row) => boolean;
+  cell: (r: Row) => React.ReactNode;
+  total?: (t: Totals) => React.ReactNode;
+};
+
+const isOpen = (h: Holding) => h.netUnits > 0.0005 || (h.currentValue ?? 0) > 0;
 
 export function HoldingsTable({
   holdings,
@@ -94,6 +108,10 @@ export function HoldingsTable({
 }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [onlySelected, setOnlySelected] = useState(false);
+  const [showClosed, setShowClosed] = useState(false);
+
+  const openCount = useMemo(() => holdings.filter(isOpen).length, [holdings]);
+  const closedCount = holdings.length - openCount;
 
   const totalCurrent = useMemo(
     () => holdings.reduce((s, h) => s + (h.priced ? h.currentValue || 0 : 0), 0),
@@ -101,43 +119,85 @@ export function HoldingsTable({
   );
 
   // Derived per-row values (computable from what we already have).
-  const rows = useMemo(
+  const rows = useMemo<Row[]>(
     () =>
       holdings.map((h, i) => {
-        const avgNav = h.netUnits > 0 && h.investedNet != null && h.investedNet > 0 ? h.investedNet / h.netUnits : null;
+        const avgNav = h.hasTxns && h.netUnits > 0 && h.investedNet != null && h.investedNet > 0 ? h.investedNet / h.netUnits : null;
         const weight = totalCurrent > 0 && h.currentValue ? (h.currentValue / totalCurrent) * 100 : null;
-        const absRet = h.investedNet != null && h.investedNet > 0 && h.gain != null ? (h.gain / h.investedNet) * 100 : null;
+        const absRet = h.hasTxns && h.investedNet != null && h.investedNet > 0 && h.gain != null ? (h.gain / h.investedNet) * 100 : null;
         return { h, i, avgNav, weight, absRet };
       }),
     [holdings, totalCurrent]
   );
 
-  const visibleRows = onlySelected ? rows.filter((r) => selected.has(r.i)) : rows;
+  const shown = rows.filter((r) => showClosed || isOpen(r.h));
+  const visibleRows = onlySelected ? shown.filter((r) => selected.has(r.i)) : shown;
 
   const toggle = (i: number) =>
     setSelected((prev) => {
       const n = new Set(prev);
-      n.has(i) ? n.delete(i) : n.add(i);
+      if (n.has(i)) n.delete(i); else n.add(i);
       return n;
     });
   const toggleAll = () =>
-    setSelected((prev) => (prev.size === rows.length ? new Set() : new Set(rows.map((r) => r.i))));
+    setSelected((prev) => (prev.size === shown.length ? new Set() : new Set(shown.map((r) => r.i))));
 
   // Totals (over the currently-visible rows; priced only for value/gain).
-  const t = useMemo(() => {
+  const t = useMemo<Totals>(() => {
     const src = visibleRows.map((r) => r.h);
     const priced = src.filter((h) => h.priced);
-    const sum = (f: (h: Holding) => number | null | undefined) =>
-      src.reduce((s, h) => s + (Number(f(h)) || 0), 0);
-    const invested = src.some((h) => h.investedNet == null) ? null : sum((h) => h.investedNet);
+    const sum = (f: (h: Holding) => number | null | undefined) => src.reduce((s, h) => s + (Number(f(h)) || 0), 0);
+    const invested = src.some((h) => !h.hasTxns || h.investedNet == null) ? null : sum((h) => h.investedNet);
     const current = priced.reduce((s, h) => s + (h.currentValue || 0), 0);
-    const unrealised = priced.some((h) => h.gain == null) ? null : priced.reduce((s, h) => s + (h.gain || 0), 0);
-    const realised = sum((h) => h.realisedGain);
-    const dividend = sum((h) => h.dividend);
-    const units = sum((h) => h.netUnits);
+    const unrealised = priced.some((h) => !h.hasTxns || h.gain == null) ? null : priced.reduce((s, h) => s + (h.gain || 0), 0);
     const absRet = invested != null && invested > 0 && unrealised != null ? (unrealised / invested) * 100 : null;
-    return { invested, current, unrealised, realised, dividend, units, absRet };
+    return { invested, current, unrealised, realised: sum((h) => h.realisedGain), dividend: sum((h) => h.dividend), units: sum((h) => h.netUnits), absRet };
   }, [visibleRows]);
+
+  const cols: Col[] = [
+    {
+      key: "folio", label: "Folio", align: "left", has: (r) => r.h.folioNumbers.length > 0 || !!r.h.folioNumber,
+      cell: ({ h }) => (
+        <span className="font-mono text-2xs text-muted-foreground">
+          {(h.folioNumbers.length ? h.folioNumbers : h.folioNumber ? [h.folioNumber] : ["—"]).join(", ")}
+        </span>
+      ),
+    },
+    { key: "start", label: "Since", align: "left", has: (r) => !!r.h.startDate, cell: ({ h }) => <span className="text-muted-foreground">{fmtDate(h.startDate)}</span> },
+    { key: "units", label: "Units", align: "right", has: () => true, cell: ({ h }) => fmtUnits(h.netUnits), total: (x) => fmtUnits(x.units) },
+    { key: "avgNav", label: "Avg NAV", align: "right", has: (r) => r.avgNav != null, cell: (r) => fmtNav(r.avgNav) },
+    {
+      key: "cost", label: "Invested", align: "right", has: (r) => !!r.h.hasTxns && r.h.investedNet != null,
+      cell: ({ h }) => (h.hasTxns ? fmtMoney(h.investedNet) : dash), total: (x) => (x.invested ? fmtMoney(x.invested) : "—"),
+    },
+    { key: "dividend", label: "Dividend", align: "right", has: (r) => !!r.h.dividend, cell: ({ h }) => (h.dividend ? fmtMoney(h.dividend) : dash), total: (x) => (x.dividend ? fmtMoney(x.dividend) : "—") },
+    {
+      key: "nav", label: "NAV", align: "right", has: (r) => r.h.latestNav != null,
+      cell: ({ h }) => (
+        <>
+          <div>{fmtNav(h.latestNav)}</div>
+          {h.navDate && <div className="text-2xs text-muted-foreground">{fmtDate(h.navDate)}</div>}
+        </>
+      ),
+    },
+    { key: "value", label: "Current value", align: "right", has: () => true, cell: ({ h }) => <span className="font-medium">{fmtMoney(h.currentValue)}</span>, total: (x) => fmtMoney(x.current) },
+    {
+      key: "gain", label: "Gain", align: "right", has: (r) => !!r.h.hasTxns && r.h.gain != null,
+      cell: ({ h }) => (h.hasTxns ? <Money v={h.gain} /> : dash),
+      total: (x) => (x.unrealised != null ? (x.unrealised >= 0 ? "+" : "−") + "₹" + Math.round(Math.abs(x.unrealised)).toLocaleString("en-IN") : "—"),
+    },
+    { key: "absRet", label: "Return", align: "right", has: (r) => r.absRet != null, cell: (r) => <Pct v={r.absRet} />, total: (x) => (x.absRet != null ? (x.absRet >= 0 ? "+" : "") + x.absRet.toFixed(2) + "%" : "—") },
+    { key: "xirr", label: "XIRR", align: "right", has: (r) => !!r.h.hasTxns && r.h.xirr != null, cell: ({ h }) => (h.hasTxns && h.xirr != null ? <Pct v={h.xirr * 100} /> : dash) },
+    {
+      key: "realised", label: "Realised", align: "right", has: (r) => !!r.h.realisedGain,
+      cell: ({ h }) => (h.realisedGain ? <Money v={h.realisedGain} /> : dash), total: (x) => (x.realised ? "₹" + Math.round(x.realised).toLocaleString("en-IN") : "—"),
+    },
+    { key: "avgDays", label: "Avg days", align: "right", has: (r) => r.h.avgDays != null, cell: ({ h }) => <span className="text-muted-foreground">{h.avgDays != null ? Math.round(h.avgDays).toLocaleString("en-IN") : "—"}</span> },
+    { key: "weight", label: "Weight", align: "right", has: (r) => r.weight != null, cell: (r) => (r.weight != null ? `${r.weight.toFixed(1)}%` : dash), total: () => "100%" },
+  ];
+  // Drop a column nothing in the list fills.
+  const visibleCols = cols.filter((c) => shown.some(c.has));
+  const txnColsHidden = !visibleCols.some((c) => c.key === "cost");
 
   const th = "px-2.5 py-2 font-semibold text-2xs uppercase tracking-wide whitespace-nowrap";
   const td = "px-2.5 py-2.5 align-top tabular-nums whitespace-nowrap";
@@ -148,15 +208,16 @@ export function HoldingsTable({
         <h2 className="font-semibold flex items-center gap-2">
           <Layers className="size-4 text-muted-foreground" />
           Portfolio holdings
-          <span className="text-xs font-normal text-muted-foreground">({holdings.length} schemes)</span>
+          <span className="text-xs font-normal text-muted-foreground">({openCount} scheme{openCount === 1 ? "" : "s"})</span>
         </h2>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          {closedCount > 0 && (
+            <button type="button" onClick={() => setShowClosed((v) => !v)} className="btn-ghost text-xs">
+              {showClosed ? "Hide redeemed" : `Show redeemed (${closedCount})`}
+            </button>
+          )}
           {selected.size > 0 && (
-            <button
-              type="button"
-              onClick={() => setOnlySelected((v) => !v)}
-              className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-accent"
-            >
+            <button type="button" onClick={() => setOnlySelected((v) => !v)} className="btn-secondary text-xs">
               <ListFilter className="size-3.5" />
               {onlySelected ? "Show all" : `Show selected (${selected.size})`}
             </button>
@@ -173,126 +234,79 @@ export function HoldingsTable({
         </div>
       </div>
 
-      {holdings.length === 0 ? (
+      {shown.length === 0 ? (
         <p className="text-sm text-muted-foreground py-6 text-center">
-          No holdings yet — they appear once an RTA folio/holdings file is imported.
+          {holdings.length === 0 ? "No holdings yet — they appear once an RTA folio/holdings file is imported." : "Every scheme on record has been redeemed."}
         </p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
+          <table className="w-full text-sm">
             <thead>
-              <tr className="bg-amber-50/70 text-amber-900 border-y border-amber-200">
-                <th className={`${th} text-center`}>
+              <tr>
+                <th className={`${th} w-8 text-center relative`}>
                   <input
                     type="checkbox"
                     className="size-4 align-middle"
-                    checked={selected.size === rows.length && rows.length > 0}
+                    checked={selected.size === shown.length && shown.length > 0}
                     onChange={toggleAll}
                     aria-label="Select all"
                   />
                 </th>
-                <th className={`${th} text-left`}>No</th>
-                <th className={`${th} text-left`}>Folio</th>
-                <th className={`${th} text-left`}>Scheme name</th>
-                <th className={`${th} text-left`}>Start date</th>
-                <th className={`${th} text-right`}>Units</th>
-                <th className={`${th} text-right`}>Avg NAV</th>
-                <th className={`${th} text-right`}>Inv. cost</th>
-                <th className={`${th} text-right`}>Dividend</th>
-                <th className={`${th} text-right`}>Latest NAV</th>
-                <th className={`${th} text-left`}>NAV date</th>
-                <th className={`${th} text-right`}>Curr value</th>
-                <th className={`${th} text-right`}>Unrealised gain</th>
-                <th className={`${th} text-right`}>Realised gain</th>
-                <th className={`${th} text-right`}>Sch wgt %</th>
-                <th className={`${th} text-right`}>Avg days</th>
-                <th className={`${th} text-right`}>Abs ret %</th>
-                <th className={`${th} text-right`}>XIRR %</th>
+                <th className={`${th} text-left`}>Scheme</th>
+                {visibleCols.map((c) => (
+                  <th key={c.key} className={`${th} ${c.align === "right" ? "text-right" : "text-left"}`}>{c.label}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {visibleRows.map(({ h, i, avgNav, weight, absRet }, rowIdx) => (
-                <tr
-                  key={i}
-                  className={`border-b last:border-0 hover:bg-secondary/30 ${h.priced ? "" : "opacity-60"} ${
-                    rowIdx % 2 ? "bg-secondary/20" : ""
-                  }`}
-                >
+              {visibleRows.map((r) => (
+                <tr key={r.i} className={r.h.priced ? "" : "opacity-60"}>
                   <td className={`${td} text-center`}>
                     <input
                       type="checkbox"
                       className="size-4"
-                      checked={selected.has(i)}
-                      onChange={() => toggle(i)}
-                      aria-label={`Select ${h.schemeName ?? "scheme"}`}
+                      checked={selected.has(r.i)}
+                      onChange={() => toggle(r.i)}
+                      aria-label={`Select ${r.h.schemeName ?? "scheme"}`}
                     />
                   </td>
-                  <td className={`${td} text-muted-foreground`}>{i + 1}</td>
-                  <td className={`${td} text-left font-mono text-2xs text-muted-foreground`}>
-                    {(h.folioNumbers.length ? h.folioNumbers : h.folioNumber ? [h.folioNumber] : ["—"]).join(", ")}
-                  </td>
-                  <td className="px-2.5 py-2.5 align-top max-w-[240px]">
-                    <div className="font-medium text-brand-cyan-deep truncate">{h.schemeName ?? "Unknown scheme"}</div>
+                  <td className="px-2.5 py-2.5 align-top" style={{ minWidth: "14rem", maxWidth: "22rem" }}>
+                    <div className="font-medium text-foreground line-clamp-2 whitespace-normal" title={r.h.schemeName ?? undefined}>
+                      {r.h.schemeName ?? "Unknown scheme"}
+                    </div>
                     <div className="flex items-center gap-1.5 mt-0.5">
-                      {h.amcName && <span className="text-2xs text-muted-foreground truncate">{h.amcName}</span>}
-                      {h.kind === "sip" && (
+                      {r.h.amcName && <span className="text-2xs text-muted-foreground truncate">{r.h.amcName}</span>}
+                      {r.h.kind === "sip" && (
                         <span className="text-2xs font-semibold px-1 py-0.5 rounded bg-sky-50 text-sky-700">SIP</span>
                       )}
+                      {!isOpen(r.h) && <span className="text-2xs text-muted-foreground">Redeemed</span>}
                     </div>
                   </td>
-                  <td className={`${td} text-left text-muted-foreground`}>{fmtDate(h.startDate)}</td>
-                  <td className={`${td} text-right`}>{fmtUnits(h.netUnits)}</td>
-                  <td className={`${td} text-right`}>{fmtNav(avgNav)}</td>
-                  <td className={`${td} text-right`}>{h.hasTxns ? fmtMoney(h.investedNet) : "—"}</td>
-                  <td className={`${td} text-right`}>{h.dividend ? fmtMoney(h.dividend) : "—"}</td>
-                  <td className={`${td} text-right`}>{fmtNav(h.latestNav)}</td>
-                  <td className={`${td} text-left text-muted-foreground`}>{fmtDate(h.navDate)}</td>
-                  <td className={`${td} text-right font-medium`}>{fmtMoney(h.currentValue)}</td>
-                  <td className={`${td} text-right`}>{h.hasTxns ? <Money v={h.gain} /> : "—"}</td>
-                  <td className={`${td} text-right`}>{h.realisedGain ? <Money v={h.realisedGain} /> : <span className="text-muted-foreground">—</span>}</td>
-                  <td className={`${td} text-right`}>{fmtPct(weight)}</td>
-                  <td className={`${td} text-right text-muted-foreground`}>
-                    {h.avgDays != null ? Math.round(h.avgDays).toLocaleString("en-IN") : "—"}
-                  </td>
-                  <td className={`${td} text-right`}>{h.hasTxns ? <Pct v={absRet} /> : <span className="text-muted-foreground">—</span>}</td>
-                  <td className={`${td} text-right`}>
-                    {h.hasTxns && h.xirr != null ? <Pct v={h.xirr * 100} /> : <span className="text-muted-foreground">—</span>}
-                  </td>
+                  {visibleCols.map((c) => (
+                    <td key={c.key} className={`${td} ${c.align === "right" ? "text-right" : "text-left"}`}>{c.cell(r)}</td>
+                  ))}
                 </tr>
               ))}
             </tbody>
             <tfoot>
-              <tr className="bg-brand-cyan-deep text-white font-semibold">
-                <td className="px-2.5 py-3" colSpan={4}>
+              <tr className="bg-secondary font-semibold">
+                <td className="px-2.5 py-3" colSpan={2}>
                   Total{onlySelected ? ` (${visibleRows.length} selected)` : ""}
                 </td>
-                <td className="px-2.5 py-3" />
-                <td className="px-2.5 py-3 text-right tabular-nums">{fmtUnits(t.units)}</td>
-                <td className="px-2.5 py-3" />
-                <td className="px-2.5 py-3 text-right tabular-nums">{t.invested ? fmtMoney(t.invested) : "—"}</td>
-                <td className="px-2.5 py-3 text-right tabular-nums">{t.dividend ? fmtMoney(t.dividend) : "—"}</td>
-                <td className="px-2.5 py-3" colSpan={2} />
-                <td className="px-2.5 py-3 text-right tabular-nums">{fmtMoney(t.current)}</td>
-                <td className="px-2.5 py-3 text-right tabular-nums">
-                  {t.unrealised != null ? (t.unrealised >= 0 ? "+" : "−") + "₹" + Math.round(Math.abs(t.unrealised)).toLocaleString("en-IN") : "—"}
-                </td>
-                <td className="px-2.5 py-3 text-right tabular-nums">{t.realised ? "₹" + Math.round(t.realised).toLocaleString("en-IN") : "—"}</td>
-                <td className="px-2.5 py-3 text-right tabular-nums">100.00</td>
-                <td className="px-2.5 py-3" />
-                <td className="px-2.5 py-3 text-right tabular-nums">{t.absRet != null ? (t.absRet >= 0 ? "+" : "") + t.absRet.toFixed(2) : "—"}</td>
-                <td className="px-2.5 py-3" />
+                {visibleCols.map((c) => (
+                  <td key={c.key} className={`px-2.5 py-3 tabular-nums whitespace-nowrap ${c.align === "right" ? "text-right" : "text-left"}`}>
+                    {c.total ? c.total(t) : ""}
+                  </td>
+                ))}
               </tr>
             </tfoot>
           </table>
         </div>
       )}
 
-      <p className="mt-3 text-2xs text-muted-foreground">
-        Cost, gains, dividend, XIRR, start date &amp; avg days come from the <strong>transaction history</strong> (CAMS
-        WBR2 / KFintech MFSD307). Columns show <span className="font-mono">—</span> until that feed is imported; units,
-        NAV, current value &amp; weight come straight from the holdings file.
-      </p>
+      {txnColsHidden && shown.length > 0 && (
+        <p className="mt-3 text-2xs text-muted-foreground">Cost, gain and XIRR appear once the RTA transaction feed is imported.</p>
+      )}
     </div>
   );
 }
-

@@ -2,7 +2,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/proposals/[id]/send
  *
- *   body: { channel: 'email' | 'whatsapp' }
+ *   body: { channel: 'email' | 'whatsapp' | 'link', preview?: true }
  *
  * Sends the proposal to the recipient through the chosen channel:
  *
@@ -14,8 +14,20 @@ import { handleApiError } from "@/lib/api/error-handler";
  *                  through the RM's own WhatsApp. No template approval
  *                  required. Returns { ok: true, waUrl }.
  *
- * In both cases the proposal status flips to 'sent' (status_at = now) and
- * a row is written to `communications` for the audit trail.
+ *   - link       → the client's proposal page link, to paste anywhere.
+ *                  Returns { ok: true, url }. Nothing is sent from the CRM.
+ *
+ * In every case the proposal status flips to 'sent' (status_at = now); email
+ * and WhatsApp also write a `communications` row for the audit trail.
+ *
+ * `preview: true` returns the message the channel would carry — { subject?,
+ * text?, html? } with a placeholder for the link — and changes nothing: no
+ * token, no status, no send. The gates still run, so a preview says early
+ * what would stop the send.
+ *
+ * A mutual fund line needs the client's CONFIRMED risk profile, signed in the
+ * last 12 months (lib/proposals/snapshot — a provisional, stale or missing one
+ * stops it), like an opportunity's proposal step. No override.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -34,6 +46,8 @@ import { gateClientSend } from "@/lib/comms/guarded-send";
 import { advanceJourneyForProposal } from "@/lib/proposals/journey";
 import { proposals, tenants, communications, investors } from "@/db/schema";
 import { checkAlignment } from "@/lib/proposal/risk-alignment";
+import { loadProposalSnapshot } from "@/lib/proposals/snapshot";
+import { loadProposalAppetite, type ProposalAppetite } from "@/lib/proposals/appetite";
 import { resolveEmailSender } from "@/lib/comms/sender";
 import { emailAdapter } from "@/lib/comms/adapters/resend";
 import { renderProposalPdf } from "@/lib/proposal/proposal-pdf";
@@ -43,7 +57,8 @@ import { formatDate, formatINR } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 
 const Body = z.object({
-  channel: z.enum(["email", "whatsapp"]),
+  channel: z.enum(["email", "whatsapp", "link"]),
+  preview: z.boolean().optional(),
 });
 
 let resendClient: Resend | null = null;
@@ -62,12 +77,25 @@ const KIND_TITLE: Record<string, string> = {
   aif: "Alternative Investment Funds",
 };
 
+/** Text a client typed (or a scheme name) placed into the email's HTML. */
+function esc(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/** The client's page with what they chose in the email already open. */
+function actionUrl(publicUrl: string, action: "approve" | "modify"): string {
+  return `${publicUrl}${publicUrl.includes("?") ? "&" : "?"}do=${action}`;
+}
+
+/** What else the client is told: a revision's reason, and any scheme beyond their risk appetite. */
+type SendContext = { appetite: ProposalAppetite; revisedNote: string | null };
+
 function buildHtmlEmail(args: {
   tenant: any;
   proposal: any;
   publicUrl: string;
-}) {
-  const { tenant, proposal, publicUrl } = args;
+} & SendContext) {
+  const { tenant, proposal, publicUrl, appetite, revisedNote } = args;
   const primary = tenant?.primaryColor || "#0e2557";
   const secondary = tenant?.secondaryColor || "#0ea5e9";
   const products = (proposal.products ?? []) as any[];
@@ -97,7 +125,7 @@ function buildHtmlEmail(args: {
       )}</td></tr>`
     : "";
   const corpus = proposal.expectedCorpus
-    ? `<tr><td style="padding:6px 0;color:#64748b;font-size:12px">Projected corpus</td><td style="padding:6px 0;text-align:right;font-weight:700;font-size:14px;color:#059669">${formatINR(
+    ? `<tr><td style="padding:6px 0;color:#64748b;font-size:12px">Illustrative value (at assumed returns, not guaranteed)</td><td style="padding:6px 0;text-align:right;font-weight:700;font-size:14px;color:#0f172a">${formatINR(
         Number(proposal.expectedCorpus)
       )}</td></tr>`
     : "";
@@ -106,6 +134,31 @@ function buildHtmlEmail(args: {
         proposal.validUntil
       ))}</strong>.</p>`
     : "";
+
+  const revised =
+    (proposal.version ?? 1) > 1
+      ? `<p style="margin:0 0 12px;padding:10px 12px;background:#f0f9ff;border-radius:8px;color:#0c4a6e;font-size:13px;line-height:1.55">This is an updated version (v${proposal.version}) of your proposal${
+          revisedNote ? `, changed as you asked: “${esc(revisedNote)}”` : ""
+        }. It replaces the earlier one.</p>`
+      : "";
+  const beyond = appetite.above.length
+    ? `<div style="margin:16px 0 0;padding:12px 14px;border:1px solid #fcd34d;background:#fffbeb;border-radius:8px">
+        <div style="font-weight:700;font-size:13px;color:#92400e">Beyond your risk appetite</div>
+        <p style="margin:6px 0 0;font-size:12px;color:#78350f;line-height:1.55">Your risk profile is <strong>${esc(appetite.profile ?? "")}</strong>. ${
+          appetite.above.length === 1 ? "This scheme carries" : "These schemes carry"
+        } more risk than that:</p>
+        <ul style="padding-left:18px;margin:6px 0 0;font-size:12px;color:#78350f">${appetite.above
+          .map((a) => `<li style="margin:3px 0">${esc(a.name)} — ${esc(a.risk)} risk</li>`)
+          .join("")}</ul>
+        <p style="margin:8px 0 0;font-size:12px;color:#78350f;line-height:1.55">If you would rather stay within your risk appetite, choose <strong>Request changes</strong> and tell us.</p>
+      </div>`
+    : "";
+  const buttons = `<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:22px 0 0"><tr>
+        <td style="border-radius:8px;background:#15803d"><a href="${actionUrl(publicUrl, "approve")}" style="display:inline-block;padding:11px 24px;color:#ffffff;font-weight:700;font-size:14px;text-decoration:none;border-radius:8px">Approve</a></td>
+        <td style="width:10px"></td>
+        <td style="border-radius:8px;border:1px solid ${primary}"><a href="${actionUrl(publicUrl, "modify")}" style="display:inline-block;padding:10px 22px;color:${primary};font-weight:700;font-size:14px;text-decoration:none;border-radius:8px">Request changes</a></td>
+      </tr></table>
+      <p style="margin:8px 0 0;color:#94a3b8;font-size:11px">Either button opens your secure proposal page, where you confirm.</p>`;
 
   const arnLine = `${tenant?.legalName ?? tenant?.displayName ?? ""} · ARN ${
     tenant?.arn ?? "—"
@@ -126,6 +179,7 @@ function buildHtmlEmail(args: {
     <div style="padding:24px">
       <p style="margin:0 0 6px;color:#64748b;font-size:13px">Dear ${proposal.recipientName},</p>
       <h2 style="margin:8px 0 6px;font-size:18px;letter-spacing:-0.01em">${proposal.title}</h2>
+      ${revised}
       ${
         proposal.coverLetter
           ? `<p style="margin:0 0 12px;color:#334155;font-size:13px;line-height:1.6;white-space:pre-line">${proposal.coverLetter}</p>`
@@ -133,7 +187,9 @@ function buildHtmlEmail(args: {
       }
       <table style="width:100%;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;margin:12px 0">${totalInv}${corpus}</table>
       ${productLines}
+      ${beyond}
       ${validUntil}
+      ${buttons}
     </div>
     <div style="background:#f1f5f9;padding:14px 24px;color:#64748b;font-size:10px;line-height:1.5;border-top:1px solid #e2e8f0">
       ${arnLine}
@@ -142,18 +198,25 @@ function buildHtmlEmail(args: {
 </body></html>`;
 }
 
-function buildWhatsAppText(args: { tenant: any; proposal: any; publicUrl: string }) {
-  const { tenant, proposal, publicUrl } = args;
+function buildWhatsAppText(args: { tenant: any; proposal: any; publicUrl: string } & SendContext) {
+  const { tenant, proposal, publicUrl, appetite, revisedNote } = args;
   const lines: string[] = [];
   lines.push(`Hi ${proposal.recipientName},`);
   lines.push("");
-  lines.push(`Sharing the *${proposal.title}* we discussed (${proposal.proposalNumber}).`);
+  if ((proposal.version ?? 1) > 1) {
+    lines.push(
+      `Here is the updated proposal (v${proposal.version}) *${proposal.title}*${revisedNote ? `, changed as you asked: "${revisedNote}"` : ""}. It replaces the earlier one.`
+    );
+  } else {
+    lines.push(`Sharing the *${proposal.title}* we discussed (${proposal.proposalNumber}).`);
+  }
   lines.push("");
   if (proposal.totalInvestment) {
     lines.push(`💰 Total investment: ₹${Number(proposal.totalInvestment).toLocaleString("en-IN")}`);
   }
   if (proposal.expectedCorpus) {
-    lines.push(`📈 Projected corpus: ₹${Number(proposal.expectedCorpus).toLocaleString("en-IN")}`);
+    // An illustration at assumed returns — never a "corpus" (see the PDF).
+    lines.push(`📈 Illustrative value: ₹${Number(proposal.expectedCorpus).toLocaleString("en-IN")} (at assumed returns, not guaranteed)`);
   }
   if (proposal.riskRating) {
     lines.push(`📊 Risk: ${proposal.riskRating}`);
@@ -168,8 +231,14 @@ function buildWhatsAppText(args: { tenant: any; proposal: any; publicUrl: string
     }
     if (products.length > 6) lines.push(`…and ${products.length - 6} more.`);
   }
+  if (appetite.above.length) {
+    lines.push("");
+    lines.push(`⚠️ *Beyond your risk appetite* (your profile: ${appetite.profile}):`);
+    for (const a of appetite.above) lines.push(`• ${a.name} — ${a.risk} risk`);
+    lines.push("If you'd rather stay within it, choose Request changes and tell us.");
+  }
   lines.push("");
-  lines.push(`Full proposal: ${publicUrl}`);
+  lines.push(`Approve or request changes here: ${publicUrl}`);
   lines.push("");
   lines.push(`— ${tenant?.legalName ?? tenant?.displayName ?? ""}`);
   lines.push(`ARN ${tenant?.arn ?? "—"}`);
@@ -199,7 +268,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!parse.success) {
       return NextResponse.json({ error: "invalid body" }, { status: 400 });
     }
-    const { channel } = parse.data;
+    const { channel, preview } = parse.data;
     const clientMeta = clientMetaFromHeaders(req.headers);
     // Managers send any proposal; everyone else only their own (mirrors the
     // collection GET scope).
@@ -247,6 +316,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const mfLines = ((p.products ?? []) as any[])
         .filter((it) => it?.kind === "mf")
         .map((it) => ({ name: it.schemeName ?? "Scheme", riskRating: it.riskRating ?? null }));
+      // ── Risk profile gate: no mutual fund recommendation without the
+      //    client's confirmed profile (signed, not provisional, < 12 months).
+      if (mfLines.length) {
+        const snap = await loadProposalSnapshot(tx, session.tenantId, {
+          investorId: p.investorId, familyId: (p as any).familyId ?? null, leadId: p.leadId,
+        });
+        if (snap?.risk.status !== "Completed") {
+          const why = snap?.risk.status === "Provisional" ? "is only provisional (not confirmed by the client)"
+            : snap?.risk.status === "Due for review" ? "is more than a year old"
+            : "is not on record";
+          return NextResponse.json(
+            { error: `A mutual fund proposal needs the client's confirmed risk profile, and theirs ${why}. Send them the risk profile link first.`, field: "riskProfile" },
+            { status: 412 }
+          );
+        }
+      }
+
       let clientProfile: any = null;
       if (p.recipientType === "investor" && p.investorId) {
         const inv = (
@@ -290,6 +376,42 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1)
       )[0];
 
+      // What the client is told besides the proposal: which schemes are beyond
+      // their risk appetite, and — for a revision — the change they asked for.
+      const appetite = await loadProposalAppetite(tx, session.tenantId, {
+        investorId: p.investorId, familyId: (p as any).familyId ?? null, leadId: p.leadId, products: p.products,
+      });
+      let revisedNote: string | null = null;
+      if ((p as any).parentProposalId) {
+        const [parent] = await tx
+          .select({ note: proposals.changeRequestNote })
+          .from(proposals)
+          .where(and(eq(proposals.id, (p as any).parentProposalId), eq(proposals.tenantId, session.tenantId)))
+          .limit(1);
+        revisedNote = parent?.note?.trim().replace(/[.\s]+$/, "") || null; // the sentence around it ends it
+      }
+      const ctx: SendContext = { appetite, revisedNote };
+
+      // What the channel would carry — nothing is minted, sent or changed.
+      if (preview) {
+        const link = "[link to the proposal]";
+        if (channel === "email") {
+          if (!p.recipientEmail) return NextResponse.json({ error: "recipient has no email on file" }, { status: 400 });
+          return NextResponse.json({
+            ok: true, channel, to: p.recipientEmail,
+            subject: `${p.title} — ${tenant?.displayName ?? "Investment proposal"} (${p.proposalNumber})`,
+            html: buildHtmlEmail({ tenant, proposal: p, publicUrl: link, ...ctx }),
+            attachment: `Proposal-${String(p.proposalNumber ?? id).replace(/[^A-Za-z0-9_-]+/g, "_")}.pdf`,
+          });
+        }
+        if (channel === "whatsapp") {
+          const phone = normalizePhone(p.recipientPhone);
+          if (!phone) return NextResponse.json({ error: "recipient has no phone number on file" }, { status: 400 });
+          return NextResponse.json({ ok: true, channel, to: `+${phone}`, text: buildWhatsAppText({ tenant, proposal: p, publicUrl: link, ...ctx }) });
+        }
+        return NextResponse.json({ ok: true, channel, text: "A link to the client's proposal page, to paste into any message. They can read it, accept all or part of it, or ask for a change." });
+      }
+
       // The client-facing link must be a PUBLIC proposal page, not an auth-gated
       // /dashboard URL (the old link redirected clients to login — and WhatsApp
       // carries no PDF attachment, so the link was the client's only access).
@@ -319,7 +441,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           );
         }
         recipientUsed = p.recipientEmail;
-        const html = buildHtmlEmail({ tenant, proposal: p, publicUrl });
+        const html = buildHtmlEmail({ tenant, proposal: p, publicUrl, ...ctx });
         bodyText = html;
         // Compliance + consent gate — a proposal is a regulated client document
         // (scheme recommendations / projected corpus). Scans for assured-return
@@ -360,7 +482,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             tokens: {},
             rendered: {
               subject: `${p.title} — ${tenant?.displayName ?? "Investment proposal"} (${p.proposalNumber})`,
-              text: `Please find your proposal "${p.title}" (${p.proposalNumber}) attached. View it online: ${publicUrl}`,
+              text: `Please find your proposal "${p.title}" (${p.proposalNumber}) attached.\n\nApprove: ${actionUrl(publicUrl, "approve")}\nRequest changes: ${actionUrl(publicUrl, "modify")}`,
               tokens: {},
             },
             recipient: p.recipientEmail,
@@ -384,7 +506,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             : (m || "Could not send email");
           return NextResponse.json({ error: friendly }, { status: 502 });
         }
-      } else {
+      } else if (channel === "whatsapp") {
         // whatsapp — generate wa.me link, client opens in new tab
         const phone = normalizePhone(p.recipientPhone);
         if (!phone) {
@@ -394,7 +516,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           );
         }
         recipientUsed = phone;
-        const text = buildWhatsAppText({ tenant, proposal: p, publicUrl });
+        const text = buildWhatsAppText({ tenant, proposal: p, publicUrl, ...ctx });
         bodyText = text;
         gate = await gateClientSend(tx, {
           tenantId: session.tenantId, channel: "whatsapp", category: "transactional",
@@ -406,8 +528,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
       }
 
-      // Log to communications + flip proposal status
-      await tx.insert(communications).values({
+      // Log to communications (a copied link is not a message) + flip proposal status
+      if (channel !== "link") await tx.insert(communications).values({
         tenantId: session.tenantId,
         investorId: p.recipientType === "investor" ? p.investorId : null,
         leadId: p.recipientType === "lead" ? p.leadId : null,
@@ -481,6 +603,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         channel,
         externalId,
         waUrl,
+        url: channel === "link" ? publicUrl : undefined,
       });
     });
   } catch (err: any) {

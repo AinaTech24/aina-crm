@@ -107,3 +107,27 @@ export function equityAfter(items: any[], snap: ProposalSnapshot | null): Equity
   const pct = (((h?.equityValue ?? 0) + addedEquity) / total) * 100;
   return { before, pct, ceiling, aboveBand: ceiling != null && pct > ceiling, reason: null };
 }
+
+/** The client's risk profile in words ("Moderate"), or null. */
+export function profileLabel(profile: string | null | undefined): string | null {
+  return profile ? PROFILE_LABEL[profile] ?? profile : null;
+}
+
+export type AboveAppetite = { index: number; name: string; risk: string };
+
+/**
+ * The recommendations whose riskometer level is beyond the client's risk
+ * appetite — what the client is TOLD, in the proposal email and on their
+ * approval page, and must acknowledge before accepting. Same verdict as the
+ * builder's per-line check (lineFit), so the RM and the client see one answer.
+ */
+export function aboveAppetite(items: any[], profile: string | null | undefined): AboveAppetite[] {
+  if (!profile) return [];
+  const out: AboveAppetite[] = [];
+  items.forEach((it, index) => {
+    if (lineFit(it, profile).status !== "above") return;
+    const r = String(it.riskRating ?? "").replace(/_/g, " ");
+    out.push({ index, name: itemName(it), risk: r.charAt(0).toUpperCase() + r.slice(1) });
+  });
+  return out;
+}

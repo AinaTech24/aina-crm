@@ -5,6 +5,7 @@ import { ChevronLeft, Palette } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { tenants } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { AppearanceThemeForm } from "@/components/settings/AppearanceThemeForm";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +28,11 @@ export default async function AppearanceSettingsPage() {
 
       <PageHeaderCard title={<><Palette className="size-5" /> Appearance &amp; theme</>} />
 
-      <AppearanceThemeForm tenant={JSON.parse(JSON.stringify(tenant))} />
+      {/* Saving needs the same capability as PATCH /api/tenant. */}
+      <AppearanceThemeForm
+        tenant={JSON.parse(JSON.stringify(tenant))}
+        canEdit={can(session.roles, "settings.users", session.permissions)}
+      />
     </div>
   );
 }
