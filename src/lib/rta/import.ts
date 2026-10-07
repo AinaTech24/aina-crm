@@ -22,6 +22,7 @@ import { sql } from "drizzle-orm";
 import { investors, folios as foliosTable } from "@/db/schema";
 import type { RtaFolioRecord } from "./types";
 import { resolveSchemeIdentity } from "./resolve-scheme";
+import { ownersOfFolios, releaseFormerOwners } from "./former-owners";
 
 /**
  * Build a Postgres array literal that binds a JS array as ONE array value.
@@ -530,6 +531,10 @@ export async function importRtaFolios(
           updatedAt: sql`now()`,
         };
 
+  // Who holds these folios before the upsert re-points them — a client that
+  // loses folios is settled afterwards (lib/rta/former-owners.ts).
+  const formerOwners = await ownersOfFolios(tx, tenantId, folioValues.map((v) => v.folioNumber));
+
   // Adopt any folio this tenant already holds under a BLANK amc_code before the
   // upsert runs.
   //
@@ -622,6 +627,11 @@ export async function importRtaFolios(
       `);
     }
   }
+
+  // ── 5b. Settle the clients this import took folios from: a placeholder left
+  //        empty is merged into the client who took them, anyone else is
+  //        revalued — never left holding AUM for money that moved. ───────────
+  await releaseFormerOwners(tx, tenantId, formerOwners);
 
   // ── 6. Link each minor to its guardian + group them into one family. ───────
   if (minorGuardianPan.size > 0) {
