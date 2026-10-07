@@ -956,6 +956,55 @@ async function processSipBook(
         }
       }
 
+      // The same registration, already CLOSED here — completed on evidence that
+      // its instalments stopped (completeExpiredSips, scripts/mark-sip-transfers),
+      // stopped on a cease date, or stopped by hand. Registrars keep listing a
+      // registration long after it stops collecting, and matching only active
+      // rows re-inserted every one of them as a fresh active SIP on the next
+      // report, undoing the closure. Same folio + scheme + start date is the
+      // same registration (an older CAMS import read 2/9 as 2 September, so the
+      // swapped date matches too); a later start date is a new one.
+      if (!existingId) {
+        const closed = await tx.execute(sql`
+          SELECT id, investor_id, status, amount, updated_at FROM sips
+          WHERE tenant_id = ${args.tenantId}::uuid
+            AND folio_number = ${r.folioNumber}
+            AND status IN ('completed', 'stopped')
+            AND (scheme_code = ${r.schemeCode}
+                 OR lower(regexp_replace(COALESCE(scheme_name, ''), '[^a-zA-Z0-9]', '', 'g'))
+                  = lower(regexp_replace(${r.schemeName || r.schemeCode}, '[^a-zA-Z0-9]', '', 'g')))
+            AND (${r.startDate ?? null}::date IS NULL
+                 OR start_date = ${r.startDate ?? null}::date
+                 OR to_char(start_date, 'YYYY-DD-MM') = ${r.startDate ?? null}
+                 OR (start_date IS NULL AND ${r.startDate ?? null}::date <= COALESCE(end_date, updated_at::date)))
+          ORDER BY updated_at DESC
+          LIMIT 1
+        `);
+        const c = closed.rows[0] as { id: string; investor_id: string; status: string; amount: string | null; updated_at: string } | undefined;
+        if (c) {
+          // Completed on evidence, so only evidence reopens it: an instalment
+          // of this amount collected after it was closed (the feed can arrive
+          // late). A stopped one — cease date, or a person — stays stopped.
+          const amt = Number(c.amount ?? 0);
+          const resumed = c.status === "completed" && sipStatus === "active" && amt > 0
+            ? (await tx.execute(sql`
+                SELECT 1 FROM transactions x
+                WHERE x.tenant_id = ${args.tenantId}::uuid AND x.investor_id = ${c.investor_id}::uuid
+                  AND x.folio_number = ${r.folioNumber} AND x.type = 'sip'
+                  AND x.order_date > ${c.updated_at}::date
+                  AND abs(x.amount - ${amt}::numeric) <= ${amt}::numeric * 0.02
+                LIMIT 1
+              `)).rows.length > 0
+            : false;
+          if (!resumed) {
+            await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
+            skipped++;
+            continue;
+          }
+          existingId = c.id;
+        }
+      }
+
       if (existingId) {
         // `?? null` on every optional value here is load-bearing, not defensive
         // style: drizzle OMITS an `undefined` interpolation from the template
@@ -969,6 +1018,7 @@ async function processSipBook(
           UPDATE sips
           SET amount = ${r.amount}::numeric,
               next_installment_at = COALESCE(${r.nextInstallmentAt ?? null}::date, next_installment_at),
+              start_date = COALESCE(${r.startDate ?? null}::date, start_date),
               end_date = COALESCE(${r.endDate ?? null}::date, end_date),
               mandate_id = COALESCE(${mandateId ?? null}::uuid, mandate_id),
               status = ${sipStatus},
