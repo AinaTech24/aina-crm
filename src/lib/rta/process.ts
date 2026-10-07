@@ -795,7 +795,10 @@ async function processSipBook(
     // completeExpiredSips in lib/finance/sip-lifecycle.ts, which closes those
     // only on evidence that the instalments stopped). A cease date IS that
     // evidence.
-    if (r.registrationType && /^(STP|SWP)/i.test(r.registrationType.trim())) {
+    // CAMS does not reliably say "STP" in AUT_TRNTYP, but only a transfer has
+    // a TARGET scheme — Rs 1,90,000 a month out of an ultra-short fund came in
+    // as a SIP on Nimesh C Shah's book until this check.
+    if ((r.registrationType && /^(STP|SWP)/i.test(r.registrationType.trim())) || r.targetScheme) {
       skipped++;
       continue;
     }
@@ -914,7 +917,29 @@ async function processSipBook(
         LIMIT 1
       `);
 
-      const existingId = (existing.rows[0] as any)?.id;
+      let existingId = (existing.rows[0] as any)?.id;
+
+      // The same registration under a different scheme key: a report that
+      // carried no code column was keyed on the scheme NAME, and the next one
+      // (with a code column) missed it and inserted a second copy beside it —
+      // 846 such pairs on one book. Same folio + same scheme name is the same
+      // SIP; adopt that row and give it the proper code.
+      if (!existingId && r.schemeName) {
+        const byName = await tx.execute(sql`
+          SELECT id FROM sips
+          WHERE tenant_id = ${args.tenantId}::uuid
+            AND folio_number = ${r.folioNumber}
+            AND lower(regexp_replace(COALESCE(scheme_name, ''), '[^a-zA-Z0-9]', '', 'g'))
+              = lower(regexp_replace(${r.schemeName}, '[^a-zA-Z0-9]', '', 'g'))
+            AND status = 'active'
+          ORDER BY amount DESC NULLS LAST
+          LIMIT 1
+        `);
+        existingId = (byName.rows[0] as any)?.id;
+        if (existingId) {
+          await tx.execute(sql`UPDATE sips SET scheme_code = ${r.schemeCode} WHERE id = ${existingId}::uuid`);
+        }
+      }
 
       if (existingId) {
         // `?? null` on every optional value here is load-bearing, not defensive

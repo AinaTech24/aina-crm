@@ -256,7 +256,9 @@ export const NOT_A_SIP_REMARK = "Not a SIP: an STP/SWP registration — money le
  *
  * Positive evidence only, from the transaction ledger, on the same folio and
  * scheme code: at least two OUTFLOWS of the registered amount (within 1%) and
- * not a single SIP instalment, ever. A SIP brings money in; a scheme that only
+ * not a single SIP instalment, ever. (CAMS books an STP-out as a payout from
+ * the source scheme and the matching STP-in as a "sip" into the TARGET one, so
+ * the source scheme itself never shows a SIP.) A SIP brings money in; a scheme that only
  * ever sends the instalment out is the source of a transfer or withdrawal. A
  * registration with no transactions at all is left alone — no evidence either
  * way.
@@ -265,23 +267,37 @@ export const NOT_A_SIP_REMARK = "Not a SIP: an STP/SWP registration — money le
  * `active_sip_amount`.
  */
 export async function markSystematicTransfers(tx: Tx, tenantId: string): Promise<number> {
+  // ONE pass over the firm's transactions, joined to its active SIPs on
+  // (folio, scheme code). `transactions` has no folio index, so a per-SIP
+  // subquery rescanned the whole ledger for every SIP — on a firm with
+  // ~730k transactions that ran past the 30-second statement limit.
   const res = await tx.execute(sql`
+    WITH cand AS (
+      SELECT s.id, s.folio_number, s.scheme_code, s.amount
+        FROM sips s
+       WHERE s.tenant_id = ${tenantId}::uuid AND s.status = 'active' AND COALESCE(s.amount, 0) > 0
+    ), ev AS (
+      SELECT c.id,
+             bool_or(x.type = 'sip') AS has_sip,
+             count(*) FILTER (
+               WHERE x.direction = 'outflow' AND x.amount BETWEEN c.amount * 0.99 AND c.amount * 1.01
+             ) AS same_amount_outflows
+        FROM cand c
+        JOIN transactions x
+          ON x.tenant_id = ${tenantId}::uuid
+         AND x.folio_number = c.folio_number
+         -- CAMS writes the scheme code with its AMC letter(s) in the feed
+         -- ("P1746") and without them in the registration report ("1746").
+         AND (x.scheme_code = c.scheme_code
+              OR (length(x.scheme_code) BETWEEN length(c.scheme_code) + 1 AND length(c.scheme_code) + 2
+                  AND right(x.scheme_code, length(c.scheme_code)) = c.scheme_code
+                  AND left(x.scheme_code, 1) ~ '[A-Za-z]'))
+       GROUP BY c.id
+    )
     UPDATE sips s
        SET status = 'stopped', remarks = ${NOT_A_SIP_REMARK}, updated_at = now()
-     WHERE s.tenant_id = ${tenantId}::uuid
-       AND s.status = 'active'
-       AND COALESCE(s.amount, 0) > 0
-       AND NOT EXISTS (
-         SELECT 1 FROM transactions x
-          WHERE x.tenant_id = s.tenant_id AND x.folio_number = s.folio_number
-            AND x.scheme_code = s.scheme_code AND x.type = 'sip'
-       )
-       AND (
-         SELECT count(*) FROM transactions x
-          WHERE x.tenant_id = s.tenant_id AND x.folio_number = s.folio_number
-            AND x.scheme_code = s.scheme_code AND x.direction = 'outflow'
-            AND x.amount BETWEEN s.amount * 0.99 AND s.amount * 1.01
-       ) >= 2
+      FROM ev
+     WHERE s.id = ev.id AND NOT ev.has_sip AND ev.same_amount_outflows >= 2
     RETURNING s.id
   `);
   return res.rows.length;

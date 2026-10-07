@@ -67,6 +67,8 @@ export type CanonicalSipRow = {
   ceaseDate?: string;
   /** The registrar's registration type (CAMS AUT_TRNTYP): SIP, STP, SWP… */
   registrationType?: string;
+  /** The scheme money is transferred INTO — only an STP has one (CAMS TARGET_SCH). */
+  targetScheme?: string;
 };
 
 export type CanonicalMandateRow = {
@@ -219,6 +221,7 @@ const SIP_BOOK_ALIASES: Record<string, string[]> = {
   // that stopped years ago.
   ceaseDate: ["CEASE_DATE", "CEASED_DATE", "SIP_CEASE_DATE", "CANCEL_DATE", "CANCELLATION_DATE", "TERMINATION_DATE"],
   registrationType: ["AUT_TRNTYP", "AUTO_TRNTYP", "AUTO_TRN_TYPE", "REGISTRATION_TYPE"],
+  targetScheme: ["TARGET_SCH", "TARGET_SCHEME", "TARGET_SCHEME_CODE", "TO_SCHEME"],
 };
 
 const DEFAULT_MANDATE_STATUS_MAP = {
@@ -445,6 +448,7 @@ export function parseSipBook(
       mandateRefNo: val("mandateRefNo") || undefined,
       ceaseDate: realDate(val("ceaseDate")),
       registrationType: val("registrationType") || undefined,
+      targetScheme: val("targetScheme") || undefined,
     });
   }
   return out;
