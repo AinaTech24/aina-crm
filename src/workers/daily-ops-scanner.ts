@@ -55,6 +55,7 @@ import { recomputeAllFamilyHealth } from "@/lib/families/health-persist";
 import { recomputeAllGoals } from "@/lib/goal-planning/recompute";
 import { recomputeCombinedAum, revalueAllFolios } from "@/lib/finance/aum-persist";
 import { matchProposalExecutions } from "@/lib/proposals/execution";
+import { matchBookedBusiness } from "@/lib/business/rta-match";
 import { completeExpiredSips } from "@/lib/finance/sip-lifecycle";
 import { eventsOutbox, investors, folios, suitabilityMatrixEntries } from "@/db/schema";
 
@@ -117,6 +118,9 @@ interface ScanResult {
   portfolioRiskDrift: number;
   /** Automation-health alerts raised this run (stuck outbox / overdue jobs / failed runs). */
   automationAlerts: number;
+  /** Booked business lines checked against the RTA, and those flagged (not found / rejected / mismatch). */
+  rtaLinesChecked: number;
+  rtaLinesFlagged: number;
   durationMs: number;
 }
 
@@ -184,6 +188,8 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
     attendanceSeeded: 0,
     portfolioRiskDrift: 0,
     automationAlerts: 0,
+    rtaLinesChecked: 0,
+    rtaLinesFlagged: 0,
     durationMs: 0,
   };
 
@@ -1250,6 +1256,17 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
     { roles: ["system"] }
   );
 
+  // ── Booked business vs the RTA (lib/business/rta-match.ts): settle what the
+  // last import missed and flag what never arrived. Its own transaction, so a
+  // failure here cannot undo the scan above.
+  try {
+    const m = await withTenant(tenantId, (tx) => matchBookedBusiness(tx, tenantId), { roles: ["system"] });
+    result.rtaLinesChecked = m.checked;
+    result.rtaLinesFlagged = m.not_found + m.rejected + m.mismatch;
+  } catch (e) {
+    console.error("[daily-ops] matching booked business failed for", tenantId, (e as Error)?.message);
+  }
+
   result.durationMs = Date.now() - startedAt;
   return result;
 }
@@ -1371,6 +1388,8 @@ export async function runDailyOpsScan(): Promise<{
     attendanceSeeded: 0,
     portfolioRiskDrift: 0,
     automationAlerts: 0,
+    rtaLinesChecked: 0,
+    rtaLinesFlagged: 0,
   };
   // Each tenant scan is fully independent (its own withTenant tx, RLS-scoped to
   // that tenant's rows), so they can run concurrently without lock contention.
@@ -1413,6 +1432,8 @@ export async function runDailyOpsScan(): Promise<{
       totals.attendanceSeeded += r.attendanceSeeded;
       totals.portfolioRiskDrift += r.portfolioRiskDrift;
       totals.automationAlerts += r.automationAlerts;
+      totals.rtaLinesChecked += r.rtaLinesChecked;
+      totals.rtaLinesFlagged += r.rtaLinesFlagged;
   };
   const worker = async () => {
     for (;;) {

@@ -29,12 +29,29 @@
  * otherwise to the RM who booked it (and that RM's branch) — the Branch Head
  * Dashboard's rule. Client-only filters (segment, category, family, tags,
  * lead source) can only match an entry that names a client.
+ *
+ * ── When the RTA rejects what was booked ────────────────────────────────────
+ *
+ * Booked business is what TARGETS count. Each mutual-fund line is checked
+ * against the RTA feed (lib/business/rta-match.ts); a line the RTA rejected —
+ * a failed payment, a bounced first SIP debit — is, by the firm's setting
+ * (bookedRejectionMode, Settings → Dashboard thresholds):
+ *
+ *   reverse   kept on the day it was booked, and subtracted on the day it was
+ *             rejected (the default: a past day's figure never changes)
+ *   drop      removed from the day it was booked
+ *
+ * So every figure here runs over `bel` rows that carry a `sign` (+1 booked,
+ * −1 the reversal) and an `eff_date` (the business date, or the rejection
+ * date). Incentives do not read this file: they count what the RTA processed
+ * (business.ts).
  */
 
 import { sql, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { cleanIds, clientRecordWhere, hasClientFilter, textList, uuidList, type MetricPeriod, type MetricScope } from "./scope";
 import { sipMonthlySql } from "./sip";
+import { loadDashboardThresholds } from "@/lib/dashboard/thresholds";
 
 export const ENTRY_COUNTED = ["confirmed", "emailed"] as const;
 export const ENTRY_GROSS = ["sip", "sip_topup", "lumpsum", "additional_purchase", "switch", "stp"] as const;
@@ -71,7 +88,7 @@ function entryWhere(scope: MetricScope, p: MetricPeriod): SQL {
   const parts: SQL[] = [
     sql`be.tenant_id = ${scope.tenantId}::uuid`,
     sql`be.status IN (${inList(ENTRY_COUNTED)})`,
-    sql`be.business_date >= ${p.from}::date AND be.business_date <= ${p.to}::date`,
+    sql`bel.eff_date >= ${p.from}::date AND bel.eff_date <= ${p.to}::date`,
     sql`(i.id IS NULL OR i.deleted_at IS NULL)`,
   ];
   const rms = cleanIds(scope.rmIds);
@@ -86,10 +103,38 @@ function entryWhere(scope: MetricScope, p: MetricPeriod): SQL {
   return sql.join(parts, sql` AND `);
 }
 
-const ENTRY_FROM = sql`business_entries be
-  JOIN business_entry_lines bel ON bel.entry_id = be.id
+export type RejectionMode = "reverse" | "drop";
+
+/**
+ * The lines as booked business: +1 on the business date and, under "reverse",
+ * −1 on the rejection date for a line the RTA rejected. Under "drop" a rejected
+ * line is simply absent.
+ */
+function signedLines(tenantId: string, mode: RejectionMode): SQL {
+  const booked = mode === "drop" ? sql` AND l.rta_status <> 'rejected'` : sql``;
+  const reversal = mode === "reverse"
+    ? sql`
+      UNION ALL
+      SELECT l.*, -1 AS sign, l.rta_status_at AS eff_date
+        FROM business_entry_lines l
+       WHERE l.tenant_id = ${tenantId}::uuid AND l.rta_status = 'rejected' AND l.rta_status_at IS NOT NULL`
+    : sql``;
+  return sql`(
+      SELECT l.*, 1 AS sign, e.business_date AS eff_date
+        FROM business_entry_lines l JOIN business_entries e ON e.id = l.entry_id
+       WHERE l.tenant_id = ${tenantId}::uuid${booked}${reversal}
+    )`;
+}
+
+const entryFrom = (tenantId: string, mode: RejectionMode) => sql`business_entries be
+  JOIN ${signedLines(tenantId, mode)} bel ON bel.entry_id = be.id
   LEFT JOIN investors i ON i.id = be.investor_id
   LEFT JOIN users u ON u.id = be.rm_id`;
+
+/** The firm's choice for rejected booked business (Settings → Dashboard thresholds). */
+async function rejectionMode(tx: Tx): Promise<RejectionMode> {
+  return (await loadDashboardThresholds(tx)).bookedRejectionMode;
+}
 
 export type EntryCell = { gross: number; redemption: number; net: number; redeemingClients: number };
 export type EntryRow = { key: string; label: string } & EntryCell;
@@ -112,13 +157,14 @@ export async function getEntryMatrix(tx: Tx, scope: MetricScope, p: MetricPeriod
   `)).rows[0] as { ok: boolean } | undefined;
   // One client key: the linked client, else the name typed on the entry.
   const who = sql`COALESCE(be.investor_id::text, lower(btrim(be.client_name)))`;
+  const mode = await rejectionMode(tx);
   const rows = (await tx.execute(sql`
     SELECT GROUPING(${productSql}) AS gp, GROUPING(${assetSql}) AS ga,
            ${productSql} AS product, ${assetSql} AS asset,
-           COALESCE(SUM(bel.amount) FILTER (WHERE bel.txn_type IN (${inList(ENTRY_GROSS)})), 0) AS gross,
-           COALESCE(SUM(bel.amount) FILTER (WHERE bel.txn_type IN (${inList(ENTRY_REDEMPTION)})), 0) AS redemption,
-           COUNT(DISTINCT ${who}) FILTER (WHERE bel.txn_type IN (${inList(ENTRY_REDEMPTION)}))::int AS redeemers
-      FROM ${ENTRY_FROM}
+           COALESCE(SUM(bel.amount * bel.sign) FILTER (WHERE bel.txn_type IN (${inList(ENTRY_GROSS)})), 0) AS gross,
+           COALESCE(SUM(bel.amount * bel.sign) FILTER (WHERE bel.txn_type IN (${inList(ENTRY_REDEMPTION)})), 0) AS redemption,
+           COUNT(DISTINCT ${who}) FILTER (WHERE bel.txn_type IN (${inList(ENTRY_REDEMPTION)}) AND bel.sign = 1)::int AS redeemers
+      FROM ${entryFrom(scope.tenantId, mode)}
      WHERE ${entryWhere(scope, p)}
      GROUP BY GROUPING SETS ((${productSql}, ${assetSql}), (${productSql}), ())
   `)).rows as Array<{ gp: number; ga: number; product: string | null; asset: string | null; gross: string; redemption: string; redeemers: number }>;
@@ -152,15 +198,16 @@ export type EntrySipFlow = {
 
 /** Gross SIP added, SIP stops and net SIP from Business Entries. */
 export async function getEntrySipFlow(tx: Tx, scope: MetricScope, p: MetricPeriod): Promise<EntrySipFlow> {
+  const mode = await rejectionMode(tx);
   const r = (await tx.execute(sql`
     SELECT
       EXISTS (SELECT 1 FROM business_entries WHERE tenant_id = ${scope.tenantId}::uuid
         AND status IN (${inList(ENTRY_COUNTED)})) AS ever,
-      COALESCE(SUM(${sipMonthlySql("bel")}) FILTER (WHERE bel.txn_type IN (${inList(ENTRY_SIP_ADD)})), 0) AS added,
-      COUNT(*) FILTER (WHERE bel.txn_type IN (${inList(ENTRY_SIP_ADD)}))::int AS added_n,
-      COALESCE(SUM(${sipMonthlySql("bel")}) FILTER (WHERE bel.txn_type = 'sip_stop'), 0) AS stopped,
-      COUNT(*) FILTER (WHERE bel.txn_type = 'sip_stop')::int AS stopped_n
-      FROM ${ENTRY_FROM}
+      COALESCE(SUM(${sipMonthlySql("bel")} * bel.sign) FILTER (WHERE bel.txn_type IN (${inList(ENTRY_SIP_ADD)})), 0) AS added,
+      COALESCE(SUM(bel.sign) FILTER (WHERE bel.txn_type IN (${inList(ENTRY_SIP_ADD)})), 0)::int AS added_n,
+      COALESCE(SUM(${sipMonthlySql("bel")} * bel.sign) FILTER (WHERE bel.txn_type = 'sip_stop'), 0) AS stopped,
+      COALESCE(SUM(bel.sign) FILTER (WHERE bel.txn_type = 'sip_stop'), 0)::int AS stopped_n
+      FROM ${entryFrom(scope.tenantId, mode)}
      WHERE ${entryWhere(scope, p)}
   `)).rows[0] as Record<string, string | number | boolean> | undefined;
   const added = Number(r?.added ?? 0);

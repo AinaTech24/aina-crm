@@ -17,8 +17,10 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { families, users } from "@/db/schema";
 import { familyHealthFields } from "@/lib/families/health";
-import { nextFamilyReview } from "@/lib/families/cadence";
-import { applyFamilyNamePattern, loadFamilySettings } from "@/lib/families/master";
+import { loadFamilySettings } from "@/lib/families/master";
+import { familyNameForHead } from "@/lib/families/naming";
+import { familyDetailsFromHead } from "@/lib/families/from-head";
+import { nextFamilyCode } from "@/lib/families/code";
 import { loadViewableInvestor } from "@/lib/investors/access";
 import { onClientFamilyMapped } from "@/lib/families/journey";
 import { familyScopeSql, requireFamilyView } from "@/lib/families/access";
@@ -231,23 +233,12 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    const reviewFrequency = parse.data.reviewFrequency ?? defaults.defaultReviewFrequency ?? null;
-    // The firm's pattern ("{head} Family") applies to a person's name only. A
-    // name that already reads as a household ("Adesh Manocha Family", "Sharma
-    // Trust", "… HUF") is used as given — the pattern used to turn it into
-    // "Adesh Manocha Family Family".
-    const looksLikeHousehold = /\b(family|families|group|trust|huf|household)\s*$/i.test(parse.data.headName.trim());
+    // The firm's pattern ("{head} Family"), the same rule the New family form
+    // shows before saving (lib/families/naming).
     const familyName =
-      parse.data.familyName ??
-      (looksLikeHousehold ? parse.data.headName.trim() : applyFamilyNamePattern(defaults.familyNamePattern, parse.data.headName));
+      parse.data.familyName ?? familyNameForHead(parse.data.headName, defaults.familyNamePattern);
 
-    // Auto-derive the next household review from the cadence: the first
-    // meeting's schedule, else one cadence from today.
-    const nextReviewAt = nextFamilyReview({
-      frequency: reviewFrequency,
-      firstMeeting: parse.data.firstMeetingDate ?? null,
-      since: new Date(),
-    });
+    let createdCode: string | null = null;
     const outcome = await withTenant(session.tenantId, async (tx) => {
       // An explicit RM must be a user in THIS firm — otherwise the household
       // would be owned by an out-of-tenant uuid.
@@ -262,6 +253,7 @@ export async function POST(req: NextRequest) {
       // Same check for the head: it must be a live client in THIS firm, and it
       // must not already belong to another household. Silently moving someone
       // between families would strip them from a rollup nobody was looking at.
+      let headClient: Awaited<ReturnType<typeof loadViewableInvestor>> | null = null;
       if (parse.data.primaryInvestorId) {
         const head = (await tx.execute(sql`
           SELECT id, family_id FROM investors
@@ -271,30 +263,41 @@ export async function POST(req: NextRequest) {
         `)).rows[0] as any;
         if (!head) return "bad_head" as const;
         // …and one this person can open.
-        if (!(await loadViewableInvestor(tx, session, parse.data.primaryInvestorId))) return "bad_head" as const;
+        headClient = await loadViewableInvestor(tx, session, parse.data.primaryInvestorId);
+        if (!headClient) return "bad_head" as const;
         if (head.family_id) return "head_in_family" as const;
       }
+      // RM, branch, category and review schedule come from the head's client
+      // record (lib/families/from-head); the form no longer asks for them.
+      const details = familyDetailsFromHead({
+        head: headClient,
+        explicit: parse.data,
+        creator: { userId: session.userId, branchId: session.branchId ?? null },
+        firmReviewFrequency: defaults.defaultReviewFrequency ?? null,
+      });
+      // Typed by an API caller, else the firm's next FAM-#### (lib/families/code).
+      const familyCode = parse.data.familyCode?.trim() || (await nextFamilyCode(tx, session.tenantId));
       await tx.insert(families).values({
         id,
         tenantId: session.tenantId,
-        branchId: session.branchId,
+        branchId: details.branchId,
         headName: parse.data.headName,
         familyName,
         primaryInvestorId: parse.data.primaryInvestorId ?? null,
-        rmId: parse.data.rmId ?? session.userId,
+        rmId: details.rmId,
         notes: parse.data.notes,
-        familyCode: parse.data.familyCode ?? null,
-        familyCategory: parse.data.familyCategory ?? null,
-        reviewFrequency,
-        firstMeetingDate: parse.data.firstMeetingDate ?? null,
-        nextReviewAt: nextReviewAt ?? null,
+        familyCode,
+        familyCategory: details.familyCategory,
+        reviewFrequency: details.reviewFrequency,
+        firstMeetingDate: details.firstMeetingDate,
+        nextReviewAt: details.nextReviewAt,
         // Initial health (no members yet ⇒ reflects the setup backlog).
         ...familyHealthFields(
           {
             primaryInvestorId: parse.data.primaryInvestorId ?? null,
-            rmId: parse.data.rmId ?? session.userId,
+            rmId: details.rmId,
             lastReviewAt: null,
-            nextReviewAt: nextReviewAt ?? null,
+            nextReviewAt: details.nextReviewAt,
           },
           []
         ),
@@ -334,9 +337,11 @@ export async function POST(req: NextRequest) {
         after: {
           headName: parse.data.headName,
           familyName: parse.data.familyName,
+          familyCode,
         },
         ...clientMeta,
       });
+      createdCode = familyCode;
       return "ok" as const;
     });
     if (outcome === "bad_rm") return NextResponse.json({ error: "selected RM is not a user in this firm" }, { status: 400 });
@@ -347,7 +352,7 @@ export async function POST(req: NextRequest) {
         { status: 409 }
       );
     }
-    return NextResponse.json({ id }, { status: 201 });
+    return NextResponse.json({ id, familyCode: createdCode }, { status: 201 });
   } catch (err: any) {
     return handleApiError(err);
   }

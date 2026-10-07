@@ -11,6 +11,8 @@ import { formatDate, formatINR } from "@/lib/utils";
 import { Avatar } from "@/components/ui/Avatar";
 import { BUSINESS_ENTRY_STATUSES } from "@/db/schema/business_entries";
 import { BulkTable, type BulkColumn, type BulkAction } from "@/components/common/BulkTable";
+import { Badge } from "@/components/ui/Badge";
+import { RTA_STATUS_LABEL, RTA_STATUS_TONE, entryRtaStatus, rtaCountsText } from "@/lib/business/rta-status";
 
 const PRODUCT_LABEL: Record<string, string> = {
   mutual_fund: "Mutual Fund", pms: "PMS", aif: "AIF", sif: "SIF", bond: "Bond", ncd: "NCD", other: "Other",
@@ -33,6 +35,8 @@ type Row = {
   totalAmount: string | number;
   rmName: string | null;
   lineCount: number;
+  /** Lines per RTA outcome (lib/business/rta-match.ts). */
+  rta: Record<string, number> | null;
 };
 
 export function BusinessEntriesTable({ rows, rmOptions }: { rows: Row[]; rmOptions: { value: string; label: string }[] }) {
@@ -74,6 +78,22 @@ export function BusinessEntriesTable({ rows, rmOptions }: { rows: Row[]; rmOptio
       thClass: "text-left py-2 font-medium pr-4",
       tdClass: "py-2.5 pr-4",
       render: (r) => <span className={`chip text-2xs capitalize ${STATUS_TONE[r.status] ?? ""}`}>{r.status}</span>,
+    },
+    {
+      key: "rta",
+      header: "RTA",
+      thClass: "text-left py-2 font-medium pr-4",
+      tdClass: "py-2.5 pr-4",
+      // Only a counted entry is checked against the RTA; a draft has nothing to say yet.
+      render: (r) => {
+        const s = r.status === "confirmed" || r.status === "emailed" ? entryRtaStatus(r.rta) : null;
+        if (!s) return <span className="text-xs text-muted-foreground">—</span>;
+        return (
+          <span title={rtaCountsText(r.rta)}>
+            <Badge tone={RTA_STATUS_TONE[s]} raw>{RTA_STATUS_LABEL[s]}</Badge>
+          </span>
+        );
+      },
     },
   ];
 

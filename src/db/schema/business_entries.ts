@@ -9,11 +9,12 @@
  * ready to deploy into equity on a market dip).
  */
 
-import { date, index, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { date, index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { id, tenantId, timestamps } from "./_shared";
 import { tenants } from "./tenants";
 import { investors } from "./investors";
 import { users } from "./users";
+import { transactions } from "./transactions";
 
 export const PRODUCT_TYPES = ["mutual_fund", "direct_equity", "pms", "aif", "sif", "bond", "ncd", "p2p", "las", "other"] as const;
 export const BUSINESS_ENTRY_STATUSES = ["draft", "confirmed", "emailed", "cancelled"] as const;
@@ -21,6 +22,8 @@ export const TXN_TYPES = ["sip", "sip_topup", "sip_stop", "lumpsum", "additional
 export const TXN_FREQUENCIES = ["one_time", "weekly", "monthly", "quarterly", "half_yearly", "yearly"] as const;
 /** Normalised asset bucket (derived from the master scheme category). */
 export const ASSET_CLASSES = ["equity", "debt", "liquid", "hybrid", "gold", "other"] as const;
+/** A line's RTA outcome — see migration 0228 and lib/business/rta-match.ts. */
+export const RTA_LINE_STATUSES = ["pending", "confirmed", "mismatch", "rejected", "not_found", "not_applicable"] as const;
 
 export const businessEntries = pgTable(
   "business_entries",
@@ -100,11 +103,43 @@ export const businessEntryLines = pgTable(
     folioNo: text("folio_no"),
     notes: text("notes"),
     sortOrder: integer("sort_order").notNull().default(0),
+
+    /** What the RTA did with this line (migration 0228, lib/business/rta-match.ts).
+     *  The entry is BOOKED business; this says whether the registrar confirmed it. */
+    rtaStatus: text("rta_status", { enum: RTA_LINE_STATUSES }).notNull().default("pending"),
+    /** The date the outcome counts on: the RTA trade date, or the rejection date. */
+    rtaStatusAt: date("rta_status_at"),
+    /** The amount the RTA processed (differs from `amount` on a mismatch). */
+    rtaAmount: numeric("rta_amount", { precision: 18, scale: 2 }),
+    /** Why, in words — "No client linked", "RTA processed ₹49,750". */
+    rtaNote: text("rta_note"),
+    rtaCheckedAt: timestamp("rta_checked_at", { withTimezone: true }),
     ...timestamps,
   },
   (t) => ({
     entryIdx: index("business_entry_lines_entry_idx").on(t.entryId, t.sortOrder),
     tenantClassIdx: index("business_entry_lines_class_idx").on(t.tenantId, t.assetClass),
+    rtaIdx: index("business_entry_lines_rta_idx").on(t.tenantId, t.rtaStatus),
+  })
+);
+
+/** The RTA transaction(s) that settled a line. A transaction settles at most one line. */
+export const businessEntryRtaMatches = pgTable(
+  "business_entry_rta_matches",
+  {
+    id,
+    tenantId: tenantId.references(() => tenants.id),
+    lineId: uuid("line_id")
+      .notNull()
+      .references(() => businessEntryLines.id, { onDelete: "cascade" }),
+    transactionId: uuid("transaction_id")
+      .notNull()
+      .references(() => transactions.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    txnUniq: uniqueIndex("business_entry_rta_matches_txn_uniq").on(t.transactionId),
+    lineIdx: index("business_entry_rta_matches_line_idx").on(t.tenantId, t.lineId),
   })
 );
 

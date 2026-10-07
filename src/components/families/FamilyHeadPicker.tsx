@@ -32,15 +32,6 @@ export type HeadCandidate = {
 const inr = (n: number) =>
   n >= 1e7 ? `₹${(n / 1e7).toFixed(2)} Cr` : n >= 1e5 ? `₹${(n / 1e5).toFixed(2)} L` : `₹${Math.round(n).toLocaleString("en-IN")}`;
 
-/** "Adesh Manocha" → "Adesh Manocha Family". Kept trivial on purpose: a clever
- *  surname-extractor gets Indian naming conventions wrong often enough that the
- *  user would have to correct it more than they would just type it. */
-export function familyNameFromHead(name: string): string {
-  const n = (name ?? "").trim().replace(/\s+/g, " ");
-  if (!n) return "";
-  return /family$/i.test(n) ? n : `${n} Family`;
-}
-
 export function FamilyHeadPicker({
   value,
   onPick,

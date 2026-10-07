@@ -121,6 +121,16 @@ export const DEFAULT_DASHBOARD_THRESHOLDS = {
   claimNoUpdateDays: 3,
   /** A claimant with no logged contact for this many days is due an update. */
   claimClientUpdateDays: 7,
+  /** Booked business vs the RTA (lib/business/rta-match.ts): a purchase,
+   *  redemption or switch line with no RTA record this many days after its
+   *  business date is "not found" — once the ledger reaches that far. */
+  rtaNotFoundDays: 7,
+  /** The same for a SIP or SIP stop line: a first debit can be a month after booking. */
+  rtaSipNotFoundDays: 45,
+  /** When the RTA rejects a booked line, targets either keep it on the day it
+   *  was booked and subtract it on the rejection date ("reverse"), or remove it
+   *  from the booking date ("drop"). Incentives read the RTA and never count it. */
+  bookedRejectionMode: "reverse" as "reverse" | "drop",
 };
 
 export type DashboardThresholds = typeof DEFAULT_DASHBOARD_THRESHOLDS;
@@ -167,6 +177,13 @@ export const CONFIGURABLE_THRESHOLDS: Array<{
   { key: "claimAssessDays", label: "Claims: under process too long after", hint: "Days a submitted claim may stay under process", kind: "days", min: 1, max: 365 },
   { key: "claimNoUpdateDays", label: "Claims: no update after", hint: "Days an open claim may go without an edit", kind: "days", min: 1, max: 60 },
   { key: "claimClientUpdateDays", label: "Claims: client update due every", hint: "Days a claimant may go without a logged call, email, visit or message", kind: "days", min: 1, max: 60 },
+  { key: "rtaNotFoundDays", label: "Business entries: not found in RTA after", hint: "Days after the business date before a booked purchase, redemption or switch with no RTA record is flagged", kind: "days", min: 2, max: 60 },
+  { key: "rtaSipNotFoundDays", label: "Business entries: SIP not found in RTA after", hint: "Days after booking before a SIP (first debit) or SIP stop with no RTA record is flagged", kind: "days", min: 7, max: 120 },
+  { key: "bookedRejectionMode", label: "Business entries: when the RTA rejects booked business", hint: "How targets treat it. Incentives count only what the RTA processed, either way", kind: "choice",
+    choices: [
+      { value: "reverse", label: "Keep it on the day it was booked, and subtract it on the rejection date" },
+      { value: "drop", label: "Remove it from the day it was booked" },
+    ] },
 ];
 
 /**

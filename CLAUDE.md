@@ -368,6 +368,63 @@ form for your website" (`/dashboard/complaints/website-form`). Code:
   (2026-10-01); `/dashboard/complaints/disclosure` redirects to the register.
   Do not restore it.
 
+## Creating a family
+
+The New family form (`/dashboard/families/new`, `NewFamilyForm`) asks for the
+head, the name and notes — nothing else (the firm's request, 2026-10-02).
+`?investorId=` starts it with that client as head.
+
+- **The name comes from the head.** `familyNameForHead`
+  (`lib/families/naming.ts`) applies the firm's pattern (Family settings,
+  "{head} Family"), and the API uses the same function, so the form shows what
+  is saved. It stays editable for an organisation name.
+- **The code is automatic.** `nextFamilyCode` (`lib/families/code.ts`) gives
+  the firm's next FAM-#### under an advisory lock; a code typed in another
+  shape is ignored.
+- **RM, branch, category and review schedule come from the head's client
+  record** (`familyDetailsFromHead`, `lib/families/from-head.ts`): the
+  client's RM and branch, `segment_tag`, `review_frequency` and next review.
+  With no head: the creator, their branch, the firm's default cadence. Every
+  create path (this form, Map Family, the unmapped-client and suggestion
+  panels) goes through `POST /api/families`, so all of them get this.
+- Do not put Category, Relationship Manager, Review frequency or First
+  meeting date back on the create form.
+
+## Booked business vs the RTA
+
+Operations does the work the day an RM asks and books it as a **business
+entry**; the registrar's feed (CAMS / KFintech) reports what really happened
+three or four days later. The two are linked, never added together:
+
+- **Targets count BOOKED business** (business entries). **Incentives count
+  what the RTA processed** (the transaction ledger, `lib/metrics/business.ts`),
+  plus Operations-confirmed entries for products the RTA never reports (PMS,
+  AIF, SIF, bonds …). Both are the firm's decision of 2026-10-02.
+- **Every mutual-fund line of a counted entry** (`confirmed` / `emailed`)
+  carries its RTA outcome (`business_entry_lines.rta_*`, migration 0228):
+  pending · confirmed · mismatch · rejected · not_found · not_applicable.
+  `lib/business/rta-match.ts` decides it after every RTA import (the import
+  worker) and nightly (`daily-ops-scanner`); the rules are pure and tested in
+  `rta-match-core.ts`. A transaction settles at most one line
+  (`business_entry_rta_matches`); a processed record beats a rejected one (a
+  failed payment retried is still business); the scheme is compared by name
+  (`schemeMatches`), never by code.
+- **Not found is never "no data"**: a line is not_found only once the firm's
+  wait (`rtaNotFoundDays` 7, `rtaSipNotFoundDays` 45 — a first SIP debit can be
+  a month away) is over AND the imported ledger reaches past it.
+- **A rejected line and targets** (`bookedRejectionMode`, Settings → Dashboard
+  thresholds): `reverse` (default) keeps it on its booking date and subtracts
+  it on the rejection date, so a past day never changes; `drop` removes it from
+  the booking date. `lib/metrics/entries.ts` runs every figure over signed lines
+  (`sign`, `eff_date`) to do this — a new entries figure must too.
+- **SIPs count when booked.** The CRM's own SIP book is not RTA proof (it is
+  written from entries): a SIP is confirmed by its first processed instalment
+  and rejected by a rejected or bounced first debit of the same amount. A SIP
+  top-up has no RTA record of its own and is not checked.
+- RTA business that nobody booked counts for the client's RM.
+- Business Entries shows each entry's outcome and filters by it (`?rta=`);
+  backfill or re-run by hand with `tsx scripts/match-business-rta.ts`.
+
 ## Webhook handlers
 
 | Provider | Path | Verifies |

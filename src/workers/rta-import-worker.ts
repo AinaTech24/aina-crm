@@ -38,6 +38,7 @@ import { importRtaFolios, type RtaImportSummary } from "@/lib/rta/import";
 import { isSpreadsheet, readSpreadsheetToRows } from "@/lib/rta/xls";
 import { RICH_KINDS } from "@/lib/rta/classify-mailback";
 import { getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config";
+import { matchBookedBusinessAfterImport } from "@/lib/business/rta-match";
 
 export type RtaImportJob = {
   importId: string;
@@ -936,11 +937,16 @@ export function startRtaImportWorker() {
         if ((job.data as any)?.mode === "rich") {
           // Forward live progress to BullMQ so /api/rta/import-status (and the UI
           // bar + ETA) can read it. updateProgress is fire-and-forget.
-          return await runRichImportJob(job.data as RichImportJob, (p) => {
+          const summary = await runRichImportJob(job.data as RichImportJob, (p) => {
             void job.updateProgress(p as any);
           });
+          await matchBookedBusinessAfterImport((job.data as any)?.tenantId);
+          return summary;
         }
         await runRtaImportJob(job.data as RtaImportJob);
+        // New RTA rows can confirm or reject business the team booked
+        // (lib/business/rta-match.ts). Best effort — never fails the import.
+        await matchBookedBusinessAfterImport((job.data as RtaImportJob).tenantId);
       } finally {
         // Purge the source file ONLY once it has actually been imported.
         //

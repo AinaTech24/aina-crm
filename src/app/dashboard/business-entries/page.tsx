@@ -12,7 +12,8 @@ import { formatINR } from "@/lib/utils";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
 import { BusinessEntriesTable } from "@/components/business-entries/BusinessEntriesTable";
-import { PRODUCT_TYPES, BUSINESS_ENTRY_STATUSES } from "@/db/schema/business_entries";
+import { PRODUCT_TYPES, BUSINESS_ENTRY_STATUSES, RTA_LINE_STATUSES } from "@/db/schema/business_entries";
+import { RTA_STATUS_LABEL } from "@/lib/business/rta-status";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,10 @@ export default async function BusinessEntriesPage({
   const statusFilter = (sp.status ?? "").split(",").filter(Boolean);
   const productFilter = (sp.productType ?? "").split(",").filter(Boolean);
   const rmFilter = (sp.rm ?? "").split(",").filter(Boolean);
+  // RTA outcome of the entry's lines (lib/business/rta-match.ts) — how Operations
+  // finds booked business the RTA rejected, never received, or processed differently.
+  const rtaFilter = (sp.rta ?? "").split(",").filter((v): v is (typeof RTA_LINE_STATUSES)[number] =>
+    (RTA_LINE_STATUSES as readonly string[]).includes(v));
   const from = sp.from;
   const to = sp.to;
 
@@ -54,6 +59,12 @@ export default async function BusinessEntriesPage({
     if (statusFilter.length) conds.push(inArray(businessEntries.status, statusFilter as any));
     if (productFilter.length) conds.push(inArray(businessEntries.productType, productFilter as any));
     if (rmFilter.length) conds.push(inArray(businessEntries.rmId, rmFilter as any));
+    if (rtaFilter.length) {
+      // Only counted entries are checked against the RTA; a draft's lines are not "awaiting".
+      conds.push(inArray(businessEntries.status, ["confirmed", "emailed"]));
+      conds.push(sql`EXISTS (SELECT 1 FROM business_entry_lines l WHERE l.entry_id = ${businessEntries.id}
+        AND l.rta_status IN (${sql.join(rtaFilter.map((v) => sql`${v}`), sql`, `)}))`);
+    }
     if (from) conds.push(gte(businessEntries.businessDate, from));
     if (to) conds.push(lte(businessEntries.businessDate, to));
 
@@ -69,6 +80,9 @@ export default async function BusinessEntriesPage({
         totalAmount: businessEntries.totalAmount,
         rmName: users.name,
         lineCount: sql<number>`(SELECT count(*)::int FROM business_entry_lines l WHERE l.entry_id = ${businessEntries.id})`,
+        rta: sql<Record<string, number> | null>`(SELECT json_object_agg(x.s, x.n) FROM (
+          SELECT l.rta_status AS s, count(*)::int AS n FROM business_entry_lines l
+           WHERE l.entry_id = ${businessEntries.id} GROUP BY l.rta_status) x)`,
       })
       .from(businessEntries)
       .leftJoin(users, eq(users.id, businessEntries.rmId))
@@ -116,6 +130,7 @@ export default async function BusinessEntriesPage({
           { type: "multi", key: "status", label: "Status", options: BUSINESS_ENTRY_STATUSES.map((s) => ({ value: s, label: s })) },
           { type: "multi", key: "productType", label: "Product", options: PRODUCT_TYPES.map((p) => ({ value: p, label: PRODUCT_LABEL[p] ?? p })) },
           ...(rmOptions.length ? [{ type: "multi" as const, key: "rm", label: "RM", options: rmOptions }] : []),
+          { type: "multi", key: "rta", label: "RTA", options: RTA_LINE_STATUSES.map((s) => ({ value: s, label: RTA_STATUS_LABEL[s] })) },
         ]}
       />
 

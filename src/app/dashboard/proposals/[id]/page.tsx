@@ -11,14 +11,17 @@ import {
   Calendar,
   IndianRupee,
   TrendingUp,
+  Phone,
+  Mail,
 } from "lucide-react";
 import { withTenant } from "@/db/client";
-import { proposals, users, investors } from "@/db/schema";
+import { proposals, investors } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { dataWallAppliesFor } from "@/lib/investors/access";
 import { loadViewableProposal } from "@/lib/proposals/access";
-import { formatDate, formatINR } from "@/lib/utils";
+import { formatDate, formatINR, formatPhone, isValidIndianMobile } from "@/lib/utils";
+import { Badge } from "@/components/ui/Badge";
 import { ProposalStatusActions } from "@/components/proposals/ProposalStatusActions";
 import { ProposalSendActions } from "@/components/proposals/ProposalSendActions";
 import { ProposalSuitabilityPanel } from "@/components/proposals/ProposalSuitabilityPanel";
@@ -77,9 +80,6 @@ export default async function ProposalDetailPage({
   const data = await withTenant(session.tenantId, async (tx) => {
     const p = await loadViewableProposal(tx, session, id);
     if (!p) return null;
-    const u = p.preparedByUserId
-      ? (await tx.select().from(users).where(eq(users.id, p.preparedByUserId)).limit(1))[0]
-      : null;
     const inv = p.investorId
       ? (await tx.select().from(investors).where(eq(investors.id, p.investorId)).limit(1))[0]
       : null;
@@ -89,14 +89,20 @@ export default async function ProposalDetailPage({
       .from(proposals)
       .where(and(eq(proposals.tenantId, p.tenantId), eq(proposals.proposalNumber, p.proposalNumber)))
       .orderBy(asc(proposals.version));
-    return { p, u, inv, versions };
+    return { p, inv, versions };
   });
   if (!data) notFound();
-  const { p, u, inv, versions } = data;
+  const { p, inv, versions } = data;
   const products = (p.products ?? []) as any[];
   const accepted = Array.isArray(p.acceptedItems) ? new Set(p.acceptedItems as number[]) : null;
   const latest = versions[versions.length - 1];
   const firstName = String(p.recipientName ?? "").split(" ")[0] || "The client";
+  const sendable = !CLOSED_FOR_SENDING.includes(p.status as string);
+  // A draft's next step is sending it; after that, the client's answer is.
+  const isDraft = p.status === "draft" || p.status === "ready";
+  const phone = String(p.recipientPhone ?? "").trim();
+  // WhatsApp can use an Indian mobile, or a foreign number written with its +code.
+  const phoneOk = !phone || isValidIndianMobile(phone) || /^\+\d[\d\s()-]{6,18}$/.test(phone);
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -124,7 +130,9 @@ export default async function ProposalDetailPage({
                 {p.proposalNumber}
                 {(p.version ?? 1) > 1 || versions.length > 1 ? ` · v${p.version ?? 1}` : ""}
               </div>
-              <h1 className="page-title mt-1">{p.title}</h1>
+              {/* Not .page-title: it sets the body text colour, which vanished on
+                  the dark header for a firm with a dark brand colour. */}
+              <h1 className="mt-1 text-2xl sm:text-3xl font-semibold tracking-tight text-white">{p.title}</h1>
               <div className="text-white/85 text-sm mt-1 flex items-center gap-3 flex-wrap">
                 <span>{TYPE_LABEL[p.type]}</span>
                 <span className="text-white/40">·</span>
@@ -157,7 +165,7 @@ export default async function ProposalDetailPage({
       )}
 
       {/* KPIs */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="kpi-card">
           <div className="flex items-center justify-between">
             <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
@@ -190,20 +198,42 @@ export default async function ProposalDetailPage({
         </div>
         <div className="kpi-card">
           <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
-            Line items
+            Recommendations
           </div>
           <div className="text-xl font-bold mt-2 tabular-nums">{products.length}</div>
         </div>
       </div>
 
-      {/* Actions strip */}
+      {/* One card: who it goes to and how to reach them, the record (PDF,
+          edit / revise), then the next step — send while it is a draft, record
+          the client's answer once it has gone. */}
       <div className="card-surface p-4 space-y-3">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="text-xs text-muted-foreground">
-            Prepared by <span className="font-medium text-foreground">{u?.name ?? "—"}</span>{" "}
-            on <span className="font-medium text-foreground">{formatDate(p.preparedAt)}</span>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold">To {p.recipientName}</div>
+            <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5">
+                <Phone className="size-3.5" aria-hidden />
+                {phone ? (
+                  <>
+                    <span className="tabular-nums text-foreground">{formatPhone(phone)}</span>
+                    {!phoneOk && (
+                      <span title="Not a valid mobile number, so WhatsApp may open the wrong chat. Correct it on the client's or lead's record.">
+                        <Badge tone="warning">Check number</Badge>
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  "No mobile on file"
+                )}
+              </span>
+              <span className="inline-flex items-center gap-1.5 min-w-0">
+                <Mail className="size-3.5" aria-hidden />
+                {p.recipientEmail ? <span className="text-foreground break-all">{p.recipientEmail}</span> : "No email on file"}
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {/* Real PDF (Content-Disposition: attachment) — saves directly, no new tab. */}
             <DownloadButton
               url={`/api/proposals/${p.id}/pdf?download=1`}
@@ -212,46 +242,32 @@ export default async function ProposalDetailPage({
             >
               <Download className="size-3.5" /> Download PDF
             </DownloadButton>
-            <ProposalStatusActions id={p.id} status={p.status} version={p.version ?? 1} />
+            <ProposalStatusActions id={p.id} status={p.status} version={p.version ?? 1} group="manage" />
           </div>
         </div>
-        {/* Send to client — email + WhatsApp. Not once the client has answered
-            or a newer version replaced it: the send route refuses those, so
-            the buttons would only lead to an error. */}
-        {!CLOSED_FOR_SENDING.includes(p.status as string) && (
-        <div className="border-t border-border pt-3 flex items-start justify-between gap-3 flex-wrap">
-          <div className="text-xs text-muted-foreground">
-            Share with{" "}
-            <span className="font-medium text-foreground">{p.recipientName}</span>
-            {p.recipientEmail && (
-              <>
-                {" "}
-                · <span className="font-mono">{p.recipientEmail}</span>
-              </>
-            )}
-            {p.recipientPhone && (
-              <>
-                {" "}
-                · <span className="font-mono">{p.recipientPhone}</span>
-              </>
-            )}
+        {/* Not once the client has answered or a newer version replaced it: the
+            send route refuses those, so the buttons would only lead to an error. */}
+        {sendable && (
+          <div className="border-t border-border pt-3 flex items-center gap-2 flex-wrap">
+            <ProposalSendActions
+              id={p.id}
+              hasEmail={!!p.recipientEmail}
+              hasPhone={!!phone}
+              status={p.status}
+              primary={isDraft}
+            />
+            <ProposalStatusActions id={p.id} status={p.status} version={p.version ?? 1} group="decide" />
           </div>
-          <ProposalSendActions
-            id={p.id}
-            hasEmail={!!p.recipientEmail}
-            hasPhone={!!p.recipientPhone}
-            status={p.status}
-          />
-        </div>
         )}
       </div>
 
       {/* What the client did */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="card-surface p-5 md:col-span-2">
+      <div className={`grid grid-cols-1 gap-4 ${versions.length > 1 ? "md:grid-cols-3" : ""}`}>
+        <div className={`card-surface p-5 ${versions.length > 1 ? "md:col-span-2" : ""}`}>
           <h2 className="section-title mb-3">What {firstName} did</h2>
           <ProposalTimeline proposal={p as any} />
         </div>
+        {versions.length > 1 && (
         <div className="card-surface p-5">
           <h2 className="section-title mb-3">Versions</h2>
           <ol className="space-y-1.5 text-sm">
@@ -266,10 +282,8 @@ export default async function ProposalDetailPage({
               </li>
             ))}
           </ol>
-          {versions.length === 1 && (
-            <p className="text-2xs text-muted-foreground mt-2">Once sent, changes go into a new version so this one stays as the client saw it.</p>
-          )}
         </div>
+        )}
       </div>
 
       {/* Cover letter */}
@@ -407,7 +421,7 @@ function ProductDetails({ it }: { it: any }) {
   }
   if (kv.length === 0) return null;
   return (
-    <div className="grid grid-cols-4 gap-2 text-xs">
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
       {kv.map(([k, v]) => (
         <div key={k} className="bg-secondary/40 rounded px-2 py-1.5">
           <div className="text-2xs uppercase tracking-wider text-muted-foreground">

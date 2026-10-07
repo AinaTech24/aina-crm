@@ -96,7 +96,10 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
     },
   ],
 
-  // 2. Call Done — schedule, log existing, or kill.
+  // 2. Call Done ("Contacted") — schedule a meeting, propose straight from the
+  // call, or kill. Most firms settle everything on the phone and send the
+  // proposal without a meeting (the firm's request, 2026-10-07); sending it
+  // moves the journey to Proposal Sent (proposal.sent auto-advance).
   call_done: [
     {
       key: "schedule_meeting",
@@ -105,6 +108,14 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       targetStage: "meeting_scheduled",
       hint: "Opens the meeting form pre-filled with this lead.",
       behaviour: { kind: "open_dialog", dialog: "schedule_meeting" },
+    },
+    {
+      key: "proposal",
+      label: "Create Proposal",
+      tone: "secondary",
+      targetStage: "proposal_sent",
+      hint: "Discussed it all on the call? Build the proposal and send it — the journey moves to Proposal Sent.",
+      behaviour: { kind: "proposal", step: "create_or_send" },
     },
     {
       key: "meeting_pending",

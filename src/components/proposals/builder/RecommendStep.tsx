@@ -37,10 +37,11 @@ type Other = Extract<Item, { kind: "other" }>;
 const inr = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
 
 const ADD: Array<{ label: string; make: () => Item }> = [
-  { label: "SIP", make: () => ({ kind: "mf", schemeName: "", recommendationType: "sip" }) },
-  { label: "Lumpsum", make: () => ({ kind: "mf", schemeName: "", recommendationType: "lumpsum" }) },
-  { label: "SWP", make: () => ({ kind: "mf", schemeName: "", recommendationType: "swp" }) },
-  { label: "STP", make: () => ({ kind: "mf", schemeName: "", recommendationType: "stp" }) },
+  // The firm distributes Regular plans only (2026-10-07), so every MF line starts Regular.
+  { label: "SIP", make: () => ({ kind: "mf", schemeName: "", recommendationType: "sip", planType: "regular" }) },
+  { label: "Lumpsum", make: () => ({ kind: "mf", schemeName: "", recommendationType: "lumpsum", planType: "regular" }) },
+  { label: "SWP", make: () => ({ kind: "mf", schemeName: "", recommendationType: "swp", planType: "regular" }) },
+  { label: "STP", make: () => ({ kind: "mf", schemeName: "", recommendationType: "stp", planType: "regular" }) },
   { label: "Insurance", make: () => ({ kind: "insurance", policyName: "" }) },
   { label: "PMS", make: () => ({ kind: "pms", strategyName: "" }) },
   { label: "AIF", make: () => ({ kind: "aif", fundName: "" }) },
@@ -322,7 +323,9 @@ function MFRow({ item, onPatch, goals }: { item: MF; onPatch: (p: Partial<MF>) =
                 // The scheme decides these two, so a new pick replaces the old
                 // scheme's values (or clears them when it is not known).
                 riskRating: riskometerLevel(s.risk?.band),
-                planType: s.plan ?? undefined,
+                // The search lists Regular plans only (plan="regular"), and the
+                // firm sells nothing else.
+                planType: "regular",
               })
             }
             placeholder="Search your Scheme Master…"
@@ -378,10 +381,11 @@ function MFRow({ item, onPatch, goals }: { item: MF; onPatch: (p: Partial<MF>) =
 
       <label className="block">
         <span className="text-2xs font-medium text-muted-foreground">Plan</span>
-        <SelectField value={item.planType ?? ""} onChange={(e) => onPatch({ planType: (e.target.value || undefined) as any })} className="input-base text-sm mt-1">
-          <option value="">—</option>
+        <SelectField value={item.planType === "direct" ? "direct" : "regular"} onChange={(e) => onPatch({ planType: e.target.value as any })} className="input-base text-sm mt-1">
           <option value="regular">Regular</option>
-          <option value="direct">Direct</option>
+          {/* Regular only (the firm's rule, 2026-10-07). A line saved as Direct
+              before that still says so until it is changed. */}
+          {item.planType === "direct" && <option value="direct">Direct</option>}
         </SelectField>
       </label>
 

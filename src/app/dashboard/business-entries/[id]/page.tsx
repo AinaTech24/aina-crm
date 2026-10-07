@@ -12,6 +12,9 @@ import { formatINR } from "@/lib/utils";
 import { ASSET_CLASS_LABELS, ASSET_CLASS_ORDER, type AssetClass } from "@/lib/business/asset-class";
 import { BusinessEntryActions } from "@/components/business/BusinessEntryActions";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
+import { Badge } from "@/components/ui/Badge";
+import { RTA_STATUS_LABEL, RTA_STATUS_TONE } from "@/lib/business/rta-status";
+import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +52,8 @@ export default async function BusinessEntryDetailPage({ params }: { params: Prom
   if (!data) notFound();
 
   const { entry, lines } = data;
+  // Only a counted entry is checked against the RTA (lib/business/rta-match.ts).
+  const rtaChecked = entry.status === "confirmed" || entry.status === "emailed";
   const breakup = (entry.assetBreakup ?? {}) as Record<string, number>;
   const dateStr = new Date(entry.businessDate).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" });
 
@@ -108,6 +113,12 @@ export default async function BusinessEntryDetailPage({ params }: { params: Prom
               <th className="text-left py-2 font-medium">Type</th>
               <th className="text-left py-2 font-medium">Class</th>
               <th className="text-right py-2 font-medium pr-4">Amount</th>
+              <th
+                className="text-left py-2 font-medium pr-4"
+                title="Each mutual-fund line is checked against the RTA feed after every import and each night. Targets count the booking; a line the RTA rejects is taken off as set in Settings → Dashboard thresholds."
+              >
+                RTA
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -125,6 +136,21 @@ export default async function BusinessEntryDetailPage({ params }: { params: Prom
                 </td>
                 <td className="py-2.5 text-xs capitalize text-muted-foreground">{l.assetClass}</td>
                 <td className="py-2.5 text-right tabular-nums font-medium pr-4">{formatINR(Number(l.amount))}</td>
+                <td className="py-2.5 pr-4 align-top">
+                  {rtaChecked ? (
+                    <div className="space-y-0.5">
+                      <Badge tone={RTA_STATUS_TONE[l.rtaStatus]} raw>{RTA_STATUS_LABEL[l.rtaStatus]}</Badge>
+                      {(l.rtaStatusAt || l.rtaNote) && (
+                        <div className="max-w-xs text-2xs text-muted-foreground">
+                          {l.rtaStatusAt && l.rtaStatus !== "not_found" ? `${formatDate(l.rtaStatusAt)}. ` : ""}
+                          {l.rtaNote}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-muted-foreground" title="Checked against the RTA once the entry is confirmed.">—</span>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

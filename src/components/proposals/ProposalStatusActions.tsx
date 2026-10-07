@@ -10,6 +10,9 @@
  *   - "Revise"         → a new version once it has been sent; the sent one is
  *                        kept as the record of what the client saw
  *
+ * `group` splits them on the page: "manage" is the record (Edit, Revise),
+ * "decide" the client's answer (Mark as Sent / Accepted / Rejected).
+ *
  * Server enforces the same transitions through PATCH /api/proposals/[id].
  */
 
@@ -20,7 +23,19 @@ import { Send, CheckCircle2, XCircle, Loader2, Pencil, GitBranch } from "lucide-
 import { useToast } from "@/components/ui/Toast";
 import { promptDialog } from "@/components/ui/ConfirmProvider";
 
-export function ProposalStatusActions({ id, status, version = 1 }: { id: string; status: string; version?: number }) {
+export function ProposalStatusActions({
+  id,
+  status,
+  version = 1,
+  group = "all",
+}: {
+  id: string;
+  status: string;
+  version?: number;
+  group?: "manage" | "decide" | "all";
+}) {
+  const manage = group !== "decide";
+  const decide = group !== "manage";
   const router = useRouter();
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
@@ -77,12 +92,12 @@ export function ProposalStatusActions({ id, status, version = 1 }: { id: string;
 
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
-      {canEdit && (
+      {manage && canEdit && (
         <Link href={`/dashboard/proposals/${id}/edit`} className="btn-secondary text-xs">
           <Pencil className="size-3.5" /> Edit
         </Link>
       )}
-      {canRevise && (
+      {manage && canRevise && (
         <button
           onClick={revise}
           disabled={!!busy}
@@ -93,11 +108,13 @@ export function ProposalStatusActions({ id, status, version = 1 }: { id: string;
           Revise (creates v{version + 1})
         </button>
       )}
-      {canSend && (
+      {decide && canSend && (
         <button
           onClick={() => transition("sent")}
           disabled={!!busy}
-          className="btn-accent text-xs"
+          // Sending it from here is the main step; this records a send made elsewhere.
+          className="btn-secondary text-xs"
+          title="Sent it another way (in person, your own email)? Record it as sent."
         >
           {busy === "sent" ? (
             <Loader2 className="size-3.5 animate-spin" />
@@ -107,7 +124,7 @@ export function ProposalStatusActions({ id, status, version = 1 }: { id: string;
           Mark as Sent
         </button>
       )}
-      {canAccept && (
+      {decide && canAccept && (
         <button
           onClick={() => transition("accepted")}
           disabled={!!busy}
@@ -122,7 +139,7 @@ export function ProposalStatusActions({ id, status, version = 1 }: { id: string;
           Mark Accepted
         </button>
       )}
-      {canReject && (
+      {decide && canReject && (
         <button
           onClick={async () => {
             const reason = await promptDialog({

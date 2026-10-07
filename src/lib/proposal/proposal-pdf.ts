@@ -5,34 +5,41 @@
  * attachment and the client's own link — so they are always the same document.
  *
  * Reads top to bottom like a distributor's formal proposal:
- *   letterhead (logo · ref · date · ARN)
- *   prepared for / prepared by (client, their risk profile · RM, EUIN, contact)
- *   title, summary, validity, cover note
+ *   letterhead (logo · the firm, ARN and how to reach it)
+ *   title ("Prepared for <client>") and the key facts: reference, dates,
+ *     proposal risk level
+ *   client / prepared by (their risk profile · RM, EUIN, contact)
+ *   summary, cover note
  *   at a glance — one-time money, monthly SIP, insurance premium and the
  *     illustrative value kept APART (adding a premium to an investment total
  *     made "₹50,01,300 invested" out of ₹50 lakh and a ₹1,300 premium)
  *   recommendations — one table per kind, scheme name wrapped never cut, the
- *     AMC / category / risk-o-meter under it, a total row
+ *     AMC / category / risk-o-meter / plan under it, a total row
  *   assumptions, suitability notes
  *   important disclosures — SEBI / AMFI: distributor status (not an RIA),
  *     market risk, illustrations, commission (SEBI 2009 transparency
  *     circular), regular vs direct plan, risk-o-meter, scheme documents, KYC,
  *     grievance redressal (SCORES); insurance / PMS-AIF / other-product
  *     disclosures only when the proposal carries them; the firm's own
- *     disclaimer last
+ *     disclaimer last. Set as two columns of fine print — every word kept.
  *   client acknowledgement + the distributor's signature
  *   footer on every page: firm · "AMFI Registered Mutual Fund Distributor" ·
- *     ARN, the AMFI market-risk sentence, contact line, page x of y
+ *     ARN, the AMFI market-risk sentence IN FULL, contact line, page x of y
+ *
+ * The look (2026-10-07, the firm asked for "clean and professional"): ink on
+ * white, hairline rules, the brand colour only as an accent (eyebrow, section
+ * marks, group titles), labels in small spaced capitals. The letterhead is
+ * drawn here rather than by lib/pdf/report-header, which other reports share.
  *
  * A projection is never painted green or called "corpus": it is an
  * illustrative value at an assumed return, and says so wherever it appears.
  */
 
-import { PDFDocument, rgb, type PDFFont, type PDFPage, type PDFImage, type RGB } from "pdf-lib";
-import { drawReportHeader, drawContinuationHeader } from "@/lib/pdf/report-header";
+import { PDFDocument, rgb, setCharacterSpacing, type PDFFont, type PDFPage, type PDFImage, type RGB } from "pdf-lib";
 import { embedPdfFonts, pdfSanitize } from "@/lib/pdf/fonts";
 import { MANDATORY_RISK_DISCLAIMER } from "@/lib/comms/compliance";
 import { itemMonthly, itemOneTime, itemRiskLabel, recommendationType } from "@/lib/proposals/items";
+import { formatPhone } from "@/lib/utils";
 
 export type ProposalBrand = {
   displayName?: string | null;
@@ -84,20 +91,22 @@ export type ProposalData = {
   products?: Array<Record<string, any>> | null;
 };
 
-const INK: RGB = rgb(0.067, 0.094, 0.153);
-const SLATE: RGB = rgb(0.278, 0.333, 0.412);
-const MUTED: RGB = rgb(0.443, 0.494, 0.565);
-const LINE: RGB = rgb(0.878, 0.898, 0.925);
-const PANEL: RGB = rgb(0.969, 0.973, 0.98);
+/* ── palette: ink on white, the brand colour only as an accent ── */
+const INK: RGB = rgb(0.067, 0.094, 0.153); // headings, figures
+const BODY: RGB = rgb(0.2, 0.255, 0.333); // running text
+const MUTED: RGB = rgb(0.392, 0.455, 0.545); // labels, captions
+const FAINT: RGB = rgb(0.58, 0.635, 0.71); // the footer's contact line, separators
+const LINE: RGB = rgb(0.886, 0.91, 0.941); // hairlines
+const RULE: RGB = rgb(0.796, 0.835, 0.882); // table header and total rules
+const PANEL: RGB = rgb(0.973, 0.98, 0.988); // the client / prepared-by panel
 const RED: RGB = rgb(0.725, 0.11, 0.11);
 const RED_BG: RGB = rgb(0.996, 0.949, 0.949);
-const ACCENT: RGB = rgb(0.055, 0.647, 0.914);
 const DEFAULT_PRIMARY: RGB = rgb(0.055, 0.145, 0.341);
 
 const A4: [number, number] = [595.28, 841.89];
-const M = 40;
+const M = 46;
 /** Content stays above this line; the footer owns the space below. */
-const FLOOR = 76;
+const FLOOR = 84;
 
 const KIND_TITLE: Record<string, string> = {
   insurance: "Insurance cover", pms: "Portfolio Management Services", aif: "Alternative Investment Funds",
@@ -108,6 +117,8 @@ const KIND_TITLE: Record<string, string> = {
 const KIND_ORDER = ["mf:sip", "mf:lumpsum", "mf:stp", "mf:swp", "pms", "aif", "insurance", "other"];
 
 const TAGLINE = "AMFI Registered Mutual Fund Distributor";
+const ACKNOWLEDGEMENT =
+  "I confirm that I have read this proposal, including the important disclosures, and that the recommendations are in line with my risk profile and investment objectives. I understand that illustrative values are not guaranteed.";
 
 // Glyph switches — set per render from the embedded font (process-stable).
 let KEEP_RUPEE = false;
@@ -213,8 +224,8 @@ function groupKey(it: any): string {
   return kind === "mf" ? `mf:${recommendationType(it) ?? "sip"}` : kind;
 }
 
-/** The line under a recommendation's name: AMC, category, risk-o-meter, plan. */
-function subLine(it: any): string | null {
+/** The facts under a recommendation's name: AMC, category, risk-o-meter, plan. */
+function subParts(it: any): string[] {
   if ((it?.kind ?? "mf") === "mf") {
     const risk = itemRiskLabel(it);
     return [
@@ -222,13 +233,13 @@ function subLine(it: any): string | null {
       it.category,
       risk ? `Risk-o-meter: ${risk}` : null,
       it.planType === "direct" ? "Direct plan" : it.planType === "regular" ? "Regular plan" : null,
-    ].filter(Boolean).join("  |  ") || null;
+    ].filter(Boolean).map((s) => clean(String(s)));
   }
-  if (it?.kind === "aif" && it.category) return `Category ${String(it.category).replace(/^cat/i, "")} AIF`;
+  if (it?.kind === "aif" && it.category) return [`Category ${String(it.category).replace(/^cat/i, "")} AIF`];
   if (it?.kind === "insurance" && insuranceName(it) === clean(String(it.policyName ?? ""))) {
-    return [it.insurer, typeLabel(it.policyType) ? `${typeLabel(it.policyType)} plan` : null].filter(Boolean).join("  |  ") || null;
+    return [it.insurer, typeLabel(it.policyType) ? `${typeLabel(it.policyType)} plan` : null].filter(Boolean).map((s) => clean(String(s)));
   }
-  return null;
+  return [];
 }
 
 /**
@@ -267,13 +278,12 @@ export async function renderProposalPdf(args: {
   KEEP_RUPEE = rupeeOk;
   CUR = rupeeOk ? "₹" : "Rs ";
   const primary = hexToRgb(brand.primaryColor);
-  const secondary = brand.secondaryColor ? hexToRgb(brand.secondaryColor) : ACCENT;
-  const tint = mix(primary, rgb(1, 1, 1), 0.9);
 
   const firm = clean(brand.legalName ?? brand.displayName ?? "") || "Your Mutual Fund Distributor";
   const arnNo = brand.arn ? String(brand.arn).replace(/^ARN[-\s:]*/i, "").trim() : "";
   const recipient = clean(p.recipientName ?? "") || "Client";
   const proposalDate = p.preparedAt ?? generatedAt;
+  const ref = p.proposalNumber ? clean(p.proposalNumber) : "";
 
   doc.setTitle(clean(`Proposal ${p.proposalNumber ?? ""} - ${recipient}`));
   doc.setProducer("Aina CRM");
@@ -282,134 +292,205 @@ export async function renderProposalPdf(args: {
 
   const [logo, signature] = await Promise.all([embedImage(doc, brand.logoUrl), embedImage(doc, prep?.signatureUrl)]);
   const W = A4[0];
+  const H = A4[1];
   const usable = W - 2 * M;
 
   // ── Cursor: pages are added as content overflows ──
   const cur = { page: doc.addPage(A4), y: 0 };
+  const text = (s: string, x: number, y: number, size: number, font: PDFFont, color: RGB) =>
+    cur.page.drawText(s, { x, y, size, font, color });
+  /** Small spaced capitals — the labels' voice. */
+  const label = (s: string, x: number, y: number, color: RGB = MUTED, size = 6.5) => {
+    cur.page.pushOperators(setCharacterSpacing(0.6));
+    cur.page.drawText(clean(s).toUpperCase(), { x, y, size, font: bold, color });
+    cur.page.pushOperators(setCharacterSpacing(0));
+  };
+  const labelWidth = (s: string, size = 6.5) => {
+    const t = clean(s).toUpperCase();
+    return bold.widthOfTextAtSize(t, size) + 0.6 * Math.max(0, t.length - 1);
+  };
+  const hairline = (y: number, x1 = M, x2 = M + usable, color: RGB = LINE, thickness = 0.8) =>
+    cur.page.drawLine({ start: { x: x1, y }, end: { x: x2, y }, thickness, color });
+
   const newPage = () => {
     cur.page = doc.addPage(A4);
-    cur.y = drawContinuationHeader({
-      page: cur.page, helv, bold, pageWidth: W, pageHeight: A4[1], margin: M,
-      firmName: firm, title: "Investment proposal", primary,
-    });
+    // A slim running head: who and what, then the same rule as the letterhead.
+    const top = H - 40;
+    text(truncate(firm, bold, 8.2, usable * 0.55), M, top, 8.2, bold, INK);
+    const r = ["Investment proposal", ref ? `Ref ${ref}` : null].filter(Boolean).join("  |  ");
+    text(r, W - M - helv.widthOfTextAtSize(r, 7.4), top, 7.4, helv, MUTED);
+    hairline(top - 10);
+    cur.page.drawRectangle({ x: M, y: top - 10.9, width: 28, height: 1.8, color: primary });
+    cur.y = top - 38;
   };
   const ensure = (need: number) => {
     if (cur.y - need < FLOOR) newPage();
   };
-  const text = (s: string, x: number, y: number, size: number, font: PDFFont, color: RGB) =>
-    cur.page.drawText(s, { x, y, size, font, color });
   /** Wrapped paragraph that flows across pages. */
   const para = (s: string, o: { x?: number; width?: number; size?: number; font?: PDFFont; color?: RGB; lh?: number } = {}) => {
-    const x = o.x ?? M, width = o.width ?? usable, size = o.size ?? 9.5, font = o.font ?? helv, lh = o.lh ?? size * 1.42;
+    const x = o.x ?? M, width = o.width ?? usable, size = o.size ?? 9.2, font = o.font ?? helv, lh = o.lh ?? size * 1.5;
     for (const ln of wrapParas(s, font, size, width)) {
       ensure(lh);
-      if (ln) text(ln, x, cur.y, size, font, o.color ?? SLATE);
+      if (ln) text(ln, x, cur.y, size, font, o.color ?? BODY);
       cur.y -= lh;
     }
   };
-  const sectionTitle = (t: string) => {
-    ensure(46);
-    cur.page.drawRectangle({ x: M, y: cur.y - 2, width: 3, height: 13, color: primary });
-    text(clean(t), M + 9, cur.y, 11.5, bold, INK);
-    cur.y -= 20;
+  /** A section: its name, a hairline, and a short accent in the brand colour.
+   *  `keepWith` is the room its first content needs: a heading never sits
+   *  alone at the foot of a page. */
+  const sectionTitle = (t: string, keepWith = 0) => {
+    ensure(64 + keepWith);
+    text(clean(t), M, cur.y, 12, bold, INK);
+    const ly = cur.y - 9;
+    hairline(ly);
+    cur.page.drawRectangle({ x: M, y: ly - 0.9, width: 28, height: 1.8, color: primary });
+    cur.y = ly - 21;
   };
 
   // ── Letterhead ──
-  cur.y = drawReportHeader({
-    page: cur.page, helv, bold, pageWidth: W, pageHeight: A4[1], margin: M, logo,
-    firmName: firm,
-    title: "INVESTMENT PROPOSAL",
-    subtitles: [
-      p.proposalNumber ? `Ref ${p.proposalNumber}${n(p.version) && Number(p.version) > 1 ? ` (version ${p.version})` : ""}` : null,
-      `Dated ${fmtDate(proposalDate)}`,
-    ],
-    arn: arnNo || null,
-    primary,
-    secondary,
-  });
+  {
+    const top = H - 40;
+    let leftBottom: number;
+    if (logo) {
+      const maxH = 44, maxW = 200;
+      let dw = (logo.width / logo.height) * maxH, dh = maxH;
+      if (dw > maxW) { dw = maxW; dh = (logo.height / logo.width) * maxW; }
+      cur.page.drawImage(logo, { x: M, y: top - dh, width: dw, height: dh });
+      leftBottom = top - dh;
+    } else {
+      text(truncate(firm, bold, 15, usable * 0.55), M, top - 15, 15, bold, INK);
+      leftBottom = top - 20;
+    }
+    // Right: who the firm is and how to reach it (the name only when the logo
+    // has not already said it).
+    const lines: Array<{ t: string; f: PDFFont; s: number; c: RGB }> = [];
+    if (logo) lines.push({ t: firm, f: bold, s: 8.6, c: INK });
+    lines.push({ t: [TAGLINE, arnNo ? `ARN-${arnNo}` : null].filter(Boolean).join("  |  "), f: helv, s: 7.3, c: MUTED });
+    const reach = [brand.phone ? formatPhone(brand.phone) : null, brand.email].filter(Boolean).map((v) => clean(String(v))).join("  |  ");
+    if (reach) lines.push({ t: reach, f: helv, s: 7.3, c: MUTED });
+    if (brand.website) lines.push({ t: clean(String(brand.website)), f: helv, s: 7.3, c: MUTED });
+    let ry = top - 8;
+    for (const l of lines) {
+      const t = truncate(clean(l.t), l.f, l.s, usable * 0.5);
+      text(t, W - M - l.f.widthOfTextAtSize(t, l.s), ry, l.s, l.f, l.c);
+      ry -= l.s + 4.6;
+    }
+    const bottom = Math.min(leftBottom, ry + 3) - 14;
+    hairline(bottom);
+    cur.page.drawRectangle({ x: M, y: bottom - 0.9, width: 56, height: 1.8, color: primary });
+    cur.y = bottom - 34;
+  }
 
-  // ── Prepared for / prepared by ──
+  // ── Title and summary ──
+  {
+    label("Investment proposal", M, cur.y, primary, 7);
+    cur.y -= 23;
+    const rawTitle = clean(p.title ?? "");
+    const generic = !rawTitle || /^investment proposal$/i.test(rawTitle);
+    const title = generic ? `Prepared for ${recipient}` : rawTitle;
+    for (const ln of wrapParas(title, bold, 20, usable).slice(0, 3)) {
+      ensure(26);
+      text(ln, M, cur.y, 20, bold, INK);
+      cur.y -= 25;
+    }
+    if (!generic) {
+      text(truncate(`Prepared for ${recipient}`, helv, 10.5, usable), M, cur.y + 3, 10.5, helv, BODY);
+      cur.y -= 15;
+    }
+    if (p.summary && p.summary.trim()) {
+      cur.y -= 2;
+      para(p.summary, { size: 9.6, color: BODY, lh: 14 });
+    }
+    cur.y -= 8;
+  }
+
+  // ── Key facts: reference, dates, proposal risk level ──
+  {
+    const facts: Array<{ k: string; v: string; lapsed?: boolean }> = [];
+    if (ref) facts.push({ k: "Reference", v: `${ref}${n(p.version) && Number(p.version) > 1 ? ` (version ${p.version})` : ""}` });
+    facts.push({ k: "Proposal date", v: fmtDate(proposalDate) });
+    // A validity date in the past is said, not hidden.
+    if (p.validUntil) facts.push({ k: "Valid until", v: fmtDate(p.validUntil), lapsed: istDay(p.validUntil) < istDay(generatedAt) });
+    if (p.riskRating) facts.push({ k: "Proposal risk level", v: humanise(p.riskRating) });
+    ensure(56);
+    const top = cur.y;
+    hairline(top);
+    // Each cell as wide as its content needs, the rest shared out — a long
+    // reference ("... (version 2)") keeps the same size as the other facts.
+    const need = facts.map((f) => Math.max(labelWidth(f.k), bold.widthOfTextAtSize(f.v, 9.8) + (f.lapsed ? 46 : 0)) + 22);
+    const spare = (usable - need.reduce((a, b) => a + b, 0)) / facts.length;
+    const widths = spare >= 0 ? need.map((w) => w + spare) : facts.map(() => usable / facts.length);
+    let fx = M;
+    facts.forEach((f, i) => {
+      const x = fx;
+      const cw = widths[i];
+      fx += cw;
+      label(f.k, x, top - 15);
+      const vs = fitText(f.v, bold, 9.8, cw - 14, 7.5);
+      text(f.v, x, top - 30, vs, bold, f.lapsed ? RED : INK);
+      if (f.lapsed) {
+        const chip = "Lapsed";
+        const cx = x + bold.widthOfTextAtSize(f.v, vs) + 7;
+        const chw = bold.widthOfTextAtSize(chip, 6.5) + 10;
+        if (cx + chw < x + cw - 4) {
+          cur.page.drawRectangle({ x: cx, y: top - 33, width: chw, height: 11.5, color: RED_BG, borderColor: RED, borderWidth: 0.5 });
+          text(chip, cx + 5, top - 29.6, 6.5, bold, RED);
+        }
+      }
+    });
+    hairline(top - 41);
+    cur.y = top - 41 - 22;
+  }
+
+  // ── Client / prepared by ──
   {
     const client = args.client ?? null;
     const riskLine = client?.riskProfile
       ? `Risk profile: ${humanise(client.riskProfile)}${client.riskProfileProvisional ? " (provisional)" : client.riskProfileSignedAt ? `, assessed ${fmtDate(client.riskProfileSignedAt)}` : ""}`
       : null;
-    const left: Line[] = [
-      { t: recipient, f: bold, s: 11, c: INK },
-      p.recipientEmail ? { t: clean(p.recipientEmail), f: helv, s: 8.5, c: SLATE } : null,
-      p.recipientPhone ? { t: clean(p.recipientPhone), f: helv, s: 8.5, c: SLATE } : null,
-      riskLine ? { t: riskLine, f: helv, s: 8.5, c: SLATE } : null,
-    ].filter(Boolean) as Line[];
-    const right: Line[] = [
-      { t: clean(prep?.name ?? "") || firm, f: bold, s: 11, c: INK },
-      prep?.name ? { t: firm, f: helv, s: 8.5, c: SLATE } : null,
-      prep?.euin ? { t: `EUIN ${clean(prep.euin)}`, f: helv, s: 8.5, c: SLATE } : null,
+    const left = [
+      p.recipientPhone ? formatPhone(p.recipientPhone) : null,
+      p.recipientEmail ? clean(p.recipientEmail) : null,
+      riskLine,
+    ].filter(Boolean).map((s) => clean(String(s)));
+    const right = [
+      prep?.name ? firm : null,
+      prep?.euin ? `EUIN ${clean(prep.euin)}` : null,
       prep?.phone || prep?.email
-        ? { t: [prep?.phone, prep?.email].filter(Boolean).map((v) => clean(String(v))).join("  |  "), f: helv, s: 8.5, c: SLATE }
+        ? [prep?.phone ? formatPhone(prep.phone) : null, prep?.email].filter(Boolean).map((v) => clean(String(v))).join("  |  ")
         : null,
-    ].filter(Boolean) as Line[];
-    const colW = (usable - 12) / 2;
-    const lh = (l: Line) => (l.s > 10 ? 15 : 12.5);
-    const bodyH = (ls: Line[]) => ls.reduce((h, l) => h + lh(l), 0);
-    const h = 30 + Math.max(bodyH(left), bodyH(right)) + 4;
-    ensure(h + 10);
-    const box = (x: number, label: string, ls: Line[]) => {
-      cur.page.drawRectangle({ x, y: cur.y - h, width: colW, height: h, color: PANEL, borderColor: LINE, borderWidth: 0.8 });
-      cur.page.drawRectangle({ x, y: cur.y - 2, width: colW, height: 2, color: primary });
-      text(label, x + 12, cur.y - 17, 7, bold, MUTED);
-      let y = cur.y - 33;
-      for (const l of ls) {
-        text(truncate(l.t, l.f, l.s, colW - 24), x + 12, y, l.s, l.f, l.c);
-        y -= lh(l);
+    ].filter(Boolean).map((s) => clean(String(s)));
+    const pad = 15, gap = 30;
+    const colW = (usable - 2 * pad - gap) / 2;
+    const bodyH = (k: number) => 16 + 15 + k * 12;
+    const h = pad + Math.max(bodyH(left.length), bodyH(right.length)) + pad - 8;
+    ensure(h + 16);
+    const top = cur.y + 4;
+    cur.page.drawRectangle({ x: M, y: top - h, width: usable, height: h, color: PANEL });
+    const col = (x: number, title: string, name: string, lines: string[]) => {
+      let y = top - pad - 6;
+      label(title, x, y);
+      y -= 17;
+      text(truncate(name, bold, 11.5, colW), x, y, 11.5, bold, INK);
+      y -= 15;
+      for (const l of lines) {
+        text(truncate(l, helv, 8.2, colW), x, y, 8.2, helv, BODY);
+        y -= 12;
       }
     };
-    box(M, "PREPARED FOR", left);
-    box(M + colW + 12, "PREPARED BY", right);
-    cur.y -= h + 24;
-  }
-
-  // ── Title, summary, validity ──
-  {
-    const rawTitle = clean(p.title ?? "");
-    const title = !rawTitle || /^investment proposal$/i.test(rawTitle) ? `Investment proposal for ${recipient}` : rawTitle;
-    for (const ln of wrapParas(title, bold, 16, usable).slice(0, 3)) {
-      ensure(20);
-      text(ln, M, cur.y, 16, bold, INK);
-      cur.y -= 20;
-    }
-    if (p.summary && p.summary.trim()) {
-      cur.y += 2;
-      para(p.summary, { size: 10, color: SLATE });
-    }
-    cur.y -= 4;
-    ensure(18);
-    let x = M;
-    const meta = (label: string, value: string) => {
-      text(label, x, cur.y, 8.5, helv, MUTED);
-      x += helv.widthOfTextAtSize(label, 8.5) + 4;
-      text(value, x, cur.y, 8.5, bold, INK);
-      x += bold.widthOfTextAtSize(value, 8.5) + 18;
-    };
-    meta("Proposal date", fmtDate(proposalDate));
-    if (p.validUntil) {
-      meta("Valid until", fmtDate(p.validUntil));
-      if (istDay(p.validUntil) < istDay(generatedAt)) {
-        // A validity date in the past is said, not hidden.
-        const chip = "Validity has lapsed";
-        const cw = bold.widthOfTextAtSize(chip, 7) + 12;
-        cur.page.drawRectangle({ x: x - 8, y: cur.y - 3.5, width: cw, height: 13, color: RED_BG, borderColor: RED, borderWidth: 0.5 });
-        text(chip, x - 2, cur.y, 7, bold, RED);
-        x += cw + 10;
-      }
-    }
-    if (p.riskRating) meta("Proposal risk level", humanise(p.riskRating));
-    cur.y -= 22;
+    col(M + pad, "Client", recipient, left);
+    cur.page.drawLine({
+      start: { x: M + usable / 2, y: top - pad + 2 }, end: { x: M + usable / 2, y: top - h + pad - 2 },
+      thickness: 0.6, color: LINE,
+    });
+    col(M + pad + colW + gap, "Prepared by", clean(prep?.name ?? "") || firm, right);
+    cur.y = top - h - 30;
   }
 
   // ── Cover note — paragraphs kept, flows across pages ──
   if (p.coverLetter && p.coverLetter.trim()) {
-    para(p.coverLetter, { size: 9.5, color: SLATE, lh: 13.6 });
-    cur.y -= 10;
+    para(p.coverLetter, { size: 9.4, color: BODY, lh: 14 });
+    cur.y -= 14;
   }
 
   // ── At a glance ──
@@ -430,20 +511,20 @@ export async function renderProposalPdf(args: {
     if (premium) tiles.push({ label: "Insurance premium", value: amt(premium), sub: "per year" });
     if (illus) tiles.push({ label: "Illustrative value*", value: amt(illus), sub: "at assumed returns" });
     if (tiles.length) {
-      sectionTitle("At a glance");
-      const gap = 10, th = 56;
+      sectionTitle("At a glance", 66);
+      const gap = 10, th = 58;
       const tw = (usable - gap * (tiles.length - 1)) / tiles.length;
       ensure(th + 8);
+      const top = cur.y + 8;
       tiles.forEach((t, i) => {
         const x = M + i * (tw + gap);
-        cur.page.drawRectangle({ x, y: cur.y - th, width: tw, height: th, color: PANEL, borderColor: LINE, borderWidth: 0.8 });
-        cur.page.drawRectangle({ x, y: cur.y - th, width: 2.5, height: th, color: primary });
-        text(t.label.toUpperCase(), x + 12, cur.y - 15, 6.8, bold, MUTED);
-        const vs = fitText(t.value, bold, 14, tw - 22, 8);
-        text(t.value, x + 12, cur.y - 35, vs, bold, INK);
-        if (t.sub) text(t.sub, x + 12, cur.y - 48, 7, helv, MUTED);
+        cur.page.drawRectangle({ x, y: top - th, width: tw, height: th, color: rgb(1, 1, 1), borderColor: LINE, borderWidth: 0.8 });
+        label(t.label, x + 12, top - 16);
+        const vs = fitText(t.value, bold, 15, tw - 24, 8);
+        text(t.value, x + 12, top - 36, vs, bold, INK);
+        if (t.sub) text(t.sub, x + 12, top - 49, 7, helv, MUTED);
       });
-      cur.y -= th + 26;
+      cur.y = top - th - 30;
     }
   }
 
@@ -451,55 +532,85 @@ export async function renderProposalPdf(args: {
   const groups: Record<string, any[]> = {};
   for (const it of products) (groups[groupKey(it)] ??= []).push(it);
   const kinds = Object.keys(groups).sort((a, b) => rank(a) - rank(b));
-  if (kinds.length) sectionTitle("Recommendations");
+  if (kinds.length) sectionTitle("Recommendations", 80);
 
   for (const kind of kinds) {
     const items = groups[kind];
     const cols = fitColumns(colsFor(kind), items);
-    const headH = 18;
-    const drawHead = () => {
-      cur.page.drawRectangle({ x: M, y: cur.y - headH + 5, width: usable, height: headH, color: tint });
-      let x = M + 6;
-      for (const c of cols) {
-        const cw = c.w * usable;
-        const h = c.h;
-        const fs = fitText(h, bold, 7, cw - 8, 5.5);
-        const hx = c.align === "r" ? x + cw - 12 - bold.widthOfTextAtSize(h, fs) : x;
-        text(h, hx, cur.y - 7, fs, bold, darken(primary));
-        x += cw;
+    // Heads wrap onto a second line rather than shrink, so every head is the
+    // same size ("ASSUMED RETURN" used to shrink and run into "PROPOSED").
+    const HEAD_FS = 6.3, HEAD_LH = 8.4;
+    const headLines = cols.map((c) => {
+      const room = c.w * usable - 8;
+      const out: string[] = [];
+      let line = "";
+      for (const w of c.h.split(" ")) {
+        const trial = line ? `${line} ${w}` : w;
+        if (labelWidth(trial, HEAD_FS) <= room || !line) line = trial;
+        else { out.push(line); line = w; }
       }
-      cur.y -= headH + 3;
-    };
-
-    ensure(70);
-    text(clean(KIND_TITLE[kind] ?? kind), M, cur.y, 9.5, bold, primary);
-    const count = `${items.length} recommendation${items.length === 1 ? "" : "s"}`;
-    text(count, M + usable - helv.widthOfTextAtSize(count, 7.5), cur.y, 7.5, helv, MUTED);
-    cur.y -= 12;
-    drawHead();
-
-    items.forEach((it, idx) => {
-      const nameW = cols[0].w * usable - 12;
-      const nameLines = wrapParas(clean(String(cols[0].get(it) ?? "-")), bold, 8.6, nameW).slice(0, 2);
-      const sub = subLine(it);
-      const subLines = sub ? wrapParas(clean(sub), helv, 6.8, nameW).slice(0, 3) : [];
-      const note = noteFor(it);
-      const noteLines = note ? wrapParas(`Note: ${clean(note)}`, helv, 7, usable - 12) : [];
-      const rowH = 8 + nameLines.length * 11 + subLines.length * 9 + (noteLines.length ? noteLines.length * 9.5 + 2 : 0) + 4;
-      const before = cur.page;
-      ensure(rowH);
-      if (cur.page !== before) drawHead(); // a fresh page repeats the header
-
-      const top = cur.y + 3;
-      if (idx % 2 === 1) cur.page.drawRectangle({ x: M, y: top - rowH, width: usable, height: rowH, color: PANEL });
-      let x = M + 6;
+      if (line) out.push(line);
+      return out.slice(0, 2);
+    });
+    const headRows = Math.max(...headLines.map((l) => l.length));
+    const drawHead = () => {
+      let x = M;
       cols.forEach((c, ci) => {
         const cw = c.w * usable;
-        const firstY = cur.y - 6;
+        const lines = headLines[ci];
+        lines.forEach((ln, k) => {
+          // Bottom-aligned on the rule; a word too long for its column shrinks alone.
+          let fs = HEAD_FS;
+          while (fs > 5 && labelWidth(ln, fs) > cw - 4) fs -= 0.25;
+          const y = cur.y - (headRows - lines.length + k) * HEAD_LH;
+          label(ln, c.align === "r" ? x + cw - labelWidth(ln, fs) : x, y, MUTED, fs);
+        });
+        x += cw;
+      });
+      const ry = cur.y - (headRows - 1) * HEAD_LH - 6;
+      hairline(ry, M, M + usable, RULE, 0.9);
+      cur.y = ry;
+    };
+    const groupTitle = (continued: boolean) => {
+      text(clean(`${KIND_TITLE[kind] ?? kind}${continued ? " (continued)" : ""}`), M, cur.y, 9.4, bold, primary);
+      if (!continued) {
+        const count = `${items.length} recommendation${items.length === 1 ? "" : "s"}`;
+        text(count, M + usable - helv.widthOfTextAtSize(count, 7.3), cur.y, 7.3, helv, MUTED);
+      }
+      cur.y -= 17;
+    };
+
+    ensure(110);
+    groupTitle(false);
+    drawHead();
+
+    items.forEach((it) => {
+      const nameW = cols[0].w * usable - 12;
+      const nameLines = wrapParas(clean(String(cols[0].get(it) ?? "-")), bold, 8.8, nameW).slice(0, 2);
+      const metaLines = packParts(subParts(it), helv, 7, nameW).slice(0, 3);
+      const note = noteFor(it);
+      const noteLines = note ? wrapParas(`Note: ${clean(note)}`, helv, 7.2, usable) : [];
+      const otherLines = cols.slice(1).map((c) =>
+        c.align === "r" ? 1 : Math.min(3, wrapParas(clean(String(c.get(it) ?? "-")), helv, 8.6, c.w * usable - 10).length));
+      // Even padding: 13pt down to the first baseline, ~9pt under the last line.
+      const headPart = Math.max(
+        13 + (nameLines.length - 1) * 11.5 + (metaLines.length ? 10.5 + (metaLines.length - 1) * 9.5 : 0),
+        13 + (Math.max(1, ...otherLines) - 1) * 11,
+      );
+      const rowH = headPart + (noteLines.length ? 3 + noteLines.length * 9.8 : 0) + 9;
+      const before = cur.page;
+      ensure(rowH);
+      if (cur.page !== before) { groupTitle(true); drawHead(); } // a fresh page repeats the title and heads
+
+      const top = cur.y;
+      const firstY = top - 13;
+      let x = M;
+      cols.forEach((c, ci) => {
+        const cw = c.w * usable;
         if (ci === 0) {
-          let y = firstY;
-          for (const ln of nameLines) { text(ln, x, y, 8.6, bold, INK); y -= 11; }
-          for (const ln of subLines) { text(ln, x, y + 1, 6.8, helv, MUTED); y -= 9; }
+          nameLines.forEach((ln, k) => text(ln, x, firstY - k * 11.5, 8.8, bold, INK));
+          const metaY = firstY - (nameLines.length - 1) * 11.5 - 10.5;
+          metaLines.forEach((parts, k) => drawParts(parts, x, metaY - k * 9.5, 7, helv, MUTED));
         } else {
           const raw = clean(String(c.get(it) ?? "-"));
           const blank = raw === "-";
@@ -508,10 +619,10 @@ export async function renderProposalPdf(args: {
           if (c.align === "r") {
             // Money is never chopped — "Rs 11,5..." reads as a wrong amount.
             const f = c.illus && !blank ? bold : helv;
-            const fs = fitText(val, f, blank ? 7.6 : 8.6, cw - 12, 6);
-            text(val, x + cw - 12 - f.widthOfTextAtSize(val, fs), firstY, fs, f, blank ? MUTED : INK);
+            const fs = fitText(val, f, blank ? 7.6 : 8.8, cw - 4, 6);
+            text(val, x + cw - f.widthOfTextAtSize(val, fs), firstY, fs, f, blank ? MUTED : INK);
           } else {
-            const ls = wrapParas(val, helv, 8.6, cw - 10).slice(0, 2);
+            const ls = wrapParas(val, helv, 8.6, cw - 10).slice(0, 3);
             let y = firstY;
             for (const ln of ls) { text(ln, x, y, 8.6, helv, INK); y -= 11; }
           }
@@ -519,33 +630,33 @@ export async function renderProposalPdf(args: {
         x += cw;
       });
       if (noteLines.length) {
-        let y = top - rowH + 5 + (noteLines.length - 1) * 9.5;
-        for (const ln of noteLines) { text(ln, M + 6, y, 7, helv, SLATE); y -= 9.5; }
+        let y = top - rowH + 9 + (noteLines.length - 1) * 9.8;
+        for (const ln of noteLines) { text(ln, M, y, 7.2, helv, BODY); y -= 9.8; }
       }
-      cur.page.drawLine({ start: { x: M, y: top - rowH }, end: { x: M + usable, y: top - rowH }, thickness: 0.6, color: LINE });
-      cur.y = top - rowH - 3;
+      hairline(top - rowH, M, M + usable, LINE, 0.6);
+      cur.y = top - rowH;
     });
 
     // Total row — only where there is more than one line to add up.
     if (items.length > 1 && cols.some((c) => c.sum)) {
-      ensure(20);
-      const top = cur.y + 3;
-      cur.page.drawRectangle({ x: M, y: top - 18, width: usable, height: 18, color: tint });
-      let x = M + 6;
+      ensure(22);
+      const top = cur.y;
+      hairline(top, M, M + usable, RULE, 0.9);
+      let x = M;
       cols.forEach((c, ci) => {
         const cw = c.w * usable;
-        if (ci === 0) text("Total", x, cur.y - 8, 8.6, bold, INK);
+        if (ci === 0) text("Total", x, top - 13, 8.8, bold, INK);
         else if (c.sum) {
           const total = items.reduce((s, it) => s + (c.sum!(it) ?? 0), 0);
           const val = total ? amt(total) : "";
-          const fs = fitText(val, bold, 8.6, cw - 12, 6);
-          text(val, x + cw - 12 - bold.widthOfTextAtSize(val, fs), cur.y - 8, fs, bold, INK);
+          const fs = fitText(val, bold, 8.8, cw - 4, 6);
+          text(val, x + cw - bold.widthOfTextAtSize(val, fs), top - 13, fs, bold, INK);
         }
         x += cw;
       });
-      cur.y = top - 18 - 3;
+      cur.y = top - 20;
     }
-    cur.y -= 18;
+    cur.y -= 24;
   }
 
   // ── Assumptions and suitability ──
@@ -564,18 +675,18 @@ export async function renderProposalPdf(args: {
     if (p.suitabilityNote && p.suitabilityNote.trim()) notes.push(`Suitability: ${clean(p.suitabilityNote)}`);
     notes.push(...reasons);
     if (notes.length) {
-      sectionTitle("Assumptions and suitability");
+      sectionTitle("Assumptions and suitability", 30);
       for (const t of notes) bullet(t);
-      cur.y -= 8;
+      cur.y -= 10;
     }
   }
 
-  // ── Important disclosures (SEBI / AMFI) ──
+  // ── Important disclosures (SEBI / AMFI) — two columns of fine print ──
   {
-    if (cur.y - FLOOR < 230) newPage();
+    if (cur.y - FLOOR < 200) newPage();
     sectionTitle("Important disclosures");
-    para("Issued in line with SEBI and AMFI requirements for mutual fund distributors. Please read before you invest.", { size: 8.2, color: MUTED });
-    cur.y -= 4;
+    para("Issued in line with SEBI and AMFI requirements for mutual fund distributors. Please read before you invest.", { size: 7.8, color: MUTED, lh: 11 });
+    cur.y -= 8;
     const has = (k: string) => products.some((it) => (it?.kind ?? "mf") === k);
     const reg = `${firm} is an AMFI Registered Mutual Fund Distributor${arnNo ? ` (ARN-${arnNo})` : ""}${prep?.euin ? `; this proposal was prepared by ${clean(prep.name ?? "our employee")} (EUIN ${clean(prep.euin)})` : ""}.`;
     const items: Array<[string, string]> = [
@@ -610,109 +721,185 @@ export async function renderProposalPdf(args: {
       `This proposal reflects market conditions and the information available on ${fmtDate(proposalDate)}${p.validUntil ? ` and is valid until ${fmtDate(p.validUntil)}` : ""}. It is not an offer or solicitation to buy or sell any security.`]);
     if (p.disclaimer && p.disclaimer.trim()) items.push(["Additional disclosure", clean(p.disclaimer)]);
 
-    items.forEach(([head, body], i) => {
-      const num = `${i + 1}.`;
-      const indent = 20;
-      const lines = wrapParas(body, helv, 8, usable - indent);
-      ensure(11 + Math.min(lines.length, 3) * 11);
-      text(num, M + indent - 5 - bold.widthOfTextAtSize(num, 8.2), cur.y, 8.2, bold, primary);
-      text(head, M + indent, cur.y, 8.2, bold, INK);
-      cur.y -= 11.5;
-      for (const ln of lines) {
-        ensure(11);
-        text(ln, M + indent, cur.y, 8, helv, SLATE);
-        cur.y -= 11;
+    // Pour the disclosures into two columns, each one kept whole, balanced on
+    // the last page they need. Only a disclosure longer than a whole column
+    // (a long firm disclaimer) is split.
+    const gap = 22, colW = (usable - gap) / 2, indent = 13;
+    const HEAD = 7.6, SMALL = 7.2, LH = 9.9, HEAD_H = 11.5, BETWEEN = 7;
+    type Block = { num: string; head: string | null; lines: string[] };
+    let blocks: Block[] = items.map(([head, body], k) => ({
+      num: `${k + 1}.`, head: clean(head), lines: wrapParas(body, helv, SMALL, colW - indent),
+    }));
+    const bh = (b: Block) => (b.head ? HEAD_H : 0) + b.lines.length * LH;
+    const stackH = (bs: Block[]) => bs.reduce((h, b, k) => h + bh(b) + (k ? BETWEEN : 0), 0);
+    const drawBlock = (b: Block, x: number, y: number) => {
+      if (b.head) {
+        text(b.num, x + indent - 4 - bold.widthOfTextAtSize(b.num, HEAD), y, HEAD, bold, primary);
+        text(b.head, x + indent, y, HEAD, bold, INK);
+        y -= HEAD_H;
       }
-      cur.y -= 5;
-    });
+      for (const ln of b.lines) { text(ln, x + indent, y, SMALL, helv, BODY); y -= LH; }
+    };
+    let guard = 0;
+    while (blocks.length && guard++ < 60) {
+      const avail = cur.y - FLOOR;
+      if (avail < 90) { newPage(); continue; }
+      if (bh(blocks[0]) > avail) {
+        const fit = Math.max(1, Math.floor((avail - (blocks[0].head ? HEAD_H : 0)) / LH));
+        blocks = [
+          { ...blocks[0], lines: blocks[0].lines.slice(0, fit) },
+          { num: blocks[0].num, head: null, lines: blocks[0].lines.slice(fit) },
+          ...blocks.slice(1),
+        ];
+      }
+      // How many blocks the first column takes: the most balanced split when
+      // the rest fits on this page, else as many as the column holds.
+      const fill = (from: number) => {
+        let k = from;
+        while (k < blocks.length && stackH(blocks.slice(from, k + 1)) <= avail) k++;
+        return k;
+      };
+      let split = -1;
+      if (stackH(blocks) <= 2 * avail) {
+        let best = Infinity;
+        for (let k = 1; k <= blocks.length; k++) {
+          const h1 = stackH(blocks.slice(0, k)), h2 = stackH(blocks.slice(k));
+          if (h1 > avail || h2 > avail) continue;
+          if (Math.max(h1, h2) < best) { best = Math.max(h1, h2); split = k; }
+        }
+      }
+      if (split < 0) split = Math.max(1, fill(0));
+      const end = fill(split);
+      const top = cur.y;
+      let y = top;
+      blocks.slice(0, split).forEach((b) => { drawBlock(b, M, y); y -= bh(b) + BETWEEN; });
+      let y2 = top;
+      blocks.slice(split, end).forEach((b) => { drawBlock(b, M + colW + gap, y2); y2 -= bh(b) + BETWEEN; });
+      cur.y = Math.min(y, y2) + BETWEEN;
+      blocks = blocks.slice(end);
+      if (blocks.length) newPage();
+    }
+    cur.y -= 16;
   }
 
   // ── Acknowledgement and signatures ──
   {
-    const h = 128;
-    if (cur.y - h - 18 < FLOOR) newPage();
+    const h = 104;
+    if (cur.y - h - 44 < FLOOR) newPage();
     else cur.y -= 6;
     sectionTitle("Acknowledgement");
-    const colW = (usable - 12) / 2;
+    const gap = 30, colW = (usable - gap) / 2;
     const top = cur.y;
-    const box = (x: number) =>
-      cur.page.drawRectangle({ x, y: top - h, width: colW, height: h, color: rgb(1, 1, 1), borderColor: LINE, borderWidth: 0.8 });
-    box(M);
-    box(M + colW + 12);
+    const sigY = top - h + 26;
 
     // Client
-    let y = top - 16;
-    for (const ln of wrapParas(
-      "I confirm that I have read this proposal, including the important disclosures, and that the recommendations are in line with my risk profile and investment objectives. I understand that illustrative values are not guaranteed.",
-      helv, 7.6, colW - 24,
-    )) { text(ln, M + 12, y, 7.6, helv, SLATE); y -= 10.5; }
-    const sigY = top - h + 30;
-    cur.page.drawLine({ start: { x: M + 12, y: sigY }, end: { x: M + colW - 12, y: sigY }, thickness: 0.6, color: MUTED });
-    text(truncate(`Signature of ${recipient}`, helv, 7.5, colW * 0.6), M + 12, sigY - 11, 7.5, helv, MUTED);
-    text("Date: ____________", M + colW - 12 - helv.widthOfTextAtSize("Date: ____________", 7.5), sigY - 11, 7.5, helv, MUTED);
+    label("Client", M, top);
+    let y = top - 15;
+    for (const ln of wrapParas(ACKNOWLEDGEMENT, helv, 7.8, colW)) { text(ln, M, y, 7.8, helv, BODY); y -= 11; }
+    hairline(sigY, M, M + colW, MUTED, 0.6);
+    text(truncate(`Signature of ${recipient}`, helv, 7.3, colW * 0.62), M, sigY - 11, 7.3, helv, MUTED);
+    const dateCap = "Date ______________";
+    text(dateCap, M + colW - helv.widthOfTextAtSize(dateCap, 7.3), sigY - 11, 7.3, helv, MUTED);
 
     // Distributor
-    const rx = M + colW + 12;
-    text(truncate(`For ${firm}`, bold, 8.6, colW - 24), rx + 12, top - 16, 8.6, bold, INK);
+    const rx = M + colW + gap;
+    label(`For ${firm}`, rx, top, MUTED);
     if (signature) {
-      const maxH = 40, maxW = colW - 24;
+      const maxH = 38, maxW = colW;
       let dw = (signature.width / signature.height) * maxH, dh = maxH;
       if (dw > maxW) { dw = maxW; dh = (signature.height / signature.width) * maxW; }
-      cur.page.drawImage(signature, { x: rx + 12, y: sigY + 4, width: dw, height: dh });
+      cur.page.drawImage(signature, { x: rx, y: sigY + 4, width: dw, height: dh });
     }
-    cur.page.drawLine({ start: { x: rx + 12, y: sigY }, end: { x: rx + colW - 12, y: sigY }, thickness: 0.6, color: MUTED });
+    hairline(sigY, rx, rx + colW, MUTED, 0.6);
     const who = [clean(prep?.name ?? "") || "Authorised signatory", prep?.euin ? `EUIN ${clean(prep.euin)}` : null].filter(Boolean).join("  |  ");
-    text(truncate(who, helv, 7.5, colW - 24), rx + 12, sigY - 11, 7.5, helv, MUTED);
-    const dated = `Dated ${fmtDate(proposalDate)}`;
-    text(dated, rx + 12, sigY - 22, 7.5, helv, MUTED);
-    cur.y = top - h - 10;
+    text(truncate(who, helv, 7.3, colW), rx, sigY - 11, 7.3, helv, MUTED);
+    text(`Dated ${fmtDate(proposalDate)}`, rx, sigY - 22, 7.3, helv, MUTED);
+    cur.y = sigY - 34;
   }
 
   // ── Footer on every page ──
   const pages = doc.getPages();
-  pages.forEach((pg, i) => drawFooter(pg, {
-    helv, bold, firm, arnNo, brand, refId: p.proposalNumber, page: i + 1, of: pages.length, primary,
+  pages.forEach((pg, k) => drawFooter(pg, {
+    helv, bold, firm, arnNo, brand, refId: p.proposalNumber, page: k + 1, of: pages.length,
   }));
 
   return Buffer.from(await doc.save());
 
   /* ── local helpers that draw at the cursor ── */
   function bullet(t: string) {
-    const lines = wrapParas(t, helv, 8.4, usable - 14);
+    const lines = wrapParas(t, helv, 8.2, usable - 14);
     ensure(12);
-    cur.page.drawRectangle({ x: M + 2, y: cur.y + 2, width: 3, height: 3, color: primary });
+    cur.page.drawRectangle({ x: M + 1.5, y: cur.y + 2.2, width: 2.8, height: 2.8, color: primary });
     for (const ln of lines) {
-      ensure(11.5);
-      text(ln, M + 14, cur.y, 8.4, helv, SLATE);
-      cur.y -= 11.5;
+      ensure(12);
+      text(ln, M + 13, cur.y, 8.2, helv, BODY);
+      cur.y -= 12;
     }
     cur.y -= 3;
   }
+  /** Facts on one line, separated by small dots. */
+  function drawParts(parts: string[], x: number, y: number, size: number, font: PDFFont, color: RGB) {
+    let cx = x;
+    parts.forEach((part, k) => {
+      if (k > 0) {
+        cur.page.drawCircle({ x: cx + 5.5, y: y + size * 0.33, size: 0.9, color: FAINT });
+        cx += 11;
+      }
+      text(part, cx, y, size, font, color);
+      cx += font.widthOfTextAtSize(part, size);
+    });
+  }
 }
 
-type Line = { t: string; f: PDFFont; s: number; c: RGB };
+/** Group facts into lines that fit `maxW`, keeping each fact whole. */
+function packParts(parts: string[], font: PDFFont, size: number, maxW: number, sep = 11): string[][] {
+  const lines: string[][] = [];
+  let line: string[] = [];
+  let w = 0;
+  for (const raw of parts) {
+    const part = truncate(raw, font, size, maxW);
+    const pw = font.widthOfTextAtSize(part, size);
+    const add = line.length ? sep + pw : pw;
+    if (line.length && w + add > maxW) {
+      lines.push(line);
+      line = [part];
+      w = pw;
+    } else {
+      line.push(part);
+      w += add;
+    }
+  }
+  if (line.length) lines.push(line);
+  return lines;
+}
 
 /* ── footer ── */
 function drawFooter(page: PDFPage, a: {
   helv: PDFFont; bold: PDFFont; firm: string; arnNo: string; brand: ProposalBrand;
-  refId?: string | null; page: number; of: number; primary: RGB;
+  refId?: string | null; page: number; of: number;
 }) {
   const W = page.getWidth();
   const usable = W - 2 * M;
-  page.drawRectangle({ x: M, y: 58, width: usable, height: 0.8, color: LINE });
+  page.drawLine({ start: { x: M, y: 66 }, end: { x: W - M, y: 66 }, thickness: 0.8, color: LINE });
   // A distributor, not an adviser — and the ARN only when there is one
   // (an empty ARN used to print "ARN--").
-  const left = [a.firm, TAGLINE, a.arnNo ? `ARN-${a.arnNo}` : null].filter(Boolean).join("  |  ");
-  page.drawText(truncate(left, a.bold, 7.4, usable), { x: M, y: 46, size: 7.4, font: a.bold, color: SLATE });
   const right = [a.refId ? `Ref ${clean(a.refId)}` : null, `Page ${a.page} of ${a.of}`].filter(Boolean).join("  |  ");
   const rw = a.helv.widthOfTextAtSize(right, 7);
-  page.drawText(right, { x: W - M - rw, y: 35, size: 7, font: a.helv, color: MUTED });
-  page.drawText(truncate(MANDATORY_RISK_DISCLAIMER, a.helv, 7, usable - rw - 16), { x: M, y: 35, size: 7, font: a.helv, color: MUTED });
+  const left = [a.firm, TAGLINE, a.arnNo ? `ARN-${a.arnNo}` : null].filter(Boolean).join("  |  ");
+  page.drawText(truncate(left, a.bold, 7.2, usable - rw - 16), { x: M, y: 53, size: 7.2, font: a.bold, color: BODY });
+  page.drawText(right, { x: W - M - rw, y: 53, size: 7, font: a.helv, color: MUTED });
+  // The AMFI market-risk sentence, always in full — it is the one line that
+  // must never be cut.
+  let y = 42;
+  for (const ln of wrapParas(MANDATORY_RISK_DISCLAIMER, a.helv, 7, usable)) {
+    page.drawText(ln, { x: M, y, size: 7, font: a.helv, color: MUTED });
+    y -= 9;
+  }
   const addr = a.brand.address
     ? [a.brand.address.line1, a.brand.address.line2, a.brand.address.city, a.brand.address.state, a.brand.address.pincode].filter(Boolean).join(", ")
     : "";
   const contact = [addr, a.brand.phone, a.brand.email, a.brand.website].filter(Boolean).map((v) => clean(String(v))).join("  |  ");
-  if (contact) page.drawText(truncate(contact, a.helv, 6.6, usable), { x: M, y: 25, size: 6.6, font: a.helv, color: MUTED });
+  if (contact) page.drawText(truncate(contact, a.helv, 6.6, usable), { x: M, y: y - 1, size: 6.6, font: a.helv, color: FAINT });
 }
 
 /* ── value helpers ── */
@@ -831,10 +1018,4 @@ function hexToRgb(hex: string | null | undefined): RGB {
   if (!m) return DEFAULT_PRIMARY;
   const [r, g, b] = m[1].match(/.{2}/g)!.map((x) => parseInt(x, 16) / 255);
   return rgb(r, g, b);
-}
-function mix(a: RGB, b: RGB, t: number): RGB {
-  return rgb(a.red + (b.red - a.red) * t, a.green + (b.green - a.green) * t, a.blue + (b.blue - a.blue) * t);
-}
-function darken(c: RGB): RGB {
-  return mix(c, rgb(0, 0, 0), 0.25);
 }
