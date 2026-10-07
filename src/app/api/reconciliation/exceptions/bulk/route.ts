@@ -5,26 +5,49 @@ import { handleApiError } from "@/lib/api/error-handler";
  *     action = "status"  value = open|investigating|resolved|ignored
  *            = "sync"    → post opening-balance txns for every additive break
  *                          (feed > CRM) and resolve it; non-additive are skipped.
+ *
+ *   Either for `ids` (the rows ticked on the page), or — "Sync all to CRM" —
+ *   for `all: true` + the page's `filter` (status / severity / type): every
+ *   open or investigating additive break with a client that the filter shows,
+ *   SYNC_BATCH per call. The response says how many are `remaining`, and the
+ *   page calls again until none are, so a firm with thousands of breaks never
+ *   holds one request open for minutes.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { reconciliationExceptions, transactions } from "@/db/schema";
+import { RECON_TOLERANCE as TOLERANCE, syncableWhere } from "@/lib/reconciliation/syncable";
 
 export const dynamic = "force-dynamic";
 
-const TOLERANCE = 0.5;
+const SYNC_BATCH = 500;
+const STATUSES = ["open", "investigating", "resolved", "ignored"] as const;
 
-const Body = z.object({
-  ids: z.array(z.string().uuid()).min(1).max(500),
-  action: z.enum(["status", "sync"]),
-  value: z.enum(["open", "investigating", "resolved", "ignored"]).optional(),
-});
+const Body = z.union([
+  z.object({
+    ids: z.array(z.string().uuid()).min(1).max(500),
+    action: z.enum(["status", "sync"]),
+    value: z.enum(STATUSES).optional(),
+  }),
+  z.object({
+    all: z.literal(true),
+    action: z.literal("sync"),
+    filter: z
+      .object({
+        status: z.array(z.string()).max(4).optional(),
+        severity: z.array(z.string()).max(3).optional(),
+        type: z.array(z.string()).max(4).optional(),
+      })
+      .default({}),
+  }),
+]);
+
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,18 +55,31 @@ export async function POST(req: NextRequest) {
     requireCap(session.roles, "transactions.execute", session.permissions);
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
-    const { ids, action, value } = parse.data;
+    const body = parse.data;
+    const action = body.action;
     const meta = clientMetaFromHeaders(req.headers);
 
     const out = await withTenant(
       session.tenantId,
       async (tx) => {
+        // "Sync all": the next batch of syncable breaks the page's filter shows.
+        const ids =
+          "all" in body
+            ? ((await tx.execute(sql`
+                SELECT e.id FROM reconciliation_exceptions e
+                 WHERE ${syncableWhere(session.tenantId, body.filter)}
+                 ORDER BY (e.severity = 'high') DESC, ABS(COALESCE(e.delta_value, 0)) DESC
+                 LIMIT ${SYNC_BATCH}
+              `)).rows as Array<{ id: string }>).map((r) => r.id)
+            : body.ids;
+        if (!ids.length) return { updated: 0, skipped: 0, remaining: 0 };
         const scope = and(
           eq(reconciliationExceptions.tenantId, session.tenantId),
           inArray(reconciliationExceptions.id, ids)
         );
 
-        if (action === "status") {
+        if (action === "status" && !("all" in body)) {
+          const value = body.value;
           if (!value) throw Object.assign(new Error("value required"), { status: 400 });
           const patch: any = { status: value, updatedAt: new Date() };
           if (value === "resolved") {
@@ -121,10 +157,17 @@ export async function POST(req: NextRequest) {
           action: "reconciliation.exception.bulk_sync",
           entityType: "reconciliation_exception",
           entityId: session.tenantId,
-          after: { synced, skipped } as any,
+          after: { synced, skipped, all: "all" in body } as any,
           ...meta,
         });
-        return { updated: synced, skipped };
+        const remaining =
+          "all" in body
+            ? Number(((await tx.execute(sql`
+                SELECT COUNT(*)::int AS c FROM reconciliation_exceptions e
+                 WHERE ${syncableWhere(session.tenantId, body.filter)}
+              `)).rows[0] as any)?.c ?? 0)
+            : 0;
+        return { updated: synced, skipped, remaining };
       },
       { userId: session.userId, branchId: session.branchId, roles: session.roles }
     );

@@ -9,6 +9,7 @@ import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
 import { RunReconButton } from "@/components/reconciliation/ReconActions";
 import { ReconTable } from "@/components/reconciliation/ReconTable";
+import { syncableWhere } from "@/lib/reconciliation/syncable";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +53,13 @@ export default async function ReconciliationPage({
       LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}
     `);
 
+    // What "Sync all to CRM" would fix in this filter (lib/reconciliation/syncable).
+    const syncableRes = await tx.execute(sql`
+      SELECT COUNT(*)::int AS c FROM reconciliation_exceptions e
+       WHERE ${syncableWhere(session.tenantId, { status: statusFilter, severity: sevFilter, type: typeFilter })}
+    `);
+    const syncable = Number((syncableRes.rows[0] as any)?.c ?? 0);
+
     const stats = await tx.execute(sql`
       SELECT
         COUNT(*) FILTER (WHERE status IN ('open','investigating'))::int AS open,
@@ -65,7 +73,7 @@ export default async function ReconciliationPage({
       WHERE tenant_id = ${session.tenantId}::uuid ORDER BY run_at DESC LIMIT 1
     `);
 
-    return { rows: rows.rows as any[], total, stats: stats.rows[0] as any, lastRun: lastRun.rows[0] as any };
+    return { rows: rows.rows as any[], total, syncable, stats: stats.rows[0] as any, lastRun: lastRun.rows[0] as any };
   });
 
   const totalPages = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
@@ -128,7 +136,11 @@ export default async function ReconciliationPage({
         ]}
       />
 
-      <ReconTable rows={data.rows} />
+      <ReconTable
+        rows={data.rows}
+        syncable={data.syncable}
+        filter={{ status: statusFilter, severity: sevFilter, type: typeFilter }}
+      />
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between text-xs text-muted-foreground">
