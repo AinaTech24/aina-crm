@@ -13,6 +13,7 @@
  *   platform wait   — feed transactions still pending / submitted
  */
 
+import { OPS_LIST_VIEWS as V } from "./request-list";
 import { sql } from "drizzle-orm";
 import {
   AGE_BUCKETS, clientScope, istDay, KIND_LABEL, num, numOrNull, opsBase, opsFilter, PENDING_LABEL,
@@ -44,10 +45,10 @@ export async function loadCommandStrip(tx: Tx, w: OpsWindow): Promise<CommandStr
   const r = (await tx.execute(sql`
     WITH ops AS (${opsBase(w)}), f AS (SELECT * FROM ops WHERE ${opsFilter(w)})
     SELECT
-      COUNT(*) FILTER (WHERE received_day BETWEEN ${w.from}::date AND ${w.to}::date)::int                 AS rec_n,
+      COUNT(*) FILTER (WHERE ${V.received.cond(w)})::int                                                  AS rec_n,
       COALESCE(SUM(value) FILTER (WHERE received_day BETWEEN ${w.from}::date AND ${w.to}::date), 0)       AS rec_v,
       COUNT(value) FILTER (WHERE received_day BETWEEN ${w.from}::date AND ${w.to}::date)::int             AS rec_valued,
-      COUNT(*) FILTER (WHERE status = 'completed' AND completed_day BETWEEN ${w.from}::date AND ${w.to}::date)::int AS done_n,
+      COUNT(*) FILTER (WHERE ${V.completed.cond(w)})::int                                                 AS done_n,
       COALESCE(SUM(value) FILTER (WHERE status = 'completed' AND completed_day BETWEEN ${w.from}::date AND ${w.to}::date), 0) AS done_v,
       COUNT(value) FILTER (WHERE status = 'completed' AND completed_day BETWEEN ${w.from}::date AND ${w.to}::date)::int AS done_valued,
       COUNT(*) FILTER (WHERE received_day < ${w.from}::date
@@ -396,20 +397,17 @@ export async function loadDayCounts(tx: Tx, w: OpsWindow, highValue: number): Pr
   const r = (await tx.execute(sql`
     WITH ops AS (${opsBase(w)}), f AS (SELECT * FROM ops WHERE ${opsFilter(w)})
     SELECT
-      COUNT(*) FILTER (WHERE received_day < ${w.today}::date
-                         AND (status NOT IN ('completed', 'cancelled')
-                              OR ${istDay(sql`COALESCE(completed_at, updated_at)`)} >= ${w.today}::date))::int AS carry,
-      COUNT(*) FILTER (WHERE received_day = ${w.today}::date)::int                                   AS rec,
-      COUNT(*) FILTER (WHERE status = 'completed' AND completed_day = ${w.today}::date)::int         AS done,
-      COUNT(*) FILTER (WHERE is_open)::int                                                          AS open_n,
+      -- Each condition is the one the tile's list runs (request-list.ts).
+      COUNT(*) FILTER (WHERE ${V.carry.cond(w)})::int                                               AS carry,
+      COUNT(*) FILTER (WHERE ${V.received_today.cond(w)})::int                                      AS rec,
+      COUNT(*) FILTER (WHERE ${V.completed_today.cond(w)})::int                                     AS done,
+      COUNT(*) FILTER (WHERE ${V.open.cond()})::int                                                 AS open_n,
       COUNT(*) FILTER (WHERE is_open AND sla_state = 'breached')::int                               AS breached,
-      COUNT(*) FILTER (WHERE is_open AND ((due_at IS NOT NULL AND ${istDay(sql`due_at`)} = ${w.today}::date)
-                              OR (sla_due_at IS NOT NULL AND ${istDay(sql`sla_due_at`)} = ${w.today}::date)))::int AS due_today,
-      COUNT(*) FILTER (WHERE is_open AND value >= ${highValue})::int                                AS high_value,
+      COUNT(*) FILTER (WHERE ${V.due_today.cond(w)})::int                                           AS due_today,
+      COUNT(*) FILTER (WHERE ${V.high_value.cond(w, highValue)})::int                               AS high_value,
       COUNT(*) FILTER (WHERE is_open AND assignee_id IS NULL)::int                                  AS unassigned,
       COUNT(*) FILTER (WHERE is_open AND kind = 'documentation')::int                               AS docs,
-      COUNT(*) FILTER (WHERE is_open AND ((due_at IS NOT NULL AND ${istDay(sql`due_at`)} <= ${w.today}::date)
-                              OR (sla_due_at IS NOT NULL AND ${istDay(sql`sla_due_at`)} <= ${w.today}::date)))::int AS due_unresolved
+      COUNT(*) FILTER (WHERE ${V.due_unresolved.cond(w)})::int                                      AS due_unresolved
     FROM f
   `)).rows[0] as Row | undefined;
 

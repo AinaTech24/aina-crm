@@ -1,20 +1,24 @@
 import { handleApiError } from "@/lib/api/error-handler";
 /**
- * POST /api/discovery/:id/share — mint a single-use client link (/fd/<token>)
- * for the lead/client to fill the discovery before the meeting. Returns the URL
- * once. Marks the discovery 'shared'.
+ * POST /api/discovery/:id/share — mint a client link (/fd/<token>) for the
+ * lead/client to fill the discovery before the meeting. Returns the URL once,
+ * plus the subject's name, mobile and email so the RM can send it by WhatsApp
+ * or email from their own phone. Marks the discovery 'shared'.
+ *
+ * A new link cancels the ones before it: a client forwarded an old link, or
+ * holding two, would otherwise fill in a copy the RM is no longer looking at.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireAny } from "@/lib/auth/rbac";
-import { financialDiscoveries } from "@/db/schema";
+import { financialDiscoveries, shareTokens, tenants } from "@/db/schema";
 import { createShareToken } from "@/lib/share-tokens";
 import { syncDiscoveryPrefill } from "@/lib/discovery/prefill";
-import { loadViewableDiscovery } from "@/lib/discovery/access";
+import { discoveryScopeSql } from "@/lib/discovery/access";
 
 export const dynamic = "force-dynamic";
 
@@ -29,14 +33,33 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const { id } = await params;
     const { expiresInDays } = Body.parse(await req.json().catch(() => ({})));
 
-    const disc = await withTenant(session.tenantId, async (tx) => {
-      // Data scope: only a discovery about a lead / client the viewer can see.
-      const d = await loadViewableDiscovery(tx, session, id);
+    const found = await withTenant(session.tenantId, async (tx) => {
+      const d = (await tx.select().from(financialDiscoveries)
+        .where(and(eq(financialDiscoveries.id, id), await discoveryScopeSql(tx, session))).limit(1))[0];
+      if (!d) return null;
       // The client's link opens on the same prefilled form the RM sees.
-      if (d) await syncDiscoveryPrefill(tx, d as any);
-      return d;
+      await syncDiscoveryPrefill(tx, d as any);
+      // Cancel the earlier, unused links to this fact-find.
+      await tx
+        .update(shareTokens)
+        .set({ revokedAt: new Date() } as any)
+        .where(and(
+          eq(shareTokens.kind, "financial_discovery"),
+          sql`${shareTokens.payload}->>'discoveryId' = ${id}`,
+          isNull(shareTokens.usedAt),
+          isNull(shareTokens.revokedAt),
+        ));
+      const table = d.subjectType === "lead" ? "leads" : "investors";
+      const who = (await tx.execute(sql`
+        SELECT name, phone, email FROM ${sql.raw(table)}
+         WHERE id = ${d.subjectId}::uuid AND tenant_id = ${session.tenantId}::uuid LIMIT 1
+      `)).rows[0] as { name?: string; phone?: string; email?: string } | undefined;
+      const firm = (await tx.select({ name: tenants.displayName }).from(tenants)
+        .where(eq(tenants.id, session.tenantId)).limit(1))[0];
+      return { disc: d, who, firmName: firm?.name ?? null };
     });
-    if (!disc) return NextResponse.json({ error: "not found" }, { status: 404 });
+    if (!found) return NextResponse.json({ error: "not found" }, { status: 404 });
+    const { disc, who, firmName } = found;
 
     const link = await createShareToken({
       tenantId: session.tenantId,
@@ -55,7 +78,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         .where(and(eq(financialDiscoveries.id, id), eq(financialDiscoveries.tenantId, session.tenantId)))
     );
 
-    return NextResponse.json({ url: link.url, expiresAt: link.expiresAt });
+    return NextResponse.json({
+      url: link.url,
+      expiresAt: link.expiresAt,
+      recipient: { name: who?.name ?? null, phone: who?.phone ?? null, email: who?.email ?? null },
+      firmName,
+    });
   } catch (err: any) {
     return handleApiError(err);
   }

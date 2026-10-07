@@ -23,8 +23,6 @@ export const NAV_LABELS: Record<string, string> = {
   "/dashboard/commission-reconciliation": "Brokerage Reconciliation",
   "/dashboard/communications": "Communications",
   "/dashboard/compliance": "DDQ Readiness",
-  "/dashboard/compliance/amfi-circulars": "Circulars",
-  "/dashboard/compliance/command-center": "Compliance Center",
   "/dashboard/discovery": "Discovery (Fact-find)",
   "/dashboard/documents": "Documents",
   "/dashboard/duplicates": "Find Duplicates",

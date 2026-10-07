@@ -4,7 +4,10 @@ import { handleApiError } from "@/lib/api/error-handler";
  * PATCH /api/discovery/:id   — save fact-find data; recomputes the snapshot +
  *                              health score server-side and caches it.
  *
- * Gated to lead/client viewers. Tenant-scoped via RLS.
+ * Gated to lead/client viewers and scoped to the discovery's subject
+ * (lib/discovery/access). Tenant isolation via RLS. The body's data is
+ * cleaned to the form's own sections (lib/discovery/validate); server-owned
+ * fields keep their stored values.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -15,14 +18,15 @@ import { requireSession } from "@/lib/auth/session";
 import { requireAny } from "@/lib/auth/rbac";
 import { financialDiscoveries } from "@/db/schema";
 import { computeDiscovery, type DiscoveryData } from "@/lib/discovery/calc";
-import { loadViewableDiscovery } from "@/lib/discovery/access";
+import { discoveryScopeSql } from "@/lib/discovery/access";
+import { cleanSections, keepServerFields } from "@/lib/discovery/validate";
 
 export const dynamic = "force-dynamic";
 
 const VIEW_CAPS = ["investor.view.all", "investor.view.assigned", "lead.view.all", "lead.view.assigned"] as const;
 
 const PatchBody = z.object({
-  data: z.any().optional(),
+  data: z.unknown().optional(),
   status: z.enum(["draft", "shared", "submitted", "reviewed"]).optional(),
   reviewType: z.string().max(80).optional(),
   markReviewed: z.boolean().optional(),
@@ -33,8 +37,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const session = await requireSession();
     requireAny(session.roles, [...VIEW_CAPS], session.permissions);
     const { id } = await params;
-    // Data scope: only a discovery about a lead / client the viewer can see.
-    const row = await withTenant(session.tenantId, async (tx) => loadViewableDiscovery(tx, session, id));
+    const row = await withTenant(session.tenantId, async (tx) =>
+      (await tx.select().from(financialDiscoveries)
+        .where(and(eq(financialDiscoveries.id, id), await discoveryScopeSql(tx, session))).limit(1))[0]
+    );
     if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({ discovery: row });
   } catch (err: any) {
@@ -54,17 +60,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const b = parsed.data;
 
     const updated = await withTenant(session.tenantId, async (tx) => {
-      // Data scope: only a discovery about a lead / client the viewer can see.
-      const existing = await loadViewableDiscovery(tx, session, id);
+      const scope = await discoveryScopeSql(tx, session);
+      const existing = (await tx.select().from(financialDiscoveries)
+        .where(and(eq(financialDiscoveries.id, id), scope)).limit(1))[0];
       if (!existing) return null;
 
-      const data: DiscoveryData = (b.data ?? existing.data ?? {}) as DiscoveryData;
+      const stored = (existing.data ?? {}) as DiscoveryData;
+      const data = b.data !== undefined ? keepServerFields(stored, cleanSections(b.data)) : stored;
       const computed = computeDiscovery(data);
       const patch: Record<string, unknown> = {
         data: data as any,
         computed: computed as any,
         healthScore: computed.healthScore,
-        title: (data.identification as any)?.fullName ?? existing.title,
+        title: String((data.identification as any)?.fullName ?? "").trim() || existing.title,
         updatedAt: new Date(),
       };
       if (b.reviewType !== undefined) patch.reviewType = b.reviewType;

@@ -1,9 +1,15 @@
 "use client";
 
 /**
- * The Settings index: every settings page, in seven sections, with a search
- * box over titles, descriptions and the words people actually type ("logo",
+ * The Settings index: every settings page, in eight panels, with a search box
+ * over titles, descriptions and the words people actually type ("logo",
  * "2FA", "invoice") — which is often not the page's title.
+ *
+ * Arranged 2026-10-07 at the firm's request: compact panels (one per area, a
+ * row per page) instead of a full-width card per page, and the duplicates out —
+ * "Notification templates" is a checklist of the same templates Message
+ * templates manages, and "Product readiness" is a platform status page, not a
+ * firm setting. Both pages still open at their addresses.
  *
  * Lives on the client because the search filters as you type, and because a
  * lucide icon is a function, which a server component cannot hand to a
@@ -13,54 +19,58 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  Activity, Gauge, Building2, Database, Users, CreditCard, MessageCircle, Mail, Webhook, ShieldCheck, Workflow,
-  KeyRound, Palette, UserCircle, GitBranch, Target, Network, BellRing, ClipboardCheck, SlidersHorizontal, Search, X,
-  MessageSquare, LayoutTemplate, Boxes,
+  Building2, Database, Users, CreditCard, MessageCircle, Mail, Webhook, ShieldCheck, KeyRound, Palette, UserCircle,
+  Target, Network, ClipboardCheck, SlidersHorizontal, Search, X, LayoutTemplate, Boxes, Landmark, Zap, Route,
+  ListChecks, Shuffle, MessagesSquare, LayoutDashboard, Gauge, ChevronRight, type LucideIcon,
 } from "lucide-react";
 
-type Group = "You" | "Workspace" | "Clients & onboarding" | "Automation" | "Team" | "Connections" | "Billing";
+type Group =
+  | "Your account"
+  | "Firm"
+  | "Team"
+  | "Clients & data"
+  | "Automation"
+  | "Messaging"
+  | "Connections"
+  | "Dashboards";
 
-const GROUP_ORDER: Group[] = ["You", "Workspace", "Clients & onboarding", "Automation", "Team", "Connections", "Billing"];
+const GROUP_ORDER: Group[] = ["Your account", "Firm", "Team", "Clients & data", "Automation", "Messaging", "Connections", "Dashboards"];
 
-type Section = { icon: typeof Activity; title: string; desc: string; href: string; group: Group; keywords?: string };
+type Section = { icon: LucideIcon; title: string; desc: string; href: string; group: Group; keywords?: string };
 
 const SECTIONS: Section[] = [
-  { icon: UserCircle, title: "My profile", desc: "Your details, change password, targets & leave entitlements.", href: "/dashboard/settings/profile", group: "You", keywords: "password signature photo phone" },
-  { icon: KeyRound, title: "Two-factor authentication", desc: "Add a TOTP authenticator code on top of your password. Self-service for your own account.", href: "/dashboard/settings/security", group: "You", keywords: "2fa otp totp security login sessions devices" },
+  { icon: UserCircle, title: "My profile", desc: "Your details, change password, signature, targets and leave.", href: "/dashboard/settings/profile", group: "Your account", keywords: "password signature photo phone" },
+  { icon: KeyRound, title: "Two-factor authentication", desc: "Add an authenticator code on top of your password.", href: "/dashboard/settings/security", group: "Your account", keywords: "2fa otp totp security login sessions devices" },
 
-  { icon: Activity, title: "Product readiness", desc: "Live, demo, blocked and unavailable services — including launch-critical checks.", href: "/dashboard/settings/readiness", group: "Workspace", keywords: "status health go-live" },
-  { icon: Building2, title: "Organisation profile", desc: "Branding, contact, AUM range, business profile.", href: "/dashboard/settings/organisation", group: "Workspace", keywords: "firm company arn address logo gst" },
-  { icon: Palette, title: "Appearance & theme", desc: "Re-skin the CRM to your brand — colours, font & density, and your white-label URL.", href: "/dashboard/settings/appearance", group: "Workspace", keywords: "logo colour color brand theme white-label domain font" },
-
-  { icon: SlidersHorizontal, title: "Custom fields", desc: "Add your own fields to leads & clients — text, number, date, dropdown and more.", href: "/dashboard/settings/custom-fields", group: "Clients & onboarding" },
-  { icon: Database, title: "Dropdown options", desc: "Edit the choices your team picks from — lead sources, campaign types, service types and more.", href: "/dashboard/settings/masters", group: "Clients & onboarding", keywords: "masters picklist values lead source" },
-  // Scheme Master and AMC Empanelments moved here from the sidebar (2026-10-01): master data that rarely changes.
-  { icon: Boxes, title: "Scheme master", desc: "Every mutual fund scheme the CRM knows — codes, categories and plan options.", href: "/dashboard/schemes", group: "Clients & onboarding", keywords: "schemes funds amfi isin nav plan category master" },
-  { icon: Building2, title: "AMC empanelments", desc: "The fund houses your firm is empanelled with, and their status.", href: "/dashboard/amc-empanelments", group: "Clients & onboarding", keywords: "amc fund house empanelment arn" },
-  { icon: ShieldCheck, title: "Risk profile questionnaire", desc: "Customise questions, scoring, and risk-category bands for your firm.", href: "/dashboard/settings/risk-profile", group: "Clients & onboarding", keywords: "risk profiling suitability" },
-  { icon: ClipboardCheck, title: "Onboarding form fields", desc: "Choose which client account-opening / KYC fields your team MUST fill — make any field mandatory or optional.", href: "/dashboard/settings/onboarding-fields", group: "Clients & onboarding", keywords: "kyc mandatory required account opening" },
-
-  // Automations and Message Templates moved here from the sidebar (2026-10-01): set up by an admin, not worked from daily.
-  { icon: Workflow, title: "Automations", desc: "Rules that send messages and create tasks on their own — with their actions and run history.", href: "/dashboard/automations", group: "Automation", keywords: "workflows rules triggers actions run history recipes" },
-  { icon: LayoutTemplate, title: "Message templates", desc: "The WhatsApp, email and SMS templates your team and automations send.", href: "/dashboard/templates", group: "Automation", keywords: "whatsapp email sms template designer approval meta" },
-  { icon: Workflow, title: "Stages & journeys", desc: "Edit the stages, deadlines, required fields and automations for leads, service requests, complaints, SIP recovery and reviews.", href: "/dashboard/settings/blueprints", group: "Automation", keywords: "blueprints pipeline workflow sla" },
-  { icon: BellRing, title: "Notification templates", desc: "Edit the 18 lead-journey templates — welcome, referral, meeting, proposal, docs, portal.", href: "/dashboard/settings/notification-templates", group: "Automation", keywords: "email whatsapp sms messages" },
-  { icon: Workflow, title: "Task templates", desc: "Design predefined tasks with sub-task checklists (SOPs) — your team applies them when creating a task.", href: "/dashboard/settings/task-templates", group: "Automation", keywords: "sop checklist" },
-  { icon: GitBranch, title: "Auto-assignment rules", desc: "Route new leads & clients to your team automatically — round-robin or load-balanced.", href: "/dashboard/settings/assignment-rules", group: "Automation", keywords: "round robin routing allocate" },
+  { icon: Building2, title: "Organisation profile", desc: "Firm details, ARN, contact and business profile.", href: "/dashboard/settings/organisation", group: "Firm", keywords: "firm company arn address logo gst" },
+  { icon: Palette, title: "Appearance & theme", desc: "Colours, font, density and your white-label address.", href: "/dashboard/settings/appearance", group: "Firm", keywords: "logo colour color brand theme white-label domain font" },
+  { icon: CreditCard, title: "Billing & subscription", desc: "Current plan, payment history, renewal.", href: "/dashboard/billing", group: "Firm", keywords: "plan invoice payment razorpay renew upgrade" },
 
   { icon: Users, title: "Team & roles", desc: "Invite team members, assign roles, manage seats.", href: "/dashboard/employees", group: "Team", keywords: "users employees invite permissions seats staff" },
-  { icon: Network, title: "Teams within a branch", desc: "Group each branch into small teams (desks) and assign RMs — powers the monthly MIS roll-ups.", href: "/dashboard/settings/desks", group: "Team", keywords: "desks mis" },
-  { icon: Gauge, title: "Dashboards", desc: "Which dashboard each role opens by default, and dashboards assigned to one person.", href: "/dashboard/settings/dashboards", group: "Team", keywords: "default home role assign" },
-  { icon: Gauge, title: "Dashboard thresholds", desc: "Where the dashboards draw their lines — target bands, phasing, stale leads, proposal ageing and SLAs.", href: "/dashboard/settings/dashboard-thresholds", group: "Team", keywords: "sla bands" },
-  { icon: Target, title: "Targets & quota", desc: "Set monthly business, new-meeting and renewal-meeting targets per team member — track vs achievement.", href: "/dashboard/settings/targets", group: "Team", keywords: "kra goals" },
+  { icon: Network, title: "Teams within a branch", desc: "Group each branch into desks and assign RMs.", href: "/dashboard/settings/desks", group: "Team", keywords: "desks mis" },
+  { icon: Target, title: "Targets & quota", desc: "Business and meeting targets per team member.", href: "/dashboard/settings/targets", group: "Team", keywords: "kra goals" },
+  { icon: Shuffle, title: "Auto-assignment rules", desc: "Route new leads and clients to your team automatically.", href: "/dashboard/settings/assignment-rules", group: "Team", keywords: "round robin routing allocate" },
 
-  { icon: MessageCircle, title: "WhatsApp connection", desc: "Your Aina WhatsApp number and Meta template approvals.", href: "/dashboard/settings/whatsapp", group: "Connections", keywords: "aisensy meta templates" },
-  { icon: Mail, title: "Email setup", desc: "Sending domain, DKIM, transactional + marketing streams.", href: "/dashboard/settings/email", group: "Connections", keywords: "smtp domain dkim mailbox sender" },
-  // Moved here from the sidebar (2026-10-01): the message log is checked now and then, not worked from daily.
-  { icon: MessageSquare, title: "Communications", desc: "Every WhatsApp, email and SMS sent and received, with delivery status — and Compose.", href: "/dashboard/communications", group: "Connections", keywords: "messages log outbox inbox delivered read failed compose whatsapp email sms cadence responses" },
-  { icon: Webhook, title: "Integrations", desc: "BSE Star MF, CAMS / KFintech feeds, Razorpay, KYC providers.", href: "/dashboard/settings/integrations", group: "Connections", keywords: "api zoho bse nse cams kfintech kyc" },
+  { icon: SlidersHorizontal, title: "Custom fields", desc: "Your own fields on leads and clients.", href: "/dashboard/settings/custom-fields", group: "Clients & data" },
+  { icon: Database, title: "Dropdown options", desc: "The choices your team picks from — lead sources, service types and more.", href: "/dashboard/settings/masters", group: "Clients & data", keywords: "masters picklist values lead source" },
+  { icon: ClipboardCheck, title: "Onboarding form fields", desc: "Which account-opening and KYC fields are mandatory.", href: "/dashboard/settings/onboarding-fields", group: "Clients & data", keywords: "kyc mandatory required account opening" },
+  { icon: ShieldCheck, title: "Risk profile questionnaire", desc: "Questions, scoring and risk-category bands.", href: "/dashboard/settings/risk-profile", group: "Clients & data", keywords: "risk profiling suitability" },
+  { icon: Boxes, title: "Scheme master", desc: "Every mutual fund scheme the CRM knows.", href: "/dashboard/schemes", group: "Clients & data", keywords: "schemes funds amfi isin nav plan category master" },
+  { icon: Landmark, title: "AMC empanelments", desc: "The fund houses your firm is empanelled with.", href: "/dashboard/amc-empanelments", group: "Clients & data", keywords: "amc fund house empanelment arn" },
 
-  { icon: CreditCard, title: "Billing & subscription", desc: "Current plan, payment history, renewal.", href: "/dashboard/billing", group: "Billing", keywords: "plan invoice payment razorpay renew upgrade" },
+  { icon: Zap, title: "Automations", desc: "Rules that send messages and create tasks on their own.", href: "/dashboard/automations", group: "Automation", keywords: "workflows rules triggers actions run history recipes" },
+  { icon: Route, title: "Stages & journeys", desc: "Stages, deadlines and required fields for leads, requests and reviews.", href: "/dashboard/settings/blueprints", group: "Automation", keywords: "blueprints pipeline workflow sla" },
+  { icon: ListChecks, title: "Task templates", desc: "Predefined tasks with checklists (SOPs).", href: "/dashboard/settings/task-templates", group: "Automation", keywords: "sop checklist" },
+
+  { icon: LayoutTemplate, title: "Message templates", desc: "The WhatsApp, email and SMS templates your team and automations send.", href: "/dashboard/templates", group: "Messaging", keywords: "whatsapp email sms template designer approval meta notification journey" },
+  { icon: MessagesSquare, title: "Message log", desc: "Every message sent and received, with delivery status.", href: "/dashboard/communications", group: "Messaging", keywords: "communications messages log outbox inbox delivered read failed compose whatsapp email sms cadence responses" },
+
+  { icon: MessageCircle, title: "WhatsApp", desc: "Your WhatsApp number and Meta template approvals.", href: "/dashboard/settings/whatsapp", group: "Connections", keywords: "aisensy meta templates connection" },
+  { icon: Mail, title: "Email", desc: "Sending domain, DKIM, mailboxes.", href: "/dashboard/settings/email", group: "Connections", keywords: "smtp domain dkim mailbox sender setup" },
+  { icon: Webhook, title: "Integrations", desc: "CAMS / KFintech mailback, BSE Star MF, Razorpay, KYC providers.", href: "/dashboard/settings/integrations", group: "Connections", keywords: "api zoho bse nse cams kfintech kyc rta mailback password" },
+
+  { icon: LayoutDashboard, title: "Default dashboards", desc: "Which dashboard each role and person opens first.", href: "/dashboard/settings/dashboards", group: "Dashboards", keywords: "default home role assign" },
+  { icon: Gauge, title: "Dashboard thresholds", desc: "Target bands, phasing, SLAs and ageing lines.", href: "/dashboard/settings/dashboard-thresholds", group: "Dashboards", keywords: "sla bands" },
 ];
 
 export function SettingsDirectory({ hidden = [] }: {
@@ -70,8 +80,8 @@ export function SettingsDirectory({ hidden = [] }: {
   const [q, setQ] = useState("");
   const sections = useMemo(() => SECTIONS.filter((s) => !hidden.includes(s.href)), [hidden]);
 
-  // Every word must appear somewhere in the title, description, section or
-  // keywords, so "email templates" finds Notification templates.
+  // Every word must appear somewhere in the title, description, panel or
+  // keywords, so "email templates" finds Message templates.
   const shown = useMemo(() => {
     const words = q.toLowerCase().split(/\s+/).filter(Boolean);
     if (!words.length) return sections;
@@ -82,7 +92,7 @@ export function SettingsDirectory({ hidden = [] }: {
   }, [q, sections]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div className="relative max-w-md">
         <label htmlFor="settings-search" className="sr-only">Search settings</label>
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
@@ -109,34 +119,43 @@ export function SettingsDirectory({ hidden = [] }: {
           <button type="button" onClick={() => setQ("")} className="font-medium text-foreground hover:underline">Clear search</button>
         </p>
       ) : (
-        GROUP_ORDER.map((g) => {
-          const cards = shown.filter((s) => s.group === g);
-          if (cards.length === 0) return null;
-          const headingId = `settings-${g.toLowerCase().replace(/[^a-z]+/g, "-")}`;
-          return (
-            <section key={g} aria-labelledby={headingId}>
-              <h2 id={headingId} className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted-foreground mb-2">{g}</h2>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                {cards.map((s) => {
-                  const Icon = s.icon;
-                  return (
-                    // Name only (the firm asked for less text); the description is
-                    // the hover title and still feeds the search above.
-                    <Link
-                      key={s.href}
-                      href={s.href}
-                      title={s.desc}
-                      className="border rounded-lg p-4 bg-card hover:bg-accent/40 transition-colors flex items-center gap-3"
-                    >
-                      <Icon className="size-5 text-muted-foreground" />
-                      <div className="flex-1 font-medium">{s.title}</div>
-                    </Link>
-                  );
-                })}
-              </div>
-            </section>
-          );
-        })
+        // Panels flow down three columns (two on a tablet, one on a phone), so
+        // a short panel never leaves a hole beside a long one.
+        <div className="columns-1 gap-4 md:columns-2 xl:columns-3">
+          {GROUP_ORDER.map((g) => {
+            const rows = shown.filter((s) => s.group === g);
+            if (rows.length === 0) return null;
+            const headingId = `settings-${g.toLowerCase().replace(/[^a-z]+/g, "-")}`;
+            return (
+              <section key={g} aria-labelledby={headingId} className="card-surface mb-4 break-inside-avoid p-2">
+                <h2 id={headingId} className="px-3 pb-1 pt-2 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {g}
+                </h2>
+                <ul>
+                  {rows.map((s) => {
+                    const Icon = s.icon;
+                    return (
+                      <li key={s.href}>
+                        {/* Name only; the description is the hover title and still feeds the search. */}
+                        <Link
+                          href={s.href}
+                          title={s.desc}
+                          className="group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-secondary"
+                        >
+                          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-secondary text-foreground/70 transition-colors group-hover:bg-card group-hover:text-primary">
+                            <Icon className="size-4" aria-hidden />
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{s.title}</span>
+                          <ChevronRight className="size-4 shrink-0 text-muted-foreground/60 transition-transform group-hover:translate-x-0.5" aria-hidden />
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            );
+          })}
+        </div>
       )}
     </div>
   );

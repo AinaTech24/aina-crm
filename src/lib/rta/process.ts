@@ -24,6 +24,7 @@ import {
 } from "@/lib/integrations/cams-feed-parser";
 import type { RtaFileKind, RtaSource } from "@/db/schema/rta_imports";
 import { refreshActiveSipAmount } from "@/lib/metrics/sip";
+import { markSystematicTransfers, NOT_A_SIP_REMARK } from "@/lib/finance/sip-lifecycle";
 import {
   parseSipRejectionReport,
   parseBrokerageStatement,
@@ -779,8 +780,30 @@ async function processSipBook(
     });
   }
 
+  // India's today, for reading the registration's dates.
+  const todayIst = new Date(Date.now() + 5.5 * 36e5).toISOString().slice(0, 10);
+
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
+
+    // A registration report is not only live SIPs. It also lists STPs and
+    // SWPs (not SIPs at all) and registrations that were CANCELLED — CAMS gives
+    // those a CEASE_DATE — and all of them used to import as 'active'.
+    //
+    // A past END date is deliberately NOT treated the same way: a SIP extended
+    // at the AMC keeps collecting under its original end date (see
+    // completeExpiredSips in lib/finance/sip-lifecycle.ts, which closes those
+    // only on evidence that the instalments stopped). A cease date IS that
+    // evidence.
+    // CAMS does not reliably say "STP" in AUT_TRNTYP, but only a transfer has
+    // a TARGET scheme — Rs 1,90,000 a month out of an ultra-short fund came in
+    // as a SIP on Nimesh C Shah's book until this check.
+    if ((r.registrationType && /^(STP|SWP)/i.test(r.registrationType.trim())) || r.targetScheme) {
+      skipped++;
+      continue;
+    }
+    const sipStatus: "active" | "stopped" = r.ceaseDate && r.ceaseDate <= todayIst ? "stopped" : "active";
+
     // The folio + scheme are what actually key a SIP. PAN is NOT required:
     // KFintech leaves the PAN column blank on a real minority of rows (minor
     // folios, older registrations), and every one of those was being dropped
@@ -869,6 +892,22 @@ async function processSipBook(
       // re-import. investor_id is dropped from the match for the same reason:
       // a re-imported client is a new row, and the folio number already scopes
       // this tightly enough.
+      // A registration already identified as an STP/SWP (not a SIP) stays out
+      // of the book — the registrar re-sends it in every report.
+      const transfer = await tx.execute(sql`
+        SELECT 1 FROM sips
+        WHERE tenant_id = ${args.tenantId}::uuid
+          AND folio_number = ${r.folioNumber}
+          AND scheme_code = ${r.schemeCode}
+          AND remarks = ${NOT_A_SIP_REMARK}
+        LIMIT 1
+      `);
+      if (transfer.rows.length) {
+        await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
+        skipped++;
+        continue;
+      }
+
       const existing = await tx.execute(sql`
         SELECT id FROM sips
         WHERE tenant_id = ${args.tenantId}::uuid
@@ -878,7 +917,29 @@ async function processSipBook(
         LIMIT 1
       `);
 
-      const existingId = (existing.rows[0] as any)?.id;
+      let existingId = (existing.rows[0] as any)?.id;
+
+      // The same registration under a different scheme key: a report that
+      // carried no code column was keyed on the scheme NAME, and the next one
+      // (with a code column) missed it and inserted a second copy beside it —
+      // 846 such pairs on one book. Same folio + same scheme name is the same
+      // SIP; adopt that row and give it the proper code.
+      if (!existingId && r.schemeName) {
+        const byName = await tx.execute(sql`
+          SELECT id FROM sips
+          WHERE tenant_id = ${args.tenantId}::uuid
+            AND folio_number = ${r.folioNumber}
+            AND lower(regexp_replace(COALESCE(scheme_name, ''), '[^a-zA-Z0-9]', '', 'g'))
+              = lower(regexp_replace(${r.schemeName}, '[^a-zA-Z0-9]', '', 'g'))
+            AND status = 'active'
+          ORDER BY amount DESC NULLS LAST
+          LIMIT 1
+        `);
+        existingId = (byName.rows[0] as any)?.id;
+        if (existingId) {
+          await tx.execute(sql`UPDATE sips SET scheme_code = ${r.schemeCode} WHERE id = ${existingId}::uuid`);
+        }
+      }
 
       if (existingId) {
         // `?? null` on every optional value here is load-bearing, not defensive
@@ -895,10 +956,16 @@ async function processSipBook(
               next_installment_at = COALESCE(${r.nextInstallmentAt ?? null}::date, next_installment_at),
               end_date = COALESCE(${r.endDate ?? null}::date, end_date),
               mandate_id = COALESCE(${mandateId ?? null}::uuid, mandate_id),
-              status = 'active',
+              status = ${sipStatus},
               updated_at = now()
           WHERE id = ${existingId}::uuid
         `);
+      } else if (sipStatus !== "active") {
+        // A cancelled SIP we never had on record: history, not part of the
+        // book — nothing to add.
+        await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
+        skipped++;
+        continue;
       } else {
         await tx.execute(sql`
           INSERT INTO sips (
@@ -925,7 +992,10 @@ async function processSipBook(
   // The SIP book changed underneath the clients' cached "Monthly SIP" — and a
   // match by folio number can move a SIP between client records — so refresh
   // the whole firm's cache in one set-based pass (lib/metrics/sip.ts).
-  if (imported > 0) await refreshActiveSipAmount(tx, { tenantId: args.tenantId });
+  // Registrations the ledger shows to be STPs/SWPs leave the book
+  // (lib/finance/sip-lifecycle.ts) before the cache is refreshed.
+  const transfers = await markSystematicTransfers(tx, args.tenantId);
+  if (imported > 0 || transfers > 0) await refreshActiveSipAmount(tx, { tenantId: args.tenantId });
 
   return {
     rowsTotal: rows.length,

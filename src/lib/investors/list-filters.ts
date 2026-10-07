@@ -15,6 +15,7 @@ import { and, ilike, inArray, or, sql } from "drizzle-orm";
 import { investors } from "@/db/schema";
 import { aliveClient, cleanIds, textList, uuidList } from "@/lib/metrics/scope";
 import { missingDataSql, reviewOverdueSql } from "@/lib/metrics/attention";
+import { investorFieldFilterConds } from "@/lib/investors/field-filters";
 
 export type InvestorListParams = Record<string, string | undefined>;
 
@@ -382,6 +383,10 @@ export function buildInvestorConditions(
   const aumMax = rupees(sp.aum_max);
   if (aumMin != null) conditions.push(sql`COALESCE(${investors.aum}, 0) >= ${aumMin}`);
   if (aumMax != null) conditions.push(sql`COALESCE(${investors.aum}, 0) < ${aumMax}`);
+
+  // Every other client field (lib/investors/field-filters.ts) — applied here so
+  // the list, its Excel export and every other caller agree.
+  conditions.push(...investorFieldFilterConds(sp));
 
   return conditions;
 }

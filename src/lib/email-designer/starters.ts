@@ -1723,8 +1723,8 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
       blocks: [
         b({ type: "logo" } as any),
         b({ type: "heading", text: "Documents expiring within 30 days", level: "h2", align: "left" } as any),
-        b({ type: "text", html: "Hi there,<br><br>Some compliance documents are nearing expiry and need renewal to stay audit-ready. Open the Compliance Center to see exactly which documents are expiring, who they belong to, and their renewal status.", align: "left" } as any),
-        b({ type: "button", label: "Open Compliance Center", url: "{{system.dashboard_url}}", align: "center", style: "solid", fullWidth: false } as any),
+        b({ type: "text", html: "Hi there,<br><br>Some compliance documents are nearing expiry and need renewal to stay audit-ready. Open Compliance in the CRM to see exactly which documents are expiring, who they belong to, and their renewal status.", align: "left" } as any),
+        b({ type: "button", label: "Open the CRM", url: "{{system.dashboard_url}}", align: "center", style: "solid", fullWidth: false } as any),
       ],
       footer: { ...INTERNAL_FOOTER },
     },
@@ -1773,12 +1773,12 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
       blocks: [
         b({ type: "logo" } as any),
         b({ type: "heading", text: "Client escalation logged", level: "h2", align: "left" } as any),
-        b({ type: "text", html: "Hi there,<br><br>A client escalation has been raised and needs prompt attention to protect the relationship and stay compliant. Open the Compliance Center to see who raised it, the client involved, the severity, and a summary.", align: "left" } as any),
+        b({ type: "text", html: "Hi there,<br><br>A client escalation has been raised and needs prompt attention to protect the relationship and stay compliant. Open Compliance in the CRM to see who raised it, the client involved, the severity, and a summary.", align: "left" } as any),
         b({ type: "data_table", caption: "Escalation", rows: [
           { label: "Logged", value: "{{system.today}}" },
         ] } as any),
         b({ type: "text", html: "<b>Action:</b> Assign an owner, acknowledge to the client within 24h, and track to resolution.", align: "left" } as any),
-        b({ type: "button", label: "Open Compliance Center", url: "{{system.dashboard_url}}", align: "center", style: "solid", fullWidth: false } as any),
+        b({ type: "button", label: "Open the CRM", url: "{{system.dashboard_url}}", align: "center", style: "solid", fullWidth: false } as any),
       ],
       footer: { ...INTERNAL_FOOTER },
     },

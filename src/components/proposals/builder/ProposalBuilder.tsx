@@ -18,7 +18,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Check, FileSignature, Loader2, Save, Send, Lock } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Copy, FileSignature, Link2, Loader2, Save, Send, Lock } from "lucide-react";
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -26,6 +26,8 @@ import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
 import { useToast } from "@/components/ui/Toast";
 import { formatDate } from "@/lib/format";
+import { buttonClass } from "@/components/ui/button-class";
+import Link from "next/link";
 import type { ProposalSnapshot } from "@/lib/proposals/snapshot";
 import { PROPOSAL_ACCEPTANCE_TEXT } from "@/lib/proposals/acceptance";
 import { itemAmountText, itemKindLabel, itemName, itemRiskLabel } from "@/lib/proposals/items";
@@ -283,7 +285,7 @@ export function ProposalBuilder({ proposalId: initialId }: { proposalId?: string
         subtitle={
           snapshot?.rm
             ? `RM ${snapshot.rm}${snapshot.family ? ` · ${snapshot.family} family` : ""}`
-            : "Build it from what the CRM already knows, check the fit, then send."
+            : undefined
         }
         actions={
           !locked && (
@@ -401,7 +403,7 @@ export function ProposalBuilder({ proposalId: initialId }: { proposalId?: string
                 </SelectField>
               </label>
               <label className="block sm:col-span-2">
-                <span className="text-xs font-medium">Cover letter (shown above the recommendations in the PDF)</span>
+                <span className="text-xs font-medium" title="Shown above the recommendations in the PDF">Cover letter</span>
                 <textarea
                   value={coverLetter}
                   onChange={(e) => setCoverLetter(e.target.value)}
@@ -506,32 +508,104 @@ function SnapshotCard({ snapshot: s, loading }: { snapshot: ProposalSnapshot | n
   const inr = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
   const riskTone = s.risk.status === "Completed" ? "success" : s.risk.status === "Not completed" ? "neutral" : "warning";
 
+  // Only what the CRM actually holds — a prospect's five empty dashes said nothing.
+  const tiles = [
+    s.risk.category && {
+      label: "Risk category",
+      value: `${PROFILE_LABEL[s.risk.category] ?? s.risk.category}${s.risk.score != null ? ` · ${s.risk.score}` : ""}`,
+    },
+    s.holdings && { label: "Current AUM", value: inr(s.holdings.aum) },
+    s.holdings && { label: "Running SIPs", value: `${inr(s.holdings.sipBook)}/mo` },
+    s.holdings?.equityPct != null && {
+      label: "Equity share",
+      value: `${Math.round(s.holdings.equityPct)}%`,
+      hint: s.band ? `band ${s.band.floor}–${s.band.ceiling}%` : undefined,
+      warn: s.band != null && s.holdings.equityPct > s.band.ceiling,
+    },
+    s.goals[0] && { label: "Goal", value: `${s.goals[0].name}${s.goals[0].targetYear ? ` ${s.goals[0].targetYear}` : ""}` },
+  ].filter(Boolean) as Array<{ label: string; value: string; hint?: string; warn?: boolean }>;
+
   return (
     <Card>
       <CardHeader
-        title="From the CRM — nothing to retype"
-        subtitle={s.kind === "lead" ? "A prospect: no holdings yet." : undefined}
+        title="From the CRM"
         action={
-          <Badge tone={riskTone as any} raw dot>
-            {s.risk.status === "Completed" && s.risk.signedAt
-              ? `Risk profile confirmed ${formatDate(s.risk.signedAt)}`
-              : `Risk profile: ${s.risk.status.toLowerCase()}`}
-          </Badge>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Badge tone={riskTone as any} raw dot>
+              {s.risk.status === "Completed" && s.risk.signedAt
+                ? `Risk profile confirmed ${formatDate(s.risk.signedAt)}`
+                : `Risk profile: ${s.risk.status.toLowerCase()}`}
+            </Badge>
+            {s.risk.status !== "Completed" && <RiskProfileAction snapshot={s} />}
+          </div>
         }
       />
-      <div className="px-5 pb-5 grid grid-cols-2 sm:grid-cols-5 gap-2">
-        <Tile label="Risk category" value={s.risk.category ? `${PROFILE_LABEL[s.risk.category] ?? s.risk.category}${s.risk.score != null ? ` · ${s.risk.score}` : ""}` : "—"} />
-        <Tile label="Current AUM" value={s.holdings ? inr(s.holdings.aum) : "—"} />
-        <Tile label="Running SIPs" value={s.holdings ? `${inr(s.holdings.sipBook)}/mo` : "—"} />
-        <Tile
-          label="Equity share"
-          value={s.holdings?.equityPct != null ? `${Math.round(s.holdings.equityPct)}%` : "—"}
-          hint={s.band ? `band ${s.band.floor}–${s.band.ceiling}%` : undefined}
-          warn={s.band != null && s.holdings?.equityPct != null && s.holdings.equityPct > s.band.ceiling}
-        />
-        <Tile label="Goal" value={s.goals[0] ? `${s.goals[0].name}${s.goals[0].targetYear ? ` ${s.goals[0].targetYear}` : ""}` : "—"} />
-      </div>
+      {tiles.length > 0 && (
+        <div className="px-5 pb-5 grid grid-cols-2 sm:grid-cols-5 gap-2">
+          {tiles.map((t) => <Tile key={t.label} {...t} />)}
+        </div>
+      )}
     </Card>
+  );
+}
+
+/**
+ * The client's risk profile is not confirmed (an MF proposal needs one):
+ * send them the questionnaire link — or, for a client, fill it in with them
+ * now. The link is the same one the lead journey sends (POST /api/share-tokens,
+ * kind risk_profile); it is shown to copy, never sent from here.
+ */
+function RiskProfileAction({ snapshot: s }: { snapshot: ProposalSnapshot }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [url, setUrl] = useState<string | null>(null);
+
+  async function makeLink() {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/share-tokens", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ kind: "risk_profile", subjectType: s.kind, subjectId: s.subjectId, expiresInDays: 21 }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j.url) throw new Error(j.error ?? `Couldn't create the link (${res.status})`);
+      setUrl(j.url);
+      try { await navigator.clipboard.writeText(j.url); toast.success("Risk profile link copied — send it to the client"); } catch {}
+    } catch (e: any) {
+      toast.error(e?.message ?? "Couldn't create the link", "Risk profile");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (url) {
+    return (
+      <span className="flex items-center gap-1">
+        <input readOnly value={url} onFocus={(e) => e.target.select()} aria-label="Risk profile link" className="input-base h-8 w-56 text-xs" />
+        <button
+          type="button"
+          onClick={() => navigator.clipboard.writeText(url).then(() => toast.success("Link copied"), () => {})}
+          className={buttonClass("ghost", "icon")}
+          aria-label="Copy link"
+          title="Copy link"
+        >
+          <Copy className="size-3.5" />
+        </button>
+      </span>
+    );
+  }
+  return (
+    <>
+      <button type="button" onClick={makeLink} disabled={busy} className={buttonClass("secondary", "sm", "gap-1.5")}>
+        {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Link2 className="size-3.5" />} Send risk profile link
+      </button>
+      {s.kind === "investor" && (
+        <Link href={`/dashboard/risk-profiles/new?investorId=${s.subjectId}`} className={buttonClass("ghost", "sm")}>
+          Fill now
+        </Link>
+      )}
+    </>
   );
 }
 

@@ -8,15 +8,15 @@
  *  - Income is MONTHLY and after the tax the fact-find records, because the
  *    plan's field is the monthly net inflow it subtracts expenses and EMIs from.
  *  - A goal's target corpus is already in future rupees (the fact-find solves
- *    its SIP against it at 11% a year). The plan inflates a present cost, so an
- *    imported goal gets 0% inflation and the same 11% return — otherwise every
- *    target would be inflated twice.
+ *    its SIP at 7–11% a year by horizon, calc.ts goalReturnPct). The plan
+ *    inflates a present cost, so an imported goal gets 0% inflation and the
+ *    same return — otherwise every target would be inflated twice.
  *  - An asset type with no plain equity / debt / gold / cash / property reading
  *    (hybrid funds, PMS, AIF, SIF, ULIP, endowment) goes in as "other", with the
  *    fact-find's own type kept as its sub-category, rather than being guessed.
  */
 
-import { computeDiscovery, type DiscoveryData } from "@/lib/discovery/calc";
+import { computeDiscovery, goalReturnPct, type DiscoveryData } from "@/lib/discovery/calc";
 import type { ASSET_TYPES, GOAL_TYPES } from "@/lib/discovery/options";
 
 type AssetCategory = "equity" | "debt" | "gold" | "cash" | "real_estate" | "other";
@@ -54,7 +54,7 @@ const RISK_PROFILE: Record<string, string> = {
   very_aggressive: "aggressive",
 };
 
-/** The annual return the fact-find's own goal SIPs assume (calc.ts sipForGoal). */
+/** The return the fact-find assumes for a goal five or more years away (calc.ts goalReturnPct). */
 export const FACT_FIND_GOAL_RETURN = 11;
 
 export type FactFindRecord = {
@@ -164,7 +164,8 @@ export function planFromFactFind(f: FactFindRecord, today = new Date()): FactFin
           // No target year in the fact-find → 0, for the adviser to set; never a guessed horizon.
           targetYears: targetYear > year ? targetYear - year : 0,
           inflationRate: 0,
-          expectedReturn: FACT_FIND_GOAL_RETURN,
+          // The return the fact-find solved this goal's SIP at (by horizon).
+          expectedReturn: targetYear > year ? goalReturnPct(targetYear - year) : FACT_FIND_GOAL_RETURN,
           currentValue: positive(num(g.alreadySaved)),
         };
       }),

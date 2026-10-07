@@ -1,3 +1,4 @@
+import { isS3Configured } from "@/lib/storage/s3";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { Settings as SettingsIcon, Database, MessageCircle, Lock, Webhook, Activity, Bot } from "lucide-react";
@@ -36,7 +37,8 @@ export default async function PlatformSettingsPage() {
     vartify: process.env.VARTIFY_API_TOKEN && !process.env.VARTIFY_API_TOKEN.includes("xxx") ? "Configured" : "Stub",
     msg91: process.env.MSG91_AUTH_KEY && !process.env.MSG91_AUTH_KEY.includes("xxx") ? "Configured" : "Stub",
     anthropic: process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_API_KEY.includes("xxx") ? "Configured" : "Stub",
-    s3: process.env.S3_ACCESS_KEY_ID ? "Configured" : "Stub",
+    // S3 key pair OR the EC2 instance role (lib/storage/s3.ts isS3Configured).
+    s3: isS3Configured() ? "Configured" : "Stub",
   };
 
   return (

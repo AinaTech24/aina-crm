@@ -38,7 +38,7 @@ export default async function SettingsPage() {
     if (!roleOk || !(await navEnabledForUser(session, userModules, g.key ?? g.href))) hidden.push(g.href);
   }
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-6 max-w-6xl">
       <PageHeaderCard title={<>Settings</>} />
       <SettingsDirectory hidden={hidden} />
     </div>

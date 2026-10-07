@@ -19,7 +19,17 @@
 #   5. compose run --rm web-blue npm run db:provision-app-role
 #   6. bash ~/run-deploy.sh
 
+# Container log rotation (2026-10-07): json-file capped at 50 MB x 4 files per
+# container. Takes effect when a container is (re)created: web/worker on every
+# deploy; caddy/redis only when explicitly recreated.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "4"
+
 x-web-common: &web-common
+  logging: *default-logging
   image: mfd-app:latest
   build:
     context: .
@@ -51,6 +61,7 @@ x-web-common: &web-common
 services:
   caddy:
     image: caddy:2-alpine
+    logging: *default-logging
     restart: unless-stopped
     ports:
       - "80:80"
@@ -77,6 +88,7 @@ services:
   # colour keeps serving against the (additively) migrated schema.
   migrate:
     image: mfd-app:latest
+    logging: *default-logging
     env_file:
       - .env.production
     command: ["npm", "run", "migrate:all"]
@@ -86,6 +98,7 @@ services:
 
   worker:
     image: mfd-app:latest
+    logging: *default-logging
     restart: unless-stopped
     env_file:
       - .env.production
@@ -102,6 +115,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    logging: *default-logging
     restart: unless-stopped
     command: ["redis-server", "--save", "60", "1", "--appendonly", "yes", "--loglevel", "warning"]
     volumes:
@@ -109,6 +123,7 @@ services:
 
   postgres:
     image: postgres:16-alpine
+    logging: *default-logging
     profiles: ["db-onbox"]
     restart: unless-stopped
     environment:

@@ -20,7 +20,8 @@
  *   - `menuItem`: one labelled row ("Delete client") for a record's More menu
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { MoreHorizontal, Pencil, Trash2, Loader2, type LucideIcon } from "lucide-react";
@@ -66,6 +67,43 @@ export function RowActions({
   const [open, setOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [menuPos, setMenuPos] = useState<CSSProperties | null>(null);
+
+  // The ⋯ menu floats on <body> beside its button. Drawn inside the row it was
+  // clipped by the table's scroll box — on a one-row list only a sliver of
+  // "Edit" showed and Close was out of reach (Service Requests, 2026-10-07).
+  // It opens upward when there is no room below, and closes when the page
+  // scrolls or resizes rather than drifting away from its button.
+  function toggleMenu() {
+    if (open) return setOpen(false);
+    const r = triggerRef.current?.getBoundingClientRect();
+    if (r) {
+      const rows = (items?.length ?? 0) + (editHref ? 1 : 0) + (deleteUrl ? 1 : 0);
+      const height = rows * 34 + 16;
+      const right = Math.max(8, window.innerWidth - r.right);
+      setMenuPos(
+        r.bottom + 4 + height > window.innerHeight && r.top > height
+          ? { position: "fixed", right, bottom: window.innerHeight - r.top + 4 }
+          : { position: "fixed", right, top: r.bottom + 4 },
+      );
+    }
+    setOpen(true);
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
 
   const subject = itemName ? `"${itemName}"` : itemLabel;
   const past = verb.endsWith("e") ? `${verb}d` : `${verb}ed`; // Delete→Deleted, Archive→Archived, Lock→Locked
@@ -165,16 +203,27 @@ export function RowActions({
   return (
     <div className="relative inline-block">
       <button
+        ref={triggerRef}
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggleMenu}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
-        className="rounded-md p-1 hover:bg-accent text-muted-foreground hover:text-foreground"
+        className="btn-icon text-muted-foreground hover:text-foreground"
         aria-label={`Actions for ${itemLabel}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
       >
         {busy ? <Loader2 className="size-4 animate-spin" /> : <MoreHorizontal className="size-4" />}
       </button>
-      {open && (
-        <div className="absolute right-0 top-full mt-1 z-10 w-48 rounded-md border bg-popover shadow-md py-1 text-sm">
+      {open && menuPos && typeof document !== "undefined" && createPortal(
+        <div
+          role="menu"
+          style={menuPos}
+          // A portal still bubbles React events through the row; a click here
+          // must not also count as a click on the row (which opens the record).
+          onClick={(e) => e.stopPropagation()}
+          className="z-50 w-48 rounded-lg border bg-popover shadow-lg py-1 text-sm animate-fade-in"
+          data-no-row-nav
+        >
           {items?.map((it) => (
             <Link
               key={it.href}
@@ -206,10 +255,11 @@ export function RowActions({
               disabled={busy}
               className="w-full text-left flex items-center gap-2 px-3 py-1.5 hover:bg-destructive/10 text-destructive disabled:opacity-50"
             >
-              <Trash2 className="size-3.5" /> {verb}
+              <DeleteIcon className="size-3.5" /> {verb}
             </button>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
 
       <ConfirmDialog

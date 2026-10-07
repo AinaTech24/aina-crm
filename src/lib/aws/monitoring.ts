@@ -3,9 +3,10 @@
  * from CloudWatch + EC2/RDS describe APIs + IAM, plus app-level counts from the
  * DB, into one snapshot for the Aina Admin → AWS Monitoring dashboard.
  *
- * Read-only. Uses the same credentials as S3 (S3_ACCESS_KEY_ID / AWS_*). The
- * `mfd-deploy` IAM user already has cloudwatch:Get*, ec2:Describe*, rds:Describe*,
- * iam:Get* — no extra grant needed for these metrics.
+ * Read-only. Uses the same credentials as S3: a static S3_* / AWS_* pair when one
+ * is set, otherwise the SDK default chain — the EC2 instance role
+ * `mfd-growth-os-ec2`, whose inline policy `aina-crm-monitoring-read` grants
+ * exactly the six read calls made here (2026-10-07).
  */
 import { CloudWatchClient, GetMetricStatisticsCommand } from "@aws-sdk/client-cloudwatch";
 import { EC2Client, DescribeInstancesCommand, DescribeInstanceStatusCommand, DescribeVolumesCommand } from "@aws-sdk/client-ec2";

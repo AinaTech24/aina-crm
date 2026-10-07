@@ -11,7 +11,8 @@
  * fills ONLY what is still blank (a value someone typed always wins, and a
  * list that already has rows is left alone), and always refreshes
  * `recordedRisk` — the risk profile on record is the source of truth, so the
- * discovery shows it instead of asking again. `syncDiscoveryPrefill` does both
+ * discovery shows it instead of asking again — and `existingSipMonthly`, the
+ * SIPs already running with the firm. `syncDiscoveryPrefill` does both
  * and saves the result when anything changed, so the client's share link sees
  * the same prefilled form the RM does.
  */
@@ -19,6 +20,7 @@
 import { eq, sql } from "drizzle-orm";
 import type { withTenant } from "@/db/client";
 import { financialDiscoveries } from "@/db/schema";
+import { assetClassOf } from "@/lib/investors/asset-class";
 import { computeDiscovery, type DiscoveryData, type RecordedRisk } from "./calc";
 
 type Tx = Parameters<Parameters<typeof withTenant>[1]>[0];
@@ -31,6 +33,8 @@ export type DiscoveryPrefill = {
   healthInsurance: NonNullable<DiscoveryData["healthInsurance"]>;
   assets: NonNullable<DiscoveryData["assets"]>;
   recordedRisk: RecordedRisk | null;
+  /** Σ monthly-equivalent active SIPs with the firm (investors.active_sip_amount). */
+  existingSipMonthly: number | null;
 };
 
 const str = (v: unknown) => (v == null ? "" : String(v).trim());
@@ -97,7 +101,7 @@ export async function loadDiscoveryPrefill(
   subjectType: string,
   subjectId: string,
 ): Promise<DiscoveryPrefill> {
-  const empty: DiscoveryPrefill = { identification: {}, goals: [], lifeInsurance: [], healthInsurance: [], assets: [], recordedRisk: null };
+  const empty: DiscoveryPrefill = { identification: {}, goals: [], lifeInsurance: [], healthInsurance: [], assets: [], recordedRisk: null, existingSipMonthly: null };
 
   if (subjectType === "lead") {
     const l = (await tx.execute(sql`
@@ -117,7 +121,7 @@ export async function loadDiscoveryPrefill(
     SELECT name, name_as_per_pan, dob, pan, phone, email, address, residency_status,
            occupation, nominee_name, nominee_relation, nominees,
            risk_profile, risk_profile_signed_at, COALESCE(risk_profile_provisional, false) AS provisional,
-           aum::numeric AS aum
+           aum::numeric AS aum, active_sip_amount::numeric AS active_sip_amount
       FROM investors
      WHERE id = ${subjectId}::uuid AND tenant_id = ${tenantId}::uuid LIMIT 1
   `)).rows[0] as Row | undefined;
@@ -175,12 +179,10 @@ export async function loadDiscoveryPrefill(
       premium: num(p.premium) || "",
     }));
 
-  // Mutual funds already held through the firm — one row at today's AUM. The
-  // type is left for the RM to pick (the book is usually a mix).
-  const aum = num(i.aum);
-  const assets = aum > 0
-    ? [{ description: "Mutual funds held with us", category: "", currentValue: Math.round(aum), invested: "", liquid: "Yes" }]
-    : [];
+  const assets = [
+    ...(await mfAssets(tx, tenantId, subjectId, num(i.aum))),
+    ...(await fdAssets(tx, tenantId, subjectId)),
+  ];
 
   return {
     identification,
@@ -189,7 +191,63 @@ export async function loadDiscoveryPrefill(
     healthInsurance,
     assets,
     recordedRisk: await latestRisk(tx, tenantId, subjectId, i),
+    existingSipMonthly: num(i.active_sip_amount) || null,
   };
+}
+
+/**
+ * Mutual funds held through the firm, one row per asset class. The split comes
+ * from the folios' scheme legs (lib/investors/asset-class), scaled to the
+ * client's AUM so the rows add up to the figure on their record. A client
+ * whose legs carry no category gets one row at today's AUM, type left blank.
+ */
+async function mfAssets(tx: Tx, tenantId: string, investorId: string, aum: number) {
+  if (aum <= 0) return [];
+  const folios = (await tx.execute(sql`
+    SELECT aum::numeric AS aum, schemes FROM folios
+     WHERE investor_id = ${investorId}::uuid AND tenant_id = ${tenantId}::uuid
+  `).catch(() => ({ rows: [] as Row[] }))).rows as Row[];
+  const by = { equity: 0, defensive: 0, hybrid: 0, other: 0 };
+  for (const f of folios) {
+    const legs = Array.isArray(f.schemes) ? (f.schemes as Array<{ category?: string; value?: number }>) : [];
+    const valued = legs.filter((l) => Number(l.value) > 0);
+    if (!valued.length) {
+      by.other += num(f.aum);
+      continue;
+    }
+    for (const l of valued) by[assetClassOf(l.category)] += Number(l.value);
+  }
+  const total = by.equity + by.defensive + by.hybrid + by.other;
+  if (total <= 0 || by.other / total > 0.5) {
+    return [{ description: "Mutual funds held with us", category: "", currentValue: Math.round(aum), invested: "", liquid: "" }];
+  }
+  const rows: Array<[keyof typeof by, string, string, string]> = [
+    ["equity", "Equity mutual funds held with us", "MF – Equity", "No"],
+    ["hybrid", "Hybrid mutual funds held with us", "MF – Hybrid", "No"],
+    ["defensive", "Debt mutual funds held with us", "MF – Debt", "Yes"],
+    ["other", "Other mutual funds held with us", "", ""],
+  ];
+  return rows
+    .map(([k, description, category, liquid]) => ({ description, category, currentValue: Math.round((by[k] / total) * aum), invested: "", liquid }))
+    .filter((r) => r.currentValue > 0);
+}
+
+/** Fixed deposits placed through the firm that are still running. */
+async function fdAssets(tx: Tx, tenantId: string, investorId: string) {
+  const fds = (await tx.execute(sql`
+    SELECT issuer, principal::numeric AS principal, maturity_date
+      FROM fixed_deposits
+     WHERE investor_id = ${investorId}::uuid AND tenant_id = ${tenantId}::uuid
+       AND deleted_at IS NULL AND status IN ('applied', 'active')
+     ORDER BY maturity_date ASC LIMIT 20
+  `).catch(() => ({ rows: [] as Row[] }))).rows as Row[];
+  return fds.map((f) => ({
+    description: `FD — ${str(f.issuer)}${isoDay(f.maturity_date) ? ` (matures ${isoDay(f.maturity_date)})` : ""}`,
+    category: "Fixed Deposit",
+    currentValue: Math.round(num(f.principal)),
+    invested: Math.round(num(f.principal)),
+    liquid: "No",
+  }));
 }
 
 /**
@@ -249,7 +307,9 @@ export function mergeDiscoveryPrefill(data: DiscoveryData, p: DiscoveryPrefill):
 
   const before = JSON.stringify(data.recordedRisk ?? null);
   out.recordedRisk = p.recordedRisk ?? undefined;
-  const riskChanged = JSON.stringify(out.recordedRisk ?? null) !== before;
+  const sipBefore = data.existingSipMonthly ?? null;
+  out.existingSipMonthly = p.existingSipMonthly ?? undefined;
+  const riskChanged = JSON.stringify(out.recordedRisk ?? null) !== before || (out.existingSipMonthly ?? null) !== sipBefore;
 
   if (filled.length) {
     out.prefilledFromRecord = Array.from(new Set([...(data.prefilledFromRecord ?? []), ...filled]));

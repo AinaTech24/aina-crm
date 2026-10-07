@@ -240,6 +240,69 @@ export async function completeExpiredSips(
   };
 }
 
+/** The remark that marks a registration as a transfer, not a SIP. Imports
+ *  check for it so a later registrar report cannot bring the row back. */
+export const NOT_A_SIP_REMARK = "Not a SIP: an STP/SWP registration — money leaves this scheme each month";
+
+/**
+ * Take STP and SWP registrations out of the SIP book.
+ *
+ * The registrar's "systematic registrations" report (KFintech MFSD243/313,
+ * CAMS WBR49) lists SIPs, STPs and SWPs together, and they all imported as
+ * SIPs. An STP out of a liquid fund then counted as a SIP INTO it: on Nimesh C
+ * Shah Financial Services, 225 such rows were Rs 68.28 L of a Rs 1.10 Cr
+ * "SIP book" — e.g. Rs 2,00,000 a month leaving Nippon Ultra Short Duration
+ * for an equity fund, booked as a Rs 2 L SIP.
+ *
+ * Positive evidence only, from the transaction ledger, on the same folio and
+ * scheme code: at least two OUTFLOWS of the registered amount (within 1%) and
+ * not a single SIP instalment, ever. (CAMS books an STP-out as a payout from
+ * the source scheme and the matching STP-in as a "sip" into the TARGET one, so
+ * the source scheme itself never shows a SIP.) A SIP brings money in; a scheme that only
+ * ever sends the instalment out is the source of a transfer or withdrawal. A
+ * registration with no transactions at all is left alone — no evidence either
+ * way.
+ *
+ * Marked 'stopped' with {@link NOT_A_SIP_REMARK}; the caller refreshes
+ * `active_sip_amount`.
+ */
+export async function markSystematicTransfers(tx: Tx, tenantId: string): Promise<number> {
+  // ONE pass over the firm's transactions, joined to its active SIPs on
+  // (folio, scheme code). `transactions` has no folio index, so a per-SIP
+  // subquery rescanned the whole ledger for every SIP — on a firm with
+  // ~730k transactions that ran past the 30-second statement limit.
+  const res = await tx.execute(sql`
+    WITH cand AS (
+      SELECT s.id, s.folio_number, s.scheme_code, s.amount
+        FROM sips s
+       WHERE s.tenant_id = ${tenantId}::uuid AND s.status = 'active' AND COALESCE(s.amount, 0) > 0
+    ), ev AS (
+      SELECT c.id,
+             bool_or(x.type = 'sip') AS has_sip,
+             count(*) FILTER (
+               WHERE x.direction = 'outflow' AND x.amount BETWEEN c.amount * 0.99 AND c.amount * 1.01
+             ) AS same_amount_outflows
+        FROM cand c
+        JOIN transactions x
+          ON x.tenant_id = ${tenantId}::uuid
+         AND x.folio_number = c.folio_number
+         -- CAMS writes the scheme code with its AMC letter(s) in the feed
+         -- ("P1746") and without them in the registration report ("1746").
+         AND (x.scheme_code = c.scheme_code
+              OR (length(x.scheme_code) BETWEEN length(c.scheme_code) + 1 AND length(c.scheme_code) + 2
+                  AND right(x.scheme_code, length(c.scheme_code)) = c.scheme_code
+                  AND left(x.scheme_code, 1) ~ '[A-Za-z]'))
+       GROUP BY c.id
+    )
+    UPDATE sips s
+       SET status = 'stopped', remarks = ${NOT_A_SIP_REMARK}, updated_at = now()
+      FROM ev
+     WHERE s.id = ev.id AND NOT ev.has_sip AND ev.same_amount_outflows >= 2
+    RETURNING s.id
+  `);
+  return res.rows.length;
+}
+
 /** Headline counts for the worklist header. */
 export type SipExpirySummary = {
   expiring30: number;

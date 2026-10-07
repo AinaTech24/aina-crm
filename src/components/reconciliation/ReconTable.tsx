@@ -6,6 +6,9 @@
  *  - "Sync to CRM" posts an opening-balance transaction so the CRM ledger
  *    matches the feed (additive breaks: feed units > CRM units), then resolves.
  *  - Bulk bar: Sync selected / Resolve / Investigating / Ignore.
+ *  - "Sync all to CRM (N)": every syncable break in the page's filter, not
+ *    just the 50 on screen — the server takes them in batches and the button
+ *    shows the progress (lib/reconciliation/syncable.ts).
  *  - Per-row status dropdown (open / investigating / resolved / ignored).
  */
 
@@ -15,6 +18,9 @@ import Link from "next/link";
 import { Loader2, Wand2 } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { useToast } from "@/components/ui/Toast";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
+import { buttonClass } from "@/components/ui/button-class";
+import type { ReconFilter } from "@/lib/reconciliation/syncable";
 import { formatDate, formatINR } from "@/lib/utils";
 
 type Row = {
@@ -55,11 +61,17 @@ function fmtUnits(n: any): string {
   return v.toLocaleString("en-IN", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 }
 
-export function ReconTable({ rows }: { rows: Row[] }) {
+export function ReconTable({ rows, syncable = 0, filter = {} }: {
+  rows: Row[];
+  /** Breaks in the current filter that "Sync to CRM" can fix (all pages). */
+  syncable?: number;
+  filter?: ReconFilter;
+}) {
   const router = useRouter();
   const toast = useToast();
   const [sel, setSel] = useState<Set<string>>(new Set());
-  const [busy, setBusy] = useState<string | null>(null); // row id or "bulk"
+  const [busy, setBusy] = useState<string | null>(null); // row id, "bulk" or "all"
+  const [progress, setProgress] = useState<string | null>(null);
 
   const additiveSelected = rows.filter((r) => sel.has(r.id) && isAdditive(r));
 
@@ -134,8 +146,57 @@ export function ReconTable({ rows }: { rows: Row[] }) {
     }
   }
 
+  /** Every syncable break in this filter, batch by batch, until none is left. */
+  async function syncAll() {
+    const ok = await confirmDialog({
+      title: `Sync ${syncable.toLocaleString("en-IN")} break${syncable === 1 ? "" : "s"} to CRM?`,
+      message:
+        "For every break in this filter where the RTA / CAS feed holds more units than the CRM, an opening-balance transaction is posted for the missing units and the break is marked resolved.",
+      confirmLabel: "Sync all",
+    });
+    if (!ok) return;
+    setBusy("all");
+    let done = 0;
+    try {
+      for (let round = 0; round < 100; round++) {
+        setProgress(`Syncing… ${done.toLocaleString("en-IN")} of ${syncable.toLocaleString("en-IN")}`);
+        const res = await fetch(`/api/reconciliation/exceptions/bulk`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ all: true, action: "sync", filter }),
+        });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          toast.error(j.error ?? `Failed (${res.status})`, done ? `Stopped after ${done} synced` : "Sync all");
+          break;
+        }
+        done += Number(j.updated ?? 0);
+        if (!j.remaining || !j.updated) break;
+      }
+      if (done) toast.success(`Synced ${done.toLocaleString("en-IN")} break${done === 1 ? "" : "s"} to CRM`);
+      setSel(new Set());
+      router.refresh();
+    } finally {
+      setBusy(null);
+      setProgress(null);
+    }
+  }
+
   return (
     <div className="space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-xs text-muted-foreground">{sel.size > 0 ? `${sel.size} selected on this page` : ""}</span>
+        <button
+          type="button"
+          onClick={syncAll}
+          disabled={busy !== null || syncable === 0}
+          className={buttonClass("primary", "sm", "gap-1.5")}
+          title={syncable === 0 ? "No break in this filter can be synced (the feed must hold more units than the CRM)" : "Post opening-balance txns for every fixable break in this filter"}
+        >
+          {busy === "all" ? <Loader2 className="size-3.5 animate-spin" /> : <Wand2 className="size-3.5" />}
+          {progress ?? `Sync all to CRM (${syncable.toLocaleString("en-IN")})`}
+        </button>
+      </div>
       {sel.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-brand-cyan/30 bg-brand-cyan-light/20 px-3 py-2 text-xs">
           <span className="font-medium">{sel.size} selected</span>

@@ -113,8 +113,6 @@ export const NAV_ACCESS_GROUPS: NavAccessGroup[] = [
   {
     title: "Compliance",
     items: [
-      { key: "/dashboard/compliance/command-center", label: "Compliance Center" },
-      { key: "/dashboard/compliance/amfi-circulars", label: "Circulars" },
       { key: "/dashboard/documents", label: "Documents", module: "documents" },
       { key: "/dashboard/compliance", label: "DDQ Readiness", module: "ddq" },
       { key: "/dashboard/reports/nomination-tracker", label: "Nomination Tracker" },

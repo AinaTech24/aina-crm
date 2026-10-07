@@ -50,3 +50,26 @@ export function deriveSchemeRisk(category?: string | null, name?: string | null)
   }
   return null;
 }
+
+// The Risk a firm sets on its Scheme Master ("very_low" … "very_high"), or a
+// SEBI level typed there, as a band. SEBI's lowest level is Low.
+const STORED_BAND: Record<string, number> = {
+  very_low: 1, low: 1, low_to_moderate: 2, moderate: 3, moderately_high: 4, high: 5, very_high: 6,
+};
+
+/** The scheme's riskometer as the firm recorded it, or null when it didn't —
+ *  callers then fall back to deriveSchemeRisk. */
+export function storedSchemeRisk(level?: string | null): SchemeRisk | null {
+  const band = level ? STORED_BAND[level.trim().toLowerCase().replace(/[\s-]+/g, "_")] : undefined;
+  return band ? { band, label: LABELS[band], tone: TONES[band] } : null;
+}
+
+const LEVEL_KEYS = {
+  1: "low", 2: "low_to_moderate", 3: "moderate", 4: "moderately_high", 5: "high", 6: "very_high",
+} as const;
+export type RiskometerLevel = (typeof LEVEL_KEYS)[keyof typeof LEVEL_KEYS];
+
+/** A band as the riskometer level a proposal line stores ("very_high"). */
+export function riskometerLevel(band?: number | null): RiskometerLevel | undefined {
+  return band ? LEVEL_KEYS[band as keyof typeof LEVEL_KEYS] : undefined;
+}

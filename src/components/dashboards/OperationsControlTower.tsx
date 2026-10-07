@@ -297,31 +297,57 @@ export async function OperationsControlTower({
   const vFrom = vh === "week" ? monday : vh === "mtd" ? `${today.slice(0, 8)}01` : today;
   const vLabel = vh === "week" ? "This week" : vh === "mtd" ? "This month" : "Today";
 
+  /**
+   * A figure's own list of requests (/dashboard/operations/requests,
+   * lib/dashboard/ops/request-list.ts) with the filters in force. The figures
+   * used to link to a "#queue" section that is no longer on the page, so a
+   * click reloaded the dashboard and showed nothing.
+   */
+  const list = (view: string, over: Record<string, string> = {}) => {
+    const q = new URLSearchParams(filterQuery);
+    for (const [k, v] of Object.entries(over)) q.set(k, v);
+    q.set("view", view);
+    q.set("back", basePath);
+    return `/dashboard/operations/requests?${q}`;
+  };
+
   const hrefs: Hrefs = {
-    queue: at("queue"),
-    breached: at("queue", { sla: "breached" }),
-    within: at("queue", { sla: "within" }),
-    approaching: at("queue", { sla: "approaching" }),
+    queue: list("open"),
+    breached: list("open", { sla: "breached" }),
+    within: list("open", { sla: "within" }),
+    approaching: list("open", { sla: "approaching" }),
     highValue: at("high-value"),
     sip: at("sip"),
-    docs: at("queue", { kind: "documentation" }),
-    docsBreached: at("queue", { kind: "documentation", sla: "breached" }),
-    unassigned: at("queue", { exec: "none" }),
+    docs: list("open", { kind: "documentation" }),
+    docsBreached: list("open", { kind: "documentation", sla: "breached" }),
+    unassigned: list("open", { exec: "none" }),
+    // The stand-up / closure figures, each its own list.
+    carry: list("carry"),
+    receivedToday: list("received_today"),
+    completedToday: list("completed_today"),
+    dueToday: list("due_today"),
+    dueUnresolved: list("due_unresolved"),
+    highValueList: list("high_value", { hv: String(highValue) }),
+    received: list("received"),
+    completed: list("completed"),
+    sipOpen: "/dashboard/sip-rejections?recovery=pending,client_contacted,bank_issue,mandate_issue",
+    queriesOverdue: "/dashboard/service-requests?breached=1",
+    queriesOpen: "/dashboard/service-requests",
     queries: at("queries"),
     rejected: at("rejected"),
     pendingWith: at("pending-with"),
-    tat: at("tat"),
+    tat: list("completed"),
     morning: at("standup", { eod: null }),
     closure: at("standup", { eod: "1" }),
-    reg: at("queue", { kind: "sip_registration" }),
-    mod: at("queue", { kind: "sip_modification" }),
-    stop: at("queue", { kind: "sip_stop" }),
+    reg: list("open", { kind: "sip_registration" }),
+    mod: list("open", { kind: "sip_modification" }),
+    stop: list("open", { kind: "sip_stop" }),
     today: at("volume", { vh: null }),
     week: at("volume", { vh: "week" }),
     mtd: at("volume", { vh: "mtd" }),
     weekly: at("review", { review: "weekly" }),
     monthly: at("review", { review: "monthly" }),
-    ...Object.fromEntries(OPS_KINDS.map((k) => [`kind:${k.key}`, at("queue", { kind: k.key })])),
+    ...Object.fromEntries(OPS_KINDS.map((k) => [`kind:${k.key}`, list("open", { kind: k.key })])),
   };
 
   const canEditAll = can(session.roles, "task.edit.all", session.permissions);

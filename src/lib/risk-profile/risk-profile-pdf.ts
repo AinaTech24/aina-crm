@@ -64,6 +64,9 @@ export type RiskProfilePdfData = {
   maxScore?: number | null;
   profileDate?: string | null; // yyyy-mm-dd
   signedAt?: string | null; // ISO
+  /** When the profile was recorded (risk_profile_responses.created_at, ISO) —
+   *  the time printed beside the profile's date. */
+  recordedAt?: string | null;
   signedByName?: string | null;
   nextReviewAt?: string | null; // yyyy-mm-dd
   age?: number | null;
@@ -251,7 +254,7 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
   });
   const metaCells: Array<[string, string]> = [
     ["Profile ID", profileId || "-"],
-    ["Date", fmtDateLong(profile.profileDate ?? args.generatedAt)],
+    ["Date", stampText(profile.recordedAt ?? profile.signedAt, profile.profileDate ?? args.generatedAt)],
     ["Valid Until", profile.nextReviewAt ? fmtDateLong(profile.nextReviewAt) : "-"],
   ];
   metaCells.forEach(([k, v], i) => {
@@ -483,6 +486,8 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
   const method = profile.verificationMethod ?? "rm_entry";
   const v = profile.verification ?? {};
   const signedOn = profile.signedAt ?? profile.profileDate ?? null;
+  // A real moment for the time stamp: when it was signed, else when recorded.
+  const signedAtTs = profile.signedAt ?? profile.recordedAt ?? null;
   const proof: { title: string; tone: RGB; rows: Array<[string, string]> } =
     method === "client_otp"
       ? {
@@ -498,8 +503,8 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
       : method === "client_link"
         ? { title: "SUBMITTED ONLINE BY THE CLIENT", tone: primary, rows: [["Submitted on", fmtDateTimeIst(profile.signedAt)], ["IP address", v.ip ?? ""]] }
         : method === "client_physical"
-          ? { title: "SIGNED PHYSICAL FORM", tone: primary, rows: [["Signed on", fmtDateLong(signedOn)]] }
-          : { title: "RECORDED BY THE ADVISER", tone: SLATE, rows: [["Recorded on", fmtDateLong(signedOn)]] };
+          ? { title: "SIGNED PHYSICAL FORM", tone: primary, rows: [["Signed on", stampText(signedAtTs, signedOn)]] }
+          : { title: "RECORDED BY THE ADVISER", tone: SLATE, rows: [["Recorded on", stampText(signedAtTs, signedOn)]] };
   proof.rows = proof.rows.filter(([, val]) => val && val !== "-");
 
   const colGap = 18;
@@ -525,7 +530,7 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
   ly -= 14;
   page.drawText(ascii(truncate(clientName, bold, 10.5, colW - 10)), { x: MARGIN, y: ly, size: 10.5, font: bold, color: INK });
   ly -= 13;
-  page.drawText(ascii(`Date: ${fmtDateLong(signedOn)}`), { x: MARGIN, y: ly, size: 9, font: helv, color: SLATE });
+  page.drawText(ascii(`Date: ${stampText(signedAtTs, signedOn)}`), { x: MARGIN, y: ly, size: 9, font: helv, color: SLATE });
 
   // Right: how it was confirmed.
   const px = MARGIN + colW + colGap;
@@ -544,7 +549,7 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
   // ── Adviser sign-off ────────────────────────────────────────────────────
   ensure(40 + regLines.length * 14 + 40);
   page.drawText("Warm Regards,", { x: MARGIN, y, size: 11, font: helv, color: SLATE });
-  const dateStr = ascii(fmtDateLong(profile.profileDate ?? args.generatedAt));
+  const dateStr = ascii(stampText(profile.recordedAt ?? profile.signedAt, profile.profileDate ?? args.generatedAt));
   const dw = helv.widthOfTextAtSize(dateStr, 11);
   page.drawText(dateStr, { x: MARGIN + CONTENT_W - dw, y, size: 11, font: helv, color: SLATE });
   y -= 22;
@@ -606,7 +611,7 @@ function drawMasthead(page: PDFPage, ctx: Ctx): number {
     : "Mutual Fund Distributor";
   page.drawText(ascii(tagline), { x: MARGIN, y: H - 57, size: 10, font: bold, color: blend(WHITE, 0.85) });
 
-  const right: string[] = [ctx.refId ?? "", fmtDateLong(ctx.generatedAt)].filter(Boolean);
+  const right: string[] = [ctx.refId ?? "", fmtDateTimeIst(ctx.generatedAt)].filter(Boolean);
   right.forEach((t, i) => {
     const s = ascii(t);
     const tw = helv.widthOfTextAtSize(s, 9.5);
@@ -862,6 +867,23 @@ function fmtDateLong(iso: string | null | undefined): string {
   const d = new Date(String(iso).length === 10 ? `${iso}T00:00:00` : String(iso));
   if (isNaN(d.getTime())) return "-";
   return d.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
+}
+
+/**
+ * Date WITH time when a real moment is known (`ts`, an ISO timestamp), else the
+ * date alone (`fallbackDate`). A date-only value is never given an invented
+ * midnight time, and the time is dropped when its India date disagrees with
+ * the profile's own date — an adviser back-dating a profile must not get a
+ * stamp from the day they keyed it in.
+ */
+function stampText(ts: string | null | undefined, fallbackDate: string | null | undefined): string {
+  const d = ts && String(ts).length > 10 ? new Date(String(ts)) : null;
+  if (d && !isNaN(d.getTime())) {
+    const istDay = d.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }); // yyyy-mm-dd
+    const fb = fallbackDate ? String(fallbackDate).slice(0, 10) : null;
+    if (!fb || String(fallbackDate).length > 10 || fb === istDay) return fmtDateTimeIst(ts);
+  }
+  return fmtDateLong(fallbackDate ?? ts);
 }
 
 /** "2 Oct 2026, 3:03 pm IST" — India time whatever the server's zone. */

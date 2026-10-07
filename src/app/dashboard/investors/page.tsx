@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Plus, FileDown, LayoutGrid, List, FileUp, CopyPlus, ArrowRight } from "lucide-react";
 import { and, asc, desc, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
-import { investors } from "@/db/schema";
+import { customFieldDefs, investors } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { investorScopeCondition, investorScopeSql, requireInvestorView } from "@/lib/investors/access";
@@ -21,6 +21,7 @@ import { dormancyDays, type HealthBand } from "@/lib/investors/health";
 import { InvestorsTable, type InvestorTableRow } from "@/components/investors/InvestorsTable";
 import { InvestorSortSelect } from "@/components/investors/InvestorSortSelect";
 import { buildInvestorWhere } from "@/lib/investors/list-filters";
+import { investorFieldFilterDefs, loadInvestorFilterOptions, type InvestorCustomFieldDef } from "@/lib/investors/field-filters";
 import { Pager } from "@/components/common/Pager";
 import { countPossibleDuplicates } from "@/lib/investors/duplicates";
 import { clientCompleteness } from "@/lib/investors/completeness";
@@ -166,7 +167,7 @@ export default async function InvestorsPage({
   const PAGE_SIZE = 50;
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
 
-  const { rows, total, kanbanRows, rms, allIds, dupCount, massUpdate, needsDataCount } = await withTenant(session.tenantId, async (tx) => {
+  const { rows, total, kanbanRows, rms, allIds, dupCount, massUpdate, needsDataCount, fieldFilterOptions, customDefs } = await withTenant(session.tenantId, async (tx) => {
     // The Health column reads the stored score. Re-score anyone not scored
     // since this morning first (days-since-contact moves with the calendar),
     // so the list shows what the client page and the drawer show. A no-op
@@ -348,7 +349,18 @@ export default async function InvestorsPage({
       };
     }
 
-    return { rows: r, total: Number(c[0]?.c ?? 0), kanbanRows, rms, allIds, dupCount, massUpdate, needsDataCount };
+    // Every client field as a filter (lib/investors/field-filters.ts): the pick
+    // lists list only what this viewer's own book holds, and each custom
+    // client field gets its own filter.
+    const bookWhere = sql`investors.deleted_at IS NULL AND investors.merged_into_id IS NULL${scope ? sql` AND ${scope}` : sql``}`;
+    const fieldFilterOptions = await loadInvestorFilterOptions(tx, session.tenantId, bookWhere);
+    const customDefs: InvestorCustomFieldDef[] = await tx
+      .select({ key: customFieldDefs.key, label: customFieldDefs.label, type: customFieldDefs.type, options: customFieldDefs.options })
+      .from(customFieldDefs)
+      .where(sql`${customFieldDefs.tenantId} = ${session.tenantId}::uuid AND ${customFieldDefs.entity} = 'investor'`)
+      .orderBy(asc(customFieldDefs.sortOrder), asc(customFieldDefs.label));
+
+    return { rows: r, total: Number(c[0]?.c ?? 0), kanbanRows, rms, allIds, dupCount, massUpdate, needsDataCount, fieldFilterOptions, customDefs };
   }, { userId: session.userId, branchId: session.branchId, roles: session.roles });
 
   const rmOptions = (rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
@@ -520,6 +532,7 @@ export default async function InvestorsPage({
             : []),
           ...(showAum ? [{ type: "amount_range" as const, key: "aum", label: "AUM", presets: AUM_PRESETS }] : []),
           dateRangeFilter("created", "Added"),
+          ...investorFieldFilterDefs(fieldFilterOptions, customDefs, (f) => isFieldAllowed(license, "investor", f)),
         ]}
         rightSlot={
           <div className="flex items-center gap-2">

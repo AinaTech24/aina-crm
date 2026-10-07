@@ -24,10 +24,15 @@ const inr = (nv: number) => {
  * affordability). Recomputes instantly as the form changes. Pure display.
  */
 export function HealthSnapshot({ c, sticky }: { c: DiscoveryComputed; sticky?: boolean }) {
+  // A score is only claimed once two pillars have data (lib/discovery/calc).
+  const score = c.healthScore;
   const bandColor =
-    c.healthBand === "Excellent" ? "text-emerald-600" : c.healthBand === "Good" ? "text-brand-cyan-deep" : c.healthBand === "Fair" ? "text-amber-500" : "text-rose-500";
+    score == null ? "text-muted-foreground" : c.healthBand === "Excellent" ? "text-emerald-600" : c.healthBand === "Good" ? "text-brand-cyan-deep" : c.healthBand === "Fair" ? "text-amber-500" : "text-rose-500";
   const ringStroke =
-    c.healthScore >= 80 ? "#059669" : c.healthScore >= 60 ? "#0891b2" : c.healthScore >= 40 ? "#f59e0b" : "#f43f5e";
+    score == null ? "#94a3b8" : score >= 80 ? "#059669" : score >= 60 ? "#0891b2" : score >= 40 ? "#f59e0b" : "#f43f5e";
+  const known = c.scoreParts.filter((p) => p.known).length;
+  const risk = c.risk;
+  const riskShown = risk && (risk.source === "record" || risk.answered > 0);
 
   return (
     <div className={`card-surface p-5 space-y-4 ${sticky ? "lg:sticky lg:top-4" : ""}`}>
@@ -35,31 +40,38 @@ export function HealthSnapshot({ c, sticky }: { c: DiscoveryComputed; sticky?: b
         <div className="relative size-20 flex-shrink-0">
           <svg viewBox="0 0 36 36" className="size-20 -rotate-90">
             <circle cx="18" cy="18" r="15.9" fill="none" stroke="currentColor" className="text-secondary" strokeWidth="3.2" />
-            <circle cx="18" cy="18" r="15.9" fill="none" stroke={ringStroke} strokeWidth="3.2" strokeLinecap="round" strokeDasharray={`${c.healthScore} ${100 - c.healthScore}`} />
+            <circle cx="18" cy="18" r="15.9" fill="none" stroke={ringStroke} strokeWidth="3.2" strokeLinecap="round" strokeDasharray={`${score ?? 0} ${100 - (score ?? 0)}`} />
           </svg>
           <div className="absolute inset-0 grid place-items-center">
             <div className="text-center leading-none">
-              <div className="text-xl font-bold" style={{ color: ringStroke }}>{c.healthScore}</div>
-              <div className="text-2xs text-muted-foreground">/ 100</div>
+              <div className="text-xl font-bold" style={{ color: ringStroke }}>{score ?? "—"}</div>
+              {score != null && <div className="text-2xs text-muted-foreground">/ 100</div>}
             </div>
           </div>
         </div>
         <div>
           <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">Financial health</div>
           <div className={`text-lg font-bold ${bandColor}`}>{c.healthBand}</div>
+          {score == null ? (
+            <div className="text-2xs text-muted-foreground">Fill in income, expenses, insurance or goals to see a score</div>
+          ) : known < c.scoreParts.length ? (
+            <div className="text-2xs text-muted-foreground">From {known} of {c.scoreParts.length} areas</div>
+          ) : null}
         </div>
       </div>
 
       {/* Score pillars */}
       <div className="space-y-1.5">
         {c.scoreParts.map((p) => (
-          <div key={p.label}>
+          <div key={p.label} title={p.hint}>
             <div className="flex items-center justify-between text-2xs">
               <span className="text-muted-foreground">{p.label}</span>
-              <span className="tabular-nums font-medium">{p.score}/{p.max}</span>
+              <span className="tabular-nums font-medium">{p.known ? `${p.score}/${p.max}` : <span className="text-muted-foreground">—</span>}</span>
             </div>
             <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
-              <div className="h-full rounded-full" style={{ width: `${(p.score / p.max) * 100}%`, background: p.score / p.max >= 0.75 ? "#10b981" : p.score / p.max >= 0.4 ? "#f59e0b" : "#f43f5e" }} />
+              {p.known && (
+                <div className="h-full rounded-full" style={{ width: `${(p.score / p.max) * 100}%`, background: p.score / p.max >= 0.75 ? "#10b981" : p.score / p.max >= 0.4 ? "#f59e0b" : "#f43f5e" }} />
+              )}
             </div>
           </div>
         ))}
@@ -90,44 +102,59 @@ export function HealthSnapshot({ c, sticky }: { c: DiscoveryComputed; sticky?: b
       )}
 
       {/* Risk profile + product suitability (auto from the Risk-profile section) */}
-      {c.risk && c.risk.answered > 0 && (
+      {riskShown && (
         <div className="space-y-2.5 pt-3 border-t border-border">
-          <div className="flex items-end justify-between">
-            <div>
+          <div className="flex items-end justify-between gap-2">
+            <div className="min-w-0">
               <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">Risk profile</div>
-              <div className="text-base font-bold leading-tight" style={{ color: c.risk.bandColor }}>{c.risk.bandLabel}</div>
+              {risk.complete ? (
+                <div className="text-base font-bold leading-tight" style={{ color: risk.bandColor }}>{risk.bandLabel}</div>
+              ) : (
+                <div className="text-sm font-semibold leading-tight text-muted-foreground">Not complete yet</div>
+              )}
             </div>
-            {c.risk.source === "record" ? (
-              <div className="text-right text-2xs leading-tight text-muted-foreground">On record</div>
+            {risk.source === "record" ? (
+              <div className="text-right text-2xs leading-tight text-muted-foreground">
+                On record{risk.score != null ? <> · score {risk.score}</> : null}
+              </div>
             ) : (
               <div className="text-right leading-tight">
-                <div className="text-lg font-bold tabular-nums" style={{ color: c.risk.bandColor }}>
-                  {c.risk.score}<span className="text-2xs text-muted-foreground">/{c.risk.max}</span>
-                </div>
-                <div className="text-2xs text-muted-foreground">{c.risk.answered}/{c.risk.total} parameters</div>
+                {risk.complete && risk.score != null && (
+                  <div className="text-lg font-bold tabular-nums" style={{ color: risk.bandColor }}>
+                    {risk.score}<span className="text-2xs text-muted-foreground">/{risk.max}</span>
+                  </div>
+                )}
+                <div className="text-2xs text-muted-foreground">{risk.answered}/{risk.total} answered</div>
               </div>
             )}
           </div>
-          {c.risk.source !== "record" && (
+          {risk.source !== "record" && risk.complete && risk.score != null && (
             <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
-              <div className="h-full rounded-full" style={{ width: `${(c.risk.score / c.risk.max) * 100}%`, background: c.risk.bandColor }} />
+              <div className="h-full rounded-full" style={{ width: `${(risk.score / risk.max) * 100}%`, background: risk.bandColor }} />
             </div>
           )}
+          {!risk.complete && risk.missing.length > 0 && (
+            <p className="text-2xs text-muted-foreground">Still needed: {risk.missing.join(", ")}</p>
+          )}
 
-          <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold pt-0.5">Product suitability</div>
-          <div className="grid grid-cols-2 gap-1.5">
-            {PRODUCTS.map((p) => {
-              const cell = c.risk.suitability[p];
-              const vrd = VERDICT[cell.overall];
-              return (
-                <div key={p} className="flex items-center justify-between rounded-md border border-border bg-card px-2 py-1">
-                  <span className="text-2xs truncate">{PRODUCT_LABELS[p]}</span>
-                  <span className={`text-xs ${vrd.cls}`} title={`risk ${cell.risk} · horizon ${cell.horizon} · surplus ${cell.surplus} · liquidity ${cell.liquidity}`}>{vrd.mark}</span>
-                </div>
-              );
-            })}
-          </div>
-          <div className="text-2xs text-muted-foreground">✅ suitable · ⚠ conditional · ❌ not suitable · — needs more inputs</div>
+          {risk.suitabilityReady && (
+            <>
+              <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold pt-0.5">Product suitability</div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {PRODUCTS.map((p) => {
+                  const cell = risk.suitability[p];
+                  const vrd = VERDICT[cell.overall];
+                  return (
+                    <div key={p} className="flex items-center justify-between rounded-md border border-border bg-card px-2 py-1">
+                      <span className="text-2xs truncate">{PRODUCT_LABELS[p]}</span>
+                      <span className={`text-xs ${vrd.cls}`} title={`risk ${cell.risk} · horizon ${cell.horizon} · surplus ${cell.surplus} · liquidity ${cell.liquidity}`}>{vrd.mark}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="text-2xs text-muted-foreground">✅ suitable · ⚠ conditional · ❌ not suitable · — needs more inputs</div>
+            </>
+          )}
         </div>
       )}
     </div>

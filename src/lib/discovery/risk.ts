@@ -14,7 +14,7 @@
 
 /* ── question options (scored where 1–5 applies) ─────────────────────────── */
 export interface RiskOption { value: string; score?: number }
-export interface RiskQuestion { key: string; label: string; options: RiskOption[]; scored?: boolean; help?: string }
+export interface RiskQuestion { key: string; label: string; short: string; options: RiskOption[]; scored?: boolean; help?: string }
 
 const s = (pairs: [string, number][]): RiskOption[] => pairs.map(([value, score]) => ({ value, score }));
 const o = (...vals: string[]): RiskOption[] => vals.map((value) => ({ value }));
@@ -31,14 +31,14 @@ const LUMP_SUM = o("< ₹1 Lakh", "₹1–5 Lakhs", "₹5–10 Lakhs", "₹10–
 /** The behavioural questions ASKED in the Risk-profiling section. (Age / income /
  *  net worth are derived from the fact-find, so they're not re-asked here.) */
 export const RISK_QUESTIONS: RiskQuestion[] = [
-  { key: "horizon", label: "Investment time horizon for the primary goal?", options: HORIZON, scored: true },
-  { key: "lumpSum", label: "Lump-sum amount available to invest now?", options: LUMP_SUM, help: "Drives PMS / AIF / SIF eligibility" },
-  { key: "liquidity", label: "When might the client need to access this money?", options: LIQUIDITY, scored: true },
-  { key: "reaction", label: "If the portfolio fell 20% in 3 months, the client would:", options: REACTION, scored: true },
-  { key: "knowledge", label: "Investment knowledge level?", options: KNOWLEDGE, scored: true },
-  { key: "experience", label: "Prior capital-market experience?", options: EXPERIENCE, scored: true },
-  { key: "pctRisk", label: "% of total savings willing to put at risk?", options: PCT_RISK, scored: true },
-  { key: "loans", label: "Outstanding loans or liabilities?", options: LOANS, scored: true },
+  { key: "horizon", label: "Investment time horizon for the primary goal?", short: "Time horizon", options: HORIZON, scored: true },
+  { key: "lumpSum", label: "Lump-sum amount available to invest now?", short: "Lump sum", options: LUMP_SUM, help: "Drives PMS / AIF / SIF eligibility" },
+  { key: "liquidity", label: "When might the client need to access this money?", short: "Access to money", options: LIQUIDITY, scored: true },
+  { key: "reaction", label: "If the portfolio fell 20% in 3 months, the client would:", short: "Reaction to a fall", options: REACTION, scored: true },
+  { key: "knowledge", label: "Investment knowledge level?", short: "Knowledge", options: KNOWLEDGE, scored: true },
+  { key: "experience", label: "Prior capital-market experience?", short: "Experience", options: EXPERIENCE, scored: true },
+  { key: "pctRisk", label: "% of total savings willing to put at risk?", short: "Savings at risk", options: PCT_RISK, scored: true },
+  { key: "loans", label: "Outstanding loans or liabilities?", short: "Loans", options: LOANS, scored: true },
 ];
 
 /* ── bands (workbook thresholds on a 0–50 scale) ─────────────────────────── */
@@ -163,13 +163,17 @@ export interface RiskInput {
   answers: Record<string, string>; // data.riskProfile (the 8 asked fields)
   /** The category on record in the Risk Profiles module; wins over the answers. */
   recordedCategory?: string | null;
+  /** That profile's own score (its template's scale), when it has one. */
+  recordedScore?: number | null;
   age: number | null;
   grossAnnualIncome: number;
   netWorth: number;
   netWorthKnown: boolean;
 }
 export interface RiskResult {
-  score: number;
+  /** The questionnaire's 0-50 score; for a profile on record, its own score
+   *  (another scale, so it is shown without "/50"), else null. */
+  score: number | null;
   max: number;
   answered: number;
   total: number; // # of scored params (10)
@@ -183,6 +187,8 @@ export interface RiskResult {
   suitabilityReady: boolean;
   /** "record" when the band comes from the Risk Profiles module. */
   source: "record" | "questions";
+  /** What is still needed for a questionnaire result, in plain words. */
+  missing: string[];
 }
 
 /** The module's 4 categories → this engine's 6 bands. */
@@ -197,22 +203,29 @@ export function computeRisk(inp: RiskInput): RiskResult {
   const a = inp.answers ?? {};
   let score = 0;
   let answered = 0;
+  const missing: string[] = [];
 
   // 7 asked-and-scored questions
   for (const q of RISK_QUESTIONS) {
     if (!q.scored) continue;
     const val = a[q.key] ?? "";
-    const sc = q.options.find((x) => x.value === val)?.score ?? 0;
-    if (val) answered++;
-    score += sc;
+    const sc = q.options.find((x) => x.value === val)?.score;
+    if (val && sc != null) {
+      answered++;
+      score += sc;
+    } else missing.push(q.short);
   }
   // 3 derived-and-scored parameters
   const age = ageScore(inp.age);
   const inc = incomeScore(inp.grossAnnualIncome);
   const nw = netWorthScore(inp.netWorth, inp.netWorthKnown);
-  for (const d of [age, inc, nw]) {
-    if (d != null) { answered++; score += d; }
+  for (const [d, need] of [[age, "Date of birth"], [inc, "Income"], [nw, "Assets or loans"]] as const) {
+    if (d != null) { answered++; score += d; } else missing.push(need);
   }
+  // An unanswered question used to count as zero, so ONE answer of "> 10
+  // years" — the most aggressive — produced "Conservative" and a full
+  // suitability verdict. No band is claimed until all ten are known.
+  const complete = answered === 10;
 
   // A risk profile on record is the client's risk profile — one answer across
   // the CRM. The form then asks nothing (2026-10-02), so suitability rests on
@@ -237,7 +250,7 @@ export function computeRisk(inp: RiskInput): RiskResult {
 
   if (recordedId) {
     return {
-      score: band.max,
+      score: inp.recordedScore ?? null,
       max: MAX_RISK_SCORE,
       answered: 10,
       total: 10,
@@ -250,6 +263,7 @@ export function computeRisk(inp: RiskInput): RiskResult {
       suitability: matrix,
       suitabilityReady: true,
       source: "record",
+      missing: [],
     };
   }
 
@@ -259,13 +273,14 @@ export function computeRisk(inp: RiskInput): RiskResult {
     max: MAX_RISK_SCORE,
     answered,
     total: 10,
-    complete: answered === 10,
+    complete,
     bandId: band.id,
     bandLabel: band.label,
     bandColor: band.color,
     bandProducts: band.products,
     category: toCanonicalCategory(band.id),
     suitability: matrix,
-    suitabilityReady: answered > 0,
+    suitabilityReady: complete,
+    missing,
   };
 }

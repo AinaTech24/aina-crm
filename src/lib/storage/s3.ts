@@ -34,8 +34,28 @@ function region(): string {
   return process.env.S3_REGION || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "ap-south-1";
 }
 
+/** A bucket was named explicitly (S3_BUCKET / AWS_S3_BUCKET), not the default. */
+function bucketExplicit(): boolean {
+  return !!(process.env.S3_BUCKET || process.env.AWS_S3_BUCKET);
+}
+
+/**
+ * S3 is in use when a bucket is named and EITHER a full static key pair is set
+ * OR no static key at all — then the SDK's default credential chain supplies the
+ * EC2 instance role (production, 2026-10-07: the static keys were an
+ * AdministratorAccess IAM user's; the role `mfd-growth-os-ec2` is scoped to the
+ * bucket). Half a key pair is a misconfiguration and counts as not configured.
+ */
 export function isS3Configured(): boolean {
-  return !!(accessKeyId() && secretAccessKey());
+  const id = accessKeyId();
+  const secret = secretAccessKey();
+  if (id && secret) return true;
+  return !id && !secret && bucketExplicit();
+}
+
+/** No static key: the SDK default chain (EC2 instance role) supplies credentials. */
+function usesInstanceRole(): boolean {
+  return isS3Configured() && !accessKeyId();
 }
 
 /**
@@ -52,7 +72,7 @@ function s3Required(): boolean {
 function assertS3OrLocalAllowed(): void {
   if (!isS3Configured() && s3Required()) {
     throw new Error(
-      "S3 storage is required in production but is not configured — set S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY (a matching pair) in .env.production. Refusing to store the document on local disk."
+      "S3 storage is required in production but is not configured — set S3_BUCKET (credentials come from the EC2 instance role, or a matching S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY pair) in .env.production. Refusing to store the document on local disk."
     );
   }
 }
@@ -108,7 +128,7 @@ export function storageStatus(): {
   bucket: string;
   region: string;
   accessKeyIdMasked: string | null;
-  source: "S3_*" | "AWS_*" | "none";
+  source: "S3_*" | "AWS_*" | "instance-role" | "none";
 } {
   const akid = accessKeyId();
   const configured = isS3Configured();
@@ -122,7 +142,9 @@ export function storageStatus(): {
       ? "S3_*"
       : process.env.AWS_ACCESS_KEY_ID
         ? "AWS_*"
-        : "none",
+        : usesInstanceRole()
+          ? "instance-role"
+          : "none",
   };
 }
 

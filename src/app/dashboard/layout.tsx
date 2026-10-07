@@ -7,7 +7,6 @@ import {
   Workflow,
   MessageSquare,
   ListChecks,
-  ShieldCheck,
   Settings,
   HeartHandshake,
   Target,
@@ -37,11 +36,9 @@ import {
   // ── unique-icon replacements for the de-duplicated sidebar ──
   UserPlus,
   Presentation,
-  ShieldAlert,
   LayoutTemplate,
   Gauge,
   ClipboardList,
-  Newspaper,
   BellRing,
   FolderOpen,
   Building2,
@@ -211,8 +208,8 @@ const NAV: NavSection[] = [
     items: [
       // DDQ, SOPs, the audit log, legal registrations and sub-distributors are
       // in PALETTE_ONLY below: searchable with Ctrl/Cmd+K, not in the menu.
-      { href: "/dashboard/compliance/command-center", label: "Compliance Center", icon: ShieldCheck, roles: ["owner", "compliance", "branch_head"] },
-      { href: "/dashboard/compliance/amfi-circulars", label: "Circulars", icon: Newspaper, roles: ["owner", "compliance", "back_office", "ops", "rm", "branch_head"] },
+      // Compliance Center and Circulars were removed at the firm's request
+      // (2026-10-07) — do not restore them; their addresses redirect.
       { href: "/dashboard/documents", label: "Documents", icon: FolderOpen, module: "documents", roles: ["owner", "compliance", "back_office", "ops", "rm", "branch_head"] },
     ],
   },
@@ -580,9 +577,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
   ];
 
 
-  // The top bar's shield opens Compliance Center: shown exactly when the
-  // sidebar would show Compliance Center (roles, module controls, nav grants).
-  const canSeeCompliance = flatNavItems.some((i) => i.href === "/dashboard/compliance/command-center");
   // Only a multi-branch firm has anything to switch between.
   const profileBranches = branchList.length > 1 ? branchList : null;
 
@@ -700,23 +694,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <div className="ml-auto flex items-center gap-2 sm:gap-3 text-sm">
             <QuickAdd items={quickAddItems} />
             {/* Convenience icons collapse on phones — everything stays reachable
-                (compliance via the sidebar, help via its page, birthdays via My
-                Day, two-factor via the avatar menu). */}
+                (help via its page, birthdays via My Day, two-factor via the
+                avatar menu). */}
             <div className="hidden sm:flex items-center gap-3">
-            {/* Compliance alerts: Compliance Center, for the people the sidebar
-                shows it to. This slot used to be a two-factor nudge, which now
-                lives in the avatar menu with an On/Off chip. */}
-            {canSeeCompliance && (
-              <Tooltip label="Compliance alerts">
-                <Link
-                  href="/dashboard/compliance/command-center"
-                  aria-label="Compliance alerts"
-                  className="size-9 rounded-full bg-secondary/70 hover:bg-secondary text-muted-foreground hover:text-foreground grid place-items-center transition-colors"
-                >
-                  <ShieldAlert className="size-4" />
-                </Link>
-              </Tooltip>
-            )}
             {/* "What's new" is inside this menu now: four icons, not five. */}
             <HelpMenu whatsNewUnread={whatsNewUnread} />
             <BirthdayBell />

@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
     const built = await withTenant(tk.tenantId, async (tx) => {
       const r = await tx.execute(sql`
         SELECT id, final_category, total_score, responses, profile_date, age,
-               signed_at, signed_by_name, next_review_at, verification_method, document_url,
+               signed_at, signed_by_name, next_review_at, verification_method, document_url, created_at,
                verified_email, email_verified_at, client_ip, otp_transaction_id
         FROM risk_profile_responses
         WHERE investor_id = ${tk.subjectId}::uuid AND tenant_id = ${tk.tenantId}::uuid
@@ -118,6 +118,7 @@ export async function GET(req: NextRequest) {
           maxScore,
           profileDate: row.profile_date ?? null,
           signedAt: row.signed_at ? new Date(row.signed_at).toISOString() : null,
+          recordedAt: row.created_at ? new Date(row.created_at).toISOString() : null,
           signedByName: row.signed_by_name ?? null,
           nextReviewAt: row.next_review_at ?? null,
           age: row.age != null ? Number(row.age) : null,
