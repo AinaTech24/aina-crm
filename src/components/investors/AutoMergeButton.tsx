@@ -78,7 +78,7 @@ export function AutoMergeButton({ panGroups }: { panGroups: number }) {
           </div>
           <p className="text-xs text-muted-foreground mt-1 max-w-xl">
             {panGroups} group{panGroups === 1 ? "" : "s"} share an identical PAN — one legal person each. The system keeps the
-            record with the bigger book and merges the rest, logged as “merged by system” and reversible from Differ Clients.
+            record with the bigger book and merges the rest, logged as “merged by system” and can be undone from Merge history.
             Phone, email and address matches are never merged automatically.
           </p>
         </div>
