@@ -8,13 +8,18 @@
  * nothing fits, "Ask for a change" sends their own words to the RM rather than
  * leaving the proposal to die quietly.
  *
+ * `intent` comes from the email's Approve / Request changes buttons and opens
+ * the page on that answer — the click alone never approves anything (mail
+ * scanners open links). A scheme beyond the client's risk appetite is marked,
+ * and taking one needs the client to say they understand that.
+ *
  * Reports the open to the CRM from the browser (not the server render), so a
  * WhatsApp or email link preview — a crawler, which runs no scripts — does not
  * count as the client reading it.
  */
 
-import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, ExternalLink, FileSignature, Loader2, MessageSquareText, Clock } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, CheckCircle2, ExternalLink, FileSignature, Loader2, MessageSquareText, Clock } from "lucide-react";
 import { buttonClass } from "@/components/ui/button-class";
 
 type Item = {
@@ -24,6 +29,8 @@ type Item = {
   risk: string | null;
   goal: string | null;
   amc: string | null;
+  /** Riskier than the client's risk profile. */
+  beyond?: boolean;
 };
 
 type ProposalView = {
@@ -49,12 +56,18 @@ type Outcome =
 export function PublicProposalApproval({
   tokenId,
   answered,
+  intent = null,
+  riskProfile = null,
   proposal,
   acceptanceText,
 }: {
   tokenId: string;
   /** The link has already been used — show what happened, no form. */
   answered: boolean;
+  /** The email button the client clicked. */
+  intent?: "approve" | "modify" | null;
+  /** The client's risk profile in words, when on record. */
+  riskProfile?: string | null;
   proposal: ProposalView;
   acceptanceText: string;
 }) {
@@ -64,8 +77,25 @@ export function PublicProposalApproval({
   const [busy, setBusy] = useState<null | "accept" | "change">(null);
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
-  const [asking, setAsking] = useState(false);
+  const [asking, setAsking] = useState(intent === "modify");
   const [note, setNote] = useState("");
+  const [riskAck, setRiskAck] = useState(false);
+  const acceptRef = useRef<HTMLElement>(null);
+
+  // Taken schemes beyond the client's risk appetite — accepting them needs the tick.
+  const beyondPicked = proposal.items.filter((it, i) => it.beyond && picked.has(i));
+  const needsAck = beyondPicked.length > 0;
+
+  // Land on what the email button said.
+  useEffect(() => {
+    if (!intent) return;
+    const focusId = intent === "modify" ? "proposal-change-note" : "proposal-signature";
+    const t = setTimeout(() => {
+      acceptRef.current?.scrollIntoView({ block: "start" });
+      (document.getElementById(focusId) as HTMLElement | null)?.focus({ preventScroll: true });
+    }, 300);
+    return () => clearTimeout(t);
+  }, [intent]);
 
   const first = proposal.recipientName.split(" ")[0] || "there";
 
@@ -100,6 +130,7 @@ export function PublicProposalApproval({
     if (proposal.items.length > 0 && picked.size === 0) {
       return setError("Tick at least one recommendation, or use “Ask for a change”.");
     }
+    if (needsAck && !riskAck) return setError("Please confirm you understand the risk, or untick those schemes.");
     setBusy("accept");
     setError(null);
     try {
@@ -107,7 +138,7 @@ export function PublicProposalApproval({
       const r = await fetch("/api/public/proposals/accept", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ tokenId, signatureName: signature.trim(), acceptedItems }),
+        body: JSON.stringify({ tokenId, signatureName: signature.trim(), acceptedItems, riskAcknowledged: needsAck ? riskAck : undefined }),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data?.error ?? `Something went wrong (${r.status})`);
@@ -194,11 +225,21 @@ export function PublicProposalApproval({
             </ul>
           </section>
 
-          <section className="bg-white rounded-xl shadow p-5 sm:p-6 space-y-4">
+          <section ref={acceptRef} className="bg-white rounded-xl shadow p-5 sm:p-6 space-y-4 scroll-mt-4">
             <h2 className="text-base font-semibold flex items-center gap-2">
               <FileSignature className="size-4 text-brand-cyan" /> Your acceptance
             </h2>
             <div className="rounded-lg border bg-secondary p-3 text-sm leading-relaxed">{acceptanceText}</div>
+
+            {needsAck && (
+              <label className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm leading-relaxed cursor-pointer">
+                <input type="checkbox" checked={riskAck} onChange={(e) => setRiskAck(e.target.checked)} className="mt-1" />
+                <span>
+                  I understand that {beyondPicked.map((it) => it.name).join(", ")} {beyondPicked.length === 1 ? "is" : "are"} beyond
+                  my risk appetite{riskProfile ? ` (${riskProfile})` : ""}, and I still wish to go ahead.
+                </span>
+              </label>
+            )}
 
             <label className="block">
               <div className="text-xs font-semibold mb-1">Sign by typing your full name</div>
@@ -220,7 +261,7 @@ export function PublicProposalApproval({
             <div className="grid gap-2">
               <button
                 onClick={accept}
-                disabled={busy !== null || !signature.trim() || (proposal.items.length > 0 && picked.size === 0)}
+                disabled={busy !== null || !signature.trim() || (proposal.items.length > 0 && picked.size === 0) || (needsAck && !riskAck)}
                 className={buttonClass("primary", "lg", "w-full gap-2")}
               >
                 {busy === "accept" ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
@@ -306,6 +347,11 @@ function ItemLine({ item, muted }: { item: Item; muted?: boolean }) {
               .filter(Boolean)
               .join(" · ")}
           </div>
+          {item.beyond && (
+            <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-2xs font-medium text-amber-800">
+              <AlertTriangle className="size-3" /> Beyond your risk appetite
+            </div>
+          )}
         </div>
         <div className="text-sm font-semibold tabular-nums text-right shrink-0">{item.amount}</div>
       </div>

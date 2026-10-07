@@ -1,7 +1,12 @@
 /**
  * Public proposal approval — POST /api/public/proposals/accept.
  *
- * Body: { tokenId, signatureName, acceptedItems?: number[] }
+ * Body: { tokenId, signatureName, acceptedItems?: number[], riskAcknowledged?: boolean }
+ *
+ * Taking a scheme beyond the client's risk appetite (lib/proposals/appetite,
+ * checked here again — never the page's word) needs `riskAcknowledged`; the
+ * acknowledgement and the schemes it covered are kept with the signature, and
+ * the RM's notification says so.
  *
  * Records SEBI-grade evidence into proposal_approvals, sets the proposal to
  * `accepted` — or `partially_approved` when the client took only some of the
@@ -43,6 +48,7 @@ import {
   notifyProposalOwner,
   startOnboarding,
 } from "@/lib/proposals/journey";
+import { loadProposalAppetite } from "@/lib/proposals/appetite";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -92,6 +98,17 @@ export async function POST(req: NextRequest) {
     }
     const partial = products.length > 0 && accepted.length < products.length;
 
+    // Schemes beyond the client's risk appetite that they are taking.
+    const tenantIdForCheck = link.token.tenantId!;
+    const appetite = await withTenant(tenantIdForCheck, (tx) => loadProposalAppetite(tx, tenantIdForCheck, link.proposal as any));
+    const beyondTaken = appetite.above.filter((a) => accepted.includes(a.index));
+    if (beyondTaken.length && body.riskAcknowledged !== true) {
+      return NextResponse.json(
+        { error: "Please confirm you understand that some schemes are beyond your risk appetite, or untick them." },
+        { status: 400 }
+      );
+    }
+
     // Step 1b: atomically CLAIM the single-use token before doing any work, so
     // two concurrent accepts can't both record an approval + double-fire the
     // downstream onboarding. The loser aborts.
@@ -130,6 +147,9 @@ export async function POST(req: NextRequest) {
             acceptedNames,
             totalItems: products.length,
             partial,
+            ...(beyondTaken.length
+              ? { riskProfile: appetite.profile, beyondAppetite: beyondTaken.map((a) => `${a.name} (${a.risk})`), riskAcknowledged: true }
+              : {}),
           },
         } as any);
 
@@ -167,7 +187,11 @@ export async function POST(req: NextRequest) {
           title: partial
             ? `${firstName(p.recipientName)} accepted ${accepted.length} of ${products.length} recommendations`
             : `${firstName(p.recipientName)} accepted your proposal`,
-          body: `${p.proposalNumber}${partial ? ` · accepted: ${acceptedNames.join(", ")}` : ""}`,
+          body:
+            `${p.proposalNumber}${partial ? ` · accepted: ${acceptedNames.join(", ")}` : ""}` +
+            (beyondTaken.length
+              ? ` · acknowledged as beyond their risk appetite: ${beyondTaken.map((a) => a.name).join(", ")}`
+              : ""),
           severity: "success",
         });
 
