@@ -1,21 +1,21 @@
 name: Deploy to AWS (EC2)
 
 # Ships the checked-out tree to the EC2 box and runs the blue-green deploy
-# script that already lives there (~/run-deploy.sh): prune → build → typecheck →
-# migrate → schema guard → start the idle colour → health-check → stop the old
-# colour. A failed deploy leaves the previous colour serving, so it cannot take
-# the site down.
+# script that already lives there (~/run-deploy.sh): prune → build → migrate →
+# schema guard → start the idle colour → health-check → stop the old colour.
+# A failed deploy leaves the previous colour serving, so it cannot take the
+# site down.
 #
-# Required repo secrets (Settings → Secrets and variables → Actions):
-#   DEPLOY_SSH_HOST   EC2 public IP / DNS        e.g. 13.204.102.20
-#   DEPLOY_SSH_USER   ssh user                   e.g. ec2-user
-#   DEPLOY_SSH_KEY    the PRIVATE key (PEM), full file including the BEGIN/END lines
-# Optional:
-#   DEPLOY_SSH_PORT   defaults to 22
-#   DEPLOY_APP_DIR    tree on the box            defaults to /home/ec2-user/app
+# Transport (2026-10-07): GitHub OIDC → IAM role aina-crm-github-deploy →
+# S3 (release tarball) + SSM Run Command → the instance. No SSH and no
+# long-lived AWS keys in GitHub. The role trusts ONLY this repo's
+# `production` environment (deployable from main and deploy/aws), may upload
+# only to the deploy-artifacts bucket's releases/ prefix, and may run only
+# AWS-RunShellScript on the production instance. On the box,
+# scripts/ssm-deploy.sh (taken from the tarball) does what the SSH step did.
 #
-# NOTE ON .env: the box owns its own ~/app/.env. This workflow never writes it,
-# so production secrets stay on the box and out of CI.
+# NOTE ON .env: the box owns its own ~/app/.env and .env.production. This
+# workflow never reads or writes them, so production secrets stay on the box.
 
 on:
   push:
@@ -39,35 +39,22 @@ jobs:
   deploy:
     needs: verify
     runs-on: ubuntu-latest
+    # The IAM role trusts only tokens for this environment, which only main and
+    # deploy/aws may use (Settings → Environments → production).
+    environment: production
+    permissions:
+      id-token: write   # GitHub OIDC token for the AWS role
+      contents: read
+    env:
+      AWS_REGION: ap-south-1
+      INSTANCE_ID: i-059673ee0da4f877a
+      ARTIFACT_BUCKET: aina-crm-deploy-artifacts-972971302420
+      DEPLOY_ROLE: arn:aws:iam::972971302420:role/aina-crm-github-deploy
     steps:
       - uses: actions/checkout@v4
 
-      # Fail loudly when the deploy isn't configured. This job used to "succeed"
-      # in 6 seconds with only a ::warning:: when the secrets were absent, so the
-      # branch looked green while nothing had shipped for weeks. A deploy that
-      # does nothing must be RED.
-      - name: Require deploy secrets
-        env:
-          HOST: ${{ secrets.DEPLOY_SSH_HOST }}
-          USER: ${{ secrets.DEPLOY_SSH_USER }}
-          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-        run: |
-          missing=""
-          [ -n "$HOST" ] || missing="$missing DEPLOY_SSH_HOST"
-          [ -n "$USER" ] || missing="$missing DEPLOY_SSH_USER"
-          [ -n "$KEY" ]  || missing="$missing DEPLOY_SSH_KEY"
-          if [ -n "$missing" ]; then
-            echo "::error::Auto-deploy is not configured. Missing repo secret(s):$missing"
-            echo "Add them under Settings → Secrets and variables → Actions, then re-run."
-            exit 1
-          fi
-
       # The box holds a plain source tree (NOT a git checkout), so we ship the
       # tree rather than pulling on the far side.
-      # The tarball MUST land inside the workspace. appleboy/scp-action runs in a
-      # Docker container that only mounts /github/workspace, so a file written to
-      # the runner's /tmp is invisible to it — the action then tars nothing and
-      # fails with "tar: empty archive" (run 33658352122).
       - name: Package the tree
         run: |
           tar czf app.tgz \
@@ -78,91 +65,58 @@ jobs:
             vitest.config.ts
           ls -lh app.tgz
 
-      - name: Copy to the box
-        uses: appleboy/scp-action@v0.1.7
+      - name: AWS credentials (OIDC, no stored keys)
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          host: ${{ secrets.DEPLOY_SSH_HOST }}
-          username: ${{ secrets.DEPLOY_SSH_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ secrets.DEPLOY_SSH_PORT || 22 }}
-          source: app.tgz
-          target: /tmp
-          # source is a bare filename with no directory components, so stripping
-          # one would strip the file itself.
-          strip_components: 0
+          role-to-assume: ${{ env.DEPLOY_ROLE }}
+          role-session-name: gh-deploy-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Deploy (blue-green) and wait for the result
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.DEPLOY_SSH_HOST }}
-          username: ${{ secrets.DEPLOY_SSH_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ secrets.DEPLOY_SSH_PORT || 22 }}
-          command_timeout: 40m
-          script: |
-            set -euo pipefail
-            APP_DIR="${{ secrets.DEPLOY_APP_DIR || '/home/ec2-user/app' }}"
+      - name: Upload the release
+        run: |
+          echo "RELEASE_KEY=releases/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}.tgz" >> "$GITHUB_ENV"
+          aws s3 cp app.tgz "s3://${ARTIFACT_BUCKET}/releases/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}.tgz" --only-show-errors
 
-            # ── Serialise deploys on the BOX, not just in GitHub ──────────────
-            # concurrency: cancel-in-progress:false queues runs, but it cannot
-            # protect this: run-deploy.sh is started with `nohup … &` so it
-            # OUTLIVES this step. Once the step stops polling (or the run is
-            # cancelled, or the SSH session drops) GitHub considers the run over
-            # and releases the queue slot while the build is still going on the
-            # box. A second deploy then extracts its tarball over $APP_DIR while
-            # the first is mid-build.
-            #
-            # That is not hypothetical — on 3 Sep two runs 53s apart did exactly
-            # this: the later tarball landed, then the earlier run's extraction
-            # overwrote it, and the image was built from a tree that was missing
-            # a commit git said was merged.
-            #
-            # fd 9 is deliberate: the detached run-deploy.sh INHERITS it, so the
-            # lock is held until the build itself exits, not merely until this
-            # shell does.
-            exec 9>"$HOME/.deploy.lock"
-            if ! flock -w 1800 9; then
-              echo "another deploy has held the lock for 30 minutes — refusing to overwrite $APP_DIR"
-              echo "holder:"; fuser -v "$HOME/.deploy.lock" 2>&1 || true
-              exit 1
-            fi
-            echo "=== deploy lock acquired $(date -u) ==="
+      # One SSM command does the whole deploy and waits for it (like the SSH
+      # step did): download the tarball with the INSTANCE role, take
+      # scripts/ssm-deploy.sh from it, run it as ec2-user. ssm-deploy.sh holds
+      # ~/.deploy.lock for the duration, so deploys never overlap on the box.
+      - name: Deploy (blue-green) via SSM and wait for the result
+        run: |
+          set -euo pipefail
+          params=$(jq -n --arg uri "s3://${ARTIFACT_BUCKET}/${RELEASE_KEY}" '{
+            executionTimeout: ["3300"],
+            commands: [
+              "set -euo pipefail",
+              ("aws s3 cp \"" + $uri + "\" /tmp/app.tgz --only-show-errors --region ap-south-1"),
+              "chown ec2-user:ec2-user /tmp/app.tgz",
+              "tar xzf /tmp/app.tgz -O scripts/ssm-deploy.sh > /tmp/ssm-deploy.sh",
+              "chmod 755 /tmp/ssm-deploy.sh",
+              "runuser -l ec2-user -c \"bash /tmp/ssm-deploy.sh /tmp/app.tgz\""
+            ]
+          }')
+          CID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "GitHub deploy run ${GITHUB_RUN_ID} ${GITHUB_SHA::8}" \
+            --timeout-seconds 600 \
+            --parameters "$params" \
+            --query Command.CommandId --output text)
+          echo "SSM command: $CID"
 
-            cd "$APP_DIR"
+          status=Pending
+          for _ in $(seq 1 220); do   # up to ~55 min
+            sleep 15
+            status=$(aws ssm get-command-invocation --command-id "$CID" --instance-id "$INSTANCE_ID" \
+              --query Status --output text 2>/dev/null || echo Pending)
+            case "$status" in Pending|InProgress|Delayed) continue ;; *) break ;; esac
+          done
 
-            # A tarball only ADDS files. Anything deleted in git must be deleted
-            # here too, or removed code keeps shipping. Snapshot, extract, then
-            # drop paths that are no longer in the tarball.
-            tar tzf /tmp/app.tgz | sed 's#/$##' | sort -u > /tmp/shipped.txt
-            tar xzf /tmp/app.tgz -C "$APP_DIR"
-            # drizzle/ MUST be pruned too. It was omitted, so a renamed or deleted
-            # migration was never removed from the box: renaming
-            # 0001_rls_policies.sql -> 0001a_rls_policies.sql left BOTH on disk,
-            # recreating the duplicate-0001 collision in production only, and the
-            # migrate runner then applied the RLS migration twice.
-            find src scripts drizzle -type f 2>/dev/null | sort -u > /tmp/onbox.txt
-            comm -13 /tmp/shipped.txt /tmp/onbox.txt | while read -r stale; do
-              [ -n "$stale" ] && rm -f "$stale" && echo "removed stale: $stale"
-            done
-
-            # Run detached: the SSH session must not own a 20-minute build.
-            # SKIP_TYPECHECK: the Typecheck job above already ran `tsc --noEmit`
-            # on this exact tree and gates this job, so the box repeating it just
-            # spends 2m30s of 2-vCPU time re-proving a green result.
-            rm -f ~/deploy-current.log
-            SKIP_TYPECHECK=1 nohup bash ~/run-deploy.sh > ~/deploy-current.log 2>&1 &
-
-            # Poll for the terminal marker the script writes.
-            for _ in $(seq 1 240); do
-              grep -aq "DEPLOY_DONE_EXIT" ~/deploy-current.log 2>/dev/null && break
-              sleep 10
-            done
-
-            grep -aE "^=== |DEPLOY_DONE_EXIT" ~/deploy-current.log || true
-            code=$(grep -ao "DEPLOY_DONE_EXIT=[0-9]*" ~/deploy-current.log | tail -1 | cut -d= -f2)
-            if [ "${code:-}" != "0" ]; then
-              echo "::error::Deploy failed (DEPLOY_DONE_EXIT=${code:-timeout}). The previous colour is still serving."
-              tail -80 ~/deploy-current.log
-              exit 1
-            fi
-            echo "Deploy OK — active colour: $(cat ~/app/.active-color 2>/dev/null || echo unknown)"
+          aws ssm get-command-invocation --command-id "$CID" --instance-id "$INSTANCE_ID" \
+            --query StandardOutputContent --output text || true
+          aws ssm get-command-invocation --command-id "$CID" --instance-id "$INSTANCE_ID" \
+            --query StandardErrorContent --output text | tail -40 || true
+          if [ "$status" != "Success" ]; then
+            echo "::error::Deploy did not succeed (SSM status: $status). The previous colour is still serving."
+            exit 1
+          fi
