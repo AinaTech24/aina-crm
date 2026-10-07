@@ -24,6 +24,7 @@ import type { ProposalLineItem, RecommendationType } from "@/db/schema/proposals
 import type { ProposalSnapshot } from "@/lib/proposals/snapshot";
 import { equityAfter, lineFit } from "@/lib/proposals/fit";
 import { itemKindLabel, recommendationType, totals } from "@/lib/proposals/items";
+import { riskometerLevel } from "@/lib/mf/scheme-risk";
 
 export type Item = ProposalLineItem;
 type MF = Extract<Item, { kind: "mf" }>;
@@ -305,9 +306,11 @@ function MFRow({ item, onPatch, goals }: { item: MF; onPatch: (p: Partial<MF>) =
         </span>
         <div className="mt-1">
           {/* Picked from the firm's Scheme Master only (narrowed to the AMC when one is chosen). */}
+          {/* Regular plans only: a distributor's proposal recommends the plan it services. */}
           <SchemeAutocomplete
             defaultValue={item.schemeName}
             amc={item.amcName || null}
+            plan="regular"
             onClear={() => onPatch({ schemeName: "", schemeCode: undefined })}
             onSelect={(s) =>
               onPatch({
@@ -315,6 +318,10 @@ function MFRow({ item, onPatch, goals }: { item: MF; onPatch: (p: Partial<MF>) =
                 schemeCode: (s as any).schemeCode ?? item.schemeCode,
                 amcName: s.amc ?? item.amcName,
                 category: mapSchemeCategory(s.category) ?? item.category,
+                // The scheme decides these two, so a new pick replaces the old
+                // scheme's values (or clears them when it is not known).
+                riskRating: riskometerLevel(s.risk?.band),
+                planType: s.plan ?? undefined,
               })
             }
             placeholder="Search your Scheme Master…"
@@ -409,6 +416,7 @@ function MFRow({ item, onPatch, goals }: { item: MF; onPatch: (p: Partial<MF>) =
             <div className="mt-1">
               <SchemeAutocomplete
                 defaultValue={item.toSchemeName ?? ""}
+                plan="regular"
                 onClear={() => onPatch({ toSchemeName: "", toSchemeCode: undefined })}
                 onSelect={(s) => onPatch({ toSchemeName: s.schemeName, toSchemeCode: (s as any).schemeCode ?? item.toSchemeCode })}
                 placeholder="The scheme the money moves into…"

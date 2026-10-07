@@ -30,8 +30,11 @@ export type SchemePick = {
   category: string | null;
   nav: number | null;
   navDate: string | null;
-  /** SEBI riskometer band, derived from the scheme category (best-effort). */
+  /** SEBI riskometer band: the Scheme Master's Risk, else derived from the
+   *  scheme category (best-effort). */
   risk?: SchemeRisk | null;
+  /** Regular / Direct — the Scheme Master's Plan, else from the scheme name. */
+  plan?: "regular" | "direct" | null;
 };
 
 export function SchemeAutocomplete({
@@ -44,6 +47,7 @@ export function SchemeAutocomplete({
   size = "md",
   amc,
   source = "master",
+  plan,
   allowFreeText = false,
   id,
   "aria-describedby": describedBy,
@@ -60,6 +64,8 @@ export function SchemeAutocomplete({
   /** Narrow to one AMC (its scheme_master.amc_code / amc_master.code). */
   amc?: string | null;
   source?: "master" | "universe";
+  /** "regular" lists Regular plans only — what a proposal may recommend. */
+  plan?: "regular";
   allowFreeText?: boolean;
   id?: string;
   "aria-describedby"?: string;
@@ -114,6 +120,7 @@ export function SchemeAutocomplete({
       try {
         const p = new URLSearchParams({ q: query, limit: "20", source });
         if (amc && source === "master") p.set("amc", amc);
+        if (plan) p.set("plan", plan);
         const res = await fetch(`/api/mf/schemes?${p}`);
         const j = await res.json().catch(() => ({}));
         if (id === reqId.current) {
@@ -126,7 +133,7 @@ export function SchemeAutocomplete({
       }
     }, 250);
     return () => clearTimeout(t);
-  }, [q, amc, source, open, picked]);
+  }, [q, amc, source, plan, open, picked]);
 
   function pick(s: SchemePick) {
     onSelect(s);

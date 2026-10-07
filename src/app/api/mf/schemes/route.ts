@@ -19,13 +19,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { deriveSchemeRisk } from "@/lib/mf/scheme-risk";
+import { deriveSchemeRisk, storedSchemeRisk } from "@/lib/mf/scheme-risk";
+import { schemePlan } from "@/lib/mf/scheme-plan";
 
 export const dynamic = "force-dynamic";
 
 type Row = {
   code: string; name: string; amc: string | null;
   category: string | null; nav: string | null; nav_date: string | null;
+  plan?: string | null; risk_category?: string | null;
 };
 
 export async function GET(req: NextRequest) {
@@ -36,6 +38,11 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(50, Math.max(1, Number(searchParams.get("limit")) || 20));
     const source = searchParams.get("source") === "universe" ? "universe" : "master";
     const amc = (searchParams.get("amc") ?? "").trim();
+    // plan=regular: only Regular plans (a proposal recommends the plan the
+    // distributor is paid on). Direct is the Scheme Master's Plan, else a
+    // "Direct" in the AMFI scheme name; a scheme neither marks stays.
+    const regularOnly = searchParams.get("plan") === "regular";
+    const DIRECT_IN_NAME = String.raw`\mdirect\M`; // Postgres word boundaries
     if (q.length < 2 && !(source === "master" && amc)) return NextResponse.json({ schemes: [] });
     // Every word must appear, in any order: "hdfc flexi" finds "HDFC Flexi Cap Fund".
     const words = q.split(/\s+/).filter(Boolean).slice(0, 6);
@@ -51,7 +58,7 @@ export async function GET(req: NextRequest) {
                  COALESCE(m.nav, sn.nav)::numeric AS nav, COALESCE(m.nav_date, sn.nav_date) AS nav_date
             FROM scheme_nav sn
             LEFT JOIN mf_schemes m ON m.scheme_code = sn.scheme_code
-           WHERE ${match}
+           WHERE ${match}${regularOnly ? sql` AND sn.scheme_name !~* ${DIRECT_IN_NAME}` : sql``}
            ORDER BY length(sn.scheme_name) ASC, sn.scheme_name ASC
            LIMIT ${limit}
         `);
@@ -60,12 +67,17 @@ export async function GET(req: NextRequest) {
 
       const conds = [sql`s.tenant_id = ${session.tenantId}::uuid`, sql`s.is_active`, sql`COALESCE(s.is_closed, false) = false`];
       if (amc) conds.push(sql`s.amc_code = ${amc}`);
+      if (regularOnly) {
+        conds.push(sql`COALESCE(s.plan, '') <> 'direct'`);
+        conds.push(sql`(s.plan = 'regular' OR s.scheme_name !~* ${DIRECT_IN_NAME})`);
+      }
       for (const w of words) conds.push(sql`(s.scheme_name ILIKE ${`%${w}%`} OR s.amc_code ILIKE ${`%${w}%`} OR s.scheme_code = ${w})`);
       const r = await tx.execute(sql`
         SELECT s.scheme_code AS code, s.scheme_name AS name,
                COALESCE(a.name, s.amc_code) AS amc,
                COALESCE(s.category, m.scheme_category) AS category,
-               COALESCE(m.nav, sn.nav)::numeric AS nav, COALESCE(m.nav_date, sn.nav_date) AS nav_date
+               COALESCE(m.nav, sn.nav)::numeric AS nav, COALESCE(m.nav_date, sn.nav_date) AS nav_date,
+               s.plan, s.risk_category
           FROM scheme_master s
           LEFT JOIN amc_master a ON a.tenant_id = s.tenant_id AND a.code = s.amc_code
           LEFT JOIN scheme_nav sn ON sn.scheme_code = s.scheme_code
@@ -91,9 +103,12 @@ export async function GET(req: NextRequest) {
         category: r.category,
         nav: r.nav != null ? Number(r.nav) : null,
         navDate: r.nav_date,
-        // SEBI riskometer band derived from the scheme category (mfapi has no
-        // official riskometer field). null when it can't be inferred.
-        risk: deriveSchemeRisk(r.category, r.name),
+        // The riskometer the firm set on its Scheme Master, else the SEBI band
+        // derived from the scheme category (mfapi has no official riskometer
+        // field). null when neither is known.
+        risk: storedSchemeRisk(r.risk_category) ?? deriveSchemeRisk(r.category, r.name),
+        // Regular / Direct: the master's Plan, else read from the scheme name.
+        plan: schemePlan(r.plan, r.name),
       })),
     });
   } catch (err: any) {
