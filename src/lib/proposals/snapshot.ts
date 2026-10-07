@@ -165,6 +165,26 @@ async function leadSnapshot(tx: Tx, tenantId: string, leadId: string): Promise<P
     `)
   ).rows[0] as { name?: string } | undefined;
 
+  // A lead's questionnaire is filed against the lead id (the public risk-profile
+  // form; carried to the client on conversion). Signed in the last year is
+  // confirmed — the same 12-month rule as a client's (lib/investors/summary).
+  const rp = (
+    await tx.execute(sql`
+      SELECT final_category, total_score, signed_at FROM risk_profile_responses
+       WHERE tenant_id = ${tenantId}::uuid AND investor_id = ${leadId}::uuid
+       ORDER BY COALESCE(signed_at, created_at) DESC LIMIT 1
+    `)
+  ).rows[0] as { final_category?: string; total_score?: number; signed_at?: string | null } | undefined;
+  const signedAt = rp?.signed_at ? new Date(rp.signed_at).toISOString() : null;
+  const risk: ProposalSnapshot["risk"] = rp?.final_category
+    ? {
+        category: rp.final_category,
+        score: rp.total_score != null ? Number(rp.total_score) : null,
+        signedAt,
+        status: !signedAt ? "Not completed" : Date.parse(signedAt) < Date.now() - 365 * 864e5 ? "Due for review" : "Completed",
+      }
+    : { category: null, score: null, signedAt: null, status: "Not completed" };
+
   return {
     kind: "lead",
     subjectId: leadId,
@@ -173,7 +193,7 @@ async function leadSnapshot(tx: Tx, tenantId: string, leadId: string): Promise<P
     rm: owner?.name ?? null,
     hasEmail: !!l.email,
     hasPhone: !!l.phone,
-    risk: { category: null, score: null, signedAt: null, status: "Not completed" },
+    risk,
     holdings: null,
     band: null,
     goals: [],

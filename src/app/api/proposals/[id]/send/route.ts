@@ -2,7 +2,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/proposals/[id]/send
  *
- *   body: { channel: 'email' | 'whatsapp' }
+ *   body: { channel: 'email' | 'whatsapp' | 'link', preview?: true }
  *
  * Sends the proposal to the recipient through the chosen channel:
  *
@@ -14,8 +14,20 @@ import { handleApiError } from "@/lib/api/error-handler";
  *                  through the RM's own WhatsApp. No template approval
  *                  required. Returns { ok: true, waUrl }.
  *
- * In both cases the proposal status flips to 'sent' (status_at = now) and
- * a row is written to `communications` for the audit trail.
+ *   - link       → the client's proposal page link, to paste anywhere.
+ *                  Returns { ok: true, url }. Nothing is sent from the CRM.
+ *
+ * In every case the proposal status flips to 'sent' (status_at = now); email
+ * and WhatsApp also write a `communications` row for the audit trail.
+ *
+ * `preview: true` returns the message the channel would carry — { subject?,
+ * text?, html? } with a placeholder for the link — and changes nothing: no
+ * token, no status, no send. The gates still run, so a preview says early
+ * what would stop the send.
+ *
+ * A mutual fund line needs the client's CONFIRMED risk profile, signed in the
+ * last 12 months (lib/proposals/snapshot — a provisional, stale or missing one
+ * stops it), like an opportunity's proposal step. No override.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -33,6 +45,7 @@ import { gateClientSend } from "@/lib/comms/guarded-send";
 import { advanceJourneyForProposal } from "@/lib/proposals/journey";
 import { proposals, tenants, communications, investors } from "@/db/schema";
 import { checkAlignment } from "@/lib/proposal/risk-alignment";
+import { loadProposalSnapshot } from "@/lib/proposals/snapshot";
 import { resolveEmailSender } from "@/lib/comms/sender";
 import { emailAdapter } from "@/lib/comms/adapters/resend";
 import { renderProposalPdf } from "@/lib/proposal/proposal-pdf";
@@ -42,7 +55,8 @@ import { formatDate, formatINR } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 
 const Body = z.object({
-  channel: z.enum(["email", "whatsapp"]),
+  channel: z.enum(["email", "whatsapp", "link"]),
+  preview: z.boolean().optional(),
 });
 
 let resendClient: Resend | null = null;
@@ -96,7 +110,7 @@ function buildHtmlEmail(args: {
       )}</td></tr>`
     : "";
   const corpus = proposal.expectedCorpus
-    ? `<tr><td style="padding:6px 0;color:#64748b;font-size:12px">Projected corpus</td><td style="padding:6px 0;text-align:right;font-weight:700;font-size:14px;color:#059669">${formatINR(
+    ? `<tr><td style="padding:6px 0;color:#64748b;font-size:12px">Illustrative value (at assumed returns, not guaranteed)</td><td style="padding:6px 0;text-align:right;font-weight:700;font-size:14px;color:#0f172a">${formatINR(
         Number(proposal.expectedCorpus)
       )}</td></tr>`
     : "";
@@ -152,7 +166,8 @@ function buildWhatsAppText(args: { tenant: any; proposal: any; publicUrl: string
     lines.push(`💰 Total investment: ₹${Number(proposal.totalInvestment).toLocaleString("en-IN")}`);
   }
   if (proposal.expectedCorpus) {
-    lines.push(`📈 Projected corpus: ₹${Number(proposal.expectedCorpus).toLocaleString("en-IN")}`);
+    // An illustration at assumed returns — never a "corpus" (see the PDF).
+    lines.push(`📈 Illustrative value: ₹${Number(proposal.expectedCorpus).toLocaleString("en-IN")} (at assumed returns, not guaranteed)`);
   }
   if (proposal.riskRating) {
     lines.push(`📊 Risk: ${proposal.riskRating}`);
@@ -198,7 +213,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!parse.success) {
       return NextResponse.json({ error: "invalid body" }, { status: 400 });
     }
-    const { channel } = parse.data;
+    const { channel, preview } = parse.data;
     const clientMeta = clientMetaFromHeaders(req.headers);
     // Managers send any proposal; everyone else only their own (mirrors the
     // collection GET scope).
@@ -239,6 +254,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const mfLines = ((p.products ?? []) as any[])
         .filter((it) => it?.kind === "mf")
         .map((it) => ({ name: it.schemeName ?? "Scheme", riskRating: it.riskRating ?? null }));
+      // ── Risk profile gate: no mutual fund recommendation without the
+      //    client's confirmed profile (signed, not provisional, < 12 months).
+      if (mfLines.length) {
+        const snap = await loadProposalSnapshot(tx, session.tenantId, {
+          investorId: p.investorId, familyId: (p as any).familyId ?? null, leadId: p.leadId,
+        });
+        if (snap?.risk.status !== "Completed") {
+          const why = snap?.risk.status === "Provisional" ? "is only provisional (not confirmed by the client)"
+            : snap?.risk.status === "Due for review" ? "is more than a year old"
+            : "is not on record";
+          return NextResponse.json(
+            { error: `A mutual fund proposal needs the client's confirmed risk profile, and theirs ${why}. Send them the risk profile link first.`, field: "riskProfile" },
+            { status: 412 }
+          );
+        }
+      }
+
       let clientProfile: any = null;
       if (p.recipientType === "investor" && p.investorId) {
         const inv = (
@@ -281,6 +313,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const tenant = (
         await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1)
       )[0];
+
+      // What the channel would carry — nothing is minted, sent or changed.
+      if (preview) {
+        const link = "[link to the proposal]";
+        if (channel === "email") {
+          if (!p.recipientEmail) return NextResponse.json({ error: "recipient has no email on file" }, { status: 400 });
+          return NextResponse.json({
+            ok: true, channel, to: p.recipientEmail,
+            subject: `${p.title} — ${tenant?.displayName ?? "Investment proposal"} (${p.proposalNumber})`,
+            html: buildHtmlEmail({ tenant, proposal: p, publicUrl: link }),
+            attachment: `Proposal-${String(p.proposalNumber ?? id).replace(/[^A-Za-z0-9_-]+/g, "_")}.pdf`,
+          });
+        }
+        if (channel === "whatsapp") {
+          const phone = normalizePhone(p.recipientPhone);
+          if (!phone) return NextResponse.json({ error: "recipient has no phone number on file" }, { status: 400 });
+          return NextResponse.json({ ok: true, channel, to: `+${phone}`, text: buildWhatsAppText({ tenant, proposal: p, publicUrl: link }) });
+        }
+        return NextResponse.json({ ok: true, channel, text: "A link to the client's proposal page, to paste into any message. They can read it, accept all or part of it, or ask for a change." });
+      }
 
       // The client-facing link must be a PUBLIC proposal page, not an auth-gated
       // /dashboard URL (the old link redirected clients to login — and WhatsApp
@@ -376,7 +428,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             : (m || "Could not send email");
           return NextResponse.json({ error: friendly }, { status: 502 });
         }
-      } else {
+      } else if (channel === "whatsapp") {
         // whatsapp — generate wa.me link, client opens in new tab
         const phone = normalizePhone(p.recipientPhone);
         if (!phone) {
@@ -398,8 +450,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
       }
 
-      // Log to communications + flip proposal status
-      await tx.insert(communications).values({
+      // Log to communications (a copied link is not a message) + flip proposal status
+      if (channel !== "link") await tx.insert(communications).values({
         tenantId: session.tenantId,
         investorId: p.recipientType === "investor" ? p.investorId : null,
         leadId: p.recipientType === "lead" ? p.leadId : null,
@@ -473,6 +525,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         channel,
         externalId,
         waUrl,
+        url: channel === "link" ? publicUrl : undefined,
       });
     });
   } catch (err: any) {

@@ -25,6 +25,7 @@ import type { ProposalSnapshot } from "@/lib/proposals/snapshot";
 import { equityAfter, lineFit } from "@/lib/proposals/fit";
 import { itemKindLabel, recommendationType, totals } from "@/lib/proposals/items";
 import { riskometerLevel } from "@/lib/mf/scheme-risk";
+import { INSURERS } from "@/lib/insurance/insurers";
 
 export type Item = ProposalLineItem;
 type MF = Extract<Item, { kind: "mf" }>;
@@ -448,13 +449,47 @@ function MFRow({ item, onPatch, goals }: { item: MF; onPatch: (p: Partial<MF>) =
   );
 }
 
+/**
+ * The insurer, picked from the list of Indian insurers (lib/insurance/insurers);
+ * "Other insurer…" types one the list does not have. A name saved before the
+ * list existed stays selectable as it was.
+ */
+function InsurerField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const listed = (INSURERS as readonly string[]).includes(value);
+  const [typing, setTyping] = useState(!!value && !listed);
+  return (
+    <label className="block">
+      <span className="text-2xs font-medium text-muted-foreground">Insurer</span>
+      {typing ? (
+        <span className="mt-1 flex gap-1">
+          <input value={value} onChange={(e) => onChange(e.target.value)} placeholder="Insurer name" className="input-base text-sm w-full" autoFocus />
+          <button type="button" onClick={() => { setTyping(false); if (!listed) onChange(""); }} className="btn-ghost text-2xs shrink-0">List</button>
+        </span>
+      ) : (
+        <SelectField
+          value={listed ? value : ""}
+          onChange={(e) => {
+            if (e.target.value === "__other") { setTyping(true); onChange(""); }
+            else onChange(e.target.value);
+          }}
+          className="input-base text-sm mt-1"
+        >
+          <option value="">Select…</option>
+          {INSURERS.map((n) => <option key={n} value={n}>{n}</option>)}
+          <option value="__other">Other insurer…</option>
+        </SelectField>
+      )}
+    </label>
+  );
+}
+
 function InsRow({ item, onPatch }: { item: Ins; onPatch: (p: Partial<Ins>) => void }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
       <div className="sm:col-span-2">
         <Text label="Policy name" required value={item.policyName} onChange={(v) => onPatch({ policyName: v })} placeholder="HDFC Life Click 2 Protect Super" />
       </div>
-      <Text label="Insurer" value={item.insurer ?? ""} onChange={(v) => onPatch({ insurer: v })} placeholder="HDFC Life" />
+      <InsurerField value={item.insurer ?? ""} onChange={(v) => onPatch({ insurer: v })} />
       <label className="block">
         <span className="text-2xs font-medium text-muted-foreground">Policy type</span>
         <SelectField value={item.policyType ?? ""} onChange={(e) => onPatch({ policyType: (e.target.value || undefined) as any })} className="input-base text-sm mt-1">

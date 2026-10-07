@@ -12,6 +12,7 @@
  * design (heuristics, not certainty) and lower still for OCR'd images.
  */
 
+import { INSURERS } from "./insurers";
 import type { InsuranceExtraction, InsuranceCategory } from "@/lib/ai/assistant";
 import { POLICY_TYPES, PREMIUM_FREQUENCIES } from "@/db/schema/insurance";
 
@@ -28,14 +29,7 @@ const CATEGORY_BY_POLICY_TYPE: Record<PolicyType, InsuranceCategory> = {
 };
 
 // Well-known Indian insurers — longest match wins so "ICICI Lombard" beats "ICICI".
-const INSURERS = [
-  "Life Insurance Corporation of India", "HDFC Life", "HDFC ERGO", "ICICI Prudential", "ICICI Lombard",
-  "SBI Life", "SBI General", "Max Life", "Bajaj Allianz", "Tata AIA", "Tata AIG", "Kotak Mahindra",
-  "Aditya Birla Sun Life", "Aditya Birla Health", "Star Health", "Care Health", "Niva Bupa", "PNB MetLife",
-  "Canara HSBC", "IndiaFirst", "Pramerica", "Exide Life", "Aegon", "Edelweiss", "Bharti AXA", "Future Generali",
-  "IFFCO Tokio", "Cholamandalam", "Royal Sundaram", "New India Assurance", "Oriental Insurance", "United India",
-  "National Insurance", "ManipalCigna", "Reliance", "Shriram", "Digit", "Acko", "Aviva", "LIC",
-];
+// (lib/insurance/insurers.ts, shared with the proposal builder.)
 
 const MONTHS: Record<string, string> = {
   jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
