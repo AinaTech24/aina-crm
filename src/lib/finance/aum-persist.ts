@@ -66,6 +66,16 @@ export async function recomputeInvestorAum(tx: Tx, investorId: string): Promise<
   await persistBatch(tx, [investorId]);
   await refreshActiveSipAmount(tx, { investorIds: [investorId] });
 }
+
+/** {@link recomputeInvestorAum} for many clients, 250 at a time. */
+export async function recomputeInvestorsAum(tx: Tx, investorIds: string[]): Promise<void> {
+  const unique = [...new Set(investorIds.filter(Boolean))];
+  for (let i = 0; i < unique.length; i += 250) {
+    const part = unique.slice(i, i + 250);
+    await persistBatch(tx, part);
+    await refreshActiveSipAmount(tx, { investorIds: part });
+  }
+}
 type FolioScheme = {
   schemeCode: string;
   schemeName: string;

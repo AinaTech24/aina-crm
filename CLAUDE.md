@@ -439,6 +439,32 @@ three or four days later. The two are linked, never added together:
 - Business Entries shows each entry's outcome and filters by it (`?rta=`);
   backfill or re-run by hand with `tsx scripts/match-business-rta.ts`.
 
+## RTA imports — which client a registrar row belongs to
+
+`src/lib/rta/client-match.ts` (2026-10-08). Both import engines (`import.ts`
+for masters and holdings, `process.ts` for feeds) find clients through it.
+Never look a client up with a bare `WHERE pan = …`: that made a second client
+for someone the firm already had (Ahpal Financial Services, whose client list
+was loaded from Excel without PANs, got a registrar twin for nearly every
+client).
+
+- **A PAN resolves to its live client.** Merges are followed to the survivor,
+  and an Excel-loaded row (`dedup_pan = false`) counts. That client takes the
+  PAN slot (`dedup_pan` true on it, false on retired or duplicate rows), so the
+  `ON CONFLICT … WHERE dedup_pan` upsert updates it from then on.
+- **A PAN nobody holds may adopt a PAN-less client the firm entered**, on an
+  unambiguous name only (`nameMatchKey`: any word order, honorifics dropped, at
+  least two words). It needs exactly one such client, one person of that name
+  in the file, no PAN client already called that, no conflicting date of
+  birth, and minor matches minor.
+- **History follows the folio.** When an import moves a folio to another
+  client, its transactions and SIPs move too (`former-owners.ts`). An emptied
+  placeholder, or a twin with the same PAN, is merged into the client that took
+  the folio.
+- **Duplicates already in a book**: `tsx scripts/repair-rta-duplicates.ts
+  --tenant <id>` (dry run; `--apply`, `--placeholders`). It is heavy on a large
+  book, so run it out of hours.
+
 ## Webhook handlers
 
 | Provider | Path | Verifies |

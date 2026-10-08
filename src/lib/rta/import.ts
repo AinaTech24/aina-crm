@@ -23,6 +23,7 @@ import { investors, folios as foliosTable } from "@/db/schema";
 import type { RtaFolioRecord } from "./types";
 import { resolveSchemeIdentity } from "./resolve-scheme";
 import { ownersOfFolios, releaseFormerOwners } from "./former-owners";
+import { followMerges, resolveNoPanClients, resolvePanClients, type ClientHint } from "./client-match";
 
 /**
  * Build a Postgres array literal that binds a JS array as ONE array value.
@@ -41,7 +42,14 @@ export type RtaImportSummary = {
   dryRun: boolean;
   rta: string;
   reportType: string;
-  investors: { total: number; created: number; updated: number; minors: number };
+  investors: {
+    total: number;
+    created: number;
+    updated: number;
+    minors: number;
+    /** Existing clients the firm entered without a PAN, matched by name. */
+    matchedByName?: number;
+  };
   folios: { total: number; created: number; updated: number; skippedNoPan: number };
   schemes: number;
   /** Total market value across the feed (holdings imports only). */
@@ -170,24 +178,19 @@ export async function importRtaFolios(
   const noPanList = pans.filter((k) => noPanKeys.has(k));
   const minorsCount = [...clientByKey.values()].filter((c) => c.isMinor).length;
 
-  // ── 2. Which PANs / folios already exist (for created-vs-updated counts) ───
-  const existingPans = new Set<string>();
-  for (const part of chunk(panKeys, 1000)) {
-    if (!part.length) continue;
-    const rows = await tx.execute(
-      sql`SELECT pan FROM investors WHERE tenant_id = ${tenantId}::uuid AND pan IN (${sql.join(part.map((p) => sql`${p}`), sql`, `)})`
-    );
-    for (const row of rows.rows as { pan: string }[]) existingPans.add(row.pan);
+  // ── 2. Which existing client each key belongs to. Not a bare `pan IN (…)`:
+  //       that misses the firm's own Excel-loaded clients (dedup_pan = false)
+  //       and lands on records an operator merged away — both of which made
+  //       this import create a second client for someone the book already had.
+  //       See lib/rta/client-match.ts. Writes only outside a dry run.
+  const hints = new Map<string, ClientHint>();
+  for (const [key, entry] of clientByKey) {
+    hints.set(key, { name: entry.inv.name, dob: entry.inv.dob ?? null, isMinor: entry.isMinor });
   }
-  // Which NOPAN clients already exist (deduped on rta_nopan_key).
-  const existingNoPan = new Set<string>();
-  for (const part of chunk(noPanList, 1000)) {
-    if (!part.length) continue;
-    const rows = await tx.execute(
-      sql`SELECT rta_nopan_key FROM investors WHERE tenant_id = ${tenantId}::uuid AND rta_nopan_key IN (${sql.join(part.map((p) => sql`${p}`), sql`, `)})`
-    );
-    for (const row of rows.rows as { rta_nopan_key: string }[]) existingNoPan.add(row.rta_nopan_key);
-  }
+  const panRes = await resolvePanClients(tx, tenantId, panKeys, { write: !dryRun, hints });
+  const noPanRes = await resolveNoPanClients(tx, tenantId, noPanList, { write: !dryRun, hints });
+  const existingPans = panRes.known;
+  const existingNoPan = noPanRes.known;
 
   const folioRecords = records.filter((_, i) => !!recordKeys[i]);
   const folioKeys = folioRecords.map((r) => `${r.amcCode}::${r.folioNumber}`);
@@ -227,7 +230,13 @@ export async function importRtaFolios(
     dryRun,
     rta,
     reportType: opts.reportType ?? "",
-    investors: { total: pans.length, created: investorsCreated, updated: investorsUpdated, minors: minorsCount },
+    investors: {
+      total: pans.length,
+      created: investorsCreated,
+      updated: investorsUpdated,
+      minors: minorsCount,
+      matchedByName: panRes.adopted + noPanRes.adopted,
+    },
     folios: { total: uniqueFolioKeys.length, created: foliosCreated, updated: foliosUpdated, skippedNoPan },
     schemes,
     aum: kind !== "master" ? records.reduce((n, r) => n + (r.aum ?? 0), 0) : undefined,
@@ -327,7 +336,8 @@ export async function importRtaFolios(
   };
 
   let clientsDone = 0;
-  for (const part of chunk(panKeys, 400)) {
+  for (const part of chunk(panKeys.filter((k) => !panRes.mappedOnly.has(k)), 400)) {
+    if (!part.length) continue;
     await tx
       .insert(investors)
       .values(part.map(buildInvValues))
@@ -344,7 +354,7 @@ export async function importRtaFolios(
   // PAN-less clients: pan stays NULL (we never fabricate a PAN), deduped on
   // rta_nopan_key (migration 0151). Raw SQL so the Drizzle schema needn't carry
   // the column. Re-importing the same file updates in place (idempotent).
-  for (const part of chunk(noPanList, 200)) {
+  for (const part of chunk(noPanList.filter((k) => !noPanRes.mappedOnly.has(k)), 200)) {
     if (!part.length) continue;
     const rowsSql = part.map((key) => {
       const entry = clientByKey.get(key)!;
@@ -380,21 +390,27 @@ export async function importRtaFolios(
   }
 
   // ── 4. Resolve client key → investor id, then upsert folios ────────────────
-  const keyToId = new Map<string, string>();
-  for (const part of chunk(panKeys, 1000)) {
+  //       Keys resolved in step 2 keep that answer; a key created just now is
+  //       read back from its slot (the PAN-unique row, or its no-PAN key) with
+  //       merges followed, so a folio never lands on a retired record.
+  const keyToId = new Map<string, string>([...panRes.ids, ...noPanRes.ids]);
+  const slotIds = new Map<string, string>();
+  for (const part of chunk(panKeys.filter((k) => !keyToId.has(k)), 1000)) {
     if (!part.length) continue;
     const rows = await tx.execute(
-      sql`SELECT id, pan FROM investors WHERE tenant_id = ${tenantId}::uuid AND pan IN (${sql.join(part.map((p) => sql`${p}`), sql`, `)})`
+      sql`SELECT id, pan FROM investors WHERE tenant_id = ${tenantId}::uuid AND dedup_pan AND pan IN (${sql.join(part.map((p) => sql`${p}`), sql`, `)})`
     );
-    for (const row of rows.rows as { id: string; pan: string }[]) keyToId.set(row.pan, String(row.id));
+    for (const row of rows.rows as { id: string; pan: string }[]) slotIds.set(row.pan, String(row.id));
   }
-  for (const part of chunk(noPanList, 1000)) {
+  for (const part of chunk(noPanList.filter((k) => !keyToId.has(k)), 1000)) {
     if (!part.length) continue;
     const rows = await tx.execute(
       sql`SELECT id, rta_nopan_key FROM investors WHERE tenant_id = ${tenantId}::uuid AND rta_nopan_key IN (${sql.join(part.map((p) => sql`${p}`), sql`, `)})`
     );
-    for (const row of rows.rows as { id: string; rta_nopan_key: string }[]) keyToId.set(row.rta_nopan_key, String(row.id));
+    for (const row of rows.rows as { id: string; rta_nopan_key: string }[]) slotIds.set(row.rta_nopan_key, String(row.id));
   }
+  const live = await followMerges(tx, tenantId, [...slotIds.values()]);
+  for (const [key, id] of slotIds) keyToId.set(key, live.get(id) ?? id);
 
   // Dedupe folios by (amcCode, folioNumber); merge schemes. Carry the client key
   // so a minor's folio attaches to the MINOR, not the guardian.
