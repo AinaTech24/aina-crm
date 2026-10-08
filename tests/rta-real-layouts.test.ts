@@ -48,14 +48,42 @@ describe("MFSD201 layout (KFintech transactions)", () => {
     expect(rows[0]).toMatchObject({ nav: 60, direction: "outflow", type: "redemption" });
   });
 
-  it("letter-spaced 'S T P In' / 'S T P Out' are STP legs; 'Pre rejection' is held back", () => {
+  it("letter-spaced 'S T P In' / 'S T P Out' are STP legs; a pre-rejection outside the verified shape is held back", () => {
     const { rows, rejects } = parseReverseFeed(kfinText([
       k201({ "Transaction Number": "700001", "Transaction Description": "S T P In", "Transaction Type": "STPA", "Transaction Flag": "SI" }),
       k201({ "Transaction Number": "700002", "Transaction Head": "R", "Transaction Description": "S T P Out", "Transaction Type": "STPO", "Transaction Flag": "SO" }),
       k201({ "Transaction Number": "700003", "Transaction Description": "S T P In Pre rejection", "Transaction Type": "STPAD" }),
     ]));
     expect(rows.map((r) => [r.externalRef, r.type, r.direction])).toEqual([["700001", "stp", "inflow"], ["700002", "stp", "outflow"]]);
-    expect(rejects[0].reason).toMatch(/reversal \/ rejection \/ cancellation/);
+    expect(rejects[0].reason).toMatch(/outside the verified failed-instruction shape/);
+  });
+
+  it("refused instructions in the verified shape are kept apart from transactions, with their reason and switch reference (Phase 3E)", () => {
+    const failedRow = (o: Record<string, string>) => k201({ Units: "0.000", Amount: "2000.00", Price: "0", ...o });
+    const { rows, rejects, failed } = parseReverseFeed(kfinText([
+      failedRow({ "Transaction Number": "800001", "Transaction Type": "SIND", "Transaction Description": "Systematic Investment Pre-Rejection", Remarks: "Primary KYC Invalid ref 991" }),
+      failedRow({ "Transaction Number": "800002", "Transaction Type": "STPAD", "Transaction Description": "S T P In Pre rejection", "Switch_Ref. No.": "77001", Remarks: "Required amount not available in source fund" }),
+      failedRow({ "Transaction Number": "800003", "Transaction Head": "R", "Transaction Type": "STPOD", "Transaction Description": "S T P Out Pre rejection", "Switch_Ref. No.": "77001", Remarks: "Required amount not available in source fund" }),
+      k201({ "Transaction Number": "800004" }),
+    ]));
+    expect(rows.map((r) => r.externalRef)).toEqual(["800004"]);
+    expect(rejects).toEqual([]);
+    expect(failed!.map((f) => [f.externalRef, f.category, f.type, f.direction, f.amount, f.reason, f.switchRef ?? null])).toEqual([
+      ["800001", "failed_sip_instalment", "sip", "inflow", 2000, "Primary KYC Invalid ref #", null],
+      ["800002", "failed_stp_leg", "stp", "inflow", 2000, "Required amount not available in source fund", "77001"],
+      ["800003", "failed_stp_leg", "stp", "outflow", 2000, "Required amount not available in source fund", "77001"],
+    ]);
+  });
+
+  it("a proved folio correction is held with that reason; an unproved R-coded group is not called one (Phase 3E)", () => {
+    const g = (no: string, folio: string, code: string, units: string, amount: string) =>
+      k201({ "Transaction Number": no, "Folio Number": folio, "Transaction Type": code, Units: units, Amount: amount, "Transaction Description": code.endsWith("R") ? "SIP Rejection" : "Systematic Investment" });
+    const proved = parseReverseFeed(kfinText([g("900001", "91000001", "SIN", "10.000", "500.00"), g("900001", "91000001", "SINR", "-10.000", "-500.00"), g("900001", "91000002", "SIN", "10.000", "500.00")]));
+    expect(proved.rows).toEqual([]);
+    expect(proved.rejects.map((r) => r.reason).every((r) => /^folio correction/.test(r))).toBe(true);
+    const unproved = parseReverseFeed(kfinText([g("900002", "91000001", "SIN", "10.000", "500.00"), g("900002", "91000001", "SINR", "-10.000", "-500.00")]));
+    expect(unproved.rows).toEqual([]);
+    expect(unproved.rejects.some((r) => /folio correction/.test(r.reason))).toBe(false);
   });
 });
 

@@ -220,3 +220,9 @@ export function maskPanValue(raw: string): string {
 export function maskPansInText(text: string): string {
   return text.replace(/\b[A-Z]{5}[0-9]{4}[A-Z]\b/gi, (p) => maskPanValue(p));
 }
+
+/** A registrar's free-text reason, safe to keep: PANs and every digit run masked, length capped. */
+export function rejectionReasonText(raw: string): string | undefined {
+  const t = (raw ?? "").replace(/[A-Za-z]{5}[0-9]{4}[A-Za-z]/g, "<pan>").replace(/[0-9]+/g, "#").replace(/\s+/g, " ").trim();
+  return t ? t.slice(0, 160) : undefined;
+}

@@ -24,6 +24,13 @@ export type SchemeHolding = {
   realisedGain: number | null; dividend: number | null; hasTxns: boolean;
   historyCoverage: "ledger" | "snapshot_only" | "incomplete";
   snapshotDate: string | null;
+  /**
+   * What the registrar's statement itself said for this holding (Phase 3E) —
+   * units and value as printed, with the statement's date and report. Kept
+   * apart from `currentValue` (units × the latest NAV the CRM holds); null
+   * when no dated statement covers the holding.
+   */
+  registrar: { units: number | null; value: number | null; asOf: string | null; report: string | null } | null;
 };
 export type InvestorValuation = {
   currentValue: number;
@@ -57,6 +64,8 @@ type SnapshotScheme = {
   schemeCode?: string | null; schemeName?: string | null; units?: number | string;
   nav?: number | string; value?: number | string; navDate?: string | null;
   asOf?: string | null; snapshotDate?: string | null;
+  sourceUnits?: number | string | null; sourceValue?: number | string | null;
+  sourceAsOf?: string | null; sourceReport?: string | null;
 };
 export type ValuationSnapshot = PositionIdentity & {
   scheme: SnapshotScheme; latest_nav?: number | string | null; latest_nav_date?: string | null;
@@ -132,7 +141,7 @@ export async function loadValuationRows(tx: Tx, investorIds: string[]) {
   const snapshots = (await tx.execute(sql`
     SELECT f.investor_id, f.id AS folio_id, f.folio_number, f.amc_code, f.amc_name,
            sc AS scheme, n.nav AS latest_nav, n.nav_date AS latest_nav_date, n.scheme_name AS nav_scheme_name,
-           COALESCE(sc->>'snapshotDate', f.details->>'holdingsAsOf') AS snapshot_date
+           COALESCE(sc->>'snapshotDate', sc->>'sourceAsOf', f.details->>'holdingsAsOf') AS snapshot_date
     FROM folios f CROSS JOIN LATERAL jsonb_array_elements(COALESCE(f.schemes, '[]'::jsonb)) AS sc
     LEFT JOIN scheme_nav n ON n.scheme_code = sc->>'schemeCode'
     WHERE f.tenant_id IN (${tenants}) AND f.investor_id IN (${ids})
@@ -213,7 +222,7 @@ export function computeInvestorValuation(rows: ValuationTransaction[], snapshots
     folioNumber: r.folio_number ?? null, folioNumbers: r.folio_number ? [r.folio_number] : [], folioId: r.folio_id ?? null,
     netUnits: 0, investedNet: null, investedEstimate: null, latestNav: null, navDate: null, currentValue: null,
     gain: null, xirr: null, kind: null, priced: false, startDate: null, avgDays: null,
-    realisedGain: null, dividend: null, hasTxns: false, historyCoverage: "snapshot_only", snapshotDate: null,
+    realisedGain: null, dividend: null, hasTxns: false, historyCoverage: "snapshot_only", snapshotDate: null, registrar: null,
   });
   for (const r of rows) {
     const key = canonFor(r);
@@ -248,7 +257,7 @@ export function computeInvestorValuation(rows: ValuationTransaction[], snapshots
     h.kind = p.sip && p.lump ? "mixed" : p.sip ? "sip" : p.lump ? "lumpsum" : null;
   }
   // Sum ARN legs within their own folio and scheme. Another folio never suppresses them.
-  type Snap = { holding: SchemeHolding; value: number; units: number; hasValue: boolean; navFromMaster: boolean };
+  type Snap = { holding: SchemeHolding; value: number; units: number; hasValue: boolean; navFromMaster: boolean; src: { units: number | null; value: number | null; asOf: string | null; report: string | null } | null };
   const snapshotParts = new Map<string, Map<string, Snap>>();
   // Statements that say, in so many words, 0 units (a blank is not a zero).
   const zeroKeys = new Set<string>();
@@ -264,7 +273,16 @@ export function computeInvestorValuation(rows: ValuationTransaction[], snapshots
     if (!parts) { parts = new Map(); snapshotParts.set(key, parts); }
     // ARN legs of ONE code add up; a second code for the same holding does not.
     let s = parts.get(own);
-    if (!s) { s = { holding: makeHolding(identity), value: 0, units: 0, hasValue: true, navFromMaster: false }; parts.set(own, s); }
+    if (!s) { s = { holding: makeHolding(identity), value: 0, units: 0, hasValue: true, navFromMaster: false, src: null }; parts.set(own, s); }
+    // The registrar's own figures, summed over this holding's ARN legs.
+    if (sc.sourceAsOf) {
+      const su = finite(sc.sourceUnits), sv = finite(sc.sourceValue);
+      s.src = {
+        units: su == null ? s.src?.units ?? null : (s.src?.units ?? 0) + su,
+        value: sv == null ? s.src?.value ?? null : (s.src?.value ?? 0) + sv,
+        asOf: dateOnly(sc.sourceAsOf), report: sc.sourceReport ?? null,
+      };
+    }
     s.units += units; s.value += value ?? 0; s.hasValue &&= value != null;
     s.holding.latestNav = nav;
     s.navFromMaster = positive(r.latest_nav) != null;
@@ -315,6 +333,7 @@ export function computeInvestorValuation(rows: ValuationTransaction[], snapshots
       }
     }
     const snapshotWins = !!s && (!p || Math.abs(h.netUnits - snapshotUnits) > DUST);
+    h.registrar = s?.src ?? null;
     const ledgerUnits = h.netUnits;
     if (s) h.snapshotDate = s.holding.snapshotDate;
     // The statement says 0 units for a holding the history still shows open:

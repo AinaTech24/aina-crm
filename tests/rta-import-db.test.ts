@@ -94,7 +94,9 @@ describe.skipIf(!TEST_DB)("RTA import — transactions, identity, tenancy (DB)",
     const first = await run(tA, text);
     expect(first.rowsImported).toBe(2);
     const second = await run(tA, text);
-    expect(second.rowsImported).toBe(2); // same transactions, refreshed in place
+    // Phase 3E: nothing changed, so nothing is reported as imported.
+    expect(second.rowsImported).toBe(0);
+    expect(second.rowsUnchanged).toBe(2);
     const rows = await q(tA, sql`SELECT order_id, amount::text, units::text FROM transactions WHERE tenant_id = ${tA}::uuid AND order_id LIKE 'REP-%' ORDER BY order_id`);
     expect(rows).toEqual([
       { order_id: "REP-1", amount: "100000.00", units: "1234.5678" },

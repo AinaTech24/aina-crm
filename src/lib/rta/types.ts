@@ -24,6 +24,20 @@ export type RtaScheme = {
   units?: number;
   nav?: number;
   value?: number;
+  /** True when `nav` was computed (value ÷ units) rather than printed by the registrar. */
+  navDerived?: boolean;
+  /**
+   * The registrar's own figures for this leg, with the date and report they
+   * speak for (Phase 3E). Written by holdings imports; live-NAV revaluation
+   * (aum-persist.ts) never touches them, so the statement survives beside the
+   * valuation.
+   */
+  sourceUnits?: number | null;
+  sourceValue?: number | null;
+  sourceNav?: number | null;
+  sourceAsOf?: string | null;
+  sourceReport?: string | null;
+  sourceArn?: string | null;
   /**
    * The ARN this SLICE of the holding was transacted under (the registrar's
    * BROK_DLR_CODE / Agent Code on the row).

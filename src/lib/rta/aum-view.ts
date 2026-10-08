@@ -37,7 +37,13 @@ export type RegistrarAumCard = {
   arn: string;
   /** Sum of the registrar-reported values of the scope's positions. */
   sourceValue: number;
+  /** The newest statement date in the card. */
   asOf: string | null;
+  /** The OLDEST statement date the card's positions stand on (= asOf unless mixed). */
+  oldestAsOf: string | null;
+  /** The positions come from statements of different dates — never presented as one date. */
+  mixedDates: boolean;
+  /** Age of the OLDEST part: a card is as stale as its oldest figure. */
   ageDays: number | null;
   stale: boolean;
   fullBook: boolean;
@@ -53,8 +59,10 @@ export type RegistrarAumCard = {
 
 export function registrarAumCards(scopes: ScopeView[], evidence: FolioEvidence[], asOf: string, staleDays = DEFAULT_STALE_DAYS): RegistrarAumCard[] {
   return scopes.map((s) => {
-    const date = s.baseStatement?.asOf ?? s.overlays.at(-1)?.asOf ?? null;
-    const age = date ? days(date, asOf) : null;
+    const dates = [...new Set(s.positions.map((p) => p.asOf))].sort();
+    const date = dates.at(-1) ?? s.baseStatement?.asOf ?? null;
+    const oldest = dates[0] ?? date;
+    const age = oldest ? days(oldest, asOf) : null;
     const listed = new Set(s.positions.map((p) => `${p.amcCode}|${p.folioNumber}`));
     const gaps = new Map<string, string>();
     for (const e of evidence) {
@@ -69,11 +77,11 @@ export function registrarAumCards(scopes: ScopeView[], evidence: FolioEvidence[]
     const fullBook = !!s.baseStatement;
     const stale = age === null || age > staleDays;
     return {
-      rta: s.rta, arn: s.arn, sourceValue: r2(s.value), asOf: date, ageDays: age, stale, fullBook,
+      rta: s.rta, arn: s.arn, sourceValue: r2(s.value), asOf: date, oldestAsOf: oldest, mixedDates: dates.length > 1, ageDays: age, stale, fullBook,
       positions: s.positions.length, zeroPositions: s.zeroPositions, unvalued: s.unvalued,
       amcs: new Set(s.positions.map((p) => p.amcCode)).size,
       coverageGaps: { count: gaps.size, sources },
-      label: `${s.rta === "kfintech" ? "KFintech" : s.rta === "cams" ? "CAMS" : s.rta} · ${s.arn} · as of ${date ?? "unknown"}${fullBook ? " (full book)" : " (partial statement)"}${stale ? " — STALE" : ""}`,
+      label: `${s.rta === "kfintech" ? "KFintech" : s.rta === "cams" ? "CAMS" : s.rta} · ${s.arn} · as of ${dates.length > 1 ? `${oldest} – ${date} (mixed dates)` : date ?? "unknown"}${fullBook ? " (full book)" : " (partial statement)"}${stale ? " — STALE" : ""}`,
     };
   });
 }
@@ -93,7 +101,8 @@ export function firmAumHeadline(cards: RegistrarAumCard[], required: Array<{ rta
     else if (!c.fullBook) reasons.push(`${r.rta}/${r.arn}: only a partial statement`);
   }
   for (const c of cards) {
-    if (c.stale) reasons.push(`${c.rta}/${c.arn}: statement ${c.asOf ? `dated ${c.asOf} (${c.ageDays} days old)` : "undated"} is stale`);
+    if (c.mixedDates) reasons.push(`${c.rta}/${c.arn}: combines statements of different dates (${c.oldestAsOf} → ${c.asOf}) — not one figure as of one date`);
+    if (c.stale) reasons.push(`${c.rta}/${c.arn}: statement ${c.oldestAsOf ? `dated ${c.oldestAsOf} (${c.ageDays} days old)` : "undated"} is stale`);
     if (c.coverageGaps.count) reasons.push(`${c.rta}/${c.arn}: ${c.coverageGaps.count} folio(s) other files show are missing from the statement`);
     if (c.unvalued) reasons.push(`${c.rta}/${c.arn}: ${c.unvalued} position(s) carry no value`);
   }

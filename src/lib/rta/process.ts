@@ -70,7 +70,10 @@ export function splitRepresentedBy(raw?: string): { name: string | null; guardia
 
 export type ProcessOutcome = {
   rowsTotal: number;
+  /** Records this file CREATED or CHANGED (Phase 3E: an identical re-import is not "imported"). */
   rowsImported: number;
+  /** Rows already in the CRM exactly as this file states them — nothing written. */
+  rowsUnchanged?: number;
   rowsSkipped: number;
   rowsFailed: number;
   errors: Array<{ row: number; reason: string }>;
@@ -151,6 +154,7 @@ async function processTransactionFeed(
   const errors: Array<{ row: number; reason: string }> = [];
   const fail = (line: number, reason: string) => errors.push({ row: line, reason: maskPansInText(reason) });
   let imported = 0;
+  let unchanged = 0;
   let skipped = 0;
   let failed = 0;
   let minDate = "9999-12-31";
@@ -167,10 +171,85 @@ async function processTransactionFeed(
   // Everything the rows can touch, loaded once in chunked bulk queries.
   const dir = new InvestorDirectory(tx, args.tenantId);
   await dir.preload({
-    pans: rows.map((r) => r.pan),
-    folios: rows.map((r) => r.folioNumber),
+    pans: [...rows.map((r) => r.pan), ...(parsed.failed ?? []).map((f) => f.pan)],
+    folios: [...rows.map((r) => r.folioNumber), ...(parsed.failed ?? []).map((f) => f.folioNumber)],
     nopanKeys: [...new Set(rows.map((r) => nopanFolioKey(r.folioNumber)))],
   });
+
+  // ── Refused instructions (KFintech SIND / STPAD / STPOD) ────────────────
+  // A rejected transaction (status 'rejected', 0 units — never a holding,
+  // never business) carrying the registrar's number and reason; a refused
+  // SIP instalment also opens a SIP Rejection record. Attached only to the
+  // folio ON RECORD (owner rules of identity.ts) — a refused instruction never
+  // creates a folio or a client. The registration is not touched.
+  for (const f of parsed.failed ?? []) {
+    if (f.orderDate < minDate) minDate = f.orderDate;
+    if (f.orderDate > maxDate) maxDate = f.orderDate;
+    const who = await dir.ownerOf({ pan: f.pan, folioNumber: f.folioNumber, amcCode: f.amcCode, holderStatus: f.holderStatus, guardianPanPossible: args.source !== "kfintech" });
+    const onRecord = who.kind === "found" ? await dir.byFolio(f.folioNumber, f.amcCode) : null;
+    if (who.kind !== "found" || who.via !== "folio" || !onRecord || onRecord.kind !== "found" || !onRecord.folioId) {
+      skipped++;
+      fail(f.line, `${f.category === "failed_sip_instalment" ? "refused SIP instalment" : "refused STP leg"} ${f.externalRef}: ${who.kind === "found" ? `folio ${f.folioNumber} at AMC ${f.amcCode} is not on record` : notAttached(who, f.pan, f.folioNumber)} — held until the folio master arrives (nothing created)`);
+      continue;
+    }
+    await tx.execute(sql`SAVEPOINT rta_item`);
+    try {
+      const raw = { source: "rta_feed", code: f.code, eventCategory: f.category, switchRef: f.switchRef ?? null };
+      const ins = await tx.execute(sql`
+        INSERT INTO transactions (
+          tenant_id, investor_id, folio_id, folio_number, amc_code, amc_name, scheme_code, scheme_name,
+          type, direction, amount, units, nav, order_id, order_date, status, reason_code, reason_description, raw_feed_row
+        ) VALUES (
+          ${args.tenantId}::uuid, ${who.id}::uuid, ${onRecord.folioId}::uuid, ${f.folioNumber}, ${f.amcCode}, ${f.amcCode},
+          ${f.schemeCode}, ${f.schemeName}, ${f.type}, ${f.direction}, ${f.amount}, 0, NULL, ${f.externalRef}, ${f.orderDate}::date,
+          'rejected', ${f.category}, ${f.reason}, ${JSON.stringify(raw)}::jsonb
+        )
+        ON CONFLICT (tenant_id, order_id) WHERE order_id IS NOT NULL DO UPDATE SET updated_at = now()
+        WHERE transactions.folio_number = EXCLUDED.folio_number AND transactions.order_date = EXCLUDED.order_date
+          AND transactions.status = 'rejected' AND transactions.amount = EXCLUDED.amount
+        RETURNING id, (xmax = 0) AS inserted
+      `);
+      const t = ins.rows[0] as { id: string; inserted: boolean } | undefined;
+      if (!t) {
+        await tx.execute(sql`ROLLBACK TO SAVEPOINT rta_item`);
+        await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
+        skipped++;
+        fail(f.line, `transaction number ${f.externalRef} is already in the CRM for a different transaction — existing record left unchanged, this refused instruction not recorded`);
+        continue;
+      }
+      if (f.category === "failed_sip_instalment") {
+        const followUp = new Date(new Date(f.orderDate).getTime() + 2 * 864e5).toISOString().slice(0, 10);
+        const dedupKey = naturalKeyHash(["rta-failed-instruction", args.source, f.amcCode, f.externalRef]);
+        const rej = await tx.execute(sql`
+          INSERT INTO sip_rejections (
+            tenant_id, investor_id, transaction_id, rejection_date, rejection_amount, rejection_reason, scheme_name,
+            folio_number, amc_name, recovery_status, assigned_rm_id, follow_up_date, reason_category, dedup_key
+          ) VALUES (
+            ${args.tenantId}::uuid, ${who.id}::uuid, ${t.id}::uuid, ${f.orderDate}::date, ${f.amount}, ${f.reason}, ${f.schemeName || f.schemeCode},
+            ${f.folioNumber}, ${f.amcCode}, 'pending', ${who.rmId}, ${followUp}::date, ${classifyRejectionReason(f.reason)}, ${dedupKey}
+          )
+          ON CONFLICT DO NOTHING
+          RETURNING id
+        `);
+        if (rej.rows.length) {
+          await tx.execute(sql`
+            INSERT INTO events_outbox (tenant_id, kind, entity_type, entity_id, after, meta)
+            VALUES (${args.tenantId}::uuid, 'transaction.failed.sip_rejection', 'investor', ${who.id}::uuid,
+              ${JSON.stringify({ reason_code: classifyRejectionReason(f.reason), reason: f.reason, scheme_name: f.schemeName, amount: f.amount, order_date: f.orderDate })}::jsonb,
+              ${JSON.stringify({ source: "rta-feed", dedupKey })}::jsonb)
+          `);
+        }
+      }
+      await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
+      if (t.inserted) imported++;
+      else unchanged++; // the same refused instruction from an earlier file
+    } catch (e: any) {
+      await tx.execute(sql`ROLLBACK TO SAVEPOINT rta_item`);
+      await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
+      failed++;
+      fail(f.line, e?.message ?? "insert failed");
+    }
+  }
 
   /** (amc_code, folio_number) → folio id + its owner, resolved once per folio. */
   const folioCache = new Map<string, { id: string; investorId: string }>();
@@ -201,7 +280,7 @@ async function processTransactionFeed(
 
     // ── Who is this row's client? ─────────────────────────────────────────
     const pan = minorOwnerId ? null : validPan(r.pan);
-    const res = minorOwnerId ? ({ kind: "found", id: minorOwnerId, rmId: null } as const) : await dir.ownerOf({ pan, folioNumber: r.folioNumber, amcCode: r.amcCode, holderStatus: r.holderStatus });
+    const res = minorOwnerId ? ({ kind: "found", id: minorOwnerId, rmId: null } as const) : await dir.ownerOf({ pan, folioNumber: r.folioNumber, amcCode: r.amcCode, holderStatus: r.holderStatus, guardianPanPossible: args.source !== "kfintech" });
 
     if (res.kind === "blocked" || res.kind === "ambiguous") {
       skipped++;
@@ -343,7 +422,9 @@ async function processTransactionFeed(
           AND transactions.type = EXCLUDED.type
           AND transactions.direction IS NOT DISTINCT FROM EXCLUDED.direction
           AND transactions.amount = EXCLUDED.amount
-        RETURNING id
+        RETURNING id, (xmax = 0) AS inserted,
+          (SELECT row(o.status, o.nav, o.units, o.reason_code, o.reason_description)::text FROM transactions o WHERE o.id = transactions.id) AS before,
+          row(status, nav, units, reason_code, reason_description)::text AS after
       `);
       if (ins.rows.length === 0) {
         // Undo the whole row — including a folio this row may have created —
@@ -358,7 +439,9 @@ async function processTransactionFeed(
         );
         continue;
       }
-      imported++;
+      const w = ins.rows[0] as { inserted: boolean; before: string | null; after: string };
+      if (w.inserted || w.before !== w.after) imported++;
+      else unchanged++;
       if (normaliseStatus(r.status) === "processed") {
         const prev = lastTxByInvestor.get(investorId);
         if (!prev || r.orderDate > prev) lastTxByInvestor.set(investorId, r.orderDate);
@@ -392,6 +475,7 @@ async function processTransactionFeed(
   return {
     rowsTotal,
     rowsImported: imported,
+    rowsUnchanged: unchanged,
     rowsSkipped: skipped,
     rowsFailed: failed,
     errors: errors.sort((a, b) => a.row - b.row),

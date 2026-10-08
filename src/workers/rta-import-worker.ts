@@ -451,12 +451,18 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
           return;
         }
 
+        // A row already recorded exactly as this file states it is neither
+        // imported nor a problem: it counts toward "something landed".
+        const landed = outcome.rowsImported + (outcome.rowsUnchanged ?? 0);
         const status =
           outcome.rowsFailed > 0 || outcome.rowsSkipped > 0
-            ? outcome.rowsImported === 0
+            ? landed === 0
               ? "failed"
               : "partial"
             : "completed";
+        const unchangedNote = outcome.rowsUnchanged
+          ? `${outcome.rowsUnchanged} row(s) were already recorded exactly as this file states them — nothing written for them.`
+          : null;
 
         // "completed · 0 rows" reads exactly like a silent failure, and it sent
         // us hunting for a parser bug that did not exist. A registrar quite
@@ -477,7 +483,7 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
               -- 1,146 healthy rows in production read that way. What is left
               -- here is a provenance note, if any; an archive's ignored-files
               -- note is appended to it.
-              remarks = NULLIF(concat_ws(' ', COALESCE(${emptyNote}::text, remarks), ${archiveNote}::text), ''),
+              remarks = NULLIF(concat_ws(' ', COALESCE(${emptyNote}::text, remarks), ${unchangedNote}::text, ${archiveNote}::text), ''),
               period_start = ${isoDateOrToday(outcome.periodStart)}::date,
               period_end = ${isoDateOrToday(outcome.periodEnd)}::date,
               rows_total = ${outcome.rowsTotal},

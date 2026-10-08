@@ -42,6 +42,19 @@ describe("registrar AUM cards", () => {
   });
 });
 
+describe("statements of different dates", () => {
+  it("a card built from two partial statements of different dates shows the range, is as stale as its oldest part, and withholds the total", () => {
+    const may: HoldingStatement = { ...cams, id: "may", asOf: "2026-05-18", fullBook: false };
+    const oct: HoldingStatement = { ...cams, id: "oct", asOf: "2026-10-08", fullBook: false, positions: [{ amcCode: "IF", folioNumber: "8100", schemeCode: "IF1", units: 1, value: 100 }] };
+    const [c] = registrarAumCards(scopeView([may, oct]), [], AS_OF);
+    expect(c).toMatchObject({ asOf: "2026-10-08", oldestAsOf: "2026-05-18", mixedDates: true, stale: true, ageDays: 143 });
+    expect(c.label).toMatch(/2026-05-18 – 2026-10-08 \(mixed dates\)/);
+    const h = firmAumHeadline([c], [{ rta: "cams", arn: "ARN-1" }]);
+    expect(h.value).toBeNull();
+    expect(h.reasons.join(" | ")).toMatch(/combines statements of different dates \(2026-05-18 → 2026-10-08\)/);
+  });
+});
+
 describe("firm-wide AUM headline", () => {
   it("prints a figure only when every scope is full-book, fresh, gap-free and valued", () => {
     const ok = firmAumHeadline(registrarAumCards(scopeView([kfin, cams]), [], AS_OF), required);

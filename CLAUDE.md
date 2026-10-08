@@ -583,6 +583,38 @@ kept conditionally — the only source of paid / pending instalment counts).
   (SET NULL); `folio_holders` cascades with its folio, keeps its row when the
   client is purged, and a trigger refuses cross-tenant references.
 
+## RTA eight modules — Phase 3E (2026-10-08)
+
+Evidence and module verdicts: `docs/rta/PHASE3E_EIGHT_MODULES.md`.
+
+- **Rejection or correction is decided from figures, never wording.**
+  `lib/rta/consolidation.ts` proves a KFintech folio correction (original +
+  exact negation in one folio + equal re-post in exactly one other, one
+  scheme). Every non-posting staged row carries `attrs.eventCategory`. A CAMS
+  "Rejection" phrase is `unknown` until a sample exists.
+- **A refused instruction** (KFintech SIND / STPAD / STPOD, verified shape) is
+  a `transactions` row with status `rejected` and 0 units (never business),
+  plus one `sip_rejections` row for a SIP. An STP pair counts once (shared
+  `raw_feed_row.switchRef`). It never stops a SIP, and is attached only to a
+  folio on record.
+- **Import outcome**: `rowsImported` counts records created or changed; an
+  identical re-import is `rowsUnchanged`.
+- **Dated AUM**: holdings imports stamp each leg with `sourceUnits`,
+  `sourceValue`, `sourceNav`, `sourceAsOf`, `sourceReport` and `sourceArn`.
+  An older statement never replaces a newer one, and a stated 0 stays 0.
+  Revaluation never touches those keys. `getRegistrarAum` (lib/metrics) and
+  the Registrar AUM card show statements per registrar × ARN. **Mixed dates
+  are shown as a range and withhold the firm total.** The live-NAV AUM tile
+  is a different figure — never add the two together.
+- **Guardian-PAN hold is evidence-scoped**: KFintech MFSD201 / MFSD203 leave a
+  minor's PAN blank (12/12 each), so there the PAN is the holder's own
+  (`guardianPanPossible: false`). CAMS and unverified layouts keep the hold.
+  The rich importer follows the same rules (HUF + Karta PAN held; a minor's
+  folio on record stays the minor's).
+- **`folio_holders`** (undeployed): no PAN in clear (`pt1:` token + `******1234`
+  mask), one current role per person per folio, append-only (close and
+  replace, never edit).
+
 ## Webhook handlers
 
 | Provider | Path | Verifies |

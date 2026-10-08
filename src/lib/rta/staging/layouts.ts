@@ -17,6 +17,8 @@
  * referenced by the batch) remains the record of everything else.
  */
 import { readDate, readNumber, detectDateOrder, type DateOrder } from "../values";
+import { rejectionReasonText } from "../values";
+export { rejectionReasonText };
 import { classifyCams, classifyKfintech, nonFinancial, type BusinessClass } from "./classify";
 import { keyedDigest, panToken } from "./pan-token";
 import { deriveHolder, type DerivedHolder, type HolderFacts } from "../owner";
@@ -29,12 +31,6 @@ export type LayoutId =
   | "cams.wbr4" | "cams.wbr10" | "cams.wbr49" | "kfintech.mfsd203" | "kfintech.mfsd230" | "kfintech.mfsd243";
 
 export type Decimal = { text: string; num: number; dp: number };
-
-/** A registrar's free-text reason, safe to keep: PANs and every digit run masked, length capped. */
-export function rejectionReasonText(raw: string): string | undefined {
-  const t = (raw ?? "").replace(/[A-Za-z]{5}[0-9]{4}[A-Za-z]/g, "<pan>").replace(/[0-9]+/g, "#").replace(/\s+/g, " ").trim();
-  return t ? t.slice(0, 160) : undefined;
-}
 
 export type ValidationIssue = { field: string; reason: string };
 
@@ -316,8 +312,9 @@ export function normalizeRows(tenantId: string, layout: Layout, header: string[]
         n.pan = c("PAN1") || null;
         n.guardianPan = c("GuardPanNo") || null;
         n.holder = { statusText: c("Status"), rowPan: n.pan, rowPanRole: "owner", guardianPan: n.guardianPan, jointPans: [c("PAN2"), c("PAN3")] };
+        // The remark is kept as corroboration only; a folio correction is proved from the group's figures.
         const consolidation = /consolidat/i.test(c("Remarks"));
-        n.cls = classifyKfintech({ typeCode: c("Transaction Type"), head: c("Transaction Head"), description: c("Transaction Description"), status: c("Transaction Status"), rejOriginalNo: c("RejTrnoOrgNo"), consolidation, units: n.units?.num ?? null, amount: n.amount?.num ?? null });
+        n.cls = classifyKfintech({ typeCode: c("Transaction Type"), head: c("Transaction Head"), description: c("Transaction Description"), status: c("Transaction Status"), rejOriginalNo: c("RejTrnoOrgNo"), units: n.units?.num ?? null, amount: n.amount?.num ?? null });
         const lotId = b.text("Transaction ID");
         const purchaseNo = b.text("Purchase Transaction No");
         if ((lotId || purchaseNo) && c("Transaction Head").toUpperCase() === "R") {
@@ -338,7 +335,10 @@ export function normalizeRows(tenantId: string, layout: Layout, header: string[]
           // The registration this instalment belongs to (= MFSD243 RegSlno, verified 8/9).
           sipRegistrationId: c("sipregslno") && c("sipregslno") !== "0" ? c("sipregslno") : undefined,
           rejectionLinksOriginal: c("RejTrnoOrgNo") !== "",
-          folioConsolidation: consolidation || undefined,
+          consolidationRemark: consolidation || undefined,
+          // STP legs of one instruction share the switch reference (and date).
+          switchRef: c("Switch_Ref. No.") || undefined,
+          eventCategory: n.cls.category,
           // The registrar's reason for a failed instalment, minimised: digits
           // (account / cheque / folio numbers) and PANs never stored.
           rejectionReason: n.cls.exception === "instalment_rejected" ? rejectionReasonText(c("Remarks")) : undefined,
@@ -372,6 +372,7 @@ export function normalizeRows(tenantId: string, layout: Layout, header: string[]
           sipRef: c("siptrxnno") || undefined,
           hasSysRegnDate: c("sys_regn_date") !== "", targetSourceScheme: c("targ_src_scheme") || undefined,
           postDate: c("postdate"),
+          eventCategory: n.cls.category,
         };
         break;
       }

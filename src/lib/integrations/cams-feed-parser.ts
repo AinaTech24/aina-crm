@@ -22,7 +22,15 @@
  */
 
 import { parseCsv } from "@/lib/rta/csv";
-import { readDate, readNumber, detectDateOrder, type DateOrder } from "@/lib/rta/values";
+import { readDate, readNumber, detectDateOrder, rejectionReasonText, type DateOrder } from "@/lib/rta/values";
+import { isKfinReversalCode, proveFolioConsolidation, type ConsolidationRow } from "@/lib/rta/consolidation";
+
+/** KFintech refused-instruction codes (verified, May 2026 MFSD201). */
+const FAILED_CODES: Record<string, { category: "failed_sip_instalment" | "failed_stp_leg"; type: "sip" | "stp"; direction: "inflow" | "outflow" }> = {
+  SIND: { category: "failed_sip_instalment", type: "sip", direction: "inflow" },
+  STPAD: { category: "failed_stp_leg", type: "stp", direction: "inflow" },
+  STPOD: { category: "failed_stp_leg", type: "stp", direction: "outflow" },
+};
 
 export type CanonicalTransaction = {
   /** The registrar's own transaction number — never synthesised. */
@@ -57,9 +65,41 @@ export type CanonicalTransaction = {
 /** A row the parser would not turn into a transaction, and why. */
 export type FeedReject = { line: number; reason: string };
 
+/**
+ * An instruction the registrar REFUSED (Phase 3E): KFintech SIND (SIP
+ * instalment) and STPAD / STPOD (the two legs of an STP instalment), in the
+ * verified shape — processed status, no units allotted, the instalment amount,
+ * no original transaction named. Recorded as a rejected transaction (never a
+ * holding) and, for a SIP, in the SIP Rejection register. It never stops the
+ * registration.
+ */
+export type FailedInstruction = {
+  externalRef: string;
+  pan: string;
+  holderStatus?: string;
+  folioNumber: string;
+  amcCode: string;
+  schemeCode: string;
+  schemeName: string;
+  category: "failed_sip_instalment" | "failed_stp_leg";
+  /** SIND / STPAD / STPOD as printed. */
+  code: string;
+  type: "sip" | "stp";
+  direction: "inflow" | "outflow";
+  amount: number;
+  orderDate: string;
+  /** The registrar's reason, minimised (no digits, no PAN). */
+  reason: string;
+  /** Joins the two legs of one STP instruction (with the date). */
+  switchRef?: string;
+  line: number;
+};
+
 export type FeedParse = {
   rows: CanonicalTransaction[];
   rejects: FeedReject[];
+  /** Refused instructions, kept out of `rows` (they move no money or units). */
+  failed?: FailedInstruction[];
   /** Data lines seen (excluding header and blank lines). */
   dataLines: number;
 };
@@ -378,6 +418,11 @@ export function parseReverseFeed(text: string): FeedParse {
 
   const header = split(lines[headerAt]);
   const indexMap = buildHeaderIndexMap(header);
+  // KFintech MFSD201 columns read only to recognise a refused instruction and
+  // a folio correction by their CODES and figures (never by the wording).
+  const kfin = buildHeaderIndexMap(header, {
+    code: ["TRANSACTION TYPE"], rejOrig: ["REJTRNOORGNO"], switchRef: ["SWITCH_REF. NO."], remarks: ["REMARKS"],
+  });
   // A column that is plainly the NAV wins over a generic price / rate column.
   // KFintech MFSD201 carries both "Price" (earlier in the header) and "Nav":
   // they agree on every purchase row of the real file, but on 72 of its 166
@@ -426,6 +471,7 @@ export function parseReverseFeed(text: string): FeedParse {
   // — never collapsed into one, never stored twice.
   const refLines = new Map<string, number[]>();
   const refShapes = new Map<string, Set<string>>();
+  const refRows = new Map<string, ConsolidationRow[]>();
   const at = (cols: string[], f: string) => (indexMap[f] === undefined ? "" : (cols[indexMap[f]] ?? "").trim());
   for (let i = dataStart; i < lines.length; i++) {
     const line = lines[i];
@@ -436,10 +482,20 @@ export function parseReverseFeed(text: string): FeedParse {
     refLines.set(ref, [...(refLines.get(ref) ?? []), i + 1]);
     const shape = ["folioNumber", "schemeCode", "orderDate", "type", "typeDesc", "typeFlag"].map((f) => at(cols, f)).join("\u0001");
     refShapes.set(ref, (refShapes.get(ref) ?? new Set()).add(shape));
+    if (kfin.code !== undefined) {
+      const num = (f: string) => { const r = readNumber(at(cols, f)); return r.ok ? r.value : null; };
+      refRows.set(ref, [...(refRows.get(ref) ?? []), {
+        folio: at(cols, "folioNumber"), scheme: at(cols, "schemeCode"), code: (cols[kfin.code] ?? "").trim().toUpperCase(),
+        units: num("units"), amount: num("amount"),
+      }]);
+    }
   }
+  const proofs = new Map<string, ReturnType<typeof proveFolioConsolidation>>();
+  for (const [ref, list] of refRows) if (list.length > 1 && list.some((r) => isKfinReversalCode(r.code))) proofs.set(ref, proveFolioConsolidation(list));
 
   const rows: CanonicalTransaction[] = [];
   const rejects: FeedReject[] = [];
+  const failed: FailedInstruction[] = [];
   let dataLines = 0;
 
   for (let i = dataStart; i < lines.length; i++) {
@@ -460,6 +516,11 @@ export function parseReverseFeed(text: string): FeedParse {
     const externalRef = val("externalRef");
     if (!externalRef) { reject("row carries no registrar transaction number — it cannot be identified safely"); continue; }
     const group = refLines.get(externalRef) ?? [];
+    const proof = proofs.get(externalRef);
+    if (group.length > 1 && proof?.proved) {
+      reject(`${proof.reason}; held until folio moves are posted (rows on lines ${group.slice(0, 6).join(", ")})`);
+      continue;
+    }
     if (group.length > 1) {
       const shown = group.slice(0, 6).join(", ") + (group.length > 6 ? ", …" : "");
       // Real KFintech MFSD201 (Phase 2B): 9 such groups, 143 rows, every one a
@@ -480,6 +541,30 @@ export function parseReverseFeed(text: string): FeedParse {
 
     const st = readStatus(val("status"), indexMap.status !== undefined);
     if ("reason" in st) { reject(st.reason); continue; }
+
+    const kcode = kfin.code === undefined ? "" : (cols[kfin.code] ?? "").trim().toUpperCase();
+    if (FAILED_CODES[kcode]) {
+      const units = readNumber(val("units"));
+      const amount = readNumber(val("amount"));
+      const date = readOrderDate(val("orderDate"), order);
+      const linked = kfin.rejOrig !== undefined && (cols[kfin.rejOrig] ?? "").trim() !== "";
+      const shapeOk = st.status === "successful" && units.ok && (units.value ?? 0) === 0 && amount.ok && (amount.value ?? 0) > 0 && !linked && date.ok;
+      if (!shapeOk) {
+        reject(`KFintech ${kcode} outside the verified failed-instruction shape (processed status, no units, an amount, no original named) — held`);
+        continue;
+      }
+      const f = FAILED_CODES[kcode];
+      failed.push({
+        externalRef, pan: val("pan"), holderStatus: val("holderStatus") || undefined, folioNumber,
+        amcCode: val("amcCode"), schemeCode: val("schemeCode"), schemeName: val("schemeName"),
+        category: f.category, code: kcode, type: f.type, direction: f.direction,
+        amount: amount.ok ? (amount.value ?? 0) : 0, orderDate: (date as { value: string }).value,
+        reason: rejectionReasonText(kfin.remarks === undefined ? "" : cols[kfin.remarks] ?? "") ?? "No reason given in the file",
+        switchRef: kfin.switchRef === undefined ? undefined : (cols[kfin.switchRef] ?? "").trim() || undefined,
+        line: lineNo,
+      });
+      continue;
+    }
     const statusRejected = st.status === "rejected" || st.status === "failed";
 
     const cls = classifyTransaction(val("type"), val("typeDesc"), val("typeSub"), { statusRejected, flag: val("typeFlag") });
@@ -529,7 +614,7 @@ export function parseReverseFeed(text: string): FeedParse {
       line: lineNo,
     });
   }
-  return { rows, rejects, dataLines };
+  return { rows, rejects, dataLines, failed };
 }
 
 /** The order date under the file's order; a mixed-order file accepts only self-evident dates. */

@@ -439,7 +439,10 @@ export function parseKfintechHoldings(rows: string[][]): {
           name: get(C.name),
           email: get(C.email) || null,
           mobile: get(C.mobile) || null,
-          category: "individual",
+          // MFSD203 states no holder type. The PAN's 4th letter is the
+          // Income-tax holder-type code (P person, H HUF, C company, T trust…):
+          // evidence, not a guess. No PAN — not stated.
+          category: pan ? holderCategoryFromPan(pan) : "other",
           address: {
             line1: line1 || undefined,
             city: get(C.city) || undefined,
@@ -467,9 +470,11 @@ export function parseKfintechHoldings(rows: string[][]): {
       rec.schemes.push({
         schemeCode: productCode,
         schemeName: get(C.fundDesc),
-        units: num(get(C.balance)) || undefined,
+        // A stated zero balance is a position (a closed or emptied holding);
+        // only a BLANK cell is unknown. Phase 3E: `|| undefined` dropped zeros.
+        units: get(C.balance) === "" ? undefined : num(get(C.balance)),
         nav: num(get(C.nav)) || undefined,
-        value: value || undefined,
+        value: get(C.aum) === "" ? undefined : value,
         arn: rowArn,
       });
       rec.aum = (rec.aum ?? 0) + value;
@@ -484,4 +489,10 @@ export function parseKfintechHoldings(rows: string[][]): {
   });
   canonicalizeAmcNames(folios);
   return { reportType: "MFSD203", folios, missingPan, warnings: pans.warnings() };
+}
+
+/** Holder category from the PAN's 4th letter (the Income-tax holder-type code). */
+function holderCategoryFromPan(pan: string): "individual" | "huf" | "company" | "trust" | "other" {
+  const c = pan.trim().toUpperCase()[3];
+  return c === "P" ? "individual" : c === "H" ? "huf" : c === "C" ? "company" : c === "T" ? "trust" : "other";
 }

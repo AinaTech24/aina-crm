@@ -78,6 +78,8 @@ export type InstalmentEvent = {
   amount: number | null;
   /** Minimised registrar reason for a rejected instalment. */
   reason?: string;
+  /** What the instalment says the registration is (SIN → sip, STPA/STPO → stp, SWD → swp). */
+  kind?: SipKind;
 };
 
 export type MasterException = {
@@ -86,14 +88,30 @@ export type MasterException = {
     | "unkeyed_ambiguous"
     | "unknown_kind"
     | "unknown_frequency"
-    | "instalment_unlinked";
+    | "instalment_unlinked"
+    | "registration_not_described";
   key: string;
   detail: string;
 };
 
+export type LifecycleEvent = { kind: "stop" | "pause" | "instalment_rejected" | "registration_rejected"; date: string | null; source: string };
+
 export type SipMasterEntry = {
   key: string;
   keyed: boolean;
+  /** A registration report (MFSD243 / WBR49 / MFSD230) describes it. False = known only from its instalments. */
+  described: boolean;
+  /** The client and folio it belongs to, when the caller resolved them (owner rules of lib/rta/owner.ts). */
+  owner: { investorId: string; folioId: string | null; rule: string } | null;
+  /** The date the state speaks from: the status report's date, the stop / pause date, or the start date of a PENDING SIP. */
+  statusEffectiveDate: string | null;
+  lastSuccessfulInstalment: string | null;
+  /** A processed instalment within the cycle window before the as-of date. */
+  operational: boolean;
+  /** Stops, pauses and rejections the registrar reported — never inferred. */
+  lifecycleEvents: LifecycleEvent[];
+  /** verified: described and its lifecycle stated in time · partial: keyed, but its status is not established · unverified: no registration id. */
+  confidence: "verified" | "partial" | "unverified";
   rta: "cams" | "kfintech";
   amcCode: string;
   registrationId: string | null;
@@ -172,7 +190,9 @@ const eventKey = (e: InstalmentEvent) =>
 
 function blankEntry(key: string, o: RegistrationObservation, keyed: boolean): SipMasterEntry {
   return {
-    key, keyed, rta: o.rta, amcCode: clean(o.amcCode), registrationId: keyed ? clean(o.registrationId) : null,
+    key, keyed, described: true, owner: null, statusEffectiveDate: null, lastSuccessfulInstalment: null, operational: false,
+    lifecycleEvents: [], confidence: "unverified",
+    rta: o.rta, amcCode: clean(o.amcCode), registrationId: keyed ? clean(o.registrationId) : null,
     folio: clean(o.folio), scheme: clean(o.scheme), targetScheme: null,
     kind: "unknown", kindConfidence: "none", amount: null, frequency: null,
     startDate: null, endDate: null, registeredOn: null, status: null,
@@ -221,7 +241,15 @@ function absorb(e: SipMasterEntry, o: RegistrationObservation, ex: MasterExcepti
   }
 }
 
-export function buildSipMaster(observations: RegistrationObservation[], events: InstalmentEvent[], asOf: string): SipMaster {
+export type SipMasterOptions = {
+  /** How recent a processed instalment must be to call a registration operational (default 35 days). */
+  cycleDays?: number;
+  /** Resolve the owner of a registration's folio (owner rules); null when not resolvable. */
+  ownerOf?: (r: { rta: "cams" | "kfintech"; amcCode: string; folio: string }) => SipMasterEntry["owner"];
+};
+
+export function buildSipMaster(observations: RegistrationObservation[], events: InstalmentEvent[], asOf: string, opts: SipMasterOptions = {}): SipMaster {
+  const cycleDays = opts.cycleDays ?? 35;
   const ex: MasterException[] = [];
   const byKey = new Map<string, SipMasterEntry>();
   const ordered = [...observations].sort((a, b) => a.reportDate.localeCompare(b.reportDate));
@@ -255,13 +283,29 @@ export function buildSipMaster(observations: RegistrationObservation[], events: 
 
   // 3. Instalments: attach by registration reference only. An STP reports one
   // instalment as two legs under one registration — counted once per date.
+  // A reference no registration report describes is still a registration
+  // (the registrar's own id): it is held as an EVIDENCED entry — kind and
+  // amount from its instalments, state UNKNOWN — never merged into another.
   const seen = new Set<string>();
-  for (const ev of events) {
+  const evidenced = new Map<string, SipMasterEntry>();
+  for (const ev of [...events].sort((a, b) => a.date.localeCompare(b.date))) {
     const k = clean(ev.registrationRef) ? eventKey(ev) : "";
-    const e = k ? byKey.get(k) : undefined;
-    if (!e) {
-      ex.push({ code: "instalment_unlinked", key: k || `${ev.rta}:${clean(ev.amcCode)}:${clean(ev.folio)}`, detail: `${ev.outcome} instalment of ${ev.date} names ${clean(ev.registrationRef) ? "a registration the master does not hold" : "no registration"}` });
+    if (!k) {
+      ex.push({ code: "instalment_unlinked", key: `${ev.rta}:${clean(ev.amcCode)}:${clean(ev.folio)}`, detail: `${ev.outcome} instalment of ${ev.date} names no registration` });
       continue;
+    }
+    let e = byKey.get(k) ?? evidenced.get(k);
+    if (!e) {
+      e = blankEntry(k, { source: "kfintech.mfsd243", reportDate: ev.date, rta: ev.rta, amcCode: ev.amcCode, registrationId: ev.registrationRef, folio: ev.folio, scheme: ev.scheme, kindCode: "", amount: null, frequencyText: "", startDate: null }, true);
+      e.described = false;
+      e.sources = [];
+      e.observations = 0;
+      evidenced.set(k, e);
+      ex.push({ code: "registration_not_described", key: k, detail: "instalments name this registration, but no registration report on file describes it" });
+    }
+    if (!e.described) {
+      if (ev.kind && e.kind === "unknown") e.kind = ev.kind;
+      if (ev.outcome === "processed" && ev.amount != null) e.amount = ev.amount;
     }
     const once = `${e.key}|${ev.date}|${ev.outcome}`;
     if (seen.has(once)) continue;
@@ -272,7 +316,13 @@ export function buildSipMaster(observations: RegistrationObservation[], events: 
   }
 
   // 4. State, as of the requested date.
+  for (const e of evidenced.values()) entries.push(e);
   for (const e of entries) {
+    if (!e.described) {
+      e.state = "UNKNOWN";
+      e.stateBasis = `no registration report describes this registration${e.instalments.lastProcessed ? `; last processed instalment ${e.instalments.lastProcessed}` : ""}`;
+      continue;
+    }
     if (e.kind === "unknown") ex.push({ code: "unknown_kind", key: e.key, detail: "registration kind not stated in a form this code reads" });
     if (!e.frequency) ex.push({ code: "unknown_frequency", key: e.key, detail: "frequency not stated in a form this code reads — not assumed monthly" });
     const r = sipStateOn({
@@ -285,6 +335,26 @@ export function buildSipMaster(observations: RegistrationObservation[], events: 
     }, asOf);
     e.state = r.state;
     e.stateBasis = r.basis;
+  }
+  for (const e of entries) {
+    e.lastSuccessfulInstalment = e.instalments.lastProcessed;
+    e.operational = !!e.lastSuccessfulInstalment && e.lastSuccessfulInstalment <= asOf && Date.parse(asOf) - Date.parse(e.lastSuccessfulInstalment) <= cycleDays * 86_400_000;
+    const ev: LifecycleEvent[] = [];
+    const lifeSrc = e.status?.source ?? e.sources.find((x) => x !== "kfintech.mfsd230") ?? "registration report";
+    if (e.ceaseDate) ev.push({ kind: "stop", date: e.ceaseDate, source: lifeSrc });
+    if (e.terminateDate) ev.push({ kind: "stop", date: e.terminateDate, source: lifeSrc });
+    if (e.pauseFrom) ev.push({ kind: "pause", date: e.pauseFrom, source: lifeSrc });
+    if (e.state === "REJECTED") ev.push({ kind: "registration_rejected", date: e.status?.asOf ?? null, source: lifeSrc });
+    if (e.instalments.rejected) ev.push({ kind: "instalment_rejected", date: e.instalments.lastRejected, source: "transaction feed" });
+    e.lifecycleEvents = ev;
+    e.statusEffectiveDate =
+      e.state === "STOPPED" ? [e.ceaseDate, e.terminateDate].filter((x): x is string => !!x).sort()[0] ?? e.status?.asOf ?? e.lifecycleAsOf
+      : e.state === "PENDING" ? e.startDate
+      : e.state === "PAUSED" ? e.pauseFrom
+      : e.state === "UNKNOWN" ? null
+      : e.status?.asOf ?? e.lifecycleAsOf;
+    e.confidence = e.described && e.keyed && e.state !== "UNKNOWN" ? "verified" : e.keyed ? "partial" : "unverified";
+    e.owner = opts.ownerOf ? opts.ownerOf({ rta: e.rta, amcCode: e.amcCode, folio: e.folio }) : null;
   }
   entries.sort((a, b) => a.key.localeCompare(b.key));
   const coverage = {} as MasterCoverage;
@@ -307,6 +377,12 @@ export type ActiveSipBook = {
   paused: number;
   activeWithUnknownFrequency: number;
   nonSip: { stp: number; swp: number; other: number; unknownKind: number };
+  /**
+   * SIPs known only from their instalments (no registration report on file):
+   * operating = an instalment within the cycle; their frequency is not known,
+   * so only the last instalment amount is summed. Never in the book.
+   */
+  notDescribed: { operating: number; operatingLastInstalmentTotal: number; notOperating: number };
 };
 
 export function activeSipBook(master: SipMaster): ActiveSipBook {
@@ -315,12 +391,20 @@ export function activeSipBook(master: SipMaster): ActiveSipBook {
     active: { count: 0, monthlyAmount: 0 }, pending: { count: 0, monthlyAmount: 0 }, unknown: { count: 0, monthlyAmount: 0 },
     stoppedOrExpired: 0, paused: 0, activeWithUnknownFrequency: 0,
     nonSip: { stp: 0, swp: 0, other: 0, unknownKind: 0 },
+    notDescribed: { operating: 0, operatingLastInstalmentTotal: 0, notOperating: 0 },
   };
   const add = (b: { count: number; monthlyAmount: number }, e: SipMasterEntry) => {
     b.count++;
     if (e.frequency && e.amount != null) b.monthlyAmount = Math.round((b.monthlyAmount + monthlySipAmount(e.amount, e.frequency)) * 100) / 100;
   };
   for (const e of master.entries) {
+    if (!e.described && e.kind === "sip") {
+      if (e.operational) {
+        out.notDescribed.operating++;
+        out.notDescribed.operatingLastInstalmentTotal = Math.round((out.notDescribed.operatingLastInstalmentTotal + (e.amount ?? 0)) * 100) / 100;
+      } else out.notDescribed.notOperating++;
+      continue;
+    }
     if (e.kind !== "sip") {
       if (e.kind === "stp") out.nonSip.stp++;
       else if (e.kind === "swp") out.nonSip.swp++;
@@ -373,9 +457,11 @@ export function eventsFromStaged(rta: "cams" | "kfintech", rows: StagedRow[]): I
     const failed = n.cls.exception === "instalment_rejected";
     const systematic = !n.cls.exception && ["sip_investment", "stp_in", "stp_out", "swp_withdrawal"].includes(n.cls.rtaClass);
     if (!failed && !systematic) continue;
+    const cls = n.cls.rtaClass;
     out.push({
       rta, amcCode: n.amcCode ?? "", registrationRef: ref, folio: n.folioNumber, scheme: n.schemeCode, date: n.tradeDate,
       outcome: failed ? "rejected" : "processed", amount: n.amount?.num ?? null,
+      kind: cls === "sip_investment" ? "sip" : cls === "stp_in" || cls === "stp_out" ? "stp" : cls === "swp_withdrawal" ? "swp" : undefined,
       reason: failed ? str(n.attrs.rejectionReason) ?? undefined : undefined,
     });
   }

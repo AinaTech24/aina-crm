@@ -97,6 +97,7 @@ export const SYSTEM_DASHBOARDS: SystemDashboard[] = [
       item("business_trend", "L"),
       item("money_movement", "L"),
       item("sip_health", "M"),
+      item("registrar_aum", "L"),
       item("aum_mix", "M"),
       item("client_mix", "M"),
       item("top_clients", "M"),

@@ -21,6 +21,8 @@
  *             and the pre-rejection codes SIND STPAD STPOD), checked against
  *             `Transaction Head` (P / R). A code outside the table is held.
  */
+import { isKfinReversalCode } from "../consolidation";
+
 export const RTA_CLASSES = [
   "purchase", "sip_investment", "redemption", "swp_withdrawal",
   "switch_in", "switch_out", "stp_in", "stp_out",
@@ -64,6 +66,22 @@ export type ClassException =
   | "rejection_semantics_unverified"
   | "non_financial_event";
 
+/**
+ * What a non-posting row IS, for the exception and rejection screens (Phase
+ * 3E). Decided from codes, status, units, amount and — for a folio
+ * correction — the whole group's figures (lib/rta/consolidation.ts); never
+ * from a description or remark alone.
+ */
+export type EventCategory =
+  | "failed_sip_instalment"
+  | "failed_stp_leg"
+  | "sip_registration_rejection"
+  | "purchase_rejection"
+  | "redemption_rejection"
+  | "reversal_cancellation"
+  | "folio_correction"
+  | "unknown";
+
 export type BusinessClass = {
   rtaClass: RtaClass;
   confidence: "verified" | "inferred";
@@ -74,6 +92,8 @@ export type BusinessClass = {
   reason: string;
   /** Extra facts that qualify the class (e.g. inferredSwp). */
   notes?: Record<string, string | boolean>;
+  /** Set on every row that may not be posted as an ordinary transaction. */
+  category?: EventCategory;
 };
 
 const up = (s: string | null | undefined) => (s ?? "").toUpperCase().replace(/\s+/g, " ").trim();
@@ -84,6 +104,15 @@ const REVERSAL = /REVERS|\bREV\b/;
 const CANCEL = /CANCEL/;
 const PRE_REJECT = /PRE[\s-]*REJECT/;
 const REJECT_WORD = /REJECT/;
+
+/** What an R-coded row would undo, by its base code. */
+function categoryForBase(base: string): EventCategory {
+  if (base === "SIN") return "failed_sip_instalment";
+  if (base === "STPA" || base === "STPO") return "failed_stp_leg";
+  if (base === "ADD" || base === "NEW") return "purchase_rejection";
+  if (base === "FUL" || base === "RED" || base === "SWD") return "redemption_rejection";
+  return "unknown";
+}
 
 function make(rtaClass: RtaClass, confidence: "verified" | "inferred", reason: string, extra: Partial<BusinessClass> = {}): BusinessClass {
   return { rtaClass, confidence, direction: CLASS_META[rtaClass].direction, reason, ...extra };
@@ -111,16 +140,18 @@ export function classifyCams(i: CamsClassInput): BusinessClass {
   const flag = up(i.flag);
   const nature = up(i.nature);
   if (!registrarProcessed(i.status)) {
-    return make("unknown", "verified", `registrar status "${i.status.trim()}" is not processed — held, its effect is not established for this file`, { exception: "registrar_status_not_processed", direction: null });
+    return make("unknown", "verified", `registrar status "${i.status.trim()}" is not processed — held, its effect is not established for this file`, { exception: "registrar_status_not_processed", direction: null, category: "unknown" });
   }
   if (up(i.reversalCode) || up(i.originalTrxnNo) || REVERSAL.test(nature) || REVERSAL.test(flag)) {
-    return make("reversal", "verified", "reversal of an earlier transaction — held until it can be linked to its original", { exception: "reversal_unlinked" });
+    return make("reversal", "verified", "reversal of an earlier transaction — held until it can be linked to its original", { exception: "reversal_unlinked", category: "reversal_cancellation" });
   }
   if (CANCEL.test(nature) || CANCEL.test(flag)) {
-    return make("cancellation", "verified", "cancellation — held until it can be linked to its original", { exception: "cancellation_unlinked" });
+    return make("cancellation", "verified", "cancellation — held until it can be linked to its original", { exception: "cancellation_unlinked", category: "reversal_cancellation" });
   }
+  // No CAMS rejection row has been seen (0 in 1,334 R2 rows): its kind is not
+  // read from the wording — held as unknown until a sample shows its fields.
   if (/REJECT/.test(nature) || /REJECT/.test(flag)) {
-    return make("rejection", "verified", "rejection — held until it can be linked to its original", { exception: "pre_rejection_unlinked" });
+    return make("rejection", "inferred", "CAMS rejection wording — no CAMS rejection row has been verified, so its effect is not read from the text; held", { exception: "pre_rejection_unlinked", category: "unknown" });
   }
 
   const natureSystematic = /^SYSTEMATIC/.test(nature);
@@ -138,7 +169,7 @@ export function classifyCams(i: CamsClassInput): BusinessClass {
     }
     return make("unknown", "inferred",
       `CAMS ${i.flag.trim()} carries only one of the two systematic markers (description ${natureSystematic ? "says" : "does not say"} "Systematic", registration reference ${hasSipRef ? "present" : "absent"}) — switch or STP cannot be decided`,
-      { exception: "switch_stp_ambiguous", direction: switchLeg === "in" ? "inflow" : "outflow" });
+      { exception: "switch_stp_ambiguous", category: "unknown", direction: switchLeg === "in" ? "inflow" : "outflow" });
   }
 
   if (/^(FULL|PARTIAL) REDEMPTION$/.test(flag)) {
@@ -159,9 +190,9 @@ export function classifyCams(i: CamsClassInput): BusinessClass {
     const reinvest = /REINV/.test(flag) || /REINV/.test(nature);
     return make(reinvest ? "idcw_reinvest" : "idcw_payout", "inferred",
       "IDCW wording — no IDCW row was in the verified sample, so the layout is unconfirmed and the row is held",
-      { exception: "class_unverified_idcw" });
+      { exception: "class_unverified_idcw", category: "unknown" });
   }
-  return make("unknown", "inferred", `CAMS transaction "${i.flag.trim() || i.typeCode.trim() || "(blank)"}" is not one the verified sample showed — held, not guessed`, { exception: "unknown_transaction_code" });
+  return make("unknown", "inferred", `CAMS transaction "${i.flag.trim() || i.typeCode.trim() || "(blank)"}" is not one the verified sample showed — held, not guessed`, { exception: "unknown_transaction_code", category: "unknown" });
 }
 
 // ── KFintech ────────────────────────────────────────────────────────────────
@@ -172,8 +203,6 @@ export type KfinClassInput = {
   description: string; // Transaction Description
   status: string;      // Transaction Status
   rejOriginalNo?: string; // RejTrnoOrgNo
-  /** The row's Remarks say it was re-reported because folios were consolidated. */
-  consolidation?: boolean;
   /** Units and amount as reported (only their signs are read). */
   units?: number | null;
   amount?: number | null;
@@ -204,26 +233,17 @@ export function classifyKfintech(i: KfinClassInput): BusinessClass {
   const head = up(i.head);
   const desc = spaced(up(i.description));
   if (!registrarProcessed(i.status)) {
-    return make("unknown", "verified", `registrar status "${i.status.trim()}" is not processed — held, its effect is not established for this file`, { exception: "registrar_status_not_processed" });
+    return make("unknown", "verified", `registrar status "${i.status.trim()}" is not processed — held, its effect is not established for this file`, { exception: "registrar_status_not_processed", category: "unknown" });
   }
-  // Folio consolidation (verified, newer MFSD201 of 2026-10-08): the registrar
-  // re-reports an old folio's transactions — the original, its reversal under a
-  // code ending in R ("SIP Rejection", "Redemption Rejection", "Purchase
-  // Rejection") with the SAME transaction number, and a re-post into the
-  // surviving folio — all remarked "Trxn triggered now due to consolidation of
-  // folios". Those R rows are NOT bank or registrar rejections.
-  if (i.consolidation) {
-    const base = KFIN_CODES[code] ?? (code.endsWith("R") ? KFIN_CODES[code.slice(0, -1)] : undefined);
-    return make(code.endsWith("R") && REJECT_WORD.test(desc) ? "reversal" : (base?.cls ?? "unknown"), "verified",
-      "re-reported because the registrar consolidated folios (original, reversal and re-post share one transaction number) — held: posting needs a folio-move rule, not a new transaction",
-      { exception: "folio_consolidation" });
-  }
-  // A known code with an R suffix whose description says "… Rejection" (SINR,
-  // FULR, NEWR in the newer MFSD201): a rejection of that transaction. Every
-  // such row in the sample was a consolidation reversal, so the meaning of a
-  // genuine one (a bounced SIP debit?) is not yet evidenced — held.
-  if (code.length > 3 && code.endsWith("R") && KFIN_CODES[code.slice(0, -1)] && REJECT_WORD.test(desc)) {
-    return make("rejection", "inferred", `KFintech ${code} ("${i.description.trim()}") rejects a ${KFIN_CODES[code.slice(0, -1)].cls.replace("_", " ")} — held until a non-consolidation sample shows what it means`, { exception: "rejection_semantics_unverified" });
+  // A known code with an "R" suffix (SINR, FULR, NEWR in the newer MFSD201)
+  // undoes a transaction of the base code. Every such row in the sample was a
+  // FOLIO CORRECTION, but that is proved per group from the figures
+  // (lib/rta/consolidation.ts, applied in group.ts), never assumed here. On
+  // its own the row is an unverified rejection of its base type — held.
+  if (isKfinReversalCode(code)) {
+    const base = code.slice(0, -1);
+    return make("rejection", "inferred", `KFintech ${code} undoes a ${base} transaction — held: its effect is decided only when the group proves a folio correction, and a genuine one has not been evidenced`,
+      { exception: "rejection_semantics_unverified", category: categoryForBase(base), notes: { baseCode: base } });
   }
   if (KFIN_PRE_REJECTION[code] || PRE_REJECT.test(desc)) {
     const linked = (i.rejOriginalNo ?? "").trim() !== "";
@@ -233,30 +253,30 @@ export function classifyKfintech(i: KfinClassInput): BusinessClass {
     if (of && !linked && (i.units ?? 0) === 0 && (i.amount ?? 0) > 0) {
       return make("rejection", "verified",
         `KFintech ${code}: a ${of === "sip" ? "SIP" : of === "stp_in" ? "STP-in" : "STP-out"} instalment the registrar refused (no units allotted) — a failed instalment for the SIP Rejection register, never a transaction; it does not stop the registration`,
-        { exception: "instalment_rejected", notes: { rejectionOf: of, genuineRejection: true } });
+        { exception: "instalment_rejected", category: of === "sip" ? "failed_sip_instalment" : "failed_stp_leg", notes: { rejectionOf: of, genuineRejection: true } });
     }
     return make("rejection", "verified",
       linked
         ? `KFintech pre-rejection ${code} naming its original — held: linking a rejection to its original is not implemented in this phase`
-        : `KFintech pre-rejection ${code} that does not name the transaction it rejects — held`,
-      { exception: "pre_rejection_unlinked" });
+        : `KFintech pre-rejection ${code} outside the verified shape (no units, an amount, no original named) — held`,
+      { exception: "pre_rejection_unlinked", category: of === "sip" ? "failed_sip_instalment" : of ? "failed_stp_leg" : "unknown" });
   }
-  if (REVERSAL.test(desc)) return make("reversal", "verified", "KFintech reversal — held until it can be linked to its original", { exception: "reversal_unlinked" });
-  if (CANCEL.test(desc)) return make("cancellation", "verified", "KFintech cancellation — held until it can be linked to its original", { exception: "cancellation_unlinked" });
+  if (REVERSAL.test(desc)) return make("reversal", "verified", "KFintech reversal — held until it can be linked to its original", { exception: "reversal_unlinked", category: "reversal_cancellation" });
+  if (CANCEL.test(desc)) return make("cancellation", "verified", "KFintech cancellation — held until it can be linked to its original", { exception: "cancellation_unlinked", category: "reversal_cancellation" });
 
   const known = KFIN_CODES[code];
   if (known) {
     if (head && head !== known.head) {
-      return make("unknown", "verified", `KFintech code ${code} with Transaction Head "${head}" — the verified file always paired it with ${known.head}; held`, { exception: "head_code_conflict" });
+      return make("unknown", "verified", `KFintech code ${code} with Transaction Head "${head}" — the verified file always paired it with ${known.head}; held`, { exception: "head_code_conflict", category: "unknown" });
     }
     return make(known.cls, "verified", `KFintech ${code}`);
   }
   if (/(?:DIVIDEND|IDCW)/.test(desc)) {
     return make(/REINV/.test(desc) ? "idcw_reinvest" : "idcw_payout", "inferred",
       "IDCW wording — no IDCW row was in the verified sample, so the layout is unconfirmed and the row is held",
-      { exception: "class_unverified_idcw" });
+      { exception: "class_unverified_idcw", category: "unknown" });
   }
-  return make("unknown", "inferred", `KFintech transaction code "${code || "(blank)"}" is not one the verified sample showed — held, not guessed`, { exception: "unknown_transaction_code" });
+  return make("unknown", "inferred", `KFintech transaction code "${code || "(blank)"}" is not one the verified sample showed — held, not guessed`, { exception: "unknown_transaction_code", category: "unknown" });
 }
 
 /**

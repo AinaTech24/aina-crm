@@ -46,6 +46,8 @@ export type Holding = {
   realisedGain?: number | null; // gain booked on redeemed units
   dividend?: number | null; // dividend payouts received
   hasTxns?: boolean; // true when this holding has transaction coverage
+  /** The registrar statement's own figures and date (lib/finance/valuation). */
+  registrar?: { units: number | null; value: number | null; asOf: string | null; report: string | null } | null;
 };
 
 function fmtDate(d: string | null | undefined): string {
@@ -201,7 +203,21 @@ export function HoldingsTable({
         </>
       ),
     },
-    { key: "value", label: "Current value", align: "right", has: () => true, cell: ({ h }) => <span className="font-medium">{fmtMoney(h.currentValue)}</span>, total: (x) => fmtMoney(x.current) },
+    {
+      key: "value", label: "Current value", align: "right", has: () => true,
+      cell: ({ h }) => (
+        <>
+          <span className="font-medium">{fmtMoney(h.currentValue)}</span>
+          {/* The registrar's statement, as printed and dated — never merged into the live figure. */}
+          {h.registrar?.asOf && (
+            <div className="text-2xs text-muted-foreground" title={h.registrar.report ? `${h.registrar.report} statement` : undefined}>
+              Registrar {h.registrar.value != null ? fmtMoney(h.registrar.value) : "—"} · {fmtDate(h.registrar.asOf)}
+            </div>
+          )}
+        </>
+      ),
+      total: (x) => fmtMoney(x.current),
+    },
     {
       key: "gain", label: "Gain", align: "right", has: (r) => !!r.h.hasTxns && r.h.gain != null,
       cell: ({ h }) => (h.hasTxns ? <Money v={h.gain} /> : dash),

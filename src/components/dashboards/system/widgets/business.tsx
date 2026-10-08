@@ -207,7 +207,7 @@ async function kpiRow(tx: Tx, ctx: WidgetCtx) {
           spark={aumSpark}
           value={money(aum.aum)}
           href={clientsHref(ctx, { sort: "aum", dir: "desc" })}
-          info="Assets under management of live clients, today. Moves with the market as well as with sales."
+          info="Assets under management of live clients, today: units held × the latest NAV on file. Moves with the market as well as with sales. The registrars' own dated statements, per registrar and ARN, are on the Registrar AUM card — a different figure, never added to this one."
           compare={then ? vs(aum.aum, then.aum, `vs ${formatDate(then.date, "dayMonth")}`) : null}
         />
         <KpiTile

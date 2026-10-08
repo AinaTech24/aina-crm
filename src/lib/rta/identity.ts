@@ -322,6 +322,14 @@ export class InvestorDirectory {
 
   private guardianCache = new Map<string, boolean>();
   /** Is this client the recorded guardian of any live minor in the firm? */
+  async isRecordedGuardian(id: string): Promise<boolean> {
+    return this.guardsAMinor(id);
+  }
+  /** The recorded guardian PAN of a minor client (its guardian's PAN, else its MINOR: key's), or null. */
+  async recordedGuardianPan(minorId: string): Promise<string | null> {
+    await this.loadIds([minorId]);
+    return this.byId.get(minorId)?.is_minor ? this.guardianPanOf(minorId) : null;
+  }
   private async guardsAMinor(id: string): Promise<boolean> {
     const hit = this.guardianCache.get(id);
     if (hit !== undefined) return hit;
@@ -365,6 +373,13 @@ export class InvestorDirectory {
     folioNumber?: string | null;
     amcCode?: string | null;
     holderStatus?: string | null;
+    /**
+     * Can this source print a GUARDIAN's PAN on a minor's row? True (the
+     * safe default) for CAMS R2 (verified 22/22) and any unverified layout.
+     * False only where the real files show it cannot: KFintech MFSD201 and
+     * MFSD203 leave the PAN BLANK on a minor's folio (12/12 each, 2026-10-08).
+     */
+    guardianPanPossible?: boolean;
   }): Promise<Resolution & { via?: "folio" | "pan" }> {
     const rowPan = validPan(key.pan);
     const folio = norm(key.folioNumber);
@@ -416,7 +431,7 @@ export class InvestorDirectory {
     // A row the registrar states is NOT a minor's carries the owner's own PAN;
     // only when the report says nothing is a guardian's PAN a real possibility.
     const statedAdult = status === "individual" || status === "non_individual" || status === "huf";
-    if (!statedAdult && (await this.guardsAMinor(p.id))) {
+    if (!statedAdult && key.guardianPanPossible !== false && (await this.guardsAMinor(p.id))) {
       return held(`${where} and this PAN's client is the recorded guardian of a minor — the row may be the minor's; import the folio master first`);
     }
     return { ...p, via: "pan" };

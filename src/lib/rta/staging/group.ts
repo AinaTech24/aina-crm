@@ -118,6 +118,8 @@ export function lotArithmetic(r: Pick<NormRow, "units" | "amount" | "nav" | "loa
 
 const round6 = (n: number) => (Math.round(n * 1e6) / 1e6).toString();
 
+import { isKfinReversalCode, proveFolioConsolidation } from "../consolidation";
+
 function fail(e: Omit<EconOut, "status" | "exception" | "reason">, exception: string, reason: string): EconOut {
   return { ...e, status: "quarantined", exception, reason };
 }
@@ -207,8 +209,20 @@ export function groupTransactions(tenantId: string, rows: NormRow[], rta: "cams"
         : `the row could not be read: ${invalid[0].issues.map((i) => i.reason).join("; ")}`));
       continue;
     }
-    const consolidated = list.find((r) => r.cls!.exception === "folio_consolidation");
-    if (consolidated) { out.push(fail(base, "folio_consolidation", consolidated.cls!.reason)); continue; }
+    // An R-coded KFintech group is a folio correction ONLY when its figures
+    // prove it (original + exact negation in one folio, an equal re-post in
+    // exactly one other). Otherwise its rows stay unverified rejections.
+    if (rta === "kfintech" && list.some((r) => isKfinReversalCode(String(r.attrs.typeCode ?? "")))) {
+      const proof = proveFolioConsolidation(list.map((r) => ({
+        folio: r.folioNumber ?? "", scheme: r.schemeCode ?? "", code: String(r.attrs.typeCode ?? ""),
+        units: r.units?.num ?? null, amount: r.amount?.num ?? null,
+      })));
+      for (const r of list) {
+        r.attrs.eventCategory = proof.proved ? "folio_correction" : r.attrs.eventCategory;
+        r.attrs.consolidationProof = proof.proved ? "proved" : proof.reason;
+      }
+      if (proof.proved) { out.push(fail(base, "folio_consolidation", proof.reason)); continue; }
+    }
     if (list.some((r) => r.cls!.rtaClass !== cls.rtaClass)) {
       out.push(fail(base, "group_class_mixed", "rows sharing this transaction number classify differently — held"));
       continue;

@@ -248,6 +248,8 @@ export function parseCamsFile(rows: string[][]): {
           units: units ?? undefined,
           nav: units !== null && value !== null && units > 0 && value > 0 ? +(value / units).toFixed(4) : undefined,
           value: value ?? undefined,
+          // R9 prints no NAV: the figure above is value ÷ units, not the registrar's.
+          navDerived: true,
           arn: rowArn,
         });
       }

@@ -118,6 +118,28 @@ describe.skipIf(!TEST_DB)("migrations 0233 / 0234 — deletes and tenancy (DB)",
     expect(gone.n).toBe(0);
   });
 
+  it("0234 (Phase 3E): no PAN in clear, one current role per person, rows closed and replaced — never edited", async () => {
+    const f = randomUUID();
+    await withSystem((tx) => tx.execute(sql`INSERT INTO folios (id, tenant_id, investor_id, folio_number, amc_code, amc_name, rta) VALUES (${f}::uuid, ${tB}::uuid, ${invB}::uuid, 'MIG/B2', 'B', 'AMC B', 'cams')`));
+    const ins = (o: string) => withSystem((tx) => tx.execute(sql.raw(`INSERT INTO folio_holders (tenant_id, folio_id, source, ${o})`)));
+    // A PAN in clear or a malformed mask is refused.
+    expect(await errOf(ins(`role, holder_pan_token) VALUES ('${tB}', '${f}', 'staff', 'second', 'ABCPD1234E'`))).toMatch(/check constraint/);
+    expect(await errOf(ins(`role, holder_pan_masked) VALUES ('${tB}', '${f}', 'staff', 'second', 'ABCPD1234E'`))).toMatch(/check constraint/);
+    expect(await errOf(ins(`role, holder_pan_token, holder_pan_masked, holder_name) VALUES ('${tB}', '${f}', 'staff', 'second', 'pt1:abc', '******234E', 'Joint Holder'`))).toBe("");
+    // The same person cannot hold two current roles on one folio.
+    expect(await errOf(ins(`role, holder_pan_token) VALUES ('${tB}', '${f}', 'staff', 'third', 'pt1:abc'`))).toMatch(/folio_holders_current_pan_uidx/);
+    expect(await errOf(ins(`role, investor_id) VALUES ('${tB}', '${f}', 'staff', 'first', '${invB}'`))).toBe("");
+    expect(await errOf(ins(`role, investor_id) VALUES ('${tB}', '${f}', 'staff', 'guardian', '${invB}'`))).toMatch(/folio_holders_current_investor_uidx/);
+    // What the registrar printed is never edited; the row is closed instead.
+    const upd = (set: string) => withSystem((tx) => tx.execute(sql.raw(`UPDATE folio_holders SET ${set} WHERE folio_id = '${f}' AND role = 'second'`)));
+    expect(await errOf(upd(`holder_name = 'Someone Else'`))).toMatch(/closed and replaced, never edited/);
+    expect(await errOf(upd(`role = 'third'`))).toMatch(/closed and replaced, never edited/);
+    expect(await errOf(upd(`effective_to = '2026-10-08', closed_reason = 'holder changed'`))).toBe("");
+    expect(await errOf(upd(`effective_to = '2026-10-09'`))).toMatch(/closed and replaced, never edited/);
+    // A closed row frees the role for its successor.
+    expect(await errOf(ins(`role, holder_name) VALUES ('${tB}', '${f}', 'staff', 'second', 'New Joint Holder'`))).toBe("");
+  });
+
   it("0234: the investors columns take only their documented values", async () => {
     const set = (col: "identity_confidence" | "majority_status", v: string) =>
       withSystem((tx) => tx.execute(sql`UPDATE investors SET ${sql.raw(col)} = ${v} WHERE id = ${invB}::uuid`));

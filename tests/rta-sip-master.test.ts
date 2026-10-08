@@ -96,8 +96,11 @@ describe("SIP Master — lifecycle", () => {
 
   it("a CAMS R2 reference is never merged into a WBR49 registration by guesswork", () => {
     const m = buildSipMaster([w49()], [ev({ rta: "cams", amcCode: "B", registrationRef: "654321", folio: "81000001", scheme: "B12G" })], AS_OF);
-    expect(m.entries[0].instalments.processed).toBe(0);
-    expect(m.exceptions.map((x) => x.code)).toContain("instalment_unlinked");
+    const wbr49 = m.entries.find((e) => e.key.startsWith("reg:cams"))!;
+    expect(wbr49.instalments.processed).toBe(0);
+    // The R2 reference is its own registration (its own namespace), known only from instalments.
+    expect(m.entries.find((e) => e.key.startsWith("sipref:cams"))).toMatchObject({ described: false, state: "UNKNOWN", confidence: "partial" });
+    expect(m.exceptions.map((x) => x.code)).toContain("registration_not_described");
   });
 });
 
@@ -106,6 +109,41 @@ describe("SIP Master — coverage", () => {
     const m = buildSipMaster([k243()], [ev(), ev({ registrationRef: "999" }), ev({ registrationRef: "999", date: "2026-09-05" }), ev({ rta: "cams", amcCode: "B", registrationRef: "77" })], AS_OF);
     expect(m.coverage.kfintech).toEqual({ referencedByInstalments: 2, describedInMaster: 1, missingFromMaster: 1 });
     expect(m.coverage.cams).toEqual({ referencedByInstalments: 1, describedInMaster: 0, missingFromMaster: 1 });
+  });
+});
+
+describe("SIP Master — Phase 3E fields", () => {
+  it("status effective date, last successful instalment, confidence and the registrar's lifecycle events", () => {
+    const m = buildSipMaster([
+      k243(),
+      k243({ registrationId: "2", startDate: "2026-11-01" }),
+      k243({ registrationId: "3", terminateDate: "2026-09-20" }),
+      w49({ pauseFrom: "2026-10-01", pauseTo: "2026-12-31" }),
+    ], [ev({ date: "2026-09-05" }), ev({ date: "2026-10-05", outcome: "rejected", reason: "Insufficient balance" })], AS_OF);
+    const by = (id: string) => m.entries.find((e) => e.registrationId === id)!;
+    expect(by("202609010000001")).toMatchObject({ state: "ACTIVE", statusEffectiveDate: "2026-10-08", lastSuccessfulInstalment: "2026-09-05", operational: true, confidence: "verified" });
+    expect(by("202609010000001").lifecycleEvents).toEqual([{ kind: "instalment_rejected", date: "2026-10-05", source: "transaction feed" }]);
+    expect(by("2")).toMatchObject({ state: "PENDING", statusEffectiveDate: "2026-11-01" });
+    expect(by("3")).toMatchObject({ state: "STOPPED", statusEffectiveDate: "2026-09-20" });
+    expect(by("3").lifecycleEvents).toEqual([{ kind: "stop", date: "2026-09-20", source: "kfintech.mfsd243" }]);
+    expect(by("654321")).toMatchObject({ state: "PAUSED", statusEffectiveDate: "2026-10-01" });
+  });
+
+  it("a registration known only from its instalments is evidenced, never in the book, and counted as operating only within the cycle", () => {
+    const m = buildSipMaster([], [ev({ registrationRef: "77", date: "2026-10-01", kind: "sip", amount: 3000 }), ev({ registrationRef: "78", date: "2026-07-01", kind: "sip", amount: 1000 })], AS_OF);
+    expect(m.entries.map((e) => [e.registrationId, e.described, e.kind, e.state, e.operational, e.amount])).toEqual([
+      ["77", false, "sip", "UNKNOWN", true, 3000],
+      ["78", false, "sip", "UNKNOWN", false, 1000],
+    ]);
+    const b = activeSipBook(m);
+    expect(b.active.count).toBe(0);
+    expect(b.notDescribed).toEqual({ operating: 1, operatingLastInstalmentTotal: 3000, notOperating: 1 });
+    expect(m.coverage.kfintech.missingFromMaster).toBe(2);
+  });
+
+  it("the owner comes from the caller's resolver", () => {
+    const m = buildSipMaster([k243()], [], AS_OF, { ownerOf: (r) => (r.folio === "9100001" ? { investorId: "inv-1", folioId: "f-1", rule: "existing_folio_owner" } : null) });
+    expect(m.entries[0].owner).toEqual({ investorId: "inv-1", folioId: "f-1", rule: "existing_folio_owner" });
   });
 });
 

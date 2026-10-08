@@ -511,14 +511,21 @@ async function reconcile(tx: Tx, tenantId: string, b: BatchRow, layout: Layout, 
     }
   }
 
-  // Persist row dispositions.
+  // Persist row dispositions — with the event category, which grouping may
+  // have changed (a proved folio correction).
   const finals = [...final.entries()];
+  const normByNo = new Map(norm.map((r) => [r.rowNo, r]));
+  const catOf = (n: number) => {
+    const a = normByNo.get(n)?.attrs ?? {};
+    return JSON.stringify({ eventCategory: a.eventCategory ?? null, consolidationProof: a.consolidationProof ?? null });
+  };
   for (const part of chunks(finals)) {
-    const values = sql.join(part.map(([n, f]) => sql`(${n}::int, ${f.state}, ${f.exception}, ${f.reason}, ${f.econ ?? null}::uuid)`), sql`, `);
+    const values = sql.join(part.map(([n, f]) => sql`(${n}::int, ${f.state}, ${f.exception}, ${f.reason}, ${f.econ ?? null}::uuid, ${catOf(n)}::jsonb)`), sql`, `);
     await tx.execute(sql`
       UPDATE rta_staging_rows r
-         SET state = v.state, exception_code = v.exc, reason = v.reason, economic_txn_id = v.econ, disposition = v.state, updated_at = now()
-        FROM (VALUES ${values}) AS v(row_no, state, exc, reason, econ)
+         SET state = v.state, exception_code = v.exc, reason = v.reason, economic_txn_id = v.econ, disposition = v.state, updated_at = now(),
+             attrs = r.attrs || jsonb_strip_nulls(v.cat)
+        FROM (VALUES ${values}) AS v(row_no, state, exc, reason, econ, cat)
        WHERE r.tenant_id = ${tenantId}::uuid AND r.batch_id = ${b.id}::uuid AND r.row_no = v.row_no
     `);
   }

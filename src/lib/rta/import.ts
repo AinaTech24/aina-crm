@@ -24,6 +24,7 @@ import type { RtaFolioRecord } from "./types";
 import { resolveSchemeIdentity } from "./resolve-scheme";
 import { ownersOfFolios, releaseFormerOwners } from "./former-owners";
 import { InvestorDirectory, nopanFolioKey, type Resolution } from "./identity";
+import { panHolderType } from "./owner";
 import { validPan } from "./values";
 
 /**
@@ -158,6 +159,29 @@ export async function importRtaFolios(
       const key = gp && inv.name ? `MINOR:${gp}:${slug(inv.name)}` : own ? `MINOR:${own}` : null;
       if (key) return { key, isMinor: true, guardianPan: gp, noPan: false };
     } else if (own) {
+      // Owner rules (lib/rta/owner.ts, Phase 3E on this path too):
+      //  - an HUF's investment never goes to the Karta's individual PAN;
+      if (inv.category === "huf" && panHolderType(own) !== "huf") {
+        return { key: null, isMinor: false, guardianPan: null, noPan: false, block: "the registrar marks this holder an HUF but the PAN is an individual's (the Karta's) — the Karta is never made the owner; held" };
+      }
+      //  - the folio on record decides: a minor's folio reported with the
+      //    minor's recorded guardian's PAN stays the minor's;
+      const onRecord = await currentOwner(r);
+      if (onRecord.kind === "found" && validPan(dir.info(onRecord.id)?.pan) !== own) {
+        if ((await dir.recordedGuardianPan(onRecord.id)) === own) return { key: `ID:${onRecord.id}`, isMinor: true, guardianPan: null, noPan: false };
+      }
+      //  - a folio NOT on record whose report states no holder type, under a
+      //    PAN whose client is a recorded guardian, may be the minor's: held —
+      //    except where the real files show the registrar never prints a
+      //    guardian's PAN on a minor's row (KFintech MFSD203 leaves it blank,
+      //    12/12 minor positions, 2026-10-08).
+      const guardianPanPossible = !(r.rta === "kfintech" && opts.reportType === "MFSD203");
+      if (onRecord.kind === "none" && !inv.taxStatus && guardianPanPossible) {
+        const p = await dir.byPan(own);
+        if (p.kind === "found" && (await dir.isRecordedGuardian(p.id))) {
+          return { key: null, isMinor: false, guardianPan: null, noPan: false, block: "this folio is not on record, the report states no holder type, and the PAN's client is the recorded guardian of a minor — the folio may be the minor's; import the master (MFSD211 / R9) first; held" };
+        }
+      }
       return { key: own, isMinor: false, guardianPan: null, noPan: false };
     }
     // No usable PAN.
@@ -512,7 +536,17 @@ export async function importRtaFolios(
         amcCode: r.amcCode,
         amcName: r.amcName || r.amcCode,
         rta: r.rta,
-        schemes: r.schemes,
+        // A holdings statement stamps each leg with its own figures, date and
+        // report. A master carries no holdings and stamps nothing.
+        schemes: kind === "master" ? r.schemes : r.schemes.map((s) => ({
+          ...s,
+          sourceUnits: s.units ?? null,
+          sourceValue: s.value ?? null,
+          sourceNav: s.navDerived ? null : s.nav ?? null,
+          sourceAsOf: r.reportDate ?? null,
+          sourceReport: opts.reportType ?? null,
+          sourceArn: s.arn ?? null,
+        })),
         ...(r.aum != null ? { aum: String(r.aum) } : {}),
       };
     })
@@ -555,6 +589,7 @@ export async function importRtaFolios(
   // would ADD the incoming one alongside and double count. They are replaced
   // instead, so the register converges on correct slices as each ARN's file
   // re-imports, and never overstates on the way there.
+  const olderThanKeep = sql`((keep->>'sourceAsOf') IS NOT NULL AND (incoming->>'sourceAsOf') IS NOT NULL AND (incoming->>'sourceAsOf') < (keep->>'sourceAsOf'))`;
   const mergedSchemes = sql`(
     SELECT COALESCE(jsonb_agg(keep), '[]'::jsonb)
       FROM jsonb_array_elements(COALESCE(${foliosTable.schemes}, '[]'::jsonb)) AS keep
@@ -591,8 +626,22 @@ export async function importRtaFolios(
              OR (incoming->>'arn') IS NULL
              OR (keep->>'arn') = (incoming->>'arn')
               )
+          -- Phase 3E: an OLDER statement never replaces a newer one. When both
+          -- legs are dated and the stored one is newer, it stays.
+          AND NOT ${olderThanKeep}
      )
-  ) || COALESCE(excluded.schemes, '[]'::jsonb)`;
+  ) || COALESCE((
+    SELECT jsonb_agg(incoming)
+      FROM jsonb_array_elements(COALESCE(excluded.schemes, '[]'::jsonb)) AS incoming
+     WHERE NOT EXISTS (
+       SELECT 1 FROM jsonb_array_elements(COALESCE(${foliosTable.schemes}, '[]'::jsonb)) AS keep
+        WHERE ((incoming->>'schemeCode') = (keep->>'schemeCode')
+               OR lower(regexp_replace(COALESCE(incoming->>'schemeName',''), '[^a-zA-Z0-9]+', '', 'g'))
+                = lower(regexp_replace(COALESCE(keep->>'schemeName',''),     '[^a-zA-Z0-9]+', '', 'g')))
+          AND ((keep->>'arn') IS NULL OR (incoming->>'arn') IS NULL OR (keep->>'arn') = (incoming->>'arn'))
+          AND ${olderThanKeep}
+     )
+  ), '[]'::jsonb)`;
 
   const folioSet =
     kind !== "master"

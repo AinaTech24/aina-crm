@@ -352,21 +352,37 @@ describe("Phase 3C — the newer real layouts", () => {
     expect(z.units).toEqual({ text: "0.000", num: 0, dp: 3 });
   });
 
-  it("MFSD201 consolidation rows (original, R reversal, re-post) are held as a folio move, not as rejections", () => {
-    const remark = "Trxn triggered now due to consolidation of folios";
-    const rows = norm201([
-      kfinTxn({ "Transaction Number": "9100", "Transaction Head": "P", "Transaction Type": "SIN", "Transaction Description": "Systematic Investment", "Units": "10.000", "Amount": "500.00", "Remarks": remark, "Load Percentage": "" }),
-      kfinTxn({ "Transaction Number": "9100", "Transaction Head": "P", "Transaction Type": "SINR", "Transaction Description": "SIP Rejection", "Units": "-10.000", "Amount": "-500.00", "Remarks": remark, "Load Percentage": "" }),
-      kfinTxn({ "Transaction Number": "9100", "Transaction Head": "P", "Transaction Type": "SIN", "Transaction Description": "Systematic Investment", "Units": "10.000", "Amount": "500.00", "Folio Number": "91000077", "Remarks": "Consolidated From F. No. 91000001 On 01/10/2026", "Load Percentage": "" }),
-    ]);
-    expect(rows.map((r) => [r.cls?.rtaClass, r.cls?.exception])).toEqual([["sip_investment", "folio_consolidation"], ["reversal", "folio_consolidation"], ["sip_investment", "folio_consolidation"]]);
+  // Folio correction is proved from the figures, the remark is not needed and not enough (Phase 3E).
+  const consol = (o: { repostUnits?: string; noRepost?: boolean; remark?: string; rUnits?: string } = {}) => norm201([
+    kfinTxn({ "Transaction Number": "9100", "Transaction Head": "P", "Transaction Type": "SIN", "Transaction Description": "Systematic Investment", "Units": "10.000", "Amount": "500.00", "Remarks": o.remark ?? "", "Load Percentage": "" }),
+    kfinTxn({ "Transaction Number": "9100", "Transaction Head": "R", "Transaction Type": "SINR", "Transaction Description": "SIP Rejection", "Units": o.rUnits ?? "-10.000", "Amount": "-500.00", "Remarks": o.remark ?? "", "Load Percentage": "" }),
+    ...(o.noRepost ? [] : [kfinTxn({ "Transaction Number": "9100", "Transaction Head": "P", "Transaction Type": "SIN", "Transaction Description": "Systematic Investment", "Units": o.repostUnits ?? "10.000", "Amount": "500.00", "Folio Number": "91000077", "Remarks": "", "Load Percentage": "" })]),
+  ]);
+
+  it("MFSD201 original + exact negation + equal re-post in one other folio is a folio correction (proved from figures, no remark needed)", () => {
+    const rows = consol();
+    expect(rows.map((r) => r.cls?.exception ?? null)).toEqual([null, "rejection_semantics_unverified", null]);
     const [g] = groupTransactions(T, rows, "kfintech");
     expect(g).toMatchObject({ status: "quarantined", exception: "folio_consolidation" });
+    expect(g.reason).toMatch(/not a rejection and not a new transaction/);
+    expect(rows.every((r) => r.attrs.eventCategory === "folio_correction")).toBe(true);
+  });
+
+  it("an R-coded group that the figures do not prove stays an unverified rejection, whatever the remark says", () => {
+    for (const o of [{ noRepost: true }, { repostUnits: "9.000" }, { rUnits: "-9.000" }]) {
+      const rows = consol({ ...o, remark: "Trxn triggered now due to consolidation of folios" });
+      const [g] = groupTransactions(T, rows, "kfintech");
+      expect(g.exception).not.toBe("folio_consolidation");
+      expect(rows[1].attrs.eventCategory).toBe("failed_sip_instalment");
+      expect(String(rows[1].attrs.consolidationProof)).not.toBe("proved");
+    }
   });
 
   it("an R-suffixed rejection code outside a consolidation is a rejection, held until its meaning is evidenced", () => {
     const c = classifyKfintech({ typeCode: "SINR", head: "P", description: "SIP Rejection", status: "Y" });
-    expect(c).toMatchObject({ rtaClass: "rejection", exception: "rejection_semantics_unverified" });
+    expect(c).toMatchObject({ rtaClass: "rejection", exception: "rejection_semantics_unverified", category: "failed_sip_instalment" });
+    expect(classifyKfintech({ typeCode: "FULR", head: "P", description: "", status: "Y" }).category).toBe("redemption_rejection");
+    expect(classifyKfintech({ typeCode: "NEWR", head: "R", description: "", status: "Y" }).category).toBe("purchase_rejection");
     expect(postable(c)).toBe(false);
   });
 
