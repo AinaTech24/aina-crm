@@ -2,7 +2,7 @@
  * Revalue every live client of one firm (investors.aum + the SIP cache) with
  * the current valuation rules, and print the firm's totals before and after.
  * Use it after a data repair or a valuation fix rather than waiting for the
- * nightly run. One transaction per 250 clients.
+ * nightly run. One transaction per 50 clients.
  *
  *   tsx scripts/revalue-tenant-aum.ts --tenant <uuid>           # totals only
  *   tsx scripts/revalue-tenant-aum.ts --tenant <uuid> --apply
@@ -39,14 +39,18 @@ async function main() {
     const ids = await withTenant(T, async (tx) =>
       ((await tx.execute(sql`
         SELECT id FROM investors WHERE tenant_id = ${T}::uuid AND deleted_at IS NULL AND merged_into_id IS NULL
-        ${cursor ? sql`AND id > ${cursor}::uuid` : sql``} ORDER BY id LIMIT 250
+        ${cursor ? sql`AND id > ${cursor}::uuid` : sql``} ORDER BY id LIMIT 50
       `)).rows as Array<{ id: string }>).map((r) => String(r.id)),
     );
     if (!ids.length) break;
-    await withTenant(T, (tx) => recomputeInvestorsAum(tx, ids));
+    await withTenant(T, async (tx) => {
+      // The 1 GB database reads a batch's history from disk; give it time.
+      await tx.execute(sql`SET LOCAL statement_timeout = '120s'`);
+      await recomputeInvestorsAum(tx, ids);
+    });
     cursor = ids[ids.length - 1];
     n += ids.length;
-    if (n % 1000 < 250) console.log(`  revalued ${n}`);
+    if (n % 1000 < 50) console.log(`  revalued ${n}`);
   }
   console.log(`after:  ${await totals()}`);
 }

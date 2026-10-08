@@ -61,10 +61,19 @@ export async function recomputeCombinedAum(
   tx: Tx
 ): Promise<{ updated: number; totalAum: number; skippedUnpriced: number; skippedNoHoldings: number }> {
   let cursor: string | null = null, updated = 0, skippedUnpriced = 0, skippedNoHoldings = 0;
+  // Batches of 50: a batch's history comes off disk on the 1 GB database, and
+  // 250 clients' (~74k transactions at Ahpal) ran past the 30 s statement
+  // limit on 8 Oct 2026. This is a background job; it gets at least two
+  // minutes (never LESS than the caller set — an import allows ten).
+  await tx.execute(sql`
+    SELECT set_config('statement_timeout', '120s', true)
+     WHERE current_setting('statement_timeout') <> '0'
+       AND current_setting('statement_timeout')::interval < interval '120 seconds'
+  `);
   for (;;) {
     const batch = (await tx.execute(sql`
       SELECT id FROM investors WHERE deleted_at IS NULL AND merged_into_id IS NULL
-      ${cursor ? sql`AND id > ${cursor}::uuid` : sql``} ORDER BY id LIMIT 250
+      ${cursor ? sql`AND id > ${cursor}::uuid` : sql``} ORDER BY id LIMIT 50
     `)).rows as Array<{ id: string }>;
     if (!batch.length) break;
     const stats = await persistBatch(tx, batch.map((row) => row.id));
@@ -83,11 +92,11 @@ export async function recomputeInvestorAum(tx: Tx, investorId: string): Promise<
   await refreshActiveSipAmount(tx, { investorIds: [investorId] });
 }
 
-/** {@link recomputeInvestorAum} for many clients, 250 at a time. */
+/** {@link recomputeInvestorAum} for many clients, 50 at a time (see persistBatch). */
 export async function recomputeInvestorsAum(tx: Tx, investorIds: string[]): Promise<void> {
   const unique = [...new Set(investorIds.filter(Boolean))];
-  for (let i = 0; i < unique.length; i += 250) {
-    const part = unique.slice(i, i + 250);
+  for (let i = 0; i < unique.length; i += 50) {
+    const part = unique.slice(i, i + 50);
     await persistBatch(tx, part);
     await refreshActiveSipAmount(tx, { investorIds: part });
   }
