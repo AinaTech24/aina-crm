@@ -31,6 +31,20 @@ describe("nameMatchKey", () => {
   });
 });
 
+describe("KFintech holdings: PAN and mobile under any of their column names", () => {
+  it("reads 'PAN Number' / 'Mobile Number' as well as 'PAN' / 'Mobile No'", async () => {
+    const { parseKfintechHoldings } = await import("@/lib/rta/kfintech");
+    for (const [panCol, mobCol] of [["PAN", "Mobile No"], ["PAN Number", "Mobile Number"], ["PAN No", "Mobile"]]) {
+      const header = ["Product Code", "Fund", "Folio Number", "Fund Description", "Balance", "NAV", "AUM", "Investor Name", "Email", panCol, mobCol];
+      const row = ["P1746", "117", "1234567", "Test Fund Growth", "10", "100", "1000", "ASHA MEHTA", "a@x.in", "aaapa1111a", "9876543210"];
+      const { folios, missingPan } = parseKfintechHoldings([header, row]);
+      expect(missingPan).toBe(0);
+      expect(folios[0].investor.pan).toBe("AAAPA1111A");
+      expect(folios[0].investor.mobile).toBe("9876543210");
+    }
+  });
+});
+
 const TEST_DB = process.env.TEST_DATABASE_URL;
 
 describe.skipIf(!TEST_DB)("RTA import matches the clients the firm already has", () => {
@@ -151,6 +165,20 @@ describe.skipIf(!TEST_DB)("RTA import matches the clients the firm already has",
     expect(t.investor_id).toBe(owner);
     const [ph] = await q<{ merged_into_id: string | null }>(sql`SELECT merged_into_id FROM investors WHERE id = ${placeholder}::uuid`);
     expect(ph.merged_into_id).toBe(owner);
+  });
+
+  it("a holdings row with no PAN never takes a folio from the PAN client who holds it", async () => {
+    const holder = randomUUID();
+    await insertClient(holder, { name: "Family Head" });
+    await run([rec("AAAPH7777G", "FAMILY HEAD", "F-HD-1")]);
+    const owner = await folioOwner("F-HD-1");
+    const before = (await q<{ n: number }>(sql`SELECT count(*)::int AS n FROM investors WHERE tenant_id = ${tenant}::uuid`))[0].n;
+    // The same folio again from a holdings file whose PAN column was not read.
+    const s = await run([rec(undefined, "FAMILY HEAD", "F-HD-1", { email: "family@example.com" })], "holdings");
+    expect(s.investors.created).toBe(0);
+    expect(await folioOwner("F-HD-1")).toBe(owner);
+    const after = (await q<{ n: number }>(sql`SELECT count(*)::int AS n FROM investors WHERE tenant_id = ${tenant}::uuid`))[0].n;
+    expect(after).toBe(before);
   });
 
   it("is idempotent: the same file twice creates nothing the second time", async () => {

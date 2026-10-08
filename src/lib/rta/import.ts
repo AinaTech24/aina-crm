@@ -192,6 +192,58 @@ export async function importRtaFolios(
   const existingPans = panRes.known;
   const existingNoPan = noPanRes.known;
 
+  // ── 2a. A row with no PAN never takes a folio away from a real client. ─────
+  //       Its key is only an email / mobile / name, and an email is shared by
+  //       a whole family. On Ahpal Financial Services one KFintech holdings
+  //       file whose PAN column was not read moved 5,272 folios off the PAN
+  //       clients its master had put them on, onto 1,599 email-keyed
+  //       "clients" — Rs 197.90 Cr on the wrong records, the real clients at
+  //       Rs 0. Such a folio stays with its holder (merges followed) unless
+  //       that holder is itself a no-PAN placeholder; the row still refreshes
+  //       its valuation. A no-PAN key left with no folio of its own is not
+  //       created at all.
+  const keptOwner = new Map<string, string>(); // "amc::folio" → current holder
+  {
+    const noPanFolios = records.filter((_, i) => recordKeys[i] && noPanKeys.has(recordKeys[i]!));
+    const numbers = [...new Set(noPanFolios.map((r) => r.folioNumber))];
+    const held: Array<{ amc_code: string | null; folio_number: string; investor_id: string }> = [];
+    for (const part of chunk(numbers, 1000)) {
+      if (!part.length) continue;
+      const rows = await tx.execute(sql`
+        SELECT amc_code, folio_number, investor_id FROM folios
+         WHERE tenant_id = ${tenantId}::uuid AND investor_id IS NOT NULL
+           AND folio_number IN (${sql.join(part.map((p) => sql`${p}`), sql`, `)})
+      `);
+      held.push(...(rows.rows as typeof held));
+    }
+    if (held.length) {
+      const live = await followMerges(tx, tenantId, held.map((h) => String(h.investor_id)));
+      const holderIds = [...new Set(held.map((h) => live.get(String(h.investor_id)) ?? String(h.investor_id)))];
+      const placeholder = new Set<string>();
+      for (const part of chunk(holderIds, 1000)) {
+        const rows = await tx.execute(sql`
+          SELECT id FROM investors
+           WHERE tenant_id = ${tenantId}::uuid AND pan IS NULL AND rta_nopan_key LIKE 'NOPAN:%'
+             AND id IN (${sql.join(part.map((id) => sql`${id}::uuid`), sql`, `)})
+        `);
+        for (const r of rows.rows as { id: string }[]) placeholder.add(String(r.id));
+      }
+      for (const h of held) {
+        const holder = live.get(String(h.investor_id)) ?? String(h.investor_id);
+        if (placeholder.has(holder)) continue;
+        keptOwner.set(`${(h.amc_code ?? "").trim()}::${h.folio_number}`, holder);
+      }
+    }
+  }
+  const keptFor = (r: RtaFolioRecord) => keptOwner.get(`${r.amcCode}::${r.folioNumber}`) ?? keptOwner.get(`::${r.folioNumber}`);
+  // No-PAN keys every one of whose folios stays with its holder.
+  const keyNeeded = new Set<string>();
+  records.forEach((r, i) => {
+    const k = recordKeys[i];
+    if (k && noPanKeys.has(k) && !keptFor(r)) keyNeeded.add(k);
+  });
+  const skipNoPan = new Set(noPanList.filter((k) => !keyNeeded.has(k)));
+
   const folioRecords = records.filter((_, i) => !!recordKeys[i]);
   const folioKeys = folioRecords.map((r) => `${r.amcCode}::${r.folioNumber}`);
   const allFolioNumbers = [...new Set(folioRecords.map((r) => r.folioNumber))];
@@ -219,7 +271,7 @@ export async function importRtaFolios(
 
   const investorsCreated =
     panKeys.filter((p) => !existingPans.has(p)).length +
-    noPanList.filter((k) => !existingNoPan.has(k)).length;
+    noPanList.filter((k) => !existingNoPan.has(k) && !skipNoPan.has(k)).length;
   const investorsUpdated = pans.length - investorsCreated;
   const uniqueFolioKeys = [...new Set(folioKeys)];
   const foliosCreated = uniqueFolioKeys.filter((k) => !existingFolios.has(k)).length;
@@ -354,7 +406,7 @@ export async function importRtaFolios(
   // PAN-less clients: pan stays NULL (we never fabricate a PAN), deduped on
   // rta_nopan_key (migration 0151). Raw SQL so the Drizzle schema needn't carry
   // the column. Re-importing the same file updates in place (idempotent).
-  for (const part of chunk(noPanList.filter((k) => !noPanRes.mappedOnly.has(k)), 200)) {
+  for (const part of chunk(noPanList.filter((k) => !noPanRes.mappedOnly.has(k) && !skipNoPan.has(k)), 200)) {
     if (!part.length) continue;
     const rowsSql = part.map((key) => {
       const entry = clientByKey.get(key)!;
@@ -431,7 +483,7 @@ export async function importRtaFolios(
 
   const folioValues = [...folioByKey.values()]
     .map(({ r, clientKey }) => {
-      const investorId = keyToId.get(clientKey);
+      const investorId = (noPanKeys.has(clientKey) ? keptFor(r) : undefined) ?? keyToId.get(clientKey);
       if (!investorId) return null;
       return {
         tenantId,
@@ -607,7 +659,7 @@ export async function importRtaFolios(
 
   // ── 5. Holdings/full feeds refresh the cached investor AUM + last-txn-at ────
   if (kind !== "master") {
-    const ids = [...new Set([...keyToId.values()])];
+    const ids = [...new Set([...keyToId.values(), ...keptOwner.values()])];
     for (const part of chunk(ids, 1000)) {
       if (!part.length) continue;
       await tx.execute(sql`

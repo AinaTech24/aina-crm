@@ -20,6 +20,18 @@ export function isKfintechFolioMaster(header: string[]): boolean {
   return SIGNATURE.every((h) => have.has(h));
 }
 
+/**
+ * Every name KFintech gives the investor's PAN and mobile across its report
+ * layouts. One name per field was a real loss: the holdings parser read only
+ * "PAN" and "Mobile No", so a holdings file that names them otherwise imported
+ * every row with no PAN. On Ahpal Financial Services the MFSD203 of 18 Sep
+ * 2026 keyed 5,272 folios on the investor's email instead, as 1,599 no-PAN
+ * "clients", and moved them off the PAN clients the master had just put
+ * them on.
+ */
+const PAN_COLUMNS = ["PAN Number", "PAN", "PAN No", "PAN No.", "PANNo", "PAN_NO", "PAN1", "Investor PAN", "First Holder PAN"];
+const MOBILE_COLUMNS = ["Mobile Number", "Mobile No", "Mobile No.", "MobileNo", "Mobile", "Mobile1"];
+
 /** "DD/MM/YYYY" → "YYYY-MM-DD" (or null on anything unparseable). */
 export function dmyToIso(s?: string): string | null {
   const v = (s ?? "").trim();
@@ -150,8 +162,8 @@ export function parseKfintechFolioMaster(rows: string[][]): {
     ifsc: col("IFSC Code"),
     broker: colWithData("Broker Code", "Agent Code", "ARN", "Broker", "Agent"),
     reportDate: col("Report Date"),
-    pan: col("PAN Number"),
-    mobile: col("Mobile Number"),
+    pan: colWithData(...PAN_COLUMNS),
+    mobile: colWithData(...MOBILE_COLUMNS),
     occupation: col("Occupation Description"),
     modeOfHolding: col("Mode of Holding Description"),
     categoryDesc: col("CategoryDesc"),
@@ -362,8 +374,8 @@ export function parseKfintechHoldings(rows: string[][]): {
     aum: col("AUM"),
     nav: col("NAV"),
     reportDate: col("Report Date"),
-    pan: col("PAN"),
-    mobile: col("Mobile No"),
+    pan: colWithData(...PAN_COLUMNS),
+    mobile: colWithData(...MOBILE_COLUMNS),
   };
 
   const groups = new Map<string, RtaFolioRecord & { _maxTxn: string | null }>();

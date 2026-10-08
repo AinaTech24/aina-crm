@@ -274,10 +274,10 @@ async function kpiRow(tx: Tx, ctx: WidgetCtx) {
           hue="indigo"
           label="Clients"
           when="Today"
-          value={formatCount(counts.clients)}
-          href={clientsHref(ctx)}
-          info="Live clients: not closed and not merged into another record. Active are active or at redemption risk; funded have AUM above zero."
-          footer={`${formatCount(counts.active)} active · ${formatCount(counts.funded)} funded`}
+          value={formatCount(counts.funded)}
+          href={clientsHref(ctx, { aum_min: "0.01" })}
+          info="Clients holding money today (AUM above zero), the figure the registrar reports. Under it: every live client record (not closed, not merged), and how many are active."
+          footer={`${formatCount(counts.clients)} client records · ${formatCount(counts.active)} active`}
         />
         <KpiTile
           className={ROW_LAST}

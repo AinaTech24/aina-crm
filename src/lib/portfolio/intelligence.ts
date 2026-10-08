@@ -60,14 +60,18 @@ export async function getPortfolioIntel(
   opts: { tenantId: string; userId: string; firmWide: boolean; clientScope?: SQL }
 ): Promise<PortfolioIntel> {
   const viewer = opts.clientScope ? sql` AND ${opts.clientScope}` : sql``;
+  // A folio on a record merged into another client is that client's — and,
+  // stale, it was counted twice (Ahpal: Rs 35.38 Cr on 31 merged records).
   const scope = opts.firmWide
-    ? sql` AND i.deleted_at IS NULL${viewer}`
-    : sql` AND i.deleted_at IS NULL AND i.rm_id = ${opts.userId}::uuid${viewer}`;
+    ? sql` AND i.deleted_at IS NULL AND i.merged_into_id IS NULL${viewer}`
+    : sql` AND i.deleted_at IS NULL AND i.merged_into_id IS NULL AND i.rm_id = ${opts.userId}::uuid${viewer}`;
 
   const totals = (await tx.execute(sql`
     SELECT COALESCE(SUM(f.aum::numeric),0)::numeric AS total,
-           COUNT(*)::int AS folios,
-           COUNT(DISTINCT f.investor_id)::int AS investors
+           -- Folios holding units, as the registrar counts them: a folio
+           -- redeemed to nil stays on file but is no longer a holding.
+           COUNT(*) FILTER (WHERE COALESCE(f.aum::numeric, 0) > 0)::int AS folios,
+           COUNT(DISTINCT f.investor_id) FILTER (WHERE COALESCE(f.aum::numeric, 0) > 0)::int AS investors
     FROM folios f JOIN investors i ON i.id = f.investor_id
     WHERE f.tenant_id = ${opts.tenantId}::uuid ${scope}
   `)).rows[0] as any;
