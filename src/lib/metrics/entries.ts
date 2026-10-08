@@ -1,14 +1,18 @@
 /**
  * Business Entries — the business the team RECORDS (a form per client visit:
- * product, scheme lines, amounts), as opposed to the RTA ledger the KPI cards
- * read (business.ts). The Owner Dashboard shows both side by side, because
- * they answer different questions and can differ by timing and coverage:
+ * product, scheme lines, amounts), as opposed to the RTA ledger (business.ts).
  *
  *   Business Entries   booked on the business date, every product (MF, PMS,
  *                      AIF, SIF, bonds …), split by asset class; counted once
  *                      confirmed (`confirmed` or `emailed`), never as a draft.
  *   RTA ledger         what CAMS / KFintech processed — MF only, no PMS / AIF
  *                      / SIF rows, and nothing until files are imported.
+ *
+ * EVERY dashboard's money-moved figures come from here — gross, redemption,
+ * net business, SIP added / stopped / net SIP, the targets on them, trends,
+ * month on month and the FY scorecard (the firm's decision of 2026-10-07).
+ * Only AUM, the SIP book balance and SIP rejections are still the registrar's.
+ * "Booked business" at the end of this file is that set of figures.
  *
  * The gross / redemption rule is the Results MIS's (src/lib/business/mis.ts)
  * and the Branch Head Dashboard's (lib/dashboard/branch/sections.ts):
@@ -51,6 +55,7 @@ import { sql, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { cleanIds, clientRecordWhere, hasClientFilter, textList, uuidList, type MetricPeriod, type MetricScope } from "./scope";
 import { sipMonthlySql } from "./sip";
+import type { FlowFigures } from "./business";
 import { loadDashboardThresholds } from "@/lib/dashboard/thresholds";
 
 export const ENTRY_COUNTED = ["confirmed", "emailed"] as const;
@@ -218,4 +223,157 @@ export async function getEntrySipFlow(tx: Tx, scope: MetricScope, p: MetricPerio
     stopped, stoppedCount: Number(r?.stopped_n ?? 0),
     net: added - stopped,
   };
+}
+
+/* ─────────────────────────────── booked business ─────────────────────────────── */
+
+/**
+ * The money-moved figures every dashboard shows, booked: the matrix's gross /
+ * redemption / net over every product and the SIP flow's added / stopped /
+ * net, in the shape the RTA functions in business.ts used to hand the cards
+ * (FlowFigures), plus the counts behind them.
+ */
+export type BookedFigures = FlowFigures & {
+  /** SIP and top-up lines booked (net of reversals). */
+  newSipCount: number;
+  /** SIP-stop lines booked. */
+  stoppedSipCount: number;
+  /** Distinct clients with a redemption booked. */
+  redeemingClients: number;
+};
+
+export type BookedBusiness = {
+  /** False when the firm has never confirmed an entry — "—", never ₹0. */
+  hasData: boolean;
+  current: BookedFigures | null;
+  previous: BookedFigures | null;
+};
+
+const SAFE_PREFIX = /^[a-z][a-z0-9_]*$/;
+
+/**
+ * The booked figures as SELECT columns over signed lines `bel`, each limited
+ * by `when` and named `<prefix>_…` — so one pass can read several date windows.
+ * Read them back with readBookedFigures.
+ */
+export function bookedFigureColumns(prefix: string, when: SQL = sql`TRUE`): SQL {
+  if (!SAFE_PREFIX.test(prefix)) throw new Error(`bad column prefix "${prefix}"`);
+  const c = (name: string) => sql.raw(`${prefix}_${name}`);
+  const who = sql`COALESCE(be.investor_id::text, lower(btrim(be.client_name)))`;
+  return sql`
+    COALESCE(SUM(bel.amount * bel.sign) FILTER (WHERE (${when}) AND bel.txn_type IN (${inList(ENTRY_GROSS)})), 0) AS ${c("gross")},
+    COALESCE(SUM(bel.amount * bel.sign) FILTER (WHERE (${when}) AND bel.txn_type IN (${inList(ENTRY_REDEMPTION)})), 0) AS ${c("red")},
+    COALESCE(SUM(${sipMonthlySql("bel")} * bel.sign) FILTER (WHERE (${when}) AND bel.txn_type IN (${inList(ENTRY_SIP_ADD)})), 0) AS ${c("sip_add")},
+    COALESCE(SUM(bel.sign) FILTER (WHERE (${when}) AND bel.txn_type IN (${inList(ENTRY_SIP_ADD)})), 0)::int AS ${c("sip_add_n")},
+    COALESCE(SUM(${sipMonthlySql("bel")} * bel.sign) FILTER (WHERE (${when}) AND bel.txn_type = 'sip_stop'), 0) AS ${c("sip_stop")},
+    COALESCE(SUM(bel.sign) FILTER (WHERE (${when}) AND bel.txn_type = 'sip_stop'), 0)::int AS ${c("sip_stop_n")},
+    COUNT(DISTINCT ${who}) FILTER (WHERE (${when}) AND bel.txn_type IN (${inList(ENTRY_REDEMPTION)}) AND bel.sign = 1)::int AS ${c("redeemers")}`;
+}
+
+/** The columns bookedFigureColumns(prefix) produced, as figures. */
+export function readBookedFigures(row: Record<string, unknown> | undefined, prefix: string): BookedFigures {
+  const n = (k: string) => {
+    const v = Number(row?.[`${prefix}_${k}`] ?? 0);
+    return Number.isFinite(v) ? v : 0;
+  };
+  const gross = n("gross");
+  const redemption = n("red");
+  const newSip = n("sip_add");
+  const stoppedSip = n("sip_stop");
+  return {
+    gross, redemption, net: gross - redemption,
+    newSip, stoppedSip, netSip: newSip - stoppedSip,
+    newSipCount: n("sip_add_n"), stoppedSipCount: n("sip_stop_n"), redeemingClients: n("redeemers"),
+  };
+}
+
+/** Has the firm ever confirmed a business entry? About the firm, so scope-free. */
+export async function hasBookedBusiness(tx: Tx, tenantId: string): Promise<boolean> {
+  const r = (await tx.execute(sql`
+    SELECT EXISTS (SELECT 1 FROM business_entries WHERE tenant_id = ${tenantId}::uuid
+      AND status IN (${inList(ENTRY_COUNTED)})) AS ok
+  `)).rows[0] as { ok: boolean } | undefined;
+  return !!r?.ok;
+}
+
+/**
+ * The signed booked lines, for a caller that places entries in a book of its
+ * own (the RM and Branch dashboards, lib/dashboard/my/booked.ts):
+ * `FROM ${await bookedEntriesFrom(tx, t)} WHERE ${bookedEntriesWhere(t)} AND …`
+ * over `be` (entry), `bel` (signed line), `i` (client) and `u` (booking RM).
+ */
+export async function bookedEntriesFrom(tx: Tx, tenantId: string): Promise<SQL> {
+  return entryFrom(tenantId, await rejectionMode(tx));
+}
+
+/** Counted entries of the firm, on a client not deleted (or on none). */
+export function bookedEntriesWhere(tenantId: string): SQL {
+  return sql`be.tenant_id = ${tenantId}::uuid AND be.status IN (${inList(ENTRY_COUNTED)})
+    AND (i.id IS NULL OR i.deleted_at IS NULL)`;
+}
+
+async function bookedFor(tx: Tx, scope: MetricScope, p: MetricPeriod, from: SQL): Promise<BookedFigures> {
+  const r = (await tx.execute(sql`
+    SELECT ${bookedFigureColumns("f")}
+      FROM ${from}
+     WHERE ${entryWhere(scope, p)}
+  `)).rows[0] as Record<string, unknown> | undefined;
+  return readBookedFigures(r, "f");
+}
+
+/** Booked business in the period (and the comparison period), for a scope. */
+export async function getBookedBusiness(
+  tx: Tx, scope: MetricScope, period: MetricPeriod, previous?: MetricPeriod | null,
+): Promise<BookedBusiness> {
+  if (!(await hasBookedBusiness(tx, scope.tenantId))) return { hasData: false, current: null, previous: null };
+  const from = entryFrom(scope.tenantId, await rejectionMode(tx));
+  return {
+    hasData: true,
+    current: await bookedFor(tx, scope, period, from),
+    previous: previous ? await bookedFor(tx, scope, previous, from) : null,
+  };
+}
+
+/** Booked net business per RM — the client's RM, else the RM who booked it. */
+export async function getBookedNetByRm(
+  tx: Tx, scope: MetricScope, period: MetricPeriod,
+): Promise<{ hasData: boolean; byRm: Map<string | null, number> }> {
+  if (!(await hasBookedBusiness(tx, scope.tenantId))) return { hasData: false, byRm: new Map() };
+  const rows = (await tx.execute(sql`
+    SELECT COALESCE(i.rm_id, be.rm_id)::text AS k, ${bookedFigureColumns("f")}
+      FROM ${entryFrom(scope.tenantId, await rejectionMode(tx))}
+     WHERE ${entryWhere(scope, period)}
+     GROUP BY 1
+  `)).rows as Array<Record<string, unknown>>;
+  return { hasData: true, byRm: new Map(rows.map((r) => [(r.k as string | null) ?? null, readBookedFigures(r, "f").net])) };
+}
+
+/** Booked net business per branch — the client's branch, else the booking RM's. */
+export async function getBookedNetByBranch(
+  tx: Tx, scope: MetricScope, period: MetricPeriod,
+): Promise<{ hasData: boolean; byBranch: Map<string | null, number> }> {
+  if (!(await hasBookedBusiness(tx, scope.tenantId))) return { hasData: false, byBranch: new Map() };
+  const rows = (await tx.execute(sql`
+    SELECT COALESCE(i.branch_id, u.branch_id)::text AS k, ${bookedFigureColumns("f")}
+      FROM ${entryFrom(scope.tenantId, await rejectionMode(tx))}
+     WHERE ${entryWhere(scope, period)}
+     GROUP BY 1
+  `)).rows as Array<Record<string, unknown>>;
+  return { hasData: true, byBranch: new Map(rows.map((r) => [(r.k as string | null) ?? null, readBookedFigures(r, "f").net])) };
+}
+
+/** Booked gross / redemption / net by month for the money-movement chart, oldest first. */
+export async function getBookedMonthlyFlows(
+  tx: Tx, scope: MetricScope, period: MetricPeriod,
+): Promise<Array<{ month: string; gross: number; redemption: number; net: number }>> {
+  const rows = (await tx.execute(sql`
+    SELECT to_char(date_trunc('month', bel.eff_date), 'YYYY-MM') AS month, ${bookedFigureColumns("f")}
+      FROM ${entryFrom(scope.tenantId, await rejectionMode(tx))}
+     WHERE ${entryWhere(scope, period)}
+     GROUP BY 1 ORDER BY 1
+  `)).rows as Array<Record<string, unknown>>;
+  return rows.map((r) => {
+    const f = readBookedFigures(r, "f");
+    return { month: String(r.month), gross: f.gross, redemption: f.redemption, net: f.net };
+  });
 }

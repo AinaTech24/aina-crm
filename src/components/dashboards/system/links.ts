@@ -63,6 +63,17 @@ export function transactionsHref(ctx: WidgetCtx, extra: Record<string, Val> = {}
   })}`;
 }
 
+/**
+ * Business Entries booked in the period — counted ones only. The list filters
+ * by the RM who BOOKED an entry and has no branch filter, so it is the nearest
+ * list to a booked figure, not always its exact rows.
+ */
+export function entriesHref(ctx: WidgetCtx, extra: Record<string, Val> = {}): string {
+  return `/dashboard/business-entries${qs({
+    from: ctx.period.from, to: ctx.period.to, status: "confirmed,emailed", rm: ctx.scope.rmIds, ...extra,
+  })}`;
+}
+
 /** Leads created in the period, owned / captured in scope. */
 export function leadsHref(ctx: WidgetCtx, extra: Record<string, Val> = {}, withPeriod = true): string {
   return `/dashboard/leads${qs({

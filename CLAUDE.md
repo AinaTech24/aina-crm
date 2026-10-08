@@ -413,7 +413,9 @@ three or four days later. The two are linked, never added together:
 - **Targets count BOOKED business** (business entries). **Incentives count
   what the RTA processed** (the transaction ledger, `lib/metrics/business.ts`),
   plus Operations-confirmed entries for products the RTA never reports (PMS,
-  AIF, SIF, bonds …). Both are the firm's decision of 2026-10-02.
+  AIF, SIF, bonds …). Both are the firm's decision of 2026-10-02. Since
+  2026-10-07 every dashboard's business figure is booked too (see "The
+  dashboards").
 - **Every mutual-fund line of a counted entry** (`confirmed` / `emailed`)
   carries its RTA outcome (`business_entry_lines.rta_*`, migration 0228):
   pending · confirmed · mismatch · rejected · not_found · not_applicable.
@@ -512,8 +514,17 @@ dashboard filters, each only narrowing). Client facts follow
 - **Leads**: the Leads board's seven columns (`LEAD_PIPELINE`, incl. the
   `proposal_sent` SOP stage from migration 0222); conversion = Won ÷ all leads
   counted; a converted or onboarding lead is Won.
-- **No data is not zero**: money that moved needs the RTA ledger to reach the
-  period (`getNetBusiness().hasData`), else the card says "—" + Import RTA files.
+- **Money that moved is BOOKED business** (the firm's decision of 2026-10-07):
+  gross, redemption, net business and SIP added / stopped / net SIP on every
+  dashboard — tiles, targets, trends, month on month, the FY scorecard, team
+  and branch tables — come from Business Entries, every product, over signed
+  lines (`lib/metrics/entries.ts` "booked business"; the RM / Branch book's
+  version is `lib/dashboard/my/booked.ts`). Never read `transactions` for a
+  business figure. AUM, the SIP book BALANCE and SIP rejections stay the
+  registrar's, as do the Operations Dashboard's feed views and Brokerage.
+- **No data is not zero**: a firm that has never confirmed a business entry
+  has no booked figure (`getBookedBusiness().hasData`), so the card says "—"
+  + Record business, not ₹0.
 
 ### Named dashboards — `/dashboard/[dashboardId]`
 

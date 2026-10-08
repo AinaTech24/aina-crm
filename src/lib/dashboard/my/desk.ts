@@ -43,6 +43,7 @@ import {
   taskInvestor, taskIsAbout, taskLead,
 } from "./window";
 import { FUNNEL, LEAD_VALUE } from "./pipeline";
+import { bookedLinesOnBook } from "./booked";
 
 type Row = Record<string, unknown>;
 
@@ -1369,29 +1370,30 @@ const FY_MONTHS = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
  * Switch and STP count as purchase into the target product, as in the MIS.
  */
 export async function loadFlowByMonth(tx: Tx, w: MyWindow): Promise<FlowByMonth> {
-  const MINE = clientIds(w.scope);
-  const inBook = sql`(be.investor_id IN ${MINE} OR (be.investor_id IS NULL AND ${staffMatch("rm_id", w, "be")}))`;
-  const ever = (await tx.execute(sql`SELECT COUNT(*)::int AS n FROM business_entries be WHERE ${inBook}`)).rows[0] as Row | undefined;
+  // The book's signed booked lines (lib/dashboard/my/booked.ts): a line the
+  // RTA rejected reverses in the month it was rejected.
+  const src = await bookedLinesOnBook(tx, w.scope);
   const fyEnd = `${Number(w.fyStart.slice(0, 4)) + 1}-03-31`;
-  const rows = (await tx.execute(sql`
-    SELECT ((EXTRACT(MONTH FROM be.business_date)::int + 8) % 12) AS m,
-           CASE WHEN be.product_type = 'mutual_fund' AND bel.asset_class = 'equity' THEN 'equity'
-                WHEN be.product_type = 'mutual_fund' AND bel.asset_class = 'liquid' THEN 'liquid'
-                WHEN be.product_type = 'mutual_fund' AND bel.asset_class = 'debt'   THEN 'debt'
-                WHEN be.product_type = 'mutual_fund'                               THEN 'other_mf'
-                WHEN be.product_type IN ('sif','aif','pms')                        THEN be.product_type
-                ELSE 'other' END AS product,
-           (be.business_date >= ${`${w.today.slice(0, 8)}01`}::date) AS this_month,
-           COALESCE(SUM(bel.amount::numeric) FILTER (
-             WHERE bel.txn_type IN ('lumpsum','additional_purchase','sip','sip_topup','switch','stp')), 0) AS purchase,
-           COALESCE(SUM(bel.amount::numeric) FILTER (WHERE bel.txn_type IN ('redemption','swp')), 0)   AS redemption
-      FROM business_entries be
-      JOIN business_entry_lines bel ON bel.entry_id = be.id
-     WHERE ${inBook} AND be.status IN ('confirmed','emailed')
-       AND be.business_date >= ${w.fyStart}::date AND be.business_date <= ${fyEnd}::date
-       AND be.business_date <= ${w.today}::date
-     GROUP BY 1, 2, 3
-  `)).rows as Row[];
+  const rows = src
+    ? ((await tx.execute(sql`
+        SELECT ((EXTRACT(MONTH FROM bel.eff_date)::int + 8) % 12) AS m,
+               CASE WHEN be.product_type = 'mutual_fund' AND bel.asset_class = 'equity' THEN 'equity'
+                    WHEN be.product_type = 'mutual_fund' AND bel.asset_class = 'liquid' THEN 'liquid'
+                    WHEN be.product_type = 'mutual_fund' AND bel.asset_class = 'debt'   THEN 'debt'
+                    WHEN be.product_type = 'mutual_fund'                               THEN 'other_mf'
+                    WHEN be.product_type IN ('sif','aif','pms')                        THEN be.product_type
+                    ELSE 'other' END AS product,
+               (bel.eff_date >= ${`${w.today.slice(0, 8)}01`}::date) AS this_month,
+               COALESCE(SUM(bel.amount * bel.sign) FILTER (
+                 WHERE bel.txn_type IN ('lumpsum','additional_purchase','sip','sip_topup','switch','stp')), 0) AS purchase,
+               COALESCE(SUM(bel.amount * bel.sign) FILTER (WHERE bel.txn_type IN ('redemption','swp')), 0)   AS redemption
+          FROM ${src.from}
+         WHERE ${src.where}
+           AND bel.eff_date >= ${w.fyStart}::date AND bel.eff_date <= ${fyEnd}::date
+           AND bel.eff_date <= ${w.today}::date
+         GROUP BY 1, 2, 3
+      `)).rows as Row[])
+    : [];
 
   const PRODUCTS: FlowProduct[] = ["all_mf", "equity", "debt", "liquid", "other_mf", "sif", "aif", "pms", "other"];
   const blank = () => FY_MONTHS.map(() => ({ purchase: 0, redemption: 0 }));
@@ -1412,7 +1414,7 @@ export async function loadFlowByMonth(tx: Tx, w: MyWindow): Promise<FlowByMonth>
     add(p);
     if (MF.has(p)) add("all_mf");
   }
-  return { months: num(ever?.n) > 0 ? FY_MONTHS : null, series, mtd, fytd };
+  return { months: src ? FY_MONTHS : null, series, mtd, fytd };
 }
 
 /* ─────────────────────────────── helpers ─────────────────────────────── */

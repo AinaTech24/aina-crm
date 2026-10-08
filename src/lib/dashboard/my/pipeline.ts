@@ -23,6 +23,7 @@ import {
   REDEMPTION_TYPES, SR_OPEN_ON_US, SR_WAITING_CLIENT, staffMatch, TASK_DEAD, type MyWindow,
   taskInvestor, taskIsAbout,
 } from "./window";
+import { bookedLinesOnBook, loadBookedFlows } from "./booked";
 
 /* ─────────────────────────── §9 meetings ─────────────────────────── */
 
@@ -459,19 +460,15 @@ export type SipHealth = {
 export async function loadSipHealth(tx: Tx, w: MyWindow): Promise<SipHealth> {
   const MINE = clientIds(w.scope);
 
+  // The active book is the SIP register's balance; SIP added and stopped in
+  // the period are BOOKED (lib/dashboard/my/booked.ts), like the KPI strip.
   const book = (await tx.execute(sql`
     SELECT COALESCE(SUM(amount::numeric) FILTER (WHERE status = 'active'), 0) AS active_book,
            COUNT(*) FILTER (WHERE status = 'active')::int                     AS active_n,
-           COALESCE(SUM(amount::numeric) FILTER (WHERE start_date >= ${w.from}::date AND start_date <= ${w.to}::date), 0) AS added,
-           -- Stops from the ledger, like every other dashboard (SIP_STOP_TYPES).
-           (SELECT COALESCE(SUM(t.amount::numeric), 0) FROM transactions t
-             WHERE t.investor_id IN ${MINE} AND t.type IN ('sip_stop','sip_pause')
-               AND t.status IN ('processed','successful')
-               AND t.order_date >= ${w.from}::date AND t.order_date <= ${w.to}::date) AS stopped,
-           COUNT(*) FILTER (WHERE status = 'active' AND (remarks IS NULL OR btrim(remarks) = ''))::int AS no_remarks,
-           COUNT(*)::int AS any_ever
+           COUNT(*) FILTER (WHERE status = 'active' AND (remarks IS NULL OR btrim(remarks) = ''))::int AS no_remarks
       FROM sips WHERE investor_id IN ${MINE}
   `)).rows[0] as Row | undefined;
+  const booked = await loadBookedFlows(tx, w.scope, { p: { from: w.from, to: w.to } });
 
   const rej = (await tx.execute(sql`
     SELECT COUNT(*)::int AS n,
@@ -504,13 +501,14 @@ export async function loadSipHealth(tx: Tx, w: MyWindow): Promise<SipHealth> {
      LIMIT 12
   `)).rows as Array<Record<string, unknown>>;
 
-  const ever = num(book?.any_ever) > 0;
+  const ever = booked.ever;
+  const bk = booked.flows.p;
   return {
     activeBook: num(book?.active_book),
     activeCount: num(book?.active_n),
-    grossAdded: ever ? num(book?.added) : null,
-    stopped: ever ? num(book?.stopped) : null,
-    netSip: ever ? num(book?.added) - num(book?.stopped) : null,
+    grossAdded: ever ? bk.newSip : null,
+    stopped: ever ? bk.stoppedSip : null,
+    netSip: ever ? bk.netSip : null,
     rejections: num(rej?.n),
     rejectionValue: num(rej?.value),
     repurchaseDone: num(rej?.done),
@@ -567,46 +565,46 @@ export type RedemptionWatch = {
 export async function loadRedemptionWatch(
   tx: Tx, w: MyWindow, highValueThreshold = 500000,
 ): Promise<RedemptionWatch> {
-  const MINE = clientIds(w.scope);
+  // Redemptions BOOKED on the book (lib/dashboard/my/booked.ts): the total
+  // nets a reversal the RTA rejected; the list is the bookings themselves.
+  const src = await bookedLinesOnBook(tx, w.scope);
   const RED = asInList(REDEMPTION_TYPES);
+  const inPeriod = sql`bel.txn_type IN (${RED}) AND bel.eff_date >= ${w.from}::date AND bel.eff_date <= ${w.to}::date`;
 
-  const t = (await tx.execute(sql`
-    SELECT COALESCE(SUM(amount::numeric), 0) AS total,
-           COUNT(DISTINCT investor_id)::int  AS clients,
-           COUNT(*) FILTER (WHERE amount::numeric >= ${highValueThreshold})::int AS high_value,
-           COUNT(*) FILTER (WHERE NOT EXISTS (
-             SELECT 1 FROM tasks tk
-              WHERE ${taskIsAbout("tk", sql`transactions.investor_id`)} AND tk.deleted_at IS NULL
-                AND tk.created_at >= transactions.order_date::timestamptz))::int   AS no_follow_up,
-           (SELECT COUNT(*)::int FROM transactions
-             WHERE investor_id IN ${MINE} AND type IN (${RED})) AS any_ever
-      FROM transactions
-     WHERE investor_id IN ${MINE}
-       AND status IN ('processed','successful') AND type IN (${RED})
-       AND order_date >= ${w.from}::date AND order_date <= ${w.to}::date
-  `)).rows[0] as Row | undefined;
+  const t = src
+    ? ((await tx.execute(sql`
+        SELECT COALESCE(SUM(bel.amount * bel.sign), 0) AS total,
+               COUNT(DISTINCT COALESCE(be.investor_id::text, lower(btrim(be.client_name)))) FILTER (WHERE bel.sign = 1)::int AS clients,
+               COUNT(*) FILTER (WHERE bel.sign = 1 AND bel.amount >= ${highValueThreshold})::int AS high_value,
+               COUNT(*) FILTER (WHERE bel.sign = 1 AND (be.investor_id IS NULL OR NOT EXISTS (
+                 SELECT 1 FROM tasks tk
+                  WHERE ${taskIsAbout("tk", sql`be.investor_id`)} AND tk.deleted_at IS NULL
+                    AND tk.created_at >= bel.eff_date::timestamptz)))::int AS no_follow_up
+          FROM ${src.from}
+         WHERE ${src.where} AND ${inPeriod}
+      `)).rows[0] as Row | undefined)
+    : undefined;
 
-  const rows = (await tx.execute(sql`
-    SELECT t.id, i.name AS client, i.id AS client_id, i.client_category, i.aum,
-           t.amount, t.order_date, t.scheme_name, ru.name AS rm_name,
-           COALESCE(t.reason_description, i.redemption_risk_reason) AS reason,
-           -- A follow-up counts when a task or a meeting references this
-           -- client AFTER the redemption date. Anything earlier was about
-           -- something else.
-           EXISTS (
-             SELECT 1 FROM tasks tk
-              WHERE ${taskIsAbout("tk", sql`i.id`)} AND tk.deleted_at IS NULL
-                AND tk.created_at >= t.order_date::timestamptz
-           ) AS followed_up
-      FROM transactions t
-      JOIN investors i ON i.id = t.investor_id
-      LEFT JOIN users ru ON ru.id = i.rm_id
-     WHERE t.investor_id IN ${MINE}
-       AND t.status IN ('processed','successful') AND t.type IN (${RED})
-       AND t.order_date >= ${w.from}::date AND t.order_date <= ${w.to}::date
-     ORDER BY t.amount::numeric DESC
-     LIMIT 12
-  `)).rows as Array<Record<string, unknown>>;
+  // Only bookings on a client can be opened and followed up from here.
+  const rows = src
+    ? ((await tx.execute(sql`
+        SELECT bel.id, i.name AS client, i.id AS client_id, i.client_category, i.aum,
+               bel.amount, bel.eff_date AS order_date, bel.scheme_name, ru.name AS rm_name,
+               COALESCE(NULLIF(btrim(bel.notes), ''), i.redemption_risk_reason) AS reason,
+               -- A follow-up counts when a task references this client AFTER
+               -- the redemption date. Anything earlier was about something else.
+               EXISTS (
+                 SELECT 1 FROM tasks tk
+                  WHERE ${taskIsAbout("tk", sql`i.id`)} AND tk.deleted_at IS NULL
+                    AND tk.created_at >= bel.eff_date::timestamptz
+               ) AS followed_up
+          FROM ${src.from}
+          LEFT JOIN users ru ON ru.id = COALESCE(i.rm_id, be.rm_id)
+         WHERE ${src.where} AND ${inPeriod} AND bel.sign = 1 AND i.id IS NOT NULL
+         ORDER BY bel.amount DESC
+         LIMIT 12
+      `)).rows as Array<Record<string, unknown>>)
+    : [];
 
   const mapped = rows.map((r) => {
     const aum = num(r.aum);
@@ -631,7 +629,7 @@ export async function loadRedemptionWatch(
   });
 
   return {
-    total: num(t?.any_ever) > 0 ? num(t?.total) : null,
+    total: src ? num(t?.total) : null,
     clients: num(t?.clients),
     highValue: num(t?.high_value),
     highValueThreshold,

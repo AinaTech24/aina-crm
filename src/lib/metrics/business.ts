@@ -1,7 +1,12 @@
 /**
- * Money that moved in a period — gross investment, redemption, net business
- * and net SIP added. ONE definition for the KPI card, its drill-down, the team
- * table and the net-sales chart.
+ * Money that moved in a period AS THE RTA PROCESSED IT — gross investment,
+ * redemption, net business and net SIP added from the transaction ledger.
+ *
+ * NOT what the dashboards show: since 2026-10-07 every dashboard's business
+ * figure is BOOKED business (lib/metrics/entries.ts, "booked business").
+ * This file stays for what the registrar's view is still used for — matching
+ * booked business against the feed (lib/business/rta-match.ts) and the
+ * RTA-confirmed figure incentives count.
  *
  *   Gross investment  purchases, lumpsums, additional purchases, SIP
  *                     instalments and top-ups, processed by the RTA.
