@@ -76,3 +76,43 @@ describe("lookupNavByKey", () => {
     expect(lookupNavByKey(payoutReinvest, "X Fund Regular Monthly IDCW")?.nav).toBe(11.2);
   });
 });
+
+describe("the statement's own NAV settles which scheme it is", () => {
+  const build = (rows: Array<[string, string, number, string]>) => {
+    const byKey: NonNullable<NavIndex["byKey"]> = new Map();
+    const all: NonNullable<NavIndex["all"]> = [];
+    for (const [code, name, nav, navDate] of rows) {
+      const k = schemeNameKey(name)!;
+      const key = `${k.tokens}|${k.direct ? "d" : "r"}`;
+      byKey.set(key, [...(byKey.get(key) ?? []), { code, nav, navDate, name }]);
+      all.push({ code, nav, navDate, name, words: new Set(k.tokens.split(" ")), direct: k.direct });
+    }
+    return { byCode: new Map(), byName: new Map(), byKey, all, size: rows.length } as NavIndex;
+  };
+
+  it("picks the same-named scheme whose NAV is nearest the statement's", async () => {
+    const { lookupNav } = await import("@/lib/finance/scheme-match");
+    const idx = build([
+      ["151289", "HSBC Multi Cap Fund - Regular Plan - Growth", 19.8061, "2026-10-07"],
+      ["151292", "HSBC Multi Cap Fund - Regular Plan - Growth", 16.2818, "2026-10-07"],
+    ]);
+    expect(lookupNav(idx, "OHMCRG", "HSBC Multi Cap Fund - Regular Growth", 19.7376)?.code).toBe("151289");
+    expect(lookupNav(idx, "OHMCRG", "HSBC Multi Cap Fund - Regular Growth", null)).toBeNull();
+  });
+
+  it("finds a scheme whose name the registrar wrote differently, by house + words + NAV", async () => {
+    const { lookupNav } = await import("@/lib/finance/scheme-match");
+    const idx = build([
+      ["100900", "HDFC Children's Fund - Regular Plan - Growth Option", 290.4, "2026-10-07"],
+      ["100901", "HDFC Children's Fund - Direct Plan - Growth Option", 330.1, "2026-10-07"],
+      ["119067", "HDFC Flexi Cap Fund - Regular Plan - Growth", 1900, "2026-10-07"],
+    ]);
+    expect(lookupNav(idx, "HCGIL", "HDFC Childrens Fund  (Lock-In) - Regular Plan'", 286.1)?.code).toBe("100900");
+  });
+
+  it("refuses a name match whose NAV is far from the statement's (another option or plan)", async () => {
+    const { lookupNav } = await import("@/lib/finance/scheme-match");
+    const idx = build([["200", "X Fund - Regular Plan - Growth", 48.05, "2026-10-07"]]);
+    expect(lookupNav(idx, "XG", "X Fund - Regular Plan - Growth", 89.45)).toBeNull();
+  });
+});

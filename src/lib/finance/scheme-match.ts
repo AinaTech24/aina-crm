@@ -51,6 +51,8 @@ export type NavIndex = {
   /** schemeNameKey → every AMFI scheme with that key (see lookupNavByKey).
    *  Optional so an index built by hand (tests) without it still works. */
   byKey?: Map<string, Array<NavEntry & { name: string }>>;
+  /** Every scheme with its name words, for lookupNavFuzzy. */
+  all?: Array<NavEntry & { name: string; words: Set<string>; direct: boolean }>;
   size: number;
 };
 
@@ -62,6 +64,7 @@ export async function loadNavIndex(tx: Tx): Promise<NavIndex> {
   const byCode = new Map<string, NavEntry>();
   const byName = new Map<string, NavEntry | null>();
   const byKey: NonNullable<NavIndex["byKey"]> = new Map();
+  const all: NonNullable<NavIndex["all"]> = [];
 
   for (const r of res.rows as Array<{
     scheme_code: string | null;
@@ -78,6 +81,7 @@ export async function loadNavIndex(tx: Tx): Promise<NavIndex> {
     if (sk) {
       const k = `${sk.tokens}|${sk.direct ? "d" : "r"}`;
       byKey.set(k, [...(byKey.get(k) ?? []), { ...entry, name: String(r.scheme_name ?? "") }]);
+      all.push({ ...entry, name: String(r.scheme_name ?? ""), words: new Set(sk.tokens.split(" ")), direct: sk.direct });
     }
 
     const key = normSchemeName(r.scheme_name);
@@ -91,10 +95,50 @@ export async function loadNavIndex(tx: Tx): Promise<NavIndex> {
       if (existing && existing.code !== entry.code) byName.set(key, null);
     }
   }
-  return { byCode, byName, byKey, size: byCode.size };
+  return { byCode, byName, byKey, all, size: byCode.size };
 }
 
-export type NavHit = NavEntry & { via: "code" | "name" | "key" };
+export type NavHit = NavEntry & { via: "code" | "name" | "key" | "nav" };
+
+/**
+ * The candidate whose NAV is nearest the registrar statement's own NAV — the
+ * one fact that tells apart AMFI schemes sharing a name ("HSBC Multi Cap Fund -
+ * Regular Plan - Growth" is two codes, NAV 19.81 and 16.28; the statement said
+ * 19.74). Within 10% (a statement is a few weeks old) and clearly nearer than
+ * the runner-up, or null.
+ */
+function nearestByNav<T extends NavEntry>(cands: T[], hint: number): T | null {
+  const scored = cands
+    .map((c) => ({ c, d: Math.abs(c.nav - hint) / hint }))
+    .filter((x) => x.d <= 0.1)
+    .sort((a, b) => a.d - b.d);
+  if (!scored.length) return null;
+  if (scored.length > 1 && scored[1].d < Math.max(scored[0].d * 2, 0.005)) return null;
+  return scored[0].c;
+}
+
+/**
+ * No AMFI scheme has the registrar name's key ("HDFC Childrens Fund (Lock-In)
+ * - Regular Plan'", a name the registrar cut off mid-word): the scheme of the
+ * same fund house, same plan, sharing most of its words, whose NAV is near the
+ * statement's — only when exactly one fits. Needs the statement's NAV.
+ */
+export function lookupNavFuzzy(index: NavIndex, schemeName: string | null | undefined, hintNav: number): NavHit | null {
+  const sk = schemeNameKey(schemeName);
+  if (!sk || !index.all?.length || !(hintNav > 0)) return null;
+  const words = new Set(sk.tokens.split(" "));
+  const house = String(schemeName ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().split(" ")[0];
+  const near = index.all.filter((c) => {
+    if (c.direct !== sk.direct || !c.words.has(house)) return false;
+    let shared = 0;
+    for (const w of words) if (c.words.has(w)) shared++;
+    return shared / Math.max(words.size, c.words.size) >= 0.5;
+  });
+  const newest = near.reduce((m, c) => ((c.navDate ?? "") > m ? (c.navDate ?? "") : m), "");
+  const hit = nearestByNav(near.filter((c) => (c.navDate ?? "") === newest), hintNav);
+  if (!hit) return null;
+  return { code: hit.code, nav: hit.nav, navDate: hit.navDate, via: "nav" };
+}
 
 /**
  * The AMFI scheme a registrar's name means, by schemeNameKey — the only way to
@@ -110,13 +154,18 @@ export type NavHit = NavEntry & { via: "code" | "name" | "key" };
  * they all carry the same NAV — when they do, which one does not change a
  * valuation. Otherwise null: an unpriced holding beats a wrong one.
  */
-export function lookupNavByKey(index: NavIndex, schemeName: string | null | undefined): NavHit | null {
+export function lookupNavByKey(index: NavIndex, schemeName: string | null | undefined, hintNav?: number | null): NavHit | null {
   const sk = schemeNameKey(schemeName);
   if (!sk) return null;
   let cands = index.byKey?.get(`${sk.tokens}|${sk.direct ? "d" : "r"}`) ?? [];
   if (!cands.length) return null;
   const newest = cands.reduce((m, c) => ((c.navDate ?? "") > m ? (c.navDate ?? "") : m), "");
   cands = cands.filter((c) => (c.navDate ?? "") === newest);
+  // A statement's own NAV settles which of several same-named schemes it is.
+  if (cands.length > 1 && hintNav && hintNav > 0) {
+    const near = nearestByNav(cands, hintNav);
+    if (near) return { code: near.code, nav: near.nav, navDate: near.navDate, via: "key" };
+  }
   if (cands.length > 1) {
     const explicit = (n: string): number =>
       ((sk.direct ? /\bdirect\b/i : /\bregular\b/i).test(n) ? 1 : 0) +
@@ -139,16 +188,25 @@ export function lookupNavByKey(index: NavIndex, schemeName: string | null | unde
 export function lookupNav(
   index: NavIndex,
   schemeCode: string | null | undefined,
-  schemeName: string | null | undefined
+  schemeName: string | null | undefined,
+  /** The NAV a registrar statement printed for this holding, when there is one. */
+  hintNav?: number | null,
 ): NavHit | null {
   if (schemeCode) {
     const byCode = index.byCode.get(String(schemeCode));
     if (byCode) return { ...byCode, via: "code" };
   }
+  const hint = hintNav && hintNav > 0 ? hintNav : null;
+  // A name match whose NAV is far from the statement's is another option or
+  // plan of the scheme (Growth vs IDCW, Regular vs Direct): not this holding.
+  const plausible = (h: NavHit | null) => (h && hint && Math.abs(h.nav - hint) / hint > 0.25 ? null : h);
   const key = normSchemeName(schemeName);
   if (key) {
     const byName = index.byName.get(key);
-    if (byName) return { ...byName, via: "name" };
+    const h = plausible(byName ? { ...byName, via: "name" } : null);
+    if (h) return h;
   }
-  return lookupNavByKey(index, schemeName);
+  const byKey = plausible(lookupNavByKey(index, schemeName, hint));
+  if (byKey) return byKey;
+  return hint ? lookupNavFuzzy(index, schemeName, hint) : null;
 }

@@ -190,7 +190,7 @@ export async function revalueAllFolios(
       const next = schemes.map((s) => {
         const units = Number(s.units ?? 0);
         stats.legs++;
-        const hit = lookupNav(navIndex, s.schemeCode, s.schemeName);
+        const hit = lookupNav(navIndex, s.schemeCode, s.schemeName, Number(s.nav) > 0 ? Number(s.nav) : null);
         if (hit && isFinite(units) && units > 0) {
           if (hit.via === "code") stats.pricedByCode++;
           else stats.pricedByName++;

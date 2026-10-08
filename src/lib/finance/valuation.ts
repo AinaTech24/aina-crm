@@ -187,16 +187,17 @@ async function priceByName(tx: Tx, transactions: ValuationTransaction[], snapsho
   const index = await navIndexFor(tx);
   if (!index.size) return;
   const memo = new Map<string, ReturnType<typeof lookupNav>>();
-  const hit = (name: string) => {
-    if (!memo.has(name)) memo.set(name, lookupNav(index, null, name));
-    return memo.get(name)!;
+  const hit = (name: string, hintNav: number | null = null) => {
+    const k = `${name}|${hintNav ?? ""}`;
+    if (!memo.has(k)) memo.set(k, lookupNav(index, null, name, hintNav));
+    return memo.get(k)!;
   };
   for (const r of needT) {
     const h = hit(String(r.scheme_name));
     if (h) { r.latest_nav = h.nav; r.latest_nav_date = h.navDate; r.amfi_code = h.code; }
   }
   for (const r of needS) {
-    const h = hit(String(r.scheme.schemeName));
+    const h = hit(String(r.scheme.schemeName), positive(r.scheme.nav));
     if (h) { r.latest_nav = h.nav; r.latest_nav_date = h.navDate; r.amfi_code = h.code; }
   }
 }
