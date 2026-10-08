@@ -1,4 +1,5 @@
 /** Persist the same folio-aware valuation used by the client profile and PDFs. */
+import { navCutoffIso } from "./nav-age";
 import { sql } from "drizzle-orm";
 import { refreshActiveSipAmount } from "@/lib/metrics/sip";
 import type { Tx } from "@/db/client";
@@ -108,6 +109,7 @@ export async function revalueAllFolios(
   batchSize = 500
 ): Promise<RevalueStats> {
   const navIndex = await loadNavIndex(tx);
+  const navCutoff = navCutoffIso();
   const stats: RevalueStats = {
     folios: 0, legs: 0, pricedByCode: 0, pricedByName: 0, unpriced: 0, unpricedValue: 0,
   };
@@ -144,8 +146,15 @@ export async function revalueAllFolios(
         // one not resolved by evidence is never priced by NAME — it keeps the
         // registrar's stated value until its code is resolved.
         const st = (s as { schemeStatus?: string }).schemeStatus;
-        const byNameAllowed = !st || st === "resolved_isin" || st === "confirmed";
-        const hit = lookupNav(navIndex, s.schemeCode, byNameAllowed ? s.schemeName : null);
+        const evidenceTracked = st != null;
+        const resolved = st === "resolved_isin" || st === "confirmed";
+        // Phase 3I: an evidence-tracked leg is priced only when its scheme is
+        // resolved, by CODE, at a NAV no older than NAV_MAX_AGE_DAYS; otherwise
+        // it keeps the registrar's dated value (an old NAV is not current).
+        let hit = evidenceTracked
+          ? (resolved ? lookupNav(navIndex, s.schemeCode, null) : null)
+          : lookupNav(navIndex, s.schemeCode, s.schemeName);
+        if (hit && evidenceTracked && (!hit.navDate || hit.navDate < navCutoff)) hit = null;
         if (hit && isFinite(units) && units > 0) {
           if (hit.via === "code") stats.pricedByCode++;
           else stats.pricedByName++;

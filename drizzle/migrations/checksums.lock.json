@@ -274,5 +274,7 @@
   "0235_rta_validate_first.sql": "a30cba378f266020",
   "0236_rta_posting_controls.sql": "c707df8750bd3123",
   "0237_rta_regimes.sql": "de59e795c3096b67",
-  "0238_scheme_rta_codes.sql": "2939f6046af50d25"
+  "0238_scheme_rta_codes.sql": "2939f6046af50d25",
+  "0239_amfi_feed_and_verified_mappings.sql": "f1ef32b09d9ed66a",
+  "0240_scheme_platform_confirmation.sql": "bb5baba1b954376e"
 }

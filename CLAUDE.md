@@ -746,6 +746,37 @@ Migrations 0237 (modes) and 0238 (scheme crosswalk).
 - The emergency drill halts every firm in the database, so it runs alone:
   `npm run test:emergency` (its own CI step).
 
+## Scheme resolution and the AMFI feed — Phase 3I (PRE-PRODUCTION)
+
+Report, coverage and the pilot release conditions:
+`docs/rta/PHASE3I_SCHEME_RESOLUTION.md`. Migrations 0239 (AMFI fidelity,
+provenance, platform registrar map) and 0240 (platform-approved confirmation).
+
+- **AMFI is read strictly, through one path** (`importNavAll` in
+  `lib/finance/nav-feed.ts`; the worker, *Sync from AMFI* and
+  `scripts/amfi-import.ts` all use it). Header must be one of the two
+  published layouts column for column; both ISIN columns, Plan and Option kept
+  as printed; every file recorded in `amfi_feed_imports` with its SHA-256; a
+  stale or future file refused; an older file never overwrites a newer NAV.
+  A NAV older than `RTA_NAV_MAX_AGE_DAYS` (7, `lib/finance/nav-age.ts`) is not
+  current for validate-first rows. Never seed reference data by hand or from a
+  third party; this sandbox cannot reach AMFI — supply an authentic file.
+- **The decision is pure** (`lib/rta/scheme-evidence.ts`): one ISIN on one AMFI
+  scheme, AMC consistent with the registrar AMC's other codes, no explicit
+  plan / option word contradicting AMFI → resolved. Every outcome has a
+  `reason_code`. Names only RANK candidates (`nameRank`) — never decide.
+- **Registrar codes are the registrar's**: a clean ISIN result is recorded for
+  every firm in `scheme_registrar_map` (no firm id); operators approve the rest
+  there (two people, `/api/super-admin/scheme-mappings`). A firm's own
+  confirmation stays the firm's. Changing a decision re-stamps that code's
+  holdings legs (`restampLegs`) and never rewrites posted transactions.
+- **Review is approve (with evidence source) · reject a candidate · defer**,
+  each audited; the Scheme codes screen shows candidates from the established
+  AMC only.
+- `scheme_master` duplicates after an AMC rename: `scripts/scheme-master-duplicates.ts`
+  is READ-ONLY and only proposes. Test cleanup of platform mappings needs
+  `ADMIN_DATABASE_URL` (`tests/scheme-map-cleanup.ts`).
+
 ## Webhook handlers
 
 | Provider | Path | Verifies |

@@ -14,6 +14,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { MFSD201_HEADER, MFSD211_HEADER, csvOf, P } from "./rta-real-layouts";
+import { cleanupSchemeMap } from "./scheme-map-cleanup";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 
@@ -101,6 +102,7 @@ describe.skipIf(!TEST_DB)("posting controls — controlled mode (DB)", () => {
       await tryRun(sql`DELETE FROM tenants WHERE id = ${id}::uuid`);
     }
     await tryRun(sql`ALTER TABLE rta_pipeline_activations ENABLE TRIGGER rta_pipeline_activations_append_only`);
+    await cleanupSchemeMap(withSystem as any, sql, [CT_AMFI]);
     await tryRun(sql`DELETE FROM scheme_nav WHERE scheme_code = ${CT_AMFI}`);
   });
 

@@ -8,6 +8,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { MFSD203_HEADER, csvOf } from "./rta-real-layouts";
+import { cleanupSchemeMap } from "./scheme-map-cleanup";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 
@@ -59,6 +60,7 @@ describe.skipIf(!TEST_DB)("dated AUM — MFSD203 through the rich importer (DB)"
     await tryRun(sql`DELETE FROM investors WHERE tenant_id = ${t}::uuid`);
     await tryRun(sql`DELETE FROM audit_log WHERE tenant_id = ${t}::uuid`);
     await tryRun(sql`DELETE FROM tenants WHERE id = ${t}::uuid`);
+    await cleanupSchemeMap(withSystem as any, sql, ["117EQ"]);
     await tryRun(sql`DELETE FROM scheme_nav WHERE scheme_code = '117EQ' AND scheme_name = 'Example Equity Fund - Growth'`);
   });
 

@@ -1,4 +1,5 @@
 /** One folio-aware valuation contract for profile, portal, PDF and stored AUM. */
+import { navCutoffIso } from "./nav-age";
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { xirr, type CashFlow } from "./xirr";
@@ -121,13 +122,17 @@ export async function loadValuationRows(tx: Tx, investorIds: string[]) {
   `)).rows as Array<{ tenant_id: string }>;
   if (tenantRows.length === 0) return { transactions: [], snapshots: [] };
   const tenants = sql.join(tenantRows.map((r) => sql`${r.tenant_id}::uuid`), sql`, `);
+  const navCutoff = navCutoffIso();
   const transactions = (await tx.execute(sql`
     SELECT t.investor_id, COALESCE(fi.id, fn.id, t.folio_id) AS folio_id,
            COALESCE(fi.folio_number, fn.folio_number, t.folio_number) AS folio_number,
            COALESCE(fi.amc_code, fn.amc_code, t.amc_code) AS amc_code,
            COALESCE(fi.amc_name, fn.amc_name, t.amc_name) AS amc_name,
            t.scheme_code, t.scheme_name, t.direction, t.type, t.amount, t.units,
-           t.order_date, n.nav AS latest_nav, n.nav_date AS latest_nav_date, n.scheme_name AS nav_scheme_name
+           t.order_date,
+           -- Phase 3I: a validate-first transaction never takes a NAV older than NAV_MAX_AGE_DAYS as current.
+           CASE WHEN t.source_feed = 'rta_validate_first' AND n.nav_date < ${navCutoff}::date THEN NULL ELSE n.nav END AS latest_nav,
+           n.nav_date AS latest_nav_date, n.scheme_name AS nav_scheme_name
     FROM transactions t
     LEFT JOIN folios fi ON fi.id = t.folio_id AND fi.tenant_id = t.tenant_id
     LEFT JOIN folios fn ON t.folio_id IS NULL AND fn.tenant_id = t.tenant_id
@@ -140,7 +145,11 @@ export async function loadValuationRows(tx: Tx, investorIds: string[]) {
   `)).rows as unknown as ValuationTransaction[];
   const snapshots = (await tx.execute(sql`
     SELECT f.investor_id, f.id AS folio_id, f.folio_number, f.amc_code, f.amc_name,
-           sc AS scheme, n.nav AS latest_nav, n.nav_date AS latest_nav_date, n.scheme_name AS nav_scheme_name,
+           sc AS scheme,
+           -- Phase 3I: an evidence-tracked leg takes the AMFI NAV only when its scheme is resolved and the NAV is current;
+           -- otherwise its own registrar-stated figures stand.
+           CASE WHEN sc ? 'schemeStatus' AND (sc->>'schemeStatus' NOT IN ('resolved_isin', 'confirmed') OR n.nav_date < ${navCutoff}::date) THEN NULL ELSE n.nav END AS latest_nav,
+           n.nav_date AS latest_nav_date, n.scheme_name AS nav_scheme_name,
            COALESCE(sc->>'snapshotDate', sc->>'sourceAsOf', f.details->>'holdingsAsOf') AS snapshot_date
     FROM folios f CROSS JOIN LATERAL jsonb_array_elements(COALESCE(f.schemes, '[]'::jsonb)) AS sc
     LEFT JOIN scheme_nav n ON n.scheme_code = sc->>'schemeCode'

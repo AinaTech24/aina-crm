@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { MFSD201_HEADER, MFSD203_HEADER, R2_HEADER, R9_HEADER, csvOf, xlsOf, serial, P } from "./rta-real-layouts";
 import { decideScheme } from "@/lib/rta/scheme-resolution";
+import { cleanupSchemeMap } from "./scheme-map-cleanup";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 const AMFI = { a: "9H0001", b: "9H0002", c: "9H0003", d: "9H0004" };
@@ -17,14 +18,15 @@ const kfin = (txn: string, product: string, isin: string, folio = "93900001", de
   "Nav": "50.0000", "Price": "50.0000", Units: "20.000", Amount: "1000.00", "Transaction Number": txn, PAN1: P.adult, ISIN: isin,
 });
 
+const am = (code: string) => ({ code, column: "payout_growth" as const, amc: null, name: null, plan: null, option: null, active: true });
 describe("decideScheme (pure)", () => {
   it("one ISIN on one AMFI scheme resolves; a confirmation it contradicts is a conflict", () => {
-    expect(decideScheme({ observedIsins: ["inf1"], amfiByIsin: { INF1: ["100"] }, confirmed: null })).toMatchObject({ status: "resolved_isin", amfiSchemeCode: "100" });
-    expect(decideScheme({ observedIsins: ["INF1"], amfiByIsin: { INF1: ["100"] }, confirmed: { amfiSchemeCode: "200", existsInFeed: true } }).status).toBe("conflict");
+    expect(decideScheme({ observedIsins: ["inf1"], amfiByIsin: { INF1: [am("100")] }, confirmed: null })).toMatchObject({ status: "resolved_isin", amfiSchemeCode: "100" });
+    expect(decideScheme({ observedIsins: ["INF1"], amfiByIsin: { INF1: [am("100")] }, confirmed: { amfiSchemeCode: "200", existsInFeed: true } }).status).toBe("conflict");
   });
   it("two ISINs, or one ISIN on two schemes, is a conflict; no evidence is unresolved; a confirmation resolves it", () => {
     expect(decideScheme({ observedIsins: ["A", "B"], amfiByIsin: {}, confirmed: null }).status).toBe("conflict");
-    expect(decideScheme({ observedIsins: ["A"], amfiByIsin: { A: ["1", "2"] }, confirmed: null }).status).toBe("conflict");
+    expect(decideScheme({ observedIsins: ["A"], amfiByIsin: { A: [am("1"), am("2")] }, confirmed: null }).status).toBe("conflict");
     expect(decideScheme({ observedIsins: [], amfiByIsin: {}, confirmed: null })).toMatchObject({ status: "unresolved", reason: expect.stringMatching(/printed no ISIN/) });
     expect(decideScheme({ observedIsins: [], amfiByIsin: {}, confirmed: { amfiSchemeCode: "1", existsInFeed: true } })).toMatchObject({ status: "confirmed", amfiSchemeCode: "1" });
     expect(decideScheme({ observedIsins: [], amfiByIsin: {}, confirmed: { amfiSchemeCode: "1", existsInFeed: false } }).status).toBe("conflict");
@@ -99,6 +101,7 @@ describe.skipIf(!TEST_DB)("registrar scheme codes → the Scheme Master (DB)", (
     await tryRun(sql`DELETE FROM investors WHERE tenant_id = ${t}::uuid`);
     await tryRun(sql`DELETE FROM audit_log WHERE tenant_id = ${t}::uuid`);
     await tryRun(sql`DELETE FROM tenants WHERE id = ${t}::uuid`);
+    await cleanupSchemeMap(withSystem as any, sql, Object.values(AMFI));
     await tryRun(sql`DELETE FROM scheme_nav WHERE scheme_code IN (${AMFI.a}, ${AMFI.b}, ${AMFI.c}, ${AMFI.d})`);
     delete process.env.RTA_SCHEME_GATE;
   });

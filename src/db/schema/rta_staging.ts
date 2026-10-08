@@ -398,6 +398,17 @@ export const schemeRtaCodes = pgTable(
     confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
     confirmNote: text("confirm_note"),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    /** Why the code is in its state (migration 0239), e.g. isin_verified, no_isin, ambiguous_isin, amc_mismatch. */
+    reasonCode: text("reason_code"),
+    /** 'deferred' while a person has put the decision off. */
+    reviewState: text("review_state", { enum: ["deferred"] }),
+    reviewNote: text("review_note"),
+    reviewedBy: uuid("reviewed_by"),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    /** AMFI codes a person rejected as candidates for this registrar code. */
+    rejectedCandidates: text("rejected_candidates").array().notNull().default(sql`'{}'::text[]`),
+    /** The evidence a person cited when approving (amc_document, registrar_confirmation, factsheet, other). */
+    evidenceSource: text("evidence_source"),
   },
   (t) => ({
     key: uniqueIndex("scheme_rta_codes_key").on(t.tenantId, t.rta, t.rtaAmcCode, t.rtaSchemeCode),
