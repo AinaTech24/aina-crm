@@ -89,23 +89,43 @@ const folioPart = (r: PositionIdentity) => JSON.stringify([
   r.folio_id || [(r.amc_code || r.amc_name || "").trim().toLowerCase(), (r.folio_number ?? "").trim().toLowerCase()],
 ]);
 
-/** Two bulk reads for a batch, always inside the caller's withTenant transaction. */
+/**
+ * Two bulk reads for a batch, always inside the caller's withTenant transaction.
+ *
+ * Both name the clients' tenant explicitly. The indexes lead with tenant_id
+ * ((tenant_id, investor_id, order_date) on transactions, (tenant_id,
+ * investor_id) on folios), and the RLS policy alone — tenant OR platform
+ * admin — cannot supply it as an index condition, so without it every page
+ * view read the whole transactions table (production, 2026-10-08: ~5 s a call,
+ * the CRM's most expensive query). The tenant comes from the investors
+ * themselves, so a system-context caller works the same way.
+ *
+ * The folio is found by id, or — for a row imported without one — by
+ * (investor, AMC, folio number), as two plain joins. One OR'ed join forced a
+ * nested loop comparing every transaction with every folio.
+ */
 export async function loadValuationRows(tx: Tx, investorIds: string[]) {
   if (investorIds.length === 0) return { transactions: [], snapshots: [] };
   const ids = sql.join(investorIds.map((id) => sql`${id}::uuid`), sql`, `);
+  const tenantRows = (await tx.execute(sql`
+    SELECT DISTINCT tenant_id::text AS tenant_id FROM investors WHERE id IN (${ids})
+  `)).rows as Array<{ tenant_id: string }>;
+  if (tenantRows.length === 0) return { transactions: [], snapshots: [] };
+  const tenants = sql.join(tenantRows.map((r) => sql`${r.tenant_id}::uuid`), sql`, `);
   const transactions = (await tx.execute(sql`
-    SELECT t.investor_id, COALESCE(f.id, t.folio_id) AS folio_id,
-           COALESCE(f.folio_number, t.folio_number) AS folio_number,
-           COALESCE(f.amc_code, t.amc_code) AS amc_code,
-           COALESCE(f.amc_name, t.amc_name) AS amc_name,
+    SELECT t.investor_id, COALESCE(fi.id, fn.id, t.folio_id) AS folio_id,
+           COALESCE(fi.folio_number, fn.folio_number, t.folio_number) AS folio_number,
+           COALESCE(fi.amc_code, fn.amc_code, t.amc_code) AS amc_code,
+           COALESCE(fi.amc_name, fn.amc_name, t.amc_name) AS amc_name,
            t.scheme_code, t.scheme_name, t.direction, t.type, t.amount, t.units,
            t.order_date, n.nav AS latest_nav, n.nav_date AS latest_nav_date, n.scheme_name AS nav_scheme_name
     FROM transactions t
-    LEFT JOIN folios f ON f.tenant_id = t.tenant_id AND
-      (f.id = t.folio_id OR (t.folio_id IS NULL AND f.investor_id = t.investor_id
-        AND f.amc_code = t.amc_code AND f.folio_number = t.folio_number))
+    LEFT JOIN folios fi ON fi.id = t.folio_id AND fi.tenant_id = t.tenant_id
+    LEFT JOIN folios fn ON t.folio_id IS NULL AND fn.tenant_id = t.tenant_id
+      AND fn.investor_id = t.investor_id AND fn.amc_code = t.amc_code AND fn.folio_number = t.folio_number
     LEFT JOIN scheme_nav n ON n.scheme_code = t.scheme_code
-    WHERE t.investor_id IN (${ids}) AND t.status IN ('processed', 'successful')
+    WHERE t.tenant_id IN (${tenants}) AND t.investor_id IN (${ids})
+      AND t.status IN ('processed', 'successful')
       AND t.order_date IS NOT NULL
     ORDER BY t.order_date, t.id
   `)).rows as unknown as ValuationTransaction[];
@@ -115,7 +135,7 @@ export async function loadValuationRows(tx: Tx, investorIds: string[]) {
            COALESCE(sc->>'snapshotDate', f.details->>'holdingsAsOf') AS snapshot_date
     FROM folios f CROSS JOIN LATERAL jsonb_array_elements(COALESCE(f.schemes, '[]'::jsonb)) AS sc
     LEFT JOIN scheme_nav n ON n.scheme_code = sc->>'schemeCode'
-    WHERE f.investor_id IN (${ids})
+    WHERE f.tenant_id IN (${tenants}) AND f.investor_id IN (${ids})
   `)).rows as unknown as ValuationSnapshot[];
   return { transactions, snapshots };
 }

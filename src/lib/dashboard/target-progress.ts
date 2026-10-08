@@ -90,37 +90,40 @@ export async function loadTargetProgress(
   const dateStart = `${fyStartYear}-04-01`;
   const dateEnd = `${fyStartYear + 1}-03-31`;
 
+  // Every query names the tenant: the RLS policy alone (tenant OR platform
+  // admin) cannot use the (tenant_id, …) indexes, so without it each scan read
+  // every firm's rows for the year — 4 s a call in production.
   const [clients, leadsR, meetings, aum, sipBook, lumpsum, targets] = await Promise.all([
     tx.execute(sql`
       SELECT EXTRACT(MONTH FROM onboarded_at)::int AS m, COUNT(*)::numeric AS v
       FROM investors
-      WHERE onboarded_at >= ${dateStart}::date AND onboarded_at <= ${dateEnd}::date
+      WHERE tenant_id = ${tenantId}::uuid AND onboarded_at >= ${dateStart}::date AND onboarded_at <= ${dateEnd}::date
       GROUP BY 1`),
     tx.execute(sql`
       SELECT EXTRACT(MONTH FROM created_at)::int AS m, COUNT(*)::numeric AS v
       FROM leads
-      WHERE created_at >= ${dateStart}::date AND created_at <= ${dateEnd}::date
+      WHERE tenant_id = ${tenantId}::uuid AND created_at >= ${dateStart}::date AND created_at <= ${dateEnd}::date
       GROUP BY 1`),
     tx.execute(sql`
       SELECT EXTRACT(MONTH FROM meeting_date)::int AS m, COUNT(*)::numeric AS v
       FROM review_meetings
-      WHERE status = 'completed' AND meeting_date >= ${dateStart}::date AND meeting_date <= ${dateEnd}::date
+      WHERE tenant_id = ${tenantId}::uuid AND status = 'completed' AND meeting_date >= ${dateStart}::date AND meeting_date <= ${dateEnd}::date
       GROUP BY 1`),
     tx.execute(sql`
       SELECT EXTRACT(MONTH FROM order_date)::int AS m,
         COALESCE(SUM(CASE WHEN direction = 'inflow' THEN amount::numeric ELSE -amount::numeric END), 0) AS v
       FROM transactions
-      WHERE status IN ('successful','processed') AND order_date >= ${dateStart}::date AND order_date <= ${dateEnd}::date
+      WHERE tenant_id = ${tenantId}::uuid AND status IN ('successful','processed') AND order_date >= ${dateStart}::date AND order_date <= ${dateEnd}::date
       GROUP BY 1`),
     tx.execute(sql`
       SELECT EXTRACT(MONTH FROM created_at)::int AS m, COALESCE(SUM(amount::numeric), 0) AS v
       FROM sips
-      WHERE created_at >= ${dateStart}::date AND created_at <= ${dateEnd}::date
+      WHERE tenant_id = ${tenantId}::uuid AND created_at >= ${dateStart}::date AND created_at <= ${dateEnd}::date
       GROUP BY 1`),
     tx.execute(sql`
       SELECT EXTRACT(MONTH FROM order_date)::int AS m, COALESCE(SUM(amount::numeric), 0) AS v
       FROM transactions
-      WHERE status IN ('successful','processed') AND direction = 'inflow'
+      WHERE tenant_id = ${tenantId}::uuid AND status IN ('successful','processed') AND direction = 'inflow'
         AND type IN ('lumpsum','purchase')
         AND order_date >= ${dateStart}::date AND order_date <= ${dateEnd}::date
       GROUP BY 1`),

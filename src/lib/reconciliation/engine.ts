@@ -50,7 +50,8 @@ export async function reconcileHoldings(tx: Tx, tenantId: string): Promise<Recon
              MAX(scheme_name) AS scheme_name,
              SUM(CASE WHEN direction = 'inflow' THEN COALESCE(units,0) ELSE -COALESCE(units,0) END) AS units
       FROM transactions
-      WHERE status IN ('processed','successful') AND scheme_code IS NOT NULL
+      WHERE tenant_id = ${tenantId}::uuid
+        AND status IN ('processed','successful') AND scheme_code IS NOT NULL
       GROUP BY investor_id, scheme_code
     ),
     cas AS (
@@ -59,7 +60,7 @@ export async function reconcileHoldings(tx: Tx, tenantId: string): Promise<Recon
              SUM(NULLIF(s->>'units','')::numeric) AS units
       FROM folios f
       CROSS JOIN LATERAL jsonb_array_elements(COALESCE(f.schemes, '[]'::jsonb)) AS s
-      WHERE (s->>'schemeCode') IS NOT NULL
+      WHERE f.tenant_id = ${tenantId}::uuid AND (s->>'schemeCode') IS NOT NULL
       GROUP BY f.investor_id, (s->>'schemeCode')
     ),
     matched AS (
