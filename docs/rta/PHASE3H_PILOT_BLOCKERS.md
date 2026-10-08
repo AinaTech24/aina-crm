@@ -99,8 +99,8 @@ host is allowed), then count how many of the 219 KFintech codes resolve by ISIN.
 |---|---|---|---|---|---|---|
 | Upload → queue → worker (`/api/rta-imports/upload`, reimport, rescan, retry/requeue scripts) | `transactions.execute` + unwalled book + licence | withTenant | worker regime check **before reading the file**; legacy tx re-checks inside its own transaction | validate-first only | **held**: job delayed, file kept, row says why; runs on resume | worker-db, infra 3G |
 | Mail (S3 inbound, IMAP, held retry) | DKIM/DMARC + alias | alias → withTenant | same worker | same | same | infra 3G (mail) |
-| Drop folder (`feed-ingest`) | operator FS | folder name must be a firm id | regime check | refused (recorded) | **file left in the inbox**, nothing recorded | controls-db |
-| SFTP ingest | env | `RTA_FEED_SFTP_TENANT_ID` must be a firm id | **fixed**: no hard-coded firm; simulation only with `RTA_FEED_SFTP_SIMULATE=1` outside production; no default `./feed-inbox` | as drop folder | as drop folder | code review |
+| Drop folder (`feed-ingest`) | operator FS | folder name must be a firm id | regime check | refused (recorded) | **file left in the inbox**, nothing recorded | controls-db, feed-and-scripts-db (no default folder, firm-id folders only) |
+| SFTP ingest | env | `RTA_FEED_SFTP_TENANT_ID` must be a firm id | **fixed**: no hard-coded firm; simulation only with `RTA_FEED_SFTP_SIMULATE=1` outside production; no default `./feed-inbox` | as drop folder | as drop folder | feed-and-scripts-db (no simulation by default or in production; old hard-coded firm never written) |
 | `scripts/import-rta-local.ts --commit` | DB creds | withTenant | regime check | refused | **refused (fixed: held fell through)** | — |
 | Generic CSV (`/api/transactions/import/parse` + `commit`) | `transactions.execute` | withTenant | **write guard (bypass)** | **409**: upload the RTA file instead | 409 | entry-points-db |
 | Reconciliation "Sync to CRM" (single, bulk) | `transactions.execute` | withTenant | **write guard (bypass)** | 409 | 409 | entry-points-db |
@@ -110,9 +110,9 @@ host is allowed), then count how many of the 219 KFintech codes resolve by ISIN.
 | Manual identity resolution, scheme confirmation | `transactions.execute` + unwalled book | withTenant | posting gate | allowed | mapping saved; posting waits | validate-first-db, scheme-db |
 | Reversal / undo CLI | DB creds + two people | withTenant | firm must be halted | — | required | recovery-db, drill |
 | Operator controls | `platform.settings.manage` | system | one stops, two start | — | — | controls-db, entry-points-db |
-| Scripts `reset-tenant-book`, `cleanup-ahpal-rta`, `repair-rta-placeholders`, `dedupe-*-sips`, `mark-sip-transfers` | DB creds | mixed (some raw pg) | **refuse when writing** for a stopped or validate-first firm (`scripts/lib/rta-script-guard.ts`) | refused | refused | — |
+| Scripts `reset-tenant-book`, `cleanup-ahpal-rta`, `repair-rta-placeholders`, `dedupe-*-sips`, `mark-sip-transfers` | DB creds | mixed (some raw pg) | **refuse when writing** for a stopped or validate-first firm (`scripts/lib/rta-script-guard.ts`) | refused | refused | feed-and-scripts-db (guard: paused and validate-first refused, explicit legacy allowed) |
 | `backfill-folio-scheme-codes` (rewrites codes by NAME, all firms) | DB creds | withSystem | **skips governed firms**, refuses in an emergency | skipped | skipped | — |
-| `backfill-demo-nav` | DB creds | withSystem | **fixed**: one named demo firm (`--tenant` = `DEMO_TENANT_ID`), never production, refuses a firm with registrar data | refused | refused | — |
+| `backfill-demo-nav` | DB creds | withSystem | **fixed**: one named demo firm (`--tenant` = `DEMO_TENANT_ID`), never production, refuses a firm with registrar data | refused | refused | feed-and-scripts-db (no firm / production refused) |
 | Nightly revaluation / AUM recompute | system | per firm | not RTA writes (NAV pricing); unresolved legs not priced by name | runs | runs | scheme-db |
 
 **Not changed, reported:**
