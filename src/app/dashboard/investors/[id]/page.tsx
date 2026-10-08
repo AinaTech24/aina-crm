@@ -636,8 +636,8 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
                   <Stat
                     icon={Wallet}
                     label="Invested"
-                    value={v.investedNet != null ? formatMoney(v.investedNet) : "—"}
-                    sub={v.investedNet == null ? "Cost unknown for some holdings" : undefined}
+                    value={v.investedNet != null ? formatMoney(v.investedNet) : v.investedEstimate != null ? `≈ ${formatMoney(v.investedEstimate)}` : "—"}
+                    sub={v.investedNet != null ? undefined : v.investedEstimate != null ? "Estimated — some redemptions are missing from the RTA history" : "Cost unknown for some holdings"}
                     tone="muted"
                   />
                   <Stat

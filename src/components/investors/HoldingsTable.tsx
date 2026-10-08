@@ -31,6 +31,8 @@ export type Holding = {
   folioNumbers: string[];
   netUnits: number;
   investedNet: number | null;
+  /** Cost estimated from an incomplete history (lib/finance/valuation). */
+  investedEstimate?: number | null;
   latestNav: number | null;
   navDate: string | null;
   currentValue: number | null;
@@ -84,7 +86,7 @@ function Pct({ v, digits = 2 }: { v: number | null | undefined; digits?: number 
 }
 
 type Row = { h: Holding; i: number; avgNav: number | null; weight: number | null; absRet: number | null };
-type Totals = { invested: number | null; current: number; unrealised: number | null; realised: number; dividend: number; units: number; absRet: number | null };
+type Totals = { invested: number | null; investedApprox: number | null; current: number; unrealised: number | null; realised: number; dividend: number; units: number; absRet: number | null };
 type Col = {
   key: string;
   label: string;
@@ -148,10 +150,15 @@ export function HoldingsTable({
     const priced = src.filter((h) => h.priced);
     const sum = (f: (h: Holding) => number | null | undefined) => src.reduce((s, h) => s + (Number(f(h)) || 0), 0);
     const invested = src.some((h) => !h.hasTxns || h.investedNet == null) ? null : sum((h) => h.investedNet);
+    // Exact where known, estimated where the history is short — but only when
+    // every row has one or the other.
+    const investedApprox = invested == null && src.every((h) => (h.hasTxns && h.investedNet != null) || h.investedEstimate != null)
+      ? sum((h) => (h.hasTxns && h.investedNet != null ? h.investedNet : h.investedEstimate))
+      : null;
     const current = priced.reduce((s, h) => s + (h.currentValue || 0), 0);
     const unrealised = priced.some((h) => !h.hasTxns || h.gain == null) ? null : priced.reduce((s, h) => s + (h.gain || 0), 0);
     const absRet = invested != null && invested > 0 && unrealised != null ? (unrealised / invested) * 100 : null;
-    return { invested, current, unrealised, realised: sum((h) => h.realisedGain), dividend: sum((h) => h.dividend), units: sum((h) => h.netUnits), absRet };
+    return { invested, investedApprox, current, unrealised, realised: sum((h) => h.realisedGain), dividend: sum((h) => h.dividend), units: sum((h) => h.netUnits), absRet };
   }, [visibleRows]);
 
   const cols: Col[] = [
@@ -167,8 +174,22 @@ export function HoldingsTable({
     { key: "units", label: "Units", align: "right", has: () => true, cell: ({ h }) => fmtUnits(h.netUnits), total: (x) => fmtUnits(x.units) },
     { key: "avgNav", label: "Avg NAV", align: "right", has: (r) => r.avgNav != null, cell: (r) => fmtNav(r.avgNav) },
     {
-      key: "cost", label: "Invested", align: "right", has: (r) => !!r.h.hasTxns && r.h.investedNet != null,
-      cell: ({ h }) => (h.hasTxns ? fmtMoney(h.investedNet) : dash), total: (x) => (x.invested ? fmtMoney(x.invested) : "—"),
+      key: "cost", label: "Invested", align: "right",
+      has: (r) => (!!r.h.hasTxns && r.h.investedNet != null) || r.h.investedEstimate != null,
+      cell: ({ h }) =>
+        h.hasTxns && h.investedNet != null ? (
+          fmtMoney(h.investedNet)
+        ) : h.investedEstimate != null ? (
+          <span
+            className="text-muted-foreground"
+            title="Estimated: the RTA history is missing some redemptions, so this is the units held at the history's average cost."
+          >
+            {fmtMoney(h.investedEstimate)} <span className="text-2xs">est.</span>
+          </span>
+        ) : (
+          dash
+        ),
+      total: (x) => (x.invested ? fmtMoney(x.invested) : x.investedApprox ? `≈ ${fmtMoney(x.investedApprox)}` : "—"),
     },
     { key: "dividend", label: "Dividend", align: "right", has: (r) => !!r.h.dividend, cell: ({ h }) => (h.dividend ? fmtMoney(h.dividend) : dash), total: (x) => (x.dividend ? fmtMoney(x.dividend) : "—") },
     {
