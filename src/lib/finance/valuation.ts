@@ -4,6 +4,7 @@ import type { Tx } from "@/db/client";
 import { xirr, type CashFlow } from "./xirr";
 import { positionKey, type PositionIdentity } from "./position-key";
 import { loadNavIndex, lookupNav, type NavIndex } from "./scheme-match";
+import { schemeNameKey } from "./scheme-name-key";
 
 export type SchemeHolding = {
   schemeCode: string | null; schemeName: string | null; amcName: string | null;
@@ -53,6 +54,8 @@ export type ValuationTransaction = PositionIdentity & {
   latest_nav: string | number | null; latest_nav_date: string | null;
   /** The NAV master's name for the scheme code, when it knows the code. */
   nav_scheme_name?: string | null;
+  /** The AMFI scheme this row resolved to (by code, else by name). */
+  amfi_code?: string | null;
 };
 type SnapshotScheme = {
   schemeCode?: string | null; schemeName?: string | null; units?: number | string;
@@ -62,6 +65,7 @@ type SnapshotScheme = {
 export type ValuationSnapshot = PositionIdentity & {
   scheme: SnapshotScheme; latest_nav?: number | string | null; latest_nav_date?: string | null;
   snapshot_date?: string | null; nav_scheme_name?: string | null;
+  amfi_code?: string | null;
 };
 const finite = (v: unknown): number | null => {
   if (v == null || v === "") return null;
@@ -113,26 +117,44 @@ export async function loadValuationRows(tx: Tx, investorIds: string[]) {
   `)).rows as Array<{ tenant_id: string }>;
   if (tenantRows.length === 0) return { transactions: [], snapshots: [] };
   const tenants = sql.join(tenantRows.map((r) => sql`${r.tenant_id}::uuid`), sql`, `);
-  const transactions = (await tx.execute(sql`
-    SELECT t.investor_id, COALESCE(fi.id, fn.id, t.folio_id) AS folio_id,
+  // A transaction belongs to whoever holds its FOLIO, not to the client row
+  // it was filed under: a feed row carries the investor's PAN (a guardian's,
+  // for a minor's folio), and an import can move a folio without moving its
+  // history. Read by the transaction's own client, the same holding was valued
+  // twice — from the statement under the folio's owner and from the history
+  // under the other client (8 Oct 2026: 76,614 such transactions at Ahpal,
+  // 12,029 at Sandeep Garg). So: this batch's own transactions on folios it
+  // holds (or on none), plus transactions filed elsewhere on folios it holds.
+  const cols = sql`COALESCE(fi.investor_id, t.investor_id) AS investor_id,
+           COALESCE(fi.id, fn.id, t.folio_id) AS folio_id,
            COALESCE(fi.folio_number, fn.folio_number, t.folio_number) AS folio_number,
            COALESCE(fi.amc_code, fn.amc_code, t.amc_code) AS amc_code,
            COALESCE(fi.amc_name, fn.amc_name, t.amc_name) AS amc_name,
            t.scheme_code, t.scheme_name, t.direction, t.type, t.amount, t.units,
-           t.order_date, n.nav AS latest_nav, n.nav_date AS latest_nav_date, n.scheme_name AS nav_scheme_name
-    FROM transactions t
-    LEFT JOIN folios fi ON fi.id = t.folio_id AND fi.tenant_id = t.tenant_id
+           t.order_date, n.nav AS latest_nav, n.nav_date AS latest_nav_date, n.scheme_name AS nav_scheme_name,
+           n.scheme_code AS amfi_code, t.id AS txn_id`;
+  const joins = sql`LEFT JOIN folios fi ON fi.id = t.folio_id AND fi.tenant_id = t.tenant_id
     LEFT JOIN folios fn ON t.folio_id IS NULL AND fn.tenant_id = t.tenant_id
       AND fn.investor_id = t.investor_id AND fn.amc_code = t.amc_code AND fn.folio_number = t.folio_number
-    LEFT JOIN scheme_nav n ON n.scheme_code = t.scheme_code
-    WHERE t.tenant_id IN (${tenants}) AND t.investor_id IN (${ids})
-      AND t.status IN ('processed', 'successful')
-      AND t.order_date IS NOT NULL
-    ORDER BY t.order_date, t.id
+    LEFT JOIN scheme_nav n ON n.scheme_code = t.scheme_code`;
+  const live = sql`t.status IN ('processed', 'successful') AND t.order_date IS NOT NULL`;
+  const transactions = (await tx.execute(sql`
+    SELECT * FROM (
+      SELECT ${cols} FROM transactions t ${joins}
+       WHERE t.tenant_id IN (${tenants}) AND t.investor_id IN (${ids}) AND ${live}
+         AND (fi.id IS NULL OR fi.investor_id IN (${ids}))
+      UNION ALL
+      SELECT ${cols} FROM transactions t ${joins}
+       WHERE t.tenant_id IN (${tenants}) AND ${live}
+         AND t.folio_id IN (SELECT f.id FROM folios f WHERE f.tenant_id IN (${tenants}) AND f.investor_id IN (${ids}))
+         AND t.investor_id NOT IN (${ids})
+    ) x
+    ORDER BY x.order_date, x.txn_id
   `)).rows as unknown as ValuationTransaction[];
   const snapshots = (await tx.execute(sql`
     SELECT f.investor_id, f.id AS folio_id, f.folio_number, f.amc_code, f.amc_name,
            sc AS scheme, n.nav AS latest_nav, n.nav_date AS latest_nav_date, n.scheme_name AS nav_scheme_name,
+           n.scheme_code AS amfi_code,
            COALESCE(sc->>'snapshotDate', f.details->>'holdingsAsOf') AS snapshot_date
     FROM folios f CROSS JOIN LATERAL jsonb_array_elements(COALESCE(f.schemes, '[]'::jsonb)) AS sc
     LEFT JOIN scheme_nav n ON n.scheme_code = sc->>'schemeCode'
@@ -171,11 +193,11 @@ async function priceByName(tx: Tx, transactions: ValuationTransaction[], snapsho
   };
   for (const r of needT) {
     const h = hit(String(r.scheme_name));
-    if (h) { r.latest_nav = h.nav; r.latest_nav_date = h.navDate; }
+    if (h) { r.latest_nav = h.nav; r.latest_nav_date = h.navDate; r.amfi_code = h.code; }
   }
   for (const r of needS) {
     const h = hit(String(r.scheme.schemeName));
-    if (h) { r.latest_nav = h.nav; r.latest_nav_date = h.navDate; }
+    if (h) { r.latest_nav = h.nav; r.latest_nav_date = h.navDate; r.amfi_code = h.code; }
   }
 }
 export async function valueInvestor(tx: Tx, investorId: string): Promise<InvestorValuation> {
@@ -211,38 +233,60 @@ export function computeInvestorValuation(rows: ValuationTransaction[], snapshots
   // A transaction with no folio — the reconciliation "opening balance" posted
   // one for units a folio already held — belongs to the one folio that holds
   // that scheme; posted beside it, it doubled the holding.
+  //
+  // "One scheme" is the AMFI scheme a row resolves to, else its schemeNameKey —
+  // never the exact name alone. The registrar and the holdings file write one
+  // scheme differently ("HDFC Childrens Fund - Regular Plan" / "HDFC Children's
+  // Fund - Regular Plan - Growth Option"); once both sides could be priced
+  // (8 Oct 2026) the exact-name rule counted such a holding twice — Ahpal's
+  // book read Rs 800.89 Cr against a Rs 735.74 Cr folio register.
   const hasFolio = (r: PositionIdentity) => !!(r.folio_id || r.folio_number);
-  const foliosByName = new Map<string, Set<string>>();
-  const noteFolio = (identity: PositionIdentity) => {
+  type Ident = PositionIdentity & { amfi_code?: string | null };
+  // Every identity a row can be known by: its AMFI scheme and its name key.
+  // Two rows in one folio sharing EITHER are one holding.
+  const groupsOf = (identity: Ident): string[] => {
+    const out: string[] = [];
+    if (identity.amfi_code) out.push(`amfi:${identity.amfi_code}`);
     const nm = bestName(identity.scheme_code, identity.scheme_name);
-    if (!nm || codeLikeName(nm, identity.scheme_code) || !hasFolio(identity)) return;
-    const k = `${identity.investor_id ?? ""}|${nameKey(nm)}`;
-    const set = foliosByName.get(k) ?? new Set<string>();
-    set.add(folioPart(identity));
-    foliosByName.set(k, set);
+    if (nm && !codeLikeName(nm, identity.scheme_code)) {
+      const k = schemeNameKey(nm);
+      out.push(k ? `key:${k.tokens}|${k.direct ? "d" : "r"}` : nameKey(nm));
+    }
+    return out;
+  };
+  const foliosByName = new Map<string, Set<string>>();
+  const noteFolio = (identity: Ident) => {
+    if (!hasFolio(identity)) return;
+    for (const g of groupsOf(identity)) {
+      const k = `${identity.investor_id ?? ""}|${g}`;
+      const set = foliosByName.get(k) ?? new Set<string>();
+      set.add(folioPart(identity));
+      foliosByName.set(k, set);
+    }
   };
   for (const r of rows) noteFolio(r);
   for (const r of snapshots) noteFolio({ ...r, scheme_code: r.scheme?.schemeCode, scheme_name: r.scheme?.schemeName });
   const canonical = new Map<string, string>();
   const alias = new Map<string, string>();
   const keyFolio = new Map<string, string>();
-  const canonFor = (identity: PositionIdentity) => {
+  const canonFor = (identity: Ident) => {
     const key = positionKey(identity);
     const cached = alias.get(key);
     if (cached) return cached;
-    const nm = bestName(identity.scheme_code, identity.scheme_name);
-    const named = nm && !codeLikeName(nm, identity.scheme_code) ? nameKey(nm) : null;
+    const groups = groupsOf(identity);
     let fp = folioPart(identity);
-    if (named && !hasFolio(identity)) {
-      const homes = foliosByName.get(`${identity.investor_id ?? ""}|${named}`);
-      if (homes?.size === 1) fp = [...homes][0];
+    if (groups.length && !hasFolio(identity)) {
+      for (const g of groups) {
+        const homes = foliosByName.get(`${identity.investor_id ?? ""}|${g}`);
+        if (homes?.size === 1) { fp = [...homes][0]; break; }
+      }
     }
-    const group = named ? fp + "|" + named : null;
     let canon = key;
-    if (group) {
-      const seen = canonical.get(group);
-      if (seen) canon = seen; else canonical.set(group, key);
+    for (const g of groups) {
+      const seen = canonical.get(fp + "|" + g);
+      if (seen) { canon = seen; break; }
     }
+    for (const g of groups) if (!canonical.has(fp + "|" + g)) canonical.set(fp + "|" + g, canon);
     alias.set(key, canon);
     if (!keyFolio.has(canon)) keyFolio.set(canon, fp);
     return canon;
@@ -291,6 +335,27 @@ export function computeInvestorValuation(rows: ValuationTransaction[], snapshots
   const snapshotParts = new Map<string, Map<string, Snap>>();
   // Statements that say, in so many words, 0 units (a blank is not a zero).
   const zeroKeys = new Set<string>();
+  // Folios a holdings STATEMENT has valued (a leg that states its units — a
+  // master file's legs carry none). Such a statement lists the folio's
+  // holdings, so a scheme the history holds but the statement does not was
+  // sold, its redemption never fed in: Ahpal's book read Rs 1,018 Cr against
+  // a Rs 736 Cr register on 8 Oct 2026 once those history-only holdings
+  // could be priced.
+  //
+  // The same for a folio a registrar MASTER lists (schemes without units): the
+  // registrar knows the folio, so the history alone is not evidence of a
+  // holding there. Counting those history-only holdings put Ahpal at Rs 827 Cr
+  // against the firm's own Rs 726 Cr; without them the book is the registrar
+  // statements' Rs 733 Cr. History values a folio only when no registrar file
+  // mentions that folio at all.
+  const statedFolios = new Set<string>();
+  for (const r of snapshots) statedFolios.add(folioPart(r));
+  // And a client the registrar values at all is valued from the registrar:
+  // a history-only holding in a folio with no legs is not in any statement
+  // either (Nimesh C Shah, 8 Oct 2026: 645 such holdings, Rs 40.07 Cr, over a
+  // statement-backed Rs 130.48 Cr against the firm's Rs 130.56 Cr). History
+  // values holdings only for a client no registrar statement covers.
+  const registrarValued = snapshots.some((r) => finite(r.scheme?.units) != null);
   for (const r of snapshots) {
     const sc = r.scheme ?? {}, identity = { ...r, scheme_code: sc.schemeCode, scheme_name: sc.schemeName };
     if (!sc.schemeCode && !sc.schemeName) continue;
@@ -358,7 +423,8 @@ export function computeInvestorValuation(rows: ValuationTransaction[], snapshots
     if (s) h.snapshotDate = s.holding.snapshotDate;
     // The statement says 0 units for a holding the history still shows open:
     // its redemptions never reached the feed. It is closed, cost unknown.
-    const statementZero = !s && !!p && zeroKeys.has(key) && h.netUnits > DUST;
+    const statementZero = !s && !!p && h.netUnits > DUST
+      && (zeroKeys.has(key) || registrarValued || statedFolios.has(keyFolio.get(key) ?? ""));
     if (statementZero) {
       h.netUnits = 0; h.currentValue = 0; h.historyCoverage = "incomplete";
     } else if (snapshotWins && s) {

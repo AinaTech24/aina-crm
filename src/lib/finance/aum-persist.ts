@@ -33,16 +33,19 @@ async function persistBatch(tx: Tx, investorIds: string[]): Promise<BatchStats> 
     // book goes stale without anyone noticing. Count both reasons so the caller
     // can report them.
     if (!value.holdings.length) { skippedNoHoldings++; continue; }
-    // An unpriced holding makes the total a FLOOR, not wrong: everything else
-    // is valued. Keeping the cache whenever one holding was unpriced froze the
+    // An unpriced holding is counted at what it cost; everything else at its
+    // value. Keeping the cache whenever one holding was unpriced froze the
     // client at whatever it last said — Rs 0 for the 2,075 Ahpal clients whose
     // folios came back on 8 Oct 2026, so Rs 161 Cr of folios counted nowhere.
-    // Write the floor when it is above the cache; never lower a figure on it.
+    // (A "never lower" floor was tried first and would have locked in a
+    // double count; at cost the figure can move both ways.)
+    let total = value.currentValue;
     if (value.unpricedSchemes > 0) {
       skippedUnpriced++;
-      if (!(value.currentValue > (cached.get(id) ?? 0) + 0.5)) continue;
+      total += value.unpricedInvested;
+      if (Math.abs(total - (cached.get(id) ?? 0)) < 0.5) continue;
     }
-    updates.push(sql`(${id}::uuid, ${value.currentValue}::numeric)`);
+    updates.push(sql`(${id}::uuid, ${total}::numeric)`);
     invalidateInvestorValuation(id);
   }
   if (!updates.length) return { updated: 0, skippedUnpriced, skippedNoHoldings };

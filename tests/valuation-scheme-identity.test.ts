@@ -42,6 +42,28 @@ describe("scheme names", () => {
 });
 
 describe("one holding under two codes in one folio", () => {
+  it("is one row when the registrar and the statement spell the scheme differently", () => {
+    // Ahpal, 8 Oct 2026: once the feed's code was priced by name, the exact-name
+    // rule made these two holdings and the book read Rs 800.89 Cr, not Rs 736 Cr.
+    const v = computeInvestorValuation(
+      [{ ...buy("HCGI", "HDFC Childrens Fund - Regular Plan'", 1000, 100000, "2019-01-01", 300), amfi_code: "100900" }],
+      [{ ...leg("100900", "HDFC Children's Fund - Regular Plan - Growth Option", 950, 300, 300), amfi_code: "100900" }],
+      NOW,
+    );
+    expect(v.holdings).toHaveLength(1);
+    expect(v.currentValue).toBeCloseTo(285000, 0); // the statement's 950 units, once
+  });
+
+  it("is one row by name key even when only one side resolved to an AMFI code", () => {
+    const v = computeInvestorValuation(
+      [{ ...buy("K1155", "Kotak Multi Cap Fund Regular Plan - Growth", 500, 5000, "2022-01-01", 20), amfi_code: "149000" }],
+      [leg("K1155X", "Kotak Multicap Fund-Regular Plan-Growth", 480, 20)],
+      NOW,
+    );
+    expect(v.holdings).toHaveLength(1);
+    expect(v.currentValue).toBeCloseTo(9600, 0);
+  });
+
   it("is one row, valued once", () => {
     const v = computeInvestorValuation(
       [buy("D157", "DSP Small Cap Fund - Regular Plan - Growth", 22659.789, 1_000_000, "2010-09-21")],
