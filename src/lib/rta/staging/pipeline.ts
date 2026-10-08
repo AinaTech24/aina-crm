@@ -68,6 +68,8 @@ export type CreateBatchInput = {
   importId?: string | null;
   createdBy?: string | null;
   rerunOfBatchId?: string | null;
+  /** "validate_first" when the batch is the gate in front of posting (Phase 3F). */
+  mode?: "shadow" | "validate_first";
 };
 
 export class StagingStageError extends Error {
@@ -101,6 +103,7 @@ export async function createShadowBatch(input: CreateBatchInput): Promise<string
     const [row] = await tx.insert(rtaStagingBatches).values({
       tenantId: input.tenantId,
       importId: input.importId ?? null,
+      mode: input.mode ?? "shadow",
       fileName: input.fileName,
       fileRef: input.fileRef,
       fileChecksum: checksum,
@@ -381,10 +384,10 @@ async function reconcile(tx: Tx, tenantId: string, b: BatchRow, layout: Layout, 
 
     // Earlier batches: duplicate / restated / conflict.
     const keys = econs.map((e) => e.identityKey);
-    const prior = new Map<string, { id: string; invariant_hash: string; lot_signature: string }>();
+    const prior = new Map<string, { id: string; invariant_hash: string; lot_signature: string; status: string }>();
     for (const part of chunks(keys, 1000)) {
       const rows = (await tx.execute(sql`
-        SELECT DISTINCT ON (e.identity_key) e.id, e.identity_key, e.invariant_hash, e.lot_signature
+        SELECT DISTINCT ON (e.identity_key) e.id, e.identity_key, e.invariant_hash, e.lot_signature, e.status
           FROM rta_staging_economic_txns e
           JOIN rta_staging_batches pb ON pb.tenant_id = e.tenant_id AND pb.id = e.batch_id
          WHERE e.tenant_id = ${tenantId}::uuid
@@ -397,13 +400,18 @@ async function reconcile(tx: Tx, tenantId: string, b: BatchRow, layout: Layout, 
                             WHERE s.tenant_id = pb.tenant_id AND s.rerun_of_batch_id = pb.id AND s.id <> ${b.id}::uuid
                               AND s.state IN ('ready_to_commit', 'exception'))
          ORDER BY e.identity_key, e.created_at, e.id
-      `)).rows as Array<{ id: string; identity_key: string; invariant_hash: string; lot_signature: string }>;
-      for (const r of rows) prior.set(r.identity_key, { id: String(r.id), invariant_hash: r.invariant_hash, lot_signature: r.lot_signature });
+      `)).rows as Array<{ id: string; identity_key: string; invariant_hash: string; lot_signature: string; status: string }>;
+      for (const r of rows) prior.set(r.identity_key, { id: String(r.id), invariant_hash: r.invariant_hash, lot_signature: r.lot_signature, status: r.status });
     }
     for (const e of econs) {
       const p = prior.get(e.identityKey);
       if (!p) continue;
       e.duplicateOf = p.id;
+      // A different folio / scheme / date under the same identity is a conflict
+      // whatever the earlier copy's state. A restatement or duplicate is judged
+      // only against an earlier COMPLETE copy: an earlier quarantined copy must
+      // not stop a later valid one from being considered.
+      if (p.invariant_hash === e.invariantHash && p.status !== "complete") { e.duplicateOf = null; continue; }
       if (p.invariant_hash !== e.invariantHash) {
         e.finalStatus = "conflict"; e.exception = "identity_conflict";
         e.reason = "an earlier file reported this registrar transaction number for a different folio, scheme, date or type — neither is changed; held for review";

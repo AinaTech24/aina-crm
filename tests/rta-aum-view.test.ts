@@ -4,7 +4,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { scopeView, type HoldingStatement } from "@/lib/rta/holdings-snapshot";
-import { firmAumHeadline, registrarAumCards, valuePosition, type FolioEvidence } from "@/lib/rta/aum-view";
+import { aumCoverageNote, firmAumHeadline, registrarAumCards, valuePosition, type FolioEvidence } from "@/lib/rta/aum-view";
+import { statementCoverage } from "@/lib/finance/statement-coverage";
 
 const AS_OF = "2026-10-08";
 const kfin: HoldingStatement = {
@@ -93,5 +94,30 @@ describe("one position, two valuations", () => {
   it("no value and no NAV is shown as unknown, never as zero; a nil balance is zero and still a position", () => {
     expect(valuePosition({ units: 5, source: { ...source, value: null } }, null).shown).toEqual({ kind: "none", value: null, caption: "no value stated and no NAV" });
     expect(valuePosition({ units: 0, source: { ...source, value: 0 } }, null)).toMatchObject({ units: 0, shown: { value: 0, caption: "nil balance" } });
+  });
+});
+
+// ── Phase 3F: the freshness lines on the AUM tile and the client portfolio ──
+
+describe("coverage notes (Phase 3F)", () => {
+  const card = (o: Record<string, unknown>) => ({
+    rta: "kfintech", arn: "ARN-1", sourceValue: 1, asOf: "2026-10-08", oldestAsOf: "2026-10-08", mixedDates: false, ageDays: 0, stale: false, fullBook: true,
+    positions: 1, zeroPositions: 0, unvalued: 0, amcs: 1, coverageGaps: { count: 0, sources: {} }, label: "", ...o,
+  }) as any;
+  it("quiet when nothing is known; plain when every registrar is full-book and fresh", () => {
+    expect(aumCoverageNote([])).toBeNull();
+    expect(aumCoverageNote([card({})])).toEqual({ text: "Registrar statements: KFintech 2026-10-08", warn: false });
+  });
+  it("names a stale, partial, mixed-date CAMS statement and warns", () => {
+    const n = aumCoverageNote([card({}), card({ rta: "cams", asOf: "2026-10-08", oldestAsOf: "2026-05-18", mixedDates: true, ageDays: 143, stale: true, fullBook: false, coverageGaps: { count: 3, sources: {} } })]);
+    expect(n).toEqual({ text: "Registrar statements: CAMS 2026-05-18–2026-10-08 (partial, mixed dates, 143 days old, 3 folios not listed) · KFintech 2026-10-08", warn: true });
+  });
+  it("client portfolio: one date, different dates, stale and uncovered holdings; closed holdings ignored", () => {
+    const h = (asOf: string | null, units = 1) => ({ netUnits: units, currentValue: units ? 10 : 0, registrar: asOf ? { asOf, report: "X" } : null });
+    expect(statementCoverage([h(null)], "2026-10-08")).toBeNull();
+    expect(statementCoverage([h("2026-10-08"), h("2026-10-08")], "2026-10-08")).toEqual({ text: "Registrar statement dated 2026-10-08", warn: false });
+    expect(statementCoverage([h("2026-05-18"), h("2026-10-08"), h(null), h("2020-01-01", 0)], "2026-10-08")).toEqual({
+      text: "Registrar statements dated 2026-05-18 – 2026-10-08 (different dates) · the oldest is 143 days old · 1 holding not on any statement", warn: true,
+    });
   });
 });

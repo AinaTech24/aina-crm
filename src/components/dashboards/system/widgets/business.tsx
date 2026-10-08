@@ -27,6 +27,8 @@ import { Drill } from "../Drill";
 import { MoneyMovementChart, type MoneyPoint } from "../MoneyMovementChart";
 import { Sparkline } from "../Sparkline";
 import { Initials } from "@/components/dashboards/my/Shared";
+import { getRegistrarAum } from "@/lib/metrics/registrar-aum";
+import { aumCoverageNote } from "@/lib/rta/aum-view";
 
 /* ─────────────────────────────── pieces ─────────────────────────────── */
 
@@ -179,6 +181,8 @@ async function kpiRow(tx: Tx, ctx: WidgetCtx) {
     () => getInsurancePremium(tx, s, p, p.prev),
     () => getActiveClients(tx, s),
   );
+  // What the units behind the live AUM were last checked against (registrar statements).
+  const coverage = aumCoverageNote((await getRegistrarAum(tx, s)).cards, (d) => formatDate(d, "dayMonth"));
   const cur = biz.current;
   const prev = biz.previous;
   const bizInfo = cur
@@ -209,6 +213,7 @@ async function kpiRow(tx: Tx, ctx: WidgetCtx) {
           href={clientsHref(ctx, { sort: "aum", dir: "desc" })}
           info="Assets under management of live clients, today: units held × the latest NAV on file. Moves with the market as well as with sales. The registrars' own dated statements, per registrar and ARN, are on the Registrar AUM card — a different figure, never added to this one."
           compare={then ? vs(aum.aum, then.aum, `vs ${formatDate(then.date, "dayMonth")}`) : null}
+          footer={coverage ? <span className={coverage.warn ? "text-warning-foreground" : undefined} title="Units on file are checked against these registrar statements. Stale, partial or mixed-date statements mean today's figure is not proven current.">{coverage.text}</span> : undefined}
         />
         <KpiTile
           className={ROW_OF_FOUR}

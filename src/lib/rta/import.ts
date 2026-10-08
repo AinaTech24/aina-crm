@@ -59,6 +59,13 @@ export type RtaImportSummary = {
   /** Folios that moved from an import placeholder to their PAN-keyed client,
    *  with how many transactions / SIPs moved with them. */
   moved: { folios: number; transactions: number; sips: number };
+  /**
+   * Identities kept SEPARATE for want of strong evidence, for staff review
+   * (Phase 3F): e.g. a minor keyed only on guardian PAN + name at one registrar
+   * while a client with that key holds only the other registrar's folios.
+   * Written, not held — they are reported so a person can decide to merge.
+   */
+  reviews?: Array<{ row: number; reason: string }>;
 };
 
 // Drizzle transaction — typed loosely to match the codebase's withTenant callers.
@@ -92,6 +99,8 @@ export async function importRtaFolios(
     assignRmId?: string | null;
     reportType?: string;
     kind?: "master" | "holdings" | "full";
+    /** Validate-first lineage: the staging batch these legs were committed from. */
+    sourceBatchId?: string;
     quotaCap?: number;
     /** Called after each upsert batch so the worker can report live progress. */
     onProgress?: (phase: "clients" | "folios", done: number, total: number) => void;
@@ -131,6 +140,7 @@ export async function importRtaFolios(
     nopanKeys: [...new Set(records.map((r) => nopanFolioKey(r.folioNumber)))],
   });
   const exceptions: Array<{ row: number; reason: string }> = [];
+  const reviews: Array<{ row: number; reason: string }> = [];
 
   /** The pool of CRM folio rows this record's folio is: same AMC code, else an AMC-less row. */
   const folioPool = async (r: RtaFolioRecord) => {
@@ -156,7 +166,22 @@ export async function importRtaFolios(
       // ALWAYS "MINOR:"-prefixed so a minor key can never equal an adult's plain
       // PAN. Scope by guardian PAN + name when available, else the minor's own
       // PAN.
-      const key = gp && inv.name ? `MINOR:${gp}:${slug(inv.name)}` : own ? `MINOR:${own}` : null;
+      let key = gp && inv.name ? `MINOR:${gp}:${slug(inv.name)}` : own ? `MINOR:${own}` : null;
+      // A name + guardian key is weak evidence. When the client already keyed
+      // on it holds folios ONLY at the other registrar, this registrar's minor
+      // is NOT linked to it by name: it gets a registrar-scoped provisional
+      // identity, and the possible match is reported for a person to decide.
+      // (Existing links are never changed: a key with folios here is reused.)
+      if (key && gp && inv.name) {
+        const existing = await dir.byPanColumn(key);
+        if (existing.kind === "found") {
+          const rtas = (await tx.execute(sql`SELECT DISTINCT rta::text AS rta FROM folios WHERE tenant_id = ${tenantId}::uuid AND investor_id = ${existing.id}::uuid`)).rows as Array<{ rta: string }>;
+          if (rtas.length && !rtas.some((x) => x.rta === r.rta)) {
+            key = `${key}:${r.rta.toUpperCase()}`;
+            reviews.push({ row: records.indexOf(r) + 1, reason: `folio ${r.folioNumber}: a minor matching an existing client only by guardian PAN and name, at another registrar — kept as a separate provisional client; merge only after review` });
+          }
+        }
+      }
       if (key) return { key, isMinor: true, guardianPan: gp, noPan: false };
     } else if (own) {
       // Owner rules (lib/rta/owner.ts, Phase 3E on this path too):
@@ -344,6 +369,7 @@ export async function importRtaFolios(
     amcs,
     exceptions,
     moved: { folios: 0, transactions: 0, sips: 0 },
+    reviews,
   };
 
   if (dryRun) return summary;
@@ -546,6 +572,7 @@ export async function importRtaFolios(
           sourceAsOf: r.reportDate ?? null,
           sourceReport: opts.reportType ?? null,
           sourceArn: s.arn ?? null,
+          ...(opts.sourceBatchId ? { sourceBatchId: opts.sourceBatchId } : {}),
         })),
         ...(r.aum != null ? { aum: String(r.aum) } : {}),
       };

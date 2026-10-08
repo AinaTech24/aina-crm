@@ -615,6 +615,56 @@ Evidence and module verdicts: `docs/rta/PHASE3E_EIGHT_MODULES.md`.
   mask), one current role per person per folio, append-only (close and
   replace, never edit).
 
+## RTA validate-first import — Phase 3F (DEVELOPMENT ONLY)
+
+`RTA_PIPELINE_MODE=validate_first` sends every RTA file — upload and mail
+alike (same worker jobs) — through staging, validation, owner resolution,
+classification and reconciliation BEFORE any financial write, then commits in
+one transaction. The legacy importers are not called in this mode. Code:
+`src/lib/rta/posting/` (gate · post · masters · sip-book · validate-first ·
+resolve · held), migration 0235, screen `/dashboard/rta-imports/held`. Design,
+evidence and the acceptance run: `docs/rta/PHASE3F_VALIDATE_FIRST.md`.
+
+- **The posting gate fails closed** (`gate.ts`): `RTA_POSTING_MODE=development`,
+  not production by any env marker, `RTA_POSTING_DATABASE` named, a loopback /
+  socket database URL, and — inside the posting transaction —
+  `current_database()` equal to that name on a loopback server. Anything else:
+  `validate_first_refused`, the import fails, nothing is staged or written, no
+  fallback to the legacy path. Never relax a condition to make an environment
+  pass.
+- **One registrar transaction posts once**: `rta_posted_transactions`
+  UNIQUE(tenant, identity_key) under a per-firm advisory lock. Every staged
+  economic transaction gets an outcome (posted · matched_existing ·
+  rejected_recorded · already_posted · quarantined · unsupported ·
+  correction_held · held_dependent · blocked). An existing CRM row with the
+  same number and the same facts is matched; a different one is quarantined,
+  never overwritten.
+- **Only to a client on record.** A transaction posts to the folio's owner on
+  record, or an owner found by their OWN PAN; otherwise it is held
+  (`owner_not_on_record`) — import masters first. Partial commits only where
+  independence is proven: an identity / figures hold on a folio holds the
+  folio's other transactions (`held_dependent`).
+- **A KFintech multi-lot redemption is one transaction** (lots kept in
+  `rta_staging_lots`); its amount is the registrar's (`amountMeaning`
+  registrar_reported, `payoutVerified` false — STT is reported separately).
+- **Refused instructions** are rejected records (0 units) plus a
+  `sip_rejections` row for an instalment — never business, never a stop.
+  Folio-consolidation rows are held as corrections.
+- **SIP book**: `rebuildSipBook` writes `rta_sip_registrations` and posts to
+  `sips` ONLY verified registrations with an owner on record. Observed
+  activity and unknown status never reach `sips`; a CRM SIP with a different
+  status is left unchanged and reported.
+- **Masters** post only folios whose every staged row is clean; holders go to
+  `folio_holders` (tokens and masks). A minor matching an existing client
+  only by guardian PAN + name at the OTHER registrar is a separate provisional
+  client (`MINOR:<gp>:<NAME>:<RTA>`) and a review item — never merged.
+- **Manual resolution** (`resolve.ts`, `POST /api/rta-staging/economic/:id/resolve`)
+  settles only ownership holds, re-checks guardian / Karta / PAN / folio
+  rules, posts once and writes `rta.identity.resolve` to the audit log
+  (directly — a resolution that cannot be audited does not happen).
+- Re-run the real-file acceptance with the scratch harness described in the
+  doc; browser check: `scripts/rta-validate-first-ui.mjs`.
+
 ## Webhook handlers
 
 | Provider | Path | Verifies |

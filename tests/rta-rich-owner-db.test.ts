@@ -91,4 +91,28 @@ describe.skipIf(!TEST_DB)("rich importer — HUF, guardian and unstated holder t
     await run(MFSD203_HEADER, [h203({ "Folio Number": "94000051", PAN: PAN.guardian })], "holdings");
     expect(await folioOwner("94000051")).toEqual([{ id: ids.guardian }]);
   });
+  it("a minor at a second registrar matching only by guardian PAN + name is a SEPARATE provisional client, reported for review — never merged by name", async () => {
+    const minorRec = (rta: "cams" | "kfintech", folio: string, amc: string) => ({
+      rta, amcCode: amc, amcName: `AMC ${amc}`, folioNumber: folio, schemes: [], nominees: [], bank: {}, reportDate: "2026-10-08",
+      investor: { pan: null, name: "Second Child", category: "minor", isMinor: true, guardianPan: PAN.guardian, guardianName: "Test Guardian" },
+    }) as any;
+    await withTenant(t, (tx) => importRtaFolios(tx, t, [minorRec("cams", "5551234/11", "H")], { kind: "master", reportType: "R9" }));
+    const second = await withTenant(t, (tx) => importRtaFolios(tx, t, [minorRec("kfintech", "94000077", "117")], { kind: "master", reportType: "MFSD211" }));
+    const [a] = await folioOwner("5551234/11");
+    const [b] = await folioOwner("94000077");
+    expect(a?.id).toBeTruthy();
+    expect(b?.id).toBeTruthy();
+    expect(a.id).not.toBe(b.id);
+    expect(JSON.stringify((second as any).reviews ?? [])).toMatch(/separate provisional client; merge only after review/);
+    const keys = await withTenant(t, async (tx) => (await tx.execute(sql`SELECT pan, is_minor, guardian_investor_id::text AS g FROM investors WHERE tenant_id = ${t}::uuid AND id IN (${a.id}::uuid, ${b.id}::uuid) ORDER BY pan`)).rows as any[]);
+    expect(keys.every((k) => k.is_minor && k.g === ids.guardian && String(k.pan).startsWith("MINOR:"))).toBe(true);
+    expect(keys.map((k) => k.pan)).toEqual([`MINOR:${PAN.guardian}:SECONDCHILD`, `MINOR:${PAN.guardian}:SECONDCHILD:KFINTECH`].sort());
+    // Re-importing either side reuses its own client — no third client, nothing moved.
+    await withTenant(t, (tx) => importRtaFolios(tx, t, [minorRec("kfintech", "94000077", "117")], { kind: "master", reportType: "MFSD211" }));
+    await withTenant(t, (tx) => importRtaFolios(tx, t, [minorRec("cams", "5551234/11", "H")], { kind: "master", reportType: "R9" }));
+    expect(await folioOwner("5551234/11")).toEqual([a]);
+    expect(await folioOwner("94000077")).toEqual([b]);
+    // The guardian owns neither.
+    expect([a.id, b.id]).not.toContain(ids.guardian);
+  });
 });

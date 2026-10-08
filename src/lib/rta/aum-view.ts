@@ -86,6 +86,37 @@ export function registrarAumCards(scopes: ScopeView[], evidence: FolioEvidence[]
   });
 }
 
+/**
+ * One line for the live-NAV AUM tile: which registrar statements the units on
+ * file were last checked against, and how complete and fresh each is. Null
+ * when no dated statement exists (nothing to say; the Registrar AUM card shows
+ * the empty state). `warn` when any scope is stale, partial, mixed-dated or
+ * has coverage gaps — the tile's figure then rests on units that are not
+ * proven current.
+ */
+export function aumCoverageNote(cards: RegistrarAumCard[], fmt: (iso: string) => string = (d) => d): { text: string; warn: boolean } | null {
+  if (!cards.length) return null;
+  const name = (rta: string) => (rta === "kfintech" ? "KFintech" : rta === "cams" ? "CAMS" : rta);
+  const byRta = new Map<string, RegistrarAumCard[]>();
+  for (const c of cards) byRta.set(c.rta, [...(byRta.get(c.rta) ?? []), c]);
+  let warn = false;
+  const parts = [...byRta.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([rta, cs]) => {
+    const newest = cs.map((c) => c.asOf).filter((x): x is string => !!x).sort().at(-1) ?? null;
+    const oldest = cs.map((c) => c.oldestAsOf).filter((x): x is string => !!x).sort()[0] ?? null;
+    const flags: string[] = [];
+    if (cs.some((c) => !c.fullBook)) flags.push("partial");
+    if (cs.some((c) => c.mixedDates) || (oldest && newest && oldest !== newest)) flags.push("mixed dates");
+    const age = Math.max(...cs.map((c) => c.ageDays ?? Infinity));
+    if (cs.some((c) => c.stale)) flags.push(Number.isFinite(age) ? `${age} days old` : "undated");
+    const gaps = cs.reduce((n, c) => n + c.coverageGaps.count, 0);
+    if (gaps) flags.push(`${gaps} folio${gaps === 1 ? "" : "s"} not listed`);
+    if (flags.length) warn = true;
+    const when = !newest ? "undated" : oldest && oldest !== newest ? `${fmt(oldest)}–${fmt(newest)}` : fmt(newest);
+    return `${name(rta)} ${when}${flags.length ? ` (${flags.join(", ")})` : ""}`;
+  });
+  return { text: `Registrar statements: ${parts.join(" · ")}`, warn };
+}
+
 export type FirmAumHeadline = {
   /** Null unless every condition holds; the cards still carry each registrar's figure. */
   value: number | null;

@@ -99,7 +99,7 @@ describe("SIP Master — lifecycle", () => {
     const wbr49 = m.entries.find((e) => e.key.startsWith("reg:cams"))!;
     expect(wbr49.instalments.processed).toBe(0);
     // The R2 reference is its own registration (its own namespace), known only from instalments.
-    expect(m.entries.find((e) => e.key.startsWith("sipref:cams"))).toMatchObject({ described: false, state: "UNKNOWN", confidence: "partial" });
+    expect(m.entries.find((e) => e.key.startsWith("sipref:cams"))).toMatchObject({ described: false, state: "OBSERVED_ACTIVITY", confidence: "partial" });
     expect(m.exceptions.map((x) => x.code)).toContain("registration_not_described");
   });
 });
@@ -132,7 +132,7 @@ describe("SIP Master — Phase 3E fields", () => {
   it("a registration known only from its instalments is evidenced, never in the book, and counted as operating only within the cycle", () => {
     const m = buildSipMaster([], [ev({ registrationRef: "77", date: "2026-10-01", kind: "sip", amount: 3000 }), ev({ registrationRef: "78", date: "2026-07-01", kind: "sip", amount: 1000 })], AS_OF);
     expect(m.entries.map((e) => [e.registrationId, e.described, e.kind, e.state, e.operational, e.amount])).toEqual([
-      ["77", false, "sip", "UNKNOWN", true, 3000],
+      ["77", false, "sip", "OBSERVED_ACTIVITY", true, 3000],
       ["78", false, "sip", "UNKNOWN", false, 1000],
     ]);
     const b = activeSipBook(m);
@@ -144,6 +144,26 @@ describe("SIP Master — Phase 3E fields", () => {
   it("the owner comes from the caller's resolver", () => {
     const m = buildSipMaster([k243()], [], AS_OF, { ownerOf: (r) => (r.folio === "9100001" ? { investorId: "inv-1", folioId: "f-1", rule: "existing_folio_owner" } : null) });
     expect(m.entries[0].owner).toEqual({ investorId: "inv-1", folioId: "f-1", rule: "existing_folio_owner" });
+  });
+});
+
+describe("SIP Master — observed activity is not verified status (Phase 3F)", () => {
+  it("an instalment within ONE cycle of the frequency is observed activity; outside it the state stays UNKNOWN — never STOPPED", () => {
+    // A stale register (90 days) cannot state the status; the instalment decides only OBSERVED vs UNKNOWN.
+    const stale = { reportDate: "2026-07-01" };
+    const q = buildSipMaster([k243({ ...stale, frequencyText: "Quarterly" })], [ev({ date: "2026-08-10" })], AS_OF).entries[0];
+    expect(q).toMatchObject({ state: "OBSERVED_ACTIVITY", confidence: "partial", statusEffectiveDate: "2026-08-10" });
+    const m = buildSipMaster([k243(stale)], [ev({ date: "2026-08-10" })], AS_OF).entries[0];
+    expect(m.state).toBe("UNKNOWN");
+    expect(m.state).not.toBe("STOPPED");
+    expect(activeSipBook(buildSipMaster([k243({ ...stale, frequencyText: "Quarterly" })], [ev({ date: "2026-08-10" })], AS_OF))).toMatchObject({ active: { count: 0 }, observedActivity: 1 });
+  });
+
+  it("verified active needs a registrar status that speaks for the date — an instalment alone is not enough", () => {
+    const e = buildSipMaster([k243()], [ev({ date: "2026-10-05" })], AS_OF).entries[0];
+    expect(e).toMatchObject({ state: "ACTIVE", confidence: "verified" });
+    const onlyInstalment = buildSipMaster([], [ev({ date: "2026-10-05", kind: "sip" })], AS_OF).entries[0];
+    expect(onlyInstalment).toMatchObject({ state: "OBSERVED_ACTIVITY", confidence: "partial" });
   });
 });
 

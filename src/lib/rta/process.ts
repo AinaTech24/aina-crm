@@ -672,7 +672,7 @@ function normaliseStatus(s: string): string {
 /** Classify a free-text / coded rejection reason into the slugs the
  *  sip_rejection_followup recipe branches on (insufficient_balance /
  *  mandate_expired / technical). */
-function classifyRejectionReason(reason: string, reasonCode?: string): string {
+export function classifyRejectionReason(reason: string, reasonCode?: string): string {
   const r = `${reason ?? ""} ${reasonCode ?? ""}`.toLowerCase();
   if (/insufficient|balance|funds|nsf|inqufd/.test(r)) return "insufficient_balance";
   if (/mandate|expired|umrn|nach|debit not|not registered/.test(r)) return "mandate_expired";

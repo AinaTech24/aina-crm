@@ -19,6 +19,8 @@
 import { readDate, readNumber, detectDateOrder, type DateOrder } from "../values";
 import { rejectionReasonText } from "../values";
 export { rejectionReasonText };
+/** ******1234 — the last four characters of a PAN, for display; null when there is none. */
+export const panMask = (pan: string | null | undefined) => (pan && /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan) ? "******" + pan.slice(-4) : null);
 import { classifyCams, classifyKfintech, nonFinancial, type BusinessClass } from "./classify";
 import { keyedDigest, panToken } from "./pan-token";
 import { deriveHolder, type DerivedHolder, type HolderFacts } from "../owner";
@@ -334,6 +336,7 @@ export function normalizeRows(tenantId: string, layout: Layout, header: string[]
           toProductCode: c("ToProductCode") || undefined, hasSipRegistration: c("sipregslno") !== "",
           // The registration this instalment belongs to (= MFSD243 RegSlno, verified 8/9).
           sipRegistrationId: c("sipregslno") && c("sipregslno") !== "0" ? c("sipregslno") : undefined,
+          schemeName: c("Fund Description") || undefined,
           rejectionLinksOriginal: c("RejTrnoOrgNo") !== "",
           consolidationRemark: consolidation || undefined,
           // STP legs of one instruction share the switch reference (and date).
@@ -370,6 +373,7 @@ export function normalizeRows(tenantId: string, layout: Layout, header: string[]
           status: c("trxnstat"), swflag: c("swflag"), hasSipRegistration: c("siptrxnno") !== "",
           // R2's own systematic reference; its link to WBR49 auto_trno is not evidenced.
           sipRef: c("siptrxnno") || undefined,
+          schemeName: c("scheme") || undefined,
           hasSysRegnDate: c("sys_regn_date") !== "", targetSourceScheme: c("targ_src_scheme") || undefined,
           postDate: c("postdate"),
           eventCategory: n.cls.category,
@@ -498,6 +502,10 @@ export function normalizeRows(tenantId: string, layout: Layout, header: string[]
       n.attrs.holder = {
         ownerType: n.owner.ownerType, ownerTypeSource: n.owner.ownerTypeSource, sourcePanRole: n.owner.sourcePanRole,
         jointHolderTokens: n.owner.jointPans.map((p) => panToken(tenantId, p)), flags: n.owner.flags.length ? n.owner.flags : undefined,
+        // Display masks only (last four characters) — the PAN itself is never kept.
+        jointHolderMasks: n.owner.jointPans.map((p) => panMask(p)),
+        guardianMask: panMask(n.owner.guardianPan),
+        ownerMask: panMask(n.owner.ownerPan),
       };
     }
     for (const k of Object.keys(n.attrs)) if (n.attrs[k] === undefined) delete n.attrs[k];

@@ -30,6 +30,22 @@
  */
 import { monthlySipAmount } from "@/lib/metrics/sip";
 import { sipStateOn, type SipState } from "./sip-lifecycle";
+
+/**
+ * SIP Master states (Phase 3F). ACTIVE here is VERIFIED active: a registrar
+ * status or lifecycle report that speaks for the date. OBSERVED_ACTIVITY is a
+ * processed instalment within one cycle of the date while the registration's
+ * status is NOT verified — activity on the instalment's date, not proof of the
+ * registration's status today. A missing instalment never makes a SIP
+ * stopped: STOPPED needs a registrar cease / terminate date or status.
+ */
+export type MasterState = SipState | "OBSERVED_ACTIVITY";
+
+/** One cycle of a frequency, in days, with a grace for debit dates and holidays. */
+export function cycleWindowDays(frequency: Frequency | null, fallback = 35): number {
+  const period = frequency === "weekly" ? 7 : frequency === "fortnightly" ? 14 : frequency === "monthly" ? 31 : frequency === "quarterly" ? 92 : frequency === "yearly" ? 366 : null;
+  return period == null ? fallback : Math.ceil(period * 1.25) + 5;
+}
 import type { NormRow } from "./staging/layouts";
 
 export type RegistrationSource = "cams.wbr49" | "kfintech.mfsd243" | "kfintech.mfsd230";
@@ -139,7 +155,7 @@ export type SipMasterEntry = {
   lastSeen: string;
   /** Date of the latest report that states lifecycle (MFSD243 / WBR49); null if none did. */
   lifecycleAsOf: string | null;
-  state: SipState;
+  state: MasterState;
   stateBasis: string;
 };
 
@@ -338,7 +354,13 @@ export function buildSipMaster(observations: RegistrationObservation[], events: 
   }
   for (const e of entries) {
     e.lastSuccessfulInstalment = e.instalments.lastProcessed;
-    e.operational = !!e.lastSuccessfulInstalment && e.lastSuccessfulInstalment <= asOf && Date.parse(asOf) - Date.parse(e.lastSuccessfulInstalment) <= cycleDays * 86_400_000;
+    // "Recent" depends on the frequency (a quarterly SIP is not late after 35 days); unknown frequency → the fallback window.
+    const windowDays = cycleWindowDays(e.frequency, cycleDays);
+    e.operational = !!e.lastSuccessfulInstalment && e.lastSuccessfulInstalment <= asOf && Date.parse(asOf) - Date.parse(e.lastSuccessfulInstalment) <= windowDays * 86_400_000;
+    if (e.state === "UNKNOWN" && e.operational) {
+      e.state = "OBSERVED_ACTIVITY";
+      e.stateBasis = `${e.stateBasis}; a processed instalment on ${e.lastSuccessfulInstalment} (within ${windowDays} days, ${e.frequency ?? "frequency unknown"}) — activity observed, registration status not verified`;
+    }
     const ev: LifecycleEvent[] = [];
     const lifeSrc = e.status?.source ?? e.sources.find((x) => x !== "kfintech.mfsd230") ?? "registration report";
     if (e.ceaseDate) ev.push({ kind: "stop", date: e.ceaseDate, source: lifeSrc });
@@ -352,8 +374,9 @@ export function buildSipMaster(observations: RegistrationObservation[], events: 
       : e.state === "PENDING" ? e.startDate
       : e.state === "PAUSED" ? e.pauseFrom
       : e.state === "UNKNOWN" ? null
+      : e.state === "OBSERVED_ACTIVITY" ? e.lastSuccessfulInstalment
       : e.status?.asOf ?? e.lifecycleAsOf;
-    e.confidence = e.described && e.keyed && e.state !== "UNKNOWN" ? "verified" : e.keyed ? "partial" : "unverified";
+    e.confidence = e.described && e.keyed && e.state !== "UNKNOWN" && e.state !== "OBSERVED_ACTIVITY" ? "verified" : e.keyed ? "partial" : "unverified";
     e.owner = opts.ownerOf ? opts.ownerOf({ rta: e.rta, amcCode: e.amcCode, folio: e.folio }) : null;
   }
   entries.sort((a, b) => a.key.localeCompare(b.key));
@@ -383,6 +406,8 @@ export type ActiveSipBook = {
    * so only the last instalment amount is summed. Never in the book.
    */
   notDescribed: { operating: number; operatingLastInstalmentTotal: number; notOperating: number };
+  /** SIPs in OBSERVED_ACTIVITY (described or not): activity seen, status unverified — never in the book. */
+  observedActivity: number;
 };
 
 export function activeSipBook(master: SipMaster): ActiveSipBook {
@@ -392,12 +417,14 @@ export function activeSipBook(master: SipMaster): ActiveSipBook {
     stoppedOrExpired: 0, paused: 0, activeWithUnknownFrequency: 0,
     nonSip: { stp: 0, swp: 0, other: 0, unknownKind: 0 },
     notDescribed: { operating: 0, operatingLastInstalmentTotal: 0, notOperating: 0 },
+    observedActivity: 0,
   };
   const add = (b: { count: number; monthlyAmount: number }, e: SipMasterEntry) => {
     b.count++;
     if (e.frequency && e.amount != null) b.monthlyAmount = Math.round((b.monthlyAmount + monthlySipAmount(e.amount, e.frequency)) * 100) / 100;
   };
   for (const e of master.entries) {
+    if (e.kind === "sip" && e.state === "OBSERVED_ACTIVITY") out.observedActivity++;
     if (!e.described && e.kind === "sip") {
       if (e.operational) {
         out.notDescribed.operating++;
@@ -416,7 +443,7 @@ export function activeSipBook(master: SipMaster): ActiveSipBook {
       if (!e.frequency || e.amount == null) { out.activeWithUnknownFrequency++; continue; }
       add(out.active, e);
     } else if (e.state === "PENDING") add(out.pending, e);
-    else if (e.state === "UNKNOWN") add(out.unknown, e);
+    else if (e.state === "UNKNOWN" || e.state === "OBSERVED_ACTIVITY") add(out.unknown, e);
     else if (e.state === "PAUSED") out.paused++;
     else out.stoppedOrExpired++;
   }

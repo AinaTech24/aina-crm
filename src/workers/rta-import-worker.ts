@@ -355,6 +355,34 @@ async function importAlreadyFinished(job: {
   }
 }
 
+/**
+ * Validate-first for one job (both worker paths). Staging + posting write the
+ * import's outcome themselves; a refusal or failure is passed to `fail`, and
+ * NOTHING is written to a financial table unless validation finished first.
+ */
+async function runValidateFirstForJob(
+  a: { tenantId: string; importId: string | null; userId: string | null | undefined; fileName: string; fileRef: string; buf: Uint8Array; checksum: string },
+  fail: (reason: string) => Promise<void>,
+): Promise<void> {
+  try {
+    const { validateFirstImport } = await import("@/lib/rta/posting/validate-first");
+    const r = await validateFirstImport({ tenantId: a.tenantId, importId: a.importId, fileName: a.fileName, fileRef: a.fileRef, buf: a.buf, createdBy: a.userId ?? null });
+    if (!r.posting) {
+      await fail(`The file did not pass validation (staging state "${r.stagingState}") — nothing was written to the CRM. See the staging batch for the reason.`);
+      return;
+    }
+    if (a.importId) {
+      await withTenant(a.tenantId, (tx) => tx.execute(sql`
+        UPDATE rta_file_imports SET file_checksum = ${a.checksum},
+               status = CASE WHEN status IN ('parsing', 'uploaded') THEN 'completed' ELSE status END,
+               remarks = COALESCE(remarks, ${`Validate-first: ${r.recordKind} file staged and committed (batch ${r.batchId}).`}), parsed_at = COALESCE(parsed_at, now())
+         WHERE tenant_id = ${a.tenantId}::uuid AND id = ${a.importId}::uuid`));
+    }
+  } catch (e: any) {
+    await fail(maskPansInText(String(e?.message ?? "validate-first import failed")));
+  }
+}
+
 /** The actual import. Exported so it can be unit-tested / invoked one-off. */
 export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
   const ctx = { userId: job.userId, branchId: job.branchId ?? undefined, roles: job.roles };
@@ -402,6 +430,20 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
     return;
   }
   const archiveNote = opened.notes.length ? opened.notes.join(" ") : null;
+
+  // VALIDATE-FIRST (Phase 3F, development only): stage and validate the whole
+  // file BEFORE anything financial is written; the existing processor below
+  // never runs. A refused gate fails the import closed — never a fallback.
+  const vfMode = rtaPipelineMode(tenantId);
+  if (vfMode.mode === "validate_first_refused") {
+    await markFailed(job, vfMode.refused ?? "validate-first refused", { checksum, sizeBytes: buf.length });
+    return;
+  }
+  if (vfMode.mode === "validate_first") {
+    await runValidateFirstForJob({ tenantId, importId, userId: job.userId, fileName: opened.filename, fileRef: opened.filename === filename ? key : `${key}#${opened.filename}`, buf: opened.data, checksum },
+      (reason) => markFailed(job, reason, { checksum, sizeBytes: buf.length }));
+    return;
+  }
 
   // Decode can legitimately REFUSE — a spreadsheet too large to hold in memory
   // (RtaFileTooLargeError), a password-protected workbook, a file it cannot
@@ -691,6 +733,8 @@ export type RichImportResult = {
   /** Parser warnings (e.g. invalid PAN values treated as no PAN) — counts only, no values. */
   warnings?: string[];
   summary?: RtaImportSummary;
+  /** The validate-first poster already wrote the import's outcome (counts are what it COMMITTED). */
+  validateFirst?: boolean;
 };
 
 /** Progress payload the UI polls for (via job.progress on import-status). */
@@ -711,6 +755,15 @@ async function computeRichImport(
   // mailbacks) to its one data file. A workbook passes through as-is.
   const opened = await openUpload(buf, job.filename, candidatePasswords(job));
   if (!opened.ok) return { ok: false, notOurs: opened.rejected, error: opened.message };
+  // VALIDATE-FIRST (see runRtaImportJob): the importer below never runs on an unvalidated file.
+  const vfMode = job.dryRun ? { mode: "off" as const } : rtaPipelineMode(job.tenantId);
+  if (vfMode.mode === "validate_first_refused") return { ok: false, error: vfMode.refused ?? "validate-first refused" };
+  if (vfMode.mode === "validate_first") {
+    let failure: string | null = null;
+    await runValidateFirstForJob({ tenantId: job.tenantId, importId: job.importId ?? null, userId: job.userId, fileName: opened.filename, fileRef: opened.filename === job.filename ? job.key : `${job.key}#${opened.filename}`, buf: opened.data, checksum: createHash("sha256").update(buf).digest("hex") },
+      async (reason) => { failure = reason; });
+    return failure ? { ok: false, error: failure } : { ok: true, validateFirst: true };
+  }
   let data: Uint8Array = opened.data;
   const innerName = opened.filename;
   buf = Buffer.alloc(0); // free the original before the heavy parse
@@ -864,6 +917,7 @@ export async function runRichImportJob(
           `);
           return;
         }
+        if (result.validateFirst) return;
         const s = result.summary;
         // Folios the importer held back (client in Trash, ambiguous, or filed
         // under another client) were counted as created/updated in the

@@ -178,6 +178,15 @@ describe("owner identity — the fifteen required scenarios", () => {
     expect((r as any).guardianInvestorId).toBe(g.id);
   });
 
+  it("12b. a minor's row on a folio held by a PAN-less placeholder is held, never filed under the placeholder", async () => {
+    const d = new MemDir();
+    const ph = d.add({ pan: null, placeholder: true });
+    d.folio("117", "903", ph.id);
+    expect(await resolveOwner(d, { rta: "kfintech", amcCode: "117", folioNumber: "903" }, kfinMinorRow(PAN.guardian))).toMatchObject({ kind: "exception", code: "placeholder_owner", investorId: ph.id });
+    // An adult row with no PAN of its own on the same placeholder still resolves to the folio on record.
+    expect(await resolveOwner(d, { rta: "kfintech", amcCode: "117", folioNumber: "903" }, deriveHolder({ statusText: "Individual", rowPan: "", rowPanRole: "owner" }))).toMatchObject({ kind: "existing_folio_owner", investorId: ph.id });
+  });
+
   it("14. holdings covering different dates / ARNs: never mixed, never replaced by older, zero kept", () => {
     const pos = (folio: string, units: number, value: number | null) => ({ amcCode: "X", folioNumber: folio, schemeCode: "XS", units, value });
     const st: HoldingStatement[] = [

@@ -222,7 +222,14 @@ export async function resolveOwner(
         return { kind: "exception", code: "folio_owned_by_guardian", investorId: owner.id,
           reason: "the registrar says this folio belongs to a minor, but the CRM has it under the guardian's own client record — held for review; nothing reassigned" };
       }
-      if (ownerType !== "minor" && ownerType !== "unknown" && !owner.placeholder) {
+      // A minor's folio sitting on a PAN-less placeholder (a holdings file that
+      // names no holder type arrived before the master): the placeholder is
+      // not known to be the minor — held, so the minor's history is never
+      // filed under a stand-in that order of import happened to create.
+      if (owner.placeholder) {
+        return { kind: "exception", code: "placeholder_owner", investorId: owner.id, reason: "the registrar says this folio belongs to a minor, but the CRM has it on a PAN-less placeholder client — held for review (merge the placeholder into the minor's record); nothing reassigned" };
+      }
+      if (ownerType !== "minor" && ownerType !== "unknown") {
         return { kind: "exception", code: "owner_type_conflict", investorId: owner.id, reason: `the registrar says minor; the folio's CRM owner is recorded as ${ownerType} — held for review` };
       }
       if (h.ownerPan && ownerPan && ownerPan !== h.ownerPan) {

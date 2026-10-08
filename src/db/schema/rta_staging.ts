@@ -17,7 +17,7 @@
  * PAN is kept only as a keyed token (`pt1:` HMAC, see staging/pan-token.ts),
  * never in clear and never as a plain hash.
  */
-import { bigint, date, index, integer, jsonb, numeric, pgTable, smallint, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigint, boolean, date, index, integer, jsonb, numeric, pgTable, smallint, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { id, tenantId, timestamps } from "./_shared";
 
 export const RTA_BATCH_STATES = [
@@ -43,7 +43,7 @@ export const rtaStagingBatches = pgTable(
     id,
     tenantId,
     importId: uuid("import_id"),
-    mode: text("mode", { enum: ["shadow"] }).notNull().default("shadow"),
+    mode: text("mode", { enum: ["shadow", "validate_first"] }).notNull().default("shadow"),
     rta: text("rta", { enum: ["cams", "kfintech"] }),
     reportCode: text("report_code"),
     recordKind: text("record_kind", { enum: ["transaction", "holding", "master", "registration"] }),
@@ -69,6 +69,10 @@ export const rtaStagingBatches = pgTable(
     createdBy: uuid("created_by"),
     ...timestamps,
     completedAt: timestamp("completed_at", { withTimezone: true }),
+    /** What the posting step committed for this batch (migration 0235). */
+    postingState: text("posting_state", { enum: ["not_posted", "posted", "partially_posted", "blocked", "nothing_to_post"] }).notNull().default("not_posted"),
+    postedAt: timestamp("posted_at", { withTimezone: true }),
+    postingCounts: jsonb("posting_counts").$type<Record<string, number>>().notNull().default({}),
   },
   (t) => ({
     tenantIdUq: uniqueIndex("rta_staging_batches_tenant_id_uq").on(t.tenantId, t.id),
@@ -116,6 +120,9 @@ export const rtaStagingEconomicTxns = pgTable(
     matchRule: text("match_rule"),
     proposedAction: text("proposed_action", { enum: RTA_PROPOSED_ACTIONS }).notNull(),
     legacyTransactionId: uuid("legacy_transaction_id"),
+    postingOutcome: text("posting_outcome"),
+    postingReason: text("posting_reason"),
+    postedAt: timestamp("posted_at", { withTimezone: true }),
     ...timestamps,
   },
   (t) => ({
@@ -172,6 +179,7 @@ export const rtaStagingRows = pgTable(
     batchRowUq: uniqueIndex("rta_staging_rows_batch_row_uq").on(t.batchId, t.rowNo),
     batchStateIdx: index("rta_staging_rows_batch_state_idx").on(t.tenantId, t.batchId, t.state),
     keyIdx: index("rta_staging_rows_key_idx").on(t.tenantId, t.economicKey),
+    econIdx: index("rta_staging_rows_econ_idx").on(t.tenantId, t.economicTxnId),
     hashIdx: index("rta_staging_rows_hash_idx").on(t.tenantId, t.rowHash),
   }),
 );
@@ -228,3 +236,62 @@ export const rtaStagingChecks = pgTable(
 export type RtaStagingBatch = typeof rtaStagingBatches.$inferSelect;
 export type RtaStagingRow = typeof rtaStagingRows.$inferSelect;
 export type RtaStagingEconomicTxn = typeof rtaStagingEconomicTxns.$inferSelect;
+
+/** The posting ledger (migration 0235): one row per registrar identity ever posted or matched. */
+export const rtaPostedTransactions = pgTable(
+  "rta_posted_transactions",
+  {
+    id,
+    tenantId,
+    identityKey: text("identity_key").notNull(),
+    economicTxnId: uuid("economic_txn_id").notNull(),
+    batchId: uuid("batch_id").notNull(),
+    kind: text("kind", { enum: ["posted_new", "matched_existing", "rejected_recorded"] }).notNull(),
+    transactionId: uuid("transaction_id"),
+    sipRejectionId: uuid("sip_rejection_id"),
+    postedAt: timestamp("posted_at", { withTimezone: true }).defaultNow().notNull(),
+    postedBy: uuid("posted_by"),
+  },
+  (t) => ({
+    identityUq: uniqueIndex("rta_posted_identity_uidx").on(t.tenantId, t.identityKey),
+    txnIdx: index("rta_posted_txn_idx").on(t.tenantId, t.transactionId),
+  }),
+);
+
+/** The canonical SIP Master as last built (migration 0235, lib/rta/sip-master.ts). */
+export const rtaSipRegistrations = pgTable(
+  "rta_sip_registrations",
+  {
+    id,
+    tenantId,
+    registrationKey: text("registration_key").notNull(),
+    rta: text("rta", { enum: ["cams", "kfintech"] }).notNull(),
+    amcCode: text("amc_code"),
+    registrationId: text("registration_id"),
+    investorId: uuid("investor_id"),
+    folioId: uuid("folio_id"),
+    folioNumber: text("folio_number"),
+    schemeCode: text("scheme_code"),
+    targetSchemeCode: text("target_scheme_code"),
+    kind: text("kind", { enum: ["sip", "stp", "swp", "other", "unknown"] }).notNull(),
+    amount: numeric("amount", { precision: 18, scale: 2 }),
+    frequency: text("frequency"),
+    startDate: date("start_date"),
+    endDate: date("end_date"),
+    state: text("state", { enum: ["VERIFIED_ACTIVE", "OBSERVED_ACTIVITY", "PENDING", "PAUSED", "STOPPED", "EXPIRED", "REJECTED", "UNKNOWN"] }).notNull(),
+    stateBasis: text("state_basis"),
+    statusEffectiveDate: date("status_effective_date"),
+    lastSuccessfulInstalment: date("last_successful_instalment"),
+    described: boolean("described").notNull(),
+    confidence: text("confidence", { enum: ["verified", "partial", "unverified"] }).notNull(),
+    lifecycleEvents: jsonb("lifecycle_events").$type<unknown[]>().notNull().default([]),
+    sources: jsonb("sources").$type<string[]>().notNull().default([]),
+    sipId: uuid("sip_id"),
+    asOf: date("as_of").notNull(),
+    ...timestamps,
+  },
+  (t) => ({
+    keyUq: uniqueIndex("rta_sip_registrations_key_uidx").on(t.tenantId, t.registrationKey),
+    stateIdx: index("rta_sip_registrations_state_idx").on(t.tenantId, t.state),
+  }),
+);

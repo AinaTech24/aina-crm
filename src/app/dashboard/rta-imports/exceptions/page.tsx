@@ -6,6 +6,7 @@
  * that group's rows, each linked to its import.
  */
 import Link from "next/link";
+import { sql } from "drizzle-orm";
 import { ArrowRight, ListChecks } from "lucide-react";
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { InlineEmpty } from "@/components/common/EmptyState";
@@ -40,7 +41,9 @@ export default async function RtaExceptionsPage({
     async (tx) => {
       const denial = await rtaImportDenial(tx, session);
       if (denial) return { denial, data: null };
-      return { denial: null, data: await loadRowExceptions(tx, { reason, detailLimit: DETAIL_LIMIT }) };
+      // Files imported validate-first keep what they held in staging, not here.
+      const vf = (await tx.execute(sql`SELECT EXISTS (SELECT 1 FROM rta_staging_batches WHERE tenant_id = ${session.tenantId}::uuid AND mode = 'validate_first') AS any`)).rows[0] as { any: boolean };
+      return { denial: null, data: await loadRowExceptions(tx, { reason, detailLimit: DETAIL_LIMIT }), validateFirst: !!vf?.any };
     },
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
@@ -54,6 +57,13 @@ export default async function RtaExceptionsPage({
         breadcrumb={[{ label: "RTA File Imports", href: "/dashboard/rta-imports" }, { label: "Row exceptions" }]}
         title={<><ListChecks className="size-6 text-muted-foreground" /> Row exceptions</>}
       />
+
+      {result.validateFirst && (
+        <p className="text-sm text-muted-foreground">
+          Files imported validate-first list what they held back by registrar transaction:{" "}
+          <Link href="/dashboard/rta-imports/held" className="font-medium text-foreground hover:underline">Held transactions</Link>.
+        </p>
+      )}
 
       {data.exceptionRows === 0 ? (
         <div className="card-surface">

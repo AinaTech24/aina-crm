@@ -27,7 +27,8 @@ export async function GET() {
         await assertRtaImportAccess(tx, session);
         return (await tx.execute(sql`
           SELECT id, import_id, mode, rta, report_code, record_kind, file_name, state, attempt, row_count, counts,
-                 same_file_as_batch_id, rerun_of_batch_id, period_start, period_end, as_of_date, error, created_at, completed_at
+                 same_file_as_batch_id, rerun_of_batch_id, period_start, period_end, as_of_date, error, created_at, completed_at,
+                 posting_state, posting_counts, posted_at
             FROM rta_staging_batches
            ORDER BY created_at DESC
            LIMIT 200
