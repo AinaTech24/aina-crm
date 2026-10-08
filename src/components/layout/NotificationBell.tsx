@@ -44,10 +44,22 @@ export function NotificationBell() {
   // Background poll. 90s is fine for the badge, but it means the panel could
   // show data up to 90s stale, so opening it refetches (below) rather than
   // rendering whatever the last tick happened to fetch.
+  // A hidden tab does not poll (each poll is a session check plus three
+  // queries, and people keep several tabs open all day); coming back to the
+  // tab catches up at once.
   useEffect(() => {
     void load();
-    const i = setInterval(() => void load(), 90_000);
-    return () => clearInterval(i);
+    const i = setInterval(() => {
+      if (!document.hidden) void load();
+    }, 90_000);
+    const onVisible = () => {
+      if (!document.hidden) void load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(i);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [load]);
 
   // Refetch on open — without this, doing something in the app and immediately

@@ -149,16 +149,13 @@ export async function withTenant<T>(
     // Parameterized set_config (transaction-LOCAL). MUST use a drizzle `sql`
     // object — a raw string passed to tx.execute() is NOT reliably executed
     // under the bundled runtime, which silently leaves the RLS context unset.
-    await tx.execute(sql`SELECT set_config('app.tenant_id', ${tenantId}, true)`);
-    if (opts?.userId) {
-      await tx.execute(sql`SELECT set_config('app.user_id', ${opts.userId}, true)`);
-    }
-    if (opts?.branchId) {
-      await tx.execute(sql`SELECT set_config('app.branch_id', ${opts.branchId}, true)`);
-    }
-    if (opts?.roles?.length) {
-      await tx.execute(sql`SELECT set_config('app.roles', ${opts.roles.join(",")}, true)`);
-    }
+    // All of them in ONE statement: each tx.execute is a network round trip,
+    // and this runs at the start of every transaction in the app.
+    const sets = [sql`set_config('app.tenant_id', ${tenantId}, true)`];
+    if (opts?.userId) sets.push(sql`set_config('app.user_id', ${opts.userId}, true)`);
+    if (opts?.branchId) sets.push(sql`set_config('app.branch_id', ${opts.branchId}, true)`);
+    if (opts?.roles?.length) sets.push(sql`set_config('app.roles', ${opts.roles.join(",")}, true)`);
+    await tx.execute(sql`SELECT ${sql.join(sets, sql`, `)}`);
     return fn(tx);
   });
 }
@@ -176,8 +173,7 @@ export async function withPlatformAdmin<T>(
   fn: (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => Promise<T>
 ): Promise<T> {
   return db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT set_config('app.is_platform_admin', 'true', true)`);
-    await tx.execute(sql`SELECT set_config('app.user_id', ${adminUserId}, true)`);
+    await tx.execute(sql`SELECT set_config('app.is_platform_admin', 'true', true), set_config('app.user_id', ${adminUserId}, true)`);
     return fn(tx);
   });
 }

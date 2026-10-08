@@ -649,14 +649,9 @@ export async function loadMonthlySummary(tx: Tx, w: MyWindow): Promise<MonthRow[
              ) AS prev_to
     )
     SELECT
-      (SELECT COALESCE(SUM(amount::numeric) FILTER (WHERE t.type IN (${GROSS_IN}) AND t.order_date BETWEEN b.cur_from AND b.cur_to), 0) FROM transactions t WHERE t.status IN ('processed','successful') AND t.investor_id IN ${MINE})  AS gross_cur,
-      (SELECT COALESCE(SUM(amount::numeric) FILTER (WHERE t.type IN (${GROSS_IN}) AND t.order_date BETWEEN b.prev_from AND b.prev_to), 0) FROM transactions t WHERE t.status IN ('processed','successful') AND t.investor_id IN ${MINE}) AS gross_prev,
-      (SELECT COALESCE(SUM(amount::numeric) FILTER (WHERE t.type IN (${RED_IN}) AND t.order_date BETWEEN b.cur_from AND b.cur_to), 0) FROM transactions t WHERE t.status IN ('processed','successful') AND t.investor_id IN ${MINE})   AS red_cur,
-      (SELECT COALESCE(SUM(amount::numeric) FILTER (WHERE t.type IN (${RED_IN}) AND t.order_date BETWEEN b.prev_from AND b.prev_to), 0) FROM transactions t WHERE t.status IN ('processed','successful') AND t.investor_id IN ${MINE})  AS red_prev,
-      (SELECT COALESCE(SUM(amount::numeric) FILTER (WHERE s.start_date BETWEEN b.cur_from AND b.cur_to), 0) FROM sips s WHERE s.investor_id IN ${MINE})   AS sip_cur,
-      (SELECT COALESCE(SUM(amount::numeric) FILTER (WHERE s.start_date BETWEEN b.prev_from AND b.prev_to), 0) FROM sips s WHERE s.investor_id IN ${MINE}) AS sip_prev,
-      (SELECT COALESCE(SUM(amount::numeric) FILTER (WHERE t.type IN ('sip_stop','sip_pause') AND t.order_date BETWEEN b.cur_from AND b.cur_to), 0) FROM transactions t WHERE t.status IN ('processed','successful') AND t.investor_id IN ${MINE})   AS stop_cur,
-      (SELECT COALESCE(SUM(amount::numeric) FILTER (WHERE t.type IN ('sip_stop','sip_pause') AND t.order_date BETWEEN b.prev_from AND b.prev_to), 0) FROM transactions t WHERE t.status IN ('processed','successful') AND t.investor_id IN ${MINE}) AS stop_prev,
+      tx.gross_cur, tx.gross_prev, tx.red_cur, tx.red_prev,
+      sp.sip_cur, sp.sip_prev,
+      tx.stop_cur, tx.stop_prev,
       (SELECT COUNT(*) FILTER (WHERE ${onboardedDateSql("i")} BETWEEN b.cur_from AND b.cur_to)::int FROM investors i WHERE ${clientRecordsWhereOn("i", w.scope)})   AS nc_cur,
       (SELECT COUNT(*) FILTER (WHERE ${onboardedDateSql("i")} BETWEEN b.prev_from AND b.prev_to)::int FROM investors i WHERE ${clientRecordsWhereOn("i", w.scope)}) AS nc_prev,
       (SELECT COUNT(*) FILTER (WHERE m.meeting_date::date BETWEEN b.cur_from AND b.cur_to)::int FROM review_meetings m WHERE ${staffMatch("rm_id", w, "m")} AND m.status = 'completed')   AS mt_cur,
@@ -667,7 +662,27 @@ export async function loadMonthlySummary(tx: Tx, w: MyWindow): Promise<MonthRow[
       (SELECT COUNT(*) FILTER (WHERE p.created_at::date BETWEEN b.prev_from AND b.prev_to)::int FROM proposals p WHERE ${staffMatch("prepared_by_user_id", w, "p")}) AS pr_prev,
       (SELECT COALESCE(SUM(annual_premium::numeric) FILTER (WHERE ip.policy_start_date BETWEEN b.cur_from AND b.cur_to), 0) FROM insurance_policies ip WHERE ${premiumMatch(w, "ip")} AND ip.status NOT IN ('lapsed','surrendered','cancelled'))   AS ins_cur,
       (SELECT COALESCE(SUM(annual_premium::numeric) FILTER (WHERE ip.policy_start_date BETWEEN b.prev_from AND b.prev_to), 0) FROM insurance_policies ip WHERE ${premiumMatch(w, "ip")} AND ip.status NOT IN ('lapsed','surrendered','cancelled')) AS ins_prev
-    FROM bounds b
+    FROM bounds b,
+    -- ONE pass over the book's transactions and SIPs, limited in WHERE to the
+    -- two windows (prev_from … cur_to), instead of eight subqueries that each
+    -- summed every transaction the book ever made and filtered afterwards.
+    LATERAL (
+      SELECT COALESCE(SUM(amount::numeric) FILTER (WHERE t.type IN (${GROSS_IN}) AND t.order_date BETWEEN b.cur_from AND b.cur_to), 0)  AS gross_cur,
+             COALESCE(SUM(amount::numeric) FILTER (WHERE t.type IN (${GROSS_IN}) AND t.order_date BETWEEN b.prev_from AND b.prev_to), 0) AS gross_prev,
+             COALESCE(SUM(amount::numeric) FILTER (WHERE t.type IN (${RED_IN}) AND t.order_date BETWEEN b.cur_from AND b.cur_to), 0)   AS red_cur,
+             COALESCE(SUM(amount::numeric) FILTER (WHERE t.type IN (${RED_IN}) AND t.order_date BETWEEN b.prev_from AND b.prev_to), 0)  AS red_prev,
+             COALESCE(SUM(amount::numeric) FILTER (WHERE t.type IN ('sip_stop','sip_pause') AND t.order_date BETWEEN b.cur_from AND b.cur_to), 0)   AS stop_cur,
+             COALESCE(SUM(amount::numeric) FILTER (WHERE t.type IN ('sip_stop','sip_pause') AND t.order_date BETWEEN b.prev_from AND b.prev_to), 0) AS stop_prev
+        FROM transactions t
+       WHERE t.status IN ('processed','successful') AND t.investor_id IN ${MINE}
+         AND t.order_date BETWEEN b.prev_from AND b.cur_to
+    ) tx,
+    LATERAL (
+      SELECT COALESCE(SUM(amount::numeric) FILTER (WHERE s.start_date BETWEEN b.cur_from AND b.cur_to), 0)   AS sip_cur,
+             COALESCE(SUM(amount::numeric) FILTER (WHERE s.start_date BETWEEN b.prev_from AND b.prev_to), 0) AS sip_prev
+        FROM sips s
+       WHERE s.investor_id IN ${MINE} AND s.start_date BETWEEN b.prev_from AND b.cur_to
+    ) sp
   `)).rows[0] as Row | undefined;
 
   // AUM and SIP book are balances, so their "previous month" is the recorded

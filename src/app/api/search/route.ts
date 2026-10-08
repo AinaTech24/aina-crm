@@ -163,8 +163,16 @@ export async function GET(req: NextRequest) {
           LEFT JOIN leads l ON l.id = CASE WHEN t.subject_type = 'lead' THEN t.subject_id END
           LEFT JOIN users u ON u.id = t.assignee_id
           WHERE t.tenant_id = ${session.tenantId}::uuid AND ${taskScope}
-            AND t.deleted_at IS NULL AND (t.title ILIKE ${like}
-                 OR (i.name ILIKE ${like} AND ${invScope}) OR (l.name ILIKE ${like} AND ${taskLeadScope}))
+            -- The name arms look the matching clients / leads up first (their
+            -- own trigram indexes) instead of filtering every task's joined
+            -- row, and lower(title) is what tasks_title_trgm_idx is built on.
+            AND t.deleted_at IS NULL AND (lower(t.title) ILIKE ${like}
+                 OR COALESCE(t.related_investor_id, CASE WHEN t.subject_type = 'investor' THEN t.subject_id END) IN (
+                      SELECT i.id FROM investors i
+                       WHERE i.tenant_id = ${session.tenantId}::uuid AND i.name ILIKE ${like} AND ${invScope})
+                 OR (t.subject_type = 'lead' AND t.subject_id IN (
+                      SELECT l.id FROM leads l
+                       WHERE l.tenant_id = ${session.tenantId}::uuid AND l.name ILIKE ${like} AND ${taskLeadScope})))
           ORDER BY (t.status IN ('open', 'in_progress', 'blocked')) DESC, t.due_at ASC NULLS LAST
           LIMIT 5
         `);
