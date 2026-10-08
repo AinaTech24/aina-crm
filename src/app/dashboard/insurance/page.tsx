@@ -1,4 +1,5 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
+import { ExportButton } from "@/components/export/ExportButton";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import {
@@ -123,6 +124,12 @@ export default async function InsurancePage({
   const ccActive = !!(cc.line || cc.groups.length || cc.nature || cc.branch.length || cc.owner.length || cc.insurer || cc.cats.length || cc.mf
     || cc.bookedFrom || cc.bookedTo || cc.dueFrom || cc.dueTo || cc.gap);
   const freqFilter = (sp.frequency ?? "").split(",").filter(Boolean);
+  // Ranges from the Filters panel: maturity date, sum assured, annual premium (₹).
+  const maturityFrom = ISO.test(sp.maturity_from ?? "") ? sp.maturity_from! : null;
+  const maturityTo = ISO.test(sp.maturity_to ?? "") ? sp.maturity_to! : null;
+  const num = (v: string | undefined) => (v && Number.isFinite(Number(v)) ? Number(v) : null);
+  const sa = { min: num(sp.sa_min), max: num(sp.sa_max) };
+  const prem = { min: num(sp.prem_min), max: num(sp.prem_max) };
   const dueSoonOnly = sp.due === "1";
   const PAGE_SIZE = 50;
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
@@ -176,6 +183,12 @@ export default async function InsurancePage({
     }
     const dr = dateRangeCond(sp, "created", "p.created_at");
     if (dr) filters.push(dr);
+    if (maturityFrom) filters.push(sql`p.maturity_date >= ${maturityFrom}::date`);
+    if (maturityTo) filters.push(sql`p.maturity_date <= ${maturityTo}::date`);
+    if (sa.min != null) filters.push(sql`p.sum_assured::numeric >= ${sa.min}`);
+    if (sa.max != null) filters.push(sql`p.sum_assured::numeric < ${sa.max}`);
+    if (prem.min != null) filters.push(sql`p.annual_premium::numeric >= ${prem.min}`);
+    if (prem.max != null) filters.push(sql`p.annual_premium::numeric < ${prem.max}`);
     if (ccActive) {
       filters.push(sql`i.deleted_at IS NULL`);
       if (cc.line) filters.push(sql`p.policy_type IN (${inList(typesOfLine(cc.line))})`);
@@ -273,11 +286,26 @@ export default async function InsurancePage({
     const statusCounts = await tx.execute(sql`
       SELECT status, COUNT(*)::int AS c FROM insurance_policies${bareScope} GROUP BY status
     `);
+    // Choices for the Filters panel: the insurers in this book, the firm's
+    // branches and its people (the filters only ever narrow the viewer's book).
+    const insurerOpts = await tx.execute(sql`
+      SELECT DISTINCT btrim(insurer) AS v FROM insurance_policies${bareScope}
+        AND NULLIF(btrim(insurer), '') IS NOT NULL ORDER BY 1 LIMIT 200
+    `);
+    const branchOpts = await tx.execute(sql`
+      SELECT id, name FROM branches WHERE tenant_id = ${session.tenantId}::uuid ORDER BY name
+    `);
+    const peopleOpts = await tx.execute(sql`
+      SELECT id, name FROM users WHERE tenant_id = ${session.tenantId}::uuid AND deleted_at IS NULL ORDER BY name
+    `);
     return {
       rows: rows.rows as any[],
       s: stats.rows[0] as any,
       filteredTotal: Number((filtered.rows[0] as any)?.c ?? 0),
       statusCounts: statusCounts.rows as Array<{ status: string; c: number }>,
+      insurers: (insurerOpts.rows as Array<{ v: string }>).map((r) => r.v),
+      branches: branchOpts.rows as Array<{ id: string; name: string }>,
+      people: peopleOpts.rows as Array<{ id: string; name: string }>,
     };
   });
 
@@ -297,6 +325,7 @@ export default async function InsurancePage({
   return (
     <div className="space-y-6 max-w-7xl">
       <PageHeaderCard title={<><Shield className="size-6 text-muted-foreground" /> Insurance</>} actions={<><div className="flex items-center gap-2">
+          <ExportButton module="insurance" />
           <Link href="/dashboard/insurance/import" className="btn-secondary"><FileUp className="size-4" /> Import</Link>
           <Link href="/dashboard/insurance/new" className="btn-primary">
             <Plus className="size-4" /> New policy
@@ -307,7 +336,7 @@ export default async function InsurancePage({
 
       {ccActive && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-accent px-3 py-2 text-xs text-foreground">
-          <span className="font-medium">From the Insurance dashboard:</span>
+          <span className="font-medium">Showing:</span>
           <span className="text-muted-foreground">
             {[
               cc.line && (cc.line === "personal" ? "Personal Lines" : "Commercial Lines"),
@@ -368,6 +397,49 @@ export default async function InsurancePage({
               { value: "single", label: "Single-pay" },
             ],
           },
+          { type: "multi", key: "grp", label: "Product", options: PRODUCT_GROUPS.map((g) => ({ value: g.key, label: g.label })) },
+          { type: "select", key: "line", label: "Line", options: [{ value: "personal", label: "Personal Lines" }, { value: "commercial", label: "Commercial Lines" }] },
+          { type: "select", key: "nature", label: "New / renewal", options: [{ value: "new", label: "New business" }, { value: "renewal", label: "Renewal" }] },
+          ...(data.insurers.length ? [{ type: "select" as const, key: "insurer", label: "Insurer", options: data.insurers.map((v) => ({ value: v, label: v })) }] : []),
+          dateRangeFilter("booked", "Booked on"),
+          dateRangeFilter("due", "Premium due"),
+          dateRangeFilter("maturity", "Maturity"),
+          {
+            type: "amount_range",
+            key: "sa",
+            label: "Sum assured",
+            presets: [
+              { label: "Under ₹10L", max: 10_00_000 },
+              { label: "₹10L – ₹50L", min: 10_00_000, max: 50_00_000 },
+              { label: "₹50L – ₹1Cr", min: 50_00_000, max: 1_00_00_000 },
+              { label: "₹1Cr+", min: 1_00_00_000 },
+            ],
+          },
+          {
+            type: "amount_range",
+            key: "prem",
+            label: "Annual premium",
+            presets: [
+              { label: "Under ₹10k", max: 10_000 },
+              { label: "₹10k – ₹50k", min: 10_000, max: 50_000 },
+              { label: "₹50k – ₹1L", min: 50_000, max: 1_00_000 },
+              { label: "₹1L+", min: 1_00_000 },
+            ],
+          },
+          ...(data.branches.length > 1 ? [{ type: "multi" as const, key: "branch", label: "Branch", options: data.branches.map((b) => ({ value: b.id, label: b.name })) }] : []),
+          { type: "multi", key: "owner", label: "Business owner / RM", options: data.people.map((u) => ({ value: u.id, label: u.name })) },
+          {
+            type: "multi",
+            key: "cat",
+            label: "Client grade",
+            options: [
+              { value: "A", label: "A" }, { value: "B", label: "B" }, { value: "C", label: "C" }, { value: "D", label: "D" },
+              { value: "none", label: "Not graded" },
+            ],
+          },
+          { type: "select", key: "mf", label: "Mutual fund client", options: [{ value: "yes", label: "Also invests in MF" }, { value: "no", label: "Insurance only" }] },
+          { type: "select", key: "gap", label: "Missing data", options: Object.entries(GAP_LABEL).map(([value, label]) => ({ value, label: label.replace(/^\w/, (c) => c.toUpperCase()) })) },
+          { type: "flags", label: "Quick filters", options: [{ key: "due", label: "Premium due in 30 days" }] },
         ]}
         rightSlot={
           <CustomViews

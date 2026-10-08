@@ -365,11 +365,63 @@ export const LEAD_TO_CLIENT_STAGES: SeedStage[] = [
     allowedActions: ["make_transaction"],
     flavour: "terminal_failure",
   },
+  // ── Physical route: forms submitted to the RTA / AMC (no UCC, no exchange) ──
+  {
+    key: "rta_forms_ready",
+    name: "Forms Ready",
+    description: "Application form, SIP / NACH form and cheque (or NEFT proof) prepared for a physical transaction.",
+    order: 29,
+    ownerRole: "back_office",
+    requiredFields: [],
+    slaDays: 2,
+    allowedActions: ["rta_client_signed", "rta_submitted"],
+  },
+  {
+    key: "rta_client_signed",
+    name: "Client Signed",
+    description: "The client has signed the forms; upload them to the client's documents.",
+    order: 30,
+    ownerRole: "back_office",
+    requiredFields: [],
+    slaDays: 2,
+    allowedActions: ["rta_submitted"],
+  },
+  {
+    key: "rta_submitted",
+    name: "Submitted to RTA",
+    description: "Forms submitted at CAMS / KFintech / the AMC; waiting for the registrar to process them.",
+    order: 31,
+    ownerRole: "operations",
+    requiredFields: [],
+    slaDays: 7,
+    allowedActions: ["rta_processed", "rta_rejected"],
+  },
+  {
+    key: "rta_processed",
+    name: "Processed by RTA",
+    description: "The registrar processed the transaction and allotted units / a folio.",
+    order: 32,
+    ownerRole: "operations",
+    requiredFields: [],
+    slaDays: 1,
+    allowedActions: ["family_mapping"],
+  },
+  {
+    key: "rta_rejected",
+    name: "Rejected by RTA",
+    description: "The registrar rejected the submission (signature, cheque, KYC…). Correct it and resubmit.",
+    order: 33,
+    ownerRole: "operations",
+    requiredFields: [],
+    slaDays: 2,
+    allowedActions: ["rta_submitted", "rta_forms_ready"],
+    flavour: "terminal_failure",
+  },
   {
     key: "family_mapping",
     name: "Family Mapping",
     description: "Link to spouse / parents / children for household view.",
-    order: 29,
+    order: 34,
     ownerRole: "sales",
     requiredFields: [],
     slaDays: 7,
@@ -379,7 +431,7 @@ export const LEAD_TO_CLIENT_STAGES: SeedStage[] = [
     key: "update_information",
     name: "Update Information",
     description: "Master record enriched: goals, occupation, income, nominee.",
-    order: 30,
+    order: 35,
     ownerRole: "sales",
     requiredFields: [],
     slaDays: 3,
@@ -389,7 +441,7 @@ export const LEAD_TO_CLIENT_STAGES: SeedStage[] = [
     key: "add_in_review_sheet",
     name: "Active Client",
     description: "Onboarding complete. Added to the quarterly review sheet.",
-    order: 31,
+    order: 36,
     ownerRole: "sales",
     requiredFields: [],
     allowedActions: [],
@@ -406,7 +458,7 @@ export const LEAD_TO_CLIENT_STAGES: SeedStage[] = [
     key: "insurance_needs_analysis",
     name: "Needs Analysis",
     description: "Assess the client's protection gap, dependents, liabilities and goals.",
-    order: 32,
+    order: 37,
     ownerRole: "sales",
     requiredFields: [],
     slaDays: 2,
@@ -416,7 +468,7 @@ export const LEAD_TO_CLIENT_STAGES: SeedStage[] = [
     key: "insurance_quote",
     name: "Quote Shared",
     description: "Illustrations / premium quotes shared for the recommended cover.",
-    order: 33,
+    order: 38,
     ownerRole: "sales",
     requiredFields: [],
     slaDays: 3,
@@ -426,7 +478,7 @@ export const LEAD_TO_CLIENT_STAGES: SeedStage[] = [
     key: "insurance_proposal",
     name: "Proposal Filled",
     description: "Proposal form completed; KYC + medicals collected.",
-    order: 34,
+    order: 39,
     ownerRole: "operations",
     requiredFields: [],
     slaDays: 2,
@@ -436,7 +488,7 @@ export const LEAD_TO_CLIENT_STAGES: SeedStage[] = [
     key: "insurance_underwriting",
     name: "Underwriting",
     description: "Submitted to the insurer; underwriting / medicals in progress.",
-    order: 35,
+    order: 40,
     ownerRole: "operations",
     requiredFields: [],
     slaDays: 10,
@@ -446,7 +498,7 @@ export const LEAD_TO_CLIENT_STAGES: SeedStage[] = [
     key: "insurance_policy_issued",
     name: "Policy Issued",
     description: "Policy issued and in force — client onboarded on insurance.",
-    order: 36,
+    order: 41,
     ownerRole: "operations",
     requiredFields: [],
     allowedActions: [],
@@ -456,7 +508,7 @@ export const LEAD_TO_CLIENT_STAGES: SeedStage[] = [
     key: "insurance_lost",
     name: "Not Proceeded",
     description: "Client did not proceed / proposal declined.",
-    order: 37,
+    order: 42,
     ownerRole: "sales",
     requiredFields: [],
     allowedActions: ["insurance_needs_analysis"],
@@ -470,8 +522,31 @@ export const MF_ONBOARDING_KEYS = [
   "kyc_validated", "kyc_registered", "kyc_pending", "modify_kyc", "physical_kyc", "online_kyc",
   "ucc_create", "ucc_activated", "mandate_create", "mandate_activated", "mandate_reject",
   "make_transaction", "transaction_successful", "transaction_failed",
+  "rta_forms_ready", "rta_client_signed", "rta_submitted", "rta_processed", "rta_rejected",
   "family_mapping", "update_information", "add_in_review_sheet",
 ] as const;
+
+/**
+ * MF onboarding has two routes after KYC Validated (leads.onboarding_route):
+ *   exchange — a UCC on BSE / NSE / MFU, an exchange mandate, the order;
+ *   physical — forms submitted to CAMS / KFintech / the AMC (no UCC).
+ * Each route's own steps; the steps before and after are shared.
+ */
+export const EXCHANGE_ROUTE_KEYS = [
+  "ucc_create", "ucc_activated", "mandate_create", "mandate_activated", "mandate_reject",
+  "make_transaction", "transaction_successful", "transaction_failed",
+] as const;
+export const PHYSICAL_ROUTE_KEYS = [
+  "rta_forms_ready", "rta_client_signed", "rta_submitted", "rta_processed", "rta_rejected",
+] as const;
+export type OnboardingRoute = "exchange" | "physical";
+
+/** Which route a stage belongs to, or null for a shared stage. */
+export function routeOfStage(stageKey: string): OnboardingRoute | null {
+  if ((PHYSICAL_ROUTE_KEYS as readonly string[]).includes(stageKey)) return "physical";
+  if ((EXCHANGE_ROUTE_KEYS as readonly string[]).includes(stageKey)) return "exchange";
+  return null;
+}
 
 export const INSURANCE_ONBOARDING_KEYS = [
   "insurance_needs_analysis", "insurance_quote", "insurance_proposal",
@@ -628,6 +703,17 @@ export const LEAD_TO_CLIENT_TRANSITIONS: Array<{
   { from: "make_transaction", to: "transaction_successful", name: "Order Successful" },
   { from: "make_transaction", to: "transaction_failed", name: "Order Failed" },
   { from: "transaction_failed", to: "make_transaction", name: "Retry Order" },
+
+  // ─── Physical route via the RTA / AMC ──────────────────────────
+  { from: "kyc_validated", to: "rta_forms_ready", name: "Physical via RTA" },
+  { from: "rta_forms_ready", to: "rta_client_signed", name: "Client Signed" },
+  { from: "rta_forms_ready", to: "rta_submitted", name: "Submitted to RTA" },
+  { from: "rta_client_signed", to: "rta_submitted", name: "Submitted to RTA" },
+  { from: "rta_submitted", to: "rta_processed", name: "Processed by RTA" },
+  { from: "rta_submitted", to: "rta_rejected", name: "Rejected by RTA" },
+  { from: "rta_rejected", to: "rta_submitted", name: "Resubmitted to RTA" },
+  { from: "rta_rejected", to: "rta_forms_ready", name: "Redo Forms" },
+  { from: "rta_processed", to: "family_mapping", name: "Map Family" },
 
   // ─── Post-investment ───────────────────────────────────────────
   { from: "transaction_successful", to: "family_mapping", name: "Map Family" },

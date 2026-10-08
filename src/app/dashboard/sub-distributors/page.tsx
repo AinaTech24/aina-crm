@@ -17,6 +17,7 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { subDistributors } from "@/db/schema";
 import { formatDate } from "@/lib/format";
+import { ExportButton } from "@/components/export/ExportButton";
 
 export const dynamic = "force-dynamic";
 
@@ -76,7 +77,7 @@ export default async function SubDistributorsListPage({
 
   return (
     <div className="space-y-5">
-      <PageHeaderCard title={<>Sub-distributors</>} actions={<><Link href="/dashboard/sub-distributors/new" className="btn-primary text-sm">
+      <PageHeaderCard title={<>Sub-distributors</>} actions={<><ExportButton module="sub-distributors" /><Link href="/dashboard/sub-distributors/new" className="btn-primary text-sm">
           <Plus className="size-4" /> Add sub-distributor
         </Link></>} />
 

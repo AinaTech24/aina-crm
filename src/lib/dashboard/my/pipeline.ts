@@ -150,8 +150,8 @@ export const FUNNEL: Array<{ key: string; label: string; stages: string[] }> = [
   { key: "meeting_set", label: "Meeting scheduled", stages: ["meeting_scheduled", "meeting_pending", "appointment_scheduled"] },
   { key: "met", label: "Meeting completed", stages: ["meeting_done", "post_meeting_qualified"] },
   { key: "proposal", label: "Proposal shared", stages: ["proposal_shared", "proposal_sent", "proposal_drafted", "proposal_approved", "risk_profile_sent", "risk_profiled"] },
-  { key: "follow_up", label: "Follow-up / documents", stages: ["follow_up", "docs_requested", "request_documents", "docs_received", "documents_pending", "documents_received", "kyc_pending", "kyc_validated", "kyc_registered", "modify_kyc", "physical_kyc", "online_kyc", "ucc_create", "ucc_activated", "mandate_create", "mandate_activated", "update_information", "family_mapping", "add_in_review_sheet", "make_transaction"] },
-  { key: "onboarded", label: "Client onboarded", stages: ["converted", "won_lead", "transaction_successful"] },
+  { key: "follow_up", label: "Follow-up / documents", stages: ["follow_up", "docs_requested", "request_documents", "docs_received", "documents_pending", "documents_received", "kyc_pending", "kyc_validated", "kyc_registered", "modify_kyc", "physical_kyc", "online_kyc", "ucc_create", "ucc_activated", "mandate_create", "mandate_activated", "update_information", "family_mapping", "add_in_review_sheet", "make_transaction", "rta_forms_ready", "rta_client_signed", "rta_submitted", "rta_rejected"] },
+  { key: "onboarded", label: "Client onboarded", stages: ["converted", "won_lead", "transaction_successful", "rta_processed"] },
 ];
 
 // Won and lost, from the shared lists in ./window so the funnel and the

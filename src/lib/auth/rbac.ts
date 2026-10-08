@@ -78,6 +78,9 @@ export type Capability =
   | "investor.edit.all"
   | "investor.edit.assigned"
   | "investor.bulk_export"
+  /** The Export button on module lists (leads, tasks, SIPs, policies…). Client
+   *  lists keep `investor.bulk_export`. Owner + compliance; grantable. */
+  | "data.export"
   | "investor.delete"
   | "investor.note.add"
   // Households (family mapping). Separate from investor.* so an owner can let
@@ -195,6 +198,7 @@ const MATRIX: Record<Capability, Role[]> = {
   "investor.edit.all": ["back_office", "ops"],
   "investor.edit.assigned": ["rm"],
   "investor.bulk_export": ["compliance"],
+  "data.export": ["compliance"],
   // Permanent hard-delete of a client + its owned data subgraph (cascades).
   // Deliberately NARROWER than investor.edit.all: editing a phone number must
   // not imply the power to irreversibly erase a client's whole history. Owner

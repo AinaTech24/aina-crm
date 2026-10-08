@@ -9,6 +9,7 @@ import { CustomViews } from "@/components/common/CustomViews";
 import { LeaveTable } from "@/components/leave/LeaveTable";
 import { LeaveTimeline } from "@/components/leave/LeaveTimeline";
 import { LEAVE_TYPE_LABELS } from "@/lib/leave/policy";
+import { ExportButton } from "@/components/export/ExportButton";
 
 export const dynamic = "force-dynamic";
 
@@ -168,6 +169,7 @@ export default async function LeaveApplicationsPage({
               <SlidersHorizontal className="size-4" /> Leave policy
             </Link>
           )}
+          <ExportButton module="leave" />
           <Link href="/dashboard/leave-applications/new" className="btn-primary">
             <Plus className="size-4" /> New request
           </Link>

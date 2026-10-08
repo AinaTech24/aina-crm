@@ -115,6 +115,12 @@ export const leads = pgTable(
         "make_transaction",
         "transaction_successful",
         "transaction_failed",
+        // Physical route via the RTA (migration 0232)
+        "rta_forms_ready",
+        "rta_client_signed",
+        "rta_submitted",
+        "rta_processed",
+        "rta_rejected",
         "family_mapping",
         "update_information",
         "add_in_review_sheet",
@@ -131,6 +137,13 @@ export const leads = pgTable(
      *  (mf | insurance | general) + its stage within that pipeline. Separate
      *  from the blueprint `stage` above. See src/lib/pipelines/config.ts. */
     pipeline: text("pipeline").notNull().default("mf"),
+    /** MF onboarding route after KYC Validated (migration 0232): "exchange"
+     *  (UCC on BSE / NSE / MFU) or "physical" (forms to the RTA / AMC). Set by
+     *  the journey when it enters either route; null until then. */
+    onboardingRoute: text("onboarding_route"),
+    /** The physical route's submission to the RTA: { rta, centre, ackNo,
+     *  submittedOn, includes, notes, by, at, history[] }. */
+    rtaSubmission: jsonb("rta_submission"),
     pipelineStage: text("pipeline_stage"),
     /** Legacy free-text score (AI-advisory; not reliably populated). Kept for
      *  back-compat — the structured columns below are the source of truth. */

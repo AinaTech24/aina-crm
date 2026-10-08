@@ -16,6 +16,7 @@ import { require as requireCap, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { amcEmpanelments } from "@/db/schema";
 import { formatDate } from "@/lib/format";
+import { ExportButton } from "@/components/export/ExportButton";
 
 export const dynamic = "force-dynamic";
 
@@ -68,7 +69,7 @@ export default async function AmcEmpanelmentsListPage({
 
   return (
     <div className="space-y-5">
-      <PageHeaderCard title={<>AMC Empanelments</>} actions={<><Link href="/dashboard/amc-empanelments/new" className="btn-primary text-sm">
+      <PageHeaderCard title={<>AMC Empanelments</>} actions={<><ExportButton module="amc-empanelments" /><Link href="/dashboard/amc-empanelments/new" className="btn-primary text-sm">
           <Plus className="size-4" /> Add empanelment
         </Link></>} />
 

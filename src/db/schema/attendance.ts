@@ -51,3 +51,32 @@ export const attendance = pgTable(
 
 export type Attendance = typeof attendance.$inferSelect;
 export type NewAttendance = typeof attendance.$inferInsert;
+
+/**
+ * Every clock-in and clock-out (migration 0230). `attendance` keeps the day's
+ * summary — first in, last out, total worked — and this is the log under it,
+ * so someone can clock out and back in as often as the day needs.
+ */
+export const attendancePunches = pgTable(
+  "attendance_punches",
+  {
+    id,
+    tenantId,
+    employeeUserId: uuid("employee_user_id").notNull(),
+    attendanceDate: date("attendance_date").notNull(),
+    /** "in" | "out" */
+    kind: text("kind", { enum: ["in", "out"] }).notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+    lat: numeric("lat"),
+    lng: numeric("lng"),
+    ip: text("ip"),
+    /** Set when a manager punched for the employee. */
+    recordedBy: uuid("recorded_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    dayIdx: index("attendance_punches_day_idx").on(t.tenantId, t.employeeUserId, t.attendanceDate, t.at),
+  })
+);
+
+export type AttendancePunch = typeof attendancePunches.$inferSelect;

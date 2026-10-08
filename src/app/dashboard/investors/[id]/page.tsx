@@ -45,7 +45,7 @@ import { RecommendedActions } from "@/components/investors/RecommendedActions";
 import { AiClientBrief } from "@/components/investors/AiClientBrief";
 import { BestTimeBadge } from "@/components/investors/BestTimeBadge";
 import { OnboardingWizardButton } from "@/components/investors/OnboardingWizard";
-import { QuickCommsPanel } from "@/components/investors/QuickCommsPanel";
+import { SendTemplateButtons } from "@/components/comms/SendTemplateButtons";
 import { NomineeSection } from "@/components/investors/NomineeSection";
 import { ReferralSection } from "@/components/investors/ReferralSection";
 import { CustomFieldsCard } from "@/components/common/CustomFieldsCard";
@@ -497,7 +497,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
         actions={
           <>
             <LogActivityButton subject={{ type: "investor", id: inv.id, name: inv.name, phone: inv.phone }} label="Log call / visit" variant="primary" />
-            <QuickCommsPanel investorId={inv.id} investorName={inv.name} />
+            <SendTemplateButtons type="investor" id={inv.id} name={inv.name} email={inv.email} phone={inv.whatsappPhone || inv.phone} />
             <RecordMenu>
               <Link href={`/dashboard/review-meetings/new?investorId=${inv.id}`} className={MENU_ITEM}>
                 <CalendarPlus className={MENU_ICON} /> Schedule review meeting

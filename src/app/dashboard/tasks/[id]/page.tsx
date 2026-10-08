@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { and, eq, isNull } from "drizzle-orm";
+import { openInfoRequest } from "@/lib/tasks/info-request";
 import { withTenant } from "@/db/client";
 import { investors, leads, taskChecklist, tasks, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
@@ -39,7 +40,9 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
     const mine =
       task.assigneeId === session.userId ||
       task.createdById === session.userId ||
-      taskChecklist(task.meta).some((c) => c.assigneeId === session.userId);
+      taskChecklist(task.meta).some((c) => c.assigneeId === session.userId) ||
+      // The person an open "Need information" question is waiting on.
+      openInfoRequest(task.meta)?.askedToId === session.userId;
     if (!canViewAll && !mine) return null;
     // view.all reaches only tasks whose client / lead is in scope.
     if (!(await taskInScope(tx, session, id))) return null;

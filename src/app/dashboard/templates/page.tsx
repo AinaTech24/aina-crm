@@ -1,4 +1,5 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
+import { ExportButton } from "@/components/export/ExportButton";
 import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
 import {
@@ -120,6 +121,7 @@ export default async function TemplatesPage({
     <div className="space-y-6 max-w-7xl">
       {/* Header */}
       <PageHeaderCard title={<><FileText className="size-6 text-muted-foreground" /> Message Templates</>} actions={<><div className="flex items-center gap-2">
+          <ExportButton module="templates" />
           <FetchWhatsappTemplatesButton />
           <Link href="/dashboard/templates/new" className="btn-primary">
             <Plus className="size-4" /> New template

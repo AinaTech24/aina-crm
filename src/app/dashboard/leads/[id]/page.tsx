@@ -23,6 +23,7 @@ import { formatDueIn, formatMoney } from "@/lib/format";
 import { fromActivities, fromCommunications, fromLeadNotes, fromMeetings, fromTasks, mergeTimeline } from "@/lib/timeline";
 import { Stat } from "@/components/dashboards/DashboardShared";
 import { LeadActions } from "@/components/leads/LeadActions";
+import { SendTemplateButtons } from "@/components/comms/SendTemplateButtons";
 import { EmailRelatedList } from "@/components/comms/EmailRelatedList";
 import { can } from "@/lib/auth/rbac";
 import { WhatsAppRelatedList } from "@/components/comms/WhatsAppRelatedList";
@@ -204,6 +205,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                 currentStage={l.stage}
                 alreadyConvertedInvestorId={l.convertedInvestorId ?? null}
               />
+              <SendTemplateButtons type="lead" id={l.id} name={l.name} email={l.email} phone={l.phone} />
               <RecordMenu>
                 <CheckInButton subject={{ type: "lead", id: l.id, name: l.name, phone: l.phone }} triggerClassName={MENU_ITEM} />
                 <LeadScoreButton

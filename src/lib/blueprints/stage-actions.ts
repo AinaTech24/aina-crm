@@ -18,6 +18,7 @@
 
 export type StageActionBehaviour =
   | { kind: "open_dialog"; dialog: DialogKind }
+  /** `{id}` is the lead, `{investorId}` the client it became. */
   | { kind: "navigate"; hrefPattern: string }
   | { kind: "advance_only" }
   | { kind: "call_api"; endpoint: string; body?: Record<string, unknown>; afterStage?: string }
@@ -549,6 +550,15 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       hint: "Client already has an active UCC from a prior platform.",
       behaviour: { kind: "advance_only" },
     },
+    {
+      // The physical route: signed forms to CAMS / KFintech / the AMC, no UCC.
+      key: "physical_rta",
+      label: "Physical via RTA",
+      tone: "secondary",
+      targetStage: "rta_forms_ready",
+      hint: "Invest by signed forms submitted to CAMS / KFintech / the AMC — no UCC or exchange.",
+      behaviour: { kind: "advance_only" },
+    },
   ],
 
   // 15. KYC Registered
@@ -696,7 +706,7 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       tone: "primary",
       targetStage: "make_transaction",
       hint: "Submit purchase order to BSE Star / NSE NMF.",
-      behaviour: { kind: "navigate", hrefPattern: "/dashboard/business-entries/new?investorId={id}" },
+      behaviour: { kind: "navigate", hrefPattern: "/dashboard/business-entries/new?investorId={investorId}" },
     },
   ],
 
@@ -753,7 +763,84 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       tone: "primary",
       targetStage: "make_transaction",
       hint: "Resolve the issue and resubmit the order.",
-      behaviour: { kind: "navigate", hrefPattern: "/dashboard/business-entries/new?investorId={id}" },
+      behaviour: { kind: "navigate", hrefPattern: "/dashboard/business-entries/new?investorId={investorId}" },
+    },
+  ],
+
+  // ── Physical route via the RTA / AMC ──
+  rta_forms_ready: [
+    {
+      key: "client_signed",
+      label: "Client Signed the Forms",
+      tone: "primary",
+      targetStage: "rta_client_signed",
+      hint: "Upload the signed forms and cheque copy to the client's documents.",
+      behaviour: { kind: "advance_only" },
+    },
+    {
+      key: "submit",
+      label: "Submitted to RTA",
+      tone: "secondary",
+      targetStage: "rta_submitted",
+      hint: "Forms already signed and submitted — record the acknowledgement.",
+      behaviour: { kind: "navigate", hrefPattern: "/dashboard/leads/{id}/rta-submission" },
+    },
+  ],
+  rta_client_signed: [
+    {
+      key: "submit",
+      label: "Submitted to RTA",
+      tone: "primary",
+      targetStage: "rta_submitted",
+      hint: "Record where and when the forms went in, and the acknowledgement no.",
+      behaviour: { kind: "navigate", hrefPattern: "/dashboard/leads/{id}/rta-submission" },
+    },
+  ],
+  rta_submitted: [
+    {
+      key: "processed",
+      label: "Processed by RTA",
+      tone: "success",
+      targetStage: "rta_processed",
+      hint: "Units allotted. This also happens on its own when the RTA feed shows the transaction.",
+      behaviour: { kind: "advance_only" },
+    },
+    {
+      key: "rejected",
+      label: "Rejected by RTA",
+      tone: "danger",
+      targetStage: "rta_rejected",
+      hint: "The registrar rejected it — correct and resubmit.",
+      behaviour: { kind: "advance_only" },
+    },
+  ],
+  rta_rejected: [
+    {
+      key: "resubmit",
+      label: "Resubmit to RTA",
+      tone: "primary",
+      targetStage: "rta_submitted",
+      hint: "Corrected and submitted again — record the new acknowledgement.",
+      behaviour: { kind: "navigate", hrefPattern: "/dashboard/leads/{id}/rta-submission" },
+    },
+    {
+      key: "redo",
+      label: "Redo Forms",
+      tone: "secondary",
+      targetStage: "rta_forms_ready",
+      hint: "New forms are needed (e.g. a fresh cheque or signature).",
+      behaviour: { kind: "advance_only" },
+    },
+  ],
+  rta_processed: [
+    {
+      key: "family",
+      label: "Map Family",
+      tone: "primary",
+      targetStage: "family_mapping",
+      hint: "Add the client to an existing family or start a new one.",
+      // Mapping the family moves the journey on (lib/families/journey.ts).
+      behaviour: { kind: "open_dialog", dialog: "map_family" },
     },
   ],
 
@@ -765,7 +852,8 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       tone: "primary",
       targetStage: "update_information",
       hint: "Enrich master record: goals, income, occupation, nominee.",
-      behaviour: { kind: "navigate", hrefPattern: "/dashboard/investors/{id}" },
+      // Opens the required details still missing (GuidedStageActions adds ?back=).
+      behaviour: { kind: "navigate", hrefPattern: "/dashboard/leads/{id}/update-information" },
     },
   ],
 

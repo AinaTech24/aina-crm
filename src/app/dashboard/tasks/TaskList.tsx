@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { openInfoRequest } from "@/lib/tasks/info-request";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { RowActions } from "@/components/common/RowActions";
@@ -550,7 +551,18 @@ export function TaskList({ initialRows, currentUserId, initialOpenTaskId, total 
                   </span>
                 )}
 
-                {(t.status === "in_progress" || t.status === "blocked") && (
+                {/* Need information: who the task is waiting on (lib/tasks/info-request). */}
+                {!isDone && openInfoRequest(t.meta) && (
+                  <span
+                    className="shrink-0 text-2xs font-medium rounded px-1.5 py-0.5 border text-amber-800 bg-amber-50 border-amber-200"
+                    title={`Question: ${openInfoRequest(t.meta)!.question}`}
+                  >
+                    {openInfoRequest(t.meta)!.askedToId === currentUserId
+                      ? "Waiting for your reply"
+                      : `Waiting for info${openInfoRequest(t.meta)!.askedToName ? ` · ${openInfoRequest(t.meta)!.askedToName}` : ""}`}
+                  </span>
+                )}
+                {(t.status === "in_progress" || (t.status === "blocked" && !openInfoRequest(t.meta))) && (
                   <span className={`shrink-0 text-2xs font-medium rounded px-1.5 py-0.5 border ${
                     t.status === "blocked" ? "text-rose-700 bg-rose-50 border-rose-200" : "text-violet-700 bg-violet-50 border-violet-200"
                   }`}>

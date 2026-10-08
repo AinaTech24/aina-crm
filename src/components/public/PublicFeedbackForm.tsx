@@ -13,10 +13,16 @@
  * POSTs to /api/public/feedback/submit, which files the response as a closed
  * `feedback` service request (per-question answers stored, detractors raised to
  * high priority) and emits a `feedback.submitted` event.
+ *
+ * With `webToken` it is the firm's public link (/feedback/<token>, for its
+ * website and email signature): anyone may answer, so it also asks for an
+ * email or mobile, carries a honeypot, and posts to
+ * /api/public/feedback/web/<token> (lib/feedback/web-form.ts).
  */
 
 import { useMemo, useState } from "react";
-import { CheckCircle2, Loader2, MessageSquareHeart } from "lucide-react";
+import { CheckCircle2, Download, Eye, Loader2, MessageSquareHeart } from "lucide-react";
+import { DownloadButton, OpenDocButton } from "@/components/common/SecureLinkButtons";
 import { FEEDBACK_QUESTIONS, NPS_QUESTION_KEY } from "@/lib/support/feedback-questions";
 
 /**
@@ -45,19 +51,29 @@ function scoreTone(n: number): { idle: string; active: string } {
 
 export function PublicFeedbackForm({
   tokenId,
+  webToken,
   recipientName,
   firmName,
 }: {
-  tokenId: string;
+  /** A client's personal, single-use survey link. */
+  tokenId?: string;
+  /** Or the firm's public link. */
+  webToken?: string;
   recipientName: string;
   firmName: string;
 }) {
   const [scores, setScores] = useState<Record<string, number>>({});
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [trap, setTrap] = useState("");
   const [comment, setComment] = useState("");
   const [signature, setSignature] = useState(recipientName ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  // The response as a PDF: the personal link's own token, or the signed
+  // receipt the public link hands back (lib/feedback/receipt.ts).
+  const [pdfQuery, setPdfQuery] = useState<string | null>(null);
 
   const answered = Object.keys(scores).length;
   const firstUnanswered = useMemo(
@@ -79,18 +95,29 @@ export function PublicFeedbackForm({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/public/feedback/submit", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          tokenId,
-          answers: FEEDBACK_QUESTIONS.map((q) => ({ key: q.key, label: q.label, score: scores[q.key] })),
-          comment: comment.trim(),
-          signatureName: signature.trim(),
-        }),
-      });
+      const answers = FEEDBACK_QUESTIONS.map((q) => ({ key: q.key, label: q.label, score: scores[q.key] }));
+      const res = webToken
+        ? await fetch(`/api/public/feedback/web/${encodeURIComponent(webToken)}`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              answers,
+              comment: comment.trim(),
+              name: signature.trim(),
+              email: email.trim(),
+              phone: phone.trim(),
+              website: trap,
+            }),
+          })
+        : await fetch("/api/public/feedback/submit", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ tokenId, answers, comment: comment.trim(), signatureName: signature.trim() }),
+          });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j?.error ?? "Could not submit your feedback");
+      if (tokenId) setPdfQuery(`token=${encodeURIComponent(tokenId)}`);
+      else if (typeof j?.receipt === "string") setPdfQuery(`receipt=${encodeURIComponent(j.receipt)}`);
       setDone(true);
     } catch (e) {
       setError((e as Error).message);
@@ -112,6 +139,22 @@ export function PublicFeedbackForm({
             ? "Someone from the team will get in touch with you shortly."
             : "We're grateful you took the time."}
         </p>
+        {pdfQuery && (
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+            <OpenDocButton
+              url={`/api/public/feedback/pdf?${pdfQuery}`}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-secondary transition-colors"
+            >
+              <Eye className="size-4" /> View your feedback (PDF)
+            </OpenDocButton>
+            <DownloadButton
+              url={`/api/public/feedback/pdf?${pdfQuery}&download=1`}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-cyan px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 transition-opacity"
+            >
+              <Download className="size-4" /> Download PDF
+            </DownloadButton>
+          </div>
+        )}
       </div>
     );
   }
@@ -207,6 +250,48 @@ export function PublicFeedbackForm({
         />
       </label>
 
+      {webToken && (
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <label className="block">
+            <span className="text-sm font-medium">
+              Email <span className="font-normal text-muted-foreground">(optional)</span>
+            </span>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              maxLength={200}
+              autoComplete="email"
+              className="mt-1.5 w-full rounded-lg border border-border p-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-cyan/40"
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium">
+              Mobile <span className="font-normal text-muted-foreground">(optional)</span>
+            </span>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              maxLength={30}
+              autoComplete="tel"
+              className="mt-1.5 w-full rounded-lg border border-border p-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-cyan/40"
+            />
+          </label>
+          {/* Honeypot: hidden from people, filled in by bots. */}
+          <input
+            type="text"
+            name="website"
+            value={trap}
+            onChange={(e) => setTrap(e.target.value)}
+            tabIndex={-1}
+            autoComplete="off"
+            aria-hidden="true"
+            className="hidden"
+          />
+        </div>
+      )}
+
       {error && <p className="mt-4 text-sm text-rose-600">{error}</p>}
 
       <button
@@ -220,7 +305,9 @@ export function PublicFeedbackForm({
       </button>
 
       <p className="mt-3 text-2xs text-muted-foreground text-center">
-        This link is personal to you and can be used once.
+        {webToken
+          ? "If you are a client, your email or mobile lets us pass this to your relationship manager."
+          : "This link is personal to you and can be used once."}
       </p>
     </div>
   );

@@ -42,6 +42,7 @@ import {
   LEAD_TO_CLIENT_TRANSITIONS,
   stageDisposition,
   onboardingBranchOf,
+  routeOfStage,
   stageFlavour,
 } from "./lead_to_client";
 import { checkPrerequisites } from "./prerequisites";
@@ -430,6 +431,15 @@ export async function transitionTo(
     }
   }
 
+  // Entering a route's own step records the route (exchange / physical), so the
+  // journey bar shows that path only (getStage).
+  const route = routeOfStage(toStageKey);
+  if (route) {
+    await tx.execute(
+      sql`UPDATE leads SET onboarding_route = ${route} WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid AND onboarding_route IS DISTINCT FROM ${route}` as any
+    );
+  }
+
   return { ok: true, fromStage: currentStageKey, toStage: toStageKey };
 }
 
@@ -490,12 +500,15 @@ export async function getStage(tx: Tx, tenantId: string, leadId: string): Promis
   // Which onboarding branch does this lead follow? Insurance-primary leads walk
   // the insurance journey; everyone else (mf / general) walks MF onboarding.
   const [leadRow] = await tx
-    .select({ pipeline: leads.pipeline })
+    .select({ pipeline: leads.pipeline, route: leads.onboardingRoute })
     .from(leads)
     .where(eq(leads.id, leadId))
     .limit(1);
   const pipeline = (leadRow?.pipeline as string) ?? "mf";
   const branch: "mf" | "insurance" = pipeline === "insurance" ? "insurance" : "mf";
+  // Inside MF onboarding: the exchange route (UCC …) or the physical one (forms
+  // to the RTA). Until one is chosen the exchange path shows, as it always did.
+  const route = leadRow?.route === "physical" ? "physical" : "exchange";
 
   // Hide the OFF-branch onboarding stages so the stepper shows one clean path.
   // Lead-phase / shared stages always show; the current stage is never hidden
@@ -503,7 +516,9 @@ export async function getStage(tx: Tx, tenantId: string, leadId: string): Promis
   const stages = allDbStages.filter((s) => {
     if (s.stageKey === inst.currentStageKey) return true;
     const b = onboardingBranchOf(s.stageKey);
-    return b === null || b === branch;
+    if (b !== null && b !== branch) return false;
+    const r = routeOfStage(s.stageKey);
+    return r === null || r === route;
   });
   const currentIdx = stages.findIndex((s) => s.stageKey === inst.currentStageKey);
   const current = stages[currentIdx];

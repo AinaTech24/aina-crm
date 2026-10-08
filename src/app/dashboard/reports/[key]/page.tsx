@@ -1212,7 +1212,8 @@ const REPORTS: Record<
            'kyc_validated','kyc_registered','kyc_pending','modify_kyc','physical_kyc','online_kyc'))::int AS onboarding,
         COUNT(lbi.id) FILTER (WHERE lbi.current_stage_key IN
           ('ucc_create','ucc_activated','mandate_create','mandate_activated','mandate_reject',
-           'make_transaction','transaction_successful','transaction_failed','family_mapping','update_information'))::int AS activation,
+           'make_transaction','transaction_successful','transaction_failed','family_mapping','update_information',
+           'rta_forms_ready','rta_client_signed','rta_submitted','rta_processed','rta_rejected'))::int AS activation,
         COUNT(lbi.id) FILTER (WHERE lbi.status = 'lost')::int AS lost,
         COUNT(lbi.id) FILTER (
           WHERE lbi.status = 'completed' AND lbi.completed_at >= now() - interval '30 days'

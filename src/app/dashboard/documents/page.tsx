@@ -1,4 +1,5 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
+import { ExportButton } from "@/components/export/ExportButton";
 import Link from "next/link";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { Upload, ShieldCheck, ScrollText } from "lucide-react";
@@ -129,9 +130,7 @@ export default async function DocumentsPage() {
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<>Documents</>} subtitle={<>{wholeVault
-              ? "KYC forms, agreements and statements, filed against the right client."
-              : "KYC forms, agreements and statements for the clients you manage."}</>} actions={<><Link
+      <PageHeaderCard title={<>Documents</>} actions={<><ExportButton module="documents" /><Link
           href="/dashboard/documents/upload"
           className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 hover:bg-primary/95 transition-colors print:hidden"
         >

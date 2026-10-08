@@ -10,6 +10,7 @@ import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
 import { EmployeeRowActions } from "@/components/employees/EmployeeRowActions";
 import { TeamPresence } from "@/components/employees/TeamPresence";
+import { ExportButton } from "@/components/export/ExportButton";
 
 const STATUS_COLORS: Record<string, string> = {
   active: "bg-emerald-50 text-emerald-700",
@@ -117,6 +118,7 @@ export default async function EmployeesPage({
           <Link href="/dashboard/employees/import" className="rounded-md border px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 hover:bg-secondary">
             <Upload className="size-4" /> Import
           </Link>
+          <ExportButton module="team-members" />
           <Link
             href="/dashboard/employees/new"
             className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium flex items-center gap-1.5"

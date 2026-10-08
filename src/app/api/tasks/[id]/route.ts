@@ -8,6 +8,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { openInfoRequest } from "@/lib/tasks/info-request";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
@@ -121,7 +122,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
     // Assigned-only viewers can't read other people's tasks — unless a sub-task
     // is delegated to them (then they may open + update the parent task).
-    if (!canViewAll && !ownsTask(row, session.userId) && !isSubtaskAssignee(row, session.userId)) {
+    // …or an open "Need information" question is waiting on them (read only).
+    if (!canViewAll && !ownsTask(row, session.userId) && !isSubtaskAssignee(row, session.userId)
+        && openInfoRequest(row.meta)?.askedToId !== session.userId) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
     return NextResponse.json(row);

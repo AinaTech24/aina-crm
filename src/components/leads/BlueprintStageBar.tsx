@@ -432,6 +432,7 @@ export function BlueprintStageBar({
             (e.g. "Call Done" verifies a call log exists before advancing). */}
         <GuidedStageActions
           leadId={leadId}
+          investorId={convertedInvestorId}
           currentStage={current.key}
           pipeline={data?.pipeline}
           onOpenDialog={(kind) => {

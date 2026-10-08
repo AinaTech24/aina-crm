@@ -50,7 +50,20 @@ export type AttRow = {
   early_minutes?: number;
   /** Today's auto "absent" before the working day ends — shown as Not clocked in. */
   pending?: boolean;
+  /** Every clock-in / clock-out of the day, in order (attendance_punches). */
+  punches?: Array<{ kind: "in" | "out"; at: string }>;
 };
+
+/** The day's punches as in → out sessions; an open one has no out yet. */
+function sessionsOf(punches: AttRow["punches"]): Array<{ in: string | null; out: string | null }> {
+  const out: Array<{ in: string | null; out: string | null }> = [];
+  for (const p of punches ?? []) {
+    if (p.kind === "in") out.push({ in: p.at, out: null });
+    else if (out.length && !out[out.length - 1].out) out[out.length - 1].out = p.at;
+    else out.push({ in: null, out: p.at });
+  }
+  return out;
+}
 
 /** ISO → "HH:MM" in IST for a time input value. */
 function hhmmInput(iso: string | null): string {
@@ -78,6 +91,8 @@ export function AttendanceTable({ rows, canManage, toolbar }: { rows: AttRow[]; 
   const [correcting, setCorrecting] = useState<AttRow | null>(null);
 
   const allSelected = useMemo(() => rows.length > 0 && rows.every((r) => sel.has(r.id)), [rows, sel]);
+  // The punch log column shows only when some row on the page has punches.
+  const showPunches = rows.some((r) => (r.punches?.length ?? 0) > 0);
 
   function toggle(id: string) {
     setSel((prev) => {
@@ -178,6 +193,7 @@ export function AttendanceTable({ rows, canManage, toolbar }: { rows: AttRow[]; 
               <th className="text-left py-2 font-medium">Status</th>
               <th className="text-left py-2 font-medium">Clock In</th>
               <th className="text-left py-2 font-medium">Clock Out</th>
+              {showPunches && <th className="text-left py-2 pl-4 font-medium">Punches</th>}
               <th className="text-right py-2 font-medium">Worked</th>
               <th className="text-left py-2 pl-4 font-medium">Note</th>
               {canManage && <th className="relative py-2 pr-4"><span className="sr-only">Correct</span></th>}
@@ -236,6 +252,22 @@ export function AttendanceTable({ rows, canManage, toolbar }: { rows: AttRow[]; 
                     )}
                   </div>
                 </td>
+                {showPunches && (
+                  <td className="py-2.5 pl-4 text-xs tabular-nums whitespace-nowrap">
+                    {sessionsOf(r.punches).length ? (
+                      <div className="space-y-0.5">
+                        {sessionsOf(r.punches).map((ses, i) => (
+                          <div key={i}>
+                            {ses.in ? hhmm(ses.in) : "—"} <span className="text-muted-foreground">→</span>{" "}
+                            {ses.out ? hhmm(ses.out) : <span className="text-emerald-700">in</span>}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground/40">—</span>
+                    )}
+                  </td>
+                )}
                 <td className="py-2.5 text-right text-xs tabular-nums">
                   {r.total_minutes && r.total_minutes > 0 ? (
                     <span className="inline-flex items-center gap-1 justify-end">

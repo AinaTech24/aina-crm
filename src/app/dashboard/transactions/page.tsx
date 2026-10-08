@@ -1,8 +1,9 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
+import { ExportButton } from "@/components/export/ExportButton";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { desc, eq, sql } from "drizzle-orm";
-import { Repeat, FileDown, ArrowDownToLine, TrendingUp, AlertCircle, FileUp } from "lucide-react";
+import { Repeat, ArrowDownToLine, TrendingUp, AlertCircle, FileUp } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { transactions, investors, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
@@ -223,7 +224,6 @@ export default async function TransactionsPage({
     for (const [k, v] of Object.entries(extra)) p.set(k, v);
     return `/dashboard/transactions?${p.toString()}`;
   };
-  const exportHref = `/api/transactions/export?${new URLSearchParams(filterEntries).toString()}`;
   const periodLabel = dateFrom || dateTo ? `${dateFrom || "start"} → ${dateTo || "today"}` : "all dates";
 
   const rmOptions = (data.rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
@@ -249,9 +249,7 @@ export default async function TransactionsPage({
   return (
     <div className="space-y-6 max-w-7xl">
       <PageHeaderCard title={<><Repeat className="size-6 text-muted-foreground" /> MF Transactions</>} actions={<><div className="flex items-center gap-2">
-          <a href={exportHref} className="btn-secondary" title="Download the filtered list as Excel">
-            <FileDown className="size-4" /> Export
-          </a>
+          <ExportButton module="transactions" />
           <Link href="/dashboard/transactions/import" className="btn-secondary">
             <FileUp className="size-4" /> Import
           </Link>

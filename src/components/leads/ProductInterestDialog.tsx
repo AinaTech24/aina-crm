@@ -26,8 +26,6 @@ export function ProductInterestDialog({
 }) {
   const [selected, setSelected] = useState<string[]>(["mutual_funds"]);
   const [primary, setPrimary] = useState<string>("mutual_funds");
-  const [basis, setBasis] = useState("");
-  const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,14 +49,10 @@ export function ProductInterestDialog({
     setSaving(true);
     setError(null);
     try {
-      // Fold the qualification basis into the won notes so it's captured for
-      // win/loss reporting without a schema change.
-      const composedNotes =
-        [basis ? `Qualified via: ${basis}` : "", notes.trim()].filter(Boolean).join(" — ") || undefined;
       const res = await fetch(`/api/leads/${leadId}/won`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ products: selected, primaryProduct: primary || selected[0], notes: composedNotes }),
+        body: JSON.stringify({ products: selected, primaryProduct: primary || selected[0] }),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d?.error ?? "Failed to save");
@@ -133,32 +127,6 @@ export function ProductInterestDialog({
             )}
           </div>
         )}
-
-        {/* Qualification basis — how the lead was qualified (for win analytics). */}
-        <div>
-          <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium mb-1">How was this lead qualified?</div>
-          <select value={basis} onChange={(e) => setBasis(e.target.value)} className="input-base text-sm w-full">
-            <option value="">— optional —</option>
-            <option value="Met in person">Met in person</option>
-            <option value="Phone-qualified">Phone-qualified</option>
-            <option value="Referral — warm intro">Referral — warm intro</option>
-            <option value="Existing relationship">Existing relationship</option>
-            <option value="Online / self-serve">Online / self-serve</option>
-            <option value="Other">Other</option>
-          </select>
-        </div>
-
-        {/* Notes */}
-        <div>
-          <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium mb-1">Notes (optional)</div>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={2}
-            placeholder="e.g. interested in term + ELSS; budget ₹25k/mo"
-            className="input-base text-sm w-full"
-          />
-        </div>
 
         {error && (
           <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-2.5 flex items-start gap-1.5">

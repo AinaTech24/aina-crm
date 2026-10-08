@@ -8,6 +8,7 @@ import { requireAny, can } from "@/lib/auth/rbac";
 import { investorScopeSql } from "@/lib/investors/access";
 import { formatDate } from "@/lib/utils";
 import { Pager } from "@/components/common/Pager";
+import { ExportButton } from "@/components/export/ExportButton";
 import { RiskProfileName, RiskProfilePdfButtons } from "@/components/risk-profile/RiskProfileName";
 import { SignedFormButton } from "@/components/risk-profile/SignedFormButton";
 import { SendRiskProfileLinkButton } from "@/components/risk-profile/SendRiskProfileLinkButton";
@@ -166,6 +167,7 @@ export default async function RiskProfilesPage({
   return (
     <div className="space-y-6 max-w-7xl">
       <PageHeaderCard title={<><ShieldCheck className="size-6 text-muted-foreground" /> Risk Profiles</>} actions={<><div className="flex items-center gap-2">
+          <ExportButton module="risk-profiles" />
           {canManage && <BulkAssignByAge initialBands={data.bands} />}
           <Link href="/dashboard/risk-profiles/new" className="btn-primary">
             <Plus className="size-4" /> New Risk Profile

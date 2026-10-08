@@ -8,6 +8,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { openInfoRequest } from "@/lib/tasks/info-request";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
@@ -22,8 +23,9 @@ import { taskInScope } from "@/lib/tasks/scope";
 
 export const dynamic = "force-dynamic";
 
-function ownsTask(task: { assigneeId: string | null; createdById: string | null }, userId: string): boolean {
-  return task.assigneeId === userId || task.createdById === userId;
+function ownsTask(task: { assigneeId: string | null; createdById: string | null; meta?: unknown }, userId: string): boolean {
+  // The person an open "Need information" question is waiting on joins the thread.
+  return task.assigneeId === userId || task.createdById === userId || openInfoRequest(task.meta)?.askedToId === userId;
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -35,7 +37,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
     const rows = await withTenant(session.tenantId, async (tx) => {
       const [task] = await tx
-        .select({ assigneeId: tasks.assigneeId, createdById: tasks.createdById })
+        .select({ assigneeId: tasks.assigneeId, createdById: tasks.createdById, meta: tasks.meta })
         .from(tasks)
         .where(and(eq(tasks.id, id), eq(tasks.tenantId, session.tenantId)))
         .limit(1);
@@ -77,7 +79,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const outcome = await withTenant(session.tenantId, async (tx) => {
       const [task] = await tx
-        .select({ title: tasks.title, assigneeId: tasks.assigneeId, createdById: tasks.createdById })
+        .select({ title: tasks.title, assigneeId: tasks.assigneeId, createdById: tasks.createdById, meta: tasks.meta })
         .from(tasks)
         .where(and(eq(tasks.id, id), eq(tasks.tenantId, session.tenantId)))
         .limit(1);
@@ -126,7 +128,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           kind: "task.mention",
           title: `${actorName} mentioned you: ${task.title}`,
           body: preview,
-          linkUrl: "/dashboard/tasks?view=assigned_to_me",
+          linkUrl: `/dashboard/tasks/${id}`,
           severity: "info",
           meta: { task_id: id, comment_id: inserted.id },
         });
@@ -141,7 +143,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           kind: "task.comment",
           title: `New comment: ${task.title}`,
           body: `${actorName}: ${preview}`,
-          linkUrl: "/dashboard/tasks?view=assigned_to_me",
+          linkUrl: `/dashboard/tasks/${id}`,
           severity: "info",
           meta: { task_id: id, comment_id: inserted.id },
         });

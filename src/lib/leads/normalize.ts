@@ -63,6 +63,12 @@ export const CANONICAL_LEAD_STAGES = [
   "make_transaction",
   "transaction_successful",
   "transaction_failed",
+  // Physical route via the RTA (migration 0232)
+  "rta_forms_ready",
+  "rta_client_signed",
+  "rta_submitted",
+  "rta_processed",
+  "rta_rejected",
   "family_mapping",
   "update_information",
   "add_in_review_sheet",

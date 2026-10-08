@@ -11,7 +11,7 @@
 import { v4 as uuid } from "uuid";
 import { notifications } from "@/db/schema";
 
-const MOBILE_ALERTS = new Set(["task.assigned", "task.subtask_assigned", "task.reminder", "task.overdue", "task.overdue.branch", "meeting.reminder"]);
+const MOBILE_ALERTS = new Set(["task.assigned", "task.subtask_assigned", "task.reminder", "task.overdue", "task.overdue.branch", "meeting.reminder", "task.info_requested", "task.info_answered"]);
 
 export type NotifySeverity = "info" | "success" | "warning" | "critical";
 

@@ -1,4 +1,5 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
+import { ExportButton } from "@/components/export/ExportButton";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import {
@@ -184,6 +185,7 @@ export default async function CampaignsPage({
   return (
     <div className="space-y-6 max-w-7xl">
       <PageHeaderCard title={<><Megaphone className="size-6 text-muted-foreground" /> Marketing Campaigns</>} actions={<><div className="flex items-center gap-2">
+          <ExportButton module="campaigns" />
           <Link href="/dashboard/reports/campaign_conversion" className="btn-secondary text-xs">
             <FileText className="size-3.5" /> Conversion report
           </Link>

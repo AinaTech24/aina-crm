@@ -39,6 +39,7 @@ import { isSpreadsheet, readSpreadsheetToRows } from "@/lib/rta/xls";
 import { RICH_KINDS } from "@/lib/rta/classify-mailback";
 import { getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config";
 import { matchBookedBusinessAfterImport } from "@/lib/business/rta-match";
+import { syncRtaJourneysAfterImport } from "@/lib/blueprints/rta-route";
 
 export type RtaImportJob = {
   importId: string;
@@ -941,12 +942,15 @@ export function startRtaImportWorker() {
             void job.updateProgress(p as any);
           });
           await matchBookedBusinessAfterImport((job.data as any)?.tenantId);
+          await syncRtaJourneysAfterImport((job.data as any)?.tenantId);
           return summary;
         }
         await runRtaImportJob(job.data as RtaImportJob);
         // New RTA rows can confirm or reject business the team booked
         // (lib/business/rta-match.ts). Best effort — never fails the import.
         await matchBookedBusinessAfterImport((job.data as RtaImportJob).tenantId);
+        // …and settle clients whose physical forms are with the RTA (lib/blueprints/rta-route.ts).
+        await syncRtaJourneysAfterImport((job.data as RtaImportJob).tenantId);
       } finally {
         // Purge the source file ONLY once it has actually been imported.
         //

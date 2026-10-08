@@ -1,4 +1,5 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
+import { ExportButton } from "@/components/export/ExportButton";
 import { sql } from "drizzle-orm";
 import { CalendarClock, AlertTriangle, IndianRupee, ShieldAlert, Shield } from "lucide-react";
 import { withTenant } from "@/db/client";
@@ -76,7 +77,7 @@ export default async function RenewalsPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="space-y-6 max-w-6xl">
-      <PageHeaderCard title={<><CalendarClock className="size-6 text-muted-foreground" /> Insurance Renewals</>} />
+      <PageHeaderCard title={<><CalendarClock className="size-6 text-muted-foreground" /> Insurance Renewals</>} actions={<ExportButton module="insurance-renewals" />} />
 
       <ModuleTabs tabs={INSURANCE_TABS} />
 

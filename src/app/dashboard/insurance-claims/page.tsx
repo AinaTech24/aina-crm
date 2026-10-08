@@ -1,4 +1,5 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
+import { ExportButton } from "@/components/export/ExportButton";
 import Link from "next/link";
 import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { FileText, Plus, IndianRupee, CheckCircle2, XCircle, Clock } from "lucide-react";
@@ -127,6 +128,7 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
   return (
     <div className="space-y-5 max-w-7xl">
       <PageHeaderCard title={<><FileText className="size-6 text-muted-foreground" /> Insurance Claims</>} actions={<><div className="flex items-center gap-2">
+          <ExportButton module="insurance-claims" />
           <Link href="/dashboard/insurance-claims/scorecard" className="btn-secondary"><Clock className="size-4" /> Settlement scorecard</Link>
           <Link href="/dashboard/insurance-claims/new" className="btn-primary"><Plus className="size-4" /> New claim</Link>
         </div></>} />

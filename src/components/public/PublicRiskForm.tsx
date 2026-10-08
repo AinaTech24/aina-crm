@@ -316,6 +316,19 @@ export function PublicRiskForm({
           {!onReview && (
             <div className="text-right text-xs">
               <div className="text-muted-foreground">Question {Math.min(step + 1, N)} of {N}</div>
+              {/* The score and category as they stand, updating with every answer. */}
+              {Object.keys(answers).length > 0 && (
+                <div className="mt-1 text-sm" aria-live="polite">
+                  <span className="text-muted-foreground">Live score: </span>
+                  <span className="font-semibold tabular-nums">{live.total}</span>
+                  {live.band && (
+                    <>
+                      <span className="text-muted-foreground"> · </span>
+                      <span className="font-semibold" style={{ color: live.band.color }}>{live.band.label}</span>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

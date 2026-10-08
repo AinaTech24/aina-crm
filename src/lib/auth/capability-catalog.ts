@@ -58,6 +58,7 @@ export const CAPABILITY_CATALOG: Record<Capability, CapabilityMeta> = {
   "investor.edit.all": { group: "Clients & Households", label: "Edit all clients" },
   "investor.edit.assigned": { group: "Clients & Households", label: "Edit assigned clients only" },
   "investor.bulk_export": { group: "Clients & Households", label: "Bulk export clients", hint: "Exports client PII to Excel" },
+  "data.export": { group: "Reports & Dashboards", label: "Export data", hint: "The Export button on every module list (clients also need Bulk export clients)" },
   "investor.delete": { group: "Clients & Households", label: "Delete clients permanently", hint: "Irreversible — erases the client's history" },
   "investor.note.add": { group: "Clients & Households", label: "Add client notes" },
   "family.view": { group: "Clients & Households", label: "View households" },

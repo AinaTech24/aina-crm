@@ -23,6 +23,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { businessEntries, eventsOutbox, users } from "@/db/schema";
 import { BUSINESS_ENTRY_STATUSES } from "@/db/schema/business_entries";
+import { syncJourneyWithEntry } from "@/lib/business/journey";
 
 export const dynamic = "force-dynamic";
 
@@ -101,6 +102,7 @@ export async function POST(req: NextRequest) {
           })
           .from(businessEntries)
           .where(and(eq(businessEntries.tenantId, session.tenantId), inArray(businessEntries.id, affectedIds)));
+        for (const e of snaps) await syncJourneyWithEntry(tx, session.tenantId, e);
         await tx.insert(eventsOutbox).values(
           snaps.map((e) => ({
             tenantId: session.tenantId,

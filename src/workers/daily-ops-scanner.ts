@@ -56,6 +56,7 @@ import { recomputeAllGoals } from "@/lib/goal-planning/recompute";
 import { recomputeCombinedAum, revalueAllFolios } from "@/lib/finance/aum-persist";
 import { matchProposalExecutions } from "@/lib/proposals/execution";
 import { matchBookedBusiness } from "@/lib/business/rta-match";
+import { syncRtaJourneys } from "@/lib/blueprints/rta-route";
 import { completeExpiredSips } from "@/lib/finance/sip-lifecycle";
 import { eventsOutbox, investors, folios, suitabilityMatrixEntries } from "@/db/schema";
 
@@ -1265,6 +1266,13 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
     result.rtaLinesFlagged = m.not_found + m.rejected + m.mismatch;
   } catch (e) {
     console.error("[daily-ops] matching booked business failed for", tenantId, (e as Error)?.message);
+  }
+
+  // ── Physical route: forms with the RTA settle from the feed (lib/blueprints/rta-route.ts).
+  try {
+    await withTenant(tenantId, (tx) => syncRtaJourneys(tx, tenantId), { roles: ["system"] });
+  } catch (e) {
+    console.error("[daily-ops] settling physical RTA submissions failed for", tenantId, (e as Error)?.message);
   }
 
   result.durationMs = Date.now() - startedAt;

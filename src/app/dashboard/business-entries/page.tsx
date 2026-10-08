@@ -1,4 +1,5 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
+import { ExportButton } from "@/components/export/ExportButton";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { and, desc, eq, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
@@ -117,6 +118,7 @@ export default async function BusinessEntriesPage({
           <Link href="/dashboard/business-entries/liquid" className="btn-secondary text-sm inline-flex items-center gap-1.5">
             <Droplets className="size-4" /> Liquid report
           </Link>
+          <ExportButton module="business-entries" />
           <Link href="/dashboard/business-entries/new" className="btn-primary text-sm inline-flex items-center gap-1.5">
             <Plus className="size-4" /> New entry
           </Link>

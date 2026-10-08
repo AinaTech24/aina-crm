@@ -1,4 +1,5 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
+import { ExportButton } from "@/components/export/ExportButton";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { sql } from "drizzle-orm";
@@ -252,6 +253,7 @@ export default async function ProposalsPage({
           <Link href={viewHref("list")} aria-pressed={view === "list"} className={`px-3 py-1.5 text-sm rounded-md ${view === "list" ? "bg-card shadow-sm font-medium" : "text-muted-foreground"}`}>List</Link>
           <Link href={viewHref("board")} aria-pressed={view === "board"} className={`px-3 py-1.5 text-sm rounded-md ${view === "board" ? "bg-card shadow-sm font-medium" : "text-muted-foreground"}`}>Pipeline</Link>
         </div>
+        <ExportButton module="proposals" />
         <Link href="/dashboard/proposals/new" className="btn-primary">
           <Plus className="size-4" /> New proposal
         </Link></>} />

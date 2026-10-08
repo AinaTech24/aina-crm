@@ -17,6 +17,7 @@ import { investorScopeSql } from "@/lib/investors/access";
 import { expectedInflows, investors, users, INFLOW_SOURCE_LABELS } from "@/db/schema";
 import { CollapsibleKpiStrip } from "@/components/investors/CollapsibleKpiStrip";
 import { formatDate } from "@/lib/format";
+import { ExportButton } from "@/components/export/ExportButton";
 
 export const dynamic = "force-dynamic";
 
@@ -101,7 +102,7 @@ export default async function ExpectedInflowsPage() {
 
   return (
     <div className="space-y-5 max-w-6xl">
-      <PageHeaderCard title={<><IndianRupee className="size-6 text-emerald-600" /> Expected Inflows</>} actions={<><Link href="/dashboard/investors" className="btn-secondary text-sm inline-flex items-center gap-1.5">
+      <PageHeaderCard title={<><IndianRupee className="size-6 text-emerald-600" /> Expected Inflows</>} actions={<><ExportButton module="expected-inflows" /><Link href="/dashboard/investors" className="btn-secondary text-sm inline-flex items-center gap-1.5">
           <Plus className="size-4" /> Add from a client
         </Link></>} />
 

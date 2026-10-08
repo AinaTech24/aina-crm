@@ -1,4 +1,5 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
+import { ExportButton } from "@/components/export/ExportButton";
 import Link from "next/link";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { Target, Plus } from "lucide-react";
@@ -118,9 +119,12 @@ export default async function GoalsPage({
         title={<><Target className="size-6 text-muted-foreground" /> Goals</>}
         actions={
           stats.total > 0 ? (
-            <Link href="/dashboard/goals/new" className={buttonClass("primary")}>
-              <Plus className="size-4" /> New goal
-            </Link>
+            <>
+              <ExportButton module="goals" />
+              <Link href="/dashboard/goals/new" className={buttonClass("primary")}>
+                <Plus className="size-4" /> New goal
+              </Link>
+            </>
           ) : undefined
         }
       />

@@ -21,6 +21,7 @@ import {
   BUSINESS_ENTRY_STATUSES,
 } from "@/db/schema/business_entries";
 import { LineInput, normalizeLine, computeTotals } from "@/lib/business/entry-input";
+import { syncJourneyWithEntry } from "@/lib/business/journey";
 
 export const dynamic = "force-dynamic";
 
@@ -170,6 +171,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               business_date: e.businessDate,
             }
           : null;
+      // Booked or confirmed for a client at the first-investment step moves
+      // their onboarding journey (lib/business/journey.ts).
+      if (afterRow) await syncJourneyWithEntry(tx, session.tenantId, afterRow);
+
       await tx.insert(eventsOutbox).values({
         tenantId: session.tenantId,
         kind: "business_entry.updated",

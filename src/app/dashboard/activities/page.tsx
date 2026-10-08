@@ -7,6 +7,7 @@ import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { formatDate } from "@/lib/utils";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
+import { ExportButton } from "@/components/export/ExportButton";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ContactQuickActions } from "@/components/common/ContactQuickActions";
 import { LogActivityButton } from "@/components/activities/ActivityLogger";
@@ -81,7 +82,7 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><ActivityIcon className="size-6 text-muted-foreground" /> Activity Log</>} actions={<><LogActivityButton /></>} />
+      <PageHeaderCard title={<><ActivityIcon className="size-6 text-muted-foreground" /> Activity Log</>} actions={<><ExportButton module="activities" /><LogActivityButton /></>} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat icon={ActivityIcon} label="Activities (total)" value={s?.total ?? 0} />

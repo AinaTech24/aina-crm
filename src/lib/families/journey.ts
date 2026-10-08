@@ -20,7 +20,9 @@ import type { Tx } from "@/db/client";
 import { transitionTo } from "@/lib/blueprints/engine";
 import { resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
 
-const MAP_FAMILY_STEP = "transaction_successful";
+// The step before Family Mapping on either route: the exchange order
+// succeeded, or the RTA processed the physical forms.
+const MAP_FAMILY_STEPS = ["transaction_successful", "rta_processed"];
 const FAMILY_MAPPED = "family_mapping";
 
 export async function onClientFamilyMapped(tx: Tx, tenantId: string, investorId: string): Promise<void> {
@@ -34,7 +36,7 @@ export async function onClientFamilyMapped(tx: Tx, tenantId: string, investorId:
          WHERE tenant_id = ${tenantId}::uuid AND lead_id = ${leadId}::uuid
          LIMIT 1
       `);
-      if ((r.rows[0] as { current_stage_key?: string } | undefined)?.current_stage_key !== MAP_FAMILY_STEP) return;
+      if (!MAP_FAMILY_STEPS.includes((r.rows[0] as { current_stage_key?: string } | undefined)?.current_stage_key ?? "")) return;
       await transitionTo(t, tenantId, leadId, FAMILY_MAPPED, {
         systemBypass: true,
         remarks: "Auto: client mapped to a family.",

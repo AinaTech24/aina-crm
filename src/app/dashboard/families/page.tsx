@@ -12,6 +12,7 @@ import { RowActions } from "@/components/common/RowActions";
 import { familyQuickFilterOptions } from "@/components/families/FamilyQuickFilters";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { FamiliesMoreMenu } from "@/components/families/FamiliesMoreMenu";
+import { ExportButton } from "@/components/export/ExportButton";
 import { CleanupEmptyFamilies } from "@/components/families/CleanupEmptyFamilies";
 import { buttonClass } from "@/components/ui/button-class";
 import { Badge } from "@/components/ui/Badge";
@@ -272,6 +273,7 @@ export default async function FamiliesPage({
         actions={
           <>
             <FamiliesMoreMenu />
+            <ExportButton module="families" />
             {canCreate && (
               <Link href="/dashboard/families/new" className={buttonClass("secondary")}>
                 <Plus className="size-4" /> New family

@@ -523,7 +523,8 @@ export const FINANCIAL_TASK_TYPES = [
  * the stale-lead queue on the same screen — the same row reported as both
  * finished and neglected.
  */
-export const LEAD_WON_STAGES = ["converted", "won_lead", "transaction_successful"] as const;
+// rta_processed: the physical route's first investment, as transaction_successful is the exchange one.
+export const LEAD_WON_STAGES = ["converted", "won_lead", "transaction_successful", "rta_processed"] as const;
 export const LEAD_DEAD_STAGES = [
   "lost", "not_interested", "not_qualified", "cold",
   "mandate_reject", "mandate_rejected", "transaction_failed",

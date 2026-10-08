@@ -1,4 +1,5 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
+import { ExportButton } from "@/components/export/ExportButton";
 import Link from "next/link";
 import { eq, desc, sql, and, or, ilike, inArray } from "drizzle-orm";
 import {
@@ -166,7 +167,7 @@ export default async function FinancialPlansPage({
   return (
     <div className="space-y-6 max-w-7xl">
       {/* Page Header */}
-      <PageHeaderCard title={<><ScrollText className="size-6 text-muted-foreground" /> Financial Health Check</>} actions={<><Link href="/dashboard/financial-plans/new" className="btn-primary">
+      <PageHeaderCard title={<><ScrollText className="size-6 text-muted-foreground" /> Financial Health Check</>} actions={<><ExportButton module="financial-plans" /><Link href="/dashboard/financial-plans/new" className="btn-primary">
           <Plus className="size-4" /> New Health Check
         </Link></>} />
 

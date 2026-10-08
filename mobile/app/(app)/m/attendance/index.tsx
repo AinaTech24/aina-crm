@@ -97,13 +97,15 @@ export default function Attendance() {
                 {clockedIn ? "Working since " + timeLabel(todayRow?.clock_in_at) : doneForDay ? `${timeLabel(todayRow?.clock_in_at)} → ${timeLabel(todayRow?.clock_out_at)}` : "Clock in to start your day"}
               </Text>
 
-              {/* The button */}
+              {/* The button. Clocking out is not the end of the day: someone back
+                  from a client meeting clocks in again, and every punch is logged. */}
               {doneForDay ? (
                 <View style={[styles.doneBox, { backgroundColor: toneColors("success").bg }]}>
                   <Feather name="check-circle" size={16} color={toneColors("success").fg} />
-                  <Text variant="body" style={{ color: toneColors("success").fg, fontWeight: fontWeight.semibold }}>Day complete — {durationLabel(todayRow)}</Text>
+                  <Text variant="body" style={{ color: toneColors("success").fg, fontWeight: fontWeight.semibold }}>Clocked out — {durationLabel(todayRow)} today</Text>
                 </View>
-              ) : (
+              ) : null}
+              {(
                 <Pressable
                   style={[styles.punchBtn, { backgroundColor: clockedIn ? toneColors("danger").fg : toneColors("success").fg }, busy && { opacity: 0.6 }]}
                   onPress={() => punch(clockedIn ? "out" : "in")}

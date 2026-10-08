@@ -12,6 +12,7 @@ import { dateRangeCond } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
+import { ExportButton } from "@/components/export/ExportButton";
 import { AddMeetingButton } from "@/components/review-meetings/AddMeetingButton";
 import { MeetingsBulkTable } from "@/components/review-meetings/MeetingsBulkTable";
 import { MeetingsKanban } from "@/components/review-meetings/MeetingsKanban";
@@ -216,6 +217,7 @@ export default async function ReviewMeetingsPage({
               <KanbanSquare className="size-3.5" /> Kanban
             </Link>
           </div>
+          <ExportButton module="meetings" />
           <AddMeetingButton />
         </div></>} />
 

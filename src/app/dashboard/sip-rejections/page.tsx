@@ -1,4 +1,5 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
+import { ExportButton } from "@/components/export/ExportButton";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { XOctagon, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
@@ -181,6 +182,7 @@ export default async function SipRejectionsPage({
     <div className="space-y-6 max-w-7xl">
       <PageHeaderCard title={<><XOctagon className="size-6 text-muted-foreground" /> SIP Rejections</>} actions={<><div className="flex items-center gap-2">
           <NewSipRejectionButton />
+          <ExportButton module="sip-rejections" />
           <Link href="/dashboard/reports/sip_recovery_monthly" className="btn-secondary text-xs">
             Monthly recovery report →
           </Link>

@@ -38,12 +38,10 @@ import {
   Sparkles,
 } from "lucide-react";
 import { STAGE_ACTIONS, type StageAction, type DialogKind } from "@/lib/blueprints/stage-actions";
-import { isFieldVisible, validateNomineeAllocations, type KycField } from "@/lib/onboarding/kyc-fields";
 import { confirmDialog } from "@/components/ui/ConfirmProvider";
 import { ScheduleMeetingModal } from "@/components/review-meetings/ScheduleMeetingModal";
 import { CompleteMeetingModal } from "@/components/review-meetings/CompleteMeetingModal";
 import { DateTimeField } from "@/components/ui/DateTimeField";
-import { DateField } from "@/components/ui/DateField";
 
 /** Does this href open the schedule-meeting page? If so we pop a modal instead. */
 const isMeetingHref = (href: string) => /\/review-meetings\/new\b/.test(href);
@@ -105,12 +103,15 @@ type Outcome =
 
 export function GuidedStageActions({
   leadId,
+  investorId,
   currentStage,
   pipeline,
   onOpenDialog,
   onAfterAdvance,
 }: {
   leadId: string;
+  /** The client this lead became — the `{investorId}` in a step's link. */
+  investorId?: string | null;
   currentStage: string;
   /** Lead's product pipeline (mf | insurance | general). Filters product-
    *  specific actions (e.g. Won-Lead onboarding branch). */
@@ -249,76 +250,12 @@ export function GuidedStageActions({
     };
   }, [transitioningAction?.targetStage, leadId]);
 
-  // "Documents Received" details popup — the MFD fills the client's KYC /
-  // account-opening details on their behalf, which save into the client master
-  // and advance the stage.
-  const [collectOpen, setCollectOpen] = useState(false);
-  const [collectLoading, setCollectLoading] = useState(false);
-  const [collectFields, setCollectFields] = useState<KycField[]>([]);
-  const [collectValues, setCollectValues] = useState<Record<string, string>>({});
-  const [collectSubmitting, setCollectSubmitting] = useState(false);
-  const [collectError, setCollectError] = useState<string | null>(null);
-
-  async function openCollectDetails() {
-    setCollectOpen(true);
-    setCollectLoading(true);
-    setCollectError(null);
-    try {
-      const r = await fetch(`/api/leads/${leadId}/capture-kyc`);
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(d?.error ?? `HTTP ${r.status}`);
-      setCollectFields(Array.isArray(d.fields) ? d.fields : []);
-      setCollectValues(d.values ?? {});
-    } catch (e: any) {
-      setCollectError(e?.message ?? "Couldn't load the details form.");
-    } finally {
-      setCollectLoading(false);
-    }
-  }
-
-  async function submitCollectDetails() {
-    // Enforce required fields that are currently visible (showIf-driven).
-    const miss = collectFields.find(
-      (f) => f.required && isFieldVisible(f, collectValues) && !(collectValues[f.key] ?? "").trim()
-    );
-    if (miss) {
-      setCollectError(`Please fill: ${miss.label}`);
-      return;
-    }
-    const allocErr = validateNomineeAllocations(collectValues);
-    if (allocErr) {
-      setCollectError(allocErr);
-      return;
-    }
-    setCollectSubmitting(true);
-    setCollectError(null);
-    try {
-      // Only send values for fields currently visible.
-      const payload: Record<string, string> = {};
-      for (const f of collectFields) {
-        if (!isFieldVisible(f, collectValues)) continue;
-        const val = (collectValues[f.key] ?? "").trim();
-        if (val) payload[f.key] = val;
-      }
-      const r = await fetch(`/api/leads/${leadId}/capture-kyc`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ values: payload, advance: true }),
-      });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(d?.error ?? `HTTP ${r.status}`);
-      setCollectOpen(false);
-      // A non-fatal warning (e.g. a duplicate PAN was skipped) — surface it in
-      // the outcome banner; the rest of the details still saved + advanced.
-      if (d?.warning) setOutcome({ kind: "sent", ok: true, message: d.warning });
-      router.refresh();
-      window.dispatchEvent(new CustomEvent("blueprint:refresh"));
-      onAfterAdvance?.();
-    } catch (e: any) {
-      setCollectError(e?.message ?? "Couldn't save the details.");
-    } finally {
-      setCollectSubmitting(false);
-    }
+  // "Documents Received" opens a full page where the MFD fills the client's
+  // KYC / account-opening details on their behalf; saving writes them to the
+  // client master and advances the stage, then comes back here.
+  function openCollectDetails() {
+    const back = `${window.location.pathname}${window.location.search}`;
+    router.push(`/dashboard/leads/${leadId}/documents-received?back=${encodeURIComponent(back)}`);
   }
 
   // Show only the actions for this lead's pipeline. Untagged actions show for
@@ -426,6 +363,21 @@ export function GuidedStageActions({
     }
   }
 
+  /** A navigate step's link: `{id}` = the lead, `{investorId}` = its client.
+   *  A page of the journey gets `back` so it returns here. Null (with the
+   *  reason shown) when the step needs a client the lead has not become. */
+  function stepHref(pattern: string): string | null {
+    if (pattern.includes("{investorId}") && !investorId) {
+      setOutcome({ kind: "error", message: "Convert this lead to a client first." });
+      return null;
+    }
+    let href = pattern.replace("{id}", leadId).replace("{investorId}", investorId ?? "");
+    if (href.startsWith(`/dashboard/leads/${leadId}/`)) {
+      href += `${href.includes("?") ? "&" : "?"}back=${encodeURIComponent(`${window.location.pathname}${window.location.search}`)}`;
+    }
+    return href;
+  }
+
   async function handleClick(action: StageAction) {
     if (action.behaviour.kind === "proposal") {
       await handleProposal(action, action.behaviour.step);
@@ -437,7 +389,15 @@ export function GuidedStageActions({
     // required details on their behalf. Submitting saves them to the client
     // master and advances to Documents Received.
     if (action.targetStage === "documents_received") {
-      await openCollectDetails();
+      openCollectDetails();
+      return;
+    }
+    // A step done on its own page of the journey (e.g. Update Client
+    // Information: the required details still missing) opens straight away —
+    // that page is where the step's checklist gets filled in.
+    if (action.behaviour.kind === "navigate" && action.behaviour.hrefPattern.startsWith("/dashboard/leads/{id}/")) {
+      const href = stepHref(action.behaviour.hrefPattern);
+      if (href) router.push(href);
       return;
     }
 
@@ -536,7 +496,8 @@ export function GuidedStageActions({
           break;
 
         case "navigate": {
-          const href = action.behaviour.hrefPattern.replace("{id}", leadId);
+          const href = stepHref(action.behaviour.hrefPattern);
+          if (!href) break;
           // Schedule-meeting → open the meeting form in a popup instead of
           // navigating away from the lead.
           if (isMeetingHref(href)) { setMeetingModalOpen(true); break; }
@@ -1162,20 +1123,6 @@ export function GuidedStageActions({
         document.body,
       )}
 
-      {/* Documents Received — collect the client's details on their behalf */}
-      {collectOpen && (
-        <CollectDetailsModal
-          loading={collectLoading}
-          fields={collectFields}
-          values={collectValues}
-          onChange={(k, v) => setCollectValues((prev) => ({ ...prev, [k]: v }))}
-          submitting={collectSubmitting}
-          error={collectError}
-          onCancel={() => setCollectOpen(false)}
-          onSubmit={submitCollectDetails}
-        />
-      )}
-
       {/* Schedule-meeting popup — pre-filled with this lead, closes on success.
           The smart auto-advance (meeting created → appointment_scheduled) moves
           the blueprint, so we just refresh. */}
@@ -1207,129 +1154,6 @@ export function GuidedStageActions({
         }}
       />
     </div>
-  );
-}
-
-function CollectDetailsModal({
-  loading,
-  fields,
-  values,
-  onChange,
-  submitting,
-  error,
-  onCancel,
-  onSubmit,
-}: {
-  loading: boolean;
-  fields: KycField[];
-  values: Record<string, string>;
-  onChange: (key: string, value: string) => void;
-  submitting: boolean;
-  error: string | null;
-  onCancel: () => void;
-  onSubmit: () => void;
-}) {
-  // Group VISIBLE fields by section (showIf conditionals collapse live).
-  const sections: Array<[string, KycField[]]> = [];
-  for (const f of fields) {
-    if (!isFieldVisible(f, values)) continue;
-    let g = sections.find((s) => s[0] === f.section);
-    if (!g) {
-      g = [f.section, []];
-      sections.push(g);
-    }
-    g[1].push(f);
-  }
-
-  return typeof document === "undefined" ? null : createPortal(
-    <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-card border border-border rounded-xl max-w-2xl w-full shadow-2xl text-foreground flex flex-col max-h-[88vh]">
-        <div className="flex items-center gap-2 border-b border-border p-5">
-          <Sparkles className="size-5 text-brand-cyan" />
-          <div>
-            <h3 className="font-bold text-base">Confirm documents received — fill the client's details</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Enter the account-opening details on the client's behalf. Saved straight to the client master, then this
-              moves to Documents Received.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-5">
-          {loading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
-              <Loader2 className="size-4 animate-spin" /> Loading the form…
-            </div>
-          ) : (
-            sections.map(([section, fs]) => (
-              <div key={section} className="space-y-3">
-                <div className="text-2xs font-bold uppercase tracking-wider text-brand-cyan">{section}</div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {fs.map((f) => (
-                    <CollectField key={f.key} field={f} value={values[f.key] ?? ""} onChange={(v) => onChange(f.key, v)} />
-                  ))}
-                </div>
-              </div>
-            ))
-          )}
-
-          {error && (
-            <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-2.5 flex items-start gap-1.5">
-              <AlertTriangle className="size-3.5 mt-0.5" /> {error}
-            </div>
-          )}
-        </div>
-
-        <div className="flex justify-end gap-2 border-t border-border p-4">
-          <button type="button" onClick={onCancel} className="btn-secondary text-xs" disabled={submitting}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onSubmit}
-            disabled={submitting || loading}
-            className="btn-primary text-xs bg-brand-cyan hover:bg-brand-cyan-deep text-white font-semibold flex items-center gap-1"
-          >
-            {submitting ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
-            Save & mark Documents Received
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
-function CollectField({ field, value, onChange }: { field: KycField; value: string; onChange: (v: string) => void }) {
-  const cls = "input-base text-xs w-full";
-  return (
-    <label className="block">
-      <div className="text-xs font-medium text-foreground mb-1">
-        {field.label}
-        {field.required && <span className="text-rose-500 ml-1">*</span>}
-      </div>
-      {field.type === "select" ? (
-        <select value={value} onChange={(e) => onChange(e.target.value)} className={cls}>
-          <option value="">— select —</option>
-          {field.options?.map((o) => (
-            <option key={o} value={o}>
-              {o}
-            </option>
-          ))}
-        </select>
-      ) : field.type === "date" ? (
-        <DateField value={value} onChange={(e) => onChange(e.target.value)} />
-      ) : (
-        <input
-          type={field.type === "tel" ? "tel" : field.type === "email" ? "email" : field.type === "number" ? "number" : "text"}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={field.placeholder ?? ""}
-          className={cls}
-        />
-      )}
-      {field.helpText && <div className="text-2xs text-muted-foreground mt-1">{field.helpText}</div>}
-    </label>
   );
 }
 

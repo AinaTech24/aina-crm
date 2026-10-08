@@ -1,4 +1,5 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
+import { ExportButton } from "@/components/export/ExportButton";
 import Link from "next/link";
 import { and, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import { TrendingUp, AlertTriangle, CheckCircle2, Calendar, ShieldAlert, Plus } from "lucide-react";
@@ -214,6 +215,7 @@ export default async function SipsPage({
           <Link href="/dashboard/sips/new-watch" className="btn-secondary text-sm inline-flex items-center gap-1.5">
             <ShieldAlert className="size-4" /> SIP payment watch
           </Link>
+          <ExportButton module="sips" />
         </div></>} />
 
       <ModuleTabs tabs={SIP_TABS} />

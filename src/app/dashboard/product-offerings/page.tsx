@@ -18,6 +18,7 @@ import { can } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { productOfferings, users, legalRegistrations } from "@/db/schema";
 import { computeOfferingHealth, buildCredMap, type OfferingHealth } from "@/lib/product-offerings/health";
+import { ExportButton } from "@/components/export/ExportButton";
 
 export const dynamic = "force-dynamic";
 
@@ -202,7 +203,7 @@ export default async function ProductOfferingsListPage({
 
   return (
     <div className="space-y-5">
-      <PageHeaderCard title={<>Products &amp; services offered</>} actions={<>{canEdit && (
+      <PageHeaderCard title={<>Products &amp; services offered</>} actions={<><ExportButton module="product-offerings" />{canEdit && (
           <Link
             href="/dashboard/product-offerings/new"
             className="btn-primary text-sm"

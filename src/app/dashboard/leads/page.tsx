@@ -21,6 +21,7 @@ import { LeadsTable } from "@/components/leads/LeadsTable";
 import { LeadsViewPersist } from "@/components/leads/LeadsViewPersist";
 import { LeadQuickFilters } from "@/components/leads/LeadQuickFilters";
 import { MoreMenu } from "@/components/common/MoreMenu";
+import { ExportButton } from "@/components/export/ExportButton";
 import { buttonClass } from "@/components/ui/button-class";
 import { cookies } from "next/headers";
 import { LEAD_PIPELINE, LEAD_PIPELINE_STAGE_VALUES, leadPipelineColumn, leadStageDisplay } from "@/lib/leads/stages";
@@ -358,6 +359,7 @@ export default async function LeadsPage({
               the Kanban / List toggle sits with the other view controls in the
               filter bar. */}
           <MoreMenu items={MORE_ITEMS} label="More lead views" />
+          <ExportButton module="leads" />
           <Link href="/dashboard/leads/import" className={buttonClass("secondary")}>
             <FileUp className="size-4" /> Import
           </Link>

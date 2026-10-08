@@ -4,11 +4,13 @@ import { withTenant } from "@/db/client";
 import { serviceRequests, investors } from "@/db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { formatRelative, formatDate } from "@/lib/utils";
-import { Heart, MessageSquare, ShieldAlert, AlertCircle, Smile, Frown, Meh, Download } from "lucide-react";
+import Link from "next/link";
+import { Heart, MessageSquare, ShieldAlert, AlertCircle, Smile, Frown, Meh, Download, Link2 } from "lucide-react";
 import { DownloadButton } from "@/components/common/SecureLinkButtons";
 import { can } from "@/lib/auth/rbac";
 import { buttonClass } from "@/components/ui/button-class";
 import { SendNpsSurvey } from "@/components/support/SendNpsSurvey";
+import { ExportButton } from "@/components/export/ExportButton";
 
 /**
  * Below this many responses the score is not shown. With three answers one
@@ -88,6 +90,10 @@ export default async function FeedbackPage() {
         >
           <Download className="size-4" /> Download PDF
         </DownloadButton>
+        <ExportButton module="client-feedback" />
+        <Link href="/dashboard/support/feedback/website-form" className={buttonClass("secondary")}>
+          <Link2 className="size-4" /> Feedback link
+        </Link>
         {canSend && <SendNpsSurvey />}</div>} />
 
       <div className="grid grid-cols-4 gap-4">

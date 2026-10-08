@@ -11,6 +11,7 @@ import { taskChecklist, subTaskStatus, type Task, type TaskChecklistItem, type S
 import Link from "next/link";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
 import { TaskComments } from "./TaskComments";
+import { TaskInfoRequest } from "./TaskInfoRequest";
 import { TaskAttachments } from "./TaskAttachments";
 import { TaskWatchersDeps } from "./TaskWatchersDeps";
 import { TaskRequestSummary } from "@/components/tasks/TaskRequestSummary";
@@ -396,6 +397,18 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
               <span>{err}</span>
             </div>
           )}
+
+          {/* Need information: the assignee's question and who it waits on. */}
+          <TaskInfoRequest
+            taskId={task.id}
+            meta={task.meta}
+            status={task.status}
+            assigneeId={task.assigneeId ?? null}
+            createdById={task.createdById ?? null}
+            currentUserId={currentUserId}
+            canManageAll={canManageAll}
+            onChanged={onUpdate}
+          />
 
           <RecordProvenance
             entityType="task"

@@ -10,6 +10,7 @@ import { AttendanceTable } from "@/components/attendance/AttendanceTable";
 import { AttendanceToolbar } from "@/components/attendance/AttendanceToolbar";
 import { ATTENDANCE_STATUS_LABELS, computeAttendanceFlags } from "@/lib/attendance/policy";
 import { loadAttendancePolicy } from "@/lib/attendance/settings";
+import { ExportButton } from "@/components/export/ExportButton";
 
 const PAGE_SIZE = 50;
 
@@ -83,6 +84,26 @@ export default async function AttendancePage({
       };
     });
 
+    // Every clock-in / clock-out behind the rows on this page (attendance_punches).
+    const ids = rows.map((r) => r.id);
+    const punchRows = ids.length
+      ? ((await tx.execute(sql`
+          SELECT a.id AS attendance_id, p.kind, p.at
+          FROM attendance a
+          JOIN attendance_punches p ON p.tenant_id = a.tenant_id AND p.employee_user_id = a.employee_user_id
+                                   AND p.attendance_date = a.attendance_date
+          WHERE a.tenant_id = ${session.tenantId}::uuid AND a.id IN (${sql.join(ids.map((x) => sql`${x}::uuid`), sql`, `)})
+          ORDER BY p.at
+        `)).rows as Array<{ attendance_id: string; kind: "in" | "out"; at: string }>)
+      : [];
+    const punchesOf = new Map<string, Array<{ kind: "in" | "out"; at: string }>>();
+    for (const pr of punchRows) {
+      const list = punchesOf.get(pr.attendance_id) ?? [];
+      list.push({ kind: pr.kind, at: pr.at });
+      punchesOf.set(pr.attendance_id, list);
+    }
+    const rowsWithPunches = rows.map((r) => ({ ...r, punches: punchesOf.get(r.id) ?? [] }));
+
     const stats = await tx.execute(sql`
       SELECT
         COUNT(*) FILTER (WHERE a.attendance_date = ${ist.date}::date AND a.status = 'present')::int AS present_today,
@@ -100,8 +121,20 @@ export default async function AttendancePage({
       WHERE tenant_id = ${session.tenantId}::uuid AND employee_user_id = ${session.userId}::uuid AND attendance_date = current_date
       LIMIT 1
     `);
+    const myPunches = (await tx.execute(sql`
+      SELECT kind, at FROM attendance_punches
+      WHERE tenant_id = ${session.tenantId}::uuid AND employee_user_id = ${session.userId}::uuid AND attendance_date = current_date
+      ORDER BY at, created_at
+    `)).rows as Array<{ kind: "in" | "out"; at: string }>;
 
-    return { rows, total, stats: stats.rows[0] as any, myToday: (myToday.rows[0] as any) ?? null, dayOver, workEnd: policy.workEnd };
+    return {
+      rows: rowsWithPunches,
+      total,
+      stats: stats.rows[0] as any,
+      myToday: myToday.rows[0] ? { ...(myToday.rows[0] as any), punches: myPunches } : null,
+      dayOver,
+      workEnd: policy.workEnd,
+    };
   });
 
   const s = data.stats;
@@ -134,6 +167,7 @@ export default async function AttendancePage({
               <Grid3x3 className="size-3.5" /> Monthly grid
             </Link>
           )}
+          <ExportButton module="attendance" />
         </div></>} />
 
       <ClockWidget today={data.myToday} />

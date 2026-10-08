@@ -122,12 +122,20 @@ export async function renderClientFeedbackPdf(args: RenderClientFeedbackArgs): P
   });
   const cells: Array<[string, string]> = [
     ["Responses", String(subs.length)],
-    ["Relationship manager", client.rmName?.trim() || "-"],
+    ["RM", client.rmName?.trim() || "-"],
     ["Report date", fmtDateLong(args.generatedAt)],
   ];
+  // Each cell keeps to its third of the row: a long RM name is shortened with
+  // "..." instead of running into the next cell.
+  const cellW = CONTENT_W / 3 - 18;
   cells.forEach(([k, v], i) => {
     const x = MARGIN + 14 + i * (CONTENT_W / 3);
-    page.drawText(ascii(`${k}: ${v}`), { x, y: y - 19, size: 8.5, font: helv, color: SLATE });
+    let text = ascii(`${k}: ${v}`);
+    if (helv.widthOfTextAtSize(text, 8.5) > cellW) {
+      while (text.length > 4 && helv.widthOfTextAtSize(`${text}...`, 8.5) > cellW) text = text.slice(0, -1);
+      text = `${text.trimEnd()}...`;
+    }
+    page.drawText(text, { x, y: y - 19, size: 8.5, font: helv, color: SLATE });
   });
   y -= metaH + 24;
 

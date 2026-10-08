@@ -7,6 +7,7 @@ import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { ServiceRequestsTable } from "@/components/service-requests/ServiceRequestsTable";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
+import { ExportButton } from "@/components/export/ExportButton";
 import { dateRangeCond } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
@@ -202,6 +203,7 @@ export default async function ServiceRequestsPage({
               ]}
             />
           )}
+          <ExportButton module="service-requests" />
           <Link href="/dashboard/service-requests/new" className={buttonClass("primary")}>
             <Plus className="size-4" /> New request
           </Link>

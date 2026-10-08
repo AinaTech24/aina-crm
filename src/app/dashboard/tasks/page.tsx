@@ -9,6 +9,7 @@ import { tasks, users, investors, leads } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
+import { ExportButton } from "@/components/export/ExportButton";
 import { Pager } from "@/components/common/Pager";
 import { dateRangeCond } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
@@ -107,7 +108,12 @@ export default async function TasksPage({
     // Trashed (soft-deleted) tasks never appear in any list — only in Trash.
     const conds: any[] = [eq(tasks.tenantId, session.tenantId), isNull(tasks.deletedAt)];
     if (!canViewAll) {
-      conds.push(or(eq(tasks.assigneeId, session.userId), eq(tasks.createdById, session.userId))!);
+      conds.push(or(
+        eq(tasks.assigneeId, session.userId),
+        eq(tasks.createdById, session.userId),
+        // A teammate's "Need information" question waiting on me.
+        sql`${tasks.meta}->'infoRequest'->>'askedToId' = ${session.userId}`,
+      )!);
     } else {
       // view.all reaches other people's tasks only when their client / lead
       // is in the viewer's scope (lib/tasks/scope.ts).
@@ -167,8 +173,11 @@ export default async function TasksPage({
     if (branchFilter.length) {
       conds.push(staffWhere({ tenantId: session.tenantId, branchIds: branchFilter }, sql`${tasks.assigneeId}`));
     }
-    if (tagsFilter.length) conds.push(sql`tasks.tags ?| ${tagsFilter}::text[]`);
+    if (tagsFilter.length) conds.push(sql`tasks.tags ?| ARRAY[${sql.join(tagsFilter.map((t) => sql`${t}`), sql`, `)}]::text[]`);
     if (flagFilter.includes("requires_approval")) conds.push(eq(tasks.requiresApproval, true));
+    // "Need information" (lib/tasks/info-request): waiting on me / waiting on anyone.
+    if (flagFilter.includes("awaiting_my_reply")) conds.push(sql`${tasks.meta}->'infoRequest'->>'askedToId' = ${session.userId}`);
+    if (flagFilter.includes("awaiting_info")) conds.push(sql`${tasks.meta} ? 'infoRequest'`);
     if (flagFilter.includes("recurring")) conds.push(sql`tasks.recurrence is not null`);
     if (flagFilter.includes("has_attachments"))
       conds.push(sql`EXISTS (SELECT 1 FROM task_attachments a WHERE a.task_id = tasks.id AND a.deleted_at IS NULL)`);
@@ -385,6 +394,8 @@ export default async function TasksPage({
             key: "flag",
             label: "Flags",
             options: [
+              { value: "awaiting_my_reply", label: "Waiting for my reply" },
+              { value: "awaiting_info", label: "Waiting for information" },
               { value: "requires_approval", label: "Requires approval" },
               { value: "recurring", label: "Recurring" },
               { value: "has_attachments", label: "Has attachments" },
@@ -402,6 +413,7 @@ export default async function TasksPage({
               { id: "open", name: "Open tasks", params: "status=open" },
               { id: "urgent", name: "Urgent / High", params: "status=open&priority=urgent,high" },
               { id: "approval", name: "Awaiting my approval", params: "approval=mine" },
+              { id: "my-reply", name: "Waiting for my reply", params: "flag=awaiting_my_reply" },
               { id: "done", name: "Completed", params: "status=completed" },
             ]}
           />

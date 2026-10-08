@@ -14,6 +14,7 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { legalRegistrations } from "@/db/schema";
 import { formatDate } from "@/lib/format";
+import { ExportButton } from "@/components/export/ExportButton";
 
 export const dynamic = "force-dynamic";
 
@@ -89,7 +90,7 @@ export default async function LegalRegistrationsPage({
 
   return (
     <div className="space-y-5">
-      <PageHeaderCard title={<>Legal registrations</>} actions={<><Link
+      <PageHeaderCard title={<>Legal registrations</>} actions={<><ExportButton module="legal-registrations" /><Link
           href="/dashboard/legal-registrations/new"
           className="btn-primary text-sm"
         >

@@ -81,6 +81,12 @@ export const CLIENT_PHASE_STAGES: Stage[] = [
   { key: "make_transaction", label: "Make Transaction", tone: "indigo" },
   { key: "transaction_successful", label: "Transaction Successful", tone: "emerald" },
   { key: "transaction_failed", label: "Transaction Failed", tone: "rose" },
+  // Physical route: forms submitted to the RTA / AMC (migration 0232).
+  { key: "rta_forms_ready", label: "Forms Ready", tone: "indigo" },
+  { key: "rta_client_signed", label: "Client Signed", tone: "indigo" },
+  { key: "rta_submitted", label: "Submitted to RTA", tone: "amber" },
+  { key: "rta_processed", label: "Processed by RTA", tone: "emerald" },
+  { key: "rta_rejected", label: "Rejected by RTA", tone: "rose" },
   { key: "family_mapping", label: "Family Mapping", tone: "cyan" },
   { key: "update_information", label: "Update Information", tone: "cyan" },
   { key: "add_in_review_sheet", label: "Active Client", tone: "emerald" },

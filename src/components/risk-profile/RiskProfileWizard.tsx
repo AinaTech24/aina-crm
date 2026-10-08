@@ -53,26 +53,17 @@ export function RiskProfileWizard({
     setUploadErr(null);
     try {
       if (file.size > 10 * 1024 * 1024) throw new Error("File must be under 10 MB");
-      const presign = await fetch("/api/compliance/upload-url", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          filename: file.name,
-          contentType: file.type || "application/octet-stream",
-          kind: "kyc",
-          clientName: investor.name ?? undefined,
-          docType: "risk-profile-signed",
-        }),
-      });
-      const pj = await presign.json();
-      if (!presign.ok) throw new Error(pj?.error ?? "Could not start the upload");
-
-      const put = await fetch(pj.url, {
-        method: "PUT",
-        headers: { "content-type": file.type || "application/octet-stream" },
-        body: file,
-      });
-      if (!put.ok) throw new Error(`Upload failed (${put.status})`);
+      // Through the server, like every other document upload: a browser-direct
+      // PUT to the bucket fails ("Failed to fetch") wherever the bucket has no
+      // CORS rule for this site, or storage is the local-disk fallback.
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("kind", "kyc");
+      fd.append("docType", "risk-profile-signed");
+      if (investor.name) fd.append("clientName", investor.name);
+      const res = await fetch("/api/compliance/upload", { method: "POST", body: fd });
+      const pj = await res.json().catch(() => ({}));
+      if (!res.ok || !pj?.key) throw new Error(pj?.error ?? `Upload failed (${res.status})`);
 
       setSignatureKey(pj.key);
       setSignatureName(file.name);

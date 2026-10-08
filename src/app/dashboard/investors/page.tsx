@@ -1,6 +1,6 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
-import { Plus, FileDown, LayoutGrid, List, FileUp, CopyPlus, ArrowRight } from "lucide-react";
+import { Plus, LayoutGrid, List, FileUp, CopyPlus, ArrowRight } from "lucide-react";
 import { and, asc, desc, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { customFieldDefs, investors } from "@/db/schema";
@@ -25,7 +25,7 @@ import { investorFieldFilterDefs, loadInvestorFilterOptions, type InvestorCustom
 import { Pager } from "@/components/common/Pager";
 import { countPossibleDuplicates } from "@/lib/investors/duplicates";
 import { clientCompleteness } from "@/lib/investors/completeness";
-import { DownloadButton } from "@/components/common/SecureLinkButtons";
+import { ExportButton } from "@/components/export/ExportButton";
 import { RecordMenu, RecordMenuSeparator } from "@/components/common/RecordMenu";
 import { TableDensitySwitch } from "@/components/common/TableDensityToggle";
 import { buttonClass } from "@/components/ui/button-class";
@@ -128,15 +128,6 @@ export default async function InvestorsPage({
   const canBulkEdit = can(session.roles, "investor.edit.all", session.permissions);
   // Same gate as POST /api/investors/recompute-tiers.
   const canRecomputeTiers = can(session.roles, "settings.masters", session.permissions);
-
-  // Query string for the Excel export link — carries the current filters so the
-  // download matches exactly what's on screen (the export endpoint reuses the
-  // same buildInvestorWhere helper). Drop view/sort — they don't affect rows.
-  const exportQs = new URLSearchParams(
-    Object.entries(sp).filter(
-      ([k, v]) => v != null && v !== "" && k !== "view" && k !== "sort" && k !== "dir"
-    ) as [string, string][]
-  ).toString();
 
   // Sort key drives both the DB ordering and the table header arrows. AUM is
   // the default (largest books first). "health" is a derived score computed in
@@ -411,18 +402,13 @@ export default async function InvestorsPage({
             >
               <FileUp className="size-4" /> Import
             </Link>
+            {/* Choose the fields, then download — with the filters on screen
+                (lib/export). Shown only with "Bulk export clients". */}
+            <ExportButton module="clients" />
             <Link href="/dashboard/investors/new" className={buttonClass("primary", "md")}>
               <Plus className="size-4" /> Add client
             </Link>
             <RecordMenu>
-              {/* Export = data leaving the CRM (arrow down, you get a file). */}
-              <DownloadButton
-                url={`/api/investors/export${exportQs ? `?${exportQs}` : ""}`}
-                className={MENU_ITEM}
-                title="Download the clients on screen (with your filters) as an Excel file"
-              >
-                <FileDown className={MENU_ICON} /> Export to Excel
-              </DownloadButton>
               <Link href="/dashboard/investors/import" className={`${MENU_ITEM} sm:hidden`}>
                 <FileUp className={MENU_ICON} /> Import from Excel
               </Link>

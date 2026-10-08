@@ -104,6 +104,10 @@ export function Select({
       // Above modals/drawers (which sit at z-[100]) so a Select used inside a
       // modal opens in front of it, not hidden behind it.
       zIndex: 200,
+      // A Radix modal sets pointer-events:none on <body> while open; this menu
+      // is portalled to <body>, so without this a click on an option fell
+      // through to the dialog's overlay and closed the dialog.
+      pointerEvents: "auto",
       minWidth: Math.min(Math.round(rect.width), maxMenuW),
       maxWidth: maxMenuW,
     };

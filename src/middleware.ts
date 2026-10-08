@@ -101,6 +101,10 @@ const PUBLIC_PATH_PREFIXES = [
   // own website. The random per-firm token is the only credential; the submit
   // endpoint (/api/public/complaints/) is rate-limited and honeypotted.
   "/complaint/",
+  // /feedback/* — the firm's public feedback form, for its website and email
+  // signature. Same contract as /complaint/: the per-firm random token is the
+  // only credential; /api/public/feedback/web/ is rate-limited and honeypotted.
+  "/feedback/",
   "/portal/",
   "/knowledge-base/",
   // /induction/letter/* — the training confirmation letter. Unauthenticated by

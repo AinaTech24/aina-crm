@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * "Send NPS survey" — pick clients (search) or a client segment, see how many
- * will actually get it, then send the `feedback_nps` email. Each client gets
+ * "Send NPS survey" — pick clients (search), a client segment, or all clients,
+ * see how many will actually get it, then send the `feedback_nps` email. Each client gets
  * their own feedback link; see POST /api/support/feedback/send.
  *
  * Two steps on purpose: the preview counts who has no email on file before
@@ -17,13 +17,13 @@ import { buttonClass } from "@/components/ui/button-class";
 import { SelectField } from "@/components/ui/SelectField";
 
 type Picked = { id: string; name: string; sub?: string };
-type Preview = { total: number; sendable: number; noEmail: number; noEmailSample: string[]; capped: boolean; limit: number };
-type Result = { attempted: number; sent: number; skipped: number; failed: { name: string; error: string }[]; noEmail: number; remaining: number };
+type Preview = { total: number; sendable: number; noEmail: number; noEmailSample: string[]; alreadySurveyed?: number; capped: boolean; limit: number };
+type Result = { attempted: number; sent: number; skipped: number; failed: { name: string; error: string }[]; noEmail: number; alreadySurveyed?: number; remaining: number };
 
 export function SendNpsSurvey({ label = "Send NPS survey", className }: { label?: string; className?: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<"clients" | "segment">("clients");
+  const [mode, setMode] = useState<"clients" | "segment" | "all">("clients");
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Picked[]>([]);
   const [picked, setPicked] = useState<Picked[]>([]);
@@ -89,10 +89,10 @@ export function SendNpsSurvey({ label = "Send NPS survey", className }: { label?
   }, [open, mode, segments]);
 
   const body = useMemo(
-    () => (mode === "clients" ? { investorIds: picked.map((p) => p.id) } : { segmentId }),
+    () => (mode === "all" ? { all: true as const } : mode === "clients" ? { investorIds: picked.map((p) => p.id) } : { segmentId }),
     [mode, picked, segmentId]
   );
-  const ready = mode === "clients" ? picked.length > 0 : !!segmentId;
+  const ready = mode === "all" ? true : mode === "clients" ? picked.length > 0 : !!segmentId;
 
   // Any change to the audience invalidates the preview.
   useEffect(() => {
@@ -159,7 +159,7 @@ export function SendNpsSurvey({ label = "Send NPS survey", className }: { label?
                 <p className="text-destructive">{result.failed.length} failed: {result.failed.slice(0, 3).map((f) => f.name).join(", ")}.</p>
               )}
               {result.remaining > 0 && (
-                <p className="text-muted-foreground">{result.remaining} more are waiting; send again to reach them.</p>
+                <p className="text-muted-foreground">{result.remaining} more are waiting — send the next batch to reach them.</p>
               )}
             </div>
           ) : (
@@ -171,9 +171,16 @@ export function SendNpsSurvey({ label = "Send NPS survey", className }: { label?
                 <button type="button" role="tab" aria-selected={mode === "segment"} onClick={() => setMode("segment")} className={tab(mode === "segment")}>
                   Segment
                 </button>
+                <button type="button" role="tab" aria-selected={mode === "all"} onClick={() => setMode("all")} className={tab(mode === "all")}>
+                  All clients
+                </button>
               </div>
 
-              {mode === "clients" ? (
+              {mode === "all" ? (
+                <p className="text-sm text-muted-foreground">
+                  Every active client you look after who has an email on file. Anyone already surveyed this month is skipped.
+                </p>
+              ) : mode === "clients" ? (
                 <div className="space-y-2">
                   <div className="relative">
                     <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -250,6 +257,11 @@ export function SendNpsSurvey({ label = "Send NPS survey", className }: { label?
                       {preview.noEmail} have no email on file{preview.noEmailSample.length ? ` (${preview.noEmailSample.slice(0, 3).join(", ")}…)` : ""}.
                     </span>
                   )}
+                  {(preview.alreadySurveyed ?? 0) > 0 && (
+                    <span className="block text-2xs text-muted-foreground">
+                      {preview.alreadySurveyed} already got it this month and are skipped.
+                    </span>
+                  )}
                   {preview.capped && (
                     <span className="block text-2xs text-muted-foreground">
                       The first {preview.limit} go now; send again for the rest.
@@ -267,9 +279,21 @@ export function SendNpsSurvey({ label = "Send NPS survey", className }: { label?
 
           <DialogFooter>
             {result ? (
-              <button type="button" onClick={() => setOpen(false)} className={buttonClass("primary")}>
-                Done
-              </button>
+              result.remaining > 0 ? (
+                <>
+                  <button type="button" onClick={() => setOpen(false)} className={buttonClass("secondary")}>
+                    Close
+                  </button>
+                  <button type="button" onClick={() => call(false)} disabled={!!busy} className={buttonClass("primary")}>
+                    {busy === "send" && <Loader2 className="size-4 animate-spin" />}
+                    Send the next batch
+                  </button>
+                </>
+              ) : (
+                <button type="button" onClick={() => setOpen(false)} className={buttonClass("primary")}>
+                  Done
+                </button>
+              )
             ) : (
               <>
                 <button type="button" onClick={() => setOpen(false)} className={buttonClass("secondary")}>

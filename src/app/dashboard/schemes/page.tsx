@@ -11,6 +11,7 @@ import { SchemesCatalog } from "@/components/schemes/SchemesCatalog";
 import { SyncSchemesButton } from "@/components/schemes/SyncSchemesButton";
 import { Pager } from "@/components/common/Pager";
 import { planSql, coarseSql } from "@/lib/schemes/classify";
+import { ExportButton } from "@/components/export/ExportButton";
 
 export const dynamic = "force-dynamic";
 
@@ -111,7 +112,7 @@ export default async function SchemesPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><Boxes className="size-6 text-muted-foreground" /> Scheme Master</>} actions={<>{canManage && <SyncSchemesButton />}</>} />
+      <PageHeaderCard title={<><Boxes className="size-6 text-muted-foreground" /> Scheme Master</>} actions={<><ExportButton module="schemes" />{canManage && <SyncSchemesButton />}</>} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat icon={Boxes} label={showDirect ? "Schemes (all plans)" : "Schemes (regular plans)"} value={s.total ?? 0} />

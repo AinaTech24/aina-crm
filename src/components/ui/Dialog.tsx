@@ -8,8 +8,17 @@ export const Dialog = DialogPrimitive.Root;
 export const DialogTrigger = DialogPrimitive.Trigger;
 export const DialogClose = DialogPrimitive.Close;
 
-export function DialogContent({ className, children, showClose = true, ...props }: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { showClose?: boolean }) {
-  return <DialogPrimitive.Portal><DialogPrimitive.Overlay className="fixed inset-0 z-[90] bg-foreground/35 backdrop-blur-[1px] data-[state=open]:animate-fade-in" /><DialogPrimitive.Content className={cn("fixed left-1/2 top-1/2 z-[91] max-h-[85vh] w-[calc(100vw-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border bg-popover p-5 text-popover-foreground shadow-xl data-[state=open]:animate-dialog-in", className)} {...props}>{children}{showClose && <DialogPrimitive.Close className="btn-icon absolute right-3 top-3 size-8" aria-label="Close dialog"><X className="size-4" /></DialogPrimitive.Close>}</DialogPrimitive.Content></DialogPrimitive.Portal>;
+export function DialogContent({ className, children, showClose = true, onInteractOutside, ...props }: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { showClose?: boolean }) {
+  // Our Select / SelectField renders its menu in a portal on <body>
+  // ([data-floating-popup]), outside this content — so picking an option read
+  // as a click outside and closed the dialog. A click inside such a popup is
+  // inside the dialog's own controls.
+  const guardedInteractOutside: typeof onInteractOutside = (e) => {
+    const target = e.target as Element | null;
+    if (target?.closest?.("[data-floating-popup]")) { e.preventDefault(); return; }
+    onInteractOutside?.(e);
+  };
+  return <DialogPrimitive.Portal><DialogPrimitive.Overlay className="fixed inset-0 z-[90] bg-foreground/35 backdrop-blur-[1px] data-[state=open]:animate-fade-in" /><DialogPrimitive.Content className={cn("fixed left-1/2 top-1/2 z-[91] max-h-[85vh] w-[calc(100vw-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border bg-popover p-5 text-popover-foreground shadow-xl data-[state=open]:animate-dialog-in", className)} onInteractOutside={guardedInteractOutside} {...props}>{children}{showClose && <DialogPrimitive.Close className="btn-icon absolute right-3 top-3 size-8" aria-label="Close dialog"><X className="size-4" /></DialogPrimitive.Close>}</DialogPrimitive.Content></DialogPrimitive.Portal>;
 }
 
 export function DialogHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) { return <div className={cn("space-y-1 pr-8", className)} {...props} />; }

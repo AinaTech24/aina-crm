@@ -17,6 +17,7 @@ import { emailAdapter } from "@/lib/comms/adapters/resend";
 import { resolveEmailSender } from "@/lib/comms/sender";
 import { loadTenant, getConsent } from "@/lib/comms/pipeline";
 import { renderBusinessEmail } from "@/lib/business/email";
+import { syncJourneyWithEntry } from "@/lib/business/journey";
 
 export const dynamic = "force-dynamic";
 
@@ -167,6 +168,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           .update(businessEntries)
           .set({ status: "emailed", emailedAt: new Date(), updatedAt: new Date() } as any)
           .where(and(eq(businessEntries.id, id), eq(businessEntries.tenantId, session.tenantId)));
+        const [sent] = await tx
+          .select({ investorId: businessEntries.investorId, productType: businessEntries.productType, status: businessEntries.status })
+          .from(businessEntries)
+          .where(and(eq(businessEntries.id, id), eq(businessEntries.tenantId, session.tenantId)))
+          .limit(1);
+        if (sent) await syncJourneyWithEntry(tx, session.tenantId, sent);
         await recordAudit(tx, {
           tenantId: session.tenantId,
           actorUserId: session.userId,

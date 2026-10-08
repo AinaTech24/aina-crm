@@ -17,6 +17,8 @@
  *   - POST /api/investors/[id]/kyc/verify (verified)   → kyc_validated
  *   - POST /api/proposals/[id]/send                    → proposal_sent
  *   - POST /api/public/proposals/accept                → won_lead
+ *   - a mutual-fund Business entry booked / confirmed  → make_transaction /
+ *     transaction_successful (lib/business/journey.ts)
  *
  * Direction: `autoAdvance` always calls `transitionTo` with systemBypass, and
  * systemBypass permits ANY jump — including backwards. Most events are
@@ -47,6 +49,7 @@ export type BlueprintEvent =
   | "ucc.activated"
   | "mandate.activated"
   | "mandate.rejected"
+  | "transaction.placed"
   | "transaction.successful"
   | "transaction.failed"
   | "proposal.created"
@@ -77,6 +80,7 @@ const EVENT_TO_STAGE: Record<BlueprintEvent, string | null> = {
   "ucc.activated": "ucc_activated",
   "mandate.activated": "mandate_activated",
   "mandate.rejected": "mandate_reject",
+  "transaction.placed": "make_transaction",
   "transaction.successful": "transaction_successful",
   "transaction.failed": "transaction_failed",
   // ── Proposals ──

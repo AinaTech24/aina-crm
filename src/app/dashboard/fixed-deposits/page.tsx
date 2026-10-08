@@ -10,6 +10,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireInvestorView } from "@/lib/investors/access";
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
+import { ExportButton } from "@/components/export/ExportButton";
 import { Kpi } from "@/components/dashboards/DashboardShared";
 import { buttonClass } from "@/components/ui/button-class";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -56,11 +57,14 @@ export default async function FixedDepositsPage({ searchParams }: { searchParams
     <div className="space-y-6">
       <PageHeaderCard
         title="Fixed Deposits"
-        actions={canEdit ? (
-          <Link href="/dashboard/fixed-deposits/new" className={buttonClass("primary")}>
-            <Plus className="size-4" aria-hidden /> Add FD
-          </Link>
-        ) : undefined}
+        actions={<>
+          <ExportButton module="fixed-deposits" />
+          {canEdit && (
+            <Link href="/dashboard/fixed-deposits/new" className={buttonClass("primary")}>
+              <Plus className="size-4" aria-hidden /> Add FD
+            </Link>
+          )}
+        </>}
       />
 
       {empty ? (

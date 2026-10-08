@@ -17,6 +17,7 @@ import { businessEntries, businessEntryLines, eventsOutbox, sips } from "@/db/sc
 import { recordAudit } from "@/lib/audit";
 import { refreshActiveSipAmount } from "@/lib/metrics/sip";
 import { computeTotals, normalizeLine, type EntryInputT } from "./entry-input";
+import { syncJourneyWithEntry } from "./journey";
 
 /** A business line's frequency as a SIP frequency. Every real SIP frequency
  *  maps to itself — half-yearly used to fall through to monthly, which counted
@@ -99,6 +100,8 @@ export async function insertBusinessEntry(
   );
 
   if (opts.registerSips) await registerEntrySips(tx, ctx, entryId);
+  // Booking business is the client's first order: move their journey.
+  await syncJourneyWithEntry(tx, ctx.tenantId, { investorId: b.investorId, productType: b.productType, status: b.status });
 
   // business_entry.created lets workflow rules react (e.g. a transaction
   // confirmation to the client). The snapshot carries what their criteria and
@@ -217,7 +220,7 @@ export async function syncTaskBusinessEntry(
   const entryId = typeof meta.businessEntryId === "string" ? meta.businessEntryId : null;
   if (!entryId) return;
   const [entry] = await tx
-    .select({ id: businessEntries.id, status: businessEntries.status })
+    .select({ id: businessEntries.id, status: businessEntries.status, investorId: businessEntries.investorId, productType: businessEntries.productType })
     .from(businessEntries)
     .where(and(eq(businessEntries.id, entryId), eq(businessEntries.tenantId, ctx.tenantId)))
     .limit(1);
@@ -238,6 +241,7 @@ export async function syncTaskBusinessEntry(
   // SIPs join the SIP book on the step to confirmed (once — registerEntrySips
   // skips an entry whose SIPs are already in the book).
   if (next === "confirmed") await registerEntrySips(tx, ctx, entryId);
+  await syncJourneyWithEntry(tx, ctx.tenantId, { investorId: entry.investorId, productType: entry.productType, status: next });
   await recordAudit(tx, {
     tenantId: ctx.tenantId,
     actorUserId: ctx.userId,
