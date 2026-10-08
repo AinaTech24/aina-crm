@@ -53,7 +53,7 @@ import { recomputeAllHealth } from "@/lib/investors/health-persist";
 import { refreshActiveSipAmount } from "@/lib/metrics/sip";
 import { recomputeAllFamilyHealth } from "@/lib/families/health-persist";
 import { recomputeAllGoals } from "@/lib/goal-planning/recompute";
-import { recomputeCombinedAum, recordMonthEndAum, revalueAllFolios } from "@/lib/finance/aum-persist";
+import { recomputeCombinedAum, revalueAllFolios } from "@/lib/finance/aum-persist";
 import { matchProposalExecutions } from "@/lib/proposals/execution";
 import { matchBookedBusiness } from "@/lib/business/rta-match";
 import { syncRtaJourneys } from "@/lib/blueprints/rta-route";
@@ -705,13 +705,6 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
             `(Rs ${Math.round(folioVal.unpricedValue / 100000)} lakh); ` +
             `priced ${folioVal.pricedByCode} by code, ${folioVal.pricedByName} by name`
         );
-      }
-      // The month-end AUM the registrars quote, from the figure just priced.
-      // Its own savepoint: it must never cost the rest of the firm's scan.
-      try {
-        await tx.transaction((sp) => recordMonthEndAum(sp, tenantId));
-      } catch (err) {
-        console.warn(`[daily-ops] tenant ${tenantId}: month-end AUM not recorded: ${(err as Error).message}`);
       }
 
       // ── Proposals: did the client invest what they accepted? ──────────

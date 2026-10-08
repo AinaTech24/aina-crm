@@ -19,7 +19,6 @@
  *   getOverdueTasks         tasks.ts        per person (badge) or scope
  *   getRiskProfileCounts    risk.ts         the Risk Profiles page's tabs
  *   getStockHistory         practice.ts     AUM / SIP book month by month (recorded)
- *   getMonthEndAum          practice.ts     AUM at the last month end's NAV (registrar basis)
  *   getSipHealth            practice.ts     persistency, started / stopped, rejections
  *   getAumMix               practice.ts     AUM by fund house and client tier
  *   getClientMix            practice.ts     the book by state, and exits

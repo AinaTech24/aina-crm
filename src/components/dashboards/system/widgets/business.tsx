@@ -17,7 +17,7 @@ import {
   getAUM, getSipBook, getNetBusiness, getNewClients, getInsurancePremium, getStockMonthAgo, getStockHistory, getTarget,
   getBookByRm, getBookByBranch, getSipBookByRm, getNetBusinessByRm, getNetBusinessByBranch,
   getNewClientsByRm, getNewClientsByBranch, getOverdueTasksByAssignee, getTargetsByUser, getTargetsByBranch,
-  getMonthlyFlows, getLedgerCoverage, clientWhere, sipMonthlySql, targetPct, getActiveClients, getMonthEndAum,
+  getMonthlyFlows, getLedgerCoverage, clientWhere, sipMonthlySql, targetPct, getActiveClients,
   type MetricScope, inOrder,
 } from "@/lib/metrics";
 import { formatCount, formatDate, formatMoney, pickMoneyScale, type MoneyScale } from "@/lib/format";
@@ -166,7 +166,7 @@ async function kpiRow(tx: Tx, ctx: WidgetCtx) {
   const s = ctx.scope;
   const p = ctx.period;
   const fy = { from: p.fyStart, to: p.to };
-  const [aum, sip, then, history, biz, newCur, newPrev, newFy, target, ins, counts, monthEnd] = await inOrder(
+  const [aum, sip, then, history, biz, newCur, newPrev, newFy, target, ins, counts] = await inOrder(
     () => getAUM(tx, s),
     () => getSipBook(tx, s),
     () => getStockMonthAgo(tx, s),
@@ -178,7 +178,6 @@ async function kpiRow(tx: Tx, ctx: WidgetCtx) {
     () => getTarget(tx, s, p.fiscalYear, "new_clients"),
     () => getInsurancePremium(tx, s, p, p.prev),
     () => getActiveClients(tx, s),
-    () => getMonthEndAum(tx, s),
   );
   const cur = biz.current;
   const prev = biz.previous;
@@ -208,9 +207,8 @@ async function kpiRow(tx: Tx, ctx: WidgetCtx) {
           spark={aumSpark}
           value={money(aum.aum)}
           href={clientsHref(ctx, { sort: "aum", dir: "desc" })}
-          info="Assets under management of live clients, at the latest NAV, so it moves with the market every day. Under it: the AUM at the last month end's NAV, the figure the registrars' AUM statements quote."
+          info="Assets under management of live clients, today. Moves with the market as well as with sales."
           compare={then ? vs(aum.aum, then.aum, `vs ${formatDate(then.date, "dayMonth")}`) : null}
-          footer={monthEnd ? `Month end (${formatDate(monthEnd.monthEnd, "dayMonth")}): ${money(monthEnd.aum)}` : undefined}
         />
         <KpiTile
           className={ROW_OF_FOUR}
