@@ -177,7 +177,7 @@ async function processTransactionFeed(
   for (const r of rows) {
     // ── Who is this row's client? ─────────────────────────────────────────
     const pan = validPan(r.pan);
-    let res = await dir.resolve({ pan, folioNumber: r.folioNumber, amcCode: r.amcCode });
+    const res = await dir.resolve({ pan, folioNumber: r.folioNumber, amcCode: r.amcCode });
 
     if (res.kind === "blocked" || res.kind === "ambiguous") {
       skipped++;

@@ -63,6 +63,19 @@ export type RtaImportSummary = {
 // Drizzle transaction — typed loosely to match the codebase's withTenant callers.
 type Tx = any;
 
+/**
+ * Automatic re-pointing of a folio from an import PLACEHOLDER (a PAN-less
+ * client the importer stood up, keyed on the folio) to the PAN-keyed client a
+ * master file names — with that folio's transactions and SIPs.
+ *
+ * DISABLED (owner's instruction, 2026-10-08): the effect of moving money
+ * between client records on valuations, business entries and reports is under
+ * review. While off, such a folio is HELD BACK with a reason (Exceptions page)
+ * and nothing is reassigned; the code path stays so the reviewed behaviour can
+ * be switched on in one place.
+ */
+export const AUTO_REASSIGN_FROM_PLACEHOLDER = false;
+
 const chunk = <T,>(arr: T[], n: number): T[][] => {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
@@ -606,7 +619,8 @@ export async function importRtaFolios(
           updatedAt: sql`now()`,
         };
 
-  // ── 4a. Re-pointing an existing folio. The registrar's file is allowed to
+  // ── 4a. Re-pointing an existing folio. When AUTO_REASSIGN_FROM_PLACEHOLDER
+  //        is on (it is OFF — see the constant), the registrar's file may
   //        move a folio only off an import PLACEHOLDER (a client the importer
   //        stood up with no PAN of its own, keyed on the folio) onto the
   //        client the file names — and then that folio's transactions and SIPs
@@ -626,8 +640,12 @@ export async function importRtaFolios(
         const life = await dir.lifecycle(owner);
         if (life.kind === "found" && life.id === v.investorId) continue; // merged into this client
         if (life.kind === "found" && dir.isPlaceholder(owner)) {
-          moves.push({ folioNumber: v.folioNumber, amcCode: v.amcCode, from: owner, to: v.investorId });
-          continue;
+          if (AUTO_REASSIGN_FROM_PLACEHOLDER) {
+            moves.push({ folioNumber: v.folioNumber, amcCode: v.amcCode, from: owner, to: v.investorId });
+            continue;
+          }
+          held = `folio ${v.folioNumber} is filed under an import placeholder (a client created without a PAN); moving it and its transactions to the client this file names needs review — automatic reassignment is switched off, nothing was moved`;
+          break;
         }
         held =
           life.kind === "blocked" || life.kind === "ambiguous"

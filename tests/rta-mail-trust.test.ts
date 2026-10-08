@@ -199,7 +199,11 @@ describe("password proof on archives", () => {
     const cams = evaluateMailAuth([SES_DKIM_CAMS], "ses");
     expect(await attachmentTrust(Buffer.from(CSV), cams, [])).toMatchObject({ admit: true, via: "registrar-auth" });
     const enc = await zip("a.csv", CSV, { password: FIRM_PW });
-    expect(await attachmentTrust(enc, unauth, [FIRM_PW])).toMatchObject({ admit: true, via: "password" });
+    // A decrypting archive is NOT sender authentication (owner's decision 2026-10-08):
+    // quarantined, with the password result recorded for the reviewer.
+    const r = await attachmentTrust(enc, unauth, [FIRM_PW]);
+    expect(r.admit).toBe(false);
+    expect((r as { reason: string }).reason).toMatch(/does not prove who sent it/);
   });
 });
 
@@ -244,11 +248,11 @@ describe("poller decisions", () => {
     expect(mocks.put).not.toHaveBeenCalled();
   });
 
-  it("encrypted archive without registrar auth → imported only when the saved password opens it", async () => {
+  it("encrypted archive without registrar auth → quarantined even when the saved password opens it", async () => {
     const good = message({ authResults: [SES_NOTHING], attachments: [att("SYNTH_WBR2.zip", await zip("SYNTH_WBR2.csv", CSV, { password: FIRM_PW }))] });
     await handleRtaInboundMessage(good);
-    expect(good.outcome).toBe("imported");
-    expect(mocks.put).toHaveBeenCalledTimes(1);
+    expect(good.outcome).toBe("quarantined");
+    expect(mocks.put).not.toHaveBeenCalled();
 
     mocks.put.mockClear();
     const bad = message({ authResults: [SES_NOTHING], attachments: [att("SYNTH_WBR2.zip", await zip("SYNTH_WBR2.csv", CSV, { password: "not-the-firms" }))] });

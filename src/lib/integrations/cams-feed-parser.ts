@@ -372,6 +372,19 @@ export function parseReverseFeed(text: string): FeedParse {
   }
   const order = detectDateOrder(samples);
 
+  // A transaction number repeated WITHIN one file is not proof of one
+  // transaction or of several: registrars can report one economic transaction
+  // in parts, or reuse a number across legs. Until a real file shows which
+  // (see the Phase 2B investigation), every row of such a group is held back
+  // — never collapsed into one, never stored twice.
+  const refLines = new Map<string, number[]>();
+  for (let i = dataStart; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line || !line.trim()) continue;
+    const ref = (split(line)[indexMap.externalRef] ?? "").trim();
+    if (ref) refLines.set(ref, [...(refLines.get(ref) ?? []), i + 1]);
+  }
+
   const rows: CanonicalTransaction[] = [];
   const rejects: FeedReject[] = [];
   let dataLines = 0;
@@ -393,6 +406,14 @@ export function parseReverseFeed(text: string): FeedParse {
     if (!folioNumber) { reject("row carries no folio number — a transaction cannot be attached without one"); continue; }
     const externalRef = val("externalRef");
     if (!externalRef) { reject("row carries no registrar transaction number — it cannot be identified safely"); continue; }
+    const group = refLines.get(externalRef) ?? [];
+    if (group.length > 1) {
+      const shown = group.slice(0, 6).join(", ") + (group.length > 6 ? ", …" : "");
+      reject(
+        `transaction number ${externalRef} appears ${group.length} times in this file (lines ${shown}) — whether that is one transaction reported in parts or several transactions is not established, so the whole group is held back (nothing merged, nothing overwritten)`
+      );
+      continue;
+    }
 
     const st = readStatus(val("status"), indexMap.status !== undefined);
     if ("reason" in st) { reject(st.reason); continue; }

@@ -197,7 +197,7 @@ describe.skipIf(!TEST_DB)("RTA import — transactions, identity, tenancy (DB)",
     expect(rows.map((r) => r.rta_nopan_key)).toEqual(["NOPAN:FOLIO:1000007/77", "NOPAN:FOLIO:1000008/88"]);
   });
 
-  it("master import moves a placeholder's folio AND its transactions to the PAN-keyed client", async () => {
+  it("master import does NOT move a placeholder's folio or transactions (automatic reassignment is off)", async () => {
     await run(tA, file({ ref: "PH-1", pan: "", folio: "1000010/10", amc: "X" }));
     const before = await q(tA, sql`SELECT investor_id FROM transactions WHERE tenant_id = ${tA}::uuid AND order_id = 'PH-1'`);
     const placeholder = before[0].investor_id;
@@ -210,9 +210,12 @@ describe.skipIf(!TEST_DB)("RTA import — transactions, identity, tenancy (DB)",
         investor: { pan: "BBBPB2222B", name: "Test Bob", category: "individual" }, nominees: [], bank: {},
       }], { kind: "full" })
     );
-    expect(summary.moved).toMatchObject({ folios: 1, transactions: 1 });
+    expect(summary.moved).toMatchObject({ folios: 0, transactions: 0 });
+    expect(summary.exceptions[0].reason).toMatch(/import placeholder/);
     const after = await q(tA, sql`SELECT investor_id FROM transactions WHERE tenant_id = ${tA}::uuid AND order_id = 'PH-1'`);
-    expect(after[0].investor_id).toBe(ids.bob);
+    expect(after[0].investor_id).toBe(placeholder);
+    const f = await q(tA, sql`SELECT investor_id FROM folios WHERE tenant_id = ${tA}::uuid AND folio_number = '1000010/10'`);
+    expect(f.map((r) => r.investor_id)).toEqual([placeholder]);
   });
 
   it("master import does not reassign a folio filed under a different real client", async () => {

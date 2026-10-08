@@ -52,14 +52,14 @@ const CATEGORIES: Category[] = [
     action:
       "The row points at a client in Trash, a merged client whose survivor is gone, more than one possible client, or a folio the CRM files under someone else. Nothing was reassigned. Restore or fix the client (or the folio's client), then re-upload the file.",
     pattern:
-      "held back for review|in Trash|matches [0-9]+ different clients|different client in the CRM|filed under a different client|merge history|merged into a record|under [0-9]+ different clients",
+      "held back for review|filed under an import placeholder|in Trash|matches [0-9]+ different clients|different client in the CRM|filed under a different client|merge history|merged into a record|under [0-9]+ different clients",
   },
   {
     key: "txn_conflict",
-    label: "Transaction number already used by a different transaction",
+    label: "Transaction number repeated or already used by a different transaction",
     action:
       "The registrar's transaction number on these rows already belongs to a different transaction in the CRM (folio, scheme, date, type or amount differ). The existing record was left unchanged. Check both against the registrar statement.",
-    pattern: "already in the CRM for a different transaction",
+    pattern: "already in the CRM for a different transaction|appears [0-9]+ times in this file",
   },
   {
     key: "unsupported_txn",

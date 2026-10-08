@@ -13,14 +13,17 @@
  *             forwarder / From headers alone is QUARANTINED, never imported.
  *
  *   EVIDENCE  before an attachment is imported the mail must prove it came from
- *             the registrar, one of two ways:
- *               1. Authentication-Results written by OUR receiving server shows
- *                  dkim=pass (or dmarc=pass) for a domain on REGISTRAR_DOMAINS;
- *               2. the attachment is an encrypted archive that one of the
- *                  firm's SAVED mailback passwords actually opens — only the
- *                  registrar (and the firm) know that password, so it is proof
- *                  the registrar encrypted it for this firm.
- *             Otherwise the attachment is quarantined.
+ *             the registrar: Authentication-Results written by OUR receiving
+ *             server shows dkim=pass (or dmarc=pass) for a domain on
+ *             REGISTRAR_DOMAINS. Otherwise the attachment is quarantined.
+ *
+ *             An archive that the firm's saved mailback password opens is NOT
+ *             accepted as proof on its own (owner's decision, 2026-10-08): the
+ *             password is often the investor's or firm's PAN-derived value and
+ *             is known to more people than the registrar, so a decrypting
+ *             archive says who ENCRYPTED it at best, not who SENT the mail.
+ *             The check still runs and its result is written into the
+ *             quarantine reason, so an operator reviewing the mail sees it.
  *
  *   LINKS     only a forwarding confirmation authenticated as Google /
  *             Microsoft may place its link on the settings card, and the link
@@ -37,8 +40,8 @@
  *   • Amazon SES inbound (the S3 reader): authserv-id `amazonses.com`.
  *   • IMAP catch-all: whatever the mailbox provider's MTA stamps — it differs per
  *     host, so it is configured in RTA_IMAP_AUTHSERV_ID (comma-separated). With
- *     it unset NO header is trusted on IMAP mail, and only the password proof
- *     can admit an attachment.
+ *     it unset NO header is trusted on IMAP mail, so nothing from IMAP is
+ *     auto-imported.
  * A second header carrying the same trusted authserv-id further down is a
  * forgery attempt (a well-behaved MTA never stamps twice) and makes the whole
  * verdict untrusted. Assumption to confirm on a real stored mail: SES always
@@ -328,7 +331,7 @@ export async function proveArchiveForFirm(buf: Uint8Array, passwords: string[]):
 }
 
 export type AttachmentTrust =
-  | { admit: true; via: "registrar-auth" | "password"; note: string }
+  | { admit: true; via: "registrar-auth"; note: string }
   | { admit: false; reason: string };
 
 /**
@@ -344,11 +347,15 @@ export async function attachmentTrust(
     return { admit: true, via: "registrar-auth", note: `authenticated as ${auth.registrarDomain}` };
   }
   if (isZipBytes(bytes)) {
+    // Informational only — a decrypting archive is not sender authentication.
     const proof = await proveArchiveForFirm(bytes, passwords);
-    if (proof.proven) return { admit: true, via: "password", note: "opened with the firm's saved mailback password" };
     return {
       admit: false,
-      reason: `Quarantined — the mail is not authenticated as a registrar (${auth.headerNote}) and ${proof.reason}.`,
+      reason:
+        `Quarantined — the mail is not authenticated as a registrar (${auth.headerNote}). ` +
+        (proof.proven
+          ? "The archive does open with the firm's saved mailback password, but that does not prove who sent it."
+          : `Also, ${proof.reason}.`),
     };
   }
   return {

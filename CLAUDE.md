@@ -474,8 +474,8 @@ refuses to guess. Read `values.ts` and `identity.ts` before touching a parser.
   (`import-access.ts`); errors are PAN-masked on write and on read.
   `/api/rta/import` (synchronous) answers 410.
 - **Mail imports only by the firm's alias, with proof** (`mail-trust.ts`):
-  registrar DKIM/DMARC pass from our own server's Authentication-Results, or an
-  archive the firm's saved password opens. Anything else is quarantined.
+  registrar DKIM/DMARC pass from our own server's Authentication-Results.
+  Anything else is quarantined — a decrypting archive is NOT sender proof.
 
 ## Webhook handlers
 

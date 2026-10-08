@@ -10,9 +10,9 @@
  *   2. Auto-capture any Gmail/Outlook forwarding-confirmation code for the UI —
  *      its link only from a confirmation authenticated as the provider.
  *   3. Classify each attachment by report-code + sender → (source, kind).
- *   4. Require evidence the file is genuine — registrar DKIM/DMARC pass in OUR
- *      server's Authentication-Results, or an archive the firm's saved password
- *      opens — else quarantine it.
+ *   4. Require evidence the mail is genuine — registrar DKIM/DMARC pass in OUR
+ *      server's Authentication-Results — else quarantine it. (A decrypting
+ *      archive is not sender authentication: lib/rta/mail-trust.ts.)
  *   5. Push the (still password-protected) attachment to S3 and enqueue the
  *      SAME rta.import job the manual upload route uses — which unzips (with the
  *      firm's stored CAMS/KFintech password), auto-detects, imports, and dedupes.
@@ -429,8 +429,7 @@ async function handleMessage(msg: InboundRawMessage): Promise<void> {
     const pw = await withTenant(tenantId, async (tx) => getMailbackPasswords(tx, tenantId));
 
     // 4. Ingest each recognised attachment that carries evidence it is genuine
-    //    (registrar-authenticated mail, or an archive the firm's saved password
-    //    opens). Track outcomes so the log says what really happened: a file
+    //    (registrar-authenticated mail). Track outcomes so the log says what really happened: a file
     //    already in flight is a no-op, an unproven one is quarantined, and a
     //    store / queue failure is an ERROR — never "already imported".
     let queued = 0;
@@ -572,8 +571,8 @@ async function handleMessage(msg: InboundRawMessage): Promise<void> {
         ...logTail,
         outcome: "quarantined",
         reason:
-          `Quarantined — ${quarantined} file(s) were not imported: the mail is not authenticated as a registrar and no saved ` +
-          `mailback password opened them. Save the firm's mailback password; held mail is retried.`,
+          `Quarantined — ${quarantined} file(s) were not imported: the mail is not authenticated as a registrar ` +
+          `(no registrar DKIM/DMARC pass from our receiving server). Review it in Inbound Mail.`,
       });
       return;
     }
@@ -709,8 +708,8 @@ async function readStoredMail(key: string, seq: number): Promise<InboundRawMessa
 
 /**
  * What to do with a stored SES mail once handleMessage has decided:
- *   hold   — unroutable or quarantined: retried hourly (registering the alias
- *            use or saving the firm's mailback password can still admit it);
+ *   hold   — unroutable or quarantined: retried hourly (a corrected alias or a
+ *            confirmed REGISTRAR_DOMAINS entry can still admit it);
  *   park   — something failed to store / queue: kept under FAILED_PREFIX for a
  *            human, never silently deleted;
  *   delete — handled (imported, duplicate, confirmation, no_attachment).

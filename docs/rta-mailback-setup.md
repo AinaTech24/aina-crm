@@ -23,9 +23,9 @@ CAMS/KFintech ──daily──▶ MFD's inbox
                               ▼
    rta-inbox-poller (worker, every ~120s)
      • resolve tenant by recipient alias ONLY (header-matched mail → quarantined)
-     • require proof per attachment (lib/rta/mail-trust.ts): registrar DKIM/DMARC
-       pass in OUR server's Authentication-Results, or an archive the firm's saved
-       password opens — else quarantined, nothing imported
+     • require proof per mail (lib/rta/mail-trust.ts): registrar DKIM/DMARC pass
+       in OUR server's Authentication-Results — else quarantined, nothing
+       imported (a decrypting archive is NOT accepted as sender proof)
      • capture any Gmail/Outlook forwarding-confirmation code (for the UI)
      • classify each attachment by report-code + sender → (source, kind)
      • push attachment to S3, enqueue the EXISTING rta.import job
@@ -67,8 +67,9 @@ learns an alias can mail it. An attachment (or a file downloaded from a link in 
 mail) is imported only when either our receiving server's `Authentication-Results`
 shows `dkim=pass` or `dmarc=pass` for a domain in `REGISTRAR_DOMAINS`
 (`src/lib/rta/mail-trust.ts` — **to be confirmed by the owner** against the domains
-CAMS and KFintech actually sign with), or the attachment is an archive whose every
-entry is encrypted and one of the firm's saved mailback passwords opens it. For IMAP
+CAMS and KFintech actually sign with). An archive that the firm's saved password
+opens is recorded in the quarantine reason but is **not** proof of the sender
+(owner's decision, 2026-10-08). For IMAP
 mail, set `RTA_IMAP_AUTHSERV_ID` to the receiving server's authserv-id; unset, no
 IMAP authentication result is trusted.
 
@@ -154,7 +155,7 @@ server. Confirm `[rta-inbox] mailback poller started` in the worker logs.
 | Nothing imports | worker logs `[rta-inbox]` | Env not set, catch-all not confirmed, or MX wrong. |
 | Import `failed` — "Could not open the zip" | RTA Imports screen | Wrong/missing CAMS or KFintech password — re-enter on the card. |
 | Outcome **Unroutable** | Inbound Mail | Address didn't match a firm (typo / rotated token). |
-| Outcome **Quarantined** | Inbound Mail | Not imported: routed only by a sender header, or no proof the file is the registrar's (no registrar DKIM pass and not an archive the firm's password opens). SES copies wait in `rta-inbound-held/` and are retried hourly. |
+| Outcome **Quarantined** | Inbound Mail | Not imported: routed only by a sender header, or the mail is not authenticated as a registrar (no registrar DKIM/DMARC pass from our receiving server). SES copies wait in `rta-inbound-held/` and are retried hourly. |
 | Outcome **No RTA file** | Inbound Mail → expand row | Reached the right firm, but no attachment carried a known report code — add the pattern to the classifier. |
 | Outcome **Already imported** | Inbound Mail | Safe no-op — the same file was already in flight. |
 | A file type isn't picked up | classifier | Filename report-code not recognised → quarantined, not mis-imported. Add the pattern to `src/lib/rta/classify-mailback.ts`. |

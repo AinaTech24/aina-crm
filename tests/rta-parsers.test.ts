@@ -65,6 +65,24 @@ describe("transaction feed — identity and layout", () => {
   });
 });
 
+describe("transaction feed — repeated transaction numbers within one file", () => {
+  it("holds back EVERY row of a repeated group; other rows import", () => {
+    const { rows, rejects } = parseReverseFeed(
+      feed(row({ ref: "DUP" }), row({ ref: "OK-1" }), row({ ref: "DUP", amount: "50.00" }), row({ ref: "DUP", units: "1.0000" }))
+    );
+    expect(rows.map((r) => r.externalRef)).toEqual(["OK-1"]);
+    expect(rejects).toHaveLength(3);
+    expect(rejects.every((r) => /appears 3 times in this file/.test(r.reason))).toBe(true);
+  });
+
+  it("identity never depends on row order: reordering a file gives the same accepted rows", () => {
+    const a = parseReverseFeed(feed(row({ ref: "A" }), row({ ref: "B", amount: "10" }), row({ ref: "C", amount: "20" })));
+    const b = parseReverseFeed(feed(row({ ref: "C", amount: "20" }), row({ ref: "A" }), row({ ref: "B", amount: "10" })));
+    const key = (r: { externalRef: string; amount: number }) => `${r.externalRef}:${r.amount}`;
+    expect(b.rows.map(key).sort()).toEqual(a.rows.map(key).sort());
+  });
+});
+
 describe("transaction feed — values never defaulted", () => {
   it.each([
     [{ date: "" }, /date is blank/],
