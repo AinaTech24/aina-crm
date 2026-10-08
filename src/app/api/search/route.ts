@@ -40,6 +40,11 @@ export async function GET(req: NextRequest) {
     const prefix = `${q}%`;
 
     const results = await withTenant(session.tenantId, async (tx) => {
+      // Search answers as you type. A lookup that cannot finish in a few
+      // seconds is useless and, at the pool-wide 30 s limit, held a database
+      // connection for minutes across its eleven groups while the database
+      // was struggling (2026-10-08). Fail fast instead; the group says nothing.
+      await tx.execute(sql`SET LOCAL statement_timeout = '4s'`);
       const cap = (name: Parameters<typeof can>[1]) => can(session.roles, name, session.permissions);
       const investorAllowed = cap("investor.view.all") || cap("investor.view.assigned");
       const leadAllowed = cap("lead.view.all") || cap("lead.view.assigned");
@@ -61,6 +66,8 @@ export async function GET(req: NextRequest) {
       // for the rest, and the failure is captured with the group name — this
       // route is six hand-written queries the schema guard cannot check.
       const group = async (name: string, q: SQL): Promise<unknown[]> => {
+        // The person typed on: the browser dropped this search, so stop here.
+        if (req.signal.aborted) return [];
         try {
           return (await tx.transaction(async (sp) => sp.execute(q))).rows;
         } catch (err) {

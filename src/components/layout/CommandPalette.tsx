@@ -200,10 +200,13 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
       return;
     }
     let cancelled = false;
+    // A newer keystroke cancels the older search, so the server stops working
+    // on it (the route checks the request's abort signal between groups).
+    const ctrl = new AbortController();
     const t = setTimeout(async () => {
       setBusy(true);
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: ctrl.signal });
         const j = await res.json();
         if (!cancelled) setResults(j);
       } catch {
@@ -211,10 +214,11 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
       } finally {
         if (!cancelled) setBusy(false);
       }
-    }, 200);
+    }, 300);
     return () => {
       cancelled = true;
       clearTimeout(t);
+      ctrl.abort();
     };
   }, [q, open]);
 
