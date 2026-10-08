@@ -10,6 +10,11 @@ type BatchStats = { updated: number; skippedUnpriced: number; skippedNoHoldings:
 
 async function persistBatch(tx: Tx, investorIds: string[]): Promise<BatchStats> {
   const { transactions, snapshots } = await loadValuationRows(tx, investorIds);
+  const cachedRows = (await tx.execute(sql`
+    SELECT id, COALESCE(aum, 0)::numeric AS aum FROM investors
+     WHERE id IN (${sql.join(investorIds.map((id) => sql`${id}::uuid`), sql`, `)})
+  `)).rows as Array<{ id: string; aum: string }>;
+  const cached = new Map(cachedRows.map((r) => [String(r.id), Number(r.aum)]));
   const byInvestor = <T extends { investor_id?: string | null }>(rows: T[]) => {
     const groups = new Map<string, T[]>();
     for (const row of rows) { if (!row.investor_id) continue; const group = groups.get(row.investor_id) ?? []; group.push(row); groups.set(row.investor_id, group); }
@@ -28,7 +33,15 @@ async function persistBatch(tx: Tx, investorIds: string[]): Promise<BatchStats> 
     // book goes stale without anyone noticing. Count both reasons so the caller
     // can report them.
     if (!value.holdings.length) { skippedNoHoldings++; continue; }
-    if (value.unpricedSchemes > 0) { skippedUnpriced++; continue; }
+    // An unpriced holding makes the total a FLOOR, not wrong: everything else
+    // is valued. Keeping the cache whenever one holding was unpriced froze the
+    // client at whatever it last said — Rs 0 for the 2,075 Ahpal clients whose
+    // folios came back on 8 Oct 2026, so Rs 161 Cr of folios counted nowhere.
+    // Write the floor when it is above the cache; never lower a figure on it.
+    if (value.unpricedSchemes > 0) {
+      skippedUnpriced++;
+      if (!(value.currentValue > (cached.get(id) ?? 0) + 0.5)) continue;
+    }
     updates.push(sql`(${id}::uuid, ${value.currentValue}::numeric)`);
     invalidateInvestorValuation(id);
   }
