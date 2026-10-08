@@ -13,7 +13,7 @@
  * Closed as `completed` with a remark; the SIP-report importer reopens a SIP
  * on a new instalment of the same amount, so one that restarts comes back.
  *
- *   tsx scripts/close-sips-by-feed-window.ts --tenant <uuid> [--days 46]          # dry run
+ *   tsx scripts/close-sips-by-feed-window.ts --tenant <uuid> [--rta cams|kfintech] [--days 46]   # dry run
  *   tsx scripts/close-sips-by-feed-window.ts --tenant <uuid> [--days 46] --apply
  */
 import "dotenv/config";
@@ -25,6 +25,9 @@ const args = process.argv.slice(2);
 const T = args[args.indexOf("--tenant") + 1];
 const DAYS = args.includes("--days") ? Number(args[args.indexOf("--days") + 1]) : 46;
 const APPLY = args.includes("--apply");
+// One registrar at a time: each is measured against ITS feed's last instalment,
+// so a registrar whose feed is behind never makes the other's SIPs look silent.
+const RTA = args.includes("--rta") ? args[args.indexOf("--rta") + 1] : null;
 const DRY = new Error("dry run");
 const cr = (n: unknown) => `Rs ${(Number(n) / 1e7).toFixed(2)} Cr`;
 
@@ -34,13 +37,16 @@ async function main() {
   try {
     await withTenant(T, async (tx) => {
       await tx.execute(sql`SET LOCAL statement_timeout = '180s'`);
+      const onRta = (col: string) => RTA
+        ? sql`AND ${sql.raw(col)} IN (SELECT f.id FROM folios f WHERE f.tenant_id = ${T}::uuid AND f.rta = ${RTA})`
+        : sql``;
       const book = async () => (await tx.execute(sql`
         SELECT count(*)::int AS n, COALESCE(sum(${sipMonthlySql("s")}), 0)::numeric AS m
           FROM sips s JOIN investors i ON i.id = s.investor_id
          WHERE s.tenant_id = ${T}::uuid AND s.status = 'active'
            AND i.deleted_at IS NULL AND i.merged_into_id IS NULL AND COALESCE(i.status,'') NOT IN ('closed','exited')`)).rows[0] as any;
       const reach = (await tx.execute(sql`
-        SELECT max(order_date) AS d FROM transactions WHERE tenant_id = ${T}::uuid AND type = 'sip' AND direction = 'inflow'`)).rows[0] as any;
+        SELECT max(order_date) AS d FROM transactions WHERE tenant_id = ${T}::uuid AND type = 'sip' AND direction = 'inflow' ${onRta("folio_id")}`)).rows[0] as any;
       if (!reach?.d) throw new Error("no SIP instalments on record — nothing to measure against");
       const before = await book();
       const closed = (await tx.execute(sql`
@@ -56,7 +62,7 @@ async function main() {
             LEFT JOIN by_code c ON c.folio_id = s.folio_id AND c.code_tail = upper(regexp_replace(COALESCE(s.scheme_code,''), '^[A-Z]+', ''))
             LEFT JOIN by_amt m ON m.folio_id = s.folio_id AND m.amt = round(s.amount::numeric)
            WHERE s.tenant_id = ${T}::uuid AND s.status = 'active'
-             AND i.deleted_at IS NULL AND i.merged_into_id IS NULL
+             AND i.deleted_at IS NULL AND i.merged_into_id IS NULL ${onRta("s.folio_id")}
              AND (s.start_date IS NULL OR s.start_date < (SELECT since FROM cut)))
         UPDATE sips s SET status = 'completed', updated_at = now(),
                remarks = left(COALESCE(NULLIF(s.remarks, '') || ' · ', '') || 'Closed 8 Oct 2026: no instalment between '
@@ -67,7 +73,7 @@ async function main() {
         RETURNING s.id`)).rows.length;
       await refreshActiveSipAmount(tx, { tenantId: T });
       const after = await book();
-      console.log(`feed reaches ${String(reach.d).slice(0, 10)}; window ${DAYS} days`);
+      console.log(`${RTA ?? "all registrars"}: feed reaches ${String(reach.d).slice(0, 10)}; window ${DAYS} days`);
       console.log(`before: ${before.n} active SIPs · ${cr(before.m)} a month`);
       console.log(`close:  ${closed} SIPs`);
       console.log(`after:  ${after.n} active SIPs · ${cr(after.m)} a month`);
