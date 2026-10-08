@@ -535,6 +535,14 @@ export async function importRtaFolios(
   // would ADD the incoming one alongside and double count. They are replaced
   // instead, so the register converges on correct slices as each ARN's file
   // re-imports, and never overstates on the way there.
+  // A leg's normalised name, its units (null unless numeric), and its ARN with
+  // the empty-broker-column values ("", "0", "NOT PROVIDED") read as none.
+  const legName = (a: "keep" | "incoming") =>
+    sql.raw(`lower(regexp_replace(COALESCE(${a}->>'schemeName', ''), '[^a-zA-Z0-9]+', '', 'g'))`);
+  const legUnits = (a: "keep" | "incoming") =>
+    sql.raw(`(CASE WHEN (${a}->>'units') ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN (${a}->>'units')::numeric END)`);
+  const legArn = (a: "keep" | "incoming") =>
+    sql.raw(`NULLIF(NULLIF(NULLIF(upper(trim(COALESCE(${a}->>'arn', ''))), ''), '0'), 'NOT PROVIDED')`);
   const mergedSchemes = sql`(
     SELECT COALESCE(jsonb_agg(keep), '[]'::jsonb)
       FROM jsonb_array_elements(COALESCE(${foliosTable.schemes}, '[]'::jsonb)) AS keep
@@ -542,8 +550,23 @@ export async function importRtaFolios(
        SELECT 1 FROM jsonb_array_elements(COALESCE(excluded.schemes, '[]'::jsonb)) AS incoming
         WHERE (
                 (incoming->>'schemeCode') = (keep->>'schemeCode')
-             OR lower(regexp_replace(COALESCE(incoming->>'schemeName',''), '[^a-zA-Z0-9]+', '', 'g'))
-              = lower(regexp_replace(COALESCE(keep->>'schemeName',''),     '[^a-zA-Z0-9]+', '', 'g'))
+             -- Two BLANK names are not one scheme: '' = '' let one nameless
+             -- leg replace every nameless leg of the folio.
+             OR (${legName("incoming")} <> '' AND ${legName("incoming")} = ${legName("keep")})
+             -- The CAMS AUM statement names a holding by the registrar's code
+             -- ("D157") and no scheme name, the master by AMFI code and name,
+             -- so neither key matched and the folio kept both — 158 legs, Rs
+             -- 8.19 Cr, on Nimesh C Shah (8 Oct 2026). The same units in one
+             -- folio are one holding when a side has no name (unless two real
+             -- ARNs differ: a split) or exactly one side has no real ARN. Two
+             -- named legs under real ARNs are never matched on units — a split,
+             -- or two options of one scheme.
+             OR (${legUnits("incoming")} > 0.001
+                 AND abs(${legUnits("incoming")} - ${legUnits("keep")}) <= 0.001
+                 AND CASE WHEN ${legName("incoming")} = '' OR ${legName("keep")} = ''
+                          THEN NOT (${legArn("incoming")} IS NOT NULL AND ${legArn("keep")} IS NOT NULL
+                                    AND ${legArn("incoming")} <> ${legArn("keep")})
+                          ELSE (${legArn("incoming")} IS NULL) <> (${legArn("keep")} IS NULL) END)
               )
           -- A MISSING arn is a WILDCARD ON BOTH SIDES, and both directions
           -- matter:
@@ -567,9 +590,9 @@ export async function importRtaFolios(
           -- way to be wrong: an understated split is recoverable, a double
           -- count looks correct.
           AND (
-                (keep->>'arn') IS NULL
-             OR (incoming->>'arn') IS NULL
-             OR (keep->>'arn') = (incoming->>'arn')
+                ${legArn("keep")} IS NULL
+             OR ${legArn("incoming")} IS NULL
+             OR ${legArn("keep")} = ${legArn("incoming")}
               )
      )
   ) || COALESCE(excluded.schemes, '[]'::jsonb)`;

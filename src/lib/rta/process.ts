@@ -1303,6 +1303,11 @@ async function processAumStatement(
       // instead lets the register converge as each ARN's statement lands,
       // without ever overstating on the way there.
       const normName = (s?: string) => (s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      // "0" and "NOT PROVIDED" are what some files put in an empty broker column.
+      const realArn = (a?: string) => {
+        const v = (a ?? "").trim().toUpperCase();
+        return v && v !== "0" && v !== "NOT PROVIDED" ? v : null;
+      };
       const merged = existingSchemes.map((s) => ({ ...s }));
       // A missing ARN is a wildcard on BOTH sides. Stored-none/incoming-one is
       // a leg written before slicing existed; stored-one/incoming-none is a
@@ -1310,7 +1315,7 @@ async function processAumStatement(
       // Either way it is the same holding and must REPLACE, not sit alongside —
       // handling only the first direction let arn-less restatements pile up as
       // second copies (721 folio+scheme pairs, Rs 37.27 Cr, 5-7 Sep).
-      const slotFor = (code: string, name: string, arn?: string): number | undefined => {
+      const slotFor = (code: string, name: string, arn: string | undefined, units: number): number | undefined => {
         const n = normName(name);
         let fallback: number | undefined;
         for (let idx = 0; idx < merged.length; idx++) {
@@ -1320,12 +1325,30 @@ async function processAumStatement(
           if (s.arn === arn) return idx;                    // same ARN's slice — restate it
           if ((s.arn == null || arn == null) && fallback == null) fallback = idx; // wildcard either way
         }
-        return fallback;
+        if (fallback != null) return fallback;
+        // This report names a holding by the REGISTRAR's code ("D157") and,
+        // in the CAMS AUM statement, no scheme name at all, so neither key
+        // finds the leg the folio master stored under the AMFI code and name.
+        // Nimesh C Shah, 8 Oct 2026: 158 legs stored twice that way, Rs 8.19 Cr,
+        //   folio 2305113/82  D157    ""                 25,862.605 units
+        //                     105989  "DSP Small Cap…"   25,862.605 units
+        // The same units in the same folio are the same holding when either
+        // side has no name or no real ARN. Two named legs under real ARNs are
+        // not matched this way: those can be a split, or two options of one
+        // scheme.
+        if (!(units > 0.001)) return undefined;
+        for (let idx = 0; idx < merged.length; idx++) {
+          const s = merged[idx];
+          if (Math.abs(Number(s.units ?? 0) - units) > 0.001) continue;
+          const a = realArn(s.arn), b = realArn(arn);
+          if (!normName(s.schemeName) || !n ? !(a && b && a !== b) : (a == null) !== (b == null)) return idx;
+        }
+        return undefined;
       };
 
       for (const r of fRows) {
         if (!r.schemeCode) continue;
-        const at = slotFor(r.schemeCode, r.schemeName, r.arn);
+        const at = slotFor(r.schemeCode, r.schemeName, r.arn, r.units);
         const value = r.aumValue || (r.nav ? Math.round(r.units * r.nav * 100) / 100 : undefined);
         if (at != null) {
           const cur = merged[at];

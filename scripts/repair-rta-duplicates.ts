@@ -24,6 +24,12 @@
  *   C. (only with --placeholders) a no-PAN placeholder that still holds
  *      folios or transactions and exactly one live PAN client of that name →
  *      merged into it;
+ *   E. the same name AND a shared email or mobile (any of phone / alternate /
+ *      WhatsApp, last ten digits) → one person: merged into the firm's record
+ *      (has an RM, not a placeholder), which takes the PAN if it lacked one.
+ *      Never when the records carry two different PANs, conflicting dates of
+ *      birth, or a minor and an adult. A shared contact under DIFFERENT names
+ *      is a family (one email for the household) and is only reported;
  *   D. every PAN's slot moved to its live client (lib/rta/client-match).
  * Every merge is the ordinary one (lib/investors/merge): logged in
  * investor_merges, reversible from Merge Clients, and pairs the firm marked
@@ -78,13 +84,27 @@ type Row = {
   id: string; name: string | null; pan: string | null; rm_id: string | null; dedup_pan: boolean;
   rta_nopan_key: string | null; is_minor: boolean | null; dob: unknown; created_at: unknown;
   has_data: boolean;
+  email: string | null; phone: string | null; alternate_phone: string | null; whatsapp_phone: string | null;
 };
+
+/** Contact keys of one record: lower-cased email, last ten digits of each mobile. */
+function contactKeys(r: Row): string[] {
+  const keys: string[] = [];
+  const email = String(r.email ?? "").trim().toLowerCase();
+  if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) keys.push(`E:${email}`);
+  for (const p of [r.phone, r.alternate_phone, r.whatsapp_phone]) {
+    const d = String(p ?? "").replace(/\D/g, "").slice(-10);
+    // A real Indian mobile: ten digits, starts 6–9, not one digit repeated.
+    if (/^[6-9]\d{9}$/.test(d) && !/^(\d)\1{9}$/.test(d)) keys.push(`M:${d}`);
+  }
+  return [...new Set(keys)];
+}
 
 async function plan(tenantId: string) {
   return withTenant(tenantId, async (tx) => {
     const rows = (await tx.execute(sql`
       SELECT i.id, i.name, upper(nullif(trim(i.pan), '')) AS pan, i.rm_id, i.dedup_pan, i.rta_nopan_key,
-             i.is_minor, i.dob, i.created_at,
+             i.is_minor, i.dob, i.created_at, i.email, i.phone, i.alternate_phone, i.whatsapp_phone,
              (EXISTS (SELECT 1 FROM folios f WHERE f.tenant_id = i.tenant_id AND f.investor_id = i.id)
               OR EXISTS (SELECT 1 FROM transactions x WHERE x.tenant_id = i.tenant_id AND x.investor_id = i.id)) AS has_data
         FROM investors i
@@ -154,7 +174,71 @@ async function plan(tenantId: string) {
         placeholderPairs.push({ survivorId: String(target.id), loserId: String(ph.id), label: `${target.name} [${target.pan}] ← placeholder ${ph.name}`, reason: "Placeholder from a registrar report with no PAN; the same client by name holds the PAN" });
       }
     }
-    return { samePan, byName, placeholderPairs, pans: [...byPan.keys()] };
+    // E. Same name + a shared email / mobile. Records are joined when they
+    // share the name key AND any contact key; each joined set is one person
+    // unless it holds two PANs or conflicting birth facts.
+    const parent = new Map<string, string>();
+    const find = (x: string): string => {
+      const p = parent.get(x) ?? x;
+      if (p === x) return x;
+      const r = find(p);
+      parent.set(x, r);
+      return r;
+    };
+    const byNameContact = new Map<string, Row[]>();
+    const byContact = new Map<string, Row[]>();
+    for (const r of rows) {
+      const nk = nameMatchKey(r.name);
+      for (const ck of contactKeys(r)) {
+        byContact.set(ck, [...(byContact.get(ck) ?? []), r]);
+        if (nk && nk.split(" ").length >= 2) byNameContact.set(`${nk}|${ck}`, [...(byNameContact.get(`${nk}|${ck}`) ?? []), r]);
+      }
+    }
+    for (const group of byNameContact.values()) {
+      for (const r of group.slice(1)) {
+        const a = find(String(group[0].id)), b = find(String(r.id));
+        if (a !== b) parent.set(b, a);
+      }
+    }
+    const comps = new Map<string, Row[]>();
+    for (const r of rows) {
+      const root = find(String(r.id));
+      comps.set(root, [...(comps.get(root) ?? []), r]);
+    }
+    const contactPairs: Pair[] = [];
+    const contactSkipped: string[] = [];
+    // Prefer the firm's record: an RM, not a placeholder, then a PAN, then
+    // money on it, then the oldest.
+    const rank = (r: Row) => [Number(!!r.rm_id), Number(!(r.rta_nopan_key ?? "").startsWith("NOPAN:")), Number(!!r.pan), Number(r.has_data)];
+    const better = (a: Row, b: Row) => {
+      const ra = rank(a), rb = rank(b);
+      for (let i = 0; i < ra.length; i++) if (ra[i] !== rb[i]) return rb[i] - ra[i];
+      return new Date(String(a.created_at)).getTime() - new Date(String(b.created_at)).getTime();
+    };
+    for (const group of comps.values()) {
+      if (group.length < 2) continue;
+      const pans = [...new Set(group.map((r) => r.pan).filter(Boolean))] as string[];
+      const label = `${group[0].name} (${group.length} records)`;
+      if (pans.length > 1) { contactSkipped.push(`${label}: different PANs ${pans.join(", ")}`); continue; }
+      if (group.some((r) => !compatible(r, group[0]))) { contactSkipped.push(`${label}: date of birth / minor status differ`); continue; }
+      group.sort(better);
+      const [survivor, ...rest] = group;
+      for (const l of rest) {
+        if (isIgnored(String(survivor.id), String(l.id))) continue;
+        contactPairs.push({
+          survivorId: String(survivor.id), loserId: String(l.id),
+          label: `${survivor.name}${survivor.pan ? ` [${survivor.pan}]` : ""} ← ${l.name}${l.pan ? ` [${l.pan}]` : ""}`,
+          givePan: !survivor.pan && pans[0] ? pans[0] : undefined,
+          reason: "Same client: same name and the same email or mobile",
+        });
+      }
+    }
+    // Shared contact, different names: a household, never merged. Reported.
+    let households = 0;
+    for (const group of byContact.values()) {
+      if (new Set(group.map((r) => nameMatchKey(r.name)).filter(Boolean)).size >= 2) households++;
+    }
+    return { samePan, byName, placeholderPairs, contactPairs, contactSkipped, households, pans: [...byPan.keys()] };
   });
 }
 
@@ -217,6 +301,12 @@ async function main() {
   show("A. same-PAN twins to merge", p1.samePan);
   show("B. PAN-less firm records matched by name", p1.byName);
   show(`C. placeholders holding data, same name as one PAN client${PLACEHOLDERS ? "" : " (skipped without --placeholders)"}`, p1.placeholderPairs);
+  show("E. same name + same email / mobile", p1.contactPairs);
+  if (p1.contactSkipped.length) {
+    console.log(`      left alone (${p1.contactSkipped.length}): same name and contact, but not provably one person`);
+    for (const s of p1.contactSkipped.slice(0, 5)) console.log(`        ${s}`);
+  }
+  console.log(`  shared email / mobile under different names (households, never merged): ${p1.households}`);
   if (!APPLY) return;
 
   const a = await applyPairs(TENANT, p1.samePan, "A");
@@ -230,6 +320,10 @@ async function main() {
     const c = await applyPairs(TENANT, p3.placeholderPairs, "C");
     console.log(`  C done: merged ${c.merged}, failed ${c.failed}`);
   }
+
+  const p4 = await plan(TENANT);
+  const e = await applyPairs(TENANT, p4.contactPairs, "E");
+  console.log(`  E done: merged ${e.merged}, failed ${e.failed}`);
 
   // D. Every PAN's slot on its live client.
   const pans = (await plan(TENANT)).pans;
