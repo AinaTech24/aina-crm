@@ -15,7 +15,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { ArrowDown, ArrowUp, ArrowUpDown, PencilLine } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, GitMerge, Loader2, PencilLine } from "lucide-react";
 import { RowActions } from "@/components/common/RowActions";
 import { RmSelector } from "@/components/common/RmSelector";
 import { formatINR } from "@/lib/utils";
@@ -28,6 +28,7 @@ import { FloatingBulkBar } from "@/components/common/FloatingBulkBar";
 import { InvestorSidePeek, type SidePeekInvestor } from "@/components/investors/InvestorSidePeek";
 import { MassUpdateDialog, type MassUpdateOptions } from "@/components/investors/MassUpdateDialog";
 import { notify } from "@/components/ui/Toast";
+import { MergeCompareDialog, type Member } from "@/components/investors/DuplicateMerge";
 
 export type InvestorTableRow = {
   id: string;
@@ -70,6 +71,9 @@ function statusTone(st: string | null): "neutral" | "warning" | "danger" {
   return "neutral";
 }
 
+/** The merge dialog compares records side by side; the API takes up to ten. */
+const MAX_MERGE = 10;
+
 export function InvestorsTable({
   rows,
   sort,
@@ -78,6 +82,7 @@ export function InvestorsTable({
   allIds = [],
   total = 0,
   massUpdate,
+  canMerge = false,
 }: {
   rows: InvestorTableRow[];
   sort: string;
@@ -87,6 +92,8 @@ export function InvestorsTable({
   total?: number;
   /** Choices for "Update a field"; omitted for people who can't bulk-edit. */
   massUpdate?: MassUpdateOptions;
+  /** Owners / branch heads — the people POST /api/investors/merge accepts. */
+  canMerge?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -98,6 +105,34 @@ export function InvestorsTable({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [massOpen, setMassOpen] = useState(false);
+  // "Merge" in the bulk bar: the same compare-and-merge dialog as Merge
+  // Clients (pick the record to keep, field by field, type MERGE; undoable).
+  const [mergeMembers, setMergeMembers] = useState<Member[] | null>(null);
+  const [mergeLoading, setMergeLoading] = useState(false);
+  const canOfferMerge = canMerge && selected.size >= 2 && selected.size <= MAX_MERGE;
+
+  async function openMerge() {
+    setMergeLoading(true);
+    try {
+      const ids = [...selected].join(",");
+      const res = await fetch(`/api/investors/merge-search?ids=${encodeURIComponent(ids)}`, { cache: "no-store" });
+      const j = await res.json().catch(() => ({}));
+      const results = (j.results ?? []) as Array<{ id: string; name: string; pan: string | null; phone: string | null; email: string | null; aum: number; folios: number }>;
+      if (!res.ok) {
+        notify.error(j.error ?? "Couldn't load those clients.");
+        return;
+      }
+      if (results.length < 2) {
+        notify.error("At least two of the selected clients must still be live to merge them.");
+        return;
+      }
+      setMergeMembers(results.map((r) => ({
+        id: r.id, name: r.name, pan: r.pan, phone: r.phone, email: r.email, aum: r.aum, folios: r.folios, rm_name: null,
+      })));
+    } finally {
+      setMergeLoading(false);
+    }
+  }
 
   /** "Update a field" — returns an error message for the dialog, or null. */
   async function applyMassUpdate(field: string, value: string | null): Promise<string | null> {
@@ -432,14 +467,29 @@ export function InvestorsTable({
         busy={busy}
         error={err}
         customActions={
-          massUpdate ? (
-            <button
-              type="button"
-              onClick={() => setMassOpen(true)}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-secondary/80 hover:bg-secondary text-foreground transition-colors"
-            >
-              <PencilLine className="size-3.5" /> Update a field
-            </button>
+          massUpdate || canOfferMerge ? (
+            <>
+              {canOfferMerge && (
+                <button
+                  type="button"
+                  onClick={() => void openMerge()}
+                  disabled={mergeLoading}
+                  title="These records are one person — compare them and merge into one"
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-secondary/80 hover:bg-secondary text-foreground transition-colors disabled:opacity-60"
+                >
+                  {mergeLoading ? <Loader2 className="size-3.5 animate-spin" /> : <GitMerge className="size-3.5" />} Merge
+                </button>
+              )}
+              {massUpdate && (
+                <button
+                  type="button"
+                  onClick={() => setMassOpen(true)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-secondary/80 hover:bg-secondary text-foreground transition-colors"
+                >
+                  <PencilLine className="size-3.5" /> Update a field
+                </button>
+              )}
+            </>
           ) : undefined
         }
       />
@@ -450,6 +500,18 @@ export function InvestorsTable({
           count={selected.size}
           options={massUpdate}
           onApply={applyMassUpdate}
+        />
+      )}
+
+      {mergeMembers && (
+        <MergeCompareDialog
+          members={mergeMembers}
+          onClose={() => setMergeMembers(null)}
+          onMerged={() => {
+            setMergeMembers(null);
+            setSelected(new Set());
+            router.refresh();
+          }}
         />
       )}
 
