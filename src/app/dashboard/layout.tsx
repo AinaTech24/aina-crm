@@ -237,6 +237,18 @@ const NAV: NavSection[] = [
     ],
   },
   {
+    // Working ON the firm (The E-Myth Revisited, 2026-10-08): the systems map,
+    // positions, the service promise, measures and the strategic objective
+    // (all under /dashboard/practice), and the operations manual — the SOP
+    // library, now open to everyone because an SOP nobody can find is no SOP.
+    title: "Practice",
+    items: [
+      { href: "/dashboard/practice", label: "Practice Systems", icon: Network,
+        roles: ["owner", "branch_head", "compliance"] },
+      { href: "/dashboard/sops", label: "Operations Manual", icon: ScrollText },
+    ],
+  },
+  {
     // Configure-once reference data and back-office tooling. Shown only to the
     // people who run the back office, and collapsed unless you are on one of
     // its pages. The pages keep their own guards; this only trims the menu.
@@ -293,7 +305,6 @@ const PALETTE_ONLY: NavSection[] = [
     title: "Compliance",
     items: [
       { href: "/dashboard/compliance", label: "Compliance & DDQ readiness", icon: FileCheck, module: "ddq", roles: ["owner", "compliance"] },
-      { href: "/dashboard/sops", label: "SOP library", icon: ScrollText, roles: ["owner", "compliance"] },
       { href: "/dashboard/audit-log", label: "Audit log", icon: ClipboardCheck, module: "audit_log", roles: ["owner", "compliance"] },
       { href: "/dashboard/legal-registrations", label: "Legal registrations", icon: Stamp, roles: ["owner", "compliance"] },
       { href: "/dashboard/sub-distributors", label: "Sub-distributors", icon: Network, roles: ["owner", "compliance"] },
