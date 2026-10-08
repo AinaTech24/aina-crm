@@ -15,6 +15,12 @@ async function persistBatch(tx: Tx, investorIds: string[]): Promise<BatchStats> 
      WHERE id IN (${sql.join(investorIds.map((id) => sql`${id}::uuid`), sql`, `)})
   `)).rows as Array<{ id: string; aum: string }>;
   const cached = new Map(cachedRows.map((r) => [String(r.id), Number(r.aum)]));
+  // Clients with a valued folio, whatever its legs say.
+  const valuedRows = (await tx.execute(sql`
+    SELECT DISTINCT investor_id FROM folios
+     WHERE investor_id IN (${sql.join(investorIds.map((id) => sql`${id}::uuid`), sql`, `)}) AND COALESCE(aum, 0) > 0
+  `)).rows as Array<{ investor_id: string }>;
+  const hasValuedFolio = new Set(valuedRows.map((r) => String(r.investor_id)));
   const byInvestor = <T extends { investor_id?: string | null }>(rows: T[]) => {
     const groups = new Map<string, T[]>();
     for (const row of rows) { if (!row.investor_id) continue; const group = groups.get(row.investor_id) ?? []; group.push(row); groups.set(row.investor_id, group); }
@@ -32,7 +38,16 @@ async function persistBatch(tx: Tx, investorIds: string[]): Promise<BatchStats> 
     // The skip is right, but it used to be SILENT, and a silent skip is how a
     // book goes stale without anyone noticing. Count both reasons so the caller
     // can report them.
-    if (!value.holdings.length) { skippedNoHoldings++; continue; }
+    if (!value.holdings.length) {
+      skippedNoHoldings++;
+      // Nothing at all backs a stored figure here — no transaction, no folio
+      // leg, no valued folio: its folios went to another record. Leaving it
+      // kept Rs 20.74 Cr on 81 such We Care Freedom Wealth clients (8 Oct
+      // 2026). The client's AUM is 0. (The Excel client import never writes
+      // AUM, so a stored figure always came from registrar data.)
+      if ((cached.get(id) ?? 0) !== 0 && !hasValuedFolio.has(id)) updates.push(sql`(${id}::uuid, ${0}::numeric)`);
+      continue;
+    }
     // An unpriced holding is counted at what it cost; everything else at its
     // value. Keeping the cache whenever one holding was unpriced froze the
     // client at whatever it last said — Rs 0 for the 2,075 Ahpal clients whose
