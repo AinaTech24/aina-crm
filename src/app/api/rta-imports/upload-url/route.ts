@@ -18,6 +18,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { presignedPutUrl } from "@/lib/storage/s3";
+import { requireRtaImportAccess, RTA_IMPORT_CAPABILITY } from "@/lib/rta/import-access";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -30,7 +31,10 @@ const Body = z.object({
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "transactions.execute", session.permissions);
+    requireCap(session.roles, RTA_IMPORT_CAPABILITY, session.permissions);
+    // Uploading reads the firm-wide outcome back, so it needs the same access
+    // as viewing the batches (lib/rta/import-access).
+    await requireRtaImportAccess(session);
     await assertActiveLicense(session.tenantId, session.roles);
 
     const parse = Body.safeParse(await req.json().catch(() => ({})));

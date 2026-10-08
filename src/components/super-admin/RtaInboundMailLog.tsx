@@ -31,7 +31,7 @@ type AttachmentLog = {
   size: number;
   source: string | null;
   kind: string | null;
-  outcome: "queued" | "duplicate" | "unrecognised" | "error";
+  outcome: "queued" | "duplicate" | "unrecognised" | "quarantined" | "error";
   importId?: string | null;
   reason?: string | null;
 };
@@ -88,6 +88,12 @@ const OUTCOMES: Record<string, { label: string; cls: string; Icon: typeof Mail; 
     Icon: AlertTriangle,
     hint: "No firm's forwarding address matched — check for a typo or a rotated address.",
   },
+  quarantined: {
+    label: "Quarantined",
+    cls: "bg-amber-50 text-amber-700 border-amber-200",
+    Icon: ShieldCheck,
+    hint: "Not imported: the mail was not routed by the firm's own address, or its attachment could not be proven to come from the registrar (no registrar DKIM pass, and not an archive the firm's saved password opens).",
+  },
   error: {
     label: "Error",
     cls: "bg-rose-50 text-rose-700 border-rose-200",
@@ -100,6 +106,7 @@ const ATT_TONE: Record<string, string> = {
   queued: "bg-emerald-50 text-emerald-700 border-emerald-200",
   duplicate: "bg-sky-50 text-sky-700 border-sky-200",
   unrecognised: "bg-amber-50 text-amber-700 border-amber-200",
+  quarantined: "bg-amber-50 text-amber-700 border-amber-200",
   error: "bg-rose-50 text-rose-700 border-rose-200",
 };
 

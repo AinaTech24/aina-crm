@@ -21,7 +21,7 @@ import { join } from "node:path";
 const ROOT = "src";
 
 /** Count as of the 2026-09-21 audit. Ratchet DOWN; never up. */
-const BASELINE = 112;
+const BASELINE = 102;
 
 const LABEL = /<label\b([^>]*)>([\s\S]*?)<\/label>/g;
 // A label that WRAPS a control is associated implicitly — and here the control

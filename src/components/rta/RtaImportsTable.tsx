@@ -30,6 +30,8 @@ type Row = {
   created_at: string;
   uploaded_by_name: string | null;
   remarks: string | null;
+  /** False for drop-folder rows (`feed:<sha>` key): the file was never stored. */
+  file_stored?: boolean;
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -56,6 +58,8 @@ function StatusBadge({ status }: { status: string }) {
  */
 function canReimport(r: Row): boolean {
   if (r.status === "completed" || r.status === "uploaded" || r.status === "parsing") return false;
+  // Drop-folder imports keep no copy of the file — the API refuses them (409).
+  if (r.file_stored === false) return false;
   return (
     (r.rows_skipped ?? 0) > 0 ||
     (r.rows_failed ?? 0) > 0 ||

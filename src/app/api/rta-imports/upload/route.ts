@@ -10,6 +10,8 @@ import { RTA_FILE_KINDS, RTA_SOURCES } from "@/db/schema/rta_imports";
 import { getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config";
 import { Q } from "@/workers/queues";
 import { RTA_FILE_TYPE_BY_KIND } from "@/lib/rta/file-types";
+import { handleApiError } from "@/lib/api/error-handler";
+import { requireRtaImportAccess, RTA_IMPORT_CAPABILITY } from "@/lib/rta/import-access";
 
 /**
  * POST /api/rta-imports/upload
@@ -39,10 +41,24 @@ const BodySchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  // Every refusal below (no session → 401, no capability / own-clients-only →
+  // 403, lapsed licence → 402) is answered as JSON by handleApiError — the
+  // dialog reads `error`, and a bare 500 used to surface as a JSON parse error.
+  try {
+    return await upload(req);
+  } catch (err) {
+    return handleApiError(err);
+  }
+}
+
+async function upload(req: NextRequest) {
   const session = await requireSession();
   // Only ops / back-office / owner / compliance can ingest RTA files
-  // (anyone who can execute transactions can also ingest the daily feed).
-  requireCap(session.roles, "transactions.execute", session.permissions);
+  // (anyone who can execute transactions can also ingest the daily feed) —
+  // and only on an un-narrowed book: the dialog then reads the firm-wide
+  // outcome back (lib/rta/import-access).
+  requireCap(session.roles, RTA_IMPORT_CAPABILITY, session.permissions);
+  await requireRtaImportAccess(session);
   await assertActiveLicense(session.tenantId, session.roles);
 
   const parsed = BodySchema.safeParse(await req.json().catch(() => ({})));

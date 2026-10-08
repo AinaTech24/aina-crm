@@ -289,7 +289,7 @@ export function RtaMailbackCard() {
 
           {/* Shared address — works only for registered sending mailboxes. */}
           <form onSubmit={saveSources} className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">Or use the shared address</label>
+            <label className="text-xs font-medium text-muted-foreground">Shared address (no longer auto-imports)</label>
             <div className="flex items-center gap-2">
               <code className="flex-1 text-xs bg-secondary/60 border border-border rounded-lg px-3 py-2 font-mono break-all">
                 {status.sharedAddress}
@@ -298,9 +298,13 @@ export function RtaMailbackCard() {
                 {copied === "shared" ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
               </button>
             </div>
+            <p role="note" className="text-2xs text-warning bg-warning/5 border border-warning/50 rounded-md px-2 py-1.5">
+              Mail sent to the shared address is <strong>no longer imported automatically</strong>: a sender address can
+              be forged, so it cannot prove the mail is yours. Forward to your own address above instead.
+            </p>
             <label className="text-2xs text-muted-foreground block pt-1">
-              To use it, register the mailbox(es) you forward <strong>from</strong> — that&apos;s how we know the mail is
-              yours. Comma-separated.
+              The mailbox(es) you forward <strong>from</strong> (comma-separated) are still used to recognise your
+              mailbox&apos;s forwarding-confirmation mail.
             </label>
             <div className="flex items-center gap-2">
               <input

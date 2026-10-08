@@ -439,6 +439,44 @@ three or four days later. The two are linked, never added together:
 - Business Entries shows each entry's outcome and filters by it (`?rta=`);
   backfill or re-run by hand with `tsx scripts/match-business-rta.ts`.
 
+## RTA import — rules since Phase 2 (2026-10-08)
+
+The mailback importer (`src/lib/rta/`, worker `src/workers/rta-import-worker.ts`)
+refuses to guess. Read `values.ts` and `identity.ts` before touching a parser.
+
+- **Values are read strictly** (`values.ts`): `readNumber` (Indian / Western
+  grouping, parentheses negative; anything else is an error), `readDate`
+  (calendar-checked; blank is null and is **never replaced with today**),
+  `validPan` (with the holder-type letter — placeholder text is "no PAN"),
+  `excelSerialToIso` (arithmetic, timezone-proof). A row whose mandatory value
+  cannot be read is rejected with its reason, never stored as 0 / today.
+- **No positional fallback.** A parser finds its header by alias in the first 10
+  lines and throws `RtaLayoutError` when it is missing or lacks a required column.
+- **Transaction identity is the registrar's transaction number.** A feed with no
+  such column is refused (rows used to be keyed `<rta>_<line>` and overwrote each
+  other across files). An existing row with the same number is updated (status,
+  NAV, units, reason) only when folio, scheme, date, type, direction and amount all
+  match; otherwise it is left alone and the row is reported.
+- **Unknown is held back, not defaulted**: unrecognised transaction codes or
+  statuses, reversals / cancellations, switch or STP rows without an IN/OUT leg,
+  negative amounts on money-in rows. They show on the Exceptions page
+  (`exceptions.ts` categories). Do not add a code meaning without a registrar
+  document or a real sample.
+- **Client resolution is one module** (`identity.ts` `InvestorDirectory`):
+  merged → survivor; in Trash → blocked; a folio number held by different clients
+  → ambiguous; a folio filed under another client than the row's PAN → held back.
+  PAN-less placeholders key on the folio (`NOPAN:FOLIO:<folio>`), never on name /
+  mobile / email. A folio moves off a placeholder to its PAN-keyed client with its
+  transactions and SIPs; it is never moved between two real clients by an import.
+- **Files are identified by content** (`file-kind.ts`): .xlsx is a workbook, not
+  a zip; an archive with more than one data file is refused, never half-read.
+- **Import views need `transactions.execute` and an unwalled book**
+  (`import-access.ts`); errors are PAN-masked on write and on read.
+  `/api/rta/import` (synchronous) answers 410.
+- **Mail imports only by the firm's alias, with proof** (`mail-trust.ts`):
+  registrar DKIM/DMARC pass from our own server's Authentication-Results, or an
+  archive the firm's saved password opens. Anything else is quarantined.
+
 ## Webhook handlers
 
 | Provider | Path | Verifies |

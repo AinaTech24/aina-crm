@@ -25,6 +25,7 @@ export type RtaInboundOutcome =
   | "confirmation" // Gmail/Outlook forwarding-confirmation mail (carries no data)
   | "no_attachment" // routed to a firm, but nothing importable recognised
   | "unroutable" // no forwarding address matched
+  | "quarantined" // not provably the firm's registrar mail — held, nothing imported (lib/rta/mail-trust.ts)
   | "error"; // handler threw
 
 /** Per-attachment verdict stored in `attachments`. */
@@ -35,7 +36,7 @@ export type RtaInboundAttachmentLog = {
   source: string | null;
   /** e.g. "folio_master_dump", "daily_transaction_feed" — null when unrecognised. */
   kind: string | null;
-  outcome: "queued" | "duplicate" | "unrecognised" | "error";
+  outcome: "queued" | "duplicate" | "unrecognised" | "quarantined" | "error";
   importId?: string | null;
   reason?: string | null;
 };

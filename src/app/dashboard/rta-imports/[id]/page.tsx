@@ -11,7 +11,9 @@ import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { ArrowLeft, FileText } from "lucide-react";
 import { withTenant } from "@/db/client";
-import { requireSession } from "@/lib/auth/session";
+import { requirePageSession } from "@/lib/auth/session";
+import { ImportAccessDenied } from "@/components/rta/ImportAccessDenied";
+import { isUuid, maskImportRow, rtaImportDenial } from "@/lib/rta/import-access";
 import { formatDate, formatINR, formatRelative } from "@/lib/utils";
 import { RTA_FILE_TYPE_BY_KIND } from "@/lib/rta/file-types";
 import { DownloadErrorsButton } from "@/components/rta/DownloadErrorsButton";
@@ -44,9 +46,14 @@ export default async function RtaImportDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const session = await requireSession();
+  const session = await requirePageSession();
 
-  const row = await withTenant(session.tenantId, async (tx) => {
+  // Same gate as the API (lib/rta/import-access): the batch and its row errors
+  // are firm-wide, so they need the import capability on an un-narrowed book.
+  const result = await withTenant(session.tenantId, async (tx) => {
+    const denial = await rtaImportDenial(tx, session);
+    if (denial) return { denial, row: null };
+    if (!isUuid(id)) return { denial: null, row: null };
     const r = await tx.execute(sql`
       SELECT
         rfi.id, rfi.source, rfi.kind, rfi.status,
@@ -60,9 +67,14 @@ export default async function RtaImportDetailPage({
       WHERE rfi.id = ${id}::uuid
       LIMIT 1
     `);
-    return (r.rows[0] as ImportRow | undefined) ?? null;
-  });
+    const found = (r.rows[0] as ImportRow | undefined) ?? null;
+    // PANs in stored errors / remarks are masked on READ, so rows written
+    // before masking-on-write existed never reach the page (or its CSV) in full.
+    return { denial: null, row: found ? maskImportRow(found) : null };
+  }, { userId: session.userId, branchId: session.branchId, roles: session.roles });
 
+  if (result.denial) return <ImportAccessDenied message={result.denial.message} />;
+  const row = result.row;
   if (!row) notFound();
 
   const kindLabel =
@@ -157,7 +169,11 @@ export default async function RtaImportDetailPage({
           // not read ('failed') records no per-row errors, and this panel used
           // to greet both with "All rows imported cleanly ✓" — directly
           // contradicting the red status badge at the top of the same page.
-          row.status === "rejected" || row.status === "failed" ? (
+          row.status === "uploaded" || row.status === "parsing" ? (
+            <div className="card-surface p-8 text-center text-sm text-muted-foreground">
+              Still processing — refresh in a moment to see the outcome.
+            </div>
+          ) : row.status === "rejected" || row.status === "failed" ? (
             <div className="card-surface p-8 text-center text-sm text-muted-foreground">
               No rows were processed — the file was never read, so there is
               nothing to report here. See the status note above for the reason.

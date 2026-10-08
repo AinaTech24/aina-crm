@@ -3,14 +3,11 @@
 /**
  * Client-side "Download errors (CSV)" button for the RTA import detail page.
  * Builds a CSV (Row,Reason) from the row-level errors and triggers a browser
- * download via a Blob — no server round-trip.
+ * download via a Blob — no server round-trip. The body (PAN-masked, formula-safe)
+ * comes from lib/rta/errors-csv.
  */
 import { Download } from "lucide-react";
-
-function csvEscape(value: string): string {
-  // Quote-wrap and double up embedded quotes — RFC 4180 style.
-  return `"${String(value).replace(/"/g, '""')}"`;
-}
+import { errorsToCsv } from "@/lib/rta/errors-csv";
 
 export function DownloadErrorsButton({
   fileName,
@@ -20,11 +17,7 @@ export function DownloadErrorsButton({
   errors: { row: number; reason: string }[];
 }) {
   function download() {
-    const header = "Row,Reason";
-    const lines = errors.map(
-      (e) => `${csvEscape(String(e.row))},${csvEscape(e.reason)}`
-    );
-    const csv = [header, ...lines].join("\n");
+    const csv = errorsToCsv(errors);
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);

@@ -1,125 +1,41 @@
 /**
- * RTA reverse-feed import.
- *   POST /api/rta/import   (multipart/form-data)
- *     file       — the RTA mailback .csv OR password-protected .zip
- *     password   — zip password (only when uploading a .zip; never persisted)
- *     dryRun     — "1" to preview (parse + counts, no DB writes)
- *     assignToMe — "1" to set rmId = current user on newly-created investors
+ * POST /api/rta/import — RETIRED (410 Gone).
  *
- * Detects the RTA + report type from the file header, parses it, and (unless
- * dryRun) upserts investors + folios. Returns a summary either way.
+ * This was the legacy synchronous RTA importer: a multipart upload parsed and
+ * upserted INSIDE the web request (maxDuration 300). That is exactly the
+ * in-request heavy parse that blocked Node's event loop, 503-ed the site and
+ * OOM-crashed the web process (see /api/rta-imports/upload), and a multipart
+ * body through the middleware is also truncated at Next's ~10 MB default. No
+ * screen calls it — the live importer is the RTA File Imports page
+ * (/dashboard/rta-imports: presigned upload → background worker), and the old
+ * RtaImporter component that used the async variant is not rendered anywhere.
+ *
+ * It now refuses every call with 410 and a pointer to the supported path, after
+ * the usual session + capability checks (so an anonymous caller still gets 401
+ * and learns nothing). The parse code it called (lib/rta, lib/rta/import) is
+ * untouched and still used by the worker.
  */
 
-import { NextRequest, NextResponse } from "next/server";
-import { withTenant } from "@/db/client";
+import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/session";
-import { can } from "@/lib/auth/rbac";
+import { require as requireCap } from "@/lib/auth/rbac";
 import { handleApiError } from "@/lib/api/error-handler";
-import { parseRtaCsv, parseRtaRows } from "@/lib/rta";
-import { importRtaFolios } from "@/lib/rta/import";
-import { extractRtaFileFromZip } from "@/lib/rta/unzip";
-import { loadTenantLicense } from "@/lib/auth/license";
-import { isSpreadsheet, readSpreadsheetToRows } from "@/lib/rta/xls";
+import { RTA_IMPORT_CAPABILITY } from "@/lib/rta/import-access";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
 
-export async function POST(req: NextRequest) {
+const RETIRED_MESSAGE =
+  "This import endpoint has been retired: it parsed files inside the web request, which is unsafe for large RTA files. " +
+  "Upload the file on the RTA File Imports page (/dashboard/rta-imports) instead — it is processed in the background.";
+
+export async function POST() {
   try {
     const session = await requireSession();
-    // Importing the client master is an admin action — owners + ops/back-office.
-    const allowed =
-      can(session.roles, "investor.edit.all", session.permissions) ||
-      can(session.roles, "dashboard.view.owner", session.permissions);
-    if (!allowed) {
-      return NextResponse.json({ error: "You don't have permission to import the client master." }, { status: 403 });
-    }
-
-    const form = await req.formData();
-    const file = form.get("file");
-    const password = (form.get("password") as string) || undefined;
-    const dryRun = form.get("dryRun") === "1";
-    const assignToMe = form.get("assignToMe") === "1";
-
-    if (!(file instanceof File)) {
-      return NextResponse.json({ error: "No file uploaded." }, { status: 400 });
-    }
-
-    const uploaded = new Uint8Array(await file.arrayBuffer());
-
-    // A zip (PK magic) is unpacked with the password to its inner file; otherwise
-    // the upload IS the data file.
-    let data: Uint8Array = uploaded;
-    let innerName = file.name;
-    const isZip = uploaded.length > 1 && uploaded[0] === 0x50 && uploaded[1] === 0x4b;
-    if (isZip) {
-      try {
-        const r = await extractRtaFileFromZip(uploaded, password);
-        data = r.data;
-        innerName = r.filename;
-      } catch (e: any) {
-        return NextResponse.json(
-          { error: `Could not open the zip — ${e?.message ?? "wrong password or unsupported archive"}.` },
-          { status: 400 }
-        );
-      }
-    }
-
-    // Binary Excel (.xls/.xlsx — e.g. the CAMS feed) is read via SheetJS; anything
-    // else is treated as a latin-1 CSV.
-    const parsed = isSpreadsheet(data, innerName)
-      ? parseRtaRows(readSpreadsheetToRows(data))
-      : parseRtaCsv(new TextDecoder("latin1").decode(data));
-    if (parsed.source === "unknown" || parsed.folios.length === 0) {
-      return NextResponse.json(
-        {
-          error: parsed.warnings[0] ?? "Unrecognised RTA file — header did not match a known report.",
-          source: parsed.source,
-          reportType: parsed.reportType,
-          totalRows: parsed.totalRows,
-        },
-        { status: 400 }
-      );
-    }
-
-    // Validate the file against what the user selected in the guided flow.
-    const selectedRta = ((form.get("rta") as string) || "").trim();
-    const selectedReport = ((form.get("reportType") as string) || "").trim();
-    if (selectedRta && parsed.source !== selectedRta) {
-      return NextResponse.json(
-        { error: `You selected ${selectedRta.toUpperCase()}, but this file looks like ${parsed.source.toUpperCase()} ${parsed.reportType}. Pick the matching RTA, or the right file.` },
-        { status: 400 }
-      );
-    }
-    if (selectedReport && parsed.reportType && selectedReport !== parsed.reportType) {
-      return NextResponse.json(
-        { error: `You selected file type ${selectedReport}, but this file is ${parsed.reportType}. Pick the matching file type.` },
-        { status: 400 }
-      );
-    }
-
-    const license = await loadTenantLicense(session.tenantId, session.roles);
-    const summary = await withTenant(
-      session.tenantId,
-      (tx) =>
-        importRtaFolios(tx as any, session.tenantId, parsed.folios, {
-          dryRun,
-          assignRmId: assignToMe ? session.userId : null,
-          reportType: parsed.reportType,
-          kind: parsed.kind === "holdings" ? "holdings" : parsed.kind === "full" ? "full" : "master",
-          quotaCap: license.maxInvestors,
-        }),
-      { userId: session.userId, branchId: session.branchId, roles: session.roles }
+    requireCap(session.roles, RTA_IMPORT_CAPABILITY, session.permissions);
+    return NextResponse.json(
+      { error: RETIRED_MESSAGE, use: "/dashboard/rta-imports" },
+      { status: 410 }
     );
-
-    return NextResponse.json({
-      ok: true,
-      source: parsed.source,
-      reportType: parsed.reportType,
-      totalRows: parsed.totalRows,
-      missingPan: parsed.missingPan,
-      summary,
-    });
   } catch (err) {
     return handleApiError(err);
   }

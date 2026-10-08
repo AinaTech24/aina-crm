@@ -10,7 +10,9 @@ import { ArrowRight, ListChecks } from "lucide-react";
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { InlineEmpty } from "@/components/common/EmptyState";
 import { withTenant } from "@/db/client";
-import { requireSession } from "@/lib/auth/session";
+import { requirePageSession } from "@/lib/auth/session";
+import { ImportAccessDenied } from "@/components/rta/ImportAccessDenied";
+import { maskImportText, rtaImportDenial } from "@/lib/rta/import-access";
 import { formatRelative } from "@/lib/utils";
 import { RTA_FILE_TYPE_BY_KIND } from "@/lib/rta/file-types";
 import { loadRowExceptions, isExceptionReason, EXCEPTION_REASONS } from "@/lib/rta/exceptions";
@@ -27,15 +29,23 @@ export default async function RtaExceptionsPage({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  const session = await requireSession();
+  const session = await requirePageSession();
   const sp = await searchParams;
   const reason = isExceptionReason(sp.reason) ? sp.reason : undefined;
 
-  const data = await withTenant(
+  // Row exceptions are every import's row errors, firm-wide — same gate as the
+  // import list and detail (lib/rta/import-access).
+  const result = await withTenant(
     session.tenantId,
-    (tx) => loadRowExceptions(tx, { reason, detailLimit: DETAIL_LIMIT }),
+    async (tx) => {
+      const denial = await rtaImportDenial(tx, session);
+      if (denial) return { denial, data: null };
+      return { denial: null, data: await loadRowExceptions(tx, { reason, detailLimit: DETAIL_LIMIT }) };
+    },
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
+  if (result.denial || !result.data) return <ImportAccessDenied message={result.denial?.message ?? ""} />;
+  const data = result.data;
   const selected = reason ? EXCEPTION_REASONS.find((r) => r.key === reason) : undefined;
 
   return (
@@ -78,8 +88,8 @@ export default async function RtaExceptionsPage({
                           <div className="font-medium text-foreground">{g.label}</div>
                           <div className="mt-0.5 max-w-2xl text-xs text-muted-foreground">{g.action}</div>
                           {g.example && (
-                            <div className="mt-1 max-w-2xl truncate text-2xs text-muted-foreground/80" title={g.example}>
-                              e.g. {g.example}
+                            <div className="mt-1 max-w-2xl truncate text-2xs text-muted-foreground/80" title={maskImportText(g.example)}>
+                              e.g. {maskImportText(g.example)}
                             </div>
                           )}
                         </td>
@@ -139,7 +149,7 @@ export default async function RtaExceptionsPage({
                         </td>
                         <td className="py-2.5 text-xs text-muted-foreground">{formatRelative(r.createdAt)}</td>
                         <td className="py-2.5 text-right text-xs tabular-nums text-muted-foreground">{r.row ?? "—"}</td>
-                        <td className="px-4 py-2.5 text-xs text-foreground !whitespace-normal">{r.reason}</td>
+                        <td className="px-4 py-2.5 text-xs text-foreground !whitespace-normal">{maskImportText(r.reason)}</td>
                       </tr>
                     ))}
                   </tbody>

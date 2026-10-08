@@ -4,19 +4,26 @@
  * Polls ONE catch-all mailbox (RTA_INBOX_*) that every MFD auto-forwards their
  * daily CAMS/KFintech mailback email to. For each new message:
  *
- *   1. Resolve the tenant from the recipient address (rta_forward_addresses).
- *   2. Auto-capture any Gmail/Outlook forwarding-confirmation code for the UI.
+ *   1. Resolve the tenant from the recipient ALIAS (rta_forward_addresses).
+ *      A match on forwarder / From headers alone is quarantined, never
+ *      imported (lib/rta/mail-trust explains why).
+ *   2. Auto-capture any Gmail/Outlook forwarding-confirmation code for the UI —
+ *      its link only from a confirmation authenticated as the provider.
  *   3. Classify each attachment by report-code + sender → (source, kind).
- *   4. Push the (still password-protected) attachment to S3 and enqueue the
+ *   4. Require evidence the file is genuine — registrar DKIM/DMARC pass in OUR
+ *      server's Authentication-Results, or an archive the firm's saved password
+ *      opens — else quarantine it.
+ *   5. Push the (still password-protected) attachment to S3 and enqueue the
  *      SAME rta.import job the manual upload route uses — which unzips (with the
  *      firm's stored CAMS/KFintech password), auto-detects, imports, and dedupes.
  *
  * Nothing here parses the file: it reuses the existing worker end-to-end. The
  * only new work is the inbound-email → attachment → S3 → enqueue bridge.
  *
- * Idempotency: messages are marked \Seen after handling; attachments dedupe on
- * sha256 vs prior rta_file_imports rows; unroutable mail is quarantined, never
- * dropped.
+ * Idempotency: messages are marked \Seen after handling (\Flagged, not \Seen,
+ * when storing / queuing failed); attachments dedupe on sha256 vs in-flight
+ * rta_file_imports rows; unroutable and quarantined mail is logged and (SES)
+ * held for retry, never dropped.
  */
 
 import { createHash } from "node:crypto";
@@ -50,6 +57,7 @@ import {
   type MailbackPasswords,
 } from "@/lib/rta/mailback-config";
 import { loadRtaInboxConfig } from "@/lib/rta/inbox-config";
+import { attachmentTrust, evaluateMailAuth, safeConfirmationUrl } from "@/lib/rta/mail-trust";
 import { captureError } from "@/lib/observability/capture";
 
 // Background imports have no human uploader. A stable sentinel enables the
@@ -115,12 +123,24 @@ type AttachmentLog = {
   size: number;
   source: string | null;
   kind: string | null;
-  outcome: "queued" | "duplicate" | "unrecognised" | "error";
+  outcome: "queued" | "duplicate" | "unrecognised" | "quarantined" | "error";
   importId?: string | null;
   reason?: string | null;
 };
 
-type InboundOutcome = "imported" | "duplicate" | "confirmation" | "no_attachment" | "unroutable" | "error";
+/**
+ * `quarantined` (no evidence the mail is genuine, or routed only by forgeable
+ * headers) is written to the free-text `outcome` column alongside the values
+ * listed in schema/rta_inbound_messages.ts — no constraint restricts it.
+ */
+type InboundOutcome =
+  | "imported"
+  | "duplicate"
+  | "confirmation"
+  | "no_attachment"
+  | "unroutable"
+  | "quarantined"
+  | "error";
 
 /** Body text we keep for the admin log — enough to identify the mail, not the lot. */
 const BODY_SNIPPET_MAX = 2000;
@@ -291,63 +311,85 @@ async function handleMessage(msg: InboundRawMessage): Promise<void> {
   // Detected up-front: a Gmail confirmation is the one message whose firm
   // identity lives in the BODY rather than in any header (see below).
   const confirm = detectForwardingConfirmation(msg);
+  // What our own receiving server says about the sender (lib/rta/mail-trust):
+  // only the topmost Authentication-Results, and only from SES / the configured
+  // IMAP host, is believed.
+  const auth = evaluateMailAuth(msg.authResults, msg.transport, msg.from);
+  const confirmAuthentic = !!confirm && !!auth.confirmationDomain;
 
-  // 1. Route to a tenant. Three paths, strongest first:
-  //    a) the per-firm alias rta-<token>@<domain> the mail was addressed to,
-  //    b) the mailbox it was forwarded FROM — what makes the shared
-  //       rta@<domain> address usable at all (migration 0193), and
-  //    c) for a Gmail forwarding-confirmation ONLY, the mailbox that requested
-  //       the forward. Google sends that mail itself (From is
-  //       forwarding-noreply@google.com, no X-Forwarded-For), so without this
-  //       a confirmation for the shared address can never reach its firm.
-  //    (b)/(c) are only consulted when (a) misses, so an alias can never be
-  //    overridden by a spoofable body or header.
+  // 1. Route to a tenant. Only two paths can ROUTE:
+  //    a) the per-firm alias rta-<token>@<domain> the mail was addressed to —
+  //       an unguessable, rotatable token, the only routing credential;
+  //    b) for a forwarding confirmation AUTHENTICATED as Google / Microsoft
+  //       (DKIM covers the body), the mailbox the body says requested the
+  //       forward. Google sends that mail itself, so without this a
+  //       confirmation for the shared address could never reach its firm.
+  //    The forwarder / From headers (the old path for the shared rta@ address)
+  //    are still LOOKED UP, but only to explain the quarantine: anyone can write
+  //    those headers, so a match on them never imports anything.
   const resolved = await withSystem(async (tx) => {
     const byAlias = await resolveTenantByAddresses(tx, msg.recipients);
     if (byAlias) return { row: byAlias, via: "alias" as const, ambiguous: false };
 
-    const bySender = await resolveTenantBySenders(tx, msg.senderCandidates);
-    if (bySender.row) return { row: bySender.row, via: "sender" as const, ambiguous: false };
-
-    if (confirm?.requester) {
+    if (confirm?.requester && confirmAuthentic) {
       const byReq = await resolveTenantBySenders(tx, [confirm.requester]);
       if (byReq.row) return { row: byReq.row, via: "confirm-requester" as const, ambiguous: false };
-      return { row: null, via: "confirm-requester" as const, ambiguous: byReq.ambiguous };
     }
+
+    const bySender = await resolveTenantBySenders(tx, msg.senderCandidates);
+    if (bySender.row) return { row: bySender.row, via: "sender" as const, ambiguous: false };
     return { row: null, via: "sender" as const, ambiguous: bySender.ambiguous };
   });
 
   const match = resolved.row;
-  if (!match) {
-    // An unattributable CONFIRMATION is still logged as a confirmation, not
-    // buried in the unroutable pile — it carries the code/link the operator
-    // needs, and the fix (register the requesting mailbox) is actionable.
+  if (!match || resolved.via === "sender") {
     if (confirm) {
+      // An AUTHENTICATED but unattributable confirmation is logged as a
+      // confirmation (tenant NULL) — registering the requesting mailbox later
+      // claims it (attachPendingConfirmations). An unauthenticated one is
+      // quarantined, so its link can never be attached to any firm's card.
+      if (confirmAuthentic) {
+        await logInbound(msg, {
+          outcome: "confirmation",
+          reason:
+            `Forwarding confirmation from ${confirm.requester ?? "an unknown mailbox"} — could NOT be matched to a firm. ` +
+            `Register that mailbox on the firm's RTA Mailback card, then re-send the confirmation.` +
+            (confirm.code ? ` Code: ${confirm.code}.` : " Use the confirmation link in the body below."),
+        });
+      } else {
+        await logInbound(msg, {
+          outcome: "quarantined",
+          reason:
+            `Quarantined — looks like a forwarding confirmation, but it is not authenticated as Google / Microsoft ` +
+            `(${auth.headerNote}) and was not sent to a firm's rta-<token>@ alias, so it was not attributed and its link is never shown.`,
+        });
+      }
+      console.warn(`[rta-inbox] forwarding confirmation not attributable to a firm — see Inbound Mail`);
+      return;
+    }
+    if (match) {
+      // Header-only match: quarantined, never imported. Platform-admin visible
+      // (tenant NULL — the attribution is unverified).
       await logInbound(msg, {
-        outcome: "confirmation",
+        outcome: "quarantined",
         reason:
-          `Forwarding confirmation from ${confirm.requester ?? "an unknown mailbox"} — could NOT be matched to a firm. ` +
-          `Register that mailbox on the firm's RTA Mailback card, then re-send the confirmation.` +
-          (confirm.code ? ` Code: ${confirm.code}.` : " Use the confirmation link in the body below."),
+          `Quarantined — not addressed to any firm's rta-<token>@ alias. The forwarder/From headers match the mailbox ` +
+          `registered by firm ${match.tenantId}, but those headers can be forged, so nothing was imported. ` +
+          `The firm should forward to its own rta-<token>@ address.`,
       });
-      console.warn(
-        `[rta-inbox] forwarding confirmation from ${confirm.requester ?? "?"} not attributable to a firm — see Inbound Mail`
-      );
+      console.warn(`[rta-inbox] quarantined header-routed mail from ${msg.from ?? "?"}`);
       return;
     }
     await quarantine(
       msg,
       resolved.ambiguous
-        ? "sender mailbox is registered by more than one firm — not routed (register a unique mailbox, or use the firm's own rta-<token>@ address)"
-        : "no matching forwarding address, and the sending mailbox isn't registered by any firm"
+        ? "sender mailbox is registered by more than one firm — not routed (use the firm's own rta-<token>@ address)"
+        : "no matching forwarding address — mail must be sent to the firm's own rta-<token>@ address"
     );
     return;
   }
   if (resolved.via === "confirm-requester") {
-    console.log(`[rta-inbox] ${match.tenantId}: forwarding confirmation matched via requesting mailbox`);
-  }
-  if (resolved.via === "sender") {
-    console.log(`[rta-inbox] ${match.tenantId}: routed by registered sender (shared address)`);
+    console.log(`[rta-inbox] ${match.tenantId}: authenticated forwarding confirmation matched via requesting mailbox`);
   }
   const tenantId = match.tenantId;
   // Everything from here on is attributable to a firm, so any failure is logged
@@ -356,9 +398,19 @@ async function handleMessage(msg: InboundRawMessage): Promise<void> {
 
   try {
     // 2. Stamp receipt + capture any forwarding-confirmation code for the UI.
+    //    The clickable LINK is kept only from an authenticated confirmation and
+    //    only when it points at the provider itself; an unauthenticated one sent
+    //    to the alias contributes its numeric code at most.
     await withTenant(tenantId, async (tx) => {
       await stampReceived(tx, match.id);
-      if (confirm) await recordForwardingConfirmation(tx, match.id, confirm.code, confirm.url);
+      if (confirm) {
+        await recordForwardingConfirmation(
+          tx,
+          match.id,
+          confirm.code,
+          confirmAuthentic ? safeConfirmationUrl(confirm.url) : null
+        );
+      }
     });
     // A pure Gmail/Outlook verification email carries no importable data.
     if (confirm && msg.attachments.length === 0) {
@@ -366,7 +418,9 @@ async function handleMessage(msg: InboundRawMessage): Promise<void> {
       await logInbound(msg, {
         ...logBase,
         outcome: "confirmation",
-        reason: confirm.code ? `Forwarding confirmation code ${confirm.code}` : "Forwarding confirmation",
+        reason:
+          (confirm.code ? `Forwarding confirmation code ${confirm.code}` : "Forwarding confirmation") +
+          (confirmAuthentic ? "" : " (not authenticated — link not shown)"),
       });
       return;
     }
@@ -374,13 +428,53 @@ async function handleMessage(msg: InboundRawMessage): Promise<void> {
     // 3. Load the firm's CAMS + KFintech ZIP passwords once.
     const pw = await withTenant(tenantId, async (tx) => getMailbackPasswords(tx, tenantId));
 
-    // 4. Ingest each recognised attachment. Track outcomes so we only quarantine
-    //    mail we genuinely couldn't use — a recognised-but-already-imported file
-    //    (dedup) is a legitimate no-op, NOT junk to quarantine.
+    // 4. Ingest each recognised attachment that carries evidence it is genuine
+    //    (registrar-authenticated mail, or an archive the firm's saved password
+    //    opens). Track outcomes so the log says what really happened: a file
+    //    already in flight is a no-op, an unproven one is quarantined, and a
+    //    store / queue failure is an ERROR — never "already imported".
     let queued = 0;
     let duplicates = 0;
     let recognised = 0;
+    let quarantined = 0;
+    let errors = 0;
     const attLogs: AttachmentLog[] = [];
+
+    /** Trust check + ingest for one file; records its verdict. True when queued. */
+    const admitAndIngest = async (
+      file: InboundAttachment,
+      cls: MailbackClass,
+      okNote: string | null
+    ): Promise<boolean> => {
+      const trust = await attachmentTrust(file.content, auth, passwordsToTry(pw, cls.source));
+      if (!trust.admit) {
+        quarantined++;
+        attLogs.push({
+          filename: file.filename, size: file.size, source: cls.source, kind: cls.kind,
+          outcome: "quarantined", reason: trust.reason,
+        });
+        return false;
+      }
+      try {
+        const res = await ingestAttachment(tenantId, msg, file, cls, pw);
+        if (res.status === "queued") queued++;
+        else duplicates++;
+        attLogs.push({
+          filename: file.filename, size: file.size, source: cls.source, kind: cls.kind,
+          outcome: res.status, importId: res.importId,
+          reason: res.status === "duplicate" ? "Same file already being imported" : [okNote, trust.note].filter(Boolean).join(" · "),
+        });
+        return res.status === "queued";
+      } catch (e) {
+        errors++;
+        captureError("[rta-inbox] attachment ingest failed", e, { tenantId, filename: file.filename });
+        attLogs.push({
+          filename: file.filename, size: file.size, source: cls.source, kind: cls.kind,
+          outcome: "error", reason: (e as Error)?.message ?? "ingest failed",
+        });
+        return false;
+      }
+    };
 
     for (const att of msg.attachments) {
       if (!isImportableAttachment(att.filename)) continue;
@@ -398,42 +492,23 @@ async function handleMessage(msg: InboundRawMessage): Promise<void> {
         continue;
       }
       recognised++;
-      try {
-        const res = await ingestAttachment(tenantId, msg, att, cls, pw);
-        if (res.status === "queued") queued++;
-        else duplicates++;
-        attLogs.push({
-          filename: att.filename,
-          size: att.size,
-          source: cls.source,
-          kind: cls.kind,
-          outcome: res.status,
-          importId: res.importId,
-          reason: res.status === "duplicate" ? "Same file already being imported" : null,
-        });
-      } catch (e) {
-        captureError("[rta-inbox] attachment ingest failed", e, { tenantId, filename: att.filename });
-        attLogs.push({
-          filename: att.filename,
-          size: att.size,
-          source: cls.source,
-          kind: cls.kind,
-          outcome: "error",
-          reason: (e as Error)?.message ?? "ingest failed",
-        });
-      }
+      await admitAndIngest(att, cls, null);
     }
 
     // 5. LINK-delivered reports. Above a certain size neither registrar attaches
     //    the ZIP — CAMS mails a `DownloadURL` (Request Status: Link) and
     //    KFintech a "Click Here" anchor. Those mails have zero attachments, so
     //    without this the biggest reports (the daily feeds) never import.
-    //    Only attempted when no attachment already produced an import.
+    //    Only attempted when no attachment already produced an import. The
+    //    downloaded file passes the same evidence check as an attachment.
     if (queued === 0) {
       const links = extractRtaDownloadLinks(msg.text, msg.html);
       for (const link of links.slice(0, 3)) {
         const dl = await fetchRtaDownload(link);
         if (!dl.ok) {
+          // A failed download is an error, not "no attachment": the mail is kept
+          // (not deleted / not marked read) so it can be looked at and retried.
+          errors++;
           console.warn(`[rta-inbox] ${tenantId}: download skipped (${dl.reason}) — ${link.slice(0, 80)}`);
           attLogs.push({ filename: link.slice(0, 200), size: 0, source: null, kind: null, outcome: "error", reason: dl.reason });
           continue;
@@ -456,48 +531,59 @@ async function handleMessage(msg: InboundRawMessage): Promise<void> {
           continue;
         }
         recognised++;
-        try {
-          const res = await ingestAttachment(tenantId, msg, dl.file, cls, pw);
-          if (res.status === "queued") queued++;
-          else duplicates++;
-          attLogs.push({
-            filename: dl.file.filename,
-            size: dl.file.size,
-            source: cls.source,
-            kind: cls.kind,
-            outcome: res.status,
-            importId: res.importId,
-            reason: `Downloaded from ${new URL(dl.file.url).hostname}`,
-          });
-          break; // one report per mail — stop at the first success
-        } catch (e) {
-          captureError("[rta-inbox] link ingest failed", e, { tenantId, url: link });
-          attLogs.push({
-            filename: dl.file.filename,
-            size: dl.file.size,
-            source: cls.source,
-            kind: cls.kind,
-            outcome: "error",
-            reason: (e as Error)?.message ?? "ingest failed",
-          });
-        }
+        const host = (() => {
+          try {
+            return new URL(dl.file.url).hostname;
+          } catch {
+            return "registrar link";
+          }
+        })();
+        if (await admitAndIngest(dl.file, cls, `Downloaded from ${host}`)) break; // one report per mail
       }
     }
 
     const logTail = { ...logBase, attachments: attLogs, queued, duplicates };
 
     if (queued > 0) {
-      await logInbound(msg, { ...logTail, outcome: "imported" });
-      return; // something imported — done
-    }
-    if (recognised > 0) {
-      // Recognised but nothing new to import (all duplicates of prior imports).
-      // A no-op, not junk — do NOT quarantine.
-      console.log(`[rta-inbox] ${tenantId}: ${duplicates} attachment(s) already imported — no new import (no-op)`);
-      await logInbound(msg, { ...logTail, outcome: "duplicate", reason: "Already imported — no new data" });
+      // Something imported. If another file of the same mail failed to store or
+      // queue, keep the source copy so that one is not lost with it.
+      if (errors > 0) msg.keepSource = true;
+      await logInbound(msg, {
+        ...logTail,
+        outcome: "imported",
+        reason: errors > 0 ? `${errors} other file(s) could not be stored or queued — see attachments; mail kept` : null,
+      });
       return;
     }
-    // Nothing recognised at all (and not a forwarding-confirmation) → quarantine.
+    if (errors > 0) {
+      // Every recognised file failed to store / queue (or download). This used
+      // to be logged "duplicate — already imported" and the SES copy deleted.
+      console.warn(`[rta-inbox] ${tenantId}: ${errors} file(s) could not be stored or queued — kept for inspection`);
+      await logInbound(msg, {
+        ...logTail,
+        outcome: "error",
+        reason: `${errors} file(s) could not be stored, downloaded or queued — nothing was imported; the mail is kept for inspection and retry`,
+      });
+      return;
+    }
+    if (quarantined > 0) {
+      console.warn(`[rta-inbox] ${tenantId}: ${quarantined} file(s) quarantined — no evidence the mail came from the registrar`);
+      await logInbound(msg, {
+        ...logTail,
+        outcome: "quarantined",
+        reason:
+          `Quarantined — ${quarantined} file(s) were not imported: the mail is not authenticated as a registrar and no saved ` +
+          `mailback password opened them. Save the firm's mailback password; held mail is retried.`,
+      });
+      return;
+    }
+    if (recognised > 0) {
+      // Recognised, and every file is already being imported — a genuine no-op.
+      console.log(`[rta-inbox] ${tenantId}: ${duplicates} attachment(s) already in flight — no new import (no-op)`);
+      await logInbound(msg, { ...logTail, outcome: "duplicate", reason: "Already being imported — no new data" });
+      return;
+    }
+    // Nothing recognised at all (and not a forwarding-confirmation).
     if (!confirm) {
       await logInbound(msg, {
         ...logTail,
@@ -512,11 +598,15 @@ async function handleMessage(msg: InboundRawMessage): Promise<void> {
     }
   } catch (e) {
     // Route-succeeded-but-processing-failed: record it against the firm so the
-    // failure is visible in the admin log, then rethrow for the usual capture.
+    // failure is visible in the admin log, then rethrow for the usual capture
+    // (the S3 reader parks the mail; the IMAP reader flags it instead of \Seen).
     await logInbound(msg, { ...logBase, outcome: "error", reason: (e as Error)?.message ?? "handler failed" });
     throw e;
   }
 }
+
+/** The routing + trust decision for one message — exported for tests. */
+export { handleMessage as handleRtaInboundMessage };
 
 /**
  * Cleanup sweep — delete forwarded mail from the catch-all once it has been
@@ -614,7 +704,21 @@ const INBOUND_BATCH = 25;
 async function readStoredMail(key: string, seq: number): Promise<InboundRawMessage> {
   const { getObjectBytes } = await import("@/lib/storage/s3");
   const { parseInboundSource } = await import("@/lib/comms/imap");
-  return parseInboundSource(await getObjectBytes(key), seq);
+  return parseInboundSource(await getObjectBytes(key), seq, undefined, "ses");
+}
+
+/**
+ * What to do with a stored SES mail once handleMessage has decided:
+ *   hold   — unroutable or quarantined: retried hourly (registering the alias
+ *            use or saving the firm's mailback password can still admit it);
+ *   park   — something failed to store / queue: kept under FAILED_PREFIX for a
+ *            human, never silently deleted;
+ *   delete — handled (imported, duplicate, confirmation, no_attachment).
+ */
+export function s3Disposition(msg: Pick<InboundRawMessage, "outcome" | "keepSource">): "hold" | "park" | "delete" {
+  if (msg.outcome === "unroutable" || msg.outcome === "quarantined") return "hold";
+  if (msg.outcome === "error" || msg.keepSource || !msg.outcome) return "park";
+  return "delete";
 }
 
 /**
@@ -638,9 +742,13 @@ export async function pollS3InboundOnce(): Promise<{ processed: number; held: nu
     try {
       const msg = await readStoredMail(key, processed + 1);
       await handleMessage(msg);
-      if (msg.outcome === "unroutable") {
+      const disposition = s3Disposition(msg);
+      if (disposition === "hold") {
         await moveObject(key, HELD_PREFIX + name);
         held++;
+      } else if (disposition === "park") {
+        await moveObject(key, FAILED_PREFIX + name);
+        failed++;
       } else {
         await deleteObject(key);
       }
@@ -661,7 +769,7 @@ export async function pollS3InboundOnce(): Promise<{ processed: number; held: nu
  * removes it.
  */
 export async function retryHeldS3Inbound(): Promise<{ retried: number; recovered: number }> {
-  const { isS3Configured, listObjectKeys, deleteObject } = await import("@/lib/storage/s3");
+  const { isS3Configured, listObjectKeys, deleteObject, moveObject } = await import("@/lib/storage/s3");
   if (!isS3Configured()) return { retried: 0, recovered: 0 };
   const keys = await listObjectKeys(HELD_PREFIX, 200);
   let retried = 0, recovered = 0;
@@ -670,9 +778,12 @@ export async function retryHeldS3Inbound(): Promise<{ retried: number; recovered
       const msg = await readStoredMail(key, retried + 1);
       await handleMessage(msg);
       retried++;
-      if (msg.outcome !== "unroutable") {
+      const disposition = s3Disposition(msg);
+      if (disposition === "delete") {
         await deleteObject(key);
         recovered++;
+      } else if (disposition === "park") {
+        await moveObject(key, FAILED_PREFIX + key.slice(HELD_PREFIX.length));
       }
     } catch (e) {
       captureError("[rta-inbox] held S3 mail retry failed", e, { key });

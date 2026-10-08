@@ -20,6 +20,7 @@ import { tenantIntegrations } from "@/db/schema/tenant_integrations";
 import { rtaForwardAddresses } from "@/db/schema/rta_forward_addresses";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { getInboundDomain } from "./inbox-config";
+import { safeConfirmationUrl } from "./mail-trust";
 
 const PROVIDER = "rta_mailback" as const;
 
@@ -381,8 +382,14 @@ export async function resolveTenantByAddresses(
 }
 
 /**
- * SECONDARY routing path — resolve a tenant from the mailbox that FORWARDED the
- * mail, for firms using the shared rta@<domain> address instead of their alias.
+ * Look up the firm whose registered forwarding mailbox matches the mail's
+ * forwarder / From headers (the shared rta@<domain> address).
+ *
+ * NOT a routing path for data any more (lib/rta/mail-trust): those headers are
+ * written by the sender, so the poller uses a match only to EXPLAIN a
+ * quarantine, and — for a forwarding confirmation authenticated as Google /
+ * Microsoft — to attribute the requesting mailbox named in its signed body.
+ * Nothing routed this way is imported.
  *
  * Deliberately conservative, because a From header is spoofable in a way an
  * unguessable alias is not:
@@ -511,8 +518,13 @@ async function attachPendingConfirmations(
         deUrled.match(/(?:confirmation\s+code|code)\D{0,20}(\d{6,10})/i)?.[1] ??
         deUrled.match(/\b(\d{6,10})\b/)?.[1] ??
         null;
-      const url =
-        body.match(/https?:\/\/\S*\/mail\/vf-\S+/i)?.[0]?.replace(/[)\].,;'">]+$/, "") ?? null;
+      // Only rows the poller logged as `confirmation` reach here, and since the
+      // mail-trust change only AUTHENTICATED confirmations get that outcome. The
+      // host check below also covers rows logged before it: a link is attached
+      // only when it is https on the provider's own host.
+      const url = safeConfirmationUrl(
+        body.match(/https?:\/\/\S*\/mail\/vf-\S+/i)?.[0]?.replace(/[)\].,;'">]+$/, "") ?? null
+      );
       if (!code && !url) continue;
 
       const [addr] = await tx
@@ -663,7 +675,12 @@ export async function stampReceived(tx: Tx, id: string): Promise<void> {
     .where(eq(rtaForwardAddresses.id, id));
 }
 
-/** Persist an auto-captured Gmail/Outlook forwarding confirmation code/link. */
+/**
+ * Persist an auto-captured Gmail/Outlook forwarding confirmation code/link.
+ * The caller decides whether the mail was authenticated (pass url = null when
+ * not); the link is re-checked here so nothing but an https provider link can
+ * ever be stored for the settings card to render as <a href>.
+ */
 export async function recordForwardingConfirmation(
   tx: Tx,
   id: string,
@@ -674,7 +691,7 @@ export async function recordForwardingConfirmation(
     .update(rtaForwardAddresses)
     .set({
       forwardingConfirmCode: code,
-      forwardingConfirmUrl: url,
+      forwardingConfirmUrl: safeConfirmationUrl(url),
       forwardingConfirmAt: new Date(),
       updatedAt: new Date(),
     })

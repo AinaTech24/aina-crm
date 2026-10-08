@@ -12,7 +12,8 @@ import { handleApiError } from "@/lib/api/error-handler";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth/session";
-import { can } from "@/lib/auth/rbac";
+import { require as requireCap } from "@/lib/auth/rbac";
+import { requireRtaImportAccess, RTA_IMPORT_CAPABILITY } from "@/lib/rta/import-access";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { Q } from "@/workers/queues";
 
@@ -32,12 +33,12 @@ const Body = z.object({
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    const allowed =
-      can(session.roles, "investor.edit.all", session.permissions) ||
-      can(session.roles, "dashboard.view.owner", session.permissions);
-    if (!allowed) {
-      return NextResponse.json({ error: "You don't have permission to import the client master." }, { status: 403 });
-    }
+    // Same access as the live upload route (lib/rta/import-access): the RTA
+    // import capability on a book not narrowed to the caller's own clients.
+    // (Was investor.edit.all OR dashboard.view.owner — out of step with the
+    // upload path that imports the very same master files.)
+    requireCap(session.roles, RTA_IMPORT_CAPABILITY, session.permissions);
+    await requireRtaImportAccess(session);
     await assertActiveLicense(session.tenantId, session.roles);
 
     const parse = Body.safeParse(await req.json().catch(() => ({})));
