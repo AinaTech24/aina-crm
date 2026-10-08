@@ -8,7 +8,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 import { NextResponse } from "next/server";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require } from "@/lib/auth/rbac";
+import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { seedDefaultPositions } from "@/lib/practice/positions";
 import { relinkStarterPositions } from "@/lib/practice/install-starter-manual";
@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 export async function POST() {
   try {
     const session = await requireSession();
-    require(session.roles, "settings.users", session.permissions);
+    requireCap(session.roles, "settings.users", session.permissions);
     gateManage(session);
     await assertActiveLicense(session.tenantId, session.roles);
     const result = await withTenant(session.tenantId, async (tx) => {

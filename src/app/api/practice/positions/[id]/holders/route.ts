@@ -9,7 +9,7 @@ import { and, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { practicePositions } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { require } from "@/lib/auth/rbac";
+import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { PositionHoldersBody, activeTenantUsers, replaceHolders } from "@/lib/practice/positions";
 import { gateManage, tenantOpts } from "../../_gate";
@@ -24,7 +24,7 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
   try {
     const { id } = await params;
     const session = await requireSession();
-    require(session.roles, "settings.users", session.permissions);
+    requireCap(session.roles, "settings.users", session.permissions);
     gateManage(session);
     await assertActiveLicense(session.tenantId, session.roles);
     if (!UUID.test(id)) return NextResponse.json({ error: "Position not found" }, { status: 404 });

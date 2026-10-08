@@ -326,6 +326,48 @@ action easy, the result satisfying.
   the attributes. "Log a call" in Ctrl/Cmd+K, "+ Add" and the mobile "+" opens
   the drawer with a client / lead picker (`openLogActivity`).
 
+## The practice as a system (2026-10-08)
+
+Built from *The E-Myth Revisited*: help the owner work ON the firm, not just
+in it. Sidebar group **Practice**: Practice Systems (owner, branch head,
+compliance) and the Operations Manual (the SOP library, open to everyone).
+Migration 0234; schema `db/schema/practice.ts`; code `src/lib/practice/`;
+pages `/dashboard/practice/*` with `PracticeNav`; access `lib/practice/access.ts`
+(`canViewPractice` to see, `canManagePractice` — owner / settings.users — to change).
+
+- **The vocabulary is code** (`catalog.ts`): 12 core processes (each with its
+  default owner position, recipes, Automations-rule modules, task / request
+  types and one measure), 7 default positions with contracts, the default
+  service promise per tier. Per-firm settings live in the tables.
+- **Systems map** (`map.ts`, `/dashboard/practice`): each process scored on
+  documented (an SOP linked to it, its task / request types or its journey
+  stages), owned (a position WITH a holder), measured (`measures.ts` has data)
+  and automated (an enabled recipe workflow, or an enabled `workflow_rules`
+  rule on one of its modules). "Turn on" publishes a draft recipe workflow via
+  `/api/workflows/[id]/publish` — flipping `enabled` alone never fires it.
+- **Positions** (`positions.ts`): jobs, not people; seeding suggests holders
+  by role and gives each process its default owner. Owner dependency is
+  `lib/metrics/owner-dependency.ts` and an Owner Dashboard card.
+- **SOPs in the work** (`sop-links.ts`, `/api/sop-links`): an SOP links to a
+  process, task type, task template (tasks record `meta.templateId`),
+  position, journey stage (`"<subjectType>:<stageKey>"`, e.g. `lead:call_done`)
+  or request type. The task drawer's "How we do this" shows only the MOST
+  specific SOPs (the task's own links, else its process's — never the
+  assignee's position, which belongs in `/dashboard/practice/manual`). The
+  lead page shows the script for its stage. SOP markdown renders as React
+  elements (`sop-markdown.ts`), never HTML.
+- **Starter manual** (`starter-manual.ts`): 30 MFD SOPs + 8 lead-stage call
+  scripts, keys `mfd_*`, installed idempotently from the Operations Manual;
+  a deleted one is never resurrected. Distributor wording: never "advise".
+- **Service promise** (`promise.ts`), **strategic objective** (`strategy.ts`,
+  money on a compound path, counts on a straight one; baseline captured on
+  first save) and **message tests** (`experiments.ts`: templates grouped by key
+  minus a variant suffix `_v2`/`_b`/`_alt`…, two-proportion test at ≥ 30 sends).
+  Anything the CRM does not record reads "Not recorded", never 0%.
+- **Route gotcha:** import the RBAC check as `import { require as requireCap }`.
+  A bare `require(…)` in a route makes Next's bundler treat it as CommonJS and
+  every request 500s; `check:rbac` accepts `requireCap(`.
+
 ## Meetings — attendees and action items
 
 `review_meetings` (the Meetings module). Two rules since 2026-10-01:

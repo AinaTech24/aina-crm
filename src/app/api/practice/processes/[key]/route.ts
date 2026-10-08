@@ -13,7 +13,7 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require } from "@/lib/auth/rbac";
+import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit } from "@/lib/audit";
 import { canManagePractice } from "@/lib/practice/access";
@@ -32,7 +32,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ke
   const { key } = await params;
   try {
     const session = await requireSession();
-    require(session.roles, "settings.users", session.permissions);
+    requireCap(session.roles, "settings.users", session.permissions);
     if (!canManagePractice(session)) return NextResponse.json({ error: "Only the owner can change the practice system." }, { status: 403 });
     await assertActiveLicense(session.tenantId, session.roles);
 

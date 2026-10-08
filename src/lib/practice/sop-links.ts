@@ -21,7 +21,8 @@
  *   - its type (task_type) and the template it was created from (task_template);
  *   - every core process whose `taskTypes` include its type (process), and the
  *     process of a service request it is linked to (srTypes);
- *   - the positions its ASSIGNEE holds (position);
+ *   - (the positions its assignee holds are NOT used for tasks — see
+ *     sopsForTask; they drive the person's own manual instead);
  *   - the journey stage it belongs to (blueprint_stage): meta.blueprintSubject +
  *     meta.stageKey (or meta.blueprintStage = "lead:call_done"), else the
  *     current stage of the lead / service request the task is about;
@@ -340,15 +341,23 @@ async function srTypeForTask(tx: Tx, tenantId: string, task: TaskLike): Promise<
   return ((r.rows as any[])[0]?.type as string | undefined) ?? null;
 }
 
-/** The SOPs that say how to do this task. */
+/**
+ * The SOPs that say how to do this task — the MOST SPECIFIC ones only. A task
+ * reaches many SOPs (its process covers a whole journey, the assignee's
+ * position a whole job), and "How we do this" listing twenty of them helps
+ * nobody. So: the SOPs linked to the task itself (template, type, journey
+ * stage, request type); failing that, its process's; never the position's —
+ * those belong in the person's own manual (/dashboard/practice/manual).
+ */
 export async function sopsForTask(tx: Tx, tenantId: string, task: TaskLike): Promise<LinkedSop[]> {
-  const [positionIds, srType, stage] = [
-    await positionIdsOf(tx, tenantId, task.assigneeId),
+  const [srType, stage] = [
     await srTypeForTask(tx, tenantId, task),
     blueprintStageFromMeta(task.meta) ? null : await currentStageForTask(tx, tenantId, task),
   ];
-  const targets = taskTargets(task, { positionIds, srType, blueprintStage: stage });
-  return linkedSopsFor(tx, tenantId, targets);
+  const targets = taskTargets(task, { srType, blueprintStage: stage });
+  const specific = await linkedSopsFor(tx, tenantId, targets.filter((t) => t.kind !== "process"));
+  if (specific.length) return specific;
+  return linkedSopsFor(tx, tenantId, targets.filter((t) => t.kind === "process"));
 }
 
 /**

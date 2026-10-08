@@ -10,7 +10,7 @@ import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { practicePositions } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { require } from "@/lib/auth/rbac";
+import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { PositionCreateBody, loadPositions, positionKey, takenPositionKeys, uniqueKey } from "@/lib/practice/positions";
 import { gateManage, gateView, tenantOpts } from "./_gate";
@@ -31,7 +31,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    require(session.roles, "settings.users", session.permissions);
+    requireCap(session.roles, "settings.users", session.permissions);
     gateManage(session);
     await assertActiveLicense(session.tenantId, session.roles);
     const parse = PositionCreateBody.safeParse(await req.json().catch(() => ({})));
