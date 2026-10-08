@@ -58,7 +58,7 @@ export default async function PortfolioIntelligencePage({ searchParams }: { sear
         </div></>} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Kpi icon={IndianRupee} label="Book AUM" value={inr(intel.totalAum)} tone="emerald" />
+        <Kpi icon={IndianRupee} label="Book AUM" value={inr(intel.bookAum)} tone="emerald" />
         <Kpi icon={Boxes} label="Folios" value={String(intel.folioCount)} />
         <Kpi icon={Building2} label="AMCs" value={String(intel.byAmc.length)} />
         <Kpi icon={Layers} label="Asset classes" value={String(intel.byClass.length)} />

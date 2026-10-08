@@ -18,7 +18,10 @@ type Tx = { execute: (q: any) => Promise<{ rows: any[] }> };
 export type Slice = { label: string; value: number; pct: number };
 export type ConcentratedClient = { id: string; name: string; reason: string; pct: number; aum: number };
 export type PortfolioIntel = {
+  /** Folio-register total — the base the class / AMC / scheme shares divide by. */
   totalAum: number;
+  /** The book's AUM as the dashboard shows it (live clients' stored AUM). */
+  bookAum: number;
   folioCount: number;
   investorCount: number;
   byClass: Slice[];
@@ -145,8 +148,17 @@ export async function getPortfolioIntel(
 
   const concentratedClients = await getConcentratedClients(tx, opts, scope);
 
+  // The headline is the dashboard's AUM (lib/metrics getAUM: the clients'
+  // stored AUM), so the two pages never show two numbers for one book. The
+  // splits below stay on the folio register, which is what they can analyse.
+  const book = (await tx.execute(sql`
+    SELECT COALESCE(SUM(i.aum), 0)::numeric AS aum FROM investors i
+     WHERE i.tenant_id = ${opts.tenantId}::uuid AND COALESCE(i.status, '') NOT IN ('closed', 'exited') ${scope}
+  `)).rows[0] as { aum: string } | undefined;
+
   return {
     totalAum,
+    bookAum: Number(book?.aum ?? 0),
     folioCount: Number(totals?.folios ?? 0),
     investorCount: Number(totals?.investors ?? 0),
     byClass,
