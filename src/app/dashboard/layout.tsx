@@ -147,8 +147,9 @@ const NAV: NavSection[] = [
         roles: ["owner", "marketing", "rm", "branch_head", "back_office", "ops", "compliance"] },
       { href: "/dashboard/investors", label: "Clients", icon: Users, module: "client_master",
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
-      // An existing client who wants another product (lib/opportunities).
-      { href: "/dashboard/opportunities", label: "Opportunities", icon: Crosshair, module: "client_master",
+      // An existing client who wants another product (lib/opportunities). Part
+      // of the client record, so it is granted with Clients (NAV_PATH_ALIASES).
+      { href: "/dashboard/opportunities", accessKey: "/dashboard/investors", label: "Opportunities", icon: Crosshair, module: "client_master",
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
       { href: "/dashboard/families", label: "Families", icon: HeartHandshake, module: "family_mapping",
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
@@ -535,8 +536,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const canSee = (i: NavItem) => {
     const key = i.accessKey ?? i.href;
-    // Platform kill-switch — a globally-disabled sidebar item is hidden for everyone.
-    if (moduleControls[key] === "disabled") return false;
+    // Platform kill-switch — a globally-disabled sidebar item is hidden for
+    // everyone, whether it is switched off by its own href or its access key.
+    if (moduleControls[key] === "disabled" || moduleControls[i.href] === "disabled") return false;
     if (i.roles && !session.roles.some((r) => i.roles!.includes(r) || r === "owner")) return false;
     if (isGatableNav(key)) {
       // Admin → MFD: the firm must have access to this sidebar item.
