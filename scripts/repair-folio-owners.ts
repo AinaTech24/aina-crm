@@ -143,6 +143,27 @@ async function main() {
   const losers = new Set(moves.map((m) => m.from));
   const takers = new Set(moves.map((m) => m.to));
   console.log(`  clients giving folios: ${losers.size} · receiving: ${takers.size}`);
+
+  // What the book looks like once the moves are made (folio register view).
+  const held = await withTenant(T, async (tx) =>
+    (await tx.execute(sql`
+      SELECT f.id, f.investor_id, COALESCE(f.aum,0)::numeric AS aum,
+             (i.merged_into_id IS NULL AND i.deleted_at IS NULL) AS live
+        FROM folios f JOIN investors i ON i.id = f.investor_id
+       WHERE f.tenant_id = ${T}::uuid AND COALESCE(f.aum,0) > 0
+    `)).rows as Array<{ id: string; investor_id: string; aum: string; live: boolean }>,
+  );
+  const moved = new Map(moves.map((m) => [m.folioId, m.to]));
+  const owners = new Set<string>();
+  let aumAfter = 0, foliosAfter = 0;
+  for (const f of held) {
+    const to = moved.get(String(f.id));
+    if (!to && !f.live) continue;
+    owners.add(to ?? String(f.investor_id));
+    aumAfter += Number(f.aum);
+    foliosAfter++;
+  }
+  console.log(`\nprojected: ${owners.size} clients holding money · ${foliosAfter} folios with a balance · folio register ${cr(aumAfter)}`);
   if (!APPLY) return;
 
   writeFileSync(LOG, "folio_id,folio_number,from_investor,to_investor,aum,why\n");
