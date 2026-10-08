@@ -13,6 +13,17 @@
  * Closed as `completed` with a remark; the SIP-report importer reopens a SIP
  * on a new instalment of the same amount, so one that restarts comes back.
  *
+ * Two corrections from the second run, when the since-inception feeds landed:
+ *  - a SIP whose FOLIO still collected a SIP instalment in the window (under
+ *    another scheme code or amount — a switch of scheme, a step-up) is left
+ *    open: that is not evidence it stopped;
+ *  - a SIP this script closed earlier that HAS collected in the window is
+ *    reopened. The first CAMS run measured a feed that ended 16 Sep; the full
+ *    feed then showed 130 of them (Rs 0.73 Cr a month) paying in September.
+ *
+ * A SIP past its END date with nothing collected after it is finished too,
+ * whatever the window says (a SIP that ran to its term in the window).
+ *
  *   tsx scripts/close-sips-by-feed-window.ts --tenant <uuid> [--rta cams|kfintech] [--days 46]   # dry run
  *   tsx scripts/close-sips-by-feed-window.ts --tenant <uuid> [--days 46] --apply
  */
@@ -49,32 +60,73 @@ async function main() {
         SELECT max(order_date) AS d FROM transactions WHERE tenant_id = ${T}::uuid AND type = 'sip' AND direction = 'inflow' ${onRta("folio_id")}`)).rows[0] as any;
       if (!reach?.d) throw new Error("no SIP instalments on record — nothing to measure against");
       const before = await book();
-      const closed = (await tx.execute(sql`
-        WITH inst AS (
-          SELECT folio_id, upper(regexp_replace(COALESCE(scheme_code,''), '^[A-Z]+', '')) AS code_tail, round(amount::numeric) AS amt, max(order_date) AS d
+      // The same registration: same folio, and the same scheme code — CAMS
+      // writes it with the fund house's letter in the feed ("HGFGPG", "P1746")
+      // and without it in the SIP register ("GFGPG", "1746"), so one ending in
+      // the other counts — or the same amount, less the 0.005% stamp duty an
+      // instalment arrives short of (Rs 4,99,975 for a Rs 5 L SIP). Matching on
+      // the code with its letters stripped and the amount rounded closed live
+      // Rs 5 L SIPs on 8 Oct 2026.
+      const same = (a: string, b: string) => sql.raw(`(
+        (${a}.code <> '' AND ${b}.code <> '' AND (${a}.code = ${b}.code
+          OR (length(${a}.code) >= 3 AND length(${b}.code) - length(${a}.code) BETWEEN 1 AND 3 AND right(${b}.code, length(${a}.code)) = ${a}.code)
+          OR (length(${b}.code) >= 3 AND length(${a}.code) - length(${b}.code) BETWEEN 1 AND 3 AND right(${a}.code, length(${b}.code)) = ${b}.code)))
+        OR (${a}.amt > 0 AND abs(${b}.amt - ${a}.amt) <= greatest(1, ${a}.amt * 0.0002)))`);
+      const ctes = (statuses: string) => sql`
+        inst AS (
+          SELECT folio_id, upper(COALESCE(scheme_code,'')) AS code, amount::numeric AS amt, max(order_date) AS d
             FROM transactions WHERE tenant_id = ${T}::uuid AND type = 'sip' AND direction = 'inflow' AND folio_id IS NOT NULL GROUP BY 1, 2, 3),
-        by_code AS (SELECT folio_id, code_tail, max(d) AS d FROM inst WHERE code_tail <> '' GROUP BY 1, 2),
-        by_amt AS (SELECT folio_id, amt, max(d) AS d FROM inst GROUP BY 1, 2),
+        by_folio AS (SELECT folio_id, max(d) AS d FROM inst GROUP BY 1),
         cut AS (SELECT (${reach.d}::date - ${DAYS}::int) AS since),
-        silent AS (
-          SELECT s.id, GREATEST(c.d, m.d) AS last_inst
+        cand AS (
+          SELECT s.id, s.folio_id, upper(COALESCE(s.scheme_code,'')) AS code, s.amount::numeric AS amt, s.end_date, s.start_date, s.remarks
             FROM sips s JOIN investors i ON i.id = s.investor_id
-            LEFT JOIN by_code c ON c.folio_id = s.folio_id AND c.code_tail = upper(regexp_replace(COALESCE(s.scheme_code,''), '^[A-Z]+', ''))
-            LEFT JOIN by_amt m ON m.folio_id = s.folio_id AND m.amt = round(s.amount::numeric)
-           WHERE s.tenant_id = ${T}::uuid AND s.status = 'active'
-             AND i.deleted_at IS NULL AND i.merged_into_id IS NULL ${onRta("s.folio_id")}
-             AND (s.start_date IS NULL OR s.start_date < (SELECT since FROM cut)))
+           WHERE s.tenant_id = ${T}::uuid AND s.status IN (${sql.raw(statuses)})
+             AND i.deleted_at IS NULL AND i.merged_into_id IS NULL ${onRta("s.folio_id")}),
+        last AS (SELECT c.id, max(x.d) AS d FROM cand c JOIN inst x ON x.folio_id = c.folio_id AND ${same("c", "x")} GROUP BY c.id)`;
+
+      // 1. Reopen what an earlier run closed and the feed now shows collecting —
+      //    unless an open SIP on the folio already stands for that registration.
+      const reopened = (await tx.execute(sql`
+        WITH ${ctes("'completed'")},
+        open_now AS (SELECT o.folio_id, upper(COALESCE(o.scheme_code,'')) AS code, o.amount::numeric AS amt FROM sips o
+                      WHERE o.tenant_id = ${T}::uuid AND o.status = 'active'),
+        back AS (
+          -- one per registration, should two closed copies of it exist
+          SELECT DISTINCT ON (c.folio_id, c.code, round(c.amt)) c.id
+            FROM cand c JOIN last l ON l.id = c.id
+           WHERE c.remarks LIKE '%Closed 8 Oct 2026: no instalment%' AND l.d >= (SELECT since FROM cut)
+             AND NOT EXISTS (SELECT 1 FROM open_now o WHERE o.folio_id = c.folio_id AND ${same("c", "o")}))
+        UPDATE sips s SET status = 'active', updated_at = now(),
+               remarks = left(regexp_replace(COALESCE(s.remarks, ''), '( · )?Closed 8 Oct 2026: no instalment[^·]*', '') || ' · Reopened 8 Oct 2026: the full feed shows it collecting', 500)
+          FROM back b WHERE s.id = b.id RETURNING s.id`)).rows.length;
+
+      // 2. Close what collected nothing in the window, on a folio that collected
+      //    no SIP instalment at all in it; and what ran past its end date with
+      //    nothing collected after it.
+      const closed = (await tx.execute(sql`
+        WITH ${ctes("'active'")},
+        silent AS (
+          SELECT c.id, l.d AS last_inst, bf.d AS folio_last, c.end_date
+            FROM cand c LEFT JOIN last l ON l.id = c.id LEFT JOIN by_folio bf ON bf.folio_id = c.folio_id
+           WHERE c.start_date IS NULL OR c.start_date < (SELECT since FROM cut))
         UPDATE sips s SET status = 'completed', updated_at = now(),
-               remarks = left(COALESCE(NULLIF(s.remarks, '') || ' · ', '') || 'Closed 8 Oct 2026: no instalment between '
-                 || to_char((SELECT since FROM cut), 'DD Mon YYYY') || ' and the last imported feed day ('
-                 || to_char(${reach.d}::date, 'DD Mon YYYY') || ')' || COALESCE('; last seen ' || to_char(x.last_inst, 'DD Mon YYYY'), '; none on record'), 500)
+               remarks = left(COALESCE(NULLIF(s.remarks, '') || ' · ', '') || CASE
+                 WHEN x.end_date < ${reach.d}::date - 7 AND (x.last_inst IS NULL OR x.last_inst <= x.end_date)
+                   THEN 'Closed 8 Oct 2026: ran to its end date (' || to_char(x.end_date, 'DD Mon YYYY') || ') with nothing collected after it'
+                 ELSE 'Closed 8 Oct 2026: no instalment between '
+                   || to_char((SELECT since FROM cut), 'DD Mon YYYY') || ' and the last imported feed day ('
+                   || to_char(${reach.d}::date, 'DD Mon YYYY') || ')' || COALESCE('; last seen ' || to_char(x.last_inst, 'DD Mon YYYY'), '; none on record') END, 500)
           FROM silent x
-         WHERE s.id = x.id AND (x.last_inst IS NULL OR x.last_inst < (SELECT since FROM cut))
+         WHERE s.id = x.id AND (
+               ((x.last_inst IS NULL OR x.last_inst < (SELECT since FROM cut)) AND (x.folio_last IS NULL OR x.folio_last < (SELECT since FROM cut)))
+            OR (x.end_date < ${reach.d}::date - 7 AND (x.last_inst IS NULL OR x.last_inst <= x.end_date)))
         RETURNING s.id`)).rows.length;
       await refreshActiveSipAmount(tx, { tenantId: T });
       const after = await book();
       console.log(`${RTA ?? "all registrars"}: feed reaches ${String(reach.d).slice(0, 10)}; window ${DAYS} days`);
       console.log(`before: ${before.n} active SIPs · ${cr(before.m)} a month`);
+      console.log(`reopen: ${reopened} SIPs (closed earlier, collecting in the window)`);
       console.log(`close:  ${closed} SIPs`);
       console.log(`after:  ${after.n} active SIPs · ${cr(after.m)} a month`);
       if (!APPLY) throw DRY;

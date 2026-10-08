@@ -37,9 +37,18 @@ if docker image inspect mfd-app:latest >/dev/null 2>&1; then
   stamp="prev-$(date -u +%Y%m%d-%H%M%S)"
   docker tag mfd-app:latest "mfd-app:$stamp"
   echo "=== rollback image kept: mfd-app:$stamp ==="
+  # An EXITED one-off container (a repair or revalue job run with the image)
+  # pins it, and `docker rmi` then refuses silently: on 8 Oct 2026 seven 3.5 GB
+  # images piled up behind five finished jobs, the disk hit 98% and the next
+  # build died with ENOSPC. Remove those exited containers first; a running
+  # one is left alone (and keeps its image).
   docker images mfd-app --format '{{.Tag}}' | grep '^prev-' | sort -r | tail -n +3 \
-    | while read -r old; do docker rmi "mfd-app:$old" >/dev/null 2>&1 && echo "dropped old rollback image mfd-app:$old" || true; done
+    | while read -r old; do
+        docker ps -aq --filter "ancestor=mfd-app:$old" --filter status=exited | xargs -r docker rm >/dev/null 2>&1 || true
+        docker rmi "mfd-app:$old" >/dev/null 2>&1 && echo "dropped old rollback image mfd-app:$old" || echo "kept mfd-app:$old (in use)"
+      done
 fi
+df -h / | tail -1 | awk '{print "=== disk: " $3 " used, " $4 " free (" $5 ") ==="}'
 
 # A tarball only ADDS files: delete what git deleted (src, scripts, drizzle).
 tar tzf "$TARBALL" | sed 's#/$##' | sort -u > /tmp/shipped.txt
