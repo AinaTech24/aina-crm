@@ -45,6 +45,7 @@ import { bandBadgeClass, bandLabel } from "@/lib/leads/score";
 import { OnboardingActions } from "@/components/leads/OnboardingActions";
 import { BlueprintStageBar } from "@/components/leads/BlueprintStageBar";
 import { ProposalJourneyCard } from "@/components/proposals/ProposalJourneyCard";
+import { StageScript } from "@/components/practice/StageScript";
 import { MENU_ITEM } from "@/components/ui/menu-item-class";
 import {
   RelatedListsContainer,
@@ -340,6 +341,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
           phase="lead"
           convertedInvestorId={l.convertedInvestorId ?? null}
         />
+        {/* The firm's call script / SOP for the current stage (sop_links). */}
+        <StageScript session={session} leadId={l.id} fallbackStage={l.stage} />
         <ProposalJourneyCard leadId={l.id} />
         </div>
       </RelatedListSection>

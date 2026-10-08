@@ -35,6 +35,9 @@ export type PracticeProcess = {
   defaultOwner: string;
   /** Recipes (lib/recipes keys) that automate part of it; any one enabled counts. */
   recipeKeys: string[];
+  /** Automation rules (workflow_rules.module, the Automations page) that act on
+   *  this process's records; any enabled rule in these modules counts too. */
+  ruleModules?: string[];
   /** Journey blueprints that run it (lib/blueprints), by subject type. */
   blueprintSubject?: "lead" | "service_request" | "complaint" | "sip_rejection" | "investor" | "opportunity";
   /** Task types / service-request types whose work belongs to this process. */
@@ -51,6 +54,7 @@ export const PRACTICE_PROCESSES: PracticeProcess[] = [
     outcome: "Every enquiry is called within a day and moved to a decision.",
     defaultOwner: "relationship_manager",
     recipeKeys: ["lead_welcome", "lead_nurture_drip"],
+    ruleModules: ["leads"],
     blueprintSubject: "lead",
     measure: "lead_conversion",
   },
@@ -60,6 +64,7 @@ export const PRACTICE_PROCESSES: PracticeProcess[] = [
     outcome: "A won lead is investible — KYC, UCC and mandate done — within a week.",
     defaultOwner: "operations_executive",
     recipeKeys: ["lead_converted_onboarding", "docs_received_convert", "document_chase"],
+    ruleModules: ["onboarding"],
     taskTypes: ["collect_document", "kyc_renewal"],
     measure: "onboarding_days",
   },
@@ -69,6 +74,7 @@ export const PRACTICE_PROCESSES: PracticeProcess[] = [
     outcome: "The first investment is confirmed and the client is welcomed.",
     defaultOwner: "relationship_manager",
     recipeKeys: ["first_investment_celebration", "new_business_thankyou", "ops_complete_portal_welcome"],
+    ruleModules: ["transactions"],
     measure: "lead_to_client_days",
   },
   {
@@ -77,6 +83,7 @@ export const PRACTICE_PROCESSES: PracticeProcess[] = [
     outcome: "Every bounced SIP is chased and recovered or closed with a reason.",
     defaultOwner: "operations_executive",
     recipeKeys: ["sip_rejection_followup", "mandate_failure_smart_retry"],
+    ruleModules: ["sip_rejections"],
     blueprintSubject: "sip_rejection",
     measure: "sip_rejection_recovery",
   },
@@ -86,6 +93,7 @@ export const PRACTICE_PROCESSES: PracticeProcess[] = [
     outcome: "Every large redemption gets a call from the RM within two days.",
     defaultOwner: "relationship_manager",
     recipeKeys: ["redemption_retention"],
+    ruleModules: ["transactions"],
     measure: "redemption_followed_up",
   },
   {
@@ -94,6 +102,7 @@ export const PRACTICE_PROCESSES: PracticeProcess[] = [
     outcome: "Every client is reviewed on their service tier's cadence.",
     defaultOwner: "relationship_manager",
     recipeKeys: ["hni_quarterly_review", "retail_halfyearly_review", "family_linked_review"],
+    ruleModules: ["review_meetings"],
     blueprintSubject: "investor",
     taskTypes: ["review_meeting"],
     measure: "review_on_time",
@@ -104,6 +113,7 @@ export const PRACTICE_PROCESSES: PracticeProcess[] = [
     outcome: "Every client request is resolved within its SLA.",
     defaultOwner: "service_desk",
     recipeKeys: ["service_request_escalation"],
+    ruleModules: ["service_requests"],
     blueprintSubject: "service_request",
     srTypes: [
       "nominee_update", "bank_update", "mobile_update", "email_update", "kyc_update", "minor_to_major",
@@ -118,6 +128,7 @@ export const PRACTICE_PROCESSES: PracticeProcess[] = [
     outcome: "Every complaint is acknowledged at once and resolved within 21 days.",
     defaultOwner: "compliance_officer",
     recipeKeys: ["complaint_sla_breach"],
+    ruleModules: ["complaints"],
     blueprintSubject: "complaint",
     measure: "complaint_within_sla",
   },
@@ -127,6 +138,7 @@ export const PRACTICE_PROCESSES: PracticeProcess[] = [
     outcome: "No policy lapses for want of a reminder.",
     defaultOwner: "relationship_manager",
     recipeKeys: ["insurance_premium_reminder", "insurance_lapse_recovery"],
+    ruleModules: ["insurance"],
     measure: "renewal_on_time",
   },
   {
@@ -135,6 +147,7 @@ export const PRACTICE_PROCESSES: PracticeProcess[] = [
     outcome: "KYC, nominee, risk profile and licences never lapse unnoticed.",
     defaultOwner: "compliance_officer",
     recipeKeys: ["kyc_expiry_renew", "nominee_missing", "risk_profile_annual_review", "nism_expiry_alert", "arn_expiry_alert"],
+    ruleModules: ["risk_profiles"],
     taskTypes: ["kyc_renewal"],
     measure: "kyc_expiry_cleared",
   },

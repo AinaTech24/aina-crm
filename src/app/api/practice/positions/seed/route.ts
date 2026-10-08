@@ -11,6 +11,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { seedDefaultPositions } from "@/lib/practice/positions";
+import { relinkStarterPositions } from "@/lib/practice/install-starter-manual";
 import { gateManage, tenantOpts } from "../_gate";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +22,13 @@ export async function POST() {
     require(session.roles, "settings.users", session.permissions);
     gateManage(session);
     await assertActiveLicense(session.tenantId, session.roles);
-    const result = await withTenant(session.tenantId, (tx) => seedDefaultPositions(tx, session.tenantId), tenantOpts(session));
+    const result = await withTenant(session.tenantId, async (tx) => {
+      const seeded = await seedDefaultPositions(tx, session.tenantId);
+      // Starter SOPs installed before the positions existed get their position
+      // links now (install-starter-manual skips links to missing positions).
+      await relinkStarterPositions(tx, session.tenantId);
+      return seeded;
+    }, tenantOpts(session));
     return NextResponse.json(result);
   } catch (err) {
     return handleApiError(err);
