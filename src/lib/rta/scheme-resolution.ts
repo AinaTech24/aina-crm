@@ -33,7 +33,14 @@
  * scheme and AMC names, and the registrar's code in rta_scheme_code.
  */
 import { sql } from "drizzle-orm";
-import { navCutoffIso } from "@/lib/finance/nav-age";
+import { NAV_MAX_AGE_DAYS, navCutoffIso } from "@/lib/finance/nav-age";
+
+/** AMFI's NAV for a scheme is current when dated within the window of the latest applied file's business date (no file applied → not judged). */
+function navIsCurrent(navDate: string | null | undefined, feedDate: string | null | undefined): boolean {
+  if (!feedDate) return true;
+  if (!navDate) return false;
+  return navDate >= new Date(Date.parse(`${feedDate}T00:00:00Z`) - NAV_MAX_AGE_DAYS * 864e5).toISOString().slice(0, 10);
+}
 import { amcKey, decideScheme, isResolved, markerContradiction, markersOf, amfiMarkers, amfiCore, nameRank,
   type AmfiMatch, type GlobalMapping, type ReasonCode, type SchemeDecision, type SchemeStatus } from "./scheme-evidence";
 
@@ -91,7 +98,7 @@ type CodeRow = {
   id: string; rta: string; rta_amc_code: string; rta_scheme_code: string; observed_isins: string[] | null; observed_name: string | null;
   status: string; amfi_scheme_code: string | null; confirmed: boolean; status_reason: string | null; reason_code: string | null;
 };
-type NavFacts = { code: string; amc: string | null; name: string | null; plan: string | null; option: string | null; active: boolean };
+type NavFacts = { code: string; amc: string | null; name: string | null; plan: string | null; option: string | null; currentNav: boolean };
 
 /**
  * Everything decideScheme needs about a firm's codes under some registrar
@@ -113,23 +120,25 @@ async function loadDecisionContext(tx: Tx, tenantId: string, amcs: Array<{ rta: 
       FROM scheme_registrar_map g WHERE g.status <> 'revoked' ${gFilter}`)).rows as Array<{ id: string; rta: string; rta_amc_code: string; rta_scheme_code: string; amfi_scheme_code: string; basis: GlobalMapping["basis"]; evidence_isin: string | null }>;
   const latest = (await tx.execute(sql`
     SELECT id, feed_date::text AS feed_date FROM amfi_feed_imports WHERE status = 'applied' ORDER BY feed_date DESC NULLS LAST, imported_at DESC LIMIT 1`)).rows[0] as { id: string; feed_date: string } | undefined;
-  const activeSql = latest ? sql`(n.last_seen_feed IS NOT NULL AND n.last_seen_feed >= ${latest.feed_date}::date)` : sql`true`;
+  // Current = AMFI's own NAV date is within the window of the file's business
+  // date. Absence from one file is never inactivity (Phase 3I, real file).
+  const activeSql = latest ? sql`(n.nav_date >= ${latest.feed_date}::date - ${NAV_MAX_AGE_DAYS}::int)` : sql`true`;
 
   const isins = [...new Set(codes.flatMap((c) => (c.observed_isins ?? []).map((i) => i.toUpperCase())))];
   const amfiByIsin: Record<string, AmfiMatch[]> = {};
   if (isins.length) {
     const list = sql.join(isins.map((i) => sql`${i}`), sql`, `);
     const hits = (await tx.execute(sql`
-      SELECT x.isin, x.col, n.scheme_code, n.amc_name, n.scheme_name, n.plan, n.option_name, ${activeSql} AS active
+      SELECT x.isin, x.col, n.scheme_code, n.amc_name, n.scheme_name, n.plan, n.option_name, ${activeSql} AS current_nav
         FROM scheme_nav n,
              LATERAL (VALUES (upper(n.isin_payout_growth), 'payout_growth'), (upper(n.isin_reinvest), 'reinvest'),
                              -- rows written before the eight-column layout was kept: isin is the payout / growth ISIN
                              (CASE WHEN n.isin_payout_growth IS NULL AND n.isin IS DISTINCT FROM n.isin_reinvest THEN upper(n.isin) END, 'payout_growth')) AS x(isin, col)
-       WHERE x.isin IN (${list})`)).rows as Array<{ isin: string; col: AmfiMatch["column"]; scheme_code: string; amc_name: string | null; scheme_name: string | null; plan: string | null; option_name: string | null; active: boolean }>;
+       WHERE x.isin IN (${list})`)).rows as Array<{ isin: string; col: AmfiMatch["column"]; scheme_code: string; amc_name: string | null; scheme_name: string | null; plan: string | null; option_name: string | null; current_nav: boolean }>;
     for (const h of hits) {
       const arr = (amfiByIsin[h.isin] ??= []);
       if (!arr.some((m) => m.code === h.scheme_code && m.column === h.col)) {
-        arr.push({ code: h.scheme_code, column: h.col, amc: h.amc_name, name: h.scheme_name, plan: h.plan, option: h.option_name, active: !!h.active });
+        arr.push({ code: h.scheme_code, column: h.col, amc: h.amc_name, name: h.scheme_name, plan: h.plan, option: h.option_name, currentNav: !!h.current_nav });
       }
     }
   }
@@ -144,9 +153,9 @@ async function loadDecisionContext(tx: Tx, tenantId: string, amcs: Array<{ rta: 
   const nav = new Map<string, NavFacts>();
   if (named.length) {
     for (const r of (await tx.execute(sql`
-      SELECT n.scheme_code, n.amc_name, n.scheme_name, n.plan, n.option_name, ${activeSql} AS active
+      SELECT n.scheme_code, n.amc_name, n.scheme_name, n.plan, n.option_name, ${activeSql} AS current_nav
         FROM scheme_nav n WHERE n.scheme_code IN (${sql.join(named.map((c) => sql`${c}`), sql`, `)})`)).rows as any[]) {
-      nav.set(r.scheme_code, { code: r.scheme_code, amc: r.amc_name, name: r.scheme_name, plan: r.plan, option: r.option_name, active: !!r.active });
+      nav.set(r.scheme_code, { code: r.scheme_code, amc: r.amc_name, name: r.scheme_name, plan: r.plan, option: r.option_name, currentNav: !!r.current_nav });
     }
   }
   const globalByKey = new Map(globals.map((g) => [keyOf({ rta: g.rta, amcCode: g.rta_amc_code, schemeCode: g.rta_scheme_code }), g]));
@@ -204,7 +213,7 @@ function decideFor(ctx: DecisionContext, c: CodeRow, override?: { confirmedCode:
  * firm: registrar codes are the registrar's. Never overwrites a live mapping.
  */
 async function promoteVerified(tx: Tx, c: CodeRow, d: SchemeDecision): Promise<boolean> {
-  if (d.reasonCode !== "isin_verified" && d.reasonCode !== "isin_verified_inactive") return false;
+  if (d.reasonCode !== "isin_verified" && d.reasonCode !== "isin_verified_historical") return false;
   const ins = (await tx.execute(sql`
     INSERT INTO scheme_registrar_map (rta, rta_amc_code, rta_scheme_code, amfi_scheme_code, basis, evidence_isin, isin_column, status)
     VALUES (${c.rta}, ${c.rta_amc_code}, ${c.rta_scheme_code}, ${d.amfiSchemeCode}, 'isin', ${d.evidenceIsin}, ${d.isinColumn}, 'verified')
@@ -236,7 +245,7 @@ export async function redecideSchemeCodes(tx: Tx, tenantId: string, keys?: Schem
     const amfi = d.amfiSchemeCode ?? (c.confirmed ? c.amfi_scheme_code : null);
     await tx.execute(sql`
       UPDATE scheme_rta_codes SET status = ${d.status}, status_reason = ${d.reason}, reason_code = ${d.reasonCode}, amfi_scheme_code = ${amfi},
-             evidence_source = CASE WHEN ${d.reasonCode} IN ('isin_verified', 'isin_verified_inactive', 'global_isin') THEN 'registrar_isin'
+             evidence_source = CASE WHEN ${d.reasonCode} IN ('isin_verified', 'isin_verified_historical', 'global_isin') THEN 'registrar_isin'
                                     WHEN ${d.reasonCode} = 'platform_approved' THEN 'platform_approval' ELSE evidence_source END,
              updated_at = now()
        WHERE id = ${c.id}::uuid AND (status IS DISTINCT FROM ${d.status} OR status_reason IS DISTINCT FROM ${d.reason}
@@ -379,15 +388,15 @@ export async function confirmSchemeCode(tx: Tx, tenantId: string, codeId: string
   if ((c.rejected_candidates ?? []).includes(input.amfiSchemeCode)) throw new SchemeMappingError("that AMFI scheme was rejected for this code before — clear the rejection first if it was a mistake");
   const ctx = await loadDecisionContext(tx, tenantId, [{ rta: c.rta, amcCode: c.rta_amc_code }]);
   if (!ctx.nav.has(input.amfiSchemeCode)) {
-    const n = (await tx.execute(sql`SELECT scheme_code, amc_name, scheme_name, plan, option_name, last_seen_feed::text AS lsf FROM scheme_nav WHERE scheme_code = ${input.amfiSchemeCode}`)).rows[0] as any;
+    const n = (await tx.execute(sql`SELECT scheme_code, amc_name, scheme_name, plan, option_name, nav_date::text AS nd FROM scheme_nav WHERE scheme_code = ${input.amfiSchemeCode}`)).rows[0] as any;
     if (!n) throw new SchemeMappingError("that AMFI scheme code is not in the AMFI feed");
-    ctx.nav.set(n.scheme_code, { code: n.scheme_code, amc: n.amc_name, name: n.scheme_name, plan: n.plan, option: n.option_name, active: !ctx.latestFeedDate || (!!n.lsf && n.lsf >= ctx.latestFeedDate) });
+    ctx.nav.set(n.scheme_code, { code: n.scheme_code, amc: n.amc_name, name: n.scheme_name, plan: n.plan, option: n.option_name, currentNav: navIsCurrent(n.nd, ctx.latestFeedDate) });
   }
   const d = decideFor(ctx, c, { confirmedCode: input.amfiSchemeCode });
   if (d.status === "conflict") throw new SchemeMappingError(`not confirmed: ${d.reason}`);
   const warnings: string[] = [];
   const target = ctx.nav.get(input.amfiSchemeCode)!;
-  if (!target.active) warnings.push("the latest AMFI feed no longer lists this scheme — its NAV is not current");
+  if (!target.currentNav) warnings.push("AMFI's last NAV for this scheme is historical (closed, matured or merged) — its NAV is not current");
   const dup = (await tx.execute(sql`
     SELECT rta, rta_amc_code, rta_scheme_code FROM scheme_rta_codes
      WHERE tenant_id = ${tenantId}::uuid AND id <> ${codeId}::uuid AND rta = ${c.rta} AND amfi_scheme_code = ${input.amfiSchemeCode} AND status IN ('resolved_isin', 'confirmed')`)).rows as any[];
@@ -460,10 +469,15 @@ export async function schemeCandidates(tx: Tx, tenantId: string, codeId: string,
   const g = ctx.globalByKey.get(keyOf(key));
   if (g) add(g.amfi_scheme_code, "platform");
   for (const i of c.observed_isins ?? []) for (const m of ctx.amfiByIsin[i.toUpperCase()] ?? []) add(m.code, "isin");
-  if (sibKeys.length === 1 && c.observed_name) {
+  // Name suggestions — for a person to check against a document, never applied.
+  // Inside the registrar AMC's established AMC when there is one; across every
+  // AMC when none is established yet (every CAMS AMC until its first code is
+  // decided), each then warned "the registrar AMC is not established". None
+  // when the registrar AMC's codes contradict each other.
+  if (sibKeys.length <= 1 && c.observed_name) {
     const pool = (await tx.execute(sql`SELECT scheme_code, scheme_name, amc_name, plan, option_name FROM scheme_nav WHERE amc_name IS NOT NULL`)).rows as any[];
     const ranked = pool
-      .filter((n) => amcKey(n.amc_name) === sibKeys[0] && !rejected.has(n.scheme_code))
+      .filter((n) => (sibKeys.length === 0 || amcKey(n.amc_name) === sibKeys[0]) && !rejected.has(n.scheme_code))
       .filter((n) => !markerContradiction(markersOf(c.observed_name, amfiCore(n.scheme_name)), amfiMarkers({ name: n.scheme_name, plan: n.plan, option: n.option_name })))
       .map((n) => ({ code: n.scheme_code as string, score: nameRank(c.observed_name, n.scheme_name) }))
       .filter((x) => x.score > 0)
@@ -474,7 +488,7 @@ export async function schemeCandidates(tx: Tx, tenantId: string, codeId: string,
   const codes = [...picked.keys()];
   if (!codes.length) return { registrarAmc: sib, amcEstablished: sibKeys.length === 1, markers: registrarMarkers, candidates: [] };
   const details = (await tx.execute(sql`
-    SELECT n.scheme_code, n.scheme_name, n.amc_name, n.plan, n.option_name, n.nav::float8 AS nav, n.nav_date::text AS nav_date, n.last_seen_feed::text AS lsf,
+    SELECT n.scheme_code, n.scheme_name, n.amc_name, n.plan, n.option_name, n.nav::float8 AS nav, n.nav_date::text AS nav_date,
            array_remove(ARRAY[n.isin_payout_growth, n.isin_reinvest, CASE WHEN n.isin_payout_growth IS NULL THEN n.isin END], NULL) AS isins,
            (SELECT array_agg(o.rta_amc_code || '/' || o.rta_scheme_code) FROM scheme_rta_codes o
              WHERE o.tenant_id = ${tenantId}::uuid AND o.rta = ${c.rta} AND o.id <> ${codeId}::uuid AND o.amfi_scheme_code = n.scheme_code AND o.status IN ('resolved_isin', 'confirmed')) AS taken
@@ -485,8 +499,8 @@ export async function schemeCandidates(tx: Tx, tenantId: string, codeId: string,
     if (!d) return [];
     const base = picked.get(code)!;
     const warnings: string[] = [];
-    const active = !ctx.latestFeedDate || (!!d.lsf && d.lsf >= ctx.latestFeedDate);
-    if (!active) warnings.push("not in the latest AMFI feed (historical / inactive)");
+    const active = navIsCurrent(d.nav_date, ctx.latestFeedDate);
+    if (!active) warnings.push(`AMFI's last NAV is dated ${d.nav_date ?? "—"} — historical (closed, matured or merged)`);
     if (sibKeys.length === 1 && amcKey(d.amc_name) !== sibKeys[0]) warnings.push(`AMC differs from the registrar AMC's other codes (${sib[0]})`);
     if (sibKeys.length > 1) warnings.push("the registrar AMC's other codes point to more than one AMFI AMC");
     if (!sibKeys.length) warnings.push("the registrar AMC is not established yet — check the AMC on the document");
@@ -569,7 +583,7 @@ export async function loadSchemeCodes(tx: Tx, tenantId: string, opts: { status?:
          AND NOT EXISTS (SELECT 1 FROM rta_posted_transactions p WHERE p.tenant_id = ${tenantId}::uuid AND p.identity_key = l.identity_key)
        GROUP BY 1, 2, 3)
     SELECT c.id, c.rta, c.rta_amc_code, c.rta_scheme_code, c.observed_name, c.observed_isins, c.source_reports, c.status, c.status_reason, c.reason_code,
-           c.amfi_scheme_code, n.scheme_name AS amfi_name, n.amc_name AS amfi_amc, n.nav_date::text AS amfi_nav_date, n.last_seen_feed::text AS amfi_lsf,
+           c.amfi_scheme_code, n.scheme_name AS amfi_name, n.amc_name AS amfi_amc, n.nav_date::text AS amfi_nav_date,
            c.confirmed_at::text AS confirmed_at, c.confirm_note, c.evidence_source, c.review_state, c.review_note, c.rejected_candidates,
            c.last_seen_at::text AS last_seen_at, COALESCE(h.n, 0) AS held
       FROM scheme_rta_codes c
@@ -583,7 +597,7 @@ export async function loadSchemeCodes(tx: Tx, tenantId: string, opts: { status?:
     rows: rows.map((r) => ({
       id: r.id, rta: r.rta, rtaAmcCode: r.rta_amc_code, rtaSchemeCode: r.rta_scheme_code, observedName: r.observed_name, observedIsins: r.observed_isins ?? [],
       sourceReports: r.source_reports ?? [], status: r.status, reason: r.status_reason, reasonCode: r.reason_code, amfiSchemeCode: r.amfi_scheme_code, amfiName: r.amfi_name,
-      amfiAmc: r.amfi_amc, amfiNavDate: r.amfi_nav_date, amfiActive: r.amfi_scheme_code ? !latest.d || (!!r.amfi_lsf && r.amfi_lsf >= latest.d) : null,
+      amfiAmc: r.amfi_amc, amfiNavDate: r.amfi_nav_date, amfiActive: r.amfi_scheme_code ? navIsCurrent(r.amfi_nav_date, latest.d) : null,
       confirmedAt: r.confirmed_at, confirmNote: r.confirm_note, evidenceSource: r.evidence_source,
       reviewState: r.review_state, reviewNote: r.review_note, rejectedCandidates: r.rejected_candidates ?? [], heldTransactions: Number(r.held), lastSeenAt: r.last_seen_at,
     })),

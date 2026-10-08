@@ -18,7 +18,7 @@ const kfin = (txn: string, product: string, isin: string, folio = "93900001", de
   "Nav": "50.0000", "Price": "50.0000", Units: "20.000", Amount: "1000.00", "Transaction Number": txn, PAN1: P.adult, ISIN: isin,
 });
 
-const am = (code: string) => ({ code, column: "payout_growth" as const, amc: null, name: null, plan: null, option: null, active: true });
+const am = (code: string) => ({ code, column: "payout_growth" as const, amc: null, name: null, plan: null, option: null, currentNav: true });
 describe("decideScheme (pure)", () => {
   it("one ISIN on one AMFI scheme resolves; a confirmation it contradicts is a conflict", () => {
     expect(decideScheme({ observedIsins: ["inf1"], amfiByIsin: { INF1: [am("100")] }, confirmed: null })).toMatchObject({ status: "resolved_isin", amfiSchemeCode: "100" });

@@ -27,10 +27,10 @@ async function main() {
   const { analyseNavAll, importNavAll } = await import("../src/lib/finance/nav-feed");
   const a = analyseNavAll(body);
   const summary = {
-    file, bytes: statSync(file).size, sha256: createHash("sha256").update(body, "utf8").digest("hex"), layout: a.layout, feedDate: a.feedDate,
+    file, bytes: statSync(file).size, sha256: createHash("sha256").update(body, "utf8").digest("hex"), layout: a.layout, header: a.header, feedDate: a.feedDate, latestNavDate: a.latestNavDate, historicalNav: a.historicalNav,
     schemes: a.rows.length, withNav: a.rows.filter((r) => r.nav != null).length, withoutNav: a.rows.filter((r) => r.nav == null).length,
     explicitPlan: a.rows.filter((r) => r.plan).length, explicitOption: a.rows.filter((r) => r.option).length,
-    malformedRows: a.malformed, invalidIsins: a.invalidIsins, duplicateCodes: a.duplicateCodes.length, conflictingDuplicates: a.conflictingDuplicates.length, isinOnManyCodes: a.isinOnManyCodes.length,
+    malformedRows: a.malformed, isinPlaceholders: a.isinPlaceholders, invalidIsins: a.invalidIsins, duplicateCodes: a.duplicateCodes.length, conflictingDuplicates: a.conflictingDuplicates.length, isinOnManyCodes: a.isinOnManyCodes.length, isinsOnManyCodes: a.isinOnManyCodes,
     amcs: new Set(a.rows.map((r) => r.amcName)).size, errors: a.errors,
   };
   console.log(JSON.stringify(summary, null, 2));

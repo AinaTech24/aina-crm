@@ -97,13 +97,23 @@ const LAYOUTS: Record<AmfiLayout, RegExp[]> = {
   legacy6: [/^scheme code$/, /^isin div payout ?\/ ?isin growth$/, /^isin div reinvestment$/, /^scheme name$/, /^net asset value$/, /^date$/],
 };
 const ISIN = /^IN[A-Z0-9]{9}[0-9]$/;
+/** What AMFI prints in an ISIN cell that has no ISIN (seen in the real file: "-" 10,583 times, "Redeemed" 9). */
+const ISIN_PLACEHOLDER = /^(-+|n\.?a\.?|nil|redeemed)$/i;
 
 export type AmfiRow = {
   schemeCode: string; isinPayoutGrowth: string | null; isinReinvest: string | null; name: string; plan: string | null; option: string | null;
   amcName: string | null; schemeType: string | null; schemeCategory: string | null; nav: number | null; navDate: string | null;
 };
 export type AmfiAnalysis = {
-  layout: AmfiLayout | null; header: string | null; rows: AmfiRow[]; feedDate: string | null;
+  layout: AmfiLayout | null; header: string | null; rows: AmfiRow[];
+  /** The file's business date: the NAV date most schemes carry (AMFI also lists closed and matured schemes at their last NAV date). */
+  feedDate: string | null;
+  /** The newest NAV date printed (one ETF can be a day ahead). */
+  latestNavDate: string | null;
+  /** Schemes whose own NAV date is more than NAV_MAX_AGE_DAYS before the feed date — historical, still listed. */
+  historicalNav: number;
+  /** ISIN cells AMFI fills with a placeholder ("-", "Redeemed", "N.A.") — no ISIN, not an error. */
+  isinPlaceholders: number;
   malformed: number; invalidIsins: number; duplicateCodes: string[]; conflictingDuplicates: string[]; isinOnManyCodes: string[]; errors: string[];
 };
 
@@ -116,7 +126,7 @@ export type AmfiAnalysis = {
  * Pure — no network, no database.
  */
 export function analyseNavAll(body: string): AmfiAnalysis {
-  const out: AmfiAnalysis = { layout: null, header: null, rows: [], feedDate: null, malformed: 0, invalidIsins: 0, duplicateCodes: [], conflictingDuplicates: [], isinOnManyCodes: [], errors: [] };
+  const out: AmfiAnalysis = { layout: null, header: null, rows: [], feedDate: null, latestNavDate: null, historicalNav: 0, isinPlaceholders: 0, malformed: 0, invalidIsins: 0, duplicateCodes: [], conflictingDuplicates: [], isinOnManyCodes: [], errors: [] };
   let amc: string | null = null, type: string | null = null, category: string | null = null;
   const text = body.charCodeAt(0) === 0xfeff ? body.slice(1) : body;
   for (const line of text.split(/\r?\n/)) {
@@ -141,7 +151,13 @@ export function analyseNavAll(body: string): AmfiAnalysis {
     const width = LAYOUTS[out.layout].length;
     if (cols.length !== width) { out.malformed++; continue; }
     const cur = out.layout === "current8";
-    const isinOf = (v: string) => { if (!v) return null; const u = v.toUpperCase(); if (!ISIN.test(u)) { out.invalidIsins++; return null; } return u; };
+    const isinOf = (v: string) => {
+      if (!v) return null;
+      if (ISIN_PLACEHOLDER.test(v)) { out.isinPlaceholders++; return null; }
+      const u = v.toUpperCase();
+      if (!ISIN.test(u)) { out.invalidIsins++; return null; }
+      return u;
+    };
     const navText = cols[cur ? 6 : 4], dateText = cols[cur ? 7 : 5];
     const nav = Number(navText);
     out.rows.push({
@@ -156,7 +172,16 @@ export function analyseNavAll(body: string): AmfiAnalysis {
   for (const r of out.rows) {
     seen.set(r.schemeCode, (seen.get(r.schemeCode) ?? 0) + 1);
     for (const i of [r.isinPayoutGrowth, r.isinReinvest]) if (i) (isinCodes.get(i) ?? isinCodes.set(i, new Set()).get(i)!).add(r.schemeCode);
-    if (r.navDate && (!out.feedDate || r.navDate > out.feedDate)) out.feedDate = r.navDate;
+    if (r.navDate && (!out.latestNavDate || r.navDate > out.latestNavDate)) out.latestNavDate = r.navDate;
+  }
+  // The business date is the date most schemes carry — never the single newest
+  // row, never "today". Closed and matured schemes stay listed at their last NAV.
+  const byDate = new Map<string, number>();
+  for (const r of out.rows) if (r.navDate) byDate.set(r.navDate, (byDate.get(r.navDate) ?? 0) + 1);
+  out.feedDate = [...byDate].sort((x, y) => y[1] - x[1] || (y[0] < x[0] ? -1 : 1))[0]?.[0] ?? null;
+  if (out.feedDate) {
+    const cutoff = new Date(Date.parse(`${out.feedDate}T00:00:00Z`) - NAV_MAX_AGE_DAYS * 864e5).toISOString().slice(0, 10);
+    out.historicalNav = out.rows.filter((r) => r.navDate && r.navDate < cutoff).length;
   }
   out.duplicateCodes = [...seen].filter(([, n]) => n > 1).map(([c]) => c);
   // A code printed twice with the SAME identity and NAV (AMFI repeats a few
@@ -215,7 +240,7 @@ export async function importNavAll(body: string, opts: { source: "download" | "f
   const reason =
     a.errors[0] ? a.errors[0]
     : priced.length < NAV_FEED_MIN_RECORDS ? `only ${priced.length} schemes with a NAV (expected >= ${NAV_FEED_MIN_RECORDS}) — truncated or changed`
-    : a.feedDate && a.feedDate > isoDaysAgo(-1, new Date(`${today}T00:00:00Z`)) ? `feed date ${a.feedDate} is in the future`
+    : a.latestNavDate && a.latestNavDate > isoDaysAgo(-1, new Date(`${today}T00:00:00Z`)) ? `a NAV is dated ${a.latestNavDate}, in the future`
     : a.conflictingDuplicates.length ? `${a.conflictingDuplicates.length} scheme code(s) listed twice with different ISINs, plan, option or NAV — the file is not a clean AMFI export`
     : stale && !opts.allowStale ? `feed date ${a.feedDate} is older than ${NAV_MAX_AGE_DAYS} days — pass allowStale for a deliberately historical export`
     : null;

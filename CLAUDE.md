@@ -761,6 +761,12 @@ provenance, platform registrar map) and 0240 (platform-approved confirmation).
   A NAV older than `RTA_NAV_MAX_AGE_DAYS` (7, `lib/finance/nav-age.ts`) is not
   current for validate-first rows. Never seed reference data by hand or from a
   third party; this sandbox cannot reach AMFI — supply an authentic file.
+- **What the real file (07-Oct-2026) taught the reader** (`docs/rta/PHASE3J_AMFI_UNBLOCK.md`):
+  `-` / `Redeemed` in an ISIN column mean "no ISIN"; the feed date is the
+  BUSINESS date (the NAV date most schemes carry), never the newest row or
+  today; ~5,600 closed / matured schemes keep old NAV dates and never reject
+  the file; "historical" comes from AMFI's own NAV date, never from a scheme
+  missing from one file; a 0 NAV is no NAV.
 - **The decision is pure** (`lib/rta/scheme-evidence.ts`): one ISIN on one AMFI
   scheme, AMC consistent with the registrar AMC's other codes, no explicit
   plan / option word contradicting AMFI → resolved. Every outcome has a

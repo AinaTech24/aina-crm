@@ -11,9 +11,9 @@ import { MFSD201_HEADER, MFSD203_HEADER, MFSD243_HEADER, R2_HEADER, csvOf, xlsOf
 import { cleanupSchemeMap } from "./scheme-map-cleanup";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
-const A = { fcd: "9I0001", fcr: "9I0002", fci: "9I0003", old: "9I0004", val: "9I0005", kfc: "9I0011", amb1: "9I0012", amb2: "9I0013" };
+const A = { fcd: "9I0001", fcr: "9I0002", fci: "9I0003", old: "9I0004", val: "9I0005", gone: "9I0006", kfc: "9I0011", amb1: "9I0012", amb2: "9I0013" };
 const ISIN = {
-  fcd: "INF9I0A01AA1", fcr: "INF9I0A01BB2", fciPay: "INF9I0A01CC3", fciRe: "INF9I0A01DD4", old: "INF9I0A01EE5", val: "INF9I0A01FF6",
+  fcd: "INF9I0A01AA1", fcr: "INF9I0A01BB2", fciPay: "INF9I0A01CC3", fciRe: "INF9I0A01DD4", old: "INF9I0A01EE5", val: "INF9I0A01FF6", gone: "INF9I0A01GG7",
   kfc: "INF9I1A01AA7", amb: "INF9I1A01BB8",
 };
 const kfin = (txn: string, product: string, isin: string, desc: string, v: Record<string, string> = {}) => ({
@@ -78,6 +78,8 @@ describe.skipIf(!TEST_DB)("Phase 3I — scheme mapping fail-safes (DB)", () => {
       await nav(A.fci, "Iota Flexi Cap Fund - Regular Plan - IDCW", "Iota Mutual Fund", "Regular Plan", "IDCW", ISIN.fciPay, ISIN.fciRe);
       await nav(A.old, "Iota Old Fund - Regular Plan - Growth", "Iota Mutual Fund", "Regular Plan", "Growth", ISIN.old, null, sql`DATE '2025-03-31'`, sql`DATE '2025-03-31'`);
       await nav(A.val, "Iota Value Fund - Regular Plan - Growth", "Iota Mutual Fund", "Regular Plan", "Growth", ISIN.val, null);
+      // Current NAV, but not in the latest file: absence from one file is not inactivity.
+      await nav(A.gone, "Iota Focused Fund - Regular Plan - Growth", "Iota Mutual Fund", "Regular Plan", "Growth", ISIN.gone, null, sql`CURRENT_DATE - 2`, sql`CURRENT_DATE - 9`);
       // The SAME name at another AMC — never a candidate for an Iota code.
       await nav(A.kfc, "Iota Flexi Cap Fund - Regular Plan - Growth", "Kappa Mutual Fund", "Regular Plan", "Growth", ISIN.kfc, null);
       await nav(A.amb1, "Kappa Debt Fund - Regular Plan - Growth", "Kappa Mutual Fund", "Regular Plan", "Growth", ISIN.amb, null);
@@ -125,13 +127,15 @@ describe.skipIf(!TEST_DB)("Phase 3I — scheme mapping fail-safes (DB)", () => {
     expect(cols).not.toContain("tenant_id");
   });
 
-  it("a renamed scheme resolves by its ISIN whatever the registrar calls it; a scheme no longer in the feed is labelled inactive and its old NAV is never current", async () => {
+  it("a renamed scheme resolves by its ISIN whatever the registrar calls it; a scheme whose AMFI NAV is historical is labelled so and its old NAV is never current; one merely absent from the latest file is not", async () => {
     await run(tA, "k2.csv", csvOf(MFSD201_HEADER, [
       kfin("941002", "191REN", ISIN.val, "Iota Contra Fund - Regular Growth"),
       kfin("941003", "191OLD", ISIN.old, "Iota Old Fund - Regular Growth"),
+      kfin("941004", "191GONE", ISIN.gone, "Iota Focused Fund - Regular Growth"),
     ]));
+    expect(await code(tA, "191GONE")).toMatchObject({ status: "resolved_isin", reason_code: "isin_verified", amfi_scheme_code: A.gone });
     expect(await code(tA, "191REN")).toMatchObject({ status: "resolved_isin", reason_code: "isin_verified", amfi_scheme_code: A.val });
-    expect(await code(tA, "191OLD")).toMatchObject({ status: "resolved_isin", reason_code: "isin_verified_inactive", amfi_scheme_code: A.old });
+    expect(await code(tA, "191OLD")).toMatchObject({ status: "resolved_isin", reason_code: "isin_verified_historical", amfi_scheme_code: A.old });
     const { loadValuationRows } = await import("@/lib/finance/valuation");
     const [inv] = await q(tA, sql`SELECT id FROM investors WHERE tenant_id = ${tA}::uuid`);
     const rows = await withTenant(tA, (tx) => loadValuationRows(tx, [inv.id]));
@@ -181,7 +185,7 @@ describe.skipIf(!TEST_DB)("Phase 3I — scheme mapping fail-safes (DB)", () => {
     expect(codes).not.toContain(A.fcd); // Direct — the registrar says Regular
     expect(codes).not.toContain(A.fci); // IDCW — the registrar says Growth
     expect(cand.candidates.find((x) => x.amfiSchemeCode === A.fcr)).toMatchObject({ basis: "name" });
-    expect(cand.candidates.find((x) => x.amfiSchemeCode === A.old)?.warnings.join(" ")).toMatch(/not in the latest AMFI feed/);
+    expect(cand.candidates.find((x) => x.amfiSchemeCode === A.old)?.warnings.join(" ")).toMatch(/historical/);
 
     const confirm = (amfi: string, src: "amc_scheme_list" = "amc_scheme_list") => withTenant(tA, (tx) => S.confirmSchemeCode(tx, tA, c.id, { amfiSchemeCode: amfi, note: "checked against the AMC's scheme list", by: user, evidenceSource: src }));
     await expect(confirm(A.kfc)).rejects.toThrow(/not confirmed: .*AMC/);

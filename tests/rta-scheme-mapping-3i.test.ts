@@ -62,6 +62,24 @@ describe("AMFI NAVAll — strict reading", () => {
     expect(a.isinOnManyCodes).toEqual(["INF9I0A01AA1"]);
   });
 
+  it("the real file's shapes: '-' and 'Redeemed' are no ISIN (not invalid); the feed date is the date most schemes carry; closed schemes keep old NAV dates without rejecting the file", () => {
+    const a = analyseNavAll(feed8([
+      "990001;INF9I0A01AA1;-;Iota Flexi Cap Fund;Direct Plan;Growth Option;29.2304;07-Oct-2026",
+      "990002;INF9I0A01BB2;-;Iota Flexi Cap Fund;Regular Plan;Growth Option;25.4417;07-Oct-2026",
+      "990003;INF9I0A01CC3;Redeemed;Iota Infrastructure Debt Fund Series 1A;;;1680494.0463;31-Dec-2018",
+      "990004;INF9I0A01EE5;-;Iota Gold Exchange Traded Fund;;;131.8318;08-Oct-2026",
+      "990005;INF9I0A01FF6;HDFCNIVODG;Iota Index Fund;Direct Plan;Growth Option;9.7078;07-Oct-2026",
+      "990006;INF9I0A01GG7;-;Iota Matured FMP;;;0.0000;02-Jul-2018",
+    ]));
+    expect(a.errors).toEqual([]);
+    expect(a.isinPlaceholders).toBe(5);
+    expect(a.invalidIsins).toBe(1); // a code-like value in the reinvestment column is dropped and counted
+    expect(a.feedDate).toBe("2026-10-07"); // not the single ETF row a day ahead
+    expect(a.latestNavDate).toBe("2026-10-08");
+    expect(a.historicalNav).toBe(2);
+    expect(a.rows.find((r) => r.schemeCode === "990006")).toMatchObject({ nav: null }); // a zero NAV is no NAV
+  });
+
   it("a byte-order mark and blank lines do not change the reading", () => {
     const a = analyseNavAll("﻿" + feed8(["990001;INF9I0A01AA1;;Iota Flexi Cap Fund;Direct Plan;Growth;1;07-Oct-2026"]) + "\r\n\r\n");
     expect(a.layout).toBe("current8");
@@ -69,7 +87,7 @@ describe("AMFI NAVAll — strict reading", () => {
   });
 });
 
-const m = (code: string, v: Partial<AmfiMatch> = {}): AmfiMatch => ({ code, column: "payout_growth", amc: "Iota Mutual Fund", name: "Iota Flexi Cap Fund - Regular Plan - Growth", plan: "Regular Plan", option: "Growth", active: true, ...v });
+const m = (code: string, v: Partial<AmfiMatch> = {}): AmfiMatch => ({ code, column: "payout_growth", amc: "Iota Mutual Fund", name: "Iota Flexi Cap Fund - Regular Plan - Growth", plan: "Regular Plan", option: "Growth", currentNav: true, ...v });
 
 describe("explicit plan / option words", () => {
   it("reads Direct / Regular, Growth / IDCW and payout / reinvestment; words in the scheme's own name say nothing", () => {
@@ -105,7 +123,7 @@ describe("decideScheme — Phase 3I", () => {
   it("one ISIN on one AMFI scheme, consistent with the registrar AMC and words: verified (inactive is labelled, still verified)", () => {
     expect(decideScheme({ ...base, amfiByIsin: { INF9I0A01BB2: [m("9I0002")] }, observedText: "Iota Flexi Cap Fund - Regular Growth", registrarAmc: ["Iota Mutual Fund"] }))
       .toMatchObject({ status: "resolved_isin", amfiSchemeCode: "9I0002", reasonCode: "isin_verified", evidenceIsin: "INF9I0A01BB2", isinColumn: "payout_growth" });
-    expect(decideScheme({ ...base, amfiByIsin: { INF9I0A01BB2: [m("9I0002", { active: false })] } })).toMatchObject({ status: "resolved_isin", reasonCode: "isin_verified_inactive" });
+    expect(decideScheme({ ...base, amfiByIsin: { INF9I0A01BB2: [m("9I0002", { currentNav: false })] } })).toMatchObject({ status: "resolved_isin", reasonCode: "isin_verified_historical" });
   });
   it("an ISIN found in the reinvestment column is a reinvestment scheme", () => {
     expect(decideScheme({ ...base, amfiByIsin: { INF9I0A01BB2: [m("9I0003", { column: "reinvest", option: "IDCW" })] }, observedText: "Iota Flexi Cap Fund - Regular IDCW Payout" }))

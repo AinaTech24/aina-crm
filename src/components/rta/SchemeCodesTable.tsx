@@ -34,7 +34,7 @@ const STATUS: Record<string, { label: string; tone: "success" | "warning" | "dan
 /** Plain words for each reason code (scheme-evidence.ts). */
 const REASON: Record<string, string> = {
   isin_verified: "Registrar ISIN → one AMFI scheme",
-  isin_verified_inactive: "Registrar ISIN → a scheme no longer in the AMFI feed",
+  isin_verified_historical: "Registrar ISIN → a scheme with a historical AMFI NAV (closed / matured)",
   global_isin: "Verified by ISIN on the platform",
   platform_approved: "Approved by two platform operators",
   firm_confirmed: "Confirmed by your firm",
@@ -81,7 +81,7 @@ export function SchemeCodesTable({ rows, canConfirm }: { rows: SchemeCodeRow[]; 
           {r.amfiName ? (
             <div className="font-medium text-foreground">
               {r.amfiName} <span className="text-muted-foreground tabular-nums">· AMFI {r.amfiSchemeCode}</span>
-              {r.amfiActive === false ? <span className="ml-1 text-warning">· not in the latest AMFI feed</span> : null}
+              {r.amfiActive === false ? <span className="ml-1 text-warning">· AMFI NAV historical{r.amfiNavDate ? ` (${formatDate(r.amfiNavDate)})` : ""}</span> : null}
             </div>
           ) : null}
           {r.reasonCode ? <div className="text-muted-foreground">{REASON[r.reasonCode] ?? r.reasonCode}{r.reason && r.status === "conflict" ? ` — ${r.reason}` : ""}</div> : r.reason ? <div className="text-muted-foreground">{r.reason}</div> : null}

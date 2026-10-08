@@ -42,7 +42,7 @@ To unblock, one of these:
 | Scheme code, plan, option | Explicit `plan` / `option_name` columns are stored when the layout prints them (null for legacy6 — never guessed). The composite `scheme_name` is unchanged for existing readers | pure + DB |
 | NAV value and date | Stored as printed with the scheme's own date. `N.A.` is "no NAV": the identity is recorded in `amfi_feed_imports.unpriced` and never priced. The **feed date** is the newest date printed, never "today" | pure + DB |
 | Old NAV is not current | `RTA_NAV_MAX_AGE_DAYS` (default 7). A file older than that is refused unless `--allow-stale` (a deliberate historical load). **Even then an older file never overwrites a newer NAV or identity** (row-level `nav_date <=` guard). Validate-first transactions and evidence-tracked holdings are valued only at a NAV inside the window (`valuation.ts`, `aum-persist.ts`) | DB |
-| Inactive / historical | `first_seen_feed` / `last_seen_feed` per scheme. A scheme absent from the latest applied feed is **inactive**: its mapping stays valid for history (`isin_verified_inactive`), and its NAV is not current. A scheme listed **without** a NAV is still listed, not inactive | DB |
+| Inactive / historical | `first_seen_feed` / `last_seen_feed` per scheme. A scheme absent from the latest applied feed is **inactive**: its mapping stays valid for history (`isin_verified_historical`), and its NAV is not current. A scheme listed **without** a NAV is still listed, not inactive | DB |
 | Duplicates / ambiguity | A code printed twice identically is read once. Printed twice with different ISINs, plan, option or NAV, the whole file is refused. An ISIN printed for two codes is reported, and any registrar code carrying that ISIN is held as `isin_ambiguous` | pure + DB |
 | AMC name changes | AMC names are compared without legal suffixes (`Mutual Fund`, `Asset Management Company Limited` …). A scheme keeps the AMC name of the last feed that listed it | pure |
 | Provenance | Every attempt — applied or refused — is a row in `amfi_feed_imports` with source, file reference, **SHA-256**, bytes, header, layout, feed date, counts, refusal reason, operator and note. AMFI publishes no signature: the hash and the operator's note are the audit trail | DB |
@@ -229,7 +229,7 @@ Also proven:
 
 ## G. Historical / inactive schemes and NAV correctness
 
-- An inactive scheme resolves by ISIN (`isin_verified_inactive`): its history posts correctly. Its March-2025 NAV is **not** used as current — `latest_nav` is null in valuation and the leg keeps the registrar's value (DB test).
+- An inactive scheme resolves by ISIN (`isin_verified_historical`): its history posts correctly. Its March-2025 NAV is **not** used as current — `latest_nav` is null in valuation and the leg keeps the registrar's value (DB test).
 - A file older than the window is refused. Allowed as historical, it changes nothing newer (`written 0, keptNewer 2`).
 - A future date is refused.
 - A scheme listed without a NAV keeps its old NAV with its old date, and its `last_seen_feed` advances (DB test).

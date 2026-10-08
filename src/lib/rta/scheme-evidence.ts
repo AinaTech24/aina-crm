@@ -26,7 +26,7 @@ export type SchemeStatus = "resolved_isin" | "confirmed" | "unresolved" | "confl
 
 export type ReasonCode =
   // resolved
-  | "isin_verified" | "isin_verified_inactive" | "global_isin" | "platform_approved" | "firm_confirmed"
+  | "isin_verified" | "isin_verified_historical" | "global_isin" | "platform_approved" | "firm_confirmed"
   // unresolved
   | "no_isin" | "isin_not_in_feed" | "isin_unpriced"
   // conflict
@@ -41,8 +41,13 @@ export type AmfiMatch = {
   name: string | null;
   plan: string | null;
   option: string | null;
-  /** Listed in the latest applied AMFI feed (false = inactive / historical). */
-  active: boolean;
+  /**
+   * AMFI's own NAV for the scheme is current: dated within NAV_MAX_AGE_DAYS of
+   * the latest applied file's business date. False = historical (a closed,
+   * matured or merged scheme AMFI still lists at its last NAV). Never decided
+   * by a scheme's absence from one file.
+   */
+  currentNav: boolean;
 };
 
 export type GlobalMapping = { amfiSchemeCode: string; basis: "isin" | "platform_approval"; evidenceIsin: string | null; amc?: string | null };
@@ -179,8 +184,8 @@ export function decideScheme(input: DecideInput): SchemeDecision {
       }
       return {
         status: "resolved_isin", amfiSchemeCode: m.code, evidenceIsin: isin, isinColumn: m.column,
-        reasonCode: m.active ? "isin_verified" : "isin_verified_inactive",
-        reason: m.active ? "the registrar's ISIN identifies one AMFI scheme" : "the registrar's ISIN identifies one AMFI scheme, which the latest AMFI feed no longer lists (historical — its NAV is not current)",
+        reasonCode: m.currentNav ? "isin_verified" : "isin_verified_historical",
+        reason: m.currentNav ? "the registrar's ISIN identifies one AMFI scheme" : "the registrar's ISIN identifies one AMFI scheme whose last AMFI NAV is historical (closed, matured or merged) — its NAV is not current",
       };
     }
     // An ISIN the feed does not carry. A platform mapping verified by a
@@ -224,7 +229,7 @@ export function decideScheme(input: DecideInput): SchemeDecision {
 
 /** The three-way grouping the brief reports. */
 export const REASON_GROUP: Record<ReasonCode, "verified" | "approved" | "historical_inactive" | "missing_reference" | "ambiguous" | "conflicting"> = {
-  isin_verified: "verified", global_isin: "verified", isin_verified_inactive: "historical_inactive",
+  isin_verified: "verified", global_isin: "verified", isin_verified_historical: "historical_inactive",
   platform_approved: "approved", firm_confirmed: "approved",
   no_isin: "missing_reference", isin_not_in_feed: "missing_reference", isin_unpriced: "missing_reference",
   isin_ambiguous: "ambiguous", isins_differ: "ambiguous",
