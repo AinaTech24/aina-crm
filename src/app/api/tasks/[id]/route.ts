@@ -24,6 +24,7 @@ import { loadViewableLead } from "@/lib/leads/access";
 import { spawnNextOccurrence } from "@/lib/tasks/recurrence";
 import { notifyWatchers } from "@/lib/tasks/watchers";
 import { taskInScope } from "@/lib/tasks/scope";
+import { sopsForTask } from "@/lib/practice/sop-links";
 import { syncTaskBusinessEntry } from "@/lib/business/create-entry";
 import { tasks, users, taskChecklist } from "@/db/schema";
 
@@ -127,7 +128,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         && openInfoRequest(row.meta)?.askedToId !== session.userId) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
-    return NextResponse.json(row);
+    // "How we do this": the firm's SOPs for this task (additive field). A
+    // failure here never costs the caller the task itself.
+    const sops = await withTenant(session.tenantId, (tx) => sopsForTask(tx, session.tenantId, row))
+      .then((list) => list.map(({ sopId, key, title, category, versionNumber, markdown, matched }) => ({ sopId, key, title, category, versionNumber, markdown, matched })))
+      .catch(() => []);
+    return NextResponse.json({ ...row, sops });
   } catch (err: any) {
     return handleApiError(err);
   }
