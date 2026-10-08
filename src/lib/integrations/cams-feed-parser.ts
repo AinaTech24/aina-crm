@@ -1,29 +1,31 @@
 /**
- * CAMS / KFintech reverse-feed parser.
+ * CAMS / KFintech transaction reverse-feed parser.
  *
- * The "reverse feed" is a daily flat file each MFD receives from CAMS +
- * KFintech containing every transaction across the AMCs they service.
- * Format: pipe-delimited (CAMS) or comma-delimited (KFintech), with ~30
- * fields per row including PAN, folio, scheme, transaction type, amount,
- * units, NAV, date, reason code for failures.
+ * The "reverse feed" is the transaction mailback an MFD receives from CAMS and
+ * KFintech (CAMS WBR2 family, KFintech MFSD201 / MFSD307). The upload decoder
+ * normalises every file to pipe-delimited text; this module finds the header,
+ * maps columns by alias, and turns each row into a CanonicalTransaction — or
+ * into a REJECT with a reason. lib/rta/process.ts writes the accepted rows.
  *
- * This module parses one batch and emits canonical events to events_outbox.
- * The reconciliation engine (workers/reconciler.ts — TBD) then three-way
- * matches against (a) our CRM-recorded transaction and (b) the exchange
- * order status to flag drift.
- *
- * Real-world wiring:
- *   - Receive feed via SFTP or email attachment (per-tenant credentials in
- *     compliance vault)
- *   - Decompress (.zip / .gz) and pipe through parseCamsFeed / parseKfintechFeed
- *   - For each canonical row, upsert transaction (idempotency key = order_id),
- *     emit 'transaction.created.<type>' or 'transaction.failed.<reason>' events
+ * What this parser refuses to guess (RTA Phase 2, Oct 2026):
+ *   - A file with no recognisable header, or without the columns a transaction
+ *     needs, is refused as a whole (RtaLayoutError). It used to fall back to
+ *     fixed column positions and import whatever happened to sit there.
+ *   - A file with no registrar transaction-number column is refused. Rows used
+ *     to be keyed "<rta>_<line number>", so line N of the next file overwrote
+ *     line N of this one.
+ *   - A row whose transaction type, direction, status, amount, units or date
+ *     cannot be read with certainty is rejected with its reason, never filled
+ *     with a default (lumpsum / inflow / successful / 0 / today).
+ *   - Reversals, rejections and cancellations are rejected, not booked: their
+ *     effect on the original transaction is not established for these files.
  */
 
-import { z } from "zod";
 import { parseCsv } from "@/lib/rta/csv";
+import { readDate, readNumber, detectDateOrder, type DateOrder } from "@/lib/rta/values";
 
 export type CanonicalTransaction = {
+  /** The registrar's own transaction number — never synthesised. */
   externalRef: string;
   pan: string;
   folioNumber: string;
@@ -35,17 +37,42 @@ export type CanonicalTransaction = {
   schemeName: string;
   type: "lumpsum" | "sip" | "stp" | "swp" | "redemption" | "switch" | "dividend_payout" | "dividend_reinvest";
   direction: "inflow" | "outflow";
+  /** Always positive; the direction carries the sign. */
   amount: number;
+  /** As the registrar wrote it (a redemption may carry negative units). */
   units: number;
-  nav: number;
+  nav: number | null;
   orderDate: string; // YYYY-MM-DD
   settlementDate?: string;
   status: "successful" | "rejected" | "failed" | "pending";
   reasonCode?: string;
   reasonDescription?: string;
+  /** 1-based line in the decoded file, for error messages. */
+  line: number;
 };
 
-const CAMS_TRANSACTION_TYPES: Record<string, CanonicalTransaction["type"]> = {
+/** A row the parser would not turn into a transaction, and why. */
+export type FeedReject = { line: number; reason: string };
+
+export type FeedParse = {
+  rows: CanonicalTransaction[];
+  rejects: FeedReject[];
+  /** Data lines seen (excluding header and blank lines). */
+  dataLines: number;
+};
+
+/** The file as a whole cannot be read safely; nothing in it is imported. */
+export class RtaLayoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RtaLayoutError";
+  }
+}
+
+type TxType = CanonicalTransaction["type"];
+
+/** Transaction-type words that name exactly one of our types. */
+const CAMS_TRANSACTION_TYPES: Record<string, TxType> = {
   PURCHASE: "lumpsum",
   ADDPURCH: "lumpsum",
   SIP: "sip",
@@ -57,71 +84,100 @@ const CAMS_TRANSACTION_TYPES: Record<string, CanonicalTransaction["type"]> = {
   DIVREINVEST: "dividend_reinvest",
 };
 
+/** Words that mark a row as undoing, refusing or cancelling a transaction. */
+const REVERSAL_RE = /REVERS|\bREV\b|REJECT|CANCEL/;
+
+export type Classification =
+  | { kind: "ok"; type: TxType }
+  | { kind: "reversal"; reason: string }
+  | { kind: "unknown"; reason: string };
+
 /**
- * Classify a transaction from the raw type code (CAMS `trxntype` like P234ES /
- * R1 / TICOB, KFin `Transaction Head` P/R/S) PLUS the human description
- * (`Transaction Description` = "Systematic Investment" / "Redemption" / …) and
- * the sub-type (SIN/FUL/ADD). Real feeds use dozens of internal codes, so we
- * classify by keyword + leading letter rather than an exhaustive table.
+ * Classify a row from the raw type code (CAMS `trxntype` such as P234ES / R1 /
+ * TICOB, KFin `Transaction Head`), the description ("Systematic Investment",
+ * "Redemption" …) and the sub-type (SIN / FUL / ADD).
+ *
+ * Only what the row SAYS is used. The rules are plain-English descriptions,
+ * SEBI's IDCW wording, the word-codes in CAMS_TRANSACTION_TYPES, and the code
+ * tokens this importer already documents from real files (TICOB / TOCOB, the
+ * SIN / FUL / ADD / NEW sub-types, R<n>). There is no default: the old
+ * "starts with P → purchase" and "anything else → lumpsum" rules are gone, and
+ * an unrecognised row is returned as `unknown` for the import to reject.
  */
-export function classifyTransactionType(
+export function classifyTransaction(
   typeRaw: string,
   descRaw = "",
-  subRaw = ""
-): CanonicalTransaction["type"] {
+  subRaw = "",
+  opts: { statusRejected?: boolean } = {}
+): Classification {
   const code = (typeRaw ?? "").toUpperCase().trim();
-  const blob = `${code} ${(descRaw ?? "").toUpperCase()} ${(subRaw ?? "").toUpperCase()}`;
-  if (CAMS_TRANSACTION_TYPES[code]) return CAMS_TRANSACTION_TYPES[code];
-  if (/\bSWP\b|SYSTEMATIC WITHDRAW/.test(blob)) return "swp";
-  if (/\bSTP\b|SYSTEMATIC TRANSFER/.test(blob)) return "stp";
-  if (/SWITCH|TICOB|TOCOB|\bSWI\b|\bSWO\b|\bSW\b/.test(blob)) return "switch";
-  if (/DIV.*(REINV|RIN)|REINVEST/.test(blob)) return "dividend_reinvest";
-  if (/DIV.*(PAYOUT|PAID)|DIVIDEND/.test(blob)) return "dividend_payout";
-  if (/REDEM|REPURCH|\bFUL\b|\bRED\b|^R\d|^R$/.test(blob)) return "redemption";
-  if (/SIP|SYSTEMATIC|INSTAL|\bSIN\b/.test(blob)) return "sip";
-  if (/PURCH|SUBSCR|\bADD\b|\bNEW\b|^P/.test(blob)) return "lumpsum";
-  return "lumpsum";
+  const blob = [code, (descRaw ?? "").toUpperCase().trim(), (subRaw ?? "").toUpperCase().trim()]
+    .filter(Boolean)
+    .join(" ");
+  const shown = [typeRaw, descRaw, subRaw].map((s) => (s ?? "").trim()).filter(Boolean).join(" / ") || "(blank)";
+
+  // A row the status column already marks rejected / failed is stored as that
+  // (it never counts as holdings), so its "rejection" wording is expected; a
+  // reversal or cancellation is held back either way.
+  const reversal = opts.statusRejected ? /REVERS|\bREV\b|CANCEL/ : REVERSAL_RE;
+  if (reversal.test(blob)) {
+    return { kind: "reversal", reason: `transaction "${shown}" is a reversal / rejection / cancellation — not applied (its effect on the original transaction is not verified for this file)` };
+  }
+  if (CAMS_TRANSACTION_TYPES[code]) return { kind: "ok", type: CAMS_TRANSACTION_TYPES[code] };
+
+  // Classify on the wording WITHOUT the rejection words, so "SIP Rejection"
+  // on a rejected row still reads as a SIP.
+  const words = opts.statusRejected ? blob.replace(/REJECT\w*/g, " ") : blob;
+  const t = ((): TxType | null => {
+    if (/\bSWP\b|SYSTEMATIC WITHDRAW/.test(words)) return "swp";
+    if (/\bSTP\b|SYSTEMATIC TRANSFER/.test(words)) return "stp";
+    if (/SWITCH|\bTICOB\b|\bTOCOB\b|\bSWI\b|\bSWO\b/.test(words)) return "switch";
+    if (/(?:DIV|IDCW).*(?:REINV|\bRIN\b)/.test(words)) return "dividend_reinvest";
+    if (/(?:DIV|IDCW).*(?:PAYOUT|PAID)/.test(words)) return "dividend_payout";
+    if (/REDEM|REPURCH|\bFUL\b|\bRED\b|^R\d+\b/.test(words)) return "redemption";
+    if (/\bSIP\b|SYSTEMATIC INVEST|INSTAL|\bSIN\b/.test(words)) return "sip";
+    if (/PURCH|SUBSCR|\bADD\b|\bNEW\b/.test(words)) return "lumpsum";
+    return null;
+  })();
+  if (t) return { kind: "ok", type: t };
+  return { kind: "unknown", reason: `transaction type "${shown}" is not one this importer recognises — row held back, not guessed` };
 }
 
 /**
- * Which way the money moved.
+ * The old one-word API, kept for callers that only need a type. Throws on a
+ * row the classifier will not name; use classifyTransaction to get the reason.
+ */
+export function classifyTransactionType(typeRaw: string, descRaw = "", subRaw = ""): TxType {
+  const c = classifyTransaction(typeRaw, descRaw, subRaw);
+  if (c.kind !== "ok") throw new Error(c.reason);
+  return c.type;
+}
+
+/**
+ * Which way the money moved, or null when the row does not say.
  *
- * `classifyTransactionType` deliberately collapses both legs of a switch into
- * one type — TICOB (switch IN) and TOCOB (switch OUT) are both "switch", and
- * likewise for STP. Deriving direction from that collapsed type therefore made
- * EVERY switch and STP an inflow, so money leaving a scheme was counted as new
- * money entering the book. Measured on VSN Financial Services: 1,666 switch
- * rows, every one of them an inflow, none an outflow — Rs 39.56 Cr of movement
- * booked as fresh investment, which is why Total Investment sat above AUM.
- *
- * So read the raw registrar code, which still distinguishes the legs, and fall
- * back to the collapsed type only when it says nothing either way.
+ * Both legs of a switch / STP collapse to one type, so the leg is read from
+ * the raw code and description (TOCOB / SWO / "SWITCH OUT" vs TICOB / SWI /
+ * "SWITCH IN"). A switch or STP row that names no leg used to default to
+ * inflow — a coin flip that also moved units in valuation. It now returns null
+ * and the row is rejected.
  */
 export function directionFor(
-  ourType: CanonicalTransaction["type"],
+  ourType: TxType,
   typeRaw: string,
   descRaw = "",
   subRaw = ""
-): "inflow" | "outflow" {
+): "inflow" | "outflow" | null {
   const blob = `${(typeRaw ?? "").toUpperCase()} ${(descRaw ?? "").toUpperCase()} ${(subRaw ?? "").toUpperCase()}`;
+  const out = /\bTOCOB\b|\bSWO\b|SWITCH[\s_-]*OUT|STP[\s_-]*OUT|TRANSFER[\s_-]*OUT|\bOUT\b/.test(blob);
+  const inn = /\bTICOB\b|\bSWI\b|SWITCH[\s_-]*IN\b|STP[\s_-]*IN\b|TRANSFER[\s_-]*IN\b|\bIN\b/.test(blob);
 
-  // Explicit out-leg markers. TOCOB = "transfer out of common order book";
-  // SWO / "SWITCH OUT" / "STP OUT" are the plain-language equivalents.
-  if (/\bTOCOB\b|\bSWO\b|SWITCH[\s_-]*OUT|STP[\s_-]*OUT|TRANSFER[\s_-]*OUT|\bOUT\b/.test(blob)) return "outflow";
-  // Explicit in-leg markers.
-  if (/\bTICOB\b|\bSWI\b|SWITCH[\s_-]*IN|STP[\s_-]*IN|TRANSFER[\s_-]*IN|\bIN\b/.test(blob)) return "inflow";
-
-  // Unambiguous by type alone.
+  if (ourType === "switch" || ourType === "stp") {
+    if (out && !inn) return "outflow";
+    if (inn && !out) return "inflow";
+    return null;
+  }
   if (ourType === "redemption" || ourType === "swp" || ourType === "dividend_payout") return "outflow";
-
-  // A switch or STP leg we cannot identify keeps the historical reading. Not
-  // because it is right — it is a coin flip — but because `direction` also
-  // drives unit netting in valuation (inflow adds units, outflow subtracts), so
-  // flipping it on a guess would move holdings as well as the investment total,
-  // in a direction nothing here has verified. The money-in figure is corrected
-  // where it is actually computed instead: GROSS_TYPES in lib/metrics/business.ts
-  // excludes switches and STPs from gross investment outright, since neither is
-  // ever new money whichever leg it is.
   return "inflow";
 }
 
@@ -146,10 +202,6 @@ function looksLikeFeedHeader(line: string): boolean {
   return hasKey && hasScheme;
 }
 
-/**
- * Parse a CAMS distributor feed (pipe-delimited).
- * Spec subset — real file has 40+ fields; we extract the ones we need.
- */
 /**
  * Column aliases per canonical field.
  *
@@ -192,22 +244,6 @@ export const HEADER_ALIASES: Record<string, string[]> = {
   reasonCode: ["REASON_CODE", "REJ_CODE", "REJECT_CODE", "REASON CODE", "REJ CODE", "REJ_REASON", "REJ REASON", "ORDER REMARK", "REMARKS", "NCTREMARKS"],
 };
 
-export const DEFAULT_CAMS_MAP: Record<string, number> = {
-  amcCode: 0,
-  folioNumber: 1,
-  pan: 2,
-  schemeCode: 4,
-  schemeName: 5,
-  type: 6,
-  orderDate: 7,
-  amount: 8,
-  units: 9,
-  nav: 10,
-  externalRef: 11,
-  status: 12,
-  reasonCode: 13,
-};
-
 export function buildHeaderIndexMap(headerRow: string[], aliases = HEADER_ALIASES): Record<string, number> {
   const map: Record<string, number> = {};
   const normalizedHeaders = headerRow.map(h => h.trim().toUpperCase().replace(/[^A-Z0-9]/g, ""));
@@ -222,178 +258,221 @@ export function buildHeaderIndexMap(headerRow: string[], aliases = HEADER_ALIASE
   return map;
 }
 
-function normaliseFeedStatus(s: string): CanonicalTransaction["status"] {
-  const u = (s ?? "").toUpperCase().trim();
-  if (["ALLOTTED", "SUCCESS", "SUCCESSFUL", "Y", "YES", "PROCESSED", "CONFIRMED"].includes(u)) return "successful";
-  if (["REJECTED", "AUTO REJECTED", "REJECT"].includes(u)) return "rejected";
-  if (["FAILED", "FAILURE", "BOUNCE", "BOUNCED"].includes(u)) return "failed";
-  if (["PENDING", "N", "INITIATED", "AWAITED"].includes(u)) return "pending";
-  return "successful"; // a posted reverse-feed row is, by definition, processed
+
+/** How far into the file to look for the header (registrar title rows sit above it). */
+const HEADER_SCAN_LINES = 10;
+
+/** Columns a transaction cannot be built without. */
+const REQUIRED: Array<{ field: string; label: string }> = [
+  { field: "folioNumber", label: "folio number" },
+  { field: "orderDate", label: "transaction date" },
+  { field: "amount", label: "amount" },
+  { field: "units", label: "units" },
+  { field: "externalRef", label: "registrar transaction number" },
+];
+
+const STATUS_OK = ["ALLOTTED", "SUCCESS", "SUCCESSFUL", "Y", "YES", "PROCESSED", "CONFIRMED"];
+const STATUS_REJECTED = ["REJECTED", "AUTO REJECTED", "REJECT"];
+const STATUS_FAILED = ["FAILED", "FAILURE", "BOUNCE", "BOUNCED"];
+const STATUS_PENDING = ["PENDING", "N", "INITIATED", "AWAITED"];
+
+/**
+ * A row's status. A file with no status column is a ledger of posted
+ * transactions, so its rows are successful; so is a blank cell in one. Any
+ * other value this importer does not know — REVERSED, CANCELLED, a bare
+ * letter — is not assumed to be a success.
+ */
+function readStatus(raw: string, hasColumn: boolean): { status: CanonicalTransaction["status"] } | { reason: string } {
+  const u = (raw ?? "").toUpperCase().trim();
+  if (!hasColumn || !u) return { status: "successful" };
+  if (STATUS_OK.includes(u)) return { status: "successful" };
+  if (STATUS_REJECTED.includes(u)) return { status: "rejected" };
+  if (STATUS_FAILED.includes(u)) return { status: "failed" };
+  if (STATUS_PENDING.includes(u)) return { status: "pending" };
+  if (/REVERS|CANCEL/.test(u)) return { reason: `status "${raw.trim()}" — a reversal / cancellation is not applied (its effect is not verified for this file)` };
+  return { reason: `status "${raw.trim()}" is not one this importer recognises — row held back, not assumed successful` };
 }
 
 /**
- * Unified reverse-feed parser. The decoder normalises every upload (CAMS xls,
- * KFin csv/xlsx, etc.) to pipe-delimited text, so we auto-detect the delimiter
- * (pipe / comma / tab), find the header row, build a column map from the
- * (greatly expanded) alias table, and classify each row by code + description.
- * PAN may be absent (folio-keyed feeds) — the processor resolves by folio then.
+ * Parse a decoded transaction feed (pipe / comma / tab delimited).
+ *
+ * Throws RtaLayoutError when the file as a whole cannot be read safely (no
+ * header, a required column missing). Otherwise returns the rows it could read
+ * with certainty plus a reason for every row it would not import.
  */
-export function parseReverseFeed(text: string, refPrefix = "feed"): CanonicalTransaction[] {
-  const rows: CanonicalTransaction[] = [];
+export function parseReverseFeed(text: string): FeedParse {
   const lines = text.split(/\r?\n/);
-  if (!lines.length) return rows;
+  const firstNonBlank = lines.find((l) => l.trim() !== "") ?? "";
+  if (!firstNonBlank) return { rows: [], rejects: [], dataLines: 0 };
 
-  const delim = detectDelimiter(lines.find((l) => l.trim() !== "") ?? "");
-  const split = (line: string) => (delim === "," ? parseCsvRow(line) : line.split(delim));
+  // The delimiter is read from the HEADER line: a title row above it ("TRANSACTION
+  // REPORT") has none to detect.
+  let delim = detectDelimiter(firstNonBlank);
+  const splitWith = (d: string, line: string) => (d === "," ? parseCsvRow(line) : line.split(d));
+  const split = (line: string) => splitWith(delim, line);
 
-  let dataStart = 0;
-  let indexMap: Record<string, number> = DEFAULT_CAMS_MAP;
-  if (looksLikeFeedHeader(lines[0] ?? "")) {
-    dataStart = 1;
-    indexMap = buildHeaderIndexMap(split(lines[0]));
-    // A file whose only scheme column is `SCHEME` (some CAMS layouts put the
-    // name there) still gets a name — but only once the precise aliases failed.
-    if (indexMap.schemeName === undefined) {
-      const generic = buildHeaderIndexMap(split(lines[0]), { schemeName: ["SCHEME"] });
-      if (generic.schemeName !== undefined && generic.schemeName !== indexMap.schemeCode) indexMap.schemeName = generic.schemeName;
-    }
-    // If alias matching found nothing useful, fall back to positional defaults.
-    if (indexMap.folioNumber === undefined && indexMap.pan === undefined) {
-      indexMap = { ...DEFAULT_CAMS_MAP, ...indexMap };
+  let headerAt = -1;
+  for (let i = 0; i < Math.min(HEADER_SCAN_LINES, lines.length); i++) {
+    const line = lines[i] ?? "";
+    if (!line.trim()) continue;
+    // A header names a folio/PAN column and a scheme column — by the same
+    // aliases the columns are then mapped with (the keyword sniff alone missed
+    // spellings such as SCH_CODE that the alias table already knew).
+    const d = detectDelimiter(line);
+    const m = buildHeaderIndexMap(splitWith(d, line));
+    const byAlias = (m.folioNumber !== undefined || m.pan !== undefined) && (m.schemeCode !== undefined || m.schemeName !== undefined);
+    if (byAlias || looksLikeFeedHeader(line)) {
+      headerAt = i;
+      delim = d;
+      break;
     }
   }
+  if (headerAt < 0) {
+    const shown = split(firstNonBlank).slice(0, 8).map((c) => c.trim()).join(", ");
+    throw new RtaLayoutError(
+      `Unrecognised transaction-feed layout — no header row with a folio/PAN column and a scheme column in the first ${HEADER_SCAN_LINES} lines. ` +
+        `The file was not imported (it is no longer read by fixed column positions). First line: ${shown.slice(0, 200)}`
+    );
+  }
+
+  const header = split(lines[headerAt]);
+  const indexMap = buildHeaderIndexMap(header);
+  // A file whose only scheme column is `SCHEME` (some CAMS layouts put the
+  // name there) still gets a name — but only once the precise aliases failed.
+  if (indexMap.schemeName === undefined) {
+    const generic = buildHeaderIndexMap(header, { schemeName: ["SCHEME"] });
+    if (generic.schemeName !== undefined && generic.schemeName !== indexMap.schemeCode) indexMap.schemeName = generic.schemeName;
+  }
+
+  const missing = REQUIRED.filter((r) => indexMap[r.field] === undefined).map((r) => r.label);
+  if (indexMap.schemeCode === undefined && indexMap.schemeName === undefined) missing.push("scheme code or name");
+  if (indexMap.type === undefined && indexMap.typeDesc === undefined) missing.push("transaction type or description");
+  if (missing.length) {
+    const why = missing.includes("registrar transaction number")
+      ? " Without the registrar's transaction number a row cannot be told apart from a row in another file, so nothing is imported rather than risk overwriting existing transactions."
+      : "";
+    throw new RtaLayoutError(
+      `This transaction feed is missing required column(s): ${missing.join(", ")}.${why} ` +
+        `Header read: ${header.map((h) => h.trim()).slice(0, 40).join(", ").slice(0, 400)}`
+    );
+  }
+
   const maxIdx = Math.max(0, ...Object.values(indexMap));
+  const dataStart = headerAt + 1;
 
-  // Decide D/M vs M/D ONCE for the whole file (see detectDateOrder). Bounded to
-  // the first slice of data rows so a 100k-row feed doesn't pay for a second
-  // full split — a handful of rows with a day > 12 settles it, and a file that
-  // never disambiguates keeps the D/M/Y default either way.
-  const dateIdx = indexMap.orderDate;
-  let dateOrder: DateOrder = "dmy";
-  if (dateIdx !== undefined) {
-    const samples: string[] = [];
-    for (let i = dataStart; i < lines.length && samples.length < 5000; i++) {
-      const line = lines[i];
-      if (!line || !line.trim()) continue;
-      const cols = split(line);
-      const v = cols[dateIdx];
-      if (v) samples.push(v.trim());
-    }
-    dateOrder = detectDateOrder(samples);
+  // Decide D/M vs M/D once for the file. A file that shows BOTH shapes cannot
+  // be read either way, so only its self-evident dates (a part above 12) are
+  // accepted and every ambiguous one is rejected.
+  const samples: string[] = [];
+  for (let i = dataStart; i < lines.length && samples.length < 5000; i++) {
+    const line = lines[i];
+    if (!line || !line.trim()) continue;
+    const v = split(line)[indexMap.orderDate];
+    if (v) samples.push(v.trim());
   }
+  const order = detectDateOrder(samples);
+
+  const rows: CanonicalTransaction[] = [];
+  const rejects: FeedReject[] = [];
+  let dataLines = 0;
 
   for (let i = dataStart; i < lines.length; i++) {
     const line = lines[i];
     if (!line || !line.trim()) continue;
+    dataLines++;
+    const lineNo = i + 1;
     const cols = split(line);
-    if (cols.length <= maxIdx) continue;
-    const val = (field: string) =>
-      indexMap[field] === undefined ? "" : (cols[indexMap[field]] ?? "").trim();
-
-    const ourType = classifyTransactionType(val("type"), val("typeDesc"), val("typeSub"));
-    const direction = directionFor(ourType, val("type"), val("typeDesc"), val("typeSub"));
+    if (cols.length <= maxIdx) {
+      rejects.push({ line: lineNo, reason: `row has ${cols.length} columns; the header has ${header.length} — row is truncated or mis-delimited` });
+      continue;
+    }
+    const val = (field: string) => (indexMap[field] === undefined ? "" : (cols[indexMap[field]] ?? "").trim());
+    const reject = (reason: string) => rejects.push({ line: lineNo, reason });
 
     const folioNumber = val("folioNumber");
-    const pan = val("pan");
-    if (!folioNumber && !pan) continue; // unusable row
+    if (!folioNumber) { reject("row carries no folio number — a transaction cannot be attached without one"); continue; }
+    const externalRef = val("externalRef");
+    if (!externalRef) { reject("row carries no registrar transaction number — it cannot be identified safely"); continue; }
+
+    const st = readStatus(val("status"), indexMap.status !== undefined);
+    if ("reason" in st) { reject(st.reason); continue; }
+    const statusRejected = st.status === "rejected" || st.status === "failed";
+
+    const cls = classifyTransaction(val("type"), val("typeDesc"), val("typeSub"), { statusRejected });
+    if (cls.kind !== "ok") { reject(cls.reason); continue; }
+    const direction = directionFor(cls.type, val("type"), val("typeDesc"), val("typeSub"));
+    if (!direction) { reject(`${cls.type === "stp" ? "STP" : "switch"} row does not say whether it is the IN or the OUT leg — not guessed`); continue; }
+
+    const date = readOrderDate(val("orderDate"), order);
+    if (!date.ok) { reject(`transaction date ${date.reason}`); continue; }
+
+    const amount = readNumber(val("amount"));
+    if (!amount.ok) { reject(`amount ${amount.reason}`); continue; }
+    if (amount.value === null) { reject("amount is blank"); continue; }
+    const units = readNumber(val("units"));
+    if (!units.ok) { reject(`units ${units.reason}`); continue; }
+    // A dividend PAYOUT moves money, not units, so its units cell may be empty.
+    if (units.value === null && cls.type !== "dividend_payout") { reject("units are blank"); continue; }
+    const nav = readNumber(val("nav"));
+    if (!nav.ok) { reject(`NAV ${nav.reason}`); continue; }
+
+    // A negative figure on a money-in row is what a reversal looks like in
+    // some layouts; it is not assumed to be one. On a money-out row a negative
+    // amount or units is the same outflow written with a sign.
+    const unitsValue = units.value ?? 0;
+    if (direction === "inflow" && (amount.value < 0 || unitsValue < 0)) {
+      reject(`negative ${amount.value < 0 ? "amount" : "units"} on a ${cls.type} (money-in) row — could be a reversal; not applied`);
+      continue;
+    }
 
     rows.push({
-      externalRef: val("externalRef") || `${refPrefix}_${i}`,
-      pan,
+      externalRef,
+      pan: val("pan"),
       folioNumber,
       investorName: val("investorName") || undefined,
       amcCode: val("amcCode"),
       schemeCode: val("schemeCode"),
       schemeName: val("schemeName"),
-      type: ourType,
+      type: cls.type,
       direction,
-      amount: Math.abs(parseFloat(val("amount").replace(/[, ]/g, "")) || 0),
-      units: parseFloat(val("units").replace(/[, ]/g, "")) || 0,
-      nav: parseFloat(val("nav").replace(/[, ]/g, "")) || 0,
-      orderDate: normalizeDate(val("orderDate"), dateOrder),
-      status: normaliseFeedStatus(val("status")),
+      amount: Math.abs(amount.value),
+      units: unitsValue,
+      nav: nav.value,
+      orderDate: date.value,
+      status: st.status,
       reasonCode: val("reasonCode") || undefined,
+      line: lineNo,
     });
   }
-  return rows;
+  return { rows, rejects, dataLines };
 }
 
-/** CAMS distributor feed — kept for the existing call sites. */
-export function parseCamsFeed(text: string): CanonicalTransaction[] {
-  return parseReverseFeed(text, "cams");
+/** The order date under the file's order; a mixed-order file accepts only self-evident dates. */
+function readOrderDate(raw: string, order: DateOrder | "conflict"): { ok: true; value: string } | { ok: false; reason: string } {
+  if (!raw) return { ok: false, reason: "is blank" };
+  let use: DateOrder = order === "conflict" ? "dmy" : order;
+  if (order === "conflict") {
+    const m = raw.match(/^(\d{1,2})[-/.](\d{1,2})[-/.]\d{4}/);
+    if (m) {
+      if (+m[1] > 12) use = "dmy";
+      else if (+m[2] > 12) use = "mdy";
+      else return { ok: false, reason: `"${raw}" is ambiguous — this file writes dates both day-first and month-first` };
+    }
+  }
+  const r = readDate(raw, use);
+  if (!r.ok) return { ok: false, reason: r.reason };
+  if (r.value === null) return { ok: false, reason: "is blank" };
+  return { ok: true, value: r.value };
+}
+
+/** CAMS distributor feed. */
+export function parseCamsFeed(text: string): FeedParse {
+  return parseReverseFeed(text);
 }
 
 /** KFintech distributor feed — same unified path (delimiter auto-detected). */
-export function parseKfintechFeed(text: string): CanonicalTransaction[] {
-  return parseReverseFeed(text, "kfin");
-}
-
-const MONTHS: Record<string, string> = {
-  JAN: "01", FEB: "02", MAR: "03", APR: "04", MAY: "05", JUN: "06",
-  JUL: "07", AUG: "08", SEP: "09", OCT: "10", NOV: "11", DEC: "12",
-};
-
-/**
- * Which way round a file writes numeric dates.
- *
- * Indian RTA feeds are D/M/Y by default, but CAMS's "CSVWH" mailback emits
- * US-style M/D/Y — and the two are indistinguishable row by row whenever both
- * components are <= 12. Deciding per ROW (the old behaviour) got the
- * unambiguous rows right and silently shifted the ambiguous ones by months: a
- * real WBR2 sample parsed 112/232 rows correctly and misdated the other 120.
- * A file is written one way throughout, so decide ONCE from the whole column and
- * apply it uniformly.
- */
-export type DateOrder = "dmy" | "mdy";
-
-/**
- * Infer the date order from a file's date column. A component > 12 can only be
- * a day, so it pins the layout; if nothing in the sample disambiguates we keep
- * the Indian D/M/Y default. Bounded — a few hundred rows settle it in practice.
- */
-export function detectDateOrder(samples: Iterable<string | undefined>): DateOrder {
-  let dayFirst = 0;
-  let monthFirst = 0;
-  for (const raw of samples) {
-    const m = (raw ?? "").trim().match(/^(\d{1,2})[-/](\d{1,2})[-/]\d{4}/);
-    if (!m) continue;
-    if (+m[1] > 12) dayFirst++;
-    if (+m[2] > 12) monthFirst++;
-  }
-  return monthFirst > dayFirst ? "mdy" : "dmy";
-}
-
-function normalizeDate(d: string | undefined, order: DateOrder = "dmy"): string {
-  if (!d) return new Date().toISOString().slice(0, 10);
-  const s = d.trim();
-  // ISO (decoder already emits this for spreadsheet date cells).
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-  // Bare YYYYMMDD — how a dBASE `D` field reads when it reaches us as raw text
-  // rather than a parsed date cell (KFintech MFSD307 `TD_TRDT`).
-  const ymd = s.match(/^(\d{4})(\d{2})(\d{2})$/);
-  if (ymd && +ymd[2] >= 1 && +ymd[2] <= 12 && +ymd[3] >= 1 && +ymd[3] <= 31) {
-    return `${ymd[1]}-${ymd[2]}-${ymd[3]}`;
-  }
-  // DD-MM-YYYY / DD/MM/YYYY, or MM/DD/YYYY when `order` says so (with optional
-  // time after). The file-level `order` decides; the per-row guard below only
-  // salvages a row that contradicts it (an impossible month can only be a day),
-  // so one malformed row can't drag the rest of the file with it.
-  const dmy = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
-  if (dmy) {
-    const a = parseInt(dmy[1], 10);
-    const b = parseInt(dmy[2], 10);
-    let day = order === "mdy" ? b : a;
-    let mon = order === "mdy" ? a : b;
-    if (mon > 12 && day <= 12) [day, mon] = [mon, day];
-    return `${dmy[3]}-${String(mon).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-  }
-  // DD-MON-YYYY (e.g. 31-May-2026).
-  const dmon = s.match(/^(\d{1,2})[-\/ ]([A-Za-z]{3})[A-Za-z]*[-\/ ](\d{4})/);
-  if (dmon) {
-    const mm = MONTHS[dmon[2].toUpperCase()];
-    if (mm) return `${dmon[3]}-${mm}-${dmon[1].padStart(2, "0")}`;
-  }
-  return s;
+export function parseKfintechFeed(text: string): FeedParse {
+  return parseReverseFeed(text);
 }
 
 /**
@@ -403,17 +482,10 @@ function normalizeDate(d: string | undefined, order: DateOrder = "dmy"): string 
  * quote characters. CAMS's "CSVWH" mailback format wraps every text field in
  * SINGLE quotes:
  *   'AMC_CODE','FOLIO_NO','PRODCODE','SCHEME',…
- *   'H','5904386/12','H02','HDFC Flexi Cap Fund - Regular Plan - Growth',…
+ *   'X','1234567/89','X01','Example Scheme - Growth',…
  * The local splitter this replaced only understood double quotes, so every
- * value kept its apostrophes: pan `'AJNPB9093L'` matched no investor, and
- * order_date `'6/10/2011  12:00:00 AM'` failed its `::date` cast — which aborts
- * the surrounding Postgres transaction and takes the whole import down with it.
- * The header still mapped correctly (header normalisation strips
- * non-alphanumerics), so the file looked like it parsed while every row was
- * unusable — the worst failure shape to diagnose from the outside.
- *
- * `parseCsv` opens a quote only at field start, so an apostrophe inside an
- * unquoted name (O'Brien) stays literal.
+ * value kept its apostrophes. `parseCsv` opens a quote only at field start, so
+ * an apostrophe inside an unquoted name (O'Brien) stays literal.
  */
 function parseCsvRow(line: string): string[] {
   return parseCsv(line)[0] ?? [];

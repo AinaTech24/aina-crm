@@ -89,18 +89,23 @@ eq(classifyTransactionType("", "Redemption", "FUL"), "redemption", "Redemption d
 eq(classifyTransactionType("PURCHASE"), "lumpsum", "PURCHASE → lumpsum");
 {
   const feed = [
-    "folio_no|pan|scheme_code|trxn_type|trxn_nature|amount|units|post_date",
-    "12345|ABCDE1234F|251G|P234ES|Systematic Investment|4999.75|13.4|15/05/2026",
-    "67890|FGHIJ5678K|296G|R1|Redemption|10000|100|03/15/2026", // MM/DD → must swap
+    "folio_no|pan|scheme_code|trxn_type|trxn_nature|amount|units|post_date|trxnno",
+    "12345|ABCPE1234F|251G|P234ES|Systematic Investment|4999.75|13.4|15/05/2026|T1",
+    "67890|FGHPJ5678K|296G|R1|Redemption|10000|100|03/15/2026|T2", // M/D in a D/M file — self-evident, read as such
+    "67890|FGHPJ5678K|296G|ZZ9|Mystery|10|1|04/05/2026|T3", // unknown code — held back, never guessed
   ].join("\n");
-  const rows = parseReverseFeed(feed, "test");
+  const { rows, rejects } = parseReverseFeed(feed);
   eq(rows.length, 2, "two rows parsed");
   eq(rows[0]?.folioNumber, "12345", "folio extracted");
   eq(rows[0]?.amount, 4999.75, "amount extracted");
   eq(rows[0]?.type, "sip", "type classified");
   eq(rows[0]?.orderDate, "2026-05-15", "DD/MM date normalized");
-  eq(rows[1]?.orderDate, "2026-03-15", "MM/DD date swapped correctly");
+  eq(rows[1]?.orderDate, "2026-03-15", "self-evident MM/DD date read correctly");
   eq(rows[1]?.type, "redemption", "redemption classified");
+  eq(rejects.length, 1, "unknown transaction code rejected, not booked as a purchase");
+  let threw = false;
+  try { parseReverseFeed("folio_no|scheme_code|trxn_type|amount|units|post_date\n1|S|PURCHASE|1|1|01/01/2026"); } catch { threw = true; }
+  eq(threw, true, "a feed with no registrar transaction-number column is refused");
 }
 
 // ── Realized-gains: switch-in must be a BUY, not a sell ─────────────────────

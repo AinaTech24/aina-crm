@@ -22,6 +22,8 @@ import {
   parseKfintechFeed,
   type CanonicalTransaction,
 } from "@/lib/integrations/cams-feed-parser";
+import { InvestorDirectory, nopanFolioKey, type Resolution } from "./identity";
+import { maskPansInText, maskPanValue, validPan } from "./values";
 import type { RtaFileKind, RtaSource } from "@/db/schema/rta_imports";
 import { refreshActiveSipAmount } from "@/lib/metrics/sip";
 import { markSystematicTransfers, NOT_A_SIP_REMARK } from "@/lib/finance/sip-lifecycle";
@@ -39,45 +41,6 @@ import {
   type CanonicalMandateRow,
   type CanonicalAumRow,
 } from "./parsers";
-
-/**
- * Resolve an investor by PAN first, then by an existing folio number. Most RTA
- * reverse-feeds (transaction, AUM, redemption, brokerage) are FOLIO-keyed and
- * carry no PAN column — without this fallback every row would skip. The folio
- * must already exist (created by an Investor/Folio Master import or an earlier
- * feed), which is why masters should be imported before transaction feeds.
- */
-async function resolveInvestorId(
-  tx: Tx,
-  tenantId: string,
-  key: { pan?: string; folioNumber?: string }
-): Promise<string | null> {
-  if (key.pan && key.pan.trim()) {
-    const r = await tx.execute(sql`
-      SELECT id FROM investors WHERE tenant_id = ${tenantId}::uuid AND pan = ${key.pan.toUpperCase()} LIMIT 1
-    `);
-    const id = (r.rows[0] as any)?.id;
-    if (id) return id;
-  }
-  if (key.folioNumber && key.folioNumber.trim()) {
-    const r = await tx.execute(sql`
-      SELECT investor_id FROM folios WHERE tenant_id = ${tenantId}::uuid AND folio_number = ${key.folioNumber} LIMIT 1
-    `);
-    const id = (r.rows[0] as any)?.investor_id;
-    if (id) return id;
-  }
-  return null;
-}
-
-/**
- * A PAN we are willing to key a new investor on: the exact SEBI/IT format
- * AAAAA9999A. Deliberately strict — a provisional client created from a
- * malformed value could never be matched by the folio master later, which is
- * exactly the duplicate this guard exists to prevent.
- */
-function isLikelyPan(pan?: string): boolean {
-  return !!pan && /^[A-Z]{5}[0-9]{4}[A-Z]$/i.test(pan.trim());
-}
 
 /** Registrar names arrive padded, upper-cased and sometimes NUL-laden. */
 function sanitizeName(name?: string): string | null {
@@ -103,55 +66,6 @@ export function splitRepresentedBy(raw?: string): { name: string | null; guardia
   return name && guardian ? { name, guardian, isMinor: true } : { name: s, guardian: null, isMinor: false };
 }
 
-/**
- * Deterministic key for a client we can see but have no PAN for.
- *
- * Mirrors the rich importer's `NOPAN:N<slug>` (src/lib/rta/import.ts) ON
- * PURPOSE: keyed the same way, a PAN-less client stood up from a feed and one
- * stood up from a folio master converge on one row instead of two.
- *
- * The folio is only the fallback. Keying on it directly — as the first cut of
- * this did — gives one client PER FOLIO, so a person holding three folios
- * became three clients ("KAVYAAN GOEL REP BY GAURAV GOEL" x3 in the client
- * list). The name is the identity; the folio is just where the money sits.
- */
-function nopanKeyFor(name: string | null, folioNumber: string): string {
-  const slug = (name ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-  return slug ? `NOPAN:N${slug}` : `NOPAN:FOLIO:${folioNumber}`;
-}
-
-/**
- * Bulk-resolve every investor referenced by a feed in TWO queries (by PAN, by
- * existing folio) instead of 1–2 queries per row. Returns lookup maps the row
- * loop consults in memory — the key fix for the per-row N+1 that made large
- * imports time out. `pan = ANY($1::text[])` binds the JS array as a single
- * Postgres array param (the correct pattern; never an `IN (...)` tuple).
- */
-async function buildInvestorIndex(
-  tx: Tx,
-  tenantId: string,
-  keys: Array<{ pan?: string; folioNumber?: string }>
-): Promise<{ panMap: Map<string, string>; folioMap: Map<string, string> }> {
-  const pans = [...new Set(keys.map((k) => k.pan?.toUpperCase()).filter(Boolean))] as string[];
-  const folios = [...new Set(keys.map((k) => k.folioNumber).filter(Boolean))] as string[];
-  const panMap = new Map<string, string>();
-  const folioMap = new Map<string, string>();
-
-  if (pans.length) {
-    const res = await tx.execute(sql`
-      SELECT id, pan FROM investors WHERE tenant_id = ${tenantId}::uuid AND pan IN (${sql.join(pans.map((p) => sql`${p}`), sql`, `)})
-    `);
-    for (const row of res.rows as any[]) if (row.pan) panMap.set(String(row.pan).toUpperCase(), row.id);
-  }
-  if (folios.length) {
-    const res = await tx.execute(sql`
-      SELECT investor_id, folio_number FROM folios WHERE tenant_id = ${tenantId}::uuid AND folio_number IN (${sql.join(folios.map((f) => sql`${f}`), sql`, `)})
-    `);
-    for (const row of res.rows as any[]) if (!folioMap.has(row.folio_number)) folioMap.set(row.folio_number, row.investor_id);
-  }
-  return { panMap, folioMap };
-}
-
 export type ProcessOutcome = {
   rowsTotal: number;
   rowsImported: number;
@@ -161,6 +75,23 @@ export type ProcessOutcome = {
   periodStart: string;
   periodEnd: string;
 };
+
+/**
+ * Seed an outcome with the parser's rejects: each is a skipped row with its
+ * reason, so a row the parser would not read is counted and shown, never lost.
+ */
+function startOutcome(parsed: { rows: unknown[]; rejects: Array<{ line: number; reason: string }>; notes?: string[] }) {
+  const errors: Array<{ row: number; reason: string }> = parsed.rejects.map((r) => ({ row: r.line, reason: r.reason }));
+  for (const n of parsed.notes ?? []) errors.push({ row: 0, reason: n });
+  return { errors, counts: { skipped: parsed.rejects.length, rejected: parsed.rejects.length } };
+}
+
+/** Why a row could not be attached to a client (PAN masked later, centrally). */
+function notAttached(res: Resolution, pan?: string | null, folio?: string | null): string {
+  const who = [folio ? `folio ${folio}` : null, validPan(pan) ? `PAN ${validPan(pan)}` : null].filter(Boolean).join(" / ") || "row";
+  if (res.kind === "blocked" || res.kind === "ambiguous") return `${who}: ${res.reason}`;
+  return `${who} not in client master`;
+}
 
 /**
  * Top-level entry point. Dispatches by file kind.
@@ -209,189 +140,194 @@ async function processTransactionFeed(
   tx: Tx,
   args: { tenantId: string; source: RtaSource; text: string }
 ): Promise<ProcessOutcome> {
-  const rows: CanonicalTransaction[] =
-    args.source === "kfintech"
-      ? parseKfintechFeed(args.text)
-      : parseCamsFeed(args.text);
+  // Throws RtaLayoutError for a file that cannot be read safely as a whole
+  // (no header, a required column missing — including the registrar's
+  // transaction number). The worker records that as a failed import.
+  const parsed = args.source === "kfintech" ? parseKfintechFeed(args.text) : parseCamsFeed(args.text);
+  const rows: CanonicalTransaction[] = parsed.rows;
 
   const errors: Array<{ row: number; reason: string }> = [];
+  const fail = (line: number, reason: string) => errors.push({ row: line, reason: maskPansInText(reason) });
   let imported = 0;
   let skipped = 0;
   let failed = 0;
-  /** Clients stood up from the feed because their folio master hasn't arrived. */
-  let createdInvestors = 0;
   let minDate = "9999-12-31";
   let maxDate = "0000-01-01";
   // Newest processed order_date per investor → bump last_transaction_at so
   // dormancy / health / churn reflect the freshly-ingested feed.
   const lastTxByInvestor = new Map<string, string>();
 
-  // Large feeds can have 100k+ rows. A per-row investor lookup (the old N+1)
-  // plus the 30s pool statement_timeout made big imports abort + roll back.
-  //   1. Lift the timeout for THIS import transaction only.
-  //   2. Resolve every investor up front in two bulk queries (by PAN, by folio)
-  //      into in-memory maps — the loop then does zero resolution round-trips.
-  const { panMap, folioMap } = await buildInvestorIndex(
-    tx,
-    args.tenantId,
-    rows.map((r) => ({ pan: r.pan, folioNumber: r.folioNumber }))
-  );
-  const resolveFast = (pan?: string, folio?: string): string | null =>
-    (pan && panMap.get(pan.toUpperCase())) || (folio && folioMap.get(folio)) || null;
+  for (const r of parsed.rejects) {
+    skipped++;
+    fail(r.line, r.reason);
+  }
 
-  /**
-   * (amc_code, folio_number) -> folios.id, resolved at most ONCE per folio.
-   *
-   * These feeds carry many rows per folio — a since-inception CAMS WBR2 for one
-   * firm was 512,916 rows over a few thousand folios — and this loop used to run
-   * an `INSERT ... ON CONFLICT ... RETURNING id` for every single row. That is a
-   * round-trip per row on top of the transaction insert and the per-row
-   * SAVEPOINT, which is why one file took hours and blocked every other firm's
-   * imports behind it.
-   *
-   * Caching changes one thing: `updated_at` on an existing folio is now bumped
-   * once per import rather than once per row. Nothing reads it at row
-   * granularity, and the folio's real freshness is its valuation, not this.
-   */
-  const folioIdCache = new Map<string, string>();
+  // Everything the rows can touch, loaded once in chunked bulk queries.
+  const dir = new InvestorDirectory(tx, args.tenantId);
+  await dir.preload({
+    pans: rows.map((r) => r.pan),
+    folios: rows.map((r) => r.folioNumber),
+    nopanKeys: [...new Set(rows.map((r) => nopanFolioKey(r.folioNumber)))],
+  });
 
-  for (let i = 0; i < rows.length; i++) {
-    const r = rows[i];
-    if (!r.folioNumber) {
-      // Record the reason. A bare counter left "partial · 162 skip" with an
-      // empty errors array, which is unactionable — the same silence that hid
-      // the SIP-register PAN gap.
+  /** (amc_code, folio_number) → folio id + its owner, resolved once per folio. */
+  const folioCache = new Map<string, { id: string; investorId: string }>();
+  const rtaEnumVal = args.source === "cams" || args.source === "kfintech" ? args.source : "other";
+
+  for (const r of rows) {
+    // ── Who is this row's client? ─────────────────────────────────────────
+    const pan = validPan(r.pan);
+    let res = await dir.resolve({ pan, folioNumber: r.folioNumber, amcCode: r.amcCode });
+
+    if (res.kind === "blocked" || res.kind === "ambiguous") {
       skipped++;
-      {
-        errors.push({ row: i + 1, reason: "row carries no folio number — a transaction cannot be attached without one" });
-      }
+      fail(r.line, `folio ${r.folioNumber}: ${res.reason}`);
       continue;
     }
-    if (r.orderDate < minDate) minDate = r.orderDate;
-    if (r.orderDate > maxDate) maxDate = r.orderDate;
 
-    // Resolve from the pre-built maps (no per-row query). PAN first, then folio.
-    let investorId = resolveFast(r.pan, r.folioNumber);
+    let investorId: string | null = res.kind === "found" ? res.id : null;
 
-    // Not in the book yet. If the row carries a valid PAN we can stand the
-    // client up from the feed itself rather than dropping the transaction:
-    // the feed gives us PAN + name, and investors are PAN-deduped, so when the
-    // folio master finally lands it UPDATES this row instead of duplicating it.
-    //
-    // Without a PAN we must still skip. A PAN-less provisional row would be
-    // keyed on nothing the master can match, so the master would create a
-    // SECOND client for the same person — worse than losing the row.
-    //
-    // VSN Financial Services: one KFintech feed skipped 1,849 rows this way,
-    // 1,617 of which carried a PAN and are recoverable here.
-    if (!investorId && isLikelyPan(r.pan)) {
+    // Not in the book yet. A valid PAN stands the client up from the feed
+    // itself (PAN-deduped, so the folio master later UPDATES this row). The
+    // directory already ruled out a client in Trash holding this PAN.
+    if (!investorId && pan) {
       const created = await tx.execute(sql`
         INSERT INTO investors (tenant_id, pan, name, investor_category, kyc_status)
-        VALUES (
-          ${args.tenantId}::uuid, ${r.pan.toUpperCase()},
-          ${sanitizeName(r.investorName) ?? `PAN ${r.pan.toUpperCase()}`},
-          'individual', 'pending'
-        )
+        VALUES (${args.tenantId}::uuid, ${pan}, ${sanitizeName(r.investorName) ?? `PAN ${maskPanValue(pan)}`}, 'individual', 'pending')
         ON CONFLICT (tenant_id, pan) WHERE dedup_pan AND pan IS NOT NULL
         DO UPDATE SET updated_at = now()
-        RETURNING id
+        RETURNING id, deleted_at, merged_into_id
       `);
-      investorId = (created.rows[0] as any)?.id ?? null;
-      if (investorId) {
-        // Feed the maps so the other rows for this client resolve without a
-        // second insert — these feeds carry many rows per folio.
-        panMap.set(r.pan.toUpperCase(), investorId);
-        folioMap.set(r.folioNumber, investorId);
-        createdInvestors++;
+      const row = created.rows[0] as { id: string; deleted_at: string | null; merged_into_id: string | null } | undefined;
+      if (row && !row.deleted_at && !row.merged_into_id) {
+        investorId = String(row.id);
+        dir.remember({ id: investorId, pan });
       }
     }
 
-    // Still nothing, so the row has no usable PAN AND its folio is not in the
-    // book. Stand the client up keyed on the FOLIO rather than dropping the
-    // transaction.
-    //
-    // The older reasoning here was that a PAN-less provisional row "is keyed on
-    // nothing the master can match". That is not true: migration 0151 added
-    // investors.rta_nopan_key with a unique index precisely so a PAN-less client
-    // can be deduped deterministically, and the folio number is a stronger
-    // natural key than the mobile/email/name the rich importer settles for. Its
-    // real cost is narrower — if the master later arrives WITH a PAN it creates
-    // a PAN-keyed client and the folio upsert re-points to it, leaving this
-    // provisional row orphaned and mergeable. Losing the transaction outright is
-    // worse: on VSN Financial Services these skips ran to ~104-232 rows per
-    // feed, every one of them real money against a real folio.
-    if (!investorId && r.folioNumber) {
-      const who = splitRepresentedBy(r.investorName);
-      const created = await tx.execute(sql`
-        INSERT INTO investors (tenant_id, pan, rta_nopan_key, name, investor_category, is_minor, kyc_status)
-        VALUES (
-          ${args.tenantId}::uuid, NULL, ${nopanKeyFor(who.name, r.folioNumber)},
-          ${who.name ?? `Folio ${r.folioNumber}`},
-          ${who.isMinor ? "minor" : "individual"}, ${who.isMinor}, 'pending'
-        )
-        ON CONFLICT (tenant_id, rta_nopan_key) WHERE rta_nopan_key IS NOT NULL
-        DO UPDATE SET updated_at = now()
-        RETURNING id
-      `);
-      investorId = (created.rows[0] as any)?.id ?? null;
-      if (investorId) {
-        folioMap.set(r.folioNumber, investorId);
-        createdInvestors++;
+    // No usable PAN and the folio is not in the book: a placeholder client
+    // keyed on the FOLIO (never on a name, mobile or email — two people can
+    // share those, and a shared key merges them into one client). The folio
+    // master later re-points the folio to the PAN-keyed client and moves this
+    // folio's transactions with it (lib/rta/import.ts).
+    if (!investorId && !pan) {
+      const key = nopanFolioKey(r.folioNumber);
+      const existing = await dir.byNopanKey(key);
+      if (existing.kind === "blocked" || existing.kind === "ambiguous") {
+        skipped++;
+        fail(r.line, `folio ${r.folioNumber}: ${existing.reason}`);
+        continue;
+      }
+      if (existing.kind === "found") investorId = existing.id;
+      else {
+        const who = splitRepresentedBy(r.investorName);
+        const created = await tx.execute(sql`
+          INSERT INTO investors (tenant_id, pan, rta_nopan_key, name, investor_category, is_minor, kyc_status)
+          VALUES (
+            ${args.tenantId}::uuid, NULL, ${key},
+            ${who.name ?? `Folio ${r.folioNumber}`},
+            ${who.isMinor ? "minor" : "individual"}, ${who.isMinor}, 'pending'
+          )
+          ON CONFLICT (tenant_id, rta_nopan_key) WHERE rta_nopan_key IS NOT NULL
+          DO UPDATE SET updated_at = now()
+          RETURNING id, deleted_at, merged_into_id
+        `);
+        const row = created.rows[0] as { id: string; deleted_at: string | null; merged_into_id: string | null } | undefined;
+        if (row && !row.deleted_at && !row.merged_into_id) {
+          investorId = String(row.id);
+          dir.remember({ id: investorId, rta_nopan_key: key });
+        }
       }
     }
 
     if (!investorId) {
       skipped++;
-      errors.push({ row: i + 1, reason: `Folio ${r.folioNumber}${r.pan ? ` / PAN ${r.pan}` : ""} could not be attached to a client` });
+      fail(r.line, `folio ${r.folioNumber}${pan ? ` / PAN ${pan}` : ""} could not be attached to a client`);
       continue;
     }
 
-    const rtaEnumVal = (args.source === "cams" || args.source === "kfintech") ? args.source : "other";
+    if (r.orderDate < minDate) minDate = r.orderDate;
+    if (r.orderDate > maxDate) maxDate = r.orderDate;
 
-    // Declared outside the try: if this row rolls back, the cache entry it
-    // created has to be evicted too (see the catch).
     const folioKey = `${r.amcCode}::${r.folioNumber}`;
     let cachedFolioThisRow = false;
 
     await tx.execute(sql`SAVEPOINT rta_item`);
     try {
-      // Resolve or create folio record — once per folio, not once per row.
-      let folioId = folioIdCache.get(folioKey);
-      if (!folioId) {
+      // Resolve or create the folio — once per folio. The feed never moves a
+      // folio between clients: when the folio already exists under ANOTHER
+      // client than the row's PAN names, the row is held back for review.
+      let folio = folioCache.get(folioKey);
+      if (!folio) {
         const folioRes = await tx.execute(sql`
           INSERT INTO folios (tenant_id, investor_id, folio_number, amc_code, amc_name, rta)
           VALUES (${args.tenantId}::uuid, ${investorId}::uuid, ${r.folioNumber}, ${r.amcCode}, ${r.amcCode}, ${rtaEnumVal})
           ON CONFLICT (tenant_id, amc_code, folio_number) DO UPDATE SET updated_at = now()
-          RETURNING id
+          RETURNING id, investor_id
         `);
-        folioId = (folioRes.rows[0] as any)?.id;
-        if (folioId) {
-          folioIdCache.set(folioKey, folioId);
+        const fr = folioRes.rows[0] as { id: string; investor_id: string | null } | undefined;
+        if (fr) {
+          folio = { id: String(fr.id), investorId: fr.investor_id ? String(fr.investor_id) : investorId };
+          folioCache.set(folioKey, folio);
           cachedFolioThisRow = true;
+          dir.rememberFolio({ id: folio.id, amc_code: r.amcCode, folio_number: r.folioNumber, investor_id: folio.investorId });
+        }
+      }
+      if (!folio) throw new Error(`folio ${r.folioNumber} could not be created`);
+      if (folio.investorId !== investorId) {
+        const owner = await dir.byFolio(r.folioNumber, r.amcCode);
+        if (!(owner.kind === "found" && owner.id === investorId)) {
+          await tx.execute(sql`ROLLBACK TO SAVEPOINT rta_item`);
+          await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
+          if (cachedFolioThisRow) folioCache.delete(folioKey);
+          skipped++;
+          fail(r.line, `folio ${r.folioNumber} belongs to a different client in the CRM than the one this row's PAN names — held back for review, nothing reassigned`);
+          continue;
         }
       }
 
-      // UPSERT keyed by (tenant_id, order_id) so re-uploads no-op, but updates status/NAV/units.
-      await tx.execute(sql`
+      // Registrar transaction number is the identity. An existing row with the
+      // same number is updated ONLY when it is evidently the same transaction
+      // (same folio, scheme, date, type, direction and amount): then status,
+      // NAV, units and reason refresh. Anything else is a DIFFERENT
+      // transaction that happens to share the number — it is left untouched
+      // and reported, never overwritten. Amount, date, type and client are
+      // never "corrected" in place.
+      const ins = await tx.execute(sql`
         INSERT INTO transactions (
           tenant_id, investor_id, folio_id, folio_number, amc_code, amc_name, scheme_code, scheme_name,
           type, direction, amount, units, nav, order_id, order_date, status,
           reason_code, reason_description
         ) VALUES (
-          ${args.tenantId}::uuid, ${investorId}::uuid, ${folioId}::uuid, ${r.folioNumber}, ${r.amcCode}, ${r.amcCode},
+          ${args.tenantId}::uuid, ${investorId}::uuid, ${folio.id}::uuid, ${r.folioNumber}, ${r.amcCode}, ${r.amcCode},
           ${r.schemeCode}, ${r.schemeName}, ${r.type}, ${r.direction},
           ${r.amount}, ${r.units}, ${r.nav}, ${r.externalRef}, ${r.orderDate}::date,
           ${normaliseStatus(r.status)}, ${r.reasonCode ?? null}, ${r.reasonDescription ?? null}
         )
         ON CONFLICT (tenant_id, order_id) WHERE order_id IS NOT NULL DO UPDATE SET
-          folio_id = EXCLUDED.folio_id,
           status = EXCLUDED.status,
-          nav = EXCLUDED.nav,
+          nav = COALESCE(EXCLUDED.nav, transactions.nav),
           units = EXCLUDED.units,
           reason_code = EXCLUDED.reason_code,
           reason_description = EXCLUDED.reason_description,
           updated_at = now()
+        WHERE transactions.folio_number = EXCLUDED.folio_number
+          AND transactions.scheme_code IS NOT DISTINCT FROM EXCLUDED.scheme_code
+          AND transactions.order_date = EXCLUDED.order_date
+          AND transactions.type = EXCLUDED.type
+          AND transactions.direction IS NOT DISTINCT FROM EXCLUDED.direction
+          AND transactions.amount = EXCLUDED.amount
+        RETURNING id
       `);
+      if (ins.rows.length === 0) {
+        await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
+        skipped++;
+        fail(
+          r.line,
+          `transaction number ${r.externalRef} is already in the CRM for a different transaction (folio, scheme, date, type or amount differ) — existing record left unchanged, this row not imported`
+        );
+        continue;
+      }
       imported++;
       if (normaliseStatus(r.status) === "processed") {
         const prev = lastTxByInvestor.get(investorId);
@@ -405,9 +341,9 @@ async function processTransactionFeed(
       // longer exists. Leaving it would make every later row for the same folio
       // write a transaction pointing at a dead folio_id and fail on the foreign
       // key — turning one bad row into a bad folio.
-      if (cachedFolioThisRow) folioIdCache.delete(folioKey);
+      if (cachedFolioThisRow) folioCache.delete(folioKey);
       failed++;
-      errors.push({ row: i + 1, reason: e.message ?? "insert failed" });
+      fail(r.line, e?.message ?? "insert failed");
     }
   }
 
@@ -421,12 +357,16 @@ async function processTransactionFeed(
     `);
   }
 
+  // Data lines the parser saw — accepted rows plus rejected ones.
+  const rowsTotal = parsed.dataLines;
   return {
-    rowsTotal: rows.length,
+    rowsTotal,
     rowsImported: imported,
     rowsSkipped: skipped,
     rowsFailed: failed,
-    errors,
+    errors: errors.sort((a, b) => a.row - b.row),
+    // A file with no importable row has no period; the worker records today
+    // as the upload's period, which is about the upload, not a transaction.
     periodStart: minDate === "9999-12-31" ? today() : minDate,
     periodEnd: maxDate === "0000-01-01" ? today() : maxDate,
   };
@@ -438,27 +378,30 @@ async function processSipRejectionReport(
   tx: Tx,
   args: { tenantId: string; source: RtaSource; text: string }
 ): Promise<ProcessOutcome> {
-  const rows: CanonicalSipRejection[] = parseSipRejectionReport(args.text, args.source);
-  const errors: Array<{ row: number; reason: string }> = [];
+  const parsed = parseSipRejectionReport(args.text, args.source);
+  const rows: CanonicalSipRejection[] = parsed.rows;
+  const { errors, counts } = startOutcome(parsed);
   let imported = 0;
-  let skipped = 0;
+  let skipped = counts.skipped;
   let failed = 0;
   let minDate = "9999-12-31";
   let maxDate = "0000-01-01";
+  const dir = new InvestorDirectory(tx, args.tenantId);
+  await dir.preload({ pans: rows.map((r) => r.pan), folios: rows.map((r) => r.folioNumber) });
 
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     if (r.rejectionDate < minDate) minDate = r.rejectionDate;
     if (r.rejectionDate > maxDate) maxDate = r.rejectionDate;
 
-    const investorId = await resolveInvestorId(tx, args.tenantId, { pan: r.pan, folioNumber: r.folioNumber });
-    if (!investorId) {
+    const who = await dir.resolve({ pan: r.pan, folioNumber: r.folioNumber });
+    if (who.kind !== "found") {
       skipped++;
-      errors.push({ row: i + 1, reason: `${r.pan ? `PAN ${r.pan}` : `Folio ${r.folioNumber}`} not in client master` });
+      errors.push({ row: r.line, reason: notAttached(who, r.pan, r.folioNumber) });
       continue;
     }
-    const rmRes = await tx.execute(sql`SELECT rm_id FROM investors WHERE id = ${investorId}::uuid LIMIT 1`);
-    const investorRmId = (rmRes.rows[0] as any)?.rm_id ?? null;
+    const investorId = who.id;
+    const investorRmId = who.rmId;
 
     const reasonCode = classifyRejectionReason(r.reason, r.reasonCode);
     // 2-day follow-up from the rejection date — mirrors the manual create API so
@@ -512,12 +455,12 @@ async function processSipRejectionReport(
       await tx.execute(sql`ROLLBACK TO SAVEPOINT rta_item`);
       await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
       failed++;
-      errors.push({ row: i + 1, reason: e.message ?? "insert failed" });
+      errors.push({ row: r.line, reason: e.message ?? "insert failed" });
     }
   }
 
   return {
-    rowsTotal: rows.length,
+    rowsTotal: rows.length + counts.rejected,
     rowsImported: imported,
     rowsSkipped: skipped,
     rowsFailed: failed,
@@ -533,10 +476,11 @@ async function processBrokerageStatement(
   tx: Tx,
   args: { tenantId: string; source: RtaSource; text: string }
 ): Promise<ProcessOutcome> {
-  const rows: CanonicalBrokerageRow[] = parseBrokerageStatement(args.text, args.source);
-  const errors: Array<{ row: number; reason: string }> = [];
+  const parsed = parseBrokerageStatement(args.text, args.source);
+  const rows: CanonicalBrokerageRow[] = parsed.rows;
+  const { errors, counts } = startOutcome(parsed);
   let imported = 0;
-  let skipped = 0;
+  let skipped = counts.skipped;
   let failed = 0;
   let minDate = "9999-12-31";
   let maxDate = "0000-01-01";
@@ -557,7 +501,7 @@ async function processBrokerageStatement(
           aum_amount, brokerage_rate, brokerage_amount, source
         ) VALUES (
           ${args.tenantId}::uuid, ${r.amcCode}, ${r.schemeCode}, ${r.schemeName}, ${r.folioNumber},
-          ${r.pan.toUpperCase()}, ${r.brokerageType}, ${r.periodStart}::date, ${r.periodEnd}::date,
+          ${validPan(r.pan) ?? (r.pan ? r.pan.toUpperCase() : null)}, ${r.brokerageType}, ${r.periodStart}::date, ${r.periodEnd}::date,
           ${r.aumAmount}, ${r.brokerageRate}, ${r.brokerageAmount}, ${args.source}
         )
         ON CONFLICT DO NOTHING
@@ -572,13 +516,13 @@ async function processBrokerageStatement(
         skipped++;
       } else {
         failed++;
-        errors.push({ row: i + 1, reason: e.message ?? "insert failed" });
+        errors.push({ row: r.line, reason: e.message ?? "insert failed" });
       }
     }
   }
 
   return {
-    rowsTotal: rows.length,
+    rowsTotal: rows.length + counts.rejected,
     rowsImported: imported,
     rowsSkipped: skipped,
     rowsFailed: failed,
@@ -630,18 +574,22 @@ async function processFolioMasterDump(
   tx: Tx,
   args: { tenantId: string; source: RtaSource; text: string }
 ): Promise<ProcessOutcome> {
-  const rows: CanonicalFolioRow[] = parseFolioMasterDump(args.text, args.source);
+  const parsed = parseFolioMasterDump(args.text, args.source);
+  const rows: CanonicalFolioRow[] = parsed.rows;
 
-  const errors: Array<{ row: number; reason: string }> = [];
+  const { errors, counts } = startOutcome(parsed);
   let imported = 0;
-  let skipped = 0;
+  let skipped = counts.skipped;
+  const dir = new InvestorDirectory(tx, args.tenantId);
+  await dir.preload({ pans: rows.map((r) => r.pan) });
   let failed = 0;
 
   // Group rows by folio number and amc code to do batch updates of the schemes array
   const folioRowsGrouped = new Map<string, CanonicalFolioRow[]>();
   for (const r of rows) {
-    if (!r.pan || !r.folioNumber || !r.amcCode) {
+    if (!validPan(r.pan) || !r.folioNumber || !r.amcCode) {
       skipped++;
+      errors.push({ row: r.line, reason: `row carries no ${!validPan(r.pan) ? "valid PAN" : !r.folioNumber ? "folio number" : "AMC code"} — this report keys clients on PAN` });
       continue;
     }
     const key = `${r.amcCode}__${r.folioNumber}`;
@@ -655,15 +603,13 @@ async function processFolioMasterDump(
 
   for (const [key, fRows] of folioRowsGrouped) {
     const firstRow = fRows[0];
-    const investor = await tx.execute(sql`
-      SELECT id FROM investors WHERE tenant_id = ${args.tenantId}::uuid AND pan = ${firstRow.pan.toUpperCase()} LIMIT 1
-    `);
-    const investorId = (investor.rows[0] as any)?.id;
-    if (!investorId) {
+    const who = await dir.byPan(firstRow.pan);
+    if (who.kind !== "found") {
       skipped += fRows.length;
-      errors.push({ row: rows.indexOf(firstRow) + 1, reason: `PAN ${firstRow.pan} not in client master — skipped` });
+      errors.push({ row: firstRow.line, reason: notAttached(who, firstRow.pan, firstRow.folioNumber) });
       continue;
     }
+    const investorId = who.id;
 
     await tx.execute(sql`SAVEPOINT rta_item`);
     try {
@@ -672,9 +618,16 @@ async function processFolioMasterDump(
         INSERT INTO folios (tenant_id, investor_id, folio_number, amc_code, amc_name, rta)
         VALUES (${args.tenantId}::uuid, ${investorId}::uuid, ${firstRow.folioNumber}, ${firstRow.amcCode}, ${firstRow.amcName}, ${rtaEnumVal})
         ON CONFLICT (tenant_id, amc_code, folio_number) DO UPDATE SET updated_at = now()
-        RETURNING id, schemes
+        RETURNING id, schemes, investor_id
       `);
       const folioId = (folioRes.rows[0] as any)?.id;
+      const folioOwner = (folioRes.rows[0] as any)?.investor_id;
+      if (folioOwner && String(folioOwner) !== investorId) {
+        const owner = await dir.byFolio(firstRow.folioNumber, firstRow.amcCode);
+        if (!(owner.kind === "found" && owner.id === investorId)) {
+          throw new Error(`folio ${firstRow.folioNumber} belongs to a different client in the CRM than this PAN — held back for review, nothing reassigned`);
+        }
+      }
       const existingSchemes = ((folioRes.rows[0] as any)?.schemes ?? []) as Array<{
         schemeCode: string;
         schemeName: string;
@@ -719,7 +672,7 @@ async function processFolioMasterDump(
       await tx.execute(sql`ROLLBACK TO SAVEPOINT rta_item`);
       await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
       failed += fRows.length;
-      errors.push({ row: rows.indexOf(firstRow) + 1, reason: e.message ?? "folio master import failed" });
+      errors.push({ row: firstRow.line, reason: e.message ?? "folio master import failed" });
     }
   }
 
@@ -744,7 +697,7 @@ async function processFolioMasterDump(
   }
 
   return {
-    rowsTotal: rows.length,
+    rowsTotal: rows.length + counts.rejected,
     rowsImported: imported,
     rowsSkipped: skipped,
     rowsFailed: failed,
@@ -758,18 +711,19 @@ async function processSipBook(
   tx: Tx,
   args: { tenantId: string; source: RtaSource; text: string }
 ): Promise<ProcessOutcome> {
-  const rows: CanonicalSipRow[] = parseSipBook(args.text, args.source);
-  const errors: Array<{ row: number; reason: string }> = [];
+  // The amount column is now REQUIRED by the parser (a register without one is
+  // refused as a layout error) and a blank amount rejects its row — the old
+  // failure, every SIP silently imported at Rs 0, cannot recur. The check
+  // below stays for a register whose amounts genuinely all read 0.
+  const parsed = parseSipBook(args.text, args.source);
+  const rows: CanonicalSipRow[] = parsed.rows;
+  const { errors, counts } = startOutcome(parsed);
   let imported = 0;
-  let skipped = 0;
+  let skipped = counts.skipped;
   let failed = 0;
+  const dir = new InvestorDirectory(tx, args.tenantId);
+  await dir.preload({ pans: rows.map((r) => r.pan), folios: rows.map((r) => r.folioNumber) });
 
-  // An unrecognised amount column is INVISIBLE without this. The header lookup
-  // returns only the columns it matched, so an unknown spelling leaves the field
-  // undefined, every row parses to 0, and the import still reports success —
-  // which is how one firm ended up with 5,767 active SIPs worth Rs 0 and no
-  // error to explain it. A whole book at zero is never a real SIP register, so
-  // say so on the row where someone will actually see it.
   if (rows.length > 0 && rows.every((r) => !r.amount)) {
     const header = (args.text.split(/\r?\n/)[0] ?? "").slice(0, 300);
     errors.push({
@@ -836,49 +790,59 @@ async function processSipBook(
 
     // Resolve the folio FIRST: it carries the investor link, so it can identify
     // the client even when the registrar omitted the PAN.
-    const folio = await tx.execute(sql`
-      SELECT id, amc_name, investor_id FROM folios
-      WHERE tenant_id = ${args.tenantId}::uuid AND folio_number = ${r.folioNumber} LIMIT 1
-    `);
-    const folioId = (folio.rows[0] as any)?.id;
-    const amcName = (folio.rows[0] as any)?.amc_name || "Unknown AMC";
-    const folioInvestorId = (folio.rows[0] as any)?.investor_id ?? null;
-    if (!folioId) {
+    // The folio carries the client link, so it identifies the client even when
+    // the registrar omitted the PAN. A folio number held under several AMC
+    // codes by DIFFERENT clients is ambiguous and the row is held back.
+    const folios = await dir.foliosFor(r.folioNumber);
+    if (!folios.length) {
       skipped++;
-      errors.push({ row: i + 1, reason: `Folio ${r.folioNumber} not found — import the folio master first` });
+      errors.push({ row: r.line, reason: `Folio ${r.folioNumber} not found — import the folio master first` });
+      continue;
+    }
+    const folioOwner = await dir.byFolio(r.folioNumber);
+    if (folioOwner.kind === "blocked" || folioOwner.kind === "ambiguous") {
+      skipped++;
+      errors.push({ row: r.line, reason: notAttached(folioOwner, r.pan, r.folioNumber) });
       continue;
     }
 
-    // PAN wins when the registrar supplies one (it is the platform's dedup key);
-    // otherwise fall back to whoever owns the folio.
+    // PAN wins when the registrar supplies a valid one (it is the platform's
+    // dedup key) — but it must name the folio's own client.
     let investorId: string | null = null;
     let rmId: string | null = null;
-    if (r.pan) {
-      const byPan = await tx.execute(sql`
-        SELECT id, rm_id FROM investors
-        WHERE tenant_id = ${args.tenantId}::uuid AND pan = ${r.pan.toUpperCase()} LIMIT 1
-      `);
-      investorId = (byPan.rows[0] as any)?.id ?? null;
-      rmId = (byPan.rows[0] as any)?.rm_id ?? null;
+    const byPan = await dir.byPan(r.pan);
+    if (byPan.kind === "blocked" || byPan.kind === "ambiguous") {
+      skipped++;
+      errors.push({ row: r.line, reason: notAttached(byPan, r.pan, r.folioNumber) });
+      continue;
     }
-    if (!investorId && folioInvestorId) {
-      const byFolio = await tx.execute(sql`
-        SELECT id, rm_id FROM investors
-        WHERE tenant_id = ${args.tenantId}::uuid AND id = ${folioInvestorId}::uuid LIMIT 1
-      `);
-      investorId = (byFolio.rows[0] as any)?.id ?? null;
-      rmId = (byFolio.rows[0] as any)?.rm_id ?? null;
+    if (byPan.kind === "found") {
+      if (folioOwner.kind === "found" && folioOwner.id !== byPan.id) {
+        skipped++;
+        errors.push({ row: r.line, reason: `folio ${r.folioNumber} belongs to a different client in the CRM than this row's PAN — held back for review, nothing reassigned` });
+        continue;
+      }
+      investorId = byPan.id;
+      rmId = byPan.rmId;
+    } else if (folioOwner.kind === "found") {
+      investorId = folioOwner.id;
+      rmId = folioOwner.rmId;
     }
     if (!investorId) {
       skipped++;
-      errors.push({
-        row: i + 1,
-        reason: r.pan
-          ? `PAN ${r.pan} not in client master, and folio ${r.folioNumber} is not linked to a client`
-          : `row has no PAN and folio ${r.folioNumber} is not linked to a client`,
-      });
+      errors.push({ row: r.line, reason: notAttached({ kind: "none" }, r.pan, r.folioNumber) + `, and folio ${r.folioNumber} is not linked to a client` });
       continue;
     }
+
+    // The folio row this SIP hangs off: the one the owner holds, preferring a
+    // row with a real AMC code over an AMC-less one an AUM statement created.
+    const ownFolios = folios
+      .filter((f) => f.investor_id && (f.investor_id === investorId || folioOwner.kind === "found"))
+      .sort((a, b) => (b.amc_code ?? "").localeCompare(a.amc_code ?? ""));
+    const folioRow = ownFolios[0] ?? folios[0];
+    const folioId = folioRow.id;
+    const amcCode = (folioRow.amc_code ?? "").trim() || null;
+    const amcName = ((await tx.execute(sql`SELECT amc_name FROM folios WHERE id = ${folioId}::uuid`)).rows[0] as any)?.amc_name || "Unknown AMC";
 
     // Resolve mandate (if reference is present)
     let mandateId: string | null = null;
@@ -1037,7 +1001,7 @@ async function processSipBook(
             tenant_id, investor_id, folio_id, folio_number, amc_code, amc_name, scheme_code, scheme_name,
             amount, frequency, sip_date, start_date, end_date, next_installment_at, mandate_id, status, rm_id
           ) VALUES (
-            ${args.tenantId}::uuid, ${investorId}::uuid, ${folioId}::uuid, ${r.folioNumber}, ${r.schemeCode}, ${amcName},
+            ${args.tenantId}::uuid, ${investorId}::uuid, ${folioId}::uuid, ${r.folioNumber}, ${amcCode}, ${amcName},
             ${r.schemeCode}, ${r.schemeName}, ${r.amount}, ${r.frequency}, ${r.sipDate ?? null}, ${r.startDate ?? null}::date,
             ${r.endDate ?? null}::date, ${r.nextInstallmentAt ?? null}::date, ${mandateId}::uuid, 'active', ${rmId}::uuid
           )
@@ -1050,7 +1014,7 @@ async function processSipBook(
       await tx.execute(sql`ROLLBACK TO SAVEPOINT rta_item`);
       await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
       failed++;
-      errors.push({ row: i + 1, reason: e.message ?? "SIP import failed" });
+      errors.push({ row: r.line, reason: e.message ?? "SIP import failed" });
     }
   }
 
@@ -1080,7 +1044,7 @@ async function processSipBook(
   if (imported > 0 || transfers > 0) await refreshActiveSipAmount(tx, { tenantId: args.tenantId });
 
   return {
-    rowsTotal: rows.length,
+    rowsTotal: rows.length + counts.rejected,
     rowsImported: imported,
     rowsSkipped: skipped,
     rowsFailed: failed,
@@ -1094,28 +1058,30 @@ async function processMandateStatus(
   tx: Tx,
   args: { tenantId: string; source: RtaSource; text: string }
 ): Promise<ProcessOutcome> {
-  const rows: CanonicalMandateRow[] = parseMandateStatus(args.text, args.source);
-  const errors: Array<{ row: number; reason: string }> = [];
+  const parsed = parseMandateStatus(args.text, args.source);
+  const rows: CanonicalMandateRow[] = parsed.rows;
+  const { errors, counts } = startOutcome(parsed);
   let imported = 0;
-  let skipped = 0;
+  let skipped = counts.skipped;
   let failed = 0;
+  const dir = new InvestorDirectory(tx, args.tenantId);
+  await dir.preload({ pans: rows.map((r) => r.pan) });
 
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
-    if (!r.pan || !r.mandateRefNo) {
+    if (!validPan(r.pan) || !r.mandateRefNo) {
       skipped++;
+      errors.push({ row: r.line, reason: `row carries no ${!r.mandateRefNo ? "mandate reference" : "valid PAN"} — a mandate is keyed on both` });
       continue;
     }
 
-    const investor = await tx.execute(sql`
-      SELECT id FROM investors WHERE tenant_id = ${args.tenantId}::uuid AND pan = ${r.pan.toUpperCase()} LIMIT 1
-    `);
-    const investorId = (investor.rows[0] as any)?.id;
-    if (!investorId) {
+    const who = await dir.byPan(r.pan);
+    if (who.kind !== "found") {
       skipped++;
-      errors.push({ row: i + 1, reason: `PAN ${r.pan} not in client master` });
+      errors.push({ row: r.line, reason: notAttached(who, r.pan, null) });
       continue;
     }
+    const investorId = who.id;
 
     await tx.execute(sql`SAVEPOINT rta_item`);
     try {
@@ -1141,12 +1107,12 @@ async function processMandateStatus(
       await tx.execute(sql`ROLLBACK TO SAVEPOINT rta_item`);
       await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
       failed++;
-      errors.push({ row: i + 1, reason: e.message ?? "mandate import failed" });
+      errors.push({ row: r.line, reason: e.message ?? "mandate import failed" });
     }
   }
 
   return {
-    rowsTotal: rows.length,
+    rowsTotal: rows.length + counts.rejected,
     rowsImported: imported,
     rowsSkipped: skipped,
     rowsFailed: failed,
@@ -1160,11 +1126,18 @@ async function processAumStatement(
   tx: Tx,
   args: { tenantId: string; source: RtaSource; text: string }
 ): Promise<ProcessOutcome> {
-  const rows: CanonicalAumRow[] = parseAumStatement(args.text, args.source);
-  const errors: Array<{ row: number; reason: string }> = [];
+  const parsed = parseAumStatement(args.text, args.source);
+  const rows: CanonicalAumRow[] = parsed.rows;
+  const { errors, counts } = startOutcome(parsed);
   let imported = 0;
-  let skipped = 0;
+  let skipped = counts.skipped;
   let failed = 0;
+  const dir = new InvestorDirectory(tx, args.tenantId);
+  await dir.preload({
+    pans: rows.map((r) => r.pan),
+    folios: rows.map((r) => r.folioNumber),
+    nopanKeys: [...new Set(rows.map((r) => nopanFolioKey(r.folioNumber)))],
+  });
   /** Folios this report was the first to reveal — surfaced in the summary so a
    *  valuation-led import is visible rather than looking like a plain refresh. */
   let createdFolios = 0;
@@ -1174,6 +1147,7 @@ async function processAumStatement(
   for (const r of rows) {
     if (!r.folioNumber || !r.schemeCode) {
       skipped++;
+      errors.push({ row: r.line, reason: `row carries no ${!r.folioNumber ? "folio number" : "scheme code"}` });
       continue;
     }
     const key = r.folioNumber;
@@ -1185,34 +1159,55 @@ async function processAumStatement(
 
   for (const [folioNum, fRows] of aumRowsGrouped) {
     const firstRow = fRows[0];
-    let investorId = await resolveInvestorId(tx, args.tenantId, { pan: firstRow.pan, folioNumber: folioNum });
+    const who = await dir.resolve({ pan: firstRow.pan, folioNumber: folioNum });
+    if (who.kind === "blocked" || who.kind === "ambiguous") {
+      skipped += fRows.length;
+      errors.push({ row: firstRow.line, reason: notAttached(who, firstRow.pan, folioNum) });
+      continue;
+    }
+    let investorId: string | null = who.kind === "found" ? who.id : null;
 
     // Same gap the transaction feed had: the folio is not in the book yet and
     // this report cannot supply a PAN to match on. CAMS WBR22 has NO PAN COLUMN
     // AT ALL, so on a book whose master is incomplete every such folio was
     // dropped — 270 rows of one real file, each carrying units and a closing
-    // value. Stand the client up keyed on the folio (migration 0151's
-    // rta_nopan_key) so the holding lands; a later master with a real PAN
-    // creates the PAN-keyed client and the folio upsert re-points to it.
-    if (!investorId && folioNum) {
-      const who = splitRepresentedBy(firstRow.investorName);
-      const created = await tx.execute(sql`
-        INSERT INTO investors (tenant_id, pan, rta_nopan_key, name, investor_category, is_minor, kyc_status)
-        VALUES (
-          ${args.tenantId}::uuid, NULL, ${nopanKeyFor(who.name, folioNum)},
-          ${who.name ?? `Folio ${folioNum}`},
-          ${who.isMinor ? "minor" : "individual"}, ${who.isMinor}, 'pending'
-        )
-        ON CONFLICT (tenant_id, rta_nopan_key) WHERE rta_nopan_key IS NOT NULL
-        DO UPDATE SET updated_at = now()
-        RETURNING id
-      `);
-      investorId = (created.rows[0] as any)?.id ?? null;
+    // value. Stand the client up keyed on the FOLIO (migration 0151's
+    // rta_nopan_key) so the holding lands — never on the holder's name, which
+    // two different people can share. A later master with a real PAN creates
+    // the PAN-keyed client and re-points the folio to it.
+    if (!investorId && folioNum && !validPan(firstRow.pan)) {
+      const key = nopanFolioKey(folioNum);
+      const existing = await dir.byNopanKey(key);
+      if (existing.kind === "blocked" || existing.kind === "ambiguous") {
+        skipped += fRows.length;
+        errors.push({ row: firstRow.line, reason: notAttached(existing, null, folioNum) });
+        continue;
+      }
+      if (existing.kind === "found") investorId = existing.id;
+      else {
+        const holder = splitRepresentedBy(firstRow.investorName);
+        const created = await tx.execute(sql`
+          INSERT INTO investors (tenant_id, pan, rta_nopan_key, name, investor_category, is_minor, kyc_status)
+          VALUES (
+            ${args.tenantId}::uuid, NULL, ${key},
+            ${holder.name ?? `Folio ${folioNum}`},
+            ${holder.isMinor ? "minor" : "individual"}, ${holder.isMinor}, 'pending'
+          )
+          ON CONFLICT (tenant_id, rta_nopan_key) WHERE rta_nopan_key IS NOT NULL
+          DO UPDATE SET updated_at = now()
+          RETURNING id, deleted_at, merged_into_id
+        `);
+        const row = created.rows[0] as { id: string; deleted_at: string | null; merged_into_id: string | null } | undefined;
+        if (row && !row.deleted_at && !row.merged_into_id) {
+          investorId = String(row.id);
+          dir.remember({ id: investorId, rta_nopan_key: key });
+        }
+      }
     }
 
     if (!investorId) {
       skipped += fRows.length;
-      errors.push({ row: rows.indexOf(firstRow) + 1, reason: `Folio ${folioNum} could not be attached to a client` });
+      errors.push({ row: firstRow.line, reason: `Folio ${folioNum} could not be attached to a client` });
       continue;
     }
 
@@ -1230,9 +1225,21 @@ async function processAumStatement(
     // scheme, not a folio-level AMC — so it is left blank for a later master to
     // fill in, and the ON CONFLICT target below matches the same
     // (tenant, amc_code, folio_number) key the rest of the importer uses.
+    // The folio this holding belongs to: when several rows share the number,
+    // only the one the resolved client holds (preferring a real AMC code over
+    // an AMC-less one) — never an arbitrary first row.
+    const candidates = (await dir.foliosFor(folioNum))
+      .filter((f) => f.investor_id === investorId)
+      .sort((a, b) => (b.amc_code ?? "").localeCompare(a.amc_code ?? ""));
+    const others = (await dir.foliosFor(folioNum)).filter((f) => f.investor_id && f.investor_id !== investorId);
+    if (!candidates.length && others.length) {
+      skipped += fRows.length;
+      errors.push({ row: firstRow.line, reason: `folio ${folioNum} belongs to a different client in the CRM than this row's PAN — held back for review, nothing reassigned` });
+      continue;
+    }
     let folio = await tx.execute(sql`
       SELECT id, schemes FROM folios
-      WHERE tenant_id = ${args.tenantId}::uuid AND folio_number = ${folioNum} LIMIT 1
+      WHERE tenant_id = ${args.tenantId}::uuid AND id = ${candidates[0]?.id ?? null}::uuid
     `);
     if (!folio.rows[0]) {
       const rtaEnum = args.source === "cams" || args.source === "kfintech" ? args.source : "other";
@@ -1243,14 +1250,17 @@ async function processAumStatement(
       `);
       folio = await tx.execute(sql`
         SELECT id, schemes FROM folios
-        WHERE tenant_id = ${args.tenantId}::uuid AND folio_number = ${folioNum} LIMIT 1
+        WHERE tenant_id = ${args.tenantId}::uuid AND folio_number = ${folioNum}
+          AND investor_id = ${investorId}::uuid
+        ORDER BY amc_code DESC NULLS LAST
+        LIMIT 1
       `);
       if (folio.rows[0]) createdFolios++;
     }
     const folioId = (folio.rows[0] as any)?.id;
     if (!folioId) {
       skipped += fRows.length;
-      errors.push({ row: rows.indexOf(firstRow) + 1, reason: `Folio ${folioNum} could not be created` });
+      errors.push({ row: firstRow.line, reason: `Folio ${folioNum} could not be created` });
       continue;
     }
 
@@ -1368,7 +1378,7 @@ async function processAumStatement(
       await tx.execute(sql`ROLLBACK TO SAVEPOINT rta_item`);
       await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
       failed += fRows.length;
-      errors.push({ row: rows.indexOf(firstRow) + 1, reason: e.message ?? "AUM import failed" });
+      errors.push({ row: firstRow.line, reason: e.message ?? "AUM import failed" });
     }
   }
 
@@ -1397,7 +1407,7 @@ async function processAumStatement(
   }
 
   return {
-    rowsTotal: rows.length,
+    rowsTotal: rows.length + counts.rejected,
     rowsImported: imported,
     rowsSkipped: skipped,
     rowsFailed: failed,
@@ -1416,10 +1426,16 @@ export async function processRtaFile(
   try {
     const result = await processRtaFileUnsafe(tx, args);
     await tx.execute(sql`RELEASE SAVEPOINT rta_import`);
+    // Row errors are shown to staff and stored: never with a full PAN.
+    result.errors = result.errors
+      .map((e) => ({ row: e.row, reason: maskPansInText(e.reason) }))
+      .sort((a, b) => a.row - b.row);
     return result;
   } catch (error) {
     await tx.execute(sql`ROLLBACK TO SAVEPOINT rta_import`);
     await tx.execute(sql`RELEASE SAVEPOINT rta_import`);
+    // A layout error quotes the file's first line, which can be a data row.
+    if (error instanceof Error) error.message = maskPansInText(error.message);
     throw error;
   }
 }
