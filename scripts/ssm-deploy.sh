@@ -50,16 +50,37 @@ comm -13 /tmp/shipped.txt /tmp/onbox.txt | while read -r stale; do
 done
 
 # CI already ran tsc on this exact tree and gates this job.
-rm -f "$HOME/deploy-current.log"
-SKIP_TYPECHECK=1 nohup bash "$HOME/run-deploy.sh" > "$HOME/deploy-current.log" 2>&1 &
+#
+# A build that fails because Docker Hub or the network blipped is retried:
+# on 7 Oct 2026 a deploy died in 28 s on "unexpected status from HEAD request
+# to https://registry-1.docker.io/…: 500 Internal Server Error" while resolving
+# the node base image. A failed build leaves the old colour serving, so running
+# it again is exactly what a person would do by hand.
+REGISTRY_BLIP='registry-1\.docker\.io|unexpected status from HEAD request|failed to resolve source metadata|failed to do request|TLS handshake timeout|i/o timeout|connection reset by peer|toomanyrequests|503 Service Unavailable|502 Bad Gateway|500 Internal Server Error'
+for attempt in 1 2 3; do
+  rm -f "$HOME/deploy-current.log"
+  SKIP_TYPECHECK=1 nohup bash "$HOME/run-deploy.sh" > "$HOME/deploy-current.log" 2>&1 &
 
-for _ in $(seq 1 240); do
-  grep -aq "DEPLOY_DONE_EXIT" "$HOME/deploy-current.log" 2>/dev/null && break
-  sleep 10
+  for _ in $(seq 1 240); do
+    grep -aq "DEPLOY_DONE_EXIT" "$HOME/deploy-current.log" 2>/dev/null && break
+    sleep 10
+  done
+
+  grep -aE "^=== |DEPLOY_DONE_EXIT" "$HOME/deploy-current.log" || true
+  # `|| true`: no marker yet (a timeout) must reach the report below, not
+  # end the script under `set -e -o pipefail`.
+  code=$(grep -ao "DEPLOY_DONE_EXIT=[0-9]*" "$HOME/deploy-current.log" | tail -1 | cut -d= -f2 || true)
+  [ "${code:-}" = "0" ] && break
+  # Only a BUILD failure is retried, never a failed migration or health check.
+  if [ "$attempt" -lt 3 ] && grep -aq "build failed" "$HOME/deploy-current.log" \
+     && grep -aqE "$REGISTRY_BLIP" "$HOME/deploy-current.log"; then
+    cp "$HOME/deploy-current.log" "$HOME/deploy-failed-attempt-$attempt.log"
+    echo "=== build hit a registry / network error (attempt $attempt) — retrying in $((attempt * 60)) s ==="
+    sleep $((attempt * 60))
+    continue
+  fi
+  break
 done
-
-grep -aE "^=== |DEPLOY_DONE_EXIT" "$HOME/deploy-current.log" || true
-code=$(grep -ao "DEPLOY_DONE_EXIT=[0-9]*" "$HOME/deploy-current.log" | tail -1 | cut -d= -f2)
 if [ "${code:-}" != "0" ]; then
   echo "Deploy failed (DEPLOY_DONE_EXIT=${code:-timeout}). The previous colour is still serving."
   tail -80 "$HOME/deploy-current.log"
