@@ -17,14 +17,14 @@
  *   e.g.  feed-inbox/3a82.../incoming/cams__daily_transaction_feed__2026-06-03.csv
  *         feed-inbox/3a82.../incoming/kfintech__sip_rejection_report__2026-06-03.csv
  *
- * Idempotency: ingestRtaText() dedupes by file checksum, and the processor
+ * Idempotency: ingestRtaFile() dedupes by file checksum, and the processor
  * upserts every row by natural key, so re-processing a file is a no-op.
  */
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { withTenant } from "@/db/client";
-import { ingestRtaText } from "@/lib/rta/ingest";
+import { ingestRtaFile } from "@/lib/rta/ingest";
 import { RTA_FILE_KINDS, RTA_SOURCES, type RtaFileKind, type RtaSource } from "@/db/schema/rta_imports";
 
 export interface FeedIngestResult {
@@ -163,14 +163,17 @@ CAMS|12345678|ABCDE1234F|Anil Mehta|INF209K01UN1|Aditya Birla Sun Life Frontline
       }
       filesFound++;
       try {
-        const text = await fs.readFile(full, "utf8");
+        // Read BYTES: the shared detector tells a zip from an .xlsx and decodes
+        // spreadsheets, DBF and UTF-16 the same way as the upload worker.
+        // Reading as UTF-8 text mangled every binary file.
+        const bytes = new Uint8Array(await fs.readFile(full));
         const res = await withTenant(tenantId, async (tx) =>
-          ingestRtaText(tx, {
+          ingestRtaFile(tx, {
             tenantId,
             source: meta.source,
             kind: meta.kind,
             fileName,
-            text,
+            bytes,
             uploadedBy: null,
           })
         );

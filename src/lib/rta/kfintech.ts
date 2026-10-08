@@ -11,6 +11,7 @@
  */
 
 import type { RtaFolioRecord, RtaInvestor, RtaNominee, InvestorCategory, Residency } from "./types";
+import { readDate, validPan } from "./values";
 
 /** Columns that uniquely identify an MFSD211 folio-master file. */
 const SIGNATURE = ["product code", "fund", "folio", "investor name", "pan number"];
@@ -20,16 +21,56 @@ export function isKfintechFolioMaster(header: string[]): boolean {
   return SIGNATURE.every((h) => have.has(h));
 }
 
-/** "DD/MM/YYYY" → "YYYY-MM-DD" (or null on anything unparseable). */
+/**
+ * A KFintech date cell → "YYYY-MM-DD" (or null when it is blank or not a date).
+ *
+ * CSV mailbacks write D/M/YYYY; a spreadsheet's date cells reach us as ISO
+ * YYYY-MM-DD (xls.ts converts them from the serial). This used to read ONLY
+ * D/M/YYYY with slashes, so every date in an .xls/.xlsx master came back null —
+ * dates of birth and report dates silently dropped. It also passed 31/02/2024
+ * through as "2024-02-31", which Postgres then rejected. `readDate` checks the
+ * calendar and reads day-first, the Indian registrars' order.
+ */
 export function dmyToIso(s?: string): string | null {
-  const v = (s ?? "").trim();
-  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(v);
-  if (!m) return null;
-  const d = m[1].padStart(2, "0");
-  const mo = m[2].padStart(2, "0");
-  const y = m[3];
-  if (+mo < 1 || +mo > 12 || +d < 1 || +d > 31 || +y < 1900 || +y > 2100) return null;
-  return `${y}-${mo}-${d}`;
+  const r = readDate(s, "dmy");
+  return r.ok ? r.value : null;
+}
+
+/**
+ * Counts PAN cells that were present but not a valid PAN. Such a value is
+ * treated as NO PAN — placeholder text ("NA", "PANEXEMPT", "XXXXXXXXXX") used
+ * to become a client key, merging every folio that carried it into one client.
+ */
+export class PanTally {
+  invalidPan = 0;
+  invalidGuardianPan = 0;
+
+  /** The PAN when valid; null (and counted, if something was there) otherwise. */
+  pan(raw: string): string | null {
+    const v = validPan(raw);
+    if (!v && raw.trim()) this.invalidPan++;
+    return v;
+  }
+
+  guardianPan(raw: string): string | null {
+    const v = validPan(raw);
+    if (!v && raw.trim()) this.invalidGuardianPan++;
+    return v;
+  }
+
+  /** Warning lines for the import — counts only, never the values. */
+  warnings(): string[] {
+    const out: string[] = [];
+    if (this.invalidPan) {
+      out.push(`${this.invalidPan} folio${this.invalidPan === 1 ? "" : "s"} carried a PAN value that is not a valid PAN — treated as no PAN.`);
+    }
+    if (this.invalidGuardianPan) {
+      out.push(
+        `${this.invalidGuardianPan} folio${this.invalidGuardianPan === 1 ? "" : "s"} carried a guardian PAN that is not a valid PAN — treated as no guardian PAN.`
+      );
+    }
+    return out;
+  }
 }
 
 /** Words that begin the scheme part of a fund description — everything before
@@ -175,6 +216,7 @@ export function parseKfintechFolioMaster(rows: string[][]): {
 
   const groups = new Map<string, RtaFolioRecord>();
   let missingPan = 0;
+  const pans = new PanTally();
 
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r];
@@ -189,7 +231,7 @@ export function parseKfintechFolioMaster(rows: string[][]): {
     let rec = groups.get(key);
 
     if (!rec) {
-      const pan = get(C.pan).toUpperCase() || null;
+      const pan = pans.pan(get(C.pan));
       if (!pan) missingPan++;
 
       const nominees: RtaNominee[] = [];
@@ -216,7 +258,7 @@ export function parseKfintechFolioMaster(rows: string[][]): {
         category: cat,
         residency: mapResidency(get(C.categoryDesc), get(C.statusDesc)),
         isMinor: cat === "minor",
-        guardianPan: get(C.guardPan).toUpperCase() || null,
+        guardianPan: pans.guardianPan(get(C.guardPan)),
         guardianName: get(C.guardName) || null,
         kycVerified: get(C.kyc1).toUpperCase() === "Y",
         ckycNumber: get(C.ckyc) || null,
@@ -261,6 +303,7 @@ export function parseKfintechFolioMaster(rows: string[][]): {
 
   const folios = [...groups.values()];
   canonicalizeAmcNames(folios);
+  warnings.push(...pans.warnings());
   return { reportType: "MFSD211", folios, missingPan, warnings };
 }
 
@@ -368,6 +411,7 @@ export function parseKfintechHoldings(rows: string[][]): {
 
   const groups = new Map<string, RtaFolioRecord & { _maxTxn: string | null }>();
   let missingPan = 0;
+  const pans = new PanTally();
 
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r];
@@ -381,7 +425,7 @@ export function parseKfintechHoldings(rows: string[][]): {
 
     let rec = groups.get(key);
     if (!rec) {
-      const pan = get(C.pan).toUpperCase() || null;
+      const pan = pans.pan(get(C.pan));
       if (!pan) missingPan++;
       const line1 = [get(C.addr1), get(C.addr2), get(C.addr3)].filter(Boolean).join(", ");
       rec = {
@@ -439,5 +483,5 @@ export function parseKfintechHoldings(rows: string[][]): {
     return rec as RtaFolioRecord;
   });
   canonicalizeAmcNames(folios);
-  return { reportType: "MFSD203", folios, missingPan, warnings: [] };
+  return { reportType: "MFSD203", folios, missingPan, warnings: pans.warnings() };
 }

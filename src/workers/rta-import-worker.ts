@@ -9,9 +9,13 @@
  * isolated worker process (concurrency 1 — one heavy parse at a time).
  *
  * Flow per job:
- *   1. mark the rta_file_imports row `parsing`
+ *   1. mark the rta_file_imports row `parsing`, clearing the previous attempt's
+ *      remark / counts / errors
  *   2. fetch the object from S3 by key, checksum it (dedupe)
- *   3. unzip (password) if needed, decode to canonical pipe text
+ *   3. identify the file by CONTENT (file-kind.ts): a real zip archive is
+ *      unpacked (password; exactly one data file), a workbook (.xlsx is a zip
+ *      too) is read as a spreadsheet, text is decoded BOM / UTF-8 / UTF-16
+ *      aware; then decode to canonical pipe text
  *   4. run processRtaFile() in one tenant transaction
  *   5. update the row with status + counters (completed | partial | failed | rejected)
  *
@@ -26,7 +30,10 @@ import { sql } from "drizzle-orm";
 import { withTenant, withSystem } from "@/db/client";
 import { processRtaFile } from "@/lib/rta/process";
 import { decodeRtaToText } from "@/lib/rta/decode";
-import { extractRtaFileFromZip } from "@/lib/rta/unzip";
+import { extractRtaFileFromZip, RtaArchiveError } from "@/lib/rta/unzip";
+import { decodeTextBytes, detectRtaContainer } from "@/lib/rta/file-kind";
+import { maskPansInText } from "@/lib/rta/values";
+import { rtaJobTiming } from "@/lib/rta/job-timing";
 // RTA zip is uploaded to S3 (full file, no web-server body cap), parsed, then
 // deleted from S3 immediately — transient, never retained.
 import { getObjectBytes, deleteObject } from "@/lib/storage/s3";
@@ -40,6 +47,9 @@ import { RICH_KINDS } from "@/lib/rta/classify-mailback";
 import { getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config";
 import { matchBookedBusinessAfterImport } from "@/lib/business/rta-match";
 import { syncRtaJourneysAfterImport } from "@/lib/blueprints/rta-route";
+
+/** Job timeout and reaper threshold, from one setting (lib/rta/job-timing.ts). */
+const TIMING = rtaJobTiming();
 
 export type RtaImportJob = {
   importId: string;
@@ -70,7 +80,7 @@ async function markFailed(
     async (tx) => {
       await tx.execute(sql`
         UPDATE rta_file_imports
-        SET status = 'failed', parsed_at = now(), remarks = ${sanitizeText(reason.slice(0, 1000))},
+        SET status = 'failed', parsed_at = now(), remarks = ${cleanRemark(reason)},
             file_checksum = COALESCE(${extra?.checksum ?? null}, file_checksum),
             file_size_bytes = COALESCE(${extra?.sizeBytes ?? null}, file_size_bytes)
         WHERE id = ${job.importId}::uuid
@@ -123,6 +133,23 @@ function sanitizeText(s: string | null | undefined): string | null {
   return s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
 }
 
+/**
+ * A failure reason as it may be stored and shown: control characters stripped
+ * (see sanitizeText), any PAN-shaped token masked — a parser or database error
+ * can quote a row — and capped at 1000 characters.
+ */
+function cleanRemark(s: string | null | undefined): string | null {
+  const t = sanitizeText(s);
+  return t == null ? null : maskPansInText(t).slice(0, 1000);
+}
+
+/** An error safe to log: its message and stack with PAN-shaped tokens masked. */
+function maskedError(e: unknown): Error {
+  const out = new Error(maskPansInText(e instanceof Error ? e.message : String(e)));
+  if (e instanceof Error && e.stack) out.stack = maskPansInText(e.stack);
+  return out;
+}
+
 /** Merge the deprecated singular field with the new list, de-duplicated, in order. */
 function candidatePasswords(job: { password?: string; passwords?: string[] }): string[] {
   const out: string[] = [];
@@ -153,24 +180,31 @@ function candidatePasswords(job: { password?: string; passwords?: string[] }): s
 async function openWithAnyPassword(
   buf: Buffer,
   passwords: string[]
-): Promise<{ ok: true; data: Uint8Array; filename: string } | { ok: false; error: any; triedCount: number }> {
+): Promise<{ ok: true; data: Uint8Array; filename: string; notes: string[] } | { ok: false; error: any; triedCount: number }> {
   const tryList = passwords.length ? passwords : [undefined];
   let lastNonPasswordErr: any = null;
   let lastErr: any = null;
+  let tried = 0;
   for (const pw of tryList) {
+    tried++;
     try {
       const r = await extractRtaFileFromZip(new Uint8Array(buf), pw);
-      return { ok: true, data: r.data, filename: r.filename };
+      return { ok: true, data: r.data, filename: r.filename, notes: r.notes };
     } catch (e: any) {
       lastErr = e;
       if (!isWrongPasswordError(e?.message)) lastNonPasswordErr = e;
+      // The archive opened and is unusable as it stands (no data file / several
+      // data files). Another password cannot change that.
+      if (e instanceof RtaArchiveError) break;
     }
   }
-  return { ok: false, error: lastNonPasswordErr ?? lastErr, triedCount: tryList.length };
+  return { ok: false, error: lastNonPasswordErr ?? lastErr, triedCount: tried };
 }
 
 /** Build the right message/status for an unzip failure, aware of how many passwords were tried. */
 function classifyUnzipFailure(error: any, triedCount: number, hadAnyPassword: boolean): { rejected: boolean; message: string } {
+  // Opened, but not importable as one file — say exactly why; never "not ours".
+  if (error instanceof RtaArchiveError) return { rejected: false, message: error.message };
   if (hadAnyPassword && isWrongPasswordError(error?.message)) {
     return {
       rejected: true,
@@ -184,6 +218,74 @@ function classifyUnzipFailure(error: any, triedCount: number, hadAnyPassword: bo
   return { rejected: false, message: `Could not open the zip — ${error?.message ?? "unsupported archive"}.` };
 }
 
+export type OpenedUpload =
+  | { ok: true; data: Uint8Array; filename: string; notes: string[] }
+  | { ok: false; rejected: boolean; message: string };
+
+/**
+ * The uploaded object → the one data file inside it, for BOTH import paths.
+ *
+ * What the upload is comes from its content (`detectRtaContainer`), not from
+ * "starts with PK": an .xlsx / .xlsm / .xlsb is a zip of XML parts and used to
+ * be "unzipped", importing one of its XML parts as the data. Now a workbook is
+ * passed through as-is (the decoders read it as a spreadsheet), only a real
+ * archive is unpacked — with every saved password, and only when it holds
+ * exactly one data file — and a recognised non-data file (PDF, gzip, Word…)
+ * fails with its reason.
+ */
+export async function openUpload(buf: Buffer, filename: string, passwords: string[]): Promise<OpenedUpload> {
+  const kind = detectRtaContainer(buf, filename);
+  if (kind.type === "unsupported") return { ok: false, rejected: false, message: kind.reason };
+  if (kind.type !== "zip-archive") return { ok: true, data: buf, filename, notes: [] };
+
+  const opened = await openWithAnyPassword(buf, passwords);
+  if (!opened.ok) {
+    const verdict = classifyUnzipFailure(opened.error, opened.triedCount, passwords.length > 0);
+    return { ok: false, rejected: verdict.rejected, message: verdict.message };
+  }
+  const inner = detectRtaContainer(opened.data, opened.filename);
+  if (inner.type === "zip-archive") {
+    return {
+      ok: false,
+      rejected: false,
+      message: `The archive's data file (${opened.filename}) is itself a zip archive. Archives are unpacked once — upload the inner file.`,
+    };
+  }
+  if (inner.type === "unsupported") return { ok: false, rejected: false, message: `${opened.filename}: ${inner.reason}` };
+  return { ok: true, data: opened.data, filename: opened.filename, notes: opened.notes };
+}
+
+/**
+ * Mark the row `parsing` and wipe the previous attempt's outcome.
+ *
+ * A retry (re-import, rescan, stalled re-run) reuses the row. Its old remark,
+ * counts and errors used to survive into the new run: the "clear a stale
+ * failure remark" logic at the end of the job compared against the status
+ * BEFORE that update — which this very step had already set to `parsing`, so
+ * it never fired, and a re-imported `rejected` row that completed kept "Not
+ * this firm's file…". Now the decision is made here, against the real
+ * previous status: a failed / rejected attempt's remark goes; a provenance
+ * note on a fresh row ("Auto-imported from forwarded email …", "Re-queued
+ * after a new mailback password was saved") stays. Counts and errors always
+ * go — NULL is what a not-yet-counted row holds.
+ */
+export async function markParsing(tenantId: string, importId: string, ctx: { userId: string; branchId?: string; roles: string[] }) {
+  await withTenant(
+    tenantId,
+    async (tx) => {
+      await tx.execute(sql`
+        UPDATE rta_file_imports
+        SET status = 'parsing', parsed_at = now(),
+            remarks = CASE WHEN status IN ('failed', 'rejected') THEN NULL ELSE remarks END,
+            rows_total = NULL, rows_imported = NULL, rows_skipped = NULL, rows_failed = NULL,
+            errors = NULL, summary = NULL
+        WHERE id = ${importId}::uuid
+      `);
+    },
+    ctx
+  );
+}
+
 async function markRejected(job: RtaImportJob, reason: string, extra?: { checksum?: string; sizeBytes?: number }) {
   const ctx = { userId: job.userId, branchId: job.branchId ?? undefined, roles: job.roles };
   await withTenant(
@@ -191,7 +293,7 @@ async function markRejected(job: RtaImportJob, reason: string, extra?: { checksu
     async (tx) => {
       await tx.execute(sql`
         UPDATE rta_file_imports
-        SET status = 'rejected', parsed_at = now(), remarks = ${sanitizeText(reason.slice(0, 1000))},
+        SET status = 'rejected', parsed_at = now(), remarks = ${cleanRemark(reason)},
             file_checksum = COALESCE(${extra?.checksum ?? null}, file_checksum),
             file_size_bytes = COALESCE(${extra?.sizeBytes ?? null}, file_size_bytes)
         WHERE id = ${job.importId}::uuid
@@ -257,16 +359,8 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
   const ctx = { userId: job.userId, branchId: job.branchId ?? undefined, roles: job.roles };
   const { importId, tenantId, source, kind, key, filename } = job;
 
-  // 1. Mark parsing.
-  await withTenant(
-    tenantId,
-    async (tx) => {
-      await tx.execute(sql`
-        UPDATE rta_file_imports SET status = 'parsing', parsed_at = now() WHERE id = ${importId}::uuid
-      `);
-    },
-    ctx
-  );
+  // 1. Mark parsing (and clear the previous attempt's outcome).
+  await markParsing(tenantId, importId, ctx);
 
   // 2. Read the full file from S3 (uploaded directly by the browser).
   let buf: Buffer;
@@ -297,46 +391,44 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
   // so re-importing is safe — and blocking it stranded users who needed to retry
   // a previously-failed or partial import. Re-import just refreshes in place.
 
-  // 3. Unzip (password-protected RTA mailbacks) then decode to pipe text.
-  let dataBuf = buf;
-  let innerName = filename;
-  const isZip = buf.length > 1 && buf[0] === 0x50 && buf[1] === 0x4b;
-  if (isZip) {
-    const passwords = candidatePasswords(job);
-    const opened = await openWithAnyPassword(buf, passwords);
-    if (!opened.ok) {
-      const extra = { checksum, sizeBytes: buf.length };
-      const verdict = classifyUnzipFailure(opened.error, opened.triedCount, passwords.length > 0);
-      if (verdict.rejected) await markRejected(job, verdict.message, extra);
-      else await markFailed(job, verdict.message, extra);
-      return;
-    }
-    dataBuf = Buffer.from(opened.data);
-    innerName = opened.filename;
+  // 3. Identify by content; unzip a real archive (password-protected RTA
+  //    mailbacks); then decode to pipe text.
+  const opened = await openUpload(buf, filename, candidatePasswords(job));
+  if (!opened.ok) {
+    const extra = { checksum, sizeBytes: buf.length };
+    if (opened.rejected) await markRejected(job, opened.message, extra);
+    else await markFailed(job, opened.message, extra);
+    return;
   }
+  const archiveNote = opened.notes.length ? opened.notes.join(" ") : null;
 
   // Decode can legitimately REFUSE — a spreadsheet too large to hold in memory
-  // (RtaFileTooLargeError). That message tells the operator exactly what to
-  // change, so it has to land on the row; letting it escape to BullMQ leaves the
-  // row stuck in 'parsing' with the advice buried in the worker log.
+  // (RtaFileTooLargeError), a password-protected workbook, a file it cannot
+  // read. That message tells the operator exactly what to change, so it has to
+  // land on the row; letting it escape to BullMQ leaves the row stuck in
+  // 'parsing' with the advice buried in the worker log.
   let text: string;
   try {
-    text = decodeRtaToText(dataBuf, innerName);
+    text = decodeRtaToText(opened.data, opened.filename);
   } catch (e: any) {
     await markFailed(job, e?.message ?? "Could not decode the file.", { checksum, sizeBytes: buf.length });
     return;
   }
   // Free the large buffers before the (memory-heavy) parse so they can be GC'd.
-  dataBuf = Buffer.alloc(0);
+  opened.data = new Uint8Array(0);
   buf = Buffer.alloc(0);
 
   // 4 + 5. Process in one tenant transaction, then persist counters.
+  // The parser's own failure, kept outside the transaction: if it was a
+  // database error the transaction is aborted, the in-tx UPDATE below fails
+  // too, and the outer catch should record THIS reason, not "current
+  // transaction is aborted".
+  let failure: string | null = null;
   try {
     await withTenant(
       tenantId,
       async (tx) => {
         let outcome;
-        let failure: string | null = null;
         try {
           outcome = await processRtaFile(tx, { tenantId, source, kind, text });
         } catch (e: any) {
@@ -348,7 +440,7 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
             UPDATE rta_file_imports
             SET status = 'failed', parsed_at = now(), file_checksum = ${checksum},
                 file_size_bytes = ${dataLen(text)},
-                remarks = ${failure ?? "unknown error"}
+                remarks = ${cleanRemark(failure ?? "unknown error")}
             WHERE id = ${importId}::uuid
           `);
           return;
@@ -374,18 +466,13 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
         await tx.execute(sql`
           UPDATE rta_file_imports
           SET status = ${status}, parsed_at = now(), file_checksum = ${checksum},
-              -- Clear a stale FAILURE remark when the file later imports fine.
-              -- A row that was 'rejected' ("Not this firm's file — the archive is
-              -- encrypted with a different password") and is now 'completed' kept
-              -- that text forever, so Recent Uploads showed a rejection message on
-              -- a healthy row: 1,146 files across production read that way.
-              -- status on the right-hand side is the PRE-update value, so this
-              -- only fires on a genuine failure-to-success transition and leaves
-              -- provenance notes ("Auto-imported from forwarded email …") intact.
-              remarks = COALESCE(
-                ${emptyNote},
-                CASE WHEN status IN ('rejected', 'failed') THEN NULL ELSE remarks END
-              ),
+              -- A stale FAILURE remark is cleared when this attempt STARTS
+              -- (markParsing): a row that was 'rejected' ("Not this firm's file
+              -- …") and is now 'completed' used to keep that text forever —
+              -- 1,146 healthy rows in production read that way. What is left
+              -- here is a provenance note, if any; an archive's ignored-files
+              -- note is appended to it.
+              remarks = NULLIF(concat_ws(' ', COALESCE(${emptyNote}::text, remarks), ${archiveNote}::text), ''),
               period_start = ${isoDateOrToday(outcome.periodStart)}::date,
               period_end = ${isoDateOrToday(outcome.periodEnd)}::date,
               rows_total = ${outcome.rowsTotal},
@@ -410,7 +497,7 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
       ctx
     );
   } catch (e: any) {
-    await markFailed(job, e?.message ?? "import failed", { checksum });
+    await markFailed(job, failure ?? e?.message ?? "import failed", { checksum });
   }
 }
 
@@ -504,7 +591,9 @@ async function isLastLiveClaimOnObject(key: string, selfImportId?: string): Prom
 /**
  * Reap rows stuck in `parsing` — if the worker died mid-parse (e.g. OOM on a
  * huge file), nothing resets the row and the UI poll spins forever. Mark them
- * failed after 20 min. Never auto-retried (a half-applied import is upsert-safe
+ * failed once they have been `parsing` longer than the job is ALLOWED to run
+ * plus a margin (`rtaJobTiming`) — it used to be 60 min against a 180-min job
+ * timeout, which failed live imports. Never auto-retried (a half-applied import is upsert-safe
  * but re-running a giant file just risks another OOM — the user re-uploads).
  */
 async function reapStuckParsing(): Promise<number> {
@@ -532,7 +621,8 @@ async function reapStuckParsing(): Promise<number> {
       SET status = 'failed', parsed_at = COALESCE(parsed_at, now()),
           remarks = COALESCE(NULLIF(remarks, ''), 'Import didn''t finish — the worker restarted mid-parse. Re-upload to retry.')
       WHERE (
-        (status = 'parsing' AND parsed_at IS NOT NULL AND parsed_at < now() - interval '60 minutes')
+        (status = 'parsing' AND parsed_at IS NOT NULL
+          AND parsed_at < now() - make_interval(mins => ${TIMING.reapParsingAfterMin}::int))
         ${queueBusy ? sql`` : sql`OR (status IN ('uploaded', 'queued') AND created_at < now() - interval '20 minutes')`}
       )
       RETURNING id
@@ -581,6 +671,8 @@ export type RichImportResult = {
   reportType?: string;
   totalRows?: number;
   missingPan?: number;
+  /** Parser warnings (e.g. invalid PAN values treated as no PAN) — counts only, no values. */
+  warnings?: string[];
   summary?: RtaImportSummary;
 };
 
@@ -598,27 +690,22 @@ async function computeRichImport(
   if (buf.length === 0) return { ok: false, error: "empty upload — no file received" };
   if (buf.length > 80 * 1024 * 1024) return { ok: false, error: "file too large (max 80 MB)" };
 
-  // Unzip password-protected RTA mailbacks to their inner file.
-  let data: Uint8Array = new Uint8Array(buf);
-  let innerName = job.filename;
-  const isZip = buf.length > 1 && buf[0] === 0x50 && buf[1] === 0x4b;
-  if (isZip) {
-    const passwords = candidatePasswords(job);
-    const opened = await openWithAnyPassword(buf, passwords);
-    if (!opened.ok) {
-      const verdict = classifyUnzipFailure(opened.error, opened.triedCount, passwords.length > 0);
-      return { ok: false, notOurs: verdict.rejected, error: verdict.message };
-    }
-    data = opened.data;
-    innerName = opened.filename;
-  }
+  // Identify by content; unzip a real archive (password-protected RTA
+  // mailbacks) to its one data file. A workbook passes through as-is.
+  const opened = await openUpload(buf, job.filename, candidatePasswords(job));
+  if (!opened.ok) return { ok: false, notOurs: opened.rejected, error: opened.message };
+  let data: Uint8Array = opened.data;
+  const innerName = opened.filename;
   buf = Buffer.alloc(0); // free the original before the heavy parse
 
   report?.({ phase: "Parsing file", pct: 8 });
-  // Binary Excel (CAMS R9 .xls) via SheetJS; anything else as latin-1 CSV.
+  // A workbook (CAMS R9 .xls, an .xlsx, a .dbf) via SheetJS; anything else as
+  // delimited text, decoded BOM / UTF-8 / UTF-16 aware (it used to be latin-1,
+  // which glued a UTF-8 BOM to the first header and garbled UTF-8 names).
   const parsed = isSpreadsheet(data, innerName)
-    ? parseRtaRows(readSpreadsheetToRows(data))
-    : parseRtaCsv(new TextDecoder("latin1").decode(data));
+    ? parseRtaRows(readSpreadsheetToRows(data, innerName))
+    : parseRtaCsv(decodeTextBytes(data));
+  data = new Uint8Array(0);
 
   if (parsed.source === "unknown" || parsed.folios.length === 0) {
     return {
@@ -681,16 +768,18 @@ async function computeRichImport(
         ctx
       );
     } catch (err) {
-      captureError("[rta-import] post-import AUM rollup failed", err, { tenantId: job.tenantId });
+      captureError("[rta-import] post-import AUM rollup failed", maskedError(err), { tenantId: job.tenantId });
     }
   }
 
+  const notes = [...opened.notes, ...parsed.warnings.map(maskPansInText)];
   return {
     ok: true,
     source: parsed.source,
     reportType: parsed.reportType,
     totalRows: parsed.totalRows,
     missingPan: parsed.missingPan,
+    warnings: notes.length ? notes : undefined,
     summary,
   };
 }
@@ -711,40 +800,76 @@ export async function runRichImportJob(
   // generic "worker was busy or restarting" message (which masks the cause and
   // makes a master import look perpetually stuck). This mirrors the feed path's
   // try/catch in runRtaImportJob.
+  const ctx = { userId: job.userId, branchId: job.branchId ?? undefined, roles: job.roles };
+  // Like the feed path: show `parsing` while the import runs (a master import
+  // used to sit at `uploaded` for its whole run, so the reaper and the inbox
+  // poller's in-flight check both misread it), and clear the previous
+  // attempt's outcome. A failure here must not stop the import itself.
+  if (job.importId) {
+    try {
+      await markParsing(job.tenantId, job.importId, ctx);
+    } catch (e) {
+      captureError("[rta-import] could not mark rich import parsing", maskedError(e), { tenantId: job.tenantId, importId: job.importId });
+    }
+  }
+
   let result: RichImportResult;
   try {
     result = await computeRichImport(job, report);
   } catch (e: any) {
-    captureError("[rta-import] rich import threw", e, { tenantId: job.tenantId, importId: job.importId });
+    captureError("[rta-import] rich import threw", maskedError(e), { tenantId: job.tenantId, importId: job.importId });
     result = { ok: false, error: e?.message ? `Import failed: ${e.message}` : "Import failed unexpectedly." };
   }
+  if (result.error) result.error = cleanRemark(result.error) ?? undefined;
   if (job.importId) {
-    const ctx = { userId: job.userId, branchId: job.branchId ?? undefined, roles: job.roles };
     await withTenant(
       job.tenantId,
       async (tx) => {
         if (!result.ok) {
           // "Not ours" is a routine no-op, not a failure the operator must act on.
+          // NUL bytes stripped and PANs masked (cleanRemark, above) — a NUL in
+          // the message made this very UPDATE throw and orphaned the row in
+          // `parsing`. Counts / errors / summary cleared: they belong to an
+          // earlier attempt, not to this failure.
           const status = result.notOurs ? "rejected" : "failed";
           await tx.execute(sql`
             UPDATE rta_file_imports SET status = ${status}, parsed_at = now(),
-              remarks = ${(result.error ?? "import failed").slice(0, 1000)}
+              remarks = ${result.error ?? "import failed"},
+              rows_total = NULL, rows_imported = NULL, rows_skipped = NULL, rows_failed = NULL,
+              errors = NULL, summary = NULL
             WHERE id = ${job.importId}::uuid
           `);
           return;
         }
         const s = result.summary;
-        const imported = (s?.folios.created ?? 0) + (s?.folios.updated ?? 0);
-        const skipped = s?.folios.skippedNoPan ?? 0;
+        // Folios the importer held back (client in Trash, ambiguous, or filed
+        // under another client) were counted as created/updated in the
+        // preview figures but not written: report them as skipped, with their
+        // reasons in the row's error list where the Exceptions page finds them.
+        const held = s?.exceptions ?? [];
+        const imported = Math.max(0, (s?.folios.created ?? 0) + (s?.folios.updated ?? 0) - held.length);
+        const skipped = (s?.folios.skippedNoPan ?? 0) + held.length;
         const total = s?.folios.total ?? 0;
+        const rowErrors = [
+          ...held.map((e) => ({ row: e.row, reason: sanitizeText(e.reason) ?? "" })),
+          ...(s && s.moved.folios > 0
+            ? [{ row: 0, reason: `${s.moved.folios} folio(s) moved from an import placeholder to their PAN-keyed client, with ${s.moved.transactions} transaction(s) and ${s.moved.sips} SIP(s)` }]
+            : []),
+        ];
         const status = imported === 0 ? "failed" : skipped > 0 ? "partial" : "completed";
-        const remarks = s
-          ? `${s.investors.created} new + ${s.investors.updated} updated clients · ${s.folios.total} folios · ${s.amcs.length} AMCs`
-          : null;
+        const remarks = cleanRemark(
+          [
+            s ? `${s.investors.created} new + ${s.investors.updated} updated clients · ${s.folios.total} folios · ${s.amcs.length} AMCs` : null,
+            ...(result.warnings ?? []),
+          ]
+            .filter(Boolean)
+            .join(" · ") || null
+        );
         await tx.execute(sql`
           UPDATE rta_file_imports SET status = ${status}, parsed_at = now(),
             rows_total = ${total}, rows_imported = ${imported}, rows_skipped = ${skipped}, rows_failed = 0,
             remarks = ${remarks},
+            errors = ${rowErrors.length ? JSON.stringify(rowErrors) : null}::jsonb,
             summary = ${s ? JSON.stringify(s) : null}::jsonb
           WHERE id = ${job.importId}::uuid
         `);
@@ -815,11 +940,16 @@ export async function runRejectedRescanJob(
     } catch {
       continue; // object already purged — nothing to retry
     }
-    // Only ZIPs carry a password; link-downloaded CSVs arrive in the clear.
-    const isZip = buf.length > 1 && buf[0] === 0x50 && buf[1] === 0x4b;
-    if (isZip && !(await openWithAnyPassword(buf, passwords)).ok) {
-      stillLocked++;
-      continue;
+    // Only ZIP ARCHIVES carry a password; link-downloaded CSVs arrive in the
+    // clear, and an .xlsx is a zip but not an archive. An archive that opens
+    // but cannot be imported as it stands (several data files) is re-queued so
+    // the import records that reason instead of "not ours".
+    if (detectRtaContainer(buf, r.file_name).type === "zip-archive") {
+      const opened = await openWithAnyPassword(buf, passwords);
+      if (!opened.ok && !(opened.error instanceof RtaArchiveError)) {
+        stillLocked++;
+        continue;
+      }
     }
 
     // The worker treats `rejected`/`failed` as terminal and short-circuits, so
@@ -876,7 +1006,7 @@ export async function enqueueRejectedRescan(tenantId: string, source: RtaSource)
  * 38 MB zip that expands to 326 MB and 512,916 rows, so this has to be generous
  * — it is a backstop against a WEDGED job, not a performance budget.
  */
-const JOB_TIMEOUT_MS = Number(process.env.RTA_JOB_TIMEOUT_MIN ?? 180) * 60_000;
+const JOB_TIMEOUT_MS = TIMING.jobTimeoutMin * 60_000;
 
 /**
  * Fail a job that has stopped making progress instead of holding the queue.
@@ -979,7 +1109,7 @@ export function startRtaImportWorker() {
   );
 
   worker.on("failed", (job, err) => {
-    captureError("[rta-import] job failed", err, { importId: (job?.data as RtaImportJob)?.importId });
+    captureError("[rta-import] job failed", maskedError(err), { importId: (job?.data as RtaImportJob)?.importId });
   });
 
   // Stuck-row reaper, every 5 minutes.
@@ -988,12 +1118,14 @@ export function startRtaImportWorker() {
       const n = await reapStuckParsing();
       if (n > 0) console.log(`[rta-import] reaped ${n} stuck parsing row(s)`);
     } catch (err) {
-      captureError("[rta-import] reaper error", err);
+      captureError("[rta-import] reaper error", maskedError(err));
     }
   }, 5 * 60 * 1000);
   reapHandle.unref?.();
 
-  console.log("[rta-import] worker started (concurrency=1, reaper=5m)");
+  console.log(
+    `[rta-import] worker started (concurrency=1, job timeout ${TIMING.jobTimeoutMin}m, reaper every 5m fails rows parsing > ${TIMING.reapParsingAfterMin}m)`
+  );
   return () => {
     clearInterval(reapHandle);
     void worker.close();

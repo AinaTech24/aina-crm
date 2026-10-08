@@ -5,12 +5,13 @@
  * workbooks, or as `.dbf` (FoxPro/dBase — the CAMS folio-master format),
  * rather than CSV. SheetJS reads .xls/.xlsx/.dbf; we flatten the first
  * worksheet into rows of strings so the per-RTA parser sees the same shape it
- * gets from the CSV path. Numbers (incl. Excel date serials) are kept as raw
- * strings — the parser decides how to interpret each column.
+ * gets from the CSV path. Date-formatted cells become YYYY-MM-DD; every other
+ * number is kept as its plain string — the parser decides what each column is.
  *
- * This is the RICH (master/holdings) import path's file-type gate — parallel
- * to, but historically NARROWER than, decode.ts's SPREADSHEET_EXT used by the
- * plain feed-processor path. It didn't recognise `.dbf` at all, so a DBF
+ * This is the RICH (master/holdings) import path's file-type gate. It used to
+ * be parallel to, and historically NARROWER than, decode.ts's extension list
+ * used by the plain feed-processor path; both now decide by content
+ * (file-kind.ts). It didn't recognise `.dbf` at all, so a DBF
  * master fell through to being decoded as latin-1 CSV TEXT: the binary field-
  * descriptor table (embedded NUL bytes, by DBF's own format) got treated as a
  * header row, failed classification, and then the "unrecognised format"
@@ -25,14 +26,19 @@
  */
 
 import * as XLSX from "xlsx";
-import { RtaFileTooLargeError, SPREADSHEET_MAX_BYTES } from "./decode";
+import { assertSpreadsheetSize, cellText, readWorkbook, workbookDate1904 } from "./decode";
+import { detectRtaContainer } from "./file-kind";
 
+/**
+ * Is this file a workbook SheetJS should read? Decided by CONTENT
+ * (`detectRtaContainer`): a CFB/BIFF .xls, an OOXML or ODS package, a DBF
+ * table, or markup under a spreadsheet name. A plain zip archive is NOT a
+ * spreadsheet (it is unpacked first), and neither is CSV text that happens to
+ * be named .xls — the CSV path reads that correctly, SheetJS would guess its
+ * dates month-first.
+ */
 export function isSpreadsheet(data: Uint8Array, filename = ""): boolean {
-  // OLE2 (legacy .xls) magic D0 CF 11 E0, or a zip (.xlsx) named .xls/.xlsx,
-  // or a .dbf (no reliable magic-byte signature across dBase/FoxPro variants —
-  // matched by extension, same convention decode.ts already uses).
-  const ole2 = data.length > 7 && data[0] === 0xd0 && data[1] === 0xcf && data[2] === 0x11 && data[3] === 0xe0;
-  return ole2 || /\.(xls[xmb]?|dbf)$/i.test(filename);
+  return detectRtaContainer(data, filename).type === "workbook";
 }
 
 /**
@@ -43,25 +49,35 @@ export function isSpreadsheet(data: Uint8Array, filename = ""): boolean {
  * very large file costs multiples of its own size in RAM and pins a core
  * synchronously for the whole parse, which starves the worker's event loop and
  * freezes every OTHER background job platform-wide (a 482MB CAMS `.dbf` did
- * exactly this for an hour before decode.ts's guard was added). That guard
- * only covered the plain feed-processor path — the rich (master/holdings)
- * path called this function directly with no size check at all, so the same
- * class of file could still take the platform down through this path. Same
- * limit, same exported constant, one source of truth.
+ * exactly this for an hour before decode.ts's guard was added). Same limit,
+ * same exported constant, one source of truth.
+ *
+ * Cells go through decode.ts's `cellText`, the same as the feed path: a cell
+ * in a DATE number format becomes YYYY-MM-DD from its serial (pure arithmetic,
+ * so no TZ or SheetJS version can move it a day), any other number is
+ * `String(n)`. Before, a date cell reached the parsers as a bare serial
+ * ("45567"): CAMS converted it, KFintech's D/M/YYYY reader did not, so every
+ * KFintech .xls/.xlsx date of birth and report date was dropped.
  */
-export function readSpreadsheetToRows(data: Uint8Array): string[][] {
-  if (data.length > SPREADSHEET_MAX_BYTES) {
-    const mb = (n: number) => `${Math.round(n / 1048576)}MB`;
-    throw new RtaFileTooLargeError(
-      `This file is ${mb(data.length)}, over the ${mb(SPREADSHEET_MAX_BYTES)} limit for spreadsheet formats. ` +
-        `Re-request this report from the RTA with File Type = CSV — CSV imports at any size, ` +
-        `and a file this large in a binary format would stall every background job while it parsed.`
-    );
-  }
-  const wb = XLSX.read(data, { type: "array", cellDates: false, cellNF: false, cellHTML: false });
+export function readSpreadsheetToRows(data: Uint8Array, filename = ""): string[][] {
+  assertSpreadsheetSize(data.length);
+  const kind = detectRtaContainer(data, filename);
+  const wb = readWorkbook(data, kind.type === "workbook" ? kind.format : "xlsx");
   const name = wb.SheetNames[0];
   const ws = name ? wb.Sheets[name] : undefined;
-  if (!ws) return [];
-  const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true, defval: "", blankrows: false });
-  return rows.map((row) => (Array.isArray(row) ? row.map((c) => (c == null ? "" : String(c))) : []));
+  if (!ws || !ws["!ref"]) return [];
+  const date1904 = workbookDate1904(wb);
+  const range = XLSX.utils.decode_range(ws["!ref"]);
+  const rows: string[][] = [];
+  for (let R = range.s.r; R <= range.e.r; R++) {
+    const row: string[] = new Array(range.e.c - range.s.c + 1);
+    let present = false;
+    for (let C = range.s.c; C <= range.e.c; C++) {
+      const cell = (ws as Record<string, XLSX.CellObject | undefined>)[XLSX.utils.encode_cell({ r: R, c: C })];
+      if (cell != null) present = true;
+      row[C - range.s.c] = cellText(cell, date1904);
+    }
+    if (present) rows.push(row); // blankrows: false
+  }
+  return rows;
 }

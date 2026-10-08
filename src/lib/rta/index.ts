@@ -10,6 +10,7 @@ import { parseCsv } from "./csv";
 import { isKfintechFolioMaster, parseKfintechFolioMaster, isKfintechHoldings, parseKfintechHoldings } from "./kfintech";
 import { isCamsFile, parseCamsFile } from "./cams";
 import type { RtaParseResult } from "./types";
+import { maskPansInText } from "./values";
 
 export * from "./types";
 export { parseCsv } from "./csv";
@@ -91,7 +92,10 @@ export function parseRtaRows(allRows: string[][]): RtaParseResult {
     reportType: "",
     totalRows: rows.length - 1,
     folios: [],
-    warnings: [`Unrecognised RTA file format — header did not match any known report. First columns: ${header.slice(0, 6).join(", ")}`],
+    // The "header" of an unrecognised file can be a data row; never echo a PAN from it.
+    warnings: [
+      maskPansInText(`Unrecognised RTA file format — header did not match any known report. First columns: ${header.slice(0, 6).join(", ")}`),
+    ],
     missingPan: 0,
   };
 }

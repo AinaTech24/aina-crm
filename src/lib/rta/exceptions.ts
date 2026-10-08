@@ -116,7 +116,7 @@ const UNRECORDED: Category = {
 };
 
 /** Written to the errors list, but not an exception. */
-const INFO_PATTERN = "were first seen in this report and created|has no frequency column";
+const INFO_PATTERN = "were first seen in this report and created|has no frequency column|moved from an import placeholder";
 
 export const EXCEPTION_REASONS: Category[] = [...CATEGORIES, UNRECORDED];
 
