@@ -40,6 +40,8 @@ const fmtINR = (n: number) => (n >= 1e7 ? `₹${(n / 1e7).toFixed(2)} Cr` : n >=
 const KIND_LABEL: Record<string, string> = {
   PAN: "Same PAN",
   NameDob: "Same name + date of birth",
+  NameContact: "Same name + phone / email",
+  Name: "Same name",
   Phone: "Same phone",
   Email: "Same email",
 };

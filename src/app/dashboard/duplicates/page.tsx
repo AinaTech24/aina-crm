@@ -7,7 +7,7 @@ import { requireSession } from "@/lib/auth/session";
 import { DuplicateGroup, FamilyDuplicateGroup, SharedContactGroup, UndoMergeButton } from "@/components/investors/DuplicateMerge";
 import { ignoredDuplicates } from "@/db/schema";
 import { formatDate } from "@/lib/format";
-import { loadClientDuplicateClusters } from "@/lib/investors/duplicate-clusters";
+import { DUPLICATE_RULES, loadClientDuplicateClusters } from "@/lib/investors/duplicate-clusters";
 import { investorScopeSql } from "@/lib/investors/access";
 import { familyScopeSql } from "@/lib/families/access";
 
@@ -153,13 +153,14 @@ export default async function DuplicatesPage({ searchParams }: { searchParams: P
           {dupClusters.length === 0 ? (
             <Clean
               title="No duplicate clients found."
-              hint="No two records share a PAN, or a name and date of birth with matching PANs."
+              hint="No two records share a PAN, or a name that nothing on the records tells apart."
             />
           ) : (
             <>
               <div className="flex flex-wrap gap-2 text-xs">
-                {count("PAN", dupClusters) > 0 && <span className="chip bg-secondary">Same PAN: <strong className="ml-1">{count("PAN", dupClusters)}</strong></span>}
-                {count("NameDob", dupClusters) > 0 && <span className="chip bg-secondary">Same name + date of birth: <strong className="ml-1">{count("NameDob", dupClusters)}</strong></span>}
+                {DUPLICATE_RULES.filter(([k]) => count(k, dupClusters) > 0).map(([k, label]) => (
+                  <span key={k} className="chip bg-secondary">{label}: <strong className="ml-1">{count(k, dupClusters)}</strong></span>
+                ))}
               </div>
               <div className="space-y-3">
                 {dupClusters.map((c) => <DuplicateGroup key={`${c.kind}-${c.gkey}`} kind={c.kind} gkey={c.gkey} members={c.members} />)}
