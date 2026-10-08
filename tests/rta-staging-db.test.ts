@@ -185,16 +185,19 @@ describe.skipIf(!TEST_DB)("RTA staging — shadow pipeline (DB)", () => {
   });
 
   it("invalid and unsupported source data is held with a reason; an unknown layout stages nothing (test 9)", async () => {
-    const r = await stage(tA, mfsd201([sip("7401", "abc"), sip("7402", "100.00", { "Transaction Type": "XYZ" }), sip("7403", "100.00", { "Transaction Type": "SIND", "Transaction Description": "Systematic Investment Pre-Rejection" }), sip("7404")]), "bad.csv");
+    const r = await stage(tA, mfsd201([sip("7401", "abc"), sip("7402", "100.00", { "Transaction Type": "XYZ" }), sip("7403", "100.00", { "Transaction Type": "SIND", "Transaction Description": "Systematic Investment Pre-Rejection", Units: "0.000", Remarks: "Primary KYC Invalid ref 4455" }), sip("7404")]), "bad.csv");
     expect(r.state).toBe("ready_to_commit");
     const rows = await q(tA, sql`SELECT row_no, state, exception_code, amount::text AS amount, reason FROM rta_staging_rows WHERE batch_id = ${r.batchId}::uuid ORDER BY row_no`);
     expect(rows.map((x) => [x.row_no, x.state, x.exception_code, x.amount])).toEqual([
       [1, "invalid", "row_invalid", null],
       [2, "quarantined", "unknown_transaction_code", "100.00"],
-      [3, "quarantined", "pre_rejection_unlinked", "100.00"],
+      [3, "quarantined", "instalment_rejected", "100.00"],
       [4, "staged", null, "1000.00"],
     ]);
     expect(rows[0].reason).toMatch(/amount/);
+    // A failed instalment keeps the registrar's reason, minimised.
+    const failed = (await q(tA, sql`SELECT attrs FROM rta_staging_rows WHERE batch_id = ${r.batchId}::uuid AND row_no = 3`))[0];
+    expect(failed.attrs.rejectionReason).toBe("Primary KYC Invalid ref #");
     const unknown = await stage(tA, Buffer.from("A,B,C\n1,2,3\n"), "mystery.csv");
     expect(unknown.state).toBe("exception");
     expect((await q(tA, sql`SELECT count(*)::int AS n FROM rta_staging_rows WHERE batch_id = ${unknown.batchId}::uuid`))[0].n).toBe(0);

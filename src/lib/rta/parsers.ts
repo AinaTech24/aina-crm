@@ -26,6 +26,11 @@ export type CanonicalSipRejection = {
   amount: number;
   reason: string;        // human-readable reason
   reasonCode?: string;
+  /** The registrar's AMC / fund code, when the report carries one — folios are
+   *  matched on (AMC, folio), never on the number alone when it is known. */
+  amcCode?: string;
+  /** The registrar's tax status / holder type, when the report carries one. */
+  holderStatus?: string;
   /** 1-based line in the decoded file, for error messages. */
   line: number;
 };
@@ -57,6 +62,8 @@ export type CanonicalFolioRow = {
   openedAt?: string; // YYYY-MM-DD
   closedAt?: string; // YYYY-MM-DD
   value?: number;
+  /** The registrar's tax status / holder type, when the report carries one. */
+  holderStatus?: string;
   /** 1-based line in the decoded file, for error messages. */
   line: number;
 };
@@ -79,6 +86,8 @@ export type CanonicalSipRow = {
   registrationType?: string;
   /** The scheme money is transferred INTO — only an STP has one (CAMS TARGET_SCH). */
   targetScheme?: string;
+  /** The registrar's AMC / fund code (CAMS WBR49 amc_code, KFintech MFSD243 Fund Code). */
+  amcCode?: string;
   /** 1-based line in the decoded file, for error messages. */
   line: number;
 };
@@ -114,6 +123,11 @@ export type CanonicalAumRow = {
    * so the merge has to key on it, or the second statement overwrites the first.
    */
   arn?: string;
+  /** The registrar's AMC / fund code, when the report carries one — folios are
+   *  matched on (AMC, folio), never on the number alone when it is known. */
+  amcCode?: string;
+  /** The registrar's tax status / holder type, when the report carries one. */
+  holderStatus?: string;
   /** 1-based line in the decoded file, for error messages. */
   line: number;
 };
@@ -128,6 +142,9 @@ const SIP_REJECT_ALIASES: Record<string, string[]> = {
   rejectionDate: ["REJECT_DATE", "REJECTION_DATE", "REJ_DATE", "REJECT DATE", "REJECTION DATE", "DATE", "REJ_DT", "ORDER DATE", "ORDER_DATE"],
   amount: ["AMOUNT", "AMT", "TXN_AMT", "TXN_AMOUNT", "TRANS_AMT", "SIP_AMOUNT", "INSTALLMENT AMT", "INSTALLMENT_AMT", "INSTALLMENT AMOUNT", "INSTALLMENT_AMOUNT"],
   reasonCode: ["REASON_CODE", "REJ_CODE", "REJECT_CODE", "REASON CODE", "REJ CODE", "REJ_REASON", "REJ REASON", "FAIL_CODE"],
+  // Only spellings seen on registrar files: CAMS amc_code, KFintech Fund Code.
+  amcCode: ["AMC_CODE", "AMCCOD", "FUND CODE"],
+  holderStatus: ["TAX_STATUS"],
   reason: ["REASON", "REASON_DESC", "REASON DESCRIPTION", "REMARK", "REMARKS", "REJ_DESC", "REJECT_DESC", "REJECTION_REASON", "ORDER REMARK", "ORDER_REMARK", "ORDER STATUS", "ORDER_STATUS"],
 };
 
@@ -156,6 +173,7 @@ const FOLIO_MST_ALIASES: Record<string, string[]> = {
   units: ["UNITS", "UNIT", "QTY", "QUANTITY", "NO_OF_UNITS", "NO OF UNITS", "UNIT_BAL", "BALANCE_UNITS", "CURRENT_UNITS", "CLOS_BAL", "CLOSING_BALANCE", "CLOSE_BAL", "CLOS BAL"],
   openedAt: ["OPEN_DATE", "OPENDT", "OPENED_AT", "CREATION_DATE", "OPEN DATE", "OPEN_DT"],
   closedAt: ["CLOSE_DATE", "CLOSEDT", "CLOSED_AT", "CLOSE DATE", "CLOSE_DT"],
+  holderStatus: ["TAX_STATUS", "TAX STATUS"],
   value: ["AUM", "VALUE", "VALUATION", "AMOUNT", "CURR_VAL", "CURRENT_VALUE", "RUPEE_BAL", "RUPEE BAL", "CLOSING_ASSETS", "MARKET_VALUE", "AMOUNT_BAL"],
 };
 
@@ -186,6 +204,9 @@ const SIP_BOOK_ALIASES: Record<string, string[]> = {
   ceaseDate: ["CEASE_DATE", "CEASED_DATE", "SIP_CEASE_DATE", "CANCEL_DATE", "CANCELLATION_DATE", "TERMINATION_DATE"],
   registrationType: ["AUT_TRNTYP", "AUTO_TRNTYP", "AUTO_TRN_TYPE", "REGISTRATION_TYPE"],
   targetScheme: ["TARGET_SCH", "TARGET_SCHEME", "TARGET_SCHEME_CODE", "TO_SCHEME"],
+  // CAMS WBR49 amc_code; KFintech MFSD243 "Fund Code" (verified equal to the
+  // MFSD201 / MFSD203 Fund on every shared folio, 2026-10-08) and MFSD230 Fund.
+  amcCode: ["AMC_CODE", "AMCCOD", "FUND CODE", "FUND"],
 };
 
 const MANDATE_STATUS_ALIASES: Record<string, string[]> = {
@@ -208,6 +229,8 @@ const AUM_STATEMENT_ALIASES: Record<string, string[]> = {
   units: ["UNITS", "UNIT", "QTY", "QUANTITY", "NO_OF_UNITS", "NO OF UNITS", "UNIT_BAL", "BALANCE_UNITS", "CURRENT_UNITS", "CLOS_BAL"],
   nav: ["NAV", "RATE", "NAV_RATE", "PRICE"],
   aumValue: ["AUM", "VALUE", "VALUATION", "AMOUNT", "CURR_VAL", "CURRENT_VALUE", "AUM_VALUE", "CLOSING_ASSETS", "CLOSING ASSETS", "RUPEE_BAL", "MARKET_VALUE"],
+  amcCode: ["AMC_CODE", "AMCCOD", "FUND CODE", "FUND"],
+  holderStatus: ["TAX_STATUS"],
   arn: ["BROK_DLR_CODE", "BROK DLR CODE", "BROKER_CODE", "BROKER CODE", "AGENT_CODE", "AGENT CODE", "ARN", "ARN_CODE", "DISTRIBUTOR_CODE", "BROKER"],
 };
 
@@ -380,6 +403,8 @@ export function parseSipRejectionReport(text: string, _source: "cams" | "kfintec
         amount: needNumber(val, "amount", "amount"),
         reasonCode,
         reason: reasonText || (reasonCode ? `Reason code ${reasonCode} (no description in the file)` : "No reason given in the file"),
+        amcCode: val("amcCode") || undefined,
+        holderStatus: val("holderStatus") || undefined,
         line,
       };
     });
@@ -451,6 +476,7 @@ export function parseFolioMasterDump(text: string, _source: "cams" | "kfintech" 
       openedAt: dateValue(val("openedAt"), order, "open date"),
       closedAt: dateValue(val("closedAt"), order, "close date"),
       value: optNumber(val, "value", "value"),
+      holderStatus: val("holderStatus") || undefined,
       line,
     }));
   }
@@ -507,6 +533,7 @@ export function parseSipBook(text: string, _source: "cams" | "kfintech" | string
         ceaseDate: sipDate(val("ceaseDate"), order, "cease date"),
         registrationType: val("registrationType") || undefined,
         targetScheme: val("targetScheme") || undefined,
+        amcCode: val("amcCode") || undefined,
         line,
       };
     });
@@ -618,6 +645,8 @@ export function parseAumStatement(text: string, _source: "cams" | "kfintech" | s
         // Absent from statements that don't name the broker — the merge treats a
         // missing ARN as "unknown slice" rather than inventing one.
         arn: val("arn") || undefined,
+        amcCode: val("amcCode") || undefined,
+        holderStatus: val("holderStatus") || undefined,
         line,
       };
     });

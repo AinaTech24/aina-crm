@@ -201,7 +201,7 @@ async function processTransactionFeed(
 
     // ── Who is this row's client? ─────────────────────────────────────────
     const pan = minorOwnerId ? null : validPan(r.pan);
-    const res = minorOwnerId ? ({ kind: "found", id: minorOwnerId, rmId: null } as const) : await dir.resolve({ pan, folioNumber: r.folioNumber, amcCode: r.amcCode });
+    const res = minorOwnerId ? ({ kind: "found", id: minorOwnerId, rmId: null } as const) : await dir.ownerOf({ pan, folioNumber: r.folioNumber, amcCode: r.amcCode, holderStatus: r.holderStatus });
 
     if (res.kind === "blocked" || res.kind === "ambiguous") {
       skipped++;
@@ -424,7 +424,9 @@ async function processSipRejectionReport(
     if (r.rejectionDate < minDate) minDate = r.rejectionDate;
     if (r.rejectionDate > maxDate) maxDate = r.rejectionDate;
 
-    const who = await dir.resolve({ pan: r.pan, folioNumber: r.folioNumber });
+    // Folio first (exact AMC when the report names one); the PAN only as the
+    // owner's own — a guardian's PAN never attaches a minor's rejection.
+    const who = await dir.ownerOf({ pan: r.pan, folioNumber: r.folioNumber, amcCode: r.amcCode, holderStatus: r.holderStatus });
     if (who.kind !== "found") {
       skipped++;
       errors.push({ row: r.line, reason: notAttached(who, r.pan, r.folioNumber) });
@@ -633,7 +635,8 @@ async function processFolioMasterDump(
 
   for (const [key, fRows] of folioRowsGrouped) {
     const firstRow = fRows[0];
-    const who = await dir.byPan(firstRow.pan);
+    // The folio on record decides; the PAN only as the owner's own.
+    const who = await dir.ownerOf({ pan: firstRow.pan, folioNumber: firstRow.folioNumber, amcCode: firstRow.amcCode, holderStatus: firstRow.holderStatus });
     if (who.kind !== "found") {
       skipped += fRows.length;
       errors.push({ row: firstRow.line, reason: notAttached(who, firstRow.pan, firstRow.folioNumber) });
@@ -818,8 +821,6 @@ async function processSipBook(
       continue;
     }
 
-    // Resolve the folio FIRST: it carries the investor link, so it can identify
-    // the client even when the registrar omitted the PAN.
     // The folio carries the client link, so it identifies the client even when
     // the registrar omitted the PAN. A folio number held under several AMC
     // codes by DIFFERENT clients is ambiguous and the row is held back.
@@ -829,46 +830,39 @@ async function processSipBook(
       errors.push({ row: r.line, reason: `Folio ${r.folioNumber} not found — import the folio master first` });
       continue;
     }
-    const folioOwner = await dir.byFolio(r.folioNumber);
-    if (folioOwner.kind === "blocked" || folioOwner.kind === "ambiguous") {
+    const folioOwner = await dir.byFolio(r.folioNumber, r.amcCode);
+    // Folio first (exact AMC when the register names one — CAMS WBR49
+    // amc_code, KFintech Fund Code); the PAN only as the owner's own, so a
+    // guardian's PAN never moves a minor's SIP onto the guardian.
+    const who = await dir.ownerOf({ pan: r.pan, folioNumber: r.folioNumber, amcCode: r.amcCode });
+    if (who.kind === "blocked" || who.kind === "ambiguous") {
       skipped++;
-      errors.push({ row: r.line, reason: notAttached(folioOwner, r.pan, r.folioNumber) });
+      errors.push({ row: r.line, reason: notAttached(who, r.pan, r.folioNumber) });
       continue;
     }
-
-    // PAN wins when the registrar supplies a valid one (it is the platform's
-    // dedup key) — but it must name the folio's own client.
-    let investorId: string | null = null;
-    let rmId: string | null = null;
-    const byPan = await dir.byPan(r.pan);
-    if (byPan.kind === "blocked" || byPan.kind === "ambiguous") {
-      skipped++;
-      errors.push({ row: r.line, reason: notAttached(byPan, r.pan, r.folioNumber) });
-      continue;
-    }
-    if (byPan.kind === "found") {
-      if (folioOwner.kind === "found" && folioOwner.id !== byPan.id && !dir.isGuardianOf(byPan.id, folioOwner.id)) {
-        skipped++;
-        errors.push({ row: r.line, reason: `folio ${r.folioNumber} belongs to a different client in the CRM than this row's PAN — held back for review, nothing reassigned` });
-        continue;
-      }
-      investorId = folioOwner.kind === "found" && dir.isGuardianOf(byPan.id, folioOwner.id) ? folioOwner.id : byPan.id;
-      rmId = folioOwner.kind === "found" && investorId === folioOwner.id ? folioOwner.rmId : byPan.rmId;
-    } else if (folioOwner.kind === "found") {
-      investorId = folioOwner.id;
-      rmId = folioOwner.rmId;
-    }
-    if (!investorId) {
+    if (who.kind !== "found") {
       skipped++;
       errors.push({ row: r.line, reason: notAttached({ kind: "none" }, r.pan, r.folioNumber) + `, and folio ${r.folioNumber} is not linked to a client` });
       continue;
     }
+    const investorId: string = who.id;
+    const rmId: string | null = who.rmId;
 
-    // The folio row this SIP hangs off: the one the owner holds, preferring a
-    // row with a real AMC code over an AMC-less one an AUM statement created.
+    // The folio row this SIP hangs off: the one the owner holds — the exact
+    // AMC the register names first, then a row with a real AMC code over an
+    // AMC-less one an AUM statement created.
+    const rowAmc = (r.amcCode ?? "").trim();
     const ownFolios = folios
       .filter((f) => f.investor_id && (f.investor_id === investorId || folioOwner.kind === "found"))
-      .sort((a, b) => (b.amc_code ?? "").localeCompare(a.amc_code ?? ""));
+      .filter((f) => !rowAmc || !(f.amc_code ?? "").trim() || (f.amc_code ?? "").trim() === rowAmc)
+      .sort((a, b) =>
+        Number((b.amc_code ?? "").trim() === rowAmc) - Number((a.amc_code ?? "").trim() === rowAmc) ||
+        (b.amc_code ?? "").localeCompare(a.amc_code ?? ""));
+    if (rowAmc && !ownFolios.length) {
+      skipped++;
+      errors.push({ row: r.line, reason: `folio ${r.folioNumber} is not on record at AMC ${rowAmc} — import the folio master first; a SIP is never hung on another AMC's folio` });
+      continue;
+    }
     const folioRow = ownFolios[0] ?? folios[0];
     const folioId = folioRow.id;
     const amcCode = (folioRow.amc_code ?? "").trim() || null;
@@ -1180,16 +1174,20 @@ async function processAumStatement(
       errors.push({ row: r.line, reason: `row carries no ${!r.folioNumber ? "folio number" : "scheme code"}` });
       continue;
     }
-    const key = r.folioNumber;
+    // One folio is (AMC, folio number) when the statement names the AMC: the
+    // same number at two AMCs is two folios, possibly two clients.
+    const key = `${r.amcCode ?? ""}__${r.folioNumber}`;
     if (!aumRowsGrouped.has(key)) {
       aumRowsGrouped.set(key, []);
     }
     aumRowsGrouped.get(key)!.push(r);
   }
 
-  for (const [folioNum, fRows] of aumRowsGrouped) {
+  for (const fRows of aumRowsGrouped.values()) {
     const firstRow = fRows[0];
-    const who = await dir.resolve({ pan: firstRow.pan, folioNumber: folioNum });
+    const folioNum = firstRow.folioNumber;
+    const amcCode = (firstRow.amcCode ?? "").trim();
+    const who = await dir.ownerOf({ pan: firstRow.pan, folioNumber: folioNum, amcCode, holderStatus: firstRow.holderStatus });
     if (who.kind === "blocked" || who.kind === "ambiguous") {
       skipped += fRows.length;
       errors.push({ row: firstRow.line, reason: notAttached(who, firstRow.pan, folioNum) });
@@ -1259,9 +1257,14 @@ async function processAumStatement(
     // only the one the resolved client holds (preferring a real AMC code over
     // an AMC-less one) — never an arbitrary first row.
     const candidates = (await dir.foliosFor(folioNum))
-      .filter((f) => f.investor_id === investorId)
-      .sort((a, b) => (b.amc_code ?? "").localeCompare(a.amc_code ?? ""));
-    const others = (await dir.foliosFor(folioNum)).filter((f) => f.investor_id && f.investor_id !== investorId);
+      .filter((f) => f.investor_id === investorId && (!amcCode || !(f.amc_code ?? "").trim() || (f.amc_code ?? "").trim() === amcCode))
+      .sort((a, b) =>
+        amcCode
+          ? Number((b.amc_code ?? "").trim() === amcCode) - Number((a.amc_code ?? "").trim() === amcCode)
+          : (b.amc_code ?? "").localeCompare(a.amc_code ?? ""));
+    const others = (await dir.foliosFor(folioNum)).filter(
+      (f) => f.investor_id && f.investor_id !== investorId && (!amcCode || (f.amc_code ?? "").trim() === amcCode),
+    );
     if (!candidates.length && others.length) {
       skipped += fRows.length;
       errors.push({ row: firstRow.line, reason: `folio ${folioNum} belongs to a different client in the CRM than this row's PAN — held back for review, nothing reassigned` });
@@ -1275,14 +1278,13 @@ async function processAumStatement(
       const rtaEnum = args.source === "cams" || args.source === "kfintech" ? args.source : "other";
       await tx.execute(sql`
         INSERT INTO folios (tenant_id, investor_id, folio_number, amc_code, amc_name, rta, schemes)
-        VALUES (${args.tenantId}::uuid, ${investorId}::uuid, ${folioNum}, '', '', ${rtaEnum}, '[]'::jsonb)
+        VALUES (${args.tenantId}::uuid, ${investorId}::uuid, ${folioNum}, ${amcCode}, '', ${rtaEnum}, '[]'::jsonb)
         ON CONFLICT (tenant_id, amc_code, folio_number) DO UPDATE SET updated_at = now()
       `);
       folio = await tx.execute(sql`
         SELECT id, schemes FROM folios
         WHERE tenant_id = ${args.tenantId}::uuid AND folio_number = ${folioNum}
-          AND investor_id = ${investorId}::uuid
-        ORDER BY amc_code DESC NULLS LAST
+          AND investor_id = ${investorId}::uuid AND amc_code = ${amcCode}
         LIMIT 1
       `);
       if (folio.rows[0]) createdFolios++;

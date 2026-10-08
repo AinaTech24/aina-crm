@@ -7,7 +7,7 @@
  */
 import { describe, expect, it, beforeAll } from "vitest";
 import { classifyCams, classifyKfintech, CLASS_META, postable } from "@/lib/rta/staging/classify";
-import { identifyLayout, normalizeRows, readDecimal, LAYOUTS, type NormRow } from "@/lib/rta/staging/layouts";
+import { identifyLayout, normalizeRows, readDecimal, rejectionReasonText, LAYOUTS, type NormRow } from "@/lib/rta/staging/layouts";
 import { groupTransactions, lotArithmetic, sumReported } from "@/lib/rta/staging/group";
 import { panToken, keyedDigest, PanTokenKeyMissingError } from "@/lib/rta/staging/pan-token";
 import { rtaPipelineMode } from "@/lib/rta/staging/config";
@@ -114,6 +114,22 @@ describe("Phase 3B-A — KFintech classification (MFSD201)", () => {
   it("pre-rejections (SIND / STPAD / STPOD) are held, linked or not", () => {
     for (const code of ["SIND", "STPAD", "STPOD"]) expect(k(code, "P", "Pre rejection")).toMatchObject({ rtaClass: "rejection", exception: "pre_rejection_unlinked" });
     expect(k("SIND", "P", "", "999").reason).toMatch(/not implemented/);
+  });
+  it("a pre-rejection in the verified shape (no original, no units, an amount) is a failed instalment, not a transaction (Phase 3D)", () => {
+    const f = (typeCode: string, o: { units?: number; amount?: number; rejOriginalNo?: string } = {}) =>
+      classifyKfintech({ typeCode, head: "P", description: "Pre rejection", status: "Y", units: 0, amount: 1000, ...o });
+    expect(f("SIND")).toMatchObject({ rtaClass: "rejection", exception: "instalment_rejected", notes: { rejectionOf: "sip", genuineRejection: true } });
+    expect(f("STPAD").notes?.rejectionOf).toBe("stp_in");
+    expect(f("STPOD").notes?.rejectionOf).toBe("stp_out");
+    expect(f("SIND").reason).toMatch(/does not stop the registration/);
+    // Outside the verified shape it stays held as before.
+    expect(f("SIND", { rejOriginalNo: "999" }).exception).toBe("pre_rejection_unlinked");
+    expect(f("SIND", { units: 10 }).exception).toBe("pre_rejection_unlinked");
+    expect(f("SIND", { amount: 0 }).exception).toBe("pre_rejection_unlinked");
+  });
+  it("a failed instalment keeps the registrar's reason without digits or PANs", () => {
+    expect(rejectionReasonText("Primary KYC Invalid(KYC Modification not Done) ABCPD1234E acct 123456")).toBe("Primary KYC Invalid(KYC Modification not Done) <pan> acct #");
+    expect(rejectionReasonText("  ")).toBeUndefined();
   });
   it("a code with the wrong Transaction Head, or an unknown code, is held", () => {
     expect(k("SIN", "R").exception).toBe("head_code_conflict");

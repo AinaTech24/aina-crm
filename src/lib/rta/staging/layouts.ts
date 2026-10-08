@@ -30,6 +30,12 @@ export type LayoutId =
 
 export type Decimal = { text: string; num: number; dp: number };
 
+/** A registrar's free-text reason, safe to keep: PANs and every digit run masked, length capped. */
+export function rejectionReasonText(raw: string): string | undefined {
+  const t = (raw ?? "").replace(/[A-Za-z]{5}[0-9]{4}[A-Za-z]/g, "<pan>").replace(/[0-9]+/g, "#").replace(/\s+/g, " ").trim();
+  return t ? t.slice(0, 160) : undefined;
+}
+
 export type ValidationIssue = { field: string; reason: string };
 
 export type LotFacts = {
@@ -311,7 +317,7 @@ export function normalizeRows(tenantId: string, layout: Layout, header: string[]
         n.guardianPan = c("GuardPanNo") || null;
         n.holder = { statusText: c("Status"), rowPan: n.pan, rowPanRole: "owner", guardianPan: n.guardianPan, jointPans: [c("PAN2"), c("PAN3")] };
         const consolidation = /consolidat/i.test(c("Remarks"));
-        n.cls = classifyKfintech({ typeCode: c("Transaction Type"), head: c("Transaction Head"), description: c("Transaction Description"), status: c("Transaction Status"), rejOriginalNo: c("RejTrnoOrgNo"), consolidation });
+        n.cls = classifyKfintech({ typeCode: c("Transaction Type"), head: c("Transaction Head"), description: c("Transaction Description"), status: c("Transaction Status"), rejOriginalNo: c("RejTrnoOrgNo"), consolidation, units: n.units?.num ?? null, amount: n.amount?.num ?? null });
         const lotId = b.text("Transaction ID");
         const purchaseNo = b.text("Purchase Transaction No");
         if ((lotId || purchaseNo) && c("Transaction Head").toUpperCase() === "R") {
@@ -329,8 +335,13 @@ export function normalizeRows(tenantId: string, layout: Layout, header: string[]
           sub: c("Transaction Sub"), flag: c("Transaction Flag"), status: c("Transaction Status"),
           loadPct: c("Load Percentage"), processDate: c("Process Date"), navDate: c("Nav Date"),
           toProductCode: c("ToProductCode") || undefined, hasSipRegistration: c("sipregslno") !== "",
+          // The registration this instalment belongs to (= MFSD243 RegSlno, verified 8/9).
+          sipRegistrationId: c("sipregslno") && c("sipregslno") !== "0" ? c("sipregslno") : undefined,
           rejectionLinksOriginal: c("RejTrnoOrgNo") !== "",
           folioConsolidation: consolidation || undefined,
+          // The registrar's reason for a failed instalment, minimised: digits
+          // (account / cheque / folio numbers) and PANs never stored.
+          rejectionReason: n.cls.exception === "instalment_rejected" ? rejectionReasonText(c("Remarks")) : undefined,
         };
         break;
       }
@@ -357,6 +368,8 @@ export function normalizeRows(tenantId: string, layout: Layout, header: string[]
         n.attrs = {
           typeCode: c("trxntype"), flag: c("trxn_type_flag"), nature: c("trxn_nature").slice(0, 160), sub: c("trxnsubtyp"),
           status: c("trxnstat"), swflag: c("swflag"), hasSipRegistration: c("siptrxnno") !== "",
+          // R2's own systematic reference; its link to WBR49 auto_trno is not evidenced.
+          sipRef: c("siptrxnno") || undefined,
           hasSysRegnDate: c("sys_regn_date") !== "", targetSourceScheme: c("targ_src_scheme") || undefined,
           postDate: c("postdate"),
         };

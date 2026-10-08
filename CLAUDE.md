@@ -524,7 +524,10 @@ CLI `scripts/rta-shadow.ts`. Design and rollout: `docs/rta/PHASE3B_SHADOW.md`.
 - **Classification** (`classify.ts`): CAMS Switch ↔ STP needs BOTH systematic
   markers (nature "Systematic…" and `siptrxnno`); one marker → held. KFintech by
   `Transaction Type` code checked against `Transaction Head`. IDCW, reversals,
-  cancellations, pre-rejections and unknown codes are held.
+  cancellations, pre-rejections and unknown codes are held. KFintech SIND /
+  STPAD / STPOD in the verified shape (no original named, no units, an amount)
+  are FAILED INSTALMENTS (`instalment_rejected`, Phase 3D) — SIP Rejection
+  register, never a transaction, never a stopped SIP.
 
 ## RTA client identity — owner decisions of 2026-10-08
 
@@ -551,6 +554,34 @@ staging today and for posting later. Read it before touching matching.
 - **AUM** is per (registrar, ARN) statement with its date
   (`holdings-snapshot.ts`); firm AUM is complete only with a full-book
   statement for every scope. MFSD203 is full-book KFintech; the R9 sample was not.
+
+## RTA sources, SIP Master, AUM view — Phase 3D (2026-10-08)
+
+Design and evidence: `docs/rta/PHASE3D_SOURCE_SELECTION.md`. Minimum set:
+CAMS R2 + R9 + WBR49, KFintech MFSD201 + MFSD203 + MFSD211 + MFSD243 (MFSD230
+kept conditionally — the only source of paid / pending instalment counts).
+
+- **Every legacy processor resolves owners with `InvestorDirectory.ownerOf`**
+  (`identity.ts`): the folio on record (AMC + folio when the row names an AMC)
+  decides; the PAN only as the owner's own — never on a minor's row, never an
+  individual PAN on an HUF row, never a recorded guardian's PAN when the report
+  does not state the holder type. A PAN naming another client holds the row
+  (unless the number-only match is at a different AMC). Do not add a processor
+  that calls `resolve` / `byPan` for a folio-bearing row.
+- **SIP Master** (`lib/rta/sip-master.ts`, pure): one registration per
+  `reg:<rta>:<amc>:<id>` (KFintech RegSlno = MFSD201 sipregslno; CAMS
+  auto_trno — R2 siptrxnno is NOT linked to it). MFSD230 attaches only on a
+  unique exact match and never sets lifecycle. Active SIP Book = SIP + ACTIVE +
+  known frequency; PENDING / UNKNOWN / STP / SWP are reported beside it.
+  `coverage.missingFromMaster` > 0 means the book is not the whole book.
+- **AUM view** (`lib/rta/aum-view.ts`, pure): one card per registrar × ARN
+  with date, age, stale flag, full-book flag and coverage gaps (folios other
+  files evidence but the statement lacks). The firm figure is null unless
+  every scope is full-book, fresh, gap-free and valued. A position keeps the
+  registrar's value and the live-NAV value separately, each dated.
+- **Migrations 0233 / 0234**: purging an import nulls the staging link
+  (SET NULL); `folio_holders` cascades with its folio, keeps its row when the
+  client is purged, and a trigger refuses cross-tenant references.
 
 ## Webhook handlers
 

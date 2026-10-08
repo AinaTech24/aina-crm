@@ -1,5 +1,7 @@
 # RTA Phase 3C — Minimum RTA files, correct client identity
 
+> **Correction (Phase 3D, 2026-10-08):** the May MFSD201 does contain three genuine failed instalments (SIND, and one STPAD + STPOD pair; status Y, no units, the registrar's reason in Remarks). The statements below that no genuine rejection appears in the samples are superseded — see `docs/rta/PHASE3D_SOURCE_SELECTION.md` §3.
+
 Status: **development and shadow testing only** (owner decisions of 2026-10-08).
 Nothing deployed, merged, posted or changed in production data.
 

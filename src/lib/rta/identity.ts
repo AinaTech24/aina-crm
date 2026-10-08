@@ -26,6 +26,7 @@
 
 import { sql } from "drizzle-orm";
 import { validPan } from "./values";
+import { panHolderType, statusOwnerType } from "./owner";
 
 type Tx = any;
 
@@ -301,6 +302,124 @@ export class InvestorDirectory {
     if (minor.guardian_investor_id && minor.guardian_investor_id === guardianId) return true;
     const gp = validPan(guardian.pan);
     return !!gp && (minor.pan ?? "").toUpperCase().startsWith(`MINOR:${gp}:`);
+  }
+
+  /**
+   * The guardian PAN a minor's record carries: its guardian client's own PAN,
+   * else the one in the importer's key `MINOR:<guardian PAN>:<NAME>`.
+   */
+  private async guardianPanOf(minorId: string): Promise<string | null> {
+    const minor = this.byId.get(minorId);
+    if (!minor) return null;
+    if (minor.guardian_investor_id) {
+      await this.loadIds([minor.guardian_investor_id]);
+      const g = validPan(this.byId.get(minor.guardian_investor_id)?.pan);
+      if (g) return g;
+    }
+    const m = (minor.pan ?? "").toUpperCase().match(/^MINOR:([A-Z]{5}[0-9]{4}[A-Z]):/);
+    return m ? m[1] : null;
+  }
+
+  private guardianCache = new Map<string, boolean>();
+  /** Is this client the recorded guardian of any live minor in the firm? */
+  private async guardsAMinor(id: string): Promise<boolean> {
+    const hit = this.guardianCache.get(id);
+    if (hit !== undefined) return hit;
+    const pan = validPan(this.byId.get(id)?.pan);
+    const r = await this.tx.execute(sql`
+      SELECT 1 FROM investors
+       WHERE tenant_id = ${this.tenantId}::uuid AND deleted_at IS NULL
+         AND (guardian_investor_id = ${id}::uuid OR (${pan}::text IS NOT NULL AND upper(pan) LIKE ${`MINOR:${pan ?? ""}:%`}))
+       LIMIT 1
+    `);
+    const yes = r.rows.length > 0;
+    this.guardianCache.set(id, yes);
+    return yes;
+  }
+
+  /**
+   * Folio-first ownership for the legacy processors (SIP rejection report, SIP
+   * register, AUM statement, folio master) — the owner decisions of
+   * 2026-10-08, the same order `owner.ts` gives the staging engine:
+   *
+   *   1. The folio on record is the owner: matched on (AMC, folio) when the row
+   *      names an AMC, by number alone only when every folio under it has the
+   *      same live client. The row's PAN must then be the owner's own, or the
+   *      recorded guardian's of a minor owner. A PAN that names ANOTHER client,
+   *      or a different valid PAN when the owner has one, holds the row — PAN
+   *      never overrides the folio. A provisional (PAN-less) owner is never
+   *      displaced by a PAN: placeholder reassignment stays off.
+   *   2. No folio on record (or one with no client): the row's PAN, as the
+   *      owner's OWN PAN — never on a row the registrar marks minor (its PAN is
+   *      the guardian's), never an individual PAN on an HUF row (it is the
+   *      Karta's), and never when that PAN's client is the recorded guardian of
+   *      a minor when the report does not state the holder type, since the row
+   *      may be the child's. Those are held with the
+   *      reason; importing the folio master settles them.
+   *   3. Otherwise none.
+   *
+   * Nothing here writes; it decides. No historical row is moved by it.
+   */
+  async ownerOf(key: {
+    pan?: string | null;
+    folioNumber?: string | null;
+    amcCode?: string | null;
+    holderStatus?: string | null;
+  }): Promise<Resolution & { via?: "folio" | "pan" }> {
+    const rowPan = validPan(key.pan);
+    const folio = norm(key.folioNumber);
+    const held = (reason: string): Resolution => ({ kind: "ambiguous", reason });
+    if (folio) {
+      const f = await this.byFolio(folio, key.amcCode);
+      if (f.kind === "blocked" || f.kind === "ambiguous") return f;
+      // A number-only match is WEAK when the row names an AMC and every folio
+      // on record under that number carries a different, non-blank AMC code:
+      // the row may well be another folio at another AMC.
+      const amc = norm(key.amcCode);
+      const weak = !!amc && (await this.foliosFor(folio)).every((r) => !!norm(r.amc_code) && norm(r.amc_code) !== amc);
+      let otherFolio = false;
+      if (f.kind === "found") {
+        const ownerPan = validPan(this.byId.get(f.id)?.pan);
+        if (rowPan && rowPan !== ownerPan) {
+          const p = await this.byPan(rowPan);
+          const guardian =
+            (p.kind === "found" && this.isGuardianOf(p.id, f.id)) ||
+            (!!this.byId.get(f.id)?.is_minor && (await this.guardianPanOf(f.id)) === rowPan);
+          if (!guardian) {
+            if (p.kind === "found" && p.id !== f.id && weak) {
+              // Another known client, at an AMC this folio is not on record
+              // with: their own folio there — decided below on their PAN.
+              otherFolio = true;
+            } else if (p.kind === "found" && p.id !== f.id) {
+              return held(`folio ${folio} is filed under a different client than the one this row's PAN names — held back for review, nothing reassigned`);
+            } else if (ownerPan) {
+              return held(`folio ${folio} is filed under a client with a different PAN — held back for review, nothing reassigned`);
+            }
+            // The owner has no PAN of its own (a minor or a provisional
+            // record) and this PAN is not a client: the folio decides.
+          }
+        }
+        if (!otherFolio) return { ...f, via: "folio" };
+      }
+    }
+    if (!rowPan) return { kind: "none" };
+    const status = statusOwnerType(key.holderStatus);
+    const where = folio ? `folio ${folio}${norm(key.amcCode) ? ` at AMC ${norm(key.amcCode)}` : ""} is not on record` : "the row names no folio";
+    if (status === "minor") {
+      return held(`${where} and the row is a minor's — its PAN is the guardian's and never attaches it; import the folio master first`);
+    }
+    if (status === "huf" && panHolderType(rowPan) !== "huf") {
+      return held(`${where} and the row is an HUF's with an individual (Karta's) PAN — the Karta is never made the owner; import the folio master first`);
+    }
+    const p = await this.byPan(rowPan);
+    if (p.kind !== "found") return p;
+    // A row the registrar states is NOT a minor's carries the owner's own PAN;
+    // only when the report says nothing is a guardian's PAN a real possibility.
+    const statedAdult = status === "individual" || status === "non_individual" || status === "huf";
+    if (!statedAdult && (await this.guardsAMinor(p.id))) {
+      return held(`${where} and this PAN's client is the recorded guardian of a minor — the row may be the minor's; import the folio master first`);
+    }
+    return { ...p, via: "pan" };
   }
 
   /** What the directory holds about one loaded client (read-only; null if not loaded). */

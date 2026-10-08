@@ -20,15 +20,23 @@
 --   majority_status      a minor-to-major transition, set only from registrar
 --                        evidence (never from the date of birth alone)
 --
--- Additive only; tenant isolation by RLS (ENABLE + FORCE + tenant_isolation).
--- Rollback: nothing reads these until the posting phase.
+-- Additive only; tenant isolation by RLS (ENABLE + FORCE + tenant_isolation)
+-- plus a tenant-consistency trigger. No existing row is written.
+-- Rollback: nothing reads these until the posting phase; the columns and the
+-- empty table can stay. Dropping folio_holders once populated is a separate,
+-- signed-off step after an export.
+
+SET LOCAL lock_timeout = '5s';
 
 CREATE TABLE IF NOT EXISTS folio_holders (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id        uuid NOT NULL REFERENCES tenants(id),
-  folio_id         uuid NOT NULL REFERENCES folios(id) ON DELETE RESTRICT,
+  -- A holder row describes a folio; it goes when the folio goes (client purge).
+  folio_id         uuid NOT NULL REFERENCES folios(id) ON DELETE CASCADE,
   role             text NOT NULL CHECK (role IN ('first', 'second', 'third', 'guardian', 'karta')),
-  investor_id      uuid REFERENCES investors(id) ON DELETE RESTRICT,
+  -- A holder who is also a client: purging that client keeps the row (and what
+  -- the registrar printed), only the link goes.
+  investor_id      uuid REFERENCES investors(id) ON DELETE SET NULL,
   holder_pan       text,
   holder_name      text,
   holder_dob       date,
@@ -55,7 +63,39 @@ CREATE POLICY tenant_isolation ON folio_holders
   USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid OR current_setting('app.is_platform_admin', true) = 'true')
   WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid OR current_setting('app.is_platform_admin', true) = 'true');
 
-ALTER TABLE investors ADD COLUMN IF NOT EXISTS identity_confidence text
-  CHECK (identity_confidence IN ('verified_pan', 'provisional_folio', 'manual'));
-ALTER TABLE investors ADD COLUMN IF NOT EXISTS majority_status text
-  CHECK (majority_status IN ('minor', 'major_pending_regularisation', 'major_verified'));
+-- Tenant consistency: folio_id / investor_id are plain foreign keys (folios
+-- and investors have no (tenant_id, id) key, and adding one would lock two
+-- large tables during deploy). The trigger refuses a row whose folio or client
+-- belongs to another firm — under RLS the lookup sees only the caller's firm,
+-- in system context the explicit tenant_id comparison does the same.
+CREATE OR REPLACE FUNCTION folio_holders_tenant_check() RETURNS trigger LANGUAGE plpgsql AS $fn$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM folios f WHERE f.id = NEW.folio_id AND f.tenant_id = NEW.tenant_id) THEN
+    RAISE EXCEPTION 'folio_holders: folio % is not a folio of tenant %', NEW.folio_id, NEW.tenant_id USING ERRCODE = '23503';
+  END IF;
+  IF NEW.investor_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM investors i WHERE i.id = NEW.investor_id AND i.tenant_id = NEW.tenant_id) THEN
+    RAISE EXCEPTION 'folio_holders: client % is not a client of tenant %', NEW.investor_id, NEW.tenant_id USING ERRCODE = '23503';
+  END IF;
+  RETURN NEW;
+END
+$fn$;
+DROP TRIGGER IF EXISTS folio_holders_tenant_check ON folio_holders;
+CREATE TRIGGER folio_holders_tenant_check BEFORE INSERT OR UPDATE OF tenant_id, folio_id, investor_id ON folio_holders
+  FOR EACH ROW EXECUTE FUNCTION folio_holders_tenant_check();
+
+-- Two nullable columns, no default: a catalogue-only change. Their CHECKs are
+-- added NOT VALID so no full scan of investors runs under the ALTER's lock —
+-- every existing row is NULL and satisfies them anyway; new writes are checked.
+ALTER TABLE investors ADD COLUMN IF NOT EXISTS identity_confidence text;
+ALTER TABLE investors ADD COLUMN IF NOT EXISTS majority_status text;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'investors_identity_confidence_ck') THEN
+    ALTER TABLE investors ADD CONSTRAINT investors_identity_confidence_ck
+      CHECK (identity_confidence IN ('verified_pan', 'provisional_folio', 'manual')) NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'investors_majority_status_ck') THEN
+    ALTER TABLE investors ADD CONSTRAINT investors_majority_status_ck
+      CHECK (majority_status IN ('minor', 'major_pending_regularisation', 'major_verified')) NOT VALID;
+  END IF;
+END $$;

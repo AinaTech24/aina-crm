@@ -22,8 +22,16 @@
 --
 -- Rollback (non-destructive): set RTA_PIPELINE_MODE=off — nothing reads these
 -- tables for business figures. Dropping them is a separate, signed-off step
--- after any audit export, never part of a rollback.
+-- after any audit export, never part of a rollback. No existing table gains a
+-- column, a constraint or a trigger; no existing row is written.
 
+-- Fail fast rather than queue behind a long transaction (and block every
+-- reader queued behind this DDL). The deploy retries a migration that times out.
+SET LOCAL lock_timeout = '5s';
+
+-- Briefly blocks writes to rta_file_imports while it builds (a small table:
+-- one row per uploaded file); (tenant_id, id) is unique already through the
+-- primary key, so it can never fail on existing data.
 CREATE UNIQUE INDEX IF NOT EXISTS rta_file_imports_tenant_id_uidx ON rta_file_imports (tenant_id, id);
 
 -- ── Batches: one per file processed by the pipeline ─────────────────────────
@@ -61,8 +69,11 @@ CREATE TABLE IF NOT EXISTS rta_staging_batches (
   updated_at             timestamptz NOT NULL DEFAULT now(),
   completed_at           timestamptz,
   CONSTRAINT rta_staging_batches_tenant_id_uq UNIQUE (tenant_id, id),
+  -- An import-history row can be purged (Import history → Delete → purge, and
+  -- the bulk purge): the batch keeps its own file checksum / reference and only
+  -- loses the link. RESTRICT here would make those existing routes fail.
   CONSTRAINT rta_staging_batches_import_fk FOREIGN KEY (tenant_id, import_id)
-    REFERENCES rta_file_imports (tenant_id, id) ON DELETE RESTRICT,
+    REFERENCES rta_file_imports (tenant_id, id) ON DELETE SET NULL (import_id),
   CONSTRAINT rta_staging_batches_rerun_fk FOREIGN KEY (tenant_id, rerun_of_batch_id)
     REFERENCES rta_staging_batches (tenant_id, id) ON DELETE RESTRICT,
   CONSTRAINT rta_staging_batches_same_file_fk FOREIGN KEY (tenant_id, same_file_as_batch_id)

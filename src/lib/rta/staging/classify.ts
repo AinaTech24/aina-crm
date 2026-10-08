@@ -52,6 +52,7 @@ export const CLASS_META: Record<RtaClass, { legacyType: LegacyType | null; direc
 /** Exception codes a classification can raise (the row is held, never posted). */
 export type ClassException =
   | "pre_rejection_unlinked"
+  | "instalment_rejected"
   | "reversal_unlinked"
   | "cancellation_unlinked"
   | "switch_stp_ambiguous"
@@ -173,6 +174,9 @@ export type KfinClassInput = {
   rejOriginalNo?: string; // RejTrnoOrgNo
   /** The row's Remarks say it was re-reported because folios were consolidated. */
   consolidation?: boolean;
+  /** Units and amount as reported (only their signs are read). */
+  units?: number | null;
+  amount?: number | null;
 };
 
 const KFIN_CODES: Record<string, { cls: RtaClass; head: "P" | "R" }> = {
@@ -185,8 +189,15 @@ const KFIN_CODES: Record<string, { cls: RtaClass; head: "P" | "R" }> = {
   STPA: { cls: "stp_in", head: "P" },
   STPO: { cls: "stp_out", head: "R" },
 };
-/** Pre-rejection codes seen in MFSD201: the row refuses an earlier one, which it does not name. */
-const KFIN_PRE_REJECTION = new Set(["SIND", "STPAD", "STPOD"]);
+/**
+ * Pre-rejection codes seen in MFSD201. Verified on the May 2026 sample
+ * (Phase 3D): every SIND / STPAD / STPOD row is a FAILED INSTALMENT reported on
+ * its own — status Y, no units allotted, the instalment amount, the reason in
+ * Remarks ("Primary KYC Invalid…", "Required amount not available in source
+ * fund"), RejTrnoOrgNo empty. It does not reverse an earlier processed row; it
+ * IS the record that the instalment did not happen.
+ */
+const KFIN_PRE_REJECTION: Record<string, "sip" | "stp_in" | "stp_out"> = { SIND: "sip", STPAD: "stp_in", STPOD: "stp_out" };
 
 export function classifyKfintech(i: KfinClassInput): BusinessClass {
   const code = up(i.typeCode);
@@ -214,8 +225,16 @@ export function classifyKfintech(i: KfinClassInput): BusinessClass {
   if (code.length > 3 && code.endsWith("R") && KFIN_CODES[code.slice(0, -1)] && REJECT_WORD.test(desc)) {
     return make("rejection", "inferred", `KFintech ${code} ("${i.description.trim()}") rejects a ${KFIN_CODES[code.slice(0, -1)].cls.replace("_", " ")} — held until a non-consolidation sample shows what it means`, { exception: "rejection_semantics_unverified" });
   }
-  if (KFIN_PRE_REJECTION.has(code) || PRE_REJECT.test(desc)) {
+  if (KFIN_PRE_REJECTION[code] || PRE_REJECT.test(desc)) {
     const linked = (i.rejOriginalNo ?? "").trim() !== "";
+    const of = KFIN_PRE_REJECTION[code];
+    // The verified shape: names no original, allotted nothing, carries the
+    // instalment amount. Only that shape is read as a failed instalment.
+    if (of && !linked && (i.units ?? 0) === 0 && (i.amount ?? 0) > 0) {
+      return make("rejection", "verified",
+        `KFintech ${code}: a ${of === "sip" ? "SIP" : of === "stp_in" ? "STP-in" : "STP-out"} instalment the registrar refused (no units allotted) — a failed instalment for the SIP Rejection register, never a transaction; it does not stop the registration`,
+        { exception: "instalment_rejected", notes: { rejectionOf: of, genuineRejection: true } });
+    }
     return make("rejection", "verified",
       linked
         ? `KFintech pre-rejection ${code} naming its original — held: linking a rejection to its original is not implemented in this phase`
