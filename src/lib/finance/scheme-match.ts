@@ -24,6 +24,7 @@
  */
 
 import { sql } from "drizzle-orm";
+import { schemeNameKey } from "./scheme-name-key";
 
 type Tx = any;
 
@@ -47,6 +48,9 @@ export type NavIndex = {
    *  codes share it). Ambiguity is stored rather than dropped so a lookup can
    *  tell "no such name" from "refused to guess". */
   byName: Map<string, NavEntry | null>;
+  /** schemeNameKey → every AMFI scheme with that key (see lookupNavByKey).
+   *  Optional so an index built by hand (tests) without it still works. */
+  byKey?: Map<string, Array<NavEntry & { name: string }>>;
   size: number;
 };
 
@@ -57,6 +61,7 @@ export async function loadNavIndex(tx: Tx): Promise<NavIndex> {
   );
   const byCode = new Map<string, NavEntry>();
   const byName = new Map<string, NavEntry | null>();
+  const byKey: NonNullable<NavIndex["byKey"]> = new Map();
 
   for (const r of res.rows as Array<{
     scheme_code: string | null;
@@ -66,8 +71,14 @@ export async function loadNavIndex(tx: Tx): Promise<NavIndex> {
   }>) {
     const nav = Number(r.nav);
     if (r.scheme_code == null || !isFinite(nav) || nav <= 0) continue;
-    const entry: NavEntry = { code: String(r.scheme_code), nav, navDate: r.nav_date ?? null };
+    const navDate = r.nav_date == null ? null : String((r.nav_date as unknown) instanceof Date ? (r.nav_date as unknown as Date).toISOString() : r.nav_date).slice(0, 10);
+    const entry: NavEntry = { code: String(r.scheme_code), nav, navDate };
     byCode.set(entry.code, entry);
+    const sk = schemeNameKey(r.scheme_name);
+    if (sk) {
+      const k = `${sk.tokens}|${sk.direct ? "d" : "r"}`;
+      byKey.set(k, [...(byKey.get(k) ?? []), { ...entry, name: String(r.scheme_name ?? "") }]);
+    }
 
     const key = normSchemeName(r.scheme_name);
     if (!key) continue;
@@ -80,10 +91,46 @@ export async function loadNavIndex(tx: Tx): Promise<NavIndex> {
       if (existing && existing.code !== entry.code) byName.set(key, null);
     }
   }
-  return { byCode, byName, size: byCode.size };
+  return { byCode, byName, byKey, size: byCode.size };
 }
 
-export type NavHit = NavEntry & { via: "code" | "name" };
+export type NavHit = NavEntry & { via: "code" | "name" | "key" };
+
+/**
+ * The AMFI scheme a registrar's name means, by schemeNameKey — the only way to
+ * price a transaction carrying the registrar's own product code ("HGFGPG",
+ * "K1155", "101EQGP"), which no NAV master knows. On 8 Oct 2026 that was 1,638
+ * codes and Rs 3,439 Cr of purchases across every firm, shown as "invested"
+ * with no current value.
+ *
+ * Several AMFI codes can share a key (legacy rows, payout vs reinvestment,
+ * a name with the plan left out). In order: keep the ones with the newest NAV
+ * (a closed scheme's stops), then the ones whose own name states the plan
+ * ("Regular" / "Direct") and an option outright, then accept the rest only if
+ * they all carry the same NAV — when they do, which one does not change a
+ * valuation. Otherwise null: an unpriced holding beats a wrong one.
+ */
+export function lookupNavByKey(index: NavIndex, schemeName: string | null | undefined): NavHit | null {
+  const sk = schemeNameKey(schemeName);
+  if (!sk) return null;
+  let cands = index.byKey?.get(`${sk.tokens}|${sk.direct ? "d" : "r"}`) ?? [];
+  if (!cands.length) return null;
+  const newest = cands.reduce((m, c) => ((c.navDate ?? "") > m ? (c.navDate ?? "") : m), "");
+  cands = cands.filter((c) => (c.navDate ?? "") === newest);
+  if (cands.length > 1) {
+    const explicit = (n: string): number =>
+      ((sk.direct ? /\bdirect\b/i : /\bregular\b/i).test(n) ? 1 : 0) +
+      (/\b(growth|idcw|dividend|cumulative|bonus)\b/i.test(n) ? 1 : 0);
+    const best = Math.max(...cands.map((c) => explicit(c.name)));
+    cands = cands.filter((c) => explicit(c.name) === best);
+  }
+  if (cands.length > 1) {
+    const navs = cands.map((c) => c.nav);
+    if (Math.max(...navs) / Math.min(...navs) > 1.001) return null;
+  }
+  const { name: _name, ...entry } = cands[0];
+  return { ...entry, via: "key" };
+}
 
 /**
  * Price one stored leg. Code first (authoritative), then the canonical name.
@@ -103,5 +150,5 @@ export function lookupNav(
     const byName = index.byName.get(key);
     if (byName) return { ...byName, via: "name" };
   }
-  return null;
+  return lookupNavByKey(index, schemeName);
 }

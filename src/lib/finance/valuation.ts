@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { xirr, type CashFlow } from "./xirr";
 import { positionKey, type PositionIdentity } from "./position-key";
+import { loadNavIndex, lookupNav, type NavIndex } from "./scheme-match";
 
 export type SchemeHolding = {
   schemeCode: string | null; schemeName: string | null; amcName: string | null;
@@ -137,7 +138,45 @@ export async function loadValuationRows(tx: Tx, investorIds: string[]) {
     LEFT JOIN scheme_nav n ON n.scheme_code = sc->>'schemeCode'
     WHERE f.tenant_id IN (${tenants}) AND f.investor_id IN (${ids})
   `)).rows as unknown as ValuationSnapshot[];
+  await priceByName(tx, transactions, snapshots);
   return { transactions, snapshots };
+}
+
+/**
+ * The NAV join above is by scheme CODE, and the registrars' feeds carry their
+ * own product codes ("HGFGPG", "K1155", "101EQGP") that the AMFI master does
+ * not know — so a holding built from transactions showed what was invested and
+ * no current value, and the client's AUM never moved. Rows the join could not
+ * price are priced from the scheme NAME (lib/finance/scheme-match lookupNav:
+ * exact name, then schemeNameKey, refusing anything ambiguous).
+ */
+let navIndexCache: { at: number; index: NavIndex } | null = null;
+const NAV_INDEX_TTL_MS = 30 * 60_000;
+async function navIndexFor(tx: Tx): Promise<NavIndex> {
+  if (!navIndexCache || Date.now() - navIndexCache.at > NAV_INDEX_TTL_MS) {
+    navIndexCache = { at: Date.now(), index: await loadNavIndex(tx) };
+  }
+  return navIndexCache.index;
+}
+async function priceByName(tx: Tx, transactions: ValuationTransaction[], snapshots: ValuationSnapshot[]) {
+  const needT = transactions.filter((r) => positive(r.latest_nav) == null && r.scheme_name && !codeLikeName(r.scheme_name, r.scheme_code));
+  const needS = snapshots.filter((r) => positive(r.latest_nav) == null && r.scheme?.schemeName);
+  if (!needT.length && !needS.length) return;
+  const index = await navIndexFor(tx);
+  if (!index.size) return;
+  const memo = new Map<string, ReturnType<typeof lookupNav>>();
+  const hit = (name: string) => {
+    if (!memo.has(name)) memo.set(name, lookupNav(index, null, name));
+    return memo.get(name)!;
+  };
+  for (const r of needT) {
+    const h = hit(String(r.scheme_name));
+    if (h) { r.latest_nav = h.nav; r.latest_nav_date = h.navDate; }
+  }
+  for (const r of needS) {
+    const h = hit(String(r.scheme.schemeName));
+    if (h) { r.latest_nav = h.nav; r.latest_nav_date = h.navDate; }
+  }
 }
 export async function valueInvestor(tx: Tx, investorId: string): Promise<InvestorValuation> {
   const rows = await loadValuationRows(tx, [investorId]);
