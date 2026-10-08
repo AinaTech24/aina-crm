@@ -494,6 +494,38 @@ refuses to guess. Read `values.ts` and `identity.ts` before touching a parser.
   (aligned). Anything else is quarantined — a decrypting archive is NOT sender
   proof.
 
+## RTA staging — SHADOW only (Phase 3B, 2026-10-08)
+
+A second, traceable import path beside the existing one: every source row of
+every RTA file into `rta_staging_*` (migration 0233), grouped into registrar
+transactions, matched and reconciled — and posted NOWHERE. Code:
+`src/lib/rta/staging/` (config · pan-token · classify · layouts · group ·
+checks · pipeline · index), read-only APIs `/api/rta-staging/batches[/id]`,
+CLI `scripts/rta-shadow.ts`. Design and rollout: `docs/rta/PHASE3B_SHADOW.md`.
+
+- **`RTA_PIPELINE_MODE`**: `off` (default) · `shadow` (the worker stages the
+  same file after the existing import finishes; `runShadowForImport` never
+  throws) · `on` is REFUSED and treated as off. `RTA_PIPELINE_TENANTS` limits
+  shadow to listed firms. Rollback is `off` — never dropping populated tables.
+- **Never write a live table from staging.** Investors / folios / transactions
+  are only READ (InvestorDirectory rules; placeholder reassignment stays off).
+  The proposal is a column (`proposed_action`), not a write.
+- **No PAN, name, address, phone, email or bank detail is stored.** PANs become
+  `pt1:` HMAC tokens (key: `RTA_STAGING_TOKEN_KEY`, else HKDF of
+  `ENCRYPTION_KEY`; no fallback — staging refuses to run without one). Row
+  hashes and group signatures are keyed too.
+- **A row number is a position in one immutable file**, never an identity. A
+  registrar transaction is `kfin.v1:<Fund>:<Transaction Number>` /
+  `cams.v1:<amc_code>:<trxnno>`; a KFintech redemption reported lot by lot is
+  ONE transaction with every lot kept (`rta_staging_lots`), all-or-nothing.
+- **Tolerances come from printed precision** (½ ulp of each figure, the
+  COLUMN's precision since registrars drop trailing zeros) — no ₹1 or %
+  allowance. Figures are never adjusted; an unverifiable check is `unverified`.
+- **Classification** (`classify.ts`): CAMS Switch ↔ STP needs BOTH systematic
+  markers (nature "Systematic…" and `siptrxnno`); one marker → held. KFintech by
+  `Transaction Type` code checked against `Transaction Head`. IDCW, reversals,
+  cancellations, pre-rejections and unknown codes are held.
+
 ## Webhook handlers
 
 | Provider | Path | Verifies |

@@ -42,6 +42,7 @@ import { captureError } from "@/lib/observability/capture";
 import { parseRtaCsv, parseRtaRows } from "@/lib/rta";
 import { Q } from "./queues";
 import { importRtaFolios, type RtaImportSummary } from "@/lib/rta/import";
+import { rtaPipelineMode, runShadowForImport } from "@/lib/rta/staging";
 import { isSpreadsheet, readSpreadsheetToRows } from "@/lib/rta/xls";
 import { RICH_KINDS } from "@/lib/rta/classify-mailback";
 import { getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config";
@@ -414,6 +415,10 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
     await markFailed(job, e?.message ?? "Could not decode the file.", { checksum, sizeBytes: buf.length });
     return;
   }
+  // RTA_PIPELINE_MODE=shadow keeps the decoded file for the staging pipeline,
+  // which runs AFTER this import has finished (below) and cannot change it.
+  const shadowBytes = rtaPipelineMode(tenantId).mode === "shadow" ? opened.data : null;
+  const shadowName = opened.filename;
   // Free the large buffers before the (memory-heavy) parse so they can be GC'd.
   opened.data = new Uint8Array(0);
   buf = Buffer.alloc(0);
@@ -498,6 +503,12 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
     );
   } catch (e: any) {
     await markFailed(job, failure ?? e?.message ?? "import failed", { checksum });
+  }
+
+  // SHADOW: stage the same file in rta_staging_* — never writes a financial
+  // table and never throws (a staging failure is recorded on its own batch).
+  if (shadowBytes) {
+    await runShadowForImport({ tenantId, importId, fileName: shadowName, fileRef: shadowName === filename ? key : `${key}#${shadowName}`, buf: shadowBytes, createdBy: job.userId });
   }
 }
 
@@ -705,6 +716,7 @@ async function computeRichImport(
   const parsed = isSpreadsheet(data, innerName)
     ? parseRtaRows(readSpreadsheetToRows(data, innerName))
     : parseRtaCsv(decodeTextBytes(data));
+  const shadowBytes = !job.dryRun && rtaPipelineMode(job.tenantId).mode === "shadow" ? data : null;
   data = new Uint8Array(0);
 
   if (parsed.source === "unknown" || parsed.folios.length === 0) {
@@ -770,6 +782,11 @@ async function computeRichImport(
     } catch (err) {
       captureError("[rta-import] post-import AUM rollup failed", maskedError(err), { tenantId: job.tenantId });
     }
+  }
+
+  // SHADOW: stage the same file after the real import (see runRtaImportJob).
+  if (shadowBytes) {
+    await runShadowForImport({ tenantId: job.tenantId, importId: job.importId ?? null, fileName: innerName, fileRef: innerName === job.filename ? job.key : `${job.key}#${innerName}`, buf: shadowBytes, createdBy: job.userId });
   }
 
   const notes = [...opened.notes, ...parsed.warnings.map(maskPansInText)];
