@@ -239,8 +239,17 @@ export function evaluateMailAuth(
       if (d) passDomains.push(d);
     }
   }
+  // Verified registrar identity = a passing signature from an approved
+  // registrar domain that is ALSO the visible sender's domain (alignment, as
+  // DMARC defines it). A registrar DKIM pass on mail whose From is someone
+  // else proves only that the registrar signed SOMETHING in it.
   let registrarDomain: string | null = null;
-  for (const d of passDomains) registrarDomain ??= domainMatches(d, REGISTRAR_DOMAINS);
+  const fromRegistrar = domainMatches(fromDomain, REGISTRAR_DOMAINS);
+  if (fromRegistrar) {
+    for (const d of passDomains) {
+      if (domainMatches(d, REGISTRAR_DOMAINS) && domainMatches(d, [fromRegistrar])) registrarDomain ??= fromRegistrar;
+    }
+  }
 
   // A confirmation must be authenticated AS the provider AND visibly from it.
   let confirmationDomain: string | null = null;

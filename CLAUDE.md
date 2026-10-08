@@ -473,9 +473,26 @@ refuses to guess. Read `values.ts` and `identity.ts` before touching a parser.
 - **Import views need `transactions.execute` and an unwalled book**
   (`import-access.ts`); errors are PAN-masked on write and on read.
   `/api/rta/import` (synchronous) answers 410.
+- **Verified against real files (Phase 2B, 2026-10-08)**: KFintech MFSD201 /
+  MFSD211 and CAMS R2 / R9. Their exact headers are in
+  `tests/rta-real-layouts.ts` (synthetic rows only — never commit a real file).
+  What the real files showed, and the code now encodes:
+  - CAMS `trxn_type_flag` names the transaction in words and DECIDES the type
+    (a systematic "Partial Switch Out" is STP money out, not a SIP).
+  - KFintech writes "S T P In / Out"; NAV is the `Nav` column, not `Price`.
+  - KFintech repeats a transaction number for ONE redemption reported lot by
+    lot (purchase-lot rows); those groups are held back until staging can store
+    the parts — never merged on amount/units (identical lots exist).
+  - A minor's folio is reported in R2 with the GUARDIAN's PAN; such a row
+    belongs to the minor (`InvestorDirectory.isGuardianOf`).
+  - A stated zero balance is 0, a blank one is unknown.
+  - **Import masters before transactions.** The reverse order leaves minor and
+    PAN-less folios held for review (visible, never silently moved).
 - **Mail imports only by the firm's alias, with proof** (`mail-trust.ts`):
-  registrar DKIM/DMARC pass from our own server's Authentication-Results.
-  Anything else is quarantined — a decrypting archive is NOT sender proof.
+  registrar DKIM/DMARC pass from our own server's Authentication-Results, on
+  a domain in `REGISTRAR_DOMAINS` that is also the visible From domain
+  (aligned). Anything else is quarantined — a decrypting archive is NOT sender
+  proof.
 
 ## Webhook handlers
 

@@ -84,11 +84,20 @@ const CAMS_TRANSACTION_TYPES: Record<string, TxType> = {
   DIVREINVEST: "dividend_reinvest",
 };
 
+/**
+ * KFintech writes some acronyms letter-spaced — the real MFSD201 mailback says
+ * "S T P In" / "S T P Out" (Phase 2B, 2026-10-08). Collapse a run of single
+ * letters into one word so the rules below read "STP IN".
+ */
+function spacedAcronyms(s: string): string {
+  return s.replace(/\b(?:[A-Z] ){1,}[A-Z]\b/g, (m) => m.replace(/ /g, ""));
+}
+
 /** Words that mark a row as undoing, refusing or cancelling a transaction. */
 const REVERSAL_RE = /REVERS|\bREV\b|REJECT|CANCEL/;
 
 export type Classification =
-  | { kind: "ok"; type: TxType }
+  | { kind: "ok"; type: TxType; direction?: "inflow" | "outflow" }
   | { kind: "reversal"; reason: string }
   | { kind: "unknown"; reason: string };
 
@@ -108,13 +117,14 @@ export function classifyTransaction(
   typeRaw: string,
   descRaw = "",
   subRaw = "",
-  opts: { statusRejected?: boolean } = {}
+  opts: { statusRejected?: boolean; flag?: string } = {}
 ): Classification {
   const code = (typeRaw ?? "").toUpperCase().trim();
-  const blob = [code, (descRaw ?? "").toUpperCase().trim(), (subRaw ?? "").toUpperCase().trim()]
+  const blob = [code, spacedAcronyms((descRaw ?? "").toUpperCase().trim()), (subRaw ?? "").toUpperCase().trim()]
     .filter(Boolean)
     .join(" ");
-  const shown = [typeRaw, descRaw, subRaw].map((s) => (s ?? "").trim()).filter(Boolean).join(" / ") || "(blank)";
+  const flag = (opts.flag ?? "").toUpperCase().replace(/\s+/g, " ").trim();
+  const shown = [opts.flag, typeRaw, descRaw, subRaw].map((s) => (s ?? "").trim()).filter(Boolean).join(" / ") || "(blank)";
 
   // A row the status column already marks rejected / failed is stored as that
   // (it never counts as holdings), so its "rejection" wording is expected; a
@@ -123,6 +133,29 @@ export function classifyTransaction(
   if (reversal.test(blob)) {
     return { kind: "reversal", reason: `transaction "${shown}" is a reversal / rejection / cancellation — not applied (its effect on the original transaction is not verified for this file)` };
   }
+  // CAMS `trxn_type_flag` states the transaction in words, and when the file
+  // carries it, it decides. The phrases below are exactly the ones observed in a
+  // real CAMS R2 mailback (Phase 2B, 2026-10-08): Fresh / Additional Purchase,
+  // Fresh / Additional Purchase Systematic, Full / Partial Redemption,
+  // Switch In, Partial Switch Out. Before this, the parser read only
+  // trxn_nature ("Systematic - To <scheme> - Instalment No - n") and booked
+  // every systematic switch-OUT as a SIP instalment, i.e. money in.
+  // A flag outside these phrases falls through to the description rules.
+  if (flag) {
+    const systematic = /SYSTEMATIC/.test(flag) || /SYSTEMATIC/.test(blob);
+    if (/\bSWITCH IN\b/.test(flag)) return { kind: "ok", type: systematic ? "stp" : "switch", direction: "inflow" };
+    if (/\bSWITCH OUT\b/.test(flag)) return { kind: "ok", type: systematic ? "stp" : "switch", direction: "outflow" };
+    if (/^(FULL|PARTIAL) REDEMPTION$/.test(flag)) {
+      return { kind: "ok", type: /SYSTEMATIC WITHDRAW/.test(blob) ? "swp" : "redemption", direction: "outflow" };
+    }
+    if (/^(FRESH|ADDITIONAL) PURCHASE SYSTEMATIC$/.test(flag)) return { kind: "ok", type: "sip", direction: "inflow" };
+    if (/^(FRESH|ADDITIONAL) PURCHASE$/.test(flag)) {
+      // A plain purchase flag whose own description is a systematic instalment
+      // ("Systematic - Instalment 3/12 Physical") is a SIP instalment.
+      return { kind: "ok", type: /SYSTEMATIC/.test(blob) && /INSTAL/.test(blob) ? "sip" : "lumpsum", direction: "inflow" };
+    }
+  }
+
   if (CAMS_TRANSACTION_TYPES[code]) return { kind: "ok", type: CAMS_TRANSACTION_TYPES[code] };
 
   // Classify on the wording WITHOUT the rejection words, so "SIP Rejection"
@@ -168,7 +201,7 @@ export function directionFor(
   descRaw = "",
   subRaw = ""
 ): "inflow" | "outflow" | null {
-  const blob = `${(typeRaw ?? "").toUpperCase()} ${(descRaw ?? "").toUpperCase()} ${(subRaw ?? "").toUpperCase()}`;
+  const blob = `${(typeRaw ?? "").toUpperCase()} ${spacedAcronyms((descRaw ?? "").toUpperCase())} ${(subRaw ?? "").toUpperCase()}`;
   const out = /\bTOCOB\b|\bSWO\b|SWITCH[\s_-]*OUT|STP[\s_-]*OUT|TRANSFER[\s_-]*OUT|\bOUT\b/.test(blob);
   const inn = /\bTICOB\b|\bSWI\b|SWITCH[\s_-]*IN\b|STP[\s_-]*IN\b|TRANSFER[\s_-]*IN\b|\bIN\b/.test(blob);
 
@@ -235,6 +268,8 @@ export const HEADER_ALIASES: Record<string, string[]> = {
   type: ["TR_TYPE", "TXN_TYPE", "TRANS_TYPE", "TRTYPE", "TXNTYPE", "TRANSTYPE", "TYPE", "TRANSACTION TYPE", "TRANSACTION HEAD", "TRANSACTION_HEAD", "TRXN_TYPE", "TD_TRTYPE"],
   typeDesc: ["TRANS_DESC", "TRANS DESCRIPTION", "TRANSACTION DESCRIPTION", "TRANSACTION_DESCRIPTION", "TXN_DESC_CAMS", "TRXN_NATURE", "TRDESC"],
   typeSub: ["TRANSACTION SUB", "TRANSACTION_SUB", "TRXNSUBTYP", "SUB_TYPE", "TRANSACTION_TYPE"],
+  // CAMS R2 "trxn_type_flag" — the transaction in words (see classifyTransaction).
+  typeFlag: ["TRXN_TYPE_FLAG"],
   orderDate: ["TR_DATE", "TXN_DATE", "TRANS_DATE", "TRDATE", "TXNDATE", "TRANSDATE", "DATE", "POST_DATE", "POST DATE", "TXN_DT", "TRANSACTION DATE", "TRADDATE", "TRAD DATE", "TRADE DATE", "TRADE_DATE_TIME", "TD_TRDT"],
   amount: ["AMOUNT", "AMT", "TXN_AMT", "TXN_AMOUNT", "TRANS_AMT", "PURCHASE_AMOUNT", "RED_AMOUNT", "PLOT_AMOUNT", "AMOUNT (IN RS.)", "AMOUNT IN RS", "NET_AMOUNT", "GROSS AMOUNT", "TD_AMT"],
   units: ["UNITS", "UNIT", "QTY", "QUANTITY", "NO_OF_UNITS", "NO OF UNITS", "PLOT_UNITS", "TD_UNITS"],
@@ -337,6 +372,12 @@ export function parseReverseFeed(text: string): FeedParse {
 
   const header = split(lines[headerAt]);
   const indexMap = buildHeaderIndexMap(header);
+  // A column that is plainly the NAV wins over a generic price / rate column.
+  // KFintech MFSD201 carries both "Price" (earlier in the header) and "Nav":
+  // they agree on every purchase row of the real file, but on 72 of its 166
+  // redemption rows "Price" is a per-lot figure, not the day's NAV.
+  const plainNav = buildHeaderIndexMap(header, { nav: ["NAV", "TD_NAV", "NAV_RATE", "ALLOT_NAV", "ALLOTNAV"] });
+  if (plainNav.nav !== undefined) indexMap.nav = plainNav.nav;
   // A file whose only scheme column is `SCHEME` (some CAMS layouts put the
   // name there) still gets a name — but only once the precise aliases failed.
   if (indexMap.schemeName === undefined) {
@@ -378,11 +419,17 @@ export function parseReverseFeed(text: string): FeedParse {
   // (see the Phase 2B investigation), every row of such a group is held back
   // — never collapsed into one, never stored twice.
   const refLines = new Map<string, number[]>();
+  const refShapes = new Map<string, Set<string>>();
+  const at = (cols: string[], f: string) => (indexMap[f] === undefined ? "" : (cols[indexMap[f]] ?? "").trim());
   for (let i = dataStart; i < lines.length; i++) {
     const line = lines[i];
     if (!line || !line.trim()) continue;
-    const ref = (split(line)[indexMap.externalRef] ?? "").trim();
-    if (ref) refLines.set(ref, [...(refLines.get(ref) ?? []), i + 1]);
+    const cols = split(line);
+    const ref = at(cols, "externalRef");
+    if (!ref) continue;
+    refLines.set(ref, [...(refLines.get(ref) ?? []), i + 1]);
+    const shape = ["folioNumber", "schemeCode", "orderDate", "type", "typeDesc", "typeFlag"].map((f) => at(cols, f)).join("\u0001");
+    refShapes.set(ref, (refShapes.get(ref) ?? new Set()).add(shape));
   }
 
   const rows: CanonicalTransaction[] = [];
@@ -409,8 +456,18 @@ export function parseReverseFeed(text: string): FeedParse {
     const group = refLines.get(externalRef) ?? [];
     if (group.length > 1) {
       const shown = group.slice(0, 6).join(", ") + (group.length > 6 ? ", …" : "");
+      // Real KFintech MFSD201 (Phase 2B): 9 such groups, 143 rows, every one a
+      // REDEMPTION reported lot by lot — same folio, scheme, date and type on
+      // every row; only purchase-lot fields (purchase date / number / units,
+      // STT, load), that lot's units and amount, and Transaction ID differ.
+      // Storing the parts needs the staging table; until then they wait.
+      const sameShape = (refShapes.get(externalRef)?.size ?? 0) === 1;
       reject(
-        `transaction number ${externalRef} appears ${group.length} times in this file (lines ${shown}) — whether that is one transaction reported in parts or several transactions is not established, so the whole group is held back (nothing merged, nothing overwritten)`
+        `transaction number ${externalRef} appears ${group.length} times in this file (lines ${shown}) — ` +
+          (sameShape
+            ? "folio, scheme, date and type are identical on every row, so this looks like ONE transaction reported in parts (e.g. a redemption split by purchase lot); "
+            : "the rows differ in folio, scheme, date or type, so they are not one plain transaction; ") +
+          "the whole group is held back until its parts can be stored (nothing merged, nothing overwritten)"
       );
       continue;
     }
@@ -419,9 +476,9 @@ export function parseReverseFeed(text: string): FeedParse {
     if ("reason" in st) { reject(st.reason); continue; }
     const statusRejected = st.status === "rejected" || st.status === "failed";
 
-    const cls = classifyTransaction(val("type"), val("typeDesc"), val("typeSub"), { statusRejected });
+    const cls = classifyTransaction(val("type"), val("typeDesc"), val("typeSub"), { statusRejected, flag: val("typeFlag") });
     if (cls.kind !== "ok") { reject(cls.reason); continue; }
-    const direction = directionFor(cls.type, val("type"), val("typeDesc"), val("typeSub"));
+    const direction = cls.direction ?? directionFor(cls.type, val("type"), val("typeDesc"), val("typeSub"));
     if (!direction) { reject(`${cls.type === "stp" ? "STP" : "switch"} row does not say whether it is the IN or the OUT leg — not guessed`); continue; }
 
     const date = readOrderDate(val("orderDate"), order);

@@ -125,6 +125,14 @@ describe.skipIf(!TEST_DB)("RTA import — transactions, identity, tenancy (DB)",
     expect(rows).toEqual([{ folio_number: "1000001/11", amount: "5000.00", units: "61.7284" }]);
   });
 
+  it("a row rejected for a clashing transaction number leaves no stray folio behind", async () => {
+    await run(tA, file({ ref: "STRAY-1" }));
+    const out = await run(tA, file({ ref: "STRAY-1", folio: "1000099/99", amount: "7.00" }));
+    expect(out.rowsImported).toBe(0);
+    const f = await q(tA, sql`SELECT 1 FROM folios WHERE tenant_id = ${tA}::uuid AND folio_number = '1000099/99'`);
+    expect(f).toHaveLength(0);
+  });
+
   it("unknown codes, reversals and unreadable values are held back with reasons; good rows still import", async () => {
     const out = await run(
       tA,

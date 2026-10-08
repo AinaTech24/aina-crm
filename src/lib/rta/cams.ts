@@ -11,8 +11,8 @@
  */
 
 import type { RtaFolioRecord, RtaNominee, InvestorCategory, Residency } from "./types";
-import { num, amcNameFromDescription, canonicalizeAmcNames, maskAccount, pct, PanTally } from "./kfintech";
-import { excelSerialToIso, readDate } from "./values";
+import { amcNameFromDescription, canonicalizeAmcNames, maskAccount, pct, PanTally } from "./kfintech";
+import { excelSerialToIso, readDate, readNumber } from "./values";
 
 /** Columns that uniquely identify the CAMS folio statement. */
 const SIGNATURE = ["foliochk", "rupee_bal", "clos_bal", "pan_no", "sch_name"];
@@ -140,6 +140,7 @@ export function parseCamsFile(rows: string[][]): {
 
   const groups = new Map<string, RtaFolioRecord>();
   let missingPan = 0;
+  let badBalances = 0;
   const pans = new PanTally();
 
   for (let r = 1; r < rows.length; r++) {
@@ -217,8 +218,15 @@ export function parseCamsFile(rows: string[][]): {
     }
 
     const product = get(C.product);
-    const units = num(get(C.closBal));
-    const value = num(get(C.rupeeBal));
+    // Strict read (Phase 2B): a blank balance is UNKNOWN, a stated 0 is ZERO.
+    // The old `num(...) || undefined` did both wrong — blank became 0, and a
+    // fully redeemed holding the registrar reports as 0 / 0 became "units
+    // unknown" (19 of 1,237 legs of a real R9), so the stale units stayed.
+    const unitsRead = readNumber(get(C.closBal));
+    const valueRead = readNumber(get(C.rupeeBal));
+    if (!unitsRead.ok || !valueRead.ok) badBalances++;
+    const units = unitsRead.ok ? unitsRead.value : null;
+    const value = valueRead.ok ? valueRead.value : null;
     const rowArn = get(C.broker) || undefined;
     if (product) {
       // A folio can list the same product across multiple rows (lots) — merge
@@ -229,25 +237,27 @@ export function parseCamsFile(rows: string[][]): {
       // same one, and collapsing the two would hide which ARN earns on it.
       const existing = rec.schemes.find((s) => s.schemeCode === product && s.arn === rowArn);
       if (existing) {
-        existing.units = (existing.units ?? 0) + units || undefined;
-        existing.value = (existing.value ?? 0) + value || undefined;
+        existing.units = existing.units === undefined || units === null ? undefined : existing.units + units;
+        existing.value = existing.value === undefined || value === null ? undefined : existing.value + value;
         existing.nav = existing.units && existing.value ? +(existing.value / existing.units).toFixed(4) : existing.nav;
       } else {
         rec.schemes.push({
           schemeCode: product,
           schemeName: get(C.schName),
           isin: get(C.isin).toUpperCase() || undefined,
-          units: units || undefined,
-          nav: units > 0 && value > 0 ? +(value / units).toFixed(4) : undefined,
-          value: value || undefined,
+          units: units ?? undefined,
+          nav: units !== null && value !== null && units > 0 && value > 0 ? +(value / units).toFixed(4) : undefined,
+          value: value ?? undefined,
           arn: rowArn,
         });
       }
-      rec.aum = (rec.aum ?? 0) + value;
+      rec.aum = (rec.aum ?? 0) + (value ?? 0);
     }
   }
 
   const folios = [...groups.values()];
   canonicalizeAmcNames(folios);
-  return { reportType: "R9", folios, missingPan, warnings: pans.warnings() };
+  const warnings = pans.warnings();
+  if (badBalances) warnings.push(`${badBalances} row(s) carried a closing balance or value that is not a readable number — stored as unknown, not as 0`);
+  return { reportType: "R9", folios, missingPan, warnings };
 }

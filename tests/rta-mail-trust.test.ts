@@ -62,6 +62,7 @@ const ALIAS = "rta-0123456789ab@crm.ainatech.in";
 const FIRM_PW = "synthetic-firm-pw";
 const CSV = "Folio,Scheme,Amount\n1,X,100\n";
 
+const CAMS_FROM = "donotreply@camsonline.com";
 const SES_DKIM_CAMS =
   "amazonses.com;\r\n spf=fail (spfCheck: domain does not designate) client-ip=192.0.2.1;\r\n" +
   " dkim=pass header.i=@camsonline.com;\r\n dmarc=pass header.from=camsonline.com;";
@@ -132,7 +133,7 @@ describe("Authentication-Results parsing", () => {
   });
 
   it("trusts registrar DKIM only in the TOPMOST header from our own server", () => {
-    expect(evaluateMailAuth([SES_DKIM_CAMS], "ses").registrarDomain).toBe("camsonline.com");
+    expect(evaluateMailAuth([SES_DKIM_CAMS], "ses", CAMS_FROM).registrarDomain).toBe("camsonline.com");
     // A forged header BELOW another server's header is never read.
     expect(evaluateMailAuth(["mx.google.com; dkim=pass header.d=gmail.com", FORGED_CAMS], "ses").registrarDomain).toBeNull();
     // Our server's header followed by a second one claiming the same id → forged.
@@ -143,15 +144,19 @@ describe("Authentication-Results parsing", () => {
 
   it("does not count a non-registrar DKIM pass, or a fail", () => {
     expect(evaluateMailAuth(["amazonses.com; dkim=pass header.d=evil-camsonline.com"], "ses").registrarDomain).toBeNull();
+    // Alignment: a registrar signature on mail whose visible sender is NOT that registrar.
+    expect(evaluateMailAuth([SES_DKIM_CAMS], "ses", "attacker@example.net").registrarDomain).toBeNull();
+    expect(evaluateMailAuth([SES_DKIM_CAMS], "ses", "mailback@kfintech.com").registrarDomain).toBeNull();
+    expect(evaluateMailAuth([SES_DKIM_CAMS], "ses").registrarDomain).toBeNull();
     expect(evaluateMailAuth(["amazonses.com; dkim=fail header.d=camsonline.com"], "ses").registrarDomain).toBeNull();
-    expect(evaluateMailAuth(["amazonses.com; dkim=pass header.d=mail.kfintech.com"], "ses").registrarDomain).toBe("kfintech.com");
+    expect(evaluateMailAuth(["amazonses.com; dkim=pass header.d=mail.kfintech.com"], "ses", "mailback@kfintech.com").registrarDomain).toBe("kfintech.com");
   });
 
   it("trusts nothing on IMAP until the provider's authserv-id is configured", () => {
     const imapHeader = "mx.mailhost.example; dkim=pass header.d=camsonline.com";
     expect(evaluateMailAuth([imapHeader], "imap").trustedHeader).toBe(false);
     vi.stubEnv("RTA_IMAP_AUTHSERV_ID", "mx.mailhost.example");
-    expect(evaluateMailAuth([imapHeader], "imap").registrarDomain).toBe("camsonline.com");
+    expect(evaluateMailAuth([imapHeader], "imap", CAMS_FROM).registrarDomain).toBe("camsonline.com");
     // The SES id is not trusted for IMAP mail.
     expect(evaluateMailAuth([SES_DKIM_CAMS], "imap").registrarDomain).toBeNull();
   });
@@ -196,7 +201,7 @@ describe("password proof on archives", () => {
   it("an unencrypted file from unauthenticated mail is quarantined; registrar mail admits it", async () => {
     const unauth = evaluateMailAuth([SES_NOTHING], "ses");
     expect((await attachmentTrust(Buffer.from(CSV), unauth, [FIRM_PW])).admit).toBe(false);
-    const cams = evaluateMailAuth([SES_DKIM_CAMS], "ses");
+    const cams = evaluateMailAuth([SES_DKIM_CAMS], "ses", CAMS_FROM);
     expect(await attachmentTrust(Buffer.from(CSV), cams, [])).toMatchObject({ admit: true, via: "registrar-auth" });
     const enc = await zip("a.csv", CSV, { password: FIRM_PW });
     // A decrypting archive is NOT sender authentication (owner's decision 2026-10-08):

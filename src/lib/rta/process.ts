@@ -276,6 +276,8 @@ async function processTransactionFeed(
       if (!folio) throw new Error(`folio ${r.folioNumber} could not be created`);
       if (folio.investorId !== investorId) {
         const owner = await dir.byFolio(r.folioNumber, r.amcCode);
+        // A minor's folio reported with the GUARDIAN's PAN belongs to the minor.
+        if (owner.kind === "found" && dir.isGuardianOf(investorId, owner.id)) investorId = owner.id;
         if (!(owner.kind === "found" && owner.id === investorId)) {
           await tx.execute(sql`ROLLBACK TO SAVEPOINT rta_item`);
           await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
@@ -320,7 +322,11 @@ async function processTransactionFeed(
         RETURNING id
       `);
       if (ins.rows.length === 0) {
+        // Undo the whole row — including a folio this row may have created —
+        // so a rejected row leaves nothing behind.
+        await tx.execute(sql`ROLLBACK TO SAVEPOINT rta_item`);
         await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
+        if (cachedFolioThisRow) folioCache.delete(folioKey);
         skipped++;
         fail(
           r.line,
@@ -817,13 +823,13 @@ async function processSipBook(
       continue;
     }
     if (byPan.kind === "found") {
-      if (folioOwner.kind === "found" && folioOwner.id !== byPan.id) {
+      if (folioOwner.kind === "found" && folioOwner.id !== byPan.id && !dir.isGuardianOf(byPan.id, folioOwner.id)) {
         skipped++;
         errors.push({ row: r.line, reason: `folio ${r.folioNumber} belongs to a different client in the CRM than this row's PAN — held back for review, nothing reassigned` });
         continue;
       }
-      investorId = byPan.id;
-      rmId = byPan.rmId;
+      investorId = folioOwner.kind === "found" && dir.isGuardianOf(byPan.id, folioOwner.id) ? folioOwner.id : byPan.id;
+      rmId = folioOwner.kind === "found" && investorId === folioOwner.id ? folioOwner.rmId : byPan.rmId;
     } else if (folioOwner.kind === "found") {
       investorId = folioOwner.id;
       rmId = folioOwner.rmId;

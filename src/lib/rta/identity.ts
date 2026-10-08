@@ -42,6 +42,7 @@ type InvestorRow = {
   rm_id: string | null;
   deleted_at: string | null;
   merged_into_id: string | null;
+  guardian_investor_id?: string | null;
 };
 
 type FolioRow = { id: string; amc_code: string | null; folio_number: string; investor_id: string | null };
@@ -78,7 +79,7 @@ export class InvestorDirectory {
 
     for (const part of chunks(pans)) {
       const rows = (await this.tx.execute(sql`
-        SELECT id, pan, rta_nopan_key, rm_id, deleted_at, merged_into_id FROM investors
+        SELECT id, pan, rta_nopan_key, rm_id, deleted_at, merged_into_id, guardian_investor_id FROM investors
          WHERE tenant_id = ${this.tenantId}::uuid AND pan IN (${sql.join(part.map((p) => sql`${p}`), sql`, `)})
       `)).rows as InvestorRow[];
       this.addInvestors(rows);
@@ -86,7 +87,7 @@ export class InvestorDirectory {
     }
     for (const part of chunks(nopan)) {
       const rows = (await this.tx.execute(sql`
-        SELECT id, pan, rta_nopan_key, rm_id, deleted_at, merged_into_id FROM investors
+        SELECT id, pan, rta_nopan_key, rm_id, deleted_at, merged_into_id, guardian_investor_id FROM investors
          WHERE tenant_id = ${this.tenantId}::uuid AND rta_nopan_key IN (${sql.join(part.map((k) => sql`${k}`), sql`, `)})
       `)).rows as InvestorRow[];
       this.addInvestors(rows);
@@ -116,6 +117,7 @@ export class InvestorDirectory {
         ...raw,
         id: String(raw.id),
         merged_into_id: raw.merged_into_id ? String(raw.merged_into_id) : null,
+        guardian_investor_id: raw.guardian_investor_id ? String(raw.guardian_investor_id) : null,
         rm_id: raw.rm_id ? String(raw.rm_id) : null,
       };
       if (this.byId.has(r.id)) continue;
@@ -131,7 +133,7 @@ export class InvestorDirectory {
     const need = ids.filter((id) => !this.byId.has(id));
     for (const part of chunks(need)) {
       const rows = (await this.tx.execute(sql`
-        SELECT id, pan, rta_nopan_key, rm_id, deleted_at, merged_into_id FROM investors
+        SELECT id, pan, rta_nopan_key, rm_id, deleted_at, merged_into_id, guardian_investor_id FROM investors
          WHERE tenant_id = ${this.tenantId}::uuid AND id IN (${sql.join(part.map((id) => sql`${id}::uuid`), sql`, `)})
       `)).rows as InvestorRow[];
       this.addInvestors(rows);
@@ -203,7 +205,7 @@ export class InvestorDirectory {
     if (!key) return { kind: "none" };
     if (!this.loadedRawPan.has(key)) {
       const rows = (await this.tx.execute(sql`
-        SELECT id, pan, rta_nopan_key, rm_id, deleted_at, merged_into_id FROM investors
+        SELECT id, pan, rta_nopan_key, rm_id, deleted_at, merged_into_id, guardian_investor_id FROM investors
          WHERE tenant_id = ${this.tenantId}::uuid AND pan = ${key}
       `)).rows as InvestorRow[];
       this.addInvestors(rows);
@@ -218,7 +220,7 @@ export class InvestorDirectory {
     const need = [...new Set(keys.filter(Boolean))].filter((k) => !this.loadedRawPan.has(k));
     for (const part of chunks(need)) {
       const rows = (await this.tx.execute(sql`
-        SELECT id, pan, rta_nopan_key, rm_id, deleted_at, merged_into_id FROM investors
+        SELECT id, pan, rta_nopan_key, rm_id, deleted_at, merged_into_id, guardian_investor_id FROM investors
          WHERE tenant_id = ${this.tenantId}::uuid AND pan IN (${sql.join(part.map((k) => sql`${k}`), sql`, `)})
       `)).rows as InvestorRow[];
       this.addInvestors(rows);
@@ -278,6 +280,25 @@ export class InvestorDirectory {
       return { kind: "ambiguous", reason: `folio ${norm(key.folioNumber)} is filed under a client with a different PAN — held back for review, nothing reassigned` };
     }
     return byFolio;
+  }
+
+  /**
+   * Is `guardianId` the recorded guardian of the minor `minorId`? Either the
+   * minor's guardian_investor_id points at them, or the minor carries the
+   * importer's key `MINOR:<guardian PAN>:<NAME>` with that client's PAN.
+   *
+   * Evidence (Phase 2B, real CAMS R2 + R9): on every one of 22 minor folios the
+   * R2 transaction row's `pan` is the GUARDIAN's PAN (R9 files the folio under
+   * the minor with `guard_pan` = that PAN). Such a row belongs to the minor who
+   * holds the folio, not to the guardian's own client record.
+   */
+  isGuardianOf(guardianId: string, minorId: string): boolean {
+    const minor = this.byId.get(minorId);
+    const guardian = this.byId.get(guardianId);
+    if (!minor || !guardian) return false;
+    if (minor.guardian_investor_id && minor.guardian_investor_id === guardianId) return true;
+    const gp = validPan(guardian.pan);
+    return !!gp && (minor.pan ?? "").toUpperCase().startsWith(`MINOR:${gp}:`);
   }
 
   /** Is this investor an import placeholder (no PAN of its own, keyed by the importer)? */
