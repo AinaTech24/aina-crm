@@ -54,7 +54,13 @@ export async function getStockHistory(tx: Tx, scope: MetricScope, months = 12): 
          WHERE tenant_id = ${scope.tenantId}::uuid AND snapshot_date >= ${since}
          ORDER BY date_trunc('month', snapshot_date), snapshot_date DESC
       )
-      SELECT to_char(snapshot_date, 'YYYY-MM') AS month, total_aum AS aum, monthly_sip AS sip FROM last ORDER BY 1
+      -- A month's AUM at its own last NAV (aum_month_end) beats the last
+      -- snapshot taken in it, which was priced a day or two earlier.
+      SELECT to_char(l.snapshot_date, 'YYYY-MM') AS month, COALESCE(me.aum, l.total_aum) AS aum, l.monthly_sip AS sip
+        FROM last l
+        LEFT JOIN aum_month_end me ON me.tenant_id = ${scope.tenantId}::uuid
+              AND me.month_end = (date_trunc('month', l.snapshot_date) + interval '1 month - 1 day')::date
+       ORDER BY 1
     `)).rows as typeof rows;
   } else if ((rms.length > 0) !== (branches.length > 0)) {
     const [table, key, ids] = rms.length
@@ -79,6 +85,26 @@ export async function getStockHistory(tx: Tx, scope: MetricScope, months = 12): 
     return [];
   }
   return rows.map((r) => ({ month: r.month, aum: num(r.aum), sip: num(r.sip) }));
+}
+
+export type MonthEndAum = { monthEnd: string; navDate: string | null; aum: number } | null;
+
+/**
+ * The firm's AUM at the end of the last COMPLETED month, at that month's last
+ * NAV (aum_month_end) — the figure the registrars' AUM statements quote. The
+ * live AUM moves with the market every day; this is what to compare it with.
+ * Firm-wide only: the row has no RM or branch dimension, so a filtered view
+ * gets null rather than the firm's figure.
+ */
+export async function getMonthEndAum(tx: Tx, scope: MetricScope): Promise<MonthEndAum> {
+  if (hasClientFilter(scope) || scope.amcs?.length || cleanIds(scope.rmIds).length || cleanIds(scope.branchIds).length) return null;
+  const r = (await tx.execute(sql`
+    SELECT to_char(month_end, 'YYYY-MM-DD') AS month_end, to_char(nav_date, 'YYYY-MM-DD') AS nav_date, aum
+      FROM aum_month_end
+     WHERE tenant_id = ${scope.tenantId}::uuid AND month_end < date_trunc('month', (now() AT TIME ZONE 'Asia/Kolkata'))::date
+     ORDER BY month_end DESC LIMIT 1
+  `)).rows[0] as { month_end: string; nav_date: string | null; aum: string } | undefined;
+  return r ? { monthEnd: r.month_end, navDate: r.nav_date, aum: num(r.aum) } : null;
 }
 
 /* ─────────────────────────────── SIP health ─────────────────────────────── */

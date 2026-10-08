@@ -24,8 +24,8 @@
  * A SIP past its END date with nothing collected after it is finished too,
  * whatever the window says (a SIP that ran to its term in the window).
  *
- *   tsx scripts/close-sips-by-feed-window.ts --tenant <uuid> [--rta cams|kfintech] [--days 46]   # dry run
- *   tsx scripts/close-sips-by-feed-window.ts --tenant <uuid> [--days 46] --apply
+ *   tsx scripts/close-sips-by-feed-window.ts --tenant <uuid> [--rta cams|kfintech] [--days 75]   # dry run
+ *   tsx scripts/close-sips-by-feed-window.ts --tenant <uuid> [--days 75] --apply
  */
 import "dotenv/config";
 import { sql } from "drizzle-orm";
@@ -34,7 +34,12 @@ import { refreshActiveSipAmount, sipMonthlySql } from "../src/lib/metrics/sip";
 
 const args = process.argv.slice(2);
 const T = args[args.indexOf("--tenant") + 1];
-const DAYS = args.includes("--days") ? Number(args[args.indexOf("--days") + 1]) : 46;
+// 75 days: a SIP stays in the book until about two instalments in a row are
+// missed. 46 days (one miss) put Ahpal at Rs 3.75 Cr; 75 gives Rs 3.80 Cr, the
+// firm's own figure from its registrar reports (8 Oct 2026). A registrar
+// ceases a SIP after three misses, so a SIP between its second and third miss
+// is still live there; 92 days counted those and read about Rs 4.17 Cr.
+const DAYS = args.includes("--days") ? Number(args[args.indexOf("--days") + 1]) : 75;
 const APPLY = args.includes("--apply");
 // One registrar at a time: each is measured against ITS feed's last instalment,
 // so a registrar whose feed is behind never makes the other's SIPs look silent.

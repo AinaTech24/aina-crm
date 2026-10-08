@@ -102,6 +102,31 @@ export async function recomputeCombinedAum(
 }
 export const recomputeAllAum = recomputeCombinedAum;
 
+/**
+ * Record the firm's AUM for the month its NAVs belong to (aum_month_end, 0240).
+ * Called right after the nightly reprice, so the row for a month is rewritten
+ * every night that month's NAVs are the latest, and freezes on its final NAV
+ * once the next month's arrive — the month-end figure a registrar statement
+ * quotes. The month is the latest NAV date's, not today's: the scanner runs
+ * before the morning NAV download, so on 2 Oct it is still pricing 30 Sep.
+ */
+export async function recordMonthEndAum(tx: Tx, tenantId: string): Promise<void> {
+  await tx.execute(sql`
+    WITH nav AS (SELECT max(nav_date) AS d FROM scheme_nav WHERE nav IS NOT NULL),
+    book AS (
+      SELECT COALESCE(SUM(aum), 0)::numeric AS aum FROM investors
+       WHERE tenant_id = ${tenantId}::uuid AND deleted_at IS NULL AND merged_into_id IS NULL
+         AND COALESCE(status, '') NOT IN ('closed', 'exited'))
+    INSERT INTO aum_month_end (tenant_id, month_end, aum, nav_date, source, updated_at)
+    SELECT ${tenantId}::uuid, (date_trunc('month', nav.d) + interval '1 month - 1 day')::date, round(book.aum, 2), nav.d, 'recorded', now()
+      FROM nav, book WHERE nav.d IS NOT NULL
+    ON CONFLICT (tenant_id, month_end) DO UPDATE
+       SET aum = EXCLUDED.aum, nav_date = EXCLUDED.nav_date, source = 'recorded', updated_at = now()
+     -- never let an older NAV overwrite a row priced at a later one
+     WHERE aum_month_end.nav_date IS NULL OR EXCLUDED.nav_date >= aum_month_end.nav_date
+  `);
+}
+
 export async function recomputeInvestorAum(tx: Tx, investorId: string): Promise<void> {
   await persistBatch(tx, [investorId]);
   await refreshActiveSipAmount(tx, { investorIds: [investorId] });
