@@ -46,6 +46,7 @@ import {
   IndianRupee,
   Landmark,
   Crosshair,
+  Sparkles,
 } from "lucide-react";
 import { eq, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
@@ -69,6 +70,7 @@ import { CustomizableNav, type NavItemData } from "@/components/layout/Customiza
 import { loadModuleControls } from "@/lib/platform/module-controls";
 import { QuickCreateFab } from "@/components/layout/QuickCreateFab";
 import { CommandPalette } from "@/components/layout/CommandPalette";
+import { ActivityLauncher } from "@/components/activities/ActivityLauncher";
 import ProductTour from "@/components/layout/ProductTour";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { ProfileMenu } from "@/components/layout/ProfileMenu";
@@ -124,6 +126,10 @@ const NAV: NavSection[] = [
       // above the groups; the module kill-switch still hides it, because
       // moduleControls is checked for every item below.
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+      // Who to call today and why, ranked by what is at stake (lib/nba). It had
+      // no way in but a typed address; the cue has to be where people look.
+      { href: "/dashboard/next-best-action", label: "Next Best Action", icon: Sparkles,
+        roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
       // My Day was removed 2026-10-01 at the firm's request; /dashboard/command-center
       // now redirects here.
     ],
@@ -132,6 +138,11 @@ const NAV: NavSection[] = [
     title: "Work",
     items: [
       { href: "/dashboard/tasks", label: "Tasks", icon: ListChecks, module: "tasks" },
+      // Plan the morning, close the evening (lib/daily-tracker). Clocking in and
+      // the 6:30 pm "close your day" nudge both open it.
+      // accessKey: the page is gated as part of Tasks (gatedNavKeyForPath), so
+      // the menu item follows the same grant rather than showing a locked page.
+      { href: "/dashboard/tasks/daily", accessKey: "/dashboard/tasks", label: "Daily Job Tracker", icon: CalendarCheck, module: "tasks" },
       { href: "/dashboard/review-meetings", label: "Meetings", icon: Presentation, module: "review_meetings",
         roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
       { href: "/dashboard/service-requests", label: "Service Requests", icon: LifeBuoy, module: "service_requests" },
@@ -473,7 +484,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // never reaches the browser and nobody is offered an action that would 403.
   const perms = session.permissions;
   const cap = (c: Parameters<typeof can>[1]) => can(session.roles, c, perms);
+  const canLogActivity = cap("investor.note.add") || cap("lead.edit.all") || cap("lead.edit.assigned");
   const quickAddItems: QuickAddItem[] = [
+    // First: the thing an RM does most often. Opens the Log activity drawer with
+    // a client / lead picker in place (ActivityLauncher) — no page to find first.
+    { label: "Log a call", href: "#log-call", hint: "Call, WhatsApp, visit or note", action: "log-activity" as const, show: canLogActivity },
     { label: "Lead", href: "/dashboard/leads/new", show: cap("lead.edit.all") || cap("lead.edit.assigned") },
     { label: "Client", href: "/dashboard/investors/new", show: cap("investor.edit.all") || cap("investor.edit.assigned") },
     { label: "Family", href: "/dashboard/families/new", show: cap("family.create") },
@@ -486,11 +501,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
     { label: "Proposal", href: "/dashboard/proposals/new", show: cap("proposal.write") },
     { label: "Insurance policy", href: "/dashboard/insurance/new", show: cap("insurance.write") },
     { label: "Service query", href: "/dashboard/service-requests/new", show: cap("service_request.manage") },
-    // A note belongs to a client, so it is added from that client's page.
+    // The note on the client's own page (Notes tab) is still the long-form one;
+    // a quick note is "Log a call" above with type Note.
     { label: "Note", href: "/dashboard/investors", hint: "Pick a client to add a note", show: cap("investor.note.add") },
   ]
     .filter((i) => i.show)
-    .map(({ label, href, hint }) => ({ label, href, hint }));
+    .map(({ label, href, hint, action }) => ({ label, href, hint, action }));
 
   // Sidebar badge uses the square icon variant, falling back to monogram → full
   // logo so a firm that only uploaded a wide logo still gets a sensible badge.
@@ -745,6 +761,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
       {/* Ctrl/⌘-K command palette — jump to any module, quick-create, or search
           records. Gets the same role/license-filtered nav as the sidebar. */}
       {!license.isRestricted && <CommandPalette navItems={paletteNavItems} />}
+      {/* "How did the call go?" after any Call / WhatsApp launcher, and the
+          global Log a call drawer (Ctrl/⌘-K, + Add, the floating button). */}
+      {!license.isRestricted && <ActivityLauncher />}
       {/* First-run coachmark tour — runs once, spotlighting nav, search, Ctrl+K,
           quick-create and notifications so a new user isn't overwhelmed. */}
       {!license.isRestricted && <ProductTour />}

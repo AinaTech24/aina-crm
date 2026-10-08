@@ -120,7 +120,7 @@ export function MySipHealth({ data, periodLabel }: { data: SipHealth; periodLabe
                     follow-up date and the repurchase are recorded on the
                     rejection register, where those edits are permitted. */}
                 <span className="flex items-center justify-end gap-1">
-                  <ContactQuickActions phone={r.phone} email={r.email} show={["call", "whatsapp"]} />
+                  <ContactQuickActions phone={r.phone} email={r.email} show={["call", "whatsapp"]} logFor={{ type: "investor", id: r.clientId, name: r.client }} />
                   <Link href={`/dashboard/sip-rejections?q=${encodeURIComponent(r.client)}`}
                         className="inline-flex min-h-6 items-center whitespace-nowrap text-xs font-medium text-primary hover:underline">Update</Link>
                 </span>

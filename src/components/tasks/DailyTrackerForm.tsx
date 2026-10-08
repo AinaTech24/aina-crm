@@ -10,6 +10,7 @@
 import { useState } from "react";
 import { Plus, X, Loader2, Save, CheckCircle2, Lightbulb, AlertTriangle, Sparkles } from "lucide-react";
 import type { FocusItem } from "@/lib/daily-tracker";
+import { Button } from "@/components/ui/Button";
 
 type Due = { id: string; title: string; priority: string; for: string | null };
 const TYPE_STYLE: Record<string, string> = {
@@ -22,11 +23,14 @@ export function DailyTrackerForm({
   date,
   initial,
   dueToday,
+  suggested = [],
   readOnly = false,
 }: {
   date: string;
   initial: { keyLearning: string; breakdown: string; breakthrough: string; todayFocus: FocusItem[] };
   dueToday: Due[];
+  /** The top of today's worklist, offered as the plan when today's is empty. */
+  suggested?: FocusItem[];
   readOnly?: boolean;
 }) {
   const [keyLearning, setKeyLearning] = useState(initial.keyLearning);
@@ -47,13 +51,13 @@ export function DailyTrackerForm({
   }
   const usedTasks = new Set(focus.map((f) => f.taskId).filter(Boolean));
 
-  async function save() {
+  async function save(todayFocus: FocusItem[] = focus) {
     setState("saving");
     try {
       const r = await fetch("/api/daily-tracker", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ date, keyLearning, breakdown, breakthrough, todayFocus: focus }),
+        body: JSON.stringify({ date, keyLearning, breakdown, breakthrough, todayFocus }),
       });
       setState(r.ok ? "saved" : "error");
     } catch {
@@ -68,6 +72,25 @@ export function DailyTrackerForm({
         <h3 className="text-sm font-semibold flex items-center gap-1.5">
           <Sparkles className="size-4 text-brand-cyan" /> Today&apos;s important &amp; productive work
         </h3>
+
+        {/* An empty plan is the hardest one to start: offer the top of the
+            worklist, accepted (and saved) in one tap. */}
+        {!readOnly && focus.length === 0 && suggested.length > 0 && (
+          <div className="rounded-lg bg-secondary/60 p-3 space-y-2">
+            <div className="text-xs font-medium">Plan your day in one tap — the top of your worklist:</div>
+            <ol className="list-decimal pl-5 space-y-0.5 text-sm">
+              {suggested.map((f, i) => <li key={i}>{f.text}</li>)}
+            </ol>
+            <Button
+              variant="primary"
+              size="sm"
+              loading={state === "saving"}
+              onClick={() => { setFocus(suggested); void save(suggested); }}
+            >
+              Use these {suggested.length}
+            </Button>
+          </div>
+        )}
 
         {focus.length > 0 && (
           <ul className="space-y-1.5">
@@ -160,7 +183,7 @@ export function DailyTrackerForm({
       {!readOnly && (
         <div className="flex items-center gap-3">
           <button
-            onClick={save}
+            onClick={() => save()}
             disabled={state === "saving"}
             className="inline-flex items-center gap-1.5 rounded-lg bg-brand-cyan text-white px-3 py-2 text-sm font-medium hover:bg-brand-cyan-deep disabled:opacity-50"
           >

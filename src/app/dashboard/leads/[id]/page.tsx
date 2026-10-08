@@ -52,6 +52,7 @@ import {
   RelatedListSection,
   type RelatedListDef,
 } from "@/components/common/RelatedLists";
+import { contactLogAttrs } from "@/lib/activities/contact-log";
 
 /**
  * Related-list sections on the Lead detail page. Order = default page
@@ -165,6 +166,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   if (!data) notFound();
 
   const l = data.lead;
+  // A tap on Call / Email / WhatsApp asks "how did it go?" (ActivityLauncher).
+  const logAttrs = contactLogAttrs({ type: "lead", id: l.id, name: l.name });
 
   // ── Header facts (deterministic — no AI call on page load) ──
   const scoreBand = (l.scoreBand as any) ?? "cold";
@@ -245,17 +248,18 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
           {(l.phone || l.email) && (
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
               {l.phone && (
-                <a href={`tel:${l.phone}`} className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground">
+                <a {...logAttrs} href={`tel:${l.phone}`} className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground">
                   <Phone className="size-4" /> {formatPhone(l.phone)}
                 </a>
               )}
               {l.email && (
-                <a href={`mailto:${l.email}`} className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground">
+                <a {...logAttrs} href={`mailto:${l.email}`} className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground">
                   <Mail className="size-4" /> {l.email}
                 </a>
               )}
               {l.phone && (
                 <a
+                  {...logAttrs}
                   href={`https://wa.me/${l.phone.replace(/[^\d]/g, "")}`}
                   target="_blank"
                   rel="noreferrer"

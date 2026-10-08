@@ -222,9 +222,9 @@ function Row({ a, rank }: { a: NbaAction; rank: number }) {
         </div>
       )}
       <div className="flex items-center gap-1.5 shrink-0">
-        <ContactQuickActions phone={a.phone} email={a.email} message={a.message} show={show} size={15} />
+        <ContactQuickActions phone={a.phone} email={a.email} message={a.message} show={show} size={15} logFor={{ type: a.subjectType, id: a.subjectId, name: a.subjectName }} />
         <LogActivityButton subject={{ type: a.subjectType, id: a.subjectId, name: a.subjectName, phone: a.phone }} label="Log" variant="secondary" />
-        <NbaRowActions snoozeKey={a.snoozeKey} name={a.subjectName} label={meta.label} reason={a.reason} phone={a.phone} email={a.email} />
+        <NbaRowActions snoozeKey={a.snoozeKey} name={a.subjectName} label={meta.label} reason={a.reason} phone={a.phone} email={a.email} logFor={{ type: a.subjectType, id: a.subjectId, name: a.subjectName }} />
       </div>
     </li>
   );

@@ -16,6 +16,7 @@ import { users } from "@/db/schema";
 import { formatINR } from "@/lib/utils";
 import { scanChurn } from "@/lib/churn/scan";
 import { churnBandClasses } from "@/lib/churn/score";
+import { contactLogAttrs } from "@/lib/activities/contact-log";
 
 export const dynamic = "force-dynamic";
 
@@ -109,7 +110,7 @@ export default async function ChurnRiskPage() {
                     <td className="py-3 text-right tabular-nums">{r.aum > 0 ? formatINR(r.aum) : "—"}</td>
                     <td className="px-4 py-3 text-right">
                       {r.phone && (
-                        <a href={`tel:${r.phone}`} className="btn-secondary text-xs inline-flex">
+                        <a {...contactLogAttrs({ type: "investor", id: r.investorId, name: r.name })} href={`tel:${r.phone}`} className="btn-secondary text-xs inline-flex">
                           <Phone className="size-3.5" /> Call
                         </a>
                       )}

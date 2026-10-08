@@ -302,6 +302,30 @@ the client page's Overview tab.
   later") or the New opportunity dialog (Now / Later). Diwali dates are a
   table in later-core — add the next year as the calendar rolls on.
 
+## Daily habits — the cues that bring people back (2026-10-08)
+
+Built from an Atomic Habits review of adoption: make the cue obvious, the
+action easy, the result satisfying.
+
+- **Morning and evening cues.** The 8 am briefing (`workers/daily-briefing.ts`)
+  and the 6:30 pm "close your day" nudge (`workers/day-close-prompt.ts`, rules
+  pure in `lib/habits/day-close.ts`) are both in `MOBILE_ALERTS`, so they reach
+  the phone. The evening one opens the Daily Job Tracker, says what the person
+  did today, and stays quiet for anyone on leave, with no work today, or who
+  already updated today's tracker after 5 pm. Once per user per IST day.
+- **The Daily Job Tracker is in the sidebar** (Work, gated as Tasks), and so is
+  Next Best Action (Home). An empty plan for today offers the top three of the
+  worklist (`suggestFocusFromWorklist`), accepted and saved in one tap. The
+  day's FIRST clock-in (web `ClockWidget`, mobile attendance) opens it.
+- **A call is logged in one tap.** Any Call / WhatsApp / SMS / Email launcher
+  carrying `contactLogAttrs(subject)` (`lib/activities/contact-log.ts`; or
+  `ContactQuickActions logFor=…`, or `announceContact` after a `window.open`)
+  makes `ActivityLauncher` (mounted once in the layout) ask "How did it go?".
+  One tap posts to `/api/activities`; "No answer" / "Busy" never move
+  `last_contact_at`. A NEW contact launcher for a client or lead should carry
+  the attributes. "Log a call" in Ctrl/Cmd+K, "+ Add" and the mobile "+" opens
+  the drawer with a client / lead picker (`openLogActivity`).
+
 ## Meetings — attendees and action items
 
 `review_meetings` (the Meetings module). Two rules since 2026-10-01:
