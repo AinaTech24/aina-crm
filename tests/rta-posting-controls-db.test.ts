@@ -3,8 +3,9 @@
  * (RLS on, non-superuser role), with RTA_POSTING_MODE=controlled.
  *
  * Proves: a firm with no activation is off; posting needs an activation with
- * two people; the process ceiling, a revoked or expired activation and either
- * kill switch REFUSE (never fall back to the existing importer); halting waits
+ * two people; the process ceiling REFUSES, and a pause, a revoked or expired
+ * activation, a firm halt, a process halt and an EMERGENCY shutdown HOLD —
+ * none ever falls back to the existing importer (Phase 3H); halting waits
  * for an in-flight posting and stops the next one; the controls are
  * append-only; posting refuses a superuser / BYPASSRLS role and a transaction
  * scoped to another firm; the drop folder no longer feeds a validate-first firm
@@ -19,8 +20,11 @@ const TEST_DB = process.env.TEST_DATABASE_URL;
 const sip = (txn: string, folio = "96000001") => ({
   "Fund": "117", "Folio Number": folio, "Product Code": "117EQGR", "Fund Description": "Example Equity Fund - Growth", "Transaction Head": "P",
   "Transaction Description": "Systematic Investment", "Transaction Type": "SIN", "Transaction Status": "Y", "Transaction Date": "15/4/2026",
-  "Nav": "50.0000", "Price": "50.0000", Units: "20.000", Amount: "1000.00", "Transaction Number": txn, PAN1: P.adult,
+  "Nav": "50.0000", "Price": "50.0000", Units: "20.000", Amount: "1000.00", "Transaction Number": txn, PAN1: P.adult, ISIN: CT_ISIN,
 });
+// Controlled mode always gates on the scheme (Phase 3H): the fixture's scheme is in the AMFI feed by ISIN.
+const CT_ISIN = "INF9C0A01AA1";
+const CT_AMFI = "9C0001";
 
 /** The database's own message (Drizzle wraps it; the reason is on .cause). */
 const dbError = async (p: Promise<unknown>) => { try { await p; return "no error"; } catch (e: any) { return `${e?.message ?? ""} ${e?.cause?.message ?? ""}`; } };
@@ -66,6 +70,7 @@ describe.skipIf(!TEST_DB)("posting controls — controlled mode (DB)", () => {
     vf = await import("@/lib/rta/posting/validate-first");
     await C.setPostingHalt({ scope: "global", halted: false, reason: "development test database: posting released", changedBy: ops.a, approvedBy: ops.b });
     await withSystem(async (tx) => {
+      await tx.execute(sql`INSERT INTO scheme_nav (scheme_code, isin, scheme_name, amc_name, nav, nav_date) VALUES (${CT_AMFI}, ${CT_ISIN}, 'Controls Equity Fund - Regular Growth', 'Controls Mutual Fund', 50, '2026-10-07') ON CONFLICT (scheme_code) DO NOTHING`);
       for (const [id, n] of [[t, "C"], [other, "D"]] as const) {
         await tx.execute(sql`INSERT INTO tenants (id, legal_name, display_name, arn) VALUES (${id}::uuid, ${"Controls " + n}, ${"Controls " + n}, ${"ARN-CT" + n + id.slice(0, 6)})`);
       }
@@ -82,7 +87,7 @@ describe.skipIf(!TEST_DB)("posting controls — controlled mode (DB)", () => {
     const tryRun = async (s: ReturnType<typeof sql>) => { try { await withSystem((tx) => tx.execute(s)); } catch { /* best effort */ } };
     await tryRun(sql`ALTER TABLE rta_pipeline_activations DISABLE TRIGGER rta_pipeline_activations_append_only`);
     for (const id of [t, other]) {
-      for (const table of ["rta_posted_transactions", "rta_sip_registrations", "folio_holders", "sip_rejections", "sips", "transactions", "rta_staging_lots", "rta_staging_checks", "rta_staging_rows", "rta_pipeline_activations"]) {
+      for (const table of ["rta_posted_transactions", "rta_sip_registrations", "folio_holders", "sip_rejections", "sips", "transactions", "rta_staging_lots", "rta_staging_checks", "rta_staging_rows", "rta_pipeline_activations", "scheme_rta_codes"]) {
         await tryRun(sql.raw(`DELETE FROM ${table} WHERE tenant_id = '${id}'`));
       }
       await tryRun(sql`UPDATE rta_staging_economic_txns SET duplicate_of_id = NULL WHERE tenant_id = ${id}::uuid`);
@@ -96,6 +101,7 @@ describe.skipIf(!TEST_DB)("posting controls — controlled mode (DB)", () => {
       await tryRun(sql`DELETE FROM tenants WHERE id = ${id}::uuid`);
     }
     await tryRun(sql`ALTER TABLE rta_pipeline_activations ENABLE TRIGGER rta_pipeline_activations_append_only`);
+    await tryRun(sql`DELETE FROM scheme_nav WHERE scheme_code = ${CT_AMFI}`);
   });
 
   it("default: a firm with no activation is OFF (the existing importer, as today) and cannot post", async () => {
@@ -129,10 +135,10 @@ describe.skipIf(!TEST_DB)("posting controls — controlled mode (DB)", () => {
     for (const ceiling of ["off", "shadow", ""]) {
       const d = await cfg.resolvePipelineMode(t, { ...process.env, RTA_PIPELINE_MODE: ceiling });
       expect(d.mode).toBe("validate_first_refused");
-      expect(d.refused).toMatch(/held, not sent to the existing importer/);
+      expect(d.refused).toMatch(/refused, not sent to the existing importer/);
     }
-    // The process kill switch refuses too.
-    expect((await cfg.resolvePipelineMode(t, { ...process.env, RTA_POSTING_HALT: "1" })).mode).toBe("validate_first_refused");
+    // The process kill switch HOLDS (a temporary stop, not a configuration error).
+    expect((await cfg.resolvePipelineMode(t, { ...process.env, RTA_POSTING_HALT: "1" })).mode).toBe("held");
   });
 
   it("the firm's kill switch: halting waits for an in-flight posting, then refuses the next; releasing needs a second person", async () => {
@@ -150,7 +156,7 @@ describe.skipIf(!TEST_DB)("posting controls — controlled mode (DB)", () => {
     await halting;
     expect(halted).toBe(true);
     const before = await txCount();
-    expect((await cfg.resolvePipelineMode(t)).mode).toBe("validate_first_refused");
+    expect(await cfg.resolvePipelineMode(t)).toMatchObject({ mode: "held", refused: expect.stringMatching(/halted for this firm/) });
     await expect(importFile("c2.csv", csvOf(MFSD201_HEADER, [sip("910002")]))).rejects.toThrow(/halted \(this firm\)/);
     expect(await txCount()).toBe(before);
     await expect(C.setPostingHalt({ scope: t, halted: false, reason: "incident closed after reconciliation", changedBy: ops.a })).rejects.toThrow(/second operator/);
@@ -162,9 +168,9 @@ describe.skipIf(!TEST_DB)("posting controls — controlled mode (DB)", () => {
     expect(await dbError(withSystem((tx) => tx.execute(sql`DELETE FROM rta_posting_control_events WHERE scope = ${t}`)))).toMatch(/append-only/);
   });
 
-  it("revoked or expired: the firm is off again for new imports; activations are append-only", async () => {
+  it("revoked or expired: the firm is HELD — never back on the existing importer by itself; activations are append-only", async () => {
     await C.revokeActivation({ tenantId: t, revokedBy: ops.a, reason: "pilot paused by operations" });
-    expect(await cfg.resolvePipelineMode(t)).toEqual({ mode: "off" });
+    expect(await cfg.resolvePipelineMode(t)).toMatchObject({ mode: "held", refused: expect.stringMatching(/never returns to the existing importer by itself/) });
     await expect(withTenant(t, (tx) => gate.assertPostingAllowed(tx, t))).rejects.toThrow(/not activated/);
     const [row] = await q(sql`SELECT id FROM rta_pipeline_activations WHERE tenant_id = ${t}::uuid AND posting_enabled ORDER BY created_at DESC LIMIT 1`);
     expect(await dbError(withTenant(t, (tx) => tx.execute(sql`UPDATE rta_pipeline_activations SET mode = 'shadow' WHERE id = ${row.id}::uuid`)))).toMatch(/never edited/);
@@ -172,7 +178,43 @@ describe.skipIf(!TEST_DB)("posting controls — controlled mode (DB)", () => {
     expect(await dbError(withTenant(t, (tx) => tx.execute(sql`DELETE FROM rta_pipeline_activations WHERE id = ${row.id}::uuid`)))).toMatch(/never deleted/);
     // An activation that has expired is not current.
     await enable({ effectiveFrom: new Date(Date.now() - 2 * 864e5).toISOString(), expiresAt: new Date(Date.now() - 864e5).toISOString() }).catch(() => null);
+    expect((await cfg.resolvePipelineMode(t)).mode).toBe("held");
+    // Going back to the existing importer is an explicit decision, by two people.
+    const legacy = { tenantId: t, mode: "off" as const, postingEnabled: false, reason: "return to the existing importer after pilot", approvedBy: ops.b };
+    await expect(C.activateTenant({ ...legacy, requestedBy: ops.b })).rejects.toThrow(/DIFFERENT approver/);
+    await expect(C.activateTenant(legacy)).rejects.toThrow(/DIFFERENT approver/);
+    await C.activateTenant({ ...legacy, requestedBy: ops.a });
     expect(await cfg.resolvePipelineMode(t)).toEqual({ mode: "off" });
+  });
+
+  it("pause: one operator stops a firm (held, nothing written); restarting takes two", async () => {
+    await enable();
+    expect((await cfg.resolvePipelineMode(t)).mode).toBe("validate_first");
+    await C.activateTenant({ tenantId: t, mode: "paused", postingEnabled: false, reason: "pilot paused for a reconciliation check", approvedBy: ops.a });
+    expect(await cfg.resolvePipelineMode(t)).toMatchObject({ mode: "held", refused: expect.stringMatching(/paused/) });
+    await expect(C.activateTenant({ tenantId: t, mode: "paused", postingEnabled: true, reason: "pause with posting is nonsense", approvedBy: ops.a })).rejects.toThrow(/cannot have posting enabled/);
+    // The table refuses a one-person start even if the library is bypassed.
+    expect(await dbError(withTenant(t, (tx) => tx.execute(sql`INSERT INTO rta_pipeline_activations (tenant_id, mode, posting_enabled, reason, requested_by, approved_by)
+      VALUES (${t}::uuid, 'shadow', false, 'one person restarting alone', NULL, ${ops.a}::uuid)`)))).toMatch(/start_two_person/);
+    // The write guard for the other paths agrees: nothing RTA-derived while paused.
+    const { rtaWriteDenial } = await import("@/lib/rta/write-guard");
+    expect(await withTenant(t, (tx) => rtaWriteDenial(tx, t, "derived"))).toMatchObject({ code: "stopped" });
+    // The drop folder leaves the file for later and records nothing.
+    const { ingestRtaText } = await import("@/lib/rta/ingest");
+    const imports = async () => (await q(sql`SELECT count(*)::int AS n FROM rta_file_imports WHERE tenant_id = ${t}::uuid`))[0].n as number;
+    const before = { tx: await txCount(), imports: await imports() };
+    const r = await withTenant(t, (tx) => ingestRtaText(tx, { tenantId: t, source: "kfintech", kind: "daily_transaction_feed", fileName: "drop-paused.csv", text: csvOf(MFSD201_HEADER, [sip("910098")]).toString("utf8") }));
+    expect(r).toMatchObject({ status: "held", importId: null });
+    expect({ tx: await txCount(), imports: await imports() }).toEqual(before);
+    await enable();
+    expect((await cfg.resolvePipelineMode(t)).mode).toBe("validate_first");
+  });
+
+  it("the write guard: a validate-first firm refuses second ways in (generic CSV, sync); a legacy firm keeps them", async () => {
+    const { rtaWriteDenial } = await import("@/lib/rta/write-guard");
+    expect(await withTenant(t, (tx) => rtaWriteDenial(tx, t, "bypass"))).toMatchObject({ code: "pipeline_only" });
+    expect(await withTenant(t, (tx) => rtaWriteDenial(tx, t, "derived"))).toBeNull();
+    expect(await withTenant(other, (tx) => rtaWriteDenial(tx, other, "bypass"))).toBeNull();
   });
 
   it("posting refuses a superuser / BYPASSRLS connection and a transaction scoped to another firm", async () => {

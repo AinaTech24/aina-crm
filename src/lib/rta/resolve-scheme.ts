@@ -32,7 +32,42 @@ function normName(s: string | undefined | null): string {
     .trim();
 }
 
-export async function resolveSchemeIdentity(tx: Tx, records: RtaFolioRecord[]): Promise<{ resolved: number; total: number }> {
+/**
+ * Evidence-only resolution (Phase 3H, the validate-first path): the firm's
+ * registrar-code crosswalk (lib/rta/scheme-resolution) decides — the
+ * registrar's ISIN or a person's confirmation, never a name. Each leg keeps the
+ * registrar's own code in rtaSchemeCode and says how its scheme was resolved
+ * (schemeStatus); an unresolved leg keeps the registrar's code and its
+ * registrar-stated value, and is never priced by name.
+ */
+async function resolveByEvidence(tx: Tx, tenantId: string, records: RtaFolioRecord[]): Promise<{ resolved: number; total: number }> {
+  const { loadSchemeResolutions } = await import("./scheme-resolution");
+  const keys = records.flatMap((r) => r.schemes.map((s) => ({ rta: r.rta, amcCode: r.amcCode, schemeCode: s.schemeCode })));
+  const map = await loadSchemeResolutions(tx, tenantId, keys);
+  let resolved = 0;
+  let total = 0;
+  for (const r of records) {
+    let amcForFolio: string | null = null;
+    for (const s of r.schemes) {
+      total++;
+      const rtaCode = (s as any).rtaSchemeCode ?? s.schemeCode;
+      const res = map.get(`${r.rta}|${r.amcCode}|${rtaCode}`);
+      (s as any).rtaSchemeCode = rtaCode;
+      (s as any).schemeStatus = res?.status ?? "unresolved";
+      if (res?.amfiSchemeCode) {
+        s.schemeCode = res.amfiSchemeCode;
+        if (res.schemeName) s.schemeName = res.schemeName;
+        if (!amcForFolio && res.amcName) amcForFolio = res.amcName;
+        resolved++;
+      }
+    }
+    if (amcForFolio) r.amcName = amcForFolio;
+  }
+  return { resolved, total };
+}
+
+export async function resolveSchemeIdentity(tx: Tx, records: RtaFolioRecord[], opts?: { evidenceOnly?: { tenantId: string } }): Promise<{ resolved: number; total: number }> {
+  if (opts?.evidenceOnly) return resolveByEvidence(tx, opts.evidenceOnly.tenantId, records);
   // Collect distinct ISINs across all schemes.
   const isins = new Set<string>();
   let total = 0;

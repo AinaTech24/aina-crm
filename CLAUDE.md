@@ -673,7 +673,7 @@ checklist: `docs/rta/PHASE3G_PRODUCTION_READINESS.md`. Migration 0236.
 
 - **`RTA_POSTING_MODE=controlled`**: the env mode is only a ceiling; the
   firm's current `rta_pipeline_activations` row decides (append-only, newest
-  effective wins, none = off → today's importer). Activating validate-first
+  effective wins, none = off → today's importer; a revoked / expired one = paused since 3H). Activating validate-first
   with posting needs two platform operators (`lib/rta/posting/controls.ts`,
   `/api/super-admin/rta-pipeline`). An activated firm whose posting cannot
   run is `validate_first_refused` — **never** the legacy importer.
@@ -705,6 +705,46 @@ checklist: `docs/rta/PHASE3G_PRODUCTION_READINESS.md`. Migration 0236.
   examples, proposed repairs — executes none) and `scripts/rta-infra-check.ts`
   (real Next / Chromium / S3-compatible store / Redis / worker processes,
   synthetic data, local URLs only).
+
+## RTA pilot blockers and the Scheme Master — Phase 3H (PRE-PRODUCTION)
+
+Report, matrix and the activation checklist: `docs/rta/PHASE3H_PILOT_BLOCKERS.md`.
+Migrations 0237 (modes) and 0238 (scheme crosswalk).
+
+- **One scheme reference: the AMFI scheme code** (`scheme_nav.scheme_code` =
+  `scheme_master.scheme_code`). Registrar codes map to it through
+  `scheme_rta_codes` (`lib/rta/scheme-resolution.ts`) by the registrar's ISIN
+  or a person's audited confirmation — **never by name** (31 KFintech codes
+  print different descriptions in different files; KFintech `Plan` is a code).
+  CAMS core reports print no ISIN: each CAMS code is confirmed once on
+  `/dashboard/rta-imports/schemes`. Do not add a second scheme table.
+- **The scheme gate** (always under `RTA_POSTING_MODE=controlled`;
+  `RTA_SCHEME_GATE=on` in development): an unresolved / conflicting scheme
+  holds the transaction (`scheme_unresolved` / `scheme_conflict`) before it is
+  written; resolved ones post with the AMFI code in `scheme_code` and the
+  registrar's in `rta_scheme_code` (also sips, sip_rejections, holdings legs
+  `rtaSchemeCode` + `schemeStatus`). An evidence-tracked leg is never priced by
+  name (`revalueAllFolios`).
+- **Modes** (`resolvePipelineMode`): legacy (`off`) · shadow · validate_first ·
+  **held** (paused, revoked / expired activation, firm halt, process halt,
+  global posting halt for the pipeline, EMERGENCY for everyone). Held parks the
+  job (row back to `uploaded`, file kept) — never the legacy importer, never a
+  silent failure. One operator stops; two start (0237 enforces it in the table).
+- **Every other writer asks `lib/rta/write-guard.ts`** inside its own
+  transaction (FOR SHARE on the control rows): `derived` (legacy importer,
+  business matching, reconciliation scanner, merges) stops when the firm is
+  stopped; `bypass` (generic CSV import, reconciliation sync, risky scripts via
+  `scripts/lib/rta-script-guard.ts`) is also refused for a validate-first firm.
+- **Reversal refuses dependent batches** (later "already posted" claims,
+  business matches, emitted outbox events, worked SIP rejections) and master
+  batches; the reviewed order is newest first. A nightly reconciliation
+  (`posting/monitor.ts`, daily ops) alerts on any non-zero count.
+- **Migrations are immutable**: `checksums.lock.json` (CI) and the runner block
+  on a changed or missing applied file; a correction is a NEW migration
+  (`drift-acknowledged.json` is the reviewed exception). `migrate:all --check`
+  is the release gate; `scripts/migration-immutability-drill.sh` the drill.
+- The emergency drill halts every firm in the database, so it runs alone:
+  `npm run test:emergency` (its own CI step).
 
 ## Webhook handlers
 

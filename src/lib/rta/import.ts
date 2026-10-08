@@ -114,7 +114,9 @@ export async function importRtaFolios(
   //       unlocks live-NAV valuation) from the AMFI master via ISIN / name. This
   //       turns "P"/"K"/"117" into real AMC names and the file's descriptions
   //       into canonical scheme names. Read-only, so it runs for dry-run too.
-  await resolveSchemeIdentity(tx, records);
+  // Validate-first (a staging batch): evidence only — the registrar's ISIN or
+  // a confirmed mapping (scheme_rta_codes), never a scheme name (Phase 3H).
+  await resolveSchemeIdentity(tx, records, opts.sourceBatchId ? { evidenceOnly: { tenantId } } : undefined);
 
   // ── 1. Resolve each folio to a CLIENT. Adults key on a VALID PAN. A minor
   //       folio is operated under a guardian and has no PAN of its own, so it
@@ -616,17 +618,25 @@ export async function importRtaFolios(
   // would ADD the incoming one alongside and double count. They are replaced
   // instead, so the register converges on correct slices as each ARN's file
   // re-imports, and never overstates on the way there.
+  // The same holding: the same scheme code, or the same REGISTRAR code (Phase
+  // 3H — validate-first legs carry rtaSchemeCode beside the canonical AMFI
+  // code). A normalised-name match is kept only toward a leg that carries no
+  // registrar code (written by the existing importer before), so an
+  // evidence-resolved leg never merges with another by name alone.
+  const sameHolding = sql`(
+        (incoming->>'schemeCode') = (keep->>'schemeCode')
+     OR ((incoming->>'rtaSchemeCode') IS NOT NULL AND (incoming->>'rtaSchemeCode') = (keep->>'rtaSchemeCode'))
+     OR (((incoming->>'rtaSchemeCode') IS NULL OR (keep->>'rtaSchemeCode') IS NULL)
+         AND lower(regexp_replace(COALESCE(incoming->>'schemeName',''), '[^a-zA-Z0-9]+', '', 'g'))
+           = lower(regexp_replace(COALESCE(keep->>'schemeName',''),     '[^a-zA-Z0-9]+', '', 'g')))
+  )`;
   const olderThanKeep = sql`((keep->>'sourceAsOf') IS NOT NULL AND (incoming->>'sourceAsOf') IS NOT NULL AND (incoming->>'sourceAsOf') < (keep->>'sourceAsOf'))`;
   const mergedSchemes = sql`(
     SELECT COALESCE(jsonb_agg(keep), '[]'::jsonb)
       FROM jsonb_array_elements(COALESCE(${foliosTable.schemes}, '[]'::jsonb)) AS keep
      WHERE NOT EXISTS (
        SELECT 1 FROM jsonb_array_elements(COALESCE(excluded.schemes, '[]'::jsonb)) AS incoming
-        WHERE (
-                (incoming->>'schemeCode') = (keep->>'schemeCode')
-             OR lower(regexp_replace(COALESCE(incoming->>'schemeName',''), '[^a-zA-Z0-9]+', '', 'g'))
-              = lower(regexp_replace(COALESCE(keep->>'schemeName',''),     '[^a-zA-Z0-9]+', '', 'g'))
-              )
+        WHERE ${sameHolding}
           -- A MISSING arn is a WILDCARD ON BOTH SIDES, and both directions
           -- matter:
           --   stored none, incoming one -> a leg written before per-ARN
@@ -662,9 +672,7 @@ export async function importRtaFolios(
       FROM jsonb_array_elements(COALESCE(excluded.schemes, '[]'::jsonb)) AS incoming
      WHERE NOT EXISTS (
        SELECT 1 FROM jsonb_array_elements(COALESCE(${foliosTable.schemes}, '[]'::jsonb)) AS keep
-        WHERE ((incoming->>'schemeCode') = (keep->>'schemeCode')
-               OR lower(regexp_replace(COALESCE(incoming->>'schemeName',''), '[^a-zA-Z0-9]+', '', 'g'))
-                = lower(regexp_replace(COALESCE(keep->>'schemeName',''),     '[^a-zA-Z0-9]+', '', 'g')))
+        WHERE ${sameHolding}
           AND ((keep->>'arn') IS NULL OR (incoming->>'arn') IS NULL OR (keep->>'arn') = (incoming->>'arn'))
           AND ${olderThanKeep}
      )

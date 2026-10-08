@@ -19,6 +19,8 @@ export const transactions = pgTable(
     amcCode: text("amc_code"),
     amcName: text("amc_name"),
     schemeCode: text("scheme_code"),
+    /** The registrar's own scheme code when scheme_code is the canonical AMFI code (migration 0238). */
+    rtaSchemeCode: text("rta_scheme_code"),
     schemeName: text("scheme_name"),
     /** Spec § Module 9 — Equity / Debt / Hybrid / Liquid / ELSS / Index / etc. */
     schemeCategory: text("scheme_category"),
@@ -145,6 +147,8 @@ export const sips = pgTable(
     amcCode: text("amc_code"),
     amcName: text("amc_name"),
     schemeCode: text("scheme_code"),
+    /** The registrar's own scheme code when scheme_code is the canonical AMFI code (migration 0238). */
+    rtaSchemeCode: text("rta_scheme_code"),
     schemeName: text("scheme_name"),
     amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
     frequency: text("frequency", { enum: ["monthly", "quarterly", "weekly", "fortnightly", "half_yearly", "yearly"] })

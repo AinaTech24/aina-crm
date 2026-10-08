@@ -24,6 +24,7 @@
  *   tsx scripts/repair-rta-placeholders.ts --tenant <uuid> --apply
  */
 
+import { refuseIfRtaWritesStopped } from "./lib/rta-script-guard";
 import { sql } from "drizzle-orm";
 import { withTenant } from "../src/db/client";
 import { mergeInvestors } from "../src/lib/investors/merge";
@@ -122,6 +123,7 @@ async function main() {
   if (!TENANTS.length) throw new Error("Pass --tenant <uuid> (repeatable). Add --apply to write.");
   console.log(APPLY ? "APPLY — writing changes" : "DRY RUN — nothing is written (add --apply)");
 
+  if (APPLY) for (const tenantId of TENANTS) await refuseIfRtaWritesStopped(tenantId, "repair-rta-placeholders");
   for (const tenantId of TENANTS) {
     const before = await firmTotals(tenantId);
     const plan = await planFor(tenantId);

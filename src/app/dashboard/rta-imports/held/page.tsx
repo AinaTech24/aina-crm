@@ -48,6 +48,8 @@ export default async function HeldTransactionsPage({ searchParams }: { searchPar
       <p className="text-sm text-muted-foreground">
         Registrar transactions the import validated but did not post: an owner it could not prove, a figure that does not reconcile,
         a code it does not know, or a correction. They stay here until the cause is settled — never counted as business meanwhile.
+        A transaction held for its scheme posts once its registrar code is linked under{" "}
+        <Link href="/dashboard/rta-imports/schemes" className="underline">Scheme codes</Link>.
       </p>
       <nav className="dash-seg" aria-label="Filter by status">
         <Link href="/dashboard/rta-imports/held" aria-current={!outcome ? "page" : undefined}>All <span className="tabular-nums">{total}</span></Link>

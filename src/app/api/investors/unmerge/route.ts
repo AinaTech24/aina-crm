@@ -20,6 +20,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
+import { assertRtaWritesAllowed } from "@/lib/rta/write-guard";
 import { requireSession } from "@/lib/auth/session";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { recomputeInvestorAum } from "@/lib/finance/aum-persist";
@@ -52,6 +53,7 @@ export async function POST(req: NextRequest) {
     const result = await withTenant(
       session.tenantId,
       async (tx) => {
+        await assertRtaWritesAllowed(tx, session.tenantId, "derived"); // never while RTA imports are stopped
         const row = (await tx.execute(sql`
           SELECT id, survivor_id, loser_id, moved, reversible, reversed_at,
                  loser_aum, loser_sip_amount, loser_status, survivor_before

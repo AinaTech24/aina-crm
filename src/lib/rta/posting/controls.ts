@@ -23,7 +23,7 @@ import { withSystem, withTenant } from "@/db/client";
 
 type Tx = any;
 
-export type PipelineModeName = "off" | "shadow" | "validate_first";
+export type PipelineModeName = "off" | "shadow" | "validate_first" | "paused";
 
 export type Activation = {
   id: string; mode: PipelineModeName; postingEnabled: boolean; reason: string; approvalRef: string | null;
@@ -55,9 +55,12 @@ export async function currentActivation(tx: Tx, tenantId: string, opts: { lock?:
   };
 }
 
-/** Is posting halted for this firm (global or firm scope)? A missing global row counts as halted. */
+/**
+ * Is posting halted for this firm? The 'global' posting switch (a missing row
+ * counts as halted), an 'emergency' shutdown, or the firm's own row.
+ */
 export async function haltState(tx: Tx, tenantId: string | null, opts: { lock?: boolean } = {}): Promise<{ halted: boolean; reasons: string[] }> {
-  const scopes = tenantId ? ["global", tenantId] : ["global"];
+  const scopes = tenantId ? ["global", "emergency", tenantId] : ["global", "emergency"];
   const rows = (await tx.execute(sql`
     SELECT scope, posting_halted, reason FROM rta_posting_controls
      WHERE scope IN (${sql.join(scopes.map((s) => sql`${s}`), sql`, `)})
@@ -66,8 +69,29 @@ export async function haltState(tx: Tx, tenantId: string | null, opts: { lock?: 
   const reasons: string[] = [];
   const global = rows.find((r) => r.scope === "global");
   if (!global) reasons.push("the global posting control is missing (treated as halted)");
-  for (const r of rows) if (r.posting_halted) reasons.push(`posting is halted (${r.scope === "global" ? "all firms" : "this firm"}): ${r.reason}`);
+  for (const r of rows) if (r.posting_halted) reasons.push(`posting is halted (${r.scope === "global" ? "all firms" : r.scope === "emergency" ? "EMERGENCY SHUTDOWN" : "this firm"}): ${r.reason}`);
   return { halted: reasons.length > 0, reasons };
+}
+
+export type ControlFacts = {
+  /** The firm's current activation (latest effective, unexpired, unrevoked), or null. */
+  current: Activation | null;
+  /** The firm has had an activation row at some time. */
+  everActivated: boolean;
+  emergency: { halted: boolean; reason: string } | null;
+  /** The new pipeline's posting switch; null = the row is missing (treated as halted). */
+  global: { halted: boolean; reason: string } | null;
+  firm: { halted: boolean; reason: string } | null;
+};
+
+/** Everything the regime decision reads, in one round trip (the caller's transaction). */
+export async function controlFacts(tx: Tx, tenantId: string): Promise<ControlFacts> {
+  const current = await currentActivation(tx, tenantId);
+  const ever = (await tx.execute(sql`SELECT EXISTS (SELECT 1 FROM rta_pipeline_activations WHERE tenant_id = ${tenantId}::uuid AND effective_from <= now()) AS e`)).rows[0] as { e: boolean };
+  const rows = (await tx.execute(sql`
+    SELECT scope, posting_halted, reason FROM rta_posting_controls WHERE scope IN ('global', 'emergency', ${tenantId})`)).rows as Array<{ scope: string; posting_halted: boolean; reason: string }>;
+  const pick = (scope: string) => { const r = rows.find((x) => x.scope === scope); return r ? { halted: !!r.posting_halted, reason: r.reason } : null; };
+  return { current, everActivated: !!ever.e, emergency: pick("emergency"), global: pick("global"), firm: pick(tenantId) };
 }
 
 /**
@@ -80,7 +104,7 @@ export async function setPostingHalt(input: {
 }): Promise<void> {
   const reason = input.reason?.trim() ?? "";
   if (reason.length < 10) throw new ControlError("a reason of at least 10 characters is required");
-  if (input.scope !== "global" && !UUID.test(input.scope)) throw new ControlError("scope must be 'global' or a firm id");
+  if (input.scope !== "global" && input.scope !== "emergency" && !UUID.test(input.scope)) throw new ControlError("scope must be 'global', 'emergency' or a firm id");
   if (!input.halted && (!input.approvedBy || input.approvedBy === input.changedBy)) {
     throw new ControlError("releasing posting needs a second operator to approve (approver must differ from the requester)");
   }
@@ -97,7 +121,7 @@ export async function setPostingHalt(input: {
     await tx.execute(sql`
       INSERT INTO rta_posting_control_events (scope, posting_halted, reason, changed_by, approved_by)
       VALUES (${input.scope}, ${input.halted}, ${reason}, ${input.changedBy}::uuid, ${input.approvedBy ?? null}::uuid)`);
-    if (input.scope !== "global") {
+    if (UUID.test(input.scope)) {
       await tx.execute(sql`
         INSERT INTO audit_log (tenant_id, actor_user_id, actor_type, action, entity_type, after, reason)
         VALUES (${input.scope}::uuid, ${input.changedBy}::uuid, 'user', ${input.halted ? "rta.posting.halt" : "rta.posting.release"}, 'rta_posting_control',
@@ -117,6 +141,12 @@ export async function activateTenant(input: {
 }): Promise<Activation> {
   const reason = input.reason?.trim() ?? "";
   if (reason.length < 10) throw new ControlError("a reason of at least 10 characters is required");
+  if (input.mode === "paused") {
+    if (input.postingEnabled) throw new ControlError("a paused firm cannot have posting enabled");
+  } else if (!input.requestedBy || input.requestedBy === input.approvedBy) {
+    // One person may stop things; starting (or returning to the existing importer) takes two.
+    throw new ControlError("starting a mode other than paused needs a requester and a DIFFERENT approver");
+  }
   if (input.postingEnabled) {
     if (input.mode !== "validate_first") throw new ControlError("posting can only be enabled in validate_first mode");
     if (!input.requestedBy || input.requestedBy === input.approvedBy) throw new ControlError("enabling posting needs a requester and a DIFFERENT approver");
@@ -140,7 +170,11 @@ export async function activateTenant(input: {
   });
 }
 
-/** Revoke the firm's current activation (one operator, with a reason). The firm falls back to its previous row, else off. */
+/**
+ * Revoke the firm's current activation (one operator, with a reason). The firm
+ * falls back to an earlier still-effective row if there is one; with none it is
+ * PAUSED (resolvePipelineMode) — never the existing importer by itself.
+ */
 export async function revokeActivation(input: { tenantId: string; revokedBy: string; reason: string }): Promise<Activation | null> {
   const reason = input.reason?.trim() ?? "";
   if (reason.length < 5) throw new ControlError("a reason is required");

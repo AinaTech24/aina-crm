@@ -16,6 +16,7 @@
  *   npx tsx scripts/dedupe-zero-sips.ts --tenant <uuid>            # dry run
  *   npx tsx scripts/dedupe-zero-sips.ts --tenant <uuid> --commit
  */
+import { refuseIfRtaWritesStopped } from "./lib/rta-script-guard";
 import "dotenv/config";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
@@ -28,6 +29,7 @@ async function main() {
     console.error("Usage: npx tsx scripts/dedupe-zero-sips.ts --tenant <uuid> [--commit]");
     process.exit(1);
   }
+  if (COMMIT) await refuseIfRtaWritesStopped(TENANT, "dedupe-zero-sips");
   console.log(COMMIT ? "MODE: COMMIT — rows will be deleted" : "MODE: DRY RUN");
 
   await withTenant(

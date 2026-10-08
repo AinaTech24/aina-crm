@@ -13,7 +13,14 @@
  * in scheme_name so they're obvious, and they simply go stale after the next
  * `refresh:nav` (they're not in the AMFI feed) — harmless for a demo DB.
  *
- * Usage:  npx tsx scripts/backfill-demo-nav.ts
+ * Usage:  DEMO_TENANT_ID=<id> npx tsx scripts/backfill-demo-nav.ts --tenant <id>
+ *
+ * Phase 3H guard: this used to run with NO tenant filter — its unit/NAV rewrite
+ * matched every firm's transactions whose scheme_code is a real AMFI code, and
+ * its name-matched alias rows went into the GLOBAL scheme_nav every firm prices
+ * from. It now runs for one named demo firm only (--tenant must equal
+ * DEMO_TENANT_ID), never in production, and refuses a firm that has any RTA
+ * import, RTA activation, or a transaction from a registrar feed.
  */
 
 import "dotenv/config";
@@ -22,15 +29,28 @@ process.env.ALLOW_SYSTEM_TX = process.env.ALLOW_SYSTEM_TX ?? "1";
 import { sql } from "drizzle-orm";
 import { withSystem } from "../src/db/client";
 
+const args = process.argv.slice(2);
+const TENANT = args.includes("--tenant") ? args[args.indexOf("--tenant") + 1] ?? "" : "";
+
 async function main() {
+  if (process.env.NODE_ENV === "production") throw new Error("refusing: demo-data script in production");
+  if (!TENANT || TENANT !== (process.env.DEMO_TENANT_ID ?? "")) {
+    throw new Error("refusing: pass --tenant <id> equal to DEMO_TENANT_ID — this script rewrites transactions and must name the demo firm");
+  }
   const result = await withSystem(async (tx) => {
+    const real = (await tx.execute(sql`
+      SELECT (SELECT count(*) FROM rta_file_imports WHERE tenant_id = ${TENANT}::uuid)
+           + (SELECT count(*) FROM rta_pipeline_activations WHERE tenant_id = ${TENANT}::uuid)
+           + (SELECT count(*) FROM transactions WHERE tenant_id = ${TENANT}::uuid AND source_feed IN ('cams', 'kfintech', 'rta_validate_first')) AS n`)).rows[0] as { n: string | number };
+    if (Number(real.n) > 0) throw new Error("refusing: this firm holds registrar data — the demo NAV backfill is for seeded demo books only");
     // 1. Distinct (code,name) used by demo transactions/sips that have NO NAV.
     const unpriced = (
       await tx.execute(sql`
         SELECT DISTINCT t.scheme_code, t.scheme_name
         FROM transactions t
         LEFT JOIN scheme_nav n ON n.scheme_code = t.scheme_code
-        WHERE t.scheme_code IS NOT NULL
+        WHERE t.tenant_id = ${TENANT}::uuid
+          AND t.scheme_code IS NOT NULL
           AND t.scheme_name IS NOT NULL
           AND n.scheme_code IS NULL
       `)
@@ -97,7 +117,8 @@ async function main() {
       SET units = round((t.amount * (1 + 0.12 * GREATEST(0.1, (CURRENT_DATE - t.order_date) / 365.0)) / n.nav)::numeric, 4),
           nav   = round((n.nav / (1 + 0.12 * GREATEST(0.1, (CURRENT_DATE - t.order_date) / 365.0)))::numeric, 4)
       FROM scheme_nav n
-      WHERE n.scheme_code = t.scheme_code
+      WHERE t.tenant_id = ${TENANT}::uuid
+        AND n.scheme_code = t.scheme_code
         AND t.direction = 'inflow'
         AND t.amount IS NOT NULL AND t.order_date IS NOT NULL AND n.nav > 0
     `);
@@ -106,7 +127,8 @@ async function main() {
       SET units = round((t.amount / n.nav)::numeric, 4),
           nav   = n.nav
       FROM scheme_nav n
-      WHERE n.scheme_code = t.scheme_code
+      WHERE t.tenant_id = ${TENANT}::uuid
+        AND n.scheme_code = t.scheme_code
         AND t.direction = 'outflow'
         AND t.amount IS NOT NULL AND n.nav > 0
     `);

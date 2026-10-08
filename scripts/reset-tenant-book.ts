@@ -18,6 +18,7 @@
  * every statement anyway, and asserts the session can see exactly one tenant
  * before writing — other firms share this database.
  */
+import { refuseIfRtaWritesStopped } from "./lib/rta-script-guard";
 import "dotenv/config";
 import pg from "pg";
 
@@ -46,6 +47,7 @@ async function main() {
     console.error("Usage: npx tsx scripts/reset-tenant-book.ts --tenant <uuid> [--commit]");
     process.exit(1);
   }
+  if (COMMIT) await refuseIfRtaWritesStopped(TENANT, "reset-tenant-book");
   console.log(COMMIT ? "MODE: COMMIT — rows will be deleted" : "MODE: DRY RUN");
 
   const c = await connect();

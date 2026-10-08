@@ -36,6 +36,7 @@
  * key: an existing CRM row under the same number that differs in folio,
  * scheme, date, direction, amount or units is a conflict, never a match.
  */
+import { isResolved, loadSchemeResolutions, observeSchemeCodes, schemeFor, schemeGateOn, type SchemeResolution } from "../scheme-resolution";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { CLASS_META, type RtaClass } from "../staging/classify";
@@ -103,6 +104,9 @@ export async function postTransactionBatch(tenantId: string, batchId: string, op
     if (["posted", "partially_posted", "nothing_to_post"].includes(b.posting_state)) {
       return { batchId, state: b.posting_state as PostResult["state"], counts: b.posting_counts as PostResult["counts"], postedTotals: totals0, replayed: true };
     }
+
+    // The registrar scheme codes this file mentions → the Scheme Master (Phase 3H).
+    await observeSchemeCodes(tx, tenantId, batchId);
 
     const econs = (await tx.execute(sql`
       SELECT e.id, e.identity_key, e.rta, e.amc_code, e.folio_number, e.scheme_code, e.registrar_txn_no, e.trade_date::text AS trade_date,
@@ -176,9 +180,10 @@ export async function postTransactionBatch(tenantId: string, batchId: string, op
     const totals = { ...totals0 };
     const lastTx = new Map<string, string>();
 
+    const schemes = await loadSchemeResolutions(tx, tenantId, plan.filter((p) => p.write).map((p) => ({ rta: p.e.rta, amcCode: p.e.amc_code ?? "", schemeCode: p.e.scheme_code ?? "" })));
     for (const p of plan) {
       if (!p.write) continue;
-      const r = await commitEconomicTxn(tx, tenantId, p.e, p.write, { batchId, userId: opts.userId ?? null, tick });
+      const r = await commitEconomicTxn(tx, tenantId, p.e, p.write, { batchId, userId: opts.userId ?? null, tick, schemes });
       p.outcome = r.outcome; p.reason = r.reason;
       if (r.outcome !== "posted" && r.outcome !== "rejected_recorded" && r.outcome !== "matched_existing") p.write = undefined;
       if (r.posted) {
@@ -238,7 +243,7 @@ export type CommitResult = {
  * promoted transaction is written exactly like one that posted first time.
  * Caller holds the posting gate and the firm's posting lock.
  */
-export async function commitEconomicTxn(tx: Tx, tenantId: string, e: Econ, write: "new" | "rejected", ctx: { batchId: string; userId: string | null; tick?: () => void }): Promise<CommitResult> {
+export async function commitEconomicTxn(tx: Tx, tenantId: string, e: Econ, write: "new" | "rejected", ctx: { batchId: string; userId: string | null; tick?: () => void; schemes?: Map<string, SchemeResolution> }): Promise<CommitResult> {
     const attrs = (e.first_attrs ?? {}) as Record<string, unknown>;
     // The folio this posts to: the one on record; an owner_by_pan transaction may open the owner's new folio.
     let folioId = e.match_folio_id;
@@ -283,15 +288,30 @@ export async function commitEconomicTxn(tx: Tx, tenantId: string, e: Econ, write
       return { outcome: "matched_existing", reason: "the CRM already holds this transaction — linked, not duplicated" };
     }
 
+    // ── The scheme (Phase 3H): resolved to the CRM Scheme Master by evidence,
+    // or — with the scheme gate on — held before anything is written.
+    const key = { rta: e.rta, amcCode: e.amc_code ?? "", schemeCode: e.scheme_code ?? "" };
+    const scheme = ctx.schemes?.get(`${key.rta}|${key.amcCode}|${key.schemeCode}`) ?? await schemeFor(tx, tenantId, key);
+    await tx.execute(sql`UPDATE rta_staging_economic_txns SET amfi_scheme_code = ${scheme.amfiSchemeCode}, scheme_status = ${scheme.status}
+                          WHERE tenant_id = ${tenantId}::uuid AND id = ${e.id}::uuid`);
+    if (!isResolved(scheme.status) && schemeGateOn()) {
+      const code = scheme.status === "conflict" ? "scheme_conflict" : "scheme_unresolved";
+      return { outcome: "quarantined", reason: `${code}: ${e.rta} scheme ${e.amc_code ?? "?"}/${e.scheme_code ?? "?"} — ${scheme.reason}. Resolve it under RTA File Imports → Scheme codes; the transaction posts then.` };
+    }
+    // Canonical when resolved; the registrar's own code is always kept beside it.
+    const schemeCode = scheme.amfiSchemeCode ?? e.scheme_code;
+    const schemeName = scheme.schemeName ?? String(attrs.schemeName ?? e.scheme_code);
+    const amcName = scheme.amcName ?? e.amc_code;
+
     if (write === "rejected") {
       const cat = String(attrs.eventCategory ?? "failed_sip_instalment");
       const reason = String(attrs.rejectionReason ?? "No reason given in the file");
       const type = cat === "failed_stp_leg" ? "stp" : "sip";
       const ins = (await tx.execute(sql`
-        INSERT INTO transactions (tenant_id, investor_id, folio_id, folio_number, amc_code, amc_name, scheme_code, scheme_name,
+        INSERT INTO transactions (tenant_id, investor_id, folio_id, folio_number, amc_code, amc_name, scheme_code, rta_scheme_code, scheme_name,
           type, direction, amount, units, nav, order_id, order_date, status, reason_code, reason_description, source_feed, raw_feed_row, dedup_key)
-        VALUES (${tenantId}::uuid, ${e.match_investor_id}::uuid, ${folioId}::uuid, ${e.folio_number}, ${e.amc_code}, ${e.amc_code}, ${e.scheme_code},
-          ${String(attrs.schemeName ?? e.scheme_code)}, ${type}, ${e.direction ?? (attrs.head === "R" ? "outflow" : "inflow")}, ${amount}, 0, NULL,
+        VALUES (${tenantId}::uuid, ${e.match_investor_id}::uuid, ${folioId}::uuid, ${e.folio_number}, ${e.amc_code}, ${amcName}, ${schemeCode}, ${e.scheme_code},
+          ${schemeName}, ${type}, ${e.direction ?? (attrs.head === "R" ? "outflow" : "inflow")}, ${amount}, 0, NULL,
           ${e.registrar_txn_no}, ${e.trade_date}::date, 'rejected', ${cat}, ${reason}, 'rta_validate_first', ${JSON.stringify(lineage)}::jsonb, ${e.identity_key})
         ON CONFLICT DO NOTHING RETURNING id`)).rows[0] as { id: string } | undefined;
       if (!ins) return { outcome: "quarantined", reason: "identity_conflict: a concurrent write took this registrar number" };
@@ -300,10 +320,10 @@ export async function commitEconomicTxn(tx: Tx, tenantId: string, e: Econ, write
         const inv = (await tx.execute(sql`SELECT rm_id FROM investors WHERE id = ${e.match_investor_id}::uuid`)).rows[0] as { rm_id: string | null } | undefined;
         const followUp = new Date(new Date(e.trade_date!).getTime() + 2 * 864e5).toISOString().slice(0, 10);
         const r = (await tx.execute(sql`
-          INSERT INTO sip_rejections (tenant_id, investor_id, transaction_id, rejection_date, rejection_amount, rejection_reason, scheme_name,
+          INSERT INTO sip_rejections (tenant_id, investor_id, transaction_id, rejection_date, rejection_amount, rejection_reason, scheme_name, scheme_code, rta_scheme_code,
             folio_number, amc_name, recovery_status, assigned_rm_id, follow_up_date, reason_category, dedup_key)
-          VALUES (${tenantId}::uuid, ${e.match_investor_id}::uuid, ${ins.id}::uuid, ${e.trade_date}::date, ${amount}, ${reason}, ${String(attrs.schemeName ?? e.scheme_code)},
-            ${e.folio_number}, ${e.amc_code}, 'pending', ${inv?.rm_id ?? null}::uuid, ${followUp}::date, ${classifyRejectionReason(String(reason ?? ""))}, ${"rta-vf:" + e.identity_key})
+          VALUES (${tenantId}::uuid, ${e.match_investor_id}::uuid, ${ins.id}::uuid, ${e.trade_date}::date, ${amount}, ${reason}, ${schemeName}, ${schemeCode}, ${e.scheme_code},
+            ${e.folio_number}, ${amcName}, 'pending', ${inv?.rm_id ?? null}::uuid, ${followUp}::date, ${classifyRejectionReason(String(reason ?? ""))}, ${"rta-vf:" + e.identity_key})
           ON CONFLICT DO NOTHING RETURNING id`)).rows[0] as { id: string } | undefined;
         sipRejectionId = r?.id ?? null;
       }
@@ -316,10 +336,10 @@ export async function commitEconomicTxn(tx: Tx, tenantId: string, e: Econ, write
 
     const type = CLASS_META[e.rta_class].legacyType!;
     const ins = (await tx.execute(sql`
-      INSERT INTO transactions (tenant_id, investor_id, folio_id, folio_number, amc_code, amc_name, scheme_code, scheme_name,
+      INSERT INTO transactions (tenant_id, investor_id, folio_id, folio_number, amc_code, amc_name, scheme_code, rta_scheme_code, scheme_name,
         type, direction, amount, units, nav, order_id, order_date, status, source_feed, raw_feed_row, dedup_key)
-      VALUES (${tenantId}::uuid, ${e.match_investor_id}::uuid, ${folioId}::uuid, ${e.folio_number}, ${e.amc_code}, ${e.amc_code}, ${e.scheme_code},
-        ${String(attrs.schemeName ?? e.scheme_code)}, ${type}, ${e.direction}, ${amount}, ${units}, ${e.reported_nav},
+      VALUES (${tenantId}::uuid, ${e.match_investor_id}::uuid, ${folioId}::uuid, ${e.folio_number}, ${e.amc_code}, ${amcName}, ${schemeCode}, ${e.scheme_code},
+        ${schemeName}, ${type}, ${e.direction}, ${amount}, ${units}, ${e.reported_nav},
         ${e.registrar_txn_no}, ${e.trade_date}::date, 'processed', 'rta_validate_first', ${JSON.stringify(lineage)}::jsonb, ${e.identity_key})
       ON CONFLICT DO NOTHING RETURNING id`)).rows[0] as { id: string } | undefined;
     if (!ins) return { outcome: "quarantined", reason: "identity_conflict: a concurrent write took this registrar number" };

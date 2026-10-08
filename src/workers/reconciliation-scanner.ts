@@ -27,6 +27,7 @@
  * pass `sinceDays` to widen (used by tests / back-fills).
  */
 
+import { rtaWriteDenial } from "@/lib/rta/write-guard";
 import { sql } from "drizzle-orm";
 import { withSystem, withTenant } from "@/db/client";
 
@@ -73,6 +74,9 @@ export async function reconcileTenant(
   await withTenant(
     tenantId,
     async (tx) => {
+      // Paused / halted / emergency firm: no RTA-derived rows or events
+      // (sip_rejections, client-facing workflow events) until it resumes.
+      if (await rtaWriteDenial(tx, tenantId, "derived")) return;
       // ── 1. SIP rejections → transaction.failed.sip_rejection ──────────
       const sipRes = await tx.execute(sql`
         INSERT INTO events_outbox (tenant_id, kind, entity_type, entity_id, after, meta)

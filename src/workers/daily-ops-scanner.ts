@@ -1292,6 +1292,17 @@ export async function runDailyOpsScan(): Promise<{
 }> {
   const startedAt = Date.now();
 
+  // ── RTA posting reconciliation (Phase 3H): ledger ↔ CRM ↔ staging for every
+  // firm that posted validate-first; a non-zero count raises an alert.
+  try {
+    const { reconcilePostingFirms } = await import("@/lib/rta/posting/monitor");
+    const r = await reconcilePostingFirms();
+    const bad = r.filter((x) => !x.ok);
+    if (bad.length) console.error(`[daily-ops] RTA posting reconciliation ALERT for ${bad.length} firm(s)`);
+  } catch (e) {
+    console.error("[daily-ops] RTA posting reconciliation could not run", (e as Error)?.message);
+  }
+
   // ── Auto-purge: permanently remove soft-deleted tenants whose retention
   // window has elapsed (data is kept until then so they can be recovered).
   // Each purge runs in its OWN system tx so one failure can't roll back others.

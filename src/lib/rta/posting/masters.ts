@@ -15,6 +15,7 @@
  * once under its one owner. A changed holder closes the old row and opens a
  * new one; nothing is edited in place.
  */
+import { observeSchemeCodes } from "../scheme-resolution";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { importRtaFolios } from "../import";
@@ -79,6 +80,9 @@ export async function postMasterBatch(tenantId: string, batchId: string, file: {
     const parsed = isSpreadsheet(file.buf, file.name) ? parseRtaRows(readSpreadsheetToRows(file.buf, file.name)) : parseRtaCsv(decodeTextBytes(file.buf));
     const records = parsed.folios.filter((r) => eligible.has(`${r.amcCode ?? ""}|${r.folioNumber}`));
     const kind = parsed.kind === "holdings" ? "holdings" : parsed.kind === "full" ? "full" : "master";
+    // Record this file's registrar scheme codes (and the ISINs MFSD203 prints)
+    // before the legs are resolved against the Scheme Master (Phase 3H).
+    await observeSchemeCodes(tx, tenantId, batchId);
     const summary = records.length
       ? await importRtaFolios(tx, tenantId, records, { kind, reportType: parsed.reportType, sourceBatchId: batchId })
       : null;

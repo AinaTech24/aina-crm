@@ -44,6 +44,8 @@ type Tx = any;
 
 /** Held for ownership / identity — what a new master can settle. */
 const IDENTITY_HOLD = /^(owner_not_on_record|folio_owner_conflict|folio_owned_by_guardian|owner_type_conflict|folio_pan_conflict|placeholder_owner|huf_owner_pan_unverified|pan_matches_minor_record|identity_blocked|identity_ambiguous|identity_split)\b/;
+/** Held because the scheme is not resolved to the Scheme Master yet (Phase 3H) — settled by a confirmation or new evidence. */
+const SCHEME_HOLD = /^(scheme_unresolved|scheme_conflict)\b/;
 /** Holds that also hold the rest of the folio (same rule as batch posting). */
 const TAINTS_FOLIO = /^(identity_|folio_|owner_|placeholder_|huf_|pan_matches_|group_|lot_|restated_by_registrar)/;
 
@@ -96,6 +98,8 @@ export async function reprocessHeldTransactions(
     folios?: Array<{ amcCode: string | null; folioNumber: string }>;
     /** Owner PAN tokens the trigger established (a master's holders): held transactions naming them are re-evaluated too, on any folio. */
     ownerTokens?: string[];
+    /** Registrar scheme codes just resolved: transactions held on them are re-evaluated, on any folio. */
+    schemeKeys?: Array<{ rta: string; amcCode: string; schemeCode: string }>;
     userId?: string | null; triggerBatchId?: string | null;
   } = {},
 ): Promise<ReprocessResult> {
@@ -113,7 +117,12 @@ export async function reprocessHeldTransactions(
       const byOwner = tokens.length
         ? sql`EXISTS (SELECT 1 FROM rta_staging_rows rr WHERE rr.tenant_id = l.tenant_id AND rr.economic_txn_id = l.id AND rr.pan_token IN (${sql.join(tokens.map((t) => sql`${t}`), sql`, `)}))`
         : null;
-      const folioFilter = byFolio && byOwner ? sql`AND (${byFolio} OR ${byOwner})` : byFolio ? sql`AND ${byFolio}` : byOwner ? sql`AND ${byOwner}` : folios ? sql`AND false` : sql``;
+      const schemeKeys = pass === 0 ? (opts.schemeKeys ?? []) : [];
+      const byScheme = schemeKeys.length
+        ? sql`(l.rta, COALESCE(l.amc_code, ''), COALESCE(l.scheme_code, '')) IN (${sql.join(schemeKeys.map((k) => sql`(${k.rta}, ${k.amcCode}, ${k.schemeCode})`), sql`, `)})`
+        : null;
+      const parts = [byFolio, byOwner, byScheme].filter(Boolean) as ReturnType<typeof sql>[];
+      const folioFilter = parts.length ? sql`AND (${sql.join(parts, sql` OR `)})` : folios || opts.schemeKeys ? sql`AND false` : sql``;
       // 1. The latest staging of every registrar transaction still held, on the folios concerned.
       const held = (await tx.execute(sql`
         WITH latest AS (
@@ -149,7 +158,7 @@ export async function reprocessHeldTransactions(
         const prior = code(e.posting_reason) || e.posting_outcome;
         const rowReason = code(e.reason);
         // Only identity holds are re-evaluated; figures, codes, conflicts and corrections stay as they are.
-        const identityOnly = e.posting_outcome === "held_dependent" || IDENTITY_HOLD.test(prior);
+        const identityOnly = e.posting_outcome === "held_dependent" || IDENTITY_HOLD.test(prior) || SCHEME_HOLD.test(prior);
         const refused = rowReason === "instalment_rejected";
         if (!identityOnly || !["complete", "duplicate", "quarantined"].includes(e.status) || (e.status === "quarantined" && !refused && !IDENTITY_HOLD.test(rowReason))) {
           verdicts.push({ e, promote: false, reason: e.posting_reason ?? e.reason ?? e.posting_outcome });

@@ -11,6 +11,7 @@
  *   tsx scripts/mark-sip-transfers.ts --tenant <uuid> [--tenant <uuid> …] [--no-ended] [--apply]
  */
 
+import { refuseIfRtaWritesStopped } from "./lib/rta-script-guard";
 import { sql } from "drizzle-orm";
 import { withTenant, type Tx } from "../src/db/client";
 import { markSystematicTransfers } from "../src/lib/finance/sip-lifecycle";
@@ -40,6 +41,7 @@ async function book(tx: Tx, tenantId: string): Promise<{ monthly: number; sips: 
 async function main() {
   if (!TENANTS.length) throw new Error("Pass --tenant <uuid> (repeatable). Add --apply to write.");
   console.log(APPLY ? "APPLY — writing changes" : "DRY RUN — nothing is kept (add --apply)");
+  if (APPLY) for (const tenantId of TENANTS) await refuseIfRtaWritesStopped(tenantId, "mark-sip-transfers");
   for (const tenantId of TENANTS) {
     let line = "";
     try {

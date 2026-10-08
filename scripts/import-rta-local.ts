@@ -112,7 +112,7 @@ async function main() {
   if (COMMIT) {
     const { resolvePipelineMode } = await import("@/lib/rta/staging/config");
     const mode = await resolvePipelineMode(String(tenant.id));
-    if (mode.mode === "validate_first" || mode.mode === "validate_first_refused") {
+    if (mode.mode === "validate_first" || mode.mode === "validate_first_refused" || mode.mode === "held") {
       console.error(`Refused: this firm's RTA pipeline mode is ${mode.mode}${mode.refused ? ` (${mode.refused})` : ""}. The existing importer does not write for it — upload the file instead.`);
       process.exit(1);
     }

@@ -140,7 +140,12 @@ export async function revalueAllFolios(
       const next = schemes.map((s) => {
         const units = Number(s.units ?? 0);
         stats.legs++;
-        const hit = lookupNav(navIndex, s.schemeCode, s.schemeName);
+        // A validate-first leg says how its scheme was identified (Phase 3H):
+        // one not resolved by evidence is never priced by NAME — it keeps the
+        // registrar's stated value until its code is resolved.
+        const st = (s as { schemeStatus?: string }).schemeStatus;
+        const byNameAllowed = !st || st === "resolved_isin" || st === "confirmed";
+        const hit = lookupNav(navIndex, s.schemeCode, byNameAllowed ? s.schemeName : null);
         if (hit && isFinite(units) && units > 0) {
           if (hit.via === "code") stats.pricedByCode++;
           else stats.pricedByName++;

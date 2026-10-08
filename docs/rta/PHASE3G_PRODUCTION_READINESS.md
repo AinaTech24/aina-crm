@@ -358,9 +358,11 @@ is the reversal above, or the restore.
 2. `RTA_POSTING_HALT=1` on the workers (process level, same effect).
 
 The kill switch stops the NEW pipeline only. Firms that were never activated
-keep today's importer, as before 3G. **Revoking an activation is not a way
-to stop writes**: a revoked firm reads `off` and goes back to the existing
-importer — it is the deliberate exit from the pilot, decided by the owner.
+keep today's importer, as before 3G. **Superseded in Phase 3H:** a revoked or
+expired activation now leaves the firm PAUSED (held, nothing written) — it
+never returns to the existing importer by itself; that takes an explicit `off`
+activation by two people. There is also an EMERGENCY scope that stops every
+firm, legacy included. See `PHASE3H_PILOT_BLOCKERS.md` §E.
 
 ### Reconciliation after recovery (and nightly in a pilot)
 

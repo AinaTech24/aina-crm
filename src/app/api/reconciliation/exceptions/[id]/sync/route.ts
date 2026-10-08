@@ -14,6 +14,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  * the refusal is written on the break.
  */
 
+import { assertRtaWritesAllowed } from "@/lib/rta/write-guard";
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
@@ -34,6 +35,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const result = await withTenant(
       session.tenantId,
       async (tx) => {
+        // Opening-balance purchases sized from the RTA feed: an RTA-derived
+        // write, refused for a stopped or validate-first firm (Phase 3H).
+        await assertRtaWritesAllowed(tx, session.tenantId, "bypass");
         const [ex] = await tx
           .select()
           .from(reconciliationExceptions)

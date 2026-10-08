@@ -68,6 +68,7 @@ describe.skipIf(!TEST_DB)("recovery of an incorrect posting batch (DB)", () => {
   afterAll(async () => {
     const tryRun = async (s: ReturnType<typeof sql>) => { try { await withSystem((tx) => tx.execute(s)); } catch { /* best effort */ } };
     await tryRun(sql`ALTER TABLE rta_posting_reversals DISABLE TRIGGER rta_posting_reversals_append_only`);
+    await tryRun(sql`DELETE FROM events_outbox WHERE tenant_id = ${t}::uuid`);
     for (const table of ["rta_posting_reversals", "rta_posted_transactions", "rta_sip_registrations", "sip_rejections", "sips", "transactions", "tasks", "rta_staging_lots", "rta_staging_checks", "rta_staging_rows"]) {
       await tryRun(sql.raw(`DELETE FROM ${table} WHERE tenant_id = '${t}'`));
     }
@@ -146,5 +147,67 @@ describe.skipIf(!TEST_DB)("recovery of an incorrect posting batch (DB)", () => {
     const restated = await run("restated.csv", csvOf(MFSD201_HEADER, [kfin("975002", { Amount: "1500.00", Units: "30.000" })]));
     expect(restated.posting).toMatchObject({ counts: { quarantined: 1 } });
     expect(await R.reconcilePosting(t)).toMatchObject({ ledgerWithoutTransaction: 0, validateFirstTransactionWithoutLedger: 0 });
+  });
+
+  it("a batch later work depends on is NOT reversed automatically; the reviewed order (newest first) works", async () => {
+    // Batch A posts two transactions; batch B (an overlapping re-delivery) records one of them as already posted.
+    const a = await run("depA.csv", csvOf(MFSD201_HEADER, [kfin("975101"), kfin("975102")]));
+    expect(a.posting).toMatchObject({ counts: { posted: 2 } });
+    const b = await run("depB.csv", csvOf(MFSD201_HEADER, [kfin("975102"), kfin("975103")]));
+    expect(b.posting).toMatchObject({ counts: { already_posted: 1, posted: 1 } });
+    await C.setPostingHalt({ scope: t, halted: true, reason: "incident: dependency drill", changedBy: ops.a });
+    const fp = await fingerprint();
+    const dry = await R.reversePostingBatch(t, a.batchId, { requestedBy: ops.a, approvedBy: ops.b, reason: "reverse batch A of the drill", dryRun: true });
+    expect(dry).toMatchObject({ blocked: true, dependencies: { laterBatchClaims: 1, businessEntryMatches: 0, outboxEvents: 0, workedSipRejections: 0 } });
+    await expect(R.reversePostingBatch(t, a.batchId, { requestedBy: ops.a, approvedBy: ops.b, reason: "reverse batch A of the drill" })).rejects.toThrow(/automatic reversal refused — later work depends on this batch \(laterBatchClaims 1\)/);
+    expect(await fingerprint()).toEqual(fp); // refused: nothing changed
+    // Reviewed order: B first (its own posting AND its "already posted" claim are withdrawn), then A.
+    const rb = await R.reversePostingBatch(t, b.batchId, { requestedBy: ops.a, approvedBy: ops.b, reason: "reverse batch B first, newest first" });
+    expect(rb.counts).toMatchObject({ transactions: 1, claimsWithdrawn: 1 });
+    const ra = await R.reversePostingBatch(t, a.batchId, { requestedBy: ops.a, approvedBy: ops.b, reason: "then reverse batch A of the drill" });
+    expect(ra.counts).toMatchObject({ transactions: 2 });
+    expect(await R.reconcilePosting(t)).toEqual({ ledgerWithoutTransaction: 0, validateFirstTransactionWithoutLedger: 0, postedOutcomeWithoutLedger: 0, ledgerIdentityTwice: 0, rejectedWithUnits: 0 });
+    // Undo B restores its claim exactly.
+    const [rev] = await q(sql`SELECT id::text AS id FROM rta_posting_reversals WHERE tenant_id = ${t}::uuid AND batch_id = ${b.batchId}::uuid`);
+    await R.undoReversal(t, ra.reversalId!, { by: ops.b, reason: "undo A: drill restores everything" });
+    await R.undoReversal(t, rev.id, { by: ops.b, reason: "undo B: drill restores everything" });
+    const [claim] = await q(sql`SELECT posting_outcome FROM rta_staging_economic_txns WHERE tenant_id = ${t}::uuid AND batch_id = ${b.batchId}::uuid AND registrar_txn_no = '975102'`);
+    expect(claim.posting_outcome).toBe("already_posted");
+    expect(await fingerprint()).toEqual(fp);
+  });
+
+  it("emitted workflow events and worked SIP rejections block an automatic reversal", async () => {
+    await C.setPostingHalt({ scope: t, halted: false, reason: "dependency drill: posting released again", changedBy: ops.a, approvedBy: ops.b });
+    const c = await run("depC.csv", csvOf(MFSD201_HEADER, [kfin("975201"),
+      kfin("975202", { "Transaction Type": "SIND", "Transaction Description": "Pre rejection", Units: "0.000", Amount: "2000.00", Price: "0", Remarks: "Required amount not available" })]));
+    expect(c.posting).toMatchObject({ counts: { posted: 1, rejected_recorded: 1 } });
+    const [tx1] = await q(sql`SELECT id::text AS id, investor_id::text AS inv FROM transactions WHERE tenant_id = ${t}::uuid AND order_id = '975201'`);
+    await withTenant(t, (tx) => tx.execute(sql`INSERT INTO events_outbox (tenant_id, kind, entity_type, entity_id, after, meta)
+      VALUES (${t}::uuid, 'transaction.redemption', 'investor', ${tx1.inv}::uuid, '{}'::jsonb, ${JSON.stringify({ txId: tx1.id })}::jsonb)`));
+    await withTenant(t, (tx) => tx.execute(sql`UPDATE sip_rejections SET recovery_status = 'contacted', updated_at = now() + interval '1 minute' WHERE tenant_id = ${t}::uuid`));
+    await C.setPostingHalt({ scope: t, halted: true, reason: "incident: dependency drill, second batch", changedBy: ops.a });
+    const dry = await R.reversePostingBatch(t, c.batchId, { requestedBy: ops.a, approvedBy: ops.b, reason: "reverse batch C of the drill", dryRun: true });
+    expect(dry).toMatchObject({ blocked: true, dependencies: { outboxEvents: 1, workedSipRejections: 1 } });
+    await withTenant(t, (tx) => tx.execute(sql`DELETE FROM events_outbox WHERE tenant_id = ${t}::uuid`));
+  });
+
+  it("the nightly reconciliation raises an alert (monitor + audit) when the ledger and the CRM disagree", async () => {
+    const M = await import("@/lib/rta/posting/monitor");
+    expect((await M.reconcilePostingFirms()).find((x) => x.tenantId === t)).toMatchObject({ ok: true });
+    // Damage the ledger behind the CRM's back (as a stray script would).
+    const [row] = await q(sql`SELECT to_jsonb(p) AS j, p.id::text AS id FROM rta_posted_transactions p WHERE p.tenant_id = ${t}::uuid AND p.kind = 'posted_new' LIMIT 1`);
+    await withSystem((tx) => tx.execute(sql`DELETE FROM rta_posted_transactions WHERE id = ${row.id}::uuid`));
+    const r = (await M.reconcilePostingFirms()).find((x) => x.tenantId === t)!;
+    expect(r).toMatchObject({ ok: false, counts: { validateFirstTransactionWithoutLedger: 1 } });
+    expect(await q(sql`SELECT action FROM audit_log WHERE tenant_id = ${t}::uuid AND action = 'rta.posting.reconcile_alert'`)).toHaveLength(1);
+    await withSystem((tx) => tx.execute(sql`INSERT INTO rta_posted_transactions SELECT * FROM jsonb_populate_record(NULL::rta_posted_transactions, ${JSON.stringify(row.j)}::jsonb)`));
+    expect((await M.reconcilePostingFirms()).find((x) => x.tenantId === t)).toMatchObject({ ok: true });
+  });
+
+  it("a master / holdings batch is never reversed by this procedure", async () => {
+    const [m] = await withSystem(async (tx) => (await tx.execute(sql`
+      INSERT INTO rta_staging_batches (tenant_id, mode, rta, report_code, record_kind, file_name, file_ref, file_checksum, file_size_bytes, parser_version, state)
+      VALUES (${t}::uuid, 'validate_first', 'kfintech', 'MFSD211', 'master', 'm.csv', 'test:m.csv', ${"x" + t}, 1, 'test', 'ready_to_commit') RETURNING id::text AS id`)).rows as any[]);
+    await expect(R.reversePostingBatch(t, m.id, { requestedBy: ops.a, approvedBy: ops.b, reason: "try to reverse a master batch" })).rejects.toThrow(/master batch is not reversed here/);
   });
 });

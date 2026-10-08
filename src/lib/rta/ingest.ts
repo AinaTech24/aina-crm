@@ -137,6 +137,11 @@ export async function ingestRtaText(tx: Tx, args: IngestArgs): Promise<IngestRes
   // A firm on validate-first (or refused it) never gets the existing importer
   // from the drop folder either — that path used to ignore the pipeline mode.
   const mode = await resolvePipelineMode(args.tenantId);
+  // Paused / halted / emergency: write NOTHING and record nothing — the file
+  // stays in the drop folder and is picked up again once the firm is resumed.
+  if (mode.mode === "held") {
+    return { importId: null, status: "held", error: mode.refused ?? "RTA imports are paused for this firm" };
+  }
   if (mode.mode === "validate_first" || mode.mode === "validate_first_refused") {
     const { text, ...rest } = args;
     const why = mode.mode === "validate_first"

@@ -43,6 +43,8 @@ import { parseRtaCsv, parseRtaRows } from "@/lib/rta";
 import { Q } from "./queues";
 import { importRtaFolios, type RtaImportSummary } from "@/lib/rta/import";
 import { resolvePipelineMode, runShadowForImport } from "@/lib/rta/staging";
+import { ImportHeldError } from "@/lib/rta/staging/config";
+import { rtaWriteDenial } from "@/lib/rta/write-guard";
 import { isSpreadsheet, readSpreadsheetToRows } from "@/lib/rta/xls";
 import { RICH_KINDS } from "@/lib/rta/classify-mailback";
 import { getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config";
@@ -89,6 +91,20 @@ async function markFailed(
     },
     ctx
   );
+}
+
+/** How often a held job looks again (RTA_HOLD_RECHECK_MS, default 5 minutes). */
+const HOLD_RECHECK_MS = Number(process.env.RTA_HOLD_RECHECK_MS ?? 5 * 60_000);
+
+/** A held import: back to 'uploaded' (it has not run), saying why and that it will run on resume. */
+async function markHeld(job: { tenantId?: string; importId?: string | null; userId?: string | null; branchId?: string | null; roles?: string[] }, reason: string) {
+  if (!job?.tenantId || !job.importId) return;
+  const ctx = { userId: job.userId ?? undefined, branchId: job.branchId ?? undefined, roles: job.roles ?? [] };
+  await withTenant(job.tenantId, (tx) => tx.execute(sql`
+    UPDATE rta_file_imports
+       SET status = 'uploaded', parsed_at = NULL,
+           remarks = ${cleanRemark(`Held — nothing was imported: ${reason}. The file is kept and will import automatically when RTA imports resume.`)}
+     WHERE id = ${job.importId}::uuid AND status IN ('uploaded', 'parsing')`), ctx);
 }
 
 /**
@@ -380,7 +396,12 @@ async function runValidateFirstForJob(
     }
   } catch (e: any) {
     // A held lease is not a failure: the queue retries the job after it.
-    if (e?.name === "RetryLaterError") throw e;
+    if (e?.name === "RetryLaterError" || e?.name === "ImportHeldError") throw e;
+    // The gate refused because posting was HALTED between the regime check and
+    // the commit: hold the job for resume rather than failing the import.
+    if (e?.name === "PostingGateError" && (e.reasons ?? []).some((r: string) => /halted|EMERGENCY/.test(r))) {
+      throw new ImportHeldError((e.reasons as string[]).join("; "));
+    }
     await fail(maskPansInText(String(e?.message ?? "validate-first import failed")));
   }
 }
@@ -437,6 +458,7 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
   // file BEFORE anything financial is written; the existing processor below
   // never runs. A refused gate fails the import closed — never a fallback.
   const vfMode = await resolvePipelineMode(tenantId);
+  if (vfMode.mode === "held") throw new ImportHeldError(vfMode.refused ?? "RTA imports are paused for this firm");
   if (vfMode.mode === "validate_first_refused") {
     await markFailed(job, vfMode.refused ?? "validate-first refused", { checksum, sizeBytes: buf.length });
     return;
@@ -477,6 +499,11 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
     await withTenant(
       tenantId,
       async (tx) => {
+        // Decided inside the transaction that writes (FOR SHARE on the control
+        // rows): an emergency / firm halt that lands mid-file waits for this
+        // file and stops the next; one that landed first stops this one.
+        const stopped = await rtaWriteDenial(tx, tenantId, "derived");
+        if (stopped) throw new ImportHeldError(stopped.reason);
         let outcome;
         try {
           outcome = await processRtaFile(tx, { tenantId, source, kind, text });
@@ -552,6 +579,7 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
       ctx
     );
   } catch (e: any) {
+    if (e?.name === "ImportHeldError") throw e; // rolled back, nothing written — park the job
     await markFailed(job, failure ?? e?.message ?? "import failed", { checksum });
   }
 
@@ -759,6 +787,7 @@ async function computeRichImport(
   if (!opened.ok) return { ok: false, notOurs: opened.rejected, error: opened.message };
   // VALIDATE-FIRST (see runRtaImportJob): the importer below never runs on an unvalidated file.
   const vfMode: { mode: string; refused?: string } = job.dryRun ? { mode: "off" } : await resolvePipelineMode(job.tenantId);
+  if (vfMode.mode === "held") throw new ImportHeldError(vfMode.refused ?? "RTA imports are paused for this firm");
   if (vfMode.mode === "validate_first_refused") return { ok: false, error: vfMode.refused ?? "validate-first refused" };
   if (vfMode.mode === "validate_first") {
     let failure: string | null = null;
@@ -801,8 +830,12 @@ async function computeRichImport(
   report?.({ phase: "Importing records", pct: 15, total: parsed.totalRows });
   const summary = await withTenant(
     job.tenantId,
-    (tx) =>
-      importRtaFolios(tx as any, job.tenantId, parsed.folios, {
+    async (tx) => {
+      if (!job.dryRun) {
+        const stopped = await rtaWriteDenial(tx, job.tenantId, "derived");
+        if (stopped) throw new ImportHeldError(stopped.reason);
+      }
+      return importRtaFolios(tx as any, job.tenantId, parsed.folios, {
         dryRun: job.dryRun,
         assignRmId: job.assignToMe ? job.userId : null,
         reportType: parsed.reportType,
@@ -822,7 +855,8 @@ async function computeRichImport(
             total,
           });
         },
-      }),
+      });
+    },
     ctx
   );
 
@@ -895,7 +929,7 @@ export async function runRichImportJob(
   try {
     result = await computeRichImport(job, report);
   } catch (e: any) {
-    if (e?.name === "RetryLaterError") throw e; // the queue retries it (see the worker)
+    if (e?.name === "RetryLaterError" || e?.name === "ImportHeldError") throw e; // the queue retries / parks it (see the worker)
     captureError("[rta-import] rich import threw", maskedError(e), { tenantId: job.tenantId, importId: job.importId });
     result = { ok: false, error: e?.message ? `Import failed: ${e.message}` : "Import failed unexpectedly." };
   }
@@ -1138,8 +1172,21 @@ export function startRtaImportWorker() {
         return;
       }
       try {
+        // Paused / halted / emergency: park the job BEFORE touching the file
+        // (Phase 3H). Nothing is written, the file stays in storage, the row
+        // says why, and the job re-checks on its own until the firm resumes.
+        const data = job.data as any;
+        if (data?.mode !== "rescan" && data?.tenantId && !data?.dryRun) {
+          const regime = await resolvePipelineMode(data.tenantId);
+          if (regime.mode === "held") throw new ImportHeldError(regime.refused ?? "RTA imports are paused for this firm");
+        }
         return await runJob();
       } catch (e: any) {
+        if (e?.name === "ImportHeldError" && token) {
+          await markHeld(job.data as any, e.message);
+          await job.moveToDelayed(Date.now() + HOLD_RECHECK_MS, token);
+          throw new DelayedError();
+        }
         // Validate-first found its staging batch leased by a worker that is
         // gone (or still running): retry this job once the lease has expired,
         // instead of failing an import that has done nothing wrong.

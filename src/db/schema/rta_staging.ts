@@ -17,6 +17,7 @@
  * PAN is kept only as a keyed token (`pt1:` HMAC, see staging/pan-token.ts),
  * never in clear and never as a plain hash.
  */
+import { sql } from "drizzle-orm";
 import { bigint, boolean, date, index, integer, jsonb, numeric, pgTable, smallint, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { id, tenantId, timestamps } from "./_shared";
 
@@ -94,6 +95,9 @@ export const rtaStagingEconomicTxns = pgTable(
     amcCode: text("amc_code"),
     folioNumber: text("folio_number"),
     schemeCode: text("scheme_code"),
+    /** The CRM Scheme Master key this registrar code resolved to, and how (migration 0238). */
+    amfiSchemeCode: text("amfi_scheme_code"),
+    schemeStatus: text("scheme_status"),
     registrarTxnNo: text("registrar_txn_no").notNull(),
     tradeDate: date("trade_date"),
     rtaClass: text("rta_class").notNull(),
@@ -277,6 +281,9 @@ export const rtaSipRegistrations = pgTable(
     folioNumber: text("folio_number"),
     schemeCode: text("scheme_code"),
     targetSchemeCode: text("target_scheme_code"),
+    /** The CRM Scheme Master key and how it was resolved (migration 0238). */
+    amfiSchemeCode: text("amfi_scheme_code"),
+    schemeStatus: text("scheme_status"),
     kind: text("kind", { enum: ["sip", "stp", "swp", "other", "unknown"] }).notNull(),
     amount: numeric("amount", { precision: 18, scale: 2 }),
     frequency: text("frequency"),
@@ -300,7 +307,11 @@ export const rtaSipRegistrations = pgTable(
   }),
 );
 
-/** Kill switch per scope — 'global' or a tenant id (migration 0236). Posting needs every applicable row released. */
+/**
+ * Kill switch per scope (migrations 0236, 0237): 'global' = the new pipeline's posting switch (installed
+ * halted); 'emergency' = every RTA financial write for every firm (no row = no emergency); a tenant id =
+ * that firm, every path.
+ */
 export const rtaPostingControls = pgTable("rta_posting_controls", {
   scope: text("scope").primaryKey(),
   postingHalted: boolean("posting_halted").notNull(),
@@ -327,7 +338,7 @@ export const rtaPipelineActivations = pgTable(
   {
     id,
     tenantId,
-    mode: text("mode", { enum: ["off", "shadow", "validate_first"] }).notNull(),
+    mode: text("mode", { enum: ["off", "shadow", "validate_first", "paused"] }).notNull(),
     postingEnabled: boolean("posting_enabled").notNull().default(false),
     reason: text("reason").notNull(),
     approvalRef: text("approval_ref"),
@@ -360,4 +371,37 @@ export const rtaPostingReversals = pgTable(
     undoneBy: uuid("undone_by"),
   },
   (t) => ({ batchIdx: index("rta_posting_reversals_batch_idx").on(t.tenantId, t.batchId) }),
+);
+
+/**
+ * Registrar scheme code → the CRM Scheme Master's AMFI scheme code (migration 0238).
+ * A crosswalk with its evidence, not a second scheme master: names, plans,
+ * categories and NAVs stay in scheme_nav / scheme_master.
+ */
+export const schemeRtaCodes = pgTable(
+  "scheme_rta_codes",
+  {
+    id,
+    tenantId,
+    rta: text("rta", { enum: ["cams", "kfintech"] }).notNull(),
+    rtaAmcCode: text("rta_amc_code").notNull(),
+    rtaSchemeCode: text("rta_scheme_code").notNull(),
+    observedIsins: text("observed_isins").array().notNull().default(sql`'{}'::text[]`),
+    observedName: text("observed_name"),
+    sourceReports: text("source_reports").array().notNull().default(sql`'{}'::text[]`),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).defaultNow().notNull(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow().notNull(),
+    amfiSchemeCode: text("amfi_scheme_code"),
+    status: text("status", { enum: ["unresolved", "resolved_isin", "confirmed", "conflict"] }).notNull().default("unresolved"),
+    statusReason: text("status_reason"),
+    confirmedBy: uuid("confirmed_by"),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+    confirmNote: text("confirm_note"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    key: uniqueIndex("scheme_rta_codes_key").on(t.tenantId, t.rta, t.rtaAmcCode, t.rtaSchemeCode),
+    amfiIdx: index("scheme_rta_codes_amfi_idx").on(t.tenantId, t.amfiSchemeCode),
+    statusIdx: index("scheme_rta_codes_status_idx").on(t.tenantId, t.status),
+  }),
 );

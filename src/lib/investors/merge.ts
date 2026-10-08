@@ -25,6 +25,7 @@
  * would be impossible to un-merge with the same code.
  */
 
+import { assertRtaWritesAllowed } from "@/lib/rta/write-guard";
 import { sql, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
@@ -236,6 +237,11 @@ export async function mergeInvestors(tx: Tx, input: MergeInput): Promise<MergeRe
   const { tenantId, survivorId, loserId, byUserId, source } = input;
   const mergeReason = input.reason?.trim() || null;
   if (survivorId === loserId) return { error: "survivor and loser must differ" };
+  // A merge moves transactions, folios and SIPs between clients. Never while
+  // the firm's RTA imports are stopped (paused / halted / emergency): the
+  // books are frozen for review then (Phase 3H).
+  // Throws a 409 the API turns into a message.
+  await assertRtaWritesAllowed(tx, tenantId, "derived");
 
   const both = await tx.execute(sql`
     SELECT id, name, merged_into_id, status, upper(nullif(trim(pan), '')) AS pan,

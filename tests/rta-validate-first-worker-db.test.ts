@@ -66,6 +66,10 @@ describe.skipIf(!TEST_DB)("validate-first through the worker jobs (DB)", () => {
   afterAll(async () => {
     delete process.env.RTA_PIPELINE_MODE; delete process.env.RTA_POSTING_MODE; delete process.env.RTA_POSTING_DATABASE;
     const tryRun = async (s: ReturnType<typeof sql>) => { try { await withSystem((tx) => tx.execute(s)); } catch { /* best effort */ } };
+    await tryRun(sql`ALTER TABLE rta_pipeline_activations DISABLE TRIGGER rta_pipeline_activations_append_only`);
+    await tryRun(sql`DELETE FROM rta_pipeline_activations WHERE tenant_id = ${t}::uuid`);
+    await tryRun(sql`ALTER TABLE rta_pipeline_activations ENABLE TRIGGER rta_pipeline_activations_append_only`);
+    await tryRun(sql`DELETE FROM rta_posting_controls WHERE scope = ${t}`);
     for (const table of ["rta_posted_transactions", "rta_sip_registrations", "folio_holders", "sip_rejections", "sips", "transactions", "rta_staging_lots", "rta_staging_checks", "rta_staging_rows", "rta_staging_economic_txns", "rta_staging_batches", "rta_file_imports", "folios", "families"]) {
       await tryRun(sql.raw(`DELETE FROM ${table} WHERE tenant_id = '${t}'`));
     }
@@ -103,5 +107,34 @@ describe.skipIf(!TEST_DB)("validate-first through the worker jobs (DB)", () => {
     // A worker retry of the same job neither duplicates nor changes the outcome.
     await worker.runRtaImportJob({ importId: f.id, tenantId: t, source: "kfintech", kind: "daily_transaction_feed", key: f.key, filename: "MFSD201.csv", userId, roles: ["owner"] });
     expect((await q(sql`SELECT count(*)::int AS n FROM transactions WHERE tenant_id = ${t}::uuid`))[0].n).toBe(2);
+  });
+
+  it("paused / halted (Phase 3H): the job is HELD — no staging, no write, never the existing importer — and runs after resume", async () => {
+    const C = await import("@/lib/rta/posting/controls");
+    const ops = { a: randomUUID(), b: randomUUID() };
+    // A legacy firm (no activation) with its firm halt on: the existing importer stops inside its own transaction.
+    delete process.env.RTA_PIPELINE_MODE; delete process.env.RTA_POSTING_MODE;
+    await C.setPostingHalt({ scope: t, halted: true, reason: "worker drill: firm halted", changedBy: ops.a });
+    const before = { tx: (await q(sql`SELECT count(*)::int AS n FROM transactions WHERE tenant_id = ${t}::uuid`))[0].n, legacy: h.legacyCalls };
+    const u1 = await upload("halted.csv", csvOf(MFSD201_HEADER, [sip("800201")]), "daily_transaction_feed", "kfintech");
+    await expect(worker.runRtaImportJob({ importId: u1.id, tenantId: t, source: "kfintech", kind: "daily_transaction_feed", key: u1.key, filename: "halted.csv", userId, roles: ["owner"] })).rejects.toMatchObject({ name: "ImportHeldError" });
+    expect(h.legacyCalls).toBe(before.legacy);
+    expect((await q(sql`SELECT count(*)::int AS n FROM transactions WHERE tenant_id = ${t}::uuid`))[0].n).toBe(before.tx);
+    expect(h.store.has(u1.key)).toBe(true); // the source file is kept
+    await C.setPostingHalt({ scope: t, halted: false, reason: "worker drill: firm released", changedBy: ops.a, approvedBy: ops.b });
+    // A paused validate-first firm: held before staging.
+    process.env.RTA_PIPELINE_MODE = "validate_first"; process.env.RTA_POSTING_MODE = "development";
+    await C.activateTenant({ tenantId: t, mode: "paused", postingEnabled: false, reason: "worker drill: pilot paused", approvedBy: ops.a });
+    const batches = async () => (await q(sql`SELECT count(*)::int AS n FROM rta_staging_batches WHERE tenant_id = ${t}::uuid`))[0].n;
+    const b0 = await batches();
+    const u2 = await upload("paused.csv", csvOf(MFSD201_HEADER, [sip("800202")]), "daily_transaction_feed", "kfintech");
+    await expect(worker.runRtaImportJob({ importId: u2.id, tenantId: t, source: "kfintech", kind: "daily_transaction_feed", key: u2.key, filename: "paused.csv", userId, roles: ["owner"] })).rejects.toMatchObject({ name: "ImportHeldError" });
+    await expect(worker.runRichImportJob({ mode: "rich", tenantId: t, key: u2.key, filename: "paused.csv", rta: "kfintech", reportType: "", dryRun: false, assignToMe: false, userId, roles: ["owner"], importId: u2.id })).rejects.toMatchObject({ name: "ImportHeldError" });
+    expect(await batches()).toBe(b0);
+    // Resume (two people): the same job now runs, once.
+    await C.activateTenant({ tenantId: t, mode: "validate_first", postingEnabled: false, reason: "worker drill: pilot resumed", requestedBy: ops.a, approvedBy: ops.b });
+    await worker.runRtaImportJob({ importId: u2.id, tenantId: t, source: "kfintech", kind: "daily_transaction_feed", key: u2.key, filename: "paused.csv", userId, roles: ["owner"] });
+    expect((await q(sql`SELECT count(*)::int AS n FROM transactions WHERE tenant_id = ${t}::uuid AND order_id = '800202'`))[0].n).toBe(1);
+    expect(h.legacyCalls).toBe(before.legacy);
   });
 });

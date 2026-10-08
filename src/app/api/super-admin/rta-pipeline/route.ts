@@ -2,8 +2,11 @@
  * Aina Admin → RTA pipeline controls (Phase 3G). Platform operators only.
  *
  *   GET  ?tenantId=…   a firm's current activation, kill-switch state and history
- *   POST { action: "activate" | "revoke" | "halt" | "release", … }
+ *   POST { action: "activate" | "pause" | "revoke" | "halt" | "release", … }
  *
+ * Phase 3H: one operator may STOP (pause a firm, revoke, halt a firm, halt
+ * 'global' posting, halt 'emergency' — every RTA write for every firm); two
+ * must START (any activation other than a pause, any release).
  * The signed-in operator is the APPROVER. Turning posting on and releasing a
  * kill switch also need a REQUESTER — a different platform operator, named by
  * id and checked here. Nothing in this route switches a firm on by itself, and
@@ -26,9 +29,10 @@ const Body = z.discriminatedUnion("action", [
     postingEnabled: z.boolean(), reason: z.string().trim().min(10).max(1000), approvalRef: z.string().trim().max(200).optional(),
     requestedBy: z.string().uuid().optional(), expiresAt: z.string().datetime().optional(),
   }),
+  z.object({ action: z.literal("pause"), tenantId: z.string().uuid(), reason: z.string().trim().min(10).max(1000) }),
   z.object({ action: z.literal("revoke"), tenantId: z.string().uuid(), reason: z.string().trim().min(5).max(1000) }),
-  z.object({ action: z.literal("halt"), scope: z.union([z.literal("global"), z.string().uuid()]), reason: z.string().trim().min(10).max(1000) }),
-  z.object({ action: z.literal("release"), scope: z.union([z.literal("global"), z.string().uuid()]), reason: z.string().trim().min(10).max(1000), requestedBy: z.string().uuid() }),
+  z.object({ action: z.literal("halt"), scope: z.union([z.literal("global"), z.literal("emergency"), z.string().uuid()]), reason: z.string().trim().min(10).max(1000) }),
+  z.object({ action: z.literal("release"), scope: z.union([z.literal("global"), z.literal("emergency"), z.string().uuid()]), reason: z.string().trim().min(10).max(1000), requestedBy: z.string().uuid() }),
 ]);
 
 /** A requester must be a real, active platform operator — not a tenant user, not the approver. */
@@ -60,11 +64,12 @@ export async function POST(req: NextRequest) {
     const b = parsed.data;
     switch (b.action) {
       case "activate":
-        if (b.postingEnabled) {
-          if (!b.requestedBy) throw new ControlError("enabling posting needs a requester (a different operator)");
-          await assertOperator(b.requestedBy, session.userId);
-        }
+        // Starting any mode takes two operators (a pause is its own action).
+        if (!b.requestedBy) throw new ControlError("starting a mode needs a requester (a different operator)");
+        await assertOperator(b.requestedBy, session.userId);
         return NextResponse.json({ activation: await activateTenant({ ...b, approvedBy: session.userId }) });
+      case "pause":
+        return NextResponse.json({ activation: await activateTenant({ tenantId: b.tenantId, mode: "paused", postingEnabled: false, reason: b.reason, approvedBy: session.userId }) });
       case "revoke":
         return NextResponse.json({ activation: await revokeActivation({ tenantId: b.tenantId, revokedBy: session.userId, reason: b.reason }) });
       case "halt":

@@ -17,6 +17,7 @@
  * unchanged. Only a SIP this process created itself is updated when the
  * registrar's status moves on.
  */
+import { isResolved, loadSchemeResolutions, observeSchemeCodes, schemeGateOn } from "../scheme-resolution";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { buildSipMaster, type InstalmentEvent, type RegistrationObservation, type RegistrationSource, type SipMasterEntry } from "../sip-master";
@@ -33,7 +34,7 @@ const REPORT_SOURCE: Record<string, RegistrationSource> = { WBR49: "cams.wbr49",
 export type SipBookOutcome = {
   registrations: number;
   byState: Record<string, number>;
-  sips: { created: number; updated: number; linked: number; conflicts: number; notPosted: number };
+  sips: { created: number; updated: number; linked: number; conflicts: number; notPosted: number; schemeUnresolved?: number };
   coverage: { cams: { missingFromMaster: number }; kfintech: { missingFromMaster: number } };
 };
 
@@ -102,13 +103,25 @@ export async function rebuildSipBook(tenantId: string, opts: { asOf?: string; us
       const arn = s(r.attrs?.arn);
       if (arn && r.registrar_txn_no) arnOf.set(`${r.rta}|${r.amc_code ?? ""}|${r.registrar_txn_no}`, arn.toUpperCase().replace(/^ARN[-\s]*/, "ARN-"));
     }
-    const sips = { created: 0, updated: 0, linked: 0, conflicts: 0, notPosted: 0 };
+    // Scheme identity (Phase 3H): every registration's registrar code against the
+    // Scheme Master crosswalk. With the scheme gate on, an unresolved scheme is
+    // not posted to the SIP book (it stays visible in the SIP Master).
+    for (const bId of [...new Set(regRows.map((r) => r.batch_id))]) await observeSchemeCodes(tx, tenantId, bId);
+    const schemeMap = await loadSchemeResolutions(tx, tenantId, master.entries.map((e) => ({ rta: e.rta, amcCode: e.amcCode ?? "", schemeCode: e.scheme })));
+    const gate = schemeGateOn();
+    const sips = { created: 0, updated: 0, linked: 0, conflicts: 0, notPosted: 0, schemeUnresolved: 0 };
     const touchedInvestors = new Set<string>();
     for (const e of master.entries) {
       const prev = (await tx.execute(sql`SELECT id, sip_id FROM rta_sip_registrations WHERE tenant_id = ${tenantId}::uuid AND registration_key = ${e.key}`)).rows[0] as { id: string; sip_id: string | null } | undefined;
       let sipId: string | null = prev?.sip_id ?? null;
       const target = STATE_TO_SIP[e.state];
-      const postable = e.kind === "sip" && !!e.owner && !!e.frequency && e.amount != null && !!target && e.confidence === "verified";
+      const sch = schemeMap.get(`${e.rta}|${e.amcCode ?? ""}|${e.scheme}`);
+      const schemeOk = !gate || isResolved(sch?.status);
+      const postable = e.kind === "sip" && !!e.owner && !!e.frequency && e.amount != null && !!target && e.confidence === "verified" && schemeOk;
+      if (!schemeOk && e.kind === "sip" && e.confidence === "verified") {
+        sips.schemeUnresolved++;
+        e.stateBasis = `${e.stateBasis}; not posted to the SIP book: scheme ${e.amcCode}/${e.scheme} is ${sch?.status ?? "unresolved"} in the Scheme Master`;
+      }
       if (!postable) sips.notPosted++;
       else {
         const f = folioMap.get(`${e.rta}|${e.amcCode}|${e.folio}`)!;
@@ -120,14 +133,15 @@ export async function rebuildSipBook(tenantId: string, opts: { asOf?: string; us
           }
         } else {
           const crm = (await tx.execute(sql`
-            SELECT id, status FROM sips WHERE tenant_id = ${tenantId}::uuid AND folio_id = ${f.id}::uuid AND scheme_code = ${e.scheme}
+            SELECT id, status FROM sips WHERE tenant_id = ${tenantId}::uuid AND folio_id = ${f.id}::uuid
+               AND (scheme_code = ${e.scheme} OR scheme_code = ${sch?.amfiSchemeCode ?? e.scheme})
                AND amount = ${e.amount} AND frequency = ${e.frequency}`)).rows as Array<{ id: string; status: string }>;
           if (crm.length === 1 && crm[0].status === target) { sipId = crm[0].id; sips.linked++; }
           else if (crm.length) { sips.conflicts++; sipId = null; e.stateBasis = `${e.stateBasis}; the CRM holds ${crm.length} SIP(s) on this folio and scheme with a different status — not changed, held for review`; }
           else {
             const ins = (await tx.execute(sql`
-              INSERT INTO sips (tenant_id, investor_id, folio_id, folio_number, amc_code, amc_name, scheme_code, scheme_name, amount, frequency, start_date, end_date, status, rm_id, remarks)
-              VALUES (${tenantId}::uuid, ${f.investor_id}::uuid, ${f.id}::uuid, ${e.folio}, ${e.amcCode}, ${f.amc_name ?? e.amcCode}, ${e.scheme}, ${e.scheme},
+              INSERT INTO sips (tenant_id, investor_id, folio_id, folio_number, amc_code, amc_name, scheme_code, rta_scheme_code, scheme_name, amount, frequency, start_date, end_date, status, rm_id, remarks)
+              VALUES (${tenantId}::uuid, ${f.investor_id}::uuid, ${f.id}::uuid, ${e.folio}, ${e.amcCode}, ${sch?.amcName ?? f.amc_name ?? e.amcCode}, ${sch?.amfiSchemeCode ?? e.scheme}, ${e.scheme}, ${sch?.schemeName ?? e.scheme},
                 ${e.amount}, ${e.frequency}, ${e.startDate}::date, ${e.endDate}::date, ${target}, ${f.rm_id}::uuid,
                 ${`From the registrar's registration ${e.registrationId} (${e.sources.join(", ")}), status as of ${e.statusEffectiveDate ?? asOf}`})
               RETURNING id`)).rows[0] as { id: string };
@@ -143,18 +157,20 @@ export async function rebuildSipBook(tenantId: string, opts: { asOf?: string; us
       await tx.execute(sql`
         INSERT INTO rta_sip_registrations (tenant_id, registration_key, rta, amc_code, registration_id, investor_id, folio_id, folio_number, scheme_code,
           target_scheme_code, kind, amount, frequency, start_date, end_date, state, state_basis, status_effective_date, last_successful_instalment,
-          described, confidence, lifecycle_events, sources, sip_id, as_of, arn)
+          described, confidence, lifecycle_events, sources, sip_id, as_of, arn, amfi_scheme_code, scheme_status)
         VALUES (${tenantId}::uuid, ${e.key}, ${v.rta}, ${v.amc}, ${v.reg}, ${v.inv}::uuid, ${v.fol}::uuid, ${e.folio}, ${e.scheme},
           ${e.targetScheme}, ${e.kind}, ${e.amount}, ${e.frequency}, ${e.startDate}::date, ${e.endDate}::date, ${persisted(e)}, ${e.stateBasis},
           ${e.statusEffectiveDate}::date, ${e.lastSuccessfulInstalment}::date, ${e.described}, ${e.confidence},
-          ${JSON.stringify(e.lifecycleEvents)}::jsonb, ${JSON.stringify(e.sources)}::jsonb, ${sipId}::uuid, ${asOf}::date, ${v.arn})
+          ${JSON.stringify(e.lifecycleEvents)}::jsonb, ${JSON.stringify(e.sources)}::jsonb, ${sipId}::uuid, ${asOf}::date, ${v.arn},
+          ${sch?.amfiSchemeCode ?? null}, ${sch?.status ?? "unresolved"})
         ON CONFLICT (tenant_id, registration_key) DO UPDATE SET
           investor_id = EXCLUDED.investor_id, folio_id = EXCLUDED.folio_id, kind = EXCLUDED.kind, amount = EXCLUDED.amount,
           frequency = EXCLUDED.frequency, start_date = EXCLUDED.start_date, end_date = EXCLUDED.end_date, state = EXCLUDED.state,
           state_basis = EXCLUDED.state_basis, status_effective_date = EXCLUDED.status_effective_date,
           last_successful_instalment = EXCLUDED.last_successful_instalment, described = EXCLUDED.described, confidence = EXCLUDED.confidence,
           lifecycle_events = EXCLUDED.lifecycle_events, sources = EXCLUDED.sources, sip_id = COALESCE(EXCLUDED.sip_id, rta_sip_registrations.sip_id),
-          as_of = EXCLUDED.as_of, arn = COALESCE(EXCLUDED.arn, rta_sip_registrations.arn), updated_at = now()`);
+          as_of = EXCLUDED.as_of, arn = COALESCE(EXCLUDED.arn, rta_sip_registrations.arn),
+          amfi_scheme_code = EXCLUDED.amfi_scheme_code, scheme_status = EXCLUDED.scheme_status, updated_at = now()`);
     }
     if (touchedInvestors.size) await refreshActiveSipAmount(tx, { tenantId, investorIds: [...touchedInvestors] });
     const byState: Record<string, number> = {};
