@@ -526,6 +526,32 @@ CLI `scripts/rta-shadow.ts`. Design and rollout: `docs/rta/PHASE3B_SHADOW.md`.
   `Transaction Type` code checked against `Transaction Head`. IDCW, reversals,
   cancellations, pre-rejections and unknown codes are held.
 
+## RTA client identity — owner decisions of 2026-10-08
+
+`src/lib/rta/owner.ts` decides who LEGALLY owns a registrar row's folio, for
+staging today and for posting later. Read it before touching matching.
+
+- **One owner per folio** (`folios.investor_id`); joint holders, a minor's
+  guardian and an HUF's Karta are relationships (`folio_holders`, migration
+  0234 — no writer yet). AUM counts a folio once.
+- **Order:** the folio on record (registrar + AMC + folio — never the number
+  alone, `owner-directory.ts`) → the owner's OWN PAN → a provisional
+  folio-keyed owner → an exception. Name, mobile and email are never inputs.
+- **A guardian's or Karta's PAN never makes them the owner.** CAMS R2 prints the
+  GUARDIAN's PAN on a minor row (verified 22/22); `process.ts` therefore attaches
+  a CAMS minor row only to the minor's folio on record and holds it otherwise.
+- **HUF** = holder status HUF + an H-type PAN; an HUF row with an individual
+  PAN is flagged, never used. No registrar report carries a Karta.
+- **KFintech folio consolidation** re-reports old transactions (original, an
+  R-coded reversal "SIP / Redemption / Purchase Rejection", a re-post into the
+  surviving folio) under ONE transaction number. Those R rows are not
+  rejections — held as `folio_consolidation`.
+- **SIP state** comes from registrar facts only (`sip-lifecycle.ts`); a failed
+  instalment never stops a SIP; no status = UNKNOWN, never ACTIVE.
+- **AUM** is per (registrar, ARN) statement with its date
+  (`holdings-snapshot.ts`); firm AUM is complete only with a full-book
+  statement for every scope. MFSD203 is full-book KFintech; the R9 sample was not.
+
 ## Webhook handlers
 
 | Provider | Path | Verifies |

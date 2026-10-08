@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS rta_staging_batches (
   mode                   text NOT NULL DEFAULT 'shadow' CHECK (mode IN ('shadow')),
   rta                    text CHECK (rta IN ('cams', 'kfintech')),
   report_code            text,
-  record_kind            text CHECK (record_kind IN ('transaction', 'holding', 'master')),
+  record_kind            text CHECK (record_kind IN ('transaction', 'holding', 'master', 'registration')),
   file_name              text NOT NULL,
   file_ref               text NOT NULL,
   file_checksum          text NOT NULL,
@@ -131,7 +131,7 @@ CREATE TABLE IF NOT EXISTS rta_staging_rows (
   batch_id               uuid NOT NULL,
   row_no                 integer NOT NULL,
   row_hash               text NOT NULL,
-  record_kind            text NOT NULL CHECK (record_kind IN ('transaction', 'holding', 'master')),
+  record_kind            text NOT NULL CHECK (record_kind IN ('transaction', 'holding', 'master', 'registration')),
   state                  text NOT NULL CHECK (state IN
                            ('parsed', 'invalid', 'validated', 'matched', 'unmatched', 'ambiguous',
                             'grouped', 'staged', 'staged_as_part', 'duplicate', 'quarantined', 'rejected')),

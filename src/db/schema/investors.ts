@@ -257,6 +257,10 @@ export const investors = pgTable(
 
     /** Lifecycle */
     isMinor: boolean("is_minor").default(false),
+    /** How the client's identity is established (migration 0234). */
+    identityConfidence: text("identity_confidence", { enum: ["verified_pan", "provisional_folio", "manual"] }),
+    /** Minor-to-major transition, from registrar evidence only (migration 0234). */
+    majorityStatus: text("majority_status", { enum: ["minor", "major_pending_regularisation", "major_verified"] }),
     guardianInvestorId: uuid("guardian_investor_id"),
 
     /**

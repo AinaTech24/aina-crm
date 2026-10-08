@@ -58,7 +58,10 @@ export type ClassException =
   | "class_unverified_idcw"
   | "head_code_conflict"
   | "unknown_transaction_code"
-  | "registrar_status_not_processed";
+  | "registrar_status_not_processed"
+  | "folio_consolidation"
+  | "rejection_semantics_unverified"
+  | "non_financial_event";
 
 export type BusinessClass = {
   rtaClass: RtaClass;
@@ -79,6 +82,7 @@ const spaced = (s: string) => s.replace(/\b(?:[A-Z] ){1,}[A-Z]\b/g, (m) => m.rep
 const REVERSAL = /REVERS|\bREV\b/;
 const CANCEL = /CANCEL/;
 const PRE_REJECT = /PRE[\s-]*REJECT/;
+const REJECT_WORD = /REJECT/;
 
 function make(rtaClass: RtaClass, confidence: "verified" | "inferred", reason: string, extra: Partial<BusinessClass> = {}): BusinessClass {
   return { rtaClass, confidence, direction: CLASS_META[rtaClass].direction, reason, ...extra };
@@ -167,6 +171,8 @@ export type KfinClassInput = {
   description: string; // Transaction Description
   status: string;      // Transaction Status
   rejOriginalNo?: string; // RejTrnoOrgNo
+  /** The row's Remarks say it was re-reported because folios were consolidated. */
+  consolidation?: boolean;
 };
 
 const KFIN_CODES: Record<string, { cls: RtaClass; head: "P" | "R" }> = {
@@ -188,6 +194,25 @@ export function classifyKfintech(i: KfinClassInput): BusinessClass {
   const desc = spaced(up(i.description));
   if (!registrarProcessed(i.status)) {
     return make("unknown", "verified", `registrar status "${i.status.trim()}" is not processed — held, its effect is not established for this file`, { exception: "registrar_status_not_processed" });
+  }
+  // Folio consolidation (verified, newer MFSD201 of 2026-10-08): the registrar
+  // re-reports an old folio's transactions — the original, its reversal under a
+  // code ending in R ("SIP Rejection", "Redemption Rejection", "Purchase
+  // Rejection") with the SAME transaction number, and a re-post into the
+  // surviving folio — all remarked "Trxn triggered now due to consolidation of
+  // folios". Those R rows are NOT bank or registrar rejections.
+  if (i.consolidation) {
+    const base = KFIN_CODES[code] ?? (code.endsWith("R") ? KFIN_CODES[code.slice(0, -1)] : undefined);
+    return make(code.endsWith("R") && REJECT_WORD.test(desc) ? "reversal" : (base?.cls ?? "unknown"), "verified",
+      "re-reported because the registrar consolidated folios (original, reversal and re-post share one transaction number) — held: posting needs a folio-move rule, not a new transaction",
+      { exception: "folio_consolidation" });
+  }
+  // A known code with an R suffix whose description says "… Rejection" (SINR,
+  // FULR, NEWR in the newer MFSD201): a rejection of that transaction. Every
+  // such row in the sample was a consolidation reversal, so the meaning of a
+  // genuine one (a bounced SIP debit?) is not yet evidenced — held.
+  if (code.length > 3 && code.endsWith("R") && KFIN_CODES[code.slice(0, -1)] && REJECT_WORD.test(desc)) {
+    return make("rejection", "inferred", `KFintech ${code} ("${i.description.trim()}") rejects a ${KFIN_CODES[code.slice(0, -1)].cls.replace("_", " ")} — held until a non-consolidation sample shows what it means`, { exception: "rejection_semantics_unverified" });
   }
   if (KFIN_PRE_REJECTION.has(code) || PRE_REJECT.test(desc)) {
     const linked = (i.rejOriginalNo ?? "").trim() !== "";
@@ -213,6 +238,15 @@ export function classifyKfintech(i: KfinClassInput): BusinessClass {
       { exception: "class_unverified_idcw" });
   }
   return make("unknown", "inferred", `KFintech transaction code "${code || "(blank)"}" is not one the verified sample showed — held, not guessed`, { exception: "unknown_transaction_code" });
+}
+
+/**
+ * A row the registrar marks as non-financial (CAMS WBR10 trxn_sign "N" — e.g.
+ * a nomination or contact change): no units, no money. Not a transaction for
+ * any of the eight modules; the master reports carry the resulting state.
+ */
+export function nonFinancial(code: string): BusinessClass {
+  return make("unknown", "verified", `non-financial registrar event "${code.trim() || "(blank)"}" — no units or money; not a transaction`, { exception: "non_financial_event" });
 }
 
 /** May a row of this class be proposed for posting (given no other exception)? */

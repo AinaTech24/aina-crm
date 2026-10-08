@@ -1,180 +1,193 @@
-# RTA Phase 3C — Minimum RTA files for eight reliable CRM modules
+# RTA Phase 3C — Minimum RTA files, correct client identity
 
-Status: **analysis for approval.** No database, import-engine or production
-change was made in this phase. Date: 2026-10-08.
+Status: **development and shadow testing only** (owner decisions of 2026-10-08).
+Nothing deployed, merged, posted or changed in production data.
 
-## 0. Evidence base — read this first
+## 0. Evidence
 
-| Evidence | Status |
-|---|---|
-| CAMS R2, CAMS R9, KFintech MFSD201, KFintech MFSD211 (the four mailbacks verified in Phases 2B / 3B) | **Real files, verified.** |
-| CAMS WBR4 / WBR49 / WBR10; KFintech MFSD203 / MFSD230 / MFSD243 and the newer MFSD201 / MFSD211 | **Not received.** They are not attached to this session. Every statement about them below is **UNVERIFIED**. Figures quoted for them are the user's observations, not mine. No synthetic file was used in their place. |
-| Registrar report definitions | KFintech's Distributor Services Manual and CAMS pages are unreachable from this environment (DNS refused). Definitions are taken from search excerpts of those documents and an AMC handbook, cited in the report. They are not authoritative for field layouts. |
+Twelve real mailbacks, ARN-270604, profiled and run through shadow staging in a
+throwaway database (dropped afterwards). Figures are aggregates only.
 
-### Facts measured on the four real files (aggregates only)
+| File | Rows | Period / as-of | Scope observed |
+|---|---:|---|---|
+| CAMS R2 | 1,334 | trades 2026-05-04 → 05-17 | 15 AMCs |
+| CAMS R9 | 1,237 | as of 2026-05-18 | 1,178 folios — 98.8 % of them transacted in the same fortnight, so **activity-scoped**, not the full book |
+| CAMS WBR4 | 8 | as of 2026-10-08 | 1 AMC (IF), 8 folios, all in WBR10 |
+| CAMS WBR10 | 10 | trades 2026-10-05 → 06 | 1 AMC (IF); 8 purchases + 2 non-financial (nomination, change of details) |
+| CAMS WBR49 | 1 | registered 2026-10-02 | 1 AMC (IF) |
+| KFin MFSD201 (May) | 819 | trades 2026-04-30 → 05-15 | 15 funds |
+| KFin MFSD201 (Oct) | 689 | trades mostly Sep–Oct 2026, plus 99 re-reported 2024–25 rows | 19 funds |
+| KFin MFSD211 (May / Oct) | 648 / 384 | report 2026-05-18 / 2026-10-08 | 633 / 364 folios — activity-scoped (all MFSD201 folios are in it) |
+| KFin MFSD203 | 1,943 | as of 2026-10-08 | 1,792 folios, 22 funds, last transactions back to 2013 — **full book**; 329 zero positions |
+| KFin MFSD230 | 20 | starts 2026-10-01 → 07 | SIP/STP whose first instalment fell in the period (PAIDINST = 1 on every row) |
+| KFin MFSD243 | 9 | registered 2026-10-01 → 07 | registrations made in the period |
 
-| | CAMS R2 | CAMS R9 | KFin MFSD201 | KFin MFSD211 |
-|---|---|---|---|---|
-| Rows · columns | 1,334 · 80 | 1,237 · 101 | 819 · 87 | 648 · 129 |
-| Period / as-of | trade 2026-05-04 → 05-17; report date 05-18 | as of 2026-05-18 (one date) | trade 2026-04-30 → 05-15; report date 05-18 | report date 2026-05-18 |
-| ARN scope | 1 broker code | 1 broker code | 1 agent code | 1 broker code |
-| AMCs · folios | 15 · 1,164 | 15 · 1,178 | 15 · 625 | 16 · 633 |
-| Holdings | — | `clos_bal` units and `rupee_bal` value on 1,237/1,237 rows; **no NAV column**; 19 zero-unit rows | — | **no units, value or NAV column at all** |
-| SIP fields | `siptrxnno` (1,189 distinct), `sys_regn_date`. No amount, frequency, end date or status. | — | `sipregslno` (618 distinct), `SIP Regn Date`. No amount, frequency, end date or status. | — |
-| Status / rejection | `trxnstat` = Y on 1,334/1,334; `reversal_code`, `original_trxnno`, `rev_remark` and `remarks` all empty | — | `Transaction Status` = Y on 819/819; 3 pre-rejection codes (SIND / STPAD / STPOD); `RejTrnoOrgNo` empty | — |
-| Master fields | name 1,237; PAN 1,216; joint PAN 135 / 2; guardian 21; email 1,225; mobile 1,235; bank, nominee, tax status | name 648; PAN 640; PAN2 68; guardian 8; email 646; mobile 645; CKYC 630; tax status | — | (same row as master fields) |
+## A. Minimum core reports and demonstrated gaps
 
-**Scope finding (critical for AUM).** Both "master / holdings" samples cover almost exactly the folios that transacted in the same short window:
-
-- **CAMS:** 1,164 of R9's 1,178 folios (98.8 %) appear in the 11-day R2 feed. Only 14 R9 folios have no transaction.
-- **KFintech:** 625 of MFSD211's 633 folios (98.7 %) appear in MFSD201.
-- **Interpretation:** it is implausible that 99 % of a whole book transacted in two weeks. These samples are almost certainly **period / activity-scoped**, not full-book.
-- **Corroboration:** the user's observation that the newer MFSD211 has 384 rows against MFSD203's 1,943 scheme-folio rows points the same way.
-- **Consequence:** **neither sample can prove firm-wide AUM, and a master import must never be read as "clients absent from it no longer exist".**
-
-## 1. Report roles (provisional where marked)
-
-### CAMS
-
-| Report | Role for the eight modules | Classification | Evidence |
+| Registrar | Core report | Role | Evidence and gap |
 |---|---|---|---|
-| **R2 (WBR2-format transactions)** | Transactions; SIP instalments (via `siptrxnno`) | **CORE**, recurring | Verified. 1,334/1,334 rows staged and reconciled. The legacy importer agrees on all 1,334. |
-| **R9 (WBR9 static + unit balance)** | Client master; holdings (units, value, as-of) | **CORE**, but only when **requested as a full-book, as-on statement** | Fields verified. The sample's scope looks activity-scoped, so full-book scope is **UNVERIFIED**. It has no NAV column: NAV = value ÷ units is a *derived* value and is undefined for zero units. |
-| WBR4 | Investor / holding fields (user: 8 rows) | **UNVERIFIED**. A REDUNDANT candidate if a full-book R9 is taken. | Not received. With 8 rows it cannot be a full book. |
-| WBR10 | Transactions (user: 10 rows) | **UNVERIFIED**. A REDUNDANT candidate. | Not received. It is redundant only if every one of its transactions is in R2 for the same window. That must be checked against the file, not assumed from similar columns. |
-| WBR49 | SIP / STP registrations | **CORE candidate, UNVERIFIED** | R2 has no SIP amount, frequency, dates or status, so the CAMS SIP Master needs a registration source. One handbook names WBR49 "SIP/STP procured for the period". If so, it is a *period* report of new registrations, not a status register. |
-| CAMS SIP cessation / non-operational report (the user names WBR50) | SIP stop / expiry | **CONDITIONAL → probably required** | No verified CAMS file gives SIP status. Without it, CAMS SIPs can only be ACTIVE-by-registration or UNKNOWN. |
-| CAMS transaction / SIP rejection source | Transaction rejection, SIP instalment rejection | **MISSING evidence** | R2 carried **zero** rejected, reversed or remarked rows in 1,334 SIP-heavy transactions over 11 days. That suggests R2 as delivered excludes failed debits. The user's WBR46 is described as unprocessed transactions. It is unverified whether that is the rejection source. |
+| CAMS | **R2** | transactions | All 1,334 rows reconcile; the existing importer agrees on all of them. **Gap:** no rejected, reversed or remarked row in 1,334 SIP-heavy rows — CAMS rejection coverage is **unverified**. |
+| CAMS | **R9** | master + holdings | Has every master field (contacts, joint holders, guardian, date of birth, bank, nominee) plus units and value. It has **no NAV**. **Gap:** the sample covers only folios that transacted, so it must be requested **for all folios, as on a date** before CAMS AUM can be called complete. |
+| CAMS | **WBR49** | SIP / STP registrations | Has a registration id (`auto_trno`), amount, frequency, start and end dates, **cease date** and **pause dates**. The 1899 blank-date placeholder reads as blank. The sample is one period's registrations. |
+| KFin | **MFSD211** | master | Has contacts, joint holders (PAN2/3), guardian and date of birth. **Gap:** activity-scoped — 1,429 of MFSD203's 1,792 folios have no master row. A full-book MFSD211 is needed **once** at bootstrap; after that, each period's file covers the clients who changed. |
+| KFin | **MFSD203** | holdings and AUM | Value = units × NAV on 1,943/1,943 rows; NAV is stated; zero positions are kept. It has **no holder-status, joint or guardian column**, so it cannot replace MFSD211. |
+| KFin | **MFSD201** | transactions | Lot redemptions are reported as groups, now including Oct's 6 groups / 197 lots. **Gap:** every one of the 33 "rejection" rows (SINR / FULR / NEWR) is a **folio-consolidation reversal**, not a failed debit (§G). Genuine KFintech rejection coverage is **unverified**. |
+| KFin | **MFSD243** *(instead of MFSD230 — material gap shown)* | SIP registrations | MFSD243 has a registration id (`RegSlno`, which links 8 of its 9 rows to MFSD201's `sipregslno`), `Status`, `TerminateDate` and PAN. **MFSD230 has no registration id, no status, no terminate date and no PAN.** The existing importer refuses MFSD230, and every one of its rows can only be UNKNOWN. Only 2 of 243's rows also appear in 230. |
 
-### KFintech
+**Not for regular import:**
 
-| Report | Role | Classification | Evidence |
-|---|---|---|---|
-| **MFSD201** | Transactions; redemption lots; transaction rejections | **CORE**, recurring | Verified on the original sample (819 rows, 9 groups / 143 lots). The newer sample's rejection codes (SINR / FULR / NEWR) are **UNVERIFIED** (§5). |
-| **MFSD203** | Holdings / AUM (+ "master details of active clients" per the manual) | **CORE**, required | MFSD211 has **no holdings columns** (verified), so KFintech AUM cannot come from any other verified file. Layout and scope are UNVERIFIED (user: 1,943 rows, 329 zero-unit, as of 08/10/2026). |
-| **MFSD211** | Client master (contacts, joint holders, guardian, bank, nominee, KYC) | **CORE** until MFSD203's master columns are verified. INITIAL plus each period's new clients after that. | Fields verified. Scope is activity-scoped (above). Whether MFSD203 carries joint holders, guardian and contacts is UNVERIFIED. |
-| **MFSD230** | SIP / STP register | **CORE candidate, UNVERIFIED** | Manual: "insights about your SIPs/STPs". User: 20 rows (16 SIP + 4 STP). Whether it lists terminated / paused / expired SIPs with dates decides whether 231 / 229 are needed. |
-| MFSD243 | SIPs / STPs / SWPs registered in a period | **REDUNDANT candidate, UNVERIFIED** | Manual: "registered during the selected period". User: 9 rows, all Live, no termination dates. If MFSD230 is an as-on register, 243 adds only registration-date detail. |
-| MFSD231 (termination / pause), MFSD229 (closed) | SIP stop, pause, expiry | **CONDITIONAL**. Required if MFSD230 lacks status and dates. | Manual descriptions only. |
-| MFSD244 (registration rejections) | SIP registration rejected | **CONDITIONAL**. Required for that event. | A rejected registration produces no transaction, so MFSD201 cannot report it. |
-| MFSD228 (SIP transaction-level rejections) | SIP instalment rejected | **REDUNDANT if** MFSD201's SINR rows prove complete | UNVERIFIED (§5). |
+- **WBR4** — its master fields are a subset of R9's; it adds no fact the 8 modules need.
+- **WBR10** — weaker than R2. It has no `trxn_type_flag`, `trxn_nature`, `siptrxnno`, PAN or reversal fields, so its purchases cannot be classified to R2's standard. The existing importer imports 0 of its 10 rows, and staging holds all 10.
+- **MFSD230** — see the MFSD243 row above.
 
-## 2. Eight-module accuracy matrix (from verified evidence only)
+**Conditional (only if the samples below show the core lacks it):**
 
-| Module | Status | Why |
-|---|---|---|
-| 1 Client Master | **PARTIAL** | All needed fields are present in R9 / MFSD211, but both samples are activity-scoped, so "complete client list" is unproven. **Defect found:** a minor's folio missing from the master is attached to the guardian (§6.2). |
-| 2 Right AUM | **CAMS PARTIAL · KFin MISSING** | **CAMS:** R9 units and value as of one date, with 19 zero rows kept; staged Σ = source Σ (2,245,676.925 units; ₹119,400,802.05). Full-book scope is unproven and the file has no NAV. **KFin:** no verified holdings file (MFSD203 not received). |
-| 3 Right SIP Book | **MISSING** | No verified file carries SIP amount, frequency, status or end date. The transaction feeds only *imply* registrations (1,189 CAMS and 618 KFin references seen in the window). An unexpired registration is not proof of ACTIVE. |
-| 4 Client Portfolio | **CAMS PARTIAL · KFin MISSING** | Same as AUM. Folio-level sums reconcile (Phase 2B: R9 1,237/1,237 legs matched on units and value). Cost, gains and XIRR are **not derivable**: only a 2-week transaction window exists. |
-| 5 SIP Rejection / Stop | **MISSING** | **CAMS:** none of the 1,334 R2 rows is rejected, reversed or remarked. **KFin:** 3 pre-rejections, unlinked. No stop, pause or expiry event in any verified file. |
-| 6 Transactions | **COMPLETE for the observed classes** (shadow) | Every row is accounted for. The classes are SIP, purchase, redemption, SWP and STP in/out. Multi-lot redemptions are 9 groups, not 143. Overlapping periods are counted once (§6.4). IDCW, ordinary switches and reversals are unobserved and held. |
-| 7 Transaction Rejection | **PARTIAL / UNVERIFIED** | **KFin:** pre-rejections held; the newer sample's SINR / FULR / NEWR not verified. **CAMS:** no rejection evidence at all. |
-| 8 SIP Master | **MISSING** | Needs a registration source (WBR49 / MFSD230). Unverified. |
-
-## 3. Business acceptance tests (defined; what ran)
-
-| # | Test: "the CRM shows exactly what the selected files say" | Ran on real data? |
-|---|---|---|
-| T1 | Client Master: every (AMC, folio) in the master and holdings files maps to exactly one client by PAN, folio or guardian rule. No client is identified by name or phone. Clients absent from a partial master keep their folios and holdings. | Partly: the identity rules ran (2,124 folio+PAN, 22 folio+guardian, 7 folio-only matches, 0 conflicts). The minor defect reproduced (§6.2). |
-| T2 | AUM: Σ(latest full-book position value) per RTA equals the source total, with as-of dates shown per RTA. Zero rows are kept. An older statement never replaces a newer one. | CAMS sums equal the source. Full-book scope cannot be tested (no full-book file). |
-| T3 | SIP Book: every ACTIVE SIP has a registration row with an authoritative live status as of date D. Anything else is UNKNOWN. | Blocked: no registration file. |
-| T4 | Portfolio: Σ scheme values per client equals Σ source values for that client's folios. No cost or return is shown without full history. | CAMS reconciled in Phase 2B. KFin blocked. |
-| T5 | SIP Rejection / Stop: each event type maps to its distinct meaning. One failed instalment never stops a SIP. | Blocked: no event file. |
-| T6 | Transactions: one economic event per registrar transaction. Lots are kept. Overlaps are deduplicated. | **Ran**: R2 1,334 → 1,334; MFSD201 819 rows → 685 transactions (9 groups / 143 lots). Overlap split counted once. The legacy importer matches all 1,334 R2 transactions and 669 MFSD201 ones. |
-| T7 | Rejection never inflates investment: a rejected row is never counted as gross purchase or SIP. | Staging: yes (held). **Legacy: at risk** (§5). |
-| T8 | SIP Master preserves registration history: one row per registration ID and an append-only lifecycle. | Blocked: no registration file. |
-
-## 4. SIP Book and SIP Master design (one dataset, two views)
-
-- **`sip_registrations`:** one row per (RTA, AMC, registration ID).
-  - Columns: folio, scheme, kind (SIP / STP / SWP), amount, frequency, start, end, the registrar's status text, and `status_as_of`.
-  - Every field is source-reported, with the batch and row it came from.
-- **`sip_lifecycle_events`** (append-only), with these event types:
-  - `registered` (registration report);
-  - `registration_rejected` (MFSD244, or the CAMS equivalent);
-  - `instalment_processed` / `instalment_rejected` (transaction feeds, keyed by `siptrxnno` / `sipregslno`);
-  - `paused` / `resumed` / `terminated` / `closed` (MFSD231 / 229, or the CAMS cessation report);
-  - `expired`: a state reached when the end date has passed and the registrar's status is no longer live. It is never recorded on the date arithmetic alone.
-- **Status on date D** is derived from the latest authoritative status event on or before D:
-
-| Status | Rule |
+| Report | Condition |
 |---|---|
-| ACTIVE | A registrar status of "live" / "active" as of a date not older than the register's freshness limit, with no later stop, pause or termination. |
-| PAUSED / STOPPED / EXPIRED | The corresponding authoritative event. |
-| REJECTED | `registration_rejected`. |
-| PENDING | Registered with a future start and no processed instalment. |
-| UNKNOWN | Everything else: a registration seen only through instalments, or a stale status. **Never shown as ACTIVE.** |
+| CAMS rejection / unprocessed report (e.g. WBR46) | R2 lacks failed debits |
+| KFin MFSD228 | MFSD201 lacks bounced SIP debits |
+| KFin MFSD244 | SIP registration rejections are needed (a rejected registration never appears in MFSD201) |
+| KFin MFSD231 / 229 | MFSD243 pulled over a long registration period does not show terminated / paused SIPs |
 
-- **A rejected instalment is an event, not a status.** Only a registrar stop or termination changes status. A "n consecutive failures" rule would be a *flag*, never a stop.
-- **Views:** the SIP Book is `status = ACTIVE as of D`; the SIP Master is all registrations with their history. Both read the same two tables.
+## B. Eight-module readiness
 
-## 5. Rejection coverage
-
-- **CAMS R2:** no rejection data in the verified sample (§0). Whether rejected and bounced SIP debits appear in R2 at all is the largest open CAMS question.
-- **KFintech MFSD201:** carries rejection *rows*. The 3 pre-rejections are verified. The newer sample's SINR / FULR / NEWR are reported by the user with `Transaction Status = Y`.
-  - **Code test (no real file):** the existing importer reads MFSD201's `Transaction Head` (P/R) and description, never the `Transaction Type` code.
-    - A rejection row whose description does **not** say "rejection" is **booked as a successful SIP, redemption or purchase**.
-    - A row whose description does say it is held.
-  - Staging holds SINR / FULR / NEWR as unknown codes. That is safe, but they don't yet reach the rejection module.
-  - The newer sample decides which case applies.
-
-## 6. Shadow-architecture review (Part 6)
-
-1. **Shadow runs after the legacy importer.** Legacy writes therefore happen regardless; shadow cannot block them today.
-   - **Future gate:** per (tenant, report type), exactly one writer.
-   - Under "on", staging runs **first**, and the legacy write path is not called.
-   - Posting happens only from `complete` transactions. A batch with a failing blocking check posts nothing.
-   - Switch one report type at a time, with the legacy path kept as the rollback.
-2. **Minor folio attached to the guardian — CONFIRMED defect (real files).** Scenario: the master contains every folio except the 19 minor folios.
-   - **Existing importer:** put **all 19 minor folios (22 transactions) on adult-PAN client records**. It either created a client from the guardian's PAN or used the existing guardian.
-   - **Staging:** proposed `pan_only` for 4 of the 22 rows (the rest were unmatched).
-   - **Fix:** a row whose own tax status says minor (R2 `tax_status` "On Behalf of Minor"; KFin `Status` MINOR / "MINOR THROUGH GUARDIAN"; or a guardian PAN present) is **never resolved by PAN**. With no folio match it is held, or it gets a folio-keyed minor placeholder. It is never attached to the guardian.
-3. **Redemption tolerances are justified.**
-   - Across 165 real lots: max |Δ| ₹0.7008; median ₹0.0024.
-   - The largest is 0.000491 units × NAV ₹1,428, inside the half-unit (0.0005) bound of 3-decimal units.
-   - Max Δ / tolerance is 0.968; p95 is 0.355. 5 lots exceed half their tolerance, every one explained by units rounding at a high NAV.
-   - Groups: |Δ| ≤ ₹0.036.
-   - The tolerance is a derived bound. It is not loosened, and it has thin headroom by design.
-4. **Repeats across different report periods were tested on real data.**
-   - **MFSD201:** split by trade date into two windows sharing 5 days and 450 rows. Result: 685 distinct transactions counted once. Window B had 338 duplicates (including 6 redemption groups) and 125 new.
-   - **R2:** split the same way, with 637 shared rows. Result: 1,334 counted once.
-   - **Open posting risk:** a lot group split *across* two files would post the first part as complete. In the real data a group shares its trade and process dates, so date-windowed files keep a group whole. Posting must still hold a later `restated`.
-5. **Failure visibility: GAP.**
-   - A failed or exception batch is recorded on its row (state, error, stage log) and in the checks, and is readable only through `GET /api/rta-staging/batches`.
-   - The worker discards the hook's result. A failure is a `console.warn` only: there is no admin screen and no notification.
-6. **Unrecognised mode: GAP.**
-   - A typo or `on` falls back to `off`, which is safe, with a `refused` message that nobody reads.
-   - It should be a configuration error raised at worker start, and reported by the health check.
-
-## 7. Minimum file sets (provisional until the samples are verified)
-
-- **Minimum recurring set:**
-  - CAMS: **R2 · R9 (full-book) · WBR49** + one CAMS SIP status / cessation source + one CAMS rejection source (the last two pending evidence).
-  - KFin: **MFSD201 · MFSD203 · MFSD230** + MFSD211 (new clients) + MFSD231 / 229 only if 230 lacks status.
-- **Minimum initial set:**
-  - Full-book R9 and MFSD203 as on one date, and a full-book master.
-  - The current SIP register (WBR49 for the full period / MFSD230).
-  - Transaction history only as far back as the modules shown need. Without full history, no cost or return is displayed, by design.
-- **Frequency** (the sample windows are ~2 weeks, report-dated the next day):
-  - Transactions weekly, with ≥ 3 days of overlap (duplicates are proven safe).
-  - Holdings full-book month-end, plus weekly if AUM freshness is required.
-  - SIP register and stop reports weekly.
-  - Registration rejections weekly.
-
-## 8. Smallest development plan
-
-| Priority | Change | New tables? |
+| Module | Status | What is missing |
 |---|---|---|
-| P0 safety | Minor / guardian rule in legacy + staging (§6.2); MFSD201 must read the `Transaction Type` code and hold R-suffix rejection codes (§5); mode misconfiguration raises an error (§6.6); failed shadow batches visible on the Imports page (§6.5) | No |
-| P1 | Recognise the received layouts in staging (one layout entry + normalizer each); run shadow; measure scope and overlap | No |
-| P2 | Holdings snapshots: statement (RTA, ARN, as-of, full-book flag, source batch) + positions. AUM and Portfolio read the latest full-book statement per RTA. | 2 (required by modules, not per report) |
-| P3 | SIP registrations + lifecycle events (§4). SIP Book and SIP Master are views. | 2 |
-| P4 | Posting gate (§6.1): a separate approval | Columns only |
+| Client Master | **PARTIAL** | The identity rules run in shadow, with 0 wrong owners on the real files. **Missing:** full-book masters (bootstrap); writing holder relationships (table 0234, no writer yet); Karta data, which no registrar report carries. |
+| Accurate AUM | **KFin ready (shadow) · CAMS PARTIAL** | **KFin:** MFSD203 ₹14,67,10,680.68, 1,943 positions, as of 08-Oct. **CAMS:** no full-book statement, and R9 has no NAV. **The existing CRM today shows ₹26,63,09,197.97** — May CAMS plus October KFintech added together with no date labels. |
+| Active SIP Book | **PARTIAL** | The lifecycle rule exists (`sip-lifecycle.ts`). **Missing:** full-period register pulls. MFSD230 can only give UNKNOWN. **The existing CRM counts 9 active, 5 of which have not started yet** (PENDING). |
+| Client Portfolio | **KFin ready (shadow) · CAMS PARTIAL** | Each of MFSD203's 1,943 positions has exactly one owner decision, so nothing is counted twice. Cost and returns are not shown: there is no complete history. |
+| SIP Rejection / Stop | **MISSING evidence** | No genuine instalment rejection, registration rejection, stop, pause or expiry appears in any sample. |
+| Transactions | **ready (shadow)** for the observed classes | 6 new codes are held: LTOF, CNO, CNI, IPO and the 2 consolidation-reversal shapes. |
+| Transaction Rejection | **PARTIAL** | No rejected row is counted as an investment, in either engine. The meaning of a genuine rejection is unverified. |
+| SIP Master | **PARTIAL** | Registration ids are present in WBR49 and MFSD243. Full history needs full-period pulls. |
 
-## 9. Missing evidence (only what blocks an essential module)
+## C. Client and folio matching — before and after
 
-1. **The eight new samples themselves.** They are not in this session. They are required for every UNVERIFIED cell above.
-2. **One full-book holdings statement per RTA**: R9 for all folios as on a date, and MFSD203 for all funds. These prove AUM completeness. The newer MFSD203 may already be one.
-3. **CAMS:** one sample that shows SIP cessation / non-operational status, and one that shows rejected SIP debits. These are needed only if WBR49 and R2 do not carry them.
-4. **KFintech:** MFSD231 (or 229), only if MFSD230 lacks terminated / paused status; MFSD244, only if SIP registration rejections must be shown.
+| Existing behaviour (legacy importer) | Problem against Decision 7 | Done in this branch |
+|---|---|---|
+| `InvestorDirectory.resolve`: **PAN first**, then folio | A guardian's PAN beats the folio | New `lib/rta/owner.ts` puts the folio on record first; staging uses it |
+| `byFolio` falls back to the **folio number alone** across AMCs | The same folio number at another AMC can match | `owner-directory.ts`: a folio is registrar + AMC + folio, exactly |
+| Feed: a CAMS minor row (guardian's PAN) with no master **attached the minor to the guardian** — 19 of 19 minor folios, 22 transactions on the real files | Wrong legal owner | **Fixed in `process.ts`:** a minor's row attaches only to the minor's folio on record, otherwise it is held back |
+| Master: minor key `MINOR:<guardian PAN>:<name>` | Identity rests on a name (Decision 3.6) | **Not changed** — migrating existing keys needs approval (§I) |
+| Feed placeholder key `NOPAN:FOLIO:<folio>` has no AMC | The same folio number at two AMCs would share one placeholder | Not changed. Staging proposes `FOLIO:<rta>:<amc>:<folio>` |
+
+## D. Minor / guardian
+
+**Rule:**
+
+- A minor is matched by the folio on record. If there is none, the minor's **own** PAN is used (none in any sample).
+- Otherwise a provisional owner is keyed `FOLIO:<rta>:<amc>:<folio>`, with the guardian as a link found by the guardian's PAN.
+- The guardian's PAN never becomes the owner's.
+- A minor folio found under the guardian's own record is an exception (`folio_owned_by_guardian`).
+
+**Real-file evidence:**
+
+- CAMS R2 prints the guardian's PAN on all 22 minor rows.
+- R9 (21), MFSD211 (8 + 4), MFSD201 (7 + 5) and MFSD203 (12) leave the minor's PAN blank and name the guardian.
+- In R9, 4 guardians have several minor folios, and 3 guardians hold their own folio at the same AMC as their minor.
+
+**Shadow results, with the masters loaded:**
+
+- The 22 R2 minor rows and the 7 May MFSD201 minor rows all land on the minor's own record.
+- Overall, 62 minor rows matched a minor record and **0** went to a non-minor client.
+- With no client data at all, every minor row (67) becomes a provisional minor owner — never the guardian.
+- The existing importer's fixed path is tested: R2 imported before R9 now holds the row, and after the master it lands on the minor.
+
+## E. HUF / Karta
+
+- **HUF identification:** from the registrar's holder status. All HUF rows carry an **H-type PAN** (R9 6/6, R2 6/6, MFSD211 13/13). MFSD203 has no status column, so its 27 H-PAN positions are typed from the PAN alone, and are flagged as such.
+- **An HUF row with an individual PAN:** flagged `huf_owner_pan_not_huf` and never used as the HUF's PAN. No such row appears in the samples.
+- **Karta:** no registrar report has a Karta field (checked on all seven layouts). A Karta can only come from KYC or staff, as a `karta` holder row (0234) with effective dates. A Karta change closes one row and opens another; the HUF and its folios do not move.
+- **Unverified:** whether any registrar report ever names the Karta.
+
+## F. Minor-to-major and SIP lifecycle
+
+- **Minor-to-major:**
+  - A minor row whose date of birth shows 18 or older is flagged `minor_age_18_or_over`. None appears in the samples: every minor is under 18.
+  - A folio owned by a minor that the registrar now reports as an individual with a PAN, or a PAN matching a minor record, is an **exception**. The identity is kept, nothing is re-owned, and staff verify.
+  - `investors.majority_status` (0234) records the transition from registrar evidence only.
+- **SIP status** (`sip-lifecycle.ts`):
+  - ACTIVE needs a registrar "live" status, or a register with no cease date, that is fresh for the date.
+  - STOPPED / PAUSED / EXPIRED / REJECTED come only from registrar facts.
+  - Failed instalments never stop a SIP.
+  - A passed end date with no status is UNKNOWN; a live status past the end date is an extension and stays ACTIVE.
+  - **Real files as of 08-Oct:**
+
+    | Source | Result |
+    |---|---|
+    | WBR49 | 1 ACTIVE |
+    | MFSD243 | 3 SIPs ACTIVE, 5 SIPs PENDING (start date after 08-Oct), 1 STP ACTIVE |
+    | MFSD230 | 20 UNKNOWN |
+
+## G. Migrations (development only; tenant isolated)
+
+- **0233 (unmerged, amended):** `record_kind` also allows `registration` on the staging batch and row tables.
+- **0234:**
+  - New table `folio_holders`:
+
+    | Column | Purpose |
+    |---|---|
+    | folio, role | role ∈ first / second / third / guardian / karta |
+    | investor link | when the holder is a CRM client |
+    | as-printed PAN / name / date of birth | when the holder is not a client |
+    | source | registrar / kyc / staff, plus report, batch and as-of date |
+    | verified | whether the relationship is confirmed |
+    | `effective_from` / `effective_to` | one *current* holder per role per folio |
+
+    RLS is enabled and forced, with a `tenant_isolation` policy.
+  - Two nullable columns on `investors`: `identity_confidence`, `majority_status`. Nothing is backfilled.
+- **Checks:** `check:rls` passes on 182 tables, and `check:schema` passes.
+
+## H. Tests
+
+- **`tests/rta-owner-identity.test.ts` (16):** the 15 required scenarios plus owner typing.
+  - **Ownership and holders:**
+    - adult;
+    - two minors sharing a guardian;
+    - minor and guardian at one AMC, including the guardian-owned exception;
+    - minors sharing contact details;
+    - individual + HUF;
+    - HUF PAN vs Karta PAN;
+    - a Karta change;
+    - minor-to-major;
+    - joint holders counted once.
+  - **Identification and history:**
+    - the same folio number at two AMCs (also tested against Postgres);
+    - a missing or wrong PAN;
+    - a minor before the master;
+    - holdings of different dates and ARNs;
+    - a SIP stopped only by a lifecycle fact.
+  - Duplicate and overlapping imports are covered in `rta-staging-db`.
+- **`tests/rta-staging-unit.test.ts` (52):**
+  - the 7 newer real layouts;
+  - R9 vs WBR4 recognition;
+  - MFSD203 zero positions;
+  - the consolidation group;
+  - R-code rejections;
+  - WBR10 non-financial rows;
+  - registration fields;
+  - CAMS minor token;
+  - holder facts on every holder-bearing layout.
+- **`tests/rta-real-layouts.test.ts`:** updated for the corrected minor rule.
+- **Full suite:** 59 files and 759 tests passed, none skipped; tsc, lint and every check pass.
+
+## I. Smallest safe implementation sequence
+
+1. **Approved and done here, shadow only:** the identity module, exact-AMC folios, staging layouts, the legacy CAMS-minor guard, and the 0234 schema.
+2. **Request the bootstrap files:** R9 for all folios, MFSD211 for all clients, MFSD203 for all funds, as on one date; plus WBR49 and MFSD243 over the whole registration history. Run them in shadow and prove AUM completeness per registrar.
+3. **Label AUM by registrar and date** (`holdings-snapshot.ts`) on the dashboards before any posting; today's unlabelled sum mixes May and October.
+4. **Write `folio_holders`** from the masters (in shadow first), and replace the name-based `MINOR:` key with a folio-keyed provisional identity, under a reviewed data migration that never merges or re-owns automatically.
+5. **SIP Book from registrations** with `sipStateOn`; MFSD230 is retired in favour of MFSD243.
+6. **Posting gate:** a separate approval.
+
+## J. Production readiness and blockers
+
+- **Not production-ready.** Posting is off and nothing is merged.
+- **Blockers:**
+  - no full-book CAMS holdings statement;
+  - no genuine rejection, stop, pause or expiry sample from either registrar;
+  - the name-based minor key in existing data needs a reviewed migration;
+  - Karta data has no registrar source;
+  - the registration reports carry no report or as-of date, so freshness depends on the mailback date.
+- **Before posting:** merging this branch also changes the legacy feed's minor rule (safer: a hold instead of a wrong owner) and applies migrations 0233 / 0234, which are additive.

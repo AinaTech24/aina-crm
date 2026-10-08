@@ -163,7 +163,9 @@ describe("Phase 3B — values are carried exactly", () => {
   it("staged rows carry PAN tokens, never the PAN", () => {
     const [r] = norm201([lot("7001", "L1", "100.000")]);
     expect(r.panToken).toMatch(/^pt1:/);
-    expect(JSON.stringify({ ...r, pan: null, guardianPan: null })).not.toContain(P.adult);
+    // pan / guardianPan / holder / owner are in-memory only (never persisted); everything else must be PAN-free.
+    expect(JSON.stringify({ ...r, pan: null, guardianPan: null, holder: null, owner: null })).not.toContain(P.adult);
+    expect(r.attrs.holder).toMatchObject({ ownerType: "individual", sourcePanRole: "owner" });
   });
 });
 
@@ -304,3 +306,88 @@ describe("Phase 3B — RTA_PIPELINE_MODE", () => {
 
 // Type-only use so the import is not flagged unused when a block is skipped.
 export type _N = NormRow;
+
+// ── Phase 3C: the second set of real layouts ────────────────────────────────
+import { MFSD203_HEADER, MFSD230_HEADER, MFSD243_HEADER, MFSD211_V2_HEADER, WBR4_HEADER, WBR10_HEADER, WBR49_HEADER } from "./rta-real-layouts";
+
+describe("Phase 3C — the newer real layouts", () => {
+  it.each([
+    ["kfintech.mfsd203", MFSD203_HEADER], ["kfintech.mfsd230", MFSD230_HEADER], ["kfintech.mfsd243", MFSD243_HEADER],
+    ["kfintech.mfsd211", MFSD211_V2_HEADER], ["cams.wbr4", WBR4_HEADER], ["cams.wbr10", WBR10_HEADER], ["cams.wbr49", WBR49_HEADER],
+  ] as const)("%s is identified from its real header", (id, header) => {
+    expect(identifyLayout([header])?.layout.id).toBe(id);
+  });
+
+  it("R9 is not mistaken for WBR4 and vice versa (R9 carries mobile, bank and date of birth)", () => {
+    expect(identifyLayout([R9_HEADER])?.layout.id).toBe("cams.r9");
+    expect(identifyLayout([WBR4_HEADER])?.layout.id).toBe("cams.wbr4");
+  });
+
+  const layoutOf = (id: string) => LAYOUTS.find((l) => l.id === id)!;
+  const norm = (id: string, header: string[], rows: Record<string, string>[]) =>
+    normalizeRows(T, layoutOf(id), header, rows.map((v, i) => ({ rowNo: i + 1, cells: row(header, v) })));
+
+  it("MFSD203: units, NAV and AUM as reported; a zero position stays a zero position", () => {
+    const [a, z] = norm("kfintech.mfsd203", MFSD203_HEADER, [
+      { "Fund": "117", "Folio Number": "1", "Product Code": "117X", "Balance": "10.500", "NAV": "12.3456", "AUM": "129.63", "Report Date": "08/10/2026", "PAN": P.adult },
+      { "Fund": "117", "Folio Number": "2", "Product Code": "117X", "Balance": "0.000", "NAV": "12.3456", "AUM": "0.00", "Report Date": "08/10/2026", "PAN": P.adult },
+    ]);
+    expect([a.units?.text, a.nav?.text, a.holdingValue?.text, a.asOfDate]).toEqual(["10.500", "12.3456", "129.63", "2026-10-08"]);
+    expect(z.units).toEqual({ text: "0.000", num: 0, dp: 3 });
+  });
+
+  it("MFSD201 consolidation rows (original, R reversal, re-post) are held as a folio move, not as rejections", () => {
+    const remark = "Trxn triggered now due to consolidation of folios";
+    const rows = norm201([
+      kfinTxn({ "Transaction Number": "9100", "Transaction Head": "P", "Transaction Type": "SIN", "Transaction Description": "Systematic Investment", "Units": "10.000", "Amount": "500.00", "Remarks": remark, "Load Percentage": "" }),
+      kfinTxn({ "Transaction Number": "9100", "Transaction Head": "P", "Transaction Type": "SINR", "Transaction Description": "SIP Rejection", "Units": "-10.000", "Amount": "-500.00", "Remarks": remark, "Load Percentage": "" }),
+      kfinTxn({ "Transaction Number": "9100", "Transaction Head": "P", "Transaction Type": "SIN", "Transaction Description": "Systematic Investment", "Units": "10.000", "Amount": "500.00", "Folio Number": "91000077", "Remarks": "Consolidated From F. No. 91000001 On 01/10/2026", "Load Percentage": "" }),
+    ]);
+    expect(rows.map((r) => [r.cls?.rtaClass, r.cls?.exception])).toEqual([["sip_investment", "folio_consolidation"], ["reversal", "folio_consolidation"], ["sip_investment", "folio_consolidation"]]);
+    const [g] = groupTransactions(T, rows, "kfintech");
+    expect(g).toMatchObject({ status: "quarantined", exception: "folio_consolidation" });
+  });
+
+  it("an R-suffixed rejection code outside a consolidation is a rejection, held until its meaning is evidenced", () => {
+    const c = classifyKfintech({ typeCode: "SINR", head: "P", description: "SIP Rejection", status: "Y" });
+    expect(c).toMatchObject({ rtaClass: "rejection", exception: "rejection_semantics_unverified" });
+    expect(postable(c)).toBe(false);
+  });
+
+  it("WBR10: a non-financial event is not a transaction; a purchase without trxn_type_flag is held", () => {
+    const rows = norm("cams.wbr10", WBR10_HEADER, [
+      { amc_code: "IF", folio_chk: "1", sch_code: "MAFRG", trxntype: "NOM", trxnno: "1", traddate: "05/10/2026", units: "", amount: "", trxn_sign: "N", tax_status: "Individual" },
+      { amc_code: "IF", folio_chk: "1", sch_code: "MAFRG", trxntype: "PMF1S", trxnno: "2", traddate: "05/10/2026", units: "417.254", amount: "4999.75", trxn_sign: "+", trxnstat: "Y", tax_status: "Individual" },
+    ]);
+    expect(rows[0]).toMatchObject({ valid: true, cls: { exception: "non_financial_event" } });
+    expect(rows[1]).toMatchObject({ valid: true, schemeCode: "IFMAFRG", cls: { exception: "unknown_transaction_code" } });
+  });
+
+  it("registrations: WBR49 cease / pause dates read; a blank date stays blank; MFSD230 has no id or status", () => {
+    const [w] = norm("cams.wbr49", WBR49_HEADER, [{ product: "IFIFCRG", folio_no: "1", aut_trntyp: "P", auto_trno: "406894", auto_amount: "1500", from_date: "06/10/2026", to_date: "05/10/2056", cease_date: "", periodicity: "OM", amc_code: "IF", reg_date: "02/10/2026", pause_from_date: "", pause_to_date: "" }]);
+    expect([w.registrarTxnNo, w.tradeDate, w.attrs.ceaseDate, w.attrs.endDate]).toEqual(["406894", "2026-10-06", undefined, "2056-10-05"]);
+    const [k] = norm("kfintech.mfsd243", MFSD243_HEADER, [{ "Folio": "1", "Fund Code": "117", "Product Code": "117X", "RegistrationDate": "01/10/2026", "Start Date": "10/11/2026", "End Date": "09/10/2056", "Amount": "2500", "Frequency": "Monthly", "Trtype": "SIP", "Status": "Live SIP", "TerminateDate": "", "RegSlno": "202610011026298" }]);
+    expect([k.registrarTxnNo, k.attrs.registrarStatus, k.attrs.terminateDate]).toEqual(["202610011026298", "Live SIP", undefined]);
+    const [m] = norm("kfintech.mfsd230", MFSD230_HEADER, [{ "Prodcode": "117X", "Fund": "117", "Acno": "1", "TrType": "SIP", "Freq": "Monthly", "STARTDATE": "07/10/2026", "ENDDATE": "06/09/2056", "PAIDINST": "1", "AMOUNT": "2500.00", "RegDate": "07/09/2026" }]);
+    expect([m.registrarTxnNo, m.attrs.registrarStatus, m.attrs.hasRegistrationId]).toEqual([null, undefined, false]);
+  });
+
+  it("a CAMS minor row's PAN is staged as the guardian's token, never the owner's", () => {
+    const [r] = normalizeRows(T, layoutOf("cams.r2"), R2_HEADER, [{ rowNo: 1, cells: row(R2_HEADER, { amc_code: "H", folio_no: "1/1", prodcode: "HX", trxnno: "1", traddate: "2026-05-02", units: "1.0000", amount: "10.00", purprice: "10.0000", trxn_type_flag: "Fresh Purchase", trxn_nature: "Fresh Purchase", trxnstat: "Y", pan: P.guardian, tax_status: "On Behalf Of Minor" }) }]);
+    expect(r.panToken).toBeNull();
+    expect(r.guardianPanToken).toBe(panToken(T, P.guardian));
+    expect(r.attrs.holder).toMatchObject({ ownerType: "minor", sourcePanRole: "guardian" });
+  });
+});
+
+describe("Phase 3C — every holder-bearing layout states its holders", () => {
+  it.each([
+    ["cams.r9", R9_HEADER, { foliochk: "1", product: "XS", amc_code: "X", rep_date: "2026-05-18", clos_bal: "1", rupee_bal: "1", pan_no: "", guard_pan: P.guardian, tax_status: "On Behalf Of Minor", inv_dob: "2015-01-01" }],
+    ["cams.wbr4", WBR4_HEADER, { foliochk: "1", product: "XS", amc_code: "X", rep_date: "2026-10-08", clos_bal: "1", rupee_bal: "1", pan_no: P.adult, tax_status: "Individual" }],
+    ["kfintech.mfsd211", MFSD211_HEADER, { Fund: "1", Folio: "1", "Product Code": "1X", "PAN Number": "", GuardPanNo: P.guardian, StatusDesc: "MINOR", "Report Date": "18/05/2026" }],
+  ] as const)("%s", (id, header, values) => {
+    const [r] = normalizeRows(T, LAYOUTS.find((l) => l.id === id)!, header as string[], [{ rowNo: 1, cells: row(header as string[], values as Record<string, string>) }]);
+    expect(r.owner).not.toBeNull();
+    expect(r.attrs.holder).toBeTruthy();
+  });
+});

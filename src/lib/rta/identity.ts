@@ -43,6 +43,8 @@ type InvestorRow = {
   deleted_at: string | null;
   merged_into_id: string | null;
   guardian_investor_id?: string | null;
+  is_minor?: boolean | null;
+  investor_category?: string | null;
 };
 
 type FolioRow = { id: string; amc_code: string | null; folio_number: string; investor_id: string | null };
@@ -79,7 +81,7 @@ export class InvestorDirectory {
 
     for (const part of chunks(pans)) {
       const rows = (await this.tx.execute(sql`
-        SELECT id, pan, rta_nopan_key, rm_id, deleted_at, merged_into_id, guardian_investor_id FROM investors
+        SELECT id, pan, rta_nopan_key, rm_id, deleted_at, merged_into_id, guardian_investor_id, is_minor, investor_category FROM investors
          WHERE tenant_id = ${this.tenantId}::uuid AND pan IN (${sql.join(part.map((p) => sql`${p}`), sql`, `)})
       `)).rows as InvestorRow[];
       this.addInvestors(rows);
@@ -87,7 +89,7 @@ export class InvestorDirectory {
     }
     for (const part of chunks(nopan)) {
       const rows = (await this.tx.execute(sql`
-        SELECT id, pan, rta_nopan_key, rm_id, deleted_at, merged_into_id, guardian_investor_id FROM investors
+        SELECT id, pan, rta_nopan_key, rm_id, deleted_at, merged_into_id, guardian_investor_id, is_minor, investor_category FROM investors
          WHERE tenant_id = ${this.tenantId}::uuid AND rta_nopan_key IN (${sql.join(part.map((k) => sql`${k}`), sql`, `)})
       `)).rows as InvestorRow[];
       this.addInvestors(rows);
@@ -133,7 +135,7 @@ export class InvestorDirectory {
     const need = ids.filter((id) => !this.byId.has(id));
     for (const part of chunks(need)) {
       const rows = (await this.tx.execute(sql`
-        SELECT id, pan, rta_nopan_key, rm_id, deleted_at, merged_into_id, guardian_investor_id FROM investors
+        SELECT id, pan, rta_nopan_key, rm_id, deleted_at, merged_into_id, guardian_investor_id, is_minor, investor_category FROM investors
          WHERE tenant_id = ${this.tenantId}::uuid AND id IN (${sql.join(part.map((id) => sql`${id}::uuid`), sql`, `)})
       `)).rows as InvestorRow[];
       this.addInvestors(rows);
@@ -205,7 +207,7 @@ export class InvestorDirectory {
     if (!key) return { kind: "none" };
     if (!this.loadedRawPan.has(key)) {
       const rows = (await this.tx.execute(sql`
-        SELECT id, pan, rta_nopan_key, rm_id, deleted_at, merged_into_id, guardian_investor_id FROM investors
+        SELECT id, pan, rta_nopan_key, rm_id, deleted_at, merged_into_id, guardian_investor_id, is_minor, investor_category FROM investors
          WHERE tenant_id = ${this.tenantId}::uuid AND pan = ${key}
       `)).rows as InvestorRow[];
       this.addInvestors(rows);
@@ -220,7 +222,7 @@ export class InvestorDirectory {
     const need = [...new Set(keys.filter(Boolean))].filter((k) => !this.loadedRawPan.has(k));
     for (const part of chunks(need)) {
       const rows = (await this.tx.execute(sql`
-        SELECT id, pan, rta_nopan_key, rm_id, deleted_at, merged_into_id, guardian_investor_id FROM investors
+        SELECT id, pan, rta_nopan_key, rm_id, deleted_at, merged_into_id, guardian_investor_id, is_minor, investor_category FROM investors
          WHERE tenant_id = ${this.tenantId}::uuid AND pan IN (${sql.join(part.map((k) => sql`${k}`), sql`, `)})
       `)).rows as InvestorRow[];
       this.addInvestors(rows);
@@ -299,6 +301,13 @@ export class InvestorDirectory {
     if (minor.guardian_investor_id && minor.guardian_investor_id === guardianId) return true;
     const gp = validPan(guardian.pan);
     return !!gp && (minor.pan ?? "").toUpperCase().startsWith(`MINOR:${gp}:`);
+  }
+
+  /** What the directory holds about one loaded client (read-only; null if not loaded). */
+  info(id: string): { id: string; pan: string | null; isMinor: boolean; category: string | null; guardianId: string | null; placeholder: boolean } | null {
+    const r = this.byId.get(String(id));
+    if (!r) return null;
+    return { id: r.id, pan: r.pan, isMinor: !!r.is_minor, category: r.investor_category ?? null, guardianId: r.guardian_investor_id ?? null, placeholder: this.isPlaceholder(r.id) };
   }
 
   /** Is this investor an import placeholder (no PAN of its own, keyed by the importer)? */

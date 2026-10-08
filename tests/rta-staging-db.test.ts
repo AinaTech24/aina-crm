@@ -149,7 +149,7 @@ describe.skipIf(!TEST_DB)("RTA staging — shadow pipeline (DB)", () => {
     const lots = await q(tA, sql`SELECT l.registrar_lot_id, l.lot_part, r.row_no FROM rta_staging_lots l JOIN rta_staging_rows r ON r.id = l.row_id WHERE r.batch_id = ${r.batchId}::uuid ORDER BY r.row_no`);
     expect(lots.map((l) => [l.registrar_lot_id, l.lot_part, l.row_no])).toEqual([["L1", 1, 1], ["L2", 1, 2], ["L2", 2, 3], ["L3", 1, 4], ["L7", 1, 6], ["L8", 1, 7]]);
     // matched read-only to the folio's client
-    expect((await q(tA, sql`SELECT DISTINCT match_rule FROM rta_staging_rows WHERE batch_id = ${r.batchId}::uuid`)).map((x) => x.match_rule)).toEqual(["folio+pan"]);
+    expect((await q(tA, sql`SELECT DISTINCT match_rule FROM rta_staging_rows WHERE batch_id = ${r.batchId}::uuid`)).map((x) => x.match_rule)).toEqual(["existing_folio_owner:folio+owner_pan"]);
     expect(e.every((x) => x.proposed_action === "post_new")).toBe(true);
   });
 

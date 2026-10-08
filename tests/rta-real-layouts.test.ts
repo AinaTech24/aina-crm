@@ -199,14 +199,28 @@ describe.skipIf(!TEST_DB)("real layouts against the database", () => {
     expect(await state(tA)).toEqual(before);
   });
 
-  it("R2 before R9 (other firm): same transactions and amounts; the minor folio is held for review, never silently moved", async () => {
-    await feed(tB);
+  it("R2 before R9 (other firm): the minor's row is held — never booked on the guardian; after the master it lands on the minor", async () => {
+    // Owner decision 3 (2026-10-08): the guardian's PAN on a CAMS minor row never
+    // attaches the minor's money to the guardian. Before the fix, this order put
+    // the minor's transaction on a client created from the guardian's PAN.
+    const first = await feed(tB);
+    expect(first).toMatchObject({ rowsImported: 1, rowsSkipped: 1 });
+    expect(first.errors.map((e) => e.reason).join(" ")).toMatch(/belongs to a minor and is not yet in the client master/);
+    const afterFeed = (await state(tB)).map((r: any) => r.order_id);
+    expect(afterFeed).toEqual(["1000001"]);
     const s = await master(tB);
-    const a = (await state(tA)).map((r: any) => [r.order_id, r.a, r.u, r.d, r.type, r.direction]);
-    const b = (await state(tB)).map((r: any) => [r.order_id, r.a, r.u, r.d, r.type, r.direction]);
-    expect(b).toEqual(a);
-    expect(s.exceptions.map((e) => e.reason).join(" ")).toMatch(/different client|import placeholder/);
     expect(s.moved.transactions).toBe(0);
+    // The master creates the minor as their own client; re-importing the feed
+    // now attaches the held row to the MINOR's folio.
+    await feed(tB);
+    const b = (await state(tB)).map((r: any) => [r.order_id, r.a, r.u, r.d, r.type, r.direction, r.folio_number, r.is_minor]);
+    const a = (await state(tA)).map((r: any) => [r.order_id, r.a, r.u, r.d, r.type, r.direction, r.folio_number, r.is_minor]);
+    expect(b).toEqual(a);
+    expect(b.find((r) => r[0] === "1000002")?.[7]).toBe(true);
+    // No client carries the guardian's PAN as an owner of the minor's folio.
+    const guardianOwned = await withTenant(tB, async (tx) => (await tx.execute(sql`
+      SELECT count(*)::int AS n FROM folios f JOIN investors i ON i.id = f.investor_id WHERE f.folio_number = '81000002' AND i.pan = ${P.guardian}`)).rows[0] as any);
+    expect(guardianOwned.n).toBe(0);
   });
 
   it("each firm sees only its own rows", async () => {

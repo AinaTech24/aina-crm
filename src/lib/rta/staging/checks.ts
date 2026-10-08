@@ -115,9 +115,17 @@ export async function buildChecks(tx: Tx, ctx: Ctx): Promise<CheckOut[]> {
     bump(idStates, m?.state ?? "none");
   }
   const undecided = (rules["none"] ?? 0);
-  out.push({ code: "identity.resolution", scope: "batch", status: undecided === 0 ? "pass" : "fail", actual: JSON.stringify(idStates), detail: { byRule: rules, note: "every valid row has an identity decision; pan_only = the folio is not yet in the CRM and the PAN matched one live client" }, blocking: true });
-  const conflicts = Object.entries(rules).filter(([k]) => /conflict|placeholder|ambiguous|blocked/.test(k)).reduce((s, [, n]) => s + n, 0);
-  out.push({ code: "identity.conflicts", scope: "batch", status: conflicts === 0 ? "pass" : "fail", actual: String(conflicts), detail: { meaning: "rows held because the folio's owner, a placeholder, a merge or Trash prevents a safe match — nothing reassigned" }, blocking: false });
+  out.push({ code: "identity.resolution", scope: "batch", status: undecided === 0 ? "pass" : "fail", actual: JSON.stringify(idStates), detail: { byRule: rules, note: "every valid row has an owner decision (lib/rta/owner.ts): the folio on record, the owner's own PAN, a provisional folio-keyed owner, or an exception" }, blocking: true });
+  const conflicts = Object.entries(rules).filter(([k]) => k.startsWith("exception:")).reduce((s, [, n]) => s + n, 0);
+  const ownerTypes: Record<string, number> = {};
+  const holderFlags: Record<string, number> = {};
+  for (const r of norm) {
+    if (!r.valid || !r.owner) continue;
+    bump(ownerTypes, `${r.owner.ownerType}${r.owner.ownerTypeSource === "pan_structure" ? " (from PAN letter)" : ""}`);
+    for (const f of r.owner.flags) bump(holderFlags, f);
+  }
+  out.push({ code: "identity.owner_types", scope: "batch", status: "pass", actual: JSON.stringify(ownerTypes), detail: { flags: holderFlags, meaning: "the legal owner type each row states; a guardian's or Karta's PAN is never the owner" }, blocking: false });
+  out.push({ code: "identity.conflicts", scope: "batch", status: conflicts === 0 ? "pass" : "fail", actual: String(conflicts), detail: { meaning: "rows held because ownership cannot be established safely (guardian-owned minor folio, owner type or PAN conflict, placeholder, HUF without HUF PAN, merge or Trash) — nothing reassigned" }, blocking: false });
 
   // ── Classification ────────────────────────────────────────────────────
   if (layout.recordKind === "transaction") {
@@ -198,9 +206,30 @@ export async function buildChecks(tx: Tx, ctx: Ctx): Promise<CheckOut[]> {
       out.push({ code: "holding.totals", scope: "batch", status: Math.abs(u - uRaw) < 1e-6 && Math.abs(v - vRaw) < 1e-6 ? "pass" : "fail", actual: `Σunits ${u.toFixed(4)}, Σvalue ${v.toFixed(2)}`, expected: `Σunits ${uRaw.toFixed(4)}, Σvalue ${vRaw.toFixed(2)} (source)`, blocking: true });
       const zero = norm.filter((r) => r.valid && r.units && r.units.num === 0).length;
       out.push({ code: "holding.zero_positions", scope: "batch", status: "pass", actual: String(zero), detail: { meaning: "positions the registrar reports as exactly 0 units — kept as an explicit zero, never as missing" }, blocking: false });
-      out.push({ code: "holding.value_vs_nav", scope: "batch", status: "unverified", detail: { reason: "the statement carries no NAV, so value = units × NAV cannot be checked from it" } });
+      const withNav = norm.filter((r) => r.valid && r.nav && r.units && r.holdingValue);
+      if (withNav.length) {
+        // value = units × NAV within the printed precision: ½ulp(value) + ½ulp(units)·NAV + ½ulp(NAV)·units.
+        const off = withNav.filter((r) => {
+          const d = Math.abs(r.units!.num * r.nav!.num - r.holdingValue!.num);
+          const tol = 0.5 * 10 ** -r.holdingValue!.dp + 0.5 * 10 ** -r.units!.dp * Math.abs(r.nav!.num) + 0.5 * 10 ** -r.nav!.dp * Math.abs(r.units!.num) + 1e-9;
+          return d > tol;
+        }).length;
+        out.push({ code: "holding.value_vs_nav", scope: "batch", status: off === 0 ? "pass" : "fail", actual: `${withNav.length - off} of ${withNav.length} positions`, tolerance: "½ulp(value) + ½ulp(units)·NAV + ½ulp(NAV)·units", blocking: false });
+      } else {
+        out.push({ code: "holding.value_vs_nav", scope: "batch", status: "unverified", detail: { reason: "the statement carries no NAV, so value = units × NAV cannot be checked from it" } });
+      }
       out.push({ code: "holding.vs_transactions", scope: "batch", status: "unverified", detail: { reason: "no opening balance is available, so closing units cannot be rebuilt from transactions" } });
     }
+  }
+
+  if (layout.recordKind === "registration") {
+    const v = norm.filter((r) => r.valid);
+    const withId = v.filter((r) => r.registrarTxnNo).length;
+    const withStatus = v.filter((r) => r.attrs.registrarStatus || r.attrs.ceaseDate || r.attrs.terminateDate || "registrarStatus" in r.attrs).length;
+    out.push({ code: "registration.id_present", scope: "batch", status: withId === v.length ? "pass" : "fail", actual: `${withId} of ${v.length}`, detail: { meaning: "a registration without the registrar's own id cannot be keyed or matched to its instalments" }, blocking: false });
+    const statusColumn = layout.id === "kfintech.mfsd243" ? "Status + TerminateDate" : layout.id === "cams.wbr49" ? "cease_date + pause dates" : null;
+    out.push({ code: "registration.lifecycle_source", scope: "batch", status: statusColumn ? "pass" : "unverified", actual: statusColumn ?? "none", detail: { rowsWithAStatusOrCeaseFact: withStatus, meaning: statusColumn ? "the registrar states each registration's status or cease date" : "the file states no status — every registration's state is UNKNOWN" }, blocking: false });
+    out.push({ code: "registration.scope", scope: "batch", status: "unverified", detail: { reason: "the file carries no report or as-of date and no statement of which registration period it covers; it cannot be shown to be the whole SIP book" } });
   }
 
   // ── Tenant isolation (structural, read from the catalogue) ──────────────

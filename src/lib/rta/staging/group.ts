@@ -167,8 +167,12 @@ export function groupTransactions(tenantId: string, rows: NormRow[], rta: "cams"
       }
     }
 
+    // Cross-file comparison uses only what every transaction layout reports
+    // (R2 and WBR10 print different columns and precisions for the SAME
+    // registrar transaction): figures at the coarsest common precision.
+    const fx = (d: Decimal | null, dp: number) => (d ? Math.abs(d.num).toFixed(dp) : "");
     const sortedLotText = list
-      .map((r) => [r.lot?.registrarLotId ?? "", r.lot?.purchaseTxnNo ?? "", r.units?.text ?? "", r.amount?.text ?? "", r.price?.text ?? "", r.loadAmount?.text ?? "", r.stt?.text ?? "", r.stampDuty?.text ?? ""].join("|"))
+      .map((r) => [r.lot?.registrarLotId ?? "", r.lot?.purchaseTxnNo ?? "", fx(r.units, 3), fx(r.amount, 2), fx(r.loadAmount, 2), fx(r.stt, 2)].join("|"))
       .sort()
       .join("\n");
 
@@ -188,7 +192,9 @@ export function groupTransactions(tenantId: string, rows: NormRow[], rta: "cams"
       derivedGrossAmount: gross === null ? null : round6(gross),
       arithmeticDelta: delta === null ? null : round6(delta),
       arithmeticTolerance: tol === null ? null : round6(tol),
-      invariantHash: first.invariants ?? keyedDigest(tenantId, "invariants", ""),
+      // Identity facts every layout carries; the layout-specific column set
+      // (first.invariants) is only for checking rows WITHIN one file agree.
+      invariantHash: keyedDigest(tenantId, "econ-invariants", [first.amcCode, first.folioNumber, first.schemeCode, first.tradeDate].join("|")),
       lotSignature: keyedDigest(tenantId, "lots", sortedLotText),
       multiLot: list.length > 1 && isOutflowLots,
     };
@@ -201,6 +207,8 @@ export function groupTransactions(tenantId: string, rows: NormRow[], rta: "cams"
         : `the row could not be read: ${invalid[0].issues.map((i) => i.reason).join("; ")}`));
       continue;
     }
+    const consolidated = list.find((r) => r.cls!.exception === "folio_consolidation");
+    if (consolidated) { out.push(fail(base, "folio_consolidation", consolidated.cls!.reason)); continue; }
     if (list.some((r) => r.cls!.rtaClass !== cls.rtaClass)) {
       out.push(fail(base, "group_class_mixed", "rows sharing this transaction number classify differently — held"));
       continue;

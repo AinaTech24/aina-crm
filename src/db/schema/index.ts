@@ -65,6 +65,7 @@ export * from "./rta_imports";
 export * from "./rta_forward_addresses";
 export * from "./rta_inbound_messages";
 export * from "./rta_staging";
+export * from "./folio_holders";
 export * from "./dlt_templates";
 export * from "./financial_plans";
 export * from "./lead_capture_forms";

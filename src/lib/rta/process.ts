@@ -23,6 +23,8 @@ import {
   type CanonicalTransaction,
 } from "@/lib/integrations/cams-feed-parser";
 import { InvestorDirectory, nopanFolioKey, type Resolution } from "./identity";
+import { InvestorOwnerDirectory } from "./owner-directory";
+import { deriveHolder, resolveOwner } from "./owner";
 import { maskPansInText, maskPanValue, validPan } from "./values";
 import type { RtaFileKind, RtaSource } from "@/db/schema/rta_imports";
 import { refreshActiveSipAmount } from "@/lib/metrics/sip";
@@ -174,10 +176,32 @@ async function processTransactionFeed(
   const folioCache = new Map<string, { id: string; investorId: string }>();
   const rtaEnumVal = args.source === "cams" || args.source === "kfintech" ? args.source : "other";
 
+  const owners = new InvestorOwnerDirectory(dir);
   for (const r of rows) {
+    // ── A MINOR's row: the PAN on it is the guardian's ──────────────────────
+    // CAMS R2 prints the guardian's PAN on every minor row (verified 22/22,
+    // 2026-10-08). Resolving it by PAN put a minor's folio — and its money —
+    // on the guardian's own client record whenever the master had not created
+    // the minor first (19 of 19 minor folios in the real-file test). A minor's
+    // row now attaches ONLY to the folio already on record for that minor;
+    // otherwise it is held back for review. Never to the guardian.
+    const holder = deriveHolder({ statusText: r.holderStatus, rowPan: r.pan, rowPanRole: "owner_or_guardian" });
+    let minorOwnerId: string | null = null;
+    if (holder.ownerType === "minor") {
+      const d = await resolveOwner(owners, { rta: rtaEnumVal, amcCode: r.amcCode, folioNumber: r.folioNumber }, holder);
+      if (d.kind !== "existing_folio_owner") {
+        skipped++;
+        fail(r.line, d.kind === "exception"
+          ? `folio ${r.folioNumber} (a minor's folio): ${d.reason}`
+          : `folio ${r.folioNumber} belongs to a minor and is not yet in the client master — import the folio master (R9 / MFSD211) first; the PAN on this row is the guardian's and is never used to attach a minor's transaction`);
+        continue;
+      }
+      minorOwnerId = d.investorId;
+    }
+
     // ── Who is this row's client? ─────────────────────────────────────────
-    const pan = validPan(r.pan);
-    const res = await dir.resolve({ pan, folioNumber: r.folioNumber, amcCode: r.amcCode });
+    const pan = minorOwnerId ? null : validPan(r.pan);
+    const res = minorOwnerId ? ({ kind: "found", id: minorOwnerId, rmId: null } as const) : await dir.resolve({ pan, folioNumber: r.folioNumber, amcCode: r.amcCode });
 
     if (res.kind === "blocked" || res.kind === "ambiguous") {
       skipped++;

@@ -32,6 +32,9 @@ export type CanonicalTransaction = {
   /** First holder's name, when the feed carries it. Used to name an investor
    *  created from the feed itself when the folio master has not arrived. */
   investorName?: string;
+  /** Registrar holder / tax status (CAMS `tax_status`). On a minor's row the
+   *  `pan` above is the GUARDIAN's — see lib/rta/owner.ts. */
+  holderStatus?: string;
   amcCode: string;
   schemeCode: string;
   schemeName: string;
@@ -270,6 +273,9 @@ export const HEADER_ALIASES: Record<string, string[]> = {
   typeSub: ["TRANSACTION SUB", "TRANSACTION_SUB", "TRXNSUBTYP", "SUB_TYPE", "TRANSACTION_TYPE"],
   // CAMS R2 "trxn_type_flag" — the transaction in words (see classifyTransaction).
   typeFlag: ["TRXN_TYPE_FLAG"],
+  // CAMS holder status ("On Behalf Of Minor", "HUF", "Individual" …). Not
+  // KFintech's "Status": KFintech never prints a guardian's PAN as PAN1.
+  holderStatus: ["TAX_STATUS"],
   orderDate: ["TR_DATE", "TXN_DATE", "TRANS_DATE", "TRDATE", "TXNDATE", "TRANSDATE", "DATE", "POST_DATE", "POST DATE", "TXN_DT", "TRANSACTION DATE", "TRADDATE", "TRAD DATE", "TRADE DATE", "TRADE_DATE_TIME", "TD_TRDT"],
   amount: ["AMOUNT", "AMT", "TXN_AMT", "TXN_AMOUNT", "TRANS_AMT", "PURCHASE_AMOUNT", "RED_AMOUNT", "PLOT_AMOUNT", "AMOUNT (IN RS.)", "AMOUNT IN RS", "NET_AMOUNT", "GROSS AMOUNT", "TD_AMT"],
   units: ["UNITS", "UNIT", "QTY", "QUANTITY", "NO_OF_UNITS", "NO OF UNITS", "PLOT_UNITS", "TD_UNITS"],
@@ -508,6 +514,7 @@ export function parseReverseFeed(text: string): FeedParse {
       pan: val("pan"),
       folioNumber,
       investorName: val("investorName") || undefined,
+      holderStatus: val("holderStatus") || undefined,
       amcCode: val("amcCode"),
       schemeCode: val("schemeCode"),
       schemeName: val("schemeName"),

@@ -43,7 +43,8 @@ import { and, eq, sql } from "drizzle-orm";
 import { withTenant, type Tx } from "@/db/client";
 import { rtaStagingBatches, rtaStagingEconomicTxns, rtaStagingLots, rtaStagingRows, rtaStagingChecks, type RtaBatchState } from "@/db/schema/rta_staging";
 import { InvestorDirectory } from "../identity";
-import { validPan } from "../values";
+import { InvestorOwnerDirectory } from "../owner-directory";
+import { resolveOwner } from "../owner";
 import { STAGING_CHUNK, STAGING_LEASE_MS, STAGING_PARSER_VERSION } from "./config";
 import { assertTokenKey } from "./pan-token";
 import { identifyLayout, normalizeRows, LAYOUTS, type Layout, type NormRow } from "./layouts";
@@ -170,7 +171,7 @@ export async function runShadowBatch(tenantId: string, batchId: string, buf: Uin
       lines = readLines(buf, b.fileName);
       found = identifyLayout(lines);
       if (!found) {
-        return { final: "exception" as const, error: "the file's header matches none of the verified layouts (KFintech MFSD201 / MFSD211, CAMS R2 / R9) — nothing staged" };
+        return { final: "exception" as const, error: "the file's header matches none of the verified layouts (KFintech MFSD201 / MFSD203 / MFSD211 / MFSD230 / MFSD243, CAMS R2 / R9 / WBR4 / WBR10 / WBR49) — nothing staged" };
       }
       const rows = lines.length - found.headerIndex - 1;
       await tx.update(rtaStagingBatches).set({
@@ -199,14 +200,16 @@ export async function runShadowBatch(tenantId: string, batchId: string, buf: Uin
     // ── match: read-only against live clients and folios ─────────────────
     await stage(tenantId, batchId, me, "match", "validated", "matched", opts, async (tx) => {
       prepare();
-      const results = await matchRows(tx, tenantId, norm!);
+      const results = await matchRows(tx, tenantId, norm!, found!.layout.rta);
       for (const part of chunks(results)) {
-        const values = sql.join(part.map((m) => sql`(${m.rowNo}::int, ${m.state}, ${m.investorId}::uuid, ${m.folioId}::uuid, ${m.rule}, ${m.exception}, ${m.reason})`), sql`, `);
+        const values = sql.join(part.map((m) => sql`(${m.rowNo}::int, ${m.state}, ${m.investorId}::uuid, ${m.folioId}::uuid, ${m.rule}, ${m.exception}, ${m.reason}, ${m.proposal ? JSON.stringify(m.proposal) : null}::jsonb)`), sql`, `);
         await tx.execute(sql`
           UPDATE rta_staging_rows r
              SET state = v.state, match_investor_id = v.inv, match_folio_id = v.fol, match_rule = v.rule,
-                 exception_code = COALESCE(v.exc, r.exception_code), reason = COALESCE(v.reason, r.reason), updated_at = now()
-            FROM (VALUES ${values}) AS v(row_no, state, inv, fol, rule, exc, reason)
+                 exception_code = COALESCE(v.exc, r.exception_code), reason = COALESCE(v.reason, r.reason),
+                 attrs = CASE WHEN v.prop IS NULL THEN r.attrs ELSE r.attrs || jsonb_build_object('proposedOwner', v.prop) END,
+                 updated_at = now()
+            FROM (VALUES ${values}) AS v(row_no, state, inv, fol, rule, exc, reason, prop)
            WHERE r.tenant_id = ${tenantId}::uuid AND r.batch_id = ${batchId}::uuid AND r.row_no = v.row_no AND r.state <> 'invalid'
         `);
       }
@@ -292,57 +295,47 @@ function rowValues(tenantId: string, batchId: string, r: NormRow): typeof rtaSta
 
 // ── Matching ─────────────────────────────────────────────────────────────────
 
-type Match = { rowNo: number; state: "matched" | "unmatched" | "ambiguous"; investorId: string | null; folioId: string | null; rule: string; exception: string | null; reason: string | null };
+type Match = {
+  rowNo: number; state: "matched" | "unmatched" | "ambiguous"; investorId: string | null; folioId: string | null;
+  rule: string; exception: string | null; reason: string | null; proposal: Record<string, unknown> | null;
+};
 
 /**
- * Who each row belongs to, by the importer's own rules (lib/rta/identity.ts),
- * read-only. Ownership is never changed: a folio held by a PAN-less
- * placeholder stays a finding (automatic reassignment remains disabled), and a
- * folio whose owner disagrees with the row's PAN is held, not re-pointed.
+ * Who owns each row's folio — lib/rta/owner.ts (the owner decisions of
+ * 2026-10-08), read-only. The folio on record (registrar + AMC + folio) comes
+ * first; then the legal owner's OWN PAN; a minor without a PAN gets a
+ * provisional folio-keyed owner with the guardian as a link — the guardian's
+ * PAN never makes the guardian the owner. Ownership is never changed: a
+ * conflict is an exception for review (automatic reassignment stays off).
  */
-async function matchRows(tx: Tx, tenantId: string, rows: NormRow[]): Promise<Match[]> {
+async function matchRows(tx: Tx, tenantId: string, rows: NormRow[], rta: string): Promise<Match[]> {
   const dir = new InvestorDirectory(tx, tenantId);
   const live = rows.filter((r) => r.valid);
-  await dir.preload({ pans: live.flatMap((r) => [r.pan, r.guardianPan]), folios: live.map((r) => r.folioNumber) });
+  await dir.preload({ pans: live.flatMap((r) => [r.owner?.ownerPan, r.owner?.guardianPan]), folios: live.map((r) => r.folioNumber) });
+  const owners = new InvestorOwnerDirectory(dir);
   const out: Match[] = [];
   for (const r of live) {
-    const base = { rowNo: r.rowNo, investorId: null, folioId: null, exception: null, reason: null };
-    const folio = r.folioNumber ? await dir.byFolio(r.folioNumber, r.amcCode) : ({ kind: "none" } as const);
-    const rowPan = validPan(r.pan);
-    const byPan = rowPan ? await dir.byPan(rowPan) : ({ kind: "none" } as const);
-    const byGuardian = validPan(r.guardianPan) ? await dir.byPan(r.guardianPan) : ({ kind: "none" } as const);
-
-    if (folio.kind === "blocked" || folio.kind === "ambiguous") {
-      out.push({ ...base, state: "ambiguous", rule: `folio_${folio.kind}`, exception: `identity_${folio.kind}`, reason: folio.reason });
-      continue;
+    const base = { rowNo: r.rowNo, investorId: null, folioId: null, exception: null, reason: null, proposal: null };
+    if (!r.folioNumber || !r.owner) { out.push({ ...base, state: "unmatched", rule: "no_folio" }); continue; }
+    const d = await resolveOwner(owners, { rta, amcCode: r.amcCode, folioNumber: r.folioNumber }, r.owner);
+    switch (d.kind) {
+      case "existing_folio_owner":
+        out.push({ ...base, state: "matched", investorId: d.investorId, folioId: d.folioId, rule: `existing_folio_owner:${d.rule}` });
+        break;
+      case "owner_by_pan":
+        out.push({ ...base, state: "matched", investorId: d.investorId, rule: `owner_by_pan:${d.rule}`, proposal: { newFolio: true } });
+        break;
+      case "new_owner_by_pan":
+        out.push({ ...base, state: "unmatched", rule: `new_owner_by_pan:${d.ownerType}`, proposal: { newOwner: d.ownerType } });
+        break;
+      case "new_provisional_owner":
+        out.push({ ...base, state: "unmatched", rule: `new_provisional_owner:${d.rule}`,
+          proposal: { newOwner: d.ownerType, provisional: true, guardianInvestorId: d.guardianInvestorId } });
+        break;
+      case "exception":
+        out.push({ ...base, state: "ambiguous", investorId: d.investorId ?? null, rule: `exception:${d.code}`, exception: d.code, reason: d.reason });
+        break;
     }
-    if (folio.kind === "found") {
-      const owner = folio.id;
-      const folioId = (folio as { folioId?: string }).folioId ?? null;
-      if (dir.isPlaceholder(owner) && rowPan) {
-        out.push({ ...base, state: "ambiguous", investorId: owner, folioId, rule: "folio_placeholder", exception: "placeholder_owner",
-          reason: "the folio is held by a PAN-less placeholder client and this row names a PAN — automatic reassignment is disabled; held for review" });
-        continue;
-      }
-      if (!rowPan) { out.push({ ...base, state: "matched", investorId: owner, folioId, rule: "folio" }); continue; }
-      if (byPan.kind === "found" && byPan.id === owner) { out.push({ ...base, state: "matched", investorId: owner, folioId, rule: "folio+pan" }); continue; }
-      if (byPan.kind === "found" && dir.isGuardianOf(byPan.id, owner)) { out.push({ ...base, state: "matched", investorId: owner, folioId, rule: "folio+guardian_pan" }); continue; }
-      if (byGuardian.kind === "found" && dir.isGuardianOf(byGuardian.id, owner)) { out.push({ ...base, state: "matched", investorId: owner, folioId, rule: "folio+guardian_pan" }); continue; }
-      if (byPan.kind === "none") {
-        const res = await dir.resolve({ pan: rowPan, folioNumber: r.folioNumber, amcCode: r.amcCode });
-        if (res.kind === "found" && res.id === owner) { out.push({ ...base, state: "matched", investorId: owner, folioId, rule: "folio" }); continue; }
-      }
-      out.push({ ...base, state: "ambiguous", investorId: owner, folioId, rule: "folio_pan_conflict", exception: "identity_folio_pan_conflict",
-        reason: "the folio is filed under a different client than the row's PAN — held for review, nothing reassigned" });
-      continue;
-    }
-    // Folio not in the CRM yet.
-    if (byPan.kind === "found") { out.push({ ...base, state: "matched", investorId: byPan.id, rule: "pan_only" }); continue; }
-    if (byPan.kind === "blocked" || byPan.kind === "ambiguous") {
-      out.push({ ...base, state: "ambiguous", rule: `pan_${byPan.kind}`, exception: `identity_${byPan.kind}`, reason: byPan.reason });
-      continue;
-    }
-    out.push({ ...base, state: "unmatched", rule: "no_client" });
   }
   return out;
 }
