@@ -73,6 +73,8 @@ describe.skipIf(!TEST_DB)("validate-first import + development posting (DB)", ()
     vf = await import("@/lib/rta/posting/validate-first");
     gate = await import("@/lib/rta/posting/gate");
     post = await import("@/lib/rta/posting/post");
+    // Migration 0236 installs posting HALTED; a development database releases it (two people).
+    await (await import("@/lib/rta/posting/controls")).setPostingHalt({ scope: "global", halted: false, reason: "development test database: posting released", changedBy: randomUUID(), approvedBy: randomUUID() });
     await withSystem(async (tx) => {
       for (const [id, n] of [[tE, "E"], [tH, "H"], [tX, "X"]] as const) {
         await tx.execute(sql`INSERT INTO tenants (id, legal_name, display_name, arn) VALUES (${id}::uuid, ${"VF " + n}, ${"VF " + n}, ${"ARN-VF" + n + id.slice(0, 6)})`);
@@ -133,15 +135,17 @@ describe.skipIf(!TEST_DB)("validate-first import + development posting (DB)", ()
     expect(gate.postingGateEnv({ ...process.env, RTA_POSTING_MODE: "development" }).allowed).toBe(true);
   });
 
-  it("empty firm, transactions BEFORE the master: everything held (no client created); after the master, a re-import posts once", async () => {
+  it("empty firm, transactions BEFORE the master: everything held (no client created); the master's arrival promotes them once; a re-import adds nothing", async () => {
     const file = mfsd201([sip("200001", { "Folio Number": "92100001" }), sip("200002", { "Folio Number": "92100001", "Transaction Date": "15/5/2026" })]);
     const first = await run(tE, file, "early.csv");
     expect(first.posting).toMatchObject({ state: "partially_posted", counts: { quarantined: 2 } });
     expect(await txns(tE)).toEqual([]);
     const master = await run(tE, m211([{ Folio: "92100001", "PAN Number": P.adult }]), "m211.csv");
     expect(master.posting).toMatchObject({ state: "posted" });
+    // Phase 3G: the master's arrival re-evaluates what was held for its folio — no re-import needed.
+    expect(master.reevaluation).toMatchObject({ examined: 2, promoted: 2 });
     const again = await run(tE, file, "early-again.csv");
-    expect(again.posting).toMatchObject({ counts: { posted: 2 } });
+    expect(again.posting).toMatchObject({ counts: { already_posted: 2 } });
     expect((await txns(tE)).map((t) => [t.order_id, t.status, Number(t.amount)])).toEqual([["200001", "processed", 1000], ["200002", "processed", 1000]]);
   });
 
@@ -379,6 +383,16 @@ describe.skipIf(!TEST_DB)("validate-first import + development posting (DB)", ()
     // The SIP book cache counts only the verified active one.
     const [cache] = await q(tE, sql`SELECT active_sip_amount::int AS a FROM investors WHERE id = ${client.id}::uuid`);
     expect(cache.a).toBe(1000);
+    // Completeness: the book is said to be partial, with the reasons, per registrar and ARN.
+    const { getSipBookCompleteness } = await import("@/lib/metrics/sip-completeness");
+    const cov = await withTenant(tE, (tx) => getSipBookCompleteness(tx, tE));
+    expect(cov.complete).toBe(false);
+    expect(cov.totals).toMatchObject({ verifiedActive: { count: 3, inBook: 1 }, pending: { count: 1, inBook: 1 } }); // verified by the registrar; only 1 has an owner and no CRM conflict, so the book shows 1
+    expect(cov.totals.unknown).toBeGreaterThanOrEqual(1);
+    expect(cov.totals.observed.count).toBeGreaterThanOrEqual(1);
+    expect(cov.lastVerifiedStatus.kfintech).toBe("2026-10-01");
+    expect(cov.reports).toEqual([expect.objectContaining({ report: "MFSD243", statesLifecycle: true, registeredTo: "2026-10-01" })]);
+    expect(cov.reasons.join(" ")).toMatch(/no verified status/);
     // Re-running is idempotent.
     const { rebuildSipBook } = await import("@/lib/rta/posting/sip-book");
     const again = await rebuildSipBook(tE, { asOf: "2026-10-08" });

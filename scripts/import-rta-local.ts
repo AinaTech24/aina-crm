@@ -108,6 +108,15 @@ async function main() {
     process.exit(1);
   }
   const tenant = tenants[0];
+  // The existing importers never write for a firm on validate-first (Phase 3G).
+  if (COMMIT) {
+    const { resolvePipelineMode } = await import("@/lib/rta/staging/config");
+    const mode = await resolvePipelineMode(String(tenant.id));
+    if (mode.mode === "validate_first" || mode.mode === "validate_first_refused") {
+      console.error(`Refused: this firm's RTA pipeline mode is ${mode.mode}${mode.refused ? ` (${mode.refused})` : ""}. The existing importer does not write for it — upload the file instead.`);
+      process.exit(1);
+    }
+  }
 
   console.log(`file    : ${path.basename(FILE)} (${fs.statSync(FILE).size.toLocaleString()} bytes)`);
   console.log(`tenant  : ${tenant.name}  [${tenant.id}]  ARN ${tenant.arn ?? "(none)"}`);

@@ -123,6 +123,8 @@ export const rtaStagingEconomicTxns = pgTable(
     postingOutcome: text("posting_outcome"),
     postingReason: text("posting_reason"),
     postedAt: timestamp("posted_at", { withTimezone: true }),
+    /** Every outcome this registrar transaction has had, oldest first (migration 0236). */
+    postingHistory: jsonb("posting_history").$type<Array<Record<string, unknown>>>().notNull().default([]),
     ...timestamps,
   },
   (t) => ({
@@ -265,6 +267,8 @@ export const rtaSipRegistrations = pgTable(
     id,
     tenantId,
     registrationKey: text("registration_key").notNull(),
+    /** The ARN the registration report states (migration 0236); null when it states none. */
+    arn: text("arn"),
     rta: text("rta", { enum: ["cams", "kfintech"] }).notNull(),
     amcCode: text("amc_code"),
     registrationId: text("registration_id"),
@@ -294,4 +298,66 @@ export const rtaSipRegistrations = pgTable(
     keyUq: uniqueIndex("rta_sip_registrations_key_uidx").on(t.tenantId, t.registrationKey),
     stateIdx: index("rta_sip_registrations_state_idx").on(t.tenantId, t.state),
   }),
+);
+
+/** Kill switch per scope — 'global' or a tenant id (migration 0236). Posting needs every applicable row released. */
+export const rtaPostingControls = pgTable("rta_posting_controls", {
+  scope: text("scope").primaryKey(),
+  postingHalted: boolean("posting_halted").notNull(),
+  reason: text("reason").notNull(),
+  changedBy: uuid("changed_by"),
+  approvedBy: uuid("approved_by"),
+  changedAt: timestamp("changed_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Append-only history of the kill switch (migration 0236). */
+export const rtaPostingControlEvents = pgTable("rta_posting_control_events", {
+  id,
+  scope: text("scope").notNull(),
+  postingHalted: boolean("posting_halted").notNull(),
+  reason: text("reason").notNull(),
+  changedBy: uuid("changed_by"),
+  approvedBy: uuid("approved_by"),
+  at: timestamp("at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Per-firm pipeline activation, append-only; the current row decides the firm's mode (migration 0236). */
+export const rtaPipelineActivations = pgTable(
+  "rta_pipeline_activations",
+  {
+    id,
+    tenantId,
+    mode: text("mode", { enum: ["off", "shadow", "validate_first"] }).notNull(),
+    postingEnabled: boolean("posting_enabled").notNull().default(false),
+    reason: text("reason").notNull(),
+    approvalRef: text("approval_ref"),
+    requestedBy: uuid("requested_by"),
+    approvedBy: uuid("approved_by").notNull(),
+    effectiveFrom: timestamp("effective_from", { withTimezone: true }).defaultNow().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokedBy: uuid("revoked_by"),
+    revokeReason: text("revoke_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ tenantIdx: index("rta_pipeline_activations_tenant_idx").on(t.tenantId, t.createdAt) }),
+);
+
+/** An incorrect posting batch, reversed: every CRM row it wrote, archived whole (migration 0236). */
+export const rtaPostingReversals = pgTable(
+  "rta_posting_reversals",
+  {
+    id,
+    tenantId,
+    batchId: uuid("batch_id").notNull(),
+    reason: text("reason").notNull(),
+    requestedBy: uuid("requested_by").notNull(),
+    approvedBy: uuid("approved_by").notNull(),
+    archived: jsonb("archived").$type<Record<string, unknown[]>>().notNull(),
+    counts: jsonb("counts").$type<Record<string, number>>().notNull(),
+    reversedAt: timestamp("reversed_at", { withTimezone: true }).defaultNow().notNull(),
+    undoneAt: timestamp("undone_at", { withTimezone: true }),
+    undoneBy: uuid("undone_by"),
+  },
+  (t) => ({ batchIdx: index("rta_posting_reversals_batch_idx").on(t.tenantId, t.batchId) }),
 );

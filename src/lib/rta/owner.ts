@@ -163,6 +163,14 @@ export type KnownInvestor = {
   category: string | null;
   guardianId: string | null;
   placeholder: boolean;
+  /**
+   * Re-evaluation from staged facts (Phase 3G): staging keeps only keyed PAN
+   * tokens, so a directory that compares tokens supplies the owner's token as
+   * `panKey` and the holder type its real PAN shows as `panType`. Absent, the
+   * stored PAN is used for both, as before.
+   */
+  panKey?: string | null;
+  panType?: OwnerType | null;
 };
 
 export type Lookup =
@@ -199,9 +207,10 @@ export function provisionalOwnerKey(rta: string, amcCode: string | null, folioNu
   return `FOLIO:${rta}:${(amcCode ?? "").trim()}:${folioNumber.trim()}`;
 }
 
-const realPan = (inv: KnownInvestor | null) => validPan(inv?.pan ?? null);
+const realPan = (inv: KnownInvestor | null) => (inv && inv.panKey !== undefined ? inv.panKey : validPan(inv?.pan ?? null));
 const investorType = (inv: KnownInvestor): OwnerType =>
-  inv.isMinor || inv.category === "minor" ? "minor" : inv.category === "huf" ? "huf" : panHolderType(realPan(inv)) ?? "unknown";
+  inv.isMinor || inv.category === "minor" ? "minor" : inv.category === "huf" ? "huf"
+    : (inv.panType !== undefined ? inv.panType : panHolderType(realPan(inv))) ?? "unknown";
 
 export async function resolveOwner(
   dir: OwnerDirectory,

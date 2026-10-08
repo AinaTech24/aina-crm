@@ -665,6 +665,47 @@ evidence and the acceptance run: `docs/rta/PHASE3F_VALIDATE_FIRST.md`.
 - Re-run the real-file acceptance with the scratch harness described in the
   doc; browser check: `scripts/rta-validate-first-ui.mjs`.
 
+## RTA controlled posting — Phase 3G (PRE-PRODUCTION, not deployed)
+
+Per-firm, operator-controlled posting on a real database, plus recovery.
+Design, drills, the eight-module matrix, the file plan and the pilot
+checklist: `docs/rta/PHASE3G_PRODUCTION_READINESS.md`. Migration 0236.
+
+- **`RTA_POSTING_MODE=controlled`**: the env mode is only a ceiling; the
+  firm's current `rta_pipeline_activations` row decides (append-only, newest
+  effective wins, none = off → today's importer). Activating validate-first
+  with posting needs two platform operators (`lib/rta/posting/controls.ts`,
+  `/api/super-admin/rta-pipeline`). An activated firm whose posting cannot
+  run is `validate_first_refused` — **never** the legacy importer.
+- **Kill switch** `rta_posting_controls` (global + per firm) is installed
+  HALTED; release needs two people, halt one. The gate reads it FOR SHARE in
+  the posting transaction; halting takes the global row FOR UPDATE, so it
+  waits for the running batch. Also refused: superuser / BYPASSRLS role,
+  `app.tenant_id` ≠ the firm, the wrong `current_database()`.
+- **Every path that can import RTA data checks the mode** (worker, drop-folder
+  ingest, `scripts/import-rta-local.ts`). The generic CSV transaction import
+  does not — known, reported, unchanged.
+- **Held transactions are re-evaluated** when a master or holdings batch
+  arrives or a hold is resolved (`posting/reprocess.ts`): same commit path,
+  bounded passes, one manual task per folio for identity holds (closed when
+  settled). Every outcome is appended to `posting_history`. Never: a minor
+  merged by name or guardian PAN, an HUF row given to its Karta.
+- **Recovery** (`posting/reversal.ts`, CLI `scripts/rta-posting-recovery.ts`):
+  halt → dry run → reverse (two people; every row archived whole in
+  append-only `rta_posting_reversals`) → reconcile (five checks, all 0) →
+  re-import or undo. A flag rollback is NOT a data rollback. The reversal
+  lowers a client's last-transaction date only when the batch set it (a
+  registrar master can set it too).
+- **Request paths enqueue with `addWithin` on `Q.rtaImportProducer()`** (offline
+  buffer off): Redis down → 503 and no job, never a job that runs later.
+- **SIP completeness** (`lib/metrics/sip-completeness.ts`): verified /
+  observed / unknown per registrar × ARN with report periods — the Active SIP
+  Book is never presented as the whole book.
+- Read-only checks: `scripts/rta-historical-diagnostics.ts` (aggregates, masked
+  examples, proposed repairs — executes none) and `scripts/rta-infra-check.ts`
+  (real Next / Chromium / S3-compatible store / Redis / worker processes,
+  synthetic data, local URLs only).
+
 ## Webhook handlers
 
 | Provider | Path | Verifies |

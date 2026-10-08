@@ -54,7 +54,7 @@ export type MasterPostResult = {
 
 export async function postMasterBatch(tenantId: string, batchId: string, file: { name: string; buf: Uint8Array }, opts: { userId?: string | null; importId?: string | null } = {}): Promise<MasterPostResult> {
   return withTenant(tenantId, async (tx: Tx) => {
-    await assertPostingAllowed(tx);
+    await assertPostingAllowed(tx, tenantId);
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"rta_posting:" + tenantId}, 0))`);
     const b = (await tx.execute(sql`
       SELECT id, state, record_kind, report_code, posting_state, posting_counts, as_of_date::text AS as_of FROM rta_staging_batches
@@ -133,6 +133,11 @@ export async function postMasterBatch(tenantId: string, batchId: string, file: {
     await tx.execute(sql`
       UPDATE rta_staging_batches SET posting_state = ${state}, posted_at = now(), posting_counts = ${JSON.stringify(counts)}::jsonb, updated_at = now()
        WHERE tenant_id = ${tenantId}::uuid AND id = ${batchId}::uuid`);
+    // Operator / file audit trail: one row per committed posting run, in the same transaction.
+    await tx.execute(sql`
+      INSERT INTO audit_log (tenant_id, actor_user_id, actor_type, action, entity_type, entity_id, after)
+      VALUES (${tenantId}::uuid, ${opts.userId ?? null}::uuid, ${opts.userId ? "user" : "system"}, 'rta.posting.masters', 'rta_staging_batch', ${batchId}::uuid,
+              ${JSON.stringify({ state, folios: counts.folios, holders: counts.holders, reviews: counts.reviews, importId: opts.importId ?? null })}::jsonb)`);
     if (opts.importId) {
       await tx.execute(sql`
         UPDATE rta_file_imports SET status = ${state === "posted" ? "completed" : records.length ? "partial" : "failed"}, parsed_at = now(),

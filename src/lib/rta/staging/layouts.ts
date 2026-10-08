@@ -264,12 +264,14 @@ const REGISTRATION_COLS: Record<"cams.wbr49" | "kfintech.mfsd243" | "kfintech.mf
   amc: string; folio: string; scheme: string; id: string | null; amount: string; start: string; end: string; reg: string;
   kind: string; freq: string; status: string | null; cease: string | null; terminate: string | null; pauseFrom: string | null; pauseTo: string | null;
   target: string[]; installments: string | null; paid: string | null; pan: string | null;
+  /** The distributor code the row is reported under; WBR49 carries none (one report per ARN mailback). */
+  arn: string | null;
 }> = {
-  "cams.wbr49": { amc: "amc_code", folio: "folio_no", scheme: "product", id: "auto_trno", amount: "auto_amount", start: "from_date", end: "to_date", reg: "reg_date", kind: "aut_trntyp", freq: "periodicity", status: null, cease: "cease_date", terminate: null, pauseFrom: "pause_from_date", pauseTo: "pause_to_date", target: ["target_scheme_code"], installments: null, paid: null, pan: "pan" },
-  "kfintech.mfsd243": { amc: "Fund Code", folio: "Folio", scheme: "Product Code", id: "RegSlno", amount: "Amount", start: "Start Date", end: "End Date", reg: "RegistrationDate", kind: "Trtype", freq: "Frequency", status: "Status", cease: null, terminate: "TerminateDate", pauseFrom: null, pauseTo: null, target: ["ToProductCode"], installments: "No Of Installments", paid: null, pan: "PAN" },
+  "cams.wbr49": { amc: "amc_code", folio: "folio_no", scheme: "product", id: "auto_trno", amount: "auto_amount", start: "from_date", end: "to_date", reg: "reg_date", kind: "aut_trntyp", freq: "periodicity", status: null, cease: "cease_date", terminate: null, pauseFrom: "pause_from_date", pauseTo: "pause_to_date", target: ["target_scheme_code"], installments: null, paid: null, pan: "pan", arn: null },
+  "kfintech.mfsd243": { amc: "Fund Code", folio: "Folio", scheme: "Product Code", id: "RegSlno", amount: "Amount", start: "Start Date", end: "End Date", reg: "RegistrationDate", kind: "Trtype", freq: "Frequency", status: "Status", cease: null, terminate: "TerminateDate", pauseFrom: null, pauseTo: null, target: ["ToProductCode"], installments: "No Of Installments", paid: null, pan: "PAN", arn: "AgentCode" },
   // MFSD230 carries no registration id and no status (verified): its rows can be
   // described but not keyed or given a lifecycle state.
-  "kfintech.mfsd230": { amc: "Fund", folio: "Acno", scheme: "Prodcode", id: null, amount: "AMOUNT", start: "STARTDATE", end: "ENDDATE", reg: "RegDate", kind: "TrType", freq: "Freq", status: null, cease: null, terminate: null, pauseFrom: null, pauseTo: null, target: ["STPInScheme", "StpInPlan"], installments: "INSTALNO", paid: "PAIDINST", pan: null },
+  "kfintech.mfsd230": { amc: "Fund", folio: "Acno", scheme: "Prodcode", id: null, amount: "AMOUNT", start: "STARTDATE", end: "ENDDATE", reg: "RegDate", kind: "TrType", freq: "Freq", status: null, cease: null, terminate: null, pauseFrom: null, pauseTo: null, target: ["STPInScheme", "StpInPlan"], installments: "INSTALNO", paid: "PAIDINST", pan: null, arn: "Agent" },
 };
 
 const R2_INVARIANTS = ["amc_code", "folio_no", "prodcode", "trxnno", "traddate", "postdate", "trxntype", "trxn_type_flag", "trxn_nature", "purprice", "pan", "brokcode"];
@@ -473,6 +475,7 @@ export function normalizeRows(tenantId: string, layout: Layout, header: string[]
           target: L.target.map((t) => c(t)).filter(Boolean).join("-") || undefined,
           installments: L.installments ? c(L.installments) || undefined : undefined,
           paidInstallments: L.paid ? c(L.paid) || undefined : undefined,
+          arn: L.arn ? c(L.arn) || undefined : undefined,
           hasRegistrationId: !!n.registrarTxnNo,
         };
         break;

@@ -23,12 +23,14 @@ import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { CLASS_META, type RtaClass } from "../staging/classify";
 import { assertPostingAllowed } from "./gate";
+import { recordOutcome } from "./post";
+import { reprocessHeldTransactions } from "./reprocess";
 import { panToken } from "../staging/pan-token";
 import { validPan } from "../values";
 
 type Tx = any;
 
-const RESOLVABLE = /^(owner_not_on_record|folio_owned_by_guardian|owner_type_conflict|folio_pan_conflict|placeholder_owner|huf_owner_pan_unverified|pan_matches_minor_record|identity_blocked|identity_ambiguous|identity_split)\b/;
+const RESOLVABLE = /^(owner_not_on_record|folio_owner_conflict|folio_owned_by_guardian|owner_type_conflict|folio_pan_conflict|placeholder_owner|huf_owner_pan_unverified|pan_matches_minor_record|identity_blocked|identity_ambiguous|identity_split)\b/;
 
 /** Can a person settle this hold by choosing a client? (The same rule the resolver enforces.) */
 export function isResolvable(e: { posting_outcome: string | null; posting_reason: string | null; reason: string | null; status: string }): boolean {
@@ -49,8 +51,8 @@ export async function resolveHeldTransaction(
   decision: { investorId: string; note: string; userId: string },
 ): Promise<{ transactionId: string }> {
   if (!decision.note?.trim()) throw new ResolutionError("a reason for the decision is required");
-  return withTenant(tenantId, async (tx: Tx) => {
-    await assertPostingAllowed(tx);
+  const done = await withTenant(tenantId, async (tx: Tx) => {
+    await assertPostingAllowed(tx, tenantId);
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"rta_posting:" + tenantId}, 0))`);
     const e = (await tx.execute(sql`
       SELECT e.id, e.batch_id, e.identity_key, e.rta, e.amc_code, e.folio_number, e.scheme_code, e.registrar_txn_no, e.trade_date::text AS trade_date,
@@ -105,8 +107,8 @@ export async function resolveHeldTransaction(
       INSERT INTO rta_posted_transactions (tenant_id, identity_key, economic_txn_id, batch_id, kind, transaction_id, posted_by)
       VALUES (${tenantId}::uuid, ${e.identity_key}, ${e.id}::uuid, ${e.batch_id}::uuid, 'posted_new', ${t.id}::uuid, ${decision.userId}::uuid)`);
     const reason = `manually resolved: ${decision.note.trim().slice(0, 300)}`;
-    await tx.execute(sql`UPDATE rta_staging_economic_txns SET posting_outcome = 'posted', posting_reason = ${reason}, posted_at = now(), match_investor_id = ${inv.id}::uuid, match_folio_id = ${folioId}::uuid, updated_at = now() WHERE id = ${e.id}::uuid`);
-    await tx.execute(sql`UPDATE rta_staging_rows SET disposition = 'posted', updated_at = now() WHERE tenant_id = ${tenantId}::uuid AND economic_txn_id = ${e.id}::uuid`);
+    await tx.execute(sql`UPDATE rta_staging_economic_txns SET match_investor_id = ${inv.id}::uuid, match_folio_id = ${folioId}::uuid WHERE tenant_id = ${tenantId}::uuid AND id = ${e.id}::uuid`);
+    await recordOutcome(tx, tenantId, e.id, "posted", reason, { by: decision.userId, via: "manual_resolution", extra: { investorId: inv.id, folioId } });
     // Written directly, not through recordAudit (which swallows a failed
     // insert): a resolution that cannot be audited does not happen.
     await tx.execute(sql`
@@ -114,6 +116,9 @@ export async function resolveHeldTransaction(
       VALUES (${tenantId}::uuid, ${decision.userId}::uuid, 'user', 'rta.identity.resolve', 'rta_economic_transaction', ${e.id}::uuid,
               ${JSON.stringify({ postingOutcome: e.posting_outcome, heldFor: ex.split(":")[0] })}::jsonb,
               ${JSON.stringify({ investorId: inv.id, folioId, transactionId: t.id })}::jsonb, ${decision.note.trim().slice(0, 500)})`);
-    return { transactionId: t.id };
+    return { transactionId: t.id, amcCode: e.amc_code as string | null, folioNumber: e.folio_number as string };
   });
+  // The folio's other transactions held only because this one was (held_dependent) can follow now.
+  await reprocessHeldTransactions(tenantId, { folios: [{ amcCode: done.amcCode, folioNumber: done.folioNumber }], userId: decision.userId });
+  return { transactionId: done.transactionId };
 }

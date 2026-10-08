@@ -59,3 +59,4 @@ export * from "./work-summary";
 export * from "./insurance-mix";
 export * from "./opportunities";
 export * from "./registrar-aum";
+export * from "./sip-completeness";

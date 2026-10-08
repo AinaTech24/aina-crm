@@ -28,6 +28,19 @@ import { postingGateEnv, PostingGateError } from "./gate";
 import { postTransactionBatch, type PostResult } from "./post";
 import { postMasterBatch, type MasterPostResult } from "./masters";
 import { rebuildSipBook, type SipBookOutcome } from "./sip-book";
+import { reprocessHeldTransactions, type ReprocessResult } from "./reprocess";
+
+/**
+ * Another worker holds the batch's staging lease — typically a worker that
+ * died mid-stage. Not a validation failure: the job is retried once the lease
+ * can have expired (the worker re-delays the queue job).
+ */
+export class RetryLaterError extends Error {
+  constructor(message: string, public retryAt: Date) {
+    super(message);
+    this.name = "RetryLaterError";
+  }
+}
 
 export type ValidateFirstResult = {
   batchId: string;
@@ -35,6 +48,8 @@ export type ValidateFirstResult = {
   recordKind: string | null;
   posting: PostResult | MasterPostResult | SipBookOutcome | null;
   resumed: boolean;
+  /** Held transactions on this file's folios, re-evaluated after it posted. */
+  reevaluation?: ReprocessResult | null;
 };
 
 export async function validateFirstImport(args: {
@@ -60,18 +75,30 @@ export async function validateFirstImport(args: {
     batchId = await createShadowBatch({ tenantId: args.tenantId, importId: args.importId, fileName: args.fileName, fileRef: args.fileRef, buf: args.buf, createdBy: args.createdBy ?? null, mode: "validate_first" });
   }
   const staged = await runShadowBatch(args.tenantId, batchId, args.buf);
+  if (staged.busy) {
+    const lease = await withTenant(args.tenantId, (tx) => tx.select({ until: rtaStagingBatches.leaseUntil }).from(rtaStagingBatches)
+      .where(and(eq(rtaStagingBatches.tenantId, args.tenantId), eq(rtaStagingBatches.id, batchId!))));
+    const until = lease[0]?.until ?? new Date(Date.now() + 60_000);
+    throw new RetryLaterError(`staging batch ${batchId} is held by another worker until ${until.toISOString()} — retrying after that`, new Date(until.getTime() + 5_000));
+  }
   const kind = (await withTenant(args.tenantId, (tx) => tx.select({ k: rtaStagingBatches.recordKind }).from(rtaStagingBatches)
     .where(and(eq(rtaStagingBatches.tenantId, args.tenantId), eq(rtaStagingBatches.id, batchId!)))))[0]?.k ?? null;
   if (!["ready_to_commit", "exception"].includes(staged.state)) {
     return { batchId, stagingState: staged.state, recordKind: kind, posting: null, resumed };
   }
   let posting: ValidateFirstResult["posting"] = null;
+  let reevaluation: ReprocessResult | null = null;
   if (kind === "transaction") {
     posting = await postTransactionBatch(args.tenantId, batchId, { partial: args.partial ?? "independent", userId: args.createdBy, importId: args.importId, failAfterWrites: args.failAfterWrites });
+    // A transaction posted by the owner's own PAN can open a folio that earlier files' held transactions were waiting on.
+    reevaluation = await reprocessHeldTransactions(args.tenantId, { folios: await batchFolios(args.tenantId, batchId), userId: args.createdBy, triggerBatchId: batchId });
     // Instalments move the SIP Master too.
     await rebuildSipBook(args.tenantId, { asOf: args.asOf, userId: args.createdBy });
   } else if (kind === "master" || kind === "holding") {
     posting = await postMasterBatch(args.tenantId, batchId, { name: args.fileName, buf: args.buf }, { userId: args.createdBy, importId: args.importId });
+    // The authoritative master has arrived: re-evaluate what was held waiting for these folios —
+    // and for these owners (a held transaction on another folio naming the owner's own PAN).
+    reevaluation = await reprocessHeldTransactions(args.tenantId, { folios: await batchFolios(args.tenantId, batchId), ownerTokens: await batchOwnerTokens(args.tenantId, batchId), userId: args.createdBy, triggerBatchId: batchId });
   } else if (kind === "registration") {
     const book = await rebuildSipBook(args.tenantId, { asOf: args.asOf, userId: args.createdBy });
     posting = book;
@@ -94,5 +121,20 @@ export async function validateFirstImport(args: {
       }
     });
   }
-  return { batchId, stagingState: staged.state, recordKind: kind, posting, resumed };
+  return { batchId, stagingState: staged.state, recordKind: kind, posting, resumed, reevaluation };
+}
+
+/** The owners' own PAN tokens a staged master batch carries (never a guardian's: staging stores the legal owner's token). */
+async function batchOwnerTokens(tenantId: string, batchId: string): Promise<string[]> {
+  return withTenant(tenantId, async (tx) => ((await tx.execute(sql`
+    SELECT DISTINCT pan_token FROM rta_staging_rows WHERE tenant_id = ${tenantId}::uuid AND batch_id = ${batchId}::uuid AND pan_token IS NOT NULL`)).rows as Array<{ pan_token: string }>)
+    .map((r) => r.pan_token));
+}
+
+/** The (AMC, folio) pairs a staged batch touched. */
+async function batchFolios(tenantId: string, batchId: string): Promise<Array<{ amcCode: string | null; folioNumber: string }>> {
+  return withTenant(tenantId, async (tx) => ((await tx.execute(sql`
+    SELECT DISTINCT amc_code, folio_number FROM rta_staging_rows
+     WHERE tenant_id = ${tenantId}::uuid AND batch_id = ${batchId}::uuid AND folio_number IS NOT NULL`)).rows as Array<{ amc_code: string | null; folio_number: string }>)
+    .map((r) => ({ amcCode: r.amc_code, folioNumber: r.folio_number })));
 }

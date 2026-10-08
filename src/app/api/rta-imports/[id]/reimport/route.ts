@@ -31,7 +31,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 import { getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { assertRtaImportAccess, isUuid, RTA_IMPORT_CAPABILITY } from "@/lib/rta/import-access";
-import { Q } from "@/workers/queues";
+import { Q, addWithin } from "@/workers/queues";
 
 export const dynamic = "force-dynamic";
 
@@ -139,10 +139,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // mailboxes for humans, they do not route, and they get mixed up in practice.
     const passwords = passwordsToTry(cfg, row.source);
 
-    const opts = { attempts: 1, removeOnComplete: true, removeOnFail: { age: 3600 } } as const;
+    // Retries cover infrastructure failures only (a bad file is recorded on the row and does not throw); every path is idempotent.
+    const opts = { attempts: 3, backoff: { type: "exponential", delay: 5000 }, removeOnComplete: true, removeOnFail: { age: 3600 } } as const;
     try {
       if (RICH_KINDS.has(row.kind)) {
-        await Q.rtaImport().add(
+        await addWithin(Q.rtaImportProducer(),
           "rich-import",
           {
             mode: "rich", importId: row.id, tenantId: session.tenantId,
@@ -153,7 +154,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           opts
         );
       } else {
-        await Q.rtaImport().add(
+        await addWithin(Q.rtaImportProducer(),
           "import",
           {
             importId: row.id, tenantId: session.tenantId, source: row.source, kind: row.kind,

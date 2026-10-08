@@ -23,7 +23,7 @@
  * UI poll resolves instead of spinning forever.
  */
 
-import { Worker } from "bullmq";
+import { DelayedError, Worker } from "bullmq";
 import IORedis from "ioredis";
 import { createHash } from "crypto";
 import { sql } from "drizzle-orm";
@@ -42,7 +42,7 @@ import { captureError } from "@/lib/observability/capture";
 import { parseRtaCsv, parseRtaRows } from "@/lib/rta";
 import { Q } from "./queues";
 import { importRtaFolios, type RtaImportSummary } from "@/lib/rta/import";
-import { rtaPipelineMode, runShadowForImport } from "@/lib/rta/staging";
+import { resolvePipelineMode, runShadowForImport } from "@/lib/rta/staging";
 import { isSpreadsheet, readSpreadsheetToRows } from "@/lib/rta/xls";
 import { RICH_KINDS } from "@/lib/rta/classify-mailback";
 import { getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config";
@@ -379,6 +379,8 @@ async function runValidateFirstForJob(
          WHERE tenant_id = ${a.tenantId}::uuid AND id = ${a.importId}::uuid`));
     }
   } catch (e: any) {
+    // A held lease is not a failure: the queue retries the job after it.
+    if (e?.name === "RetryLaterError") throw e;
     await fail(maskPansInText(String(e?.message ?? "validate-first import failed")));
   }
 }
@@ -434,7 +436,7 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
   // VALIDATE-FIRST (Phase 3F, development only): stage and validate the whole
   // file BEFORE anything financial is written; the existing processor below
   // never runs. A refused gate fails the import closed — never a fallback.
-  const vfMode = rtaPipelineMode(tenantId);
+  const vfMode = await resolvePipelineMode(tenantId);
   if (vfMode.mode === "validate_first_refused") {
     await markFailed(job, vfMode.refused ?? "validate-first refused", { checksum, sizeBytes: buf.length });
     return;
@@ -459,7 +461,7 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
   }
   // RTA_PIPELINE_MODE=shadow keeps the decoded file for the staging pipeline,
   // which runs AFTER this import has finished (below) and cannot change it.
-  const shadowBytes = rtaPipelineMode(tenantId).mode === "shadow" ? opened.data : null;
+  const shadowBytes = vfMode.mode === "shadow" ? opened.data : null;
   const shadowName = opened.filename;
   // Free the large buffers before the (memory-heavy) parse so they can be GC'd.
   opened.data = new Uint8Array(0);
@@ -756,7 +758,7 @@ async function computeRichImport(
   const opened = await openUpload(buf, job.filename, candidatePasswords(job));
   if (!opened.ok) return { ok: false, notOurs: opened.rejected, error: opened.message };
   // VALIDATE-FIRST (see runRtaImportJob): the importer below never runs on an unvalidated file.
-  const vfMode = job.dryRun ? { mode: "off" as const } : rtaPipelineMode(job.tenantId);
+  const vfMode: { mode: string; refused?: string } = job.dryRun ? { mode: "off" } : await resolvePipelineMode(job.tenantId);
   if (vfMode.mode === "validate_first_refused") return { ok: false, error: vfMode.refused ?? "validate-first refused" };
   if (vfMode.mode === "validate_first") {
     let failure: string | null = null;
@@ -775,7 +777,7 @@ async function computeRichImport(
   const parsed = isSpreadsheet(data, innerName)
     ? parseRtaRows(readSpreadsheetToRows(data, innerName))
     : parseRtaCsv(decodeTextBytes(data));
-  const shadowBytes = !job.dryRun && rtaPipelineMode(job.tenantId).mode === "shadow" ? data : null;
+  const shadowBytes = !job.dryRun && vfMode.mode === "shadow" ? data : null;
   data = new Uint8Array(0);
 
   if (parsed.source === "unknown" || parsed.folios.length === 0) {
@@ -893,6 +895,7 @@ export async function runRichImportJob(
   try {
     result = await computeRichImport(job, report);
   } catch (e: any) {
+    if (e?.name === "RetryLaterError") throw e; // the queue retries it (see the worker)
     captureError("[rta-import] rich import threw", maskedError(e), { tenantId: job.tenantId, importId: job.importId });
     result = { ok: false, error: e?.message ? `Import failed: ${e.message}` : "Import failed unexpectedly." };
   }
@@ -1124,7 +1127,7 @@ export function startRtaImportWorker() {
 
   const worker = new Worker(
     "rta.import",
-    (job) => withJobTimeout(`[rta-import] job ${job.id}`, async () => {
+    (job, token) => withJobTimeout(`[rta-import] job ${job.id}`, async () => {
       const localKey = (job.data as any)?.key as string | undefined;
       // Idempotency: if a worker restart left this job 'stalled' and BullMQ is
       // re-running it after the import already finished, do NOT reprocess — that
@@ -1134,6 +1137,19 @@ export function startRtaImportWorker() {
         if (localKey) await deleteObject(localKey).catch(() => {});
         return;
       }
+      try {
+        return await runJob();
+      } catch (e: any) {
+        // Validate-first found its staging batch leased by a worker that is
+        // gone (or still running): retry this job once the lease has expired,
+        // instead of failing an import that has done nothing wrong.
+        if (e?.name === "RetryLaterError" && token) {
+          await job.moveToDelayed(Math.max(Date.now() + 1_000, (e.retryAt as Date).getTime()), token);
+          throw new DelayedError();
+        }
+        throw e;
+      }
+      async function runJob() {
       try {
         // A rescan queues OTHER jobs rather than importing anything itself, so
         // it must be dispatched before the import paths (it carries no key).
@@ -1180,6 +1196,7 @@ export function startRtaImportWorker() {
             await deleteObject(localKey).catch(() => {});
           }
         }
+      }
       }
     }),
     { connection, concurrency: 1 } // one heavy parse at a time — bounds peak memory

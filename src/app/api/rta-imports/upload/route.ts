@@ -8,7 +8,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { RTA_FILE_KINDS, RTA_SOURCES } from "@/db/schema/rta_imports";
 import { getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config";
-import { Q } from "@/workers/queues";
+import { Q, addWithin, QueueUnavailableError } from "@/workers/queues";
 import { RTA_FILE_TYPE_BY_KIND } from "@/lib/rta/file-types";
 import { handleApiError } from "@/lib/api/error-handler";
 import { requireRtaImportAccess, RTA_IMPORT_CAPABILITY } from "@/lib/rta/import-access";
@@ -180,7 +180,8 @@ async function upload(req: NextRequest) {
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   ).catch(() => [] as string[]);
 
-  await Q.rtaImport().add(
+  try {
+  await addWithin(Q.rtaImportProducer(),
     useRich ? "rich-import" : "import",
     useRich
       ? {
@@ -213,11 +214,22 @@ async function upload(req: NextRequest) {
           roles: session.roles,
         },
     {
-      attempts: 1,
+      // Retries cover infrastructure failures only (a bad file is recorded on the row and does not throw); every path is idempotent.
+      attempts: 3,
+      backoff: { type: "exponential", delay: 5000 },
       removeOnComplete: true,
       removeOnFail: { age: 3600 },
     }
   );
+  } catch (e) {
+    if (!(e instanceof QueueUnavailableError)) throw e;
+    // Redis is down: say so on the row (the file is stored — a re-run imports it) instead of hanging the upload.
+    await withTenant(session.tenantId, (tx) => tx.execute(sql`
+      UPDATE rta_file_imports SET status = 'failed', parsed_at = now(),
+             remarks = 'The import queue was unavailable when this file was uploaded. The file is saved — re-run it from RTA File Imports.'
+       WHERE tenant_id = ${session.tenantId}::uuid AND id = ${importId}::uuid`), { userId: session.userId, branchId: session.branchId, roles: session.roles });
+    return NextResponse.json({ error: e.message, importId, status: "failed" }, { status: 503 });
+  }
 
   // Audit the ingestion request — RTA files populate transactions / AUM /
   // brokerage, a regulated action that must leave a trail. Outcome counters

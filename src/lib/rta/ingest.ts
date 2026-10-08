@@ -19,6 +19,7 @@
  *     Moving feed-ingest.ts to `ingestRtaFile` lifts that restriction.
  */
 
+import { resolvePipelineMode } from "./staging/config";
 import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
@@ -132,6 +133,18 @@ export async function ingestRtaText(tx: Tx, args: IngestArgs): Promise<IngestRes
   // A BOM read as UTF-8 survives as U+FEFF glued to the first header.
   if (args.text.charCodeAt(0) === 0xfeff) args = { ...args, text: args.text.slice(1) };
   const checksum = createHash("sha256").update(args.text, "utf8").digest("hex");
+
+  // A firm on validate-first (or refused it) never gets the existing importer
+  // from the drop folder either — that path used to ignore the pipeline mode.
+  const mode = await resolvePipelineMode(args.tenantId);
+  if (mode.mode === "validate_first" || mode.mode === "validate_first_refused") {
+    const { text, ...rest } = args;
+    const why = mode.mode === "validate_first"
+      ? "This firm imports RTA files validate-first; the drop folder does not run that path. Upload the file or let the mailbox poller take it."
+      : `Validate-first is refused for this firm (${mode.refused ?? "posting controls"}); the drop-folder file was not imported.`;
+    const importId = await recordFailedIngest(tx, rest, checksum, Buffer.byteLength(text, "utf8"), why);
+    return { importId, status: "failed", error: why };
+  }
 
   const binary = binaryTextReason(args.text);
   if (binary) {

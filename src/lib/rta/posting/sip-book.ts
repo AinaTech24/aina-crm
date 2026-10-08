@@ -43,7 +43,7 @@ const n = (v: unknown) => (s(v) && /^-?\d+$/.test(s(v)!) ? Number(s(v)) : null);
 export async function rebuildSipBook(tenantId: string, opts: { asOf?: string; userId?: string | null } = {}): Promise<SipBookOutcome> {
   const asOf = opts.asOf ?? new Date(Date.now() + 5.5 * 36e5).toISOString().slice(0, 10);
   return withTenant(tenantId, async (tx: Tx) => {
-    await assertPostingAllowed(tx);
+    await assertPostingAllowed(tx, tenantId);
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"rta_sip_book:" + tenantId}, 0))`);
 
     // Registration observations. A registration report's own date is the
@@ -96,6 +96,12 @@ export async function rebuildSipBook(tenantId: string, opts: { asOf?: string; us
     });
 
     const persisted = (e: SipMasterEntry) => (e.state === "ACTIVE" ? "VERIFIED_ACTIVE" : e.state);
+    // The ARN each registration is reported under (MFSD243 / MFSD230 state it; WBR49 does not).
+    const arnOf = new Map<string, string>();
+    for (const r of regRows) {
+      const arn = s(r.attrs?.arn);
+      if (arn && r.registrar_txn_no) arnOf.set(`${r.rta}|${r.amc_code ?? ""}|${r.registrar_txn_no}`, arn.toUpperCase().replace(/^ARN[-\s]*/, "ARN-"));
+    }
     const sips = { created: 0, updated: 0, linked: 0, conflicts: 0, notPosted: 0 };
     const touchedInvestors = new Set<string>();
     for (const e of master.entries) {
@@ -132,22 +138,23 @@ export async function rebuildSipBook(tenantId: string, opts: { asOf?: string; us
       }
       const v = {
         rta: e.rta, amc: e.amcCode, reg: e.registrationId, inv: e.owner?.investorId ?? null, fol: e.owner?.folioId ?? null,
+        arn: e.registrationId ? arnOf.get(`${e.rta}|${e.amcCode ?? ""}|${e.registrationId}`) ?? null : null,
       };
       await tx.execute(sql`
         INSERT INTO rta_sip_registrations (tenant_id, registration_key, rta, amc_code, registration_id, investor_id, folio_id, folio_number, scheme_code,
           target_scheme_code, kind, amount, frequency, start_date, end_date, state, state_basis, status_effective_date, last_successful_instalment,
-          described, confidence, lifecycle_events, sources, sip_id, as_of)
+          described, confidence, lifecycle_events, sources, sip_id, as_of, arn)
         VALUES (${tenantId}::uuid, ${e.key}, ${v.rta}, ${v.amc}, ${v.reg}, ${v.inv}::uuid, ${v.fol}::uuid, ${e.folio}, ${e.scheme},
           ${e.targetScheme}, ${e.kind}, ${e.amount}, ${e.frequency}, ${e.startDate}::date, ${e.endDate}::date, ${persisted(e)}, ${e.stateBasis},
           ${e.statusEffectiveDate}::date, ${e.lastSuccessfulInstalment}::date, ${e.described}, ${e.confidence},
-          ${JSON.stringify(e.lifecycleEvents)}::jsonb, ${JSON.stringify(e.sources)}::jsonb, ${sipId}::uuid, ${asOf}::date)
+          ${JSON.stringify(e.lifecycleEvents)}::jsonb, ${JSON.stringify(e.sources)}::jsonb, ${sipId}::uuid, ${asOf}::date, ${v.arn})
         ON CONFLICT (tenant_id, registration_key) DO UPDATE SET
           investor_id = EXCLUDED.investor_id, folio_id = EXCLUDED.folio_id, kind = EXCLUDED.kind, amount = EXCLUDED.amount,
           frequency = EXCLUDED.frequency, start_date = EXCLUDED.start_date, end_date = EXCLUDED.end_date, state = EXCLUDED.state,
           state_basis = EXCLUDED.state_basis, status_effective_date = EXCLUDED.status_effective_date,
           last_successful_instalment = EXCLUDED.last_successful_instalment, described = EXCLUDED.described, confidence = EXCLUDED.confidence,
           lifecycle_events = EXCLUDED.lifecycle_events, sources = EXCLUDED.sources, sip_id = COALESCE(EXCLUDED.sip_id, rta_sip_registrations.sip_id),
-          as_of = EXCLUDED.as_of, updated_at = now()`);
+          as_of = EXCLUDED.as_of, arn = COALESCE(EXCLUDED.arn, rta_sip_registrations.arn), updated_at = now()`);
     }
     if (touchedInvestors.size) await refreshActiveSipAmount(tx, { tenantId, investorIds: [...touchedInvestors] });
     const byState: Record<string, number> = {};

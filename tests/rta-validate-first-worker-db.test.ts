@@ -58,6 +58,8 @@ describe.skipIf(!TEST_DB)("validate-first through the worker jobs (DB)", () => {
     ({ withTenant, withSystem } = await import("@/db/client"));
     ({ sql } = await import("drizzle-orm"));
     worker = await import("@/workers/rta-import-worker");
+    // Migration 0236 installs posting HALTED; a development database releases it (two people).
+    await (await import("@/lib/rta/posting/controls")).setPostingHalt({ scope: "global", halted: false, reason: "development test database: posting released", changedBy: randomUUID(), approvedBy: randomUUID() });
     await withSystem((tx) => tx.execute(sql`INSERT INTO tenants (id, legal_name, display_name, arn) VALUES (${t}::uuid, 'VF Worker', 'VF Worker', ${"ARN-VW" + t.slice(0, 6)})`));
   });
 

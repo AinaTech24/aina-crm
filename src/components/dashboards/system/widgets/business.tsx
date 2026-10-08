@@ -28,6 +28,7 @@ import { MoneyMovementChart, type MoneyPoint } from "../MoneyMovementChart";
 import { Sparkline } from "../Sparkline";
 import { Initials } from "@/components/dashboards/my/Shared";
 import { getRegistrarAum } from "@/lib/metrics/registrar-aum";
+import { getSipBookCompleteness } from "@/lib/metrics/sip-completeness";
 import { aumCoverageNote } from "@/lib/rta/aum-view";
 
 /* ─────────────────────────────── pieces ─────────────────────────────── */
@@ -183,6 +184,11 @@ async function kpiRow(tx: Tx, ctx: WidgetCtx) {
   );
   // What the units behind the live AUM were last checked against (registrar statements).
   const coverage = aumCoverageNote((await getRegistrarAum(tx, s)).cards, (d) => formatDate(d, "dayMonth"));
+  // …and how much of the firm's SIP registrations a registrar has verified (the book counts only those).
+  const sipCover = await getSipBookCompleteness(tx, s.tenantId);
+  const sipNote = sipCover.hasMaster && !sipCover.complete
+    ? `Registrar-verified only: ${formatCount(sipCover.totals.verified)} of ${formatCount(sipCover.totals.registrations)} registrations have a verified status`
+    : null;
   const cur = biz.current;
   const prev = biz.previous;
   const bizInfo = cur
@@ -227,6 +233,7 @@ async function kpiRow(tx: Tx, ctx: WidgetCtx) {
           href={sipsHref(ctx)}
           info="Active SIPs of live clients, converted to a monthly amount. The same total as the SIP Book page."
           compare={then ? vs(sip.monthly, then.sip, `vs ${formatDate(then.date, "dayMonth")}`) : null}
+          footer={sipNote ? <span className="text-warning-foreground" title="Registrations with only recent instalments, or with no status report, are not counted. See the SIP Book page for the registrar coverage.">{sipNote}</span> : undefined}
         />
         <KpiTile
           className={ROW_OF_FOUR}

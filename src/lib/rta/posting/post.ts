@@ -75,7 +75,7 @@ const UNSUPPORTED = new Set([
 /** Exceptions that make a folio's other transactions in the batch dependent (ownership / identity not settled). */
 const TAINTS_FOLIO = /^(identity_|folio_|owner_|placeholder_|huf_|pan_matches_|group_|lot_|restated_by_registrar)/;
 
-type Econ = {
+export type Econ = {
   id: string; identity_key: string; rta: string; amc_code: string | null; folio_number: string | null; scheme_code: string | null;
   registrar_txn_no: string; trade_date: string | null; rta_class: RtaClass; direction: "inflow" | "outflow" | null; status: string;
   reason: string | null; row_count: number; lot_count: number; reported_units: string | null; reported_amount: string | null;
@@ -89,7 +89,7 @@ const abs = (v: string | null) => (v == null ? null : Math.abs(Number(v)));
 
 export async function postTransactionBatch(tenantId: string, batchId: string, opts: PostOptions = {}): Promise<PostResult> {
   return withTenant(tenantId, async (tx: Tx) => {
-    await assertPostingAllowed(tx);
+    await assertPostingAllowed(tx, tenantId);
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"rta_posting:" + tenantId}, 0))`);
 
     const b = (await tx.execute(sql`
@@ -178,103 +178,15 @@ export async function postTransactionBatch(tenantId: string, batchId: string, op
 
     for (const p of plan) {
       if (!p.write) continue;
-      const e = p.e;
-      const attrs = (e.first_attrs ?? {}) as Record<string, unknown>;
-      // The folio this posts to: the one on record; an owner_by_pan transaction may open the owner's new folio.
-      let folioId = e.match_folio_id;
-      if (!folioId) {
-        await tx.execute(sql`
-          INSERT INTO folios (tenant_id, investor_id, folio_number, amc_code, amc_name, rta)
-          VALUES (${tenantId}::uuid, ${e.match_investor_id}::uuid, ${e.folio_number}, ${e.amc_code}, ${e.amc_code}, ${e.rta})
-          ON CONFLICT (tenant_id, amc_code, folio_number) DO NOTHING`);
-        const f = (await tx.execute(sql`SELECT id, investor_id FROM folios WHERE tenant_id = ${tenantId}::uuid AND amc_code = ${e.amc_code} AND folio_number = ${e.folio_number}`)).rows[0] as { id: string; investor_id: string | null } | undefined;
-        if (!f || String(f.investor_id) !== String(e.match_investor_id)) {
-          p.outcome = "quarantined"; p.write = undefined; p.reason = "identity_conflict: the folio is on record under a different client — nothing reassigned";
-          continue;
-        }
-        folioId = String(f.id);
+      const r = await commitEconomicTxn(tx, tenantId, p.e, p.write, { batchId, userId: opts.userId ?? null, tick });
+      p.outcome = r.outcome; p.reason = r.reason;
+      if (r.outcome !== "posted" && r.outcome !== "rejected_recorded" && r.outcome !== "matched_existing") p.write = undefined;
+      if (r.posted) {
+        if (r.posted.direction === "inflow") totals.inflowAmount += r.posted.amount; else totals.outflowAmount += r.posted.amount;
+        totals.units += r.posted.units; totals.transactions++; totals.lots += r.posted.lots;
+        const prev = lastTx.get(r.posted.investorId);
+        if (r.posted.tradeDate && (!prev || r.posted.tradeDate > prev)) lastTx.set(r.posted.investorId, r.posted.tradeDate);
       }
-      const units = abs(e.reported_units) ?? 0;
-      const amount = abs(e.reported_amount);
-      const lineage = {
-        pipeline: "validate_first", identityKey: e.identity_key, batchId, economicTxnId: e.id, sourceRows: e.row_nos, lotCount: e.lot_count,
-        reportedExitLoad: e.reported_exit_load, reportedStt: e.reported_stt, reportedStampDuty: e.reported_stamp_duty,
-        // The registrar's amount, not a verified payout: whether STT is deducted from it is not evidenced.
-        amountMeaning: "registrar_reported", payoutVerified: false,
-        eventCategory: attrs.eventCategory ?? null, switchRef: attrs.switchRef ?? null,
-      };
-
-      // The CRM may already hold this registrar number.
-      const existing = (await tx.execute(sql`
-        SELECT id, amc_code, folio_number, scheme_code, order_date::text AS d, direction, amount::text AS amount, units::text AS units, status
-          FROM transactions WHERE tenant_id = ${tenantId}::uuid AND order_id = ${e.registrar_txn_no}
-      `)).rows as Array<{ id: string; amc_code: string | null; folio_number: string | null; scheme_code: string | null; d: string; direction: string; amount: string | null; units: string | null; status: string }>;
-      if (existing.length) {
-        const t = existing[0];
-        const same = existing.length === 1 && (!t.amc_code || t.amc_code === e.amc_code) && t.folio_number === e.folio_number && t.d === e.trade_date
-          && (p.write === "rejected" ? t.status === "rejected" : t.direction === e.direction && Math.abs((abs(t.amount) ?? 0) - (amount ?? 0)) <= 0.005 && Math.abs((abs(t.units) ?? 0) - units) <= 0.0005);
-        if (!same) {
-          p.outcome = "quarantined"; p.write = undefined;
-          p.reason = "identity_conflict: the CRM holds a different transaction under this registrar number — neither is changed";
-          continue;
-        }
-        await tx.execute(sql`
-          INSERT INTO rta_posted_transactions (tenant_id, identity_key, economic_txn_id, batch_id, kind, transaction_id, posted_by)
-          VALUES (${tenantId}::uuid, ${e.identity_key}, ${e.id}::uuid, ${batchId}::uuid, 'matched_existing', ${t.id}::uuid, ${opts.userId ?? null}::uuid)
-          ON CONFLICT (tenant_id, identity_key) DO NOTHING`);
-        p.outcome = "matched_existing"; p.reason = "the CRM already holds this transaction — linked, not duplicated";
-        tick();
-        continue;
-      }
-
-      if (p.write === "rejected") {
-        const cat = String(attrs.eventCategory ?? "failed_sip_instalment");
-        const reason = String(attrs.rejectionReason ?? "No reason given in the file");
-        const type = cat === "failed_stp_leg" ? "stp" : "sip";
-        const ins = (await tx.execute(sql`
-          INSERT INTO transactions (tenant_id, investor_id, folio_id, folio_number, amc_code, amc_name, scheme_code, scheme_name,
-            type, direction, amount, units, nav, order_id, order_date, status, reason_code, reason_description, source_feed, raw_feed_row, dedup_key)
-          VALUES (${tenantId}::uuid, ${e.match_investor_id}::uuid, ${folioId}::uuid, ${e.folio_number}, ${e.amc_code}, ${e.amc_code}, ${e.scheme_code},
-            ${String(attrs.schemeName ?? e.scheme_code)}, ${type}, ${e.direction ?? (attrs.head === "R" ? "outflow" : "inflow")}, ${amount}, 0, NULL,
-            ${e.registrar_txn_no}, ${e.trade_date}::date, 'rejected', ${cat}, ${reason}, 'rta_validate_first', ${JSON.stringify(lineage)}::jsonb, ${e.identity_key})
-          ON CONFLICT DO NOTHING RETURNING id`)).rows[0] as { id: string } | undefined;
-        if (!ins) { p.outcome = "quarantined"; p.write = undefined; p.reason = "identity_conflict: a concurrent write took this registrar number"; continue; }
-        let sipRejectionId: string | null = null;
-        if (cat === "failed_sip_instalment") {
-          const inv = (await tx.execute(sql`SELECT rm_id FROM investors WHERE id = ${e.match_investor_id}::uuid`)).rows[0] as { rm_id: string | null } | undefined;
-          const followUp = new Date(new Date(e.trade_date!).getTime() + 2 * 864e5).toISOString().slice(0, 10);
-          const r = (await tx.execute(sql`
-            INSERT INTO sip_rejections (tenant_id, investor_id, transaction_id, rejection_date, rejection_amount, rejection_reason, scheme_name,
-              folio_number, amc_name, recovery_status, assigned_rm_id, follow_up_date, reason_category, dedup_key)
-            VALUES (${tenantId}::uuid, ${e.match_investor_id}::uuid, ${ins.id}::uuid, ${e.trade_date}::date, ${amount}, ${reason}, ${String(attrs.schemeName ?? e.scheme_code)},
-              ${e.folio_number}, ${e.amc_code}, 'pending', ${inv?.rm_id ?? null}::uuid, ${followUp}::date, ${classifyRejectionReason(String(reason ?? ""))}, ${"rta-vf:" + e.identity_key})
-            ON CONFLICT DO NOTHING RETURNING id`)).rows[0] as { id: string } | undefined;
-          sipRejectionId = r?.id ?? null;
-        }
-        await tx.execute(sql`
-          INSERT INTO rta_posted_transactions (tenant_id, identity_key, economic_txn_id, batch_id, kind, transaction_id, sip_rejection_id, posted_by)
-          VALUES (${tenantId}::uuid, ${e.identity_key}, ${e.id}::uuid, ${batchId}::uuid, 'rejected_recorded', ${ins.id}::uuid, ${sipRejectionId}::uuid, ${opts.userId ?? null}::uuid)`);
-        tick();
-        continue;
-      }
-
-      const type = CLASS_META[e.rta_class].legacyType!;
-      const ins = (await tx.execute(sql`
-        INSERT INTO transactions (tenant_id, investor_id, folio_id, folio_number, amc_code, amc_name, scheme_code, scheme_name,
-          type, direction, amount, units, nav, order_id, order_date, status, source_feed, raw_feed_row, dedup_key)
-        VALUES (${tenantId}::uuid, ${e.match_investor_id}::uuid, ${folioId}::uuid, ${e.folio_number}, ${e.amc_code}, ${e.amc_code}, ${e.scheme_code},
-          ${String(attrs.schemeName ?? e.scheme_code)}, ${type}, ${e.direction}, ${amount}, ${units}, ${e.reported_nav},
-          ${e.registrar_txn_no}, ${e.trade_date}::date, 'processed', 'rta_validate_first', ${JSON.stringify(lineage)}::jsonb, ${e.identity_key})
-        ON CONFLICT DO NOTHING RETURNING id`)).rows[0] as { id: string } | undefined;
-      if (!ins) { p.outcome = "quarantined"; p.write = undefined; p.reason = "identity_conflict: a concurrent write took this registrar number"; continue; }
-      await tx.execute(sql`
-        INSERT INTO rta_posted_transactions (tenant_id, identity_key, economic_txn_id, batch_id, kind, transaction_id, posted_by)
-        VALUES (${tenantId}::uuid, ${e.identity_key}, ${e.id}::uuid, ${batchId}::uuid, 'posted_new', ${ins.id}::uuid, ${opts.userId ?? null}::uuid)`);
-      if (e.direction === "inflow") totals.inflowAmount += amount ?? 0; else totals.outflowAmount += amount ?? 0;
-      totals.units += units; totals.transactions++; totals.lots += e.lot_count;
-      const prev = lastTx.get(e.match_investor_id!);
-      if (e.trade_date && (!prev || e.trade_date > prev)) lastTx.set(e.match_investor_id!, e.trade_date);
-      tick();
     }
 
     for (const [inv, d] of lastTx) {
@@ -284,14 +196,7 @@ export async function postTransactionBatch(tenantId: string, batchId: string, op
     // ── 4. Record every outcome: economic transactions, rows, batch, import ──
     const counts: Partial<Record<PostingOutcome, number>> = {};
     for (const p of plan) counts[p.outcome] = (counts[p.outcome] ?? 0) + 1;
-    for (const p of plan) {
-      await tx.execute(sql`
-        UPDATE rta_staging_economic_txns SET posting_outcome = ${p.outcome}, posting_reason = ${p.reason}, posted_at = now(), updated_at = now()
-         WHERE tenant_id = ${tenantId}::uuid AND id = ${p.e.id}::uuid`);
-      await tx.execute(sql`
-        UPDATE rta_staging_rows SET disposition = ${p.outcome}, updated_at = now()
-         WHERE tenant_id = ${tenantId}::uuid AND economic_txn_id = ${p.e.id}::uuid`);
-    }
+    for (const p of plan) await recordOutcome(tx, tenantId, p.e.id, p.outcome, p.reason, { by: opts.userId ?? null, via: "batch", batchId });
     const committed = (counts.posted ?? 0) + (counts.rejected_recorded ?? 0) + (counts.matched_existing ?? 0);
     const state: PostResult["state"] = !plan.length || (!committed && !problems && !(counts.blocked ?? 0)) ? "nothing_to_post"
       : (counts.blocked ?? 0) > 0 ? "blocked"
@@ -299,6 +204,11 @@ export async function postTransactionBatch(tenantId: string, batchId: string, op
     await tx.execute(sql`
       UPDATE rta_staging_batches SET posting_state = ${state}, posted_at = now(), posting_counts = ${JSON.stringify(counts)}::jsonb, updated_at = now()
        WHERE tenant_id = ${tenantId}::uuid AND id = ${batchId}::uuid`);
+    // Operator / file audit trail: one row per committed posting run, in the same transaction.
+    await tx.execute(sql`
+      INSERT INTO audit_log (tenant_id, actor_user_id, actor_type, action, entity_type, entity_id, after)
+      VALUES (${tenantId}::uuid, ${opts.userId ?? null}::uuid, ${opts.userId ? "user" : "system"}, 'rta.posting.batch', 'rta_staging_batch', ${batchId}::uuid,
+              ${JSON.stringify({ state, counts, importId: opts.importId ?? null, postedTotals: totals })}::jsonb)`);
     if (opts.importId) {
       const held = (counts.quarantined ?? 0) + (counts.unsupported ?? 0) + (counts.correction_held ?? 0) + (counts.held_dependent ?? 0) + (counts.blocked ?? 0);
       const imported = (counts.posted ?? 0) + (counts.rejected_recorded ?? 0);
@@ -312,4 +222,128 @@ export async function postTransactionBatch(tenantId: string, batchId: string, op
     }
     return { batchId, state, counts, postedTotals: totals, replayed: false };
   });
+}
+
+/** The outcome of committing one economic transaction. */
+export type CommitResult = {
+  outcome: Extract<PostingOutcome, "posted" | "rejected_recorded" | "matched_existing" | "quarantined">;
+  reason: string | null;
+  posted?: { investorId: string; direction: "inflow" | "outflow" | null; amount: number; units: number; lots: number; tradeDate: string | null };
+};
+
+/**
+ * Commit ONE validated economic transaction whose owner is settled
+ * (e.match_investor_id, and e.match_folio_id or a folio this owner may open).
+ * Shared by batch posting and by re-evaluation of held transactions, so a
+ * promoted transaction is written exactly like one that posted first time.
+ * Caller holds the posting gate and the firm's posting lock.
+ */
+export async function commitEconomicTxn(tx: Tx, tenantId: string, e: Econ, write: "new" | "rejected", ctx: { batchId: string; userId: string | null; tick?: () => void }): Promise<CommitResult> {
+    const attrs = (e.first_attrs ?? {}) as Record<string, unknown>;
+    // The folio this posts to: the one on record; an owner_by_pan transaction may open the owner's new folio.
+    let folioId = e.match_folio_id;
+    if (!folioId) {
+      await tx.execute(sql`
+        INSERT INTO folios (tenant_id, investor_id, folio_number, amc_code, amc_name, rta)
+        VALUES (${tenantId}::uuid, ${e.match_investor_id}::uuid, ${e.folio_number}, ${e.amc_code}, ${e.amc_code}, ${e.rta})
+        ON CONFLICT (tenant_id, amc_code, folio_number) DO NOTHING`);
+      const f = (await tx.execute(sql`SELECT id, investor_id FROM folios WHERE tenant_id = ${tenantId}::uuid AND amc_code = ${e.amc_code} AND folio_number = ${e.folio_number}`)).rows[0] as { id: string; investor_id: string | null } | undefined;
+      if (!f || String(f.investor_id) !== String(e.match_investor_id)) {
+        return { outcome: "quarantined", reason: "folio_owner_conflict: the folio is on record under a different client — nothing reassigned" };
+      }
+      folioId = String(f.id);
+    }
+    const units = abs(e.reported_units) ?? 0;
+    const amount = abs(e.reported_amount);
+    const lineage = {
+      pipeline: "validate_first", identityKey: e.identity_key, batchId: ctx.batchId, economicTxnId: e.id, sourceRows: e.row_nos, lotCount: e.lot_count,
+      reportedExitLoad: e.reported_exit_load, reportedStt: e.reported_stt, reportedStampDuty: e.reported_stamp_duty,
+      // The registrar's amount, not a verified payout: whether STT is deducted from it is not evidenced.
+      amountMeaning: "registrar_reported", payoutVerified: false,
+      eventCategory: attrs.eventCategory ?? null, switchRef: attrs.switchRef ?? null,
+    };
+
+    // The CRM may already hold this registrar number.
+    const existing = (await tx.execute(sql`
+      SELECT id, amc_code, folio_number, scheme_code, order_date::text AS d, direction, amount::text AS amount, units::text AS units, status
+        FROM transactions WHERE tenant_id = ${tenantId}::uuid AND order_id = ${e.registrar_txn_no}
+    `)).rows as Array<{ id: string; amc_code: string | null; folio_number: string | null; scheme_code: string | null; d: string; direction: string; amount: string | null; units: string | null; status: string }>;
+    if (existing.length) {
+      const t = existing[0];
+      const same = existing.length === 1 && (!t.amc_code || t.amc_code === e.amc_code) && t.folio_number === e.folio_number && t.d === e.trade_date
+        && (write === "rejected" ? t.status === "rejected" : t.direction === e.direction && Math.abs((abs(t.amount) ?? 0) - (amount ?? 0)) <= 0.005 && Math.abs((abs(t.units) ?? 0) - units) <= 0.0005);
+      if (!same) {
+        return { outcome: "quarantined", reason: "identity_conflict: the CRM holds a different transaction under this registrar number — neither is changed" };
+      }
+      await tx.execute(sql`
+        INSERT INTO rta_posted_transactions (tenant_id, identity_key, economic_txn_id, batch_id, kind, transaction_id, posted_by)
+        VALUES (${tenantId}::uuid, ${e.identity_key}, ${e.id}::uuid, ${ctx.batchId}::uuid, 'matched_existing', ${t.id}::uuid, ${ctx.userId}::uuid)
+        ON CONFLICT (tenant_id, identity_key) DO NOTHING`);
+      ctx.tick?.();
+      return { outcome: "matched_existing", reason: "the CRM already holds this transaction — linked, not duplicated" };
+    }
+
+    if (write === "rejected") {
+      const cat = String(attrs.eventCategory ?? "failed_sip_instalment");
+      const reason = String(attrs.rejectionReason ?? "No reason given in the file");
+      const type = cat === "failed_stp_leg" ? "stp" : "sip";
+      const ins = (await tx.execute(sql`
+        INSERT INTO transactions (tenant_id, investor_id, folio_id, folio_number, amc_code, amc_name, scheme_code, scheme_name,
+          type, direction, amount, units, nav, order_id, order_date, status, reason_code, reason_description, source_feed, raw_feed_row, dedup_key)
+        VALUES (${tenantId}::uuid, ${e.match_investor_id}::uuid, ${folioId}::uuid, ${e.folio_number}, ${e.amc_code}, ${e.amc_code}, ${e.scheme_code},
+          ${String(attrs.schemeName ?? e.scheme_code)}, ${type}, ${e.direction ?? (attrs.head === "R" ? "outflow" : "inflow")}, ${amount}, 0, NULL,
+          ${e.registrar_txn_no}, ${e.trade_date}::date, 'rejected', ${cat}, ${reason}, 'rta_validate_first', ${JSON.stringify(lineage)}::jsonb, ${e.identity_key})
+        ON CONFLICT DO NOTHING RETURNING id`)).rows[0] as { id: string } | undefined;
+      if (!ins) return { outcome: "quarantined", reason: "identity_conflict: a concurrent write took this registrar number" };
+      let sipRejectionId: string | null = null;
+      if (cat === "failed_sip_instalment") {
+        const inv = (await tx.execute(sql`SELECT rm_id FROM investors WHERE id = ${e.match_investor_id}::uuid`)).rows[0] as { rm_id: string | null } | undefined;
+        const followUp = new Date(new Date(e.trade_date!).getTime() + 2 * 864e5).toISOString().slice(0, 10);
+        const r = (await tx.execute(sql`
+          INSERT INTO sip_rejections (tenant_id, investor_id, transaction_id, rejection_date, rejection_amount, rejection_reason, scheme_name,
+            folio_number, amc_name, recovery_status, assigned_rm_id, follow_up_date, reason_category, dedup_key)
+          VALUES (${tenantId}::uuid, ${e.match_investor_id}::uuid, ${ins.id}::uuid, ${e.trade_date}::date, ${amount}, ${reason}, ${String(attrs.schemeName ?? e.scheme_code)},
+            ${e.folio_number}, ${e.amc_code}, 'pending', ${inv?.rm_id ?? null}::uuid, ${followUp}::date, ${classifyRejectionReason(String(reason ?? ""))}, ${"rta-vf:" + e.identity_key})
+          ON CONFLICT DO NOTHING RETURNING id`)).rows[0] as { id: string } | undefined;
+        sipRejectionId = r?.id ?? null;
+      }
+      await tx.execute(sql`
+        INSERT INTO rta_posted_transactions (tenant_id, identity_key, economic_txn_id, batch_id, kind, transaction_id, sip_rejection_id, posted_by)
+        VALUES (${tenantId}::uuid, ${e.identity_key}, ${e.id}::uuid, ${ctx.batchId}::uuid, 'rejected_recorded', ${ins.id}::uuid, ${sipRejectionId}::uuid, ${ctx.userId}::uuid)`);
+      ctx.tick?.();
+      return { outcome: "rejected_recorded", reason: null };
+    }
+
+    const type = CLASS_META[e.rta_class].legacyType!;
+    const ins = (await tx.execute(sql`
+      INSERT INTO transactions (tenant_id, investor_id, folio_id, folio_number, amc_code, amc_name, scheme_code, scheme_name,
+        type, direction, amount, units, nav, order_id, order_date, status, source_feed, raw_feed_row, dedup_key)
+      VALUES (${tenantId}::uuid, ${e.match_investor_id}::uuid, ${folioId}::uuid, ${e.folio_number}, ${e.amc_code}, ${e.amc_code}, ${e.scheme_code},
+        ${String(attrs.schemeName ?? e.scheme_code)}, ${type}, ${e.direction}, ${amount}, ${units}, ${e.reported_nav},
+        ${e.registrar_txn_no}, ${e.trade_date}::date, 'processed', 'rta_validate_first', ${JSON.stringify(lineage)}::jsonb, ${e.identity_key})
+      ON CONFLICT DO NOTHING RETURNING id`)).rows[0] as { id: string } | undefined;
+    if (!ins) return { outcome: "quarantined", reason: "identity_conflict: a concurrent write took this registrar number" };
+    await tx.execute(sql`
+      INSERT INTO rta_posted_transactions (tenant_id, identity_key, economic_txn_id, batch_id, kind, transaction_id, posted_by)
+      VALUES (${tenantId}::uuid, ${e.identity_key}, ${e.id}::uuid, ${ctx.batchId}::uuid, 'posted_new', ${ins.id}::uuid, ${ctx.userId}::uuid)`);
+    ctx.tick?.();
+    return { outcome: "posted", reason: null, posted: { investorId: String(e.match_investor_id), direction: e.direction, amount: amount ?? 0, units, lots: e.lot_count, tradeDate: e.trade_date } };
+}
+
+/**
+ * Set an economic transaction's current posting outcome AND append it to its
+ * history (migration 0236), so a later promotion or resolution never erases
+ * why it was held. Its rows' disposition follows the current outcome.
+ */
+export async function recordOutcome(tx: Tx, tenantId: string, econId: string, outcome: string, reason: string | null,
+  meta: { by: string | null; via: "batch" | "reevaluation" | "manual_resolution" | "reversal"; batchId?: string | null; extra?: Record<string, unknown> }): Promise<void> {
+  const entry = { at: new Date().toISOString(), outcome, reason, by: meta.by, via: meta.via, batchId: meta.batchId ?? null, ...(meta.extra ?? {}) };
+  await tx.execute(sql`
+    UPDATE rta_staging_economic_txns
+       SET posting_outcome = ${outcome}, posting_reason = ${reason}, posted_at = now(), updated_at = now(),
+           posting_history = posting_history || ${JSON.stringify([entry])}::jsonb
+     WHERE tenant_id = ${tenantId}::uuid AND id = ${econId}::uuid`);
+  await tx.execute(sql`
+    UPDATE rta_staging_rows SET disposition = ${outcome}, updated_at = now()
+     WHERE tenant_id = ${tenantId}::uuid AND economic_txn_id = ${econId}::uuid`);
 }

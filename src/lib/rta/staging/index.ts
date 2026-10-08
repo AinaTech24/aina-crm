@@ -11,10 +11,10 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { rtaStagingBatches, rtaStagingChecks, rtaStagingEconomicTxns } from "@/db/schema/rta_staging";
-import { rtaPipelineMode } from "./config";
+import { resolvePipelineMode } from "./config";
 import { createShadowBatch, runShadowBatch, type CreateBatchInput, type RunOptions } from "./pipeline";
 
-export { rtaPipelineMode } from "./config";
+export { rtaPipelineMode, resolvePipelineMode } from "./config";
 export { createShadowBatch, runShadowBatch } from "./pipeline";
 
 export async function shadowImport(input: CreateBatchInput, opts: RunOptions = {}) {
@@ -29,7 +29,8 @@ export async function shadowImport(input: CreateBatchInput, opts: RunOptions = {
  * row content, and the existing import is untouched either way.
  */
 export async function runShadowForImport(args: { tenantId: string; importId: string | null; fileName: string; fileRef: string; buf: Uint8Array; createdBy?: string | null }): Promise<{ ran: boolean; batchId?: string; state?: string; error?: string; refused?: string }> {
-  const decision = rtaPipelineMode(args.tenantId);
+  let decision;
+  try { decision = await resolvePipelineMode(args.tenantId); } catch (e) { return { ran: false, error: e instanceof Error ? e.message : String(e) }; }
   if (decision.mode !== "shadow") return { ran: false, refused: decision.refused };
   try {
     const r = await shadowImport({ tenantId: args.tenantId, importId: args.importId, fileName: args.fileName, fileRef: args.fileRef, buf: args.buf, createdBy: args.createdBy ?? null });

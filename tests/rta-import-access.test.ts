@@ -24,7 +24,14 @@ vi.mock("@/db/client", () => ({
   withTenant: async (_tenantId: string, fn: (tx: unknown) => unknown) => fn({ execute: mocks.execute }),
   withSystem: async (fn: (tx: unknown) => unknown) => fn({ execute: mocks.execute }),
 }));
-vi.mock("@/workers/queues", () => ({ Q: { rtaImport: () => ({ add: mocks.add, getJob: mocks.getJob }) } }));
+vi.mock("@/workers/queues", () => {
+  const q = () => ({ name: "rta.import", add: mocks.add, getJob: mocks.getJob });
+  return {
+    Q: { rtaImport: q, rtaImportProducer: q },
+    addWithin: (queue: { add: (...a: unknown[]) => unknown }, name: string, data: unknown, opts?: unknown) => queue.add(name, data, opts),
+    QueueUnavailableError: class extends Error { status = 503; },
+  };
+});
 vi.mock("@/lib/rta/mailback-config", () => ({
   getMailbackPasswords: vi.fn(async () => ({})),
   passwordsToTry: vi.fn(() => ["synthetic-pw"]),
