@@ -6,12 +6,12 @@
  */
 import type { Tx } from "@/db/client";
 import { formatCount, formatDate, formatMoney } from "@/lib/format";
-import { getAUM, getRegistrarAum } from "@/lib/metrics";
+import { getAUM, getAumComposition, getRegistrarAum } from "@/lib/metrics";
 import type { WidgetCtx, WidgetImpl } from "../types";
 import { clientsHref } from "../links";
 
 async function registrarAum(tx: Tx, ctx: WidgetCtx) {
-  const [r, live] = [await getRegistrarAum(tx, ctx.scope), await getAUM(tx, ctx.scope)];
+  const [r, live, comp] = [await getRegistrarAum(tx, ctx.scope), await getAUM(tx, ctx.scope), await getAumComposition(tx, ctx.scope)];
   if (!r.cards.length && !r.undatedLegs) return { body: null };
   return {
     body: (
@@ -25,9 +25,21 @@ async function registrarAum(tx: Tx, ctx: WidgetCtx) {
             </div>
           </div>
           <div className="dash-tile">
-            <div className="text-xs text-muted-foreground">CRM valuation at latest NAV</div>
+            <div className="text-xs text-muted-foreground">{comp.allLive ? "CRM valuation at today's NAV" : "CRM valuation — mixed dates"}</div>
             <div className="text-lg font-semibold">{formatMoney(live.aum)}</div>
-            <div className="text-2xs text-muted-foreground">Units held × the latest NAV on file — a different figure, on a different date</div>
+            {comp.allLive ? (
+              <div className="text-2xs text-muted-foreground">Units held × the latest AMFI NAV of each mapped scheme — a different figure, on a different date</div>
+            ) : (
+              <ul className="text-2xs text-muted-foreground">
+                <li>{formatMoney(comp.live.value)} at today&apos;s NAV ({formatCount(comp.live.holdings)} holdings)</li>
+                {comp.registrar.holdings > 0 && (
+                  <li className="text-warning-foreground">
+                    {formatMoney(comp.registrar.value)} at registrar statement value ({formatCount(comp.registrar.holdings)} holdings, {comp.registrar.oldest && comp.registrar.newest && comp.registrar.oldest !== comp.registrar.newest ? `${formatDate(comp.registrar.oldest)} – ${formatDate(comp.registrar.newest)}` : comp.registrar.newest ? formatDate(comp.registrar.newest) : "undated"}) — scheme not mapped yet
+                  </li>
+                )}
+                {comp.stale.holdings > 0 && <li className="text-warning-foreground">{formatMoney(comp.stale.value)} at an older NAV ({formatCount(comp.stale.holdings)} holdings)</li>}
+              </ul>
+            )}
           </div>
         </div>
         {r.cards.length > 0 && (

@@ -137,6 +137,13 @@ export type DecideInput = {
    * itself is in question.
    */
   registrarAmc?: string[];
+  /**
+   * The registrar AMC's VERIFIED identity from the crosswalk (primary +
+   * documented successors), when one is recorded. It replaces the sibling
+   * inference: a scheme outside this set is an AMC conflict, whatever the
+   * registrar's other codes say.
+   */
+  verifiedAmcs?: string[] | null;
   /** ISINs the AMFI feed lists WITHOUT a NAV (identity only — no scheme row to attach to). */
   unpricedIsins?: string[];
   /** A live platform mapping for this registrar code. */
@@ -146,6 +153,16 @@ export type DecideInput = {
 };
 
 const conflict = (reasonCode: ReasonCode, reason: string): SchemeDecision => ({ status: "conflict", amfiSchemeCode: null, reasonCode, reason });
+
+/** The AMC check: the verified crosswalk when there is one, else the registrar AMC's other codes. */
+export function amcCheck(input: Pick<DecideInput, "registrarAmc" | "verifiedAmcs">, amc: string | null | undefined): string | null {
+  if (input.verifiedAmcs && input.verifiedAmcs.length) {
+    const allowed = new Set(input.verifiedAmcs.map(amcKey).filter(Boolean));
+    const k = amcKey(amc);
+    return k && allowed.has(k) ? null : `the registrar AMC is verified as ${input.verifiedAmcs.join(" / ")}; this scheme is ${amc ?? "of no stated AMC"}`;
+  }
+  return amcProblem(input.registrarAmc, amc);
+}
 
 function amcProblem(registrarAmc: string[] | undefined, amc: string | null | undefined): string | null {
   const est = [...new Set((registrarAmc ?? []).map(amcKey).filter(Boolean))] as string[];
@@ -171,7 +188,7 @@ export function decideScheme(input: DecideInput): SchemeDecision {
       // reviewing the AMC / plan question: their approval settles it.
       const approved = input.global?.basis === "platform_approval" && input.global.amfiSchemeCode === m.code;
       if (!approved) {
-        const amc = amcProblem(input.registrarAmc, m.amc);
+        const amc = amcCheck(input, m.amc);
         if (amc) return conflict("amc_mismatch", amc);
         const po = markerContradiction(markersOf(text, amfiCore(m.name)), amfiMarkers(m));
         if (po) return conflict("plan_option_mismatch", `plan / option: ${po}`);
@@ -201,7 +218,7 @@ export function decideScheme(input: DecideInput): SchemeDecision {
       return conflict("confirm_contradicts_global", `confirmed as AMFI ${input.confirmed.amfiSchemeCode}, but the platform mapping says AMFI ${g.amfiSchemeCode}`);
     }
     if (g.basis === "isin") {
-      const amc = amcProblem(input.registrarAmc, g.amc);
+      const amc = amcCheck(input, g.amc);
       if (amc) return conflict("amc_mismatch", amc);
     }
     return g.basis === "isin"
@@ -212,7 +229,7 @@ export function decideScheme(input: DecideInput): SchemeDecision {
   if (input.confirmed) {
     const c = input.confirmed;
     if (!c.existsInFeed) return conflict("confirm_not_in_feed", `confirmed as AMFI ${c.amfiSchemeCode}, which is not in the AMFI feed`);
-    const amc = amcProblem(input.registrarAmc, c.amc);
+    const amc = amcCheck(input, c.amc);
     if (amc) return conflict("amc_mismatch", amc);
     const po = markerContradiction(markersOf(text, amfiCore(c.name)), amfiMarkers({ name: c.name ?? null, plan: c.plan ?? null, option: c.option ?? null }));
     if (po) return conflict("plan_option_mismatch", `plan / option: ${po}`);
@@ -239,7 +256,16 @@ export const REASON_GROUP: Record<ReasonCode, "verified" | "approved" | "histori
 
 /** Words that carry no scheme identity — dropped before ranking candidates by name. */
 const STOP = new Set(["fund", "plan", "option", "scheme", "the", "of", "and", "mutual", "mf", "direct", "regular", "growth", "idcw", "dividend", "payout", "reinvestment", "reinvest", "income", "distribution", "cum", "capital", "withdrawal"]);
-const tokens = (s: string | null | undefined) => new Set(norm(s).split(" ").filter((w) => w.length > 1 && !STOP.has(w)));
+/**
+ * Identity-bearing words, with each adjacent pair also joined, so "Multicap",
+ * "Multi Cap" and "Multi-Cap" (and "Midcap" / "Mid Cap") meet. Ranking only.
+ */
+const tokens = (s: string | null | undefined) => {
+  const words = norm(s).split(" ").filter((w) => w.length > 1 && !STOP.has(w));
+  const out = new Set(words);
+  for (let i = 0; i + 1 < words.length; i++) out.add(words[i] + words[i + 1]);
+  return out;
+};
 
 /** Name overlap 0–1, ONLY to order candidates shown to a person. Never a decision. */
 export function nameRank(a: string | null | undefined, b: string | null | undefined): number {

@@ -28,6 +28,7 @@ import { MoneyMovementChart, type MoneyPoint } from "../MoneyMovementChart";
 import { Sparkline } from "../Sparkline";
 import { Initials } from "@/components/dashboards/my/Shared";
 import { getRegistrarAum } from "@/lib/metrics/registrar-aum";
+import { aumCompositionNote, getAumComposition } from "@/lib/metrics/aum-composition";
 import { getSipBookCompleteness } from "@/lib/metrics/sip-completeness";
 import { aumCoverageNote } from "@/lib/rta/aum-view";
 
@@ -184,6 +185,10 @@ async function kpiRow(tx: Tx, ctx: WidgetCtx) {
   );
   // What the units behind the live AUM were last checked against (registrar statements).
   const coverage = aumCoverageNote((await getRegistrarAum(tx, s)).cards, (d) => formatDate(d, "dayMonth"));
+  // …and which part of today's figure is really at today's NAV (unmapped
+  // schemes keep the registrar's dated value; an old AMFI NAV is not today's).
+  const composition = await getAumComposition(tx, s);
+  const compositionNote = aumCompositionNote(composition, money, (d) => formatDate(d, "dayMonth"));
   // …and how much of the firm's SIP registrations a registrar has verified (the book counts only those).
   const sipCover = await getSipBookCompleteness(tx, s.tenantId);
   const sipNote = sipCover.hasMaster && !sipCover.complete
@@ -213,13 +218,17 @@ async function kpiRow(tx: Tx, ctx: WidgetCtx) {
           icon={<TrendingUp className="size-4" />}
           hue="indigo"
           label="AUM"
-          when="Today"
+          when={composition.allLive ? "Today" : "Mixed dates"}
           spark={aumSpark}
           value={money(aum.aum)}
           href={clientsHref(ctx, { sort: "aum", dir: "desc" })}
-          info="Assets under management of live clients, today: units held × the latest NAV on file. Moves with the market as well as with sales. The registrars' own dated statements, per registrar and ARN, are on the Registrar AUM card — a different figure, never added to this one."
+          info={composition.allLive
+            ? "Assets under management of live clients, today: units held × the latest AMFI NAV of each mapped scheme. Moves with the market as well as with sales. The registrars' own dated statements, per registrar and ARN, are on the Registrar AUM card — a different figure, never added to this one."
+            : `Not all of this is at today's NAV. ${compositionNote}. A holding whose scheme is not yet mapped to an AMFI scheme keeps the registrar's stated value from its statement date until it is. The Registrar AUM card shows each registrar's statement separately.`}
           compare={then ? vs(aum.aum, then.aum, `vs ${formatDate(then.date, "dayMonth")}`) : null}
-          footer={coverage ? <span className={coverage.warn ? "text-warning-foreground" : undefined} title="Units on file are checked against these registrar statements. Stale, partial or mixed-date statements mean today's figure is not proven current.">{coverage.text}</span> : undefined}
+          footer={compositionNote
+            ? <span className="text-warning-foreground" title="Part of this figure is not at today's NAV.">{compositionNote}</span>
+            : coverage ? <span className={coverage.warn ? "text-warning-foreground" : undefined} title="Units on file are checked against these registrar statements. Stale, partial or mixed-date statements mean today's figure is not proven current.">{coverage.text}</span> : undefined}
         />
         <KpiTile
           className={ROW_OF_FOUR}

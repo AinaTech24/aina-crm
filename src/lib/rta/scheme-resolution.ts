@@ -41,7 +41,7 @@ function navIsCurrent(navDate: string | null | undefined, feedDate: string | nul
   if (!navDate) return false;
   return navDate >= new Date(Date.parse(`${feedDate}T00:00:00Z`) - NAV_MAX_AGE_DAYS * 864e5).toISOString().slice(0, 10);
 }
-import { amcKey, decideScheme, isResolved, markerContradiction, markersOf, amfiMarkers, amfiCore, nameRank,
+import { amcCheck, amcKey, decideScheme, isResolved, markerContradiction, markersOf, amfiMarkers, amfiCore, nameRank,
   type AmfiMatch, type GlobalMapping, type ReasonCode, type SchemeDecision, type SchemeStatus } from "./scheme-evidence";
 
 export { decideScheme, isResolved, REASON_GROUP } from "./scheme-evidence";
@@ -159,9 +159,31 @@ async function loadDecisionContext(tx: Tx, tenantId: string, amcs: Array<{ rta: 
     }
   }
   const globalByKey = new Map(globals.map((g) => [keyOf({ rta: g.rta, amcCode: g.rta_amc_code, schemeCode: g.rta_scheme_code }), g]));
-  return { codes, globals, globalByKey, amfiByIsin, unpricedIsins, nav, latestFeedDate: latest?.feed_date ?? null };
+  const amcIdentity = await loadAmcIdentity(tx, amcs);
+  return { codes, globals, globalByKey, amfiByIsin, unpricedIsins, nav, amcIdentity, latestFeedDate: latest?.feed_date ?? null };
 }
 type DecisionContext = Awaited<ReturnType<typeof loadDecisionContext>>;
+
+export type AmcIdentity = { primary: string | null; allowed: string[]; rows: Array<{ id: string; amfi_amc: string; role: "primary" | "successor"; basis: "isin" | "platform_approval"; status: string }> };
+
+/** The verified AMC identity (crosswalk, 0241) of registrar AMCs: primary + documented successors, live rows only. */
+async function loadAmcIdentity(tx: Tx, amcs: Array<{ rta: string; amcCode: string }> | null): Promise<Map<string, AmcIdentity>> {
+  const filter = amcs === null ? sql`` : amcs.length ? sql`AND (rta, rta_amc_code) IN (${sql.join(amcs.map((k) => sql`(${k.rta}, ${k.amcCode})`), sql`, `)})` : sql`AND false`;
+  const rows = (await tx.execute(sql`
+    SELECT id, rta, rta_amc_code, amfi_amc, role, basis, status FROM registrar_amc_identity WHERE status <> 'revoked' ${filter}
+     ORDER BY (role = 'primary') DESC, created_at`)).rows as Array<AmcIdentity["rows"][number] & { rta: string; rta_amc_code: string }>;
+  const out = new Map<string, AmcIdentity>();
+  for (const r of rows) {
+    const k = amcOf({ rta: r.rta, amcCode: r.rta_amc_code });
+    const e = out.get(k) ?? out.set(k, { primary: null, allowed: [], rows: [] }).get(k)!;
+    if (r.role === "primary") e.primary = r.amfi_amc;
+    e.allowed.push(r.amfi_amc);
+    e.rows.push({ id: r.id, amfi_amc: r.amfi_amc, role: r.role, basis: r.basis, status: r.status });
+  }
+  // A successor means nothing without its primary: no live primary, not verified.
+  for (const e of out.values()) if (!e.primary) e.allowed = [];
+  return out;
+}
 
 /**
  * The AMFI AMC each registrar code points to on its own evidence (one ISIN
@@ -201,7 +223,7 @@ function decideFor(ctx: DecisionContext, c: CodeRow, override?: { confirmedCode:
   const cn = confirmedCode ? ctx.nav.get(confirmedCode) : undefined;
   return decideScheme({
     observedIsins: c.observed_isins ?? [], amfiByIsin: ctx.amfiByIsin, observedText: c.observed_name,
-    registrarAmc: siblingAmcs(ctx, key), unpricedIsins: ctx.unpricedIsins,
+    registrarAmc: siblingAmcs(ctx, key), verifiedAmcs: ctx.amcIdentity.get(amcOf(key))?.allowed ?? null, unpricedIsins: ctx.unpricedIsins,
     global: g ? { amfiSchemeCode: g.amfi_scheme_code, basis: g.basis, evidenceIsin: g.evidence_isin, amc: ctx.nav.get(g.amfi_scheme_code)?.amc ?? null } : null,
     confirmed: confirmedCode ? { amfiSchemeCode: confirmedCode, existsInFeed: !!cn, amc: cn?.amc, name: cn?.name, plan: cn?.plan, option: cn?.option } : null,
   });
@@ -233,10 +255,11 @@ async function promoteVerified(tx: Tx, c: CodeRow, d: SchemeDecision): Promise<b
  * depend on each other) against the AMFI feed and the platform mappings as
  * they are now.
  */
-export async function redecideSchemeCodes(tx: Tx, tenantId: string, keys?: SchemeKey[]): Promise<Record<SchemeStatus, number> & { promoted: number; legsRestamped: number; byReason: Partial<Record<ReasonCode, number>> }> {
+export async function redecideSchemeCodes(tx: Tx, tenantId: string, keys?: SchemeKey[]): Promise<Record<SchemeStatus, number> & { promoted: number; legsRestamped: number; amcIdentitiesRecorded: number; byReason: Partial<Record<ReasonCode, number>> }> {
   const amcs = keys ? [...new Map(keys.map((k) => [amcOf(k), { rta: k.rta, amcCode: k.amcCode }])).values()] : null;
   const ctx = await loadDecisionContext(tx, tenantId, amcs);
-  const tally = { resolved_isin: 0, confirmed: 0, unresolved: 0, conflict: 0, promoted: 0, legsRestamped: 0, byReason: {} as Partial<Record<ReasonCode, number>> };
+  const tally = { resolved_isin: 0, confirmed: 0, unresolved: 0, conflict: 0, promoted: 0, legsRestamped: 0, amcIdentitiesRecorded: 0, byReason: {} as Partial<Record<ReasonCode, number>> };
+  const isinAmcs = new Map<string, string[]>();
   for (const c of ctx.codes) {
     const d = decideFor(ctx, c);
     tally[d.status]++;
@@ -255,8 +278,45 @@ export async function redecideSchemeCodes(tx: Tx, tenantId: string, keys?: Schem
     if (c.status !== d.status || wasCode !== d.amfiSchemeCode) {
       tally.legsRestamped += await restampLegs(tx, tenantId, c, d);
     }
+    if (d.reasonCode === "isin_verified" || d.reasonCode === "isin_verified_historical") {
+      const m = (ctx.amfiByIsin[d.evidenceIsin ?? ""] ?? []).find((x) => x.code === d.amfiSchemeCode);
+      if (m?.amc) (isinAmcs.get(amcOf({ rta: c.rta, amcCode: c.rta_amc_code })) ?? isinAmcs.set(amcOf({ rta: c.rta, amcCode: c.rta_amc_code }), []).get(amcOf({ rta: c.rta, amcCode: c.rta_amc_code }))!).push(m.amc);
+    }
   }
+  tally.amcIdentitiesRecorded = await recordIsinAmcIdentities(tx, ctx, isinAmcs);
   return tally;
+}
+
+/**
+ * A registrar AMC whose ISIN-verified codes (this firm's and the platform's)
+ * all point to ONE AMFI AMC gets that AMC recorded as its verified primary
+ * identity (basis isin). Two or more AMCs: nothing is recorded — operators
+ * decide, documenting any succession. Never replaces a live primary.
+ */
+async function recordIsinAmcIdentities(tx: Tx, ctx: DecisionContext, isinAmcs: Map<string, string[]>): Promise<number> {
+  for (const g of ctx.globals) {
+    if (g.basis !== "isin") continue;
+    const amc = ctx.nav.get(g.amfi_scheme_code)?.amc;
+    if (amc) (isinAmcs.get(amcOf({ rta: g.rta, amcCode: g.rta_amc_code })) ?? isinAmcs.set(amcOf({ rta: g.rta, amcCode: g.rta_amc_code }), []).get(amcOf({ rta: g.rta, amcCode: g.rta_amc_code }))!).push(amc);
+  }
+  let n = 0;
+  for (const [k, list] of isinAmcs) {
+    if (ctx.amcIdentity.get(k)?.primary) continue;
+    const distinct = [...new Map(list.map((a) => [amcKey(a), a])).values()];
+    if (distinct.length !== 1) continue;
+    const [rta, amcCode] = k.split("|");
+    const ins = (await tx.execute(sql`
+      INSERT INTO registrar_amc_identity (rta, rta_amc_code, amfi_amc, role, basis, status, evidence_isins)
+      VALUES (${rta}, ${amcCode}, ${distinct[0]}, 'primary', 'isin', 'verified', ${list.length})
+      ON CONFLICT DO NOTHING RETURNING id`)).rows[0] as { id: string } | undefined;
+    if (!ins) continue;
+    await tx.execute(sql`
+      INSERT INTO registrar_amc_identity_events (identity_id, action, after, reason)
+      VALUES (${ins.id}::uuid, 'verify', ${JSON.stringify({ amfiAmc: distinct[0], isinVerifiedCodes: list.length })}::jsonb,
+              'every ISIN-verified registrar code under this AMC code points to this AMFI AMC')`);
+    n++;
+  }
+  return n;
 }
 
 /**
@@ -354,6 +414,21 @@ export const EVIDENCE_SOURCES = {
 } as const;
 export type EvidenceSource = keyof typeof EVIDENCE_SOURCES;
 
+/**
+ * What the reviewer must check by hand about plan / option: a contradiction is
+ * already refused; these are the cases the two sides cannot be compared.
+ */
+function planOptionWarnings(registrarText: string | null, target: { name: string | null; plan: string | null; option: string | null }): string[] {
+  const reg = markersOf(registrarText, amfiCore(target.name));
+  const amfi = amfiMarkers({ name: target.name, plan: target.plan, option: target.option });
+  const w: string[] = [];
+  if (!reg.plan) w.push("the registrar does not state Direct / Regular — confirm the plan on the document");
+  else if (!amfi.plan) w.push("AMFI does not state Direct / Regular for this scheme — confirm the plan on the document");
+  if (!reg.option) w.push("the registrar does not state Growth / IDCW — confirm the option on the document");
+  else if (!amfi.option) w.push("AMFI does not state Growth / IDCW for this scheme — confirm the option on the document");
+  return w;
+}
+
 async function lockCode(tx: Tx, tenantId: string, codeId: string): Promise<CodeRow> {
   const c = (await tx.execute(sql`
     SELECT id, rta, rta_amc_code, rta_scheme_code, observed_isins, observed_name, status, amfi_scheme_code, confirmed_by IS NOT NULL AS confirmed,
@@ -392,10 +467,17 @@ export async function confirmSchemeCode(tx: Tx, tenantId: string, codeId: string
     if (!n) throw new SchemeMappingError("that AMFI scheme code is not in the AMFI feed");
     ctx.nav.set(n.scheme_code, { code: n.scheme_code, amc: n.amc_name, name: n.scheme_name, plan: n.plan, option: n.option_name, currentNav: navIsCurrent(n.nd, ctx.latestFeedDate) });
   }
+  // A scheme is approved only inside the registrar AMC's VERIFIED identity
+  // (crosswalk, 0241): ISIN evidence or two platform operators. Without one,
+  // a wrong-AMC approval cannot be told from a right one — refuse.
+  const identity = ctx.amcIdentity.get(amcOf({ rta: c.rta, amcCode: c.rta_amc_code }));
+  if (!identity?.allowed.length) {
+    throw new SchemeMappingError(`the AMC behind registrar code ${c.rta_amc_code} is not verified yet — a platform operator must record it (two people, with evidence) before any of its schemes can be approved`);
+  }
   const d = decideFor(ctx, c, { confirmedCode: input.amfiSchemeCode });
   if (d.status === "conflict") throw new SchemeMappingError(`not confirmed: ${d.reason}`);
-  const warnings: string[] = [];
   const target = ctx.nav.get(input.amfiSchemeCode)!;
+  const warnings: string[] = planOptionWarnings(c.observed_name, target);
   if (!target.currentNav) warnings.push("AMFI's last NAV for this scheme is historical (closed, matured or merged) — its NAV is not current");
   const dup = (await tx.execute(sql`
     SELECT rta, rta_amc_code, rta_scheme_code FROM scheme_rta_codes
@@ -441,19 +523,40 @@ export async function deferSchemeCode(tx: Tx, tenantId: string, codeId: string, 
 export type SchemeCandidate = {
   amfiSchemeCode: string; name: string | null; amc: string | null; plan: string | null; option: string | null;
   nav: number | null; navDate: string | null; active: boolean; isins: string[];
-  /** Why it is shown. Only 'platform' and 'isin' are evidence; 'name' is ranking for a person. */
+  /** Why it is shown. Only 'platform' and 'isin' are evidence; 'name' is a suggestion for a person to check — never proof. */
   basis: "platform" | "isin" | "name";
   nameScore: number; warnings: string[];
 };
 
+export type DecisionHistoryEntry = { at: string; source: "firm" | "platform_scheme" | "platform_amc"; action: string; actor: string | null; secondActor?: string | null; reason: string | null; detail: unknown };
+
+type PoolRow = { scheme_code: string; scheme_name: string; amc_name: string; plan: string | null; option_name: string | null };
+
+/** Name suggestions from a pool already confined to verified AMCs: plan / option contradictions dropped, ranked by name only. */
+function rankByName(observedName: string | null, pool: PoolRow[], rejected: Set<string>, limit: number): Array<{ code: string; score: number }> {
+  if (!observedName) return [];
+  return pool
+    .filter((n) => !rejected.has(n.scheme_code))
+    .filter((n) => !markerContradiction(markersOf(observedName, amfiCore(n.scheme_name)), amfiMarkers({ name: n.scheme_name, plan: n.plan, option: n.option_name })))
+    .map((n) => ({ code: n.scheme_code, score: nameRank(observedName, n.scheme_name) }))
+    .filter((x) => x.score > 0)
+    .sort((x, y) => y.score - x.score || x.code.localeCompare(y.code))
+    .slice(0, limit);
+}
+
 /**
- * Candidates for a person to approve, evidence first: a platform mapping,
- * then AMFI schemes carrying the registrar's ISIN, then — for a person to
- * check against a document, never applied — AMFI schemes of the registrar
- * AMC's established AMC, ranked by name and filtered by any explicit plan /
- * option words the registrar printed. Rejected candidates are left out.
+ * Candidates for a person to approve, evidence first: a platform mapping, AMFI
+ * schemes carrying the registrar's ISIN, then NAME SUGGESTIONS — only from the
+ * registrar AMC's VERIFIED identity (crosswalk: primary + documented
+ * successors), never across AMCs, plan / option contradictions removed. With
+ * no verified AMC there are no name suggestions at all. A similarity score is
+ * never proof; every suggestion is checked against a document and approved by
+ * a person, one code at a time.
  */
-export async function schemeCandidates(tx: Tx, tenantId: string, codeId: string, limit = 8): Promise<{ registrarAmc: string[]; amcEstablished: boolean; markers: ReturnType<typeof markersOf>; candidates: SchemeCandidate[] }> {
+export async function schemeCandidates(tx: Tx, tenantId: string, codeId: string, limit = 8): Promise<{
+  registrarAmc: string[]; amcEstablished: boolean; amcVerified: boolean; verifiedAmcs: string[];
+  markers: ReturnType<typeof markersOf>; candidates: SchemeCandidate[]; history: DecisionHistoryEntry[];
+}> {
   const c = (await tx.execute(sql`
     SELECT id, rta, rta_amc_code, rta_scheme_code, observed_isins, observed_name, status, amfi_scheme_code, confirmed_by IS NOT NULL AS confirmed, status_reason, reason_code, rejected_candidates
       FROM scheme_rta_codes WHERE tenant_id = ${tenantId}::uuid AND id = ${codeId}::uuid`)).rows[0] as (CodeRow & { rejected_candidates: string[] }) | undefined;
@@ -461,7 +564,9 @@ export async function schemeCandidates(tx: Tx, tenantId: string, codeId: string,
   const ctx = await loadDecisionContext(tx, tenantId, [{ rta: c.rta, amcCode: c.rta_amc_code }]);
   const key = { rta: c.rta, amcCode: c.rta_amc_code, schemeCode: c.rta_scheme_code };
   const sib = siblingAmcs(ctx, key);
-  const sibKeys = [...new Set(sib.map(amcKey).filter(Boolean))] as string[];
+  const identity = ctx.amcIdentity.get(amcOf(key));
+  const verified = identity?.allowed ?? [];
+  const allowedKeys = new Set(verified.map(amcKey).filter(Boolean) as string[]);
   const rejected = new Set(c.rejected_candidates ?? []);
   const registrarMarkers = markersOf(c.observed_name);
   const picked = new Map<string, SchemeCandidate>();
@@ -469,24 +574,24 @@ export async function schemeCandidates(tx: Tx, tenantId: string, codeId: string,
   const g = ctx.globalByKey.get(keyOf(key));
   if (g) add(g.amfi_scheme_code, "platform");
   for (const i of c.observed_isins ?? []) for (const m of ctx.amfiByIsin[i.toUpperCase()] ?? []) add(m.code, "isin");
-  // Name suggestions — for a person to check against a document, never applied.
-  // Inside the registrar AMC's established AMC when there is one; across every
-  // AMC when none is established yet (every CAMS AMC until its first code is
-  // decided), each then warned "the registrar AMC is not established". None
-  // when the registrar AMC's codes contradict each other.
-  if (sibKeys.length <= 1 && c.observed_name) {
-    const pool = (await tx.execute(sql`SELECT scheme_code, scheme_name, amc_name, plan, option_name FROM scheme_nav WHERE amc_name IS NOT NULL`)).rows as any[];
-    const ranked = pool
-      .filter((n) => (sibKeys.length === 0 || amcKey(n.amc_name) === sibKeys[0]) && !rejected.has(n.scheme_code))
-      .filter((n) => !markerContradiction(markersOf(c.observed_name, amfiCore(n.scheme_name)), amfiMarkers({ name: n.scheme_name, plan: n.plan, option: n.option_name })))
-      .map((n) => ({ code: n.scheme_code as string, score: nameRank(c.observed_name, n.scheme_name) }))
-      .filter((x) => x.score > 0)
-      .sort((x, y) => y.score - x.score || x.code.localeCompare(y.code))
-      .slice(0, limit);
-    for (const r of ranked) add(r.code, "name");
+
+  // The other unresolved codes under the same registrar AMC, ranked the same
+  // way, so a suggestion shared by several codes is flagged.
+  const suggestedFor = new Map<string, string[]>();
+  if (allowedKeys.size) {
+    const pool = ((await tx.execute(sql`SELECT scheme_code, scheme_name, amc_name, plan, option_name FROM scheme_nav WHERE amc_name IS NOT NULL`)).rows as PoolRow[])
+      .filter((n) => allowedKeys.has(amcKey(n.amc_name) ?? ""));
+    for (const r of rankByName(c.observed_name, pool, rejected, limit)) add(r.code, "name");
+    for (const o of ctx.codes) {
+      if (o.id === c.id || o.rta !== c.rta || o.rta_amc_code !== c.rta_amc_code || isResolved(o.status)) continue;
+      const top = rankByName(o.observed_name, pool, new Set(), 1)[0];
+      if (top) (suggestedFor.get(top.code) ?? suggestedFor.set(top.code, []).get(top.code)!).push(o.rta_scheme_code);
+    }
   }
+  const history = await decisionHistory(tx, tenantId, c, identity);
   const codes = [...picked.keys()];
-  if (!codes.length) return { registrarAmc: sib, amcEstablished: sibKeys.length === 1, markers: registrarMarkers, candidates: [] };
+  const base = { registrarAmc: sib, amcEstablished: allowedKeys.size > 0, amcVerified: allowedKeys.size > 0, verifiedAmcs: verified, markers: registrarMarkers, history };
+  if (!codes.length) return { ...base, candidates: [] };
   const details = (await tx.execute(sql`
     SELECT n.scheme_code, n.scheme_name, n.amc_name, n.plan, n.option_name, n.nav::float8 AS nav, n.nav_date::text AS nav_date,
            array_remove(ARRAY[n.isin_payout_growth, n.isin_reinvest, CASE WHEN n.isin_payout_growth IS NULL THEN n.isin END], NULL) AS isins,
@@ -497,21 +602,93 @@ export async function schemeCandidates(tx: Tx, tenantId: string, codeId: string,
   const candidates = codes.flatMap((code) => {
     const d = byCode.get(code);
     if (!d) return [];
-    const base = picked.get(code)!;
+    const pick = picked.get(code)!;
     const warnings: string[] = [];
     const active = navIsCurrent(d.nav_date, ctx.latestFeedDate);
     if (!active) warnings.push(`AMFI's last NAV is dated ${d.nav_date ?? "—"} — historical (closed, matured or merged)`);
-    if (sibKeys.length === 1 && amcKey(d.amc_name) !== sibKeys[0]) warnings.push(`AMC differs from the registrar AMC's other codes (${sib[0]})`);
-    if (sibKeys.length > 1) warnings.push("the registrar AMC's other codes point to more than one AMFI AMC");
-    if (!sibKeys.length) warnings.push("the registrar AMC is not established yet — check the AMC on the document");
+    if (!allowedKeys.size) warnings.push("the registrar AMC's identity is not verified — no scheme can be approved until an operator records it");
+    else if (!allowedKeys.has(amcKey(d.amc_name) ?? "")) warnings.push(`outside the registrar AMC's verified identity (${verified.join(" / ")}) — cannot be approved`);
     const po = markerContradiction(markersOf(c.observed_name, amfiCore(d.scheme_name)), amfiMarkers({ name: d.scheme_name, plan: d.plan, option: d.option_name }));
     if (po) warnings.push(`plan / option: ${po}`);
+    warnings.push(...planOptionWarnings(c.observed_name, { name: d.scheme_name, plan: d.plan, option: d.option_name }));
     if (d.taken?.length) warnings.push(`already mapped from registrar code ${d.taken.join(", ")}`);
+    const shared = suggestedFor.get(code);
+    if (shared?.length) warnings.push(`also the top suggestion for registrar code ${shared.join(", ")} — at most one of them can be this scheme`);
     if (d.nav_date && d.nav_date < navCutoffIso()) warnings.push(`NAV dated ${d.nav_date} — not current`);
-    return [{ ...base, name: d.scheme_name, amc: d.amc_name, plan: d.plan, option: d.option_name, nav: d.nav, navDate: d.nav_date, active,
+    if (pick.basis === "name") warnings.push("a name suggestion — check it against the AMC's scheme list; similarity is not proof");
+    return [{ ...pick, name: d.scheme_name, amc: d.amc_name, plan: d.plan, option: d.option_name, nav: d.nav, navDate: d.nav_date, active,
       isins: d.isins ?? [], nameScore: Math.round(nameRank(c.observed_name, d.scheme_name) * 100) / 100, warnings }];
   });
-  return { registrarAmc: sib, amcEstablished: sibKeys.length === 1, markers: registrarMarkers, candidates };
+  return { ...base, candidates };
+}
+
+/** Every decision on a code, firm and platform, oldest first (nothing is ever deleted). */
+async function decisionHistory(tx: Tx, tenantId: string, c: CodeRow, identity: AmcIdentity | undefined): Promise<DecisionHistoryEntry[]> {
+  const firm = (await tx.execute(sql`
+    SELECT at::text AS at, action, actor_user_id::text AS actor, reason, after AS detail FROM audit_log
+     WHERE tenant_id = ${tenantId}::uuid AND entity_type = 'scheme_rta_code' AND entity_id = ${c.id}::uuid ORDER BY at`)).rows as any[];
+  const scheme = (await tx.execute(sql`
+    SELECT e.at::text AS at, e.action, e.actor::text AS actor, e.second_actor::text AS second_actor, e.reason, e.after AS detail
+      FROM scheme_registrar_map_events e JOIN scheme_registrar_map m ON m.id = e.map_id
+     WHERE m.rta = ${c.rta} AND m.rta_amc_code = ${c.rta_amc_code} AND m.rta_scheme_code = ${c.rta_scheme_code} ORDER BY e.at`)).rows as any[];
+  const amc = (await tx.execute(sql`
+    SELECT e.at::text AS at, e.action, e.actor::text AS actor, e.second_actor::text AS second_actor, e.reason, e.after AS detail
+      FROM registrar_amc_identity_events e JOIN registrar_amc_identity i ON i.id = e.identity_id
+     WHERE i.rta = ${c.rta} AND i.rta_amc_code = ${c.rta_amc_code} ORDER BY e.at`)).rows as any[];
+  void identity;
+  return [
+    ...firm.map((r) => ({ at: r.at, source: "firm" as const, action: r.action, actor: r.actor, reason: r.reason, detail: r.detail })),
+    ...scheme.map((r) => ({ at: r.at, source: "platform_scheme" as const, action: r.action, actor: r.actor, secondActor: r.second_actor, reason: r.reason, detail: r.detail })),
+    ...amc.map((r) => ({ at: r.at, source: "platform_amc" as const, action: r.action, actor: r.actor, secondActor: r.second_actor, reason: r.reason, detail: r.detail })),
+  ].sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : 0));
+}
+
+// ── The AMC-identity crosswalk (two operators) ────────────────────────────
+
+/**
+ * Two platform operators record which AMFI AMC a registrar AMC code is
+ * (role primary), or a documented successor AMC its schemes may carry after a
+ * merger (role successor), citing the registrar's or AMC's own document. The
+ * AMFI AMC must be one the AMFI feed names. Approving an AMC identity approves
+ * NO scheme. A live primary is replaced only by revoking it first.
+ */
+export async function approveAmcIdentity(systemTx: Tx, input: { rta: "cams" | "kfintech"; amcCode: string; amfiAmc: string; role: "primary" | "successor"; note: string; requestedBy: string; approvedBy: string }) {
+  if (input.requestedBy === input.approvedBy) throw new SchemeMappingError("the requester and the approver must be different operators");
+  if ((input.note ?? "").trim().length < 10) throw new SchemeMappingError("say what evidence was read (at least 10 characters)");
+  const amc = (await systemTx.execute(sql`SELECT amc_name FROM scheme_nav WHERE lower(amc_name) = lower(${input.amfiAmc.trim()}) LIMIT 1`)).rows[0] as { amc_name: string } | undefined;
+  if (!amc) throw new SchemeMappingError("that AMC is not named in the AMFI feed — use AMFI's exact AMC name");
+  const current = await loadAmcIdentity(systemTx, [{ rta: input.rta, amcCode: input.amcCode }]);
+  const live = current.get(amcOf({ rta: input.rta, amcCode: input.amcCode }));
+  if (input.role === "primary" && live?.primary && amcKey(live.primary) !== amcKey(amc.amc_name)) {
+    throw new SchemeMappingError(`registrar code ${input.amcCode} is already verified as ${live.primary} — revoke that first`);
+  }
+  if (input.role === "successor" && !live?.primary) throw new SchemeMappingError("record the primary AMC before any successor");
+  if (live?.rows.some((r) => amcKey(r.amfi_amc) === amcKey(amc.amc_name))) return { unchanged: true, id: live.rows.find((r) => amcKey(r.amfi_amc) === amcKey(amc.amc_name))!.id };
+  const row = (await systemTx.execute(sql`
+    INSERT INTO registrar_amc_identity (rta, rta_amc_code, amfi_amc, role, basis, status, evidence_note, requested_by, approved_by)
+    VALUES (${input.rta}, ${input.amcCode}, ${amc.amc_name}, ${input.role}, 'platform_approval', 'approved', ${input.note.trim()}, ${input.requestedBy}::uuid, ${input.approvedBy}::uuid)
+    RETURNING id`)).rows[0] as { id: string };
+  await systemTx.execute(sql`
+    INSERT INTO registrar_amc_identity_events (identity_id, action, after, actor, second_actor, reason)
+    VALUES (${row.id}::uuid, 'approve', ${JSON.stringify({ amfiAmc: amc.amc_name, role: input.role })}::jsonb, ${input.approvedBy}::uuid, ${input.requestedBy}::uuid, ${input.note.trim()})`);
+  const re = await redecideEverywhere(systemTx, [{ rta: input.rta, amcCode: input.amcCode }]);
+  return { unchanged: false, id: row.id, firmsRedecided: re.firms };
+}
+
+/** One operator may revoke an AMC identity (stopping is never two-person). Every firm holding the registrar AMC is re-decided. */
+export async function revokeAmcIdentity(systemTx: Tx, input: { id: string; by: string; reason: string }) {
+  if ((input.reason ?? "").trim().length < 10) throw new SchemeMappingError("say why (at least 10 characters)");
+  const before = (await systemTx.execute(sql`SELECT * FROM registrar_amc_identity WHERE id = ${input.id}::uuid FOR UPDATE`)).rows[0] as any;
+  if (!before) throw Object.assign(new SchemeMappingError("AMC identity not found"), { status: 404 });
+  if (before.status === "revoked") return { unchanged: true };
+  await systemTx.execute(sql`
+    UPDATE registrar_amc_identity SET status = 'revoked', revoked_at = now(), revoked_by = ${input.by}::uuid, revoke_reason = ${input.reason.trim()}, updated_at = now()
+     WHERE id = ${input.id}::uuid`);
+  await systemTx.execute(sql`
+    INSERT INTO registrar_amc_identity_events (identity_id, action, before, actor, reason)
+    VALUES (${input.id}::uuid, 'revoke', ${JSON.stringify({ amfiAmc: before.amfi_amc, role: before.role, basis: before.basis })}::jsonb, ${input.by}::uuid, ${input.reason.trim()})`);
+  const re = await redecideEverywhere(systemTx, [{ rta: before.rta, amcCode: before.rta_amc_code }]);
+  return { unchanged: false, firmsRedecided: re.firms };
 }
 
 // ── Platform mappings (two operators) ─────────────────────────────────────
@@ -526,8 +703,12 @@ export async function schemeCandidates(tx: Tx, tenantId: string, codeId: string,
 export async function approvePlatformMapping(systemTx: Tx, input: { rta: "cams" | "kfintech"; amcCode: string; schemeCode: string; amfiSchemeCode: string; note: string; requestedBy: string; approvedBy: string }) {
   if (input.requestedBy === input.approvedBy) throw new SchemeMappingError("the requester and the approver must be different operators");
   if ((input.note ?? "").trim().length < 10) throw new SchemeMappingError("say what evidence was read (at least 10 characters)");
-  const nav = (await systemTx.execute(sql`SELECT scheme_code FROM scheme_nav WHERE scheme_code = ${input.amfiSchemeCode}`)).rows[0];
+  const nav = (await systemTx.execute(sql`SELECT scheme_code, amc_name FROM scheme_nav WHERE scheme_code = ${input.amfiSchemeCode}`)).rows[0] as { scheme_code: string; amc_name: string | null } | undefined;
   if (!nav) throw new SchemeMappingError("that AMFI scheme code is not in the AMFI feed");
+  const identity = (await loadAmcIdentity(systemTx, [{ rta: input.rta, amcCode: input.amcCode }])).get(amcOf({ rta: input.rta, amcCode: input.amcCode }));
+  if (!identity?.allowed.length) throw new SchemeMappingError(`the AMC behind registrar code ${input.amcCode} is not verified yet — record the AMC identity first`);
+  const wrongAmc = amcCheck({ verifiedAmcs: identity.allowed }, nav.amc_name);
+  if (wrongAmc) throw new SchemeMappingError(`not approved: ${wrongAmc} — record a documented succession first if the AMC really changed`);
   const live = (await systemTx.execute(sql`
     SELECT id, amfi_scheme_code, basis, status FROM scheme_registrar_map
      WHERE rta = ${input.rta} AND rta_amc_code = ${input.amcCode} AND rta_scheme_code = ${input.schemeCode} AND status <> 'revoked' FOR UPDATE`)).rows[0] as any;
@@ -565,6 +746,10 @@ export type SchemeCodeRow = {
   sourceReports: string[]; status: SchemeStatus; reason: string | null; reasonCode: ReasonCode | null; amfiSchemeCode: string | null; amfiName: string | null;
   amfiAmc: string | null; amfiNavDate: string | null; amfiActive: boolean | null; confirmedAt: string | null; confirmNote: string | null; evidenceSource: string | null;
   reviewState: "deferred" | null; reviewNote: string | null; rejectedCandidates: string[]; heldTransactions: number; lastSeenAt: string;
+  /** Exposure, for the review order: the registrar-reported holding value on the code, the held transaction amount, SIP registrations. */
+  holdingValue: number; heldAmount: number; sipRegistrations: number;
+  /** The registrar AMC's verified identity (crosswalk), or empty when not verified. */
+  verifiedAmcs: string[];
 };
 
 /** The firm's registrar codes for the Scheme codes screen, the ones needing a decision first. */
@@ -581,16 +766,35 @@ export async function loadSchemeCodes(tx: Tx, tenantId: string, opts: { status?:
       SELECT l.rta, l.amc_code, l.scheme_code, count(*)::int AS n FROM latest l
        WHERE l.posting_outcome = 'quarantined' AND l.posting_reason ~ '^scheme_(unresolved|conflict)'
          AND NOT EXISTS (SELECT 1 FROM rta_posted_transactions p WHERE p.tenant_id = ${tenantId}::uuid AND p.identity_key = l.identity_key)
-       GROUP BY 1, 2, 3)
+       GROUP BY 1, 2, 3),
+    held_amt AS (
+      SELECT e.rta, e.amc_code, e.scheme_code, sum(abs(coalesce(e.reported_amount, 0))) AS amt
+        FROM (SELECT DISTINCT ON (identity_key) * FROM rta_staging_economic_txns WHERE tenant_id = ${tenantId}::uuid AND posting_outcome IS NOT NULL ORDER BY identity_key, created_at DESC) e
+       WHERE e.posting_outcome = 'quarantined' AND e.posting_reason ~ '^scheme_(unresolved|conflict)'
+       GROUP BY 1, 2, 3),
+    legs AS (
+      SELECT f.rta::text AS rta, f.amc_code, leg->>'rtaSchemeCode' AS scheme_code, sum(coalesce((leg->>'sourceValue')::numeric, 0)) AS v
+        FROM folios f CROSS JOIN LATERAL jsonb_array_elements(f.schemes) leg
+       WHERE f.tenant_id = ${tenantId}::uuid AND leg ? 'rtaSchemeCode' GROUP BY 1, 2, 3),
+    regs AS (
+      SELECT rta, amc_code, scheme_code, count(*)::int AS n FROM rta_sip_registrations WHERE tenant_id = ${tenantId}::uuid GROUP BY 1, 2, 3),
+    ident AS (
+      SELECT rta, rta_amc_code, array_agg(amfi_amc ORDER BY (role = 'primary') DESC, amfi_amc) AS amcs FROM registrar_amc_identity WHERE status <> 'revoked' GROUP BY 1, 2)
     SELECT c.id, c.rta, c.rta_amc_code, c.rta_scheme_code, c.observed_name, c.observed_isins, c.source_reports, c.status, c.status_reason, c.reason_code,
            c.amfi_scheme_code, n.scheme_name AS amfi_name, n.amc_name AS amfi_amc, n.nav_date::text AS amfi_nav_date,
            c.confirmed_at::text AS confirmed_at, c.confirm_note, c.evidence_source, c.review_state, c.review_note, c.rejected_candidates,
-           c.last_seen_at::text AS last_seen_at, COALESCE(h.n, 0) AS held
+           c.last_seen_at::text AS last_seen_at, COALESCE(h.n, 0) AS held,
+           COALESCE(l.v, 0)::float8 AS holding_value, COALESCE(ha.amt, 0)::float8 AS held_amount, COALESCE(r.n, 0) AS sip_regs, COALESCE(i.amcs, '{}') AS verified_amcs
       FROM scheme_rta_codes c
       LEFT JOIN scheme_nav n ON n.scheme_code = c.amfi_scheme_code
       LEFT JOIN held h ON h.rta = c.rta AND h.amc_code = c.rta_amc_code AND h.scheme_code = c.rta_scheme_code
+      LEFT JOIN held_amt ha ON ha.rta = c.rta AND ha.amc_code = c.rta_amc_code AND ha.scheme_code = c.rta_scheme_code
+      LEFT JOIN legs l ON l.rta = c.rta AND l.amc_code = c.rta_amc_code AND l.scheme_code = c.rta_scheme_code
+      LEFT JOIN regs r ON r.rta = c.rta AND r.amc_code = c.rta_amc_code AND r.scheme_code = c.rta_scheme_code
+      LEFT JOIN ident i ON i.rta = c.rta AND i.rta_amc_code = c.rta_amc_code
      WHERE c.tenant_id = ${tenantId}::uuid ${opts.status ? sql`AND c.status = ${opts.status}` : sql``}
-     ORDER BY (c.status IN ('conflict', 'unresolved')) DESC, (c.review_state IS NULL) DESC, COALESCE(h.n, 0) DESC, c.rta, c.rta_amc_code, c.rta_scheme_code
+     ORDER BY (c.status IN ('conflict', 'unresolved')) DESC, (c.review_state IS NULL) DESC,
+              COALESCE(l.v, 0) + COALESCE(ha.amt, 0) DESC, COALESCE(h.n, 0) DESC, COALESCE(r.n, 0) DESC, c.rta, c.rta_amc_code, c.rta_scheme_code
      LIMIT 1000`)).rows as any[];
   return {
     counts,
@@ -600,6 +804,7 @@ export async function loadSchemeCodes(tx: Tx, tenantId: string, opts: { status?:
       amfiAmc: r.amfi_amc, amfiNavDate: r.amfi_nav_date, amfiActive: r.amfi_scheme_code ? navIsCurrent(r.amfi_nav_date, latest.d) : null,
       confirmedAt: r.confirmed_at, confirmNote: r.confirm_note, evidenceSource: r.evidence_source,
       reviewState: r.review_state, reviewNote: r.review_note, rejectedCandidates: r.rejected_candidates ?? [], heldTransactions: Number(r.held), lastSeenAt: r.last_seen_at,
+      holdingValue: Number(r.holding_value), heldAmount: Number(r.held_amount), sipRegistrations: Number(r.sip_regs), verifiedAmcs: r.verified_amcs ?? [],
     })),
   };
 }

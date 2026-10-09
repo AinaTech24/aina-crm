@@ -5,6 +5,13 @@
  *   GET  ?status=verified|approved|revoked&rta=…   the platform mappings, with their history
  *   POST { action: "approve", rta, amcCode, schemeCode, amfiSchemeCode, note, requestedBy }
  *   POST { action: "revoke", id, reason }
+ *   GET  ?view=amc                                  the AMC-identity crosswalk, with its history
+ *   POST { action: "approve_amc", rta, amcCode, amfiAmc, role: "primary" | "successor", note, requestedBy }
+ *   POST { action: "revoke_amc", id, reason }
+ *
+ * The AMC identity (which AMFI AMC a registrar AMC code is, plus documented
+ * successor AMCs after a merger) must be recorded before any scheme under it
+ * can be approved. Recording it approves no scheme.
  *
  * A registrar code → AMFI scheme relationship is the registrar's, the same for
  * every firm. The system records one when a firm's file proves it by ISIN
@@ -21,7 +28,7 @@ import { requireSession } from "@/lib/auth/session";
 import { requirePlatform } from "@/lib/auth/rbac";
 import { handleApiError } from "@/lib/api/error-handler";
 import { withSystem } from "@/db/client";
-import { approvePlatformMapping, revokePlatformMapping, SchemeMappingError } from "@/lib/rta/scheme-resolution";
+import { approveAmcIdentity, approvePlatformMapping, revokeAmcIdentity, revokePlatformMapping, SchemeMappingError } from "@/lib/rta/scheme-resolution";
 import { reprocessHeldTransactions } from "@/lib/rta/posting/reprocess";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +39,11 @@ const Body = z.discriminatedUnion("action", [
     amfiSchemeCode: z.string().trim().min(1).max(20), note: z.string().trim().min(10).max(1000), requestedBy: z.string().uuid(),
   }),
   z.object({ action: z.literal("revoke"), id: z.string().uuid(), reason: z.string().trim().min(10).max(1000) }),
+  z.object({
+    action: z.literal("approve_amc"), rta: z.enum(["cams", "kfintech"]), amcCode: z.string().trim().min(1).max(20), amfiAmc: z.string().trim().min(2).max(200),
+    role: z.enum(["primary", "successor"]), note: z.string().trim().min(10).max(1000), requestedBy: z.string().uuid(),
+  }),
+  z.object({ action: z.literal("revoke_amc"), id: z.string().uuid(), reason: z.string().trim().min(10).max(1000) }),
 ]);
 
 async function assertOperator(tx: any, userId: string, approver: string) {
@@ -45,6 +57,14 @@ export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
     requirePlatform(session.roles, "platform.settings.manage");
+    if (req.nextUrl.searchParams.get("view") === "amc") {
+      const rows = await withSystem(async (tx) => (await tx.execute(sql`
+        SELECT i.id, i.rta, i.rta_amc_code, i.amfi_amc, i.role, i.basis, i.status, i.evidence_note, i.evidence_isins, i.requested_by, i.approved_by, i.created_at, i.revoked_at, i.revoke_reason,
+               (SELECT jsonb_agg(jsonb_build_object('action', e.action, 'at', e.at, 'actor', e.actor, 'secondActor', e.second_actor, 'reason', e.reason) ORDER BY e.at)
+                  FROM registrar_amc_identity_events e WHERE e.identity_id = i.id) AS history
+          FROM registrar_amc_identity i ORDER BY i.rta, i.rta_amc_code, (i.role = 'primary') DESC, i.created_at`)).rows);
+      return NextResponse.json({ rows });
+    }
     const status = req.nextUrl.searchParams.get("status");
     const rta = req.nextUrl.searchParams.get("rta");
     const rows = await withSystem(async (tx) => (await tx.execute(sql`
@@ -75,6 +95,11 @@ export async function POST(req: NextRequest) {
         await assertOperator(tx, b.requestedBy, session.userId);
         return approvePlatformMapping(tx, { ...b, approvedBy: session.userId });
       }
+      if (b.action === "approve_amc") {
+        await assertOperator(tx, b.requestedBy, session.userId);
+        return approveAmcIdentity(tx, { ...b, approvedBy: session.userId });
+      }
+      if (b.action === "revoke_amc") return revokeAmcIdentity(tx, { id: b.id, by: session.userId, reason: b.reason });
       return revokePlatformMapping(tx, { id: b.id, by: session.userId, reason: b.reason });
     });
     // An approval can release transactions held on the code in each firm.

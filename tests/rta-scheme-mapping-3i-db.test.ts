@@ -169,6 +169,9 @@ describe.skipIf(!TEST_DB)("Phase 3I — scheme mapping fail-safes (DB)", () => {
     expect(await code(tA, "193A")).toMatchObject({ status: "conflict", reason_code: "amc_mismatch" });
     expect(await code(tA, "193B")).toMatchObject({ status: "conflict", reason_code: "amc_mismatch" });
     expect(await sys(sql`SELECT 1 FROM scheme_registrar_map WHERE rta_amc_code IN ('192', '193')`)).toEqual([]);
+    // The AMC identity is recorded from ISIN evidence only when it is unanimous.
+    expect(await sys(sql`SELECT rta_amc_code, amfi_amc, role, basis, status FROM registrar_amc_identity WHERE rta = 'kfintech' AND rta_amc_code IN ('191', '193') AND status <> 'revoked'`))
+      .toEqual([{ rta_amc_code: "191", amfi_amc: "Iota Mutual Fund", role: "primary", basis: "isin", status: "verified" }]);
   });
 
   it("no ISIN: held; candidates come from the registrar AMC's own schemes, never a same-named scheme at another AMC; reject, defer and approve are checked and audited", async () => {
@@ -224,6 +227,9 @@ describe.skipIf(!TEST_DB)("Phase 3I — scheme mapping fail-safes (DB)", () => {
     await run(tA, "c1.xls", xlsOf(R2_HEADER, [r2("944001", "6610001/11", P.adult)], ["traddate"]), "cams");
     expect(await code(tA, "IOFC")).toMatchObject({ status: "unresolved", reason_code: "no_isin" });
     const input = { rta: "cams" as const, amcCode: "IO", schemeCode: "IOFC", amfiSchemeCode: A.fcr, note: "AMC scheme list read by both operators" };
+    // No scheme is approved under an AMC whose identity is not verified (CAMS prints no ISIN).
+    await expect(withSystem((tx) => S.approvePlatformMapping(tx, { ...input, requestedBy: ops.a, approvedBy: ops.b }))).rejects.toThrow(/not verified yet/);
+    await withSystem((tx) => S.approveAmcIdentity(tx, { rta: "cams", amcCode: "IO", amfiAmc: "Iota Mutual Fund", role: "primary", note: "CAMS AMC code list: IO is Iota", requestedBy: ops.a, approvedBy: ops.b }));
     await expect(withSystem((tx) => S.approvePlatformMapping(tx, { ...input, requestedBy: ops.a, approvedBy: ops.a }))).rejects.toThrow(/different operators/);
     await expect(sys(sql`INSERT INTO scheme_registrar_map (rta, rta_amc_code, rta_scheme_code, amfi_scheme_code, basis, status, evidence_note, requested_by, approved_by)
       VALUES ('cams', 'IO', 'IOFC', ${A.fcr}, 'platform_approval', 'approved', 'one person twice', ${ops.a}::uuid, ${ops.a}::uuid)`)).rejects.toThrow();

@@ -112,6 +112,11 @@ describe("explicit plan / option words", () => {
     expect(amcKey("Iota Mutual Fund")).toBe(amcKey("IOTA Asset Management Company Limited"));
     expect(amcKey("Iota Mutual Fund")).not.toBe(amcKey("Kappa Mutual Fund"));
   });
+  it("name rank treats joined and split words alike: Multicap ranks the Multi-Cap scheme above an unrelated one (the P121 case)", () => {
+    const reg = "ICICI Prudential Multicap Fund - Growth";
+    expect(nameRank(reg, "ICICI Prudential Multi-Cap Fund - Regular Plan - Growth")).toBeGreaterThan(nameRank(reg, "ICICI Prudential FMCG Fund - Regular Plan - Growth"));
+    expect(nameRank("Kotak Large & Midcap Fund", "Kotak Large & Mid Cap Fund")).toBeGreaterThan(nameRank("Kotak Large & Midcap Fund", "Kotak Small Cap Fund"));
+  });
   it("name rank orders candidates only — the same core name at two AMCs ranks the same", () => {
     expect(nameRank("Iota Flexi Cap Fund - Regular Growth", "Iota Flexi Cap Fund - Regular Plan - Growth")).toBe(1);
     expect(nameRank("Kappa Flexi Cap Fund", "Iota Flexi Cap Fund")).toBeGreaterThan(0);

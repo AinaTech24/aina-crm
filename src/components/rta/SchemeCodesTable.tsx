@@ -21,8 +21,8 @@ import { Field } from "@/components/ui/Field";
 import { notify } from "@/components/ui/Toast";
 import { promptDialog } from "@/components/ui/ConfirmProvider";
 import { SchemeAutocomplete, type SchemePick } from "@/components/mf/SchemeAutocomplete";
-import { formatDate } from "@/lib/format";
-import type { SchemeCodeRow, SchemeCandidate } from "@/lib/rta/scheme-resolution";
+import { formatDate, formatMoney } from "@/lib/format";
+import type { SchemeCodeRow, SchemeCandidate, DecisionHistoryEntry } from "@/lib/rta/scheme-resolution";
 
 const STATUS: Record<string, { label: string; tone: "success" | "warning" | "danger" | "neutral" }> = {
   resolved_isin: { label: "Resolved by ISIN", tone: "success" },
@@ -92,6 +92,16 @@ export function SchemeCodesTable({ rows, canConfirm }: { rows: SchemeCodeRow[]; 
     },
     { key: "held", header: "Held", align: "right", cell: (r) => (r.heldTransactions ? <span className="tabular-nums">{r.heldTransactions}</span> : <span className="text-muted-foreground">0</span>) },
     {
+      key: "exposure", header: "Exposure", align: "right", hideOnMobile: true,
+      cell: (r) => (r.holdingValue || r.heldAmount ? (
+        <div className="text-xs tabular-nums">
+          {r.holdingValue ? <div>{formatMoney(r.holdingValue)} held</div> : null}
+          {r.heldAmount ? <div className="text-muted-foreground">{formatMoney(r.heldAmount)} in held transactions</div> : null}
+          {r.sipRegistrations ? <div className="text-muted-foreground">{r.sipRegistrations} SIP registration(s)</div> : null}
+        </div>
+      ) : <span className="text-muted-foreground">—</span>),
+    },
+    {
       key: "act", header: <span className="sr-only">Action</span>, className: "relative",
       cell: (r) => (r.status === "resolved_isin" || !canConfirm ? null : (
         <Button size="sm" variant="secondary" onClick={() => { setOpen(open === r.id ? null : r.id); if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" }); }} aria-expanded={open === r.id}>
@@ -119,7 +129,7 @@ export function SchemeCodesTable({ rows, canConfirm }: { rows: SchemeCodeRow[]; 
   );
 }
 
-type Candidates = { registrarAmc: string[]; amcEstablished: boolean; candidates: SchemeCandidate[] };
+type Candidates = { registrarAmc: string[]; amcVerified: boolean; verifiedAmcs: string[]; candidates: SchemeCandidate[]; history: DecisionHistoryEntry[] };
 
 function ReviewPanel({ row, onDone }: { row: SchemeCodeRow; onDone: () => void }) {
   const router = useRouter();
@@ -184,7 +194,9 @@ function ReviewPanel({ row, onDone }: { row: SchemeCodeRow; onDone: () => void }
   return (
     <div className="space-y-3 text-xs">
       <div className="text-xs text-muted-foreground">
-        Registrar AMC {cands ? (cands.amcEstablished ? <>is <span className="text-foreground">{cands.registrarAmc[0]}</span> (from its other codes)</> : cands.registrarAmc.length > 1 ? <span className="text-destructive">points to {cands.registrarAmc.join(" and ")}</span> : "is not established yet — check the AMC on your document") : "…"}
+        {cands ? (cands.amcVerified
+          ? <>Registrar AMC verified as <span className="text-foreground">{cands.verifiedAmcs.join(" / ")}</span> — suggestions and approvals are limited to it.</>
+          : <span className="text-warning">The AMC behind this registrar code is not verified yet. A platform operator must record it (two people, with evidence) before any scheme here can be approved; until then there are no name suggestions.</span>) : "…"}
       </div>
       {loadError ? <p className="text-xs text-destructive">{loadError}</p> : null}
       {!cands && !loadError ? <p className="text-xs text-muted-foreground"><Loader2 className="inline size-3 animate-spin" /> Loading candidates…</p> : null}
@@ -212,7 +224,7 @@ function ReviewPanel({ row, onDone }: { row: SchemeCodeRow; onDone: () => void }
             </li>
           ))}
         </ul>
-      ) : cands ? <p className="text-xs text-muted-foreground">No candidate from the evidence. Search the AMFI list below.</p> : null}
+      ) : cands ? <p className="text-xs text-muted-foreground">{cands.amcVerified ? "No candidate from the evidence. Search the AMFI list below." : "No candidates until the AMC is verified."}</p> : null}
 
       <Field label="Or search the AMFI list">
         {(id, describedBy) => <SchemeAutocomplete id={id} aria-describedby={describedBy} source="universe" size="sm"
@@ -238,6 +250,19 @@ function ReviewPanel({ row, onDone }: { row: SchemeCodeRow; onDone: () => void }
           <Clock className="size-4" /> {row.reviewState === "deferred" ? "Take back the deferral" : "Defer"}
         </Button>
       </div>
+      {cands?.history.length ? (
+        <div>
+          <p className="font-medium text-foreground">Decision history</p>
+          <ul className="mt-1 space-y-1 text-muted-foreground">
+            {cands.history.map((h, i) => (
+              <li key={i}>
+                <span className="tabular-nums">{formatDate(h.at)}</span> · {h.source === "firm" ? "Firm" : h.source === "platform_amc" ? "Platform (AMC identity)" : "Platform (scheme)"} · {h.action.replace(/^rta\.scheme\./, "")}
+                {h.secondActor ? " · two operators" : ""}{h.reason ? ` — ${h.reason}` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -98,6 +98,8 @@ export async function importRtaFolios(
     dryRun?: boolean;
     assignRmId?: string | null;
     reportType?: string;
+    /** The registrar's own report name for leg provenance (WBR4 is read by the R9 parser); defaults to reportType. */
+    sourceReport?: string | null;
     kind?: "master" | "holdings" | "full";
     /** Validate-first lineage: the staging batch these legs were committed from. */
     sourceBatchId?: string;
@@ -572,7 +574,7 @@ export async function importRtaFolios(
           sourceValue: s.value ?? null,
           sourceNav: s.navDerived ? null : s.nav ?? null,
           sourceAsOf: r.reportDate ?? null,
-          sourceReport: opts.reportType ?? null,
+          sourceReport: opts.sourceReport ?? opts.reportType ?? null,
           sourceArn: s.arn ?? null,
           ...(opts.sourceBatchId ? { sourceBatchId: opts.sourceBatchId } : {}),
         })),

@@ -83,8 +83,9 @@ export async function postMasterBatch(tenantId: string, batchId: string, file: {
     // Record this file's registrar scheme codes (and the ISINs MFSD203 prints)
     // before the legs are resolved against the Scheme Master (Phase 3H).
     await observeSchemeCodes(tx, tenantId, batchId);
+    const batchReport = ((await tx.execute(sql`SELECT report_code FROM rta_staging_batches WHERE id = ${batchId}::uuid`)).rows[0] as { report_code: string | null } | undefined)?.report_code ?? null;
     const summary = records.length
-      ? await importRtaFolios(tx, tenantId, records, { kind, reportType: parsed.reportType, sourceBatchId: batchId })
+      ? await importRtaFolios(tx, tenantId, records, { kind, reportType: parsed.reportType, sourceReport: batchReport ?? parsed.reportType, sourceBatchId: batchId })
       : null;
     if (kind !== "master" && records.length) { await revalueAllFolios(tx); await recomputeCombinedAum(tx); }
 

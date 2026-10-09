@@ -782,6 +782,16 @@ provenance, platform registrar map) and 0240 (platform-approved confirmation).
 - `scheme_master` duplicates after an AMC rename: `scripts/scheme-master-duplicates.ts`
   is READ-ONLY and only proposes. Test cleanup of platform mappings needs
   `ADMIN_DATABASE_URL` (`tests/scheme-map-cleanup.ts`).
+- **AMC identity first** (pilot preflight, migration 0241,
+  `docs/rta/PILOT_PREFLIGHT.md`): `registrar_amc_identity` says which AMFI AMC
+  a registrar AMC code is — recorded from unanimous ISIN evidence, or by two
+  platform operators (`approve_amc`), plus documented successor AMCs. No
+  verified AMC → no name suggestions and no scheme approval (firm or platform);
+  a scheme outside the verified set is an AMC conflict. Recording an AMC
+  approves no scheme. Operator runbook: `docs/rta/PILOT_PREFLIGHT_RUNBOOK.md`.
+- **The AUM figure says what it is made of** (`getAumComposition`): at
+  today's AMFI NAV / at registrar statement value (unmapped scheme) / at an
+  older NAV. A tile says "Today" only when all of it is live.
 
 ## Webhook handlers
 

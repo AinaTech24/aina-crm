@@ -122,5 +122,43 @@ export const schemeRegistrarMapEvents = pgTable("scheme_registrar_map_events", {
   at: timestamp("at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+/**
+ * The verified AMC-identity crosswalk (migration 0241): which AMFI AMC a
+ * registrar's AMC code is — primary, plus documented successor AMCs. Recorded
+ * by ISIN evidence (primary only) or by two platform operators. Platform-wide.
+ */
+export const registrarAmcIdentity = pgTable("registrar_amc_identity", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  rta: text("rta", { enum: ["cams", "kfintech"] }).notNull(),
+  rtaAmcCode: text("rta_amc_code").notNull(),
+  amfiAmc: text("amfi_amc").notNull(),
+  role: text("role", { enum: ["primary", "successor"] }).notNull(),
+  basis: text("basis", { enum: ["isin", "platform_approval"] }).notNull(),
+  status: text("status", { enum: ["verified", "approved", "revoked"] }).notNull(),
+  evidenceNote: text("evidence_note"),
+  evidenceIsins: integer("evidence_isins"),
+  requestedBy: uuid("requested_by"),
+  approvedBy: uuid("approved_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  revokedBy: uuid("revoked_by"),
+  revokeReason: text("revoke_reason"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  onePrimary: uniqueIndex("registrar_amc_identity_one_primary").on(t.rta, t.rtaAmcCode).where(sql`role = 'primary' AND status <> 'revoked'`),
+}));
+
+export const registrarAmcIdentityEvents = pgTable("registrar_amc_identity_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  identityId: uuid("identity_id").notNull(),
+  action: text("action").notNull(),
+  before: jsonb("before"),
+  after: jsonb("after"),
+  actor: uuid("actor"),
+  secondActor: uuid("second_actor"),
+  reason: text("reason"),
+  at: timestamp("at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export type SchemeNav = typeof schemeNav.$inferSelect;
 export type NewSchemeNav = typeof schemeNav.$inferInsert;
