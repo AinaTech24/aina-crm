@@ -197,9 +197,14 @@ const DEFAULT_SIP_BOOK_MAP = {
 
 const SIP_BOOK_ALIASES: Record<string, string[]> = {
   pan: ["PAN", "INV_PAN", "PAN_NO", "PAN NO", "PAN_NUM", "PAN NUM", "INVPAN", "PAN_NUMBER"],
-  folioNumber: ["FOLIO", "FOLIO_NO", "FOLIO_NUM", "FOLIONO", "FOLIO NO", "FOLIO NUM", "FOLIONUM", "FOL_NO"],
+  // KFintech's MFSD230 ("SIP/STP Report") names the folio ACNO and the scheme
+  // SCHDESC. With no folio column recognised the header was not detected at
+  // all, the positional fallback read column 1 (AGENT, the ARN) as the folio,
+  // and every row failed "Folio ARN-… not found" (Attitude Financial, 9 Oct
+  // 2026: 879 of 879 rows).
+  folioNumber: ["FOLIO", "FOLIO_NO", "FOLIO_NUM", "FOLIONO", "FOLIO NO", "FOLIO NUM", "FOLIONUM", "FOL_NO", "ACNO", "AC_NO"],
   schemeCode: ["SCH_CODE", "SCHEME_CODE", "SCHEME CODE", "PRODUCT_CODE", "PRODUCT CODE", "SCHCOD", "PRODCODE", "SCH_CD"],
-  schemeName: ["SCH_NAME", "SCHEME_NAME", "SCHEME NAME", "PRODUCT_NAME", "PRODUCT NAME", "SCHNAME", "PRODNAME"],
+  schemeName: ["SCH_NAME", "SCHEME_NAME", "SCHEME NAME", "PRODUCT_NAME", "PRODUCT NAME", "SCHNAME", "PRODNAME", "SCHDESC", "SCH_DESC"],
   // AUTO_AMOUNT / PERIODICITY / PERIOD_DAY are the CAMS WBR49 ("Systematic
   // Registration") spellings. Without them the header lookup found nothing and
   // — because resolveHeader returns ONLY what it detected, never merged with the
@@ -215,12 +220,14 @@ const SIP_BOOK_ALIASES: Record<string, string[]> = {
   startDate: ["START_DATE", "SIP_START_DATE", "FROM_DATE", "FROM DATE", "START DATE"],
   endDate: ["END_DATE", "SIP_END_DATE", "TO_DATE", "TO DATE", "END DATE"],
   nextInstallmentAt: ["NEXT_DEBIT_DATE", "NEXT_INSTALLMENT_DATE", "NEXT_DUE_DATE", "NEXT_DATE", "NEXT_DEBIT", "NEXT_DT"],
-  mandateRefNo: ["MANDATE_ID", "UMRN", "MANDATE_REF", "MANDATE_REF_NO", "MANDATE REF", "UMRN_NO"],
+  mandateRefNo: ["MANDATE_ID", "UMRN", "MANDATE_REF", "MANDATE_REF_NO", "MANDATE REF", "UMRN_NO", "ECSNO", "ECS_NO"],
   // A registration report lists cancelled and finished SIPs too. Without the
   // cease date every row imported as 'active', and the SIP book counted SIPs
   // that stopped years ago.
   ceaseDate: ["CEASE_DATE", "CEASED_DATE", "SIP_CEASE_DATE", "CANCEL_DATE", "CANCELLATION_DATE", "TERMINATION_DATE"],
-  registrationType: ["AUT_TRNTYP", "AUTO_TRNTYP", "AUTO_TRN_TYPE", "REGISTRATION_TYPE"],
+  // KFintech MFSD230 calls it TRTYPE (SIP / STP / SWP): the STP and SWP rows
+  // stay out of the SIP book, as CAMS's do.
+  registrationType: ["AUT_TRNTYP", "AUTO_TRNTYP", "AUTO_TRN_TYPE", "REGISTRATION_TYPE", "TRTYPE", "TR_TYPE"],
   targetScheme: ["TARGET_SCH", "TARGET_SCHEME", "TARGET_SCHEME_CODE", "TO_SCHEME"],
 };
 
