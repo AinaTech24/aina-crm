@@ -32,7 +32,6 @@
  *   - controlled kind: the firm's current activation (read FOR SHARE) is
  *     validate_first with posting_enabled.
  */
-import { currentActivation, haltState, registrarCovered } from "./controls";
 
 export class PostingGateError extends Error {
   constructor(public reasons: string[]) {
@@ -108,6 +107,9 @@ export async function assertPostingAllowed(
   if (r.su || r.bypass) reasons.push("the connected database role bypasses row-level security — posting runs only as the restricted application role");
   if ((r.tenant ?? "") !== tenantId) reasons.push("the transaction is not scoped to this firm");
   if (reasons.length) throw new PostingGateError(reasons);
+  // Loaded here, not at module top: the env-only checks above are imported by
+  // tooling that has no database (staging/config → source readers).
+  const { currentActivation, haltState, registrarCovered } = await import("./controls");
   const halt = await haltState(tx, tenantId, { lock: true });
   if (halt.halted) throw new PostingGateError(halt.reasons);
   const a = await currentActivation(tx, tenantId, { lock: g.kind === "controlled" });

@@ -102,10 +102,10 @@
 | Outcome | Transactions | Source rows | Amount | Treatment |
 |---|---|---|---|---|
 | Posted (processed) | **1,073** | 1,398 | ₹1,02,27,740.48 | on an ISIN-verified AMFI scheme, to the folio's owner on record |
-| Refused instructions recorded | **3** | 3 | ₹12,000 | 1 failed SIP instalment (₹2,000) + 2 failed STP legs (₹10,000). Rejected, 0 units, never business; 1 SIP-rejection record |
+| Refused instructions recorded | **3 legs = 2 instructions** | 3 | ₹12,000 over the legs; ₹7,000 per instruction | 1 failed SIP instalment (₹2,000) + 1 failed STP recorded as its 2 legs (₹5,000 each; one shared switch reference). Rejected, 0 units, never business; 1 SIP-rejection record |
 | Folio-consolidation corrections | **18** | 99 | ₹1,47,868.30 | held (Held screen); no posting path |
 | Unknown transaction codes | **6** | 8 | ₹5,43,384.29 | unsupported, held until registrar documentation |
-| **Total** | **1,100** | **1,508** | | ledger = 1,073 + 3 = **1,076** |
+| **Total** | **1,100** | **1,508** | | ledger = 1,073 processed (₹1,02,27,740.48) + 3 rejected legs = **1,076** recorded |
 
 **Overlaps, by unique identity:**
 - Corrections ∩ unknown codes = **0**.
