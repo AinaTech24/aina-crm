@@ -10,7 +10,9 @@
 - `scripts/rta-file-manifest.ts` — read-only, no database: the per-file manifest and the daily MFSD201 calendar (§1.3, §5.9).
 - `docs/rta/PILOT_PREFLIGHT.md` — the development evidence report.
 
-**Development results are not production outcomes.** Every count in §1 and §4 comes from the real sample files, imported into **isolated development databases** (`rta_handover`, then `rta_final` for this corrections round, each built from empty at migration 0242 with the authentic AMFI file of 07-Oct-2026). Production files, dates and counts will differ; the pilot is judged on its own evidence.
+**Development results are not production outcomes.** Every count in §1 and §4 comes from the real sample files, imported into **isolated development databases** (`rta_handover`, then `rta_final` for the corrections round, built from empty at migration 0242; then `rta_p0` for the final security patch, at migration 0243 — each with the authentic AMFI file of 07-Oct-2026). Production files, dates and counts will differ; the pilot is judged on its own evidence.
+
+**Final security patch (migration 0243).** The five defects of §7 are fixed in software, not held by process: two-person starts are requests filed and approved by two separately signed-in operators (§5.1, EC-6); the activation names the report types it covers — MFSD211 + MFSD201 for this pilot — and every entry point enforces them (EC-2, §5.4); a legacy row is linked only when every fact, scheme identity included, agrees (EC-1); the Operations dashboard counts rejected instructions and legs separately (§4.1); a parked import is cancelled with an explicit, final status (§5.4).
 
 **How to use this package:**
 1. Open one change ticket.
@@ -51,7 +53,7 @@
 | **One ARN.** The pilot ARN is the firm's own, recorded on the sign-off sheet (§6). Every file's Agent / Broker Code must equal it | Count the distinct codes per file. A file with any other code is out of scope; do not import it |
 | **MFSD211 covers every folio the pilot's MFSD201 rows touch** | One full-book MFSD211 at the start, then each day's MFSD211. A transaction on a folio missing from MFSD211 is held (`owner_not_on_record`), never posted — that is safe, but it is a coverage gap to report |
 | **One MFSD201 delivery for every KFintech business day of the 14-day window** | Judged from each delivered file's **own Report Date** with `npx tsx scripts/rta-file-manifest.ts <files…> --calendar <start> <end>`. Every weekday is `present` or recorded as a registrar holiday / a gap confirmed with KFintech. **Never** inferred from the span of Transaction Dates: one file can carry many trade dates (the October sample spans 29-Jan-2024 → 07-Oct-2026 in one file), and a day with no file has none at all |
-| **No CAMS file and no other report type** | CAMS is refused by the activation's registrar scope. **MFSD203, MFSD243 and MFSD230 are NOT refused by the software** (the scope is per registrar, not per report — §7, gap 2): if one reaches the pilot firm it posts holdings legs or verified SIP registrations. Controls: the firm's mail alias is inactive for the pilot, uploads are MFSD211 / MFSD201 only, and the daily report-code check (§5.9) must show nothing else |
+| **No CAMS file and no other report type** | Enforced by the software since the final security patch: the activation names `registrars: ["kfintech"]` and `reportCodes: ["MFSD211","MFSD201"]`; a CAMS, MFSD203, MFSD243 or MFSD230 file is refused at every entry point and recorded `blocked`, nothing staged or posted (§5.4). Controls kept: the firm's mail alias is inactive for the pilot (EC-4 step 4), uploads come from the signed inventory, and the daily check (§5.9 #2) shows nothing else |
 | **Every file recorded before import** | `npx tsx scripts/rta-file-manifest.ts <file> --arn <pilot ARN>` output in the ticket: report code, SHA-256, data rows, Report Date, Transaction Date range, masked ARN. Exit 2 = an unexpected ARN or an unrecognised file — do not import |
 
 ### 1.4 The 118 pilot-scope KFintech scheme codes
@@ -191,7 +193,7 @@ Each was rehearsed on `rta_handover`. Run them only with `DATABASE_URL` / `ADMIN
 |---|---|
 | Apply pending migrations | `DATABASE_URL=$COPY_ADMIN npx tsx scripts/migrate-all.ts` |
 | Apply the AMFI file | `DATABASE_URL=$COPY_ADMIN ALLOW_SYSTEM_TX=1 npx tsx scripts/amfi-import.ts --file NAVAll.txt --note "downloaded <UTC> by <name>; second download by <name>, sha256 <…>"` |
-| Activate the pilot firm on the copy | the §5.1 activation call against the copy's app |
+| Activate the pilot firm on the copy | the §5.1 request (operator 1, signed in) and approval (operator 2, signed in) against the copy's app |
 | Import the manifest | upload through the copy's app (`/dashboard/rta-imports`), with the copy's web and worker processes, a **non-production** S3 bucket and Redis. Order: MFSD211, then MFSD201 |
 | Deliberate failure, for the alert test | break one ledger row on the copy only, then run `reconcile` (§2.1) and confirm the alert arrives |
 
@@ -200,15 +202,15 @@ Each was rehearsed on `rta_handover`. Run them only with `DATABASE_URL` / `ADMIN
 | Action | Who | Where |
 |---|---|---|
 | `migrate-all.ts` (apply), `amfi-import.ts` (apply) on production | DBA / operator | production — after F only |
-| Activation, release of a kill switch | two platform operators | production — F only |
+| Activation, release of a kill switch | two platform operators, each signed in: a request, then a DIFFERENT operator's approval (§5.1) | production — F only |
 | Halt, pause, emergency (§5) | one platform operator | production — at any time, to stop |
-| `reverse --commit`, `undo` (§5.6) | two platform operators | production — recovery only |
+| Reversal and undo of a batch (§5.6) | two platform operators, each signed in: `reverse` / `undo` requests (§5.1). The CLI cannot commit either | production — recovery only |
 | S3 synthetic put / get / delete under `tenants/<firm>/rta/preflight-…` | infra engineer | production bucket — D1 |
 | Test mails from a registrar domain and from a non-registrar domain | infra engineer | the live inbox — D2 (creates import records) |
 | Redis and worker restart | infra engineer | production — D3, in an agreed quiet window |
 | Point-in-time restore into a NEW instance | DBA | production account — C (creates a resource; never restore over production) |
-| Removing an unapproved parked import job (EC-2) | platform operator, with the firm halted | production Redis — only for a job NOT on the approved inventory |
-| Stopping RTA mail for the pilot firm (EC-4 / §7 gap 2) | the firm pauses its own mailbox forwarding rule; or the DBA, under the ticket, runs `UPDATE rta_forward_addresses SET is_active = false WHERE tenant_id = '<firm>' AND is_active` (the app has no "deactivate" button; re-enabling after the pilot is "regenerate address" in Settings) | production — before F part 2 |
+| Cancelling an unapproved parked import (EC-2) | one platform operator, signed in, with the firm halted: `cancel_import` (§5.4) | production — only for an import NOT on the approved inventory |
+| Stopping RTA mail for the pilot firm (EC-4 step 4) | the firm pauses its own mailbox forwarding rule; or the DBA, under the ticket, runs `UPDATE rta_forward_addresses SET is_active = false WHERE tenant_id = '<firm>' AND is_active` (the app has no "deactivate" button; re-enabling after the pilot is "regenerate address" in Settings) | production — before F part 2 |
 
 ### 2.4 Evidence checks added in the corrections round (EC-1 – EC-6)
 
@@ -216,7 +218,12 @@ Each is part of a release condition (named in brackets). Every SQL here is read-
 
 **EC-1 — Existing legacy-imported transactions: idempotent matching and collision handling** *(E, and F part 1 on the production copy)*
 
-Before activation, a firm's existing transactions came from the legacy importer. When validate-first meets the same registrar transaction number, it either **links** the existing row (`matched_existing`: same folio, date, direction, amount, units, or for a refusal the same rejected status) or **holds** it (`quarantined`, `identity_conflict`). Neither row is ever changed.
+Before activation, a firm's existing transactions came from the legacy importer. When validate-first meets the same registrar transaction number, it **links** the existing row (`matched_existing`) only when **every** fact agrees (`lib/rta/posting/legacy-match.ts`, final security patch):
+- the registrar (of the folio the row is filed under), the client, the AMC (or a registrar AMC code verified as its successor), the folio;
+- the **scheme identity**: the registrar's own product code, or the AMFI code an approved mapping gives it, or another code of the same registrar that an approved mapping ties to the same AMFI scheme (a historical identifier). With the mapping unresolved or in conflict, only the registrar's own code can prove the scheme — an AMFI code on the CRM row is then unverifiable and the transaction is held;
+- the date, the transaction type, the direction, the status (processed, or rejected for a refusal), the amount and the units.
+
+Otherwise it **holds** it: `quarantined`, reason `identity_conflict: … (differs in: <the facts>)`, shown on the Held screen with the next step. Neither row is ever changed; nothing is merged.
 
 1. **Before** (production read replica):
    ```sql
@@ -231,7 +238,7 @@ Before activation, a firm's existing transactions came from the legacy importer.
                WHERE tenant_id = '<firm>' AND rta = 'kfintech' AND posting_outcome IS NOT NULL ORDER BY identity_key, created_at DESC)
    SELECT posting_outcome, split_part(coalesce(posting_reason, ''), ':', 1) AS why, count(*), round(sum(abs(coalesce(reported_amount, 0))), 2)
      FROM l GROUP BY 1, 2 ORDER BY 1, 2;
-   -- every matched legacy row: the registrar's scheme code agrees (matching itself does NOT compare the scheme — §7 gap 4)
+   -- cross-check (the matcher itself now compares scheme identity, so this must be 0 by construction)
    SELECT count(*) FILTER (WHERE t.scheme_code IS DISTINCT FROM e.scheme_code AND t.scheme_code IS DISTINCT FROM c.amfi_scheme_code) AS scheme_differs,
           count(*) FILTER (WHERE c.status IS DISTINCT FROM 'resolved_isin') AS on_unresolved_code
      FROM rta_posted_transactions p JOIN transactions t ON t.id = p.transaction_id JOIN rta_staging_economic_txns e ON e.id = p.economic_txn_id
@@ -242,19 +249,28 @@ Before activation, a firm's existing transactions came from the legacy importer.
 
 **Expected:**
 - `matched_existing` + `posted` + `rejected_recorded` + held = the copy's economic records.
-- `scheme_differs` = 0 and `on_unresolved_code` = 0.
+- `scheme_differs` = 0. `on_unresolved_code` lists matched legacy rows whose registrar code is still unresolved (linked on the registrar's own code); each has a written decision (in the rehearsal: 0).
 - Every `identity_conflict` has a written decision, investigated against the registrar file — never "fixed" by editing either row.
 - The legacy fingerprint is unchanged.
 - No registrar number appears twice.
 
-**Rehearsed (rta_final), legacy then validate-first on the same four files:**
-- The legacy importer wrote 1,061 rows (1,058 processed + 3 rejected). It held the 15 lot-by-lot redemptions.
-- Validate-first then linked **1,061** as `matched_existing` and posted only the **15** multi-lot redemptions the legacy importer never wrote. It held the same 18 corrections and 6 unknown codes.
-- Ledger 1,076; 0 numbers twice; `scheme_differs` 0; reconcile 0; a second pass posted nothing (`already_posted`).
+**Rehearsed again with the scheme-aware matcher (`rta_p0`, security patch), legacy then validate-first on the same four files:**
+- The legacy importer (`scripts/import-rta-local.ts --commit`, the legacy engines) wrote 1,061 rows: 1,058 processed (₹81,38,526.51) + 3 rejected legs (₹12,000.00). It held the 15 lot-by-lot redemptions back. Its rows carry the KFintech product code in `scheme_code`.
+- The firm was activated by two signed-in operators (request + approval) for `kfintech`, `MFSD211 + MFSD201`.
+- Validate-first then linked **1,061** as `matched_existing` — every fact including the scheme agreed — and wrote only the **15** multi-lot redemptions. It held the same 18 corrections and 6 unknown codes. **`identity_conflict`: 0.**
+
+  | Ledger (1,076) | Linked to the legacy row | Newly inserted by validate-first | Total |
+  |---|---|---|---|
+  | Processed | **1,058** · ₹81,38,526.51 · 0 multi-lot | **15** · ₹20,89,213.97 · all 15 multi-lot (340 lots) | **1,073** · ₹1,02,27,740.48 |
+  | Rejected legs | **3** · ₹12,000.00 | **0** | **3** · ₹12,000.00 (2 instructions, ₹7,000.00) |
+
+  Why 1,061 + 15 = 1,076, and 1,073 processed: the legacy firm already held 1,058 processed + 3 rejected = 1,061 of the 1,076 registrar transactions; the only ones it lacked are the 15 multi-lot redemptions it holds back. 1,058 + 15 = 1,073 processed; the 3 rejections are the legacy firm's own 3 rows, linked, not re-inserted. A clean firm with no legacy rows (`rta_p0`, firm P) inserts all 1,073 + 3 itself, to the same totals.
+- Ledger 1,076; 0 numbers twice; reconcile 0 (all five counts); a second pass posted nothing (`already_posted` 685 + 391, the cross-tab unchanged).
+- **Same number, different scheme** (`tests/rta-legacy-match-db.test.ts`): a legacy row under the same registrar number but another scheme is held `identity_conflict … (differs in: scheme)`, the legacy row unchanged and nothing written; so are a different client, type, AMC, folio, date, direction, status, amount or units, and an AMFI code an approved mapping does not name. A historical registrar code tied by an approved mapping to the same AMFI scheme is linked.
 - **Collision drill:** two legacy rows altered on the copy (one amount + ₹1, one date − 1 day). Both were held as `identity_conflict`; the legacy rows were byte-identical afterwards (hash unchanged); nothing was duplicated; reconcile 0.
 - **Note:** matched legacy rows keep their legacy scheme code (the registrar product code) and get no AMFI code — no historical repair is done. They are legacy records, not pilot outcomes. B's query (ii) counts only `source_feed = 'rta_validate_first'`.
 
-**Stop if:** any number appears twice; `scheme_differs` or `on_unresolved_code` ≠ 0; the legacy fingerprint changes; an `identity_conflict` without a decision.
+**Stop if:** any number appears twice; `scheme_differs` ≠ 0; an `on_unresolved_code` row without a written decision (the registrar's own code matched but its AMFI mapping is unresolved); the legacy fingerprint changes; an `identity_conflict` without a decision.
 
 **EC-2 — Parked or delayed import jobs, and the approved file inventory before resuming** *(F, and every resume in §5)*
 
@@ -274,15 +290,18 @@ A paused, halted, expired or EMERGENCY firm **parks** every queued import, and t
    ```
    For each parked file, `aws s3 cp "s3://$S3_BUCKET/<key>" - | sha256sum` (read-only).
 2. **Approved inventory:** compliance and operator 1 sign a list of the files allowed to import: report code (MFSD211 / MFSD201 only), file name, SHA-256 (from `rta-file-manifest.ts`), and Report Date.
-3. **Every parked job must be on that list.** A job not on it is removed while the firm is still halted (§2.3; see the command below), and its removal is recorded. Removing a job does not delete the file or the import row. With the queue idle, the reaper later marks that row `failed` — it never posts.
-   ```bash
-   node --input-type=module -e "import { Queue } from 'bullmq'; const q = new Queue('rta.import', { connection: { url: process.env.REDIS_URL } }); const j = await q.getJob(process.argv[1]); console.log(j ? 'removing ' + j.id + ' ' + j.data.filename : 'no such job'); if (j) await j.remove(); await q.close();" <job id>
-   ```
+3. **Every parked import must be on that list.** An import not on it is **cancelled** while the firm is still halted, by one signed-in operator through the API (§5.4 — `cancel_import`, with the reason and the ticket). No Redis command is used:
+   - the row becomes `cancelled` (never `failed`, never "worker crash") with who, when and why, plus an `rta.import.cancel` audit row;
+   - the queued / delayed job is removed from Redis by the same call (`jobsRemoved`, `queueChecked`);
+   - the file and the row's provenance are kept;
+   - the cancellation is final: the database refuses any later status change, the worker refuses to claim a cancelled import (a surviving retry or delayed job does nothing), and the re-run button refuses it. An approved file is uploaded again instead, through every intake check.
 4. Re-run the inventory: only approved files remain. Then resume (two operators).
 
-**Rehearsed** against a local Redis with real BullMQ delayed jobs: the inventory listed both jobs with firm, import and file; the removal command removed exactly the named job.
+**Report types are also enforced in software now** (0243): a CAMS, MFSD203, MFSD243 or MFSD230 file is refused at upload, at mail dispatch, on re-run and — from its content — in the worker and inside the posting transaction, and is recorded as `blocked` (§5.4). The inventory is still the control for which approved MFSD211 / MFSD201 files run.
 
-**Stop if:** any parked or queued job for the firm is not on the signed inventory; a CAMS, MFSD203, MFSD243 or MFSD230 file is in the backlog.
+**Rehearsed:** `tests/rta-cancel-import-db.test.ts` — with a real Redis, a parked delayed job was removed by the cancel (`jobsRemoved` 1) and the row read `cancelled` with the operator, time and reason; with Redis unreachable, the cancel still completed (`queueChecked: false`) and the worker refused the surviving job; a firm owner, an operator without two-factor, a revoked session and a running import were refused.
+
+**Stop if:** any parked or queued import for the firm is not on the signed inventory and not cancelled; a `cancel_import` answered `queueChecked: false` and the job is still listed (re-run the cancel once Redis is reachable — the worker refuses it meanwhile).
 
 **EC-3 — Completeness of daily MFSD201 deliveries** *(F, and daily during the pilot — §5.9)*
 
@@ -309,7 +328,7 @@ Run `npx tsx scripts/rta-file-manifest.ts <every MFSD201 delivered so far> --cal
      FROM rta_inbound_messages WHERE tenant_id = '<firm>' AND received_at > now() - interval '30 days' GROUP BY 1, 2 ORDER BY 1;
    ```
    Every `imported` row names a registrar domain. A non-registrar test mail shows as `quarantined`.
-4. **For the pilot itself, no mail is imported for the firm** (§7 gap 2). Either the firm's forwarding rule is paused, or the alias is deactivated (§2.3). `SELECT count(*) FROM rta_forward_addresses WHERE tenant_id = '<firm>' AND is_active` is recorded, and from the pilot start the step-3 query shows no `imported` row. Every pilot file is uploaded from the signed inventory (EC-2).
+4. **For the pilot itself, no mail is imported for the firm.** Out-of-scope reports arriving by mail are now blocked by the software (0243), but an in-scope MFSD211 / MFSD201 arriving by mail would import without passing the signed file inventory (EC-2). So either the firm's forwarding rule is paused, or the alias is deactivated (§2.3). `SELECT count(*) FROM rta_forward_addresses WHERE tenant_id = '<firm>' AND is_active` is recorded, and from the pilot start the step-3 query shows no `imported` row. Every pilot file is uploaded from the signed inventory (EC-2).
 
 **Stop if:** no authenticated header can be shown; a signing domain outside `REGISTRAR_DOMAINS`; an `imported` row without an authenticated domain; any mail imported for the pilot firm after F part 2.
 
@@ -328,36 +347,37 @@ Run `npx tsx scripts/rta-file-manifest.ts <every MFSD201 delivered so far> --cal
 
 **EC-6 — Server-verified identities and separate approvals of the two platform operators** *(F)*
 
-**What the software verifies today:**
-- **On the API** (`/api/super-admin/rta-pipeline`), the **approver** is the signed-in platform session (server-verified; needs `platform.settings.manage`).
-- The **requester** is only an id in the request body. The server checks it is an active platform operator other than the approver, but **does not authenticate them**.
-- **On the CLI** (`rta-posting-recovery.ts release / reverse / undo`), `--by` and `--approver` are both just flags, with no authentication at all (§7 gap 3).
+**What the software enforces now** (final security patch, migration 0243, `lib/rta/posting/approvals.ts`):
+- Every START — an activation (other than a pause), a kill-switch release, a reversal, an undo, a platform scheme or AMC approval — is a **control request**. Operator 1 files it from their own signed-in platform session; the server takes the requester from the verified session and refuses any body naming an operator id (400). The request is immutable: action, firm, scope, payload, change reference, reason and expiry (≤ 24 h, default 2 h); the database computes its `payload_hash`.
+- Operator 2 approves it from a **different** signed-in session, quoting the `payloadHash` they reviewed. The action runs in the same transaction as the approval.
+- Refused: approving your own request (403, also with a second session of the same person; a database CHECK too); a request already decided (409 — a request is used once); an expired request (409, and the database refuses it); a hash that differs from the stored request (409); a requester or approver who is not an active `platform_admin` with two-factor on (403) or whose session is signed out or revoked (401); a requester who lost that standing before the approval (403).
+- The database refuses a start that does not cite a request of that action **executed in the same transaction**, whose people and payload match — a direct SQL activation, release, reversal or undo, or a replay of an old request id into a later transaction, another firm or another action, all fail.
+- **The CLI cannot start anything:** `rta-posting-recovery.ts release`, `undo` and `reverse --commit` exit 2. `reverse` is a dry run only; `requests` lists requests read-only. CLI `halt` still works (a stop) but is recorded `actor_source = 'cli'` with "operator identity not server-verified".
+- One operator still halts, pauses, revokes and triggers EMERGENCY, immediately (API `halt` / `pause`, recorded `actor_source = 'session'`).
 
-**Controls until that is changed:**
+**Controls that remain for the pilot:**
 1. Both operators have active platform accounts with two-factor authentication on:
    ```sql
    SELECT id, status, roles, two_fa_enabled FROM users WHERE id IN ('<op 1>', '<op 2>');
    ```
-2. Operator 1's request is a written, signed entry in the change ticket, made from operator 1's own ticket-system identity, before operator 2 acts.
-3. **Starts (activation, release) are done only through the API by operator 2, signed in.** CLI `release` is not used in production.
-4. A CLI `reverse --commit` / `undo` runs only on a DBA's terminal, with both operators present and both signatures in the ticket.
-5. After every two-person action:
+2. The change ticket records the request id and its `payloadHash` (from operator 1's request response) and operator 2's approval response.
+3. After every two-person action:
    ```sql
-   SELECT a.id, a.requested_by, a.approved_by, a.requested_by <> a.approved_by AS two_people,
-          EXISTS (SELECT 1 FROM user_sessions s WHERE s.user_id = a.approved_by AND s.created_at <= a.created_at
-                    AND (s.revoked_at IS NULL OR s.revoked_at > a.created_at)) AS approver_had_live_session,
-          (SELECT count(*) FROM audit_log l WHERE l.action = 'rta.pipeline.activate' AND l.entity_id = a.id AND l.actor_user_id = a.approved_by) AS audit_rows
-     FROM rta_pipeline_activations a WHERE a.tenant_id = '<firm>' ORDER BY a.created_at DESC LIMIT 1;
+   SELECT r.id, r.action, r.scope, r.change_ref, r.status, r.requested_by, r.approved_by, r.requested_by <> r.approved_by AS two_people,
+          r.requested_at, r.decided_at, r.expires_at, r.payload_hash,
+          (SELECT count(*) FROM audit_log l WHERE l.entity_id = r.id AND l.action = 'rta.control.request' AND l.actor_user_id = r.requested_by) AS request_audit,
+          (SELECT count(*) FROM audit_log l WHERE l.entity_id = r.id AND l.action = 'rta.control.execute' AND l.actor_user_id = r.approved_by) AS execute_audit,
+          (SELECT a.id FROM rta_pipeline_activations a WHERE a.control_request_id = r.id) AS activation_id
+     FROM rta_control_requests r WHERE r.tenant_id = '<firm>' OR r.scope IN ('global', 'emergency') ORDER BY r.requested_at DESC LIMIT 5;
    ```
-   Expected: `two_people` true; `approver_had_live_session` true; `audit_rows` 1; the ids match the ticket.
+   Expected: `status` executed; `two_people` true; both audit counts 1 (a release of `global` / `emergency` has no firm, so its audit rows are the control-history rows instead: `SELECT * FROM rta_posting_control_events WHERE control_request_id = '<id>'`); the ids and hash match the ticket.
 
-**Rehearsed:** the query runs. In the rehearsal `approver_had_live_session` is false, because the library was called directly. **This is exactly why the requester cannot be proven from the database and needs the ticket control.**
+**Rehearsed** (`tests/rta-two-person-db.test.ts`, 11 tests; the `rta_p0` real-file rehearsal and drill): impersonation through the API (a body naming another operator → 400; the old one-call `activate` / `release` → 410), same-person approval (403 and the database CHECK), replay (an executed request approved again → 409; an executed request cited by a later SQL insert → refused; a release request reused as an activation → refused), expiry (409 and the database), unauthorized operators (no platform role, no two-factor, disabled, revoked or made-up session), direct SQL bypass (activation, release, reversal without a request → refused), CLI (`release`, `undo`, `reverse --commit` → exit 2), one-person halt and two-person release.
 
 **Stop if:**
 - either account lacks two-factor authentication;
-- the requester's signed request is missing or dated after the action;
-- the approver had no live session;
-- a production start was done through the CLI.
+- a start without an executed request, or with `requested_by = approved_by`;
+- the request id or hash in the database differs from the ticket.
 
 ---
 
@@ -396,9 +416,9 @@ Run `npx tsx scripts/rta-file-manifest.ts <every MFSD201 delivered so far> --cal
 |---|---|
 | Responsible | DBA |
 | Exact test | 1. Written authorization for the copy. 2. Restore the latest backup into a NEW isolated instance (§2.3) that no application uses. 3. `check-migration-lock.mjs`; `migrate-all.ts --check`; `migrate-all.ts`; `check:rls`; `check:schema` (§2.1 / §2.2). 4. `SELECT filename FROM _applied_migrations ORDER BY filename DESC LIMIT 4` |
-| Expected | `0 blockers`; the apply exits 0; both checks pass; the newest is `0242_activation_registrar_scope.sql` |
+| Expected | `0 blockers`; the apply exits 0; both checks pass; the newest is `0243_rta_control_requests.sql` |
 | Evidence | Authorization reference; backup id and time; restore duration; every output; `SELECT * FROM _migration_runs ORDER BY started_at DESC LIMIT 5` |
-| Status | **NOT VERIFIED** (development: 280 applied from empty, 0 blockers, RLS 187 tables, schema 194 tables; immutability drill 14 / 14) |
+| Status | **NOT VERIFIED** (development, security patch: 281 applied from empty, 0 blockers, RLS 188 tables, schema 195 tables; immutability drill 14 / 14) |
 | Stop if | Any blocker (an edited or missing applied migration), a partial attempt, or a failed check. Never edit an applied migration — a correction is a new migration |
 
 | | **D. Infrastructure security, worker recovery, tenant isolation, backup and alerts** |
@@ -422,11 +442,11 @@ Run `npx tsx scripts/rta-file-manifest.ts <every MFSD201 delivered so far> --cal
 | | **F. Clean reconciliation dry run, then written two-person approval of a time-limited pilot** |
 |---|---|
 | Responsible | DBA and platform operator 1 (dry run); platform operators 1 and 2 plus the compliance reviewer (approval) |
-| Exact test | **Part 1 — on the C copy** (it holds the firm's real legacy transactions): env `RTA_POSTING_MODE=controlled`, `RTA_PIPELINE_MODE=validate_first`, `RTA_POSTING_DATABASE=<copy>`. Run `rta-file-manifest.ts --arn` on every file (EC-3). Activate the firm on the copy with `registrars: ["kfintech"]` (§5.1); release the copy's global halt (two operators). Import the signed manifest: every MFSD211, then every MFSD201. After each file, `reconcile`. Then **EC-1 step 2–3** (legacy matching and collisions). Send one CAMS file: it must be refused. Re-import the whole manifest once. Run B. **Part 2 — approval:** **EC-2** inventory of the production queue and import rows (nothing unapproved), **EC-4 step 4** (no mail for the firm), **EC-6** controls; compliance signs §6 with every field complete; operator 2, signed in, makes the §5.1 activation and release through the API; then `status` and the EC-6 query |
-| Expected | Every `reconcile` exit 0. EC-1 as stated (matched legacy rows linked, not duplicated; every collision held with a decision; legacy fingerprint unchanged). CAMS: `covers kfintech only; a cams record is refused — nothing is posted`, no batch written. Re-import: `already_posted` only, transaction count unchanged. B (ii) = 0. The production queue holds no unapproved job for the firm. `status`: `validate_first`, `postingEnabled: true`, `registrars: ["kfintech"]`, expiry = start + 14 days; the EC-6 query: two people, the approver's live session, one audit row |
-| Evidence | Per file: the manifest output, posted / rejected_recorded / matched_existing / held / unsupported counts, the reconcile output; the EC-1 query results and collision decisions; the CAMS refusal; the re-import counts; the EC-2 inventory and any removals; the EC-4 alias / forwarding state; operator 1's signed request; the activation id, both operator ids, the ticket, the compliance signature, the `status` and EC-6 outputs |
+| Exact test | **Part 1 — on the C copy** (it holds the firm's real legacy transactions): env `RTA_POSTING_MODE=controlled`, `RTA_PIPELINE_MODE=validate_first`, `RTA_POSTING_DATABASE=<copy>`. Run `rta-file-manifest.ts --arn` on every file (EC-3). Activate the firm on the copy with `registrars: ["kfintech"]` and `reportCodes: ["MFSD211","MFSD201"]` (§5.1, a request and a second operator's approval); release the copy's global halt the same way. Import the signed manifest: every MFSD211, then every MFSD201. After each file, `reconcile`. Then **EC-1 step 2–3** (legacy matching and collisions). Send one CAMS file and one MFSD203: each must be refused and recorded `blocked`. Re-import the whole manifest once. Run B. **Part 2 — approval:** **EC-2** inventory of the production queue and import rows (nothing unapproved), **EC-4 step 4** (no mail for the firm), **EC-6** controls; compliance signs §6 with every field complete; operator 1, signed in, files the §5.1 activation and release requests; operator 2, signed in, approves them; then `status` and the EC-6 query |
+| Expected | Every `reconcile` exit 0. EC-1 as stated (matched legacy rows linked, not duplicated; every collision held with a decision; legacy fingerprint unchanged). CAMS: `covers kfintech only; a cams record is refused — nothing is posted`; MFSD203: `covers report types MFSD201 + MFSD211 only; a MFSD203 file is refused`; no batch written for either. Re-import: `already_posted` only, transaction count unchanged. B (ii) = 0. The production queue holds no unapproved job for the firm. `status`: `validate_first`, `postingEnabled: true`, `registrars: ["kfintech"]`, `reportCodes: ["MFSD201","MFSD211"]`, expiry = start + 14 days; the EC-6 query: executed requests, two people, both audit rows |
+| Evidence | Per file: the manifest output, posted / rejected_recorded / matched_existing / held / unsupported counts, the reconcile output; the EC-1 query results and collision decisions; the CAMS and MFSD203 refusals; the re-import counts; the EC-2 inventory and any cancellations; the EC-4 alias / forwarding state; the request ids and payload hashes; the activation id, both operator ids, the ticket, the compliance signature, the `status` and EC-6 outputs |
 | Status | **NOT DONE** — needs explicit written authorization |
-| Stop if | Any reconcile ≠ 0; an EC-1, EC-2, EC-4 or EC-6 stop; the CAMS file is not refused; the re-import adds a row; an unexplained held transaction; any operator's doubt |
+| Stop if | Any reconcile ≠ 0; an EC-1, EC-2, EC-4 or EC-6 stop; the CAMS or MFSD203 file is not refused; the re-import adds a row; an unexplained held transaction; any operator's doubt |
 
 ---
 
@@ -461,11 +481,16 @@ Rejections are recorded for the audit trail, with 0 units, and are excluded from
 SELECT count(*) AS recorded,
        count(*) FILTER (WHERE t.status = 'processed') AS processed, round(sum(abs(t.amount)) FILTER (WHERE t.status = 'processed'), 2) AS processed_amount,
        count(*) FILTER (WHERE t.status = 'rejected') AS rejected_legs, round(sum(abs(t.amount)) FILTER (WHERE t.status = 'rejected'), 2) AS rejected_leg_amount,
-       count(DISTINCT CASE WHEN t.status = 'rejected' THEN coalesce(nullif(t.raw_feed_row->>'switchRef', ''), t.order_id) END) AS rejected_instructions,
+       count(DISTINCT CASE WHEN t.status = 'rejected' THEN CASE WHEN t.type = 'stp' AND nullif(btrim(t.raw_feed_row->>'switchRef'), '') IS NOT NULL
+             THEN concat_ws('|', 'stp', t.investor_id, t.folio_number, t.order_date, abs(t.amount), btrim(t.raw_feed_row->>'switchRef')) ELSE t.id::text END END) AS rejected_instructions,
        count(*) FILTER (WHERE t.status NOT IN ('processed', 'rejected')) AS other_status
   FROM rta_posted_transactions p JOIN transactions t ON t.id = p.transaction_id WHERE p.tenant_id = '<firm>';
 ```
 Result: 1,076 · 1,073 · 10227740.48 · 3 · 12000.00 · 2 · 0. The scheme CSV's column sums equal these figures (`tests/pilot-handover-csv.test.ts`).
+
+The registrar's STP switch reference is a short number (one digit in the sample), unique only within one client's folio, date and amount — so an instruction is keyed on all of them, never on the reference alone.
+
+**The Operations dashboard now shows the same split** (final security patch): its *Rejected transactions* card has **Rejected instructions** (2 · ₹7,000.00) and **Rejected legs** (3 · ₹12,000.00 gross) side by side, and every table row of an STP says which leg it is ("source leg, 1 of 2"). The per-kind counts, the value table, the monthly trend and the per-branch / per-RM counts count instructions, so a failed STP is never two rejections. The export (`/api/ops/export?kind=rejected`) keeps one line per leg with its `Instruction` reference, `Legs in instruction` and `Leg`. Checked on both rehearsal firms of `rta_p0` (the legacy-imported L and the clean P) against this ledger query, and by `tests/ops-rejected-instructions-db.test.ts` (dashboard, API, and two clients sharing the same one-digit reference).
 
 ### 4.2 Each recorded transaction against its registrar source (all 1,076 checked)
 
@@ -523,35 +548,53 @@ Per scheme code (processed and rejected separately, with leg roles and instructi
 
 ### 5.1 Calls used below
 
-The pause, activate and revoke actions exist only on the API. The operator's platform session is the `aina_session` cookie. Never paste it into the ticket.
+Every control is on the API. Each operator uses their OWN platform session (the `aina_session` cookie of their own sign-in, with two-factor). Never paste a cookie into the ticket, and never use another person's session.
 
 ```bash
 API=https://<app host>/api/super-admin/rta-pipeline
 call() { curl -sS -X POST "$API" -H 'content-type: application/json' -b "aina_session=$AINA_SESSION" -d "$1"; echo; }
-# Activate (operator 2 signed in = approver; operator 1 = requester):
-call '{"action":"activate","tenantId":"<firm>","mode":"validate_first","postingEnabled":true,"registrars":["kfintech"],"reason":"<scope summary>","approvalRef":"<ticket>","requestedBy":"<operator 1 id>","expiresAt":"<start + 14 days, ISO 8601>"}'
+
+# START, step 1 — operator 1, signed in, files the request (no operator id is ever sent):
+call '{"action":"request","control":{"action":"activate","tenantId":"<firm>","mode":"validate_first","postingEnabled":true,"registrars":["kfintech"],"reportCodes":["MFSD211","MFSD201"],"expiresAt":"<start + 14 days, ISO 8601>","changeRef":"<ticket>","reason":"<scope summary>"}}'
+#   → 201 { request: { id, payloadHash, expiresAt, … } }  — paste id and payloadHash into the ticket
+# START, step 2 — operator 2, signed in with their own session, reviews and approves exactly that request:
+curl -sS "$API?view=requests&status=pending" -b "aina_session=$AINA_SESSION"
+call '{"action":"approve","requestId":"<id>","payloadHash":"<payloadHash>","note":"<what was checked>"}'
+# Either operator may withdraw / refuse a pending request:
+call '{"action":"reject","requestId":"<id>","note":"<why>"}'
 ```
 
-Halts and releases also have the CLI:
-- `ALLOW_SYSTEM_TX=1 npx tsx scripts/rta-posting-recovery.ts halt --scope <firm>|global|emergency --by <operator id> --reason "…"`
-- `… release --scope … --by <operator 1> --approver <operator 2> --reason "…"`
+The other START requests have the same two steps:
+- release a halt: `{"action":"release","scope":"<firm>|global|emergency","changeRef":"…","reason":"…"}`;
+- reverse a batch: `{"action":"reverse","tenantId":"<firm>","batchId":"<batch id>","changeRef":"…","reason":"…"}`;
+- undo a reversal: `{"action":"undo","tenantId":"<firm>","reversalId":"<reversal id>","changeRef":"…","reason":"…"}`.
+
+A request expires (default 2 hours, at most 24) and is used once. The one-call `activate` / `release` of earlier versions answer 410.
+
+STOPS are one operator, immediately:
+- `call '{"action":"halt","scope":"<firm>|global|emergency","reason":"…"}'` (preferred: recorded with the signed-in operator);
+- `call '{"action":"pause","tenantId":"<firm>","reason":"…"}'`, `call '{"action":"revoke","tenantId":"<firm>","reason":"…"}'`;
+- `call '{"action":"cancel_import","tenantId":"<firm>","importId":"<import id>","reason":"…"}'` (§5.4);
+- the CLI halt, when the API is unreachable: `ALLOW_SYSTEM_TX=1 npx tsx scripts/rta-posting-recovery.ts halt --scope <firm>|global|emergency --by <operator id> --reason "…"` — recorded as "operator identity not server-verified".
+
+The CLI cannot start anything: `release`, `undo` and `reverse --commit` exit 2. `status`, `requests` (read-only) and `reverse` (dry run) remain.
 
 ### 5.2 Pausing the pilot (one operator)
 
-1. `call '{"action":"pause","tenantId":"<firm>","reason":"<why, ≥ 10 characters>"}'` — or halt the firm with the CLI (`halt --scope <firm>`).
+1. `call '{"action":"pause","tenantId":"<firm>","reason":"<why, ≥ 10 characters>"}'` — or `halt` the firm (§5.1).
 2. Confirm: `rta-posting-recovery.ts status --tenant <firm>` shows the paused activation or the firm halt.
-3. Resume (two operators): a new `activate` call (§5.1), or `release --scope <firm>` with a different approver.
+3. Resume (two operators, after EC-2): an `activate` request (§5.1) or a `release` request for `<firm>`, each approved by the other operator.
 
-**Rehearsed:** paused → mode `held`; resumed by two operators → `validate_first`; a one-person release was refused.
+**Rehearsed:** paused → mode `held`; resumed by a two-person request → `validate_first`; a same-person approval was refused (403).
 
 ### 5.3 Emergency global halt (one operator)
 
-- Every RTA write for every firm, legacy importer included: `rta-posting-recovery.ts halt --scope emergency --by <id> --reason "…"`.
-- Posting only, all firms: `--scope global`.
+- Every RTA write for every firm, legacy importer included: `call '{"action":"halt","scope":"emergency","reason":"…"}'` (or the CLI halt, §5.1).
+- Posting only, all firms: `"scope":"global"`.
 - A running batch finishes first; the halt waits for it, then stops every later one.
-- Release (two operators): `release --scope emergency --by <op 1> --approver <op 2> --reason "…"`.
+- Release (two operators): a `release` request for `emergency` by operator 1, approved by operator 2 (§5.1).
 
-**Rehearsed:** emergency → `held` ("EMERGENCY SHUTDOWN of all RTA imports"); a one-person release was refused; a two-person release → `validate_first`.
+**Rehearsed** (`rta_p0`, signed-in operator sessions): emergency by one operator → `held` ("EMERGENCY SHUTDOWN of all RTA imports"); the requester approving their own release → 403; the other operator's approval → `validate_first`.
 
 ### 5.4 Handling queued jobs
 
@@ -565,21 +608,22 @@ While a firm is paused, halted, expired or under EMERGENCY:
 **No unapproved backlog may post automatically.** Parked jobs run by themselves the moment the firm resumes, so **every resume, release or new activation is preceded by EC-2**:
 1. inventory every queued job and every `uploaded` / `parsing` import row of the firm;
 2. compare them with the signed, approved file inventory (report code, file name, SHA-256, Report Date);
-3. remove each job not on it, with the firm still halted, using the BullMQ command in EC-2 — not a bare `ZREM`, which leaves the job record behind;
+3. **cancel** each import not on it, with the firm still halted: `call '{"action":"cancel_import","tenantId":"<firm>","importId":"<import id>","reason":"not on the approved inventory, <ticket>"}'`. The row becomes `cancelled` (who, when, why; final), the queued / delayed job is removed from Redis, the file is kept. No Redis command by hand. A running (`parsing`) import cannot be cancelled: halt the firm, wait for it to park, then cancel;
 4. re-inventory, then resume (two operators).
+
+**Report types outside the activation are blocked by the software** (0243), wherever the file comes from — upload, authenticated registrar mail, re-run, a queued or resumed job, a retry: the import row is recorded `blocked` ("Blocked — this firm's activation covers report types MFSD201 + MFSD211 only; a MFSD203 file is refused — nothing is staged or posted"), the file is kept as its audit record, and nothing is staged or posted. Upload and mail decide from the registrar, kind and file name; the worker and the posting transaction decide from the file's CONTENT (its header layout), so a renamed or mislabelled file is blocked too.
 
 **Do not:**
 - re-upload a parked file — the same file posts once anyway;
-- import parked files with `import-rta-local.ts`, which refuses a validate-first firm;
-- resume with a CAMS, MFSD203, MFSD243 or MFSD230 job in the backlog. CAMS would be refused; the others would post (§7 gap 2).
+- import parked files with `import-rta-local.ts`, which refuses a validate-first firm.
 
-`failed` jobs: read the row's `remarks`. `validate_first_refused` is a configuration error — fix the configuration and re-upload. It never falls back to the legacy importer.
+`failed` imports: read the row's `remarks`. `validate_first_refused` is a configuration error — fix the configuration and re-upload. It never falls back to the legacy importer. `blocked` is a report type or registrar outside the activation. `cancelled` is an operator's decision (§5.4 step 3).
 
 ### 5.5 Investigating a failed reconciliation
 
 **Trigger:** `reconcile` exits 3, or a `rta.posting.reconcile_alert` appears.
 
-1. **Halt the firm immediately:** `halt --scope <firm>`.
+1. **Halt the firm immediately:** `halt` with `scope` = the firm (§5.1).
 2. **Capture state:**
    - `reconcile --tenant <firm>` (which counts are non-zero);
    - `status --tenant <firm>` (recent batches);
@@ -594,32 +638,29 @@ While a firm is paused, halted, expired or under EMERGENCY:
 5. **Decide in writing:**
    - fix the cause outside the pilot (no hand edits of financial rows); or
    - reverse the batch (§5.6).
-6. **Resume only** when `reconcile` exits 0, and only with two operators.
+6. **Resume only** when `reconcile` exits 0, and only with a two-person `release` request.
 
 ### 5.6 Reversing a bad batch (two people)
 
 The firm must be halted first. Reversal goes newest first; a batch others depend on is refused.
 
-1. **Dry run:**
+1. **Dry run** (read-only, either operator):
    ```bash
-   ALLOW_SYSTEM_TX=1 npx tsx scripts/rta-posting-recovery.ts reverse --tenant <firm> --batch <batch id> --by <op 1> --approver <op 2> --reason "…"
+   ALLOW_SYSTEM_TX=1 npx tsx scripts/rta-posting-recovery.ts reverse --tenant <firm> --batch <batch id> --reason "…"
    ```
    Check `blocked: false`, the counts, and every `dependencies` value = 0.
-2. **Commit:** the same command with `--commit`. Every removed row is archived whole in the append-only `rta_posting_reversals`, with an audit-log row.
+2. **Commit:** operator 1 files a `reverse` request (§5.1); operator 2 approves it. Every removed row is archived whole in the append-only `rta_posting_reversals` (with the request id), with an audit-log row. The CLI cannot commit.
 3. **Confirm:** `reconcile` exits 0. The transaction and ledger counts fall by exactly the dry run's counts.
-4. **If the reversal itself was wrong:**
-   ```bash
-   … undo --tenant <firm> --reversal <reversal id> --by <id> --reason "…"
-   ```
-   The firm must still be halted. Then `reconcile`.
-5. **Resume:** release with two operators, then re-import the corrected file.
+4. **If the reversal itself was wrong:** an `undo` request for the reversal id, approved by the other operator. The firm must still be halted. Then `reconcile`.
+5. **Resume:** a two-person `release` request, then re-import the corrected file.
 
-**Rehearsed on the October MFSD201 batch:**
-- a one-person approval was refused;
-- the dry run showed 391 transactions and 391 ledger entries, `blocked: false`;
-- `--commit` left 685 transactions, reconcile 0;
-- undo while released was refused ("halt posting for this firm first");
-- undo while halted restored 391 + 391, with the fingerprint identical to before (`f8a87458…`), reconcile 0.
+**Rehearsed** (`rta_p0`, the clean firm P, the May MFSD201 batch, signed-in operator sessions):
+- the firm halted by one operator → `held`;
+- the dry run: 685 transactions, 685 ledger entries, 1 SIP-rejection record, `blocked: false`, nothing changed;
+- the requester approving their own `reverse` request → 403;
+- the other operator's approval reversed it: 1,076 → 391 transactions, reconcile 0;
+- an `undo` request, approved by the other operator, restored 685 + 685 + 1: 1,076 transactions, the same amount total, reconcile 0;
+- a two-person `release` → `validate_first`.
 
 ### 5.7 Confirming a database recovery
 
@@ -637,7 +678,7 @@ After any reversal, undo or restore:
   1. Run `reconcile` and `status`; record the final counts and fingerprint.
   2. One operator records the end explicitly: `call '{"action":"pause","tenantId":"<firm>","reason":"14-day pilot ended <date>; awaiting review"}'`.
   3. Compliance and both operators review the pilot evidence.
-- Extending, widening or returning to the legacy importer (`mode: "off"`) are each a new two-person decision. Returning to legacy is NOT a rollback of what was posted.
+- Extending, widening (another report type or registrar) or returning to the legacy importer (`mode: "off"`) are each a new two-person `activate` request. Returning to legacy is NOT a rollback of what was posted.
 
 **Rehearsed:** an activation set to expire in 4 seconds read `validate_first` before and `held` after; the explicit pause record read `held`.
 
@@ -646,12 +687,12 @@ After any reversal, undo or restore:
 | # | Check | Command | Expected | Stop if |
 |---|---|---|---|---|
 | 1 | Yesterday's MFSD201 arrived | `npx tsx scripts/rta-file-manifest.ts <all pilot MFSD201 files> --calendar <start> <today> --arn <pilot ARN>` (EC-3) | every weekday `present`, or answered in the ticket | an unanswered `MISSING` business day for more than one business day; exit 2 for an ARN |
-| 2 | Only approved report types reached the firm | `SELECT report_code, rta, count(*) FROM rta_staging_batches WHERE tenant_id = '<firm>' AND created_at >= '<start>' GROUP BY 1, 2` | only `MFSD211`, `MFSD201` (`kfintech`) | any other report code or registrar → halt the firm (§5.2), then investigate with §5.5 |
+| 2 | Only approved report types reached the firm (enforced by the software since 0243; this checks it) | `SELECT report_code, rta, count(*) FROM rta_staging_batches WHERE tenant_id = '<firm>' AND created_at >= '<start>' GROUP BY 1, 2`, and `SELECT status, count(*) FROM rta_file_imports WHERE tenant_id = '<firm>' AND created_at >= '<start>' AND status IN ('blocked', 'cancelled') GROUP BY 1` | only `MFSD211`, `MFSD201` (`kfintech`) batches; each `blocked` import explained (who sent it) | any other report code or registrar in a batch → halt the firm (§5.2), then investigate with §5.5 |
 | 3 | No mail imported for the firm | the EC-4 step 3 query since `<start>` | no `imported` row | any `imported` row |
 | 4 | Every batch reconciles | `rta-posting-recovery.ts reconcile --tenant <firm>` | exit 0 | exit 3 → §5.5 |
 | 5 | Processed vs rejected, from the ledger | the §4.1 ledger query | `other_status` 0; rejected legs carry 0 units | `other_status` ≠ 0 or a rejection with units |
 | 6 | Held items are actionable | the Held screen (`/dashboard/rta-imports/held`); the four unresolved codes still listed on the Scheme codes screen | each held item has an owner and a next step | a held item nobody owns for two business days |
-| 7 | Backlog | EC-2 inventory | nothing unapproved | any unapproved job |
+| 7 | Backlog | EC-2 inventory | nothing unapproved | any unapproved import not cancelled |
 
 ---
 
@@ -665,13 +706,15 @@ Every field is blank on purpose. Complete it in ink or in the ticket; do not pre
 | Tenant id | |
 | ARN (must equal the Agent / Broker Code in every file) | |
 | Registrar scope | KFintech only — `registrars: ["kfintech"]` |
+| Report-type scope | MFSD211 + MFSD201 only — `reportCodes: ["MFSD211","MFSD201"]` |
 | Pilot start (date, time IST) | |
 | Pilot end = `expiresAt` (start + 14 days) | |
 | Approved file scope: per file, report code (MFSD211 / MFSD201 only), file name, SHA-256, data rows, Report Date (`rta-file-manifest.ts` output reference) | |
-| Approved backlog inventory before activation (EC-2): reference, and jobs removed | |
+| Approved backlog inventory before activation (EC-2): reference, and imports cancelled | |
 | RTA mail for the firm stopped for the pilot (EC-4 step 4): how, and by whom | |
 | On-call destination that acknowledged the test alert (EC-5): system, rota, alert id | |
-| Operator 1's signed request (EC-6): ticket reference and time | |
+| Activation request (EC-6): request id, `payloadHash`, filed at (operator 1's session), approved at (operator 2's session) | |
+| Global-halt release request (EC-6): request id, `payloadHash` | |
 | First platform operator (requester): name, user id | |
 | Second platform operator (approver): name, user id | |
 | DBA: name | |
@@ -705,20 +748,32 @@ The pilot validates verified KFintech transactions only. It makes no claim about
 | Platform operator 2 | | |
 | Compliance reviewer | | |
 
-**Recommendation from development:** **NO-GO until A–E are PASS with production evidence, EC-1 – EC-6 are evidenced, and F is signed.** The software gaps in §7 are not fixed; for the 14-day pilot they are held by the stated operator controls. Without those controls, gaps 2 and 3 would block GO.
+**Recommendation from development:** **NO-GO until A–E are PASS with production evidence, EC-1 – EC-6 are evidenced, and F is signed.** The five software defects of §7 are fixed in development (migration 0243) and tested on isolated databases; none of that is production evidence. The residual risks in §7.2 remain and are held by the stated controls.
 
 ---
 
-## 7. Software gaps found in the corrections round (not fixed — no new development phase)
+## 7. Software defects — fixed in the final security patch (migration 0243)
 
-| # | Gap | Effect on the pilot | Control for the pilot | Proposed fix (for a later, approved change) |
-|---|---|---|---|---|
-| 1 | The Operations Dashboard's Rejections figures (`lib/dashboard/ops/exceptions.ts`, `flow.ts`, `people.ts`) count each STP **leg** as a rejection and add both legs' amounts. A failed STP shows as 2 rejections of ₹10,000, not 1 of ₹5,000 | Reporting only; no financial record is wrong. Business figures exclude rejections | Read pilot rejections from the §4.1 ledger query (instructions by switch reference), not from that card | Count rejected STP legs by the shared `raw_feed_row->>'switchRef'` and take the amount once |
-| 2 | The activation is scoped by **registrar**, not by **report type**. An MFSD203, MFSD243 or MFSD230 file for the pilot firm — by upload or by forwarded mail — posts holdings legs or verified SIP registrations | Would take the pilot outside "transactions only" | Mail for the firm stopped (EC-4 step 4); uploads only from the signed inventory (EC-2); daily report-code check (§5.9 #2); halt on any other report | An activation `report_codes` allow-list, enforced like the registrar scope of migration 0242 |
-| 3 | Two-person approval verifies only the **approver** (the signed-in API session). The requester is an id in the request; the CLI's `--by` / `--approver` are unauthenticated | The "two people" rule rests partly on process | EC-6: signed request in the ticket before the action; starts only through the API by the signed-in approver; CLI recovery only with both present; 2FA on both accounts | A request object the requester creates in their own session, approved in a second, different session |
-| 4 | Matching an existing legacy row (`matched_existing`) compares folio, date, direction, amount and units, but **not the scheme**. A matched legacy row keeps its legacy scheme code and gets no AMFI code | None in the rehearsal (1,061 matched, `scheme_differs` 0); the risk is a legacy row filed under a wrong scheme being linked as-is | EC-1 step 2: `scheme_differs` must be 0 on the production copy | Compare the registrar scheme (or its AMFI mapping) before linking; hold a mismatch as `identity_conflict` |
-| 5 | When a parked job is removed (EC-2), the stuck-import reaper later marks its row `failed` with the text "the worker restarted mid-parse" | Cosmetic; the file is never posted | Record the removal in the ticket | A distinct remark for a job removed by an operator |
+**7.1 The five defects found in the corrections round.** Fixed in development and tested on isolated databases only; not deployed, not migrated in production.
 
+| # | Defect | Fix | Evidence (development) |
+|---|---|---|---|
+| 1 | The Operations dashboard counted each rejected STP **leg** as a rejection and added both legs | Rejected **instructions** and **legs** shown separately; every other rejection count on the dashboard counts instructions; an instruction is keyed on client, folio, date, amount and the registrar's reference; the export keeps one line per leg with its instruction | `tests/ops-rejected-instructions-db.test.ts` (4); both `rta_p0` firms: 2 · ₹7,000.00 and 3 · ₹12,000.00 (§4.1) |
+| 2 | The activation was scoped by registrar only; MFSD203 / MFSD243 / MFSD230 could post | `rta_pipeline_activations.report_codes` (required with posting); refused at upload, mail dispatch and re-run (recorded `blocked`), and from the file's content before staging, in the worker (incl. retries and resumed jobs) and inside the posting transaction | `tests/rta-report-scope-db.test.ts` (7); `rta_p0`: the six real out-of-scope files refused, 0 batches, CRM unchanged |
+| 3 | Two-person approval authenticated only the approver; the CLI trusted flags | Immutable two-person control requests: requester and approver are separate signed-in two-factor platform sessions; payload hash, expiry, single use; the database refuses a start not cited by a request executed in the same transaction; CLI starts disabled | `tests/rta-two-person-db.test.ts` (11); every control test migrated to requests; `rta_p0` activation, releases, reversal and undo by request |
+| 4 | Legacy matching ignored the scheme | Every fact compared, scheme identity through approved mappings (historical codes, verified AMC successors); mismatches held `identity_conflict` naming what differs; legacy rows never changed | `tests/rta-legacy-match-db.test.ts` (10); `rta_p0`: 1,061 linked, 0 conflicts (EC-1) |
+| 5 | A removed parked job was later marked `failed` "worker restarted mid-parse" | `cancel_import`: one signed-in operator; status `cancelled` with who / when / why, audit row; job removed from Redis by the same call; final in the database; the worker and re-run refuse it | `tests/rta-cancel-import-db.test.ts` (4, incl. real Redis) |
+
+**7.2 Residual risks (not defects of this patch; held by controls):**
+
+| Risk | Control |
+|---|---|
+| Anyone holding the production database owner / superuser credentials can disable triggers and write rows directly; no application control can stop that | DBA access is break-glass, logged and reviewed (D4); the app role is neither superuser nor BYPASSRLS |
+| The platform scheme / AMC approvals are two-person in the API (control requests), but the database does not refuse a direct write to `scheme_registrar_map` / `registrar_amc_identity` without a request | Same as above; those tables are reviewed in A / B |
+| The CLI `halt` names its operator on the command line (recorded "not server-verified") | Use the API halt when it is reachable; a halt only stops |
+| Two-factor is read from `users.two_fa_enabled`, set by the TOTP enrolment | EC-6 step 1 checks it for both operators |
+| An in-scope MFSD211 / MFSD201 arriving by mail is imported without the signed inventory | Mail for the firm stopped for the pilot (EC-4 step 4) |
+| A cancel while Redis is unreachable cannot remove the job (`queueChecked: false`) | The worker refuses the cancelled import anyway; re-run the cancel when Redis is back (EC-2) |
 
 ---
 
@@ -726,10 +781,12 @@ The pilot validates verified KFintech transactions only. It makes no claim about
 
 - All rehearsal steps ran on `rta_handover` and then `rta_final`, isolated databases dropped afterwards.
 - Corrections round (`rta_final`): ledger-based CSV export; the §4.1 ledger query; the legacy-then-validate-first rehearsal and the collision drill (EC-1); the operator-identity query (EC-6). The queue inventory and removal commands (EC-2) ran against a local Redis with real BullMQ jobs, and `rta-file-manifest.ts` against the four sample files (EC-3).
-- One code change in this round: `lib/rta/posting/gate.ts` now loads its database controls inside the posting check rather than at module load. This lets the read-only `rta-file-manifest.ts` run without a database; posting behaviour is unchanged.
+- One code change in the corrections round: `lib/rta/posting/gate.ts` now loads its database controls inside the posting check rather than at module load. This lets the read-only `rta-file-manifest.ts` run without a database; posting behaviour is unchanged.
+- Final security patch (`rta_p0`, built from a copy of the development schema at 0243, AMFI 07-Oct-2026 applied): the legacy firm L built with `import-rta-local.ts --commit` (1,061 rows), then validate-first by two-person activation (EC-1 cross-tab); the clean firm P (1,073 + 3); the six out-of-scope real files refused; the recovery and EMERGENCY drill with signed-in operator sessions (§5.3, §5.6); the Operations dashboard read on both firms (§4.1). Regression on a database built from empty (`mfd_ci`, 281 migrations): every check script, 991 tests passed (1 skipped: the emergency drill, run on its own and passing), the immutability drill 14 / 14.
+- The rehearsal operators were synthetic test users (two-factor flag on, synthetic sessions) in isolated databases only; no production identity was created or used.
 - The rehearsal firm's activation and operators were synthetic.
 - **Observation (not a defect in the production path):** calling the import library directly while a firm is paused still writes a staging batch (staging tables only) before the gate refuses posting. The worker, the only production path, checks the regime first and parks the job without reading the file.
 - **Operator items found while preparing this package:**
   1. The owner must confirm the DKIM `d=` domains the registrars sign with (D2).
   2. An alert sink (`OBSERVABILITY_WEBHOOK_URL` / `ERROR_WEBHOOK_URL`) must be set, or alerts reach only the audit log (D7).
-  3. Pause and activation exist only on the API, so operators need a platform session (§5.1).
+  3. Every control is on the API, so each operator needs their own platform session with two-factor (§5.1).

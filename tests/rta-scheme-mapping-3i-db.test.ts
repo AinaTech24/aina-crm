@@ -27,6 +27,8 @@ const r2 = (txn: string, folio: string, pan: string) => ({
 });
 
 describe.skipIf(!TEST_DB)("Phase 3I — scheme mapping fail-safes (DB)", () => {
+  let H2p: typeof import("./helpers/two-person");
+  let ops2p: import("./helpers/two-person").Operators;
   let withTenant: typeof import("@/db/client").withTenant;
   let withSystem: typeof import("@/db/client").withSystem;
   let sql: typeof import("drizzle-orm").sql;
@@ -65,7 +67,10 @@ describe.skipIf(!TEST_DB)("Phase 3I — scheme mapping fail-safes (DB)", () => {
     S = await import("@/lib/rta/scheme-resolution");
     R = await import("@/lib/rta/posting/reprocess");
     const C = await import("@/lib/rta/posting/controls");
-    await C.setPostingHalt({ scope: "global", halted: false, reason: "development test database: posting released", changedBy: ops.a, approvedBy: ops.b });
+    H2p = await import("./helpers/two-person");
+    ops2p = await H2p.createOperators("sm3i");
+    Object.assign(ops, { a: ops2p.a.userId, b: ops2p.b.userId });
+    await H2p.release(ops2p, "global");
     await withSystem(async (tx) => {
       // The latest AMFI feed: yesterday. A scheme last listed long ago is inactive.
       await tx.execute(sql`INSERT INTO amfi_feed_imports (id, source, sha256, bytes, layout, feed_date, status, note)
@@ -98,6 +103,8 @@ describe.skipIf(!TEST_DB)("Phase 3I — scheme mapping fail-safes (DB)", () => {
   });
 
   afterAll(async () => {
+
+    await H2p?.retireOperators(ops2p);
     const tryRun = async (s: ReturnType<typeof sql>) => { try { await withSystem((tx) => tx.execute(s)); } catch { /* best effort */ } };
     for (const t of [tA, tB]) {
       for (const table of ["rta_posted_transactions", "rta_sip_registrations", "folio_holders", "sip_rejections", "sips", "transactions", "tasks", "rta_staging_lots", "rta_staging_checks", "rta_staging_rows", "scheme_rta_codes"]) {

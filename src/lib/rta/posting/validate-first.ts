@@ -24,8 +24,8 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { rtaStagingBatches } from "@/db/schema";
 import { createShadowBatch, runShadowBatch } from "../staging/pipeline";
-import { postingGateEnv, PostingGateError, registrarOutOfScope } from "./gate";
-import { currentActivation, registrarCovered } from "./controls";
+import { postingGateEnv, PostingGateError, registrarOutOfScope, reportOutOfScope } from "./gate";
+import { currentActivation, registrarCovered, reportCovered } from "./controls";
 import { identifyLayout } from "../staging/layouts";
 import { readLines } from "../staging/source";
 import { postTransactionBatch, type PostResult } from "./post";
@@ -66,10 +66,13 @@ export async function validateFirstImport(args: {
   // The activation's registrar scope (0242), checked before anything is staged:
   // a CAMS file sent to a KFintech-only pilot firm is refused whole. The posting
   // gate checks the same scope again inside every posting transaction.
+  // The report-type scope (0243) the same way: identified from the file's
+  // CONTENT (its header layout), never from its name.
   const activation = await withTenant(args.tenantId, (tx) => currentActivation(tx, args.tenantId));
-  if (activation?.registrars) {
-    const rta = identifyLayout(readLines(args.buf, args.fileName))?.layout.rta ?? null;
-    if (!registrarCovered(activation, rta)) throw new PostingGateError([registrarOutOfScope(activation.registrars, rta)]);
+  if (activation?.registrars || activation?.reportCodes) {
+    const layout = identifyLayout(readLines(args.buf, args.fileName))?.layout ?? null;
+    if (!registrarCovered(activation, layout?.rta ?? null)) throw new PostingGateError([registrarOutOfScope(activation.registrars, layout?.rta ?? null)]);
+    if (!reportCovered(activation, layout?.reportCode ?? null)) throw new PostingGateError([reportOutOfScope(activation.reportCodes, layout?.reportCode ?? null)]);
   }
 
   // Resume: the latest batch this import already created.

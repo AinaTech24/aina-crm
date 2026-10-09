@@ -35,6 +35,8 @@ const r2 = (v: Record<string, string | number>) => ({
 const camsR2 = (rows: Record<string, string | number>[]) => xlsOf(R2_HEADER, rows, ["traddate"]);
 
 describe.skipIf(!TEST_DB)("validate-first import + development posting (DB)", () => {
+  let H2p: typeof import("./helpers/two-person");
+  let ops2p: import("./helpers/two-person").Operators;
   let withTenant: typeof import("@/db/client").withTenant;
   let withSystem: typeof import("@/db/client").withSystem;
   let sql: typeof import("drizzle-orm").sql;
@@ -74,7 +76,9 @@ describe.skipIf(!TEST_DB)("validate-first import + development posting (DB)", ()
     gate = await import("@/lib/rta/posting/gate");
     post = await import("@/lib/rta/posting/post");
     // Migration 0236 installs posting HALTED; a development database releases it (two people).
-    await (await import("@/lib/rta/posting/controls")).setPostingHalt({ scope: "global", halted: false, reason: "development test database: posting released", changedBy: randomUUID(), approvedBy: randomUUID() });
+    H2p = await import("./helpers/two-person");
+    ops2p = await H2p.createOperators("vf");
+    await H2p.release(ops2p, "global");
     await withSystem(async (tx) => {
       for (const [id, n] of [[tE, "E"], [tH, "H"], [tX, "X"]] as const) {
         await tx.execute(sql`INSERT INTO tenants (id, legal_name, display_name, arn) VALUES (${id}::uuid, ${"VF " + n}, ${"VF " + n}, ${"ARN-VF" + n + id.slice(0, 6)})`);
@@ -96,6 +100,8 @@ describe.skipIf(!TEST_DB)("validate-first import + development posting (DB)", ()
   });
 
   afterAll(async () => {
+
+    await H2p?.retireOperators(ops2p);
     Object.assign(process.env, { RTA_POSTING_MODE: ENV.RTA_POSTING_MODE ?? "", RTA_POSTING_DATABASE: ENV.RTA_POSTING_DATABASE ?? "" });
     const tryRun = async (s: ReturnType<typeof sql>) => { try { await withSystem((tx) => tx.execute(s)); } catch { /* best effort */ } };
     for (const t of [tE, tH, tX]) {

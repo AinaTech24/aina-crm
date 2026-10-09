@@ -33,6 +33,8 @@ const sip = (txn: string) => ({
 });
 
 describe.skipIf(!TEST_DB)("validate-first through the worker jobs (DB)", () => {
+  let H2p: typeof import("./helpers/two-person");
+  let ops2p: import("./helpers/two-person").Operators;
   let withTenant: typeof import("@/db/client").withTenant;
   let withSystem: typeof import("@/db/client").withSystem;
   let sql: typeof import("drizzle-orm").sql;
@@ -59,11 +61,15 @@ describe.skipIf(!TEST_DB)("validate-first through the worker jobs (DB)", () => {
     ({ sql } = await import("drizzle-orm"));
     worker = await import("@/workers/rta-import-worker");
     // Migration 0236 installs posting HALTED; a development database releases it (two people).
-    await (await import("@/lib/rta/posting/controls")).setPostingHalt({ scope: "global", halted: false, reason: "development test database: posting released", changedBy: randomUUID(), approvedBy: randomUUID() });
+    H2p = await import("./helpers/two-person");
+    ops2p = await H2p.createOperators("vfw");
+    await H2p.release(ops2p, "global");
     await withSystem((tx) => tx.execute(sql`INSERT INTO tenants (id, legal_name, display_name, arn) VALUES (${t}::uuid, 'VF Worker', 'VF Worker', ${"ARN-VW" + t.slice(0, 6)})`));
   });
 
   afterAll(async () => {
+
+    await H2p?.retireOperators(ops2p);
     delete process.env.RTA_PIPELINE_MODE; delete process.env.RTA_POSTING_MODE; delete process.env.RTA_POSTING_DATABASE;
     const tryRun = async (s: ReturnType<typeof sql>) => { try { await withSystem((tx) => tx.execute(s)); } catch { /* best effort */ } };
     await tryRun(sql`ALTER TABLE rta_pipeline_activations DISABLE TRIGGER rta_pipeline_activations_append_only`);
@@ -111,7 +117,7 @@ describe.skipIf(!TEST_DB)("validate-first through the worker jobs (DB)", () => {
 
   it("paused / halted (Phase 3H): the job is HELD — no staging, no write, never the existing importer — and runs after resume", async () => {
     const C = await import("@/lib/rta/posting/controls");
-    const ops = { a: randomUUID(), b: randomUUID() };
+    const ops = { a: ops2p.a.userId, b: ops2p.b.userId };
     // A legacy firm (no activation) with its firm halt on: the existing importer stops inside its own transaction.
     delete process.env.RTA_PIPELINE_MODE; delete process.env.RTA_POSTING_MODE;
     await C.setPostingHalt({ scope: t, halted: true, reason: "worker drill: firm halted", changedBy: ops.a });
@@ -121,7 +127,7 @@ describe.skipIf(!TEST_DB)("validate-first through the worker jobs (DB)", () => {
     expect(h.legacyCalls).toBe(before.legacy);
     expect((await q(sql`SELECT count(*)::int AS n FROM transactions WHERE tenant_id = ${t}::uuid`))[0].n).toBe(before.tx);
     expect(h.store.has(u1.key)).toBe(true); // the source file is kept
-    await C.setPostingHalt({ scope: t, halted: false, reason: "worker drill: firm released", changedBy: ops.a, approvedBy: ops.b });
+    await H2p.release(ops2p, t, "worker drill: firm released by two operators");
     // A paused validate-first firm: held before staging.
     process.env.RTA_PIPELINE_MODE = "validate_first"; process.env.RTA_POSTING_MODE = "development";
     await C.activateTenant({ tenantId: t, mode: "paused", postingEnabled: false, reason: "worker drill: pilot paused", approvedBy: ops.a });
@@ -132,7 +138,7 @@ describe.skipIf(!TEST_DB)("validate-first through the worker jobs (DB)", () => {
     await expect(worker.runRichImportJob({ mode: "rich", tenantId: t, key: u2.key, filename: "paused.csv", rta: "kfintech", reportType: "", dryRun: false, assignToMe: false, userId, roles: ["owner"], importId: u2.id })).rejects.toMatchObject({ name: "ImportHeldError" });
     expect(await batches()).toBe(b0);
     // Resume (two people): the same job now runs, once.
-    await C.activateTenant({ tenantId: t, mode: "validate_first", postingEnabled: false, reason: "worker drill: pilot resumed", requestedBy: ops.a, approvedBy: ops.b });
+    await H2p.activate(ops2p, { tenantId: t, mode: "validate_first", postingEnabled: false, reason: "worker drill: pilot resumed" });
     await worker.runRtaImportJob({ importId: u2.id, tenantId: t, source: "kfintech", kind: "daily_transaction_feed", key: u2.key, filename: "paused.csv", userId, roles: ["owner"] });
     expect((await q(sql`SELECT count(*)::int AS n FROM transactions WHERE tenant_id = ${t}::uuid AND order_id = '800202'`))[0].n).toBe(1);
     expect(h.legacyCalls).toBe(before.legacy);

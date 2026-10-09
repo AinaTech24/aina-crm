@@ -78,8 +78,9 @@ export async function GET(req: NextRequest) {
         if (kind === "rejected") {
           const r = await loadRejected(tx, w, MAX);
           return csv(
-            ["Client", "RM", "Branch", "Transaction", "Scheme", "Amount (₹)", "Rejection reason", "Rejection date", "Resolution", "Assigned to"],
-            (r?.rows ?? []).map((x) => [x.client, x.rm, x.branch, x.type, x.scheme, x.amount, x.reason ?? "Reason missing", x.date, x.resolution ?? "Not tracked", x.assignedTo]),
+            ["Client", "RM", "Branch", "Transaction", "Scheme", "Amount (₹)", "Instruction", "Legs in instruction", "Leg", "Rejection reason", "Rejection date", "Resolution", "Assigned to"],
+            (r?.rows ?? []).map((x) => [x.client, x.rm, x.branch, x.type, x.scheme, x.amount, x.instructionRef, x.legsInInstruction,
+              x.legsInInstruction > 1 ? (x.direction === "outflow" ? "source" : "destination") : "", x.reason ?? "Reason missing", x.date, x.resolution ?? "Not tracked", x.assignedTo]),
           );
         }
         if (kind === "sip") {

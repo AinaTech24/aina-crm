@@ -12,6 +12,7 @@ import { Q, addWithin, QueueUnavailableError } from "@/workers/queues";
 import { RTA_FILE_TYPE_BY_KIND } from "@/lib/rta/file-types";
 import { handleApiError } from "@/lib/api/error-handler";
 import { requireRtaImportAccess, RTA_IMPORT_CAPABILITY } from "@/lib/rta/import-access";
+import { intakeRefusal, recordBlockedImport } from "@/lib/rta/posting/intake-scope";
 
 /**
  * POST /api/rta-imports/upload
@@ -121,6 +122,29 @@ async function upload(req: NextRequest) {
       },
       { status: 400 }
     );
+  }
+
+  // A firm activated for validate-first imports only the report types its
+  // activation names (the KFintech pilot: MFSD211 + MFSD201). A file that
+  // cannot be one of them is recorded as BLOCKED (the audit record) and never
+  // queued. The worker re-checks the file's content and the posting
+  // transaction checks again — this is only the first gate.
+  const blocked = await withTenant(
+    session.tenantId,
+    async (tx) => {
+      const reason = await intakeRefusal(tx, session.tenantId, { source, kind, fileName });
+      if (!reason) return null;
+      const id = await recordBlockedImport(tx, { tenantId: session.tenantId, source, kind, fileName, fileKey: key, reason, uploadedBy: session.userId, origin: "upload" });
+      await recordAudit(tx, {
+        tenantId: session.tenantId, actorUserId: session.userId, action: "rta_import.blocked", entityType: "rta_file_import", entityId: id,
+        after: { source, kind, fileName, status: "blocked", reason, origin: "upload" }, ...clientMetaFromHeaders(req.headers),
+      });
+      return { id, reason };
+    },
+    { userId: session.userId, branchId: session.branchId, roles: session.roles }
+  );
+  if (blocked) {
+    return NextResponse.json({ error: blocked.reason.replace(/^blocked:\s*/, "Blocked — "), importId: blocked.id, status: "blocked" }, { status: 422 });
   }
 
   // 1. Reserve an import row in `uploaded` state. period_start/end are NOT NULL

@@ -60,12 +60,23 @@ async function main() {
   const addUser = (id: string, t: string, roles: string[], n: string) => admin.query(`INSERT INTO users (id, tenant_id, email, name, roles, status) VALUES ($1,$2,$3,$4,$5,'active')`, [id, t, `${n}-${id.slice(0, 6)}@example.test`, n, roles]);
   await addUser(u.o1, T1, ["owner"], "Owner One"); await addUser(u.o2, T2, ["owner"], "Owner Two"); await addUser(u.rm1, T1, ["rm"], "RM One"); await addUser(u.mk1, T1, ["marketing"], "Marketing One");
   await addUser(u.op1, PF, ["platform_admin"], "Operator One"); await addUser(u.op2, PF, ["platform_admin"], "Operator Two");
+  // Two-person starts (migration 0243) need each operator signed in with 2FA on: synthetic sessions, local database only.
+  const sess = { op1: `infra-${randomUUID()}`, op2: `infra-${randomUUID()}` };
+  await admin.query(`UPDATE users SET two_fa_enabled = true WHERE id = ANY($1::uuid[])`, [[u.op1, u.op2]]);
+  for (const k of ["op1", "op2"] as const) await admin.query(`INSERT INTO user_sessions (tenant_id, user_id, session_id) VALUES ($1, $2, $3)`, [PF, u[k], sess[k]]);
   const mods = JSON.stringify(["crm", "dashboards", "client_master", "transactions", "sip_tracker", "sip_rejection", "reports", "tasks"]);
   const pk = await one(`INSERT INTO packages (key, name, max_users, max_investors, enabled_modules) VALUES ($1, 'Infra', 50, 100000, $2::jsonb) RETURNING id`, [`infra-${T1.slice(0, 6)}`, mods]);
   for (const t of [T1, T2]) await admin.query(`INSERT INTO subscriptions (tenant_id, package_id, package_key, status) VALUES ($1, $2, $3, 'active')`, [t, pk.id, `infra-${T1.slice(0, 6)}`]);
   const C = await import("@/lib/rta/posting/controls");
-  await C.setPostingHalt({ scope: "global", halted: false, reason: "infrastructure check: posting released", changedBy: u.op1, approvedBy: u.op2 });
-  for (const t of [T1, T2]) await C.activateTenant({ tenantId: t, mode: "validate_first", postingEnabled: true, reason: "infrastructure integration check", approvalRef: "INFRA-3G", registrars: ["cams", "kfintech"], requestedBy: u.op1, approvedBy: u.op2 });
+  const AP = await import("@/lib/rta/posting/approvals");
+  const twoPerson = async (input: import("@/lib/rta/posting/approvals").ControlRequestInput) => {
+    const r = await AP.requestControlAction({ userId: u.op1, sid: sess.op1 }, input);
+    return AP.approveControlAction({ userId: u.op2, sid: sess.op2 }, { requestId: r.id, payloadHash: r.payloadHash });
+  };
+  void C;
+  await twoPerson({ action: "release", scope: "global", changeRef: "INFRA-3G", reason: "infrastructure check: posting released" });
+  for (const t of [T1, T2]) await twoPerson({ action: "activate", tenantId: t, mode: "validate_first", postingEnabled: true, changeRef: "INFRA-3G", reason: "infrastructure integration check",
+    registrars: ["cams", "kfintech"], reportCodes: [...C.REPORT_CODES.cams, ...C.REPORT_CODES.kfintech], expiresAt: new Date(Date.now() + 864e5).toISOString() });
   const alias = `rta-infra${T1.slice(0, 8)}@in.crm.example.test`;
   await admin.query(`INSERT INTO rta_forward_addresses (tenant_id, address, token, is_active, verified_at) VALUES ($1, $2, $3, true, now())`, [T1, alias, `infra${T1.slice(0, 8)}`]);
 

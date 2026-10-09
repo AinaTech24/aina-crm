@@ -43,12 +43,13 @@ export function RejectedPanel({ d, periodLabel, exportQuery }: { d: RejectedDesk
       subtitle={`Rejected or failed on the RTA / exchange feed ${inPeriod(periodLabel)}.`}
       icon={<Ban className="size-4" />}
       action={d && d.total > 0 ? <ExportButton kind="rejected" query={exportQuery} label="rejected transactions" /> : undefined}
-      note="Resolution is tracked for SIP instalments through the rejection register; the CRM has no resolution field for other rejected transactions."
+      note="An STP is rejected as two legs (out of one scheme, into another) that share the registrar's reference: it is ONE rejected instruction with two legs, so the instruction count and amount never double-count it; the leg count and gross amount add every leg. Resolution is tracked for SIP instalments through the rejection register; the CRM has no resolution field for other rejected transactions."
     >
       {!d ? <Unavailable>Feed transactions are outside your own-work view.</Unavailable> : (
         <>
-          <StatGrid cols={6}>
-            <Stat label="Total rejected" value={d.total} tone={d.total ? "bad" : "neutral"} hint={d.total ? formatMoney(d.value) : undefined} />
+          <StatGrid cols={4}>
+            <Stat label="Rejected instructions" value={d.instructions} tone={d.instructions ? "bad" : "neutral"} hint={d.instructions ? formatMoney(d.instructionValue) : undefined} />
+            <Stat label="Rejected legs" value={d.total} tone={d.total ? "bad" : "neutral"} hint={d.total ? `${formatMoney(d.value)} gross` : undefined} />
             <Stat label="Purchase" value={d.purchase} tone={d.purchase ? "bad" : "neutral"} />
             <Stat label="SIP" value={d.sip} tone={d.sip ? "bad" : "neutral"} />
             <Stat label="Redemption" value={d.redemption} tone={d.redemption ? "bad" : "neutral"} />
@@ -71,7 +72,11 @@ export function RejectedPanel({ d, periodLabel, exportQuery }: { d: RejectedDesk
                     <Link href={`/dashboard/investors/${r.investorId}`} className="text-xs font-medium hover:text-primary hover:underline">{r.client}</Link>
                     <div className="text-2xs text-muted-foreground">{[r.rm ?? "No RM", r.branch ?? "No branch"].join(" · ")}</div>
                   </td>
-                  <td className="py-2.5 text-xs">{r.type}{r.scheme && <div className="text-2xs text-muted-foreground">{r.scheme}</div>}</td>
+                  <td className="py-2.5 text-xs">
+                    {r.type}
+                    {r.legsInInstruction > 1 && <span className="text-muted-foreground"> · {r.direction === "outflow" ? "source" : "destination"} leg, 1 of {r.legsInInstruction}</span>}
+                    {r.scheme && <div className="text-2xs text-muted-foreground">{r.scheme}</div>}
+                  </td>
                   <Num>{r.amount != null ? formatMoney(r.amount) : "—"}</Num>
                   <td className="py-2.5 text-xs">{r.reason ?? <span className="font-medium text-warning-foreground">Reason missing</span>}</td>
                   <td className="whitespace-nowrap py-2.5 text-xs">{fmtIstDay(r.date)}</td>

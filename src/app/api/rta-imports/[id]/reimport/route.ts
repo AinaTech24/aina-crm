@@ -32,6 +32,7 @@ import { getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config"
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { assertRtaImportAccess, isUuid, RTA_IMPORT_CAPABILITY } from "@/lib/rta/import-access";
 import { Q, addWithin } from "@/workers/queues";
+import { intakeRefusal } from "@/lib/rta/posting/intake-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -66,6 +67,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         `);
         const row = (r.rows[0] as any) ?? null;
         if (!row) return { ok: false, status: 404, error: "Import not found." };
+        if (row.status === "cancelled") {
+          return {
+            ok: false,
+            status: 409,
+            error: "A platform operator cancelled this import. It is never re-run; if the file is now approved, upload it again.",
+          };
+        }
         if (IN_FLIGHT.has(row.status)) {
           return {
             ok: false,
@@ -92,6 +100,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // A completed import purges its own file by design — there is nothing to read.
         if (row.status === "completed") {
           return { ok: false, status: 409, error: "This import already completed; there is nothing to re-run." };
+        }
+
+        // A re-run passes the same report-type gate as a new upload: a file the
+        // firm's activation does not cover is marked BLOCKED, never re-queued.
+        const refused = await intakeRefusal(tx, session.tenantId, { source: row.source, kind: row.kind, fileName: row.file_name });
+        if (refused) {
+          await tx.execute(sql`
+            UPDATE rta_file_imports
+               SET status = 'blocked', remarks = ${`Blocked at re-run — ${refused.replace(/^blocked:\s*/, "")}`}, updated_at = now()
+             WHERE id = ${id}::uuid AND status NOT IN ('uploaded', 'parsing')
+          `);
+          await recordAudit(tx, {
+            tenantId: session.tenantId, actorUserId: session.userId, action: "rta_import.blocked", entityType: "rta_file_import", entityId: row.id,
+            before: { status: row.status }, after: { status: "blocked", reason: refused, origin: "reimport" }, ...clientMetaFromHeaders(req.headers),
+          });
+          return { ok: false, status: 422, error: refused.replace(/^blocked:\s*/, "Blocked — ") };
         }
 
         // Claim + reset in one statement. The status guard repeats the in-flight

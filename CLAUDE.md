@@ -803,6 +803,40 @@ provenance, platform registrar map) and 0240 (platform-approved confirmation).
   MFSD211 = investor master (first), MFSD201 = transactions, MFSD203 =
   holdings, MFSD243 = SIP / STP / SWP registrations.
 
+## RTA pilot security patch — migration 0243 (PRE-PRODUCTION)
+
+Operator steps and evidence: `docs/rta/PILOT_HANDOVER.md` (§5.1, EC-1, EC-2, EC-6, §7).
+
+- **Every START is a two-person control request** (`lib/rta/posting/approvals.ts`,
+  `rta_control_requests`): an activation other than a pause, a kill-switch release,
+  a reversal, an undo, a platform scheme / AMC approval. The requester files it
+  from their own signed-in session, a DIFFERENT signed-in operator approves the
+  exact `payloadHash`, and the action runs in the approval's transaction. Both
+  must be active `platform_admin` with two-factor and a live session. Identities
+  come only from the server session — never from a body or a command line. The
+  database refuses a start not cited by a request executed in the same
+  transaction. `activateTenant` (non-pause), `setPostingHalt({halted:false})`,
+  `reversePostingBatch` (commit) and `undoReversal` throw; tests use
+  `tests/helpers/two-person.ts`. Stops (halt, pause, revoke, emergency,
+  `cancel_import`) stay one operator. CLI `release` / `undo` / `reverse --commit`
+  exit 2.
+- **The activation names its report types** (`report_codes`; the KFintech pilot is
+  MFSD211 + MFSD201). Upload, mail dispatch and re-run refuse others and record a
+  `blocked` import (`posting/intake-scope.ts`, a filter only); the worker,
+  `validateFirstImport` and the posting gate decide from the file's CONTENT
+  (`reportCovered`). Never admit a report by its file name.
+- **Linking a legacy row** (`posting/legacy-match.ts`) needs every fact equal —
+  registrar, client, AMC (or a verified successor), folio, scheme identity
+  (registrar code, approved AMFI code, or a historical code an approved mapping
+  ties to it), date, type, direction, status, amount, units; otherwise
+  `identity_conflict`, nothing changed.
+- **A rejected STP is one instruction with two legs.** Operations dashboard counts
+  use `rejectedInstructionKey` (`lib/dashboard/ops/window.ts`): the registrar's
+  switch reference is a short number, so the key also carries client, folio,
+  date and amount. A new rejection count must use it.
+- **A cancelled import is final** (`posting/cancel-import.ts` + a trigger): who,
+  when, why; the job is removed; the worker's `markParsing` never claims it.
+
 ## Webhook handlers
 
 | Provider | Path | Verifies |

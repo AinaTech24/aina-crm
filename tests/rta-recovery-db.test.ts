@@ -19,6 +19,8 @@ const kfin = (txn: string, v: Record<string, string> = {}) => ({
 });
 
 describe.skipIf(!TEST_DB)("recovery of an incorrect posting batch (DB)", () => {
+  let H2p: typeof import("./helpers/two-person");
+  let ops2p: import("./helpers/two-person").Operators;
   let withTenant: typeof import("@/db/client").withTenant;
   let withSystem: typeof import("@/db/client").withSystem;
   let sql: typeof import("drizzle-orm").sql;
@@ -54,7 +56,10 @@ describe.skipIf(!TEST_DB)("recovery of an incorrect posting batch (DB)", () => {
     vf = await import("@/lib/rta/posting/validate-first");
     R = await import("@/lib/rta/posting/reversal");
     C = await import("@/lib/rta/posting/controls");
-    await C.setPostingHalt({ scope: "global", halted: false, reason: "development test database: posting released", changedBy: ops.a, approvedBy: ops.b });
+    H2p = await import("./helpers/two-person");
+    ops2p = await H2p.createOperators("rec");
+    Object.assign(ops, { a: ops2p.a.userId, b: ops2p.b.userId });
+    await H2p.release(ops2p, "global");
     await withSystem(async (tx) => {
       await tx.execute(sql`INSERT INTO tenants (id, legal_name, display_name, arn) VALUES (${t}::uuid, 'Recovery', 'Recovery', ${"ARN-RC" + t.slice(0, 6)})`);
       await tx.execute(sql`INSERT INTO investors (id, tenant_id, pan, name, last_transaction_at) VALUES (${inv}::uuid, ${t}::uuid, ${P.adult}, 'Recovery Adult', '2026-09-15T00:00:00Z')`);
@@ -66,6 +71,8 @@ describe.skipIf(!TEST_DB)("recovery of an incorrect posting batch (DB)", () => {
   });
 
   afterAll(async () => {
+
+    await H2p?.retireOperators(ops2p);
     const tryRun = async (s: ReturnType<typeof sql>) => { try { await withSystem((tx) => tx.execute(s)); } catch { /* best effort */ } };
     await tryRun(sql`ALTER TABLE rta_posting_reversals DISABLE TRIGGER rta_posting_reversals_append_only`);
     await tryRun(sql`DELETE FROM events_outbox WHERE tenant_id = ${t}::uuid`);
@@ -88,6 +95,10 @@ describe.skipIf(!TEST_DB)("recovery of an incorrect posting batch (DB)", () => {
   let batchId = "";
   let before: any;
   let afterPost: any;
+  /** A reversal / undo as the two-person control request it now is: A files, B approves, it runs in B's transaction. */
+  const reverse = async (batch: string, reason: string) => (await H2p.twoPerson(ops2p, { action: "reverse", tenantId: t, batchId: batch, changeRef: "CHG-RECOVERY", reason })).result as any;
+  const undo = async (reversal: string, reason: string) => (await H2p.twoPerson(ops2p, { action: "undo", tenantId: t, reversalId: reversal, changeRef: "CHG-RECOVERY", reason })).result as any;
+  const dryRun = (batch: string, reason: string) => R.reversePostingBatch(t, batch, { reason, dryRun: true });
 
   it("a batch posts: two new transactions, a refused instalment (with its SIP Rejection), and a match to an existing row", async () => {
     before = await fingerprint();
@@ -101,21 +112,28 @@ describe.skipIf(!TEST_DB)("recovery of an incorrect posting batch (DB)", () => {
   });
 
   it("reversal is refused while posting can run, and without two people", async () => {
-    await expect(R.reversePostingBatch(t, batchId, { requestedBy: ops.a, approvedBy: ops.b, reason: "wrong file posted for the firm" })).rejects.toThrow(/halt posting for this firm first/);
+    await expect(reverse(batchId, "wrong file posted for the firm")).rejects.toThrow(/halt posting for this firm first/);
     await C.setPostingHalt({ scope: t, halted: true, reason: "incident: wrong file posted", changedBy: ops.a });
-    await expect(R.reversePostingBatch(t, batchId, { requestedBy: ops.a, approvedBy: ops.a, reason: "wrong file posted for the firm" })).rejects.toThrow(/DIFFERENT approver/);
+    // One person cannot do it: the library call refuses a commit, and the requester cannot approve their own request.
+    await expect(R.reversePostingBatch(t, batchId, { reason: "wrong file posted for the firm", dryRun: false })).rejects.toThrow(/two-person control request/);
+    const A = await import("@/lib/rta/posting/approvals");
+    const own = await A.requestControlAction(ops2p.a, { action: "reverse", tenantId: t, batchId, changeRef: "CHG-RECOVERY", reason: "wrong file posted for the firm" });
+    await expect(A.approveControlAction(ops2p.a, { requestId: own.id, payloadHash: own.payloadHash })).rejects.toThrow(/DIFFERENT operator/);
+    await A.rejectControlAction(ops2p.a, { requestId: own.id, note: "withdrawn: test only" });
   });
 
   it("a dry run reports what would be removed and changes nothing", async () => {
-    const d = await R.reversePostingBatch(t, batchId, { requestedBy: ops.a, approvedBy: ops.b, reason: "wrong file posted for the firm", dryRun: true });
+    const d = await dryRun(batchId, "wrong file posted for the firm");
     expect(d).toMatchObject({ dryRun: true, counts: { transactions: 3, sipRejections: 1, ledger: 4, matchedExistingUnlinked: 1 } });
     expect(await fingerprint()).toEqual(afterPost);
   });
 
   let reversalId = "";
   it("reversal removes exactly what the batch wrote, keeps the pre-existing row, archives everything, and reconciles", async () => {
-    const r = await R.reversePostingBatch(t, batchId, { requestedBy: ops.a, approvedBy: ops.b, reason: "wrong file posted for the firm" });
+    const r = await reverse(batchId, "wrong file posted for the firm");
     reversalId = r.reversalId!;
+    const [rv] = await q(sql`SELECT requested_by::text AS a, approved_by::text AS b, control_request_id IS NOT NULL AS req FROM rta_posting_reversals WHERE id = ${reversalId}::uuid`);
+    expect(rv).toEqual({ a: ops.a, b: ops.b, req: true });
     expect(await fingerprint()).toEqual(before); // back to the CRM as it was before the batch
     expect(await sipRej()).toBe(0);
     expect(await lastTx()).toBe("2026-09-15"); // a master's date is not the batch's to lower
@@ -130,17 +148,17 @@ describe.skipIf(!TEST_DB)("recovery of an incorrect posting batch (DB)", () => {
   });
 
   it("undo restores every row exactly as it was; reconciliation is clean again", async () => {
-    await R.undoReversal(t, reversalId, { by: ops.b, reason: "reversal was a mistake — restoring" });
+    await undo(reversalId, "reversal was a mistake — restoring");
     expect(await fingerprint()).toEqual(afterPost);
     expect(await sipRej()).toBe(1);
     expect(await lastTx()).toBe("2026-09-15");
     expect(await R.reconcilePosting(t)).toEqual({ ledgerWithoutTransaction: 0, validateFirstTransactionWithoutLedger: 0, postedOutcomeWithoutLedger: 0, ledgerIdentityTwice: 0, rejectedWithUnits: 0 });
-    await expect(R.undoReversal(t, reversalId, { by: ops.b, reason: "second undo attempt here" })).rejects.toThrow(/already been undone/);
+    await expect(undo(reversalId, "second undo attempt here")).rejects.toThrow(/already been undone/);
   });
 
   it("reverse again, then the corrected file posts afresh once posting is released", async () => {
-    await R.reversePostingBatch(t, batchId, { requestedBy: ops.a, approvedBy: ops.b, reason: "wrong file posted — second time, for real" });
-    await C.setPostingHalt({ scope: t, halted: false, reason: "incident closed — corrected file to follow", changedBy: ops.a, approvedBy: ops.b });
+    await reverse(batchId, "wrong file posted — second time, for real");
+    await H2p.release(ops2p, t, "incident closed — corrected file to follow");
     const r = await run("corrected.csv", csvOf(MFSD201_HEADER, [kfin("975001")]));
     expect(r.posting).toMatchObject({ counts: { posted: 1 } }); // the reversed transaction posts again, once
     // A file that restates a reversed registrar number with DIFFERENT figures is not trusted silently: held for review.
@@ -157,27 +175,27 @@ describe.skipIf(!TEST_DB)("recovery of an incorrect posting batch (DB)", () => {
     expect(b.posting).toMatchObject({ counts: { already_posted: 1, posted: 1 } });
     await C.setPostingHalt({ scope: t, halted: true, reason: "incident: dependency drill", changedBy: ops.a });
     const fp = await fingerprint();
-    const dry = await R.reversePostingBatch(t, a.batchId, { requestedBy: ops.a, approvedBy: ops.b, reason: "reverse batch A of the drill", dryRun: true });
+    const dry = await dryRun(a.batchId, "reverse batch A of the drill");
     expect(dry).toMatchObject({ blocked: true, dependencies: { laterBatchClaims: 1, businessEntryMatches: 0, outboxEvents: 0, workedSipRejections: 0 } });
-    await expect(R.reversePostingBatch(t, a.batchId, { requestedBy: ops.a, approvedBy: ops.b, reason: "reverse batch A of the drill" })).rejects.toThrow(/automatic reversal refused — later work depends on this batch \(laterBatchClaims 1\)/);
+    await expect(reverse(a.batchId, "reverse batch A of the drill")).rejects.toThrow(/automatic reversal refused — later work depends on this batch \(laterBatchClaims 1\)/);
     expect(await fingerprint()).toEqual(fp); // refused: nothing changed
     // Reviewed order: B first (its own posting AND its "already posted" claim are withdrawn), then A.
-    const rb = await R.reversePostingBatch(t, b.batchId, { requestedBy: ops.a, approvedBy: ops.b, reason: "reverse batch B first, newest first" });
+    const rb = await reverse(b.batchId, "reverse batch B first, newest first");
     expect(rb.counts).toMatchObject({ transactions: 1, claimsWithdrawn: 1 });
-    const ra = await R.reversePostingBatch(t, a.batchId, { requestedBy: ops.a, approvedBy: ops.b, reason: "then reverse batch A of the drill" });
+    const ra = await reverse(a.batchId, "then reverse batch A of the drill");
     expect(ra.counts).toMatchObject({ transactions: 2 });
     expect(await R.reconcilePosting(t)).toEqual({ ledgerWithoutTransaction: 0, validateFirstTransactionWithoutLedger: 0, postedOutcomeWithoutLedger: 0, ledgerIdentityTwice: 0, rejectedWithUnits: 0 });
     // Undo B restores its claim exactly.
     const [rev] = await q(sql`SELECT id::text AS id FROM rta_posting_reversals WHERE tenant_id = ${t}::uuid AND batch_id = ${b.batchId}::uuid`);
-    await R.undoReversal(t, ra.reversalId!, { by: ops.b, reason: "undo A: drill restores everything" });
-    await R.undoReversal(t, rev.id, { by: ops.b, reason: "undo B: drill restores everything" });
+    await undo(ra.reversalId!, "undo A: drill restores everything");
+    await undo(rev.id, "undo B: drill restores everything");
     const [claim] = await q(sql`SELECT posting_outcome FROM rta_staging_economic_txns WHERE tenant_id = ${t}::uuid AND batch_id = ${b.batchId}::uuid AND registrar_txn_no = '975102'`);
     expect(claim.posting_outcome).toBe("already_posted");
     expect(await fingerprint()).toEqual(fp);
   });
 
   it("emitted workflow events and worked SIP rejections block an automatic reversal", async () => {
-    await C.setPostingHalt({ scope: t, halted: false, reason: "dependency drill: posting released again", changedBy: ops.a, approvedBy: ops.b });
+    await H2p.release(ops2p, t, "dependency drill: posting released again");
     const c = await run("depC.csv", csvOf(MFSD201_HEADER, [kfin("975201"),
       kfin("975202", { "Transaction Type": "SIND", "Transaction Description": "Pre rejection", Units: "0.000", Amount: "2000.00", Price: "0", Remarks: "Required amount not available" })]));
     expect(c.posting).toMatchObject({ counts: { posted: 1, rejected_recorded: 1 } });
@@ -186,7 +204,7 @@ describe.skipIf(!TEST_DB)("recovery of an incorrect posting batch (DB)", () => {
       VALUES (${t}::uuid, 'transaction.redemption', 'investor', ${tx1.inv}::uuid, '{}'::jsonb, ${JSON.stringify({ txId: tx1.id })}::jsonb)`));
     await withTenant(t, (tx) => tx.execute(sql`UPDATE sip_rejections SET recovery_status = 'contacted', updated_at = now() + interval '1 minute' WHERE tenant_id = ${t}::uuid`));
     await C.setPostingHalt({ scope: t, halted: true, reason: "incident: dependency drill, second batch", changedBy: ops.a });
-    const dry = await R.reversePostingBatch(t, c.batchId, { requestedBy: ops.a, approvedBy: ops.b, reason: "reverse batch C of the drill", dryRun: true });
+    const dry = await dryRun(c.batchId, "reverse batch C of the drill");
     expect(dry).toMatchObject({ blocked: true, dependencies: { outboxEvents: 1, workedSipRejections: 1 } });
     await withTenant(t, (tx) => tx.execute(sql`DELETE FROM events_outbox WHERE tenant_id = ${t}::uuid`));
   });
@@ -208,6 +226,6 @@ describe.skipIf(!TEST_DB)("recovery of an incorrect posting batch (DB)", () => {
     const [m] = await withSystem(async (tx) => (await tx.execute(sql`
       INSERT INTO rta_staging_batches (tenant_id, mode, rta, report_code, record_kind, file_name, file_ref, file_checksum, file_size_bytes, parser_version, state)
       VALUES (${t}::uuid, 'validate_first', 'kfintech', 'MFSD211', 'master', 'm.csv', 'test:m.csv', ${"x" + t}, 1, 'test', 'ready_to_commit') RETURNING id::text AS id`)).rows as any[]);
-    await expect(R.reversePostingBatch(t, m.id, { requestedBy: ops.a, approvedBy: ops.b, reason: "try to reverse a master batch" })).rejects.toThrow(/master batch is not reversed here/);
+    await expect(reverse(m.id, "try to reverse a master batch")).rejects.toThrow(/master batch is not reversed here/);
   });
 });

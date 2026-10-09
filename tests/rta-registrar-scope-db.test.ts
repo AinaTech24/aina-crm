@@ -27,6 +27,8 @@ const kfin = (txn: string) => ({
 const dbError = async (p: Promise<unknown>) => { try { await p; return "no error"; } catch (e: any) { return `${e?.message ?? ""} ${e?.cause?.message ?? ""}`; } };
 
 describe.skipIf(!TEST_DB)("activation registrar scope — KFintech-only pilot (DB)", () => {
+  let H2p: typeof import("./helpers/two-person");
+  let ops2p: import("./helpers/two-person").Operators;
   let withTenant: typeof import("@/db/client").withTenant;
   let withSystem: typeof import("@/db/client").withSystem;
   let sql: typeof import("drizzle-orm").sql;
@@ -65,7 +67,10 @@ describe.skipIf(!TEST_DB)("activation registrar scope — KFintech-only pilot (D
     C = await import("@/lib/rta/posting/controls");
     gate = await import("@/lib/rta/posting/gate");
     vf = await import("@/lib/rta/posting/validate-first");
-    await C.setPostingHalt({ scope: "global", halted: false, reason: "development test database: posting released", changedBy: ops.a, approvedBy: ops.b });
+    H2p = await import("./helpers/two-person");
+    ops2p = await H2p.createOperators("rs");
+    Object.assign(ops, { a: ops2p.a.userId, b: ops2p.b.userId });
+    await H2p.release(ops2p, "global");
     await withSystem(async (tx) => {
       await tx.execute(sql`INSERT INTO scheme_nav (scheme_code, isin, scheme_name, amc_name, nav, nav_date) VALUES (${RS_AMFI}, ${RS_ISIN}, 'Scope Equity Fund - Regular Growth', 'Scope Mutual Fund', 50, '2026-10-07') ON CONFLICT (scheme_code) DO NOTHING`);
       await tx.execute(sql`INSERT INTO tenants (id, legal_name, display_name, arn) VALUES (${t}::uuid, 'Scope pilot', 'Scope pilot', ${"ARN-RS" + t.slice(0, 6)})`);
@@ -78,6 +83,8 @@ describe.skipIf(!TEST_DB)("activation registrar scope — KFintech-only pilot (D
   });
 
   afterAll(async () => {
+
+    await H2p?.retireOperators(ops2p);
     const tryRun = async (s: ReturnType<typeof sql>) => { try { await withSystem((tx) => tx.execute(s)); } catch { /* best effort */ } };
     await tryRun(sql`ALTER TABLE rta_pipeline_activations DISABLE TRIGGER rta_pipeline_activations_append_only`);
     for (const table of ["rta_posted_transactions", "rta_sip_registrations", "folio_holders", "sip_rejections", "sips", "transactions", "rta_staging_lots", "rta_staging_checks", "rta_staging_rows", "rta_pipeline_activations", "scheme_rta_codes"]) {
@@ -92,15 +99,21 @@ describe.skipIf(!TEST_DB)("activation registrar scope — KFintech-only pilot (D
   });
 
   it("posting cannot be enabled without naming the registrars, nor with an unknown one", async () => {
-    const base = { tenantId: t, mode: "validate_first" as const, postingEnabled: true, reason: "KFintech-only pilot, registrar scope test", approvalRef: "CHG-RS", requestedBy: ops.a, approvedBy: ops.b };
-    await expect(C.activateTenant(base)).rejects.toThrow(/needs the registrars it covers/);
-    await expect(C.activateTenant({ ...base, registrars: [] })).rejects.toThrow(/needs the registrars it covers/);
-    await expect(C.activateTenant({ ...base, registrars: ["nse" as any] })).rejects.toThrow(/registrars must be among/);
-    // The table refuses an unknown registrar even when the library is bypassed.
+    const A = await import("@/lib/rta/posting/approvals");
+    const base = { action: "activate" as const, tenantId: t, mode: "validate_first" as const, postingEnabled: true, reason: "KFintech-only pilot, registrar scope test", changeRef: "CHG-RS",
+      reportCodes: ["MFSD211", "MFSD201"], expiresAt: new Date(Date.now() + 864e5).toISOString() };
+    await expect(A.requestControlAction(ops2p.a, base)).rejects.toThrow(/report types need the registrars|needs the registrars it covers/);
+    await expect(A.requestControlAction(ops2p.a, { ...base, registrars: [] })).rejects.toThrow(/report types need the registrars|needs the registrars it covers/);
+    await expect(A.requestControlAction(ops2p.a, { ...base, registrars: ["nse" as any] })).rejects.toThrow(/registrars must be among/);
+    await expect(A.requestControlAction(ops2p.a, { ...base, registrars: ["kfintech"], reportCodes: ["R2"] })).rejects.toThrow(/report type R2 is not one the named registrars/);
+    // The table refuses an unknown registrar even when the library is bypassed: a start without a request
+    // never gets that far (0243), and even a one-person pause row is held to the registrar list.
     expect(await dbError(withTenant(t, (tx) => tx.execute(sql`INSERT INTO rta_pipeline_activations (tenant_id, mode, posting_enabled, reason, approval_ref, requested_by, approved_by, registrars)
-      VALUES (${t}::uuid, 'validate_first', true, 'an unknown registrar in the scope', 'X', ${ops.a}::uuid, ${ops.b}::uuid, ARRAY['nse'])`)))).toMatch(/registrars_ck/);
-    const a = await C.activateTenant({ ...base, registrars: ["kfintech"] });
-    expect(a).toMatchObject({ mode: "validate_first", postingEnabled: true, registrars: ["kfintech"] });
+      VALUES (${t}::uuid, 'validate_first', true, 'an unknown registrar in the scope', 'X', ${ops.a}::uuid, ${ops.b}::uuid, ARRAY['nse'])`)))).toMatch(/control request/);
+    expect(await dbError(withTenant(t, (tx) => tx.execute(sql`INSERT INTO rta_pipeline_activations (tenant_id, mode, posting_enabled, reason, approved_by, registrars)
+      VALUES (${t}::uuid, 'paused', false, 'an unknown registrar in the scope', ${ops.a}::uuid, ARRAY['nse'])`)))).toMatch(/registrars_ck/);
+    const a = (await H2p.twoPerson(ops2p, { ...base, registrars: ["kfintech"] })).result;
+    expect(a).toMatchObject({ mode: "validate_first", postingEnabled: true, registrars: ["kfintech"], reportCodes: ["MFSD201", "MFSD211"] });
   });
 
   it("a KFintech transaction file posts", async () => {
@@ -123,7 +136,7 @@ describe.skipIf(!TEST_DB)("activation registrar scope — KFintech-only pilot (D
 
   it("inside the posting transaction the gate refuses a CAMS record too (defence in depth)", async () => {
     await expect(withTenant(t, (tx) => gate.assertPostingAllowed(tx, t, process.env, { rta: "cams" }))).rejects.toThrow(/covers kfintech only/);
-    await expect(withTenant(t, (tx) => gate.assertPostingAllowed(tx, t, process.env, { rta: "kfintech" }))).resolves.toEqual({ registrars: ["kfintech"] });
+    await expect(withTenant(t, (tx) => gate.assertPostingAllowed(tx, t, process.env, { rta: "kfintech" }))).resolves.toEqual({ registrars: ["kfintech"], reportCodes: ["MFSD201", "MFSD211"] });
   });
 
   it("the scope cannot be widened by editing the activation; a wider scope is a new two-person activation", async () => {

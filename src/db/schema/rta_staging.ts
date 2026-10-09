@@ -319,6 +319,8 @@ export const rtaPostingControls = pgTable("rta_posting_controls", {
   changedBy: uuid("changed_by"),
   approvedBy: uuid("approved_by"),
   changedAt: timestamp("changed_at", { withTimezone: true }).defaultNow().notNull(),
+  /** The executed two-person request that last released it (migration 0243). */
+  controlRequestId: uuid("control_request_id"),
 });
 
 /** Append-only history of the kill switch (migration 0236). */
@@ -330,6 +332,9 @@ export const rtaPostingControlEvents = pgTable("rta_posting_control_events", {
   changedBy: uuid("changed_by"),
   approvedBy: uuid("approved_by"),
   at: timestamp("at", { withTimezone: true }).defaultNow().notNull(),
+  controlRequestId: uuid("control_request_id"),
+  /** 'session' (a signed-in operator) or 'cli' (named on a command line, not server-verified) — migration 0243. */
+  actorSource: text("actor_source"),
 });
 
 /** Per-firm pipeline activation, append-only; the current row decides the firm's mode (migration 0236). */
@@ -352,8 +357,48 @@ export const rtaPipelineActivations = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     /** Registrars the activation covers (migration 0242); required when posting is enabled. */
     registrars: text("registrars").array(),
+    /** Report types the activation covers (migration 0243); required when posting is enabled. */
+    reportCodes: text("report_codes").array(),
+    /** The executed two-person request this activation came from (migration 0243); null only for a pause. */
+    controlRequestId: uuid("control_request_id"),
   },
   (t) => ({ tenantIdx: index("rta_pipeline_activations_tenant_idx").on(t.tenantId, t.createdAt) }),
+);
+
+/**
+ * Two-person control requests (migration 0243). Every START — an activation
+ * (other than a pause), a kill-switch release, a reversal, an undo, a platform
+ * scheme / AMC approval — is filed by one signed-in platform operator and
+ * executed only when a DIFFERENT signed-in operator approves the exact payload
+ * (payload_hash, computed by the database). Immutable once decided.
+ */
+export const rtaControlRequests = pgTable(
+  "rta_control_requests",
+  {
+    id,
+    action: text("action", { enum: ["activate", "release", "reverse", "undo", "approve_scheme_mapping", "approve_amc_identity"] }).notNull(),
+    tenantId: uuid("tenant_id"),
+    scope: text("scope").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    changeRef: text("change_ref").notNull(),
+    reason: text("reason").notNull(),
+    requestedBy: uuid("requested_by").notNull(),
+    requesterSid: text("requester_sid").notNull(),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).defaultNow().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    status: text("status", { enum: ["pending", "executed", "rejected", "cancelled"] }).notNull().default("pending"),
+    approvedBy: uuid("approved_by"),
+    approverSid: text("approver_sid"),
+    decidedBy: uuid("decided_by"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    decisionNote: text("decision_note"),
+    result: jsonb("result").$type<Record<string, unknown>>(),
+  },
+  (t) => ({
+    statusIdx: index("rta_control_requests_status_idx").on(t.status, t.requestedAt),
+    tenantIdx: index("rta_control_requests_tenant_idx").on(t.tenantId, t.requestedAt),
+  }),
 );
 
 /** An incorrect posting batch, reversed: every CRM row it wrote, archived whole (migration 0236). */
@@ -371,6 +416,9 @@ export const rtaPostingReversals = pgTable(
     reversedAt: timestamp("reversed_at", { withTimezone: true }).defaultNow().notNull(),
     undoneAt: timestamp("undone_at", { withTimezone: true }),
     undoneBy: uuid("undone_by"),
+    /** The executed two-person requests behind the reversal and its undo (migration 0243). */
+    controlRequestId: uuid("control_request_id"),
+    undoRequestId: uuid("undo_request_id"),
   },
   (t) => ({ batchIdx: index("rta_posting_reversals_batch_idx").on(t.tenantId, t.batchId) }),
 );

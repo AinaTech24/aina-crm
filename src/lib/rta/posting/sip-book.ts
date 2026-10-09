@@ -23,7 +23,7 @@ import { withTenant } from "@/db/client";
 import { buildSipMaster, type InstalmentEvent, type RegistrationObservation, type RegistrationSource, type SipMasterEntry } from "../sip-master";
 import { refreshActiveSipAmount } from "@/lib/metrics/sip";
 import { assertPostingAllowed } from "./gate";
-import { registrarCovered } from "./controls";
+import { registrarCovered, reportCovered } from "./controls";
 
 type Tx = any;
 
@@ -58,7 +58,8 @@ export async function rebuildSipBook(tenantId: string, opts: { asOf?: string; us
        WHERE r.tenant_id = ${tenantId}::uuid AND b.record_kind = 'registration' AND r.state <> 'invalid'
          AND b.state IN ('ready_to_commit', 'exception')
     `)).rows as Array<{ batch_id: string; report_code: string; rta: "cams" | "kfintech"; amc_code: string; folio_number: string; scheme_code: string; registrar_txn_no: string | null; amount: string | null; start_date: string | null; attrs: Record<string, unknown>; report_date: string | null }>;
-    const observations: RegistrationObservation[] = regRows.filter((r) => REPORT_SOURCE[r.report_code] && r.folio_number && r.scheme_code).map((r) => {
+    // A registration report outside the activation's report types (0243) never feeds the book.
+    const observations: RegistrationObservation[] = regRows.filter((r) => reportCovered(scope, r.report_code) && REPORT_SOURCE[r.report_code] && r.folio_number && r.scheme_code).map((r) => {
       const a = r.attrs ?? {};
       const total = n(a.installments), paid = n(a.paidInstallments);
       return {
@@ -73,14 +74,14 @@ export async function rebuildSipBook(tenantId: string, opts: { asOf?: string; us
 
     // Instalments: processed systematic rows and refused instalments, from every staged transaction batch.
     const evRows = (await tx.execute(sql`
-      SELECT b.rta, r.amc_code, r.folio_number, r.scheme_code, r.trade_date::text AS d, r.amount::text AS amount, r.rta_class, r.exception_code,
+      SELECT b.rta, b.report_code, r.amc_code, r.folio_number, r.scheme_code, r.trade_date::text AS d, r.amount::text AS amount, r.rta_class, r.exception_code,
              r.attrs->>'sipRegistrationId' AS kfin_ref, r.attrs->>'sipRef' AS cams_ref, r.attrs->>'rejectionReason' AS reason
         FROM rta_staging_rows r JOIN rta_staging_batches b ON b.tenant_id = r.tenant_id AND b.id = r.batch_id
        WHERE r.tenant_id = ${tenantId}::uuid AND b.record_kind = 'transaction' AND r.trade_date IS NOT NULL
          AND ((r.rta_class IN ('sip_investment', 'stp_in', 'stp_out', 'swp_withdrawal') AND r.exception_code IS NULL AND r.state IN ('staged', 'staged_as_part', 'duplicate'))
               OR r.exception_code = 'instalment_rejected')
     `)).rows as Array<{ rta: "cams" | "kfintech"; amc_code: string; folio_number: string; scheme_code: string; d: string; amount: string | null; rta_class: string; exception_code: string | null; kfin_ref: string | null; cams_ref: string | null; reason: string | null }>;
-    const events: InstalmentEvent[] = evRows.map((r) => ({
+    const events: InstalmentEvent[] = evRows.filter((r: any) => reportCovered(scope, r.report_code)).map((r) => ({
       rta: r.rta, amcCode: r.amc_code ?? "", registrationRef: r.rta === "kfintech" ? r.kfin_ref : r.cams_ref, folio: r.folio_number, scheme: r.scheme_code,
       date: r.d, outcome: r.exception_code === "instalment_rejected" ? "rejected" : "processed", amount: r.amount == null ? null : Math.abs(Number(r.amount)),
       reason: r.reason ?? undefined,

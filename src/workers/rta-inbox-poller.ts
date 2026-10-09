@@ -59,6 +59,7 @@ import {
 import { loadRtaInboxConfig } from "@/lib/rta/inbox-config";
 import { attachmentTrust, evaluateMailAuth, safeConfirmationUrl } from "@/lib/rta/mail-trust";
 import { captureError } from "@/lib/observability/capture";
+import { intakeRefusal, recordBlockedImport } from "@/lib/rta/posting/intake-scope";
 
 // Background imports have no human uploader. A stable sentinel enables the
 // worker's stalled-job idempotency guard (importAlreadyFinished needs a truthy
@@ -123,7 +124,7 @@ type AttachmentLog = {
   size: number;
   source: string | null;
   kind: string | null;
-  outcome: "queued" | "duplicate" | "unrecognised" | "quarantined" | "error";
+  outcome: "queued" | "duplicate" | "blocked" | "unrecognised" | "quarantined" | "error";
   importId?: string | null;
   reason?: string | null;
 };
@@ -140,6 +141,7 @@ type InboundOutcome =
   | "no_attachment"
   | "unroutable"
   | "quarantined"
+  | "blocked"
   | "error";
 
 /** Body text we keep for the admin log — enough to identify the mail, not the lot. */
@@ -216,8 +218,26 @@ async function ingestAttachment(
   att: InboundAttachment,
   cls: MailbackClass,
   pw: MailbackPasswords
-): Promise<{ status: "queued" | "duplicate"; importId: string | null }> {
+): Promise<{ status: "queued" | "duplicate" | "blocked"; importId: string | null; reason?: string }> {
   const checksum = createHash("sha256").update(att.content).digest("hex");
+
+  // Report-type scope (migration 0243): a firm activated for validate-first
+  // imports only the reports its activation names — even from authenticated
+  // registrar mail. A file that cannot be one of them is stored and recorded
+  // as a BLOCKED import (its audit record) and never queued. The worker
+  // re-checks the content and the posting transaction checks again.
+  const refused = await withTenant(tenantId, (tx) => intakeRefusal(tx, tenantId, { source: cls.source, kind: cls.kind, fileName: att.filename }));
+  if (refused) {
+    const safeName = att.filename.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80);
+    const blockedKey = `tenants/${tenantId}/rta/${Date.now()}-${safeName}`;
+    await putObject(blockedKey, att.content, att.contentType || "application/octet-stream");
+    const importId = await withTenant(tenantId, (tx) => recordBlockedImport(tx, {
+      tenantId, source: cls.source, kind: cls.kind, fileName: att.filename, fileKey: blockedKey, reason: refused,
+      sizeBytes: att.size, checksum, origin: `mail ingestion (${msg.from ?? "unknown sender"})`,
+    }));
+    console.warn(`[rta-inbox] ${tenantId}: '${att.filename}' blocked — outside the firm's activated report types`);
+    return { status: "blocked", importId, reason: refused };
+  }
 
   // Guard only against a file that is STILL IN FLIGHT (uploaded/parsing) for this
   // tenant/kind — prevents an overlapping poll from double-enqueuing the same job.
@@ -436,6 +456,7 @@ async function handleMessage(msg: InboundRawMessage): Promise<void> {
     let duplicates = 0;
     let recognised = 0;
     let quarantined = 0;
+    let blocked = 0;
     let errors = 0;
     const attLogs: AttachmentLog[] = [];
 
@@ -457,11 +478,14 @@ async function handleMessage(msg: InboundRawMessage): Promise<void> {
       try {
         const res = await ingestAttachment(tenantId, msg, file, cls, pw);
         if (res.status === "queued") queued++;
+        else if (res.status === "blocked") blocked++;
         else duplicates++;
         attLogs.push({
           filename: file.filename, size: file.size, source: cls.source, kind: cls.kind,
           outcome: res.status, importId: res.importId,
-          reason: res.status === "duplicate" ? "Same file already being imported" : [okNote, trust.note].filter(Boolean).join(" · "),
+          reason: res.status === "duplicate" ? "Same file already being imported"
+            : res.status === "blocked" ? res.reason ?? "Outside the firm's activated report types"
+            : [okNote, trust.note].filter(Boolean).join(" · "),
         });
         return res.status === "queued";
       } catch (e) {
@@ -573,6 +597,16 @@ async function handleMessage(msg: InboundRawMessage): Promise<void> {
         reason:
           `Quarantined — ${quarantined} file(s) were not imported: the mail is not authenticated as a registrar ` +
           `(no registrar DKIM/DMARC pass from our receiving server). Review it in Inbound Mail.`,
+      });
+      return;
+    }
+    if (blocked > 0) {
+      // Authenticated registrar mail, but every new file is a report type this
+      // firm's activation does not cover. Each is a `blocked` import (file kept).
+      await logInbound(msg, {
+        ...logTail,
+        outcome: "blocked",
+        reason: `Blocked — ${blocked} file(s) are outside this firm's activated report types; recorded as blocked imports, nothing staged or posted`,
       });
       return;
     }

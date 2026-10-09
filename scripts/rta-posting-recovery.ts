@@ -5,12 +5,18 @@
  *   ALLOW_SYSTEM_TX=1 tsx scripts/rta-posting-recovery.ts <command> [flags]
  *
  *   status     --tenant <id>                         activation, halt state, recent batches
- *   halt       --scope global|<tenant id> --by <user id> --reason "…"
- *   release    --scope global|<tenant id> --by <user id> --approver <user id> --reason "…"
- *   reverse    --tenant <id> --batch <id> --by <user id> --approver <user id> --reason "…" [--commit]
- *              (dry run unless --commit; posting must be halted for the firm)
- *   undo       --tenant <id> --reversal <id> --by <user id> --reason "…"
+ *   requests   [--status pending]                    two-person control requests (read-only)
+ *   halt       --scope global|emergency|<tenant id> --by <user id> --reason "…"
+ *              a STOP — one operator. Recorded with actor_source 'cli': a name on
+ *              a command line is NOT a verified identity (prefer the API halt).
+ *   reverse    --tenant <id> --batch <id> --reason "…"   DRY RUN only (read-only)
  *   reconcile  --tenant <id>                         every count must be 0; exit 3 otherwise
+ *
+ * DISABLED (final pilot patch, migration 0243): release, reverse --commit and
+ * undo. A command line cannot prove who is running it, so every START is a
+ * two-person control request made and approved by two SIGNED-IN operators
+ * through POST /api/super-admin/rta-pipeline; the database refuses a start
+ * that does not cite one approved in the same transaction.
  *
  * Prints counts and ids only — never a PAN, name or contact detail. Every
  * write is the library's: two people where the library demands it, an
@@ -49,26 +55,35 @@ async function main() {
       console.log(JSON.stringify({ activation: s.activation, halt: s.halt, activations: s.history.length, recentBatches: batches }, null, 2));
       return;
     }
-    case "halt":
-    case "release": {
-      await C.setPostingHalt({
-        scope: need("scope"), halted: cmd === "halt", reason: need("reason"),
-        changedBy: need("by"), approvedBy: cmd === "release" ? need("approver") : (typeof flags.approver === "string" ? flags.approver : null),
-      });
-      console.log(`${cmd === "halt" ? "halted" : "released"}: ${flags.scope}`);
+    case "halt": {
+      await C.setPostingHalt({ scope: need("scope"), halted: true, reason: `[CLI — operator identity not server-verified] ${need("reason")}`, changedBy: need("by"), actorSource: "cli" });
+      console.log(`halted: ${flags.scope}`);
       return;
     }
+    case "release":
+    case "undo":
+      console.error(`${cmd} is disabled on the command line: it is a START and needs two separately signed-in operators. `
+        + "File a request (POST /api/super-admin/rta-pipeline { action: \"request\", control: { … } }) and have a DIFFERENT operator approve it ({ action: \"approve\", requestId, payloadHash }).");
+      process.exit(2);
+      return;
     case "reverse": {
-      const res = await R.reversePostingBatch(need("tenant"), need("batch"), {
-        requestedBy: need("by"), approvedBy: need("approver"), reason: need("reason"), dryRun: flags.commit !== true,
-      });
+      if (flags.commit === true) {
+        console.error("reverse --commit is disabled on the command line. Run this dry run, then file a 'reverse' control request through the API; a DIFFERENT signed-in operator approves it.");
+        process.exit(2);
+      }
+      const res = await R.reversePostingBatch(need("tenant"), need("batch"), { reason: need("reason"), dryRun: true });
       console.log(JSON.stringify(res, null, 2));
-      if (res.dryRun) console.log("DRY RUN — nothing changed. Re-run with --commit to reverse.");
+      console.log("DRY RUN — nothing changed. To reverse, file a 'reverse' control request (two signed-in operators).");
       return;
     }
-    case "undo": {
-      const counts = await R.undoReversal(need("tenant"), need("reversal"), { by: need("by"), reason: need("reason") });
-      console.log(JSON.stringify({ restored: counts }, null, 2));
+    case "requests": {
+      const { withSystem } = await import("@/db/client");
+      const { sql } = await import("drizzle-orm");
+      const status = typeof flags.status === "string" ? flags.status : null;
+      const rows = await withSystem(async (tx: any) => (await tx.execute(sql`
+        SELECT id::text, action, scope, status, change_ref, requested_by::text, requested_at, expires_at, approved_by::text, decided_by::text, decided_at, payload_hash
+          FROM rta_control_requests WHERE (${status}::text IS NULL OR status = ${status}) ORDER BY requested_at DESC LIMIT 50`)).rows);
+      console.log(JSON.stringify(rows, null, 2));
       return;
     }
     case "reconcile": {
@@ -79,7 +94,7 @@ async function main() {
       return;
     }
     default:
-      console.error("usage: tsx scripts/rta-posting-recovery.ts status|halt|release|reverse|undo|reconcile [flags] — see the file header");
+      console.error("usage: tsx scripts/rta-posting-recovery.ts status|requests|halt|reverse (dry run)|reconcile [flags] — see the file header");
       process.exit(1);
   }
 }

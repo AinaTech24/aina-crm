@@ -73,6 +73,8 @@ export const RTA_IMPORT_STATUSES = [
   "partial",    // some rows imported, some failed
   "failed",     // parser couldn't make sense of the file
   "rejected",   // duplicate or wrong format
+  "blocked",    // outside the firm's RTA activation (registrar / report type) — nothing staged or posted
+  "cancelled",  // a platform operator cancelled it while queued or parked — nothing imported, file kept
 ] as const;
 export type RtaImportStatus = (typeof RTA_IMPORT_STATUSES)[number];
 
@@ -113,6 +115,11 @@ export const rtaFileImports = pgTable(
     remarks: text("remarks"),
 
     uploadedBy: uuid("uploaded_by").references(() => users.id),
+
+    /** A platform operator's cancellation of a queued / parked import (migration 0243). */
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    cancelledBy: uuid("cancelled_by"),
+    cancelReason: text("cancel_reason"),
 
     /** Trash bin — soft-delete so an accidental delete is recoverable. */
     deletedAt: timestamp("deleted_at", { withTimezone: true }),

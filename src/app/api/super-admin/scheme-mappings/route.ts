@@ -3,10 +3,13 @@
  * operators only.
  *
  *   GET  ?status=verified|approved|revoked&rta=…   the platform mappings, with their history
- *   POST { action: "approve", rta, amcCode, schemeCode, amfiSchemeCode, note, requestedBy }
+ *   POST { action: "approve", rta, amcCode, schemeCode, amfiSchemeCode, note, changeRef, reason }
+ *        FILES a two-person request from the signed-in session (lib/rta/posting/approvals.ts);
+ *        a DIFFERENT signed-in operator approves it at POST /api/super-admin/rta-pipeline
+ *        { action: "approve", requestId, payloadHash }. No operator id is taken from the body.
  *   POST { action: "revoke", id, reason }
  *   GET  ?view=amc                                  the AMC-identity crosswalk, with its history
- *   POST { action: "approve_amc", rta, amcCode, amfiAmc, role: "primary" | "successor", note, requestedBy }
+ *   POST { action: "approve_amc", rta, amcCode, amfiAmc, role: "primary" | "successor", note, changeRef, reason }  (a request, as above)
  *   POST { action: "revoke_amc", id, reason }
  *
  * The AMC identity (which AMFI AMC a registrar AMC code is, plus documented
@@ -16,8 +19,8 @@
  * A registrar code → AMFI scheme relationship is the registrar's, the same for
  * every firm. The system records one when a firm's file proves it by ISIN
  * (status verified). Operators approve one where the registrar prints no ISIN
- * (CAMS): two of them — the signed-in operator approves, a different active
- * operator is the requester — with a note saying what evidence was read. One
+ * (CAMS): two of them, each in their own signed-in session — one files the
+ * request, a DIFFERENT one approves it — with a note saying what evidence was read. One
  * operator may revoke. Every change is an append-only event, and every firm
  * holding the code is re-decided at once.
  */
@@ -28,30 +31,26 @@ import { requireSession } from "@/lib/auth/session";
 import { requirePlatform } from "@/lib/auth/rbac";
 import { handleApiError } from "@/lib/api/error-handler";
 import { withSystem } from "@/db/client";
-import { approveAmcIdentity, approvePlatformMapping, revokeAmcIdentity, revokePlatformMapping, SchemeMappingError } from "@/lib/rta/scheme-resolution";
-import { reprocessHeldTransactions } from "@/lib/rta/posting/reprocess";
+import { revokeAmcIdentity, revokePlatformMapping, SchemeMappingError } from "@/lib/rta/scheme-resolution";
+import { requestControlAction } from "@/lib/rta/posting/approvals";
+import { ControlError } from "@/lib/rta/posting/controls";
 
 export const dynamic = "force-dynamic";
 
 const Body = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("approve"), rta: z.enum(["cams", "kfintech"]), amcCode: z.string().trim().min(1).max(20), schemeCode: z.string().trim().min(1).max(40),
-    amfiSchemeCode: z.string().trim().min(1).max(20), note: z.string().trim().min(10).max(1000), requestedBy: z.string().uuid(),
+    amfiSchemeCode: z.string().trim().min(1).max(20), note: z.string().trim().min(10).max(1000),
+    changeRef: z.string().trim().min(3).max(200), reason: z.string().trim().min(10).max(1000),
   }),
   z.object({ action: z.literal("revoke"), id: z.string().uuid(), reason: z.string().trim().min(10).max(1000) }),
   z.object({
     action: z.literal("approve_amc"), rta: z.enum(["cams", "kfintech"]), amcCode: z.string().trim().min(1).max(20), amfiAmc: z.string().trim().min(2).max(200),
-    role: z.enum(["primary", "successor"]), note: z.string().trim().min(10).max(1000), requestedBy: z.string().uuid(),
+    role: z.enum(["primary", "successor"]), note: z.string().trim().min(10).max(1000),
+    changeRef: z.string().trim().min(3).max(200), reason: z.string().trim().min(10).max(1000),
   }),
   z.object({ action: z.literal("revoke_amc"), id: z.string().uuid(), reason: z.string().trim().min(10).max(1000) }),
 ]);
-
-async function assertOperator(tx: any, userId: string, approver: string) {
-  if (userId === approver) throw new SchemeMappingError("the requester and the approver must be different operators");
-  const r = (await tx.execute(sql`
-    SELECT 1 FROM users WHERE id = ${userId}::uuid AND status = 'active' AND roles && ARRAY['platform_admin', 'platform_support']::text[]`)).rows;
-  if (!r.length) throw new SchemeMappingError("the requester is not an active platform operator");
-}
 
 export async function GET(req: NextRequest) {
   try {
@@ -87,34 +86,32 @@ export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
     requirePlatform(session.roles, "platform.settings.manage");
-    const parsed = Body.safeParse(await req.json().catch(() => null));
+    const raw = await req.json().catch(() => null);
+    if (raw && typeof raw === "object" && "requestedBy" in raw) {
+      return NextResponse.json({ error: "operator identities are taken from the signed-in session, never from the request — file the approval as a request and have a DIFFERENT operator approve it" }, { status: 400 });
+    }
+    const parsed = Body.safeParse(raw);
     if (!parsed.success) return NextResponse.json({ error: "invalid input", issues: parsed.error.issues }, { status: 400 });
     const b = parsed.data;
+    const me = { userId: session.userId, sid: session.sid ?? null };
+    // Approvals are two-person requests: this files one from YOUR session.
+    if (b.action === "approve") {
+      const request = await requestControlAction(me, { action: "approve_scheme_mapping", rta: b.rta, amcCode: b.amcCode, schemeCode: b.schemeCode, amfiSchemeCode: b.amfiSchemeCode, note: b.note, changeRef: b.changeRef, reason: b.reason });
+      return NextResponse.json({ request, next: "a DIFFERENT signed-in operator approves it at POST /api/super-admin/rta-pipeline { action: \"approve\", requestId, payloadHash }" }, { status: 201 });
+    }
+    if (b.action === "approve_amc") {
+      const request = await requestControlAction(me, { action: "approve_amc_identity", rta: b.rta, amcCode: b.amcCode, amfiAmc: b.amfiAmc, role: b.role, note: b.note, changeRef: b.changeRef, reason: b.reason });
+      return NextResponse.json({ request, next: "a DIFFERENT signed-in operator approves it at POST /api/super-admin/rta-pipeline { action: \"approve\", requestId, payloadHash }" }, { status: 201 });
+    }
+    // Revocations are stops: one operator.
     const out = await withSystem(async (tx) => {
-      if (b.action === "approve") {
-        await assertOperator(tx, b.requestedBy, session.userId);
-        return approvePlatformMapping(tx, { ...b, approvedBy: session.userId });
-      }
-      if (b.action === "approve_amc") {
-        await assertOperator(tx, b.requestedBy, session.userId);
-        return approveAmcIdentity(tx, { ...b, approvedBy: session.userId });
-      }
       if (b.action === "revoke_amc") return revokeAmcIdentity(tx, { id: b.id, by: session.userId, reason: b.reason });
       return revokePlatformMapping(tx, { id: b.id, by: session.userId, reason: b.reason });
     });
-    // An approval can release transactions held on the code in each firm.
-    // Re-evaluate them now; a firm whose posting is paused keeps them for resume.
-    const pending: string[] = [];
-    const released = b.action === "approve" ? (out as Awaited<ReturnType<typeof approvePlatformMapping>>) : null;
-    if (released?.key) {
-      for (const t of released.tenantIds) {
-        try { await reprocessHeldTransactions(t, { schemeKeys: [released.key], userId: session.userId }); }
-        catch (e: any) { if (e?.name !== "PostingGateError") throw e; pending.push(t); }
-      }
-    }
-    return NextResponse.json({ ...out, postingPendingFirms: pending.length });
+    return NextResponse.json(out);
   } catch (err: any) {
     if (err instanceof SchemeMappingError) return NextResponse.json({ error: err.message }, { status: err.status ?? 409 });
+    if (err instanceof ControlError) return NextResponse.json({ error: err.message }, { status: err.status });
     return handleApiError(err);
   }
 }

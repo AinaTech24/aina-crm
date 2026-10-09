@@ -17,6 +17,7 @@ import { formatDate } from "@/lib/format";
 import {
   AGE_BUCKETS, clientScope, FINANCIAL_KINDS, inList, istDay, KIND_LABEL, num, numOrNull, OPS_KINDS,
   opsBase, opsFilter, selfOnly, str, type OpsWindow, type Row, type Tx,
+  rejectedInstructionKey,
 } from "./window";
 
 const CLOSED_DAY = sql`CASE WHEN status IN ('completed', 'cancelled') THEN ${istDay(sql`COALESCE(completed_at, updated_at)`)} END`;
@@ -51,7 +52,7 @@ export async function loadVolume(tx: Tx, w: OpsWindow, from: string, to: string)
   `)).rows as Row[];
   const self = selfOnly(w);
   const feed = self ? [] : (await tx.execute(sql`
-    SELECT ${FEED_KIND} AS kind, COUNT(*)::int AS n
+    SELECT ${FEED_KIND} AS kind, COUNT(DISTINCT ${rejectedInstructionKey("t")})::int AS n
       FROM transactions t JOIN investors i ON i.id = t.investor_id
      WHERE t.tenant_id = ${w.tenantId}::uuid AND ${clientScope(w)}
        AND t.status IN ('rejected', 'failed') AND t.order_date BETWEEN ${from}::date AND ${to}::date
@@ -77,6 +78,7 @@ export type ValueRow = {
   pending: { n: number; v: number }; rejected: { n: number; v: number };
 };
 
+/** Rejected is counted in unique instructions: an STP's two legs count once, at the instruction's amount (rejectedInstructionKey). */
 export async function loadFeedValue(tx: Tx, w: OpsWindow, from: string, to: string): Promise<{ rows: ValueRow[]; any: boolean }> {
   if (selfOnly(w)) return { rows: [], any: false };
   const rows = (await tx.execute(sql`
@@ -86,8 +88,8 @@ export async function loadFeedValue(tx: Tx, w: OpsWindow, from: string, to: stri
            COALESCE(SUM(g.amount) FILTER (WHERE g.status IN ('processed', 'successful')), 0) AS done_v,
            COUNT(*) FILTER (WHERE g.status IN ('pending', 'submitted'))::int AS pend_n,
            COALESCE(SUM(g.amount) FILTER (WHERE g.status IN ('pending', 'submitted')), 0) AS pend_v,
-           COUNT(*) FILTER (WHERE g.status IN ('rejected', 'failed'))::int AS rej_n,
-           COALESCE(SUM(g.amount) FILTER (WHERE g.status IN ('rejected', 'failed')), 0) AS rej_v
+           COUNT(*) FILTER (WHERE g.status IN ('rejected', 'failed') AND g.first_leg)::int AS rej_n,
+           COALESCE(SUM(g.amount) FILTER (WHERE g.status IN ('rejected', 'failed') AND g.first_leg), 0) AS rej_v
       FROM (
         SELECT CASE
                  WHEN t.type IN ('purchase', 'lumpsum') THEN 'purchase'
@@ -98,12 +100,14 @@ export async function loadFeedValue(tx: Tx, w: OpsWindow, from: string, to: stri
                  WHEN t.type IN ('stp', 'swp') THEN t.type
                  ELSE 'other'
                END AS key,
-               t.status, t.amount::numeric AS amount
+               t.status, t.amount::numeric AS amount,
+               ROW_NUMBER() OVER (PARTITION BY ${rejectedInstructionKey("t")} ORDER BY t.id) = 1 AS first_leg
           FROM transactions t JOIN investors i ON i.id = t.investor_id
          WHERE t.tenant_id = ${w.tenantId}::uuid AND ${clientScope(w)}
            AND t.order_date BETWEEN ${from}::date AND ${to}::date
         UNION ALL
-        SELECT 'liquid', t.status, t.amount::numeric
+        SELECT 'liquid', t.status, t.amount::numeric,
+               ROW_NUMBER() OVER (PARTITION BY ${rejectedInstructionKey("t")} ORDER BY t.id) = 1
           FROM transactions t JOIN investors i ON i.id = t.investor_id
          WHERE t.tenant_id = ${w.tenantId}::uuid AND ${clientScope(w)}
            AND t.order_date BETWEEN ${from}::date AND ${to}::date
@@ -339,7 +343,7 @@ async function spanMetrics(tx: Tx, w: OpsWindow, s: Span) {
   `)).rows[0] as Row | undefined;
   const x = (await tx.execute(sql`
     SELECT
-      (SELECT COUNT(*) FROM transactions t JOIN investors i ON i.id = t.investor_id
+      (SELECT COUNT(DISTINCT ${rejectedInstructionKey("t")}) FROM transactions t JOIN investors i ON i.id = t.investor_id
         WHERE t.tenant_id = ${w.tenantId}::uuid AND ${clientScope(w)} AND t.status IN ('rejected', 'failed')
           AND t.order_date BETWEEN ${s.from}::date AND ${s.to}::date ${self ? sql`AND FALSE` : sql``})::int AS rejected,
       (SELECT COUNT(*) FROM sip_rejections s JOIN investors i ON i.id = s.investor_id
@@ -449,7 +453,7 @@ export async function loadTrend(tx: Tx, w: OpsWindow, fyStart: string): Promise<
            (SELECT COUNT(*) FROM f WHERE f.sla_due_at IS NOT NULL AND ${istDay(sql`f.sla_due_at`)} BETWEEN m.m0 AND m.m1
               AND (f.completed_at IS NULL OR f.completed_at > f.sla_due_at) AND f.status <> 'cancelled'
               AND ${istDay(sql`f.sla_due_at`)} <= ${w.today}::date)::int AS breached,
-           ${self ? sql`0` : sql`(SELECT COUNT(*) FROM transactions t JOIN investors i ON i.id = t.investor_id
+           ${self ? sql`0` : sql`(SELECT COUNT(DISTINCT ${rejectedInstructionKey("t")}) FROM transactions t JOIN investors i ON i.id = t.investor_id
               WHERE t.tenant_id = ${w.tenantId}::uuid AND ${clientScope(w)} AND t.status IN ('rejected', 'failed')
                 AND t.order_date BETWEEN m.m0 AND m.m1)`}::int AS rejected
       FROM m ORDER BY m.m0

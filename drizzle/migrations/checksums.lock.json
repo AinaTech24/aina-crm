@@ -278,5 +278,6 @@
   "0239_amfi_feed_and_verified_mappings.sql": "f1ef32b09d9ed66a",
   "0240_scheme_platform_confirmation.sql": "bb5baba1b954376e",
   "0241_registrar_amc_identity.sql": "8270874cbfb2d08d",
-  "0242_activation_registrar_scope.sql": "2e92dcf457a5ed13"
+  "0242_activation_registrar_scope.sql": "2e92dcf457a5ed13",
+  "0243_rta_control_requests.sql": "339fed2151620394"
 }

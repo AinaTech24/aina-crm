@@ -31,6 +31,8 @@ const CT_AMFI = "9C0001";
 const dbError = async (p: Promise<unknown>) => { try { await p; return "no error"; } catch (e: any) { return `${e?.message ?? ""} ${e?.cause?.message ?? ""}`; } };
 
 describe.skipIf(!TEST_DB)("posting controls — controlled mode (DB)", () => {
+  let H2p: typeof import("./helpers/two-person");
+  let ops2p: import("./helpers/two-person").Operators;
   let withTenant: typeof import("@/db/client").withTenant;
   let withSystem: typeof import("@/db/client").withSystem;
   let sql: typeof import("drizzle-orm").sql;
@@ -49,10 +51,10 @@ describe.skipIf(!TEST_DB)("posting controls — controlled mode (DB)", () => {
       VALUES (${id}::uuid, ${t}::uuid, 'kfintech', 'daily_transaction_feed', '2026-10-08', '2026-10-08', ${name}, ${"test/" + name}, 'parsing')`));
     return vf.validateFirstImport({ tenantId: t, importId: id, fileName: name, fileRef: `test:${name}`, buf, asOf: "2026-10-08" });
   };
-  const enable = (extra: Partial<Parameters<typeof C.activateTenant>[0]> = {}) => C.activateTenant({
-    tenantId: t, mode: "validate_first", postingEnabled: true, reason: "pilot activation for controls test", approvalRef: "CHG-TEST-1", registrars: ["cams", "kfintech"],
-    requestedBy: ops.a, approvedBy: ops.b, ...extra,
-  });
+  /** A two-person activation (file as A, approve as B); resolves to the activation it wrote. */
+  const enable = async (extra: Partial<Parameters<typeof import("./helpers/two-person").activate>[1]> = {}) => (await H2p.activate(ops2p, {
+    tenantId: t, mode: "validate_first", postingEnabled: true, reason: "pilot activation for controls test", changeRef: "CHG-TEST-1", registrars: ["cams", "kfintech"], ...extra,
+  })).result as import("@/lib/rta/posting/controls").Activation;
 
   beforeAll(async () => {
     process.env.DATABASE_URL = TEST_DB!;
@@ -69,7 +71,10 @@ describe.skipIf(!TEST_DB)("posting controls — controlled mode (DB)", () => {
     gate = await import("@/lib/rta/posting/gate");
     cfg = await import("@/lib/rta/staging/config");
     vf = await import("@/lib/rta/posting/validate-first");
-    await C.setPostingHalt({ scope: "global", halted: false, reason: "development test database: posting released", changedBy: ops.a, approvedBy: ops.b });
+    H2p = await import("./helpers/two-person");
+    ops2p = await H2p.createOperators("pc");
+    Object.assign(ops, { a: ops2p.a.userId, b: ops2p.b.userId });
+    await H2p.release(ops2p, "global");
     await withSystem(async (tx) => {
       await tx.execute(sql`INSERT INTO scheme_nav (scheme_code, isin, scheme_name, amc_name, nav, nav_date) VALUES (${CT_AMFI}, ${CT_ISIN}, 'Controls Equity Fund - Regular Growth', 'Controls Mutual Fund', 50, '2026-10-07') ON CONFLICT (scheme_code) DO NOTHING`);
       for (const [id, n] of [[t, "C"], [other, "D"]] as const) {
@@ -85,6 +90,8 @@ describe.skipIf(!TEST_DB)("posting controls — controlled mode (DB)", () => {
   });
 
   afterAll(async () => {
+
+    await H2p?.retireOperators(ops2p);
     const tryRun = async (s: ReturnType<typeof sql>) => { try { await withSystem((tx) => tx.execute(s)); } catch { /* best effort */ } };
     await tryRun(sql`ALTER TABLE rta_pipeline_activations DISABLE TRIGGER rta_pipeline_activations_append_only`);
     for (const id of [t, other]) {
@@ -112,11 +119,19 @@ describe.skipIf(!TEST_DB)("posting controls — controlled mode (DB)", () => {
   });
 
   it("enabling posting needs two different people, a reason and a change reference — in code AND in the database", async () => {
-    await expect(enable({ approvedBy: ops.a })).rejects.toThrow(/DIFFERENT approver/);
-    await expect(enable({ requestedBy: null })).rejects.toThrow(/DIFFERENT approver/);
-    await expect(enable({ approvalRef: "" })).rejects.toThrow(/change \/ approval reference/);
-    await expect(enable({ reason: "short" })).rejects.toThrow(/reason/);
-    await expect(enable({ mode: "shadow" })).rejects.toThrow(/only be enabled in validate_first/);
+    const A = await import("@/lib/rta/posting/approvals");
+    const req = { action: "activate" as const, tenantId: t, mode: "validate_first" as const, postingEnabled: true, registrars: ["kfintech" as const], reportCodes: ["MFSD211", "MFSD201"],
+      expiresAt: new Date(Date.now() + 864e5).toISOString(), changeRef: "CHG-TEST-1", reason: "pilot activation for controls test" };
+    // The one-call library start is gone; a start is a request plus a DIFFERENT approver.
+    await expect(C.activateTenant({ tenantId: t, mode: "validate_first", postingEnabled: true, reason: "pilot activation for controls test", approvalRef: "CHG-1", requestedBy: ops.a, approvedBy: ops.b })).rejects.toThrow(/two-person control request/);
+    const mine = await A.requestControlAction(ops2p.a, req);
+    await expect(A.approveControlAction(ops2p.a, { requestId: mine.id, payloadHash: mine.payloadHash })).rejects.toThrow(/DIFFERENT operator/);
+    await A.rejectControlAction(ops2p.a, { requestId: mine.id, note: "withdrawn: test only" });
+    await expect(A.requestControlAction(ops2p.a, { ...req, changeRef: "" })).rejects.toThrow(/change \/ approval reference/);
+    await expect(A.requestControlAction(ops2p.a, { ...req, reason: "short" })).rejects.toThrow(/reason/);
+    await expect(A.requestControlAction(ops2p.a, { ...req, mode: "shadow" })).rejects.toThrow(/only be enabled in validate_first/);
+    await expect(A.requestControlAction(ops2p.a, { ...req, reportCodes: null })).rejects.toThrow(/report types/);
+    await expect(A.requestControlAction(ops2p.a, { ...req, expiresAt: null })).rejects.toThrow(/expir/);
     // The table refuses it even when the library is bypassed.
     await expect(withTenant(t, (tx) => tx.execute(sql`INSERT INTO rta_pipeline_activations (tenant_id, mode, posting_enabled, reason, requested_by, approved_by)
       VALUES (${t}::uuid, 'validate_first', true, 'one person trying alone', ${ops.a}::uuid, ${ops.a}::uuid)`))).rejects.toThrow();
@@ -161,9 +176,8 @@ describe.skipIf(!TEST_DB)("posting controls — controlled mode (DB)", () => {
     expect(await cfg.resolvePipelineMode(t)).toMatchObject({ mode: "held", refused: expect.stringMatching(/halted for this firm/) });
     await expect(importFile("c2.csv", csvOf(MFSD201_HEADER, [sip("910002")]))).rejects.toThrow(/halted \(this firm\)/);
     expect(await txCount()).toBe(before);
-    await expect(C.setPostingHalt({ scope: t, halted: false, reason: "incident closed after reconciliation", changedBy: ops.a })).rejects.toThrow(/second operator/);
-    await expect(C.setPostingHalt({ scope: t, halted: false, reason: "incident closed after reconciliation", changedBy: ops.a, approvedBy: ops.a })).rejects.toThrow(/second operator/);
-    await C.setPostingHalt({ scope: t, halted: false, reason: "incident closed after reconciliation", changedBy: ops.a, approvedBy: ops.b });
+    await expect(C.setPostingHalt({ scope: t, halted: false, reason: "incident closed after reconciliation", changedBy: ops.a, approvedBy: ops.b })).rejects.toThrow(/two-person control request/);
+    await H2p.release(ops2p, t, "incident closed after reconciliation");
     expect((await cfg.resolvePipelineMode(t)).mode).toBe("validate_first");
     const ev = await withSystem(async (tx) => (await tx.execute(sql`SELECT posting_halted FROM rta_posting_control_events WHERE scope = ${t} ORDER BY at`)).rows as any[]);
     expect(ev.map((e) => e.posting_halted)).toEqual([true, false]);
@@ -179,13 +193,12 @@ describe.skipIf(!TEST_DB)("posting controls — controlled mode (DB)", () => {
     expect(await dbError(withTenant(t, (tx) => tx.execute(sql`UPDATE rta_pipeline_activations SET revoke_reason = 'changed my mind' WHERE id = ${row.id}::uuid`)))).toMatch(/never edited/);
     expect(await dbError(withTenant(t, (tx) => tx.execute(sql`DELETE FROM rta_pipeline_activations WHERE id = ${row.id}::uuid`)))).toMatch(/never deleted/);
     // An activation that has expired is not current.
-    await enable({ effectiveFrom: new Date(Date.now() - 2 * 864e5).toISOString(), expiresAt: new Date(Date.now() - 864e5).toISOString() }).catch(() => null);
+    await enable({ expiresAt: new Date(Date.now() - 864e5).toISOString() }).catch(() => null);
     expect((await cfg.resolvePipelineMode(t)).mode).toBe("held");
     // Going back to the existing importer is an explicit decision, by two people.
-    const legacy = { tenantId: t, mode: "off" as const, postingEnabled: false, reason: "return to the existing importer after pilot", approvedBy: ops.b };
-    await expect(C.activateTenant({ ...legacy, requestedBy: ops.b })).rejects.toThrow(/DIFFERENT approver/);
-    await expect(C.activateTenant(legacy)).rejects.toThrow(/DIFFERENT approver/);
-    await C.activateTenant({ ...legacy, requestedBy: ops.a });
+    const legacy = { tenantId: t, mode: "off" as const, postingEnabled: false, reason: "return to the existing importer after pilot" };
+    await expect(C.activateTenant({ ...legacy, requestedBy: ops.a, approvedBy: ops.b })).rejects.toThrow(/two-person control request/);
+    await H2p.activate(ops2p, legacy);
     expect(await cfg.resolvePipelineMode(t)).toEqual({ mode: "off" });
   });
 
@@ -197,7 +210,7 @@ describe.skipIf(!TEST_DB)("posting controls — controlled mode (DB)", () => {
     await expect(C.activateTenant({ tenantId: t, mode: "paused", postingEnabled: true, reason: "pause with posting is nonsense", approvedBy: ops.a })).rejects.toThrow(/cannot have posting enabled/);
     // The table refuses a one-person start even if the library is bypassed.
     expect(await dbError(withTenant(t, (tx) => tx.execute(sql`INSERT INTO rta_pipeline_activations (tenant_id, mode, posting_enabled, reason, requested_by, approved_by)
-      VALUES (${t}::uuid, 'shadow', false, 'one person restarting alone', NULL, ${ops.a}::uuid)`)))).toMatch(/start_two_person/);
+      VALUES (${t}::uuid, 'shadow', false, 'one person restarting alone', NULL, ${ops.a}::uuid)`)))).toMatch(/start_two_person|control request/);
     // The write guard for the other paths agrees: nothing RTA-derived while paused.
     const { rtaWriteDenial } = await import("@/lib/rta/write-guard");
     expect(await withTenant(t, (tx) => rtaWriteDenial(tx, t, "derived"))).toMatchObject({ code: "stopped" });

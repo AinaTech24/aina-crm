@@ -26,6 +26,7 @@ export type RtaInboundOutcome =
   | "no_attachment" // routed to a firm, but nothing importable recognised
   | "unroutable" // no forwarding address matched
   | "quarantined" // not provably the firm's registrar mail — held, nothing imported (lib/rta/mail-trust.ts)
+  | "blocked" // registrar mail, but outside the firm's activated report types — recorded as blocked imports
   | "error"; // handler threw
 
 /** Per-attachment verdict stored in `attachments`. */
@@ -36,7 +37,7 @@ export type RtaInboundAttachmentLog = {
   source: string | null;
   /** e.g. "folio_master_dump", "daily_transaction_feed" — null when unrecognised. */
   kind: string | null;
-  outcome: "queued" | "duplicate" | "unrecognised" | "quarantined" | "error";
+  outcome: "queued" | "duplicate" | "blocked" | "unrecognised" | "quarantined" | "error";
   importId?: string | null;
   reason?: string | null;
 };

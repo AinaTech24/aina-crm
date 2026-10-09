@@ -13,6 +13,7 @@ import { sql } from "drizzle-orm";
 import {
   assigneeFilter, clientScope, FINANCIAL_KINDS, inList, istDay, KIND_LABEL, num, numOrNull, opsBase, opsFilter, PENDING_LABEL,
   selfOnly, STATUS_LABEL, str, type OpsWindow, type Row, type Tx,
+  rejectedInstructionKey,
 } from "./window";
 
 const SIP_OPEN = sql`('pending', 'client_contacted', 'bank_issue', 'mandate_issue')`;
@@ -213,9 +214,14 @@ export type RejectedRow = {
   id: string; investorId: string; client: string; rm: string | null; branch: string | null; type: string;
   scheme: string | null; amount: number | null; reason: string | null; date: string | null;
   resolution: string | null; assignedTo: string | null;
+  /** The instruction this leg belongs to (a short opaque reference) and how many rejected legs it has — 2 for an STP. */
+  instructionRef: string; legsInInstruction: number; direction: string | null;
 };
 export type RejectedDesk = {
+  /** Rejected LEGS (one per transaction row) and their gross amount — an STP's two legs are two legs. */
   total: number; purchase: number; sip: number; redemption: number; other: number; value: number; reasonMissing: number;
+  /** Unique rejected INSTRUCTIONS: an STP's source and destination legs are one instruction (rejectedInstructionKey). */
+  instructions: number; instructionValue: number;
   rows: RejectedRow[]; more: number;
 };
 
@@ -232,10 +238,17 @@ export async function loadRejected(tx: Tx, w: OpsWindow, limit = 25): Promise<Re
            COUNT(*) FILTER (WHERE NULLIF(btrim(COALESCE(t.reason_description, '')), '') IS NULL)::int AS no_reason
       FROM transactions t JOIN investors i ON i.id = t.investor_id WHERE ${where}
   `)).rows[0] as Row | undefined;
+  const ins = (await tx.execute(sql`
+    SELECT COUNT(*)::int AS n, COALESCE(SUM(v), 0) AS v FROM (
+      SELECT ${rejectedInstructionKey("t")} AS k, MAX(abs(t.amount::numeric)) AS v
+        FROM transactions t JOIN investors i ON i.id = t.investor_id WHERE ${where} GROUP BY 1) x
+  `)).rows[0] as Row | undefined;
   const rows = (await tx.execute(sql`
     SELECT t.id, t.investor_id, i.name AS client, rmu.name AS rm, b.name AS branch, t.type, t.scheme_name,
            t.amount::numeric AS amount, NULLIF(btrim(COALESCE(t.reason_description, '')), '') AS reason,
-           t.order_date::text AS date, sr.recovery_status, au.name AS assigned_to,
+           t.order_date::text AS date, sr.recovery_status, au.name AS assigned_to, t.direction,
+           left(md5(${rejectedInstructionKey("t")}), 10) AS iref,
+           COUNT(*) OVER (PARTITION BY ${rejectedInstructionKey("t")}) AS legs,
            COUNT(*) OVER () AS total
       FROM transactions t
       JOIN investors i ON i.id = t.investor_id
@@ -255,11 +268,12 @@ export async function loadRejected(tx: Tx, w: OpsWindow, limit = 25): Promise<Re
   return {
     total: n, purchase: num(c?.purchase), sip: num(c?.sip), redemption: num(c?.redemption),
     other: n - num(c?.purchase) - num(c?.sip) - num(c?.redemption), value: num(c?.v), reasonMissing: num(c?.no_reason),
+    instructions: num(ins?.n), instructionValue: num(ins?.v),
     rows: rows.map((r) => ({
       id: String(r.id), investorId: String(r.investor_id), client: String(r.client ?? "—"), rm: str(r.rm), branch: str(r.branch),
       type: feedTypeLabel(String(r.type)), scheme: str(r.scheme_name), amount: numOrNull(r.amount), reason: str(r.reason),
       date: str(r.date), resolution: r.recovery_status ? RECOVERY[String(r.recovery_status)] ?? String(r.recovery_status) : null,
-      assignedTo: str(r.assigned_to),
+      assignedTo: str(r.assigned_to), instructionRef: String(r.iref), legsInInstruction: num(r.legs), direction: str(r.direction),
     })),
     more: Math.max(0, (rows.length ? num(rows[0].total) : 0) - rows.length),
   };

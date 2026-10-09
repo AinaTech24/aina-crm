@@ -23,8 +23,8 @@ import { parseRtaCsv, parseRtaRows } from "..";
 import { decodeTextBytes } from "../file-kind";
 import { isSpreadsheet, readSpreadsheetToRows } from "../xls";
 import { revalueAllFolios, recomputeCombinedAum } from "@/lib/finance/aum-persist";
-import { assertPostingAllowed, PostingGateError, registrarOutOfScope } from "./gate";
-import { registrarCovered } from "./controls";
+import { assertPostingAllowed, PostingGateError, registrarOutOfScope, reportOutOfScope } from "./gate";
+import { registrarCovered, reportCovered } from "./controls";
 import { maskPansIn } from "../exceptions";
 
 type Tx = any;
@@ -64,6 +64,7 @@ export async function postMasterBatch(tenantId: string, batchId: string, file: {
       { id: string; state: string; record_kind: string; rta: string | null; report_code: string; posting_state: string; posting_counts: any; as_of: string | null } | undefined;
     if (!b) throw new Error("staging batch not found for this firm");
     if (!registrarCovered(scope, b.rta)) throw new PostingGateError([registrarOutOfScope(scope.registrars, b.rta)]);
+    if (!reportCovered(scope, b.report_code)) throw new PostingGateError([reportOutOfScope(scope.reportCodes, b.report_code)]);
     if (!["master", "holding"].includes(b.record_kind)) throw new Error(`batch is a ${b.record_kind} file, not a master or holdings file`);
     if (!["ready_to_commit", "exception"].includes(b.state)) throw new Error(`batch is "${b.state}" — validation has not finished, nothing can post`);
     if (["posted", "partially_posted", "nothing_to_post"].includes(b.posting_state)) {

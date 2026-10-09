@@ -40,9 +40,10 @@ import { isResolved, loadSchemeResolutions, observeSchemeCodes, schemeFor, schem
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { CLASS_META, type RtaClass } from "../staging/classify";
-import { assertPostingAllowed, PostingGateError, registrarOutOfScope } from "./gate";
-import { registrarCovered } from "./controls";
+import { assertPostingAllowed, PostingGateError, registrarOutOfScope, reportOutOfScope } from "./gate";
+import { registrarCovered, reportCovered } from "./controls";
 import { classifyRejectionReason } from "../process";
+import { legacyMatch, legacyRowsFor, schemeEvidence } from "./legacy-match";
 
 type Tx = any;
 
@@ -95,12 +96,13 @@ export async function postTransactionBatch(tenantId: string, batchId: string, op
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"rta_posting:" + tenantId}, 0))`);
 
     const b = (await tx.execute(sql`
-      SELECT id, state, record_kind, rta, posting_state, posting_counts FROM rta_staging_batches
+      SELECT id, state, record_kind, rta, report_code, posting_state, posting_counts FROM rta_staging_batches
        WHERE tenant_id = ${tenantId}::uuid AND id = ${batchId}::uuid FOR UPDATE
-    `)).rows[0] as { id: string; state: string; record_kind: string | null; rta: string; posting_state: string; posting_counts: Record<string, number> } | undefined;
+    `)).rows[0] as { id: string; state: string; record_kind: string | null; rta: string; report_code: string | null; posting_state: string; posting_counts: Record<string, number> } | undefined;
     if (!b) throw new Error("staging batch not found for this firm");
     if (b.record_kind !== "transaction") throw new Error(`batch is a ${b.record_kind ?? "unidentified"} file, not transactions`);
     if (!registrarCovered(scope, b.rta)) throw new PostingGateError([registrarOutOfScope(scope.registrars, b.rta)]);
+    if (!reportCovered(scope, b.report_code)) throw new PostingGateError([reportOutOfScope(scope.reportCodes, b.report_code)]);
     if (!["ready_to_commit", "exception"].includes(b.state)) throw new Error(`batch is "${b.state}" — validation has not finished, nothing can post`);
     const totals0 = { inflowAmount: 0, outflowAmount: 0, units: 0, transactions: 0, lots: 0 };
     if (["posted", "partially_posted", "nothing_to_post"].includes(b.posting_state)) {
@@ -270,32 +272,38 @@ export async function commitEconomicTxn(tx: Tx, tenantId: string, e: Econ, write
       eventCategory: attrs.eventCategory ?? null, switchRef: attrs.switchRef ?? null,
     };
 
-    // The CRM may already hold this registrar number.
-    const existing = (await tx.execute(sql`
-      SELECT id, amc_code, folio_number, scheme_code, order_date::text AS d, direction, amount::text AS amount, units::text AS units, status
-        FROM transactions WHERE tenant_id = ${tenantId}::uuid AND order_id = ${e.registrar_txn_no}
-    `)).rows as Array<{ id: string; amc_code: string | null; folio_number: string | null; scheme_code: string | null; d: string; direction: string; amount: string | null; units: string | null; status: string }>;
-    if (existing.length) {
-      const t = existing[0];
-      const same = existing.length === 1 && (!t.amc_code || t.amc_code === e.amc_code) && t.folio_number === e.folio_number && t.d === e.trade_date
-        && (write === "rejected" ? t.status === "rejected" : t.direction === e.direction && Math.abs((abs(t.amount) ?? 0) - (amount ?? 0)) <= 0.005 && Math.abs((abs(t.units) ?? 0) - units) <= 0.0005);
-      if (!same) {
-        return { outcome: "quarantined", reason: "identity_conflict: the CRM holds a different transaction under this registrar number — neither is changed" };
-      }
-      await tx.execute(sql`
-        INSERT INTO rta_posted_transactions (tenant_id, identity_key, economic_txn_id, batch_id, kind, transaction_id, posted_by)
-        VALUES (${tenantId}::uuid, ${e.identity_key}, ${e.id}::uuid, ${ctx.batchId}::uuid, 'matched_existing', ${t.id}::uuid, ${ctx.userId}::uuid)
-        ON CONFLICT (tenant_id, identity_key) DO NOTHING`);
-      ctx.tick?.();
-      return { outcome: "matched_existing", reason: "the CRM already holds this transaction — linked, not duplicated" };
-    }
-
-    // ── The scheme (Phase 3H): resolved to the CRM Scheme Master by evidence,
-    // or — with the scheme gate on — held before anything is written.
+    // ── The scheme (Phase 3H): resolved to the CRM Scheme Master by evidence.
+    // Resolved FIRST — matching an existing CRM row compares scheme identity too.
     const key = { rta: e.rta, amcCode: e.amc_code ?? "", schemeCode: e.scheme_code ?? "" };
     const scheme = ctx.schemes?.get(`${key.rta}|${key.amcCode}|${key.schemeCode}`) ?? await schemeFor(tx, tenantId, key);
     await tx.execute(sql`UPDATE rta_staging_economic_txns SET amfi_scheme_code = ${scheme.amfiSchemeCode}, scheme_status = ${scheme.status}
                           WHERE tenant_id = ${tenantId}::uuid AND id = ${e.id}::uuid`);
+
+    // What this transaction would be written as (also what an existing CRM row must equal).
+    const rejCat = String(attrs.eventCategory ?? "failed_sip_instalment");
+    const txType = write === "rejected" ? (rejCat === "failed_stp_leg" ? "stp" : "sip") : CLASS_META[e.rta_class].legacyType!;
+    const txDirection = write === "rejected" ? (e.direction ?? (attrs.head === "R" ? "outflow" : "inflow")) : e.direction;
+
+    // The CRM may already hold this registrar number. Linked only when EVERY
+    // fact agrees — registrar, client, AMC, folio, scheme identity, date, type,
+    // direction, status, amount, units (legacy-match.ts); otherwise held.
+    const existing = await legacyRowsFor(tx, tenantId, e.registrar_txn_no);
+    if (existing.length) {
+      const evidence = await schemeEvidence(tx, tenantId, { rta: e.rta, amcCode: e.amc_code, schemeCode: e.scheme_code }, scheme);
+      const d = legacyMatch(existing, {
+        rta: e.rta, investorId: e.match_investor_id ? String(e.match_investor_id) : null, amcCode: e.amc_code, folioNumber: e.folio_number, schemeCode: e.scheme_code,
+        date: e.trade_date, type: txType, direction: txDirection, amount, units: write === "rejected" ? 0 : units, rejected: write === "rejected",
+      }, evidence);
+      if (!d.match) return { outcome: "quarantined", reason: d.reason };
+      await tx.execute(sql`
+        INSERT INTO rta_posted_transactions (tenant_id, identity_key, economic_txn_id, batch_id, kind, transaction_id, posted_by)
+        VALUES (${tenantId}::uuid, ${e.identity_key}, ${e.id}::uuid, ${ctx.batchId}::uuid, 'matched_existing', ${d.id}::uuid, ${ctx.userId}::uuid)
+        ON CONFLICT (tenant_id, identity_key) DO NOTHING`);
+      ctx.tick?.();
+      return { outcome: "matched_existing", reason: "the CRM already holds this transaction (every fact, scheme identity included, agrees) — linked, not duplicated" };
+    }
+
+    // With the scheme gate on, an unresolved scheme is held before anything is written.
     if (!isResolved(scheme.status) && schemeGateOn()) {
       const code = scheme.status === "conflict" ? "scheme_conflict" : "scheme_unresolved";
       return { outcome: "quarantined", reason: `${code}: ${e.rta} scheme ${e.amc_code ?? "?"}/${e.scheme_code ?? "?"} — ${scheme.reason}. Resolve it under RTA File Imports → Scheme codes; the transaction posts then.` };
@@ -306,14 +314,14 @@ export async function commitEconomicTxn(tx: Tx, tenantId: string, e: Econ, write
     const amcName = scheme.amcName ?? e.amc_code;
 
     if (write === "rejected") {
-      const cat = String(attrs.eventCategory ?? "failed_sip_instalment");
+      const cat = rejCat;
       const reason = String(attrs.rejectionReason ?? "No reason given in the file");
-      const type = cat === "failed_stp_leg" ? "stp" : "sip";
+      const type = txType;
       const ins = (await tx.execute(sql`
         INSERT INTO transactions (tenant_id, investor_id, folio_id, folio_number, amc_code, amc_name, scheme_code, rta_scheme_code, scheme_name,
           type, direction, amount, units, nav, order_id, order_date, status, reason_code, reason_description, source_feed, raw_feed_row, dedup_key)
         VALUES (${tenantId}::uuid, ${e.match_investor_id}::uuid, ${folioId}::uuid, ${e.folio_number}, ${e.amc_code}, ${amcName}, ${schemeCode}, ${e.scheme_code},
-          ${schemeName}, ${type}, ${e.direction ?? (attrs.head === "R" ? "outflow" : "inflow")}, ${amount}, 0, NULL,
+          ${schemeName}, ${type}, ${txDirection}, ${amount}, 0, NULL,
           ${e.registrar_txn_no}, ${e.trade_date}::date, 'rejected', ${cat}, ${reason}, 'rta_validate_first', ${JSON.stringify(lineage)}::jsonb, ${e.identity_key})
         ON CONFLICT DO NOTHING RETURNING id`)).rows[0] as { id: string } | undefined;
       if (!ins) return { outcome: "quarantined", reason: "identity_conflict: a concurrent write took this registrar number" };
@@ -336,7 +344,7 @@ export async function commitEconomicTxn(tx: Tx, tenantId: string, e: Econ, write
       return { outcome: "rejected_recorded", reason: null };
     }
 
-    const type = CLASS_META[e.rta_class].legacyType!;
+    const type = txType;
     const ins = (await tx.execute(sql`
       INSERT INTO transactions (tenant_id, investor_id, folio_id, folio_number, amc_code, amc_name, scheme_code, rta_scheme_code, scheme_name,
         type, direction, amount, units, nav, order_id, order_date, status, source_feed, raw_feed_row, dedup_key)

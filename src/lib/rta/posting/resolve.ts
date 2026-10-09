@@ -22,8 +22,8 @@
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { CLASS_META, type RtaClass } from "../staging/classify";
-import { assertPostingAllowed, registrarOutOfScope } from "./gate";
-import { registrarCovered } from "./controls";
+import { assertPostingAllowed, registrarOutOfScope, reportOutOfScope } from "./gate";
+import { registrarCovered, reportCovered } from "./controls";
 import { recordOutcome } from "./post";
 import { reprocessHeldTransactions } from "./reprocess";
 import { panToken } from "../staging/pan-token";
@@ -64,6 +64,8 @@ export async function resolveHeldTransaction(
         FROM rta_staging_economic_txns e WHERE e.tenant_id = ${tenantId}::uuid AND e.id = ${economicTxnId}::uuid FOR UPDATE`)).rows[0] as any;
     if (!e) throw Object.assign(new ResolutionError("not found"), { status: 404 });
     if (!registrarCovered(scope, e.rta)) throw new ResolutionError(registrarOutOfScope(scope.registrars, e.rta));
+    const eb = (await tx.execute(sql`SELECT report_code FROM rta_staging_batches WHERE tenant_id = ${tenantId}::uuid AND id = ${e.batch_id}::uuid`)).rows[0] as { report_code: string | null } | undefined;
+    if (!reportCovered(scope, eb?.report_code)) throw new ResolutionError(reportOutOfScope(scope.reportCodes, eb?.report_code));
     const ledger = (await tx.execute(sql`SELECT 1 FROM rta_posted_transactions WHERE tenant_id = ${tenantId}::uuid AND identity_key = ${e.identity_key}`)).rows;
     if (ledger.length) throw new ResolutionError("this registrar transaction is already posted");
     // A refused instruction is never posted as an investment by choosing a client.

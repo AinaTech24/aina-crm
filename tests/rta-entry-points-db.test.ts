@@ -20,6 +20,8 @@ vi.mock("@/lib/auth/license", () => ({ assertActiveLicense: vi.fn(async () => {}
 const json = (url: string, body: unknown) => new NextRequest(`http://localhost${url}`, { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" } });
 
 describe.skipIf(!TEST_DB)("RTA-derived write entry points (DB)", () => {
+  let H2p: typeof import("./helpers/two-person");
+  let ops2p: import("./helpers/two-person").Operators;
   let withTenant: typeof import("@/db/client").withTenant;
   let withSystem: typeof import("@/db/client").withSystem;
   let sql: typeof import("drizzle-orm").sql;
@@ -36,6 +38,9 @@ describe.skipIf(!TEST_DB)("RTA-derived write entry points (DB)", () => {
     (process.env as Record<string, string>).NODE_ENV = "test";
     ({ withTenant, withSystem } = await import("@/db/client"));
     ({ sql } = await import("drizzle-orm"));
+    H2p = await import("./helpers/two-person");
+    ops2p = await H2p.createOperators("ep");
+    Object.assign(ops, { a: ops2p.a.userId, b: ops2p.b.userId });
     C = await import("@/lib/rta/posting/controls");
     await withSystem(async (tx) => {
       for (const [id, n] of [[vfFirm, "V"], [legacyFirm, "L"]] as const) {
@@ -43,10 +48,12 @@ describe.skipIf(!TEST_DB)("RTA-derived write entry points (DB)", () => {
       }
       await tx.execute(sql`INSERT INTO users (id, tenant_id, email, name, roles, status) VALUES (${owner}::uuid, ${vfFirm}::uuid, ${`owner-${vfFirm.slice(0, 8)}@example.test`}, 'Entry Owner', ARRAY['owner']::text[], 'active')`);
     });
-    await C.activateTenant({ tenantId: vfFirm, mode: "validate_first", postingEnabled: true, reason: "entry-point test: pilot firm", approvalRef: "CHG-EP", registrars: ["cams", "kfintech"], requestedBy: ops.a, approvedBy: ops.b });
+    await H2p.activate(ops2p, { tenantId: vfFirm, mode: "validate_first", postingEnabled: true, reason: "entry-point test: pilot firm", changeRef: "CHG-EP", registrars: ["cams", "kfintech"] });
   });
 
   afterAll(async () => {
+
+    await H2p?.retireOperators(ops2p);
     const tryRun = async (s: ReturnType<typeof sql>) => { try { await withSystem((tx) => tx.execute(s)); } catch { /* best effort */ } };
     await tryRun(sql`ALTER TABLE rta_pipeline_activations DISABLE TRIGGER rta_pipeline_activations_append_only`);
     for (const id of [vfFirm, legacyFirm]) {
@@ -102,7 +109,7 @@ describe.skipIf(!TEST_DB)("RTA-derived write entry points (DB)", () => {
     expect((await m1.json()).error).toMatch(/paused/);
     const u1 = await unmerge.POST(json("/api/investors/unmerge", { mergeId: randomUUID() }));
     expect(u1.status).toBe(409);
-    await C.activateTenant({ tenantId: vfFirm, mode: "validate_first", postingEnabled: true, reason: "entry-point test: resumed", approvalRef: "CHG-EP2", registrars: ["cams", "kfintech"], requestedBy: ops.a, approvedBy: ops.b });
+    await H2p.activate(ops2p, { tenantId: vfFirm, mode: "validate_first", postingEnabled: true, reason: "entry-point test: resumed", changeRef: "CHG-EP2", registrars: ["cams", "kfintech"] });
     const m2 = await merge.POST(json("/api/investors/merge", { survivorId: ids.a, loserId: ids.b, reason: "duplicate record of the same person" }));
     expect(m2.status).toBe(200);
   });

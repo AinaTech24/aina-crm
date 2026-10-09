@@ -16,6 +16,8 @@ const feedFile = () => csvOf(MFSD201_HEADER, [{ "Fund": "117", "Folio Number": "
   "Transaction Status": "Y", "Transaction Date": "15/4/2026", Units: "20.000", Amount: "1000.00", "Transaction Number": "941001", PAN1: P.adult }]);
 
 describe.skipIf(!TEST_DB)("drop folder, SFTP and operator scripts (DB)", () => {
+  let H2p: typeof import("./helpers/two-person");
+  let ops2p: import("./helpers/two-person").Operators;
   let withTenant: typeof import("@/db/client").withTenant;
   let withSystem: typeof import("@/db/client").withSystem;
   let sql: typeof import("drizzle-orm").sql;
@@ -33,12 +35,17 @@ describe.skipIf(!TEST_DB)("drop folder, SFTP and operator scripts (DB)", () => {
     (process.env as Record<string, string>).NODE_ENV = "test";
     ({ withTenant, withSystem } = await import("@/db/client"));
     ({ sql } = await import("drizzle-orm"));
+    H2p = await import("./helpers/two-person");
+    ops2p = await H2p.createOperators("fd");
+    Object.assign(ops, { a: ops2p.a.userId, b: ops2p.b.userId });
     C = await import("@/lib/rta/posting/controls");
     feed = await import("@/workers/feed-ingest");
     await withSystem((tx) => tx.execute(sql`INSERT INTO tenants (id, legal_name, display_name, arn) VALUES (${firm}::uuid, 'Feed', 'Feed', ${"ARN-FD" + firm.slice(0, 6)})`));
   });
 
   afterAll(async () => {
+
+    await H2p?.retireOperators(ops2p);
     for (const k of ["RTA_FEED_DIR", "RTA_FEED_SOURCE", "RTA_FEED_SFTP_SIMULATE", "RTA_FEED_SFTP_TENANT_ID"]) {
       if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k];
     }
@@ -103,12 +110,12 @@ describe.skipIf(!TEST_DB)("drop folder, SFTP and operator scripts (DB)", () => {
     try {
       await expect(G.refuseIfRtaWritesStopped(firm, "test-script")).rejects.toThrow("exit 1"); // paused (previous case)
       expect(err.mock.calls.flat().join(" ")).toMatch(/paused/);
-      await C.activateTenant({ tenantId: firm, mode: "validate_first", postingEnabled: false, reason: "feed test: pilot", requestedBy: ops.a, approvedBy: ops.b });
+      await H2p.activate(ops2p, { tenantId: firm, mode: "validate_first", postingEnabled: false, reason: "feed test: pilot" });
       await expect(G.refuseIfRtaWritesStopped(firm, "test-script")).rejects.toThrow("exit 1"); // validate-first: pipeline only
       expect(err.mock.calls.flat().join(" ")).toMatch(/validate-first only/);
       const gov = await G.rtaGovernedTenants();
       expect(gov.skip.has(firm)).toBe(true);
-      await C.activateTenant({ tenantId: firm, mode: "off", postingEnabled: false, reason: "feed test: back to legacy", requestedBy: ops.a, approvedBy: ops.b });
+      await H2p.activate(ops2p, { tenantId: firm, mode: "off", postingEnabled: false, reason: "feed test: back to legacy" });
       await expect(G.refuseIfRtaWritesStopped(firm, "test-script")).resolves.toBeUndefined(); // explicitly legacy: allowed
     } finally { exit.mockRestore(); err.mockRestore(); }
   });

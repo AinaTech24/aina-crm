@@ -91,8 +91,8 @@ type Tx = { execute: (q: any) => Promise<{ rows: any[] }> };
  * AND the firm's controls pass. Call first inside the posting transaction.
  */
 export async function assertPostingAllowed(
-  tx: Tx, tenantId: string, env: NodeJS.ProcessEnv = process.env, opts: { rta?: string | null } = {},
-): Promise<{ registrars: string[] | null }> {
+  tx: Tx, tenantId: string, env: NodeJS.ProcessEnv = process.env, opts: { rta?: string | null; reportCode?: string | null } = {},
+): Promise<{ registrars: string[] | null; reportCodes: string[] | null }> {
   const g = postingGateEnv(env);
   if (!g.allowed) throw new PostingGateError(g.reasons);
   const { sql } = await import("drizzle-orm");
@@ -109,7 +109,7 @@ export async function assertPostingAllowed(
   if (reasons.length) throw new PostingGateError(reasons);
   // Loaded here, not at module top: the env-only checks above are imported by
   // tooling that has no database (staging/config → source readers).
-  const { currentActivation, haltState, registrarCovered } = await import("./controls");
+  const { currentActivation, haltState, registrarCovered, reportCovered } = await import("./controls");
   const halt = await haltState(tx, tenantId, { lock: true });
   if (halt.halted) throw new PostingGateError(halt.reasons);
   const a = await currentActivation(tx, tenantId, { lock: g.kind === "controlled" });
@@ -117,12 +117,22 @@ export async function assertPostingAllowed(
     if (!a || a.mode !== "validate_first") throw new PostingGateError([`this firm is not activated for validate-first (current mode: ${a?.mode ?? "off"})`]);
     if (!a.postingEnabled) throw new PostingGateError(["this firm's activation does not enable posting"]);
     if (!a.registrars?.length) throw new PostingGateError(["this firm's activation names no registrars — record a new activation that states them"]);
+    if (!a.reportCodes?.length) throw new PostingGateError(["this firm's activation names no report types — record a new activation that states them"]);
   }
   // The registrar scope (0242): a file, held transaction or registration of a
   // registrar the activation does not name is never posted.
   if (opts.rta !== undefined && !registrarCovered(a, opts.rta)) throw new PostingGateError([registrarOutOfScope(a?.registrars ?? null, opts.rta)]);
-  return { registrars: a?.registrars ?? null };
+  // The report-type scope (0243): MFSD211 + MFSD201 for the KFintech pilot.
+  if (opts.reportCode !== undefined && !reportCovered(a, opts.reportCode)) throw new PostingGateError([reportOutOfScope(a?.reportCodes ?? null, opts.reportCode)]);
+  return { registrars: a?.registrars ?? null, reportCodes: a?.reportCodes ?? null };
 }
+
+/** The refusal for a report type outside the activation. Free of "halted" (the worker parks a halted import; this one is BLOCKED). */
+export const reportOutOfScope = (reportCodes: string[] | null, code: string | null | undefined) =>
+  `blocked: this firm's activation covers report types ${reportCodes?.join(" + ") ?? "none"} only; a ${code ?? "unidentified"} file is refused — nothing is staged or posted`;
+
+/** True for a gate refusal that means "outside the activation's scope" (registrar or report type), as opposed to a halt or a configuration error. */
+export const isScopeRefusal = (e: unknown) => (e as any)?.name === "PostingGateError" && ((e as any).reasons ?? []).some((r: string) => /only; a .* (record|file) is refused/.test(r));
 
 /** The refusal for a registrar outside the activation. Deliberately free of "halted" (the worker parks a halted import; this one fails). */
 export const registrarOutOfScope = (registrars: string[] | null, rta: string | null | undefined) =>

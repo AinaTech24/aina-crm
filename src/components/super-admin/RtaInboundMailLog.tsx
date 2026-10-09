@@ -94,6 +94,12 @@ const OUTCOMES: Record<string, { label: string; cls: string; Icon: typeof Mail; 
     Icon: ShieldCheck,
     hint: "Not imported: the mail was not routed by the firm's own address, or its attachment could not be proven to come from the registrar (no registrar DKIM pass, and not an archive the firm's saved password opens).",
   },
+  blocked: {
+    label: "Blocked",
+    cls: "bg-rose-50 text-rose-700 border-rose-200",
+    Icon: ShieldCheck,
+    hint: "Registrar mail, but its report type is outside the firm's RTA activation (e.g. a KFintech pilot limited to MFSD211 + MFSD201). Recorded as a blocked import; nothing staged or posted.",
+  },
   error: {
     label: "Error",
     cls: "bg-rose-50 text-rose-700 border-rose-200",
@@ -107,6 +113,7 @@ const ATT_TONE: Record<string, string> = {
   duplicate: "bg-sky-50 text-sky-700 border-sky-200",
   unrecognised: "bg-amber-50 text-amber-700 border-amber-200",
   quarantined: "bg-amber-50 text-amber-700 border-amber-200",
+  blocked: "bg-rose-50 text-rose-700 border-rose-200",
   error: "bg-rose-50 text-rose-700 border-rose-200",
 };
 

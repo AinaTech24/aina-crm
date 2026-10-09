@@ -44,6 +44,7 @@ import { Q } from "./queues";
 import { importRtaFolios, type RtaImportSummary } from "@/lib/rta/import";
 import { resolvePipelineMode, runShadowForImport } from "@/lib/rta/staging";
 import { ImportHeldError } from "@/lib/rta/staging/config";
+import { importCancelled, ImportCancelledError } from "@/lib/rta/posting/cancel-import";
 import { rtaWriteDenial } from "@/lib/rta/write-guard";
 import { isSpreadsheet, readSpreadsheetToRows } from "@/lib/rta/xls";
 import { RICH_KINDS } from "@/lib/rta/classify-mailback";
@@ -86,7 +87,7 @@ async function markFailed(
         SET status = 'failed', parsed_at = now(), remarks = ${cleanRemark(reason)},
             file_checksum = COALESCE(${extra?.checksum ?? null}, file_checksum),
             file_size_bytes = COALESCE(${extra?.sizeBytes ?? null}, file_size_bytes)
-        WHERE id = ${job.importId}::uuid
+        WHERE id = ${job.importId}::uuid AND status <> 'cancelled'
       `);
     },
     ctx
@@ -286,18 +287,21 @@ export async function openUpload(buf: Buffer, filename: string, passwords: strin
  * after a new mailback password was saved") stays. Counts and errors always
  * go — NULL is what a not-yet-counted row holds.
  */
-export async function markParsing(tenantId: string, importId: string, ctx: { userId: string; branchId?: string; roles: string[] }) {
-  await withTenant(
+export async function markParsing(tenantId: string, importId: string, ctx: { userId: string; branchId?: string; roles: string[] }): Promise<boolean> {
+  // A cancelled import is final (migration 0243): never claimed, never run.
+  return withTenant(
     tenantId,
     async (tx) => {
-      await tx.execute(sql`
+      const r = await tx.execute(sql`
         UPDATE rta_file_imports
         SET status = 'parsing', parsed_at = now(),
             remarks = CASE WHEN status IN ('failed', 'rejected') THEN NULL ELSE remarks END,
             rows_total = NULL, rows_imported = NULL, rows_skipped = NULL, rows_failed = NULL,
             errors = NULL, summary = NULL
-        WHERE id = ${importId}::uuid
+        WHERE id = ${importId}::uuid AND status <> 'cancelled'
+        RETURNING id
       `);
+      return r.rows.length > 0;
     },
     ctx
   );
@@ -313,7 +317,7 @@ async function markRejected(job: RtaImportJob, reason: string, extra?: { checksu
         SET status = 'rejected', parsed_at = now(), remarks = ${cleanRemark(reason)},
             file_checksum = COALESCE(${extra?.checksum ?? null}, file_checksum),
             file_size_bytes = COALESCE(${extra?.sizeBytes ?? null}, file_size_bytes)
-        WHERE id = ${job.importId}::uuid
+        WHERE id = ${job.importId}::uuid AND status <> 'cancelled'
       `);
     },
     ctx
@@ -402,6 +406,18 @@ async function runValidateFirstForJob(
     if (e?.name === "PostingGateError" && (e.reasons ?? []).some((r: string) => /halted|EMERGENCY/.test(r))) {
       throw new ImportHeldError((e.reasons as string[]).join("; "));
     }
+    // Outside the firm's activation (registrar or report type, identified from
+    // the file's content): BLOCKED — the import row and the stored file are
+    // kept as the audit record, nothing was staged or posted, and it is never
+    // retried by itself.
+    const { isScopeRefusal } = await import("@/lib/rta/posting/gate");
+    if (isScopeRefusal(e) && a.importId) {
+      await withTenant(a.tenantId, (tx) => tx.execute(sql`
+        UPDATE rta_file_imports SET status = 'blocked', parsed_at = now(), file_checksum = ${a.checksum},
+               remarks = ${cleanRemark(`Blocked — ${(e.reasons as string[]).join("; ")}`)}
+         WHERE tenant_id = ${a.tenantId}::uuid AND id = ${a.importId}::uuid`));
+      return;
+    }
     await fail(maskPansInText(String(e?.message ?? "validate-first import failed")));
   }
 }
@@ -411,8 +427,12 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
   const ctx = { userId: job.userId, branchId: job.branchId ?? undefined, roles: job.roles };
   const { importId, tenantId, source, kind, key, filename } = job;
 
-  // 1. Mark parsing (and clear the previous attempt's outcome).
-  await markParsing(tenantId, importId, ctx);
+  // 1. Mark parsing (and clear the previous attempt's outcome). A cancelled
+  //    import is not claimed: the job does nothing and the file is kept.
+  if (!(await markParsing(tenantId, importId, ctx))) {
+    console.log(`[rta-import] import ${importId} was cancelled by an operator — not run`);
+    return;
+  }
 
   // 2. Read the full file from S3 (uploaded directly by the browser).
   let buf: Buffer;
@@ -919,8 +939,9 @@ export async function runRichImportJob(
   // attempt's outcome. A failure here must not stop the import itself.
   if (job.importId) {
     try {
-      await markParsing(job.tenantId, job.importId, ctx);
+      if (!(await markParsing(job.tenantId, job.importId, ctx))) throw new ImportCancelledError(job.importId);
     } catch (e) {
+      if ((e as any)?.name === "ImportCancelledError") throw e;
       captureError("[rta-import] could not mark rich import parsing", maskedError(e), { tenantId: job.tenantId, importId: job.importId });
     }
   }
@@ -1167,6 +1188,14 @@ export function startRtaImportWorker() {
       // re-running it after the import already finished, do NOT reprocess — that
       // re-reads the already-deleted S3 object ("specified key does not exist")
       // and could clobber a completed import. Just clean up and return.
+      // An operator CANCELLED this import (P2): do nothing, keep the file.
+      {
+        const d = job.data as any;
+        if (d?.tenantId && d?.importId && (await withTenant(d.tenantId, (tx) => importCancelled(tx, d.importId)).catch(() => false))) {
+          console.log(`[rta-import] job ${job.id}: import ${d.importId} was cancelled by an operator — not run`);
+          return;
+        }
+      }
       if (await importAlreadyFinished(job.data as any)) {
         if (localKey) await deleteObject(localKey).catch(() => {});
         return;
@@ -1182,6 +1211,8 @@ export function startRtaImportWorker() {
         }
         return await runJob();
       } catch (e: any) {
+        // Cancelled by an operator between the check above and the claim: nothing ran, the file is kept.
+        if (e?.name === "ImportCancelledError") return;
         if (e?.name === "ImportHeldError" && token) {
           await markHeld(job.data as any, e.message);
           await job.moveToDelayed(Date.now() + HOLD_RECHECK_MS, token);

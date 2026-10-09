@@ -24,6 +24,8 @@ const r2 = (v: Record<string, string | number>) => ({
 const r9 = (v: Record<string, string | number>) => ({ product: "HFC", amc_code: "H", rep_date: serial("2026-05-18"), clos_bal: "20.000", rupee_bal: "1000.00", inv_name: "Synthetic Minor", ...v });
 
 describe.skipIf(!TEST_DB)("re-evaluation of held transactions (DB)", () => {
+  let H2p: typeof import("./helpers/two-person");
+  let ops2p: import("./helpers/two-person").Operators;
   let withTenant: typeof import("@/db/client").withTenant;
   let withSystem: typeof import("@/db/client").withSystem;
   let sql: typeof import("drizzle-orm").sql;
@@ -53,7 +55,9 @@ describe.skipIf(!TEST_DB)("re-evaluation of held transactions (DB)", () => {
     ({ sql } = await import("drizzle-orm"));
     vf = await import("@/lib/rta/posting/validate-first");
     rp = await import("@/lib/rta/posting/reprocess");
-    await (await import("@/lib/rta/posting/controls")).setPostingHalt({ scope: "global", halted: false, reason: "development test database: posting released", changedBy: randomUUID(), approvedBy: randomUUID() });
+    H2p = await import("./helpers/two-person");
+    ops2p = await H2p.createOperators("rp");
+    await H2p.release(ops2p, "global");
     await withSystem(async (tx) => {
       await tx.execute(sql`INSERT INTO tenants (id, legal_name, display_name, arn) VALUES (${t}::uuid, 'Reprocess', 'Reprocess', ${"ARN-RP" + t.slice(0, 6)})`);
       await tx.execute(sql`INSERT INTO users (tenant_id, email, name, roles, status) VALUES (${t}::uuid, ${"owner-" + t.slice(0, 8) + "@example.test"}, 'Reprocess Owner', ARRAY['owner']::text[], 'active')`);
@@ -63,6 +67,8 @@ describe.skipIf(!TEST_DB)("re-evaluation of held transactions (DB)", () => {
   });
 
   afterAll(async () => {
+
+    await H2p?.retireOperators(ops2p);
     const tryRun = async (s: ReturnType<typeof sql>) => { try { await withSystem((tx) => tx.execute(s)); } catch { /* best effort */ } };
     for (const table of ["rta_posted_transactions", "rta_sip_registrations", "folio_holders", "sip_rejections", "sips", "transactions", "tasks", "rta_staging_lots", "rta_staging_checks", "rta_staging_rows"]) {
       await tryRun(sql.raw(`DELETE FROM ${table} WHERE tenant_id = '${t}'`));

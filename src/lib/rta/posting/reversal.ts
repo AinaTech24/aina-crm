@@ -10,8 +10,10 @@
  *                        append-only rta_posting_reversals record, then
  *                        removed. Rows the batch only MATCHED (already in the
  *                        CRM before it) are not touched; only the link goes.
- *                        Needs posting halted for the firm, a requester and a
- *                        different approver, and a reason.
+ *                        Needs posting halted for the firm and a reason. The
+ *                        DRY RUN is read-only and open to one operator;
+ *                        committing runs only from an approved two-person
+ *                        control request (approvals.ts, migration 0243).
  *   undoReversal         puts every archived row back exactly as it was.
  *   reconcilePosting     checks ledger ↔ CRM ↔ staging agree for a firm.
  *
@@ -48,13 +50,29 @@ export type ReversalDependencies = {
 };
 export type ReversalResult = { reversalId: string | null; dryRun: boolean; counts: Record<string, number>; dependencies?: ReversalDependencies; blocked?: boolean };
 
-export async function reversePostingBatch(tenantId: string, batchId: string, input: { requestedBy: string; approvedBy: string; reason: string; dryRun?: boolean }): Promise<ReversalResult> {
+/**
+ * DRY RUN only (read-only): what reversing this batch would remove, and what
+ * depends on it. Committing a reversal is a two-person control request
+ * (approvals.ts, action "reverse"), which runs reverseBatchTx.
+ */
+export async function reversePostingBatch(tenantId: string, batchId: string, input: { reason: string; dryRun?: boolean; requestedBy?: string; approvedBy?: string }): Promise<ReversalResult> {
+  if (input.dryRun === false) {
+    throw new RecoveryError("committing a reversal needs a two-person control request: one operator requests it, a DIFFERENT signed-in operator approves it (POST /api/super-admin/rta-pipeline)");
+  }
+  return withTenant(tenantId, (tx: Tx) => reverseBatchTx(tx, tenantId, batchId, { reason: input.reason, dryRun: true }));
+}
+
+/** The reversal itself, in the caller's transaction. Writes only with an executed control request. */
+export async function reverseBatchTx(tx: Tx, tenantId: string, batchId: string, input: {
+  reason: string; dryRun: boolean; requestedBy?: string; approvedBy?: string; controlRequestId?: string;
+}): Promise<ReversalResult> {
   const reason = input.reason?.trim() ?? "";
   if (reason.length < 10) throw new RecoveryError("a reason of at least 10 characters is required");
-  if (!input.requestedBy || input.requestedBy === input.approvedBy) throw new RecoveryError("a reversal needs a requester and a DIFFERENT approver");
-  const DRY = "__dry_run_rollback__";
-  try {
-    return await withTenant(tenantId, async (tx: Tx) => {
+  if (!input.dryRun && (!input.requestedBy || input.requestedBy === input.approvedBy || !input.controlRequestId)) {
+    throw new RecoveryError("a reversal needs an executed two-person control request (a requester and a DIFFERENT approver)");
+  }
+  {
+    {
       const halt = await haltState(tx, tenantId, { lock: true });
       if (!halt.halted) throw new RecoveryError("halt posting for this firm first (kill switch) — a batch is never reversed while new batches can post");
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"rta_posting:" + tenantId}, 0))`);
@@ -91,7 +109,13 @@ export async function reversePostingBatch(tenantId: string, batchId: string, inp
         workedSipRejections: rejections.filter((r: any) => r.recovery_status !== "pending" || (r.updated_at && r.created_at && new Date(r.updated_at).getTime() - new Date(r.created_at).getTime() > 1000)).length,
       };
       const blocked = Object.values(dependencies).some((v) => v > 0);
-      if (input.dryRun && blocked) throw Object.assign(new Error(DRY), { result: { reversalId: null, dryRun: true, counts, dependencies, blocked } });
+      // This batch's own claims that something was ALREADY posted are withdrawn
+      // with it, so an earlier batch they point at can be reversed afterwards.
+      const claims = (await tx.execute(sql`SELECT id::text AS id, posting_outcome FROM rta_staging_economic_txns
+        WHERE tenant_id = ${tenantId}::uuid AND batch_id = ${batchId}::uuid AND posting_outcome IN ('already_posted', 'duplicate')`)).rows as Array<{ id: string; posting_outcome: string }>;
+      (counts as Record<string, number>).claimsWithdrawn = claims.length;
+      // A dry run writes nothing at all.
+      if (input.dryRun) return { reversalId: null, dryRun: true, counts, dependencies, blocked };
       if (blocked) {
         throw new RecoveryError(`automatic reversal refused — later work depends on this batch (${Object.entries(dependencies).filter(([, v]) => v > 0).map(([k, v]) => `${k} ${v}`).join(", ")}). `
           + "Reviewed recovery: reverse the dependent later batches newest-first, or restore the backup (docs/rta/PHASE3H_PILOT_BLOCKERS.md).");
@@ -119,7 +143,7 @@ export async function reversePostingBatch(tenantId: string, batchId: string, inp
         await tx.execute(sql`DELETE FROM transactions WHERE tenant_id = ${tenantId}::uuid AND id IN (${ids})`);
       }
       for (const l of ledger) {
-        await recordOutcome(tx, tenantId, String(l.economic_txn_id), "reversed", `reversed: ${reason.slice(0, 200)}`, { by: input.approvedBy, via: "reversal", batchId, extra: { requestedBy: input.requestedBy, previousKind: l.kind } });
+        await recordOutcome(tx, tenantId, String(l.economic_txn_id), "reversed", `reversed: ${reason.slice(0, 200)}`, { by: input.approvedBy!, via: "reversal", batchId, extra: { requestedBy: input.requestedBy, previousKind: l.kind, controlRequestId: input.controlRequestId } });
       }
       // last_transaction_at follows what remains — unless something newer
       // than this batch (another batch, a registrar master) set it.
@@ -128,38 +152,35 @@ export async function reversePostingBatch(tenantId: string, batchId: string, inp
         if (before && batchMax[inv] && before.slice(0, 10) > batchMax[inv]) continue;
         await tx.execute(sql`UPDATE investors SET last_transaction_at = (SELECT max(order_date)::timestamptz FROM transactions WHERE investor_id = ${inv}::uuid AND status IN ('processed', 'successful')), updated_at = now() WHERE id = ${inv}::uuid`);
       }
-      // This batch's own claims that something was ALREADY posted are withdrawn
-      // with it, so an earlier batch they point at can be reversed afterwards.
-      const claims = (await tx.execute(sql`SELECT id::text AS id, posting_outcome FROM rta_staging_economic_txns
-        WHERE tenant_id = ${tenantId}::uuid AND batch_id = ${batchId}::uuid AND posting_outcome IN ('already_posted', 'duplicate')`)).rows as Array<{ id: string; posting_outcome: string }>;
       for (const c of claims) {
-        await recordOutcome(tx, tenantId, c.id, "reversed", `reversed with its batch: ${reason.slice(0, 200)}`, { by: input.approvedBy, via: "reversal", batchId, extra: { requestedBy: input.requestedBy, previousOutcome: c.posting_outcome } });
+        await recordOutcome(tx, tenantId, c.id, "reversed", `reversed with its batch: ${reason.slice(0, 200)}`, { by: input.approvedBy!, via: "reversal", batchId, extra: { requestedBy: input.requestedBy, previousOutcome: c.posting_outcome, controlRequestId: input.controlRequestId } });
       }
-      (counts as Record<string, number>).claimsWithdrawn = claims.length;
       await tx.execute(sql`UPDATE rta_staging_batches SET posting_state = 'reversed', updated_at = now() WHERE tenant_id = ${tenantId}::uuid AND id = ${batchId}::uuid`);
       const row = (await tx.execute(sql`
-        INSERT INTO rta_posting_reversals (tenant_id, batch_id, reason, requested_by, approved_by, archived, counts)
+        INSERT INTO rta_posting_reversals (tenant_id, batch_id, reason, requested_by, approved_by, archived, counts, control_request_id)
         VALUES (${tenantId}::uuid, ${batchId}::uuid, ${reason}, ${input.requestedBy}::uuid, ${input.approvedBy}::uuid,
                 ${JSON.stringify({ transactions: txns, sip_rejections: rejections, business_entry_rta_matches: matches, ledger, previousPostingState: b.posting_state, investorLastTransactionAt: lastTxBefore, withdrawnClaims: claims })}::jsonb,
-                ${JSON.stringify(counts)}::jsonb)
+                ${JSON.stringify(counts)}::jsonb, ${input.controlRequestId}::uuid)
         RETURNING id::text`)).rows[0] as { id: string };
       await tx.execute(sql`
         INSERT INTO audit_log (tenant_id, actor_user_id, actor_type, action, entity_type, entity_id, after, reason)
         VALUES (${tenantId}::uuid, ${input.approvedBy}::uuid, 'user', 'rta.posting.reverse', 'rta_staging_batch', ${batchId}::uuid,
-                ${JSON.stringify({ reversalId: row.id, requestedBy: input.requestedBy, counts })}::jsonb, ${reason})`);
-      if (input.dryRun) throw Object.assign(new Error(DRY), { result: { reversalId: null, dryRun: true, counts, dependencies, blocked: false } });
+                ${JSON.stringify({ reversalId: row.id, requestedBy: input.requestedBy, counts, controlRequestId: input.controlRequestId })}::jsonb, ${reason})`);
       return { reversalId: row.id, dryRun: false, counts };
-    });
-  } catch (e: any) {
-    if (e?.message === DRY) return e.result as ReversalResult;
-    throw e;
+    }
   }
 }
 
-/** Put every row a reversal removed back, exactly as it was. Needs posting halted, like the reversal. */
-export async function undoReversal(tenantId: string, reversalId: string, input: { by: string; reason: string }): Promise<Record<string, number>> {
+/** Undoing a reversal is a two-person control request (approvals.ts, action "undo"). */
+export async function undoReversal(_tenantId: string, _reversalId: string, _input: { by: string; reason: string }): Promise<Record<string, number>> {
+  throw new RecoveryError("undoing a reversal needs a two-person control request: one operator requests it, a DIFFERENT signed-in operator approves it (POST /api/super-admin/rta-pipeline)");
+}
+
+/** Put every row a reversal removed back, exactly as it was — in the caller's transaction, from an executed control request. Needs posting halted, like the reversal. */
+export async function undoReversalTx(tx: Tx, tenantId: string, reversalId: string, input: { by: string; requestedBy: string; reason: string; undoRequestId: string }): Promise<Record<string, number>> {
   if ((input.reason?.trim() ?? "").length < 10) throw new RecoveryError("a reason of at least 10 characters is required");
-  return withTenant(tenantId, async (tx: Tx) => {
+  if (!input.undoRequestId || !input.requestedBy || input.requestedBy === input.by) throw new RecoveryError("an undo needs an executed two-person control request");
+  {
     const halt = await haltState(tx, tenantId, { lock: true });
     if (!halt.halted) throw new RecoveryError("halt posting for this firm first (kill switch)");
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"rta_posting:" + tenantId}, 0))`);
@@ -190,13 +211,13 @@ export async function undoReversal(tenantId: string, reversalId: string, input: 
         updated_at = now() WHERE id = ${inv}::uuid`);
     }
     await tx.execute(sql`UPDATE rta_staging_batches SET posting_state = ${a.previousPostingState}, updated_at = now() WHERE tenant_id = ${tenantId}::uuid AND id = ${r.batch_id}::uuid`);
-    await tx.execute(sql`UPDATE rta_posting_reversals SET undone_at = now(), undone_by = ${input.by}::uuid WHERE id = ${reversalId}::uuid`);
+    await tx.execute(sql`UPDATE rta_posting_reversals SET undone_at = now(), undone_by = ${input.by}::uuid, undo_request_id = ${input.undoRequestId}::uuid WHERE id = ${reversalId}::uuid`);
     const counts = { transactions: a.transactions.length, sipRejections: a.sip_rejections.length, businessEntryMatches: a.business_entry_rta_matches.length, ledger: a.ledger.length };
     await tx.execute(sql`
       INSERT INTO audit_log (tenant_id, actor_user_id, actor_type, action, entity_type, entity_id, after, reason)
-      VALUES (${tenantId}::uuid, ${input.by}::uuid, 'user', 'rta.posting.reverse_undo', 'rta_posting_reversal', ${reversalId}::uuid, ${JSON.stringify(counts)}::jsonb, ${input.reason.trim()})`);
+      VALUES (${tenantId}::uuid, ${input.by}::uuid, 'user', 'rta.posting.reverse_undo', 'rta_posting_reversal', ${reversalId}::uuid, ${JSON.stringify({ ...counts, requestedBy: input.requestedBy, controlRequestId: input.undoRequestId })}::jsonb, ${input.reason.trim()})`);
     return counts;
-  });
+  }
 }
 
 /**

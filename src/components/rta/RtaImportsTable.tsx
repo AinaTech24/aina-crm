@@ -40,6 +40,8 @@ function StatusBadge({ status }: { status: string }) {
     partial: "bg-amber-50 text-amber-700",
     failed: "bg-rose-50 text-rose-700",
     rejected: "bg-secondary text-muted-foreground",
+    blocked: "bg-rose-50 text-rose-700",
+    cancelled: "bg-secondary text-muted-foreground",
     parsing: "bg-blue-50 text-blue-700",
     uploaded: "bg-blue-50 text-blue-700",
   };
@@ -57,7 +59,7 @@ function StatusBadge({ status }: { status: string }) {
  * time. A completed import purges its own file, so there is nothing to re-read.
  */
 function canReimport(r: Row): boolean {
-  if (r.status === "completed" || r.status === "uploaded" || r.status === "parsing") return false;
+  if (r.status === "completed" || r.status === "uploaded" || r.status === "parsing" || r.status === "cancelled") return false;
   // Drop-folder imports keep no copy of the file — the API refuses them (409).
   if (r.file_stored === false) return false;
   return (
@@ -246,7 +248,7 @@ export function RtaImportsTable({ recent, trashed }: { recent: Row[]; trashed: R
                     </td>
                     <td className="py-2.5 pl-4">
                       <StatusBadge status={r.status} />
-                      {r.remarks && (r.status === "failed" || r.status === "partial" || r.status === "rejected") && (
+                      {r.remarks && (r.status === "failed" || r.status === "partial" || r.status === "rejected" || r.status === "blocked" || r.status === "cancelled") && (
                         <div className="text-2xs text-rose-600 mt-0.5 max-w-[20rem] truncate" title={r.remarks}>{r.remarks}</div>
                       )}
                     </td>

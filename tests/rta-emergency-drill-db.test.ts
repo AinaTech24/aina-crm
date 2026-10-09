@@ -16,6 +16,8 @@ import { MFSD201_HEADER, csvOf, P } from "./rta-real-layouts";
 const RUN = !!process.env.TEST_DATABASE_URL && process.env.RTA_EMERGENCY_DRILL === "1";
 
 describe.skipIf(!RUN)("EMERGENCY shutdown (DB drill)", () => {
+  let H2p: typeof import("./helpers/two-person");
+  let ops2p: import("./helpers/two-person").Operators;
   let withTenant: typeof import("@/db/client").withTenant;
   let withSystem: typeof import("@/db/client").withSystem;
   let sql: typeof import("drizzle-orm").sql;
@@ -41,19 +43,26 @@ describe.skipIf(!RUN)("EMERGENCY shutdown (DB drill)", () => {
     cfg = await import("@/lib/rta/staging/config");
     gate = await import("@/lib/rta/posting/gate");
     guard = await import("@/lib/rta/write-guard");
-    await C.setPostingHalt({ scope: "global", halted: false, reason: "development test database: posting released", changedBy: ops.a, approvedBy: ops.b });
+    H2p = await import("./helpers/two-person");
+    ops2p = await H2p.createOperators("em");
+    Object.assign(ops, { a: ops2p.a.userId, b: ops2p.b.userId });
+    await H2p.release(ops2p, "global");
     await withSystem(async (tx) => {
       for (const [id, n] of [[pilot, "P"], [legacy, "L"]] as const) {
         await tx.execute(sql`INSERT INTO tenants (id, legal_name, display_name, arn) VALUES (${id}::uuid, ${"Emergency " + n}, ${"Emergency " + n}, ${"ARN-EM" + n + id.slice(0, 6)})`);
       }
     });
-    await C.activateTenant({ tenantId: pilot, mode: "validate_first", postingEnabled: true, reason: "pilot for the emergency drill", approvalRef: "CHG-EM-1", registrars: ["cams", "kfintech"], requestedBy: ops.a, approvedBy: ops.b });
+    await H2p.activate(ops2p, { tenantId: pilot, mode: "validate_first", postingEnabled: true, reason: "pilot for the emergency drill", changeRef: "CHG-EM-1", registrars: ["cams", "kfintech"] });
   });
 
   afterAll(async () => {
     const tryRun = async (s: ReturnType<typeof sql>) => { try { await withSystem((tx) => tx.execute(s)); } catch { /* best effort */ } };
     // Never leave the database in an emergency.
-    await C.setPostingHalt({ scope: "emergency", halted: false, reason: "drill teardown: all clear", changedBy: ops.a, approvedBy: ops.b }).catch(() => {});
+    if (H2p && ops2p) {
+      const e = await withSystem(async (tx) => (await tx.execute(sql`SELECT posting_halted FROM rta_posting_controls WHERE scope = 'emergency'`)).rows[0] as any);
+      if (e?.posting_halted) await H2p.release(ops2p, "emergency", "drill teardown: all clear").catch(() => {});
+    }
+    await H2p?.retireOperators(ops2p);
     await tryRun(sql`ALTER TABLE rta_pipeline_activations DISABLE TRIGGER rta_pipeline_activations_append_only`);
     for (const id of [pilot, legacy]) {
       await tryRun(sql`DELETE FROM rta_pipeline_activations WHERE tenant_id = ${id}::uuid`);
@@ -90,8 +99,13 @@ describe.skipIf(!RUN)("EMERGENCY shutdown (DB drill)", () => {
     const r = await withTenant(legacy, (tx) => ingestRtaText(tx, { tenantId: legacy, source: "kfintech", kind: "daily_transaction_feed", fileName: "drop.csv",
       text: csvOf(MFSD201_HEADER, [{ "Fund": "117", "Folio Number": "1", "Product Code": "117EQGR", "Transaction Number": "1", PAN1: P.adult }]).toString("utf8") }));
     expect(r).toMatchObject({ status: "held", importId: null });
-    await expect(C.setPostingHalt({ scope: "emergency", halted: false, reason: "drill over, all clear given", changedBy: ops.a })).rejects.toThrow(/second operator/);
-    await C.setPostingHalt({ scope: "emergency", halted: false, reason: "drill over, all clear given", changedBy: ops.a, approvedBy: ops.b });
+    await expect(C.setPostingHalt({ scope: "emergency", halted: false, reason: "drill over, all clear given", changedBy: ops.a, approvedBy: ops.b })).rejects.toThrow(/two-person control request/);
+    // Release: filed by A, refused to A, approved by B (each a signed-in session).
+    const A = await import("@/lib/rta/posting/approvals");
+    const req = await A.requestControlAction(ops2p.a, { action: "release", scope: "emergency", changeRef: "CHG-EM-ALLCLEAR", reason: "drill over, all clear given" });
+    await expect(A.approveControlAction(ops2p.a, { requestId: req.id, payloadHash: req.payloadHash })).rejects.toThrow(/DIFFERENT operator/);
+    expect((await cfg.resolvePipelineMode(legacy)).mode).toBe("held");
+    await A.approveControlAction(ops2p.b, { requestId: req.id, payloadHash: req.payloadHash });
     expect((await cfg.resolvePipelineMode(legacy)).mode).toBe("off");
     expect((await cfg.resolvePipelineMode(pilot)).mode).toBe("validate_first");
   });

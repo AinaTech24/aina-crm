@@ -78,5 +78,15 @@ describe("pilot handover — scheme-level export reconciles", () => {
     expect(totals.processed_transactions + totals.rejected_transactions + totals.held_corrections + totals.held_unknown_code_events).toBe(totals.economic_records);
     expect(totals.posted_source_rows + totals.rejected_transactions + 99 + 8).toBe(totals.source_rows_mfsd201);
     expect(totals.duplicate_ledger_identities).toBe(0);
+    // The legacy rehearsal's cross-tab adds up to the same ledger (final security patch, P1).
+    expect(totals.legacy_rehearsal_processed_matched_existing + totals.legacy_rehearsal_processed_newly_inserted).toBe(totals.processed_transactions);
+    expect(totals.legacy_rehearsal_rejected_matched_existing + totals.legacy_rehearsal_rejected_newly_inserted).toBe(totals.rejected_transactions);
+    expect(totals.legacy_rehearsal_processed_newly_inserted).toBe(totals.multi_lot_redemptions);
+    expect(totals.legacy_rehearsal_identity_conflicts).toBe(0);
+    // The Operations dashboard shows instructions and legs separately, equal to the ledger (final security patch, P1).
+    expect(totals.ops_dashboard_rejected_instructions).toBe(totals.rejected_instructions);
+    expect(totals.ops_dashboard_rejected_instruction_amount_inr).toBe(totals.rejected_instruction_amount_inr);
+    expect(totals.ops_dashboard_rejected_legs).toBe(totals.rejected_transactions);
+    expect(totals.ops_dashboard_rejected_leg_amount_inr).toBe(totals.rejected_gross_leg_amount_inr);
   });
 });
