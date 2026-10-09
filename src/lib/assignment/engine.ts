@@ -8,6 +8,7 @@
  */
 
 import { sql } from "drizzle-orm";
+import { boundUuidArray } from "@/lib/sql/bound-array";
 
 type Tx = { execute: (q: any) => Promise<{ rows: any[] }> };
 
@@ -55,7 +56,7 @@ export async function pickAssignee(
             AND l.converted_investor_id IS NULL
             AND l.stage NOT IN ('not_qualified','lost','not_interested','converted')
         ) AS open_count
-        FROM unnest(${sql.raw(`ARRAY[${targets.map((t) => `'${t}'`).join(",")}]::uuid[]`)}) u
+        FROM unnest(${boundUuidArray(targets)}) u
         ORDER BY open_count ASC
         LIMIT 1
       `)).rows as any[];

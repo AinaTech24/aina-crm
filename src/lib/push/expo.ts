@@ -14,6 +14,7 @@
  */
 
 import { sql } from "drizzle-orm";
+import { boundUuidArray } from "@/lib/sql/bound-array";
 import type { Tx } from "@/db/client";
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
@@ -40,7 +41,7 @@ async function devicesForUsers(
     FROM devices
     WHERE tenant_id = ${tenantId}
       AND disabled_at IS NULL
-      AND user_id = ANY(${sql.raw(`ARRAY[${userIds.map((u) => `'${u.replace(/'/g, "''")}'`).join(",")}]::uuid[]`)})
+      AND user_id = ANY(${boundUuidArray(userIds)})
   `);
   return res.rows as DeviceRow[];
 }
@@ -51,7 +52,7 @@ async function disableDevices(tx: Tx, tenantId: string, deviceIds: string[]) {
   await tx.execute(sql`
     UPDATE devices SET disabled_at = now(), updated_at = now()
     WHERE tenant_id = ${tenantId}
-      AND id = ANY(${sql.raw(`ARRAY[${deviceIds.map((d) => `'${d.replace(/'/g, "''")}'`).join(",")}]::uuid[]`)})
+      AND id = ANY(${boundUuidArray(deviceIds)})
   `);
 }
 

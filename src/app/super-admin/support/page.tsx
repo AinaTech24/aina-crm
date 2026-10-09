@@ -5,6 +5,7 @@ import { withPlatformAdmin } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatRelative } from "@/lib/utils";
 import { SupportTicketFilters } from "@/components/super-admin/SupportTicketFilters";
+import { supportTicketListQuery } from "@/lib/support/ticket-list";
 
 const STATUS_COLORS: Record<string, string> = {
   open: "bg-blue-50 text-blue-700",
@@ -42,12 +43,6 @@ export default async function SupportTicketsPage({
   const sp = await searchParams;
 
   const data = await withPlatformAdmin(session.userId, async (tx) => {
-    const filters: string[] = [];
-    if (sp.status) filters.push(`st.status = '${sp.status.replace(/'/g, "")}'`);
-    if (sp.category) filters.push(`st.category = '${sp.category.replace(/'/g, "")}'`);
-    if (sp.priority) filters.push(`st.priority = '${sp.priority.replace(/'/g, "")}'`);
-    const whereSql = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
-
     const stats = await tx.execute(sql`
       SELECT
         COUNT(*)::int AS total,
@@ -61,20 +56,8 @@ export default async function SupportTicketsPage({
     `);
     const s = stats.rows[0] as any;
 
-    const rows = await tx.execute(sql.raw(`
-      SELECT st.id, st.tenant_id, st.subject, st.description, st.category, st.priority,
-             st.status, st.created_at, st.resolved_at,
-             t.legal_name, t.arn,
-             u.name AS raised_by_name
-      FROM support_tickets st
-      LEFT JOIN tenants t ON t.id = st.tenant_id
-      LEFT JOIN users u ON u.id = st.raised_by_user_id
-      ${whereSql}
-      ORDER BY
-        CASE st.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
-        st.created_at DESC
-      LIMIT 200
-    `));
+    // Filters from the URL are bound parameters (lib/support/ticket-list.ts).
+    const rows = await tx.execute(supportTicketListQuery(sp));
 
     return { stats: s, rows: rows.rows as any[] };
   });
