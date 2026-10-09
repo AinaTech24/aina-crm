@@ -12,6 +12,11 @@
  * because nothing had been collected for 75 days, and MFSD243 marked 171 of
  * them Terminated / Terminated by Investor / rejected / expired / cancelled —
  * but the import read only the cease date, so the book could not say so.
+ *
+ * The firm's decision the same day: the registrar's status is SHOWN in the SIP
+ * book, never acted on. `status` below is what the registrar says; the import
+ * keeps its own rule (only a CAMS cease date stops a SIP) and records `reason`
+ * as a label.
  */
 
 export type RegistrarSipState = {
@@ -38,14 +43,15 @@ function classify(text: string): RegistrarSipState["status"] | null {
 }
 
 export function registrarSipState(
-  row: { registrarStatus?: string; registrarRemark?: string; ceaseDate?: string },
+  row: { registrarStatus?: string; registrarRemark?: string; ceaseDate?: string; registrarEndDate?: string },
   source: string,
   todayIst: string,
 ): RegistrarSipState {
   const who = source === "cams" ? "CAMS" : source === "kfintech" ? "KFintech" : "Registrar";
   const status = row.registrarStatus?.trim() ?? "";
   const remark = row.registrarRemark?.trim().replace(/\s+/g, " ").replace(/\.$/, "") ?? "";
-  const ceased = row.ceaseDate && row.ceaseDate <= todayIst ? row.ceaseDate : undefined;
+  const end = row.ceaseDate ?? row.registrarEndDate;
+  const ceased = end && end <= todayIst ? end : undefined;
   const words = (said: string) =>
     [`${who}: ${said}`, ceased ? `ceased ${day(ceased)}` : null].filter(Boolean).join(" · ").slice(0, 300);
 

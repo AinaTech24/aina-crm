@@ -17,14 +17,15 @@ describe("KFintech MFSD243 status", () => {
     expect(rows).toHaveLength(2);
     expect(rows[0].registrarStatus).toBe("Live SIP");
     expect(rows[1].registrarStatus).toBe("Terminated by Investor");
-    expect(rows[1].ceaseDate).toBe("2024-03-12");
+    expect(rows[1].registrarEndDate).toBe("2024-03-12");
+    expect(rows[1].ceaseDate).toBeUndefined(); // shown, never used to stop the SIP
   });
 
   it("keeps a live SIP live and says so explicitly", () => {
     expect(registrarSipState(rows[0], "kfintech", TODAY)).toEqual({ status: "active", reason: null, explicitLive: true });
   });
 
-  it("closes a terminated SIP with KFintech's words", () => {
+  it("reads a terminated SIP with KFintech's words (a label; the import does not close it)", () => {
     const s = registrarSipState(rows[1], "kfintech", TODAY);
     expect(s.status).toBe("stopped");
     expect(s.reason).toBe("KFintech: Terminated by Investor · ceased 12 Mar 2024");

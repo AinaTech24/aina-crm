@@ -822,10 +822,12 @@ async function processSipBook(
       skipped++;
       continue;
     }
-    // The registrar's own word: KFintech's Status column, else a CAMS cease
-    // date — with the reason the SIP book shows (lib/rta/sip-registrar-status).
+    // What the registrar says (KFintech's Status column, a CAMS cease date and
+    // remark) is recorded as a LABEL the SIP book shows — never acted on: the
+    // firm's decision of 9 Oct 2026 (Attitude Financial). Only a CAMS cease
+    // date stops a SIP, as before (lib/rta/sip-registrar-status).
     const reg = registrarSipState(r, args.source, todayIst);
-    const sipStatus = reg.status;
+    const sipStatus: "active" | "stopped" = r.ceaseDate && r.ceaseDate <= todayIst ? "stopped" : "active";
 
     // The folio + scheme are what actually key a SIP. PAN is NOT required:
     // KFintech leaves the PAN column blank on a real minority of rows (minor
@@ -995,13 +997,9 @@ async function processSipBook(
         if (c) {
           // Completed on evidence, so only evidence reopens it: an instalment
           // of this amount collected after it was closed (the feed can arrive
-          // late), or the registrar's register saying in so many words that it
-          // is live (KFintech "Live SIP"). A stopped one — cease date, or a
-          // person — stays stopped.
+          // late). A stopped one — cease date, or a person — stays stopped.
           const amt = Number(c.amount ?? 0);
-          const resumed = c.status === "completed" && sipStatus === "active" && reg.explicitLive
-            ? true
-            : c.status === "completed" && sipStatus === "active" && amt > 0
+          const resumed = c.status === "completed" && sipStatus === "active" && amt > 0
             ? (await tx.execute(sql`
                 SELECT 1 FROM transactions x
                 WHERE x.tenant_id = ${args.tenantId}::uuid AND x.investor_id = ${c.investor_id}::uuid
@@ -1012,16 +1010,14 @@ async function processSipBook(
               `)).rows.length > 0
             : false;
           if (!resumed) {
-            // Closed here already; record what the registrar says about it, so
-            // the SIP book shows "KFintech: Terminated by Investor" rather than
-            // only our own inference.
+            // Closed here already; label it with what the registrar says
+            // ("KFintech: Terminated by Investor"). The status stays as it is.
             if (reg.reason) {
               await tx.execute(sql`
                 UPDATE sips
-                   SET status = ${sipStatus}, updated_at = now(),
+                   SET updated_at = now(),
                        remarks = left(${reg.reason} || COALESCE(' · ' || NULLIF(regexp_replace(COALESCE(remarks, ''), ${REG_PREFIX_RE}, ''), ''), ''), 500)
-                 WHERE id = ${c.id}::uuid
-                   AND (status <> ${sipStatus} OR COALESCE(remarks, '') NOT LIKE ${reg.reason + "%"})
+                 WHERE id = ${c.id}::uuid AND COALESCE(remarks, '') NOT LIKE ${reg.reason + "%"}
               `);
             }
             await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
@@ -1049,7 +1045,7 @@ async function processSipBook(
               end_date = COALESCE(${r.endDate ?? null}::date, end_date),
               mandate_id = COALESCE(${mandateId ?? null}::uuid, mandate_id),
               status = ${sipStatus},
-              remarks = CASE WHEN ${reg.reason ?? null}::text IS NULL THEN remarks
+              remarks = CASE WHEN ${reg.reason ?? null}::text IS NULL THEN NULLIF(regexp_replace(COALESCE(remarks, ''), ${REG_PREFIX_RE}, ''), '')
                              ELSE left(${reg.reason ?? null}::text || COALESCE(' · ' || NULLIF(regexp_replace(COALESCE(remarks, ''), ${REG_PREFIX_RE}, ''), ''), ''), 500) END,
               updated_at = now()
           WHERE id = ${existingId}::uuid
