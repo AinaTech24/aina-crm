@@ -1304,6 +1304,24 @@ bash scripts/prod-change.sh history
   the session and the start time. `force-release` exists for a human clearing
   a dead session's lock, and is logged as such.
 
+### Database roles in production
+
+The web app and the worker connect ONLY as `mfd_app` (`APP_DATABASE_URL`):
+no superuser, no BYPASSRLS, so Row-Level Security is enforced on every
+query. Since 2026-10-09 neither container even receives the master login.
+
+- `mfd_master` (`DATABASE_URL`) lives in `~/app/.env.migrate` on the box
+  (mode 600) and only the `migrate` compose service loads it — the deploy's
+  migrate, type-check and schema-guard steps.
+- A maintenance script that needs DDL or the master (anything reading
+  `process.env.DATABASE_URL` directly: apply-migration, migrate-tolerant,
+  check-rls, verify-rls-isolation, provision-app-role, cleanup-ahpal-rta,
+  reset-tenant-book, diagnose-rta-mailback) runs as a one-off, under the
+  change lock:
+  `docker compose -f docker-compose.prod.yml run --rm migrate npx tsx scripts/<x>.ts`.
+  `docker exec app-worker-1 …` gives you `mfd_app` only.
+- Never add `DATABASE_URL` back to `.env.production`.
+
 ### Health check
 
 `GET /api/health` returns 200 + a small JSON if the process and the DB
