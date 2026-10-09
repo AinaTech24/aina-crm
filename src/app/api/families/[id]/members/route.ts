@@ -18,6 +18,10 @@ import { handleApiError } from "@/lib/api/error-handler";
  *   · moving a client OUT of a family they headed clears that family's head;
  *   · detaching the head clears the head.
  * On attach an outbox event lets downstream workflows react.
+ *
+ * RM follows the head (lib/families/head-rm): a client mapped into the family
+ * gets the head's RM, and making someone head gives every member the new
+ * head's RM — by default; a member's RM can still be changed on their record.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -33,6 +37,7 @@ import { assertFamilyEditable } from "@/lib/families/access";
 import { loadViewableInvestor } from "@/lib/investors/access";
 import { HEAD_ROLE, isHeadRole } from "@/lib/families/roles";
 import { onClientFamilyMapped } from "@/lib/families/journey";
+import { applyHeadRmToMembers } from "@/lib/families/head-rm";
 
 export const dynamic = "force-dynamic";
 
@@ -121,14 +126,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
       // Head: an explicit head link, or the first member of a family without one.
       const headless = !fam.primaryInvestorId;
-      if (ids.length === 1 && role && isHeadRole(role)) await makeHead(tx, familyId, ids[0]);
-      else if (headless && linked.length) {
+      let headChanged = false;
+      if (ids.length === 1 && role && isHeadRole(role)) {
+        await makeHead(tx, familyId, ids[0]);
+        headChanged = ids[0] !== fam.primaryInvestorId;
+      } else if (headless && linked.length) {
         const live = await tx
           .select({ id: investors.id })
           .from(investors)
           .where(and(eq(investors.familyId, familyId), isNull(investors.deletedAt), isNull(investors.mergedIntoId)));
-        if (live.length === linked.length) await makeHead(tx, familyId, linked[0]);
+        if (live.length === linked.length) {
+          await makeHead(tx, familyId, linked[0]);
+          headChanged = true;
+        }
       }
+
+      // The head's RM: for everyone when the head changed, else for the
+      // clients just mapped.
+      const rm = await applyHeadRmToMembers(tx, {
+        tenantId: session.tenantId,
+        familyId,
+        onlyInvestorIds: headChanged ? undefined : linked,
+        actorUserId: session.userId,
+        reason: headChanged ? "head_changed" : "mapped_to_family",
+        clientMeta,
+      });
 
       if (linked.length) {
         await recordAudit(tx, {
@@ -144,7 +166,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
       await recomputeFamilyHealth(tx, familyId);
       for (const prior of priorFamilies) if (prior !== familyId) await recomputeFamilyHealth(tx, prior);
-      return { linked: linked.length };
+      return { linked: linked.length, rmAssigned: rm.reassigned };
     });
     return NextResponse.json(result);
   } catch (err: any) {
@@ -172,8 +194,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         .limit(1);
       if (!fam || !m) return null;
 
+      let rmAssigned = 0;
       if (isHeadRole(familyRole)) {
         await makeHead(tx, familyId, investorId);
+        // A new head: every member takes the new head's RM (by default).
+        if (investorId !== fam.primaryInvestorId) {
+          const rm = await applyHeadRmToMembers(tx, {
+            tenantId: session.tenantId,
+            familyId,
+            actorUserId: session.userId,
+            reason: "head_changed",
+            clientMeta,
+          });
+          rmAssigned = rm.reassigned;
+        }
       } else {
         await tx.update(investors).set({ familyRole, updatedAt: new Date() } as any).where(eq(investors.id, investorId));
         // Demoting the head leaves the family without one, honestly.
@@ -192,7 +226,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         ...clientMeta,
       });
       await recomputeFamilyHealth(tx, familyId);
-      return { ok: true };
+      return { ok: true, rmAssigned };
     });
     if (!out) return NextResponse.json({ error: "member not found" }, { status: 404 });
     return NextResponse.json(out);

@@ -25,6 +25,7 @@ import { loadCustomFieldDefs, sanitizeCustomFields } from "@/lib/custom-fields/v
 import { applyRiskCategory, RISK_CATEGORIES } from "@/lib/risk-profile/apply";
 import { cleanUccCodes } from "@/lib/investors/ucc";
 import { investors, eventsOutbox } from "@/db/schema";
+import { familyHeadRmId } from "@/lib/families/head-rm";
 
 export const dynamic = "force-dynamic";
 
@@ -203,6 +204,13 @@ export async function POST(req: NextRequest) {
       const cfDefs = await loadCustomFieldDefs(tx, session.tenantId, "investor");
       const customFields = sanitizeCustomFields(cfDefs, body.customFields);
 
+      // Assigned-only callers may only create into their own book, so a
+      // supplied rmId is ignored for them. A client created straight into a
+      // family takes the family head's RM by default (lib/families/head-rm),
+      // unless someone allowed to choose the RM chose one.
+      let rmId = (canAssignAnyRm ? body.rmId : undefined) ?? session.userId;
+      if (body.familyId && canAssignAnyRm && !body.rmId) rmId = (await familyHeadRmId(tx, body.familyId)) ?? rmId;
+
       const inserted = await tx
         .insert(investors)
         .values({
@@ -227,9 +235,7 @@ export async function POST(req: NextRequest) {
           nomineeName: body.nominees?.[0]?.name || null,
           nomineeRelation: body.nominees?.[0]?.relation || null,
           nomineeDob: body.nominees?.[0]?.dob || null,
-          // Assigned-only callers may only create into their own book, so a
-        // supplied rmId is ignored for them.
-        rmId: (canAssignAnyRm ? body.rmId : undefined) ?? session.userId,
+          rmId,
           familyId: body.familyId ?? null,
           address: body.address,
           notes: body.notes,

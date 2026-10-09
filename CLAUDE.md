@@ -401,6 +401,15 @@ head, the name and notes — nothing else (the firm's request, 2026-10-02).
   With no head: the creator, their branch, the firm's default cadence. Every
   create path (this form, Map Family, the unmapped-client and suggestion
   panels) goes through `POST /api/families`, so all of them get this.
+- **The family's RM is the head's RM, and members follow it by default**
+  (`lib/families/head-rm.ts`, the firm's rule of 2026-10-09). Mapping a
+  client into a family gives them the head's RM; making someone head gives
+  every member the new head's RM; merging families gives the moved members the
+  survivor head's RM; a client created straight into a family gets the head's
+  RM unless an RM was chosen (an own-book-only creator keeps their own). It is
+  a default, not a lock — a member's RM can be changed on their record. Only
+  `rm_id` moves (as the client page and bulk Assign RM do), and each change is
+  audited as `investor.rm_from_family_head`.
 - Do not put Category, Relationship Manager, Review frequency or First
   meeting date back on the create form.
 
