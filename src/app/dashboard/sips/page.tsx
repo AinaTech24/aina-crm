@@ -274,6 +274,7 @@ export default async function SipsPage({
               presets={[
                 { id: "active", name: "Active SIPs", params: "status=active" },
                 { id: "stopped", name: "Stopped / Rejected", params: "status=stopped,rejected" },
+                { id: "ended", name: "Ended (with reason)", params: "status=stopped,rejected,completed" },
                 { id: "monthly", name: "Monthly SIPs", params: "frequency=monthly&status=active" },
                 { id: "paused", name: "Paused", params: "status=paused" },
               ]}
@@ -370,10 +371,17 @@ export default async function SipsPage({
                         <span className="text-muted-foreground">—</span>
                       )}
                     </td>
-                    <td data-col="status" className="py-3">
+                    <td data-col="status" className="py-3 max-w-[220px]">
                       <span className={`chip ${STATUS_TONE[sip.status] ?? ""}`}>
                         {STATUS_LABEL[sip.status] ?? sip.status}
                       </span>
+                      {/* Why it ended — the registrar's own words when its register said so
+                          ("KFintech: Terminated by Investor"), lib/rta/sip-registrar-status. */}
+                      {sip.status !== "active" && sip.remarks && (
+                        <div className="text-2xs text-muted-foreground mt-1 truncate" title={sip.remarks}>
+                          {sip.remarks.split(" · ").slice(0, 2).join(" · ")}
+                        </div>
+                      )}
                     </td>
                     <td data-col="rm" className="py-3 text-xs">{rmName ?? "—"}</td>
                     <td data-col="remarks" className="py-3 pr-4 text-xs text-muted-foreground max-w-[160px] truncate">

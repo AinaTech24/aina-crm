@@ -69,6 +69,10 @@ export type CanonicalSipRow = {
   registrationType?: string;
   /** The scheme money is transferred INTO — only an STP has one (CAMS TARGET_SCH). */
   targetScheme?: string;
+  /** The registrar's own status for the registration (KFintech MFSD243 "Status": Live SIP, Terminated…). */
+  registrarStatus?: string;
+  /** Why it stopped, in the registrar's words (CAMS WBR49 / KFintech MFSD230 REMARKS). */
+  registrarRemark?: string;
 };
 
 export type CanonicalMandateRow = {
@@ -224,7 +228,12 @@ const SIP_BOOK_ALIASES: Record<string, string[]> = {
   // A registration report lists cancelled and finished SIPs too. Without the
   // cease date every row imported as 'active', and the SIP book counted SIPs
   // that stopped years ago.
-  ceaseDate: ["CEASE_DATE", "CEASED_DATE", "SIP_CEASE_DATE", "CANCEL_DATE", "CANCELLATION_DATE", "TERMINATION_DATE"],
+  ceaseDate: ["CEASE_DATE", "CEASED_DATE", "SIP_CEASE_DATE", "CANCEL_DATE", "CANCELLATION_DATE", "TERMINATION_DATE", "TERMINATEDATE", "TERMINATE_DATE"],
+  // What the registrar says the registration is, and why it stopped
+  // (lib/rta/sip-registrar-status.ts). Optional columns: never required for a
+  // row to be read.
+  registrarStatus: ["STATUS", "SIP_STATUS", "REG_STATUS", "REGISTRATION_STATUS"],
+  registrarRemark: ["REMARKS", "REMARK", "CEASE_REASON", "TERMINATION_REASON"],
   // KFintech MFSD230 calls it TRTYPE (SIP / STP / SWP): the STP and SWP rows
   // stay out of the SIP book, as CAMS's do.
   registrationType: ["AUT_TRNTYP", "AUTO_TRNTYP", "AUTO_TRN_TYPE", "REGISTRATION_TYPE", "TRTYPE", "TR_TYPE"],
@@ -440,7 +449,8 @@ export function parseSipBook(
     const line = lines[i].trim();
     if (!line) continue;
     const cols = splitLine(line, delim);
-    const maxIdx = Math.max(...Object.values(indexMap));
+    // The optional status columns never decide whether a row is long enough.
+    const maxIdx = Math.max(...Object.entries(indexMap).filter(([k]) => !OPTIONAL_SIP_COLUMNS.has(k)).map(([, v]) => v));
     if (cols.length <= maxIdx) continue;
 
     const val = (field: string) => cols[indexMap[field as keyof typeof indexMap]]?.trim() ?? "";
@@ -463,10 +473,14 @@ export function parseSipBook(
       ceaseDate: realDate(val("ceaseDate")),
       registrationType: val("registrationType") || undefined,
       targetScheme: val("targetScheme") || undefined,
+      registrarStatus: val("registrarStatus") || undefined,
+      registrarRemark: val("registrarRemark") || undefined,
     });
   }
   return out;
 }
+
+const OPTIONAL_SIP_COLUMNS = new Set(["registrarStatus", "registrarRemark"]);
 
 /**
  * A date that means something. A blank spreadsheet cell comes out as Excel's
