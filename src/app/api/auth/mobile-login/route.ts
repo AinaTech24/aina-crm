@@ -82,6 +82,7 @@ export async function POST(req: NextRequest) {
   }).catch(() => {});
 
   const token = await issueSessionToken({
+    auth: "password",
     userId: userRow.id,
     tenantId: userRow.tenant_id,
     branchId: userRow.branch_id,

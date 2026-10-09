@@ -86,7 +86,9 @@ export async function POST(req: NextRequest) {
   }).catch(() => {});
 
   const res = NextResponse.json({ ok: true, user: { id: userRow.id, name: userRow.name, email: userRow.email, roles: userRow.roles } });
+  // A password alone: never MFA-verified (a two-factor account never reaches here).
   return attachSessionCookie(res, {
+    auth: "password",
     userId: userRow.id,
     tenantId: userRow.tenant_id,
     branchId: userRow.branch_id,

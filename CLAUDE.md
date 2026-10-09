@@ -837,12 +837,57 @@ Operator steps and evidence: `docs/rta/PILOT_HANDOVER.md` (§5.1, EC-1, EC-2, EC
 - **A cancelled import is final** (`posting/cancel-import.ts` + a trigger): who,
   when, why; the job is removed; the worker's `markParsing` never claims it.
 - **Development is FROZEN at `8523a01`** (owner, 2026-10-09). Pilot readiness is
-  operational evidence only: A–F and FS-1 – FS-10 in the handover. Known and
-  NOT fixed (held by FS checks): `/api/auth/reset` signs a user in without a
-  TOTP step and a pre-enrolment session stays live, so `two_fa_enabled` is not
-  proof of MFA (FS-1); without `APP_DATABASE_URL` the app and worker run as the
-  migration role (FS-2); the reconciliation webhook is one fire-and-forget
-  attempt (FS-10).
+  operational evidence only: A–F and FS-1 – FS-10 in the handover. The one
+  authorized exception is the final security patch below (migration 0244).
+
+## Final security patch — migration 0244 (PRE-PRODUCTION)
+
+Evidence and operator checks: `docs/rta/PILOT_HANDOVER.md` (FS-1, FS-2, FS-7,
+FS-8, FS-10, §7.3).
+
+- **MFA lives on the SESSION, not the user.** `user_sessions.auth_method` and
+  `mfa_verified_at` are set once, when a session is created by a completed
+  challenge (`issueSessionToken({ auth })`, `lib/auth/issue-session.ts`; every
+  issuer passes its method). A password-reset, signup, invite or re-issued
+  session is NOT MFA-verified. The database refuses raising, back-dating or
+  re-labelling a session's MFA. Changing the password, the TOTP secret,
+  two-factor on/off or `sessions_invalid_after` stamps `users.mfa_changed_at`
+  and downgrades every session of that user (trigger, audited). A platform
+  operator with a weaker session re-proves the factor at
+  `POST /api/super-admin/step-up`, which revokes the old session and issues a
+  new one. `rta_operator_ok` / `verifyOperator` (approvals.ts) require a live,
+  unrevoked session verified within 12 h (`RTA_OPERATOR_MFA_MAX_AGE_MIN`) and
+  after the last security change — for every START, both people, plus
+  `cancel_import` and alert acknowledgement. Stops (halt, pause, revoke) need
+  only a live platform session, so an emergency is never blocked.
+- **No privileged database fallback** (`src/db/runtime-role.ts`). In production
+  the web and worker connect ONLY with `APP_DATABASE_URL`; unset → refuse to
+  start (no fallback to `DATABASE_URL`). Migration tooling declares
+  `DB_TOOLING=1` (`migrate-all.ts` sets it); the runtime refuses to start with
+  it. `assertRuntimeDatabase` (worker start, before any job; web start via
+  `instrumentation.ts`) and the posting gate (inside the transaction) refuse a
+  role that is superuser, BYPASSRLS, CREATEROLE, owns any public object or the
+  database (directly or through membership), can assume a privileged role, may
+  set `session_replication_role`, or holds TRIGGER / TRUNCATE / REFERENCES on a
+  protected table. Diagnostics name role@host/db, never a password.
+  `ALLOW_SUPERUSER_DB` has no effect in production.
+- **Reconciliation is recorded and monitored** (`lib/rta/posting/recon-schedule.ts`).
+  It runs daily at **06:30 Asia/Kolkata** (`RTA_RECON_TIME_IST`), computed in
+  IST whatever the host's zone, from a 1-minute monitor in the worker's `ops`
+  group (no Redis). Every run is a `rta_reconciliation_runs` row (+ one
+  `rta_reconciliation_run_firms` row per firm); a run whose heartbeat stops is
+  marked `incomplete`; a slot not run within 15 min is caught up with a
+  `missed` alert. It is no longer part of `daily-ops-scanner`.
+- **Alerts are rows** (`lib/ops/alerts.ts`, `ops_alerts`): one open alert per
+  condition (repeats count occurrences), delivered with an Idempotency-Key,
+  retried with bounded backoff, `undeliverable` after 8 attempts, escalated once
+  (`OPS_ALERT_ESCALATION_WEBHOOK_URL`) when undeliverable or unacknowledged for
+  60 min, closed only by a named, MFA-verified operator
+  (`/api/super-admin/ops-alerts`). PANs and URL credentials are masked before
+  storage. `GET /api/health/rta-reconciliation` (web, DB only) answers 503 on a
+  stopped worker, a missed / crashed / failed run, an undeliverable or
+  unacknowledged critical alert — and raises and delivers the worker-down
+  alert itself.
 
 ## Webhook handlers
 

@@ -5,7 +5,8 @@
  * scheme approval) now needs a request filed by one signed-in platform
  * operator and approved by ANOTHER. In a test database that means two real
  * `users` rows — active, platform_admin, two-factor on — each holding a live
- * `user_sessions` row, exactly what requireSession() would hand the API.
+ * `user_sessions` row created by a TOTP sign-in (MFA-verified, migration 0244),
+ * exactly what requireSession() would hand the API.
  *
  * These identities exist only in the isolated test database and are disabled
  * (status 'disabled', sessions revoked) by retireOperators(); nothing here is
@@ -30,7 +31,10 @@ export async function createOperator(platformTenant: string, label: string, opts
       VALUES (${userId}::uuid, ${platformTenant}::uuid, ${`${label}-${userId.slice(0, 8)}@ops.test.invalid`}, ${`Test operator ${label}`},
               ${sql.raw(`ARRAY[${(opts.roles ?? ["platform_admin"]).map((r) => `'${r.replace(/'/g, "")}'`).join(",")}]::text[]`)},
               ${opts.status ?? "active"}, ${opts.twoFa ?? true})`);
-    await tx.execute(sql`INSERT INTO user_sessions (tenant_id, user_id, session_id) VALUES (${platformTenant}::uuid, ${userId}::uuid, ${sid})`);
+    // A session created by a completed TOTP sign-in (migration 0244), unless the operator has no two-factor.
+    const mfa = opts.twoFa ?? true;
+    await tx.execute(sql`INSERT INTO user_sessions (tenant_id, user_id, session_id, auth_method, mfa_verified_at)
+      VALUES (${platformTenant}::uuid, ${userId}::uuid, ${sid}, ${mfa ? "password_totp" : "password"}, ${mfa ? sql`now()` : sql`NULL`})`);
   });
   return { userId, sid };
 }

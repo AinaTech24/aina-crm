@@ -279,5 +279,6 @@
   "0240_scheme_platform_confirmation.sql": "bb5baba1b954376e",
   "0241_registrar_amc_identity.sql": "8270874cbfb2d08d",
   "0242_activation_registrar_scope.sql": "2e92dcf457a5ed13",
-  "0243_rta_control_requests.sql": "339fed2151620394"
+  "0243_rta_control_requests.sql": "339fed2151620394",
+  "0244_session_mfa_runtime_role_recon_alerts.sql": "587632dc121ef3d8"
 }

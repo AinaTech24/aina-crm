@@ -92,6 +92,28 @@ export function producerQueue(name: string): Queue {
 }
 
 /**
+ * Is the producer connection usable now (waiting at most `ms` for it)? A
+ * request path that only READS or REMOVES jobs checks this first: BullMQ itself
+ * waits for a connection to become ready, so a command started while Redis is
+ * down would otherwise run later, after the caller has given up on it.
+ */
+export async function producerReady(ms: number): Promise<boolean> {
+  const client = producerRedis();
+  if (client.status === "ready") return true;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onReady: (() => void) | undefined;
+  try {
+    return await Promise.race([
+      new Promise<boolean>((resolve) => { onReady = () => resolve(true); client.once("ready", onReady); }),
+      new Promise<boolean>((resolve) => { timer = setTimeout(() => resolve(false), ms); }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (onReady) client.off("ready", onReady);
+  }
+}
+
+/**
  * Enqueue from a request: wait (bounded) for the producer connection, then add.
  * Redis down → QueueUnavailableError, and the job does NOT exist — the caller
  * records that, and nothing runs behind its back later.

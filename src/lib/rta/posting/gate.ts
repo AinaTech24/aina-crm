@@ -97,14 +97,22 @@ export async function assertPostingAllowed(
   if (!g.allowed) throw new PostingGateError(g.reasons);
   const { sql } = await import("drizzle-orm");
   const r = (await tx.execute(sql`
-    SELECT current_database() AS db, host(inet_server_addr()) AS addr, current_setting('app.tenant_id', true) AS tenant,
-           (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS su,
-           (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS bypass
-  `)).rows[0] as { db: string; addr: string | null; tenant: string | null; su: boolean; bypass: boolean };
+    SELECT current_database() AS db, host(inet_server_addr()) AS addr, current_setting('app.tenant_id', true) AS tenant
+  `)).rows[0] as { db: string; addr: string | null; tenant: string | null };
   const reasons: string[] = [];
   if (r.db !== env.RTA_POSTING_DATABASE) reasons.push("the connected database is not RTA_POSTING_DATABASE");
   if (g.kind === "development" && r.addr !== null && !["127.0.0.1", "::1"].includes(r.addr)) reasons.push("the connected database server is not on this machine");
-  if (r.su || r.bypass) reasons.push("the connected database role bypasses row-level security — posting runs only as the restricted application role");
+  // The role, inside this very transaction (final security patch): posting runs
+  // only as the restricted application role — never a superuser / BYPASSRLS
+  // role, an owner (directly or through membership), a role that can assume a
+  // privileged one, skip triggers or truncate / re-trigger the financial tables.
+  const { inspectRole, roleProblems } = await import("@/db/runtime-role");
+  const role = await inspectRole(async (text, params) => {
+    const q = sql.raw(text.replace("$1::text[]", `ARRAY[${(params[0] as string[]).map((t) => `'${t.replace(/'/g, "")}'`).join(",")}]::text[]`));
+    return tx.execute(q);
+  });
+  const problems = roleProblems(role);
+  if (problems.length) reasons.push(`the connected database role may not post (posting runs only as the restricted application role): ${problems.join("; ")}`);
   if ((r.tenant ?? "") !== tenantId) reasons.push("the transaction is not scoped to this firm");
   if (reasons.length) throw new PostingGateError(reasons);
   // Loaded here, not at module top: the env-only checks above are imported by

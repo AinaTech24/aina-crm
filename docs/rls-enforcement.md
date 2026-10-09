@@ -83,9 +83,12 @@ APP_DATABASE_URL=postgres://mfd_app:<password>@localhost:5432/mfd
 
 ### 4. Restart the app and the worker
 
-On boot, `assertNonBypassingRole()` (in `src/db/client.ts`) confirms the
-connected role is non-privileged. In production it **hard-exits** if the app is
-still on a superuser/bypassrls role (override only via `ALLOW_SUPERUSER_DB=1`).
+On boot, `assertRuntimeDatabase()` (in `src/db/client.ts`, rules in
+`src/db/runtime-role.ts`) confirms the connected role is restricted. In
+production the web and worker **refuse to start** when `APP_DATABASE_URL` is
+unset or its role is superuser, BYPASSRLS, an owner (directly or through
+membership), able to assume a privileged role or to skip triggers. There is no
+override in production.
 
 ### 5. Smoke-test
 
@@ -97,9 +100,10 @@ still on a superuser/bypassrls role (override only via `ALLOW_SUPERUSER_DB=1`).
 
 ## Rollback
 
-Unset `APP_DATABASE_URL` and restart. The app falls back to `DATABASE_URL`
-(superuser) immediately — RLS goes back to bypassed, explicit predicates remain
-the protection. No schema or data changes are involved, so rollback is instant.
+Outside production only: unset `APP_DATABASE_URL` and restart; the app falls
+back to `DATABASE_URL` with a warning. **In production there is no such
+rollback** (final security patch): without `APP_DATABASE_URL` the web and worker
+refuse to start. Fix the role's grants instead (`npm run db:provision-app-role`).
 
 ---
 

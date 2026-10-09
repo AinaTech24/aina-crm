@@ -154,6 +154,8 @@ export const users = pgTable(
      * lingering until its 8h TTL.
      */
     sessionsInvalidAfter: timestamp("sessions_invalid_after", { withTimezone: true }),
+    /** Last two-factor / password / revocation change (migration 0244): a session's MFA must be newer. */
+    mfaChangedAt: timestamp("mfa_changed_at", { withTimezone: true }),
     status: text("status", { enum: ["invited", "active", "suspended", "offboarding", "offboarded"] })
       .notNull()
       .default("invited"),

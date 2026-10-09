@@ -83,7 +83,10 @@ export async function POST(req: NextRequest) {
     // effect immediately across this process (older sessions die at once).
     clearSessionRevocationCache(session.userId);
 
-    const token = await issueSessionToken(session);
+    // A reset proves control of the mailbox, not the second factor: the
+    // session it issues is never MFA-verified (migration 0244), so it cannot
+    // authorize a privileged operator action until a TOTP step-up.
+    const token = await issueSessionToken({ ...session, auth: "password_reset" });
     const res = NextResponse.json({ ok: true });
     res.cookies.set(sessionCookieForRoles(session.roles), token, {
       httpOnly: true,

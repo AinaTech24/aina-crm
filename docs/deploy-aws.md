@@ -130,7 +130,7 @@ have to remember `migrate:all` again. (A brand-new DB still needs the one-time
 - `.env.production.example` — every env var, grouped + marked required/optional.
 
 ## Hardening (built in)
-- `ALLOW_SUPERUSER_DB=0` → app runs as the non-superuser RLS role (live tenant isolation).
+- `APP_DATABASE_URL` (the non-superuser RLS role) is REQUIRED: in production the web and worker refuse to start without it, or on a privileged role; `ALLOW_SUPERUSER_DB` has no effect in production.
 - RDS private (no public IP); SSH restricted to your IP; security headers via Caddy.
 - Secrets only in `.env.production` on the box (chmod 600), never in the repo.
 - Nightly DB backup: RDS automated (Tier 1) or `pg_dump → S3` cron (Tier 0).

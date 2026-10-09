@@ -42,7 +42,9 @@ export async function POST() {
 
     // Legacy / untracked session → re-issue with a sid + record the device row.
     const res = NextResponse.json({ ok: true, registered: true });
+    // A re-issued session inherits nothing: never MFA-verified.
     await attachSessionCookie(res, {
+      auth: "reissue",
       userId: s.userId,
       tenantId: s.tenantId,
       branchId: s.branchId ?? null,

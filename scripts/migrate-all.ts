@@ -83,6 +83,8 @@ async function main() {
   // the shared client at the master URL BEFORE importing it (it reads the
   // connection string at module load).
   if (process.env.DATABASE_URL) process.env.APP_DATABASE_URL = process.env.DATABASE_URL;
+  // Declared tooling (src/db/runtime-role.ts): the only process allowed the migration role.
+  process.env.DB_TOOLING = "1";
   const { withSystem, pool } = await import("../src/db/client");
 
   const files = readdirSync(MIGRATIONS_DIR)

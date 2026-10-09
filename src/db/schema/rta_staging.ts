@@ -466,3 +466,69 @@ export const schemeRtaCodes = pgTable(
     statusIdx: index("scheme_rta_codes_status_idx").on(t.tenantId, t.status),
   }),
 );
+
+/** Every scheduled RTA posting reconciliation run, slotted in Asia/Kolkata (migration 0244). */
+export const rtaReconciliationRuns = pgTable("rta_reconciliation_runs", {
+  id,
+  slotDate: date("slot_date").notNull(),
+  scheduledFor: timestamp("scheduled_for", { withTimezone: true }).notNull(),
+  scheduleTimezone: text("schedule_timezone").notNull().default("Asia/Kolkata"),
+  trigger: text("trigger", { enum: ["schedule", "catch_up", "manual"] }).notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
+  heartbeatAt: timestamp("heartbeat_at", { withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  status: text("status", { enum: ["running", "ok", "discrepancy", "failed", "incomplete"] }).notNull().default("running"),
+  firmsChecked: integer("firms_checked"),
+  firmsWithDiscrepancy: integer("firms_with_discrepancy"),
+  error: text("error"),
+  worker: text("worker"),
+});
+
+/** One row per firm per reconciliation run (migration 0244). */
+export const rtaReconciliationRunFirms = pgTable("rta_reconciliation_run_firms", {
+  id,
+  runId: uuid("run_id").notNull(),
+  tenantId,
+  ok: boolean("ok").notNull(),
+  counts: jsonb("counts").$type<Record<string, number>>(),
+  error: text("error"),
+  checkedAt: timestamp("checked_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Platform operational alerts, kept until a person acknowledges them (migration 0244). */
+export const opsAlerts = pgTable("ops_alerts", {
+  id,
+  kind: text("kind").notNull(),
+  severity: text("severity", { enum: ["critical", "warning", "info"] }).notNull(),
+  dedupKey: text("dedup_key").notNull(),
+  firmId: uuid("firm_id"),
+  summary: text("summary").notNull(),
+  details: jsonb("details").$type<Record<string, unknown>>().notNull(),
+  status: text("status", { enum: ["open", "acknowledged"] }).notNull().default("open"),
+  deliveryState: text("delivery_state", { enum: ["pending", "retrying", "delivered", "undeliverable"] }).notNull().default("pending"),
+  occurrences: integer("occurrences").notNull().default(1),
+  firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).defaultNow().notNull(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow().notNull(),
+  deliveryAttempts: integer("delivery_attempts").notNull().default(0),
+  nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).defaultNow().notNull(),
+  lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+  lastError: text("last_error"),
+  deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+  escalatedAt: timestamp("escalated_at", { withTimezone: true }),
+  escalationReason: text("escalation_reason"),
+  acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+  acknowledgedBy: uuid("acknowledged_by"),
+  ackNote: text("ack_note"),
+});
+
+/** Append-only log of every alert delivery attempt (migration 0244). */
+export const opsAlertDeliveries = pgTable("ops_alert_deliveries", {
+  id,
+  alertId: uuid("alert_id").notNull(),
+  channel: text("channel", { enum: ["primary", "escalation"] }).notNull(),
+  attempt: integer("attempt").notNull(),
+  at: timestamp("at", { withTimezone: true }).defaultNow().notNull(),
+  outcome: text("outcome", { enum: ["delivered", "failed", "not_configured"] }).notNull(),
+  httpStatus: integer("http_status"),
+  error: text("error"),
+});

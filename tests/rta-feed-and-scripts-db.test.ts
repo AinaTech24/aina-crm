@@ -126,8 +126,13 @@ describe.skipIf(!TEST_DB)("drop folder, SFTP and operator scripts (DB)", () => {
     const a = run([], { DEMO_TENANT_ID: "" });
     expect(a.status).toBe(1);
     expect(a.stderr).toMatch(/must name the demo firm/);
-    const b = run(["--tenant", firm], { DEMO_TENANT_ID: firm, NODE_ENV: "production" });
+    // Production with the restricted role: the script's own guard refuses.
+    const b = run(["--tenant", firm], { DEMO_TENANT_ID: firm, NODE_ENV: "production", APP_DATABASE_URL: TEST_DB! });
     expect(b.status).toBe(1);
     expect(b.stderr).toMatch(/in production/);
+    // Production without APP_DATABASE_URL: refused earlier, by the database layer (final security patch).
+    const c = run(["--tenant", firm], { DEMO_TENANT_ID: firm, NODE_ENV: "production", APP_DATABASE_URL: "" });
+    expect(c.status).toBe(1);
+    expect(c.stderr).toMatch(/APP_DATABASE_URL is not set/);
   });
 });

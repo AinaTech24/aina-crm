@@ -58,21 +58,49 @@ export type ControlRequest = {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const err = (message: string, status: number) => Object.assign(new ControlError(message), { status });
 
+/** Longest a session's second-factor verification counts for an operator action (≤ the database's 12 hours). */
+export const operatorMfaMaxAgeMinutes = () => Math.min(Math.max(Number(process.env.RTA_OPERATOR_MFA_MAX_AGE_MIN ?? 720) || 720, 1), 720);
+
 /**
  * The operator behind a session, as the database knows them now. Throws 401
  * for a missing / revoked session and 403 for anyone who is not an active
- * platform_admin with two-factor authentication on.
+ * platform_admin with two-factor authentication on. With `live`, the session
+ * itself must be MFA-verified (migration 0244): created by a completed TOTP /
+ * backup-code challenge, within the operator window, and after the operator's
+ * last security change — a password-reset, pre-enrolment, re-issued or
+ * downgraded session is refused (403, "step up"). The database's
+ * rta_operator_ok enforces the same inside the transaction.
  */
-async function verifyOperator(tx: Tx, userId: string, sid: string | null | undefined, opts: { live: boolean; who: string }) {
+export async function verifyOperator(tx: Tx, userId: string, sid: string | null | undefined, opts: { live: boolean; who: string }) {
   if (!userId || !UUID.test(userId)) throw err(`${opts.who}: a signed-in platform session is required`, 401);
-  const u = (await tx.execute(sql`SELECT status, roles, coalesce(two_fa_enabled, false) AS two_fa FROM users WHERE id = ${userId}::uuid`)).rows[0] as { status: string; roles: string[]; two_fa: boolean } | undefined;
+  const u = (await tx.execute(sql`SELECT status, roles, coalesce(two_fa_enabled, false) AS two_fa, mfa_changed_at, sessions_invalid_after FROM users WHERE id = ${userId}::uuid`)).rows[0] as
+    { status: string; roles: string[]; two_fa: boolean; mfa_changed_at: string | null; sessions_invalid_after: string | null } | undefined;
   if (!u) throw err(`${opts.who}: not a platform operator`, 403);
   if (u.status !== "active") throw err(`${opts.who}: this operator account is not active`, 403);
   if (!(u.roles ?? []).includes("platform_admin")) throw err(`${opts.who}: needs the platform_admin role`, 403);
   if (!u.two_fa) throw err(`${opts.who}: two-factor authentication must be on for this operator`, 403);
   if (!sid) throw err(`${opts.who}: a signed-in platform session is required`, 401);
-  const s = (await tx.execute(sql`SELECT revoked_at FROM user_sessions WHERE session_id = ${sid} AND user_id = ${userId}::uuid LIMIT 1`)).rows[0] as { revoked_at: string | null } | undefined;
-  if (!s || (opts.live && s.revoked_at)) throw err(`${opts.who}: this session is not live (signed out or revoked)`, 401);
+  const s = (await tx.execute(sql`
+    SELECT revoked_at, created_at, auth_method, mfa_verified_at,
+           (mfa_verified_at > now() - make_interval(mins => ${operatorMfaMaxAgeMinutes()}::int)) AS mfa_fresh
+      FROM user_sessions WHERE session_id = ${sid} AND user_id = ${userId}::uuid LIMIT 1`)).rows[0] as
+    { revoked_at: string | null; created_at: string; auth_method: string | null; mfa_verified_at: string | null; mfa_fresh: boolean | null } | undefined;
+  if (!s) throw err(`${opts.who}: this session is not live (signed out or revoked)`, 401);
+  if (!opts.live) return { mfaVerifiedAt: s.mfa_verified_at, authMethod: s.auth_method };
+  if (s.revoked_at || (u.sessions_invalid_after && Date.parse(s.created_at) < Date.parse(u.sessions_invalid_after))) {
+    throw err(`${opts.who}: this session is not live (signed out or revoked)`, 401);
+  }
+  const stepUp = "complete the two-factor step-up (POST /api/super-admin/step-up) or sign in again with your authenticator code";
+  if (!s.mfa_verified_at) {
+    const how = s.auth_method === "password_reset" ? "a password reset" : s.auth_method === "reissue" ? "a re-issued session"
+      : s.auth_method ? `"${s.auth_method}"` : "a sign-in before two-factor was recorded on sessions";
+    throw err(`${opts.who}: this session did not complete a two-factor challenge (it came from ${how}, or was downgraded by a security change) — ${stepUp}`, 403);
+  }
+  if (u.mfa_changed_at && Date.parse(s.mfa_verified_at) <= Date.parse(u.mfa_changed_at)) {
+    throw err(`${opts.who}: two-factor or password settings changed after this session was verified — ${stepUp}`, 403);
+  }
+  if (!s.mfa_fresh) throw err(`${opts.who}: this session's two-factor verification is older than ${operatorMfaMaxAgeMinutes()} minutes — ${stepUp}`, 403);
+  return { mfaVerifiedAt: s.mfa_verified_at, authMethod: s.auth_method };
 }
 
 const rowOf = (r: any): ControlRequest => ({
@@ -137,7 +165,7 @@ export async function requestControlAction(session: OperatorSession, input: Cont
   if ((input.changeRef ?? "").trim().length < 3) throw err("a change / approval reference is required", 400);
   const ttl = Math.min(Math.max(Number(input.ttlMinutes ?? process.env.RTA_CONTROL_REQUEST_TTL_MIN ?? 120), 1), 24 * 60);
   return withPlatformAdmin(session.userId, async (tx: Tx) => {
-    await verifyOperator(tx, session.userId, session.sid, { live: true, who: "requester" });
+    const mfa = await verifyOperator(tx, session.userId, session.sid, { live: true, who: "requester" });
     const shaped = await shapeRequest(tx, input);
     const row = (await tx.execute(sql`
       INSERT INTO rta_control_requests (action, tenant_id, scope, payload, payload_hash, change_ref, reason, requested_by, requester_sid, expires_at)
@@ -148,7 +176,7 @@ export async function requestControlAction(session: OperatorSession, input: Cont
       await tx.execute(sql`
         INSERT INTO audit_log (tenant_id, actor_user_id, actor_type, action, entity_type, entity_id, after, reason)
         VALUES (${shaped.tenantId}::uuid, ${session.userId}::uuid, 'user', 'rta.control.request', 'rta_control_request', ${row.id}::uuid,
-                ${JSON.stringify({ action: input.action, scope: shaped.scope, payload: shaped.payload, changeRef: input.changeRef.trim() })}::jsonb, ${reason})`);
+                ${JSON.stringify({ action: input.action, scope: shaped.scope, payload: shaped.payload, changeRef: input.changeRef.trim(), requesterMfaVerifiedAt: mfa.mfaVerifiedAt, requesterAuthMethod: mfa.authMethod })}::jsonb, ${reason})`);
     }
     return rowOf((await tx.execute(sql`${SELECT} WHERE id = ${row.id}::uuid`)).rows[0]);
   });
@@ -168,7 +196,7 @@ export async function approveControlAction(session: OperatorSession, input: { re
     if (req.status !== "pending") throw err(`this request is already ${req.status} — a request is used once`, 409);
     if (Date.parse(req.expiresAt) <= Date.now()) throw err(`this request expired at ${req.expiresAt} — file a new one`, 409);
     if (req.requestedBy === session.userId) throw err("you cannot approve your own request — a DIFFERENT operator must approve it", 403);
-    await verifyOperator(tx, session.userId, session.sid, { live: true, who: "approver" });
+    const approverMfa = await verifyOperator(tx, session.userId, session.sid, { live: true, who: "approver" });
     const reqSid = (await tx.execute(sql`SELECT requester_sid FROM rta_control_requests WHERE id = ${req.id}::uuid`)).rows[0] as { requester_sid: string };
     await verifyOperator(tx, req.requestedBy, reqSid.requester_sid, { live: false, who: "requester" });
     if (!input.payloadHash || input.payloadHash !== req.payloadHash) throw err("this is not the request you reviewed (the payload hash differs) — review it again", 409);
@@ -213,7 +241,7 @@ export async function approveControlAction(session: OperatorSession, input: { re
       await tx.execute(sql`
         INSERT INTO audit_log (tenant_id, actor_user_id, actor_type, action, entity_type, entity_id, after, reason)
         VALUES (${req.tenantId}::uuid, ${session.userId}::uuid, 'user', 'rta.control.execute', 'rta_control_request', ${req.id}::uuid,
-                ${JSON.stringify({ action: req.action, scope: req.scope, requestedBy: req.requestedBy, approvedBy: session.userId, changeRef: req.changeRef, payloadHash: req.payloadHash })}::jsonb, ${req.reason})`);
+                ${JSON.stringify({ action: req.action, scope: req.scope, requestedBy: req.requestedBy, approvedBy: session.userId, changeRef: req.changeRef, payloadHash: req.payloadHash, approverMfaVerifiedAt: approverMfa.mfaVerifiedAt, approverAuthMethod: approverMfa.authMethod })}::jsonb, ${req.reason})`);
     }
     return rowOf((await tx.execute(sql`${SELECT} WHERE id = ${req.id}::uuid`)).rows[0]);
   });

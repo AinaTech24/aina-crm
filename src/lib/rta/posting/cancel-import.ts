@@ -26,12 +26,10 @@ export async function cancelParkedImport(session: { userId: string; sid?: string
   if (reason.length < 10) throw err("a reason of at least 10 characters is required", 400);
   if (!UUID.test(input.tenantId ?? "") || !UUID.test(input.importId ?? "")) throw err("a firm id and an import id are required", 400);
   const row = await withPlatformAdmin(session.userId, async (tx: Tx) => {
-    const u = (await tx.execute(sql`
-      SELECT u.status, u.roles, coalesce(u.two_fa_enabled, false) AS two_fa,
-             EXISTS (SELECT 1 FROM user_sessions s WHERE s.session_id = ${session.sid ?? ""} AND s.user_id = u.id AND s.revoked_at IS NULL) AS live
-        FROM users u WHERE u.id = ${session.userId}::uuid`)).rows[0] as { status: string; roles: string[]; two_fa: boolean; live: boolean } | undefined;
-    if (!u || u.status !== "active" || !(u.roles ?? []).includes("platform_admin") || !u.two_fa) throw err("cancelling an import needs an active two-factor platform operator", 403);
-    if (!u.live) throw err("this session is not live (signed out or revoked)", 401);
+    // One signed-in operator, with an MFA-verified session (migration 0244):
+    // a cancellation is final, so it is not a stop that must never be blocked.
+    const { verifyOperator } = await import("./approvals");
+    await verifyOperator(tx, session.userId, session.sid, { live: true, who: "operator" });
     const r = (await tx.execute(sql`
       SELECT id::text, status, file_name FROM rta_file_imports WHERE tenant_id = ${input.tenantId}::uuid AND id = ${input.importId}::uuid FOR UPDATE`)).rows[0] as { id: string; status: string; file_name: string } | undefined;
     if (!r) throw err("import not found for this firm", 404);
@@ -55,17 +53,25 @@ export async function cancelParkedImport(session: { userId: string; sid?: string
   let jobsRemoved = 0;
   let queueChecked = false;
   try {
-    const { Q } = await import("@/workers/queues");
-    const q = Q.rtaImport();
-    // Bounded: Redis being down must not hang the operator — the row is already final.
-    const sweep = (async () => {
-      const jobs = await q.getJobs(["delayed", "wait", "waiting", "paused", "prioritized"] as any);
-      for (const j of jobs) {
-        if (j && (j.data as any)?.importId === input.importId) { await j.remove(); jobsRemoved++; }
-      }
-      return true;
-    })();
-    queueChecked = await Promise.race([sweep, new Promise<boolean>((r) => setTimeout(() => r(false), Number(process.env.RTA_CANCEL_QUEUE_TIMEOUT_MS ?? 5000)))]);
+    const { Q, producerReady } = await import("@/workers/queues");
+    // The producer connection has no offline buffer, and the sweep starts only
+    // once it is READY (bounded): with Redis down nothing is sent now and
+    // nothing is replayed later, behind the operator's back, when Redis
+    // returns (FS-8). Jobs it could not reach stay queued and the worker
+    // refuses them.
+    const timeoutMs = Number(process.env.RTA_CANCEL_QUEUE_TIMEOUT_MS ?? 5000);
+    if (await producerReady(timeoutMs)) {
+      const q = Q.rtaImportProducer();
+      // Bounded: Redis failing mid-sweep must not hang the operator — the row is already final.
+      const sweep = (async () => {
+        const jobs = await q.getJobs(["delayed", "wait", "waiting", "paused", "prioritized"] as any);
+        for (const j of jobs) {
+          if (j && (j.data as any)?.importId === input.importId) { await j.remove(); jobsRemoved++; }
+        }
+        return true;
+      })().catch(() => false);
+      queueChecked = await Promise.race([sweep, new Promise<boolean>((r) => setTimeout(() => r(false), timeoutMs))]);
+    }
   } catch {
     queueChecked = false;
   }

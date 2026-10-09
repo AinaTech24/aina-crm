@@ -6,13 +6,15 @@
 
 **Development is frozen** at commit `8523a01` (accepted). No further feature work is authorized. What remains is operational evidence: release conditions A–F (§3) and the final security checks FS-1 – FS-10 (§2.5), each recorded by the role named for it.
 
+**Final security patch before production preflight (migration 0244) — the one authorized exception to the freeze.** Three weaknesses found after `f7e26b0` are fixed in software (§7.3): MFA is enforced on the authenticated **session** (FS-1); the web and worker never fall back to a privileged database role (FS-2); the nightly reconciliation is recorded, monitored and its alerts are persisted until acknowledged (FS-10). FS-7 and FS-8 were rehearsed on an isolated copy (results in each check). Not deployed, not migrated in production; nothing posted. **No release condition and no FS check changes status because of it.**
+
 **This is the single operational document.** Supporting material:
 - `docs/rta/handover/kfintech-pilot-scheme-codes.csv` — the 118 pilot-scope KFintech scheme codes, with processed and rejected business kept apart.
 - `docs/rta/handover/kfintech-pilot-totals.csv` — the reconciliation totals the CSV must add up to (checked by `tests/pilot-handover-csv.test.ts`).
 - `scripts/rta-file-manifest.ts` — read-only, no database: the per-file manifest and the daily MFSD201 calendar (§1.3, §5.9).
 - `docs/rta/PILOT_PREFLIGHT.md` — the development evidence report.
 
-**Development results are not production outcomes.** Every count in §1 and §4 comes from the real sample files, imported into **isolated development databases** (`rta_handover`, then `rta_final` for the corrections round, built from empty at migration 0242; then `rta_p0` for the final security patch, at migration 0243 — each with the authentic AMFI file of 07-Oct-2026). Production files, dates and counts will differ; the pilot is judged on its own evidence.
+**Development results are not production outcomes.** Every count in §1 and §4 comes from the real sample files, imported into **isolated development databases** (`rta_handover`, then `rta_final` for the corrections round, built from empty at migration 0242; then `rta_p0` for the final security patch, at migration 0243; then `rta_fs7` for the 0244 patch, built from empty — each with the authentic AMFI file of 07-Oct-2026). Production files, dates and counts will differ; the pilot is judged on its own evidence.
 
 **Final security patch (migration 0243).** The five defects of §7 are fixed in software, not held by process: two-person starts are requests filed and approved by two separately signed-in operators (§5.1, EC-6); the activation names the report types it covers — MFSD211 + MFSD201 for this pilot — and every entry point enforces them (EC-2, §5.4); a legacy row is linked only when every fact, scheme identity included, agrees (EC-1); the Operations dashboard counts rejected instructions and legs separately (§4.1); a parked import is cancelled with an explicit, final status (§5.4).
 
@@ -401,63 +403,64 @@ Added at the development freeze (commit `8523a01` accepted). **Each one is NOT V
 
 **FS-1 — The operators' live sessions satisfied the actual MFA requirement**
 
-*Why a flag is not enough (found while preparing this check, not fixed — development is frozen):*
-- The database check (`rta_operator_ok`) and the API check accept an operator when `users.two_fa_enabled` is true and the session is live. A `user_sessions` row does not record how it was authenticated.
-- The password sign-in (`/api/auth/login`) issues no session to a two-factor account; the session comes only from `/api/auth/2fa/verify` (TOTP or a one-time backup code).
-- But **two other ways produce a live session without a TOTP step**, and both pass the flag check:
-  - **password reset** (`/api/auth/reset`) signs the user in straight after a reset, with no two-factor challenge;
-  - a session created **before** two-factor was enabled stays live (enabling two-factor does not revoke sessions). `/api/me/session/register` and `/api/auth/refresh` only continue an existing session, so they inherit whatever it was.
+*What the software enforces (migration 0244):*
+- Every session row records **how it was created**: `user_sessions.auth_method` (`password_totp`, `password_backup_code`, `step_up_totp`, `step_up_backup_code` — the MFA methods; `password`, `password_reset`, `signup`, `invite`, `reissue` — not MFA) and `mfa_verified_at`, set only when a completed challenge creates the session. The database refuses raising, back-dating or relabelling a session's MFA afterwards.
+- A **password reset** signs the user in with `auth_method = password_reset` and no MFA; that session cannot request or approve anything until the operator completes `POST /api/super-admin/step-up` (TOTP or one backup code), which revokes it and issues a new MFA session.
+- A **security change** — password, TOTP secret, two-factor on/off, sign-out-everywhere — stamps `users.mfa_changed_at` and downgrades every session of that user (audit `auth.mfa.sessions_downgraded`). A session from before enrolment therefore never qualifies.
+- Every START (activation, release, reversal, undo, platform approvals) needs **both** people on a live, unrevoked session verified within **12 hours** and after the operator's last security change — in the API (`verifyOperator`) and in the database (`rta_operator_ok`). `cancel_import` and alert acknowledgement need the same. Stops (halt, pause, revoke) need only a live platform session.
+- Audit: `auth.session.created` (method, MFA yes/no), `auth.2fa.failed`, `auth.mfa.sessions_downgraded`, and each control request's `requesterAuthMethod` / `requesterMfaVerifiedAt` / `approverAuthMethod` / `approverMfaVerifiedAt`. No password, code, session id or token is recorded.
+
+The database is the primary evidence; the access log is corroboration only.
 
 *Procedure* (before F part 2, and again before every two-person action during the pilot):
-1. Each operator, already enrolled in two-factor, uses **Sign out everywhere** (`POST /api/me/sign-out-everywhere`), which revokes every session they hold. Record the time.
-2. Each signs in fresh: password, then a **TOTP code** from their authenticator. A backup code is an exception, recorded in the ticket with the reason; it shows as `backup_codes_left` falling by one.
+1. Each operator, already enrolled in two-factor, uses **Sign out everywhere** (`POST /api/me/sign-out-everywhere`). Record the time.
+2. Each signs in fresh: password, then a **TOTP code**. A backup code is an exception, recorded in the ticket with the reason.
 3. The DBA runs:
    ```sql
-   -- (a) enrolment, resets and session revocation, per operator
-   SELECT u.id, u.status, u.roles, u.two_fa_enabled,
-          jsonb_array_length(coalesce(u.two_fa_backup_codes, '[]'::jsonb)) AS backup_codes_left, u.sessions_invalid_after,
-          (SELECT max(a.at) FROM audit_log a WHERE a.entity_id = u.id AND a.action = 'user.2fa_enabled')  AS mfa_enrolled_at,
-          (SELECT max(a.at) FROM audit_log a WHERE a.entity_id = u.id AND a.action = 'user.2fa_disabled') AS mfa_last_disabled_at,
-          (SELECT max(r.consumed_at) FROM password_resets r WHERE r.user_id = u.id)                      AS last_password_reset_at
+   -- (a) per operator: enrolment, last security change, sign-out-everywhere
+   SELECT u.id, u.status, u.roles, u.two_fa_enabled, u.mfa_changed_at, u.sessions_invalid_after,
+          jsonb_array_length(coalesce(u.two_fa_backup_codes, '[]'::jsonb)) AS backup_codes_left,
+          (SELECT max(r.consumed_at) FROM password_resets r WHERE r.user_id = u.id) AS last_password_reset_at
      FROM users u WHERE u.id IN ('<op 1>', '<op 2>');
-   -- (b) every live or recent session of the two operators
-   SELECT s.user_id, s.session_id, s.created_at, s.revoked_at, s.last_seen_at, s.ip_address, left(s.user_agent, 60) AS agent
+   -- (b) every live or recent session, with how it was authenticated
+   SELECT s.user_id, s.created_at, s.auth_method, s.mfa_verified_at, s.revoked_at, s.ip_address
      FROM user_sessions s WHERE s.user_id IN ('<op 1>', '<op 2>')
       AND (s.revoked_at IS NULL OR s.created_at > now() - interval '30 days') ORDER BY s.user_id, s.created_at;
    -- (c) the sessions that filed and approved each executed control request
    SELECT r.id, r.action, r.requested_at, r.decided_at,
-          rs.created_at AS requester_session_created, rs.revoked_at AS requester_session_revoked, rs.ip_address AS requester_ip,
-          aps.created_at AS approver_session_created, aps.revoked_at AS approver_session_revoked, aps.ip_address AS approver_ip
+          rs.auth_method AS requester_method, rs.mfa_verified_at AS requester_mfa_at,
+          aps.auth_method AS approver_method, aps.mfa_verified_at AS approver_mfa_at,
+          r.requested_by <> r.approved_by AS two_people
      FROM rta_control_requests r
      JOIN user_sessions rs ON rs.session_id = r.requester_sid
      LEFT JOIN user_sessions aps ON aps.session_id = r.approver_sid
     WHERE r.status = 'executed' AND (r.tenant_id = '<firm>' OR r.scope IN ('global', 'emergency'))
     ORDER BY r.requested_at;
+   -- (d) the authentication audit trail of both operators since the sign-out
+   SELECT at, actor_user_id, action, after FROM audit_log
+    WHERE actor_user_id IN ('<op 1>', '<op 2>') AND action IN ('auth.session.created', 'auth.2fa.failed', 'auth.mfa.sessions_downgraded')
+      AND at > '<sign-out time>' ORDER BY at;
    ```
-4. The infrastructure engineer pulls, from the web server or load-balancer access log, for **each session in (c)**:
-   - a `POST /api/auth/login` answered 200 (the two-factor challenge), then
-   - a `POST /api/auth/2fa/verify` answered 200 from the same client within a few minutes, at the session's `created_at`;
-   - and **no** `POST /api/auth/reset` or `POST /api/me/session/register` answered 200 for that operator between their sign-out-everywhere and the action.
+4. The infrastructure engineer, as corroboration, pulls from the access log for each session in (c) the `POST /api/auth/2fa/verify` (or `/api/super-admin/step-up`) answered 200 at the session's `created_at` (path, status, time, client IP; never the cookie or token).
 
 *Expected:*
-- `mfa_enrolled_at` is before every session used; `mfa_last_disabled_at` is empty or earlier still.
-- `last_password_reset_at` is empty or before the sign-out-everywhere.
-- Every session used for a request was created after the sign-out-everywhere and has its login + 2fa/verify pair in the log.
-- No other session of either operator is live.
+- (c): every requester and approver method is `password_totp` or `step_up_totp` (a `*_backup_code` only as a recorded exception), `mfa_verified_at` within 12 hours before `decided_at`, and `two_people` true.
+- (a)/(b): each session used was created after the sign-out-everywhere and after `mfa_changed_at`; no other session of either operator is live.
+- (d): an `auth.session.created` with `mfaVerified: true` for each session used; any `auth.2fa.failed` is explained.
 
-*Evidence:* the three query outputs; the access-log lines (path, status, time, client IP; never the cookie or token); the sign-out times.
+*Development evidence* (`tests/auth-mfa-session-db.test.ts`, 7 tests, real login / 2fa / reset / step-up routes):
+- **Bypass 1, password reset — before:** the 0243 rule accepted the reset session. **After:** the API answers 403 ("did not complete a two-factor challenge (it came from a password reset)"), the database refuses the request row, and only a TOTP step-up session can file it; a wrong step-up code is 401 and audited without the code.
+- **Bypass 2, pre-enrolment session — before:** accepted. **After:** 403; a fresh password + TOTP sign-in succeeds.
+- A password change and a secret change downgrade live sessions (audited); a revoked session is 401; a session verified 13 hours ago is refused; a backup code counts once; forged, raised, back-dated or relabelled MFA is refused by the database; the same person on two MFA sessions still cannot approve their own request.
 
-*Stop if:*
-- a session used for a request has no login + 2fa/verify pair;
-- a password reset or session re-issue for an operator after their fresh sign-in;
-- two-factor disabled at any time during the pilot;
-- the access logs do not keep request paths and status codes. Then MFA cannot be evidenced: **NO-GO**.
+*Stop if:* any session used for a request is not an MFA method, is older than 12 hours at the decision, predates the operator's sign-out or last security change, or the requester and approver are the same person. The database should make this impossible — if one is found, **NO-GO** and report it as a defect.
 
 **FS-2 — The production app and worker database roles cannot bypass RLS and are neither owner nor superuser**
 
-*Why:*
-- The app uses `APP_DATABASE_URL` **only when it is set**. Otherwise the web app and the worker connect with `DATABASE_URL`, the privileged role migrations use (`src/db/client.ts`).
-- The posting gate refuses a superuser or BYPASSRLS connection. It does **not** refuse a role that owns the tables, and an owner can disable the guard triggers.
+*What the software enforces (migration 0244, `src/db/runtime-role.ts`):*
+- In production the web and the worker connect **only** with `APP_DATABASE_URL`. Unset → they refuse to start (exit 1); there is no fallback to `DATABASE_URL`. A process with `DB_TOOLING=1` (the migration runner's marker) refuses to start as web or worker. `ALLOW_SUPERUSER_DB` has no effect in production.
+- At start (worker: before any job or timer; web: the server start hook) and again **inside every posting transaction**, the connected role is refused when it is SUPERUSER, BYPASSRLS or CREATEROLE; owns the database or any table, view, sequence or function in `public` (directly or through membership); can assume a role that does; may set `session_replication_role`; or holds TRIGGER / TRUNCATE / REFERENCES on a financial or control table.
+- The refusal names role@host/database and the reasons — never a password. A healthy start logs `✓ Database role '<role>' verified for the worker` / `[web] database role '<role>' verified`.
 
 *Procedure:*
 1. **Infrastructure engineer**, on the web host and on every worker host, prints only the user name, host and database:
@@ -480,6 +483,7 @@ Added at the development freeze (commit `8523a01` accepted). **Each one is NOT V
       AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid AND a.attname = 'tenant_id' AND NOT a.attisdropped);
    ```
    Then `npm run check:rls` on the copy.
+3. **Infrastructure engineer:** restart the web and the worker on each host and keep the start lines above (or, for a refusal, the diagnostics). On the copy, start the worker once with `APP_DATABASE_URL` unset and once with the migration role, and record both refusals (exit 1).
 
 *Expected:*
 - `APP_DATABASE_URL` is set on every web and worker host and names a role other than the migration role.
@@ -487,7 +491,7 @@ Added at the development freeze (commit `8523a01` accepted). **Each one is NOT V
 - Neither role owns any object, the database or any function.
 - `tenant_tables_without_forced_rls` is 0, and `check:rls` passes.
 
-*Development result:* `mfd_app` all false, owns nothing (the 213 objects, 49 functions and the database belong to the migration role), 8 guard triggers enabled, 0 tables without forced RLS. That is not production evidence.
+*Development result:* `mfd_app` all false, owns nothing (the 213 objects, 49 functions and the database belong to the migration role), 8 guard triggers enabled, 0 tables without forced RLS. `tests/runtime-db-role-db.test.ts` (9): in production mode the worker and web refuse to start — exit 1, no password printed — with `APP_DATABASE_URL` missing, a superuser, a BYPASSRLS role, a table owner, a member of the owner role, a CREATEROLE role and `DB_TOOLING=1`; the real worker entry point with the owner role exits before "Worker process up"; the restricted role starts; web and worker start with different restricted credentials; the posting gate refuses owner, member, BYPASSRLS and TRIGGER-holding roles; as the restricted role, tenant isolation holds, `ALTER TABLE … DISABLE TRIGGER` is refused ("must be owner") and `SET session_replication_role` is refused. That is not production evidence.
 
 *Stop if:* `APP_DATABASE_URL` is unset on any host; either role is superuser, BYPASSRLS or an owner, is a member of a privileged role, or can set `session_replication_role`.
 
@@ -618,7 +622,16 @@ SELECT outcome, count(*), max(received_at) FROM rta_inbound_messages WHERE tenan
 - Each `by_other_code_review_each` row is a historical code with the approved mapping that ties it to the same AMFI scheme, listed and signed.
 - Every `identity_conflict` has a written decision (EC-1).
 
-*Development evidence:* in `rta_p0`, 1,061 linked and 0 conflicts. This breakdown query was **not** run there; run it on the copy.
+*Development evidence (isolated copy `rta_fs7`, built from empty at 0244, AMFI 07-Oct-2026; the four real KFintech files; aggregates only):*
+
+| Firm | What was done | Result |
+|---|---|---|
+| L | legacy importer (`import-rta-local.ts --commit`): 1,061 rows (1,058 processed, 3 rejected legs, ₹81,50,526.51); then two-person activation (MFA sessions, MFSD211 + MFSD201) and the same four files through validate-first | `matched_existing` **1,061** = `by_registrar_code` **1,061** + 0 + 0; `registrar_column_differs`, `no_scheme_on_crm_row`, `amfi_match_on_unverified_mapping` all **0**; folio, date and amount equal on 1,061 / 1,061; 15 lot-by-lot redemptions the legacy importer held back posted new; 18 folio corrections held; 6 unknown codes unsupported; reconcile all 0 |
+| L, second run | the same four files again | `already_posted` 1,076; no new transaction or ledger row; the breakdown unchanged; reconcile all 0 |
+| L | the legacy rows (financial and scheme fields, hashed) before, after run 1, after run 2 | **unchanged** (no historical mutation) |
+| X (collision drill) | the same legacy build, then **6** processed legacy rows given the code of **another scheme of the same AMC**; then activation and validate-first | the 6 → **`identity_conflict` holds**, 0 linked, 0 re-posted as new; the other 1,055 matched by registrar code; breakdown counts 0; a second run held the same 6 again and duplicated nothing; legacy rows unchanged; reconcile all 0 |
+
+That is not production evidence; run the query on the production copy.
 
 *Stop if:* any count above is non-zero without a signed explanation; a production ledger row exists before F.
 
@@ -646,7 +659,9 @@ SELECT outcome, count(*), max(received_at) FROM rta_inbound_messages WHERE tenan
 - `staging_batches` 0, `audit_rows` 1, `file_kept` true.
 - No transaction is written.
 
-*Development evidence:* `tests/rta-cancel-import-db.test.ts` covered the cancel with Redis unreachable, the worker refusing the surviving job (called directly), and removal on a real Redis. The full stop–cancel–start sequence, with the delayed job firing after recovery, was **not** rehearsed as one run. Run it here.
+*Development evidence:* the COMPLETE sequence as ONE test, `tests/rta-fs8-redis-cancel-db.test.ts` (real Postgres, a real `redis-server` with AOF persistence that the test stops and restarts, the real BullMQ worker, the real cancel route): (1) import queued; (2) firm paused → the worker parks it (`Held …`, delayed job); a second copy of the job queued, delayed; (3) Redis stopped; (4) cancelled by an MFA-verified operator in 1.5 s → 200, `queueChecked: false`, `jobsRemoved: 0`; (5) Redis restarted — both delayed jobs still queued; (6) firm resumed by a two-person request; the parked job, the delayed copy and a fresh retry **all ran** and each logged "was cancelled by an operator — not run" (3 refusals, 0 failed jobs); an un-cancelled control import queued afterwards was staged by the same worker (the test is not vacuous); (7) the cancelled import: 0 staging batches, 0 transactions, 0 ledger rows, file kept; (8) status `cancelled`, `cancelled_at` unchanged from step 4, one `rta.import.cancel` audit row, activations `paused → validate_first`. Passed on repeated runs.
+
+*Found by the combined run and fixed:* with Redis down, the cancel's queue sweep (on the buffering connection) was replayed when Redis returned and silently removed the still-delayed job. The sweep now uses the producer connection (no offline buffer) and starts only when it is connected, so `queueChecked: false` means exactly that: the job is still queued and the worker refuses it.
 
 *Stop if:* the row changes from `cancelled`; any staging batch or transaction for the import; the job runs.
 
@@ -683,35 +698,41 @@ The dashboard reads every transaction of the firm in the period. For a firm with
 
 **FS-10 — Nightly reconciliation runs, and its alert reaches an accountable operator**
 
-*What the software does:*
-- The worker's `ops` group (in `WORKER_GROUPS`) runs `daily-ops-scanner` once a day at **06:30 by the worker host's clock** (06:30 UTC is 12:00 IST; record the host's time zone). It reconciles every validate-first firm.
-- A non-zero count sends a `captureError` POST to `OBSERVABILITY_WEBHOOK_URL` (or `ERROR_WEBHOOK_URL`) and writes `rta.posting.reconcile_alert` to the audit log.
-
-*Two limits found while preparing this check (not fixed):*
-- The webhook POST is fire-and-forget: one attempt, and a failure is not retried or recorded.
-- If the reconciliation cannot run at all, it is written to the worker console only, not alerted.
-
-The controls below cover both.
+*What the software does (migration 0244, `lib/rta/posting/recon-schedule.ts`, `lib/ops/alerts.ts`):*
+- **Schedule: 06:30 Asia/Kolkata (IST, UTC+05:30) every day** — `RTA_RECON_TIME_IST`, default `06:30`. The slot is computed in IST explicitly, never from the host's time zone (a UTC host used to run the old 06:30 job at 12:00 IST). It no longer runs inside `daily-ops-scanner`.
+- A monitor in the worker's `ops` group ticks every minute (`RTA_RECON_TICK_MS`); it does not use Redis. Each tick: records its heartbeat (`scheduler_state` `rta-reconciliation-monitor`); marks a run whose heartbeat stopped for 15 minutes (`RTA_RECON_STALE_SEC`) `incomplete` with a **critical** alert; runs the due slot (on time within 15 minutes as `schedule`, later as `catch_up` with a `missed` alert); delivers due alerts; pings `OPS_HEARTBEAT_URL` (an external dead-man's switch).
+- **Every run is recorded** in `rta_reconciliation_runs` (slot date, scheduled time, time zone, trigger, start, heartbeat, completion, outcome `ok` / `discrepancy` / `failed` / `incomplete`, firms checked) with one `rta_reconciliation_run_firms` row per firm (counts, error). The database allows one scheduled or catch-up run per slot, so two workers never both run it.
+- **Alerts are persisted** in `ops_alerts` before anyone is notified: a discrepancy (per firm), a firm that could not be checked, a failed, missed or incomplete run, a stopped worker. One open alert per condition — a repeat counts an occurrence and sends nothing new. Delivery to `OPS_ALERT_WEBHOOK_URL` (else `OBSERVABILITY_WEBHOOK_URL` / `ERROR_WEBHOOK_URL`) carries an `Idempotency-Key`; a failure is retried with bounded backoff (1, 2, 4 … ≤ 60 minutes, 8 attempts), then `undeliverable`. An undeliverable alert, or a delivered one not acknowledged within 60 minutes, is sent once to `OPS_ALERT_ESCALATION_WEBHOOK_URL`. Every attempt is in the append-only `ops_alert_deliveries`. An alert closes only when a named platform operator, on an MFA-verified session, acknowledges it (`POST /api/super-admin/ops-alerts`); that is final and audited. Alerts carry kind, severity, counts, ids and times — PANs and URL credentials are masked before storage; no client name or figure.
+- **Independent monitor:** `GET /api/health/rta-reconciliation` (web process, database only; `Authorization: Bearer <OPS_MONITOR_TOKEN>`) answers **503** when the monitor's heartbeat is older than 10 minutes, the day's slot has not run, a run failed or stopped part-way, an alert is undeliverable, or a critical alert is unacknowledged — and itself raises and delivers the worker-down alert, because a dead worker cannot.
+- The existing audit row `rta.posting.reconcile_alert` and the error monitor are still written.
 
 *Procedure:*
 1. **Infrastructure engineer:**
-   - `WORKER_GROUPS` on each worker host contains `ops`; record the host time zone;
-   - the webhook variable is set on the worker host (EC-5);
-   - name the system, the rota and the accountable on-call person.
-2. **Daily, platform operator 1:**
+   - `WORKER_GROUPS` on the worker host contains `ops`; the worker log shows `[rta-recon] monitor armed — reconciliation daily at 06:30 Asia/Kolkata (IST, UTC+05:30)`;
+   - `OPS_ALERT_WEBHOOK_URL` and `OPS_ALERT_ESCALATION_WEBHOOK_URL` set on the worker **and** web hosts; `OPS_HEARTBEAT_URL` set on the worker host and configured to page when pings stop for 10 minutes;
+   - an external uptime monitor polls `GET /api/health/rta-reconciliation` with `OPS_MONITOR_TOKEN` every 5 minutes and pages on 503;
+   - name the alert system, the rota, the accountable on-call person and their platform account.
+2. **On the copy (EC-5):**
+   - `POST /api/super-admin/ops-alerts {"action":"test","note":"<ticket>"}` — the named on-call person receives it and acknowledges it (`{"action":"acknowledge","id":…,"note":…}`) from their own MFA-verified session;
+   - stop the worker for longer than 10 minutes → the uptime monitor pages (503) and the heartbeat service alerts; start it → a `catch_up` run if the slot was missed;
+   - break one ledger row → the next run records `discrepancy` and the critical alert is delivered, escalated if not acknowledged, then acknowledged.
+3. **Daily, platform operator 1:**
    ```sql
-   SELECT job_name, last_run_at, last_run_status, left(last_run_detail, 120) AS detail, last_heartbeat_at FROM scheduler_state WHERE job_name = 'daily-ops-scanner';
-   SELECT at, tenant_id, after FROM audit_log WHERE action = 'rta.posting.reconcile_alert' ORDER BY at DESC LIMIT 5;
+   SELECT slot_date, trigger, status, scheduled_for, started_at, completed_at, firms_checked, firms_with_discrepancy, error
+     FROM rta_reconciliation_runs ORDER BY started_at DESC LIMIT 5;
+   SELECT kind, severity, status, delivery_state, occurrences, first_seen_at, escalated_at, acknowledged_at, acknowledged_by
+     FROM ops_alerts WHERE status = 'open' OR acknowledged_at > now() - interval '2 days' ORDER BY first_seen_at DESC;
    ```
-   Then the manual `reconcile` (§5.9 #4).
-3. **On the copy (EC-5):** break one ledger row; let the nightly run (or `DAILY_OPS_ON_BOOT=1` on a copy worker) raise the alert. The named on-call person acknowledges it in the on-call tool within the agreed time.
+   Then the manual `reconcile` (§5.9 #4) and `GET /api/health/rta-reconciliation` (200).
 
 *Expected:*
-- `last_run_at` today, with `last_run_status` ok.
-- The test alert is acknowledged by the named person, and the audit row exists.
-- The manual reconcile exits 0 every day.
+- A `schedule` run for today's slot at 06:30 IST, `ok`, every validate-first firm checked.
+- No open alert, or each open one being handled; the test alert delivered and acknowledged by the named person.
+- The health endpoint answers 200; the manual reconcile exits 0.
 
-*Stop if:* no run recorded for the day; an alert not acknowledged in the agreed time; the webhook unset; no named accountable person.
+*Development evidence* (`tests/rta-reconciliation-alerts-db.test.ts`, 11 tests): successful run recorded once per slot (three racing workers → one run); discrepancy → one critical alert, audit row, a repeat counted not re-sent; a check that throws → `failed` with the firm recorded and the error PAN-masked; webhook down then recovered → retried with backoff and delivered on attempt 3 under one Idempotency-Key; webhook stays down → 3 bounded attempts, `undeliverable`, escalated once, health 503; an unacknowledged delivered alert escalated once; concurrent deliverers send once; worker stopped → the web route answers 503 and delivers the worker-down alert itself, and on restart the slot is caught up with a `missed` alert; worker killed (SIGKILL) mid-run → `incomplete`, a critical alert, a catch-up run completes the slot; Redis pointing nowhere → the monitor and run complete; acknowledgement through the API by an MFA session (refused for a reset-only session), recorded, audited, final. Not production evidence.
+
+*Stop if:* no run recorded for the day; an alert not acknowledged in the agreed time; the alert or escalation webhook unset; the health endpoint not monitored externally; no named accountable person.
 
 ---
 
@@ -955,7 +976,7 @@ While a firm is paused, halted, expired or under EMERGENCY:
 
 ### 5.5 Investigating a failed reconciliation
 
-**Trigger:** `reconcile` exits 3, or a `rta.posting.reconcile_alert` appears.
+**Trigger:** `reconcile` exits 3; a `rta.posting.reconcile_alert` appears; or an ops alert `rta.reconciliation.discrepancy` / `firm_failed` / `failed` / `incomplete` arrives. Acknowledge the alert (`POST /api/super-admin/ops-alerts`, `{"action":"acknowledge","id":…,"note":…}`) only after step 1, naming what was done.
 
 1. **Halt the firm immediately:** `halt` with `scope` = the firm (§5.1).
 2. **Capture state:**
@@ -1110,11 +1131,11 @@ The pilot validates verified KFintech transactions only. It makes no claim about
 | Platform operator 2 | | |
 | Compliance reviewer | | |
 
-**Recommendation from development:** **NO-GO until A–E are PASS with production evidence, EC-1 – EC-6 and FS-1 – FS-10 are evidenced, and F is signed.** The five software defects of §7 are fixed in development (migration 0243) and tested on isolated databases; none of that is production evidence. The residual risks in §7.2 remain and are held by the stated controls.
+**Recommendation from development:** **NO-GO until A–E are PASS with production evidence, EC-1 – EC-6 and FS-1 – FS-10 are evidenced, and F is signed.** The five software defects of §7.1 (migration 0243) and the three weaknesses of §7.3 (migration 0244) are fixed in development and tested on isolated databases; none of that is production evidence. The residual risks in §7.2 remain and are held by the stated controls.
 
 ---
 
-## 7. Software defects — fixed in the final security patch (migration 0243)
+## 7. Software defects — fixed in the final security patches (migrations 0243 and 0244)
 
 **7.1 The five defects found in the corrections round.** Fixed in development and tested on isolated databases only; not deployed, not migrated in production.
 
@@ -1126,6 +1147,16 @@ The pilot validates verified KFintech transactions only. It makes no claim about
 | 4 | Legacy matching ignored the scheme | Every fact compared, scheme identity through approved mappings (historical codes, verified AMC successors); mismatches held `identity_conflict` naming what differs; legacy rows never changed | `tests/rta-legacy-match-db.test.ts` (10); `rta_p0`: 1,061 linked, 0 conflicts (EC-1) |
 | 5 | A removed parked job was later marked `failed` "worker restarted mid-parse" | `cancel_import`: one signed-in operator; status `cancelled` with who / when / why, audit row; job removed from Redis by the same call; final in the database; the worker and re-run refuse it | `tests/rta-cancel-import-db.test.ts` (4, incl. real Redis) |
 
+**7.3 The three weaknesses found after the freeze — fixed in migration 0244** (development and isolated databases only; not deployed, not migrated in production):
+
+| # | Weakness | Fix | Evidence (development) |
+|---|---|---|---|
+| 1 | MFA was read from the user (`two_fa_enabled`); a password-reset session and a pre-enrolment session passed every operator check | MFA recorded on the session at creation (`auth_method`, `mfa_verified_at`), immutable in the database; reset / signup / invite / re-issued sessions are not MFA; security changes downgrade every session; admin step-up re-issues an MFA session; both participants of every start (and cancel, acknowledgement) need a live session verified within 12 h and after the last security change, in the API and the database; audit without secrets | `tests/auth-mfa-session-db.test.ts` (7): both bypasses before (accepted) and after (refused), revocation, staleness, downgrades, forgery refused |
+| 2 | Without `APP_DATABASE_URL` the web and worker ran as the migration role; the posting gate did not refuse a table owner | Production requires `APP_DATABASE_URL` (no fallback); `DB_TOOLING` isolates migration credentials; role inspection (superuser, BYPASSRLS, CREATEROLE, ownership incl. membership, privileged memberships, trigger skipping, dangerous grants) at worker start, web start and inside every posting transaction; non-secret diagnostics | `tests/runtime-db-role-db.test.ts` (9); `tests/rta-feed-and-scripts-db.test.ts` (a production script now refuses at the database layer without `APP_DATABASE_URL`) |
+| 3 | The reconciliation alert was one fire-and-forget POST; a run that could not run, crashed or was missed was only in the console; the schedule followed the host clock | Recorded runs per slot and firm; persisted, deduplicated alerts with bounded retries, escalation and named acknowledgement; missed / crashed / incomplete detection; a worker-independent health endpoint and an external heartbeat; explicit 06:30 Asia/Kolkata | `tests/rta-reconciliation-alerts-db.test.ts` (11); `tests/rta-recovery-db.test.ts` (reconcile alert still audited) |
+
+Also fixed while rehearsing FS-8: a cancel made while Redis was down replayed its queue sweep when Redis returned (see FS-8).
+
 **7.2 Residual risks (not defects of this patch; held by controls):**
 
 | Risk | Control |
@@ -1133,11 +1164,12 @@ The pilot validates verified KFintech transactions only. It makes no claim about
 | Anyone holding the production database owner / superuser credentials can disable triggers and write rows directly; no application control can stop that | DBA access is break-glass, logged and reviewed (D4); the app role is neither superuser nor BYPASSRLS |
 | The platform scheme / AMC approvals are two-person in the API (control requests), but the database does not refuse a direct write to `scheme_registrar_map` / `registrar_amc_identity` without a request | Same as above; those tables are reviewed in A / B |
 | The CLI `halt` names its operator on the command line (recorded "not server-verified") | Use the API halt when it is reachable; a halt only stops |
-| Two-factor is read from `users.two_fa_enabled`; a session does not record how it was authenticated. A **password reset** signs the user in with no TOTP step, and a session from **before** enrolment stays live — both pass the operator check | FS-1: sign out everywhere, fresh TOTP sign-in, and the access-log login + 2fa/verify pair for every session used; no reset or re-issue after it |
-| The app connects with `DATABASE_URL` (the migration role) whenever `APP_DATABASE_URL` is unset; the posting gate refuses a superuser / BYPASSRLS role but not a table owner | FS-2 on every web and worker host |
-| The reconciliation alert webhook is one fire-and-forget attempt; a reconciliation that cannot run at all is only written to the worker console | FS-10: the daily `scheduler_state` check, the daily manual `reconcile`, an acknowledged test alert |
+| ~~MFA read from the user; reset and pre-enrolment sessions passed~~ — **fixed in 0244** (§7.3). Remaining: a backup code is a valid second factor by design | FS-1: backup-code use is a recorded exception |
+| ~~Privileged database fallback~~ — **fixed in 0244** (§7.3). Remaining: the role check runs at start and before posting; a grant added to the running role later is caught at the next posting transaction or restart, not instantly | FS-2 on every host; DBA change control on grants (D4) |
+| ~~Fire-and-forget reconciliation alert~~ — **fixed in 0244** (§7.3). Remaining: alerts reach people only through the configured webhooks and the external monitors; with none configured they are recorded and the health endpoint answers 503, but nobody is paged | FS-10 step 1: both webhooks, the heartbeat service and the uptime monitor configured; the named on-call person acknowledges the test alert |
+| A run checks firms one by one; a single firm taking longer than `RTA_RECON_STALE_SEC` (15 min) between heartbeats is marked `incomplete` and caught up | Alert names it; raise the setting if real firms need longer |
 | An in-scope MFSD211 / MFSD201 arriving by mail is imported without the signed inventory | Mail for the firm stopped for the pilot (EC-4 step 4) |
-| A cancel while Redis is unreachable cannot remove the job (`queueChecked: false`) | The worker refuses the cancelled import anyway; re-run the cancel when Redis is back (EC-2) |
+| A cancel while Redis is unreachable cannot remove the job (`queueChecked: false`) | The job stays queued and the worker refuses it when it fires (FS-8, rehearsed end to end); re-run the cancel when Redis is back to remove it (EC-2) |
 
 ---
 
@@ -1147,10 +1179,11 @@ The pilot validates verified KFintech transactions only. It makes no claim about
 - Corrections round (`rta_final`): ledger-based CSV export; the §4.1 ledger query; the legacy-then-validate-first rehearsal and the collision drill (EC-1); the operator-identity query (EC-6). The queue inventory and removal commands (EC-2) ran against a local Redis with real BullMQ jobs, and `rta-file-manifest.ts` against the four sample files (EC-3).
 - One code change in the corrections round: `lib/rta/posting/gate.ts` now loads its database controls inside the posting check rather than at module load. This lets the read-only `rta-file-manifest.ts` run without a database; posting behaviour is unchanged.
 - Final security patch (`rta_p0`, built from a copy of the development schema at 0243, AMFI 07-Oct-2026 applied): the legacy firm L built with `import-rta-local.ts --commit` (1,061 rows), then validate-first by two-person activation (EC-1 cross-tab); the clean firm P (1,073 + 3); the six out-of-scope real files refused; the recovery and EMERGENCY drill with signed-in operator sessions (§5.3, §5.6); the Operations dashboard read on both firms (§4.1). Regression on a database built from empty (`mfd_ci`, 281 migrations): every check script, 991 tests passed (1 skipped: the emergency drill, run on its own and passing), the immutability drill 14 / 14.
-- The rehearsal operators were synthetic test users (two-factor flag on, synthetic sessions) in isolated databases only; no production identity was created or used.
+- Final security patch 0244 (`rta_fs7`, built from empty with 282 migrations, the restricted app role, AMFI 07-Oct-2026): the FS-7 rehearsal on legacy firm L and collision firm X (§2.5 FS-7). FS-8 as one combined test against a dedicated `redis-server`. Regression on a database built from empty (`mfd_ci`): every check script, the full test suite, the emergency drill on its own, the migration immutability drill (results in the patch report).
+- The rehearsal operators were synthetic test users (two-factor flag on; in 0244 rehearsals, sessions inserted as MFA-verified, which the database accepts only within a minute of creation and only for an enrolled user) in isolated databases only; no production identity was created or used.
 - The rehearsal firm's activation and operators were synthetic.
 - **Observation (not a defect in the production path):** calling the import library directly while a firm is paused still writes a staging batch (staging tables only) before the gate refuses posting. The worker, the only production path, checks the regime first and parks the job without reading the file.
 - **Operator items found while preparing this package:**
   1. The owner must confirm the DKIM `d=` domains the registrars sign with (D2).
-  2. An alert sink (`OBSERVABILITY_WEBHOOK_URL` / `ERROR_WEBHOOK_URL`) must be set, or alerts reach only the audit log (D7).
+  2. Alert channels must be set (`OPS_ALERT_WEBHOOK_URL`, `OPS_ALERT_ESCALATION_WEBHOOK_URL`, `OPS_HEARTBEAT_URL`) and `/api/health/rta-reconciliation` monitored externally, or alerts are only recorded (D7, FS-10).
   3. Every control is on the API, so each operator needs their own platform session with two-factor (§5.1).

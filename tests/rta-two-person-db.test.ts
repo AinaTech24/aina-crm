@@ -113,7 +113,7 @@ describe.skipIf(!TEST_DB)("two-person control requests (DB)", () => {
     expect(await statusOf(A.approveControlAction(ops.a, { requestId: req.id, payloadHash: req.payloadHash }))).toBe(403);
     // A second session of the SAME person is still the same person.
     const other = { userId: ops.a.userId, sid: `test-sid-${randomUUID()}` };
-    await withSystem((tx) => tx.execute(sql`INSERT INTO user_sessions (tenant_id, user_id, session_id) VALUES (${ops.platformTenant}::uuid, ${ops.a.userId}::uuid, ${other.sid})`));
+    await withSystem((tx) => tx.execute(sql`INSERT INTO user_sessions (tenant_id, user_id, session_id, auth_method, mfa_verified_at) VALUES (${ops.platformTenant}::uuid, ${ops.a.userId}::uuid, ${other.sid}, 'password_totp', now())`));
     expect(await statusOf(A.approveControlAction(other, { requestId: req.id, payloadHash: req.payloadHash }))).toBe(403);
     expect(await dbError(withSystem((tx) => tx.execute(sql`
       UPDATE rta_control_requests SET status = 'executed', approved_by = requested_by, approver_sid = ${other.sid}, decided_at = now() WHERE id = ${req.id}::uuid`))))

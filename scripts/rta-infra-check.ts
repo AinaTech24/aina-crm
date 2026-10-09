@@ -63,7 +63,7 @@ async function main() {
   // Two-person starts (migration 0243) need each operator signed in with 2FA on: synthetic sessions, local database only.
   const sess = { op1: `infra-${randomUUID()}`, op2: `infra-${randomUUID()}` };
   await admin.query(`UPDATE users SET two_fa_enabled = true WHERE id = ANY($1::uuid[])`, [[u.op1, u.op2]]);
-  for (const k of ["op1", "op2"] as const) await admin.query(`INSERT INTO user_sessions (tenant_id, user_id, session_id) VALUES ($1, $2, $3)`, [PF, u[k], sess[k]]);
+  for (const k of ["op1", "op2"] as const) await admin.query(`INSERT INTO user_sessions (tenant_id, user_id, session_id, auth_method, mfa_verified_at) VALUES ($1, $2, $3, 'password_totp', now())`, [PF, u[k], sess[k]]);
   const mods = JSON.stringify(["crm", "dashboards", "client_master", "transactions", "sip_tracker", "sip_rejection", "reports", "tasks"]);
   const pk = await one(`INSERT INTO packages (key, name, max_users, max_investors, enabled_modules) VALUES ($1, 'Infra', 50, 100000, $2::jsonb) RETURNING id`, [`infra-${T1.slice(0, 6)}`, mods]);
   for (const t of [T1, T2]) await admin.query(`INSERT INTO subscriptions (tenant_id, package_id, package_key, status) VALUES ($1, $2, $3, 'active')`, [t, pk.id, `infra-${T1.slice(0, 6)}`]);

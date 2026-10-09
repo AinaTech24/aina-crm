@@ -58,6 +58,7 @@ export async function POST(req: NextRequest) {
 
     const code = parse.data.code.trim();
     let authed = verifyTotp(decryptSecret(user.two_fa_secret), code);
+    let method: "password_totp" | "password_backup_code" = "password_totp";
 
     // Fall back to a one-time backup code (consume it on success).
     if (!authed && Array.isArray(user.two_fa_backup_codes)) {
@@ -65,6 +66,7 @@ export async function POST(req: NextRequest) {
       for (let i = 0; i < hashes.length; i++) {
         if (await bcrypt.compare(code, hashes[i])) {
           authed = true;
+          method = "password_backup_code";
           const remaining = hashes.filter((_, idx) => idx !== i);
           await withSystem(async (tx) => {
             await tx.execute(sql`
@@ -77,6 +79,10 @@ export async function POST(req: NextRequest) {
     }
 
     if (!authed) {
+      // Audited without the code (migration 0244 — authentication events).
+      await withSystem((tx) => tx.execute(sql`
+        INSERT INTO audit_log (tenant_id, actor_user_id, actor_type, action, entity_type, entity_id, after)
+        VALUES (${user.tenant_id}::uuid, ${user.id}::uuid, 'user', 'auth.2fa.failed', 'user', ${user.id}::uuid, ${JSON.stringify({ via: "sign_in" })}::jsonb)`)).catch(() => {});
       return NextResponse.json({ error: "invalid code" }, { status: 401 });
     }
 
@@ -89,6 +95,7 @@ export async function POST(req: NextRequest) {
       user: { id: user.id, name: user.name, email: user.email, roles: user.roles },
     });
     return attachSessionCookie(res, {
+      auth: method,
       userId: user.id,
       tenantId: user.tenant_id,
       branchId: user.branch_id,
