@@ -32,11 +32,12 @@ import { formatDate } from "@/lib/format";
  *  field goes through num() / numOrNull() before it is used. */
 type Row = Record<string, unknown>;
 import {
-  asInList, clientIds, clientsHref, clientsWhere, clientsWhereOn, clientRecordsWhereOn, delta, GROSS_TYPES,
+  clientsHref, clientsWhere, clientsWhereOn, clientRecordsWhereOn, delta,
   onboardedDateSql, onboardedInSql,
-  loadBookTargets, num, premiumMatch, REDEMPTION_TYPES, SIP_STOP_TYPES, snapshotSource, staffMatch,
+  loadBookTargets, num, premiumMatch, snapshotSource, staffMatch,
   staffParam, type Delta, type MyWindow, type TargetKey,
 } from "./window";
+import { entriesHref, loadBookedByMonth, loadBookedFlows } from "./booked";
 
 export type MyTarget = {
   /** The FY target for this metric. */
@@ -76,11 +77,6 @@ export type MyKpi = {
 };
 
 export async function loadMyKpis(tx: Tx, w: MyWindow): Promise<MyKpi[]> {
-  const MINE = clientIds(w.scope);
-  const GROSS_IN = asInList(GROSS_TYPES);
-  const RED_IN = asInList(REDEMPTION_TYPES);
-  const STOP_IN = asInList(SIP_STOP_TYPES);
-
   // ── Stock: what my book is worth right now ────────────────────────────────
   const live = (await tx.execute(sql`
     SELECT COALESCE(SUM(aum::numeric), 0)               AS aum,
@@ -112,59 +108,18 @@ export async function loadMyKpis(tx: Tx, w: MyWindow): Promise<MyKpi[]> {
   // More than 12 days off "a month ago" is not a month-on-month comparison.
   if (bestGap > 12 * 864e5) momRow = null;
 
-  // ── Flow: my clients' ledger, three windows in one pass ───────────────────
-  //
-  //    `has_any` counts EVERY transaction on my book, whatever its status —
-  //    not just the settled ones. The distinction matters: a book whose only
-  //    2026 rows are five rejected SIP debits HAS a ledger, so its gross
-  //    investment is a real ₹0 and the rejections are the story. Counting only
-  //    settled rows made that book read "Data unavailable", which hides the
-  //    one thing on it that needs attention.
-  const flow = (await tx.execute(sql`
-    SELECT
-      COALESCE(SUM(amount) FILTER (WHERE ok AND cur  AND type IN (${GROSS_IN})), 0) AS gross_cur,
-      COALESCE(SUM(amount) FILTER (WHERE ok AND prev AND type IN (${GROSS_IN})), 0) AS gross_prev,
-      COALESCE(SUM(amount) FILTER (WHERE ok AND fy   AND type IN (${GROSS_IN})), 0) AS gross_fy,
-      COALESCE(SUM(amount) FILTER (WHERE ok AND cur  AND type IN (${RED_IN})), 0)   AS red_cur,
-      COALESCE(SUM(amount) FILTER (WHERE ok AND prev AND type IN (${RED_IN})), 0)   AS red_prev,
-      COALESCE(SUM(amount) FILTER (WHERE ok AND fy   AND type IN (${RED_IN})), 0)   AS red_fy,
-      COUNT(DISTINCT investor_id) FILTER (WHERE ok AND cur AND type IN (${RED_IN}))::int AS red_clients,
-      COALESCE(SUM(amount) FILTER (WHERE ok AND cur  AND type IN (${STOP_IN})), 0)  AS stop_cur,
-      COALESCE(SUM(amount) FILTER (WHERE ok AND prev AND type IN (${STOP_IN})), 0)  AS stop_prev,
-      COALESCE(SUM(amount) FILTER (WHERE ok AND fy   AND type IN (${STOP_IN})), 0)  AS stop_fy,
-      COUNT(*) FILTER (WHERE ok AND cur AND type IN (${STOP_IN}))::int              AS stop_count,
-      COUNT(*)::int AS has_any
-    FROM (
-      SELECT type, investor_id, amount::numeric AS amount,
-             (status IN ('processed','successful'))                                  AS ok,
-             (order_date >= ${w.from}::date     AND order_date <= ${w.to}::date)     AS cur,
-             (order_date >= ${w.prevFrom}::date AND order_date <= ${w.prevTo}::date) AS prev,
-             (order_date >= ${w.fyStart}::date  AND order_date <= ${w.to}::date)     AS fy
-        FROM transactions
-       WHERE amount IS NOT NULL AND investor_id IN ${MINE}
-    ) t
-  `)).rows[0] as Row | undefined;
-
-  // ── NEW SIP comes from the register ───────────────────────────────────────
-  //    Not from instalment rows: an instalment is an existing mandate
-  //    collecting again, not new SIP added to the book. STOPS come from the
-  //    ledger pass above — see SIP_STOP_TYPES for why not the register.
-  const sipReg = (await tx.execute(sql`
-    SELECT
-      COALESCE(SUM(amount::numeric) FILTER (WHERE new_cur), 0)   AS new_cur,
-      COALESCE(SUM(amount::numeric) FILTER (WHERE new_prev), 0)  AS new_prev,
-      COALESCE(SUM(amount::numeric) FILTER (WHERE new_fy), 0)    AS new_fy,
-      COUNT(*) FILTER (WHERE new_cur)::int                       AS new_count,
-      COUNT(*)::int                                              AS has_any
-    FROM (
-      SELECT amount,
-             (start_date >= ${w.from}::date     AND start_date <= ${w.to}::date)     AS new_cur,
-             (start_date >= ${w.prevFrom}::date AND start_date <= ${w.prevTo}::date) AS new_prev,
-             (start_date >= ${w.fyStart}::date  AND start_date <= ${w.to}::date)     AS new_fy
-        FROM sips
-       WHERE investor_id IN ${MINE}
-    ) s
-  `)).rows[0] as Row | undefined;
+  // ── Flow: business BOOKED on my book, three windows in one pass ───────────
+  //    Business Entries, every product (lib/dashboard/my/booked.ts) — not the
+  //    RTA ledger. SIP added and stopped are booked SIP and SIP-stop lines at
+  //    their monthly equivalent.
+  const booked = await loadBookedFlows(tx, w.scope, {
+    cur: { from: w.from, to: w.to },
+    prev: { from: w.prevFrom, to: w.prevTo },
+    fy: { from: w.fyStart, to: w.to },
+  });
+  const bc = booked.flows.cur;
+  const bp = booked.flows.prev;
+  const bf = booked.flows.fy;
 
   // ── New clients on my book — by onboarding date, never created_at ─────────
   const clients = (await tx.execute(sql`
@@ -236,33 +191,24 @@ export async function loadMyKpis(tx: Tx, w: MyWindow): Promise<MyKpi[]> {
   /** "My AUM" / "Branch AUM" / plain "AUM" when neither word is true. */
   const own = (label: string) => (w.possessive ? `${w.possessive} ${label}` : label.charAt(0).toUpperCase() + label.slice(1));
 
-  // The same rule as lib/metrics/business.ts: imported transactions must
-  // reach into the period, or its flows are unknown ("—"), not ₹0 — a firm
-  // whose only processed rows are from 2024 has no data for this month.
-  const lastTxn = ((await tx.execute(sql`
-    SELECT to_char(MAX(order_date), 'YYYY-MM-DD') AS last FROM transactions
-     WHERE tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid
-       AND status IN ('processed', 'successful') AND amount IS NOT NULL
-  `)).rows[0] as { last: string | null } | undefined)?.last ?? null;
-  const hasLedger = num(flow?.has_any) > 0 && !!lastTxn && lastTxn >= w.from;
-  const hasSips = num(sipReg?.has_any) > 0;
+  // A firm that has never confirmed a business entry has no booked figure:
+  // unknown ("—"), not ₹0. Once it has, an empty period is a real ₹0.
+  const hasBooked = booked.ever;
   const hasPolicies = num(ins?.has_any) > 0;
 
   const aum = num(live?.aum);
   const sipBook = num(live?.sip_book);
   const sipClients = num(live?.sip_clients);
 
-  const grossSipCur = hasSips ? num(sipReg?.new_cur) : null;
-  // Net SIP needs BOTH sources: the register for what was added, the ledger
-  // for what stopped. Missing either one makes it unknown, not gross − 0.
-  const sipStopCur = hasLedger ? num(flow?.stop_cur) : null;
-  const hasNetSip = hasSips && hasLedger;
-  const netSipCur = hasNetSip ? num(sipReg?.new_cur) - num(flow?.stop_cur) : null;
-  const netSipFy = hasNetSip ? num(sipReg?.new_fy) - num(flow?.stop_fy) : null;
-  const grossCur = hasLedger ? num(flow?.gross_cur) : null;
-  const redCur = hasLedger ? num(flow?.red_cur) : null;
-  const netCur = hasLedger ? num(flow?.gross_cur) - num(flow?.red_cur) : null;
-  const netFy = hasLedger ? num(flow?.gross_fy) - num(flow?.red_fy) : null;
+  const grossSipCur = hasBooked ? bc.newSip : null;
+  const sipStopCur = hasBooked ? bc.stoppedSip : null;
+  const netSipCur = hasBooked ? bc.netSip : null;
+  const netSipFy = hasBooked ? bf.netSip : null;
+  const grossCur = hasBooked ? bc.gross : null;
+  const redCur = hasBooked ? bc.redemption : null;
+  const netCur = hasBooked ? bc.net : null;
+  const netFy = hasBooked ? bf.net : null;
+  const entries = entriesHref(w.scope, w.from, w.to);
 
   const money = (n: number) => n;
   const PREV_PERIOD = "vs previous period";
@@ -309,12 +255,12 @@ export async function loadMyKpis(tx: Tx, w: MyWindow): Promise<MyKpi[]> {
       kind: "flow",
       format: "currency",
       value: grossSipCur,
-      compare: hasSips ? delta(grossSipCur ?? 0, num(sipReg?.new_prev)) : null,
+      compare: hasBooked ? delta(bc.newSip, bp.newSip) : null,
       compareLabel: PREV_PERIOD,
-      fytd: hasSips ? num(sipReg?.new_fy) : null,
+      fytd: hasBooked ? bf.newSip : null,
       target: null,
-      notes: [{ label: "New mandates", value: hasSips ? String(num(sipReg?.new_count)) : "" }],
-      href: "/dashboard/sips?status=active",
+      notes: [{ label: "SIPs booked", value: hasBooked ? String(bc.newSipCount) : "" }],
+      href: entries,
     },
     {
       key: "sip_stop",
@@ -322,13 +268,13 @@ export async function loadMyKpis(tx: Tx, w: MyWindow): Promise<MyKpi[]> {
       kind: "flow",
       format: "currency",
       value: sipStopCur,
-      compare: hasLedger ? delta(sipStopCur ?? 0, num(flow?.stop_prev)) : null,
+      compare: hasBooked ? delta(bc.stoppedSip, bp.stoppedSip) : null,
       compareLabel: PREV_PERIOD,
-      fytd: hasLedger ? num(flow?.stop_fy) : null,
+      fytd: hasBooked ? bf.stoppedSip : null,
       target: null,
       inverse: true,
-      notes: [{ label: "Mandates stopped", value: hasLedger ? String(num(flow?.stop_count)) : "" }],
-      href: "/dashboard/sips?status=stopped",
+      notes: [{ label: "Stops booked", value: hasBooked ? String(bc.stoppedSipCount) : "" }],
+      href: entries,
     },
     {
       key: "net_sip",
@@ -336,12 +282,12 @@ export async function loadMyKpis(tx: Tx, w: MyWindow): Promise<MyKpi[]> {
       kind: "flow",
       format: "currency",
       value: netSipCur,
-      compare: hasNetSip ? delta(netSipCur ?? 0, num(sipReg?.new_prev) - num(flow?.stop_prev)) : null,
+      compare: hasBooked ? delta(bc.netSip, bp.netSip) : null,
       compareLabel: PREV_PERIOD,
       fytd: netSipFy,
       target: target("net_sip", netSipFy),
       notes: [{ label: "Gross added − stopped", value: "" }],
-      href: "/dashboard/reports/sip-health",
+      href: entries,
     },
     {
       key: "gross_investment",
@@ -349,12 +295,12 @@ export async function loadMyKpis(tx: Tx, w: MyWindow): Promise<MyKpi[]> {
       kind: "flow",
       format: "currency",
       value: grossCur,
-      compare: hasLedger ? delta(grossCur ?? 0, num(flow?.gross_prev)) : null,
+      compare: hasBooked ? delta(bc.gross, bp.gross) : null,
       compareLabel: PREV_PERIOD,
-      fytd: hasLedger ? num(flow?.gross_fy) : null,
+      fytd: hasBooked ? bf.gross : null,
       target: null,
-      notes: [{ label: "Excludes switch / STP — neither is new money", value: "" }],
-      href: "/dashboard/transactions",
+      notes: [{ label: "Booked, all products", value: "" }],
+      href: entries,
     },
     {
       key: "redemption",
@@ -362,13 +308,13 @@ export async function loadMyKpis(tx: Tx, w: MyWindow): Promise<MyKpi[]> {
       kind: "flow",
       format: "currency",
       value: redCur,
-      compare: hasLedger ? delta(redCur ?? 0, num(flow?.red_prev)) : null,
+      compare: hasBooked ? delta(bc.redemption, bp.redemption) : null,
       compareLabel: PREV_PERIOD,
-      fytd: hasLedger ? num(flow?.red_fy) : null,
+      fytd: hasBooked ? bf.redemption : null,
       target: null,
       inverse: true,
-      notes: [{ label: "Clients", value: hasLedger ? String(num(flow?.red_clients)) : "" }],
-      href: "/dashboard/reports/redemption",
+      notes: [{ label: "Clients", value: hasBooked ? String(bc.redeemingClients) : "" }],
+      href: entries,
     },
     {
       key: "net_business",
@@ -376,12 +322,12 @@ export async function loadMyKpis(tx: Tx, w: MyWindow): Promise<MyKpi[]> {
       kind: "flow",
       format: "currency",
       value: netCur,
-      compare: hasLedger ? delta(netCur ?? 0, num(flow?.gross_prev) - num(flow?.red_prev)) : null,
+      compare: hasBooked ? delta(bc.net, bp.net) : null,
       compareLabel: PREV_PERIOD,
       fytd: netFy,
       target: target("net_business", netFy),
       notes: [{ label: "Gross investment − redemption", value: "" }],
-      href: "/dashboard/transactions",
+      href: entries,
     },
     {
       key: "new_clients",
@@ -496,28 +442,14 @@ export type TargetHorizon = {
 export async function loadTargetMeters(
   tx: Tx, w: MyWindow, horizon?: TargetHorizon,
 ): Promise<TargetMeter[]> {
-  const MINE = clientIds(w.scope);
-  const GROSS_IN = asInList(GROSS_TYPES);
-  const RED_IN = asInList(REDEMPTION_TYPES);
   const since = horizon?.since ?? w.fyStart;
+  // Net new SIP and net business are BOOKED — the same definition as the KPI strip.
+  const booked = (await loadBookedFlows(tx, w.scope, { t: { from: since, to: w.to } })).flows.t;
 
   const actuals = (await tx.execute(sql`
     SELECT
       (SELECT COALESCE(SUM(aum::numeric), 0) FROM investors WHERE ${clientsWhere(w.scope)})               AS aum,
       (SELECT COALESCE(SUM(active_sip_amount::numeric), 0) FROM investors WHERE ${clientsWhere(w.scope)}) AS sip_book,
-      -- Net new SIP: added in the register, less the ledger's stop events
-      -- (SIP_STOP_TYPES) — the same definition as the KPI strip.
-      (SELECT COALESCE(SUM(amount::numeric) FILTER (WHERE start_date >= ${since}::date AND start_date <= ${w.to}::date), 0)
-         FROM sips WHERE investor_id IN ${MINE})
-      - (SELECT COALESCE(SUM(amount::numeric), 0) FROM transactions
-          WHERE investor_id IN ${MINE} AND type IN ('sip_stop','sip_pause')
-            AND status IN ('processed','successful')
-            AND order_date >= ${since}::date AND order_date <= ${w.to}::date) AS net_sip,
-      (SELECT COALESCE(SUM(amount::numeric) FILTER (WHERE type IN (${GROSS_IN})), 0)
-             - COALESCE(SUM(amount::numeric) FILTER (WHERE type IN (${RED_IN})), 0)
-         FROM transactions
-        WHERE status IN ('processed','successful') AND investor_id IN ${MINE}
-          AND order_date >= ${since}::date AND order_date <= ${w.to}::date) AS net_business,
       (SELECT COUNT(*)::int FROM investors i
         WHERE ${clientRecordsWhereOn("i", w.scope)}
           AND ${onboardedInSql({ from: since, to: w.to }, "i")}) AS new_clients,
@@ -573,8 +505,8 @@ export async function loadTargetMeters(
       ? [meter("aum", "AUM", "currency", num(actuals?.aum), clientsHref(w.scope, "sort=aum"), true)]
       : []),
     meter("sip_book", "SIP book", "currency", num(actuals?.sip_book), "/dashboard/sips", true),
-    meter("net_sip", "Net new SIP", "currency", num(actuals?.net_sip), "/dashboard/reports/sip-health"),
-    meter("net_business", "Net business", "currency", num(actuals?.net_business), "/dashboard/transactions"),
+    meter("net_sip", "Net new SIP", "currency", booked.netSip, entriesHref(w.scope, since, w.to)),
+    meter("net_business", "Net business", "currency", booked.net, entriesHref(w.scope, since, w.to)),
     meter("new_clients", "New clients", "count", num(actuals?.new_clients), clientsHref(w.scope, `onboarded_from=${since}&onboarded_to=${w.to}`)),
     meter("meetings", "Meetings", "count", num(actuals?.meetings), `/dashboard/review-meetings?rm=${staffParam(w)}`),
     // The RM brief tracks review meetings as their own target; the branch
@@ -631,9 +563,18 @@ export type MonthRow = {
  * collapsing on the 1st of every month.
  */
 export async function loadMonthlySummary(tx: Tx, w: MyWindow): Promise<MonthRow[]> {
-  const MINE = clientIds(w.scope);
-  const GROSS_IN = asInList(GROSS_TYPES);
-  const RED_IN = asInList(REDEMPTION_TYPES);
+  // The same two windows the query below builds in SQL, for the booked pass.
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const y = Number(w.to.slice(0, 4));
+  const m = Number(w.to.slice(5, 7));
+  const pm = m === 1 ? 12 : m - 1;
+  const py = m === 1 ? y - 1 : y;
+  const prevLast = new Date(Date.UTC(py, pm, 0)).getUTCDate();
+  const prevMonth = `${py}-${pad(pm)}`;
+  const { flows: bk } = await loadBookedFlows(tx, w.scope, {
+    cur: { from: `${w.to.slice(0, 7)}-01`, to: w.to },
+    prev: { from: `${prevMonth}-01`, to: `${prevMonth}-${pad(Math.min(Number(w.to.slice(8, 10)), prevLast))}` },
+  });
 
   const r = (await tx.execute(sql`
     WITH bounds AS (
@@ -649,9 +590,6 @@ export async function loadMonthlySummary(tx: Tx, w: MyWindow): Promise<MonthRow[
              ) AS prev_to
     )
     SELECT
-      tx.gross_cur, tx.gross_prev, tx.red_cur, tx.red_prev,
-      sp.sip_cur, sp.sip_prev,
-      tx.stop_cur, tx.stop_prev,
       (SELECT COUNT(*) FILTER (WHERE ${onboardedDateSql("i")} BETWEEN b.cur_from AND b.cur_to)::int FROM investors i WHERE ${clientRecordsWhereOn("i", w.scope)})   AS nc_cur,
       (SELECT COUNT(*) FILTER (WHERE ${onboardedDateSql("i")} BETWEEN b.prev_from AND b.prev_to)::int FROM investors i WHERE ${clientRecordsWhereOn("i", w.scope)}) AS nc_prev,
       (SELECT COUNT(*) FILTER (WHERE m.meeting_date::date BETWEEN b.cur_from AND b.cur_to)::int FROM review_meetings m WHERE ${staffMatch("rm_id", w, "m")} AND m.status = 'completed')   AS mt_cur,
@@ -662,27 +600,7 @@ export async function loadMonthlySummary(tx: Tx, w: MyWindow): Promise<MonthRow[
       (SELECT COUNT(*) FILTER (WHERE p.created_at::date BETWEEN b.prev_from AND b.prev_to)::int FROM proposals p WHERE ${staffMatch("prepared_by_user_id", w, "p")}) AS pr_prev,
       (SELECT COALESCE(SUM(annual_premium::numeric) FILTER (WHERE ip.policy_start_date BETWEEN b.cur_from AND b.cur_to), 0) FROM insurance_policies ip WHERE ${premiumMatch(w, "ip")} AND ip.status NOT IN ('lapsed','surrendered','cancelled'))   AS ins_cur,
       (SELECT COALESCE(SUM(annual_premium::numeric) FILTER (WHERE ip.policy_start_date BETWEEN b.prev_from AND b.prev_to), 0) FROM insurance_policies ip WHERE ${premiumMatch(w, "ip")} AND ip.status NOT IN ('lapsed','surrendered','cancelled')) AS ins_prev
-    FROM bounds b,
-    -- ONE pass over the book's transactions and SIPs, limited in WHERE to the
-    -- two windows (prev_from … cur_to), instead of eight subqueries that each
-    -- summed every transaction the book ever made and filtered afterwards.
-    LATERAL (
-      SELECT COALESCE(SUM(amount::numeric) FILTER (WHERE t.type IN (${GROSS_IN}) AND t.order_date BETWEEN b.cur_from AND b.cur_to), 0)  AS gross_cur,
-             COALESCE(SUM(amount::numeric) FILTER (WHERE t.type IN (${GROSS_IN}) AND t.order_date BETWEEN b.prev_from AND b.prev_to), 0) AS gross_prev,
-             COALESCE(SUM(amount::numeric) FILTER (WHERE t.type IN (${RED_IN}) AND t.order_date BETWEEN b.cur_from AND b.cur_to), 0)   AS red_cur,
-             COALESCE(SUM(amount::numeric) FILTER (WHERE t.type IN (${RED_IN}) AND t.order_date BETWEEN b.prev_from AND b.prev_to), 0)  AS red_prev,
-             COALESCE(SUM(amount::numeric) FILTER (WHERE t.type IN ('sip_stop','sip_pause') AND t.order_date BETWEEN b.cur_from AND b.cur_to), 0)   AS stop_cur,
-             COALESCE(SUM(amount::numeric) FILTER (WHERE t.type IN ('sip_stop','sip_pause') AND t.order_date BETWEEN b.prev_from AND b.prev_to), 0) AS stop_prev
-        FROM transactions t
-       WHERE t.status IN ('processed','successful') AND t.investor_id IN ${MINE}
-         AND t.order_date BETWEEN b.prev_from AND b.cur_to
-    ) tx,
-    LATERAL (
-      SELECT COALESCE(SUM(amount::numeric) FILTER (WHERE s.start_date BETWEEN b.cur_from AND b.cur_to), 0)   AS sip_cur,
-             COALESCE(SUM(amount::numeric) FILTER (WHERE s.start_date BETWEEN b.prev_from AND b.prev_to), 0) AS sip_prev
-        FROM sips s
-       WHERE s.investor_id IN ${MINE} AND s.start_date BETWEEN b.prev_from AND b.cur_to
-    ) sp
+    FROM bounds b
   `)).rows[0] as Row | undefined;
 
   // AUM and SIP book are balances, so their "previous month" is the recorded
@@ -714,12 +632,13 @@ export async function loadMonthlySummary(tx: Tx, w: MyWindow): Promise<MonthRow[
   return [
     row("aum", "AUM", "currency", snap ? num(snap.aum) : null, num(live?.aum)),
     row("sip_book", "SIP book", "currency", snap ? num(snap.sip) : null, num(live?.sip)),
-    row("gross_sip", "Gross SIP", "currency", num(r?.sip_prev), num(r?.sip_cur)),
-    row("sip_stop", "SIP stopped", "currency", num(r?.stop_prev), num(r?.stop_cur), true),
-    row("net_sip", "Net SIP", "currency", num(r?.sip_prev) - num(r?.stop_prev), num(r?.sip_cur) - num(r?.stop_cur)),
-    row("gross_investment", "Gross investment", "currency", num(r?.gross_prev), num(r?.gross_cur)),
-    row("redemption", "Redemption", "currency", num(r?.red_prev), num(r?.red_cur), true),
-    row("net_business", "Net business", "currency", num(r?.gross_prev) - num(r?.red_prev), num(r?.gross_cur) - num(r?.red_cur)),
+    // Booked business (Business Entries) — see loadMyKpis.
+    row("gross_sip", "Gross SIP", "currency", bk.prev.newSip, bk.cur.newSip),
+    row("sip_stop", "SIP stopped", "currency", bk.prev.stoppedSip, bk.cur.stoppedSip, true),
+    row("net_sip", "Net SIP", "currency", bk.prev.netSip, bk.cur.netSip),
+    row("gross_investment", "Gross investment", "currency", bk.prev.gross, bk.cur.gross),
+    row("redemption", "Redemption", "currency", bk.prev.redemption, bk.cur.redemption, true),
+    row("net_business", "Net business", "currency", bk.prev.net, bk.cur.net),
     row("new_clients", "New clients", "count", num(r?.nc_prev), num(r?.nc_cur)),
     row("meetings", "Meetings", "count", num(r?.mt_prev), num(r?.mt_cur)),
     // Both briefs list review meetings separately from meetings in general.
@@ -799,10 +718,6 @@ const FY_MONTH_LABELS = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov",
  * edge.
  */
 export async function loadMyTrend(tx: Tx, w: MyWindow): Promise<MyTrend> {
-  const MINE = clientIds(w.scope);
-  const GROSS_IN = asInList(GROSS_TYPES);
-  const RED_IN = asInList(REDEMPTION_TYPES);
-
   const fyY = Number(w.fyStart.slice(0, 4));
   const prevStart = `${fyY - 1}-04-01`;
   const prevEnd = `${fyY}-03-31`;
@@ -811,37 +726,11 @@ export async function loadMyTrend(tx: Tx, w: MyWindow): Promise<MyTrend> {
   /** FY month index 0..11 (April = 0) from a date expression. */
   const fyIdx = (col: string) => sql.raw(`((EXTRACT(MONTH FROM ${col})::int + 8) % 12)`);
 
+  // The six money lines are BOOKED business by month (lib/dashboard/my/booked.ts).
+  const booked = await loadBookedByMonth(tx, w.scope, prevStart, fyEnd);
+
   const rows = (await tx.execute(sql`
-    WITH ledger AS (
-      SELECT ${fyIdx("order_date")} AS m,
-             (order_date >= ${w.fyStart}::date AND order_date <= ${fyEnd}::date) AS cur,
-             (order_date >= ${prevStart}::date AND order_date <= ${prevEnd}::date) AS prv,
-             type, amount::numeric AS amount
-        FROM transactions
-       WHERE status IN ('processed','successful') AND amount IS NOT NULL
-         AND investor_id IN ${MINE}
-         AND order_date >= ${prevStart}::date AND order_date <= ${fyEnd}::date
-    ),
-    sip_new AS (
-      SELECT ${fyIdx("start_date")} AS m,
-             (start_date >= ${w.fyStart}::date AND start_date <= ${fyEnd}::date) AS cur,
-             (start_date >= ${prevStart}::date AND start_date <= ${prevEnd}::date) AS prv,
-             amount::numeric AS amount
-        FROM sips
-       WHERE investor_id IN ${MINE} AND start_date IS NOT NULL
-         AND start_date >= ${prevStart}::date AND start_date <= ${fyEnd}::date
-    ),
-    -- Stops are the ledger's stop events (SIP_STOP_TYPES), by order_date.
-    sip_off AS (
-      SELECT ${fyIdx("order_date")} AS m,
-             (order_date >= ${w.fyStart}::date AND order_date <= ${fyEnd}::date) AS cur,
-             (order_date >= ${prevStart}::date AND order_date <= ${prevEnd}::date) AS prv,
-             amount::numeric AS amount
-        FROM transactions
-       WHERE investor_id IN ${MINE} AND type IN ('sip_stop','sip_pause')
-         AND status IN ('processed','successful')
-         AND order_date >= ${prevStart}::date AND order_date <= ${fyEnd}::date
-    ),
+    WITH
     -- New clients by onboarding date (India), never created_at.
     clients AS (
       SELECT ${fyIdx("(i.onboarded_at AT TIME ZONE 'Asia/Kolkata')::date")} AS m,
@@ -865,14 +754,6 @@ export async function loadMyTrend(tx: Tx, w: MyWindow): Promise<MyTrend> {
     -- output cell. The obvious shape — a 24-row grid of (month x year) with a
     -- correlated SUM per metric — runs 144 subqueries over the same CTEs, which
     -- is invisible on a 13-client book and very much not on a 5,000-client one.
-    ledger_g AS (
-      SELECT m, cur,
-             SUM(amount) FILTER (WHERE type IN (${GROSS_IN})) AS gross_investment,
-             SUM(amount) FILTER (WHERE type IN (${RED_IN}))   AS redemption
-        FROM ledger WHERE cur OR prv GROUP BY m, cur
-    ),
-    sip_new_g  AS (SELECT m, cur, SUM(amount) AS v FROM sip_new WHERE cur OR prv GROUP BY m, cur),
-    sip_off_g  AS (SELECT m, cur, SUM(amount) AS v FROM sip_off WHERE cur OR prv GROUP BY m, cur),
     clients_g  AS (SELECT m, cur, COUNT(*)    AS v FROM clients WHERE cur OR prv GROUP BY m, cur),
     premium_g  AS (SELECT m, cur, SUM(amount) AS v FROM premium WHERE cur OR prv GROUP BY m, cur),
     grid AS (
@@ -880,16 +761,9 @@ export async function loadMyTrend(tx: Tx, w: MyWindow): Promise<MyTrend> {
         FROM generate_series(0, 11) AS gs(m), (VALUES (true), (false)) AS c(cur)
     )
     SELECT g.m, g.cur,
-           COALESCE(l.gross_investment, 0) AS gross_investment,
-           COALESCE(l.redemption, 0)       AS redemption,
-           COALESCE(sn.v, 0)               AS gross_sip,
-           COALESCE(so.v, 0)               AS sip_stop,
            COALESCE(cl.v, 0)               AS new_clients,
            COALESCE(pr.v, 0)               AS insurance
       FROM grid g
-      LEFT JOIN ledger_g  l  ON l.m  = g.m AND l.cur  = g.cur
-      LEFT JOIN sip_new_g sn ON sn.m = g.m AND sn.cur = g.cur
-      LEFT JOIN sip_off_g so ON so.m = g.m AND so.cur = g.cur
       LEFT JOIN clients_g cl ON cl.m = g.m AND cl.cur = g.cur
       LEFT JOIN premium_g pr ON pr.m = g.m AND pr.cur = g.cur
      ORDER BY g.m
@@ -906,18 +780,18 @@ export async function loadMyTrend(tx: Tx, w: MyWindow): Promise<MyTrend> {
     const m = num(r.m);
     if (m < 0 || m > 11) continue;
     const side = r.cur === true ? "current" : "previous";
-    const grossSip = num(r.gross_sip);
-    const sipStop = num(r.sip_stop);
-    const gross = num(r.gross_investment);
-    const red = num(r.redemption);
-    series.gross_sip[side][m] = grossSip;
-    series.sip_stop[side][m] = sipStop;
-    series.net_sip[side][m] = grossSip - sipStop;
-    series.gross_investment[side][m] = gross;
-    series.redemption[side][m] = red;
-    series.net_business[side][m] = gross - red;
     series.new_clients[side][m] = num(r.new_clients);
     series.insurance[side][m] = num(r.insurance);
+  }
+  for (const [month, f] of booked.months) {
+    const m = (Number(month.slice(5, 7)) + 8) % 12; // April = 0
+    const side = `${month}-01` >= w.fyStart ? "current" : "previous";
+    series.gross_sip[side][m] = f.newSip;
+    series.sip_stop[side][m] = f.stoppedSip;
+    series.net_sip[side][m] = f.netSip;
+    series.gross_investment[side][m] = f.gross;
+    series.redemption[side][m] = f.redemption;
+    series.net_business[side][m] = f.net;
   }
 
   return {

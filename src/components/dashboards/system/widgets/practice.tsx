@@ -131,7 +131,7 @@ async function sipHealth(tx: Tx, ctx: WidgetCtx) {
     ),
     href: sipsHref(ctx),
     hrefLabel: "SIP book",
-    info: "Persistency: of the SIPs that started 12–15 (or 36–39) months ago, the share still active. Started and stopped count SIP register rows in the period.",
+    info: "Persistency: of the SIPs that started 12–15 (or 36–39) months ago, the share still active. Started and stopped count SIPs and SIP stops booked in Business Entries in the period.",
   };
 }
 

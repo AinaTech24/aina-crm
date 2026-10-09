@@ -24,7 +24,7 @@ import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { investorScopeSql } from "@/lib/investors/access";
 import { loadMergeCounts, loadMergedClients, type MergedClient } from "@/lib/investors/merged";
-import { loadClientDuplicateClusters, type DuplicateCluster } from "@/lib/investors/duplicate-clusters";
+import { DUPLICATE_RULES, loadClientDuplicateClusters, type DuplicateCluster } from "@/lib/investors/duplicate-clusters";
 import { UnmergeButton } from "@/components/investors/MergePicker";
 import { MergeClientTool } from "@/components/investors/MergeClientTool";
 import { AutoMergeButton } from "@/components/investors/AutoMergeButton";
@@ -127,7 +127,7 @@ export default async function MergeClientsPage({
               {canMerge && <AutoMergeButton panGroups={data.panGroups} />}
               {Object.keys(data.ruleCounts).length > 0 && (
                 <div className="flex flex-wrap gap-2 text-xs">
-                  {([["PAN", "Same PAN"], ["NameDob", "Same name + date of birth"]] as const).filter(([k]) => data.ruleCounts[k]).map(([k, label]) => (
+                  {DUPLICATE_RULES.filter(([k]) => data.ruleCounts[k]).map(([k, label]) => (
                     <span key={k} className="chip bg-secondary">{label}: <strong className="ml-1">{data.ruleCounts[k]}</strong></span>
                   ))}
                 </div>
@@ -136,7 +136,7 @@ export default async function MergeClientsPage({
                 <div className="card-surface p-12 text-center">
                   <ShieldCheck className="size-10 mx-auto text-muted-foreground" />
                   <div className="mt-3 font-medium">No duplicate suggestions</div>
-                  <p className="text-sm text-muted-foreground mt-1">No two records share a PAN, or a name and date of birth with matching PANs.</p>
+                  <p className="text-sm text-muted-foreground mt-1">No two records share a PAN, or a name that nothing on the records tells apart.</p>
                 </div>
               ) : canMerge ? (
                 <div className="space-y-3">

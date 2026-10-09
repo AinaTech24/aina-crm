@@ -22,22 +22,21 @@ import type { Tx } from "@/db/client";
 import { formatDate, humanise } from "@/lib/format";
 import type { DashboardThresholds } from "@/lib/dashboard/thresholds";
 import {
-  asInList, clientIds, clientsWhere, clientsWhereOn, clientRecordsWhereOn, FINANCIAL_TASK_TYPES, GROSS_TYPES, leadsMatch, num,
+  asInList, clientIds, clientsWhere, clientsWhereOn, clientRecordsWhereOn, FINANCIAL_TASK_TYPES, leadsMatch, num,
   onboardedInSql,
-  premiumMatch, PROPOSAL_LIVE, REDEMPTION_TYPES, SIP_STOP_TYPES, SR_OPEN_ON_US, staffMatch,
+  premiumMatch, PROPOSAL_LIVE, REDEMPTION_TYPES, SR_OPEN_ON_US, staffMatch,
   TASK_DEAD, type MyWindow, type TargetKey,
   taskIsAbout,
 } from "../my/window";
 import { phaseFraction } from "../my/kpis";
+import { bookedLinesOnBook, loadBookedFlows } from "../my/booked";
 import { NO_RM, OTHER_BRANCH, type RmLedgerRow } from "./rm-ledger";
 import { inOrder } from "@/lib/metrics/in-order";
 
 // Every loader here runs inside ONE transaction: queries go one after
 // another (inOrder, lib/metrics/in-order.ts), never Promise.all.
 
-const GROSS_IN = asInList(GROSS_TYPES);
 const RED_IN = asInList(REDEMPTION_TYPES);
-const STOP_IN = asInList(SIP_STOP_TYPES);
 
 /** yyyy-mm-dd helpers on LOCAL dates — see build-window.ts on why not UTC. */
 function ymd(d: Date): string {
@@ -83,19 +82,10 @@ export async function loadWindowMetrics(
 ): Promise<WindowMetrics> {
   const MINE = clientIds(w.scope);
   const DEAD = asInList(TASK_DEAD);
+  // Money moved is BOOKED business (lib/dashboard/my/booked.ts).
+  const bk = (await loadBookedFlows(tx, w.scope, { t: { from, to } })).flows.t;
   const r = (await tx.execute(sql`
     SELECT
-      (SELECT COALESCE(SUM(amount::numeric), 0) FROM sips
-        WHERE investor_id IN ${MINE} AND start_date BETWEEN ${from}::date AND ${to}::date) AS gross_sip,
-      (SELECT COALESCE(SUM(amount::numeric), 0) FROM transactions
-        WHERE investor_id IN ${MINE} AND type IN (${STOP_IN}) AND status IN ('processed','successful')
-          AND order_date BETWEEN ${from}::date AND ${to}::date) AS sip_stop,
-      (SELECT COALESCE(SUM(amount::numeric), 0) FROM transactions
-        WHERE investor_id IN ${MINE} AND type IN (${GROSS_IN}) AND status IN ('processed','successful')
-          AND order_date BETWEEN ${from}::date AND ${to}::date) AS gross,
-      (SELECT COALESCE(SUM(amount::numeric), 0) FROM transactions
-        WHERE investor_id IN ${MINE} AND type IN (${RED_IN}) AND status IN ('processed','successful')
-          AND order_date BETWEEN ${from}::date AND ${to}::date) AS redemption,
       (SELECT COUNT(*)::int FROM investors i
         WHERE ${clientRecordsWhereOn("i", w.scope)} AND ${onboardedInSql({ from, to }, "i")}) AS new_clients,
       (SELECT COUNT(*) FILTER (WHERE category = 'new')::int FROM review_meetings
@@ -145,12 +135,12 @@ export async function loadWindowMetrics(
 
   const life = num(r?.life), health = num(r?.health), general = num(r?.general);
   return {
-    grossSip: num(r?.gross_sip),
-    sipStop: num(r?.sip_stop),
-    netSip: num(r?.gross_sip) - num(r?.sip_stop),
-    grossInvestment: num(r?.gross),
-    redemption: num(r?.redemption),
-    netBusiness: num(r?.gross) - num(r?.redemption),
+    grossSip: bk.newSip,
+    sipStop: bk.stoppedSip,
+    netSip: bk.netSip,
+    grossInvestment: bk.gross,
+    redemption: bk.redemption,
+    netBusiness: bk.net,
     newClients: num(r?.new_clients),
     newMeetings: num(r?.new_meetings),
     reviewMeetings: num(r?.review_meetings),
@@ -267,11 +257,10 @@ export async function loadInvestmentFlow(
 ): Promise<InvestmentFlow> {
   if (w.scope.kind !== "branch") throw new Error("branch only");
   const from = horizon === "mtd" ? `${w.today.slice(0, 8)}01` : w.fyStart;
-  const branchId = w.scope.branchId;
-  const oneRm = w.scope.rmId ? sql`AND be.rm_id = ${w.scope.rmId}::uuid` : sql``;
   // A business entry belongs to the branch of its CLIENT when it has one, and
-  // otherwise to the branch of the RM who booked it.
-  const inBranch = sql`COALESCE(i.branch_id, u.branch_id) = ${branchId}::uuid ${oneRm}`;
+  // otherwise to the branch of the RM who booked it (lib/dashboard/my/booked.ts);
+  // lines are signed, so a line the RTA rejected reverses on its own date.
+  const src = await bookedLinesOnBook(tx, w.scope);
   const bucket: SQL = sql`CASE
       WHEN be.product_type = 'mutual_fund' AND bel.asset_class = 'equity' THEN 'equity_mf'
       WHEN be.product_type = 'mutual_fund' AND bel.asset_class = 'liquid' THEN 'liquid'
@@ -280,27 +269,18 @@ export async function loadInvestmentFlow(
       WHEN be.product_type IN ('sif','aif','pms')                        THEN be.product_type
       ELSE 'other' END`;
 
-  const ever = (await tx.execute(sql`
-    SELECT COUNT(*)::int AS n FROM business_entries be
-      LEFT JOIN investors i ON i.id = be.investor_id
-      LEFT JOIN users u ON u.id = be.rm_id
-     WHERE ${inBranch}
-  `)).rows[0] as { n: number } | undefined;
-
-  const rows = (await tx.execute(sql`
-    SELECT ${bucket} AS bucket, be.rm_id::text AS rm_id,
-           COALESCE(SUM(bel.amount::numeric) FILTER (
-             WHERE bel.txn_type IN ('lumpsum','additional_purchase','sip','sip_topup','switch','stp')), 0) AS purchase,
-           COALESCE(SUM(bel.amount::numeric) FILTER (WHERE bel.txn_type IN ('redemption','swp')), 0) AS redemption
-      FROM business_entries be
-      JOIN business_entry_lines bel ON bel.entry_id = be.id
-      LEFT JOIN investors i ON i.id = be.investor_id
-      LEFT JOIN users u ON u.id = be.rm_id
-     WHERE ${inBranch}
-       AND be.status IN ('confirmed','emailed')
-       AND be.business_date >= ${from}::date AND be.business_date <= ${w.today}::date
-     GROUP BY 1, 2
-  `)).rows as Array<{ bucket: string; rm_id: string | null; purchase: string; redemption: string }>;
+  const rows = src
+    ? ((await tx.execute(sql`
+        SELECT ${bucket} AS bucket, COALESCE(i.rm_id, be.rm_id)::text AS rm_id,
+               COALESCE(SUM(bel.amount * bel.sign) FILTER (
+                 WHERE bel.txn_type IN ('lumpsum','additional_purchase','sip','sip_topup','switch','stp')), 0) AS purchase,
+               COALESCE(SUM(bel.amount * bel.sign) FILTER (WHERE bel.txn_type IN ('redemption','swp')), 0) AS redemption
+          FROM ${src.from}
+         WHERE ${src.where}
+           AND bel.eff_date >= ${from}::date AND bel.eff_date <= ${w.today}::date
+         GROUP BY 1, 2
+      `)).rows as Array<{ bucket: string; rm_id: string | null; purchase: string; redemption: string }>)
+    : [];
 
   const names = new Map(
     ((await tx.execute(sql`SELECT id::text AS id, name FROM users WHERE ${staffMatch("id", w)}`))
@@ -322,7 +302,7 @@ export async function loadInvestmentFlow(
   }
   return {
     horizon,
-    buckets: num(ever?.n) > 0
+    buckets: src
       ? LABELS.map(([key, label]) => {
           const a = agg.get(key) ?? { p: 0, r: 0 };
           return { key, label, purchase: a.p, redemption: a.r, net: a.p - a.r };
@@ -927,8 +907,8 @@ async function loadInvestmentFlowWindow(
   tx: Tx, w: MyWindow, from: string, to: string,
 ): Promise<FlowBucket[] | null> {
   if (w.scope.kind !== "branch") return null;
-  const branchId = w.scope.branchId;
-  const oneRm = w.scope.rmId ? sql`AND be.rm_id = ${w.scope.rmId}::uuid` : sql``;
+  const src = await bookedLinesOnBook(tx, w.scope);
+  if (!src) return null;
   const rows = (await tx.execute(sql`
     SELECT CASE
              WHEN be.product_type = 'mutual_fund' AND bel.asset_class = 'equity' THEN 'equity_mf'
@@ -937,16 +917,12 @@ async function loadInvestmentFlowWindow(
              WHEN be.product_type = 'mutual_fund'                               THEN 'other_mf'
              WHEN be.product_type IN ('sif','aif','pms')                        THEN be.product_type
              ELSE 'other' END AS bucket,
-           COALESCE(SUM(bel.amount::numeric) FILTER (
+           COALESCE(SUM(bel.amount * bel.sign) FILTER (
              WHERE bel.txn_type IN ('lumpsum','additional_purchase','sip','sip_topup','switch','stp')), 0) AS purchase,
-           COALESCE(SUM(bel.amount::numeric) FILTER (WHERE bel.txn_type IN ('redemption','swp')), 0) AS redemption
-      FROM business_entries be
-      JOIN business_entry_lines bel ON bel.entry_id = be.id
-      LEFT JOIN investors i ON i.id = be.investor_id
-      LEFT JOIN users u ON u.id = be.rm_id
-     WHERE COALESCE(i.branch_id, u.branch_id) = ${branchId}::uuid ${oneRm}
-       AND be.status IN ('confirmed','emailed')
-       AND be.business_date BETWEEN ${from}::date AND ${to}::date
+           COALESCE(SUM(bel.amount * bel.sign) FILTER (WHERE bel.txn_type IN ('redemption','swp')), 0) AS redemption
+      FROM ${src.from}
+     WHERE ${src.where}
+       AND bel.eff_date BETWEEN ${from}::date AND ${to}::date
      GROUP BY 1
   `)).rows as Array<{ bucket: string; purchase: string; redemption: string }>;
   if (!rows.length) return null;

@@ -54,7 +54,7 @@ export const NAV_ACCESS_GROUPS: NavAccessGroup[] = [
     items: [
       { key: "/dashboard/leads", label: "Leads", module: "lead_management" },
       { key: "/dashboard/investors", label: "Clients", module: "client_master" },
-      { key: "/dashboard/opportunities", label: "Opportunities", module: "client_master" },
+      // Opportunities is NOT its own grant: it comes with Clients (NAV_PATH_ALIASES).
       { key: "/dashboard/families", label: "Families", module: "family_mapping" },
       { key: "/dashboard/risk-profiles", label: "Risk Profiles", module: "risk_profile" },
       { key: "/dashboard/discovery", label: "Discovery (Fact-find)" },
@@ -234,6 +234,19 @@ export function coarseModulesFromFeatures(features: string[]): string[] {
 }
 
 /**
+ * Pages that are part of another page's grant, not a grant of their own.
+ *
+ * Opportunities is part of the client record (it is on every client page), so
+ * whoever may open Clients may open it. As its own catalog item it was hidden
+ * from every firm and team member whose sidebar list was saved before it
+ * existed (2026-10-03): an explicit list only ever shows what it names. The
+ * sidebar item carries the same key as its `accessKey` (dashboard layout).
+ */
+export const NAV_PATH_ALIASES: Record<string, string> = {
+  "/dashboard/opportunities": "/dashboard/investors",
+};
+
+/**
  * The gatable sidebar key that `pathname` belongs to — exact match or as a path
  * prefix (e.g. /dashboard/investors/123 → /dashboard/investors) — or null for a
  * core/un-gated route. Lets the dashboard layout ENFORCE nav access on direct
@@ -241,6 +254,9 @@ export function coarseModulesFromFeatures(features: string[]): string[] {
  */
 export function gatedNavKeyForPath(pathname: string): string | null {
   if (!pathname || CORE_HREFS.has(pathname)) return null;
+  for (const [prefix, key] of Object.entries(NAV_PATH_ALIASES)) {
+    if (pathname === prefix || pathname.startsWith(prefix + "/")) return key;
+  }
   let best: string | null = null;
   for (const key of NAV_KEY_SET) {
     if (pathname === key || pathname.startsWith(key + "/")) {

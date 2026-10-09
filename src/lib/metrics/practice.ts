@@ -20,6 +20,7 @@ import type { Tx } from "@/db/client";
 import { cleanIds, clientRecordWhere, clientWhere, hasClientFilter, uuidList, type MetricScope, type MetricPeriod } from "./scope";
 import { getSipBook } from "./sip";
 import { getStockMonthAgo } from "./history";
+import { getEntrySipFlow } from "./entries";
 import { getActiveClients } from "./clients";
 import { getNewClients } from "./new-clients";
 import { inOrder } from "./in-order";
@@ -105,12 +106,14 @@ export type SipHealth = {
  * Persistency is the share of SIPs that started N months ago and are still
  * active: the 12–15-month cohort (1 year) and the 36–39-month cohort (3
  * years), SIPs of client records not deleted or merged. Started / stopped are
- * SIP register rows in the period (start date; a stop by its last update).
+ * BOOKED in the period — SIP and SIP-stop lines on Business Entries
+ * (lib/metrics/entries.ts), like every dashboard's business figures.
  */
 export async function getSipHealth(tx: Tx, scope: MetricScope, period: MetricPeriod): Promise<SipHealth> {
-  const [book, then, p, reasons] = await inOrder(
+  const [book, then, booked, p, reasons] = await inOrder(
     () => getSipBook(tx, scope),
     () => getStockMonthAgo(tx, scope),
+    () => getEntrySipFlow(tx, scope, period),
     () => tx.execute(sql`
       SELECT
         COUNT(*) FILTER (WHERE s.start_date BETWEEN current_date - interval '15 months' AND current_date - interval '12 months')::int AS c1,
@@ -118,10 +121,7 @@ export async function getSipHealth(tx: Tx, scope: MetricScope, period: MetricPer
                            AND s.status = 'active')::int AS a1,
         COUNT(*) FILTER (WHERE s.start_date BETWEEN current_date - interval '39 months' AND current_date - interval '36 months')::int AS c3,
         COUNT(*) FILTER (WHERE s.start_date BETWEEN current_date - interval '39 months' AND current_date - interval '36 months'
-                           AND s.status = 'active')::int AS a3,
-        COUNT(*) FILTER (WHERE s.start_date BETWEEN ${period.from}::date AND ${period.to}::date)::int AS started,
-        COUNT(*) FILTER (WHERE s.status IN ('stopped', 'paused', 'cancelled')
-                           AND (s.updated_at AT TIME ZONE 'Asia/Kolkata')::date BETWEEN ${period.from}::date AND ${period.to}::date)::int AS stopped
+                           AND s.status = 'active')::int AS a3
         FROM sips s JOIN investors i ON i.id = s.investor_id
        WHERE s.tenant_id = ${scope.tenantId}::uuid AND ${clientRecordWhere(scope, "i")}
     `),
@@ -141,8 +141,8 @@ export async function getSipHealth(tx: Tx, scope: MetricScope, period: MetricPer
     monthly: book.monthly,
     sips: book.sips,
     monthAgo: then ? then.sip : null,
-    started: num(x?.started),
-    stopped: num(x?.stopped),
+    started: booked.addedCount,
+    stopped: booked.stoppedCount,
     rejections: rs.reduce((a, r) => a + num(r.c), 0),
     topReasons: rs.slice(0, 3).map((r) => ({ reason: r.reason, count: num(r.c) })),
     persistency1y: c1 > 0 ? (num(x?.a1) / c1) * 100 : null,

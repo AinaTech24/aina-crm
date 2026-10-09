@@ -18,7 +18,10 @@ type Tx = { execute: (q: any) => Promise<{ rows: any[] }> };
 export type Slice = { label: string; value: number; pct: number };
 export type ConcentratedClient = { id: string; name: string; reason: string; pct: number; aum: number };
 export type PortfolioIntel = {
+  /** Folio-register total — the base the class / AMC / scheme shares divide by. */
   totalAum: number;
+  /** The book's AUM as the dashboard shows it (live clients' stored AUM). */
+  bookAum: number;
   folioCount: number;
   investorCount: number;
   byClass: Slice[];
@@ -60,14 +63,18 @@ export async function getPortfolioIntel(
   opts: { tenantId: string; userId: string; firmWide: boolean; clientScope?: SQL }
 ): Promise<PortfolioIntel> {
   const viewer = opts.clientScope ? sql` AND ${opts.clientScope}` : sql``;
+  // A folio on a record merged into another client is that client's — and,
+  // stale, it was counted twice (Ahpal: Rs 35.38 Cr on 31 merged records).
   const scope = opts.firmWide
-    ? sql` AND i.deleted_at IS NULL${viewer}`
-    : sql` AND i.deleted_at IS NULL AND i.rm_id = ${opts.userId}::uuid${viewer}`;
+    ? sql` AND i.deleted_at IS NULL AND i.merged_into_id IS NULL${viewer}`
+    : sql` AND i.deleted_at IS NULL AND i.merged_into_id IS NULL AND i.rm_id = ${opts.userId}::uuid${viewer}`;
 
   const totals = (await tx.execute(sql`
     SELECT COALESCE(SUM(f.aum::numeric),0)::numeric AS total,
-           COUNT(*)::int AS folios,
-           COUNT(DISTINCT f.investor_id)::int AS investors
+           -- Folios holding units, as the registrar counts them: a folio
+           -- redeemed to nil stays on file but is no longer a holding.
+           COUNT(*) FILTER (WHERE COALESCE(f.aum::numeric, 0) > 0)::int AS folios,
+           COUNT(DISTINCT f.investor_id) FILTER (WHERE COALESCE(f.aum::numeric, 0) > 0)::int AS investors
     FROM folios f JOIN investors i ON i.id = f.investor_id
     WHERE f.tenant_id = ${opts.tenantId}::uuid ${scope}
   `)).rows[0] as any;
@@ -141,8 +148,17 @@ export async function getPortfolioIntel(
 
   const concentratedClients = await getConcentratedClients(tx, opts, scope);
 
+  // The headline is the dashboard's AUM (lib/metrics getAUM: the clients'
+  // stored AUM), so the two pages never show two numbers for one book. The
+  // splits below stay on the folio register, which is what they can analyse.
+  const book = (await tx.execute(sql`
+    SELECT COALESCE(SUM(i.aum), 0)::numeric AS aum FROM investors i
+     WHERE i.tenant_id = ${opts.tenantId}::uuid AND COALESCE(i.status, '') NOT IN ('closed', 'exited') ${scope}
+  `)).rows[0] as { aum: string } | undefined;
+
   return {
     totalAum,
+    bookAum: Number(book?.aum ?? 0),
     folioCount: Number(totals?.folios ?? 0),
     investorCount: Number(totals?.investors ?? 0),
     byClass,

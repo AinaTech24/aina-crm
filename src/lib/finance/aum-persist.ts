@@ -10,6 +10,17 @@ type BatchStats = { updated: number; skippedUnpriced: number; skippedNoHoldings:
 
 async function persistBatch(tx: Tx, investorIds: string[]): Promise<BatchStats> {
   const { transactions, snapshots } = await loadValuationRows(tx, investorIds);
+  const cachedRows = (await tx.execute(sql`
+    SELECT id, COALESCE(aum, 0)::numeric AS aum FROM investors
+     WHERE id IN (${sql.join(investorIds.map((id) => sql`${id}::uuid`), sql`, `)})
+  `)).rows as Array<{ id: string; aum: string }>;
+  const cached = new Map(cachedRows.map((r) => [String(r.id), Number(r.aum)]));
+  // Clients with a valued folio, whatever its legs say.
+  const valuedRows = (await tx.execute(sql`
+    SELECT DISTINCT investor_id FROM folios
+     WHERE investor_id IN (${sql.join(investorIds.map((id) => sql`${id}::uuid`), sql`, `)}) AND COALESCE(aum, 0) > 0
+  `)).rows as Array<{ investor_id: string }>;
+  const hasValuedFolio = new Set(valuedRows.map((r) => String(r.investor_id)));
   const byInvestor = <T extends { investor_id?: string | null }>(rows: T[]) => {
     const groups = new Map<string, T[]>();
     for (const row of rows) { if (!row.investor_id) continue; const group = groups.get(row.investor_id) ?? []; group.push(row); groups.set(row.investor_id, group); }
@@ -27,9 +38,29 @@ async function persistBatch(tx: Tx, investorIds: string[]): Promise<BatchStats> 
     // The skip is right, but it used to be SILENT, and a silent skip is how a
     // book goes stale without anyone noticing. Count both reasons so the caller
     // can report them.
-    if (!value.holdings.length) { skippedNoHoldings++; continue; }
-    if (value.unpricedSchemes > 0) { skippedUnpriced++; continue; }
-    updates.push(sql`(${id}::uuid, ${value.currentValue}::numeric)`);
+    if (!value.holdings.length) {
+      skippedNoHoldings++;
+      // Nothing at all backs a stored figure here — no transaction, no folio
+      // leg, no valued folio: its folios went to another record. Leaving it
+      // kept Rs 20.74 Cr on 81 such We Care Freedom Wealth clients (8 Oct
+      // 2026). The client's AUM is 0. (The Excel client import never writes
+      // AUM, so a stored figure always came from registrar data.)
+      if ((cached.get(id) ?? 0) !== 0 && !hasValuedFolio.has(id)) updates.push(sql`(${id}::uuid, ${0}::numeric)`);
+      continue;
+    }
+    // An unpriced holding is counted at what it cost; everything else at its
+    // value. Keeping the cache whenever one holding was unpriced froze the
+    // client at whatever it last said — Rs 0 for the 2,075 Ahpal clients whose
+    // folios came back on 8 Oct 2026, so Rs 161 Cr of folios counted nowhere.
+    // (A "never lower" floor was tried first and would have locked in a
+    // double count; at cost the figure can move both ways.)
+    let total = value.currentValue;
+    if (value.unpricedSchemes > 0) {
+      skippedUnpriced++;
+      total += value.unpricedInvested;
+      if (Math.abs(total - (cached.get(id) ?? 0)) < 0.5) continue;
+    }
+    updates.push(sql`(${id}::uuid, ${total}::numeric)`);
     invalidateInvestorValuation(id);
   }
   if (!updates.length) return { updated: 0, skippedUnpriced, skippedNoHoldings };
@@ -45,10 +76,19 @@ export async function recomputeCombinedAum(
   tx: Tx
 ): Promise<{ updated: number; totalAum: number; skippedUnpriced: number; skippedNoHoldings: number }> {
   let cursor: string | null = null, updated = 0, skippedUnpriced = 0, skippedNoHoldings = 0;
+  // Batches of 50: a batch's history comes off disk on the 1 GB database, and
+  // 250 clients' (~74k transactions at Ahpal) ran past the 30 s statement
+  // limit on 8 Oct 2026. This is a background job; it gets at least two
+  // minutes (never LESS than the caller set — an import allows ten).
+  await tx.execute(sql`
+    SELECT set_config('statement_timeout', '120s', true)
+     WHERE current_setting('statement_timeout') <> '0'
+       AND current_setting('statement_timeout')::interval < interval '120 seconds'
+  `);
   for (;;) {
     const batch = (await tx.execute(sql`
       SELECT id FROM investors WHERE deleted_at IS NULL AND merged_into_id IS NULL
-      ${cursor ? sql`AND id > ${cursor}::uuid` : sql``} ORDER BY id LIMIT 250
+      ${cursor ? sql`AND id > ${cursor}::uuid` : sql``} ORDER BY id LIMIT 50
     `)).rows as Array<{ id: string }>;
     if (!batch.length) break;
     const stats = await persistBatch(tx, batch.map((row) => row.id));
@@ -65,6 +105,16 @@ export const recomputeAllAum = recomputeCombinedAum;
 export async function recomputeInvestorAum(tx: Tx, investorId: string): Promise<void> {
   await persistBatch(tx, [investorId]);
   await refreshActiveSipAmount(tx, { investorIds: [investorId] });
+}
+
+/** {@link recomputeInvestorAum} for many clients, 50 at a time (see persistBatch). */
+export async function recomputeInvestorsAum(tx: Tx, investorIds: string[]): Promise<void> {
+  const unique = [...new Set(investorIds.filter(Boolean))];
+  for (let i = 0; i < unique.length; i += 50) {
+    const part = unique.slice(i, i + 50);
+    await persistBatch(tx, part);
+    await refreshActiveSipAmount(tx, { investorIds: part });
+  }
 }
 type FolioScheme = {
   schemeCode: string;
@@ -140,7 +190,7 @@ export async function revalueAllFolios(
       const next = schemes.map((s) => {
         const units = Number(s.units ?? 0);
         stats.legs++;
-        const hit = lookupNav(navIndex, s.schemeCode, s.schemeName);
+        const hit = lookupNav(navIndex, s.schemeCode, s.schemeName, Number(s.nav) > 0 ? Number(s.nav) : null);
         if (hit && isFinite(units) && units > 0) {
           if (hit.via === "code") stats.pricedByCode++;
           else stats.pricedByName++;

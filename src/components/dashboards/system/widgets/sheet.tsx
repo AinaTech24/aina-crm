@@ -1,7 +1,7 @@
 /**
  * The Owner Dashboard cards added from the firm's dashboard sheet
  * (MFD_CRM_Dashboards.xlsx, "Owner Dashboard" tab): business from Business
- * Entries beside the RTA feed, SIP flow, new clients by category, the client
+ * Entries, SIP flow, new clients by category, the client
  * book by category / type / status, KYC and risk-profile status, meetings,
  * reviews due, SIP rejections by recovery status, insurance business by
  * product, claims in the period and task counts.
@@ -16,7 +16,7 @@ import Link from "next/link";
 import { Fragment, type ReactNode } from "react";
 import type { Tx } from "@/db/client";
 import {
-  getEntryMatrix, getEntrySipFlow, getNetBusiness, getBookBreakdown, getTarget, getNewClients, getRiskProfileCounts,
+  getEntryMatrix, getEntrySipFlow, getBookBreakdown, getTarget, getNewClients, getRiskProfileCounts,
   getMeetingSummary, MEETING_BUCKETS, getReviewsDue, getSipRejectionSummary, getPremiumByProduct, getClaimsByStatus,
   getTaskSummary, inOrder, type BookBreakdown, type EntryCell,
 } from "@/lib/metrics";
@@ -72,12 +72,9 @@ const pctOf = (n: number, total: number) => (total > 0 ? (n / total) * 100 : 0);
 /* ───────────────────────── Business (Business Entries) ───────────────────────── */
 
 async function businessEntries(tx: Tx, ctx: WidgetCtx) {
-  const [m, rta] = await inOrder(
-    () => getEntryMatrix(tx, ctx.scope, ctx.period),
-    () => getNetBusiness(tx, ctx.scope, ctx.period),
-  );
-  if (!m.everRecorded && !rta.hasData) return { body: null };
-  const scale = pickMoneyScale([m.total.gross, m.total.redemption, rta.current?.gross ?? 0, rta.current?.redemption ?? 0]);
+  const m = await getEntryMatrix(tx, ctx.scope, ctx.period);
+  if (!m.everRecorded) return { body: null };
+  const scale = pickMoneyScale([m.total.gross, m.total.redemption]);
   // An empty cell is "—": ₹0.00 Lakh of liquid redemption reads as a figure.
   const money = (n: number) => (n ? formatMoney(n, { scale }) : "—");
   const cells = (c: EntryCell, strong = false) => (
@@ -127,40 +124,22 @@ async function businessEntries(tx: Tx, ctx: WidgetCtx) {
                   {cells(m.total, true)}
                 </tr>
               )}
-              <tr className="border-t border-border">
-                <td className="px-3 py-2 text-muted-foreground" title="CAMS / KFintech transactions processed in the period — mutual funds only">RTA feed (MF only)</td>
-                {rta.current ? (
-                  <>
-                    <td className={td}>{money(rta.current.gross)}</td>
-                    <td className={td}>{money(rta.current.redemption)}</td>
-                    <td className={`${td} ${rta.current.net < 0 ? "text-rose-700" : ""}`}>{money(rta.current.net)}</td>
-                    <td className={td}>—</td>
-                  </>
-                ) : (
-                  <td colSpan={4} className="px-3 py-2 text-right text-muted-foreground">No RTA files cover this period</td>
-                )}
-              </tr>
             </tbody>
           </table>
         </div>
       </div>
     ),
-    subtitle: "Business Entries beside the RTA feed",
     href: "/dashboard/business-entries",
     hrefLabel: "Business Entries",
-    info: "Business Entries: what the team recorded, confirmed entries only, by business date. Gross = SIP, top-up, lumpsum, additional purchase, switch and STP; redemption = redemption and SWP. RTA feed: what CAMS / KFintech processed (mutual funds only, switches excluded). The two can differ by timing and coverage.",
+    info: "Business Entries: what the team recorded, confirmed entries only, by business date. Gross = SIP, top-up, lumpsum, additional purchase, switch and STP; redemption = redemption and SWP. Lines the RTA rejected are taken off, as set in Settings → Dashboard thresholds.",
   };
 }
 
 /* ─────────────────────────────── SIP flow ─────────────────────────────── */
 
 async function sipFlow(tx: Tx, ctx: WidgetCtx) {
-  const [e, rta] = await inOrder(
-    () => getEntrySipFlow(tx, ctx.scope, ctx.period),
-    () => getNetBusiness(tx, ctx.scope, ctx.period),
-  );
-  if (!e.everRecorded && !rta.hasData) return { body: null };
-  const r = rta.current;
+  const e = await getEntrySipFlow(tx, ctx.scope, ctx.period);
+  if (!e.everRecorded) return { body: null };
   return {
     body: (
       <div className="space-y-3">
@@ -169,17 +148,12 @@ async function sipFlow(tx: Tx, ctx: WidgetCtx) {
           <Tile label={`SIP stopped · ${formatCount(e.stoppedCount)}`} value={formatMoney(e.stopped)} tone={e.stopped > e.added ? "warning" : null} />
           <Tile label="Net SIP" value={`${e.net < 0 ? "−" : ""}${formatMoney(Math.abs(e.net))}`} tone={e.net < 0 ? "danger" : null} />
         </div>
-        <p className="text-xs text-muted-foreground">
-          SIP register and RTA feed: {r
-            ? `${formatMoney(r.newSip)} added · ${formatMoney(r.stoppedSip)} stopped · ${formatMoney(r.netSip)} net`
-            : "no RTA files cover this period"}
-        </p>
       </div>
     ),
     subtitle: "Monthly SIP amount, from Business Entries",
     href: "/dashboard/business-entries",
     hrefLabel: "Business Entries",
-    info: "Gross SIP added: SIP and top-up lines on confirmed Business Entries in the period, at their monthly equivalent. SIP stopped: SIP-stop lines. The line below is the same idea from the SIP register (SIPs started) and the RTA feed (stops it reported).",
+    info: "Gross SIP added: SIP and top-up lines on confirmed Business Entries in the period, at their monthly equivalent. SIP stopped: SIP-stop lines.",
   };
 }
 

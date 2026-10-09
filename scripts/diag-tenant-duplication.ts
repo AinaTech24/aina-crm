@@ -3,7 +3,10 @@
  * registrar's own totals? Read-only, one tenant at a time.
  *
  *   npx tsx scripts/diag-tenant-duplication.ts --tenant "Ahpal" \
- *     --expect-aum 7645606209 --expect-clients 8641 --expect-folios 10796
+ *     --expect-aum 7645606209 --expect-clients 2656 --expect-folios 10796
+ *
+ * (Ahpal's own figures, stated 2026-10-08: 2,656 clients, 10,796 folios,
+ * Rs 764.56 Cr.)
  *
  * The three numbers a dashboard shows come from three different places, and
  * each inflates for its own reason:
@@ -109,6 +112,11 @@ async function main() {
             COUNT(*) FILTER (WHERE status = 'closed' AND deleted_at IS NULL AND merged_into_id IS NULL)::int AS closed,
             COUNT(*) FILTER (WHERE deleted_at IS NULL AND merged_into_id IS NULL AND status <> 'closed')::int AS alive,
             COALESCE(SUM(aum::numeric) FILTER (WHERE deleted_at IS NULL AND merged_into_id IS NULL AND status <> 'closed'), 0) AS aum_alive,
+            -- A firm's own "clients" figure usually counts people holding
+            -- money, not every record its client list ever loaded.
+            COUNT(*) FILTER (WHERE deleted_at IS NULL AND merged_into_id IS NULL AND status <> 'closed' AND COALESCE(aum::numeric, 0) > 0)::int AS alive_with_aum,
+            COUNT(*) FILTER (WHERE deleted_at IS NULL AND merged_into_id IS NULL AND status <> 'closed'
+                               AND EXISTS (SELECT 1 FROM folios fo WHERE fo.investor_id = investors.id))::int AS alive_with_folio,
             COALESCE(SUM(aum::numeric) FILTER (WHERE merged_into_id IS NOT NULL AND deleted_at IS NULL), 0) AS aum_merged_stale
           FROM investors
         `)
@@ -126,6 +134,8 @@ async function main() {
 
       head("1. What the CRM shows vs what the registrar says");
       delta("Clients (alive)", n(h.alive), EXP_CLIENTS);
+      delta("  holding AUM > 0", n(h.alive_with_aum), EXP_CLIENTS);
+      delta("  holding a folio", n(h.alive_with_folio), EXP_CLIENTS);
       delta("Folios", n(f.folios), EXP_FOLIOS);
       delta("AUM (investors.aum)", n(h.aum_alive), EXP_AUM, cr);
       console.log(`\n  Folio register sums to ${cr(f.aum)} across ${f.valued} valued of ${f.folios} folios.`);

@@ -39,6 +39,7 @@ import {
   type CanonicalMandateRow,
   type CanonicalAumRow,
 } from "./parsers";
+import { clientIdForFolio, clientIdForPan, followMerges, resolvePanClients, type ClientHint } from "./client-match";
 
 /**
  * Resolve an investor by PAN first, then by an existing folio number. Most RTA
@@ -52,21 +53,15 @@ async function resolveInvestorId(
   tenantId: string,
   key: { pan?: string; folioNumber?: string }
 ): Promise<string | null> {
-  if (key.pan && key.pan.trim()) {
-    const r = await tx.execute(sql`
-      SELECT id FROM investors WHERE tenant_id = ${tenantId}::uuid AND pan = ${key.pan.toUpperCase()} LIMIT 1
-    `);
-    const id = (r.rows[0] as any)?.id;
-    if (id) return id;
-  }
-  if (key.folioNumber && key.folioNumber.trim()) {
-    const r = await tx.execute(sql`
-      SELECT investor_id FROM folios WHERE tenant_id = ${tenantId}::uuid AND folio_number = ${key.folioNumber} LIMIT 1
-    `);
-    const id = (r.rows[0] as any)?.investor_id;
-    if (id) return id;
-  }
-  return null;
+  // Through lib/rta/client-match: the live client, merges followed, never a
+  // record an operator merged away.
+  return (await clientIdForPan(tx, tenantId, key.pan)) ?? (await clientIdForFolio(tx, tenantId, key.folioNumber));
+}
+
+/** The live client a just-upserted id ended up in (merges followed). */
+async function liveOf(tx: Tx, tenantId: string, id: string | null): Promise<string | null> {
+  if (!id) return null;
+  return (await followMerges(tx, tenantId, [String(id)])).get(String(id)) ?? String(id);
 }
 
 /**
@@ -130,7 +125,7 @@ function nopanKeyFor(name: string | null, folioNumber: string): string {
 async function buildInvestorIndex(
   tx: Tx,
   tenantId: string,
-  keys: Array<{ pan?: string; folioNumber?: string }>
+  keys: Array<{ pan?: string; folioNumber?: string; name?: string }>
 ): Promise<{ panMap: Map<string, string>; folioMap: Map<string, string> }> {
   const pans = [...new Set(keys.map((k) => k.pan?.toUpperCase()).filter(Boolean))] as string[];
   const folios = [...new Set(keys.map((k) => k.folioNumber).filter(Boolean))] as string[];
@@ -138,16 +133,25 @@ async function buildInvestorIndex(
   const folioMap = new Map<string, string>();
 
   if (pans.length) {
-    const res = await tx.execute(sql`
-      SELECT id, pan FROM investors WHERE tenant_id = ${tenantId}::uuid AND pan IN (${sql.join(pans.map((p) => sql`${p}`), sql`, `)})
-    `);
-    for (const row of res.rows as any[]) if (row.pan) panMap.set(String(row.pan).toUpperCase(), row.id);
+    // The live client per PAN (the firm's Excel-loaded record included, merges
+    // followed), and a PAN-less client the firm entered by hand adopted on an
+    // unambiguous name — see lib/rta/client-match.ts. Only a real PAN gets a
+    // name hint: it is what a new client would be keyed on.
+    const hints = new Map<string, ClientHint>();
+    for (const k of keys) {
+      const p = k.pan?.toUpperCase();
+      if (p && isLikelyPan(p) && !hints.has(p)) hints.set(p, { name: splitRepresentedBy(k.name).name });
+    }
+    const res = await resolvePanClients(tx, tenantId, pans, { write: true, hints });
+    for (const [p, id] of res.ids) panMap.set(p, id);
   }
   if (folios.length) {
     const res = await tx.execute(sql`
       SELECT investor_id, folio_number FROM folios WHERE tenant_id = ${tenantId}::uuid AND folio_number IN (${sql.join(folios.map((f) => sql`${f}`), sql`, `)})
     `);
-    for (const row of res.rows as any[]) if (!folioMap.has(row.folio_number)) folioMap.set(row.folio_number, row.investor_id);
+    for (const row of res.rows as any[]) if (row.investor_id && !folioMap.has(row.folio_number)) folioMap.set(row.folio_number, String(row.investor_id));
+    const live = await followMerges(tx, tenantId, [...folioMap.values()]);
+    for (const [f, id] of folioMap) folioMap.set(f, live.get(id) ?? id);
   }
   return { panMap, folioMap };
 }
@@ -234,7 +238,7 @@ async function processTransactionFeed(
   const { panMap, folioMap } = await buildInvestorIndex(
     tx,
     args.tenantId,
-    rows.map((r) => ({ pan: r.pan, folioNumber: r.folioNumber }))
+    rows.map((r) => ({ pan: r.pan, folioNumber: r.folioNumber, name: r.investorName }))
   );
   const resolveFast = (pan?: string, folio?: string): string | null =>
     (pan && panMap.get(pan.toUpperCase())) || (folio && folioMap.get(folio)) || null;
@@ -333,7 +337,7 @@ async function processTransactionFeed(
         DO UPDATE SET updated_at = now()
         RETURNING id
       `);
-      investorId = (created.rows[0] as any)?.id ?? null;
+      investorId = await liveOf(tx, args.tenantId, (created.rows[0] as any)?.id ?? null);
       if (investorId) {
         folioMap.set(r.folioNumber, investorId);
         createdInvestors++;
@@ -655,10 +659,7 @@ async function processFolioMasterDump(
 
   for (const [key, fRows] of folioRowsGrouped) {
     const firstRow = fRows[0];
-    const investor = await tx.execute(sql`
-      SELECT id FROM investors WHERE tenant_id = ${args.tenantId}::uuid AND pan = ${firstRow.pan.toUpperCase()} LIMIT 1
-    `);
-    const investorId = (investor.rows[0] as any)?.id;
+    const investorId = await clientIdForPan(tx, args.tenantId, firstRow.pan);
     if (!investorId) {
       skipped += fRows.length;
       errors.push({ row: rows.indexOf(firstRow) + 1, reason: `PAN ${firstRow.pan} not in client master — skipped` });
@@ -854,17 +855,20 @@ async function processSipBook(
     let investorId: string | null = null;
     let rmId: string | null = null;
     if (r.pan) {
-      const byPan = await tx.execute(sql`
-        SELECT id, rm_id FROM investors
-        WHERE tenant_id = ${args.tenantId}::uuid AND pan = ${r.pan.toUpperCase()} LIMIT 1
-      `);
-      investorId = (byPan.rows[0] as any)?.id ?? null;
-      rmId = (byPan.rows[0] as any)?.rm_id ?? null;
+      const panId = await clientIdForPan(tx, args.tenantId, r.pan);
+      if (panId) {
+        const byPan = await tx.execute(sql`
+          SELECT id, rm_id FROM investors WHERE tenant_id = ${args.tenantId}::uuid AND id = ${panId}::uuid LIMIT 1
+        `);
+        investorId = (byPan.rows[0] as any)?.id ?? null;
+        rmId = (byPan.rows[0] as any)?.rm_id ?? null;
+      }
     }
     if (!investorId && folioInvestorId) {
+      const liveOwner = await liveOf(tx, args.tenantId, String(folioInvestorId));
       const byFolio = await tx.execute(sql`
         SELECT id, rm_id FROM investors
-        WHERE tenant_id = ${args.tenantId}::uuid AND id = ${folioInvestorId}::uuid LIMIT 1
+        WHERE tenant_id = ${args.tenantId}::uuid AND id = ${liveOwner}::uuid LIMIT 1
       `);
       investorId = (byFolio.rows[0] as any)?.id ?? null;
       rmId = (byFolio.rows[0] as any)?.rm_id ?? null;
@@ -1107,10 +1111,7 @@ async function processMandateStatus(
       continue;
     }
 
-    const investor = await tx.execute(sql`
-      SELECT id FROM investors WHERE tenant_id = ${args.tenantId}::uuid AND pan = ${r.pan.toUpperCase()} LIMIT 1
-    `);
-    const investorId = (investor.rows[0] as any)?.id;
+    const investorId = await clientIdForPan(tx, args.tenantId, r.pan);
     if (!investorId) {
       skipped++;
       errors.push({ row: i + 1, reason: `PAN ${r.pan} not in client master` });
@@ -1207,7 +1208,7 @@ async function processAumStatement(
         DO UPDATE SET updated_at = now()
         RETURNING id
       `);
-      investorId = (created.rows[0] as any)?.id ?? null;
+      investorId = await liveOf(tx, args.tenantId, (created.rows[0] as any)?.id ?? null);
     }
 
     if (!investorId) {
@@ -1302,6 +1303,11 @@ async function processAumStatement(
       // instead lets the register converge as each ARN's statement lands,
       // without ever overstating on the way there.
       const normName = (s?: string) => (s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      // "0" and "NOT PROVIDED" are what some files put in an empty broker column.
+      const realArn = (a?: string) => {
+        const v = (a ?? "").trim().toUpperCase();
+        return v && v !== "0" && v !== "NOT PROVIDED" ? v : null;
+      };
       const merged = existingSchemes.map((s) => ({ ...s }));
       // A missing ARN is a wildcard on BOTH sides. Stored-none/incoming-one is
       // a leg written before slicing existed; stored-one/incoming-none is a
@@ -1309,7 +1315,7 @@ async function processAumStatement(
       // Either way it is the same holding and must REPLACE, not sit alongside —
       // handling only the first direction let arn-less restatements pile up as
       // second copies (721 folio+scheme pairs, Rs 37.27 Cr, 5-7 Sep).
-      const slotFor = (code: string, name: string, arn?: string): number | undefined => {
+      const slotFor = (code: string, name: string, arn: string | undefined, units: number): number | undefined => {
         const n = normName(name);
         let fallback: number | undefined;
         for (let idx = 0; idx < merged.length; idx++) {
@@ -1319,12 +1325,30 @@ async function processAumStatement(
           if (s.arn === arn) return idx;                    // same ARN's slice — restate it
           if ((s.arn == null || arn == null) && fallback == null) fallback = idx; // wildcard either way
         }
-        return fallback;
+        if (fallback != null) return fallback;
+        // This report names a holding by the REGISTRAR's code ("D157") and,
+        // in the CAMS AUM statement, no scheme name at all, so neither key
+        // finds the leg the folio master stored under the AMFI code and name.
+        // Nimesh C Shah, 8 Oct 2026: 158 legs stored twice that way, Rs 8.19 Cr,
+        //   folio 2305113/82  D157    ""                 25,862.605 units
+        //                     105989  "DSP Small Cap…"   25,862.605 units
+        // The same units in the same folio are the same holding when either
+        // side has no name or no real ARN. Two named legs under real ARNs are
+        // not matched this way: those can be a split, or two options of one
+        // scheme.
+        if (!(units > 0.001)) return undefined;
+        for (let idx = 0; idx < merged.length; idx++) {
+          const s = merged[idx];
+          if (Math.abs(Number(s.units ?? 0) - units) > 0.001) continue;
+          const a = realArn(s.arn), b = realArn(arn);
+          if (!normName(s.schemeName) || !n ? !(a && b && a !== b) : (a == null) !== (b == null)) return idx;
+        }
+        return undefined;
       };
 
       for (const r of fRows) {
         if (!r.schemeCode) continue;
-        const at = slotFor(r.schemeCode, r.schemeName, r.arn);
+        const at = slotFor(r.schemeCode, r.schemeName, r.arn, r.units);
         const value = r.aumValue || (r.nav ? Math.round(r.units * r.nav * 100) / 100 : undefined);
         if (at != null) {
           const cur = merged[at];

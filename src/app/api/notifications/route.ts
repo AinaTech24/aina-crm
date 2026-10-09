@@ -44,16 +44,22 @@ export async function GET(req: NextRequest) {
         .limit(50);
       const unreadCount = await tx.execute(sql`
         SELECT COUNT(*)::int AS c FROM notifications
-        WHERE user_id = ${session.userId} AND read_at IS NULL AND archived_at IS NULL
+        WHERE tenant_id = ${session.tenantId}::uuid AND user_id = ${session.userId}
+          AND read_at IS NULL AND archived_at IS NULL
       `);
       // Today's birthdays — a live reminder, computed each load (no rows
       // written). Scoped to the caller's book unless they're firm-wide.
       const bday = await tx.execute(sql`
         SELECT name FROM investors
-        WHERE status = 'active'
+        WHERE tenant_id = ${session.tenantId}::uuid
+          AND status = 'active'
           AND deleted_at IS NULL
           AND dob IS NOT NULL
-          AND to_char(dob, 'MM-DD') = to_char(current_date, 'MM-DD')
+          -- This runs on every notification poll. The tenant is named so the
+          -- index is used (RLS alone reads every firm); month + day compare
+          -- as numbers instead of formatting every row's date as text.
+          AND EXTRACT(MONTH FROM dob) = EXTRACT(MONTH FROM current_date)
+          AND EXTRACT(DAY FROM dob) = EXTRACT(DAY FROM current_date)
           ${firmWide ? sql`` : sql` AND rm_id = ${session.userId}`}
         ORDER BY name
         LIMIT 25

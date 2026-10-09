@@ -5,7 +5,7 @@
  * recognised"; the stale keys are now dropped instead.
  */
 import { describe, expect, it } from "vitest";
-import { knownNavKeys } from "@/config/nav-access";
+import { gatedNavKeyForPath, isGatableNav, knownNavKeys, tenantAccessibleNavKeys } from "@/config/nav-access";
 
 describe("knownNavKeys", () => {
   it("drops hrefs that are no longer in the sidebar catalog", () => {
@@ -21,5 +21,21 @@ describe("knownNavKeys", () => {
 
   it("returns an empty grant when every key is stale", () => {
     expect(knownNavKeys(["/dashboard/boards"])).toEqual([]);
+  });
+});
+
+describe("Opportunities comes with Clients", () => {
+  it("is gated by the Clients grant, on the module page and on one opportunity", () => {
+    expect(gatedNavKeyForPath("/dashboard/opportunities")).toBe("/dashboard/investors");
+    expect(gatedNavKeyForPath("/dashboard/opportunities/0b1c")).toBe("/dashboard/investors");
+  });
+
+  it("shows for a firm whose explicit list names Clients but predates Opportunities", () => {
+    const keys = tenantAccessibleNavKeys({ allowedNav: ["/dashboard/investors", "/dashboard/leads"], enabledModules: [] });
+    expect(keys).toContain(gatedNavKeyForPath("/dashboard/opportunities"));
+  });
+
+  it("is not a grant of its own", () => {
+    expect(isGatableNav("/dashboard/opportunities")).toBe(false);
   });
 });

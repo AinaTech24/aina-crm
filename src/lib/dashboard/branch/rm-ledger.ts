@@ -33,10 +33,12 @@
 import { sql, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import {
-  asInList, FINANCIAL_TASK_TYPES, GROSS_TYPES, LEAD_CLOSED_STAGES, num, PROPOSAL_LIVE,
-  PROPOSAL_LOST, PROPOSAL_WON, REDEMPTION_TYPES, SIP_STOP_TYPES, SR_OPEN_ON_US,
+  asInList, FINANCIAL_TASK_TYPES, LEAD_CLOSED_STAGES, num, PROPOSAL_LIVE,
+  PROPOSAL_LOST, PROPOSAL_WON, SR_OPEN_ON_US,
   staffMatch, TASK_DEAD, type MyWindow, type TargetKey, onboardedInSql,
 } from "../my/window";
+import { bookedLinesOnBook } from "../my/booked";
+import { bookedFigureColumns, readBookedFigures } from "@/lib/metrics/entries";
 
 export const OTHER_BRANCH = "__other__";
 export const NO_RM = "__none__";
@@ -164,9 +166,6 @@ export async function loadRmLedger(
   const branchId = w.scope.branchId;
   const rmId = w.scope.rmId ?? null;
   const BC = bucketed(w, branchId, rmId);
-  const GROSS_IN = asInList(GROSS_TYPES);
-  const RED_IN = asInList(REDEMPTION_TYPES);
-  const STOP_IN = asInList(SIP_STOP_TYPES);
   const OPEN_SR = asInList(SR_OPEN_ON_US);
   const DEAD_TASK = asInList(TASK_DEAD);
   const FIN = asInList(FINANCIAL_TASK_TYPES);
@@ -222,29 +221,24 @@ export async function loadRmLedger(
      GROUP BY bucket
   `)).rows as Array<Record<string, unknown>>;
 
-  const flows = (await tx.execute(sql`
-    WITH bc AS (${BC})
-    SELECT bc.bucket,
-      COALESCE(SUM(t.amount::numeric) FILTER (WHERE t.type IN (${GROSS_IN})), 0)  AS gross,
-      COALESCE(SUM(t.amount::numeric) FILTER (WHERE t.type IN (${RED_IN})), 0)    AS redemption,
-      COUNT(DISTINCT t.investor_id) FILTER (WHERE t.type IN (${RED_IN}))::int     AS red_clients,
-      COUNT(*) FILTER (WHERE t.type IN ('purchase','lumpsum','additional_purchase'))::int AS buys,
-      COALESCE(SUM(t.amount::numeric) FILTER (WHERE t.type IN ('purchase','lumpsum','additional_purchase')), 0) AS buy_value,
-      COALESCE(SUM(t.amount::numeric) FILTER (WHERE t.type IN (${STOP_IN})), 0)   AS stop,
-      COUNT(*) FILTER (WHERE t.type IN (${STOP_IN}))::int                         AS stop_n
-      FROM bc JOIN transactions t ON t.investor_id = bc.id
-     WHERE t.status IN ('processed','successful') AND t.amount IS NOT NULL
-       AND t.order_date >= ${w.from}::date AND t.order_date <= ${w.to}::date
-     GROUP BY bc.bucket
-  `)).rows as Array<Record<string, unknown>>;
-
-  const newSip = (await tx.execute(sql`
-    WITH bc AS (${BC})
-    SELECT bc.bucket, COALESCE(SUM(s.amount::numeric), 0) AS gross_sip, COUNT(*)::int AS n
-      FROM bc JOIN sips s ON s.investor_id = bc.id
-     WHERE s.start_date >= ${w.from}::date AND s.start_date <= ${w.to}::date
-     GROUP BY bc.bucket
-  `)).rows as Array<Record<string, unknown>>;
+  // Money moved is BOOKED business (lib/dashboard/my/booked.ts), each entry in
+  // its RM's bucket — the client's RM, else the RM who booked it.
+  const src = await bookedLinesOnBook(tx, w.scope);
+  const owner = sql`COALESCE(i.rm_id, be.rm_id)`;
+  const staffIds = w.staff.length ? sql.join(w.staff.map((id) => sql`${id}::uuid`), sql`, `) : sql`NULL::uuid`;
+  const flows = src
+    ? ((await tx.execute(sql`
+        SELECT CASE WHEN ${owner} IS NULL THEN ${NO_RM}
+                    WHEN ${owner} IN (${staffIds}) THEN ${owner}::text
+                    ELSE ${OTHER_BRANCH} END AS bucket,
+               ${bookedFigureColumns("f")},
+               COALESCE(SUM(bel.sign) FILTER (WHERE bel.txn_type IN ('lumpsum','additional_purchase')), 0)::int AS buys,
+               COALESCE(SUM(bel.amount * bel.sign) FILTER (WHERE bel.txn_type IN ('lumpsum','additional_purchase')), 0) AS buy_value
+          FROM ${src.from}
+         WHERE ${src.where} AND bel.eff_date >= ${w.from}::date AND bel.eff_date <= ${w.to}::date
+         GROUP BY 1
+      `)).rows as Array<Record<string, unknown>>)
+    : [];
 
   // Bounced SIP debits IN THE PERIOD, from the ledger, with the register's
   // recovery state where one exists — the personal cockpit's definition.
@@ -401,7 +395,7 @@ export async function loadRmLedger(
   /* ── assemble ───────────────────────────────────────────────────────── */
   const byKey = (rows: Array<Record<string, unknown>>, key = "bucket") =>
     new Map(rows.map((r) => [String(r[key]), r]));
-  const B = byKey(book), F = byKey(flows), N = byKey(newSip), R = byKey(rejections), Q = byKey(queries);
+  const B = byKey(book), F = byKey(flows), R = byKey(rejections), Q = byKey(queries);
   const NC = byKey(fresh);
   const M = byKey(meetings, "id"), P = byKey(proposals, "id"), L = byKey(leads, "id");
   const C = byKey(calls, "id"), T = byKey(tasks, "id"), I = byKey(premium, "id"), K = byKey(backlog, "id");
@@ -419,7 +413,8 @@ export async function loadRmLedger(
   const make = (
     id: string, name: string, kind: RmLedgerRow["kind"], roles: string[], active: boolean,
   ): RmLedgerRow => {
-    const b = B.get(id), f = F.get(id), n = N.get(id), r = R.get(id), q = Q.get(id);
+    const b = B.get(id), f = F.get(id), r = R.get(id), q = Q.get(id);
+    const bk = readBookedFigures(f, "f");
     const person = kind === "person";
     const m = person ? M.get(id) : undefined, p = person ? P.get(id) : undefined;
     const l = person ? L.get(id) : undefined, c = person ? C.get(id) : undefined;
@@ -438,13 +433,13 @@ export async function loadRmLedger(
       sipBook: num(b?.sip_book),
       newClients: num(NC.get(id)?.new_clients),
       abClients: num(b?.ab),
-      grossSip: num(n?.gross_sip),
-      grossSipCount: num(n?.n),
-      sipStop: num(f?.stop),
-      sipStopCount: num(f?.stop_n),
-      grossInvestment: num(f?.gross),
-      redemption: num(f?.redemption),
-      redemptionClients: num(f?.red_clients),
+      grossSip: bk.newSip,
+      grossSipCount: bk.newSipCount,
+      sipStop: bk.stoppedSip,
+      sipStopCount: bk.stoppedSipCount,
+      grossInvestment: bk.gross,
+      redemption: bk.redemption,
+      redemptionClients: bk.redeemingClients,
       buys: num(f?.buys),
       buyValue: num(f?.buy_value),
       sipRejections: num(r?.n),

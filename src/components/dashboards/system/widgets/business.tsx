@@ -14,15 +14,15 @@ import { ArrowDownRight, ArrowRight, ArrowUpRight, Info, Minus, Repeat, Shield, 
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import {
-  getAUM, getSipBook, getNetBusiness, getNewClients, getInsurancePremium, getStockMonthAgo, getStockHistory, getTarget,
-  getBookByRm, getBookByBranch, getSipBookByRm, getNetBusinessByRm, getNetBusinessByBranch,
+  getAUM, getSipBook, getBookedBusiness, getNewClients, getInsurancePremium, getStockMonthAgo, getStockHistory, getTarget,
+  getBookByRm, getBookByBranch, getSipBookByRm, getBookedNetByRm, getBookedNetByBranch,
   getNewClientsByRm, getNewClientsByBranch, getOverdueTasksByAssignee, getTargetsByUser, getTargetsByBranch,
-  getMonthlyFlows, getLedgerCoverage, clientWhere, sipMonthlySql, targetPct, getActiveClients,
+  getBookedMonthlyFlows, hasBookedBusiness, clientWhere, sipMonthlySql, targetPct, getActiveClients,
   type MetricScope, inOrder,
 } from "@/lib/metrics";
 import { formatCount, formatDate, formatMoney, pickMoneyScale, type MoneyScale } from "@/lib/format";
 import type { WidgetCtx, WidgetImpl } from "../types";
-import { clientsHref, newClientsHref, qs, sipsHref, tasksHref, transactionsHref } from "../links";
+import { clientsHref, entriesHref, newClientsHref, qs, sipsHref, tasksHref } from "../links";
 import { Drill } from "../Drill";
 import { MoneyMovementChart, type MoneyPoint } from "../MoneyMovementChart";
 import { Sparkline } from "../Sparkline";
@@ -171,7 +171,7 @@ async function kpiRow(tx: Tx, ctx: WidgetCtx) {
     () => getSipBook(tx, s),
     () => getStockMonthAgo(tx, s),
     () => getStockHistory(tx, s, 12),
-    () => getNetBusiness(tx, s, p, p.prev),
+    () => getBookedBusiness(tx, s, p, p.prev),
     () => getNewClients(tx, s, p),
     () => getNewClients(tx, s, p.prev),
     () => getNewClients(tx, s, fy),
@@ -230,9 +230,9 @@ async function kpiRow(tx: Tx, ctx: WidgetCtx) {
           label="Net business"
           when={flow}
           value={money(cur?.net ?? null)}
-          href={transactionsHref(ctx)}
-          info={bizInfo ?? "Gross investment minus redemption, from imported RTA transactions."}
-          empty={biz.hasData ? null : { hint: "No transactions for this period", href: "/dashboard/rta-imports", cta: "Import RTA files" }}
+          href={entriesHref(ctx)}
+          info={bizInfo ?? "Gross investment minus redemption, as booked in Business Entries — every product."}
+          empty={biz.hasData ? null : { hint: "No business booked yet", href: "/dashboard/business-entries/new", cta: "Record business" }}
           compare={cur && prev ? vs(cur.net, prev.net, YOY) : null}
         />
         <KpiTile
@@ -245,8 +245,9 @@ async function kpiRow(tx: Tx, ctx: WidgetCtx) {
           unit={cur ? "/mo" : undefined}
           info={cur
             ? `New SIPs ${money(cur.newSip)} a month, minus SIPs stopped ${money(cur.stoppedSip)} a month, in the period.`
-            : "New SIPs registered minus SIPs stopped, as a monthly amount."}
-          empty={biz.hasData ? null : { hint: "No transactions for this period", href: "/dashboard/rta-imports", cta: "Import RTA files" }}
+            : "SIPs booked minus SIP stops booked, as a monthly amount."}
+          href={entriesHref(ctx)}
+          empty={biz.hasData ? null : { hint: "No business booked yet", href: "/dashboard/business-entries/new", cta: "Record business" }}
           compare={cur && prev ? vs(cur.netSip, prev.netSip, YOY) : null}
         />
         <KpiTile
@@ -274,10 +275,10 @@ async function kpiRow(tx: Tx, ctx: WidgetCtx) {
           hue="indigo"
           label="Clients"
           when="Today"
-          value={formatCount(counts.clients)}
-          href={clientsHref(ctx)}
-          info="Live clients: not closed and not merged into another record. Active are active or at redemption risk; funded have AUM above zero."
-          footer={`${formatCount(counts.active)} active · ${formatCount(counts.funded)} funded`}
+          value={formatCount(counts.funded)}
+          href={clientsHref(ctx, { aum_min: "0.01" })}
+          info="Clients holding money today (AUM above zero), the figure the registrar reports. Under it: every live client record (not closed, not merged), and how many are active."
+          footer={`${formatCount(counts.clients)} client records · ${formatCount(counts.active)} active`}
         />
         <KpiTile
           className={ROW_LAST}
@@ -415,8 +416,8 @@ async function teamTable(tx: Tx, ctx: WidgetCtx, dashboardHref: string) {
   const [book, sip, net, netFy, newc, overdue, targets] = await inOrder(
     () => getBookByRm(tx, s),
     () => getSipBookByRm(tx, s),
-    () => getNetBusinessByRm(tx, s, p),
-    () => getNetBusinessByRm(tx, s, fy),
+    () => getBookedNetByRm(tx, s, p),
+    () => getBookedNetByRm(tx, s, fy),
     () => getNewClientsByRm(tx, s, p),
     () => getOverdueTasksByAssignee(tx, { tenantId: s.tenantId, rmIds: s.rmIds, branchIds: s.branchIds }),
     () => getTargetsByUser(tx, s.tenantId, p.fiscalYear, "net_business"),
@@ -441,7 +442,7 @@ async function teamTable(tx: Tx, ctx: WidgetCtx, dashboardHref: string) {
         clients: clientsHref(ctx, { rm: u.id }),
         aum: clientsHref(ctx, { rm: u.id, sort: "aum", dir: "desc" }),
         sip: sipsHref(ctx, { rm: u.id }),
-        net: transactionsHref(ctx, { rm: u.id }),
+        net: entriesHref(ctx, { rm: u.id }),
         newClients: newClientsHref(ctx, undefined, undefined, { rm: u.id }),
         overdue: tasksHref(ctx, { assignee: u.id, tab: "overdue" }),
       },
@@ -489,8 +490,8 @@ async function branchTable(tx: Tx, ctx: WidgetCtx, dashboardHref: string) {
         FROM sips s JOIN investors i ON i.id = s.investor_id
        WHERE s.tenant_id = ${s.tenantId}::uuid AND s.status = 'active' AND ${clientWhere(s, "i")}
        GROUP BY i.branch_id`),
-    () => getNetBusinessByBranch(tx, s, p),
-    () => getNetBusinessByBranch(tx, s, fy),
+    () => getBookedNetByBranch(tx, s, p),
+    () => getBookedNetByBranch(tx, s, fy),
     () => getNewClientsByBranch(tx, s, p),
     () => tx.execute(sql`
       SELECT u.branch_id, COUNT(*)::int AS n FROM tasks t JOIN users u ON u.id = t.assignee_id
@@ -519,7 +520,6 @@ async function branchTable(tx: Tx, ctx: WidgetCtx, dashboardHref: string) {
         clients: clientsHref(ctx, { branch: id }),
         aum: clientsHref(ctx, { branch: id, sort: "aum", dir: "desc" }),
         sip: sipsHref(ctx, { branch: id }),
-        net: transactionsHref(ctx, { branch: id }),
         newClients: newClientsHref(ctx, undefined, undefined, { branch: id }),
         overdue: tasksHref(ctx, { branch: id, tab: "overdue" }),
       },
@@ -541,9 +541,8 @@ async function branchTable(tx: Tx, ctx: WidgetCtx, dashboardHref: string) {
 /* ─────────────────────────── money movement ─────────────────────────── */
 
 async function moneyMovement(tx: Tx, ctx: WidgetCtx) {
-  const coverage = await getLedgerCoverage(tx, ctx.tenantId);
-  if (!coverage.last || coverage.last < ctx.period.from) return { body: null };
-  const flows = await getMonthlyFlows(tx, ctx.scope, ctx.period);
+  if (!(await hasBookedBusiness(tx, ctx.tenantId))) return { body: null };
+  const flows = await getBookedMonthlyFlows(tx, ctx.scope, ctx.period);
   if (!flows.some((f) => f.gross !== 0 || f.redemption !== 0)) return { body: null };
   const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const data: MoneyPoint[] = flows.map((f) => ({
@@ -556,13 +555,13 @@ async function moneyMovement(tx: Tx, ctx: WidgetCtx) {
   return {
     body: <MoneyMovementChart data={data} />,
     subtitle: `Net ${formatMoney(net)}`,
-    href: transactionsHref(ctx),
-    hrefLabel: "Transactions",
+    href: entriesHref(ctx),
+    hrefLabel: "Business Entries",
   };
 }
 
 async function moneyMovementCsv(tx: Tx, ctx: WidgetCtx) {
-  const flows = await getMonthlyFlows(tx, ctx.scope, ctx.period);
+  const flows = await getBookedMonthlyFlows(tx, ctx.scope, ctx.period);
   return {
     columns: ["Month", "Gross investment", "Redemption", "Net sales"],
     rows: flows.map((f) => [f.month, f.gross, f.redemption, f.net]),
@@ -651,7 +650,7 @@ export function businessWidgets(dashboardHref: string): WidgetImpl[] {
       csv: async (tx, ctx) => {
         const s = ctx.scope;
         const [book, sip, net, newc, overdue] = await inOrder(
-          () => getBookByRm(tx, s), () => getSipBookByRm(tx, s), () => getNetBusinessByRm(tx, s, ctx.period),
+          () => getBookByRm(tx, s), () => getSipBookByRm(tx, s), () => getBookedNetByRm(tx, s, ctx.period),
           () => getNewClientsByRm(tx, s, ctx.period),
           () => getOverdueTasksByAssignee(tx, { tenantId: s.tenantId, rmIds: s.rmIds, branchIds: s.branchIds }),
         );

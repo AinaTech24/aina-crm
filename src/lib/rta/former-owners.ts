@@ -17,9 +17,16 @@
  * Rs 138 Cr the folios add up to, and 645 clients too many.
  *
  * So, after the folio upsert:
- *   - a placeholder left with no folio and no transaction is MERGED into the
+ *   - the transactions and SIPs of every folio that moved go WITH it. They
+ *     used to stay behind, so a placeholder a transaction feed had stood up
+ *     kept its history, never counted as empty and was never merged: the same
+ *     person stayed in the book twice, the money on one record and the
+ *     history on the other;
+ *   - a former owner left with no folio and no transaction is MERGED into the
  *     client who took most of its folios (the ordinary, logged and reversible
- *     merge — its AUM is zeroed and anything still pointing at it moves);
+ *     merge — its AUM is zeroed and anything still pointing at it moves) when
+ *     it is a no-PAN placeholder, or when it carries the SAME PAN as that
+ *     client (one PAN is one person);
  *   - any other former owner is revalued from what it still holds, and zeroed
  *     when it holds nothing, since every rupee of its cached AUM came from the
  *     folios it just gave up.
@@ -28,7 +35,7 @@
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { mergeInvestors } from "@/lib/investors/merge";
-import { recomputeInvestorAum } from "@/lib/finance/aum-persist";
+import { recomputeInvestorAum, recomputeInvestorsAum } from "@/lib/finance/aum-persist";
 
 /** investor id → the folio numbers it owns among `folioNumbers`. */
 export type FolioOwners = Map<string, Set<string>>;
@@ -58,7 +65,7 @@ export async function ownersOfFolios(tx: Tx, tenantId: string, folioNumbers: str
   return owners;
 }
 
-export type ReleaseSummary = { merged: number; revalued: number };
+export type ReleaseSummary = { merged: number; revalued: number; moved: number };
 
 /**
  * After the upsert: settle every former owner that no longer holds one of the
@@ -70,7 +77,7 @@ export async function releaseFormerOwners(
   before: FolioOwners,
   byUserId: string | null = null,
 ): Promise<ReleaseSummary> {
-  const summary: ReleaseSummary = { merged: 0, revalued: 0 };
+  const summary: ReleaseSummary = { merged: 0, revalued: 0, moved: 0 };
   if (!before.size) return summary;
 
   const allFolios = [...new Set([...before.values()].flatMap((s) => [...s]))];
@@ -83,6 +90,31 @@ export async function releaseFormerOwners(
     .map(([id, folios]) => ({ id, gone: [...folios].filter((f) => !(now.get(id)?.has(f))) }))
     .filter((l) => l.gone.length > 0);
   if (!losers.length) return summary;
+
+  // History follows the folio: re-point each moved folio's transactions and
+  // SIPs from the client that gave it up to the client that holds it now.
+  const loserIds = losers.map((l) => l.id);
+  const goneFolios = [...new Set(losers.flatMap((l) => l.gone))];
+  const receivers = new Set<string>();
+  for (const part of chunk(goneFolios, 500)) {
+    const folioList = sql.join(part.map((f) => sql`${f}`), sql`, `);
+    const loserList = sql.join(loserIds.map((id) => sql`${id}::uuid`), sql`, `);
+    for (const table of ["transactions", "sips"] as const) {
+      const t = sql.raw(table);
+      const rows = (await tx.execute(sql`
+        UPDATE ${t} x SET investor_id = f.investor_id, updated_at = now()
+          FROM folios f
+         WHERE f.tenant_id = ${tenantId}::uuid AND x.tenant_id = ${tenantId}::uuid
+           AND f.folio_number IN (${folioList})
+           AND x.folio_id = f.id
+           AND x.investor_id IN (${loserList})
+           AND f.investor_id IS NOT NULL AND x.investor_id <> f.investor_id
+        RETURNING f.investor_id
+      `)).rows as Array<{ investor_id: string }>;
+      summary.moved += rows.length;
+      for (const r of rows) receivers.add(String(r.investor_id));
+    }
+  }
 
   const state = (await tx.execute(sql`
     SELECT i.id, i.pan, i.rta_nopan_key, i.merged_into_id, i.deleted_at,
@@ -97,17 +129,31 @@ export async function releaseFormerOwners(
   }>;
   const byId = new Map(state.map((s) => [String(s.id), s]));
 
+  // The PAN of every client that took a folio — to recognise a same-PAN twin.
+  const takers = [...new Set([...ownersByFolio.values()].flat())];
+  const takerPan = new Map<string, string | null>();
+  for (const part of chunk(takers, 500)) {
+    const rows = (await tx.execute(sql`
+      SELECT id, upper(nullif(trim(pan), '')) AS pan FROM investors
+       WHERE tenant_id = ${tenantId}::uuid AND id IN (${sql.join(part.map((id) => sql`${id}::uuid`), sql`, `)})
+    `)).rows as Array<{ id: string; pan: string | null }>;
+    for (const r of rows) takerPan.set(String(r.id), r.pan);
+  }
+
   for (const loser of losers) {
     const s = byId.get(loser.id);
     if (!s || s.merged_into_id || s.deleted_at) continue;
     const empty = !s.has_folio && !s.has_txn;
     const placeholder = !s.pan && (s.rta_nopan_key ?? "").startsWith("NOPAN:");
 
-    if (empty && placeholder) {
-      // The client who took most of its folios.
-      const tally = new Map<string, number>();
-      for (const f of loser.gone) for (const o of ownersByFolio.get(f) ?? []) if (o !== loser.id) tally.set(o, (tally.get(o) ?? 0) + 1);
-      const survivorId = [...tally.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+    // The client who took most of its folios.
+    const tally = new Map<string, number>();
+    for (const f of loser.gone) for (const o of ownersByFolio.get(f) ?? []) if (o !== loser.id) tally.set(o, (tally.get(o) ?? 0) + 1);
+    const survivorId = [...tally.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+    const loserPan = (s.pan ?? "").trim().toUpperCase() || null;
+    const samePan = !!survivorId && !!loserPan && takerPan.get(survivorId) === loserPan;
+
+    if (empty && (placeholder || samePan)) {
       if (survivorId) {
         const res = await mergeInvestors(tx, {
           tenantId,
@@ -115,7 +161,9 @@ export async function releaseFormerOwners(
           loserId: loser.id,
           byUserId,
           source: "import",
-          reason: "Placeholder from a registrar report with no PAN; the folio master matched its folios to this client",
+          reason: placeholder
+            ? "Placeholder from a registrar report with no PAN; the folio master matched its folios to this client"
+            : "Same PAN as this client; a registrar import moved all its folios here",
         });
         if ("ok" in res) {
           summary.merged++;
@@ -135,5 +183,9 @@ export async function releaseFormerOwners(
     }
     summary.revalued++;
   }
+
+  // The clients who received history: their figures include it now. (A merge
+  // above already refreshed its survivor; refreshing again is harmless.)
+  if (receivers.size) await recomputeInvestorsAum(tx, [...receivers]);
   return summary;
 }

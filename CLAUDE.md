@@ -479,7 +479,9 @@ three or four days later. The two are linked, never added together:
 - **Targets count BOOKED business** (business entries). **Incentives count
   what the RTA processed** (the transaction ledger, `lib/metrics/business.ts`),
   plus Operations-confirmed entries for products the RTA never reports (PMS,
-  AIF, SIF, bonds …). Both are the firm's decision of 2026-10-02.
+  AIF, SIF, bonds …). Both are the firm's decision of 2026-10-02. Since
+  2026-10-07 every dashboard's business figure is booked too (see "The
+  dashboards").
 - **Every mutual-fund line of a counted entry** (`confirmed` / `emailed`)
   carries its RTA outcome (`business_entry_lines.rta_*`, migration 0228):
   pending · confirmed · mismatch · rejected · not_found · not_applicable.
@@ -504,6 +506,32 @@ three or four days later. The two are linked, never added together:
 - RTA business that nobody booked counts for the client's RM.
 - Business Entries shows each entry's outcome and filters by it (`?rta=`);
   backfill or re-run by hand with `tsx scripts/match-business-rta.ts`.
+
+## RTA imports — which client a registrar row belongs to
+
+`src/lib/rta/client-match.ts` (2026-10-08). Both import engines (`import.ts`
+for masters and holdings, `process.ts` for feeds) find clients through it.
+Never look a client up with a bare `WHERE pan = …`: that made a second client
+for someone the firm already had (Ahpal Financial Services, whose client list
+was loaded from Excel without PANs, got a registrar twin for nearly every
+client).
+
+- **A PAN resolves to its live client.** Merges are followed to the survivor,
+  and an Excel-loaded row (`dedup_pan = false`) counts. That client takes the
+  PAN slot (`dedup_pan` true on it, false on retired or duplicate rows), so the
+  `ON CONFLICT … WHERE dedup_pan` upsert updates it from then on.
+- **A PAN nobody holds may adopt a PAN-less client the firm entered**, on an
+  unambiguous name only (`nameMatchKey`: any word order, honorifics dropped, at
+  least two words). It needs exactly one such client, one person of that name
+  in the file, no PAN client already called that, no conflicting date of
+  birth, and minor matches minor.
+- **History follows the folio.** When an import moves a folio to another
+  client, its transactions and SIPs move too (`former-owners.ts`). An emptied
+  placeholder, or a twin with the same PAN, is merged into the client that took
+  the folio.
+- **Duplicates already in a book**: `tsx scripts/repair-rta-duplicates.ts
+  --tenant <id>` (dry run; `--apply`, `--placeholders`). It is heavy on a large
+  book, so run it out of hours.
 
 ## Webhook handlers
 
@@ -552,8 +580,17 @@ dashboard filters, each only narrowing). Client facts follow
 - **Leads**: the Leads board's seven columns (`LEAD_PIPELINE`, incl. the
   `proposal_sent` SOP stage from migration 0222); conversion = Won ÷ all leads
   counted; a converted or onboarding lead is Won.
-- **No data is not zero**: money that moved needs the RTA ledger to reach the
-  period (`getNetBusiness().hasData`), else the card says "—" + Import RTA files.
+- **Money that moved is BOOKED business** (the firm's decision of 2026-10-07):
+  gross, redemption, net business and SIP added / stopped / net SIP on every
+  dashboard — tiles, targets, trends, month on month, the FY scorecard, team
+  and branch tables — come from Business Entries, every product, over signed
+  lines (`lib/metrics/entries.ts` "booked business"; the RM / Branch book's
+  version is `lib/dashboard/my/booked.ts`). Never read `transactions` for a
+  business figure. AUM, the SIP book BALANCE and SIP rejections stay the
+  registrar's, as do the Operations Dashboard's feed views and Brokerage.
+- **No data is not zero**: a firm that has never confirmed a business entry
+  has no booked figure (`getBookedBusiness().hasData`), so the card says "—"
+  + Record business, not ₹0.
 
 ### Named dashboards — `/dashboard/[dashboardId]`
 
@@ -1297,6 +1334,41 @@ and can be served from any Node host.
 For staging or longer-lived environments, run `next start` behind a
 process supervisor (pm2 / systemd / Docker `restart: unless-stopped`)
 so the OS handles crash recovery for you.
+
+### Production change control — one change at a time
+
+Since 2026-10-09 (the firm's rule) only ONE session or person changes
+production at a time: a deploy, a rollback, an RDS change, a security group,
+a container restart. The lock lives on the box (`scripts/prod-lock.sh`,
+installed as `~/prod-lock.sh` by every deploy) and is reached from a laptop
+through SSM:
+
+```bash
+bash scripts/prod-change.sh status
+bash scripts/prod-change.sh acquire "Resize RDS to small" "<your session name>"
+bash scripts/prod-change.sh release "<your session name>" "PASS: health ok"
+bash scripts/prod-change.sh history
+```
+
+- **Check, then acquire, before any production change.** Exit code 3 means
+  someone else holds it: STOP and wait — never work around it.
+- **Release only after your health checks pass.** `ssm-deploy.sh` and
+  `rollback-bluegreen.sh` take and release it themselves (released only when
+  `/api/health` answers 200; a failed deploy releases it only if the colour
+  still serving is healthy). A deploy waits up to 30 minutes for the lock.
+- **No administrator key for a deploy.** `manual-deploy.sh` and
+  `prod-change.sh` first swap the laptop's identity for short-lived
+  credentials of the role `aina-crm-manual-deploy`
+  (`scripts/aws-deploy-role.sh`): upload under the artifacts bucket's
+  `releases/` and SSM commands on the production instance, nothing else (no
+  RDS, IAM, security groups or other buckets).
+- **A deploy inside a wider change**: take the lock under a space-free session
+  name, then `DEPLOY_SESSION=<that name> FORCE=1 bash scripts/manual-deploy.sh
+  <sha>`; `ssm-deploy.sh` sees `held-by` and deploys under it without
+  releasing, so you release after your own checks.
+- Every acquire / release is appended to `~/prod-change.log` with the change,
+  the session and the start time. `force-release` exists for a human clearing
+  a dead session's lock, and is logged as such.
 
 ### Health check
 

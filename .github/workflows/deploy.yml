@@ -84,7 +84,7 @@ jobs:
       - name: Deploy (blue-green) via SSM and wait for the result
         run: |
           set -euo pipefail
-          params=$(jq -n --arg uri "s3://${ARTIFACT_BUCKET}/${RELEASE_KEY}" '{
+          params=$(jq -n --arg uri "s3://${ARTIFACT_BUCKET}/${RELEASE_KEY}" --arg who "github-actions-run-${GITHUB_RUN_ID}-${GITHUB_SHA::8}" '{
             executionTimeout: ["3300"],
             commands: [
               "set -euo pipefail",
@@ -92,7 +92,7 @@ jobs:
               "chown ec2-user:ec2-user /tmp/app.tgz",
               "tar xzf /tmp/app.tgz -O scripts/ssm-deploy.sh > /tmp/ssm-deploy.sh",
               "chmod 755 /tmp/ssm-deploy.sh",
-              "runuser -l ec2-user -c \"bash /tmp/ssm-deploy.sh /tmp/app.tgz\""
+              ("runuser -l ec2-user -c \"bash /tmp/ssm-deploy.sh /tmp/app.tgz " + $who + "\"")
             ]
           }')
           CID=$(aws ssm send-command \
@@ -116,6 +116,13 @@ jobs:
             --query StandardOutputContent --output text || true
           aws ssm get-command-invocation --command-id "$CID" --instance-id "$INSTANCE_ID" \
             --query StandardErrorContent --output text | tail -40 || true
+          if [ "$status" = "Cancelled" ]; then
+            # Someone ran `aws ssm cancel-command` on it (on 8 Oct 2026 the
+            # laptop's mfd-deploy key cancelled a healthy deploy at 10 min; a
+            # box deploy takes ~12). Not a code failure: re-run this workflow.
+            echo "::error::The deploy was CANCELLED on AWS (aws ssm cancel-command), not failed by the code. A box deploy takes ~12 minutes; do not cancel it. Re-run this workflow to ship."
+            exit 1
+          fi
           if [ "$status" != "Success" ]; then
             echo "::error::Deploy did not succeed (SSM status: $status). The previous colour is still serving."
             exit 1

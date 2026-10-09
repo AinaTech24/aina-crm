@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
 
     const lines: string[] = [];
     lines.push(row([`Portfolio Intelligence — ${mine ? "My book" : "Firm-wide"}`]));
-    lines.push(row(["Book AUM", intel.totalAum, "Folios", intel.folioCount, "Investors", intel.investorCount]));
+    lines.push(row(["Book AUM", intel.bookAum, "Folios", intel.folioCount, "Investors", intel.investorCount]));
     lines.push(row(["Holdings classified %", intel.classifiedPct, "AUM with detail %", intel.coveragePct, "Direct-plan %", intel.directPlanPct]));
     lines.push("");
 

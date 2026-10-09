@@ -10,7 +10,10 @@
  *   getAUM                  clients.ts      Σ investors.aum of live clients
  *   getActiveClients        clients.ts      clients / active / funded
  *   getSipBook              sip.ts          Σ monthly active SIPs of live clients
- *   getNetBusiness          business.ts     gross, redemption, net, net SIP; hasData
+ *   getBookedBusiness       entries.ts      gross, redemption, net, net SIP — BOOKED; every dashboard
+ *   getBookedNetByRm/Branch entries.ts      booked net business per RM / branch
+ *   getBookedMonthlyFlows   entries.ts      booked gross / redemption / net by month
+ *   getNetBusiness          business.ts     the same from the RTA ledger (matching, incentives) — not dashboards
  *   getNewClients(period)   new-clients.ts  onboarded in the period
  *   getClientHealth(id)     health.ts       live score, cache kept equal
  *   getOpenLeads            leads.ts        open now + follow-ups due

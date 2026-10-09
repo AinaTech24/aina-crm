@@ -56,6 +56,8 @@ import {
   loadClientMaster, loadExternal, loadHighValue, loadNoUpdate, loadOpsDataQuality, loadPendingWith, loadQueries,
   loadRejected, loadUnassigned,
 } from "@/lib/dashboard/ops/exceptions";
+import { loadBookedVsRta } from "@/lib/dashboard/ops/booked-rta";
+import { BookedRtaPanel } from "./ops/OpsBookedRta";
 import { SYSTEM_DASHBOARD_BY_KEY } from "@/lib/dashboards/system/definitions";
 import type { DataAccess } from "@/lib/dashboards/system/access";
 import { FILTER_FIELDS, filterStateToParams, type FilterKey, type FilterState } from "@/lib/dashboards/system/filters";
@@ -85,7 +87,7 @@ const TAB_OF: Record<string, OpsTab> = {
   financial: "queue", unassigned: "queue",
   sla: "sla", tat: "sla", carry: "sla", "no-update": "sla", quality: "sla", review: "sla",
   team: "team", "pending-with": "team", external: "team", "branch-rm": "team",
-  sip: "rejections", rejected: "rejections", docs: "rejections",
+  sip: "rejections", rejected: "rejections", docs: "rejections", "booked-rta": "rejections",
 };
 
 /** Params that choose a view inside a tab, not a filter. Carried from tab to tab. */
@@ -486,6 +488,10 @@ export async function OperationsControlTower({
             <Suspense fallback={<Loading />}>
               <RejectedDocsBand run={run} w={w} exportQuery={exportQuery} />
             </Suspense>
+            {/* Booked business the RTA rejected, never reported or changed (lib/business/rta-match.ts) */}
+            <Suspense fallback={<Loading />}>
+              <BookedRtaBand run={run} w={w} />
+            </Suspense>
           </>
         )}
 
@@ -664,6 +670,11 @@ async function SipBand({ run, w, hrefs, exportQuery }: { run: Run; w: OpsWindow;
       <Cell><RejectionsPanel d={rejections} periodLabel={w.periodLabel} exportQuery={exportQuery} sla={w.t.sipRejectionSlaDays} /></Cell>
     </>
   );
+}
+
+async function BookedRtaBand({ run, w }: { run: Run; w: OpsWindow }) {
+  const d = await run((tx) => loadBookedVsRta(tx, w));
+  return <Cell id="booked-rta"><BookedRtaPanel d={d} periodLabel={w.periodLabel} /></Cell>;
 }
 
 async function RejectedDocsBand({ run, w, exportQuery }: { run: Run; w: OpsWindow; exportQuery: string }) {
