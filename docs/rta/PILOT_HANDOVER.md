@@ -2,7 +2,9 @@
 
 **For:** the authorized infrastructure engineer, DBA, the two platform operators and the compliance reviewer.
 
-**Authorization status:** **there is NO authorization for production deployment, migration, activation or financial posting.** This package lets authorized people decide whether the restricted 14-day KFintech pilot may begin. Nothing in it has been run against production, and no condition below is marked PASS.
+**Authorization status:** **there is NO authorization for production deployment, migration, activation or financial posting. Production authorization is NO-GO.** This package lets authorized people decide whether the restricted 14-day KFintech pilot may begin. Nothing in it has been run against production, and no condition below is marked PASS.
+
+**Development is frozen** at commit `8523a01` (accepted). No further feature work is authorized. What remains is operational evidence: release conditions A–F (§3) and the final security checks FS-1 – FS-10 (§2.5), each recorded by the role named for it.
 
 **This is the single operational document.** Supporting material:
 - `docs/rta/handover/kfintech-pilot-scheme-codes.csv` — the 118 pilot-scope KFintech scheme codes, with processed and rejected business kept apart.
@@ -360,6 +362,7 @@ Run `npx tsx scripts/rta-file-manifest.ts <every MFSD201 delivered so far> --cal
    ```sql
    SELECT id, status, roles, two_fa_enabled FROM users WHERE id IN ('<op 1>', '<op 2>');
    ```
+   The flag alone is **not** proof that the sessions used passed MFA — FS-1 (§2.5) is the check.
 2. The change ticket records the request id and its `payloadHash` (from operator 1's request response) and operator 2's approval response.
 3. After every two-person action:
    ```sql
@@ -379,20 +382,351 @@ Run `npx tsx scripts/rta-file-manifest.ts <every MFSD201 delivered so far> --cal
 - a start without an executed request, or with `requested_by = approved_by`;
 - the request id or hash in the database differs from the ticket.
 
+### 2.5 Final security checks before pilot authorization (FS-1 – FS-10)
+
+Added at the development freeze (commit `8523a01` accepted). **Each one is NOT VERIFIED until the named role records the evidence in the ticket**, from production (read-only) or from the authorized isolated production copy (C). Every SQL here is read-only (`PGOPTIONS='-c default_transaction_read_only=on'`), except where a step says "on the copy". `<firm>`, `<op 1>`, `<op 2>`, `<app role>`, `<worker role>`, `<start>` and `<end>` are filled in from the §6 sheet. The queries were checked for syntax as the development app role in a read-only transaction; that is not evidence for production.
+
+| # | Check | Responsible role | Feeds condition | Status |
+|---|---|---|---|---|
+| FS-1 | Operators' live sessions passed real MFA | Infrastructure engineer (logs) + DBA (queries); compliance reviews | F (and EC-6) | NOT VERIFIED |
+| FS-2 | App and worker roles cannot bypass RLS; not owner, not superuser | DBA + infrastructure engineer | D4 | NOT VERIFIED |
+| FS-3 | Privileged database and emergency-CLI access restricted and audited | DBA + infrastructure engineer; compliance reviews | D | NOT VERIFIED |
+| FS-4 | No alternate activation path (API, script, CLI, database write) | DBA + platform operator 1; compliance reviews | F | NOT VERIFIED |
+| FS-5 | MFSD211 / MFSD201 restriction at upload, queue and commit | Platform operator 1 (on the copy); compliance reviews | F | NOT VERIFIED |
+| FS-6 | Pilot email ingestion disabled | Infrastructure engineer + the firm's owner; platform operator 1 daily | D2 / EC-4 | NOT VERIFIED |
+| FS-7 | Every legacy match checked for canonical scheme identity | DBA (runs) + platform operator 1 (reviews); compliance signs | E / F (EC-1) | NOT VERIFIED |
+| FS-8 | A cancelled import cannot resume after Redis recovery | Infrastructure engineer + platform operator 1 (on the copy) | F (EC-2) | NOT VERIFIED |
+| FS-9 | Unique SIP / STP rejection counting equals the ledger | Platform operator 1 (daily); compliance spot-checks | F, then daily | NOT VERIFIED |
+| FS-10 | Nightly reconciliation runs and its alert reaches an accountable person | Infrastructure engineer (sink, rota) + platform operator 1; the named on-call person | D7 (EC-5) | NOT VERIFIED |
+
+**FS-1 — The operators' live sessions satisfied the actual MFA requirement**
+
+*Why a flag is not enough (found while preparing this check, not fixed — development is frozen):*
+- The database check (`rta_operator_ok`) and the API check accept an operator when `users.two_fa_enabled` is true and the session is live. A `user_sessions` row does not record how it was authenticated.
+- The password sign-in (`/api/auth/login`) issues no session to a two-factor account; the session comes only from `/api/auth/2fa/verify` (TOTP or a one-time backup code).
+- But **two other ways produce a live session without a TOTP step**, and both pass the flag check:
+  - **password reset** (`/api/auth/reset`) signs the user in straight after a reset, with no two-factor challenge;
+  - a session created **before** two-factor was enabled stays live (enabling two-factor does not revoke sessions). `/api/me/session/register` and `/api/auth/refresh` only continue an existing session, so they inherit whatever it was.
+
+*Procedure* (before F part 2, and again before every two-person action during the pilot):
+1. Each operator, already enrolled in two-factor, uses **Sign out everywhere** (`POST /api/me/sign-out-everywhere`), which revokes every session they hold. Record the time.
+2. Each signs in fresh: password, then a **TOTP code** from their authenticator. A backup code is an exception, recorded in the ticket with the reason; it shows as `backup_codes_left` falling by one.
+3. The DBA runs:
+   ```sql
+   -- (a) enrolment, resets and session revocation, per operator
+   SELECT u.id, u.status, u.roles, u.two_fa_enabled,
+          jsonb_array_length(coalesce(u.two_fa_backup_codes, '[]'::jsonb)) AS backup_codes_left, u.sessions_invalid_after,
+          (SELECT max(a.at) FROM audit_log a WHERE a.entity_id = u.id AND a.action = 'user.2fa_enabled')  AS mfa_enrolled_at,
+          (SELECT max(a.at) FROM audit_log a WHERE a.entity_id = u.id AND a.action = 'user.2fa_disabled') AS mfa_last_disabled_at,
+          (SELECT max(r.consumed_at) FROM password_resets r WHERE r.user_id = u.id)                      AS last_password_reset_at
+     FROM users u WHERE u.id IN ('<op 1>', '<op 2>');
+   -- (b) every live or recent session of the two operators
+   SELECT s.user_id, s.session_id, s.created_at, s.revoked_at, s.last_seen_at, s.ip_address, left(s.user_agent, 60) AS agent
+     FROM user_sessions s WHERE s.user_id IN ('<op 1>', '<op 2>')
+      AND (s.revoked_at IS NULL OR s.created_at > now() - interval '30 days') ORDER BY s.user_id, s.created_at;
+   -- (c) the sessions that filed and approved each executed control request
+   SELECT r.id, r.action, r.requested_at, r.decided_at,
+          rs.created_at AS requester_session_created, rs.revoked_at AS requester_session_revoked, rs.ip_address AS requester_ip,
+          aps.created_at AS approver_session_created, aps.revoked_at AS approver_session_revoked, aps.ip_address AS approver_ip
+     FROM rta_control_requests r
+     JOIN user_sessions rs ON rs.session_id = r.requester_sid
+     LEFT JOIN user_sessions aps ON aps.session_id = r.approver_sid
+    WHERE r.status = 'executed' AND (r.tenant_id = '<firm>' OR r.scope IN ('global', 'emergency'))
+    ORDER BY r.requested_at;
+   ```
+4. The infrastructure engineer pulls, from the web server or load-balancer access log, for **each session in (c)**:
+   - a `POST /api/auth/login` answered 200 (the two-factor challenge), then
+   - a `POST /api/auth/2fa/verify` answered 200 from the same client within a few minutes, at the session's `created_at`;
+   - and **no** `POST /api/auth/reset` or `POST /api/me/session/register` answered 200 for that operator between their sign-out-everywhere and the action.
+
+*Expected:*
+- `mfa_enrolled_at` is before every session used; `mfa_last_disabled_at` is empty or earlier still.
+- `last_password_reset_at` is empty or before the sign-out-everywhere.
+- Every session used for a request was created after the sign-out-everywhere and has its login + 2fa/verify pair in the log.
+- No other session of either operator is live.
+
+*Evidence:* the three query outputs; the access-log lines (path, status, time, client IP; never the cookie or token); the sign-out times.
+
+*Stop if:*
+- a session used for a request has no login + 2fa/verify pair;
+- a password reset or session re-issue for an operator after their fresh sign-in;
+- two-factor disabled at any time during the pilot;
+- the access logs do not keep request paths and status codes. Then MFA cannot be evidenced: **NO-GO**.
+
+**FS-2 — The production app and worker database roles cannot bypass RLS and are neither owner nor superuser**
+
+*Why:*
+- The app uses `APP_DATABASE_URL` **only when it is set**. Otherwise the web app and the worker connect with `DATABASE_URL`, the privileged role migrations use (`src/db/client.ts`).
+- The posting gate refuses a superuser or BYPASSRLS connection. It does **not** refuse a role that owns the tables, and an owner can disable the guard triggers.
+
+*Procedure:*
+1. **Infrastructure engineer**, on the web host and on every worker host, prints only the user name, host and database:
+   `node -e 'for (const k of ["APP_DATABASE_URL","DATABASE_URL"]) { const v = process.env[k]; if (!v) { console.log(k, "UNSET"); continue; } const u = new URL(v); console.log(k, u.username, u.hostname, u.pathname); }'`
+   Never print the password.
+2. **DBA:**
+   ```sql
+   SELECT r.rolname, r.rolsuper, r.rolbypassrls, r.rolcreaterole, r.rolcreatedb, r.rolreplication,
+          (SELECT string_agg(g.rolname, ',') FROM pg_auth_members m JOIN pg_roles g ON g.oid = m.roleid WHERE m.member = r.oid) AS member_of,
+          has_parameter_privilege(r.rolname, 'session_replication_role', 'SET') AS can_skip_triggers
+     FROM pg_roles r WHERE r.rolname IN ('<app role>', '<worker role>');
+   SELECT pg_get_userbyid(c.relowner) AS owner, count(*) AS objects
+     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm', 'S', 'f') GROUP BY 1 ORDER BY 1;
+   SELECT pg_get_userbyid(d.datdba) AS database_owner FROM pg_database d WHERE d.datname = current_database();
+   SELECT pg_get_userbyid(p.proowner) AS function_owner, count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public' GROUP BY 1;
+   SELECT count(*) AS tenant_tables_without_forced_rls
+     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relkind = 'r' AND NOT (c.relrowsecurity AND c.relforcerowsecurity)
+      AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid AND a.attname = 'tenant_id' AND NOT a.attisdropped);
+   ```
+   Then `npm run check:rls` on the copy.
+
+*Expected:*
+- `APP_DATABASE_URL` is set on every web and worker host and names a role other than the migration role.
+- For the app and worker roles, every flag is false, `member_of` is empty, and `can_skip_triggers` is false.
+- Neither role owns any object, the database or any function.
+- `tenant_tables_without_forced_rls` is 0, and `check:rls` passes.
+
+*Development result:* `mfd_app` all false, owns nothing (the 213 objects, 49 functions and the database belong to the migration role), 8 guard triggers enabled, 0 tables without forced RLS. That is not production evidence.
+
+*Stop if:* `APP_DATABASE_URL` is unset on any host; either role is superuser, BYPASSRLS or an owner, is a member of a privileged role, or can set `session_replication_role`.
+
+**FS-3 — Privileged database and emergency-CLI access is restricted and audited**
+
+*Procedure:*
+1. **DBA**, every privileged role and the logging that would record its use:
+   ```sql
+   SELECT r.rolname, r.rolsuper, r.rolbypassrls, r.rolcreaterole, r.rolcanlogin, r.rolvaliduntil
+     FROM pg_roles r WHERE (r.rolsuper OR r.rolbypassrls OR r.rolcreaterole) AND r.rolname NOT LIKE 'pg\_%' ORDER BY 1;
+   SELECT name, setting FROM pg_settings WHERE name IN ('log_connections', 'log_disconnections', 'log_statement', 'log_line_prefix', 'shared_preload_libraries') ORDER BY 1;
+   SELECT extname, extversion FROM pg_extension WHERE extname = 'pgaudit';
+   ```
+   On a managed database, also export the provider's audit settings and the list of IAM principals that can reset the master password or restore.
+2. **DBA and infrastructure engineer**, the access list (names, not secrets):
+   - who can read the migration-role and master credentials in the secret store;
+   - who can reach the database network, and from where;
+   - who can open a shell on a worker host. The recovery CLI runs there, with `ALLOW_SYSTEM_TX=1` and a database URL.
+3. **Break-glass rule**, written and signed: privileged access is named, time-limited, logged, and reviewed the next business day. The CLI is used only for `status`, `requests`, the `reverse` dry run, `reconcile`, and a `halt` when the API is unreachable (recorded "operator identity not server-verified").
+4. **A witnessed test:** one privileged sign-in on the copy, then show its log entry with user, time and source.
+
+*Expected:* every privileged role is named, with an owner, and either has no login or is held by named people only. Privileged connections and statements are logged where the reviewer can read them. The test entry is found.
+
+*Stop if:* an unnamed or shared holder of owner / superuser / master credentials; no record of privileged connections; shell access to worker hosts beyond the named people.
+
+**FS-4 — The pilot cannot be activated through any alternate API, script, CLI or database-write path**
+
+*What exists (development):*
+- **API:** the only start path is `POST /api/super-admin/rta-pipeline` (and `/api/super-admin/scheme-mappings` for scheme / AMC approvals), as a request plus a different operator's approval (§5.1). The old one-call `activate` / `release` answer 410.
+- **CLI:** `release`, `undo` and `reverse --commit` exit 2. The library calls `activateTenant` (any mode but a pause), `setPostingHalt` (release), `reversePostingBatch` (commit) and `undoReversal` throw.
+- **Database:** 8 guard triggers refuse a start without a request executed in the same transaction. Only the table owner or a superuser can disable a trigger or set `session_replication_role` (FS-2, FS-3).
+- **Local-only tools:** `scripts/dev-session.mjs` and `scripts/rta-infra-check.ts` refuse a non-local database.
+
+*Procedure:*
+1. **DBA**, production read-only:
+   ```sql
+   SELECT c.relname AS table_name, t.tgname, t.tgenabled
+     FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+    WHERE NOT t.tgisinternal AND t.tgname IN ('rta_control_requests_guard', 'rta_file_imports_cancel_guard',
+          'rta_pipeline_activations_append_only', 'rta_pipeline_activations_request_guard', 'rta_posting_control_events_immutable',
+          'rta_posting_controls_request_guard', 'rta_posting_reversals_append_only', 'rta_posting_reversals_request_guard')
+    ORDER BY 1, 2;
+   SELECT a.id, a.created_at, a.mode, a.posting_enabled, a.registrars, a.report_codes, a.expires_at, a.revoked_at,
+          a.control_request_id, r.status AS request_status, r.requested_by <> r.approved_by AS two_people
+     FROM rta_pipeline_activations a LEFT JOIN rta_control_requests r ON r.id = a.control_request_id
+    WHERE a.tenant_id = '<firm>' ORDER BY a.created_at;
+   SELECT scope, posting_halted, changed_by, approved_by, control_request_id, changed_at FROM rta_posting_controls ORDER BY scope;
+   SELECT count(*) AS starts_without_request FROM rta_pipeline_activations WHERE mode <> 'paused' AND control_request_id IS NULL
+      AND created_at > (SELECT applied_at FROM _applied_migrations WHERE filename = '0243_rta_control_requests.sql');
+   ```
+2. **Platform operator 1, on the copy:** try each path and record the refusal:
+   - as the app role, a SQL `INSERT` of a validate-first activation and an `UPDATE` releasing a halt: refused, naming the control request;
+   - the CLI `release`: exit 2;
+   - the old one-call API `activate`: 410;
+   - a request approved by its own requester: 403.
+3. **Infrastructure engineer:** on the deployed build, list every file that writes the control tables:
+   `grep -rlE "INSERT INTO rta_pipeline_activations|UPDATE rta_posting_controls|INSERT INTO rta_posting_reversals" <deployed app dir>`.
+   Expected: only the compiled `lib/rta/posting` modules. Then confirm `dev-session.mjs` and `rta-infra-check.ts` are absent from production hosts, or refuse there.
+
+*Expected:*
+- 8 triggers, each `tgenabled = 'O'`.
+- Before F: no activation for the firm. After F: every non-pause row has an executed, two-person request.
+- `starts_without_request` = 0, and every refusal in step 2 as stated.
+
+*Stop if:* a trigger is missing or not `O`; a start without a request; any step-2 attempt succeeds; an unexpected writer appears in the deployed build.
+
+**FS-5 — The KFintech MFSD211 / MFSD201 restriction holds at upload, queue and commit** *(on the copy, the firm activated with `reportCodes: ["MFSD211","MFSD201"]`)*
+
+*Procedure (platform operator 1):*
+1. **Upload** through the copy's app:
+   - MFSD211 and MFSD201 are accepted (200, queued);
+   - MFSD203, MFSD243, MFSD230 and one CAMS file each get **422**, are recorded `blocked`, and are never queued.
+2. **Queue (content):** upload an MFSD203 renamed to look like an MFSD201, under *Daily transaction feed*. It passes the name filter. The worker must then block it from its header: row `blocked`, "Blocked — … a MFSD203 file is refused".
+3. **Re-run** each blocked import: 422, still `blocked`.
+4. **Commit:**
+   ```sql
+   SELECT b.report_code, b.rta, count(*) FROM rta_staging_batches b WHERE b.tenant_id = '<firm>' GROUP BY 1, 2 ORDER BY 1;
+   SELECT f.status, f.source, f.kind, count(*), left(min(f.remarks), 120) AS example_remark
+     FROM rta_file_imports f WHERE f.tenant_id = '<firm>' AND f.status IN ('blocked', 'cancelled') GROUP BY 1, 2, 3;
+   ```
+
+*Expected:* only `MFSD211` / `MFSD201` (`kfintech`) batches; every refused file appears as `blocked`, with its file kept.
+
+*Development evidence:* `tests/rta-report-scope-db.test.ts` (7 cases) and the `rta_p0` run of the six real out-of-scope files. Not production evidence.
+
+*Stop if:* any out-of-scope file is queued, staged or posted, or is not recorded.
+
+**FS-6 — Pilot email ingestion stays disabled** *(until separately verified — EC-4 — and authorized in writing)*
+
+The inbox poller is platform-wide (the worker's `mail` group) and keeps serving other firms. For the pilot firm, the switch is its alias: mail to an inactive alias is not routed to the firm.
+
+*Procedure (infrastructure engineer; the firm's owner pauses their own forwarding rule):*
+```sql
+SELECT id, is_active, verified_at, created_at FROM rta_forward_addresses WHERE tenant_id = '<firm>';
+SELECT outcome, count(*), max(received_at) FROM rta_inbound_messages WHERE tenant_id = '<firm>' AND received_at >= '<start>' GROUP BY 1;
+```
+
+*Expected:* no active alias; from `<start>`, no `imported` row; the owner's confirmation that forwarding is paused. Platform operator 1 repeats the second query daily (§5.9 #3).
+
+*Stop if:* an active alias, or any `imported` row for the firm. Re-enabling mail is a separate written decision, after EC-4 evidence.
+
+**FS-7 — Every legacy transaction match is checked for canonical scheme identity**
+
+1. **Production, before F:** `SELECT count(*) FROM rta_posted_transactions;` must be 0. No validate-first posting has run there, so every future match is made by the 0243 matcher, which compares scheme identity before linking.
+2. **On the copy, after F part 1** (DBA runs; platform operator 1 reviews):
+   ```sql
+   WITH m AS (
+     SELECT t.scheme_code AS crm_code, t.rta_scheme_code AS crm_rta_code, e.rta, e.amc_code, e.scheme_code AS registrar_code, c.status AS mapping_status,
+            CASE WHEN c.status IN ('resolved_isin', 'confirmed') THEN c.amfi_scheme_code END AS approved_amfi_code
+       FROM rta_posted_transactions p
+       JOIN transactions t ON t.id = p.transaction_id
+       JOIN rta_staging_economic_txns e ON e.id = p.economic_txn_id
+       LEFT JOIN scheme_rta_codes c ON c.tenant_id = p.tenant_id AND c.rta = e.rta AND c.rta_amc_code = e.amc_code AND c.rta_scheme_code = e.scheme_code
+      WHERE p.tenant_id = '<firm>' AND p.kind = 'matched_existing')
+   SELECT count(*) AS matched_existing,
+          count(*) FILTER (WHERE crm_code = registrar_code)                                                 AS by_registrar_code,
+          count(*) FILTER (WHERE crm_code <> registrar_code AND crm_code = approved_amfi_code)               AS by_approved_amfi_code,
+          count(*) FILTER (WHERE crm_code <> registrar_code AND crm_code IS DISTINCT FROM approved_amfi_code) AS by_other_code_review_each,
+          count(*) FILTER (WHERE crm_rta_code IS NOT NULL AND crm_rta_code <> registrar_code)                AS registrar_column_differs,
+          count(*) FILTER (WHERE crm_code IS NULL AND crm_rta_code IS NULL)                                  AS no_scheme_on_crm_row,
+          count(*) FILTER (WHERE crm_code <> registrar_code AND mapping_status NOT IN ('resolved_isin', 'confirmed')) AS amfi_match_on_unverified_mapping
+     FROM m;
+   ```
+
+*Expected:*
+- `matched_existing` = `by_registrar_code` + `by_approved_amfi_code` + `by_other_code_review_each`.
+- `registrar_column_differs`, `no_scheme_on_crm_row` and `amfi_match_on_unverified_mapping` are 0.
+- Each `by_other_code_review_each` row is a historical code with the approved mapping that ties it to the same AMFI scheme, listed and signed.
+- Every `identity_conflict` has a written decision (EC-1).
+
+*Development evidence:* in `rta_p0`, 1,061 linked and 0 conflicts. This breakdown query was **not** run there; run it on the copy.
+
+*Stop if:* any count above is non-zero without a signed explanation; a production ledger row exists before F.
+
+**FS-8 — A cancelled import cannot resume after Redis recovery** *(on the copy, with a non-production Redis)*
+
+*Procedure (infrastructure engineer stops and starts Redis; platform operator 1 runs the rest):*
+1. Halt the firm. Upload an approved-format file that is **not** on the inventory. It parks: row `uploaded`, a delayed job in Redis.
+2. **Stop Redis.** Cancel the import (`cancel_import`, §5.4). The call answers 200 with `queueChecked: false`, and the row reads `cancelled`.
+3. **Start Redis.** Wait longer than `RTA_HOLD_RECHECK_MS` (5 minutes by default) so the delayed job fires. Then release the firm (two operators) so the job would run if it could.
+4. Check:
+   ```sql
+   SELECT f.id, f.status, f.cancelled_at, f.cancelled_by, f.cancel_reason, f.file_key IS NOT NULL AS file_kept,
+          (SELECT count(*) FROM rta_staging_batches b WHERE b.import_id = f.id) AS staging_batches,
+          (SELECT count(*) FROM audit_log a WHERE a.entity_id = f.id AND a.action = 'rta.import.cancel') AS audit_rows
+     FROM rta_file_imports f WHERE f.tenant_id = '<firm>' AND f.status = 'cancelled';
+   ```
+   - The worker log shows "was cancelled by an operator — not run".
+   - The queue no longer lists the job.
+   - The re-run button answers 409.
+   - On the copy, as the app role: `UPDATE rta_file_imports SET status = 'uploaded' WHERE id = '<id>'` is refused ("a cancelled RTA import is final").
+5. Repeat steps 1–2 with Redis up: `jobsRemoved: 1`.
+
+*Expected:*
+- `status` stays `cancelled`, with the same `cancelled_at`.
+- `staging_batches` 0, `audit_rows` 1, `file_kept` true.
+- No transaction is written.
+
+*Development evidence:* `tests/rta-cancel-import-db.test.ts` covered the cancel with Redis unreachable, the worker refusing the surviving job (called directly), and removal on a real Redis. The full stop–cancel–start sequence, with the delayed job firing after recovery, was **not** rehearsed as one run. Run it here.
+
+*Stop if:* the row changes from `cancelled`; any staging batch or transaction for the import; the job runs.
+
+**FS-9 — Unique SIP / STP rejection counting stays consistent with the financial ledger** *(platform operator 1, at F and every pilot day)*
+
+1. **From the ledger**, for the pilot window:
+   ```sql
+   SELECT count(*) FILTER (WHERE t.status = 'rejected') AS rejected_legs,
+          round(coalesce(sum(abs(t.amount)) FILTER (WHERE t.status = 'rejected'), 0), 2) AS rejected_leg_amount,
+          count(DISTINCT CASE WHEN t.status = 'rejected' THEN CASE WHEN t.type = 'stp' AND nullif(btrim(t.raw_feed_row->>'switchRef'), '') IS NOT NULL
+                THEN concat_ws('|', 'stp', t.investor_id, t.folio_number, t.order_date, abs(t.amount), btrim(t.raw_feed_row->>'switchRef')) ELSE t.id::text END END) AS rejected_instructions,
+          (SELECT round(coalesce(sum(x.v), 0), 2) FROM (
+             SELECT max(abs(t2.amount)) AS v FROM rta_posted_transactions p2 JOIN transactions t2 ON t2.id = p2.transaction_id
+              WHERE p2.tenant_id = '<firm>' AND t2.status = 'rejected' AND t2.order_date BETWEEN '<start>' AND '<end>'
+              GROUP BY CASE WHEN t2.type = 'stp' AND nullif(btrim(t2.raw_feed_row->>'switchRef'), '') IS NOT NULL
+                THEN concat_ws('|', 'stp', t2.investor_id, t2.folio_number, t2.order_date, abs(t2.amount), btrim(t2.raw_feed_row->>'switchRef')) ELSE t2.id::text END) x) AS rejected_instruction_amount,
+          (SELECT count(*) FROM rta_posted_transactions p3 WHERE p3.tenant_id = '<firm>' AND p3.sip_rejection_id IS NOT NULL) AS sip_rejection_records
+     FROM rta_posted_transactions p JOIN transactions t ON t.id = p.transaction_id
+    WHERE p.tenant_id = '<firm>' AND t.order_date BETWEEN '<start>' AND '<end>';
+   ```
+2. **The Operations dashboard**, Rejections tab, firm-wide, period = custom `<start>` – `<end>`: read *Rejected instructions* and *Rejected legs*.
+3. **The export** (`/api/ops/export?kind=rejected`, same period): the line count, and the number of distinct values in the `Instruction` column.
+
+*Expected:*
+- The dashboard's instructions and legs (count and amount) equal the ledger query.
+- The export has one line per leg; its distinct `Instruction` values equal `rejected_instructions`.
+- `sip_rejection_records` equals the rejected SIP instalments.
+
+The dashboard reads every transaction of the firm in the period. For a firm with legacy rows that the ledger has not linked, compare the same period after EC-1 shows every legacy row in the window linked or held.
+
+*Development evidence:* 2 instructions / ₹7,000.00 and 3 legs / ₹12,000.00, equal on both `rta_p0` firms and in the totals CSV.
+
+*Stop if:* any figure differs from the ledger.
+
+**FS-10 — Nightly reconciliation runs, and its alert reaches an accountable operator**
+
+*What the software does:*
+- The worker's `ops` group (in `WORKER_GROUPS`) runs `daily-ops-scanner` once a day at **06:30 by the worker host's clock** (06:30 UTC is 12:00 IST; record the host's time zone). It reconciles every validate-first firm.
+- A non-zero count sends a `captureError` POST to `OBSERVABILITY_WEBHOOK_URL` (or `ERROR_WEBHOOK_URL`) and writes `rta.posting.reconcile_alert` to the audit log.
+
+*Two limits found while preparing this check (not fixed):*
+- The webhook POST is fire-and-forget: one attempt, and a failure is not retried or recorded.
+- If the reconciliation cannot run at all, it is written to the worker console only, not alerted.
+
+The controls below cover both.
+
+*Procedure:*
+1. **Infrastructure engineer:**
+   - `WORKER_GROUPS` on each worker host contains `ops`; record the host time zone;
+   - the webhook variable is set on the worker host (EC-5);
+   - name the system, the rota and the accountable on-call person.
+2. **Daily, platform operator 1:**
+   ```sql
+   SELECT job_name, last_run_at, last_run_status, left(last_run_detail, 120) AS detail, last_heartbeat_at FROM scheduler_state WHERE job_name = 'daily-ops-scanner';
+   SELECT at, tenant_id, after FROM audit_log WHERE action = 'rta.posting.reconcile_alert' ORDER BY at DESC LIMIT 5;
+   ```
+   Then the manual `reconcile` (§5.9 #4).
+3. **On the copy (EC-5):** break one ledger row; let the nightly run (or `DAILY_OPS_ON_BOOT=1` on a copy worker) raise the alert. The named on-call person acknowledges it in the on-call tool within the agreed time.
+
+*Expected:*
+- `last_run_at` today, with `last_run_status` ok.
+- The test alert is acknowledged by the named person, and the audit row exists.
+- The manual reconcile exits 0 every day.
+
+*Stop if:* no run recorded for the day; an alert not acknowledged in the agreed time; the webhook unset; no named accountable person.
+
 ---
 
 ## 3. Six release conditions
 
-**Current status: none is PASS. Every production-dependent condition is NOT VERIFIED; F is NOT DONE.**
+**Current status: none is PASS. Every production-dependent condition is NOT VERIFIED; F is NOT DONE.** A condition becomes PASS only when an authorized operator has recorded actual evidence from production (read-only) or from the authorized isolated production copy, in the ticket. Development, test or rehearsal results never make a condition PASS.
 
 | Condition | GO / NO-GO today | What would make it PASS |
 |---|---|---|
 | A. AMFI integrity and mapping | **NO-GO** (not verified) | the two-download evidence and mapping queries on the pilot host |
 | B. Schemes verified or held | **NO-GO** (not verified) | B (ii) = 0 on the copy; a decision for each unresolved code |
 | C. Migration rehearsal | **NO-GO** (not verified) | 0 blockers and both checks on an authorized copy |
-| D. Infrastructure, isolation, backups, alerts | **NO-GO** (not verified) | D1–D7, including EC-4 (authenticated mail) and EC-5 (acknowledged alert) |
-| E. Diagnostics reviewed | **NO-GO** (not verified) | signed review, including EC-1 step 1 (legacy transactions) |
-| F. Dry run + two-person approval | **NO-GO** (not done) | the clean dry run including EC-1 – EC-3, then EC-2, EC-4 step 4 and EC-6 before a signed approval |
+| D. Infrastructure, isolation, backups, alerts | **NO-GO** (not verified) | D1–D7, including EC-4 (authenticated mail), EC-5 (acknowledged alert), **FS-2** (database roles), **FS-3** (privileged access), **FS-6** (pilot mail off) and **FS-10** (nightly reconciliation alert) |
+| E. Diagnostics reviewed | **NO-GO** (not verified) | signed review, including EC-1 step 1 (legacy transactions) and **FS-7** step 1 |
+| F. Dry run + two-person approval | **NO-GO** (not done) | the clean dry run including EC-1 – EC-3, **FS-5**, **FS-7** step 2, **FS-8** and **FS-9**; then EC-2, EC-4 step 4, EC-6, **FS-1** and **FS-4** before a signed approval |
 
 | | **A. Official AMFI file integrity and mapping validation on the pilot host** |
 |---|---|
@@ -693,6 +1027,9 @@ After any reversal, undo or restore:
 | 5 | Processed vs rejected, from the ledger | the §4.1 ledger query | `other_status` 0; rejected legs carry 0 units | `other_status` ≠ 0 or a rejection with units |
 | 6 | Held items are actionable | the Held screen (`/dashboard/rta-imports/held`); the four unresolved codes still listed on the Scheme codes screen | each held item has an owner and a next step | a held item nobody owns for two business days |
 | 7 | Backlog | EC-2 inventory | nothing unapproved | any unapproved import not cancelled |
+| 8 | The nightly reconciliation ran (FS-10) | the FS-10 `scheduler_state` and `reconcile_alert` queries | `last_run_at` today, status ok; any alert acknowledged by the named on-call person | no run recorded for the day; an unacknowledged alert |
+| 9 | Rejections agree with the ledger (FS-9) | the FS-9 ledger query and the dashboard's Rejections tab for the pilot window | instructions and legs equal | any difference |
+| 10 | Operator sessions (FS-1) | before any two-person action that day: the FS-1 queries and access-log pair | every session used came from login + 2fa/verify | a session without the pair; a password reset or session re-issue for an operator |
 
 ---
 
@@ -715,11 +1052,26 @@ Every field is blank on purpose. Complete it in ink or in the ticket; do not pre
 | On-call destination that acknowledged the test alert (EC-5): system, rota, alert id | |
 | Activation request (EC-6): request id, `payloadHash`, filed at (operator 1's session), approved at (operator 2's session) | |
 | Global-halt release request (EC-6): request id, `payloadHash` | |
+| Database app role and worker role (FS-2), as named in `APP_DATABASE_URL` on each host | |
+| Worker host time zone, and the hour the nightly reconciliation runs (FS-10) | |
+| Accountable on-call person for the reconciliation alert (FS-10): name, rota | |
+| Named holders of privileged database / emergency-CLI access (FS-3) | |
 | First platform operator (requester): name, user id | |
 | Second platform operator (approver): name, user id | |
 | DBA: name | |
 | Infrastructure engineer: name | |
 | Compliance reviewer: name | |
+
+**Who records which check** (names are filled in by the authorizer; a person may hold more than one role, but platform operator 1 and platform operator 2 are always two different people):
+
+| Role | Name | Checks owned |
+|---|---|---|
+| DBA | | C; E; FS-2, FS-3 (database), FS-4 step 1, FS-7 |
+| Infrastructure engineer | | D1–D7; FS-1 step 4 (access logs), FS-2 step 1, FS-3 (hosts), FS-4 step 3, FS-6, FS-8 (Redis), FS-10 step 1 |
+| Platform operator 1 (requester) | | A (first download); B; F part 1; FS-4 step 2, FS-5, FS-8, FS-9, FS-10 (daily) |
+| Platform operator 2 (approver) | | A (second download); the approvals in F part 2 |
+| Compliance reviewer | | review and signature of E, F, FS-1, FS-3, FS-4, FS-5, FS-7 and the §6 sheet |
+| Accountable on-call person | | acknowledgement in EC-5 / FS-10 |
 
 | Condition | Result (PASS / FAIL / NOT VERIFIED) | Evidence reference (ticket / document) | Initials |
 |---|---|---|---|
@@ -735,9 +1087,19 @@ Every field is blank on purpose. Complete it in ink or in the ticket; do not pre
 | EC-4 authenticated registrar mail domains (in D) | NOT VERIFIED | | |
 | EC-5 alert acknowledged by real on-call (in D) | NOT VERIFIED | | |
 | EC-6 operator identities and separate approvals (in F) | NOT VERIFIED | | |
+| FS-1 operators' live sessions passed MFA (in F) | NOT VERIFIED | | |
+| FS-2 app / worker roles cannot bypass RLS; not owner or superuser (in D) | NOT VERIFIED | | |
+| FS-3 privileged database and emergency-CLI access restricted and audited (in D) | NOT VERIFIED | | |
+| FS-4 no alternate activation path (in F) | NOT VERIFIED | | |
+| FS-5 MFSD211 / MFSD201 restriction at upload, queue and commit (in F) | NOT VERIFIED | | |
+| FS-6 pilot email ingestion disabled (in D) | NOT VERIFIED | | |
+| FS-7 every legacy match checked for canonical scheme identity (in E / F) | NOT VERIFIED | | |
+| FS-8 cancelled import cannot resume after Redis recovery (in F) | NOT VERIFIED | | |
+| FS-9 rejection counting consistent with the ledger (in F, then daily) | NOT VERIFIED | | |
+| FS-10 nightly reconciliation alert reaches an accountable person (in D) | NOT VERIFIED | | |
 
 **Final authorization:**
-- ☐ **GO** for the 14-day KFintech transaction-only pilot. Every condition above is PASS with evidence.
+- ☐ **GO** for the 14-day KFintech transaction-only pilot. Every condition and check above (A–F, EC-1 – EC-6, FS-1 – FS-10) is PASS with evidence recorded by its named role.
 - ☐ **NO-GO.** Reason: ________
 
 The pilot validates verified KFintech transactions only. It makes no claim about AUM, holdings, the SIP Book, the SIP Master, CAMS or any other module.
@@ -748,7 +1110,7 @@ The pilot validates verified KFintech transactions only. It makes no claim about
 | Platform operator 2 | | |
 | Compliance reviewer | | |
 
-**Recommendation from development:** **NO-GO until A–E are PASS with production evidence, EC-1 – EC-6 are evidenced, and F is signed.** The five software defects of §7 are fixed in development (migration 0243) and tested on isolated databases; none of that is production evidence. The residual risks in §7.2 remain and are held by the stated controls.
+**Recommendation from development:** **NO-GO until A–E are PASS with production evidence, EC-1 – EC-6 and FS-1 – FS-10 are evidenced, and F is signed.** The five software defects of §7 are fixed in development (migration 0243) and tested on isolated databases; none of that is production evidence. The residual risks in §7.2 remain and are held by the stated controls.
 
 ---
 
@@ -771,7 +1133,9 @@ The pilot validates verified KFintech transactions only. It makes no claim about
 | Anyone holding the production database owner / superuser credentials can disable triggers and write rows directly; no application control can stop that | DBA access is break-glass, logged and reviewed (D4); the app role is neither superuser nor BYPASSRLS |
 | The platform scheme / AMC approvals are two-person in the API (control requests), but the database does not refuse a direct write to `scheme_registrar_map` / `registrar_amc_identity` without a request | Same as above; those tables are reviewed in A / B |
 | The CLI `halt` names its operator on the command line (recorded "not server-verified") | Use the API halt when it is reachable; a halt only stops |
-| Two-factor is read from `users.two_fa_enabled`, set by the TOTP enrolment | EC-6 step 1 checks it for both operators |
+| Two-factor is read from `users.two_fa_enabled`; a session does not record how it was authenticated. A **password reset** signs the user in with no TOTP step, and a session from **before** enrolment stays live — both pass the operator check | FS-1: sign out everywhere, fresh TOTP sign-in, and the access-log login + 2fa/verify pair for every session used; no reset or re-issue after it |
+| The app connects with `DATABASE_URL` (the migration role) whenever `APP_DATABASE_URL` is unset; the posting gate refuses a superuser / BYPASSRLS role but not a table owner | FS-2 on every web and worker host |
+| The reconciliation alert webhook is one fire-and-forget attempt; a reconciliation that cannot run at all is only written to the worker console | FS-10: the daily `scheduler_state` check, the daily manual `reconcile`, an acknowledged test alert |
 | An in-scope MFSD211 / MFSD201 arriving by mail is imported without the signed inventory | Mail for the firm stopped for the pilot (EC-4 step 4) |
 | A cancel while Redis is unreachable cannot remove the job (`queueChecked: false`) | The worker refuses the cancelled import anyway; re-run the cancel when Redis is back (EC-2) |
 

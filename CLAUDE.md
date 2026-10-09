@@ -836,6 +836,13 @@ Operator steps and evidence: `docs/rta/PILOT_HANDOVER.md` (§5.1, EC-1, EC-2, EC
   date and amount. A new rejection count must use it.
 - **A cancelled import is final** (`posting/cancel-import.ts` + a trigger): who,
   when, why; the job is removed; the worker's `markParsing` never claims it.
+- **Development is FROZEN at `8523a01`** (owner, 2026-10-09). Pilot readiness is
+  operational evidence only: A–F and FS-1 – FS-10 in the handover. Known and
+  NOT fixed (held by FS checks): `/api/auth/reset` signs a user in without a
+  TOTP step and a pre-enrolment session stays live, so `two_fa_enabled` is not
+  proof of MFA (FS-1); without `APP_DATABASE_URL` the app and worker run as the
+  migration role (FS-2); the reconciliation webhook is one fire-and-forget
+  attempt (FS-10).
 
 ## Webhook handlers
 
