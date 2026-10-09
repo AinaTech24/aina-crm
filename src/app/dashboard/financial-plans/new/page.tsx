@@ -27,6 +27,7 @@ import { computeGoal } from "@/lib/goal-planning/calc";
 import { recommendedLifeCover, financialAssetsTotal } from "@/lib/financial-plans/analysis";
 import { FACT_FIND_GOAL_RETURN, planFromFactFind } from "@/lib/financial-plans/from-fact-find";
 import { formatDate } from "@/lib/format";
+import { cleanPlanPayload, describeIssues, planProblems, STEP_NAMES } from "@/lib/financial-plans/payload";
 
 type Recipient = { id: string; name: string; kind?: "investor" | "lead" };
 
@@ -490,10 +491,7 @@ function PlanFormContent() {
       return;
     }
 
-    setBusy(true);
-    setErr(null);
-
-    const payload = {
+    const payload = cleanPlanPayload({
       ...(recipient.kind === "lead" ? { leadId: recipient.id } : { investorId: recipient.id }),
       status,
       clientAge: clientAge ?? null,
@@ -520,7 +518,20 @@ function PlanFormContent() {
       savingsRate,
       emiToIncomePct,
       mfdValueAddText: mfdValueAddText || null,
-    };
+    });
+
+    // Blank rows are dropped by cleanPlanPayload; what is left to fix is shown
+    // with its step, and the wizard opens on that step.
+    const problems = planProblems(payload);
+    if (problems.length) {
+      const p0 = problems[0];
+      setErr(`Step ${p0.step} (${STEP_NAMES[p0.step]}): ${p0.message}${problems.length > 1 ? ` (+${problems.length - 1} more)` : ""}`);
+      setStep(p0.step);
+      return;
+    }
+
+    setBusy(true);
+    setErr(null);
 
     try {
       const url = editId ? `/api/financial-plans/${editId}` : "/api/financial-plans";
@@ -531,9 +542,16 @@ function PlanFormContent() {
         body: JSON.stringify(payload),
       });
 
-      const j = await res.json();
+      const j = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setErr(j.error ?? `Operation failed with code ${res.status}`);
+        // The API returns zod issues with "invalid body": name the field and step.
+        const described = describeIssues(j.issues);
+        if (described) {
+          setErr(described.message);
+          if (described.step) setStep(described.step);
+        } else {
+          setErr(j.error ?? `Operation failed with code ${res.status}`);
+        }
         return;
       }
 

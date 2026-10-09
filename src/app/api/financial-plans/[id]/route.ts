@@ -84,7 +84,7 @@ const UpdateBody = z.object({
   notes: z.string().optional().nullable(),
   riskProfile: z.string().optional().nullable(),
   savingsRate: z.number().min(0).max(100).optional().nullable(),
-  emiToIncomePct: z.number().min(0).max(100).optional().nullable(),
+  emiToIncomePct: z.number().min(0).max(999).optional().nullable(), // EMIs can exceed income
   mfdValueAddText: z.string().optional().nullable(),
 });
 

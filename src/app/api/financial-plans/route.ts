@@ -93,7 +93,7 @@ const CreateBody = z.object({
   notes: z.string().optional().nullable(),
   riskProfile: z.string().optional().nullable(),
   savingsRate: z.number().min(0).max(100).optional().nullable(),
-  emiToIncomePct: z.number().min(0).max(100).optional().nullable(),
+  emiToIncomePct: z.number().min(0).max(999).optional().nullable(), // EMIs can exceed income
   mfdValueAddText: z.string().optional().nullable(),
 }).refine((d) => !!d.investorId !== !!d.leadId, {
   message: "Provide exactly one of investorId or leadId",
