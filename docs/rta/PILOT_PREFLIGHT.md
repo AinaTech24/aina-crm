@@ -6,7 +6,7 @@
 - The authentic AMFI NAVAll (business date 07-Oct-2026, SHA-256 `f85adeebb6bbca9862a0c0b928527d8c46f095da99131429f95ceed2d1449b3f`), applied only to an isolated database (`rta_verify3l`, built from empty, 280 migrations).
 - The real RTA sample files; aggregates only — no PAN, name or folio is printed here, ARNs are masked.
 
-**Operator runbook:** `PILOT_PREFLIGHT_RUNBOOK.md`.
+**Operator handover (the single operational document):** `PILOT_HANDOVER.md`.
 
 **Corrections to the previous report:**
 - The previous chat summary swapped two KFintech report codes. Per KFintech's Distributor Services manual, and as the code, tests and earlier documents already had it: **MFSD201 = Transaction Report; MFSD211 = Investor Master Information**; MFSD203 = Holdings / AUM; MFSD243 = SIP / STP / SWP registrations. Every guide and checklist in this folder now carries the matrix below.
@@ -221,7 +221,7 @@ Plus rejected: SIP 1 (₹2,000), STP 2 (₹10,000).
 
 ## 7. Six release conditions
 
-Steps, evidence and stop conditions are in `PILOT_PREFLIGHT_RUNBOOK.md`. No condition is PASS: none has production evidence.
+Steps, evidence and stop conditions are in `PILOT_HANDOVER.md` §3. No condition is PASS: none has production evidence.
 
 | # | Condition | Development evidence | Production result |
 |---|---|---|---|

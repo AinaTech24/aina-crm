@@ -1,0 +1,119 @@
+kfintech_amc,registrar_scheme_code,status,reason_code,registrar_isin,amfi_scheme_code,amfi_scheme_name,amfi_amc,amfi_nav_date_in_07oct_file,seen_in_reports,registrar_transactions,posted_transactions,posted_amount_inr,first_trade_date,last_trade_date
+120,120DEGP,unresolved,isin_not_in_feed,INF205KA1CD5,,,,,MFSD201+MFSD211,1,0,0.00,,
+120,120RGGP,unresolved,no_isin,,,,,,MFSD211,0,0,0.00,,
+127,127DFGP,unresolved,no_isin,,,,,,MFSD211,0,0,0.00,,
+185,185SCRG,unresolved,no_isin,,,,,,MFSD211,0,0,0.00,,
+101,101DVGP,resolved_isin,isin_verified,INF760K01019,101922,Canara Robeco Flexi Cap Fund - Regular Plan - GROWTH OPTION,Canara Robeco Mutual Fund,2026-10-07,MFSD201+MFSD211,15,15,1516561.01,2026-04-30,2026-10-07
+101,101EQGP,resolved_isin,isin_verified,INF760K01167,102920,Canara Robeco Large and Mid Cap Fund - Regular Plan - GROWTH OPTION,Canara Robeco Mutual Fund,2026-10-07,MFSD201+MFSD211,13,13,46497.69,2026-05-04,2026-10-05
+101,101GBOE,resolved_isin,isin_verified,INF760K01050,106166,Canara Robeco Aggressive Hybrid Fund - Regular Plan - GROWTH OPTION,Canara Robeco Mutual Fund,2026-10-07,MFSD201+MFSD211,2,2,9999.50,2026-05-05,2026-10-05
+101,101LCGP,resolved_isin,isin_verified,INF760K01AR3,113221,Canara Robeco Large Cap Fund - Regular Plan - GROWTH OPTION,Canara Robeco Mutual Fund,2026-10-07,MFSD201+MFSD211,4,4,13999.30,2026-05-05,2026-10-07
+101,101MAGP,resolved_isin,isin_verified,INF760K01LG3,153466,Canara Robeco Multi Asset Allocation Fund - Regular Plan - Growth,Canara Robeco Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,7999.60,2026-10-05,2026-10-05
+101,101MDDP,resolved_isin,isin_verified,INF760K01KM3,150819,Canara Robeco Mid Cap Fund - Regular Plan - IDCW,Canara Robeco Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,999.95,2026-05-11,2026-05-11
+101,101MDGP,resolved_isin,isin_verified,INF760K01KL5,150816,Canara Robeco Mid Cap Fund - Regular Plan - Growth Option,Canara Robeco Mutual Fund,2026-10-07,MFSD201+MFSD211,3,3,42997.85,2026-05-06,2026-10-06
+101,101MFGP,resolved_isin,isin_verified,INF760K01KR2,151821,Canara Robeco Multi Cap Fund - Regular Plan - Growth Option,Canara Robeco Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,2999.85,2026-05-07,2026-05-07
+101,101SCGP,resolved_isin,isin_verified,INF760K01JF9,146127,Canara Robeco Small Cap Fund - Regular Plan - GROWTH OPTION,Canara Robeco Mutual Fund,2026-10-07,MFSD201+MFSD211,2,2,1999.90,2026-05-05,2026-10-05
+105,105BFGP,resolved_isin,isin_verified,INF192K01544,100221,JM Aggressive Hybrid Fund - Regular Plan - Growth Option,JM Financial Mutual Fund,2026-10-07,MFSD201+MFSD211,2,2,9999.50,2026-05-04,2026-10-05
+105,105MSGP,resolved_isin,isin_verified,INF192K01635,109522,JM Flexi Cap Fund - Regular Plan - Growth Option,JM Financial Mutual Fund,2026-10-07,MFSD201+MFSD211,4,4,21498.93,2026-05-05,2026-05-15
+105,105SCGP,resolved_isin,isin_verified,INF192K01NE0,152612,JM Small Cap Fund - Regular Plan - Growth Option,JM Financial Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,6999.65,2026-10-05,2026-10-05
+108,108BAGP,resolved_isin,isin_verified,INF789F01323,100684,UTI Aggressive Hybrid Fund - Regular Plan - Growth,UTI Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,1499.93,2026-05-11,2026-05-11
+108,108NYGP,resolved_isin,isin_verified,INF789FC11T3,143340,UTI - Nifty Next 50 Index Fund - Regular Plan - Growth,UTI Mutual Fund,2026-10-07,MFSD201+MFSD211,2,2,3999.80,2026-05-05,2026-10-05
+108,108W2GP,resolved_isin,isin_verified,INF789F01AP6,111599,UTI Multi Asset Allocation Fund - Regular Plan - Growth,UTI Mutual Fund,2026-10-07,MFSD201+MFSD211,2,2,65996.70,2026-10-05,2026-10-05
+116,116SCRG,resolved_isin,isin_verified,INF761K01ER3,145677,BANK OF INDIA SMALL CAP FUND - Regular Plan - Growth,Bank of India Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,2499.88,2026-10-05,2026-10-05
+117,117AFRG,resolved_isin,isin_verified,INF769K01FP7,148400,Mirae Asset Arbitrage Fund - Regular Plan - Growth,Mirae Asset Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,25000.25,2026-05-15,2026-05-15
+117,117BARG,resolved_isin,isin_verified,INF769K01IK2,150473,Mirae Asset Balanced Advantage Fund - Regular Plan - Growth,Mirae Asset Mutual Fund,2026-10-07,MFSD201+MFSD211,2,2,1999.90,2026-05-05,2026-10-05
+117,117EBRG,resolved_isin,isin_verified,INF769K01101,112932,Mirae Asset Large & Midcap Fund - Regular Plan - Growth,Mirae Asset Mutual Fund,2026-10-07,MFSD201+MFSD211,28,28,171991.42,2026-05-04,2026-10-05
+117,117GSRG,resolved_isin,isin_verified,INF769K01PP6,153814,Mirae Asset Gold Silver Passive FoF - Regular Plan - Growth,Mirae Asset Mutual Fund,2026-10-07,MFSD201+MFSD211,13,13,142497.89,2026-05-05,2026-10-07
+117,117IORG,resolved_isin,isin_verified,INF769K01010,107578,Mirae Asset Large Cap Fund - Regular Plan - Growth,Mirae Asset Mutual Fund,2026-10-07,MFSD201+MFSD211,19,19,129497.02,2026-04-30,2026-10-05
+117,117MARG,resolved_isin,isin_verified,INF769K01KW3,152347,Mirae Asset Multi Asset Allocation Fund - Regular Plan - Growth,Mirae Asset Mutual Fund,2026-10-07,MFSD201+MFSD211,13,13,73020.93,2026-04-30,2026-10-06
+117,117MCRG,resolved_isin,isin_verified,INF769K01EY2,147479,Mirae Asset Midcap Fund - Regular Plan - Growth,Mirae Asset Mutual Fund,2026-10-07,MFSD201+MFSD211,4,4,14499.28,2026-05-04,2026-10-05
+117,117MPRG,resolved_isin,isin_verified,INF769K01KH4,151812,Mirae Asset Multicap Fund - Regular Plan - Growth,Mirae Asset Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,24998.75,2026-05-11,2026-05-11
+117,117SCRG,resolved_isin,isin_verified,INF769K01NG0,153198,Mirae Asset Small Cap Fund - Regular Plan - Growth,Mirae Asset Mutual Fund,2026-10-07,MFSD201+MFSD211,24,24,125493.75,2026-05-04,2026-10-07
+117,117TSRG,resolved_isin,isin_verified,INF769K01DK3,135784,Mirae Asset ELSS Tax Saver Fund - Regular Plan - Growth,Mirae Asset Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,2999.85,2026-05-05,2026-05-05
+117,117USRG,resolved_isin,isin_verified,INF769K01GH2,148530,Mirae Asset Ultra Short-Term Fund - Regular Plan - Growth,Mirae Asset Mutual Fund,2026-10-07,MFSD201+MFSD211,6,6,36000.00,2026-05-06,2026-10-07
+118,118ARGP,resolved_isin,isin_verified,INF754K01285,112117,Edelweiss Balanced Advantage Fund - Regular Plan - Growth,Edelweiss Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,1499.93,2026-05-12,2026-05-12
+118,118ATGP,resolved_isin,isin_verified,INF754K01EF3,130205,Edelweiss Arbitrage Fund - Regular Plan - Growth,Edelweiss Mutual Fund,2026-10-07,MFSD201+MFSD211,3,3,15000.15,2026-05-07,2026-10-07
+118,118ENAG,resolved_isin,isin_verified,INF754K01202,112108,Edelweiss Aggressive Hybrid Fund - Regular Plan - Growth,Edelweiss Mutual Fund,2026-10-07,MFSD201+MFSD211,2,2,3499.83,2026-05-11,2026-05-15
+118,118MSRG,resolved_isin,isin_verified,INF843K01013,140225,Edelweiss Mid Cap Fund - Regular Plan - Growth,Edelweiss Mutual Fund,2026-10-07,MFSD201+MFSD211,43,43,559472.04,2026-04-30,2026-10-07
+118,118SCRG,resolved_isin,isin_verified,INF754K01JJ4,146193,Edelweiss Small Cap Fund - Regular Plan - Growth,Edelweiss Mutual Fund,2026-10-07,MFSD201+MFSD211,9,9,26498.69,2026-05-05,2026-10-07
+118,118TCRG,resolved_isin,isin_verified,INF754K01SG1,152439,Edelweiss Technology Fund - Regular Plan - Growth,Edelweiss Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,2499.88,2026-05-12,2026-05-12
+120,120BCGP,resolved_isin,isin_verified,INF205KA1AF4,153288,Invesco India Business Cycle Fund - Regular Plan - Growth,Invesco Mutual Fund,2026-10-07,MFSD201+MFSD211,7,7,14099.31,2026-05-05,2026-10-06
+120,120CFGP,resolved_isin,isin_verified,INF205K01189,105460,Invesco India Contra Fund - Regular Plan - Growth,Invesco Mutual Fund,2026-10-07,MFSD201+MFSD211,3,3,226988.65,2026-04-30,2026-10-05
+120,120CPGP,resolved_isin,isin_verified,INF205KA1BF2,153902,Invesco India Consumption Fund - Regular Plan - Growth,Invesco Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,999.95,2026-05-11,2026-05-11
+120,120EBGP,resolved_isin,isin_verified,INF205K011Q3,143536,Invesco India Aggressive Hybrid Fund - Regular Plan - Growth,Invesco Mutual Fund,2026-10-07,MFSD201+MFSD211,8,8,302984.86,2026-05-05,2026-10-05
+120,120F9GP,resolved_isin,isin_verified,INF205KA1460,149766,Invesco India Flexi Cap Fund - Regular Plan - Growth,Invesco Mutual Fund,2026-10-07,MFSD201+MFSD211,12,12,583470.85,2026-05-05,2026-10-05
+120,120GFGP,resolved_isin,isin_verified,INF205K01247,106144,Invesco India Large & Mid Cap Fund - Regular Plan - Growth,Invesco Mutual Fund,2026-10-07,MFSD201+MFSD211,5,5,8999.55,2026-05-05,2026-10-05
+120,120IFGP,resolved_isin,isin_verified,INF205KA1189,148483,Invesco India Focused Fund - Regular Plan - Growth,Invesco Mutual Fund,2026-10-07,MFSD201+MFSD211,4,4,13999.30,2026-05-04,2026-10-05
+120,120MCGP,resolved_isin,isin_verified,INF205K01BC9,105503,Invesco India Mid Cap Fund - Regular Plan - Growth,Invesco Mutual Fund,2026-10-07,MFSD201+MFSD211,11,11,124493.78,2026-05-05,2026-10-05
+120,120MLGP,resolved_isin,isin_verified,INF205KA1999,153046,Invesco India Multi Asset Allocation Fund - Regular Plan - Growth,Invesco Mutual Fund,2026-10-07,MFSD201+MFSD211,4,4,3999.80,2026-05-05,2026-10-05
+120,120MSGP,resolved_isin,isin_verified,INF205K01DN2,107353,Invesco India Multi Cap Fund - Regular Plan - Growth,Invesco Mutual Fund,2026-10-07,MFSD201+MFSD211,4,4,19999.00,2026-05-05,2026-10-05
+120,120SCGP,resolved_isin,isin_verified,INF205K011T7,145139,Invesco India Small Cap Fund - Regular Plan - Growth,Invesco Mutual Fund,2026-10-07,MFSD201+MFSD211,4,4,12699.37,2026-05-11,2026-10-05
+125,125SCGP,resolved_isin,isin_verified,INF666M01NM2,154102,Groww Small Cap Fund - Regular Plan - Growth,Groww Mutual Fund,2026-10-07,MFSD201+MFSD211,1,0,0.00,,
+127,127CFGP,resolved_isin,isin_verified,INF247L01GD6,153916,Motilal Oswal Consumption Fund - Regular Plan - Growth,Motilal Oswal Mutual Fund,2026-10-07,MFSD201+MFSD211,4,4,11999.40,2026-05-05,2026-10-05
+127,127CPGP,resolved_isin,isin_verified,INF247L01478,129048,Motilal Oswal Flexi Cap Fund - Regular Plan - Growth,Motilal Oswal Mutual Fund,2026-10-07,MFSD201+MFSD211,21,21,44797.80,2026-05-05,2026-10-07
+127,127DEGP,resolved_isin,isin_verified,INF247L01585,139870,Motilal Oswal Balanced Advantage Fund - Regular Plan - Growth,Motilal Oswal Mutual Fund,2026-10-07,MFSD201+MFSD211,2,2,3999.80,2026-05-05,2026-10-05
+127,127DIGP,resolved_isin,isin_verified,INF247L01CV7,152711,Motilal Oswal Nifty India Defence Index Fund - Regular Plan - Growth,Motilal Oswal Mutual Fund,2026-10-07,MFSD201+MFSD211,2,2,3999.80,2026-05-07,2026-10-07
+127,127FMGP,resolved_isin,isin_verified,INF247L01411,127039,Motilal Oswal Midcap Fund,Motilal Oswal Mutual Fund,2026-10-07,MFSD201+MFSD211,58,58,630188.57,2026-05-05,2026-10-07
+127,127LCGP,resolved_isin,isin_verified,INF247L01CB9,152352,Motilal Oswal Large Cap Fund,Motilal Oswal Mutual Fund,2026-10-07,MFSD201+MFSD211,7,7,9999.51,2026-05-11,2026-05-15
+127,127LMGP,resolved_isin,isin_verified,INF247L01965,147701,Motilal Oswal Large and Midcap Fund - Regular Plan - Growth,Motilal Oswal Mutual Fund,2026-10-07,MFSD201+MFSD211,59,59,182262.96,2026-04-30,2026-10-07
+127,127MMGP,resolved_isin,isin_verified,INF247L01CO2,152650,Motilal Oswal Multi Cap Fund,Motilal Oswal Mutual Fund,2026-10-07,MFSD201+MFSD211,2,2,1999.90,2026-05-05,2026-10-05
+127,127NIGP,resolved_isin,isin_verified,INF247L01AF4,147795,Motilal Oswal Nifty 50 Index Fund - Regular Plan - Growth,Motilal Oswal Mutual Fund,2026-10-07,MFSD201+MFSD211,2,2,4999.76,2026-05-05,2026-10-05
+127,127NNGP,resolved_isin,isin_verified,INF247L01AD9,147797,Motilal Oswal Nifty Next 50 Index Fund - Regular Plan - Growth,Motilal Oswal Mutual Fund,2026-10-07,MFSD201+MFSD211,9,9,4499.82,2026-04-30,2026-10-07
+127,127NTGP,resolved_isin,isin_verified,INF247L01940,147626,Motilal Oswal Nifty 500 Index Fund - Regular Plan - Growth,Motilal Oswal Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,4999.75,2026-05-11,2026-05-11
+127,127SCGP,resolved_isin,isin_verified,INF247L01BV9,152232,Motilal Oswal Small Cap Fund - Regular Plan - Growth,Motilal Oswal Mutual Fund,2026-10-07,MFSD201+MFSD211,3,3,15999.20,2026-10-05,2026-10-06
+127,127USGP,resolved_isin,isin_verified,INF247L01213,124233,Motilal Oswal Ultra Short Term Fund - Regular Plan - Growth,Motilal Oswal Mutual Fund,2026-10-07,MFSD201+MFSD211,3,3,16000.00,2026-10-01,2026-10-05
+128,128EAGP,resolved_isin,isin_verified,INF846K01QC8,130771,Axis Arbitrage Fund - Regular Plan - Growth Option,Axis Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,25000.25,2026-05-05,2026-05-05
+128,128GOGP,resolved_isin,isin_verified,INF846K01AL3,115897,Axis Gold Fund - Regular Plan - Growth Option,Axis Mutual Fund,2026-10-07,MFSD201+MFSD211,2,2,17999.10,2026-05-11,2026-10-06
+128,128IMGP,resolved_isin,isin_verified,INF846K013S0,152205,Axis India Manufacturing Fund - Regular Plan - Growth Option,Axis Mutual Fund,2026-10-07,MFSD201+MFSD211,2,2,1999.90,2026-05-05,2026-10-05
+128,128MCGP,resolved_isin,isin_verified,INF846K01859,114564,Axis Midcap Fund - Regular Plan - Growth Option,Axis Mutual Fund,2026-10-07,MFSD201+MFSD211,2,2,7999.60,2026-05-07,2026-10-07
+128,128MLGP,resolved_isin,isin_verified,INF846K01B51,141927,Axis Flexi Cap Fund - Regular Plan - Growth Option,Axis Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,24998.75,2026-05-07,2026-05-07
+128,128OGGP,resolved_isin,isin_verified,INF846K01J79,145112,Axis Large & Mid Cap Fund - Regular Plan - Growth Option,Axis Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,9999.50,2026-05-11,2026-05-11
+128,128ONGP,resolved_isin,isin_verified,INF846K01O23,146678,Axis Overnight Fund - Regular Plan - Growth Option,Axis Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,1000.00,2026-05-06,2026-05-06
+128,128SCGP,resolved_isin,isin_verified,INF846K01K01,125350,Axis Small Cap Fund - Regular Plan - Growth Option,Axis Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,1499.93,2026-05-11,2026-05-11
+128,128USGP,resolved_isin,isin_verified,INF846K01G23,144759,Axis Ultra Short Term Fund - Regular Plan - Growth Option,Axis Mutual Fund,2026-10-07,MFSD201+MFSD211,3,3,17499.13,2026-05-11,2026-10-07
+129,129DEGP,resolved_isin,isin_verified,INF663L01FJ3,133836,PGIM India Flexi Cap Fund - Regular Plan - Regular Growth,PGIM India Mutual Fund,2026-10-07,MFSD201+MFSD211,4,4,9999.50,2026-05-05,2026-10-05
+152,152LFGP,resolved_isin,isin_verified,INF00XX01192,147153,ITI Liquid Fund - Regular Plan - Growth Option,ITI Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,5000.00,2026-10-07,2026-10-07
+152,152SCGP,resolved_isin,isin_verified,INF00XX01713,147920,ITI Small Cap Fund - Regular Plan - Growth Option,ITI Mutual Fund,2026-10-07,MFSD201+MFSD211,2,2,7999.60,2026-09-30,2026-10-05
+166,166GLGP,resolved_isin,isin_verified,INF966L01200,101072,Quant Multi Asset Allocation Fund - Regular Plan - Growth Option,quant Mutual Fund,2026-10-07,MFSD201+MFSD211,3,3,14999.25,2026-05-05,2026-10-05
+166,166HYGP,resolved_isin,isin_verified,INF966L01341,104513,Quant Large & Mid Cap Fund - Regular Plan - Growth Option,quant Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,2000.00,2026-05-11,2026-05-11
+166,166IBGP,resolved_isin,isin_verified,INF966L01AA0,100177,Quant Small Cap Fund - Regular Plan - Growth Option,quant Mutual Fund,2026-10-07,MFSD201+MFSD211,8,5,10999.47,2026-05-04,2026-10-07
+166,166PEGP,resolved_isin,isin_verified,INF966L01457,109830,Quant Flexi Cap Fund - Regular Plan - Growth Option,quant Mutual Fund,2026-10-07,MFSD201+MFSD211,4,4,160991.95,2026-05-05,2026-10-05
+166,166QMGP,resolved_isin,isin_verified,INF966L01AH5,148923,quant Quantamental Fund - Regular Plan - Growth Option,quant Mutual Fund,2026-10-07,MFSD201+MFSD211,19,0,0.00,,
+172,172FCRG,resolved_isin,isin_verified,INF2JJD01169,154041,Abakkus Flexi Cap Fund - Regular Plan - Growth,Abakkus Mutual Fund,2026-10-07,MFSD201+MFSD211,2,2,22998.85,2026-10-05,2026-10-05
+176,176ABRG,resolved_isin,isin_verified,INF173K01NB6,149552,Sundaram Arbitrage Fund(Formerly Known as Prinicpal Arbitrage Fund) - Regular Plan - GROWTH,Sundaram Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,5000.00,2026-05-04,2026-05-04
+176,176FCGP,resolved_isin,isin_verified,INF903JA1LB8,150568,Sundaram Flexicap Fund - Regular Plan - GROWTH,Sundaram Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,24998.75,2026-10-06,2026-10-06
+176,176LMGP,resolved_isin,isin_verified,INF903J01DT1,105001,Sundaram Large and Midcap Fund - Regular Plan - GROWTH,Sundaram Mutual Fund,2026-10-07,MFSD201+MFSD211,5,5,20498.98,2026-05-11,2026-10-05
+176,176MCGP,resolved_isin,isin_verified,INF903J01173,101539,Sundaram Mid Cap Fund - Regular Plan - GROWTH,Sundaram Mutual Fund,2026-10-07,MFSD201+MFSD211,7,7,73496.33,2026-05-11,2026-10-05
+176,176MGGP,resolved_isin,isin_verified,INF173K01940,149667,Sundaram Multi Cap Fund (Formerly Known as Principal Multi Cap Growth Fund) - Regular Plan - GROWTH,Sundaram Mutual Fund,2026-10-07,MFSD201+MFSD211,8,8,28998.82,2026-05-04,2026-10-05
+176,176MUGP,resolved_isin,isin_verified,INF903JA1LH5,152311,Sundaram Multi Asset Allocation Fund - Regular Plan - GROWTH,Sundaram Mutual Fund,2026-10-07,MFSD201+MFSD211,3,3,6999.65,2026-05-05,2026-10-05
+178,178DEGP,resolved_isin,isin_verified,INF955L01HC4,145387,Baroda BNP Paribas Balanced Advantage Fund - Regular Plan - Growth Option,Baroda BNP Paribas Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,24998.75,2026-05-13,2026-05-13
+178,178EORG,resolved_isin,isin_verified,INF251K01UG4,153226,Baroda BNP Paribas Energy Opportunities Fund - Regular Plan - Growth Option,Baroda BNP Paribas Mutual Fund,2026-10-07,MFSD201+MFSD211,5,5,14999.25,2026-05-05,2026-10-07
+185,185MDRG,resolved_isin,isin_verified,INF0GCD01883,154211,TRUSTMF MID CAP FUND - Regular Plan - Growth,Trust Mutual Fund,2026-10-07,MFSD201+MFSD211,2,2,5499.73,2026-10-01,2026-10-05
+188,188MARG,resolved_isin,isin_verified,INF0K1H01248,153093,Samco Multi Asset Allocation Fund - Regular Plan - Growth,Samco Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,7499.63,2026-05-11,2026-05-11
+189,189BFRG,resolved_isin,isin_verified,INF0QA701680,152196,Bajaj Finserv Balanced Advantage Fund - Regular Plan - Growth,Bajaj Finserv Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,1999.90,2026-05-11,2026-05-11
+189,189FXRG,resolved_isin,isin_verified,INF0QA701383,151898,Bajaj Finserv Flexi Cap Fund - Regular Plan - Growth,Bajaj Finserv Mutual Fund,2026-10-07,MFSD201+MFSD211,84,84,303386.73,2026-05-04,2026-10-07
+189,189HCRG,resolved_isin,isin_verified,INF0QA701987,153155,Bajaj Finserv Healthcare Fund - Regular Plan - Growth,Bajaj Finserv Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,1999.90,2026-10-07,2026-10-07
+189,189LCRG,resolved_isin,isin_verified,INF0QA701862,152780,BAJAJ FINSERV LARGE CAP FUND - Regular Plan - Growth,Bajaj Finserv Mutual Fund,2026-10-07,MFSD201+MFSD211,4,4,16592.48,2026-05-08,2026-10-05
+189,189LDRG,resolved_isin,isin_verified,INF0QA701CC3,154203,Bajaj Finserv Ultra Short to Short Term Fund - Regular Plan - Growth,Bajaj Finserv Mutual Fund,2026-10-07,MFSD201+MFSD211,4,4,15200.00,2026-04-30,2026-10-05
+189,189LFRG,resolved_isin,isin_verified,INF0QA701094,151837,Bajaj Finserv Liquid Fund - Regular Plan - Growth,Bajaj Finserv Mutual Fund,2026-10-07,MFSD201+MFSD211,2,2,20000.00,2026-05-06,2026-05-13
+189,189LMRG,resolved_isin,isin_verified,INF0QA701730,152406,Bajaj Finserv Large & Mid Cap Fund - Regular Plan - Growth,Bajaj Finserv Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,4999.75,2026-05-11,2026-05-11
+189,189MCRG,resolved_isin,isin_verified,INF0QA701AS3,153307,Bajaj Finserv Multi Cap Fund - Regular Plan - Growth,Bajaj Finserv Mutual Fund,2026-10-07,MFSD201+MFSD211,2,2,9999.50,2026-05-05,2026-10-05
+189,189SCRG,resolved_isin,isin_verified,INF0QA701BK8,153609,Bajaj Finserv Small Cap Fund - Regular Plan - Growth,Bajaj Finserv Mutual Fund,2026-10-07,MFSD201+MFSD211,35,35,135393.28,2026-04-30,2026-10-07
+RMF,RMFAFGP,resolved_isin,isin_verified,INF204K01IY1,113345,Nippon India Arbitrage Fund - Regular Plan - Growth Option,Nippon India Mutual Fund,2026-10-07,MFSD201+MFSD211,6,6,30000.30,2026-05-06,2026-10-07
+RMF,RMFALGP,resolved_isin,isin_verified,INF204KB13Y1,148663,Nippon India Multi - Asset Omni FoF - Regular Plan - Growth Option,Nippon India Mutual Fund,2026-10-07,MFSD201+MFSD211,8,8,43497.83,2026-05-08,2026-10-06
+RMF,RMFCPGP,resolved_isin,isin_verified,INF204K01UE8,143493,Nippon India Ultra Short Term Fund - Regular Plan - Growth Option,Nippon India Mutual Fund,2026-10-07,MFSD201+MFSD211,2,2,24999.00,2026-10-01,2026-10-05
+RMF,RMFEARG,resolved_isin,isin_verified,INF204K01562,106235,Nippon India Large Cap Fund - Regular Plan - Growth Option,Nippon India Mutual Fund,2026-10-07,MFSD201+MFSD211,37,37,379081.10,2026-05-04,2026-10-05
+RMF,RMFEOGP,resolved_isin,isin_verified,INF204K01489,101161,Nippon India Multi Cap Fund - Regular Plan - Growth Option,Nippon India Mutual Fund,2026-10-07,MFSD201+MFSD211,156,156,1809365.98,2026-05-04,2026-10-07
+RMF,RMFGFGP,resolved_isin,isin_verified,INF204K01323,100377,Nippon India Growth Mid Cap Fund - Regular Plan - Growth Option,Nippon India Mutual Fund,2026-10-07,MFSD201+MFSD211,14,14,307984.61,2026-05-04,2026-10-06
+RMF,RMFGSGP,resolved_isin,isin_verified,INF204K01406,100380,Nippon India Vision Large & Mid Cap Fund - Regular Plan - GROWTH Option,Nippon India Mutual Fund,2026-10-07,MFSD201+MFSD211,3,3,4999.75,2026-05-05,2026-10-05
+RMF,RMFLCGP,resolved_isin,isin_verified,INF204KC1097,149089,Nippon India Flexi Cap Fund - Regular Plan - Growth Option,Nippon India Mutual Fund,2026-10-07,MFSD201+MFSD211,3,3,7999.60,2026-05-11,2026-09-30
+RMF,RMFLFIG,resolved_isin,isin_verified,INF204K01UN9,100851,Nippon India Liquid Fund - Regular Plan - Growth Option,Nippon India Mutual Fund,2026-10-07,MFSD201+MFSD211,3,3,37000.00,2026-10-05,2026-10-07
+RMF,RMFLPIG,resolved_isin,isin_verified,INF204K01EV6,111753,Nippon India Ultra Short to Short Term Fund - Regular Plan - Growth Option,Nippon India Mutual Fund,2026-10-07,MFSD201+MFSD211,3,3,18000.00,2026-10-05,2026-10-05
+RMF,RMFMFGP,resolved_isin,isin_verified,INF204KB16V0,148459,Nippon India Multi Asset Allocation Fund - Regular Plan - Growth Option,Nippon India Mutual Fund,2026-10-07,MFSD201+MFSD211,35,35,420102.43,2026-05-04,2026-10-07
+RMF,RMFNEGP,resolved_isin,isin_verified,INF204K01604,102846,Nippon India Balanced Advantage Fund - Regular Plan - Growth Option,Nippon India Mutual Fund,2026-10-07,MFSD201+MFSD211,4,4,22998.85,2026-05-05,2026-10-05
+RMF,RMFNLGP,resolved_isin,isin_verified,INF204KB1ZB0,143702,Nippon India Nivesh Lakshya Long Term Fund - Regular Plan - Growth Option,Nippon India Mutual Fund,2026-10-07,MFSD201+MFSD211,12,12,130498.48,2026-05-04,2026-10-05
+RMF,RMFNSGP,resolved_isin,isin_verified,INF204KB12W7,148518,Nippon India Nifty Smallcap 250 Index Fund - Regular Plan - Growth Option,Nippon India Mutual Fund,2026-10-07,MFSD201+MFSD211,4,4,6499.68,2026-05-07,2026-10-07
+RMF,RMFPHGP,resolved_isin,isin_verified,INF204K01968,102431,Nippon India Pharma Fund - Regular Plan - Growth Option,Nippon India Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,4999.75,2026-05-15,2026-05-15
+RMF,RMFPSGP,resolved_isin,isin_verified,INF204K01AE0,101262,Nippon India Power & Infra Fund - Regular Plan - Growth Option,Nippon India Mutual Fund,2026-10-07,MFSD201+MFSD211,2,2,12499.38,2026-05-11,2026-10-05
+RMF,RMFSCGP,resolved_isin,isin_verified,INF204K01HY3,113177,Nippon India Small Cap Fund - Regular Plan - Growth Option,Nippon India Mutual Fund,2026-10-07,MFSD201+MFSD211,113,113,538168.64,2026-05-04,2026-10-07
+RMF,RMFSOGP,resolved_isin,isin_verified,INF204KC1345,149759,Nippon India Silver ETF FOF - Regular Plan - Growth Option,Nippon India Mutual Fund,2026-10-07,MFSD201+MFSD211,1,1,4999.75,2026-05-05,2026-05-05
+RMF,RMFTSGP,resolved_isin,isin_verified,INF204K01GK4,103196,Nippon India ELSS Tax Saver Fund - Regular Plan - Growth Option,Nippon India Mutual Fund,2026-10-07,MFSD201+MFSD211,3,3,8999.85,2026-05-05,2026-10-05

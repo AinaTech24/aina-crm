@@ -788,7 +788,7 @@ provenance, platform registrar map) and 0240 (platform-approved confirmation).
   platform operators (`approve_amc`), plus documented successor AMCs. No
   verified AMC → no name suggestions and no scheme approval (firm or platform);
   a scheme outside the verified set is an AMC conflict. Recording an AMC
-  approves no scheme. Operator runbook: `docs/rta/PILOT_PREFLIGHT_RUNBOOK.md`.
+  approves no scheme. Operator handover (commands, A–F, emergency procedures, sign-off): `docs/rta/PILOT_HANDOVER.md`.
 - **The AUM figure says what it is made of** (`getAumComposition`): at a
   current AMFI NAV / at registrar statement value (unmapped scheme) / at an
   older NAV. It is labelled by its NAV dates (`aumValuationLabel`: "NAV of
