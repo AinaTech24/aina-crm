@@ -1269,6 +1269,41 @@ For staging or longer-lived environments, run `next start` behind a
 process supervisor (pm2 / systemd / Docker `restart: unless-stopped`)
 so the OS handles crash recovery for you.
 
+### Production change control — one change at a time
+
+Since 2026-10-09 (the firm's rule) only ONE session or person changes
+production at a time: a deploy, a rollback, an RDS change, a security group,
+a container restart. The lock lives on the box (`scripts/prod-lock.sh`,
+installed as `~/prod-lock.sh` by every deploy) and is reached from a laptop
+through SSM:
+
+```bash
+bash scripts/prod-change.sh status
+bash scripts/prod-change.sh acquire "Resize RDS to small" "<your session name>"
+bash scripts/prod-change.sh release "<your session name>" "PASS: health ok"
+bash scripts/prod-change.sh history
+```
+
+- **Check, then acquire, before any production change.** Exit code 3 means
+  someone else holds it: STOP and wait — never work around it.
+- **Release only after your health checks pass.** `ssm-deploy.sh` and
+  `rollback-bluegreen.sh` take and release it themselves (released only when
+  `/api/health` answers 200; a failed deploy releases it only if the colour
+  still serving is healthy). A deploy waits up to 30 minutes for the lock.
+- **No administrator key for a deploy.** `manual-deploy.sh` and
+  `prod-change.sh` first swap the laptop's identity for short-lived
+  credentials of the role `aina-crm-manual-deploy`
+  (`scripts/aws-deploy-role.sh`): upload under the artifacts bucket's
+  `releases/` and SSM commands on the production instance, nothing else (no
+  RDS, IAM, security groups or other buckets).
+- **A deploy inside a wider change**: take the lock under a space-free session
+  name, then `DEPLOY_SESSION=<that name> FORCE=1 bash scripts/manual-deploy.sh
+  <sha>`; `ssm-deploy.sh` sees `held-by` and deploys under it without
+  releasing, so you release after your own checks.
+- Every acquire / release is appended to `~/prod-change.log` with the change,
+  the session and the start time. `force-release` exists for a human clearing
+  a dead session's lock, and is logged as such.
+
 ### Health check
 
 `GET /api/health` returns 200 + a small JSON if the process and the DB

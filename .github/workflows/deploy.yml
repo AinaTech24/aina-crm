@@ -84,7 +84,7 @@ jobs:
       - name: Deploy (blue-green) via SSM and wait for the result
         run: |
           set -euo pipefail
-          params=$(jq -n --arg uri "s3://${ARTIFACT_BUCKET}/${RELEASE_KEY}" '{
+          params=$(jq -n --arg uri "s3://${ARTIFACT_BUCKET}/${RELEASE_KEY}" --arg who "github-actions-run-${GITHUB_RUN_ID}-${GITHUB_SHA::8}" '{
             executionTimeout: ["3300"],
             commands: [
               "set -euo pipefail",
@@ -92,7 +92,7 @@ jobs:
               "chown ec2-user:ec2-user /tmp/app.tgz",
               "tar xzf /tmp/app.tgz -O scripts/ssm-deploy.sh > /tmp/ssm-deploy.sh",
               "chmod 755 /tmp/ssm-deploy.sh",
-              "runuser -l ec2-user -c \"bash /tmp/ssm-deploy.sh /tmp/app.tgz\""
+              ("runuser -l ec2-user -c \"bash /tmp/ssm-deploy.sh /tmp/app.tgz " + $who + "\"")
             ]
           }')
           CID=$(aws ssm send-command \

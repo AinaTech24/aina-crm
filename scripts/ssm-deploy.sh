@@ -17,8 +17,11 @@
 # scripts/rollback-bluegreen.sh mfd-app:prev-<stamp>.
 set -euo pipefail
 
-TARBALL="${1:?usage: ssm-deploy.sh /path/to/app.tgz}"
+TARBALL="${1:?usage: ssm-deploy.sh /path/to/app.tgz [who is deploying]}"
 APP_DIR="${APP_DIR:-$HOME/app}"
+# Who holds the production change lock for this deploy (shown to anyone who
+# checks it). The GitHub job and scripts/manual-deploy.sh pass one.
+DEPLOY_SESSION="${2:-deploy $(basename "$TARBALL")}"
 
 # Serialise deploys on the BOX. fd 9 is inherited by the detached
 # run-deploy.sh, so the lock is held until the build itself exits.
@@ -28,6 +31,45 @@ if ! flock -w 1800 9; then
   exit 1
 fi
 echo "=== deploy lock acquired $(date -u) ==="
+
+# The production CHANGE lock (scripts/prod-lock.sh): one production change at a
+# time across every session — a deploy must not run while someone resizes the
+# database or edits a security group. Refresh the installed copy from this
+# release first, then wait up to 30 minutes for whoever holds it.
+if tar tzf "$TARBALL" scripts/prod-lock.sh >/dev/null 2>&1; then
+  tar xzf "$TARBALL" -O scripts/prod-lock.sh > "$HOME/prod-lock.sh.new" && mv "$HOME/prod-lock.sh.new" "$HOME/prod-lock.sh"
+fi
+PROD_LOCK="$HOME/prod-lock.sh"
+OWN_LOCK=0
+if [ -f "$PROD_LOCK" ]; then
+  if bash "$PROD_LOCK" held-by "$DEPLOY_SESSION"; then
+    # The caller took the lock for a wider change (deploy + its own checks):
+    # run under it and leave the release to the caller.
+    echo "=== production change lock already held by $DEPLOY_SESSION — deploying under it ==="
+  else
+    bash "$PROD_LOCK" acquire "deploy $(basename "$TARBALL")" "$DEPLOY_SESSION" 1800 || {
+      echo "Deploy NOT started: another production change holds the lock."
+      exit 1
+    }
+    OWN_LOCK=1
+  fi
+fi
+# Release only once production answers healthy; otherwise keep it held so
+# nobody piles a second change onto a broken site.
+release_change_lock() {
+  [ -f "$PROD_LOCK" ] || return 0
+  if [ "$OWN_LOCK" != "1" ]; then
+    echo "=== production change lock left with $DEPLOY_SESSION ($1) — it releases after its own checks ==="
+    return 0
+  fi
+  local health
+  health=$(curl -sk --max-time 15 --resolve crm.ainatech.in:443:127.0.0.1 -o /dev/null -w '%{http_code}' https://crm.ainatech.in/api/health || true)
+  if [ "$health" = "200" ]; then
+    bash "$PROD_LOCK" release "$DEPLOY_SESSION" "$1; health 200" || true
+  else
+    echo "=== production change lock KEPT: /api/health answered ${health:-nothing} — fix production, then release it (scripts/prod-change.sh) ==="
+  fi
+}
 
 cd "$APP_DIR"
 
@@ -93,6 +135,8 @@ done
 if [ "${code:-}" != "0" ]; then
   echo "Deploy failed (DEPLOY_DONE_EXIT=${code:-timeout}). The previous colour is still serving."
   tail -80 "$HOME/deploy-current.log"
+  release_change_lock "FAILED deploy (DEPLOY_DONE_EXIT=${code:-timeout}), previous colour serving"
   exit 1
 fi
 echo "Deploy OK — active colour: $(cat "$APP_DIR/.active-color" 2>/dev/null || echo unknown)"
+release_change_lock "PASS deploy, active colour $(cat "$APP_DIR/.active-color" 2>/dev/null || echo unknown)"

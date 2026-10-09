@@ -39,6 +39,13 @@ echo "== deploying ${SHA:0:8}: $(git log -1 --format=%s "$SHA")"
 
 aws sts get-caller-identity --query Arn --output text >/dev/null \
   || { echo "AWS CLI is not logged in (aws configure)"; exit 1; }
+# Deploy with short-lived credentials of the least-privilege deploy role, never
+# the laptop's own (administrator) key — scripts/aws-deploy-role.sh.
+. scripts/aws-deploy-role.sh || exit 1
+echo "== AWS identity for this deploy: $(aws sts get-caller-identity --query Arn --output text)"
+# Who holds the production change lock for this deploy (no spaces: it is passed
+# through two shells). Set DEPLOY_SESSION to deploy under a lock you already hold.
+DEPLOY_SESSION=$(printf %s "${DEPLOY_SESSION:-manual-deploy-${SHA:0:8}-by-$(whoami)}" | tr -cd '[:alnum:]._-')
 
 if command -v gh >/dev/null 2>&1; then
   ci=$(gh run list --commit "$SHA" --workflow CI --json conclusion \
@@ -85,9 +92,9 @@ node -e '
       "chown ec2-user:ec2-user /tmp/app.tgz",
       "tar xzf /tmp/app.tgz -O scripts/ssm-deploy.sh > /tmp/ssm-deploy.sh",
       "chmod 755 /tmp/ssm-deploy.sh",
-      "runuser -l ec2-user -c \"bash /tmp/ssm-deploy.sh /tmp/app.tgz\"",
+      `runuser -l ec2-user -c "bash /tmp/ssm-deploy.sh /tmp/app.tgz ${process.argv[2]}"`,
     ],
-  }));' "s3://$BUCKET/$KEY" > "$TMPD/params.json"
+  }));' "s3://$BUCKET/$KEY" "$DEPLOY_SESSION" > "$TMPD/params.json"
 
 if [ "${DRY:-}" = "1" ]; then
   echo "== DRY=1: would upload to s3://$BUCKET/$KEY and run the deploy. Nothing sent."
