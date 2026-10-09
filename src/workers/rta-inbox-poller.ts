@@ -51,6 +51,7 @@ import {
 } from "@/lib/rta/mailback-config";
 import { loadRtaInboxConfig } from "@/lib/rta/inbox-config";
 import { captureError } from "@/lib/observability/capture";
+import { addressRef, fileRef, safeError, urlRef } from "@/lib/observability/log-safe";
 
 // Background imports have no human uploader. A stable sentinel enables the
 // worker's stalled-job idempotency guard (importAlreadyFinished needs a truthy
@@ -180,13 +181,15 @@ async function logInbound(
       `);
     });
   } catch (e) {
-    captureError("[rta-inbox] inbound log insert failed", e, { outcome: fields.outcome });
+    captureError("[rta-inbox] inbound log insert failed", safeError(e), { outcome: fields.outcome });
   }
 }
 
 async function quarantine(msg: InboundRawMessage, reason: string): Promise<void> {
   await logInbound(msg, { outcome: "unroutable", reason });
-  console.warn(`[rta-inbox] quarantined mail from ${msg.from ?? "?"} (${reason})`);
+  // Never the sender address in a log: a stable hash correlates repeats; the
+  // full record is on the Inbound Mail screen.
+  console.warn(`[rta-inbox] quarantined mail uid=${msg.uid} sender=${addressRef(msg.from)} reason="${reason}"`);
 }
 
 /** Upload one attachment to S3 + enqueue the matching rta.import job. */
@@ -215,7 +218,7 @@ async function ingestAttachment(
     `)
   );
   if (dup.rows.length) {
-    console.log(`[rta-inbox] ${tenantId}: '${att.filename}' already in flight — skipped (duplicate)`);
+    console.log(`[rta-inbox] ${tenantId}: ${fileRef(att.filename)} already in flight — skipped (duplicate)`);
     return { status: "duplicate", importId: (dup.rows[0] as any).id as string };
   }
 
@@ -283,7 +286,7 @@ async function ingestAttachment(
       jobOpts
     );
   }
-  console.log(`[rta-inbox] ${tenantId}: queued ${cls.label} '${att.filename}' (${att.size}b) → ${importId}`);
+  console.log(`[rta-inbox] ${tenantId}: queued ${cls.label} ${fileRef(att.filename)} (${att.size}b) → ${importId}`);
   return { status: "queued", importId };
 }
 
@@ -331,7 +334,7 @@ async function handleMessage(msg: InboundRawMessage): Promise<void> {
           (confirm.code ? ` Code: ${confirm.code}.` : " Use the confirmation link in the body below."),
       });
       console.warn(
-        `[rta-inbox] forwarding confirmation from ${confirm.requester ?? "?"} not attributable to a firm — see Inbound Mail`
+        `[rta-inbox] forwarding confirmation from ${addressRef(confirm.requester)} not attributable to a firm — see Inbound Mail`
       );
       return;
     }
@@ -386,7 +389,7 @@ async function handleMessage(msg: InboundRawMessage): Promise<void> {
       if (!isImportableAttachment(att.filename)) continue;
       const cls = classifyMailback(att.filename, msg.from);
       if (!cls) {
-        console.warn(`[rta-inbox] ${tenantId}: unrecognised attachment '${att.filename}' from ${msg.from ?? "?"} — skipped`);
+        console.warn(`[rta-inbox] ${tenantId}: unrecognised attachment ${fileRef(att.filename)} from ${addressRef(msg.from)} — skipped`);
         attLogs.push({
           filename: att.filename,
           size: att.size,
@@ -412,7 +415,7 @@ async function handleMessage(msg: InboundRawMessage): Promise<void> {
           reason: res.status === "duplicate" ? "Same file already being imported" : null,
         });
       } catch (e) {
-        captureError("[rta-inbox] attachment ingest failed", e, { tenantId, filename: att.filename });
+        captureError("[rta-inbox] attachment ingest failed", safeError(e), { tenantId, file: fileRef(att.filename) });
         attLogs.push({
           filename: att.filename,
           size: att.size,
@@ -434,7 +437,7 @@ async function handleMessage(msg: InboundRawMessage): Promise<void> {
       for (const link of links.slice(0, 3)) {
         const dl = await fetchRtaDownload(link);
         if (!dl.ok) {
-          console.warn(`[rta-inbox] ${tenantId}: download skipped (${dl.reason}) — ${link.slice(0, 80)}`);
+          console.warn(`[rta-inbox] ${tenantId}: download skipped (${dl.reason}) — ${urlRef(link)}`);
           attLogs.push({ filename: link.slice(0, 200), size: 0, source: null, kind: null, outcome: "error", reason: dl.reason });
           continue;
         }
@@ -471,7 +474,7 @@ async function handleMessage(msg: InboundRawMessage): Promise<void> {
           });
           break; // one report per mail — stop at the first success
         } catch (e) {
-          captureError("[rta-inbox] link ingest failed", e, { tenantId, url: link });
+          captureError("[rta-inbox] link ingest failed", safeError(e), { tenantId, host: urlRef(link) });
           attLogs.push({
             filename: dl.file.filename,
             size: dl.file.size,
