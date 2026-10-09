@@ -60,10 +60,20 @@ describe.skipIf(!TEST_DB)("AUM composition (DB)", () => {
     expect(c.total).toBe(7620);
     expect(c.allLive).toBe(false);
     const note = M.aumCompositionNote(c, (n) => `₹${n}`, (d) => d);
-    expect(note).toBe("₹2500 at today's NAV · ₹5000 at registrar statement value (2026-05-18; scheme not mapped or not re-priced) · ₹120 at an older NAV (2024-03-28)");
+    expect(note).toBe(`₹2500 at AMFI NAV of ${c.live.newest} · ₹5000 at registrar statement value (2026-05-18; scheme not mapped or not re-priced) · ₹120 at an older NAV (2024-03-28)`);
+    expect(M.aumValuationLabel(c, (d) => d)).toBe("Mixed dates");
   });
 
-  it("all at today's NAV: no note, the tile may say Today", () => {
+  it("a figure wholly at a current AMFI NAV is labelled by that NAV's date, never 'Today'", () => {
+    const part = (d: string | null, v = 0, n = 0) => ({ value: v, holdings: n, oldest: d, newest: d });
+    const one = { total: 10, live: part("2026-10-07", 10, 1), registrar: part(null), stale: part(null), allLive: true };
+    expect(M.aumValuationLabel(one, (d) => d)).toBe("NAV of 2026-10-07");
+    const two = { ...one, live: { value: 10, holdings: 2, oldest: "2026-10-03", newest: "2026-10-07" } };
+    expect(M.aumValuationLabel(two, (d) => d)).toBe("NAV of 2026-10-03–2026-10-07");
+    expect(M.aumValuationLabel({ ...one, live: part(null), allLive: true, total: 0 }, (d) => d)).toBe("No holdings");
+  });
+
+  it("all at a current AMFI NAV: no mixed-source note", () => {
     const c = { total: 10, live: { value: 10, holdings: 1, oldest: "2026-10-08", newest: "2026-10-08" }, registrar: { value: 0, holdings: 0, oldest: null, newest: null }, stale: { value: 0, holdings: 0, oldest: null, newest: null }, allLive: true };
     expect(M.aumCompositionNote(c, String, String)).toBeNull();
   });

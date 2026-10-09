@@ -350,6 +350,8 @@ export const rtaPipelineActivations = pgTable(
     revokedBy: uuid("revoked_by"),
     revokeReason: text("revoke_reason"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    /** Registrars the activation covers (migration 0242); required when posting is enabled. */
+    registrars: text("registrars").array(),
   },
   (t) => ({ tenantIdx: index("rta_pipeline_activations_tenant_idx").on(t.tenantId, t.createdAt) }),
 );

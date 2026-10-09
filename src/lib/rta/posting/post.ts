@@ -40,7 +40,8 @@ import { isResolved, loadSchemeResolutions, observeSchemeCodes, schemeFor, schem
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { CLASS_META, type RtaClass } from "../staging/classify";
-import { assertPostingAllowed } from "./gate";
+import { assertPostingAllowed, PostingGateError, registrarOutOfScope } from "./gate";
+import { registrarCovered } from "./controls";
 import { classifyRejectionReason } from "../process";
 
 type Tx = any;
@@ -90,7 +91,7 @@ const abs = (v: string | null) => (v == null ? null : Math.abs(Number(v)));
 
 export async function postTransactionBatch(tenantId: string, batchId: string, opts: PostOptions = {}): Promise<PostResult> {
   return withTenant(tenantId, async (tx: Tx) => {
-    await assertPostingAllowed(tx, tenantId);
+    const scope = await assertPostingAllowed(tx, tenantId);
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"rta_posting:" + tenantId}, 0))`);
 
     const b = (await tx.execute(sql`
@@ -99,6 +100,7 @@ export async function postTransactionBatch(tenantId: string, batchId: string, op
     `)).rows[0] as { id: string; state: string; record_kind: string | null; rta: string; posting_state: string; posting_counts: Record<string, number> } | undefined;
     if (!b) throw new Error("staging batch not found for this firm");
     if (b.record_kind !== "transaction") throw new Error(`batch is a ${b.record_kind ?? "unidentified"} file, not transactions`);
+    if (!registrarCovered(scope, b.rta)) throw new PostingGateError([registrarOutOfScope(scope.registrars, b.rta)]);
     if (!["ready_to_commit", "exception"].includes(b.state)) throw new Error(`batch is "${b.state}" — validation has not finished, nothing can post`);
     const totals0 = { inflowAmount: 0, outflowAmount: 0, units: 0, transactions: 0, lots: 0 };
     if (["posted", "partially_posted", "nothing_to_post"].includes(b.posting_state)) {

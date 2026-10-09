@@ -23,7 +23,8 @@ import { parseRtaCsv, parseRtaRows } from "..";
 import { decodeTextBytes } from "../file-kind";
 import { isSpreadsheet, readSpreadsheetToRows } from "../xls";
 import { revalueAllFolios, recomputeCombinedAum } from "@/lib/finance/aum-persist";
-import { assertPostingAllowed } from "./gate";
+import { assertPostingAllowed, PostingGateError, registrarOutOfScope } from "./gate";
+import { registrarCovered } from "./controls";
 import { maskPansIn } from "../exceptions";
 
 type Tx = any;
@@ -55,13 +56,14 @@ export type MasterPostResult = {
 
 export async function postMasterBatch(tenantId: string, batchId: string, file: { name: string; buf: Uint8Array }, opts: { userId?: string | null; importId?: string | null } = {}): Promise<MasterPostResult> {
   return withTenant(tenantId, async (tx: Tx) => {
-    await assertPostingAllowed(tx, tenantId);
+    const scope = await assertPostingAllowed(tx, tenantId);
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"rta_posting:" + tenantId}, 0))`);
     const b = (await tx.execute(sql`
-      SELECT id, state, record_kind, report_code, posting_state, posting_counts, as_of_date::text AS as_of FROM rta_staging_batches
+      SELECT id, state, record_kind, rta, report_code, posting_state, posting_counts, as_of_date::text AS as_of FROM rta_staging_batches
        WHERE tenant_id = ${tenantId}::uuid AND id = ${batchId}::uuid FOR UPDATE`)).rows[0] as
-      { id: string; state: string; record_kind: string; report_code: string; posting_state: string; posting_counts: any; as_of: string | null } | undefined;
+      { id: string; state: string; record_kind: string; rta: string | null; report_code: string; posting_state: string; posting_counts: any; as_of: string | null } | undefined;
     if (!b) throw new Error("staging batch not found for this firm");
+    if (!registrarCovered(scope, b.rta)) throw new PostingGateError([registrarOutOfScope(scope.registrars, b.rta)]);
     if (!["master", "holding"].includes(b.record_kind)) throw new Error(`batch is a ${b.record_kind} file, not a master or holdings file`);
     if (!["ready_to_commit", "exception"].includes(b.state)) throw new Error(`batch is "${b.state}" — validation has not finished, nothing can post`);
     if (["posted", "partially_posted", "nothing_to_post"].includes(b.posting_state)) {

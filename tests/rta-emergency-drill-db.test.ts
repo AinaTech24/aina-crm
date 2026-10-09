@@ -47,7 +47,7 @@ describe.skipIf(!RUN)("EMERGENCY shutdown (DB drill)", () => {
         await tx.execute(sql`INSERT INTO tenants (id, legal_name, display_name, arn) VALUES (${id}::uuid, ${"Emergency " + n}, ${"Emergency " + n}, ${"ARN-EM" + n + id.slice(0, 6)})`);
       }
     });
-    await C.activateTenant({ tenantId: pilot, mode: "validate_first", postingEnabled: true, reason: "pilot for the emergency drill", approvalRef: "CHG-EM-1", requestedBy: ops.a, approvedBy: ops.b });
+    await C.activateTenant({ tenantId: pilot, mode: "validate_first", postingEnabled: true, reason: "pilot for the emergency drill", approvalRef: "CHG-EM-1", registrars: ["cams", "kfintech"], requestedBy: ops.a, approvedBy: ops.b });
   });
 
   afterAll(async () => {

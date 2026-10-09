@@ -43,7 +43,7 @@ describe.skipIf(!TEST_DB)("RTA-derived write entry points (DB)", () => {
       }
       await tx.execute(sql`INSERT INTO users (id, tenant_id, email, name, roles, status) VALUES (${owner}::uuid, ${vfFirm}::uuid, ${`owner-${vfFirm.slice(0, 8)}@example.test`}, 'Entry Owner', ARRAY['owner']::text[], 'active')`);
     });
-    await C.activateTenant({ tenantId: vfFirm, mode: "validate_first", postingEnabled: true, reason: "entry-point test: pilot firm", approvalRef: "CHG-EP", requestedBy: ops.a, approvedBy: ops.b });
+    await C.activateTenant({ tenantId: vfFirm, mode: "validate_first", postingEnabled: true, reason: "entry-point test: pilot firm", approvalRef: "CHG-EP", registrars: ["cams", "kfintech"], requestedBy: ops.a, approvedBy: ops.b });
   });
 
   afterAll(async () => {
@@ -102,7 +102,7 @@ describe.skipIf(!TEST_DB)("RTA-derived write entry points (DB)", () => {
     expect((await m1.json()).error).toMatch(/paused/);
     const u1 = await unmerge.POST(json("/api/investors/unmerge", { mergeId: randomUUID() }));
     expect(u1.status).toBe(409);
-    await C.activateTenant({ tenantId: vfFirm, mode: "validate_first", postingEnabled: true, reason: "entry-point test: resumed", approvalRef: "CHG-EP2", requestedBy: ops.a, approvedBy: ops.b });
+    await C.activateTenant({ tenantId: vfFirm, mode: "validate_first", postingEnabled: true, reason: "entry-point test: resumed", approvalRef: "CHG-EP2", registrars: ["cams", "kfintech"], requestedBy: ops.a, approvedBy: ops.b });
     const m2 = await merge.POST(json("/api/investors/merge", { survivorId: ids.a, loserId: ids.b, reason: "duplicate record of the same person" }));
     expect(m2.status).toBe(200);
   });

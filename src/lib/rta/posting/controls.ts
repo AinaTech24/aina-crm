@@ -28,7 +28,18 @@ export type PipelineModeName = "off" | "shadow" | "validate_first" | "paused";
 export type Activation = {
   id: string; mode: PipelineModeName; postingEnabled: boolean; reason: string; approvalRef: string | null;
   requestedBy: string | null; approvedBy: string; effectiveFrom: string; expiresAt: string | null;
+  /** The registrars this activation covers (migration 0242). Null only on rows written before it. */
+  registrars: Registrar[] | null;
 };
+
+export type Registrar = "cams" | "kfintech";
+export const REGISTRARS: Registrar[] = ["cams", "kfintech"];
+
+/** Is a file / transaction of this registrar inside the activation? A null list (a pre-0242 row) covers every registrar. */
+export function registrarCovered(a: { registrars: readonly string[] | null } | null, rta: string | null | undefined): boolean {
+  if (!a || !a.registrars) return true;
+  return !!rta && a.registrars.includes(rta);
+}
 
 export class ControlError extends Error {
   status = 400;
@@ -40,7 +51,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export async function currentActivation(tx: Tx, tenantId: string, opts: { lock?: boolean } = {}): Promise<Activation | null> {
   const r = (await tx.execute(sql`
     SELECT id::text, mode, posting_enabled, reason, approval_ref, requested_by::text, approved_by::text,
-           effective_from::text, expires_at::text
+           effective_from::text, expires_at::text, registrars
       FROM rta_pipeline_activations
      WHERE tenant_id = ${tenantId}::uuid AND revoked_at IS NULL AND effective_from <= now()
        AND (expires_at IS NULL OR expires_at > now())
@@ -52,6 +63,7 @@ export async function currentActivation(tx: Tx, tenantId: string, opts: { lock?:
   return {
     id: r.id, mode: r.mode, postingEnabled: !!r.posting_enabled, reason: r.reason, approvalRef: r.approval_ref,
     requestedBy: r.requested_by, approvedBy: r.approved_by, effectiveFrom: r.effective_from, expiresAt: r.expires_at,
+    registrars: Array.isArray(r.registrars) ? r.registrars : null,
   };
 }
 
@@ -138,6 +150,8 @@ export async function setPostingHalt(input: {
 export async function activateTenant(input: {
   tenantId: string; mode: PipelineModeName; postingEnabled: boolean; reason: string; approvalRef?: string | null;
   requestedBy?: string | null; approvedBy: string; effectiveFrom?: string | null; expiresAt?: string | null;
+  /** Which registrars' files this activation covers. Required when posting is enabled (a KFintech-only pilot names only 'kfintech'). */
+  registrars?: Registrar[] | null;
 }): Promise<Activation> {
   const reason = input.reason?.trim() ?? "";
   if (reason.length < 10) throw new ControlError("a reason of at least 10 characters is required");
@@ -151,19 +165,23 @@ export async function activateTenant(input: {
     if (input.mode !== "validate_first") throw new ControlError("posting can only be enabled in validate_first mode");
     if (!input.requestedBy || input.requestedBy === input.approvedBy) throw new ControlError("enabling posting needs a requester and a DIFFERENT approver");
     if (!input.approvalRef?.trim()) throw new ControlError("enabling posting needs a change / approval reference");
+    if (!input.registrars?.length) throw new ControlError("enabling posting needs the registrars it covers (e.g. ['kfintech'] for a KFintech-only pilot)");
   }
+  const registrars = input.registrars?.length ? [...new Set(input.registrars)] : null;
+  if (registrars?.some((r) => !REGISTRARS.includes(r))) throw new ControlError(`registrars must be among ${REGISTRARS.join(", ")}`);
   return withTenant(input.tenantId, async (tx: Tx) => {
     const exists = (await tx.execute(sql`SELECT 1 FROM tenants WHERE id = ${input.tenantId}::uuid`)).rows.length;
     if (!exists) throw Object.assign(new ControlError("firm not found"), { status: 404 });
     const row = (await tx.execute(sql`
-      INSERT INTO rta_pipeline_activations (tenant_id, mode, posting_enabled, reason, approval_ref, requested_by, approved_by, effective_from, expires_at)
+      INSERT INTO rta_pipeline_activations (tenant_id, mode, posting_enabled, reason, approval_ref, requested_by, approved_by, effective_from, expires_at, registrars)
       VALUES (${input.tenantId}::uuid, ${input.mode}, ${input.postingEnabled}, ${reason}, ${input.approvalRef?.trim() || null},
-              ${input.requestedBy ?? null}::uuid, ${input.approvedBy}::uuid, COALESCE(${input.effectiveFrom ?? null}::timestamptz, now()), ${input.expiresAt ?? null}::timestamptz)
+              ${input.requestedBy ?? null}::uuid, ${input.approvedBy}::uuid, COALESCE(${input.effectiveFrom ?? null}::timestamptz, now()), ${input.expiresAt ?? null}::timestamptz,
+              ${registrars ? sql`ARRAY[${sql.join(registrars.map((r) => sql`${r}`), sql`, `)}]::text[]` : sql`NULL`})
       RETURNING id::text`)).rows[0] as { id: string };
     await tx.execute(sql`
       INSERT INTO audit_log (tenant_id, actor_user_id, actor_type, action, entity_type, entity_id, after, reason)
       VALUES (${input.tenantId}::uuid, ${input.approvedBy}::uuid, 'user', 'rta.pipeline.activate', 'rta_pipeline_activation', ${row.id}::uuid,
-              ${JSON.stringify({ mode: input.mode, postingEnabled: input.postingEnabled, requestedBy: input.requestedBy ?? null, approvalRef: input.approvalRef ?? null, expiresAt: input.expiresAt ?? null })}::jsonb, ${reason})`);
+              ${JSON.stringify({ mode: input.mode, postingEnabled: input.postingEnabled, requestedBy: input.requestedBy ?? null, approvalRef: input.approvalRef ?? null, expiresAt: input.expiresAt ?? null, registrars })}::jsonb, ${reason})`);
     const cur = await currentActivation(tx, input.tenantId);
     if (!cur) throw new ControlError("the activation is recorded but not yet effective");
     return cur;
@@ -197,7 +215,7 @@ export async function controlState(tenantId: string) {
     const activation = await currentActivation(tx, tenantId);
     const halt = await haltState(tx, tenantId);
     const history = (await tx.execute(sql`
-      SELECT id::text, mode, posting_enabled, reason, approval_ref, requested_by::text, approved_by::text, effective_from, expires_at, revoked_at, revoked_by::text, revoke_reason, created_at
+      SELECT id::text, mode, posting_enabled, registrars, reason, approval_ref, requested_by::text, approved_by::text, effective_from, expires_at, revoked_at, revoked_by::text, revoke_reason, created_at
         FROM rta_pipeline_activations WHERE tenant_id = ${tenantId}::uuid ORDER BY created_at DESC LIMIT 50`)).rows;
     return { activation, halt, history };
   });

@@ -24,7 +24,10 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { rtaStagingBatches } from "@/db/schema";
 import { createShadowBatch, runShadowBatch } from "../staging/pipeline";
-import { postingGateEnv, PostingGateError } from "./gate";
+import { postingGateEnv, PostingGateError, registrarOutOfScope } from "./gate";
+import { currentActivation, registrarCovered } from "./controls";
+import { identifyLayout } from "../staging/layouts";
+import { readLines } from "../staging/source";
 import { postTransactionBatch, type PostResult } from "./post";
 import { postMasterBatch, type MasterPostResult } from "./masters";
 import { rebuildSipBook, type SipBookOutcome } from "./sip-book";
@@ -60,6 +63,14 @@ export async function validateFirstImport(args: {
 }): Promise<ValidateFirstResult> {
   const gate = postingGateEnv();
   if (!gate.allowed) throw new PostingGateError(gate.reasons);
+  // The activation's registrar scope (0242), checked before anything is staged:
+  // a CAMS file sent to a KFintech-only pilot firm is refused whole. The posting
+  // gate checks the same scope again inside every posting transaction.
+  const activation = await withTenant(args.tenantId, (tx) => currentActivation(tx, args.tenantId));
+  if (activation?.registrars) {
+    const rta = identifyLayout(readLines(args.buf, args.fileName))?.layout.rta ?? null;
+    if (!registrarCovered(activation, rta)) throw new PostingGateError([registrarOutOfScope(activation.registrars, rta)]);
+  }
 
   // Resume: the latest batch this import already created.
   let batchId: string | null = null;

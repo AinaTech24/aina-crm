@@ -28,6 +28,8 @@ const Body = z.discriminatedUnion("action", [
     action: z.literal("activate"), tenantId: z.string().uuid(), mode: z.enum(["off", "shadow", "validate_first"]),
     postingEnabled: z.boolean(), reason: z.string().trim().min(10).max(1000), approvalRef: z.string().trim().max(200).optional(),
     requestedBy: z.string().uuid().optional(), expiresAt: z.string().datetime().optional(),
+    // Which registrars' files the activation covers; required with posting (a KFintech-only pilot: ["kfintech"]).
+    registrars: z.array(z.enum(["cams", "kfintech"])).min(1).max(2).optional(),
   }),
   z.object({ action: z.literal("pause"), tenantId: z.string().uuid(), reason: z.string().trim().min(10).max(1000) }),
   z.object({ action: z.literal("revoke"), tenantId: z.string().uuid(), reason: z.string().trim().min(5).max(1000) }),

@@ -789,9 +789,19 @@ provenance, platform registrar map) and 0240 (platform-approved confirmation).
   verified AMC → no name suggestions and no scheme approval (firm or platform);
   a scheme outside the verified set is an AMC conflict. Recording an AMC
   approves no scheme. Operator runbook: `docs/rta/PILOT_PREFLIGHT_RUNBOOK.md`.
-- **The AUM figure says what it is made of** (`getAumComposition`): at
-  today's AMFI NAV / at registrar statement value (unmapped scheme) / at an
-  older NAV. A tile says "Today" only when all of it is live.
+- **The AUM figure says what it is made of** (`getAumComposition`): at a
+  current AMFI NAV / at registrar statement value (unmapped scheme) / at an
+  older NAV. It is labelled by its NAV dates (`aumValuationLabel`: "NAV of
+  07 Oct", or "Mixed dates") — never "Today": AMFI publishes a business day's
+  NAV that evening. A registrar statement is dated by its report date; it
+  prints no NAV date (KFintech MFSD203 of 08-Oct valued at the 07-Oct NAV).
+- **An activation names its registrars** (migration 0242,
+  `rta_pipeline_activations.registrars`, required with posting, never
+  edited): a KFintech-only pilot is `["kfintech"]`. An out-of-scope file is
+  refused before staging, and every posting path (`assertPostingAllowed` →
+  `registrarCovered`) refuses it again inside the transaction. KFintech codes:
+  MFSD211 = investor master (first), MFSD201 = transactions, MFSD203 =
+  holdings, MFSD243 = SIP / STP / SWP registrations.
 
 ## Webhook handlers
 

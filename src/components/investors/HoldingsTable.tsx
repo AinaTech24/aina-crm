@@ -276,7 +276,7 @@ export function HoldingsTable({
       {coverage && (
         <p
           className={`mb-2 flex items-center gap-1 text-2xs ${coverage.warn ? "text-warning-foreground" : "text-muted-foreground"}`}
-          title="The values below use today's NAV on the units on file. These are the registrar statements those units were last checked against."
+          title="The values below use the latest AMFI NAV (each dated) on the units on file. These are the registrar statements those units were last checked against."
         >
           {coverage.warn && <AlertTriangle className="size-3 shrink-0" aria-hidden />}
           {coverage.text}

@@ -8,7 +8,9 @@
  * that prints the sum as "units × today's NAV" misrepresents both. This splits
  * the same holdings three ways so every screen can say what it is showing:
  *
- *   live       valued at the current AMFI NAV of its mapped scheme
+ *   live       valued at a current AMFI NAV of its mapped scheme (within
+ *              NAV_MAX_AGE_DAYS) — dated by that NAV's own date, which is
+ *              the last business day AMFI published, never "today"
  *   registrar  carried at the registrar's stated value (unmapped / held scheme,
  *              or never re-priced) — with the statement dates
  *   stale      valued at an AMFI NAV older than NAV_MAX_AGE_DAYS, or at a NAV
@@ -60,11 +62,26 @@ export async function getAumComposition(tx: Tx, scope: MetricScope): Promise<Aum
   return { total: Math.round((live.value + registrar.value + stale.value) * 100) / 100, live, registrar, stale, allLive: registrar.holdings === 0 && stale.holdings === 0 };
 }
 
-/** One honest line for a tile: what part is at today's NAV and what is not. Null when everything is live. */
+const spanOf = (p: AumPart, date: (d: string) => string) =>
+  (p.oldest && p.newest && p.oldest !== p.newest ? `${date(p.oldest)}–${date(p.newest)}` : p.newest ? date(p.newest) : "undated");
+
+/**
+ * The tile's "as of" label. A valuation is labelled by the NAV dates it uses —
+ * an AMFI NAV is published for a business day the evening after, so the
+ * latest one is yesterday's (or Friday's) and a figure built on it is never
+ * "Today". Mixed sources (registrar statement values, older NAVs) say so.
+ */
+export function aumValuationLabel(c: AumComposition, date: (d: string) => string): string {
+  if (!c.live.holdings && !c.registrar.holdings && !c.stale.holdings) return "No holdings";
+  if (!c.allLive) return "Mixed dates";
+  return `NAV of ${spanOf(c.live, date)}`;
+}
+
+/** One honest line for a tile: what part is at a current AMFI NAV (with its date) and what is not. Null when everything is at a current NAV. */
 export function aumCompositionNote(c: AumComposition, money: (n: number) => string, date: (d: string) => string): string | null {
   if (c.allLive) return null;
-  const span = (p: AumPart) => (p.oldest && p.newest && p.oldest !== p.newest ? `${date(p.oldest)}–${date(p.newest)}` : p.newest ? date(p.newest) : "undated");
-  const parts = [`${money(c.live.value)} at today's NAV`];
+  const span = (p: AumPart) => spanOf(p, date);
+  const parts = [`${money(c.live.value)} at AMFI NAV of ${c.live.holdings ? span(c.live) : "—"}`];
   if (c.registrar.holdings) parts.push(`${money(c.registrar.value)} at registrar statement value (${span(c.registrar)}; scheme not mapped or not re-priced)`);
   if (c.stale.holdings) parts.push(`${money(c.stale.value)} at an older NAV (${span(c.stale)})`);
   return parts.join(" · ");

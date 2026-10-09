@@ -23,6 +23,7 @@ import { withTenant } from "@/db/client";
 import { buildSipMaster, type InstalmentEvent, type RegistrationObservation, type RegistrationSource, type SipMasterEntry } from "../sip-master";
 import { refreshActiveSipAmount } from "@/lib/metrics/sip";
 import { assertPostingAllowed } from "./gate";
+import { registrarCovered } from "./controls";
 
 type Tx = any;
 
@@ -44,7 +45,7 @@ const n = (v: unknown) => (s(v) && /^-?\d+$/.test(s(v)!) ? Number(s(v)) : null);
 export async function rebuildSipBook(tenantId: string, opts: { asOf?: string; userId?: string | null } = {}): Promise<SipBookOutcome> {
   const asOf = opts.asOf ?? new Date(Date.now() + 5.5 * 36e5).toISOString().slice(0, 10);
   return withTenant(tenantId, async (tx: Tx) => {
-    await assertPostingAllowed(tx, tenantId);
+    const scope = await assertPostingAllowed(tx, tenantId);
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"rta_sip_book:" + tenantId}, 0))`);
 
     // Registration observations. A registration report's own date is the
@@ -117,7 +118,10 @@ export async function rebuildSipBook(tenantId: string, opts: { asOf?: string; us
       const target = STATE_TO_SIP[e.state];
       const sch = schemeMap.get(`${e.rta}|${e.amcCode ?? ""}|${e.scheme}`);
       const schemeOk = !gate || isResolved(sch?.status);
-      const postable = e.kind === "sip" && !!e.owner && !!e.frequency && e.amount != null && !!target && e.confidence === "verified" && schemeOk;
+      // A registrar outside the firm's activation (0242) never reaches the SIP book; it stays visible in the SIP Master.
+      const inScope = registrarCovered(scope, e.rta);
+      if (!inScope) e.stateBasis = `${e.stateBasis}; not posted to the SIP book: ${e.rta} is outside this firm's activation`;
+      const postable = e.kind === "sip" && !!e.owner && !!e.frequency && e.amount != null && !!target && e.confidence === "verified" && schemeOk && inScope;
       if (!schemeOk && e.kind === "sip" && e.confidence === "verified") {
         sips.schemeUnresolved++;
         e.stateBasis = `${e.stateBasis}; not posted to the SIP book: scheme ${e.amcCode}/${e.scheme} is ${sch?.status ?? "unresolved"} in the Scheme Master`;

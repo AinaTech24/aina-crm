@@ -22,7 +22,8 @@
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { CLASS_META, type RtaClass } from "../staging/classify";
-import { assertPostingAllowed } from "./gate";
+import { assertPostingAllowed, registrarOutOfScope } from "./gate";
+import { registrarCovered } from "./controls";
 import { recordOutcome } from "./post";
 import { reprocessHeldTransactions } from "./reprocess";
 import { panToken } from "../staging/pan-token";
@@ -52,7 +53,7 @@ export async function resolveHeldTransaction(
 ): Promise<{ transactionId: string }> {
   if (!decision.note?.trim()) throw new ResolutionError("a reason for the decision is required");
   const done = await withTenant(tenantId, async (tx: Tx) => {
-    await assertPostingAllowed(tx, tenantId);
+    const scope = await assertPostingAllowed(tx, tenantId);
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"rta_posting:" + tenantId}, 0))`);
     const e = (await tx.execute(sql`
       SELECT e.id, e.batch_id, e.identity_key, e.rta, e.amc_code, e.folio_number, e.scheme_code, e.registrar_txn_no, e.trade_date::text AS trade_date,
@@ -62,6 +63,7 @@ export async function resolveHeldTransaction(
              (SELECT r.pan_token FROM rta_staging_rows r WHERE r.tenant_id = e.tenant_id AND r.economic_txn_id = e.id ORDER BY r.row_no LIMIT 1) AS pan_token
         FROM rta_staging_economic_txns e WHERE e.tenant_id = ${tenantId}::uuid AND e.id = ${economicTxnId}::uuid FOR UPDATE`)).rows[0] as any;
     if (!e) throw Object.assign(new ResolutionError("not found"), { status: 404 });
+    if (!registrarCovered(scope, e.rta)) throw new ResolutionError(registrarOutOfScope(scope.registrars, e.rta));
     const ledger = (await tx.execute(sql`SELECT 1 FROM rta_posted_transactions WHERE tenant_id = ${tenantId}::uuid AND identity_key = ${e.identity_key}`)).rows;
     if (ledger.length) throw new ResolutionError("this registrar transaction is already posted");
     // A refused instruction is never posted as an investment by choosing a client.

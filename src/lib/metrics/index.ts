@@ -8,7 +8,7 @@
  * not write the SQL inside the widget.
  *
  *   getAUM                  clients.ts      Σ investors.aum of live clients
- *   getAumComposition       aum-composition.ts  the same holdings: at today's NAV / at registrar value / at an older NAV
+ *   getAumComposition       aum-composition.ts  the same holdings: at a current AMFI NAV (dated) / at registrar value / at an older NAV
  *   getActiveClients        clients.ts      clients / active / funded
  *   getSipBook              sip.ts          Σ monthly active SIPs of live clients
  *   getNetBusiness          business.ts     gross, redemption, net, net SIP; hasData

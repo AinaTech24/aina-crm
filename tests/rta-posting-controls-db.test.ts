@@ -50,7 +50,7 @@ describe.skipIf(!TEST_DB)("posting controls — controlled mode (DB)", () => {
     return vf.validateFirstImport({ tenantId: t, importId: id, fileName: name, fileRef: `test:${name}`, buf, asOf: "2026-10-08" });
   };
   const enable = (extra: Partial<Parameters<typeof C.activateTenant>[0]> = {}) => C.activateTenant({
-    tenantId: t, mode: "validate_first", postingEnabled: true, reason: "pilot activation for controls test", approvalRef: "CHG-TEST-1",
+    tenantId: t, mode: "validate_first", postingEnabled: true, reason: "pilot activation for controls test", approvalRef: "CHG-TEST-1", registrars: ["cams", "kfintech"],
     requestedBy: ops.a, approvedBy: ops.b, ...extra,
   });
 

@@ -7,12 +7,14 @@
 import type { Tx } from "@/db/client";
 import { formatCount, formatDate, formatMoney } from "@/lib/format";
 import { getAUM, getAumComposition, getRegistrarAum } from "@/lib/metrics";
+import { aumValuationLabel } from "@/lib/metrics/aum-composition";
 import type { WidgetCtx, WidgetImpl } from "../types";
 import { clientsHref } from "../links";
 
 async function registrarAum(tx: Tx, ctx: WidgetCtx) {
   const [r, live, comp] = [await getRegistrarAum(tx, ctx.scope), await getAUM(tx, ctx.scope), await getAumComposition(tx, ctx.scope)];
   if (!r.cards.length && !r.undatedLegs) return { body: null };
+  const navSpan = (p: { oldest: string | null; newest: string | null }) => (p.oldest && p.newest && p.oldest !== p.newest ? `${formatDate(p.oldest)} – ${formatDate(p.newest)}` : p.newest ? formatDate(p.newest) : "undated");
   return {
     body: (
       <div className="space-y-3">
@@ -21,23 +23,23 @@ async function registrarAum(tx: Tx, ctx: WidgetCtx) {
             <div className="text-xs text-muted-foreground">Registrar statements (firm total)</div>
             <div className="text-lg font-semibold">{r.headline.value != null ? formatMoney(r.headline.value) : "—"}</div>
             <div className="text-2xs text-muted-foreground">
-              {r.headline.value != null ? `as of ${r.headline.asOfDates.map((d) => formatDate(d)).join(", ")}` : "Incomplete — see below"}
+              {r.headline.value != null ? `statements of ${r.headline.asOfDates.map((d) => formatDate(d)).join(", ")}` : "Incomplete — see below"}
             </div>
           </div>
           <div className="dash-tile">
-            <div className="text-xs text-muted-foreground">{comp.allLive ? "CRM valuation at today's NAV" : "CRM valuation — mixed dates"}</div>
+            <div className="text-xs text-muted-foreground">{comp.allLive ? `CRM valuation — ${aumValuationLabel(comp, (d) => formatDate(d))}` : "CRM valuation — mixed dates"}</div>
             <div className="text-lg font-semibold">{formatMoney(live.aum)}</div>
             {comp.allLive ? (
               <div className="text-2xs text-muted-foreground">Units held × the latest AMFI NAV of each mapped scheme — a different figure, on a different date</div>
             ) : (
               <ul className="text-2xs text-muted-foreground">
-                <li>{formatMoney(comp.live.value)} at today&apos;s NAV ({formatCount(comp.live.holdings)} holdings)</li>
+                <li>{formatMoney(comp.live.value)} at AMFI NAV of {navSpan(comp.live)} ({formatCount(comp.live.holdings)} holdings)</li>
                 {comp.registrar.holdings > 0 && (
                   <li className="text-warning-foreground">
-                    {formatMoney(comp.registrar.value)} at registrar statement value ({formatCount(comp.registrar.holdings)} holdings, {comp.registrar.oldest && comp.registrar.newest && comp.registrar.oldest !== comp.registrar.newest ? `${formatDate(comp.registrar.oldest)} – ${formatDate(comp.registrar.newest)}` : comp.registrar.newest ? formatDate(comp.registrar.newest) : "undated"}) — scheme not mapped yet
+                    {formatMoney(comp.registrar.value)} at registrar statement value ({formatCount(comp.registrar.holdings)} holdings, statements of {navSpan(comp.registrar)}) — scheme not mapped yet
                   </li>
                 )}
-                {comp.stale.holdings > 0 && <li className="text-warning-foreground">{formatMoney(comp.stale.value)} at an older NAV ({formatCount(comp.stale.holdings)} holdings)</li>}
+                {comp.stale.holdings > 0 && <li className="text-warning-foreground">{formatMoney(comp.stale.value)} at an older NAV ({navSpan(comp.stale)}; {formatCount(comp.stale.holdings)} holdings)</li>}
               </ul>
             )}
           </div>
@@ -48,7 +50,7 @@ async function registrarAum(tx: Tx, ctx: WidgetCtx) {
               <li key={`${c.rta}|${c.arn}`} className="dash-row flex flex-wrap items-baseline justify-between gap-x-3">
                 <span className="min-w-0">
                   <span className="font-medium">{c.rta === "kfintech" ? "KFintech" : "CAMS"}</span>
-                  <span className="text-muted-foreground"> · {c.arn} · as of {c.mixedDates && c.oldestAsOf ? `${formatDate(c.oldestAsOf)} – ${formatDate(c.asOf!)} (mixed dates)` : c.asOf ? formatDate(c.asOf) : "unknown"}</span>
+                  <span className="text-muted-foreground"> · {c.arn} · statement of {c.mixedDates && c.oldestAsOf ? `${formatDate(c.oldestAsOf)} – ${formatDate(c.asOf!)} (mixed dates)` : c.asOf ? formatDate(c.asOf) : "unknown"}</span>
                   <span className="ml-1 text-2xs text-muted-foreground">
                     {c.fullBook ? "full book" : "partial statement"} · {formatCount(c.positions)} positions ({formatCount(c.zeroPositions)} nil){c.stale ? " · stale" : ""}
                   </span>
@@ -68,7 +70,7 @@ async function registrarAum(tx: Tx, ctx: WidgetCtx) {
       </div>
     ),
     subtitle: r.headline.value != null ? "Every registrar statement is full-book and current" : "Registrar figures with their dates; the firm total waits for complete statements",
-    info: "Each registrar's holdings statement as printed, per ARN, with the date it speaks for. The CRM valuation re-prices units at the latest NAV and is shown separately — the two are never added together.",
+    info: "Each registrar's holdings statement as printed, per ARN, dated by its report date. A statement prints values, not the NAV date behind them: one produced in the morning values at the previous business day's NAV. The CRM valuation re-prices units at the latest AMFI NAV, with that NAV's date, and is shown separately — the two are never added together.",
     href: clientsHref(ctx, { sort: "aum", dir: "desc" }),
     hrefLabel: "Clients",
   };

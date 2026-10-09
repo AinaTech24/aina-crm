@@ -32,7 +32,7 @@
  *   - controlled kind: the firm's current activation (read FOR SHARE) is
  *     validate_first with posting_enabled.
  */
-import { currentActivation, haltState } from "./controls";
+import { currentActivation, haltState, registrarCovered } from "./controls";
 
 export class PostingGateError extends Error {
   constructor(public reasons: string[]) {
@@ -91,7 +91,9 @@ type Tx = { execute: (q: any) => Promise<{ rows: any[] }> };
  * Throws PostingGateError unless the environment AND the connected database
  * AND the firm's controls pass. Call first inside the posting transaction.
  */
-export async function assertPostingAllowed(tx: Tx, tenantId: string, env: NodeJS.ProcessEnv = process.env): Promise<void> {
+export async function assertPostingAllowed(
+  tx: Tx, tenantId: string, env: NodeJS.ProcessEnv = process.env, opts: { rta?: string | null } = {},
+): Promise<{ registrars: string[] | null }> {
   const g = postingGateEnv(env);
   if (!g.allowed) throw new PostingGateError(g.reasons);
   const { sql } = await import("drizzle-orm");
@@ -108,9 +110,18 @@ export async function assertPostingAllowed(tx: Tx, tenantId: string, env: NodeJS
   if (reasons.length) throw new PostingGateError(reasons);
   const halt = await haltState(tx, tenantId, { lock: true });
   if (halt.halted) throw new PostingGateError(halt.reasons);
+  const a = await currentActivation(tx, tenantId, { lock: g.kind === "controlled" });
   if (g.kind === "controlled") {
-    const a = await currentActivation(tx, tenantId, { lock: true });
     if (!a || a.mode !== "validate_first") throw new PostingGateError([`this firm is not activated for validate-first (current mode: ${a?.mode ?? "off"})`]);
     if (!a.postingEnabled) throw new PostingGateError(["this firm's activation does not enable posting"]);
+    if (!a.registrars?.length) throw new PostingGateError(["this firm's activation names no registrars — record a new activation that states them"]);
   }
+  // The registrar scope (0242): a file, held transaction or registration of a
+  // registrar the activation does not name is never posted.
+  if (opts.rta !== undefined && !registrarCovered(a, opts.rta)) throw new PostingGateError([registrarOutOfScope(a?.registrars ?? null, opts.rta)]);
+  return { registrars: a?.registrars ?? null };
 }
+
+/** The refusal for a registrar outside the activation. Deliberately free of "halted" (the worker parks a halted import; this one fails). */
+export const registrarOutOfScope = (registrars: string[] | null, rta: string | null | undefined) =>
+  `this firm's activation covers ${registrars?.join(" + ") ?? "no registrar"} only; a ${rta ?? "unidentified"} record is refused — nothing is posted`;

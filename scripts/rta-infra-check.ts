@@ -65,7 +65,7 @@ async function main() {
   for (const t of [T1, T2]) await admin.query(`INSERT INTO subscriptions (tenant_id, package_id, package_key, status) VALUES ($1, $2, $3, 'active')`, [t, pk.id, `infra-${T1.slice(0, 6)}`]);
   const C = await import("@/lib/rta/posting/controls");
   await C.setPostingHalt({ scope: "global", halted: false, reason: "infrastructure check: posting released", changedBy: u.op1, approvedBy: u.op2 });
-  for (const t of [T1, T2]) await C.activateTenant({ tenantId: t, mode: "validate_first", postingEnabled: true, reason: "infrastructure integration check", approvalRef: "INFRA-3G", requestedBy: u.op1, approvedBy: u.op2 });
+  for (const t of [T1, T2]) await C.activateTenant({ tenantId: t, mode: "validate_first", postingEnabled: true, reason: "infrastructure integration check", approvalRef: "INFRA-3G", registrars: ["cams", "kfintech"], requestedBy: u.op1, approvedBy: u.op2 });
   const alias = `rta-infra${T1.slice(0, 8)}@in.crm.example.test`;
   await admin.query(`INSERT INTO rta_forward_addresses (tenant_id, address, token, is_active, verified_at) VALUES ($1, $2, $3, true, now())`, [T1, alias, `infra${T1.slice(0, 8)}`]);
 

@@ -104,7 +104,9 @@ export async function reprocessHeldTransactions(
   } = {},
 ): Promise<ReprocessResult> {
   return withTenant(tenantId, async (tx: Tx) => {
-    await assertPostingAllowed(tx, tenantId);
+    const scope = await assertPostingAllowed(tx, tenantId);
+    // Held transactions of a registrar outside the firm's activation (0242) stay held, untouched.
+    const inScope = scope.registrars ? sql`AND l.rta IN (${sql.join(scope.registrars.map((r) => sql`${r}`), sql`, `)})` : sql``;
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"rta_posting:" + tenantId}, 0))`);
     const out: ReprocessResult = { examined: 0, promoted: 0, matchedExisting: 0, rejectedRecorded: 0, stillHeld: {}, tasksOpened: 0, tasksClosed: 0 };
 
@@ -142,7 +144,7 @@ export async function reprocessHeldTransactions(
           FROM latest l
          WHERE l.posting_outcome IN ('quarantined', 'held_dependent')
            AND NOT EXISTS (SELECT 1 FROM rta_posted_transactions p WHERE p.tenant_id = l.tenant_id AND p.identity_key = l.identity_key)
-           ${folioFilter}
+           ${folioFilter} ${inScope}
          ORDER BY l.folio_number, l.trade_date, l.identity_key
       `)).rows as Candidate[];
       if (!held.length) return { verdicts: [] as Verdict[], newFolios: [] as Array<{ amcCode: string | null; folioNumber: string }> };
