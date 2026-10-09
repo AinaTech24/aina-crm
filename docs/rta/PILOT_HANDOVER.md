@@ -170,7 +170,7 @@ Each was run on the isolated rehearsal database and wrote **0 rows** (measured b
 | Schema parity | `DATABASE_URL=$COPY_ADMIN npm run -s check:schema` | `✓ Schema guard: 194 ORM tables, every modelled column present in the DB.` |
 | Application role | `psql "$PROD_RO" -Atc "SELECT rolname, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = '<app role>'"` | `<app role>\|f\|f` |
 | Role owns nothing | `psql "$PROD_RO" -Atc "SELECT count(*) FROM pg_tables WHERE tableowner = '<app role>'"` | `0` |
-| Web and worker connect as that role | on each host: `node -e 'const u=new URL(process.env.APP_DATABASE_URL\|\|process.env.DATABASE_URL);console.log(u.username,u.hostname,u.pathname)'` | `<app role>`, the production host and database; no password printed |
+| Web and worker connect as that role | on each host: `node -e 'const v=process.env.APP_DATABASE_URL; if(!v){console.log("APP_DATABASE_URL UNSET");process.exit(1)} const u=new URL(v);console.log(u.username,u.hostname,u.pathname)'` | `<app role>`, the production host and database; no password printed. `UNSET` is a stop: since 0244 the web and worker refuse to start without it (FS-2) |
 | Worker sees itself as non-superuser | `psql "$PROD_APP_RO" -Atc "SELECT current_user, (SELECT rolsuper FROM pg_roles WHERE rolname = current_user), (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user)"` | `<app role>\|f\|f` |
 | Posting controls | `ALLOW_SYSTEM_TX=1 npx tsx scripts/rta-posting-recovery.ts status --tenant <firm>` | before F: no activation, or paused; global halt installed |
 | Every firm's latest activation | `psql "$PROD_RO" -Atc "SELECT DISTINCT ON (tenant_id) tenant_id, mode, posting_enabled, registrars, expires_at FROM rta_pipeline_activations ORDER BY tenant_id, created_at DESC"` | no firm with posting enabled before F |
@@ -199,7 +199,7 @@ Each was rehearsed on `rta_handover`. Run them only with `DATABASE_URL` / `ADMIN
 | Apply the AMFI file | `DATABASE_URL=$COPY_ADMIN ALLOW_SYSTEM_TX=1 npx tsx scripts/amfi-import.ts --file NAVAll.txt --note "downloaded <UTC> by <name>; second download by <name>, sha256 <…>"` |
 | Activate the pilot firm on the copy | the §5.1 request (operator 1, signed in) and approval (operator 2, signed in) against the copy's app |
 | Import the manifest | upload through the copy's app (`/dashboard/rta-imports`), with the copy's web and worker processes, a **non-production** S3 bucket and Redis. Order: MFSD211, then MFSD201 |
-| Deliberate failure, for the alert test | break one ledger row on the copy only, then run `reconcile` (§2.1) and confirm the alert arrives |
+| Deliberate failure, for the alert test | break one ledger row on the copy only, then let the copy's scheduled reconciliation run. There is one scheduled run per IST date, so either break the row before the copy's worker first starts that IST day (the monitor then runs the day's slot at start — after 06:30 IST as a `catch_up`, with a `missed` warning as well), or, on a day whose slot has not run yet, set `RTA_RECON_TIME_IST` on the **copy's** worker a few minutes ahead (`HH:MM`, IST) and restart it. Confirm `rta_reconciliation_runs` shows `discrepancy` and the alert arrives (FS-10). The `reconcile` CLI (§2.1) only confirms the counts (exit 3) — it raises no alert |
 
 ### 2.3 MODIFIES AN ENVIRONMENT — not part of the preflight; only with written authorization
 
@@ -338,14 +338,15 @@ Run `npx tsx scripts/rta-file-manifest.ts <every MFSD201 delivered so far> --cal
 
 **EC-5 — Alert delivery to a real on-call destination** *(D7)*
 
-1. `OBSERVABILITY_WEBHOOK_URL` (or `ERROR_WEBHOOK_URL`) is set on the **worker** host (§2.1). The infra engineer names the system and rota it posts to.
-2. On the copy: break one ledger row, then run `reconcile` (§2.2). Also let the nightly scan run, which writes `rta.posting.reconcile_alert`.
+1. `OPS_ALERT_WEBHOOK_URL` (falls back to `OBSERVABILITY_WEBHOOK_URL` / `ERROR_WEBHOOK_URL`) and `OPS_ALERT_ESCALATION_WEBHOOK_URL` are set on the **worker and web** hosts (FS-10). The infra engineer names the system and rota each posts to.
+2. On the copy: break one ledger row and let the scheduled reconciliation run (§2.2 "Deliberate failure" — one scheduled run per IST date). It writes `rta.posting.reconcile_alert` and a critical `rta.reconciliation.discrepancy` ops alert. The `reconcile` CLI alone raises no alert.
 3. **A named on-call person acknowledges the alert** in the on-call tool. A message in an unwatched channel does not count.
 
 **Evidence:**
 - the incident or alert id;
 - time sent, time acknowledged and by whom;
-- the audit-log row: `SELECT at, after FROM audit_log WHERE action = 'rta.posting.reconcile_alert' ORDER BY at DESC LIMIT 1`.
+- the audit-log row: `SELECT at, after FROM audit_log WHERE action = 'rta.posting.reconcile_alert' ORDER BY at DESC LIMIT 1`;
+- the alert row and its delivery attempts: `SELECT id, kind, status, delivery_state, delivered_at, escalated_at, acknowledged_at, acknowledged_by FROM ops_alerts WHERE kind = 'rta.reconciliation.discrepancy' ORDER BY first_seen_at DESC LIMIT 1` and `SELECT channel, attempt, at, outcome, http_status FROM ops_alert_deliveries WHERE alert_id = '<id>' ORDER BY at`.
 
 **Stop if:** no acknowledgement within the agreed response time; the webhook is unset; the alert reaches only the audit log.
 
@@ -771,9 +772,9 @@ The dashboard reads every transaction of the firm in the period. For a firm with
 |---|---|
 | Responsible | DBA |
 | Exact test | 1. Written authorization for the copy. 2. Restore the latest backup into a NEW isolated instance (§2.3) that no application uses. 3. `check-migration-lock.mjs`; `migrate-all.ts --check`; `migrate-all.ts`; `check:rls`; `check:schema` (§2.1 / §2.2). 4. `SELECT filename FROM _applied_migrations ORDER BY filename DESC LIMIT 4` |
-| Expected | `0 blockers`; the apply exits 0; both checks pass; the newest is `0243_rta_control_requests.sql` |
+| Expected | `0 blockers`; the apply exits 0; both checks pass; the newest is `0244_session_mfa_runtime_role_recon_alerts.sql` |
 | Evidence | Authorization reference; backup id and time; restore duration; every output; `SELECT * FROM _migration_runs ORDER BY started_at DESC LIMIT 5` |
-| Status | **NOT VERIFIED** (development, security patch: 281 applied from empty, 0 blockers, RLS 188 tables, schema 195 tables; immutability drill 14 / 14) |
+| Status | **NOT VERIFIED** (development, final security patch: 282 applied from empty, 0 blockers, RLS 189 tables, schema 199 tables; immutability drill 14 / 14) |
 | Stop if | Any blocker (an edited or missing applied migration), a partial attempt, or a failed check. Never edit an applied migration — a correction is a new migration |
 
 | | **D. Infrastructure security, worker recovery, tenant isolation, backup and alerts** |
