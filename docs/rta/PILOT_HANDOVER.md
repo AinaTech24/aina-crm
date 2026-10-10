@@ -36,6 +36,7 @@
 |---|---|---|
 | Release commit (application code) | `c26e67636f8bbfac3d80eed30152d7ac1af0aa4f` (`c26e676`, branch `claude/relaxed-mendel-01jprq`). Its code is identical to `6590fe5` (migration 0244); `c26e676` changed this document only. | `git rev-parse c26e676^{commit}` prints the full hash above |
 | Deployed tree = release code | Commits after `c26e676` may change `docs/` only | `git diff --name-only c26e676 <deployed commit> -- . ':(exclude)docs'` prints nothing |
+| Frozen artifact (git content hashes; any change to any file changes them) | whole tree `8ecfbc383b26e4a01ce47ff35d1c5b006bc4e92f`; `src/` `257005dadb838e6ee1952e7c6a6ce17fb01cf068`; `drizzle/migrations/` `73a2b7f56d8a1e4f056ebf4e6628d0ba6a13107a` — `src/` and `drizzle/migrations/` identical to `6590fe5` | `git rev-parse c26e676^{tree} c26e676:src c26e676:drizzle/migrations`; on a deployed checkout, `git rev-parse HEAD:src HEAD:drizzle/migrations` gives the same two values |
 | Migration files | **282**, newest `0244_session_mfa_runtime_role_recon_alerts.sql` | `ls drizzle/migrations/*.sql \| wc -l` → 282 |
 | Lock file | `drizzle/migrations/checksums.lock.json`, SHA-256 `5a2a3288206ed319006fd18c1d3bd62374d35b885edea7144e2825d7c67438a7` | `sha256sum drizzle/migrations/checksums.lock.json`; `node scripts/check-migration-lock.mjs` → `✓ 282 migrations match` |
 | All migration files, concatenated in byte order | SHA-256 `b8a1d6181b0917131e24eaf08d116b9e09e8e05744d8f4064882c9b5ebfb949f` | `(cd drizzle/migrations && LC_ALL=C ls *.sql \| LC_ALL=C sort \| xargs cat \| sha256sum)` |
@@ -45,7 +46,9 @@
 
 A mismatch anywhere in this table is a stop: the environment is not the reviewed release.
 
-*Correction:* the development reply of 2026-10-09 cited the release as `ee1fd2e`. That hash does not exist; the pushed commit is `c26e676`. The owner confirms in the ticket that the acceptance applies to `c26e676`.
+*Correction:* the development reply of 2026-10-09 cited the release as `ee1fd2e`. That hash does not exist; the pushed commit is `c26e676`. **The owner confirmed on 2026-10-10 that the acceptance applies to `c26e67636f8bbfac3d80eed30152d7ac1af0aa4f`; `ee1fd2e` is not a valid release reference.** The acceptance covers the development handover and this runbook only — not deployment, migration, historical repair or posting. Any later code or migration change needs a new review and a new release pin.
+
+*Verified against the pinned commit's own git objects (2026-10-10):* the commit exists on `origin/claude/relaxed-mendel-01jprq`; its only difference from `6590fe5` is this document; 282 migration files, 282 lock entries, 0 checksum mismatches, no lock entry without a file, newest `0244_…`; the lock-file, concatenated-files, 0243 and 0244 SHA-256 and the ledger digest are the values in the table above.
 
 ### 0.2 Rules that hold for every step
 
