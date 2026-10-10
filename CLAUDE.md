@@ -839,6 +839,8 @@ Operator steps and evidence: `docs/rta/PILOT_HANDOVER.md` (§5.1, EC-1, EC-2, EC
 - **Development is FROZEN at `8523a01`** (owner, 2026-10-09). Pilot readiness is
   operational evidence only: A–F and FS-1 – FS-10 in the handover. The one
   authorized exception is the final security patch below (migration 0244).
+  The accepted release is pinned at `c26e676` with its migration checksums
+  (handover §0.1); after it, only `docs/` may change without a separate approval.
 
 ## Final security patch — migration 0244 (PRE-PRODUCTION)
 

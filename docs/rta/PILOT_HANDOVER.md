@@ -26,16 +26,79 @@
 
 ---
 
+## 0. Release pin and operational runbook
+
+**Owner decision (2026-10-10):** the development handover is accepted and operational preflight starts. **Development stays frozen**; a code change needs an actual blocker or defect and a separate approval. **Production deployment, production migration, activation and financial posting are NOT authorized.** No historical repair or client merge is approved. A completed checklist does not authorize deployment (§6).
+
+### 0.1 Pinned release
+
+| Item | Pinned value | How to verify |
+|---|---|---|
+| Release commit (application code) | `c26e67636f8bbfac3d80eed30152d7ac1af0aa4f` (`c26e676`, branch `claude/relaxed-mendel-01jprq`). Its code is identical to `6590fe5` (migration 0244); `c26e676` changed this document only. | `git rev-parse c26e676^{commit}` prints the full hash above |
+| Deployed tree = release code | Commits after `c26e676` may change `docs/` only | `git diff --name-only c26e676 <deployed commit> -- . ':(exclude)docs'` prints nothing |
+| Migration files | **282**, newest `0244_session_mfa_runtime_role_recon_alerts.sql` | `ls drizzle/migrations/*.sql \| wc -l` → 282 |
+| Lock file | `drizzle/migrations/checksums.lock.json`, SHA-256 `5a2a3288206ed319006fd18c1d3bd62374d35b885edea7144e2825d7c67438a7` | `sha256sum drizzle/migrations/checksums.lock.json`; `node scripts/check-migration-lock.mjs` → `✓ 282 migrations match` |
+| All migration files, concatenated in byte order | SHA-256 `b8a1d6181b0917131e24eaf08d116b9e09e8e05744d8f4064882c9b5ebfb949f` | `(cd drizzle/migrations && LC_ALL=C ls *.sql \| LC_ALL=C sort \| xargs cat \| sha256sum)` |
+| `0243_rta_control_requests.sql` | SHA-256 `339fed21516203949eea20e7527cf54f68ca462a442f89d1ff573977b564d935` (lock / ledger value `339fed2151620394`) | `sha256sum <file>` |
+| `0244_session_mfa_runtime_role_recon_alerts.sql` | SHA-256 `587632dc121ef3d85aded4b5c198528865096c6efd63b842fd758c917d8b4f28` (lock / ledger value `587632dc121ef3d8`) | `sha256sum <file>` |
+| Ledger digest after a full migration (the copy in C, later production) | `7a166d11628bc4325d58e2e73bef1ebc` over 282 rows | `SELECT count(*), md5(string_agg(filename \|\| ':' \|\| checksum, ',' ORDER BY filename COLLATE "C")) FROM _applied_migrations;` (checked on a development database at 0244: 282 · `7a166d11628bc4325d58e2e73bef1ebc`) |
+
+A mismatch anywhere in this table is a stop: the environment is not the reviewed release.
+
+*Correction:* the development reply of 2026-10-09 cited the release as `ee1fd2e`. That hash does not exist; the pushed commit is `c26e676`. The owner confirms in the ticket that the acceptance applies to `c26e676`.
+
+### 0.2 Rules that hold for every step
+
+1. **Restricted credentials first (FS-2).** Before any deployment attempt — production or the copy's application — every web and worker host has `APP_DATABASE_URL` naming the restricted application role, and **no** `DATABASE_URL` with the migration role and no `DB_TOOLING` in its environment. Migration credentials live only with the DBA's migration tooling. The web and worker each log `database role '<role>' verified` at start. Record the §2.1 role output and both start lines.
+2. **Isolated copy only.** Migration rehearsals (C), reversal and undo tests (§5.6), failure simulations (the broken ledger row, Redis stop, worker kill, EMERGENCY drill, cancel drill — FS-8), the dry run (F part 1) and the alert test run on the **authorized isolated production copy**, never on the live financial database. Before each such step, paste `SELECT current_database(), inet_server_addr(), now();` and the copy's authorization reference into the ticket. **Stop** if it names the production database or server.
+3. **The alert test is the scheduled path.** EC-5 / FS-10 pass only with: a `schedule` or `catch_up` row in `rta_reconciliation_runs` with status `discrepancy`; its `ops_alerts` row `delivered` with its `ops_alert_deliveries` attempts; and an acknowledgement by the named on-call monitoring owner through `POST /api/super-admin/ops-alerts` from their own MFA session. Running the `reconcile` CLI alone does not count.
+4. **KFintech-only scope.** The activation is `registrars: ["kfintech"]`, `reportCodes: ["MFSD211","MFSD201"]`, 14-day expiry. Report definitions (§1.1, checked against the code's layout definitions in `lib/rta/staging/layouts.ts`: MFSD201 `transaction`, MFSD211 `master`, MFSD203 `holding`, MFSD243 `registration`): **MFSD201 = Transactions · MFSD211 = Investor Master · MFSD203 = Holdings · MFSD243 = Systematic registrations (SIP / STP / SWP)**; MFSD230 (instalment status) is also out of scope. No CAMS file is imported. Unresolved schemes, identity and ownership exceptions and every other held record **stay held**; a held item is released only by its documented decision (B, E), never to make a count clean.
+5. **Evidence standard.** Every entry in the ticket carries: who ran it; the UTC and IST start and end times; the host and database (`current_database()`, never a password or connection string with credentials); the exact command; its complete output; and the exit code. Logs are masked (no PAN, client name, phone, email, token, session id or credential) — the CRM masks PANs in its own messages; anything pasted from elsewhere is masked by hand. Store: the §0.1 checksum outputs, every reconcile output, the database query outputs, the control-request ids with their `payloadHash`, and the signed approvals. Evidence that cannot be produced is a FAIL, not a pass.
+6. **A failure is returned, not worked around.** Record it with its evidence, mark the condition FAIL, stop, and return it for review.
+
+### 0.3 Run-sheets by role
+
+Each line names the section with the exact commands, expected results and stop conditions. Run in this order; a later step uses the earlier one's output.
+
+**DBA**
+1. §0.1: verify the pinned commit, lock file and checksums on the deployment checkout.
+2. **C** — restore the authorized backup into a new isolated instance; `check-migration-lock.mjs`, `migrate-all.ts --check`, `migrate-all.ts`, `check:rls`, `check:schema`; the newest is `0244_…`; the §0.1 ledger digest equals `7a166d11…` over 282 rows.
+3. **FS-2** (database half) — role flags, ownership, memberships, `session_replication_role`, forced RLS (§2.5); provision the restricted role on the copy (`db:provision-app-role`).
+4. **FS-3** (database half) — named holders of privileged access, their logging.
+5. **FS-4** step 1 — the activation, kill-switch and starts-without-request queries.
+6. **E** — `rta-historical-diagnostics.ts` and `scheme-master-duplicates.ts` on the read replica; **EC-1** step 1; **FS-7** step 1 (`count(*) FROM rta_posted_transactions` = 0 in production).
+7. **F part 1** (with platform operator 1, on the copy) — the dry run, **EC-1** steps 2–3, **FS-7** step 2 (the breakdown query), every `reconcile` = 0.
+8. **FS-1** step 3 — the four session / audit queries for both operators (with the compliance reviewer).
+9. §5.6 / §5.7 on the copy — reversal dry run, a two-person reversal and undo, reconcile 0 after each.
+
+**Infrastructure engineer**
+1. §0.2 rule 1 — `APP_DATABASE_URL` on every web and worker host, no migration credentials there; both start lines.
+2. **D1** S3 posture and synthetic put / get / delete; **D5** the PAN-token key only in the secret store.
+3. **D2 / EC-4** — authenticated registrar mail header; a non-registrar mail quarantined; **FS-6** mail for the pilot firm stopped.
+4. **D3** — Redis persistence; restart Redis then the worker; an upload with Redis stopped answers 503 and makes no job; **FS-8** on the copy (with platform operator 1).
+5. **D6** — backup retention, PITR, C's restore time.
+6. **D7 / EC-5 / FS-10** — `OPS_ALERT_WEBHOOK_URL` and `OPS_ALERT_ESCALATION_WEBHOOK_URL` on worker and web; `OPS_HEARTBEAT_URL` on the worker with its dead-man's switch armed; an external uptime check on `GET /api/health/rta-reconciliation` (`OPS_MONITOR_TOKEN`); the worker log line `reconciliation daily at 06:30 Asia/Kolkata`; the scheduled-alert test (§0.2 rule 3); worker stopped > 10 min → 503 and a page.
+7. **FS-1** step 4 — access-log corroboration of each operator session (paths, status, times; no cookies).
+8. **FS-3** (hosts) and **FS-4** step 3.
+
+**Platform operator 1** — A (first download), B, F part 1 (with the DBA), FS-4 step 2, FS-5, FS-8, FS-9; the §5.3 emergency halt and release drill on the copy; files every start request.
+**Platform operator 2** — A (second download); reviews and approves start requests from a different MFA session.
+**Compliance reviewer** — reviews and signs E, F, FS-1, FS-3, FS-4, FS-5, FS-7, the held-item decisions and §6.
+**On-call monitoring owner** — receives and acknowledges the test alert (EC-5 / FS-10); owns the uptime and heartbeat alerts for the 14 days.
+
+---
+
 ## 1. Pilot file manifest
 
 ### 1.1 Report codes (KFintech Distributor Services manual; checked against the files' own headers)
 
 | Report | What it is | Pilot role | Import order |
 |---|---|---|---|
-| **MFSD211** | Investor Master Information | **required** — folio owners on record | **first** |
-| **MFSD201** | Transaction Report | **required** — the transactions | **second** |
-| MFSD203 | Holdings / AUM | **not in pilot scope** | — |
-| MFSD243 | SIP / STP / SWP registrations | **not in pilot scope** | — |
+| **MFSD211** | Investor Master | **required** — folio owners on record | **first** |
+| **MFSD201** | Transactions | **required** — the transactions | **second** |
+| MFSD203 | Holdings | **not in pilot scope** | — |
+| MFSD243 | Systematic registrations (SIP / STP / SWP) | **not in pilot scope** | — |
+| MFSD230 | SIP instalment status | **not in pilot scope** | — |
 
 **The pilot validates transactions only.** Optional MFSD203 or MFSD243 imports must not be used to claim that holdings, AUM, the SIP Book, the SIP Master or any other module has been validated.
 
@@ -1061,13 +1124,14 @@ Every field is blank on purpose. Complete it in ink or in the ticket; do not pre
 
 | Field | Entry |
 |---|---|
+| Release commit verified (§0.1): full hash, lock-file SHA-256, ledger digest on the copy | |
 | Pilot organization (legal name) | |
 | Tenant id | |
 | ARN (must equal the Agent / Broker Code in every file) | |
 | Registrar scope | KFintech only — `registrars: ["kfintech"]` |
 | Report-type scope | MFSD211 + MFSD201 only — `reportCodes: ["MFSD211","MFSD201"]` |
-| Pilot start (date, time IST) | |
-| Pilot end = `expiresAt` (start + 14 days) | |
+| Authorized pilot dates: start (date, time IST) — set by the business owner's written authorization | |
+| Authorized pilot dates: end = `expiresAt` (start + 14 days at most) | |
 | Approved file scope: per file, report code (MFSD211 / MFSD201 only), file name, SHA-256, data rows, Report Date (`rta-file-manifest.ts` output reference) | |
 | Approved backlog inventory before activation (EC-2): reference, and imports cancelled | |
 | RTA mail for the firm stopped for the pilot (EC-4 step 4): how, and by whom | |
@@ -1075,14 +1139,15 @@ Every field is blank on purpose. Complete it in ink or in the ticket; do not pre
 | Activation request (EC-6): request id, `payloadHash`, filed at (operator 1's session), approved at (operator 2's session) | |
 | Global-halt release request (EC-6): request id, `payloadHash` | |
 | Database app role and worker role (FS-2), as named in `APP_DATABASE_URL` on each host | |
-| Worker host time zone, and the hour the nightly reconciliation runs (FS-10) | |
-| Accountable on-call person for the reconciliation alert (FS-10): name, rota | |
+| Reconciliation schedule (FS-10): `RTA_RECON_TIME_IST` value (default 06:30 IST; the host's zone does not matter) and the worker log line confirming it | |
+| On-call monitoring owner (FS-10): name, platform user id, rota, alert system, uptime and heartbeat monitors | |
 | Named holders of privileged database / emergency-CLI access (FS-3) | |
 | First platform operator (requester): name, user id | |
 | Second platform operator (approver): name, user id | |
 | DBA: name | |
 | Infrastructure engineer: name | |
 | Compliance reviewer: name | |
+| Responsible business owner who authorizes the pilot: name, role | |
 
 **Who records which check** (names are filled in by the authorizer; a person may hold more than one role, but platform operator 1 and platform operator 2 are always two different people):
 
@@ -1093,7 +1158,8 @@ Every field is blank on purpose. Complete it in ink or in the ticket; do not pre
 | Platform operator 1 (requester) | | A (first download); B; F part 1; FS-4 step 2, FS-5, FS-8, FS-9, FS-10 (daily) |
 | Platform operator 2 (approver) | | A (second download); the approvals in F part 2 |
 | Compliance reviewer | | review and signature of E, F, FS-1, FS-3, FS-4, FS-5, FS-7 and the §6 sheet |
-| Accountable on-call person | | acknowledgement in EC-5 / FS-10 |
+| On-call monitoring owner | | acknowledgement in EC-5 / FS-10; the uptime and heartbeat alerts during the pilot |
+| Responsible business owner | | the written pilot authorization, after every row below is PASS |
 
 | Condition | Result (PASS / FAIL / NOT VERIFIED) | Evidence reference (ticket / document) | Initials |
 |---|---|---|---|
@@ -1120,8 +1186,21 @@ Every field is blank on purpose. Complete it in ink or in the ticket; do not pre
 | FS-9 rejection counting consistent with the ledger (in F, then daily) | NOT VERIFIED | | |
 | FS-10 nightly reconciliation alert reaches an accountable person (in D) | NOT VERIFIED | | |
 
+**Release rule (owner, 2026-10-10).** No firm is activated unless ALL of these hold, each with its evidence in the ticket:
+
+| # | Requirement | Evidence | Met (yes / no) | Initials |
+|---|---|---|---|---|
+| R1 | Every required test passed with recorded evidence: A–F, EC-1 – EC-6, FS-1 – FS-10 above | the rows above, all PASS | | |
+| R2 | Two separate MFA-verified platform operators approved the activation | FS-1 (c) and EC-6 queries: two people, MFA methods, verified < 12 h before the decision | | |
+| R3 | Compliance signed off | the compliance signature below | | |
+| R4 | The responsible business owner explicitly authorized the pilot, with its dates | the written authorization (reference) and the authorized dates above | | |
+| R5 | Emergency halt and recovery verified | §5.3 halt + two-person release, §5.6 reversal + undo, §5.7, on the copy; FS-8 | | |
+| R6 | Financial reconciliation clean | every `reconcile` in F = 0; a `schedule` / `catch_up` run `ok` in `rta_reconciliation_runs`; B (ii) = 0 | | |
+
+**A completed checklist does not by itself authorize deployment or activation.** Deployment, the production migration and the activation each need their own written authorization.
+
 **Final authorization:**
-- ☐ **GO** for the 14-day KFintech transaction-only pilot. Every condition and check above (A–F, EC-1 – EC-6, FS-1 – FS-10) is PASS with evidence recorded by its named role.
+- ☐ **GO** for the 14-day KFintech transaction-only pilot. Every condition and check above (A–F, EC-1 – EC-6, FS-1 – FS-10) is PASS with evidence recorded by its named role, and R1–R6 are met.
 - ☐ **NO-GO.** Reason: ________
 
 The pilot validates verified KFintech transactions only. It makes no claim about AUM, holdings, the SIP Book, the SIP Master, CAMS or any other module.
@@ -1131,6 +1210,7 @@ The pilot validates verified KFintech transactions only. It makes no claim about
 | Platform operator 1 | | |
 | Platform operator 2 | | |
 | Compliance reviewer | | |
+| Responsible business owner (pilot authorization) | | |
 
 **Recommendation from development:** **NO-GO until A–E are PASS with production evidence, EC-1 – EC-6 and FS-1 – FS-10 are evidenced, and F is signed.** The five software defects of §7.1 (migration 0243) and the three weaknesses of §7.3 (migration 0244) are fixed in development and tested on isolated databases; none of that is production evidence. The residual risks in §7.2 remain and are held by the stated controls.
 
