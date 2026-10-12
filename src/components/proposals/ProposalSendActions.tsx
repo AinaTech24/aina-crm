@@ -29,12 +29,15 @@ export function ProposalSendActions({
   hasPhone,
   status,
   primary = true,
+  suggestedNote = "",
 }: {
   id: string;
   hasEmail: boolean;
   hasPhone: boolean;
   status: string;
   primary?: boolean;
+  /** The note drafted from this proposal; offered pre-filled when a send needs one. */
+  suggestedNote?: string;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -46,7 +49,9 @@ export function ProposalSendActions({
   async function captureNote(): Promise<boolean> {
     const note = await promptDialog({
       title: "Suitability note",
+      message: suggestedNote ? "Drafted from this proposal. Read it, add anything specific to this client, then send." : undefined,
       label: "Why does this proposal suit the client?",
+      defaultValue: suggestedNote || undefined,
       placeholder: "e.g. Long-term wealth creation; the funds sit within the client's risk profile and 10-year horizon.",
       multiline: true,
       maxLength: 2000,

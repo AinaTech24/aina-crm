@@ -11,17 +11,21 @@ export function ProposalSuitabilityPanel({
   proposalId,
   initialSuitabilityNote,
   initialOverrideReason,
+  suggestedNote = "",
   clientRiskProfile,
   schemes,
 }: {
   proposalId: string;
   initialSuitabilityNote: string | null;
   initialOverrideReason: string | null;
+  /** Drafted from the proposal; fills the note box while no note is saved. */
+  suggestedNote?: string;
   clientRiskProfile: ClientProfile;
   schemes: SchemeLine[];
 }) {
   const router = useRouter();
-  const [suitabilityNote, setSuitabilityNote] = useState(initialSuitabilityNote ?? "");
+  const prefilled = !initialSuitabilityNote?.trim() && !!suggestedNote;
+  const [suitabilityNote, setSuitabilityNote] = useState(prefilled ? suggestedNote : initialSuitabilityNote ?? "");
   const [overrideReason, setOverrideReason] = useState(initialOverrideReason ?? "");
   const toast = useToast();
   const [busy, setBusy] = useState(false);
@@ -84,7 +88,9 @@ export function ProposalSuitabilityPanel({
             className="input-base text-xs font-sans leading-relaxed"
           />
           <div className="text-2xs text-muted-foreground leading-normal">
-            Must detail the recommendations' alignment with client goals (e.g. tax planning, wealth creation).
+            {prefilled
+              ? "Drafted from this proposal — read it, add anything specific to this client, then save."
+              : "Must detail the recommendations' alignment with client goals (e.g. tax planning, wealth creation)."}
           </div>
         </label>
 
