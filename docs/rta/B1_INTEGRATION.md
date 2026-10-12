@@ -98,9 +98,14 @@ Additional integration fixes (not textual conflicts):
 
 ## D. New candidate
 
-Recorded in `PILOT_HANDOVER.md` §0.1 by the docs-only commit after this one:
-commit, tree, `src/`, `drizzle/migrations/`, baseline `main` = `a16628c5`.
-Migration count and checksums are unchanged from `c26e676` (E).
+| Item | Value |
+|---|---|
+| Candidate commit | `f61d20209a4531c76cd51b9d74dc4cdba0a07387` (merge; parent 1 `main` `a16628c5`, parent 2 release head `5055a31b`) |
+| Tree / `src/` / `drizzle/migrations/` | `fe9785b45ad04d73071ed12c32731d70be11566d` / `e9978d26e4fc41ecc8d649089b76c67b0dc3f19c` / `73a2b7f56d8a1e4f056ebf4e6628d0ba6a13107a` (= `c26e676`) |
+| Migrations | 282; lock SHA-256 `5a2a3288206ed319006fd18c1d3bd62374d35b885edea7144e2825d7c67438a7`; concatenated files `b8a1d6181b0917131e24eaf08d116b9e09e8e05744d8f4064882c9b5ebfb949f`; ledger digest `7a166d11628bc4325d58e2e73bef1ebc` (fresh build and upgraded `main`-state database alike) |
+| Baseline `main` | `a16628c5ba16d7da3cb222b970c467a54521d220` |
+
+Pinned in `PILOT_HANDOVER.md` §0.1a (proposed, not accepted) by the docs-only commit that follows the merge.
 
 ## E. Migration compatibility (disposable databases only)
 

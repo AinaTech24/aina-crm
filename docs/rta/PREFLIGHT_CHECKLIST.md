@@ -32,9 +32,14 @@ Read from Terraform, the deploy workflow and the compose file on `main` (`terraf
 | RV-4 | Migrations vs lock | 282 files, 282 lock entries, 0 mismatches; newest `0244_session_mfa_runtime_role_recon_alerts.sql`; lock SHA-256 `5a2a3288…7c67438a7`; ledger digest `7a166d11628bc4325d58e2e73bef1ebc` | PASS |
 | RV-5 | Documentation revision recorded separately | handover revision `98d5a0f`, recorded in handover §0.1 (the tag message is one line and does not name it) | PASS |
 | RV-6 | No unintended code change in the candidate | `6590fe5..c26e676` changes only `docs/rta/PILOT_HANDOVER.md` | PASS |
-| RV-7 | **Candidate vs production's code** | **`main` (production's deploy branch) has 36 commits the candidate lacks**; the migrations are not affected (`main`'s 270 files = the candidate's first 270, byte for byte). Trial merge conflicts in 9 files incl. `src/lib/rta/{import,kfintech,parsers,process}.ts`. Deploying `c26e676` would remove those 36 changes from production — **blocker B-1** (handover §0.1) | **FAIL** |
+| RV-7 | **Candidate vs production's code** | **`main` (production's deploy branch) has 36 commits the candidate lacks**; the migrations are not affected (`main`'s 270 files = the candidate's first 270, byte for byte). Trial merge conflicts in 9 files incl. `src/lib/rta/{import,kfintech,parsers,process}.ts`. Deploying `c26e676` would remove those 36 changes from production — **blocker B-1** (handover §0.1) | **FAIL** for `c26e676` — reconciled candidate in RV-8 – RV-12 |
+| RV-8 | Reconciled candidate exists (handover §0.1a) | `f61d20209a4531c76cd51b9d74dc4cdba0a07387`, a merge of `main` `a16628c5` and the release head `5055a31b` | PASS (development) |
+| RV-9 | Candidate contains production and the release | `a16628c5` and `c26e676` both ancestors | PASS (development) |
+| RV-10 | Migrations unchanged | `git diff c26e676 f61d202 -- drizzle/` empty; tree `73a2b7f5…`; lock, concatenation and ledger digest as RV-4; a `main`-state database (270) upgrades by 12 files to the same ledger digest and an identical schema | PASS (development) |
+| RV-11 | Production's deploy, change-lock, Terraform, SQL-binding and log-safe files kept | byte-identical to `main` | PASS (development) |
+| RV-12 | Owner review of the candidate and its decisions I-1 – I-4 (`docs/rta/B1_INTEGRATION.md`); new tag `rta-kfintech-pilot-candidate-2026-10-12-b1` | not yet given | NOT VERIFIED |
 
-**B-1 needs an owner decision before any deployment:** authorize a reconciliation change (merge `main`, resolve the 9 conflicts, full regression, FS-7 / FS-8 re-run, new pin and new tag), or another explicit plan. Until then the checks below proceed as marked; F part 1 on `c26e676` is provisional and is repeated on the reconciled candidate.
+**B-1 (2026-10-12): the reconciliation was authorized and is done in development** — candidate `f61d202`, report `docs/rta/B1_INTEGRATION.md`. It becomes the release only after the owner's review (RV-12) and a new tag. Until then `c26e676` stays the accepted pin; neither is deployed. Every check below is run on the candidate once accepted; F part 1 on `c26e676` is not evidence for it.
 
 ---
 
@@ -44,7 +49,7 @@ Read from Terraform, the deploy workflow and the compose file on `main` (`terraf
 2. **C** — isolated copy. Needs written authorization (handover C).
 3. **A / B** — AMFI and schemes, on the copy.
 4. **E** — historical diagnostics, on the copy.
-5. **F1** — dry run, on the copy (provisional until B-1 is resolved).
+5. **F1** — dry run, on the copy, with the accepted candidate (`f61d202` once RV-12 is PASS).
 6. **X** — emergency, recovery and alert drills, on the copy.
 7. **F2** — approvals in production: only after everything above is PASS and the deployment of a reconciled candidate is authorized.
 
@@ -56,9 +61,9 @@ Read from Terraform, the deploy workflow and the compose file on `main` (`terraf
 |---|---|---|---|---|---|---|---|---|
 | PR-1 | Right AWS account | `aws sts get-caller-identity --query '[Account,Arn]' --output text` | Infra | `972971302420`, a named human or least-privilege role (not root) | output | Low | another account | NOT VERIFIED |
 | PR-2 | No production change in flight | `bash scripts/prod-change.sh status` | Infra | free, or held by a named change you know | output | Low | held by an unknown session | NOT VERIFIED |
-| PR-3 | Which code production runs | `aws s3 ls s3://aina-crm-deploy-artifacts-972971302420/releases/ \| sort \| tail -3` (the SHA is in each key) and `gh run list --workflow "Deploy to AWS (EC2)" --limit 5` | Infra | newest successful deploy is a `main` commit (repo head on 2026-10-12: `a16628c5`) | output | Low | a commit not on `main`, or unknown | NOT VERIFIED |
+| PR-3 | Which code production runs | `aws s3 ls s3://aina-crm-deploy-artifacts-972971302420/releases/ \| sort \| tail -3` (the SHA is in each key) and `gh run list --workflow "Deploy to AWS (EC2)" --limit 5` | Infra | newest successful deploy is `a16628c5` — the candidate's first parent (repo head on 2026-10-12). Also on the instance: the deployed SHA the host records (`scripts/manual-deploy.sh` deploys bypass Actions) | output | Low | any other commit, or unknown: the candidate is re-integrated against it before anything else | NOT VERIFIED |
 | PR-4 | Database identity and protection | `aws rds describe-db-instances --db-instance-identifier mfd-growth-os-db --query 'DBInstances[0].{Engine:EngineVersion,Class:DBInstanceClass,GB:AllocatedStorage,MaxGB:MaxAllocatedStorage,Encrypted:StorageEncrypted,Public:PubliclyAccessible,MultiAZ:MultiAZ,Retention:BackupRetentionPeriod,Restorable:LatestRestorableTime,DeletionProtection:DeletionProtection}'` | DBA | 16.x; `Encrypted` true; `Public` false; `Retention` 7; `DeletionProtection` true; `Restorable` within minutes. `MultiAZ` false is recorded as a risk (single AZ) | output | Low | public, unencrypted, retention < 7, restorable time hours old | NOT VERIFIED |
-| PR-5 | Production migration state | `SELECT count(*), max(filename), md5(string_agg(filename \|\| ':' \|\| checksum, ',' ORDER BY filename COLLATE "C")) FROM _applied_migrations;` (read-only) | DBA | `270 \| 0232_physical_rta_route.sql \| d81993198b6288513fe6913400b7966c` (computed from `main`'s 270 files) | output | Low | any other value: the copy's migration plan differs — investigate before C | NOT VERIFIED |
+| PR-5 | Production migration state | `SELECT count(*), max(filename), md5(string_agg(filename \|\| ':' \|\| checksum, ',' ORDER BY filename COLLATE "C")) FROM _applied_migrations;` (read-only) | DBA | `270 \| 0232_physical_rta_route.sql \| d81993198b6288513fe6913400b7966c` (computed from `main`'s 270 files). In particular no row for `0240_aum_month_end.sql` (added and reverted on `main` on 2026-10-08): the runner refuses to migrate a ledger holding it (`--check` exit 2, nothing applied — rehearsed) | output | Low | any other value: the copy's migration plan differs — investigate before C | NOT VERIFIED |
 | PR-6 | App role cannot bypass RLS / own anything | handover FS-2 step 2 (role flags, memberships, `session_replication_role`, object / database / function owners, tables without forced RLS) | DBA | `mfd_app` all flags false, member of nothing privileged, owns 0 objects; 0 tables without forced RLS | 5 outputs | Low | any true flag, ownership or membership | NOT VERIFIED |
 | PR-7 | Web and worker never hold the migration login | on the instance: `cd ~/app; grep -c '^APP_DATABASE_URL=' .env.production; grep -c '^DATABASE_URL=' .env.production; stat -c '%a %U' .env.migrate`; then `for c in $(docker ps --format '{{.Names}}' \| grep -E 'web\|worker'); do echo -n "$c "; docker exec $c sh -c '[ -n "$APP_DATABASE_URL" ] && echo -n "app=set " \|\| echo -n "app=UNSET "; [ -z "$DATABASE_URL" ] && echo master=absent \|\| echo master=PRESENT'; done` | Infra | `1`, `0`, `600 ec2-user`; every web / worker container `app=set master=absent` | output | Low | `app=UNSET` or `master=PRESENT` anywhere | NOT VERIFIED |
 | PR-8 | Connection and storage headroom | `SELECT setting FROM pg_settings WHERE name = 'max_connections'; SELECT usename, count(*) FROM pg_stat_activity GROUP BY 1; SELECT pg_size_pretty(pg_database_size(current_database()));` and CloudWatch `FreeStorageSpace` for `mfd-growth-os-db` | DBA | peak connections well under the `aina-rds-connections-high` alarm (135); free storage > 20 % | outputs | Low | connections near the alarm, storage < 20 % free | NOT VERIFIED |
@@ -121,7 +126,7 @@ Development, for reference only: of all **219** KFintech registrar codes seen, *
 
 ---
 
-## 7. F1 — KFintech dry run (on the copy; provisional until B-1 is resolved)
+## 7. F1 — KFintech dry run (on the copy, with the accepted candidate)
 
 | ID | Objective | Command / procedure | Role | Expected | Evidence | Risk | Stop if | Status |
 |---|---|---|---|---|---|---|---|---|
@@ -162,7 +167,9 @@ Use handover **§6** (sign-off sheet, "Who records which check", R1–R6, signat
 | Condition | Status | Basis |
 |---|---|---|
 | Release integrity (RV-1 – RV-6) | **PASS** | §1, verified from the remote tag and git objects |
-| Release = production code (RV-7) | **FAIL** | blocker B-1: 36 production commits missing, 9 conflicting files |
+| Release = production code (RV-7) | **FAIL** for `c26e676` | blocker B-1: 36 production commits missing, 9 conflicting files |
+| Reconciled candidate (RV-8 – RV-11) | PASS (development) | `f61d202`: production `a16628c5` merged, migrations unchanged, production's deploy / security files byte-identical; full regression and real-file reconciliation in `docs/rta/B1_INTEGRATION.md` |
+| Owner review of the candidate (RV-12) | NOT VERIFIED | decisions I-1 – I-4 and the new tag pending |
 | A. AMFI integrity and mapping | NOT VERIFIED | A-1 – A-3 not run |
 | B. Schemes verified or held | NOT VERIFIED | B-1 – B-3 not run on a production copy |
 | C. Migration rehearsal | NOT VERIFIED | no authorized copy yet |
@@ -172,4 +179,4 @@ Use handover **§6** (sign-off sheet, "Who records which check", R1–R6, signat
 | EC-1 – EC-6, FS-1 – FS-10 | NOT VERIFIED | operator evidence pending |
 | R1 – R6 | not met | follows from the above |
 
-**Decision: NO-GO.** Development and rehearsal results (handover §4, FS-7, FS-8) are not production evidence. Next human actions: (1) the owner decides B-1; (2) DBA and infrastructure engineer run PR-1 – PR-18 now; (3) the owner authorizes C in writing.
+**Decision: NO-GO.** Development and rehearsal results (handover §4, FS-7, FS-8) are not production evidence. Next human actions: (1) the owner reviews candidate `f61d202` and decides I-1 – I-4 (RV-12), then a new tag; (2) DBA and infrastructure engineer run PR-1 – PR-18 now — PR-3 and PR-5 decide whether the candidate matches production; (3) the owner authorizes C in writing.
