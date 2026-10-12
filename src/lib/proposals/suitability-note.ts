@@ -71,7 +71,8 @@ export function suitabilityValues(ctx: SuitabilityContext): Record<string, strin
   const goal =
     mf.map((it) => String(it.goal ?? "").trim()).find(Boolean) ??
     (ctx.goals?.[0]?.name ? ctx.goals[0].name.trim() : "");
-  if (goal) out.goal = goal.charAt(0).toLowerCase() + goal.slice(1);
+  // Written in a sentence: "Wealth Creation" reads "wealth creation"; an acronym ("NPS") keeps its capitals.
+  if (goal) out.goal = goal.replace(/\b([A-Z])([a-z']+)\b/g, (_, a: string, b: string) => a.toLowerCase() + b);
 
   const years = Math.max(0, ...mf.map((it) => Number(it.sipTermYears) || 0));
   if (years > 0) out.horizon = `${years} year${years === 1 ? "" : "s"}`;

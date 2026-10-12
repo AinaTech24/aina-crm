@@ -65,6 +65,13 @@ describe("draftSuitabilityNote", () => {
     expect(note).toContain("confirmed risk profile is Aggressive");
   });
 
+  it("writes a Title Case goal as plain words and keeps an acronym", () => {
+    const a = draftSuitabilityNote({ clientName: "Asha Mehta", riskProfile: "aggressive", items: [mf({ goal: "Wealth Creation" })] });
+    expect(a).toContain("goal of wealth creation over");
+    const b = draftSuitabilityNote({ clientName: "Asha Mehta", riskProfile: "aggressive", items: [mf({ goal: "NPS Retirement Corpus" })] });
+    expect(b).toContain("goal of NPS retirement corpus over");
+  });
+
   it("falls back to the client's own goal", () => {
     const note = draftSuitabilityNote({ clientName: "Asha Mehta", riskProfile: "aggressive", goals: [{ name: "Retirement" }], items: [mf({ goal: undefined })] });
     expect(note).toContain("goal of retirement");
