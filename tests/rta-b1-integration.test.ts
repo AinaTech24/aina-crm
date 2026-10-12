@@ -14,6 +14,8 @@ import { randomUUID } from "node:crypto";
 import { parseSipBook } from "@/lib/rta/parsers";
 import { parseKfintechHoldings } from "@/lib/rta/kfintech";
 import type { RtaFolioRecord } from "@/lib/rta/types";
+import { clientTypeFromTaxStatus } from "@/lib/investors/client-types";
+import { statusOwnerType } from "@/lib/rta/owner";
 
 // KFintech MFSD243 header, verbatim (as in tests/sip-registrar-status.test.ts); rows invented.
 const MFSD243 =
@@ -321,4 +323,32 @@ describe.skipIf(!TEST_DB || !ADMIN_DB)("integrated importer behaviour (DB)", () 
       await H2p.activate(ops2p, { tenantId: firm, mode: "off", postingEnabled: false, reason: "B-1 test: back to legacy" }).catch(() => {});
     }
   }, 600_000);
+});
+
+// main 88bc0178 (client types) maps a registrar's tax status through ONE
+// function; the release's identity rules read only "minor" and "huf" from it
+// (owner.ts investorType, import.ts HUF / minor holds). Every status value
+// below is one the real CAMS R2 / R9 / WBR4 / WBR10 and KFintech MFSD211
+// samples carry (vocabulary only, no client data).
+describe("B-1 (88bc0178): client type from tax status agrees with the release's owner rules", () => {
+  const seen = [
+    "HUF", "HINDU UNDIVIDED FAMILY", "Individual", "INDIVIDUAL", "Resident Individual",
+    "On Behalf Of Minor", "On Behalf of Minor", "MINOR", "MINOR THROUGH GUARDIAN",
+    "NRI - NRE (Repatriation)", "NRI - NRE", "NRI - NRO [Non Repatriation]", "NRI - NRO", "NRI - Non Repatriation",
+    "NRI - Repatriable (NRE)", "NRI - Repatriable", "NRI - Repatriation", "NRI-Non-Repatriable (NRO)",
+    "NRI-Repatriable (NRE)", "NRI REPATRIABLE", "NRI Repatriation", "NRI-REPATRIABLE",
+    "Partnership Firm", "PARTNERSHIP", "Sole Proprietorship",
+  ];
+  it.each(seen)("%s: minor and HUF read the same both ways", (v) => {
+    const type = clientTypeFromTaxStatus(v), owner = statusOwnerType(v);
+    expect(type === "minor").toBe(owner === "minor");
+    expect(type === "huf").toBe(owner === "huf");
+  });
+  it("entities are their own types now, and the release still never treats a partnership as a person", () => {
+    expect(clientTypeFromTaxStatus("Partnership Firm")).toBe("partnership");
+    expect(statusOwnerType("Partnership Firm")).toBe("non_individual");
+    // A sole proprietorship IS the individual for ownership (individual PAN).
+    expect(clientTypeFromTaxStatus("Sole Proprietorship")).toBe("sole_proprietor");
+    expect(statusOwnerType("Sole Proprietorship")).toBe("individual");
+  });
 });

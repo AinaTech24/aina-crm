@@ -269,6 +269,7 @@
   "0230_attendance_punches.sql": "3df73af8d7736988",
   "0231_opportunity_later.sql": "0880335e9c0d983f",
   "0232_physical_rta_route.sql": "9f94daf64a19a6b9",
+  "0233_client_type_details.sql": "1231d8f2e440972a",
   "0233_rta_staging.sql": "e92c15cc8d95a3d2",
   "0234_folio_holders.sql": "26c1fbf745da393c",
   "0235_rta_validate_first.sql": "a30cba378f266020",

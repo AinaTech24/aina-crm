@@ -413,6 +413,36 @@ head, the name and notes — nothing else (the firm's request, 2026-10-02).
 - Do not put Category, Relationship Manager, Review frequency or First
   meeting date back on the create form.
 
+## Client types — the client master follows the type
+
+`investors.investor_category` is the CLIENT TYPE, and the client master asks
+for what that type of investor needs (`src/lib/investors/client-types.ts`,
+the firm's request of 2026-10-12; extra details in `investors.type_details`,
+migration 0233). One list — keys, labels, rules — for the forms, the APIs,
+the imports and every label; never copy the enum again.
+
+| Type | Adds | Holding | Nomination |
+|---|---|---|---|
+| Individual · NRI · Sole proprietor · Other | personal details; NRI: country, overseas address, tax residency, foreign TIN, NRE/NRO; proprietor: business name | single / joint | **yes**, or a recorded opt-out |
+| Minor | guardian (name, PAN, relation, DOB, contact); turns-18 date; DOB required, must be under 18 | single | **no** |
+| HUF | Karta (name, PAN, DOB, contact), date formed, coparceners | single | **no** |
+| Company · LLP · Partnership · Trust · Society/AOP/BOI (+ legacy Corporate) | date and number of incorporation / registration, nature of business, net worth, FATCA/CRS class (+GIIN), authorised signatories, beneficial owners | single | **no** |
+
+- **Only individuals nominate** (SEBI; the firm's rule). Both APIs ignore a
+  nominee list for any other type — and never delete nominees already on
+  file. A type that cannot hold jointly is saved as Single; Minor sets
+  `is_minor`.
+- `cleanTypeDetails(type, details)` keeps only what the type uses, so a
+  record switched from HUF to Individual sheds its Karta.
+- An HUF's or entity's formation date lives in `type_details.entity.formedOn`,
+  not `dob` — a company has no birthday.
+- Registrar tax-status text becomes a type through
+  `clientTypeFromTaxStatus` (CAMS, KFintech, Excel import): "Partnership
+  Firm", "LLP", "Sole Proprietorship", "Society" are their own types now, not
+  "company". The client book's "corporate" bucket counts company, corporate,
+  LLP, partnership and society/AOP.
+- `/dashboard/investors/new?type=minor` opens Add client ready for a type.
+
 ## Booked business vs the RTA
 
 Operations does the work the day an RM asks and books it as a **business

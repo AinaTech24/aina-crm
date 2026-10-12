@@ -11,6 +11,7 @@
  */
 
 import type { RtaFolioRecord, RtaNominee, InvestorCategory, Residency } from "./types";
+import { clientTypeFromTaxStatus } from "@/lib/investors/client-types";
 import { amcNameFromDescription, canonicalizeAmcNames, maskAccount, pct, PanTally } from "./kfintech";
 import { excelSerialToIso, readDate, readNumber } from "./values";
 
@@ -56,15 +57,10 @@ export function camsDate(s?: string): string | null {
   return null;
 }
 
+/** The registrar's tax status as a client type — one reading for every importer.
+ *  A partnership, LLP or sole proprietorship is its own type now, not "company". */
 function mapCategory(tax: string): InvestorCategory {
-  const s = tax.toLowerCase();
-  if (s.includes("minor")) return "minor";
-  if (s.includes("huf")) return "huf";
-  if (s.includes("nri")) return "nri";
-  if (s.includes("trust")) return "trust";
-  if (/partnership|proprietor|company|ltd|llp|corporate|body corp/.test(s)) return "company";
-  if (s.includes("individual")) return "individual";
-  return "individual";
+  return clientTypeFromTaxStatus(tax);
 }
 
 function mapResidency(tax: string): Residency | null {

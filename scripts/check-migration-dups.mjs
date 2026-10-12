@@ -42,6 +42,13 @@ const BASELINE = new Set([
   // database. They touch unrelated tables, so their fresh-DB apply order is
   // immaterial — same rationale as the 0131–0161 block above.
   "0195",
+  // 0233_client_type_details (main, 2026-10-12 — auto-deployed, so applied in
+  // production) + 0233_rta_staging (the RTA release, locked in
+  // checksums.lock.json and its reviewed ledger digest). Renaming either would
+  // re-run an applied file or break the release's lock. One adds a column to
+  // investors, the other creates the rta_staging_* tables: their fresh-DB order
+  // (client_type_details first) is immaterial.
+  "0233",
 ]);
 
 const files = fs.readdirSync(DIR).filter((f) => /^\d+_.*\.sql$/.test(f));

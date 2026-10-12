@@ -3,13 +3,15 @@
 --   PGOPTIONS='-c default_transaction_read_only=on'). It reads _applied_migrations
 -- only, writes nothing, and never edits or deletes a ledger row.
 --
--- Expected before the candidate is deployed: verdict COMPATIBLE, 270 rows
--- applied, 12 pending (0233 – 0244). ANY row with action STOP stops the
+-- Expected before the candidate is deployed: verdict COMPATIBLE, 271 rows
+-- applied (main 88bc0178 deployed: 270 + 0233_client_type_details.sql) and
+-- 12 pending (0233_rta_staging – 0244); or 270 applied and 13 pending if
+-- 88bc0178 has not reached production yet (the candidate then applies it). ANY row with action STOP stops the
 -- deployment and goes back for review — in particular the reverted
 -- 0240_aum_month_end.sql (added and removed on main on 2026-10-08): the
 -- candidate's runner refuses a ledger holding it (migrate:all --check exits 2).
 -- Generated from drizzle/migrations/checksums.lock.json (the candidate) and the
--- 270 files of main a16628c5; do not edit by hand.
+-- 271 files of main 88bc0178; do not edit by hand.
 WITH expected(filename, checksum, origin) AS (VALUES
     ('0000_base_schema.sql', 'e6170b88ff6e282a', 'production'),
     ('0001_sleepy_joseph.sql', 'a2106cc4cc25d4ba', 'production'),
@@ -281,6 +283,7 @@ WITH expected(filename, checksum, origin) AS (VALUES
     ('0230_attendance_punches.sql', '3df73af8d7736988', 'production'),
     ('0231_opportunity_later.sql', '0880335e9c0d983f', 'production'),
     ('0232_physical_rta_route.sql', '9f94daf64a19a6b9', 'production'),
+    ('0233_client_type_details.sql', '1231d8f2e440972a', 'production_latest'),
     ('0233_rta_staging.sql', 'e92c15cc8d95a3d2', 'candidate'),
     ('0234_folio_holders.sql', '26c1fbf745da393c', 'candidate'),
     ('0235_rta_validate_first.sql', 'a30cba378f266020', 'candidate'),
@@ -300,9 +303,9 @@ rows AS (
          CASE
            WHEN e.filename IS NULL THEN 'STOP: applied in production but not shipped by the candidate (e.g. the reverted 0240_aum_month_end.sql)'
            WHEN l.filename IS NULL AND e.origin = 'production' THEN 'STOP: a production migration is missing from the ledger'
-           WHEN l.filename IS NULL AND e.origin = 'candidate' THEN 'pending (expected)'
+           WHEN l.filename IS NULL AND e.origin IN ('candidate', 'production_latest') THEN 'pending (expected)'
            WHEN l.checksum <> e.checksum THEN 'STOP: checksum differs from the reviewed file'
-           WHEN e.origin = 'candidate' THEN 'STOP: a release migration is already applied — production is not at main''s 270'
+           WHEN e.origin = 'candidate' THEN 'STOP: a release migration is already applied — production is not at main''s 270 / 271'
            ELSE 'ok'
          END AS action,
          l.checksum AS ledger_checksum, e.checksum AS expected_checksum

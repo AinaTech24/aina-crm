@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * Add client. The client TYPE comes first and shapes the form
+ * (lib/investors/client-types.ts): a minor asks for the guardian, an HUF for
+ * the Karta and coparceners, an entity for its incorporation, signatories and
+ * beneficial owners, an NRI for overseas details. Personal fields, joint
+ * holders and nominees are for individuals only.
+ */
+
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -8,7 +16,11 @@ import { ChevronLeft, HeartHandshake } from "lucide-react";
 import { RmSelector } from "@/components/common/RmSelector";
 import { SelectField as UiSelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
-import { NomineesField } from "@/components/investors/NomineesField";
+import { ClientTypeSections } from "@/components/investors/ClientTypeSections";
+import {
+  TypeDetailsSchema, canNominate, cleanTypeDetails, clientTypeDef, clientTypeOptions, hasAdultDetails,
+  hasPersonalDetails, majorityDate, singleHoldingOnly, CLIENT_TYPE_KEYS, type ClientTypeDetails,
+} from "@/lib/investors/client-types";
 import type { Nominee } from "@/lib/investors/nominee";
 import { ReferralsField } from "@/components/investors/ReferralsField";
 import type { Referral } from "@/lib/investors/referral";
@@ -23,6 +35,8 @@ function NewInvestorPageInner() {
   const sp = useSearchParams();
   const familyId = sp.get("familyId");
   const familyRole = sp.get("familyRole") ?? "";
+  // ?type=minor (or any client type) opens the form ready for that type.
+  const startType = (CLIENT_TYPE_KEYS as readonly string[]).includes(sp.get("type") ?? "") ? (sp.get("type") as string) : "individual";
   const [form, setForm] = useState({
     // Identity & personal
     name: "",
@@ -48,7 +62,7 @@ function NewInvestorPageInner() {
     pincode: "",
     country: "India",
     // Classification
-    investorCategory: "individual",
+    investorCategory: startType,
     segmentTag: "Retail",
     clientCategory: "",
     riskProfile: "",
@@ -80,6 +94,11 @@ function NewInvestorPageInner() {
     notes: "",
   });
   const [nominees, setNominees] = useState<Nominee[]>([]);
+  const [typeDetails, setTypeDetails] = useState<ClientTypeDetails>({});
+  const kind = clientTypeDef(form.investorCategory).kind;
+  const personal = hasPersonalDetails(form.investorCategory);
+  const adult = hasAdultDetails(form.investorCategory);
+  const singleOnly = singleHoldingOnly(form.investorCategory);
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [customFields, setCustomFields] = useState<Record<string, any>>({});
   const [cfDefs, setCfDefs] = useState<CustomFieldDef[]>([]);
@@ -115,20 +134,37 @@ function NewInvestorPageInner() {
     try {
       const missCf = missingRequired(cfDefs, customFields);
       if (missCf) { setErr(`${missCf.label} is required.`); return; }
+      if (kind === "minor") {
+        const turns18 = majorityDate(form.dob);
+        if (!turns18) { setErr("A minor needs a date of birth."); return; }
+        if (turns18 <= new Date().toISOString().slice(0, 10)) { setErr("This client is 18 or older — choose Individual."); return; }
+        if (!typeDetails.guardian?.name?.trim()) { setErr("Add the guardian's name."); return; }
+        if (!form.pan.trim() && !typeDetails.guardian?.pan?.trim()) { setErr("Add the minor's PAN or the guardian's PAN."); return; }
+      }
+      if (kind === "huf" && !typeDetails.karta?.name?.trim()) { setErr("Add the Karta's name."); return; }
+      const details = cleanTypeDetails(form.investorCategory, typeDetails);
+      const detailsOk = TypeDetailsSchema.safeParse(details);
+      if (!detailsOk.success) {
+        const at = detailsOk.error.issues[0];
+        setErr(`${at?.message ?? "Check the details"}${at?.path?.length ? ` (${at.path.join(" › ")})` : ""}.`);
+        return;
+      }
       const res = await fetch("/api/investors", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           name: form.name,
           pan: form.pan.toUpperCase().trim(),
-          dob: u(form.dob),
-          gender: form.gender || undefined,
-          birthPlace: u(form.birthPlace),
-          motherName: u(form.motherName),
-          maritalStatus: u(form.maritalStatus),
-          occupation: u(form.occupation),
-          employerName: u(form.employerName),
-          aadhaarLast4: u(form.aadhaarLast4),
+          // Personal fields only for a person; the formation date of an HUF or
+          // an entity lives in typeDetails, so a company has no "birthday".
+          dob: personal ? u(form.dob) : undefined,
+          gender: personal ? form.gender || undefined : undefined,
+          birthPlace: personal ? u(form.birthPlace) : undefined,
+          motherName: personal ? u(form.motherName) : undefined,
+          maritalStatus: adult ? u(form.maritalStatus) : undefined,
+          occupation: adult ? u(form.occupation) : undefined,
+          employerName: adult ? u(form.employerName) : undefined,
+          aadhaarLast4: personal ? u(form.aadhaarLast4) : undefined,
           email: u(form.email),
           emailRelation: u(form.emailRelation),
           phone: u(form.phone),
@@ -142,27 +178,32 @@ function NewInvestorPageInner() {
             country: u(form.country),
           },
           investorCategory: form.investorCategory,
+          typeDetails: details,
           segmentTag: form.segmentTag,
           clientCategory: form.clientCategory || undefined,
           riskProfile: form.riskProfile || undefined,
           householdType: u(form.householdType),
           familyOwnerName: u(form.familyOwnerName),
           referralClientName: u(form.referralClientName),
-          modeOfHolding: u(form.modeOfHolding),
+          modeOfHolding: singleOnly ? "Single" : u(form.modeOfHolding),
           bseUccCode: u(form.bseUccCode),
           uccCodes: cleanUccCodes(form.uccCodes),
           taxStatus: u(form.taxStatus),
           residencyStatus: form.residencyStatus || undefined,
           kycStatus: form.kycStatus || undefined,
-          secondHolderFirstName: u(form.secondHolderFirstName),
-          secondHolderLastName: u(form.secondHolderLastName),
-          secondHolderOccupation: u(form.secondHolderOccupation),
-          secondHolderCompanyName: u(form.secondHolderCompanyName),
-          secondHolderBirthPlace: u(form.secondHolderBirthPlace),
-          secondHolderMotherName: u(form.secondHolderMotherName),
-          secondHolderMaritalStatus: u(form.secondHolderMaritalStatus),
+          ...(singleOnly ? {} : {
+            secondHolderFirstName: u(form.secondHolderFirstName),
+            secondHolderLastName: u(form.secondHolderLastName),
+            secondHolderOccupation: u(form.secondHolderOccupation),
+            secondHolderCompanyName: u(form.secondHolderCompanyName),
+            secondHolderBirthPlace: u(form.secondHolderBirthPlace),
+            secondHolderMotherName: u(form.secondHolderMotherName),
+            secondHolderMaritalStatus: u(form.secondHolderMaritalStatus),
+          }),
           rmId: form.rmId || undefined,
+          // Only an individual can nominate.
           nominees: (() => {
+            if (!canNominate(form.investorCategory)) return undefined;
             const list = nominees.filter((n) => (n.name ?? "").trim());
             return list.length ? list : undefined;
           })(),
@@ -180,7 +221,7 @@ function NewInvestorPageInner() {
             return list.length ? list : undefined;
           })(),
           onboardedAt: u(form.onboardedAt),
-          anniversaryDate: u(form.anniversaryDate),
+          anniversaryDate: adult ? u(form.anniversaryDate) : undefined,
           lastReviewAt: u(form.lastReviewAt),
           nextReviewAt: u(form.nextReviewAt),
           reviewFrequency: form.reviewFrequency || undefined,
@@ -229,11 +270,13 @@ function NewInvestorPageInner() {
 
       <form onSubmit={submit} className="space-y-4">
         {/* Identity & personal */}
-        <Section title="Identity & personal">
-          <Field label="Full name" value={form.name} onChange={(v) => set("name", v)} required />
-          <Field label="PAN card no" value={form.pan} onChange={(v) => set("pan", v.toUpperCase())} required placeholder="ABCDE1234F" />
+        <Section title={personal ? "Identity & personal" : "Identity"}>
+          <SelectField label="Client type" value={form.investorCategory} onChange={(v) => set("investorCategory", v)} options={clientTypeOptions()} />
+          <Field label={kind === "huf" ? "HUF name" : kind === "entity" ? "Entity name" : kind === "minor" ? "Minor's full name" : "Full name"} value={form.name} onChange={(v) => set("name", v)} required />
+          <Field label={kind === "minor" ? "Minor's PAN (if any)" : "PAN card no"} value={form.pan} onChange={(v) => set("pan", v.toUpperCase())} required={kind !== "minor"} placeholder="ABCDE1234F" />
+          {personal && (<>
           <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end">
-            <Field label="Date of birth" type="date" value={form.dob} onChange={(v) => set("dob", v)} />
+            <Field label="Date of birth" type="date" value={form.dob} onChange={(v) => set("dob", v)} required={kind === "minor"} />
             <div className="text-xs text-muted-foreground pb-2.5 sm:w-20">
               Age: <span className="font-medium text-foreground">{age ?? "—"}</span>
             </div>
@@ -241,11 +284,23 @@ function NewInvestorPageInner() {
           <SelectField label="Gender" value={form.gender} onChange={(v) => set("gender", v)} options={[{ value: "", label: "Select" }, { value: "M", label: "Male" }, { value: "F", label: "Female" }, { value: "O", label: "Other" }]} />
           <Field label="Birth place" value={form.birthPlace} onChange={(v) => set("birthPlace", v)} />
           <Field label="Mother's name" value={form.motherName} onChange={(v) => set("motherName", v)} />
+          {adult && (<>
           <SelectField label="Marital status" value={form.maritalStatus} onChange={(v) => set("maritalStatus", v)} options={["", "Single", "Married", "Divorced", "Widowed"]} />
           <Field label="Profession" value={form.occupation} onChange={(v) => set("occupation", v)} />
           <Field label="Company name" value={form.employerName} onChange={(v) => set("employerName", v)} />
+          </>)}
           <Field label="Aadhaar card (last 4)" value={form.aadhaarLast4} onChange={(v) => set("aadhaarLast4", v.replace(/\D/g, "").slice(0, 4))} placeholder="last 4 digits only" />
+          </>)}
         </Section>
+
+        <ClientTypeSections
+          type={form.investorCategory}
+          value={typeDetails}
+          onChange={setTypeDetails}
+          dob={form.dob}
+          nominees={nominees}
+          onNomineesChange={setNominees}
+        />
 
         {/* Contact */}
         <Section title="Contact">
@@ -271,11 +326,14 @@ function NewInvestorPageInner() {
         <Section title="Classification & compliance">
           <SelectField label="Family or individual" value={form.householdType} onChange={(v) => set("householdType", v)} options={["", "Individual", "Family", "Family head", "Family member"]} />
           <Field label="Family owner" value={form.familyOwnerName} onChange={(v) => set("familyOwnerName", v)} placeholder="head of family (if part of one)" />
-          <SelectField label="Category" value={form.investorCategory} onChange={(v) => set("investorCategory", v)} options={["individual", "huf", "corporate", "trust", "nri", "minor", "other"]} />
           <SelectField label="Segment" value={form.segmentTag} onChange={(v) => set("segmentTag", v)} options={["HNI", "Affluent", "Retail", "NRI", "Corporate"]} />
           <SelectField label="Client category" value={form.clientCategory} onChange={(v) => set("clientCategory", v)} options={[{ value: "", label: "Select" }, { value: "A", label: "A" }, { value: "B", label: "B" }, { value: "C", label: "C" }, { value: "D", label: "D" }]} />
           <Field label="Referral client name" value={form.referralClientName} onChange={(v) => set("referralClientName", v)} />
-          <SelectField label="Mode of holding" value={form.modeOfHolding} onChange={(v) => set("modeOfHolding", v)} options={["", "Single", "Joint", "Anyone or Survivor"]} />
+          {singleOnly ? (
+            <SelectField label="Mode of holding" value="Single" onChange={() => {}} options={["Single"]} />
+          ) : (
+            <SelectField label="Mode of holding" value={form.modeOfHolding} onChange={(v) => set("modeOfHolding", v)} options={["", "Single", "Joint", "Anyone or Survivor"]} />
+          )}
           <Field label="UCC no" value={form.bseUccCode} onChange={(v) => set("bseUccCode", v)} />
           <div className="sm:col-span-2">
             <UccCodesField value={form.uccCodes} onChange={(v) => setForm((p) => ({ ...p, uccCodes: v }))} label="Other UCC codes" />
@@ -286,7 +344,8 @@ function NewInvestorPageInner() {
           <SelectField label="Risk profile" value={form.riskProfile} onChange={(v) => set("riskProfile", v)} options={[{ value: "", label: "Select" }, { value: "conservative", label: "Conservative" }, { value: "moderate", label: "Moderate" }, { value: "aggressive", label: "Aggressive" }, { value: "very_aggressive", label: "Very aggressive" }]} />
         </Section>
 
-        {/* Second / joint holder */}
+        {/* Second / joint holder — individuals only */}
+        {!singleOnly && (
         <Section title="Second / joint holder (optional)">
           <Field label="First name" value={form.secondHolderFirstName} onChange={(v) => set("secondHolderFirstName", v)} />
           <Field label="Last name" value={form.secondHolderLastName} onChange={(v) => set("secondHolderLastName", v)} />
@@ -296,11 +355,7 @@ function NewInvestorPageInner() {
           <Field label="Mother's name" value={form.secondHolderMotherName} onChange={(v) => set("secondHolderMotherName", v)} />
           <SelectField label="Marital status" value={form.secondHolderMaritalStatus} onChange={(v) => set("secondHolderMaritalStatus", v)} options={["", "Single", "Married", "Divorced", "Widowed"]} />
         </Section>
-
-        {/* Nominees */}
-        <Section title="Nominees" cols={1}>
-          <NomineesField value={nominees} onChange={setNominees} />
-        </Section>
+        )}
 
         {/* Referrals */}
         <Section title="Referrals" cols={1}>
@@ -317,7 +372,7 @@ function NewInvestorPageInner() {
             <RmSelector value={form.rmId || null} onChange={(id) => setForm((s) => ({ ...s, rmId: id ?? "" }))} role="rm" placeholder="— Use firm default (owner) —" />
           </div>
           <Field label="Date of onboarding" type="date" value={form.onboardedAt} onChange={(v) => set("onboardedAt", v)} />
-          <Field label="Anniversary date" type="date" value={form.anniversaryDate} onChange={(v) => set("anniversaryDate", v)} />
+          {adult && <Field label="Anniversary date" type="date" value={form.anniversaryDate} onChange={(v) => set("anniversaryDate", v)} />}
           <Field label="Last meeting date" type="date" value={form.lastReviewAt} onChange={(v) => set("lastReviewAt", v)} />
           <Field label="Next meeting date" type="date" future value={form.nextReviewAt} onChange={(v) => set("nextReviewAt", v)} />
           <SelectField label="Review frequency" value={form.reviewFrequency} onChange={(v) => set("reviewFrequency", v)} options={[{ value: "", label: "Select" }, { value: "monthly", label: "Monthly" }, { value: "quarterly", label: "Quarterly" }, { value: "half_yearly", label: "Half-yearly" }, { value: "annual", label: "Annual" }]} />

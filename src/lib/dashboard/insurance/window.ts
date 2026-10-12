@@ -133,7 +133,7 @@ export function polBase(w: InsWindow): SQL {
     SELECT p.id, p.investor_id, i.name AS client, i.phone AS client_phone, i.email AS client_email,
            upper(btrim(COALESCE(i.client_category, ''))) AS cat,
            i.investor_category AS icat,
-           CASE WHEN i.investor_category IN ('corporate', 'company') THEN 'corporate'
+           CASE WHEN i.investor_category IN ('corporate', 'company', 'llp', 'partnership', 'aop_boi') THEN 'corporate'
                 WHEN i.id IN (SELECT f.primary_investor_id FROM families f
                                WHERE f.tenant_id = ${w.tenantId}::uuid AND f.primary_investor_id IS NOT NULL) THEN 'head'
                 WHEN i.family_id IS NOT NULL THEN 'member'
@@ -280,7 +280,7 @@ export function claimBase(w: InsWindow): SQL {
            ${lineSql("p")} AS line, ${groupSql("p")} AS grp, p.policy_type, p.status AS policy_status,
            p.next_premium_due_date AS policy_due, p.sold_by_user_id AS seller_id,
            upper(btrim(COALESCE(i.client_category, ''))) AS cat,
-           CASE WHEN i.investor_category IN ('corporate', 'company') THEN 'corporate' ELSE 'other' END AS ctype,
+           CASE WHEN i.investor_category IN ('corporate', 'company', 'llp', 'partnership', 'aop_boi') THEN 'corporate' ELSE 'other' END AS ctype,
            jsonb_array_length(COALESCE(c.documents, '[]'::jsonb)) AS docs
       FROM insurance_claims c
       LEFT JOIN insurance_policies p ON p.id = c.policy_id
