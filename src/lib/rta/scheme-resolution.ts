@@ -113,7 +113,11 @@ async function loadDecisionContext(tx: Tx, tenantId: string, amcs: Array<{ rta: 
   const codes = (await tx.execute(sql`
     SELECT c.id, c.rta, c.rta_amc_code, c.rta_scheme_code, c.observed_isins, c.observed_name, c.status, c.amfi_scheme_code,
            c.confirmed_by IS NOT NULL AS confirmed, c.status_reason, c.reason_code
-      FROM scheme_rta_codes c WHERE c.tenant_id = ${tenantId}::uuid ${amcFilter}`)).rows as CodeRow[];
+      FROM scheme_rta_codes c WHERE c.tenant_id = ${tenantId}::uuid ${amcFilter}
+     -- A stable order: the codes' order reaches operators (the "also the top
+     -- suggestion for registrar code …" list) and must not depend on where an
+     -- UPDATE elsewhere left the rows on disk (B-1 stabilisation, I-7).
+     ORDER BY c.rta, c.rta_amc_code, c.rta_scheme_code`)).rows as CodeRow[];
   const gFilter = amcs === null ? sql`` : amcs.length ? sql`AND (g.rta, g.rta_amc_code) IN (${sql.join(amcs.map((k) => sql`(${k.rta}, ${k.amcCode})`), sql`, `)})` : sql`AND false`;
   const globals = (await tx.execute(sql`
     SELECT g.id, g.rta, g.rta_amc_code, g.rta_scheme_code, g.amfi_scheme_code, g.basis, g.evidence_isin

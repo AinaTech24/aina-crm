@@ -47,7 +47,11 @@ describe.skipIf(!TEST_DB)("RTA reconciliation runs, monitor and alerts (DB)", ()
   const firmA = randomUUID();
   const firmB = randomUUID();
   // A unique far-future IST day per test (the slot index is global): 06:30 IST = 01:00 UTC.
-  const base = Date.UTC(2031 + Math.floor(Math.random() * 60), 0, 1, 1, 0);
+  // The run starts AFTER every slot already recorded in this database, never at
+  // a random year: slots persist between runs, and a random year re-drew an
+  // earlier run's slots (4 distinct years in 5 runs) — each then read as
+  // "already run" (B-1 stabilisation).
+  let base = Date.UTC(2031, 0, 1, 1, 0);
   let day = 0;
   const nextSlot = () => new Date(base + (++day) * 864e5);
   const env = (extra: Record<string, string> = {}) => ({
@@ -72,6 +76,8 @@ describe.skipIf(!TEST_DB)("RTA reconciliation runs, monitor and alerts (DB)", ()
     ({ withSystem } = await import("@/db/client"));
     ({ sql } = await import("drizzle-orm"));
     R = await import("@/lib/rta/posting/recon-schedule");
+    const last = (await withSystem(async (tx) => (await tx.execute(sql`SELECT max(slot_date)::text AS d FROM rta_reconciliation_runs WHERE slot_date >= DATE '2031-01-01'`)).rows[0])) as { d: string | null };
+    if (last?.d) base = Math.max(base, Date.parse(`${last.d}T01:00:00Z`) + 864e5);
     AL = await import("@/lib/ops/alerts");
     const TP = await import("./helpers/two-person");
     ops = await TP.createOperators("recon");

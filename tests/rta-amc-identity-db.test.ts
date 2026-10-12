@@ -9,6 +9,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { cleanupSchemeMap } from "./scheme-map-cleanup";
+import { GLOBAL_AMFI_LOCK_TIMEOUT_MS, lockGlobalAmfi } from "./helpers/global-amfi-lock";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 const A = {
@@ -17,6 +18,10 @@ const A = {
 };
 
 describe.skipIf(!TEST_DB)("AMC-identity crosswalk and candidate safety (DB)", () => {
+  // Global AMFI reference state: one such file at a time (tests/helpers/global-amfi-lock.ts).
+  let unlockAmfi: (() => Promise<void>) | null = null;
+  beforeAll(async () => { unlockAmfi = await lockGlobalAmfi(TEST_DB!); }, GLOBAL_AMFI_LOCK_TIMEOUT_MS);
+  afterAll(async () => { await unlockAmfi?.(); });
   let withTenant: typeof import("@/db/client").withTenant;
   let withSystem: typeof import("@/db/client").withSystem;
   let sql: typeof import("drizzle-orm").sql;
@@ -121,6 +126,13 @@ describe.skipIf(!TEST_DB)("AMC-identity crosswalk and candidate safety (DB)", ()
     const b = (await cand("LMDUP")).candidates.find((x) => x.amfiSchemeCode === A.multi)!;
     expect(a.warnings.join(" ")).toMatch(/also the top suggestion for registrar code LMDUP/);
     expect(b.warnings.join(" ")).toMatch(/also the top suggestion for registrar code LMMCG/);
+    // The list is in registrar-code order, whatever order the rows sit in on
+    // disk (an UPDATE elsewhere used to reorder it — I-7). LMVAL's top
+    // suggestion is the same scheme, so it is listed too, always after LMDUP.
+    expect(a.warnings.join(" ")).toMatch(/registrar code LMDUP, LMVAL — at most one/);
+    await withSystem((tx) => tx.execute(sql`UPDATE scheme_rta_codes SET updated_at = now() WHERE tenant_id = ${t}::uuid AND rta_scheme_code IN ('LMDUP', 'LMLMG')`));
+    const again = (await cand("LMMCG")).candidates.find((x) => x.amfiSchemeCode === A.multi)!;
+    expect(again.warnings.join(" ")).toMatch(/registrar code LMDUP, LMVAL — at most one/);
   });
 
   it("a wrong-AMC approval is refused; a right one confirms ONE code — its siblings stay unresolved", async () => {

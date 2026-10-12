@@ -28,6 +28,7 @@ export type ExceptionReasonKey =
   | "identity_review"
   | "txn_conflict"
   | "unsupported_txn"
+  | "registrar_correction"
   | "invalid_value"
   | "folio_missing"
   | "missing_field"
@@ -60,6 +61,16 @@ const CATEGORIES: Category[] = [
     action:
       "The registrar's transaction number on these rows already belongs to a different transaction in the CRM (folio, scheme, date, type or amount differ). The existing record was left unchanged. Check both against the registrar statement.",
     pattern: "already in the CRM for a different transaction|appears [0-9]+ times in this file",
+  },
+  {
+    // Before the catch-all: a folio correction is the registrar re-reporting
+    // history, and "upload the file again" (technical) only held it again
+    // (B-1 stabilisation — 99 real KFintech rows landed there).
+    key: "registrar_correction",
+    label: "Registrar folio correction — held, nothing posted",
+    action:
+      "The registrar moved these transactions from one folio to another (the original, an exact reversal and an equal re-post, one scheme). They are not rejections and not new money; nothing was posted and the client's existing records are unchanged. No re-upload is needed. If the client's folio balance looks wrong, check the registrar's account statement for both folios.",
+    pattern: "folio correction|held until folio moves are posted",
   },
   {
     key: "unsupported_txn",

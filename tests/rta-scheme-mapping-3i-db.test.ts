@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { MFSD201_HEADER, MFSD203_HEADER, MFSD243_HEADER, R2_HEADER, csvOf, xlsOf, serial, P } from "./rta-real-layouts";
 import { cleanupSchemeMap } from "./scheme-map-cleanup";
+import { GLOBAL_AMFI_LOCK_TIMEOUT_MS, lockGlobalAmfi } from "./helpers/global-amfi-lock";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 const A = { fcd: "9I0001", fcr: "9I0002", fci: "9I0003", old: "9I0004", val: "9I0005", gone: "9I0006", kfc: "9I0011", amb1: "9I0012", amb2: "9I0013" };
@@ -27,6 +28,10 @@ const r2 = (txn: string, folio: string, pan: string) => ({
 });
 
 describe.skipIf(!TEST_DB)("Phase 3I — scheme mapping fail-safes (DB)", () => {
+  // Global AMFI reference state: one such file at a time (tests/helpers/global-amfi-lock.ts).
+  let unlockAmfi: (() => Promise<void>) | null = null;
+  beforeAll(async () => { unlockAmfi = await lockGlobalAmfi(TEST_DB!); }, GLOBAL_AMFI_LOCK_TIMEOUT_MS);
+  afterAll(async () => { await unlockAmfi?.(); });
   let H2p: typeof import("./helpers/two-person");
   let ops2p: import("./helpers/two-person").Operators;
   let withTenant: typeof import("@/db/client").withTenant;

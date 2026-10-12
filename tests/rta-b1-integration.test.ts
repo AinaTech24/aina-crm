@@ -97,6 +97,33 @@ describe("main's repair scripts carry the release's RTA write guard", () => {
   });
 });
 
+describe("reconciliation ledger probes name the firm (I-6: a 20,000-row book timed out)", () => {
+  it("every probe of rta_posted_transactions in reconcilePosting carries a tenant predicate, so the (tenant_id, transaction_id) index is used", () => {
+    const src = readFileSync("src/lib/rta/posting/reversal.ts", "utf8");
+    const body = src.slice(src.indexOf("export async function reconcilePosting"), src.indexOf("export async function reconcilePosting") + 2500);
+    const probes = body.match(/FROM rta_posted_transactions p WHERE [^)]*/g) ?? [];
+    expect(probes.length).toBeGreaterThan(0);
+    for (const q of probes) expect(q).toMatch(/p\.tenant_id = /);
+  });
+});
+
+describe("Exceptions page: every held KFintech row lands in an actionable category (B-1 stabilisation)", () => {
+  // The texts the legacy importer writes (process.ts / consolidation.ts / import.ts), as on the real MFSD201 files.
+  const cases: Array<[string, string]> = [
+    ["folio correction: the registrar moved this SIN transaction from one folio to another (original, an exact negating SINR row and an equal re-post, one scheme) — not a rejection and not a new transaction; held until folio moves are posted (rows on lines 1, 2, 3)", "registrar_correction"],
+    ["transaction number # appears 15 times in this file (lines 7, 8, 9, …) — folio, scheme, date and type are identical on every row, so this looks like ONE transaction reported in parts (e.g. a redemption split by purchase lot); the whole group is held back until its parts can be stored (nothing merged, nothing overwritten)", "txn_conflict"],
+    ['transaction type "R / Consolidation Out / N" is not one this importer recognises — row held back, not guessed', "unsupported_txn"],
+    ["folio 1 is filed under an import placeholder (a client created without a PAN); moving it and its transactions to the client this file names needs review — automatic reassignment is switched off, nothing was moved", "identity_review"],
+    ["folio 1: this PAN matches 2 different clients — held back for review", "identity_review"],
+    ["folio 1 is filed under a different client in the CRM — not reassigned by this import; review it (Merge Clients, or correct the folio's client)", "identity_review"],
+  ];
+  it.each(cases)("%s → %s", async (reason, key) => {
+    const { EXCEPTION_REASONS } = await import("@/lib/rta/exceptions");
+    const hit = EXCEPTION_REASONS.find((c) => c.pattern && new RegExp(c.pattern, "i").test(reason))?.key ?? "technical";
+    expect(hit).toBe(key);
+  });
+});
+
 const TEST_DB = process.env.TEST_DATABASE_URL;
 const ADMIN_DB = process.env.ADMIN_DATABASE_URL;
 

@@ -229,7 +229,11 @@ export async function reconcilePosting(tenantId: string) {
     const one = async (q: any) => Number(((await tx.execute(q)).rows[0] as any).n);
     return {
       ledgerWithoutTransaction: await one(sql`SELECT count(*)::int AS n FROM rta_posted_transactions p WHERE p.tenant_id = ${tenantId}::uuid AND p.kind <> 'matched_existing' AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.id = p.transaction_id)`),
-      validateFirstTransactionWithoutLedger: await one(sql`SELECT count(*)::int AS n FROM transactions t WHERE t.tenant_id = ${tenantId}::uuid AND t.source_feed = 'rta_validate_first' AND NOT EXISTS (SELECT 1 FROM rta_posted_transactions p WHERE p.transaction_id = t.id)`),
+      // The ledger probe names the firm too: the index is (tenant_id, transaction_id),
+      // and without it each probe walked the whole index — 6 s at 20,000 rows,
+      // growing with the square of the book, past the 30 s statement timeout on a
+      // production-sized firm right after a large import (B-1 stabilisation, I-6).
+      validateFirstTransactionWithoutLedger: await one(sql`SELECT count(*)::int AS n FROM transactions t WHERE t.tenant_id = ${tenantId}::uuid AND t.source_feed = 'rta_validate_first' AND NOT EXISTS (SELECT 1 FROM rta_posted_transactions p WHERE p.tenant_id = t.tenant_id AND p.transaction_id = t.id)`),
       postedOutcomeWithoutLedger: await one(sql`SELECT count(*)::int AS n FROM rta_staging_economic_txns e WHERE e.tenant_id = ${tenantId}::uuid AND e.posting_outcome IN ('posted', 'rejected_recorded', 'matched_existing') AND NOT EXISTS (SELECT 1 FROM rta_posted_transactions p WHERE p.tenant_id = e.tenant_id AND p.identity_key = e.identity_key)`),
       ledgerIdentityTwice: await one(sql`SELECT count(*)::int AS n FROM (SELECT identity_key FROM rta_posted_transactions WHERE tenant_id = ${tenantId}::uuid GROUP BY 1 HAVING count(*) > 1) x`),
       rejectedWithUnits: await one(sql`SELECT count(*)::int AS n FROM transactions WHERE tenant_id = ${tenantId}::uuid AND source_feed = 'rta_validate_first' AND status = 'rejected' AND coalesce(units, 0) <> 0`),

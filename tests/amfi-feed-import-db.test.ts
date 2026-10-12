@@ -8,6 +8,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { cleanupSchemeMap } from "./scheme-map-cleanup";
+import { GLOBAL_AMFI_LOCK_TIMEOUT_MS, lockGlobalAmfi } from "./helpers/global-amfi-lock";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 const H8 = "Scheme Code;ISIN Div Payout/ ISIN Growth;ISIN Div Reinvestment;Scheme Name;Plan;Option;Net Asset Value;Date";
@@ -18,6 +19,10 @@ const feed = (date: string, navA: string, extra: string[] = []) => [H8, "", "Ope
   ...extra].join("\r\n");
 
 describe.skipIf(!TEST_DB)("AMFI NAVAll import (DB)", () => {
+  // Global AMFI reference state: one such file at a time (tests/helpers/global-amfi-lock.ts).
+  let unlockAmfi: (() => Promise<void>) | null = null;
+  beforeAll(async () => { unlockAmfi = await lockGlobalAmfi(TEST_DB!); }, GLOBAL_AMFI_LOCK_TIMEOUT_MS);
+  afterAll(async () => { await unlockAmfi?.(); });
   let withSystem: typeof import("@/db/client").withSystem;
   let withTenant: typeof import("@/db/client").withTenant;
   let sql: typeof import("drizzle-orm").sql;

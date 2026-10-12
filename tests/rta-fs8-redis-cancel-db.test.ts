@@ -24,7 +24,9 @@ import { MFSD201_HEADER, csvOf, P } from "./rta-real-layouts";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 const HAVE_REDIS = spawnSync("redis-server", ["--version"]).status === 0;
-const PORT = 6300 + Math.floor(Math.random() * 600);
+// A port the OS says is free right now — never a random one, which could land
+// on a Redis already running on this machine and then shut it down (B-1 stabilisation).
+const PORT = Number(spawnSync(process.execPath, ["-e", "const s=require('net').createServer().listen(0,'127.0.0.1',()=>{process.stdout.write(String(s.address().port));s.close()})"], { encoding: "utf8" }).stdout);
 
 const h = vi.hoisted(() => ({ store: new Map<string, Uint8Array>(), session: null as any }));
 vi.mock("@/lib/storage/s3", () => ({

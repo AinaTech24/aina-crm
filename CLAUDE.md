@@ -481,6 +481,18 @@ client).
   adoption only when `InvestorDirectory.byPan` finds nobody holding it. The
   folio on record and the owner's own PAN still decide ownership (see "RTA
   client identity" below); a name never moves a folio between two real clients.
+- **Holds are resolved by a person, then the file is re-imported** (owner
+  decisions I-1 – I-3, 2026-10-12): a placeholder's folio, a PAN two live
+  records carry, and a folio filed under another client are HELD on the
+  Exceptions page ("client or folio needs review"); Merge Clients (audited) is
+  the resolution where the records are one person; re-importing then posts
+  once. Pinned by `tests/rta-ownership-resolution-db.test.ts`. A registrar
+  folio correction has its own category (`registrar_correction`), never
+  "upload again".
+- **Tests that write the GLOBAL AMFI reference** (`amfi_feed_imports`,
+  `scheme_nav`, `scheme_registrar_map`, `registrar_amc_identity`) or trigger
+  `redecideEverywhere` hold `tests/helpers/global-amfi-lock.ts` for the whole
+  file, or they rewrite each other's fixtures when vitest runs in parallel.
 
 ## RTA import — rules since Phase 2 (2026-10-08)
 
