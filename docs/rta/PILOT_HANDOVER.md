@@ -48,6 +48,8 @@ A mismatch anywhere in this table is a stop: the environment is not the reviewed
 
 *Correction:* the development reply of 2026-10-09 cited the release as `ee1fd2e`. That hash does not exist; the pushed commit is `c26e676`. **The owner confirmed on 2026-10-10 that the acceptance applies to `c26e67636f8bbfac3d80eed30152d7ac1af0aa4f`; `ee1fd2e` is not a valid release reference.** The acceptance covers the development handover and this runbook only — not deployment, migration, historical repair or posting. Any later code or migration change needs a new review and a new release pin.
 
+**Blocker B-1 (found 2026-10-12): the release candidate does not contain production's current code.** `main` — the branch production deploys — has **36 commits that `c26e676` lacks** (RTA parser fixes, valuation, privacy, a SQL-binding security fix, deploy tooling and the production change lock, Terraform). Their migrations are not the issue: `main`'s 270 files are byte-identical to the release's first 270, and the release adds `0233`–`0244`. Deploying `c26e676` as it is would **remove those 36 changes from production**. A trial merge (`git merge-tree`, nothing written) conflicts in 9 files: `CLAUDE.md`, `src/lib/comms/imap.ts`, `src/lib/finance/aum-persist.ts`, `src/lib/finance/valuation.ts`, `src/lib/rta/import.ts`, `src/lib/rta/kfintech.ts`, `src/lib/rta/parsers.ts`, `src/lib/rta/process.ts`, `src/workers/rta-inbox-poller.ts`. Resolving them is a code change: it needs the owner's separate authorization, a full regression and FS-7 / FS-8 re-run, and a **new** review, pin and tag. Until then: C (migrations — the set is unchanged), A, B, D, E and the production read-only checks may proceed; F part 1 run on `c26e676` is provisional evidence that must be repeated on the reconciled candidate.
+
 *Verified against the pinned commit's own git objects (2026-10-10):* the commit exists on `origin/claude/relaxed-mendel-01jprq`; its only difference from `6590fe5` is this document; 282 migration files, 282 lock entries, 0 checksum mismatches, no lock entry without a file, newest `0244_…`; the lock-file, concatenated-files, 0243 and 0244 SHA-256 and the ledger digest are the values in the table above.
 
 ### 0.2 Rules that hold for every step
@@ -58,8 +60,11 @@ A mismatch anywhere in this table is a stop: the environment is not the reviewed
 4. **KFintech-only scope.** The activation is `registrars: ["kfintech"]`, `reportCodes: ["MFSD211","MFSD201"]`, 14-day expiry. Report definitions (§1.1, checked against the code's layout definitions in `lib/rta/staging/layouts.ts`: MFSD201 `transaction`, MFSD211 `master`, MFSD203 `holding`, MFSD243 `registration`): **MFSD201 = Transactions · MFSD211 = Investor Master · MFSD203 = Holdings · MFSD243 = Systematic registrations (SIP / STP / SWP)**; MFSD230 (instalment status) is also out of scope. No CAMS file is imported. Unresolved schemes, identity and ownership exceptions and every other held record **stay held**; a held item is released only by its documented decision (B, E), never to make a count clean.
 5. **Evidence standard.** Every entry in the ticket carries: who ran it; the UTC and IST start and end times; the host and database (`current_database()`, never a password or connection string with credentials); the exact command; its complete output; and the exit code. Logs are masked (no PAN, client name, phone, email, token, session id or credential) — the CRM masks PANs in its own messages; anything pasted from elsewhere is masked by hand. Store: the §0.1 checksum outputs, every reconcile output, the database query outputs, the control-request ids with their `payloadHash`, and the signed approvals. Evidence that cannot be produced is a FAIL, not a pass.
 6. **A failure is returned, not worked around.** Record it with its evidence, mark the condition FAIL, stop, and return it for review.
+7. **Nothing reaches the production deploy path.** `.github/workflows/deploy.yml` deploys every push to `main` or `deploy/aws` to the production instance and runs the migrations (build → migrate → schema guard → blue-green). `scripts/manual-deploy.sh <commit>` does the same for any commit. Until deployment is authorized: no push or merge of the release into `main` or `deploy/aws`, and never `manual-deploy.sh` with the release tag or commit. Any AWS change for the preflight (the restore in C, a security group) first takes the production change lock (`scripts/prod-change.sh acquire …` on a `main` checkout) and releases it after its checks.
 
 ### 0.3 Run-sheets by role
+
+The same steps as one executable table (command, role, environment, expected result, evidence, risk, stop condition, status) with the production resource names from the repository's Terraform and deploy files: `docs/rta/PREFLIGHT_CHECKLIST.md`. Where the two differ, this document governs.
 
 Each line names the section with the exact commands, expected results and stop conditions. Run in this order; a later step uses the earlier one's output.
 
@@ -223,6 +228,8 @@ Run every command from the repository at the release commit. **Never put a passw
 
 Each was run on the isolated rehearsal database and wrote **0 rows** (measured by `pg_stat_user_tables` before and after).
 
+**Production is not yet at 0244.** Production deploys from `main`, whose newest migration is `0232_physical_rta_route.sql`. Until the release is migrated there, every table added by `0233`–`0244` is absent in production: `amfi_feed_imports`, `scheme_rta_codes`, `registrar_amc_identity`, `rta_pipeline_activations`, `rta_posting_controls`, `rta_posted_transactions`, `rta_control_requests`, `rta_reconciliation_runs`, `ops_alerts` and the `rta_staging_*` tables. A production query on one of them answers `relation … does not exist`: record it as the expected pre-migration state (for FS-7 step 1 it means no ledger rows), not as a failure, and run the query on the migrated copy (C) instead.
+
 | Purpose | Command | Expected |
 |---|---|---|
 | AMFI file integrity | `sha256sum NAVAll.txt` (on each of the two downloads) | same business date ⇒ same hash |
@@ -230,10 +237,10 @@ Each was run on the isolated rehearsal database and wrote **0 rows** (measured b
 | Applied AMFI file | `psql "$PROD_RO" -Atc "SELECT feed_date, sha256, schemes, written, status FROM amfi_feed_imports ORDER BY imported_at DESC LIMIT 1"` | the hash recorded at A |
 | KFintech mapping | `psql "$PROD_RO" -Atc "SELECT status, reason_code, count(*) FROM scheme_rta_codes WHERE tenant_id = '<firm>' AND rta = 'kfintech' GROUP BY 1, 2"` | every resolved code is `isin_verified` / `isin_verified_historical` |
 | KFintech AMC identities | `psql "$PROD_RO" -Atc "SELECT basis, status, count(*) FROM registrar_amc_identity WHERE rta = 'kfintech' GROUP BY 1, 2"` | basis `isin` only |
-| Migration file checksums | `node scripts/check-migration-lock.mjs` | `✓ 280 migrations match checksums.lock.json.` |
-| Migration ledger vs files | `DATABASE_URL=$COPY_ADMIN npx tsx scripts/migrate-all.ts --check` | `0 blockers`; lists pending files. Rehearsal: `280 applied, 0 pending, 0 acknowledged drift, 0 blockers` |
-| RLS coverage | `DATABASE_URL=$COPY_ADMIN npm run -s check:rls` | `✓ all 187 tenant-scoped table(s) have RLS enabled + forced + tenant_isolation policy` |
-| Schema parity | `DATABASE_URL=$COPY_ADMIN npm run -s check:schema` | `✓ Schema guard: 194 ORM tables, every modelled column present in the DB.` |
+| Migration file checksums | `node scripts/check-migration-lock.mjs` | `✓ 282 migrations match checksums.lock.json.` |
+| Migration ledger vs files | `DATABASE_URL=$COPY_ADMIN npx tsx scripts/migrate-all.ts --check` | `0 blockers`; lists pending files. On a copy of a production database at `0232`: 270 applied, **12 pending** (`0233` – `0244`) before C's apply; `282 applied, 0 pending` after. Development from empty: `282 applied, 0 pending, 0 acknowledged drift, 0 blockers` |
+| RLS coverage | `DATABASE_URL=$COPY_ADMIN npm run -s check:rls` | `✓ all 189 tenant-scoped table(s) have RLS enabled + forced + tenant_isolation policy` (development at 0244) |
+| Schema parity | `DATABASE_URL=$COPY_ADMIN npm run -s check:schema` | `✓ Schema guard: 199 ORM tables, every modelled column present in the DB.` (development at 0244) |
 | Application role | `psql "$PROD_RO" -Atc "SELECT rolname, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = '<app role>'"` | `<app role>\|f\|f` |
 | Role owns nothing | `psql "$PROD_RO" -Atc "SELECT count(*) FROM pg_tables WHERE tableowner = '<app role>'"` | `0` |
 | Web and worker connect as that role | on each host: `node -e 'const v=process.env.APP_DATABASE_URL; if(!v){console.log("APP_DATABASE_URL UNSET");process.exit(1)} const u=new URL(v);console.log(u.username,u.hostname,u.pathname)'` | `<app role>`, the production host and database; no password printed. `UNSET` is a stop: since 0244 the web and worker refuse to start without it (FS-2) |
@@ -251,7 +258,7 @@ Each was run on the isolated rehearsal database and wrote **0 rows** (measured b
 | S3 anonymous read refused | `curl -s -o /dev/null -w "%{http_code}\n" "https://$S3_BUCKET.s3.$AWS_REGION.amazonaws.com/tenants/<firm>/rta/<an existing key>"` | `403` |
 | Mail routing configuration | on the worker host: `env \| grep -E '^RTA_INBOX_(HOST\|PORT\|USER\|SECURE\|DOMAIN)=' \| sed 's/=.*@/=***@/'` · `psql "$PROD_RO" -Atc "SELECT count(*) FROM rta_forward_addresses WHERE tenant_id = '<firm>'"` | inbox configured; the firm has its alias |
 | SES identities (if SES receives the mail) | `aws ses describe-active-receipt-rule-set` · `aws sesv2 get-email-identity --email-identity <receiving domain>` | the rule delivers to the RTA inbox; DKIM `SUCCESS` |
-| Alert sink configured | on the worker host: `env \| grep -cE '^(OBSERVABILITY_WEBHOOK_URL\|ERROR_WEBHOOK_URL)='` | `1` or more. **With none set, a reconciliation alert reaches only the firm's audit log** |
+| Alert sink configured | on the worker and web hosts: `env \| grep -cE '^(OPS_ALERT_WEBHOOK_URL\|OPS_ALERT_ESCALATION_WEBHOOK_URL\|OPS_HEARTBEAT_URL\|OPS_MONITOR_TOKEN)='` (counts only, never values) | `4` on the worker (`OPS_HEARTBEAT_URL` is the worker's), at least `3` on web. With none set, alerts are only recorded in `ops_alerts` and the health endpoint answers 503 (FS-10) |
 | Alerts already raised | `psql "$PROD_RO" -Atc "SELECT at, after FROM audit_log WHERE tenant_id = '<firm>' AND action = 'rta.posting.reconcile_alert' ORDER BY at DESC LIMIT 5"` | none before the pilot |
 | Backups (RDS example; use the provider's equivalent) | `aws rds describe-db-instances --db-instance-identifier <id> --query 'DBInstances[0].{Retention:BackupRetentionPeriod,LatestRestorable:LatestRestorableTime}'` | retention ≥ the agreed period; latest restorable within minutes |
 
