@@ -141,7 +141,7 @@ export async function loadMeetings(tx: Tx, w: InsWindow): Promise<Meetings> {
     SELECT m.rm_id::text AS owner_id, COALESCE(u.name, 'No owner recorded') AS name,
            COUNT(*) FILTER (WHERE m.category = 'new')::int AS new_n,
            COUNT(*) FILTER (WHERE m.category = 'review')::int AS review_n,
-           COUNT(*) FILTER (WHERE i.investor_category IN ('corporate', 'company') OR l.lead_type = 'corporate')::int AS corp_n,
+           COUNT(*) FILTER (WHERE i.investor_category IN ('corporate', 'company', 'llp', 'partnership', 'aop_boi') OR l.lead_type = 'corporate')::int AS corp_n,
            COUNT(*)::int AS total_n,
            COUNT(*) FILTER (WHERE m.status = 'completed' AND COALESCE(m.follow_up_task_created, 'false') IN ('false', ''))::int AS fu_n
       FROM review_meetings m

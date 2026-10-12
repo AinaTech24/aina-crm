@@ -22,6 +22,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, requireAny, can } from "@/lib/auth/rbac";
 import { cleanUccCodes } from "@/lib/investors/ucc";
 import { isMinorKey, ownPan } from "@/lib/investors/pan-display";
+import { CLIENT_TYPE_KEYS, TypeDetailsSchema, canNominate, cleanTypeDetails, singleHoldingOnly } from "@/lib/investors/client-types";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { healthFields } from "@/lib/investors/health";
 import { computeNextReview } from "@/lib/investors/review-cadence";
@@ -92,7 +93,9 @@ const Patch = z.object({
   // Client photo — storage key (general kind) or external URL; "" clears it.
   avatarUrl: z.string().max(500).nullable().optional(),
   segmentTag: z.enum(["HNI", "Affluent", "Retail", "NRI", "Corporate"]).optional(),
-  investorCategory: z.enum(["individual", "huf", "corporate", "company", "trust", "nri", "minor", "other"]).optional(),
+  investorCategory: z.enum(CLIENT_TYPE_KEYS).optional(),
+  /** What the client type adds (guardian, Karta, entity, NRI…) — lib/investors/client-types.ts. */
+  typeDetails: TypeDetailsSchema.nullish(),
   rmId: z.string().uuid().optional(),
   // Client-service preferences
   statementCadence: z.enum(["off", "monthly", "quarterly"]).optional(),
@@ -393,7 +396,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         mirror.bankAccountNumberMasked = b0?.accountMasked ?? null;
         mirror.bankIfsc = b0?.ifsc ?? null;
       }
-      const merged = { ...before, ...fields, ...panPatch, ...mirror };
+      // The client type decides what the record may hold
+      // (lib/investors/client-types.ts). Only an individual can nominate: for
+      // a minor, an HUF or an entity a nominee list is not written — and what
+      // is already on file is left alone, not deleted. A minor is flagged as
+      // one, and a type that cannot hold jointly holds singly.
+      const nextType = (parse.data.investorCategory ?? (before as any).investorCategory ?? "individual") as string;
+      const nominating = canNominate(nextType);
+      if (!nominating) {
+        for (const k of ["nominees", "nomineeName", "nomineeRelation", "nomineeDob"] as const) {
+          delete (fields as any)[k];
+          delete mirror[k];
+        }
+      }
+      const typePatch: Record<string, unknown> = {};
+      if (parse.data.typeDetails !== undefined || parse.data.investorCategory !== undefined) {
+        typePatch.typeDetails = cleanTypeDetails(nextType, (parse.data.typeDetails ?? (before as any).typeDetails) as any);
+      }
+      delete (fields as any).typeDetails;
+      if (parse.data.investorCategory !== undefined) {
+        typePatch.isMinor = nextType === "minor";
+        if (singleHoldingOnly(nextType)) typePatch.modeOfHolding = "Single";
+      }
+
+      const merged = { ...before, ...fields, ...panPatch, ...mirror, ...typePatch };
       const health = healthFields(merged as any);
 
       // When the review cadence changes (preset OR custom days), re-derive the
@@ -443,6 +469,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           ...reviewPatch,
           ...datePatch,
           ...mirror,
+          ...typePatch,
           ...(parse.data.uccCodes !== undefined ? { uccCodes: cleanUccCodes(parse.data.uccCodes) } : {}),
           updatedAt: new Date(),
           ...(touchingKyc
@@ -524,7 +551,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       });
 
       // Register any newly-uploaded nominee PAN files as client documents.
-      await registerNomineePanDocs(tx, session.tenantId, id, parse.data.nominees, session.userId);
+      if (nominating) await registerNomineePanDocs(tx, session.tenantId, id, parse.data.nominees, session.userId);
 
       // A member's KYC/nominee/risk/etc. feeds its family's health too —
       // re-score the family this investor belongs to (no-op if unlinked).

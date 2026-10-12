@@ -95,7 +95,7 @@ export async function loadClientInsurance(tx: Tx, w: InsWindow, investorId: stri
     investorId,
     name: String(client.name ?? "—"),
     category: str(client.cat),
-    type: ["corporate", "company"].includes(String(client.investor_category)) ? "Corporate"
+    type: ["corporate", "company", "llp", "partnership", "aop_boi"].includes(String(client.investor_category)) ? "Corporate"
       : client.head === true ? "Family head" : client.family_id ? "Family member" : "Individual",
     mf: client.mf === true,
     rm: str(client.rm),

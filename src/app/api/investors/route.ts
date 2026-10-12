@@ -21,6 +21,7 @@ import { healthFields } from "@/lib/investors/health";
 import { NomineesArray } from "@/lib/investors/nominee";
 import { ReferralsArray } from "@/lib/investors/referral";
 import { registerNomineePanDocs } from "@/lib/investors/nominee-docs";
+import { CLIENT_TYPE_KEYS, TypeDetailsSchema, canNominate, cleanTypeDetails, singleHoldingOnly } from "@/lib/investors/client-types";
 import { loadCustomFieldDefs, sanitizeCustomFields } from "@/lib/custom-fields/values";
 import { applyRiskCategory, RISK_CATEGORIES } from "@/lib/risk-profile/apply";
 import { cleanUccCodes } from "@/lib/investors/ucc";
@@ -31,7 +32,8 @@ export const dynamic = "force-dynamic";
 
 const CreateBody = z.object({
   name: z.string().min(2).max(200),
-  pan: z.string().regex(/^[A-Z]{5}[0-9]{4}[A-Z]$/, "invalid PAN"),
+  // Required, except for a minor filed under the guardian's PAN (below).
+  pan: z.union([z.string().trim().toUpperCase().regex(/^[A-Z]{5}[0-9]{4}[A-Z]$/, "invalid PAN"), z.literal("")]).optional(),
   nominees: NomineesArray,
   referrals: ReferralsArray,
   email: z.string().email().optional().or(z.literal("")),
@@ -43,9 +45,9 @@ const CreateBody = z.object({
   occupation: z.string().optional(),
   incomeRange: z.string().optional(),
   segmentTag: z.enum(["HNI", "Affluent", "Retail", "NRI", "Corporate"]).optional(),
-  investorCategory: z
-    .enum(["individual", "huf", "corporate", "company", "trust", "nri", "minor", "other"])
-    .default("individual"),
+  investorCategory: z.enum(CLIENT_TYPE_KEYS).default("individual"),
+  /** What the client type adds (guardian, Karta, entity, NRI…) — lib/investors/client-types.ts. */
+  typeDetails: TypeDetailsSchema.optional(),
   rmId: z.string().uuid().optional(),
   familyId: z.string().uuid().optional(),
   bseUccCode: z.string().optional(),
@@ -197,6 +199,21 @@ export async function POST(req: NextRequest) {
     }
     const body = parse.data;
 
+    // A minor is filed the way the registrar import files one (lib/rta/import.ts):
+    // MINOR:<own PAN>, or — with no PAN of their own — MINOR:<guardian PAN>:<NAME>,
+    // so a later import finds this client instead of creating a second one.
+    const typedPan = (body.pan ?? "").trim().toUpperCase();
+    let storedPan: string;
+    if (body.investorCategory === "minor") {
+      const gp = (body.typeDetails?.guardian?.pan ?? "").trim().toUpperCase();
+      if (typedPan) storedPan = `MINOR:${typedPan}`;
+      else if (gp) storedPan = `MINOR:${gp}:${body.name.toUpperCase().replace(/[^A-Z0-9]/g, "")}`;
+      else return NextResponse.json({ error: "A minor needs their own PAN or the guardian's PAN.", field: "pan" }, { status: 400 });
+    } else {
+      if (!typedPan) return NextResponse.json({ error: "PAN is required.", field: "pan" }, { status: 400 });
+      storedPan = typedPan;
+    }
+
     const id = uuid();
     const clientMeta = clientMetaFromHeaders(req.headers);
     await withTenant(session.tenantId, async (tx) => {
@@ -218,7 +235,7 @@ export async function POST(req: NextRequest) {
           tenantId: session.tenantId,
           branchId: session.branchId,
           name: body.name,
-          pan: body.pan,
+          pan: storedPan,
           email: body.email || null,
           phone: body.phone || null,
           whatsappPhone: body.whatsappPhone || null,
@@ -230,11 +247,14 @@ export async function POST(req: NextRequest) {
           investorCategory: body.investorCategory,
           clientCategory: body.clientCategory ?? null,
           // Nominees — store the array + mirror the first into legacy columns.
-          nominees: body.nominees ?? [],
+          // Only an individual can nominate (lib/investors/client-types.ts).
+          nominees: canNominate(body.investorCategory) ? body.nominees ?? [] : [],
+          typeDetails: cleanTypeDetails(body.investorCategory, body.typeDetails),
+          isMinor: body.investorCategory === "minor",
           referrals: body.referrals ?? [],
-          nomineeName: body.nominees?.[0]?.name || null,
-          nomineeRelation: body.nominees?.[0]?.relation || null,
-          nomineeDob: body.nominees?.[0]?.dob || null,
+          nomineeName: (canNominate(body.investorCategory) && body.nominees?.[0]?.name) || null,
+          nomineeRelation: (canNominate(body.investorCategory) && body.nominees?.[0]?.relation) || null,
+          nomineeDob: (canNominate(body.investorCategory) && body.nominees?.[0]?.dob) || null,
           rmId,
           familyId: body.familyId ?? null,
           address: body.address,
@@ -249,7 +269,7 @@ export async function POST(req: NextRequest) {
           aadhaarLast4: body.aadhaarLast4 || null,
           // Personal
           maritalStatus: body.maritalStatus || null,
-          modeOfHolding: body.modeOfHolding || null,
+          modeOfHolding: singleHoldingOnly(body.investorCategory) ? "Single" : body.modeOfHolding || null,
           anniversaryDate: body.anniversaryDate || null,
           birthPlace: body.birthPlace || null,
           motherName: body.motherName || null,
@@ -299,12 +319,12 @@ export async function POST(req: NextRequest) {
         action: "investor.create",
         entityType: "investor",
         entityId: id,
-        after: { name: body.name, pan: body.pan, segmentTag: body.segmentTag },
+        after: { name: body.name, pan: storedPan, segmentTag: body.segmentTag },
         ...clientMeta,
       });
 
       // Register each nominee's PAN file as a client document.
-      await registerNomineePanDocs(tx, session.tenantId, id, body.nominees, session.userId);
+      if (canNominate(body.investorCategory)) await registerNomineePanDocs(tx, session.tenantId, id, body.nominees, session.userId);
 
       // Risk profile chosen on the form → create a risk_profile_responses record
       // + cache it on the investor row (no-op if not provided).

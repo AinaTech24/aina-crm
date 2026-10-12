@@ -63,10 +63,16 @@ export const investors = pgTable(
      * "company" is the spec label; "corporate" is the legacy DB value (kept).
      */
     investorCategory: text("investor_category", {
-      enum: ["individual", "huf", "corporate", "company", "trust", "nri", "minor", "other"],
+      // The client types and what each asks for: lib/investors/client-types.ts.
+      enum: ["individual", "nri", "minor", "sole_proprietor", "huf", "company", "llp", "partnership", "trust", "aop_boi", "corporate", "other"],
     })
       .notNull()
       .default("individual"),
+    /** What the client's type adds: a minor's guardian, an HUF's Karta and
+     *  coparceners, an entity's incorporation / signatories / beneficial
+     *  owners, an NRI's overseas details, a nomination opt-out (migration
+     *  0233; shape and cleaning in lib/investors/client-types.ts). */
+    typeDetails: jsonb("type_details").$type<import("@/lib/investors/client-types").ClientTypeDetails>().notNull().default({}),
     segmentTag: text("segment_tag", { enum: ["HNI", "Affluent", "Retail", "NRI", "Corporate"] }),
 
     /** Exchange-level identifiers (BSE Star MF UCC + NSE NMF II CAN) — read on

@@ -134,7 +134,7 @@ export function buildInvestorConditions(
   // individual.
   const ctype = csv(sp.ctype).filter((v) => ["head", "member", "individual", "corporate"].includes(v));
   if (ctype.length) {
-    conditions.push(sql`(CASE WHEN ${investors.investorCategory} IN ('corporate', 'company') THEN 'corporate'
+    conditions.push(sql`(CASE WHEN ${investors.investorCategory} IN ('corporate', 'company', 'llp', 'partnership', 'aop_boi') THEN 'corporate'
       WHEN EXISTS (SELECT 1 FROM families f WHERE f.tenant_id = ${investors.tenantId}
                      AND f.primary_investor_id = ${investors.id}) THEN 'head'
       WHEN ${investors.familyId} IS NOT NULL THEN 'member'

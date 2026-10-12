@@ -10,6 +10,12 @@
  * then returns to the client. Computed figures (AUM, lifetime flows) stay
  * read-only.
  *
+ * The CLIENT TYPE comes first and shapes the rest (lib/investors/client-types.ts):
+ * a minor shows its guardian, an HUF its Karta and coparceners, an entity its
+ * incorporation, signatories and beneficial owners, an NRI its overseas
+ * details; personal fields show only for a person; and only an individual
+ * gets nominees — everyone else sees that nomination is not available.
+ *
  * PAN is editable so a typo or a PAN-less import can be corrected. The value
  * shown is the client's OWN PAN: an import key in the column (a minor filed
  * under the guardian's PAN) is never put in the box, and such a client's PAN
@@ -26,13 +32,17 @@ import { Field, FieldSection } from "@/components/ui/Field";
 import { FormActions } from "@/components/ui/FormActions";
 import { Button } from "@/components/ui/Button";
 import { notify } from "@/components/ui/Toast";
-import { NomineesField } from "@/components/investors/NomineesField";
+import { ClientTypeSections } from "@/components/investors/ClientTypeSections";
 import { UccCodesField } from "@/components/investors/UccCodesField";
 import { cleanUccCodes } from "@/lib/investors/ucc";
 import { isMinorKey, ownPan } from "@/lib/investors/pan-display";
 import { humanise } from "@/lib/format";
 import { formatINR } from "@/lib/utils";
 import type { Nominee } from "@/lib/investors/nominee";
+import {
+  TypeDetailsSchema, canNominate, cleanTypeDetails, clientTypeDef, clientTypeOptions, hasAdultDetails,
+  hasPersonalDetails, majorityDate, singleHoldingOnly, CLIENT_TYPE_KEYS, type ClientTypeDetails,
+} from "@/lib/investors/client-types";
 
 type Investor = Record<string, any>;
 
@@ -144,6 +154,11 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
     notes: investor.notes ?? "",
   });
 
+  const [typeDetails, setTypeDetails] = useState<ClientTypeDetails>((investor.typeDetails as ClientTypeDetails) ?? {});
+  const kind = clientTypeDef(f.investorCategory).kind;
+  const personal = hasPersonalDetails(f.investorCategory);
+  const adult = hasAdultDetails(f.investorCategory);
+
   function set<K extends keyof typeof f>(k: K, v: (typeof f)[K]) {
     setF((s) => ({ ...s, [k]: v }));
   }
@@ -163,6 +178,17 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
     if (panChanged && !pan) return setPanErr("PAN can't be removed. Type the correct PAN instead.");
     if (panChanged && !PAN_RE.test(pan)) return setPanErr("PAN should look like ABCDE1234F.");
     if (!f.name.trim()) return setErr("Name is required.");
+    // A minor is under 18 on the day of saving; an adult is an Individual.
+    const turns18 = kind === "minor" ? majorityDate(f.dob) : null;
+    if (turns18 && turns18 <= new Date().toISOString().slice(0, 10)) {
+      return setErr("This client is 18 or older — change the client type to Individual.");
+    }
+    const details = cleanTypeDetails(f.investorCategory, typeDetails);
+    const detailsOk = TypeDetailsSchema.safeParse(details);
+    if (!detailsOk.success) {
+      const at = detailsOk.error.issues[0];
+      return setErr(`${at?.message ?? "Check the details"}${at?.path?.length ? ` (${at.path.join(" › ")})` : ""}.`);
+    }
 
     setBusy(true);
     try {
@@ -207,7 +233,8 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
         kraName: f.kraName || null,
         fatcaStatus: inSet(f.fatcaStatus, ["pending", "verified", "expired"]) ?? null,
         fatcaExpiryAt: f.fatcaExpiryAt || null,
-        investorCategory: inSet(f.investorCategory, ["individual", "huf", "corporate", "company", "trust", "nri", "minor", "other"]),
+        investorCategory: inSet(f.investorCategory, [...CLIENT_TYPE_KEYS]),
+        typeDetails: details,
         segmentTag: inSet(f.segmentTag, ["HNI", "Affluent", "Retail", "NRI", "Corporate"]),
         clientCategory: inSet(f.clientCategory, ["A", "B", "C", "D"]) ?? null,
         serviceTier: inSet(f.serviceTier, ["A", "B", "C"]) ?? null,
@@ -220,9 +247,14 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
         rmId: f.rmId || undefined,
         kycStatus: inSet(f.kycStatus, KYC_STATUSES),
         riskProfile: inSet(f.riskProfile, ["conservative", "moderate", "aggressive", "very_aggressive"]),
-        nominees: f.nominees
-          .map((n) => ({ ...n, name: (n.name || "").trim(), relation: (n.relation || "").trim() || undefined }))
-          .filter((n) => n.name),
+        // Only an individual can nominate; the API ignores a list for anyone else.
+        ...(canNominate(f.investorCategory)
+          ? {
+              nominees: f.nominees
+                .map((n) => ({ ...n, name: (n.name || "").trim(), relation: (n.relation || "").trim() || undefined }))
+                .filter((n) => n.name),
+            }
+          : {}),
         bankAccounts: f.bankAccounts
           .map((b) => ({
             bankName: (b.bankName || "").trim(),
@@ -277,6 +309,13 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
     <form onSubmit={save} className="space-y-5" noValidate>
       <div id="cd-identity" className="scroll-mt-24">
       <FieldSection title="Identity">
+        <Field label="Client type">
+          {(id) => (
+            <SelectField id={id} value={f.investorCategory} onChange={(e) => set("investorCategory", e.target.value)} className="w-full">
+              {clientTypeOptions(investor.investorCategory).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </SelectField>
+          )}
+        </Field>
         {flags.showPan && (
           <Field
             label="PAN"
@@ -300,17 +339,18 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
             )}
           </Field>
         )}
-        <Field label="Name" required>
+        <Field label={kind === "huf" ? "HUF name" : kind === "entity" ? "Entity name" : kind === "minor" ? "Minor's name" : "Name"} required>
           {(id, d) => <input id={id} aria-describedby={d} value={f.name} onChange={(e) => set("name", e.target.value)} className={input} />}
         </Field>
         <Field label="Name as per PAN">
           {(id, d) => <input id={id} aria-describedby={d} value={f.nameAsPerPan} onChange={(e) => set("nameAsPerPan", e.target.value)} className={input} />}
         </Field>
-        {flags.showDob && (
-          <Field label="Date of birth">
+        {flags.showDob && personal && (
+          <Field label="Date of birth" required={kind === "minor"}>
             {(id) => <DateField id={id} value={f.dob} onChange={(e) => set("dob", e.target.value)} className="w-full" />}
           </Field>
         )}
+        {personal && (<>
         <Field label="Gender">
           {(id) => (
             <SelectField id={id} value={f.gender} onChange={(e) => set("gender", e.target.value)} className="w-full" placeholder="Select">
@@ -318,9 +358,11 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
             </SelectField>
           )}
         </Field>
+        {adult && (
         <Field label="Marital status">
           {(id) => <input id={id} value={f.maritalStatus} onChange={(e) => set("maritalStatus", e.target.value)} placeholder="e.g. Married" className={input} />}
         </Field>
+        )}
         <Field label="Mother’s name">
           {(id) => <input id={id} value={f.motherName} onChange={(e) => set("motherName", e.target.value)} className={input} />}
         </Field>
@@ -330,14 +372,25 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
         <Field label="Aadhaar (last 4)">
           {(id) => <input id={id} value={f.aadhaarLast4} onChange={(e) => set("aadhaarLast4", e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="1234" inputMode="numeric" className={`${input} font-mono`} />}
         </Field>
+        </>)}
         <Field label="Client since">
           {(id) => <DateField id={id} value={f.onboardedAt} onChange={(e) => set("onboardedAt", e.target.value)} className="w-full" />}
         </Field>
-        <Field label="Anniversary">
+        {adult && <Field label="Anniversary">
           {(id) => <DateField id={id} value={f.anniversaryDate} onChange={(e) => set("anniversaryDate", e.target.value)} className="w-full" />}
-        </Field>
+        </Field>}
       </FieldSection>
       </div>
+
+      <ClientTypeSections
+        type={f.investorCategory}
+        value={typeDetails}
+        onChange={setTypeDetails}
+        dob={f.dob}
+        nominees={f.nominees}
+        onNomineesChange={(n) => set("nominees", n)}
+        showNominees={flags.showNominee}
+      />
 
       {hasContact && (
         <FieldSection title="Contact">
@@ -366,16 +419,9 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
       )}
 
       <FieldSection title="Profile">
-        <Field label="Occupation">{(id) => <input id={id} value={f.occupation} onChange={(e) => set("occupation", e.target.value)} className={input} />}</Field>
-        <Field label="Income range">{(id) => <input id={id} value={f.incomeRange} onChange={(e) => set("incomeRange", e.target.value)} className={input} />}</Field>
-        <Field label="Employer">{(id) => <input id={id} value={f.employerName} onChange={(e) => set("employerName", e.target.value)} className={input} />}</Field>
-        <Field label="Entity type">
-          {(id) => (
-            <SelectField id={id} value={f.investorCategory} onChange={(e) => set("investorCategory", e.target.value)} className="w-full">
-              {[["individual", "Individual"], ["huf", "HUF"], ["nri", "NRI"], ["company", "Company"], ["corporate", "Corporate (legacy)"], ["trust", "Trust"], ["minor", "Minor"], ["other", "Other"]].map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-            </SelectField>
-          )}
-        </Field>
+        {adult && <Field label="Occupation">{(id) => <input id={id} value={f.occupation} onChange={(e) => set("occupation", e.target.value)} className={input} />}</Field>}
+        <Field label={kind === "person" || kind === "minor" ? "Income range" : "Gross annual income"}>{(id) => <input id={id} value={f.incomeRange} onChange={(e) => set("incomeRange", e.target.value)} className={input} />}</Field>
+        {adult && <Field label="Employer">{(id) => <input id={id} value={f.employerName} onChange={(e) => set("employerName", e.target.value)} className={input} />}</Field>}
         <Field label="Client category (A–D)">
           {(id) => (
             <SelectField id={id} value={f.clientCategory} onChange={(e) => set("clientCategory", e.target.value)} className="w-full" placeholder="Select">
@@ -392,7 +438,17 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
             )}
           </Field>
         )}
-        <Field label="Mode of holding">{(id) => <input id={id} value={f.modeOfHolding} onChange={(e) => set("modeOfHolding", e.target.value)} placeholder="single / joint / …" className={input} />}</Field>
+        <Field label="Mode of holding" hint={singleHoldingOnly(f.investorCategory) ? "Held singly — joint holding is for individuals." : undefined}>
+          {(id, d) => singleHoldingOnly(f.investorCategory) ? (
+            <div id={id} aria-describedby={d} className="input-base flex w-full items-center bg-secondary/60 text-muted-foreground">Single</div>
+          ) : (
+            <SelectField id={id} value={f.modeOfHolding} onChange={(e) => set("modeOfHolding", e.target.value)} className="w-full" placeholder="Select">
+              <option value="">Select</option>
+              {["Single", "Joint", "Anyone or Survivor"].map((m) => <option key={m} value={m}>{m}</option>)}
+              {f.modeOfHolding && !["Single", "Joint", "Anyone or Survivor"].includes(f.modeOfHolding) && <option value={f.modeOfHolding}>{f.modeOfHolding}</option>}
+            </SelectField>
+          )}
+        </Field>
         <Field label="Household type">{(id) => <input id={id} value={f.householdType} onChange={(e) => set("householdType", e.target.value)} placeholder="Family / Individual" className={input} />}</Field>
         {flags.showRm && (
           <Field label="Assigned RM">{() => <RmSelector value={f.rmId || null} onChange={(id) => set("rmId", id ?? "")} placeholder="— Unassigned —" />}</Field>
@@ -459,14 +515,6 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
         </Field>
         <Field label="Mandate ref">{(id) => <input id={id} value={f.mandateRefNo} onChange={(e) => set("mandateRefNo", e.target.value)} className={input} />}</Field>
       </FieldSection>
-
-      {flags.showNominee && (
-        <FieldSection title="Nominee">
-          <div className="sm:col-span-2">
-            <NomineesField value={f.nominees} onChange={(n) => set("nominees", n)} />
-          </div>
-        </FieldSection>
-      )}
 
       {flags.showBank && (
         <FieldSection title="Bank account">

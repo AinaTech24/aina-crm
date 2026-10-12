@@ -98,6 +98,7 @@ import { assetClassExposure } from "@/lib/investors/asset-class";
 import { withSchemeCategories } from "@/lib/investors/scheme-categories";
 import { assessSuitability } from "@/lib/investors/suitability";
 import { getClientHealth } from "@/lib/metrics/health";
+import { CLIENT_TYPE_KEYS, clientTypeLabel } from "@/lib/investors/client-types";
 import {
   RelatedListsContainer,
   RelatedListsManager,
@@ -921,7 +922,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           <KV label="Occupation" value={inv.occupation ?? "—"} edit={{ id: inv.id, field: "occupation", value: inv.occupation ?? "", nullable: true }} />
           <KV label="Employer" value={inv.employerName ?? "—"} edit={{ id: inv.id, field: "employerName", value: inv.employerName ?? "", nullable: true }} />
           <KV label="Income range" value={inv.incomeRange ?? "—"} edit={{ id: inv.id, field: "incomeRange", value: inv.incomeRange ?? "", nullable: true, placeholder: "e.g. 10–25L" }} />
-          <KV label="Entity type" value={(inv.investorCategory ?? "—").replace("corporate", "Company")} cap edit={{ id: inv.id, field: "investorCategory", type: "select", options: ENTITY_OPTS, value: inv.investorCategory ?? "" }} />
+          <KV label="Client type" value={inv.investorCategory ? clientTypeLabel(inv.investorCategory) : "—"} edit={{ id: inv.id, field: "investorCategory", type: "select", options: ENTITY_OPTS, value: inv.investorCategory ?? "" }} />
           {showSegment && <KV label="Client type" value={inv.segmentTag ?? "—"} edit={{ id: inv.id, field: "segmentTag", type: "select", options: SEGMENT_OPTS, value: inv.segmentTag ?? "" }} />}
           <KV label="Client category" value={inv.clientCategory ?? "—"} edit={{ id: inv.id, field: "clientCategory", type: "select", options: CATEGORY_OPTS, value: inv.clientCategory ?? "", nullable: true }} />
           <KV label="Mode of holding" value={inv.modeOfHolding ?? "—"} cap />
@@ -1374,7 +1375,8 @@ function ConsentChip({ label, granted }: { label: string; granted: boolean }) {
 /** Master-record group header + 3-col grid for KV rows. */
 // Option sets for the inline-editable selects — mirror the PATCH zod enums.
 const GENDER_OPTS = [{ value: "M", label: "Male" }, { value: "F", label: "Female" }, { value: "O", label: "Other" }];
-const ENTITY_OPTS = ([["individual", "Individual"], ["huf", "HUF"], ["nri", "NRI"], ["company", "Company"], ["corporate", "Corporate (legacy)"], ["trust", "Trust"], ["minor", "Minor"], ["other", "Other"]] as const).map(([value, label]) => ({ value, label }));
+// The client types and their labels: lib/investors/client-types.ts.
+const ENTITY_OPTS = CLIENT_TYPE_KEYS.map((value) => ({ value, label: clientTypeLabel(value) }));
 const SEGMENT_OPTS = ["HNI", "Affluent", "Retail", "NRI", "Corporate"].map((v) => ({ value: v, label: v }));
 const CATEGORY_OPTS = ["A", "B", "C", "D"].map((v) => ({ value: v, label: `Category ${v}` }));
 const RESIDENCY_OPTS = ([["indian_resident", "Indian resident"], ["nri", "NRI"], ["oci", "OCI"], ["pio", "PIO"], ["foreign_national", "Foreign national"]] as const).map(([value, label]) => ({ value, label }));

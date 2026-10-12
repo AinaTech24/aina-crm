@@ -40,6 +40,7 @@ import { parseUccCell } from "@/lib/investors/ucc";
 import { loadCustomFieldDefs, sanitizeCustomFields } from "@/lib/custom-fields/values";
 import { applyRiskCategory, normalizeRiskCategory } from "@/lib/risk-profile/apply";
 import { investors } from "@/db/schema";
+import { CLIENT_TYPE_KEYS, clientTypeFromTaxStatus } from "@/lib/investors/client-types";
 
 export const dynamic = "force-dynamic";
 
@@ -344,7 +345,8 @@ export async function POST(req: NextRequest) {
             pincode: pick(row, reverse.pincode),
             country: pick(row, reverse.country) || "India",
           },
-          investorCategory: enumize(p("investorCategory"), ["individual", "huf", "corporate", "company", "trust", "nri", "minor", "other"], "individual") as any,
+          // A type key, else the registrar-style text ("Partnership Firm", "LLP").
+          investorCategory: (enumize(p("investorCategory"), [...CLIENT_TYPE_KEYS], null) ?? clientTypeFromTaxStatus(p("investorCategory"))) as any,
           segmentTag: enumize(p("segmentTag"), ["HNI", "Affluent", "Retail", "NRI", "Corporate"], null) as any,
           clientCategory: enumize(p("clientCategory"), ["A", "B", "C", "D"], null) as any,
           householdType: p("householdType"),
@@ -501,7 +503,7 @@ function buildUpdateSet(
     { field: "occupation", col: "occupation" },
     { field: "employerName", col: "employerName" },
     { field: "aadhaarLast4", col: "aadhaarLast4", parse: (s) => s.replace(/\D/g, "").slice(-4) || null },
-    { field: "investorCategory", col: "investorCategory", parse: (s) => enumize(s, ["individual", "huf", "corporate", "company", "trust", "nri", "minor", "other"], null) },
+    { field: "investorCategory", col: "investorCategory", parse: (s) => enumize(s, [...CLIENT_TYPE_KEYS], null) ?? (String(s ?? "").trim() ? clientTypeFromTaxStatus(s) : null) },
     { field: "segmentTag", col: "segmentTag", parse: (s) => enumize(s, ["HNI", "Affluent", "Retail", "NRI", "Corporate"], null) },
     { field: "clientCategory", col: "clientCategory", parse: (s) => enumize(s, ["A", "B", "C", "D"], null) },
     { field: "householdType", col: "householdType" },

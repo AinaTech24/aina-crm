@@ -11,6 +11,7 @@
  */
 
 import type { RtaFolioRecord, RtaInvestor, RtaNominee, InvestorCategory, Residency } from "./types";
+import { clientTypeFromTaxStatus } from "@/lib/investors/client-types";
 
 /** Columns that uniquely identify an MFSD211 folio-master file. */
 const SIGNATURE = ["product code", "fund", "folio", "investor name", "pan number"];
@@ -70,15 +71,9 @@ export function amcNameFromDescription(desc: string): string {
   return name || desc.trim() || "Unknown AMC";
 }
 
+/** The registrar's tax status as a client type — one reading for every importer. */
 function mapCategory(statusDesc: string): InvestorCategory {
-  const s = statusDesc.toUpperCase();
-  if (s.includes("HINDU") || s === "HUF") return "huf";
-  if (s.includes("MINOR")) return "minor";
-  if (s.includes("NRI")) return "nri";
-  if (s.includes("INDIVIDUAL")) return "individual";
-  if (s.includes("TRUST")) return "trust";
-  if (s.includes("COMPANY") || s.includes("CORPORATE") || s.includes("LTD") || s.includes("PVT")) return "company";
-  return "individual";
+  return clientTypeFromTaxStatus(statusDesc);
 }
 
 function mapResidency(categoryDesc: string, statusDesc: string): Residency | null {
