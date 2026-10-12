@@ -22,7 +22,7 @@
  * overwrites a newer one) or, for a wider error, by the database restore in
  * the recovery plan (docs/rta/PHASE3G_PRODUCTION_READINESS.md).
  */
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { haltState } from "./controls";
 import { recordOutcome } from "./post";
@@ -95,7 +95,7 @@ export async function reverseBatchTx(tx: Tx, tenantId: string, batchId: string, 
       // ── Dependencies: what an automatic reversal would silently break ──
       const keys = ledger.map((l) => String(l.identity_key));
       const keyList = keys.length ? sql.join(keys.map((k) => sql`${k}`), sql`, `) : null;
-      const n = async (q: any) => Number(((await tx.execute(q)).rows[0] as any).n);
+      const n = async (q: SQL) => Number(((await tx.execute(q)).rows[0] as { n: unknown }).n);
       const dependencies: ReversalDependencies = {
         laterBatchClaims: keyList ? await n(sql`
           SELECT count(*)::int AS n FROM rta_staging_economic_txns e JOIN rta_staging_batches ob ON ob.tenant_id = e.tenant_id AND ob.id = e.batch_id
@@ -184,7 +184,7 @@ export async function undoReversalTx(tx: Tx, tenantId: string, reversalId: strin
     const halt = await haltState(tx, tenantId, { lock: true });
     if (!halt.halted) throw new RecoveryError("halt posting for this firm first (kill switch)");
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"rta_posting:" + tenantId}, 0))`);
-    const r = (await tx.execute(sql`SELECT batch_id::text, archived, undone_at FROM rta_posting_reversals WHERE tenant_id = ${tenantId}::uuid AND id = ${reversalId}::uuid FOR UPDATE`)).rows[0] as any;
+    const r = (await tx.execute(sql`SELECT batch_id::text, archived, undone_at FROM rta_posting_reversals WHERE tenant_id = ${tenantId}::uuid AND id = ${reversalId}::uuid FOR UPDATE`)).rows[0] as { batch_id: string; archived: unknown; undone_at: unknown } | undefined;
     if (!r) throw Object.assign(new RecoveryError("reversal not found"), { status: 404 });
     if (r.undone_at) throw new RecoveryError("this reversal has already been undone");
     const a = r.archived as { transactions: any[]; sip_rejections: any[]; business_entry_rta_matches: any[]; ledger: any[]; previousPostingState: string; investorLastTransactionAt?: Record<string, string | null>; withdrawnClaims?: Array<{ id: string; posting_outcome: string }> };
@@ -226,7 +226,7 @@ export async function undoReversalTx(tx: Tx, tenantId: string, reversalId: strin
  */
 export async function reconcilePosting(tenantId: string) {
   return withTenant(tenantId, async (tx: Tx) => {
-    const one = async (q: any) => Number(((await tx.execute(q)).rows[0] as any).n);
+    const one = async (q: SQL) => Number(((await tx.execute(q)).rows[0] as { n: unknown }).n);
     return {
       ledgerWithoutTransaction: await one(sql`SELECT count(*)::int AS n FROM rta_posted_transactions p WHERE p.tenant_id = ${tenantId}::uuid AND p.kind <> 'matched_existing' AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.id = p.transaction_id)`),
       // The ledger probe names the firm too: the index is (tenant_id, transaction_id),

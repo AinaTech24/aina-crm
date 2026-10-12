@@ -53,7 +53,7 @@ export function intakeRefusalFor(a: Pick<Activation, "registrars" | "reportCodes
   if (!a || !a.reportCodes) return null;
   const allowed = a.reportCodes;
   const label = allowed.join(" + ");
-  if (a.registrars && !a.registrars.includes(f.source as any)) {
+  if (a.registrars && !(a.registrars as readonly string[]).includes(f.source)) {
     return `blocked: this firm's activation covers ${a.registrars.join(" + ")} report types ${label} only; a ${f.source} file is refused — nothing is staged or posted`;
   }
   const named = reportCodesNamedIn(f.fileName);
@@ -90,5 +90,5 @@ export async function recordBlockedImport(tx: Tx, f: {
     )
     RETURNING id::text
   `);
-  return (r.rows[0] as any).id as string;
+  return (r.rows[0] as { id: string }).id;
 }

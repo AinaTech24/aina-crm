@@ -66,7 +66,7 @@ export async function cancelParkedImport(session: { userId: string; sid?: string
       const sweep = (async () => {
         const jobs = await q.getJobs(["delayed", "wait", "waiting", "paused", "prioritized"] as any);
         for (const j of jobs) {
-          if (j && (j.data as any)?.importId === input.importId) { await j.remove(); jobsRemoved++; }
+          if (j && (j.data as { importId?: string } | undefined)?.importId === input.importId) { await j.remove(); jobsRemoved++; }
         }
         return true;
       })().catch(() => false);

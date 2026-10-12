@@ -45,8 +45,10 @@ describe.skipIf(!TEST_DB || !ADMIN_DB)("runtime database role (DB)", () => {
   const sfx = randomUUID().slice(0, 8).replace(/-/g, "");
   const pw = randomBytes(12).toString("hex");
   const R = { ok: `rt_ok_${sfx}`, ok2: `rt_ok2_${sfx}`, bypass: `rt_bypass_${sfx}`, owner: `rt_owner_${sfx}`, member: `rt_member_${sfx}`, createrole: `rt_crole_${sfx}`, trigger: `rt_trig_${sfx}` };
-  const dbName = new URL(TEST_DB!).pathname.slice(1);
-  const adminUrl = ADMIN_DB!.replace(/\/[^/]+$/, "/" + dbName);
+  // vitest runs a skipped describe's body to collect it, so nothing here may
+  // assume the URLs are set (CI's db job sets no ADMIN_DATABASE_URL).
+  const dbName = TEST_DB ? new URL(TEST_DB).pathname.slice(1) : "";
+  const adminUrl = ADMIN_DB ? ADMIN_DB.replace(/\/[^/]+$/, "/" + dbName) : "";
   const urlFor = (role: string) => { const u = new URL(TEST_DB!); u.username = role; u.password = pw; return u.toString(); };
   const firmA = randomUUID(), firmB = randomUUID();
   let admin: import("pg").Client;

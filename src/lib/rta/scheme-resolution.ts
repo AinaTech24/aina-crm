@@ -467,7 +467,8 @@ export async function confirmSchemeCode(tx: Tx, tenantId: string, codeId: string
   if ((c.rejected_candidates ?? []).includes(input.amfiSchemeCode)) throw new SchemeMappingError("that AMFI scheme was rejected for this code before — clear the rejection first if it was a mistake");
   const ctx = await loadDecisionContext(tx, tenantId, [{ rta: c.rta, amcCode: c.rta_amc_code }]);
   if (!ctx.nav.has(input.amfiSchemeCode)) {
-    const n = (await tx.execute(sql`SELECT scheme_code, amc_name, scheme_name, plan, option_name, nav_date::text AS nd FROM scheme_nav WHERE scheme_code = ${input.amfiSchemeCode}`)).rows[0] as any;
+    const n = (await tx.execute(sql`SELECT scheme_code, amc_name, scheme_name, plan, option_name, nav_date::text AS nd FROM scheme_nav WHERE scheme_code = ${input.amfiSchemeCode}`)).rows[0] as
+      { scheme_code: string; amc_name: string; scheme_name: string; plan: string | null; option_name: string | null; nd: string | null } | undefined;
     if (!n) throw new SchemeMappingError("that AMFI scheme code is not in the AMFI feed");
     ctx.nav.set(n.scheme_code, { code: n.scheme_code, amc: n.amc_name, name: n.scheme_name, plan: n.plan, option: n.option_name, currentNav: navIsCurrent(n.nd, ctx.latestFeedDate) });
   }
