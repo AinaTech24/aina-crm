@@ -13,6 +13,7 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
+import { assertRtaImportAccess, RTA_IMPORT_CAPABILITY } from "@/lib/rta/import-access";
 
 export const dynamic = "force-dynamic";
 
@@ -24,12 +25,15 @@ const Body = z.object({
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "transactions.execute", session.permissions);
+    requireCap(session.roles, RTA_IMPORT_CAPABILITY, session.permissions);
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
     const { ids, action } = parse.data;
 
     const affected = await withTenant(session.tenantId, async (tx) => {
+      // Same gate as viewing the batches: the import capability on an
+      // un-narrowed book (lib/rta/import-access).
+      await assertRtaImportAccess(tx, session);
       const idArr = sql.join(ids.map((x) => sql`${x}::uuid`), sql`, `);
       let r;
       if (action === "purge") {

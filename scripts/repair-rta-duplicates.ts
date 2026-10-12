@@ -45,6 +45,7 @@
  */
 
 import "dotenv/config";
+import { refuseIfRtaWritesStopped } from "./lib/rta-script-guard";
 import { sql } from "drizzle-orm";
 import { withTenant } from "../src/db/client";
 import { mergeInvestors } from "../src/lib/investors/merge";
@@ -292,6 +293,9 @@ function show(title: string, pairs: Pair[]) {
 
 async function main() {
   if (!TENANT) throw new Error("Pass --tenant <uuid>. Add --apply to write.");
+  // A firm under RTA governance (validate-first, paused, halted, emergency) is
+  // never rewritten by a script — the release's write guard (B-1 integration).
+  if (APPLY) await refuseIfRtaWritesStopped(TENANT, "repair-rta-duplicates");
   console.log(APPLY ? "APPLY — writing changes" : "DRY RUN — nothing is written (add --apply)");
   const before = await totals(TENANT);
   console.log(`\n${before.name} (${TENANT})`);

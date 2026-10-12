@@ -1,7 +1,9 @@
 import { handleApiError } from "@/lib/api/error-handler";
+import { assertRtaWritesAllowed } from "@/lib/rta/write-guard";
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { requireSession } from "@/lib/auth/session";
+import { withTenant } from "@/db/client";
 
 export const dynamic = "force-dynamic";
 
@@ -76,7 +78,10 @@ function suggestMapping(headers: string[]): Record<string, string> {
 
 export async function POST(req: NextRequest) {
   try {
-    await requireSession();
+    const session = await requireSession();
+    // Say so before the mapping step, not after it (the commit refuses too).
+    await withTenant(session.tenantId, (tx) => assertRtaWritesAllowed(tx, session.tenantId, "bypass"),
+      { userId: session.userId, branchId: session.branchId, roles: session.roles });
     const form = await req.formData();
     const file = form.get("file");
     if (!(file instanceof File)) return NextResponse.json({ error: "file required" }, { status: 400 });

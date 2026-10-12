@@ -6,15 +6,23 @@
  *          (Provisions the address on first call.)
  *   POST → save/merge the CAMS + KFintech ZIP passwords (encrypted).
  *
- * Gated on `transactions.execute` — the same capability as the manual RTA upload
- * (owner + back-office/ops + RM). Configuring the RTA mailback import is an
- * RTA-operations task, not an owner-only account setting.
+ * Gated like every RTA import surface (lib/rta/import-access): the
+ * `transactions.execute` capability the manual RTA upload requires, on a book
+ * that is not narrowed to the caller's own clients — the card lists the firm's
+ * recent auto-imports and configures firm-wide ingestion.
+ *
+ * The forwarding-confirmation link is re-checked on read (https on the
+ * provider's own host only), so a link planted before the mail-trust change is
+ * never rendered as a clickable <a href>.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { handleApiError } from "@/lib/api/error-handler";
+import { assertRtaImportAccess, maskImportText } from "@/lib/rta/import-access";
+import { safeConfirmationUrl } from "@/lib/rta/mail-trust";
 import { withTenant } from "@/db/client";
 import { rtaForwardAddresses } from "@/db/schema/rta_forward_addresses";
 import { rtaFileImports } from "@/db/schema/rta_imports";
@@ -35,6 +43,14 @@ import type { RtaSource } from "@/db/schema/rta_imports";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  try {
+    return await getStatus();
+  } catch (err) {
+    return handleApiError(err);
+  }
+}
+
+async function getStatus() {
   const session = await requireSession();
   if (!can(session.roles, "transactions.execute", session.permissions)) {
     return NextResponse.json({ error: "You need RTA import access (owner or back-office) to configure this." }, { status: 403 });
@@ -42,6 +58,7 @@ export async function GET() {
 
   const inbox = await loadRtaInboxConfig();
   const data = await withTenant(session.tenantId, async (tx) => {
+    await assertRtaImportAccess(tx, session);
     const { address } = await ensureForwardAddress(tx, session.tenantId);
     const [row] = await tx
       .select({
@@ -99,9 +116,9 @@ export async function GET() {
       verifiedAt: row?.verifiedAt ?? null,
       lastReceivedAt: row?.lastReceivedAt ?? null,
       forwardingConfirmCode: row?.forwardingConfirmCode ?? null,
-      forwardingConfirmUrl: row?.forwardingConfirmUrl ?? null,
+      forwardingConfirmUrl: safeConfirmationUrl(row?.forwardingConfirmUrl ?? null),
       forwardingConfirmAt: row?.forwardingConfirmAt ?? null,
-      recent,
+      recent: recent.map((r) => ({ ...r, remarks: maskImportText(r.remarks) })),
     };
   });
 
@@ -131,6 +148,14 @@ const Body = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  try {
+    return await save(req);
+  } catch (err) {
+    return handleApiError(err);
+  }
+}
+
+async function save(req: NextRequest) {
   const session = await requireSession();
   if (!can(session.roles, "transactions.execute", session.permissions)) {
     return NextResponse.json({ error: "You need RTA import access (owner or back-office) to configure this." }, { status: 403 });
@@ -148,6 +173,7 @@ export async function POST(req: NextRequest) {
   if (d.kfintechPassword !== undefined || d.kfintechPasswords || d.kfintechPasswordsAppend?.length) touched.push("kfintech");
 
   const result = await withTenant(session.tenantId, async (tx) => {
+    await assertRtaImportAccess(tx, session);
     await saveMailbackPasswords(tx, session.tenantId, d);
     if (d.camsPasswordsAppend?.[0]) await appendMailbackPassword(tx, session.tenantId, "cams", d.camsPasswordsAppend[0]);
     if (d.kfintechPasswordsAppend?.[0]) await appendMailbackPassword(tx, session.tenantId, "kfintech", d.kfintechPasswordsAppend[0]);

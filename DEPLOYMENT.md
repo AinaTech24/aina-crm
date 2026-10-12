@@ -46,11 +46,18 @@ pm2 save && pm2 startup           # survive reboots (run the printed command)
 **The non-superuser DB role is not optional.** The web app connects via
 `APP_DATABASE_URL` as the `mfd_app` role (`LOGIN NOSUPERUSER NOBYPASSRLS`) so
 Postgres RLS is actually enforced — a superuser silently *bypasses* RLS even
-with policies in place. The app **hard-fails on boot in production** if its DB
-role can bypass RLS (override only with `ALLOW_SUPERUSER_DB=1`, which you should
-never set in prod). Keep `DATABASE_URL` (superuser) for migrations/provisioning
-only; the runtime web/worker env should carry `APP_DATABASE_URL`, not the
-superuser URL.
+with policies in place. **In production the web and the worker refuse to start**
+(exit 1, with a diagnostic naming role@host/db, never the password) when
+`APP_DATABASE_URL` is unset — they never fall back to `DATABASE_URL` — or when
+its role is superuser, BYPASSRLS, CREATEROLE, owns any table / function / the
+database (directly or through membership), can assume a privileged role, may set
+`session_replication_role`, or holds TRIGGER / TRUNCATE / REFERENCES on a
+financial or control table (`src/db/runtime-role.ts`, final security patch).
+`ALLOW_SUPERUSER_DB` has no effect in production. Keep `DATABASE_URL` (the
+migration role) for migrations / provisioning only — `migrate:all` declares
+itself with `DB_TOOLING=1`, and a web or worker process with `DB_TOOLING` set
+refuses to start. Use different credentials for web and worker if you can; both
+are checked.
 
 **The worker must be supervised.** It drives *all* time-based automation
 (daily-ops 06:30, NAV refresh, reconciliation 07:30, statements 08:00, market +
@@ -70,6 +77,11 @@ AiSensy, MSG91, Anthropic, S3):
 | `DATABASE_URL` 🔒 | migrations only | Superuser — `migrate:all` + `provision-app-role` |
 | `ALLOW_SYSTEM_TX=1` | **worker only** | Legitimate cross-tenant scans. **Never on web** |
 | `HEALTH_TOKEN` 🔒 | web | Guards `GET /api/health/workers` (automation-freshness probe) |
+| `OPS_MONITOR_TOKEN` 🔒 | web | Bearer token for `GET /api/health/rta-reconciliation` (falls back to `HEALTH_TOKEN`) — poll it from an external uptime monitor; 503 = act |
+| `OPS_ALERT_WEBHOOK_URL` 🔒 | worker + web | Primary on-call channel for persisted ops alerts (else `OBSERVABILITY_WEBHOOK_URL` / `ERROR_WEBHOOK_URL`) |
+| `OPS_ALERT_ESCALATION_WEBHOOK_URL` 🔒 | worker + web | Escalation channel: undeliverable, or unacknowledged after `RTA_ALERT_ACK_MINUTES` (60) |
+| `OPS_HEARTBEAT_URL` 🔒 | worker | External dead-man's switch pinged every monitor tick (1 min) |
+| `RTA_RECON_TIME_IST` | worker | Daily RTA posting reconciliation, `HH:MM` in Asia/Kolkata (default `06:30`) |
 | `ERROR_WEBHOOK_URL` 🔒 | worker | Pushes uncaught worker errors to Slack/ops |
 | `DAILY_OPS_CONCURRENCY` / `RECON_CONCURRENCY` | worker | Nightly per-tenant fan-out width (default 5) |
 | `VALUATION_CACHE_TTL_MS` | web | Per-investor valuation cache (default 600000) |

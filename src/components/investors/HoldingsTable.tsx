@@ -23,6 +23,7 @@
 import { useMemo, useState } from "react";
 import { Layers, AlertTriangle, ListFilter } from "lucide-react";
 import { formatDate } from "@/lib/format";
+import { statementCoverage } from "@/lib/finance/statement-coverage";
 
 export type Holding = {
   schemeName: string | null;
@@ -46,6 +47,8 @@ export type Holding = {
   realisedGain?: number | null; // gain booked on redeemed units
   dividend?: number | null; // dividend payouts received
   hasTxns?: boolean; // true when this holding has transaction coverage
+  /** The registrar statement's own figures and date (lib/finance/valuation). */
+  registrar?: { units: number | null; value: number | null; asOf: string | null; report: string | null } | null;
 };
 
 function fmtDate(d: string | null | undefined): string {
@@ -114,6 +117,7 @@ export function HoldingsTable({
 
   const openCount = useMemo(() => holdings.filter(isOpen).length, [holdings]);
   const closedCount = holdings.length - openCount;
+  const coverage = useMemo(() => statementCoverage(holdings, asOf, (d) => formatDate(d, "dayMonth")), [holdings, asOf]);
 
   const totalCurrent = useMemo(
     () => holdings.reduce((s, h) => s + (h.priced ? h.currentValue || 0 : 0), 0),
@@ -201,7 +205,21 @@ export function HoldingsTable({
         </>
       ),
     },
-    { key: "value", label: "Current value", align: "right", has: () => true, cell: ({ h }) => <span className="font-medium">{fmtMoney(h.currentValue)}</span>, total: (x) => fmtMoney(x.current) },
+    {
+      key: "value", label: "Current value", align: "right", has: () => true,
+      cell: ({ h }) => (
+        <>
+          <span className="font-medium">{fmtMoney(h.currentValue)}</span>
+          {/* The registrar's statement, as printed and dated — never merged into the live figure. */}
+          {h.registrar?.asOf && (
+            <div className="text-2xs text-muted-foreground" title={h.registrar.report ? `${h.registrar.report} statement` : undefined}>
+              Registrar {h.registrar.value != null ? fmtMoney(h.registrar.value) : "—"} · {fmtDate(h.registrar.asOf)}
+            </div>
+          )}
+        </>
+      ),
+      total: (x) => fmtMoney(x.current),
+    },
     {
       key: "gain", label: "Gain", align: "right", has: (r) => !!r.h.hasTxns && r.h.gain != null,
       cell: ({ h }) => (h.hasTxns ? <Money v={h.gain} /> : dash),
@@ -254,6 +272,16 @@ export function HoldingsTable({
           </div>
         </div>
       </div>
+
+      {coverage && (
+        <p
+          className={`mb-2 flex items-center gap-1 text-2xs ${coverage.warn ? "text-warning-foreground" : "text-muted-foreground"}`}
+          title="The values below use the latest AMFI NAV (each dated) on the units on file. These are the registrar statements those units were last checked against."
+        >
+          {coverage.warn && <AlertTriangle className="size-3 shrink-0" aria-hidden />}
+          {coverage.text}
+        </p>
+      )}
 
       {shown.length === 0 ? (
         <p className="text-sm text-muted-foreground py-6 text-center">

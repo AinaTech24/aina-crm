@@ -1,0 +1,28 @@
+metric,value,unit,how_verified
+source_rows_mfsd201,1508,rows,staging rows of the two MFSD201 files (819 + 689)
+economic_records,1100,registrar transactions,unique kfin.v1 identities across both files
+recorded_transactions,1076,transactions,posting ledger rows joined to CRM transactions (processed + rejected)
+processed_transactions,1073,transactions,ledger transactions with status processed
+processed_amount_inr,10227740.48,INR,sum of processed transaction amounts in the ledger
+rejected_transactions,3,transaction legs,ledger transactions with status rejected (recorded with 0 units; never business)
+rejected_gross_leg_amount_inr,12000.00,INR,sum of the three rejected legs; a failed STP is two legs
+rejected_instructions,2,instructions,1 failed SIP instalment + 1 failed STP (its two legs share the registrar's switch reference within one client / folio / date / amount)
+rejected_instruction_amount_inr,7000.00,INR,each failed instruction counted once (SIP 2000.00 + STP 5000.00 at its source leg)
+rejected_sip_instalments,1,transaction legs,SIND on 166HYGP
+rejected_stp_source_legs,1,transaction legs,STPOD (outflow) on 176ABRG
+rejected_stp_destination_legs,1,transaction legs,STPAD (inflow) on 176MGGP
+held_corrections,18,registrar transactions,folio-consolidation corrections (99 source rows; 147868.30 INR)
+held_unknown_code_events,6,registrar transactions,unknown registrar transaction codes (8 source rows; 543384.29 INR)
+posted_source_rows,1398,rows,source rows behind the 1073 processed transactions
+multi_lot_redemptions,15,registrar transactions,340 lots; 13286.593 units; 2089213.97 INR; units and amounts equal their lots
+duplicate_ledger_identities,0,count,ledger identity or transaction recorded twice
+scheme_codes,118,codes,KFintech codes seen in the manifest (114 resolved_isin + 4 unresolved)
+legacy_rehearsal_processed_matched_existing,1058,transactions,legacy-imported firm then validate-first (security patch rehearsal rta_p0): processed rows linked to the legacy row after every fact incl. scheme identity agreed
+legacy_rehearsal_processed_newly_inserted,15,transactions,the 15 multi-lot redemptions the legacy importer held back; written by validate-first
+legacy_rehearsal_rejected_matched_existing,3,transaction legs,the 3 rejected legs linked to the legacy rows (same facts and scheme)
+legacy_rehearsal_rejected_newly_inserted,0,transaction legs,no rejection newly inserted on the legacy firm
+legacy_rehearsal_identity_conflicts,0,registrar transactions,no legacy row differed in any fact (registrar / client / AMC / folio / scheme / date / type / direction / status / amount / units)
+ops_dashboard_rejected_instructions,2,instructions,Operations dashboard Rejected transactions card (loadRejected) on the rehearsal firms
+ops_dashboard_rejected_instruction_amount_inr,7000.00,INR,same card; an STP counted once at its instruction amount
+ops_dashboard_rejected_legs,3,transaction legs,same card: every rejected leg
+ops_dashboard_rejected_leg_amount_inr,12000.00,INR,same card: gross over the legs

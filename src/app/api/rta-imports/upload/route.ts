@@ -8,8 +8,11 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { RTA_FILE_KINDS, RTA_SOURCES } from "@/db/schema/rta_imports";
 import { getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config";
-import { Q } from "@/workers/queues";
+import { Q, addWithin, QueueUnavailableError } from "@/workers/queues";
 import { RTA_FILE_TYPE_BY_KIND } from "@/lib/rta/file-types";
+import { handleApiError } from "@/lib/api/error-handler";
+import { requireRtaImportAccess, RTA_IMPORT_CAPABILITY } from "@/lib/rta/import-access";
+import { intakeRefusal, recordBlockedImport } from "@/lib/rta/posting/intake-scope";
 
 /**
  * POST /api/rta-imports/upload
@@ -39,10 +42,24 @@ const BodySchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  // Every refusal below (no session → 401, no capability / own-clients-only →
+  // 403, lapsed licence → 402) is answered as JSON by handleApiError — the
+  // dialog reads `error`, and a bare 500 used to surface as a JSON parse error.
+  try {
+    return await upload(req);
+  } catch (err) {
+    return handleApiError(err);
+  }
+}
+
+async function upload(req: NextRequest) {
   const session = await requireSession();
   // Only ops / back-office / owner / compliance can ingest RTA files
-  // (anyone who can execute transactions can also ingest the daily feed).
-  requireCap(session.roles, "transactions.execute", session.permissions);
+  // (anyone who can execute transactions can also ingest the daily feed) —
+  // and only on an un-narrowed book: the dialog then reads the firm-wide
+  // outcome back (lib/rta/import-access).
+  requireCap(session.roles, RTA_IMPORT_CAPABILITY, session.permissions);
+  await requireRtaImportAccess(session);
   await assertActiveLicense(session.tenantId, session.roles);
 
   const parsed = BodySchema.safeParse(await req.json().catch(() => ({})));
@@ -107,6 +124,29 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // A firm activated for validate-first imports only the report types its
+  // activation names (the KFintech pilot: MFSD211 + MFSD201). A file that
+  // cannot be one of them is recorded as BLOCKED (the audit record) and never
+  // queued. The worker re-checks the file's content and the posting
+  // transaction checks again — this is only the first gate.
+  const blocked = await withTenant(
+    session.tenantId,
+    async (tx) => {
+      const reason = await intakeRefusal(tx, session.tenantId, { source, kind, fileName });
+      if (!reason) return null;
+      const id = await recordBlockedImport(tx, { tenantId: session.tenantId, source, kind, fileName, fileKey: key, reason, uploadedBy: session.userId, origin: "upload" });
+      await recordAudit(tx, {
+        tenantId: session.tenantId, actorUserId: session.userId, action: "rta_import.blocked", entityType: "rta_file_import", entityId: id,
+        after: { source, kind, fileName, status: "blocked", reason, origin: "upload" }, ...clientMetaFromHeaders(req.headers),
+      });
+      return { id, reason };
+    },
+    { userId: session.userId, branchId: session.branchId, roles: session.roles }
+  );
+  if (blocked) {
+    return NextResponse.json({ error: blocked.reason.replace(/^blocked:\s*/, "Blocked — "), importId: blocked.id, status: "blocked" }, { status: 422 });
+  }
+
   // 1. Reserve an import row in `uploaded` state. period_start/end are NOT NULL
   //    placeholders (today) — the worker overwrites them with the file's real
   //    reporting period once parsed.
@@ -164,7 +204,8 @@ export async function POST(req: NextRequest) {
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   ).catch(() => [] as string[]);
 
-  await Q.rtaImport().add(
+  try {
+  await addWithin(Q.rtaImportProducer(),
     useRich ? "rich-import" : "import",
     useRich
       ? {
@@ -197,11 +238,22 @@ export async function POST(req: NextRequest) {
           roles: session.roles,
         },
     {
-      attempts: 1,
+      // Retries cover infrastructure failures only (a bad file is recorded on the row and does not throw); every path is idempotent.
+      attempts: 3,
+      backoff: { type: "exponential", delay: 5000 },
       removeOnComplete: true,
       removeOnFail: { age: 3600 },
     }
   );
+  } catch (e) {
+    if (!(e instanceof QueueUnavailableError)) throw e;
+    // Redis is down: say so on the row (the file is stored — a re-run imports it) instead of hanging the upload.
+    await withTenant(session.tenantId, (tx) => tx.execute(sql`
+      UPDATE rta_file_imports SET status = 'failed', parsed_at = now(),
+             remarks = 'The import queue was unavailable when this file was uploaded. The file is saved — re-run it from RTA File Imports.'
+       WHERE tenant_id = ${session.tenantId}::uuid AND id = ${importId}::uuid`), { userId: session.userId, branchId: session.branchId, roles: session.roles });
+    return NextResponse.json({ error: e.message, importId, status: "failed" }, { status: 503 });
+  }
 
   // Audit the ingestion request — RTA files populate transactions / AUM /
   // brokerage, a regulated action that must leave a trail. Outcome counters

@@ -475,6 +475,462 @@ client).
 - **Duplicates already in a book**: `tsx scripts/repair-rta-duplicates.ts
   --tenant <id>` (dry run; `--apply`, `--placeholders`). It is heavy on a large
   book, so run it out of hours.
+- **Integration with the RTA release (B-1, 2026-10-12).** Name adoption is a
+  LEGACY-importer rule only: `import.ts` passes no hints when it runs for a
+  validate-first batch (`opts.sourceBatchId`), and `process.ts` offers a PAN to
+  adoption only when `InvestorDirectory.byPan` finds nobody holding it. The
+  folio on record and the owner's own PAN still decide ownership (see "RTA
+  client identity" below); a name never moves a folio between two real clients.
+
+## RTA import — rules since Phase 2 (2026-10-08)
+
+The mailback importer (`src/lib/rta/`, worker `src/workers/rta-import-worker.ts`)
+refuses to guess. Read `values.ts` and `identity.ts` before touching a parser.
+
+- **Values are read strictly** (`values.ts`): `readNumber` (Indian / Western
+  grouping, parentheses negative; anything else is an error), `readDate`
+  (calendar-checked; blank is null and is **never replaced with today**),
+  `validPan` (with the holder-type letter — placeholder text is "no PAN"),
+  `excelSerialToIso` (arithmetic, timezone-proof). A row whose mandatory value
+  cannot be read is rejected with its reason, never stored as 0 / today.
+- **No positional fallback.** A parser finds its header by alias in the first 10
+  lines and throws `RtaLayoutError` when it is missing or lacks a required column.
+- **Transaction identity is the registrar's transaction number.** A feed with no
+  such column is refused (rows used to be keyed `<rta>_<line>` and overwrote each
+  other across files). An existing row with the same number is updated (status,
+  NAV, units, reason) only when folio, scheme, date, type, direction and amount all
+  match; otherwise it is left alone and the row is reported.
+- **Unknown is held back, not defaulted**: unrecognised transaction codes or
+  statuses, reversals / cancellations, switch or STP rows without an IN/OUT leg,
+  negative amounts on money-in rows. They show on the Exceptions page
+  (`exceptions.ts` categories). Do not add a code meaning without a registrar
+  document or a real sample.
+- **Client resolution is one module** (`identity.ts` `InvestorDirectory`):
+  merged → survivor; in Trash → blocked; a folio number held by different clients
+  → ambiguous; a folio filed under another client than the row's PAN → held back.
+  PAN-less placeholders key on the folio (`NOPAN:FOLIO:<folio>`), never on name /
+  mobile / email. A folio moves off a placeholder to its PAN-keyed client with its
+  transactions and SIPs; it is never moved between two real clients by an import.
+- **Files are identified by content** (`file-kind.ts`): .xlsx is a workbook, not
+  a zip; an archive with more than one data file is refused, never half-read.
+- **Import views need `transactions.execute` and an unwalled book**
+  (`import-access.ts`); errors are PAN-masked on write and on read.
+  `/api/rta/import` (synchronous) answers 410.
+- **Verified against real files (Phase 2B, 2026-10-08)**: KFintech MFSD201 /
+  MFSD211 and CAMS R2 / R9. Their exact headers are in
+  `tests/rta-real-layouts.ts` (synthetic rows only — never commit a real file).
+  What the real files showed, and the code now encodes:
+  - CAMS `trxn_type_flag` names the transaction in words and DECIDES the type
+    (a systematic "Partial Switch Out" is STP money out, not a SIP).
+  - KFintech writes "S T P In / Out"; NAV is the `Nav` column, not `Price`.
+  - KFintech repeats a transaction number for ONE redemption reported lot by
+    lot (purchase-lot rows); those groups are held back until staging can store
+    the parts — never merged on amount/units (identical lots exist).
+  - A minor's folio is reported in R2 with the GUARDIAN's PAN; such a row
+    belongs to the minor (`InvestorDirectory.isGuardianOf`).
+  - A stated zero balance is 0, a blank one is unknown.
+  - **Import masters before transactions.** The reverse order leaves minor and
+    PAN-less folios held for review (visible, never silently moved).
+- **Mail imports only by the firm's alias, with proof** (`mail-trust.ts`):
+  registrar DKIM/DMARC pass from our own server's Authentication-Results, on
+  a domain in `REGISTRAR_DOMAINS` that is also the visible From domain
+  (aligned). Anything else is quarantined — a decrypting archive is NOT sender
+  proof.
+
+## RTA staging — SHADOW only (Phase 3B, 2026-10-08)
+
+A second, traceable import path beside the existing one: every source row of
+every RTA file into `rta_staging_*` (migration 0233), grouped into registrar
+transactions, matched and reconciled — and posted NOWHERE. Code:
+`src/lib/rta/staging/` (config · pan-token · classify · layouts · group ·
+checks · pipeline · index), read-only APIs `/api/rta-staging/batches[/id]`,
+CLI `scripts/rta-shadow.ts`. Design and rollout: `docs/rta/PHASE3B_SHADOW.md`.
+
+- **`RTA_PIPELINE_MODE`**: `off` (default) · `shadow` (the worker stages the
+  same file after the existing import finishes; `runShadowForImport` never
+  throws) · `on` is REFUSED and treated as off. `RTA_PIPELINE_TENANTS` limits
+  shadow to listed firms. Rollback is `off` — never dropping populated tables.
+- **Never write a live table from staging.** Investors / folios / transactions
+  are only READ (InvestorDirectory rules; placeholder reassignment stays off).
+  The proposal is a column (`proposed_action`), not a write.
+- **No PAN, name, address, phone, email or bank detail is stored.** PANs become
+  `pt1:` HMAC tokens (key: `RTA_STAGING_TOKEN_KEY`, else HKDF of
+  `ENCRYPTION_KEY`; no fallback — staging refuses to run without one). Row
+  hashes and group signatures are keyed too.
+- **A row number is a position in one immutable file**, never an identity. A
+  registrar transaction is `kfin.v1:<Fund>:<Transaction Number>` /
+  `cams.v1:<amc_code>:<trxnno>`; a KFintech redemption reported lot by lot is
+  ONE transaction with every lot kept (`rta_staging_lots`), all-or-nothing.
+- **Tolerances come from printed precision** (½ ulp of each figure, the
+  COLUMN's precision since registrars drop trailing zeros) — no ₹1 or %
+  allowance. Figures are never adjusted; an unverifiable check is `unverified`.
+- **Classification** (`classify.ts`): CAMS Switch ↔ STP needs BOTH systematic
+  markers (nature "Systematic…" and `siptrxnno`); one marker → held. KFintech by
+  `Transaction Type` code checked against `Transaction Head`. IDCW, reversals,
+  cancellations, pre-rejections and unknown codes are held. KFintech SIND /
+  STPAD / STPOD in the verified shape (no original named, no units, an amount)
+  are FAILED INSTALMENTS (`instalment_rejected`, Phase 3D) — SIP Rejection
+  register, never a transaction, never a stopped SIP.
+
+## RTA client identity — owner decisions of 2026-10-08
+
+`src/lib/rta/owner.ts` decides who LEGALLY owns a registrar row's folio, for
+staging today and for posting later. Read it before touching matching.
+
+- **One owner per folio** (`folios.investor_id`); joint holders, a minor's
+  guardian and an HUF's Karta are relationships (`folio_holders`, migration
+  0234 — no writer yet). AUM counts a folio once.
+- **Order:** the folio on record (registrar + AMC + folio — never the number
+  alone, `owner-directory.ts`) → the owner's OWN PAN → a provisional
+  folio-keyed owner → an exception. Name, mobile and email are never inputs.
+- **A guardian's or Karta's PAN never makes them the owner.** CAMS R2 prints the
+  GUARDIAN's PAN on a minor row (verified 22/22); `process.ts` therefore attaches
+  a CAMS minor row only to the minor's folio on record and holds it otherwise.
+- **HUF** = holder status HUF + an H-type PAN; an HUF row with an individual
+  PAN is flagged, never used. No registrar report carries a Karta.
+- **KFintech folio consolidation** re-reports old transactions (original, an
+  R-coded reversal "SIP / Redemption / Purchase Rejection", a re-post into the
+  surviving folio) under ONE transaction number. Those R rows are not
+  rejections — held as `folio_consolidation`.
+- **SIP state** comes from registrar facts only (`sip-lifecycle.ts`); a failed
+  instalment never stops a SIP; no status = UNKNOWN, never ACTIVE.
+- **AUM** is per (registrar, ARN) statement with its date
+  (`holdings-snapshot.ts`); firm AUM is complete only with a full-book
+  statement for every scope. MFSD203 is full-book KFintech; the R9 sample was not.
+
+## RTA sources, SIP Master, AUM view — Phase 3D (2026-10-08)
+
+Design and evidence: `docs/rta/PHASE3D_SOURCE_SELECTION.md`. Minimum set:
+CAMS R2 + R9 + WBR49, KFintech MFSD201 + MFSD203 + MFSD211 + MFSD243 (MFSD230
+kept conditionally — the only source of paid / pending instalment counts).
+
+- **Every legacy processor resolves owners with `InvestorDirectory.ownerOf`**
+  (`identity.ts`): the folio on record (AMC + folio when the row names an AMC)
+  decides; the PAN only as the owner's own — never on a minor's row, never an
+  individual PAN on an HUF row, never a recorded guardian's PAN when the report
+  does not state the holder type. A PAN naming another client holds the row
+  (unless the number-only match is at a different AMC). Do not add a processor
+  that calls `resolve` / `byPan` for a folio-bearing row.
+- **SIP Master** (`lib/rta/sip-master.ts`, pure): one registration per
+  `reg:<rta>:<amc>:<id>` (KFintech RegSlno = MFSD201 sipregslno; CAMS
+  auto_trno — R2 siptrxnno is NOT linked to it). MFSD230 attaches only on a
+  unique exact match and never sets lifecycle. Active SIP Book = SIP + ACTIVE +
+  known frequency; PENDING / UNKNOWN / STP / SWP are reported beside it.
+  `coverage.missingFromMaster` > 0 means the book is not the whole book.
+- **AUM view** (`lib/rta/aum-view.ts`, pure): one card per registrar × ARN
+  with date, age, stale flag, full-book flag and coverage gaps (folios other
+  files evidence but the statement lacks). The firm figure is null unless
+  every scope is full-book, fresh, gap-free and valued. A position keeps the
+  registrar's value and the live-NAV value separately, each dated.
+- **Migrations 0233 / 0234**: purging an import nulls the staging link
+  (SET NULL); `folio_holders` cascades with its folio, keeps its row when the
+  client is purged, and a trigger refuses cross-tenant references.
+
+## RTA eight modules — Phase 3E (2026-10-08)
+
+Evidence and module verdicts: `docs/rta/PHASE3E_EIGHT_MODULES.md`.
+
+- **Rejection or correction is decided from figures, never wording.**
+  `lib/rta/consolidation.ts` proves a KFintech folio correction (original +
+  exact negation in one folio + equal re-post in exactly one other, one
+  scheme). Every non-posting staged row carries `attrs.eventCategory`. A CAMS
+  "Rejection" phrase is `unknown` until a sample exists.
+- **A refused instruction** (KFintech SIND / STPAD / STPOD, verified shape) is
+  a `transactions` row with status `rejected` and 0 units (never business),
+  plus one `sip_rejections` row for a SIP. An STP pair counts once (shared
+  `raw_feed_row.switchRef`). It never stops a SIP, and is attached only to a
+  folio on record.
+- **Import outcome**: `rowsImported` counts records created or changed; an
+  identical re-import is `rowsUnchanged`.
+- **Dated AUM**: holdings imports stamp each leg with `sourceUnits`,
+  `sourceValue`, `sourceNav`, `sourceAsOf`, `sourceReport` and `sourceArn`.
+  An older statement never replaces a newer one, and a stated 0 stays 0.
+  Revaluation never touches those keys. `getRegistrarAum` (lib/metrics) and
+  the Registrar AUM card show statements per registrar × ARN. **Mixed dates
+  are shown as a range and withhold the firm total.** The live-NAV AUM tile
+  is a different figure — never add the two together.
+- **Guardian-PAN hold is evidence-scoped**: KFintech MFSD201 / MFSD203 leave a
+  minor's PAN blank (12/12 each), so there the PAN is the holder's own
+  (`guardianPanPossible: false`). CAMS and unverified layouts keep the hold.
+  The rich importer follows the same rules (HUF + Karta PAN held; a minor's
+  folio on record stays the minor's).
+- **`folio_holders`** (undeployed): no PAN in clear (`pt1:` token + `******1234`
+  mask), one current role per person per folio, append-only (close and
+  replace, never edit).
+
+## RTA validate-first import — Phase 3F (DEVELOPMENT ONLY)
+
+`RTA_PIPELINE_MODE=validate_first` sends every RTA file — upload and mail
+alike (same worker jobs) — through staging, validation, owner resolution,
+classification and reconciliation BEFORE any financial write, then commits in
+one transaction. The legacy importers are not called in this mode. Code:
+`src/lib/rta/posting/` (gate · post · masters · sip-book · validate-first ·
+resolve · held), migration 0235, screen `/dashboard/rta-imports/held`. Design,
+evidence and the acceptance run: `docs/rta/PHASE3F_VALIDATE_FIRST.md`.
+
+- **The posting gate fails closed** (`gate.ts`): `RTA_POSTING_MODE=development`,
+  not production by any env marker, `RTA_POSTING_DATABASE` named, a loopback /
+  socket database URL, and — inside the posting transaction —
+  `current_database()` equal to that name on a loopback server. Anything else:
+  `validate_first_refused`, the import fails, nothing is staged or written, no
+  fallback to the legacy path. Never relax a condition to make an environment
+  pass.
+- **One registrar transaction posts once**: `rta_posted_transactions`
+  UNIQUE(tenant, identity_key) under a per-firm advisory lock. Every staged
+  economic transaction gets an outcome (posted · matched_existing ·
+  rejected_recorded · already_posted · quarantined · unsupported ·
+  correction_held · held_dependent · blocked). An existing CRM row with the
+  same number and the same facts is matched; a different one is quarantined,
+  never overwritten.
+- **Only to a client on record.** A transaction posts to the folio's owner on
+  record, or an owner found by their OWN PAN; otherwise it is held
+  (`owner_not_on_record`) — import masters first. Partial commits only where
+  independence is proven: an identity / figures hold on a folio holds the
+  folio's other transactions (`held_dependent`).
+- **A KFintech multi-lot redemption is one transaction** (lots kept in
+  `rta_staging_lots`); its amount is the registrar's (`amountMeaning`
+  registrar_reported, `payoutVerified` false — STT is reported separately).
+- **Refused instructions** are rejected records (0 units) plus a
+  `sip_rejections` row for an instalment — never business, never a stop.
+  Folio-consolidation rows are held as corrections.
+- **SIP book**: `rebuildSipBook` writes `rta_sip_registrations` and posts to
+  `sips` ONLY verified registrations with an owner on record. Observed
+  activity and unknown status never reach `sips`; a CRM SIP with a different
+  status is left unchanged and reported.
+- **Masters** post only folios whose every staged row is clean; holders go to
+  `folio_holders` (tokens and masks). A minor matching an existing client
+  only by guardian PAN + name at the OTHER registrar is a separate provisional
+  client (`MINOR:<gp>:<NAME>:<RTA>`) and a review item — never merged.
+- **Manual resolution** (`resolve.ts`, `POST /api/rta-staging/economic/:id/resolve`)
+  settles only ownership holds, re-checks guardian / Karta / PAN / folio
+  rules, posts once and writes `rta.identity.resolve` to the audit log
+  (directly — a resolution that cannot be audited does not happen).
+- Re-run the real-file acceptance with the scratch harness described in the
+  doc; browser check: `scripts/rta-validate-first-ui.mjs`.
+
+## RTA controlled posting — Phase 3G (PRE-PRODUCTION, not deployed)
+
+Per-firm, operator-controlled posting on a real database, plus recovery.
+Design, drills, the eight-module matrix, the file plan and the pilot
+checklist: `docs/rta/PHASE3G_PRODUCTION_READINESS.md`. Migration 0236.
+
+- **`RTA_POSTING_MODE=controlled`**: the env mode is only a ceiling; the
+  firm's current `rta_pipeline_activations` row decides (append-only, newest
+  effective wins, none = off → today's importer; a revoked / expired one = paused since 3H). Activating validate-first
+  with posting needs two platform operators (`lib/rta/posting/controls.ts`,
+  `/api/super-admin/rta-pipeline`). An activated firm whose posting cannot
+  run is `validate_first_refused` — **never** the legacy importer.
+- **Kill switch** `rta_posting_controls` (global + per firm) is installed
+  HALTED; release needs two people, halt one. The gate reads it FOR SHARE in
+  the posting transaction; halting takes the global row FOR UPDATE, so it
+  waits for the running batch. Also refused: superuser / BYPASSRLS role,
+  `app.tenant_id` ≠ the firm, the wrong `current_database()`.
+- **Every path that can import RTA data checks the mode** (worker, drop-folder
+  ingest, `scripts/import-rta-local.ts`). The generic CSV transaction import
+  does not — known, reported, unchanged.
+- **Held transactions are re-evaluated** when a master or holdings batch
+  arrives or a hold is resolved (`posting/reprocess.ts`): same commit path,
+  bounded passes, one manual task per folio for identity holds (closed when
+  settled). Every outcome is appended to `posting_history`. Never: a minor
+  merged by name or guardian PAN, an HUF row given to its Karta.
+- **Recovery** (`posting/reversal.ts`, CLI `scripts/rta-posting-recovery.ts`):
+  halt → dry run → reverse (two people; every row archived whole in
+  append-only `rta_posting_reversals`) → reconcile (five checks, all 0) →
+  re-import or undo. A flag rollback is NOT a data rollback. The reversal
+  lowers a client's last-transaction date only when the batch set it (a
+  registrar master can set it too).
+- **Request paths enqueue with `addWithin` on `Q.rtaImportProducer()`** (offline
+  buffer off): Redis down → 503 and no job, never a job that runs later.
+- **SIP completeness** (`lib/metrics/sip-completeness.ts`): verified /
+  observed / unknown per registrar × ARN with report periods — the Active SIP
+  Book is never presented as the whole book.
+- Read-only checks: `scripts/rta-historical-diagnostics.ts` (aggregates, masked
+  examples, proposed repairs — executes none) and `scripts/rta-infra-check.ts`
+  (real Next / Chromium / S3-compatible store / Redis / worker processes,
+  synthetic data, local URLs only).
+
+## RTA pilot blockers and the Scheme Master — Phase 3H (PRE-PRODUCTION)
+
+Report, matrix and the activation checklist: `docs/rta/PHASE3H_PILOT_BLOCKERS.md`.
+Migrations 0237 (modes) and 0238 (scheme crosswalk).
+
+- **One scheme reference: the AMFI scheme code** (`scheme_nav.scheme_code` =
+  `scheme_master.scheme_code`). Registrar codes map to it through
+  `scheme_rta_codes` (`lib/rta/scheme-resolution.ts`) by the registrar's ISIN
+  or a person's audited confirmation — **never by name** (31 KFintech codes
+  print different descriptions in different files; KFintech `Plan` is a code).
+  CAMS core reports print no ISIN: each CAMS code is confirmed once on
+  `/dashboard/rta-imports/schemes`. Do not add a second scheme table.
+- **The scheme gate** (always under `RTA_POSTING_MODE=controlled`;
+  `RTA_SCHEME_GATE=on` in development): an unresolved / conflicting scheme
+  holds the transaction (`scheme_unresolved` / `scheme_conflict`) before it is
+  written; resolved ones post with the AMFI code in `scheme_code` and the
+  registrar's in `rta_scheme_code` (also sips, sip_rejections, holdings legs
+  `rtaSchemeCode` + `schemeStatus`). An evidence-tracked leg is never priced by
+  name (`revalueAllFolios`).
+- **Modes** (`resolvePipelineMode`): legacy (`off`) · shadow · validate_first ·
+  **held** (paused, revoked / expired activation, firm halt, process halt,
+  global posting halt for the pipeline, EMERGENCY for everyone). Held parks the
+  job (row back to `uploaded`, file kept) — never the legacy importer, never a
+  silent failure. One operator stops; two start (0237 enforces it in the table).
+- **Every other writer asks `lib/rta/write-guard.ts`** inside its own
+  transaction (FOR SHARE on the control rows): `derived` (legacy importer,
+  business matching, reconciliation scanner, merges) stops when the firm is
+  stopped; `bypass` (generic CSV import, reconciliation sync, risky scripts via
+  `scripts/lib/rta-script-guard.ts`) is also refused for a validate-first firm.
+- **Reversal refuses dependent batches** (later "already posted" claims,
+  business matches, emitted outbox events, worked SIP rejections) and master
+  batches; the reviewed order is newest first. A nightly reconciliation
+  (`posting/monitor.ts`, daily ops) alerts on any non-zero count.
+- **Migrations are immutable**: `checksums.lock.json` (CI) and the runner block
+  on a changed or missing applied file; a correction is a NEW migration
+  (`drift-acknowledged.json` is the reviewed exception). `migrate:all --check`
+  is the release gate; `scripts/migration-immutability-drill.sh` the drill.
+- The emergency drill halts every firm in the database, so it runs alone:
+  `npm run test:emergency` (its own CI step).
+
+## Scheme resolution and the AMFI feed — Phase 3I (PRE-PRODUCTION)
+
+Report, coverage and the pilot release conditions:
+`docs/rta/PHASE3I_SCHEME_RESOLUTION.md`. Migrations 0239 (AMFI fidelity,
+provenance, platform registrar map) and 0240 (platform-approved confirmation).
+
+- **AMFI is read strictly, through one path** (`importNavAll` in
+  `lib/finance/nav-feed.ts`; the worker, *Sync from AMFI* and
+  `scripts/amfi-import.ts` all use it). Header must be one of the two
+  published layouts column for column; both ISIN columns, Plan and Option kept
+  as printed; every file recorded in `amfi_feed_imports` with its SHA-256; a
+  stale or future file refused; an older file never overwrites a newer NAV.
+  A NAV older than `RTA_NAV_MAX_AGE_DAYS` (7, `lib/finance/nav-age.ts`) is not
+  current for validate-first rows. Never seed reference data by hand or from a
+  third party; this sandbox cannot reach AMFI — supply an authentic file.
+- **What the real file (07-Oct-2026) taught the reader** (`docs/rta/PHASE3J_AMFI_UNBLOCK.md`):
+  `-` / `Redeemed` in an ISIN column mean "no ISIN"; the feed date is the
+  BUSINESS date (the NAV date most schemes carry), never the newest row or
+  today; ~5,600 closed / matured schemes keep old NAV dates and never reject
+  the file; "historical" comes from AMFI's own NAV date, never from a scheme
+  missing from one file; a 0 NAV is no NAV.
+- **The decision is pure** (`lib/rta/scheme-evidence.ts`): one ISIN on one AMFI
+  scheme, AMC consistent with the registrar AMC's other codes, no explicit
+  plan / option word contradicting AMFI → resolved. Every outcome has a
+  `reason_code`. Names only RANK candidates (`nameRank`) — never decide.
+- **Registrar codes are the registrar's**: a clean ISIN result is recorded for
+  every firm in `scheme_registrar_map` (no firm id); operators approve the rest
+  there (two people, `/api/super-admin/scheme-mappings`). A firm's own
+  confirmation stays the firm's. Changing a decision re-stamps that code's
+  holdings legs (`restampLegs`) and never rewrites posted transactions.
+- **Review is approve (with evidence source) · reject a candidate · defer**,
+  each audited; the Scheme codes screen shows candidates from the established
+  AMC only.
+- `scheme_master` duplicates after an AMC rename: `scripts/scheme-master-duplicates.ts`
+  is READ-ONLY and only proposes. Test cleanup of platform mappings needs
+  `ADMIN_DATABASE_URL` (`tests/scheme-map-cleanup.ts`).
+- **AMC identity first** (pilot preflight, migration 0241,
+  `docs/rta/PILOT_PREFLIGHT.md`): `registrar_amc_identity` says which AMFI AMC
+  a registrar AMC code is — recorded from unanimous ISIN evidence, or by two
+  platform operators (`approve_amc`), plus documented successor AMCs. No
+  verified AMC → no name suggestions and no scheme approval (firm or platform);
+  a scheme outside the verified set is an AMC conflict. Recording an AMC
+  approves no scheme. Operator handover (commands, A–F, emergency procedures, sign-off): `docs/rta/PILOT_HANDOVER.md`.
+- **The AUM figure says what it is made of** (`getAumComposition`): at a
+  current AMFI NAV / at registrar statement value (unmapped scheme) / at an
+  older NAV. It is labelled by its NAV dates (`aumValuationLabel`: "NAV of
+  07 Oct", or "Mixed dates") — never "Today": AMFI publishes a business day's
+  NAV that evening. A registrar statement is dated by its report date; it
+  prints no NAV date (KFintech MFSD203 of 08-Oct valued at the 07-Oct NAV).
+- **An activation names its registrars** (migration 0242,
+  `rta_pipeline_activations.registrars`, required with posting, never
+  edited): a KFintech-only pilot is `["kfintech"]`. An out-of-scope file is
+  refused before staging, and every posting path (`assertPostingAllowed` →
+  `registrarCovered`) refuses it again inside the transaction. KFintech codes:
+  MFSD211 = investor master (first), MFSD201 = transactions, MFSD203 =
+  holdings, MFSD243 = SIP / STP / SWP registrations.
+
+## RTA pilot security patch — migration 0243 (PRE-PRODUCTION)
+
+Operator steps and evidence: `docs/rta/PILOT_HANDOVER.md` (§5.1, EC-1, EC-2, EC-6, §7).
+
+- **Every START is a two-person control request** (`lib/rta/posting/approvals.ts`,
+  `rta_control_requests`): an activation other than a pause, a kill-switch release,
+  a reversal, an undo, a platform scheme / AMC approval. The requester files it
+  from their own signed-in session, a DIFFERENT signed-in operator approves the
+  exact `payloadHash`, and the action runs in the approval's transaction. Both
+  must be active `platform_admin` with two-factor and a live session. Identities
+  come only from the server session — never from a body or a command line. The
+  database refuses a start not cited by a request executed in the same
+  transaction. `activateTenant` (non-pause), `setPostingHalt({halted:false})`,
+  `reversePostingBatch` (commit) and `undoReversal` throw; tests use
+  `tests/helpers/two-person.ts`. Stops (halt, pause, revoke, emergency,
+  `cancel_import`) stay one operator. CLI `release` / `undo` / `reverse --commit`
+  exit 2.
+- **The activation names its report types** (`report_codes`; the KFintech pilot is
+  MFSD211 + MFSD201). Upload, mail dispatch and re-run refuse others and record a
+  `blocked` import (`posting/intake-scope.ts`, a filter only); the worker,
+  `validateFirstImport` and the posting gate decide from the file's CONTENT
+  (`reportCovered`). Never admit a report by its file name.
+- **Linking a legacy row** (`posting/legacy-match.ts`) needs every fact equal —
+  registrar, client, AMC (or a verified successor), folio, scheme identity
+  (registrar code, approved AMFI code, or a historical code an approved mapping
+  ties to it), date, type, direction, status, amount, units; otherwise
+  `identity_conflict`, nothing changed.
+- **A rejected STP is one instruction with two legs.** Operations dashboard counts
+  use `rejectedInstructionKey` (`lib/dashboard/ops/window.ts`): the registrar's
+  switch reference is a short number, so the key also carries client, folio,
+  date and amount. A new rejection count must use it.
+- **A cancelled import is final** (`posting/cancel-import.ts` + a trigger): who,
+  when, why; the job is removed; the worker's `markParsing` never claims it.
+- **Development is FROZEN at `8523a01`** (owner, 2026-10-09). Pilot readiness is
+  operational evidence only: A–F and FS-1 – FS-10 in the handover. The one
+  authorized exception is the final security patch below (migration 0244).
+
+## Final security patch — migration 0244 (PRE-PRODUCTION)
+
+Evidence and operator checks: `docs/rta/PILOT_HANDOVER.md` (FS-1, FS-2, FS-7,
+FS-8, FS-10, §7.3).
+
+- **MFA lives on the SESSION, not the user.** `user_sessions.auth_method` and
+  `mfa_verified_at` are set once, when a session is created by a completed
+  challenge (`issueSessionToken({ auth })`, `lib/auth/issue-session.ts`; every
+  issuer passes its method). A password-reset, signup, invite or re-issued
+  session is NOT MFA-verified. The database refuses raising, back-dating or
+  re-labelling a session's MFA. Changing the password, the TOTP secret,
+  two-factor on/off or `sessions_invalid_after` stamps `users.mfa_changed_at`
+  and downgrades every session of that user (trigger, audited). A platform
+  operator with a weaker session re-proves the factor at
+  `POST /api/super-admin/step-up`, which revokes the old session and issues a
+  new one. `rta_operator_ok` / `verifyOperator` (approvals.ts) require a live,
+  unrevoked session verified within 12 h (`RTA_OPERATOR_MFA_MAX_AGE_MIN`) and
+  after the last security change — for every START, both people, plus
+  `cancel_import` and alert acknowledgement. Stops (halt, pause, revoke) need
+  only a live platform session, so an emergency is never blocked.
+- **No privileged database fallback** (`src/db/runtime-role.ts`). In production
+  the web and worker connect ONLY with `APP_DATABASE_URL`; unset → refuse to
+  start (no fallback to `DATABASE_URL`). Migration tooling declares
+  `DB_TOOLING=1` (`migrate-all.ts` sets it); the runtime refuses to start with
+  it. `assertRuntimeDatabase` (worker start, before any job; web start via
+  `instrumentation.ts`) and the posting gate (inside the transaction) refuse a
+  role that is superuser, BYPASSRLS, CREATEROLE, owns any public object or the
+  database (directly or through membership), can assume a privileged role, may
+  set `session_replication_role`, or holds TRIGGER / TRUNCATE / REFERENCES on a
+  protected table. Diagnostics name role@host/db, never a password.
+  `ALLOW_SUPERUSER_DB` has no effect in production.
+- **Reconciliation is recorded and monitored** (`lib/rta/posting/recon-schedule.ts`).
+  It runs daily at **06:30 Asia/Kolkata** (`RTA_RECON_TIME_IST`), computed in
+  IST whatever the host's zone, from a 1-minute monitor in the worker's `ops`
+  group (no Redis). Every run is a `rta_reconciliation_runs` row (+ one
+  `rta_reconciliation_run_firms` row per firm); a run whose heartbeat stops is
+  marked `incomplete`; a slot not run within 15 min is caught up with a
+  `missed` alert. It is no longer part of `daily-ops-scanner`.
+- **Alerts are rows** (`lib/ops/alerts.ts`, `ops_alerts`): one open alert per
+  condition (repeats count occurrences), delivered with an Idempotency-Key,
+  retried with bounded backoff, `undeliverable` after 8 attempts, escalated once
+  (`OPS_ALERT_ESCALATION_WEBHOOK_URL`) when undeliverable or unacknowledged for
+  60 min, closed only by a named, MFA-verified operator
+  (`/api/super-admin/ops-alerts`). PANs and URL credentials are masked before
+  storage. `GET /api/health/rta-reconciliation` (web, DB only) answers 503 on a
+  stopped worker, a missed / crashed / failed run, an undeliverable or
+  unacknowledged critical alert — and raises and delivers the worker-down
+  alert itself.
 
 ## Webhook handlers
 

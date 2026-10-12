@@ -13,6 +13,7 @@ import { BO_PARTICULARS } from "@/lib/service/back-office-work";
 import {
   clientScope, FINANCIAL_KINDS, inList, istDay, KIND_LABEL, num, numOrNull, OPS_ROLES, opsBase, opsFilter,
   selfOnly, str, textArray, type OpsWindow, type Row, type Tx,
+  rejectedInstructionKey,
 } from "./window";
 
 /* ───────────────────────────── §17–18 team workload ───────────────────────────── */
@@ -296,7 +297,7 @@ export async function loadBranchWise(tx: Tx, w: OpsWindow): Promise<BranchRow[]>
      GROUP BY 1, 2
   `)).rows as Row[];
   const rej = self ? [] : (await tx.execute(sql`
-    SELECT i.branch_id, COUNT(*)::int AS n
+    SELECT i.branch_id, COUNT(DISTINCT ${rejectedInstructionKey("t")})::int AS n
       FROM transactions t JOIN investors i ON i.id = t.investor_id
      WHERE t.tenant_id = ${w.tenantId}::uuid AND ${clientScope(w)} AND t.status IN ('rejected', 'failed')
        AND t.order_date BETWEEN ${w.from}::date AND ${w.to}::date
@@ -340,7 +341,7 @@ export async function loadRmWise(tx: Tx, w: OpsWindow): Promise<RmRow[]> {
               AND sr.investor_id IN (SELECT i2.id FROM investors i2 WHERE i2.rm_id = i.rm_id AND ${clientScope(w, "i2")}))::int
          + (SELECT COUNT(*) FROM sip_rejections s WHERE s.tenant_id = ${w.tenantId}::uuid AND s.recovery_status = 'client_contacted'
               AND s.investor_id IN (SELECT i2.id FROM investors i2 WHERE i2.rm_id = i.rm_id AND ${clientScope(w, "i2")}))::int AS aw_client,
-           (SELECT COUNT(*) FROM transactions t WHERE t.tenant_id = ${w.tenantId}::uuid AND t.status IN ('rejected', 'failed')
+           (SELECT COUNT(DISTINCT ${rejectedInstructionKey("t")}) FROM transactions t WHERE t.tenant_id = ${w.tenantId}::uuid AND t.status IN ('rejected', 'failed')
               AND t.order_date BETWEEN ${w.from}::date AND ${w.to}::date
               AND t.investor_id IN (SELECT i2.id FROM investors i2 WHERE i2.rm_id = i.rm_id AND ${clientScope(w, "i2")}))::int AS rej
       FROM (SELECT DISTINCT rm_id FROM investors i WHERE i.tenant_id = ${w.tenantId}::uuid AND i.rm_id IS NOT NULL AND ${clientScope(w)}) i

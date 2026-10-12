@@ -117,6 +117,7 @@ export async function POST(req: NextRequest) {
     }
 
     const tokenJwt = await issueSessionToken({
+      auth: "invite",
       userId: result.userId,
       tenantId: result.tenantId,
       branchId: result.branchId,

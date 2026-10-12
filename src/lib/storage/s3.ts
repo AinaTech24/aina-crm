@@ -106,6 +106,9 @@ function client(): S3Client {
         }
       : undefined, // falls back to IAM role on EC2/ECS
     maxAttempts: 3,
+    // S3-compatible storage (MinIO on-prem, or a local emulator in integration
+    // tests): opt-in by S3_ENDPOINT; unset = AWS as before.
+    ...(process.env.S3_ENDPOINT ? { endpoint: process.env.S3_ENDPOINT, forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "1" } : {}),
     requestHandler: {
       connectionTimeout: CONNECT_TIMEOUT_MS,
       requestTimeout: REQUEST_TIMEOUT_MS,

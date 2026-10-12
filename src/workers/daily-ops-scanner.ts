@@ -1292,6 +1292,10 @@ export async function runDailyOpsScan(): Promise<{
 }> {
   const startedAt = Date.now();
 
+  // RTA posting reconciliation is no longer part of this scan: it runs on its
+  // own recorded, monitored schedule (06:30 Asia/Kolkata) —
+  // lib/rta/posting/recon-schedule.ts, started by the worker's ops group.
+
   // ── Auto-purge: permanently remove soft-deleted tenants whose retention
   // window has elapsed (data is kept until then so they can be recovered).
   // Each purge runs in its OWN system tx so one failure can't roll back others.

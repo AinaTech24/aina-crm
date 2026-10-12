@@ -1,16 +1,20 @@
-import { buildHeaderIndexMap } from "../integrations/cams-feed-parser";
+import { buildHeaderIndexMap, RtaLayoutError } from "../integrations/cams-feed-parser";
 import { parseCsv } from "./csv";
+import { readDate, readNumber, detectDateOrder, type DateOrder } from "./values";
 
 /**
  * Parsers for RTA file types beyond the daily transaction feed.
  *
  * The CAMS / KFintech distributor file formats are not publicly documented;
- * they vary between MFDs and even between months. The parsers below capture
- * the *most common* layout — extend as you onboard more MFDs.
- *
- * Each parser is `(rawText, source) → CanonicalRow[]`. Canonical means
- * "named fields, no source-specific quirks." The processor then writes
- * canonical rows to our normalised tables.
+ * the aliases below are the column spellings this importer has met. Each
+ * parser maps columns by HEADER (searching the first few lines, past any title
+ * rows), reads every value strictly (lib/rta/values.ts) and returns
+ * `{ rows, rejects, notes }`:
+ *   - a row whose mandatory value is blank or unreadable is a REJECT with its
+ *     reason — never a 0, never today's date;
+ *   - a file whose header is not recognised, or lacks a required column,
+ *     throws RtaLayoutError and imports nothing. (They used to fall back to a
+ *     fixed column order and import whatever sat there.)
  */
 
 export type CanonicalSipRejection = {
@@ -22,6 +26,13 @@ export type CanonicalSipRejection = {
   amount: number;
   reason: string;        // human-readable reason
   reasonCode?: string;
+  /** The registrar's AMC / fund code, when the report carries one — folios are
+   *  matched on (AMC, folio), never on the number alone when it is known. */
+  amcCode?: string;
+  /** The registrar's tax status / holder type, when the report carries one. */
+  holderStatus?: string;
+  /** 1-based line in the decoded file, for error messages. */
+  line: number;
 };
 
 export type CanonicalBrokerageRow = {
@@ -36,6 +47,8 @@ export type CanonicalBrokerageRow = {
   aumAmount: number;
   brokerageRate: number;
   brokerageAmount: number;
+  /** 1-based line in the decoded file, for error messages. */
+  line: number;
 };
 
 export type CanonicalFolioRow = {
@@ -49,6 +62,10 @@ export type CanonicalFolioRow = {
   openedAt?: string; // YYYY-MM-DD
   closedAt?: string; // YYYY-MM-DD
   value?: number;
+  /** The registrar's tax status / holder type, when the report carries one. */
+  holderStatus?: string;
+  /** 1-based line in the decoded file, for error messages. */
+  line: number;
 };
 
 export type CanonicalSipRow = {
@@ -75,6 +92,10 @@ export type CanonicalSipRow = {
   registrarEndDate?: string;
   /** Why it stopped, in the registrar's words (CAMS WBR49 / KFintech MFSD230 REMARKS). */
   registrarRemark?: string;
+  /** The registrar's AMC / fund code (CAMS WBR49 amc_code, KFintech MFSD243 Fund Code). */
+  amcCode?: string;
+  /** 1-based line in the decoded file, for error messages. */
+  line: number;
 };
 
 export type CanonicalMandateRow = {
@@ -86,6 +107,8 @@ export type CanonicalMandateRow = {
   registeredAt?: string;
   expiresAt?: string;
   status: "pending" | "active" | "expired" | "rejected" | "cancelled";
+  /** 1-based line in the decoded file, for error messages. */
+  line: number;
 };
 
 export type CanonicalAumRow = {
@@ -106,20 +129,16 @@ export type CanonicalAumRow = {
    * so the merge has to key on it, or the second statement overwrites the first.
    */
   arn?: string;
+  /** The registrar's AMC / fund code, when the report carries one — folios are
+   *  matched on (AMC, folio), never on the number alone when it is known. */
+  amcCode?: string;
+  /** The registrar's tax status / holder type, when the report carries one. */
+  holderStatus?: string;
+  /** 1-based line in the decoded file, for error messages. */
+  line: number;
 };
 
 // ── Default mapping layouts & aliases ───────────────────────────────────
-
-const DEFAULT_SIP_REJECT_MAP: Record<string, number> = {
-  amcName: 0,
-  folioNumber: 1,
-  pan: 2,
-  schemeName: 3,
-  rejectionDate: 4,
-  amount: 5,
-  reasonCode: 6,
-  reason: 7,
-};
 
 const SIP_REJECT_ALIASES: Record<string, string[]> = {
   amcName: ["AMC", "AMC_NAME", "AMC NAME", "FMIM_CODE", "MUTUAL_FUND", "AMC_CD", "AMC_DESC"],
@@ -129,21 +148,10 @@ const SIP_REJECT_ALIASES: Record<string, string[]> = {
   rejectionDate: ["REJECT_DATE", "REJECTION_DATE", "REJ_DATE", "REJECT DATE", "REJECTION DATE", "DATE", "REJ_DT", "ORDER DATE", "ORDER_DATE"],
   amount: ["AMOUNT", "AMT", "TXN_AMT", "TXN_AMOUNT", "TRANS_AMT", "SIP_AMOUNT", "INSTALLMENT AMT", "INSTALLMENT_AMT", "INSTALLMENT AMOUNT", "INSTALLMENT_AMOUNT"],
   reasonCode: ["REASON_CODE", "REJ_CODE", "REJECT_CODE", "REASON CODE", "REJ CODE", "REJ_REASON", "REJ REASON", "FAIL_CODE"],
+  // Only spellings seen on registrar files: CAMS amc_code, KFintech Fund Code.
+  amcCode: ["AMC_CODE", "AMCCOD", "FUND CODE"],
+  holderStatus: ["TAX_STATUS"],
   reason: ["REASON", "REASON_DESC", "REASON DESCRIPTION", "REMARK", "REMARKS", "REJ_DESC", "REJECT_DESC", "REJECTION_REASON", "ORDER REMARK", "ORDER_REMARK", "ORDER STATUS", "ORDER_STATUS"],
-};
-
-const DEFAULT_BROKERAGE_MAP: Record<string, number> = {
-  amcCode: 0,
-  schemeCode: 1,
-  schemeName: 2,
-  folioNumber: 3,
-  pan: 4,
-  brokerageType: 5,
-  periodStart: 6,
-  periodEnd: 7,
-  aumAmount: 8,
-  brokerageRate: 9,
-  brokerageAmount: 10,
 };
 
 const BROKERAGE_ALIASES: Record<string, string[]> = {
@@ -160,19 +168,6 @@ const BROKERAGE_ALIASES: Record<string, string[]> = {
   brokerageAmount: ["BROKERAGE_AMOUNT", "COMMISSION_AMOUNT", "BROK_AMOUNT", "COMM_AMOUNT", "BRKAGE_AMT", "BROKERAGE (IN RS.)", "BROKERAGE IN RS", "BRKAGE AMT", "BRKAGE_AMOUNT"],
 };
 
-const DEFAULT_FOLIO_MST_MAP = {
-  pan: 0,
-  folioNumber: 1,
-  amcCode: 2,
-  amcName: 3,
-  schemeCode: 4,
-  schemeName: 5,
-  units: 6,
-  openedAt: 7,
-  closedAt: 8,
-  value: 9
-};
-
 const FOLIO_MST_ALIASES: Record<string, string[]> = {
   pan: ["PAN", "INV_PAN", "PAN_NO", "PAN NO", "PAN_NUM", "PAN NUM", "INVPAN", "PAN_NUMBER", "PAN NUMBER"],
   investorName: ["INV_NAME", "INVNAME", "INVESTOR_NAME", "INVESTOR NAME", "INV NAME", "NAME", "HOLDER_NAME", "FIRST_HOLDER"],
@@ -184,21 +179,8 @@ const FOLIO_MST_ALIASES: Record<string, string[]> = {
   units: ["UNITS", "UNIT", "QTY", "QUANTITY", "NO_OF_UNITS", "NO OF UNITS", "UNIT_BAL", "BALANCE_UNITS", "CURRENT_UNITS", "CLOS_BAL", "CLOSING_BALANCE", "CLOSE_BAL", "CLOS BAL"],
   openedAt: ["OPEN_DATE", "OPENDT", "OPENED_AT", "CREATION_DATE", "OPEN DATE", "OPEN_DT"],
   closedAt: ["CLOSE_DATE", "CLOSEDT", "CLOSED_AT", "CLOSE DATE", "CLOSE_DT"],
+  holderStatus: ["TAX_STATUS", "TAX STATUS"],
   value: ["AUM", "VALUE", "VALUATION", "AMOUNT", "CURR_VAL", "CURRENT_VALUE", "RUPEE_BAL", "RUPEE BAL", "CLOSING_ASSETS", "MARKET_VALUE", "AMOUNT_BAL"],
-};
-
-const DEFAULT_SIP_BOOK_MAP = {
-  pan: 0,
-  folioNumber: 1,
-  schemeCode: 2,
-  schemeName: 3,
-  amount: 4,
-  frequency: 5,
-  sipDate: 6,
-  startDate: 7,
-  endDate: 8,
-  nextInstallmentAt: 9,
-  mandateRefNo: 10
 };
 
 const SIP_BOOK_ALIASES: Record<string, string[]> = {
@@ -241,17 +223,9 @@ const SIP_BOOK_ALIASES: Record<string, string[]> = {
   // stay out of the SIP book, as CAMS's do.
   registrationType: ["AUT_TRNTYP", "AUTO_TRNTYP", "AUTO_TRN_TYPE", "REGISTRATION_TYPE", "TRTYPE", "TR_TYPE"],
   targetScheme: ["TARGET_SCH", "TARGET_SCHEME", "TARGET_SCHEME_CODE", "TO_SCHEME"],
-};
-
-const DEFAULT_MANDATE_STATUS_MAP = {
-  pan: 0,
-  mandateRefNo: 1,
-  bankAccountMasked: 2,
-  ifsc: 3,
-  amountLimit: 4,
-  registeredAt: 5,
-  expiresAt: 6,
-  status: 7
+  // CAMS WBR49 amc_code; KFintech MFSD243 "Fund Code" (verified equal to the
+  // MFSD201 / MFSD203 Fund on every shared folio, 2026-10-08) and MFSD230 Fund.
+  amcCode: ["AMC_CODE", "AMCCOD", "FUND CODE", "FUND"],
 };
 
 const MANDATE_STATUS_ALIASES: Record<string, string[]> = {
@@ -263,16 +237,6 @@ const MANDATE_STATUS_ALIASES: Record<string, string[]> = {
   registeredAt: ["REG_DATE", "REGISTERED_AT", "REG_DT", "REG DATE", "APPROVE_DATE"],
   expiresAt: ["EXP_DATE", "EXPIRES_AT", "EXP_DT", "EXP DATE", "END_DATE"],
   status: ["STATUS", "MANDATE_STATUS", "APPROVAL_STATUS", "STATUS_DESC"],
-};
-
-const DEFAULT_AUM_STATEMENT_MAP = {
-  pan: 0,
-  folioNumber: 1,
-  schemeCode: 2,
-  schemeName: 3,
-  units: 4,
-  nav: 5,
-  aumValue: 6
 };
 
 // CAMS's newer report layouts ("…C" files, and the WBR22 "AuM on a specific
@@ -290,55 +254,188 @@ const AUM_STATEMENT_ALIASES: Record<string, string[]> = {
   units: ["UNITS", "UNIT", "QTY", "QUANTITY", "NO_OF_UNITS", "NO OF UNITS", "UNIT_BAL", "BALANCE_UNITS", "CURRENT_UNITS", "CLOS_BAL"],
   nav: ["NAV", "RATE", "NAV_RATE", "PRICE"],
   aumValue: ["AUM", "VALUE", "VALUATION", "AMOUNT", "CURR_VAL", "CURRENT_VALUE", "AUM_VALUE", "CLOSING_ASSETS", "CLOSING ASSETS", "RUPEE_BAL", "MARKET_VALUE"],
+  amcCode: ["AMC_CODE", "AMCCOD", "FUND CODE", "FUND"],
+  holderStatus: ["TAX_STATUS"],
   arn: ["BROK_DLR_CODE", "BROK DLR CODE", "BROKER_CODE", "BROKER CODE", "AGENT_CODE", "AGENT CODE", "ARN", "ARN_CODE", "DISTRIBUTOR_CODE", "BROKER"],
 };
 
-// ── SIP rejection report ────────────────────────────────────────────────
+// ── Shared reading machinery ────────────────────────────────────────────
 
-const REASON_CODE_MAP: Record<string, string> = {
-  "001": "Insufficient funds",
-  "002": "Account closed",
-  "003": "Mandate inactive / cancelled",
-  "004": "Signature mismatch",
-  "005": "Mandate amount exceeded",
-  "006": "No such account",
-  "007": "Frozen account",
-  "008": "Other",
+/** A row a parser would not turn into a record, and why (1-based file line). */
+export type ParseReject = { line: number; reason: string };
+export type Parsed<T> = { rows: T[]; rejects: ParseReject[]; notes: string[] };
+
+/** How far into the file to look for the header (title rows sit above it). */
+const HEADER_SCAN_LINES = 10;
+
+type Layout = {
+  lines: string[];
+  delim: string;
+  headerAt: number;
+  header: string[];
+  indexMap: Record<string, number>;
 };
 
-export function parseSipRejectionReport(
+/**
+ * Find the header and map its columns. Throws RtaLayoutError when no line in
+ * the first few carries a key column, or a required column is missing — the
+ * parsers no longer fall back to fixed column positions, which imported
+ * whatever happened to sit in columns 0..N (header row included) of any file
+ * they did not recognise.
+ *
+ * `required` lists alternatives: each inner array is satisfied by ANY of its
+ * fields being present.
+ */
+function readLayout(
   text: string,
-  source: "cams" | "kfintech" | string
-): CanonicalSipRejection[] {
-  const out: CanonicalSipRejection[] = [];
+  report: string,
+  aliases: Record<string, string[]>,
+  keyFields: string[],
+  required: Array<{ any: string[]; label: string }>
+): Layout {
   const lines = text.split(/\r?\n/);
-  if (!lines.length) return out;
+  for (let i = 0; i < Math.min(HEADER_SCAN_LINES, lines.length); i++) {
+    const line = lines[i] ?? "";
+    if (!line.trim()) continue;
+    const delim = getDelimiter(line);
+    const header = splitLine(line, delim);
+    const indexMap = buildHeaderIndexMap(header, aliases);
+    if (!keyFields.some((f) => indexMap[f] !== undefined)) continue;
+    const missing = required.filter((r) => !r.any.some((f) => indexMap[f] !== undefined)).map((r) => r.label);
+    if (missing.length) {
+      throw new RtaLayoutError(
+        `This ${report} is missing required column(s): ${missing.join(", ")}. Nothing was imported. ` +
+          `Header read: ${header.map((h) => h.trim()).slice(0, 40).join(", ").slice(0, 400)}`
+      );
+    }
+    return { lines, delim, headerAt: i, header, indexMap };
+  }
+  const first = (lines.find((l) => l.trim()) ?? "").slice(0, 200);
+  throw new RtaLayoutError(
+    `Unrecognised ${report} layout — no header row with a ${keyFields.join(" / ")} column in the first ${HEADER_SCAN_LINES} lines. ` +
+      `Nothing was imported (files are no longer read by fixed column positions). First line: ${first}`
+  );
+}
 
-  const delim = getDelimiter(source, lines[0] ?? "");
-  const { start, indexMap } = resolveHeader(lines[0] ?? "", delim, SIP_REJECT_ALIASES, DEFAULT_SIP_REJECT_MAP);
+const NO_OPTIONAL: ReadonlySet<string> = new Set();
 
-  for (let i = start; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-    const cols = splitLine(line, delim);
-    const maxIdx = Math.max(...Object.values(indexMap));
-    if (cols.length <= maxIdx) continue;
+/** Iterate data lines after the header, with a value reader per row. */
+function* dataRows(layout: Layout, optional: ReadonlySet<string> = NO_OPTIONAL): Generator<{ line: number; val: (field: string) => string; short: boolean }> {
+  // An optional trailing column (the SIP register's registrar status / remark /
+  // end date) never decides whether a row is long enough.
+  const maxIdx = Math.max(0, ...Object.entries(layout.indexMap).filter(([k]) => !optional.has(k)).map(([, v]) => v));
+  for (let i = layout.headerAt + 1; i < layout.lines.length; i++) {
+    const raw = layout.lines[i];
+    if (!raw || !raw.trim()) continue;
+    const cols = splitLine(raw.trim(), layout.delim);
+    const val = (field: string) => {
+      const idx = layout.indexMap[field];
+      return idx === undefined ? "" : (cols[idx] ?? "").trim();
+    };
+    yield { line: i + 1, val, short: cols.length <= maxIdx };
+  }
+}
 
-    const val = (field: string) => cols[indexMap[field as keyof typeof indexMap]]?.trim() ?? "";
-    const reasonCode = val("reasonCode");
+/** File-level date order from every value of the given date fields. */
+function dateOrderOf(layout: Layout, fields: string[]): DateOrder | "conflict" {
+  const samples: string[] = [];
+  for (const { val } of dataRows(layout)) {
+    for (const f of fields) {
+      const v = val(f);
+      if (v) samples.push(v);
+    }
+    if (samples.length > 5000) break;
+  }
+  return detectDateOrder(samples);
+}
 
-    out.push({
-      amcName: val("amcName"),
-      folioNumber: val("folioNumber"),
-      pan: val("pan"),
-      schemeName: val("schemeName"),
-      rejectionDate: normaliseDate(val("rejectionDate")) ?? today(),
-      amount: parseFloat(val("amount") ?? "0") || 0,
-      reasonCode,
-      reason:
-        (reasonCode && REASON_CODE_MAP[reasonCode]) ??
-        val("reason") ??
-        "Unknown",
+class RowError extends Error {}
+
+/** Mandatory number: blank or unreadable rejects the row. */
+function needNumber(val: (f: string) => string, field: string, label: string): number {
+  const r = readNumber(val(field));
+  if (!r.ok) throw new RowError(`${label} ${r.reason}`);
+  if (r.value === null) throw new RowError(`${label} is blank`);
+  return r.value;
+}
+
+/** Optional number: blank → undefined, unreadable rejects the row. */
+function optNumber(val: (f: string) => string, field: string, label: string): number | undefined {
+  const r = readNumber(val(field));
+  if (!r.ok) throw new RowError(`${label} ${r.reason}`);
+  return r.value === null ? undefined : r.value;
+}
+
+/** Date under the file's order; a mixed-order file accepts only self-evident dates. */
+function dateValue(raw: string, order: DateOrder | "conflict", label: string): string | undefined {
+  if (!raw) return undefined;
+  let use: DateOrder = order === "conflict" ? "dmy" : order;
+  if (order === "conflict") {
+    const m = raw.match(/^(\d{1,2})[-/.](\d{1,2})[-/.]\d{4}/);
+    if (m) {
+      if (+m[1] > 12) use = "dmy";
+      else if (+m[2] > 12) use = "mdy";
+      else throw new RowError(`${label} "${raw}" is ambiguous — this file writes dates both day-first and month-first`);
+    }
+  }
+  const r = readDate(raw, use);
+  if (!r.ok) throw new RowError(`${label} ${r.reason}`);
+  return r.value ?? undefined;
+}
+
+function needDate(raw: string, order: DateOrder | "conflict", label: string): string {
+  const d = dateValue(raw, order, label);
+  if (!d) throw new RowError(`${label} is blank — a missing date is never replaced with today`);
+  return d;
+}
+
+/** Run one row's reader; a RowError becomes a reject, anything else propagates. */
+function collect<T>(out: Parsed<T>, line: number, read: () => T | null) {
+  try {
+    const row = read();
+    if (row) out.rows.push(row);
+  } catch (e) {
+    if (e instanceof RowError) out.rejects.push({ line, reason: e.message });
+    else throw e;
+  }
+}
+
+// ── SIP rejection report ────────────────────────────────────────────────
+
+/**
+ * The registrar's reason text is used as written. (An earlier table here gave
+ * codes 001–008 fixed meanings — "Insufficient funds", "Account closed" … —
+ * that no registrar document in this codebase supports; a code with no text
+ * now says so instead of being given an invented meaning.)
+ */
+export function parseSipRejectionReport(text: string, _source: "cams" | "kfintech" | string): Parsed<CanonicalSipRejection> {
+  const out: Parsed<CanonicalSipRejection> = { rows: [], rejects: [], notes: [] };
+  if (!text.trim()) return out;
+  const layout = readLayout(text, "SIP rejection report", SIP_REJECT_ALIASES, ["folioNumber", "pan"], [
+    { any: ["folioNumber", "pan"], label: "folio number or PAN" },
+    { any: ["rejectionDate"], label: "rejection date" },
+    { any: ["amount"], label: "amount" },
+  ]);
+  const order = dateOrderOf(layout, ["rejectionDate"]);
+  for (const { line, val, short } of dataRows(layout)) {
+    if (short) { out.rejects.push({ line, reason: "row is shorter than the header — truncated or mis-delimited" }); continue; }
+    collect(out, line, () => {
+      if (!val("folioNumber") && !val("pan")) throw new RowError("row carries no folio number or PAN");
+      const reasonCode = val("reasonCode");
+      const reasonText = val("reason");
+      return {
+        amcName: val("amcName"),
+        folioNumber: val("folioNumber"),
+        pan: val("pan"),
+        schemeName: val("schemeName"),
+        rejectionDate: needDate(val("rejectionDate"), order, "rejection date"),
+        amount: needNumber(val, "amount", "amount"),
+        reasonCode,
+        reason: reasonText || (reasonCode ? `Reason code ${reasonCode} (no description in the file)` : "No reason given in the file"),
+        amcCode: val("amcCode") || undefined,
+        holderStatus: val("holderStatus") || undefined,
+        line,
+      };
     });
   }
   return out;
@@ -346,43 +443,37 @@ export function parseSipRejectionReport(
 
 // ── Monthly brokerage statement ─────────────────────────────────────────
 
-export function parseBrokerageStatement(
-  text: string,
-  source: "cams" | "kfintech" | string
-): CanonicalBrokerageRow[] {
-  const out: CanonicalBrokerageRow[] = [];
-  const lines = text.split(/\r?\n/);
-  if (!lines.length) return out;
-  const delim = getDelimiter(source, lines[0] ?? "");
-  const { start, indexMap } = resolveHeader(lines[0] ?? "", delim, BROKERAGE_ALIASES, DEFAULT_BROKERAGE_MAP);
-
-  for (let i = start; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-    const cols = splitLine(line, delim);
-    const maxIdx = Math.max(...Object.values(indexMap));
-    if (cols.length <= maxIdx) continue;
-
-    const val = (field: string) => cols[indexMap[field as keyof typeof indexMap]]?.trim() ?? "";
-
-    const typeRaw = val("brokerageType").toUpperCase();
-    let brokerageType: CanonicalBrokerageRow["brokerageType"] = "other";
-    if (typeRaw.includes("UPFRONT")) brokerageType = "upfront";
-    else if (typeRaw.includes("TRAIL")) brokerageType = "trail";
-    else if (typeRaw.includes("B30") || typeRaw.includes("B-30")) brokerageType = "b30";
-
-    out.push({
-      amcCode: val("amcCode"),
-      schemeCode: val("schemeCode"),
-      schemeName: val("schemeName"),
-      folioNumber: val("folioNumber"),
-      pan: val("pan"),
-      brokerageType,
-      periodStart: normaliseDate(val("periodStart")) ?? today(),
-      periodEnd: normaliseDate(val("periodEnd")) ?? today(),
-      aumAmount: parseFloat(val("aumAmount") ?? "0") || 0,
-      brokerageRate: parseFloat(val("brokerageRate") ?? "0") || 0,
-      brokerageAmount: parseFloat(val("brokerageAmount") ?? "0") || 0,
+export function parseBrokerageStatement(text: string, _source: "cams" | "kfintech" | string): Parsed<CanonicalBrokerageRow> {
+  const out: Parsed<CanonicalBrokerageRow> = { rows: [], rejects: [], notes: [] };
+  if (!text.trim()) return out;
+  const layout = readLayout(text, "brokerage statement", BROKERAGE_ALIASES, ["folioNumber", "pan", "schemeCode", "amcCode"], [
+    { any: ["brokerageAmount"], label: "brokerage amount" },
+    { any: ["periodStart"], label: "period start date" },
+    { any: ["periodEnd"], label: "period end date" },
+  ]);
+  const order = dateOrderOf(layout, ["periodStart", "periodEnd"]);
+  for (const { line, val, short } of dataRows(layout)) {
+    if (short) { out.rejects.push({ line, reason: "row is shorter than the header — truncated or mis-delimited" }); continue; }
+    collect(out, line, () => {
+      const typeRaw = val("brokerageType").toUpperCase();
+      let brokerageType: CanonicalBrokerageRow["brokerageType"] = "other";
+      if (typeRaw.includes("UPFRONT")) brokerageType = "upfront";
+      else if (typeRaw.includes("TRAIL")) brokerageType = "trail";
+      else if (typeRaw.includes("B30") || typeRaw.includes("B-30")) brokerageType = "b30";
+      return {
+        amcCode: val("amcCode"),
+        schemeCode: val("schemeCode"),
+        schemeName: val("schemeName"),
+        folioNumber: val("folioNumber"),
+        pan: val("pan"),
+        brokerageType,
+        periodStart: needDate(val("periodStart"), order, "period start"),
+        periodEnd: needDate(val("periodEnd"), order, "period end"),
+        aumAmount: optNumber(val, "aumAmount", "AUM") ?? 0,
+        brokerageRate: optNumber(val, "brokerageRate", "rate") ?? 0,
+        brokerageAmount: needNumber(val, "brokerageAmount", "brokerage amount"),
+        line,
+      };
     });
   }
   return out;
@@ -390,95 +481,96 @@ export function parseBrokerageStatement(
 
 // ── Folio Master Dump ───────────────────────────────────────────────────
 
-export function parseFolioMasterDump(
-  text: string,
-  source: "cams" | "kfintech" | string
-): CanonicalFolioRow[] {
-  const out: CanonicalFolioRow[] = [];
-  const lines = text.split(/\r?\n/);
-  if (!lines.length) return out;
-  const delim = getDelimiter(source, lines[0]);
-  const { start, indexMap } = resolveHeader(lines[0] ?? "", delim, FOLIO_MST_ALIASES, DEFAULT_FOLIO_MST_MAP);
-
-  for (let i = start; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-    const cols = splitLine(line, delim);
-    const maxIdx = Math.max(...Object.values(indexMap));
-    if (cols.length <= maxIdx) continue;
-
-    const val = (field: string) => cols[indexMap[field as keyof typeof indexMap]]?.trim() ?? "";
-
-    out.push({
+export function parseFolioMasterDump(text: string, _source: "cams" | "kfintech" | string): Parsed<CanonicalFolioRow> {
+  const out: Parsed<CanonicalFolioRow> = { rows: [], rejects: [], notes: [] };
+  if (!text.trim()) return out;
+  const layout = readLayout(text, "folio master", FOLIO_MST_ALIASES, ["folioNumber", "pan"], [
+    { any: ["folioNumber"], label: "folio number" },
+    { any: ["pan"], label: "PAN" },
+    { any: ["amcCode"], label: "AMC code" },
+    { any: ["schemeCode"], label: "scheme code" },
+    { any: ["units"], label: "units" },
+  ]);
+  const order = dateOrderOf(layout, ["openedAt", "closedAt"]);
+  for (const { line, val, short } of dataRows(layout)) {
+    if (short) { out.rejects.push({ line, reason: "row is shorter than the header — truncated or mis-delimited" }); continue; }
+    collect(out, line, () => ({
       pan: val("pan"),
       folioNumber: val("folioNumber"),
       amcCode: val("amcCode"),
       amcName: val("amcName") || val("amcCode"),
       schemeCode: val("schemeCode"),
       schemeName: val("schemeName"),
-      units: parseFloat(val("units") ?? "0") || 0,
-      openedAt: normaliseDate(val("openedAt")) ?? undefined,
-      closedAt: normaliseDate(val("closedAt")) ?? undefined,
-      value: parseFloat(val("value") ?? "0") || undefined,
-    });
+      units: needNumber(val, "units", "units"),
+      openedAt: dateValue(val("openedAt"), order, "open date"),
+      closedAt: dateValue(val("closedAt"), order, "close date"),
+      value: optNumber(val, "value", "value"),
+      holderStatus: val("holderStatus") || undefined,
+      line,
+    }));
   }
   return out;
 }
 
 // ── Active SIP Book ─────────────────────────────────────────────────────
 
-export function parseSipBook(
-  text: string,
-  source: "cams" | "kfintech" | string
-): CanonicalSipRow[] {
-  const out: CanonicalSipRow[] = [];
-  const lines = text.split(/\r?\n/);
-  if (!lines.length) return out;
-  const delim = getDelimiter(source, lines[0]);
-  const { start, indexMap } = resolveHeader(lines[0] ?? "", delim, SIP_BOOK_ALIASES, DEFAULT_SIP_BOOK_MAP);
-  assertKnownLayout(start, lines[0] ?? "", delim, "SIP register");
+export function parseSipBook(text: string, _source: "cams" | "kfintech" | string): Parsed<CanonicalSipRow> {
+  const out: Parsed<CanonicalSipRow> = { rows: [], rejects: [], notes: [] };
+  if (!text.trim()) return out;
+  const layout = readLayout(text, "SIP register", SIP_BOOK_ALIASES, ["folioNumber", "pan"], [
+    { any: ["folioNumber"], label: "folio number" },
+    { any: ["amount"], label: "instalment amount" },
+  ]);
 
   // CAMS calls the scheme-name column plainly `SCHEME`, which is too generic to
   // sit in SIP_BOOK_ALIASES: buildHeaderIndexMap takes the FIRST header matching
   // any alias, so a file carrying both `SCHEME` (a code) and `SCHEME_NAME` would
   // pick the wrong one. Resolve it only as a fallback, once the precise aliases
   // have had their chance.
-  if (indexMap.schemeName === undefined) {
-    const generic = buildHeaderIndexMap(splitLine(lines[0] ?? "", delim), { schemeName: ["SCHEME"] });
-    if (generic.schemeName !== undefined) indexMap.schemeName = generic.schemeName;
+  if (layout.indexMap.schemeName === undefined) {
+    const generic = buildHeaderIndexMap(layout.header, { schemeName: ["SCHEME"] });
+    if (generic.schemeName !== undefined) layout.indexMap.schemeName = generic.schemeName;
   }
+  if (layout.indexMap.schemeCode === undefined && layout.indexMap.schemeName === undefined) {
+    throw new RtaLayoutError(`This SIP register has no scheme code or scheme name column. Nothing was imported. Header read: ${layout.header.join(", ").slice(0, 400)}`);
+  }
+  const hasFrequency = layout.indexMap.frequency !== undefined;
+  if (!hasFrequency) {
+    out.notes.push("This SIP register has no frequency column, so every SIP in it was read as monthly.");
+  }
+  const order = dateOrderOf(layout, ["startDate", "endDate", "nextInstallmentAt", "ceaseDate"]);
 
-  for (let i = start; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-    const cols = splitLine(line, delim);
-    // The optional status columns never decide whether a row is long enough.
-    const maxIdx = Math.max(...Object.entries(indexMap).filter(([k]) => !OPTIONAL_SIP_COLUMNS.has(k)).map(([, v]) => v));
-    if (cols.length <= maxIdx) continue;
-
-    const val = (field: string) => cols[indexMap[field as keyof typeof indexMap]]?.trim() ?? "";
-
-    // Many CRM-exported active-SIP reports carry only the scheme NAME, no code.
-    // Fall back to the name as the code so the SIP row still keys + imports.
-    const schemeName = val("schemeName");
-    out.push({
-      pan: val("pan"),
-      folioNumber: val("folioNumber"),
-      schemeCode: val("schemeCode") || schemeName,
-      schemeName,
-      amount: parseFloat(val("amount").replace(/[, ]/g, "")) || 0,
-      frequency: normaliseFrequency(val("frequency")),
-      sipDate: val("sipDate") || undefined,
-      startDate: realDate(val("startDate")),
-      endDate: realDate(val("endDate")),
-      nextInstallmentAt: normaliseDate(val("nextInstallmentAt")) ?? undefined,
-      mandateRefNo: val("mandateRefNo") || undefined,
-      ceaseDate: realDate(val("ceaseDate")),
-      registrationType: val("registrationType") || undefined,
-      targetScheme: val("targetScheme") || undefined,
-      registrarStatus: val("registrarStatus") || undefined,
-      registrarEndDate: realDate(val("registrarEndDate")),
-      registrarRemark: val("registrarRemark") || undefined,
+  for (const { line, val, short } of dataRows(layout, OPTIONAL_SIP_COLUMNS)) {
+    if (short) { out.rejects.push({ line, reason: "row is shorter than the header — truncated or mis-delimited" }); continue; }
+    collect(out, line, () => {
+      // Many CRM-exported active-SIP reports carry only the scheme NAME, no code.
+      // Fall back to the name as the code so the SIP row still keys + imports.
+      const schemeName = val("schemeName");
+      const frequency = hasFrequency ? readFrequency(val("frequency")) : "monthly";
+      return {
+        pan: val("pan"),
+        folioNumber: val("folioNumber"),
+        schemeCode: val("schemeCode") || schemeName,
+        schemeName,
+        amount: needNumber(val, "amount", "instalment amount"),
+        frequency,
+        sipDate: val("sipDate") || undefined,
+        startDate: sipDate(val("startDate"), order, "start date"),
+        endDate: sipDate(val("endDate"), order, "end date"),
+        nextInstallmentAt: dateValue(val("nextInstallmentAt"), order, "next instalment date"),
+        mandateRefNo: val("mandateRefNo") || undefined,
+        ceaseDate: sipDate(val("ceaseDate"), order, "cease date"),
+        registrationType: val("registrationType") || undefined,
+        targetScheme: val("targetScheme") || undefined,
+        amcCode: val("amcCode") || undefined,
+        // The registrar's own status words (production, 2026-10-09): a LABEL,
+        // never a closure. Optional — an unreadable TerminateDate is dropped,
+        // never a reason to reject the registration.
+        registrarStatus: val("registrarStatus") || undefined,
+        registrarEndDate: optionalSipDate(val("registrarEndDate"), order),
+        registrarRemark: val("registrarRemark") || undefined,
+        line,
+      };
     });
   }
   return out;
@@ -487,90 +579,123 @@ export function parseSipBook(
 const OPTIONAL_SIP_COLUMNS = new Set(["registrarStatus", "registrarRemark", "registrarEndDate"]);
 
 /**
- * A date that means something. A blank spreadsheet cell comes out as Excel's
- * day zero (1899-12-30 / 1900-01-01), which read as "ended in 1899"; anything
- * before 1950 is that artefact, not a real SIP date.
+ * A SIP register date. Two documented quirks of CAMS WBR49:
+ *   - it writes US dates with a clock — "2/9/2010 12:00 AM" is 9 FEB — so a
+ *     date carrying an AM/PM clock is read month-first;
+ *   - a blank spreadsheet cell comes out as Excel's day zero (1899/1900), which
+ *     is not a SIP date; anything before 1950 is treated as blank.
  */
-function realDate(d?: string): string | undefined {
-  // CAMS WBR49 writes US dates with a clock — "2/9/2010 12:00 AM" is 9 FEB.
-  // The general reader takes d/m first, which misread every such date whose
-  // day is 12 or less (cease and end dates included).
-  const us = d?.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)$/i);
-  const iso = us
-    ? `${us[3]}-${us[1].padStart(2, "0")}-${us[2].padStart(2, "0")}`
-    : normaliseDate(d);
+function sipDate(raw: string, order: DateOrder | "conflict", label: string): string | undefined {
+  const us = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)$/i);
+  const iso = us ? dateValue(`${us[1]}/${us[2]}/${us[3]}`, "mdy", label) : dateValue(raw, order, label);
   return iso && iso >= "1950-01-01" ? iso : undefined;
+}
+
+/** An optional SIP-register date: unreadable or ambiguous → undefined, never a rejected row. */
+function optionalSipDate(raw: string, order: DateOrder | "conflict"): string | undefined {
+  try {
+    return sipDate(raw, order, "terminate date");
+  } catch (e) {
+    if (e instanceof RowError) return undefined;
+    throw e;
+  }
+}
+
+/**
+ * CAMS WBR49 frequency codes, as this importer documents them from real files:
+ * OM once a month, OW once a week, Q / OQ quarterly, OF / FN fortnightly,
+ * OY / Y yearly — plus the plain words. Anything else (including D, daily,
+ * which the SIP book has no slot for) rejects the row rather than being read
+ * as monthly.
+ */
+function readFrequency(raw: string): CanonicalSipRow["frequency"] {
+  const f = raw.trim().toLowerCase();
+  if (f === "om" || f === "m" || f.includes("month")) return "monthly";
+  if (f === "ow" || f === "w" || f.includes("weekly")) return "weekly";
+  if (f === "q" || f === "oq" || f.includes("quarter")) return "quarterly";
+  if (f === "of" || f === "fn" || f.includes("fortnight")) return "fortnightly";
+  if (f === "oy" || f === "y" || f.includes("year") || f.includes("annual")) return "yearly";
+  throw new RowError(f ? `frequency "${raw.trim()}" is not one this importer reads — not assumed monthly` : "frequency is blank");
 }
 
 // ── NACH Mandate Status ─────────────────────────────────────────────────
 
-export function parseMandateStatus(
-  text: string,
-  source: "cams" | "kfintech" | string
-): CanonicalMandateRow[] {
-  const out: CanonicalMandateRow[] = [];
-  const lines = text.split(/\r?\n/);
-  if (!lines.length) return out;
-  const delim = getDelimiter(source, lines[0]);
-  const { start, indexMap } = resolveHeader(lines[0] ?? "", delim, MANDATE_STATUS_ALIASES, DEFAULT_MANDATE_STATUS_MAP);
-
-  for (let i = start; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-    const cols = splitLine(line, delim);
-    const maxIdx = Math.max(...Object.values(indexMap));
-    if (cols.length <= maxIdx) continue;
-
-    const val = (field: string) => cols[indexMap[field as keyof typeof indexMap]]?.trim() ?? "";
-
-    out.push({
+export function parseMandateStatus(text: string, _source: "cams" | "kfintech" | string): Parsed<CanonicalMandateRow> {
+  const out: Parsed<CanonicalMandateRow> = { rows: [], rejects: [], notes: [] };
+  if (!text.trim()) return out;
+  const layout = readLayout(text, "mandate status report", MANDATE_STATUS_ALIASES, ["mandateRefNo", "pan"], [
+    { any: ["mandateRefNo"], label: "mandate reference / UMRN" },
+    { any: ["pan"], label: "PAN" },
+    { any: ["status"], label: "status" },
+  ]);
+  const order = dateOrderOf(layout, ["registeredAt", "expiresAt"]);
+  for (const { line, val, short } of dataRows(layout)) {
+    if (short) { out.rejects.push({ line, reason: "row is shorter than the header — truncated or mis-delimited" }); continue; }
+    collect(out, line, () => ({
       pan: val("pan"),
       mandateRefNo: val("mandateRefNo"),
       bankAccountMasked: val("bankAccountMasked") || undefined,
       ifsc: val("ifsc") || undefined,
-      amountLimit: parseFloat(val("amountLimit") ?? "0") || undefined,
-      registeredAt: normaliseDate(val("registeredAt")) ?? undefined,
-      expiresAt: normaliseDate(val("expiresAt")) ?? undefined,
-      status: normaliseMandateStatus(val("status")),
-    });
+      amountLimit: optNumber(val, "amountLimit", "amount limit"),
+      registeredAt: dateValue(val("registeredAt"), order, "registration date"),
+      expiresAt: dateValue(val("expiresAt"), order, "expiry date"),
+      status: readMandateStatus(val("status")),
+      line,
+    }));
   }
   return out;
 }
 
+/**
+ * Mandate status by WHOLE phrase, not substring: "Inactive" used to contain
+ * "active" and "Not Approved" to contain "approved", so both read as active.
+ * A status this importer does not know rejects the row.
+ */
+function readMandateStatus(raw: string): CanonicalMandateRow["status"] {
+  const s = raw.trim().toUpperCase().replace(/[\s_-]+/g, " ");
+  if (["ACTIVE", "APPROVED", "SUCCESS", "SUCCESSFUL", "REGISTERED"].includes(s)) return "active";
+  if (["EXPIRED"].includes(s)) return "expired";
+  if (["REJECTED", "REJECT", "FAILED", "FAILURE", "NOT APPROVED"].includes(s)) return "rejected";
+  if (["CANCELLED", "CANCELED", "CANCEL"].includes(s)) return "cancelled";
+  if (["PENDING", "SUBMITTED", "UNDER PROCESS", "IN PROCESS", "INITIATED"].includes(s)) return "pending";
+  throw new RowError(s ? `mandate status "${raw.trim()}" is not one this importer reads` : "mandate status is blank");
+}
+
 // ── Monthly AUM Statement ───────────────────────────────────────────────
 
-export function parseAumStatement(
-  text: string,
-  source: "cams" | "kfintech" | string
-): CanonicalAumRow[] {
-  const out: CanonicalAumRow[] = [];
-  const lines = text.split(/\r?\n/);
-  if (!lines.length) return out;
-  const delim = getDelimiter(source, lines[0]);
-  const { start, indexMap } = resolveHeader(lines[0] ?? "", delim, AUM_STATEMENT_ALIASES, DEFAULT_AUM_STATEMENT_MAP);
-  assertKnownLayout(start, lines[0] ?? "", delim, "AUM statement");
-
-  for (let i = start; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-    const cols = splitLine(line, delim);
-    const maxIdx = Math.max(...Object.values(indexMap));
-    if (cols.length <= maxIdx) continue;
-
-    const val = (field: string) => cols[indexMap[field as keyof typeof indexMap]]?.trim() ?? "";
-
-    out.push({
-      pan: val("pan"),
-      investorName: val("investorName") || undefined,
-      folioNumber: val("folioNumber"),
-      schemeCode: val("schemeCode"),
-      schemeName: val("schemeName"),
-      units: parseFloat(val("units") ?? "0") || 0,
-      nav: parseFloat(val("nav") ?? "0") || undefined,
-      aumValue: parseFloat(val("aumValue") ?? "0") || 0,
-      // Absent from statements that don't name the broker — the merge treats a
-      // missing ARN as "unknown slice" rather than inventing one.
-      arn: val("arn") || undefined,
+export function parseAumStatement(text: string, _source: "cams" | "kfintech" | string): Parsed<CanonicalAumRow> {
+  const out: Parsed<CanonicalAumRow> = { rows: [], rejects: [], notes: [] };
+  if (!text.trim()) return out;
+  const layout = readLayout(text, "AUM statement", AUM_STATEMENT_ALIASES, ["folioNumber", "pan"], [
+    { any: ["folioNumber"], label: "folio number" },
+    { any: ["schemeCode"], label: "scheme code" },
+    { any: ["units"], label: "units" },
+    { any: ["aumValue", "nav"], label: "value or NAV" },
+  ]);
+  for (const { line, val, short } of dataRows(layout)) {
+    if (short) { out.rejects.push({ line, reason: "row is shorter than the header — truncated or mis-delimited" }); continue; }
+    collect(out, line, () => {
+      const units = needNumber(val, "units", "units");
+      const nav = optNumber(val, "nav", "NAV");
+      const value = optNumber(val, "aumValue", "value");
+      if (value === undefined && nav === undefined) throw new RowError("row has neither a value nor a NAV");
+      if (units < 0 || (value ?? 0) < 0) throw new RowError("negative units or value in a holdings statement — not applied");
+      return {
+        pan: val("pan"),
+        investorName: val("investorName") || undefined,
+        folioNumber: val("folioNumber"),
+        schemeCode: val("schemeCode"),
+        schemeName: val("schemeName"),
+        units,
+        nav,
+        aumValue: value ?? Math.round(units * (nav ?? 0) * 100) / 100,
+        // Absent from statements that don't name the broker — the merge treats a
+        // missing ARN as "unknown slice" rather than inventing one.
+        arn: val("arn") || undefined,
+        amcCode: val("amcCode") || undefined,
+        holderStatus: val("holderStatus") || undefined,
+        line,
+      };
     });
   }
   return out;
@@ -578,7 +703,7 @@ export function parseAumStatement(
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
-function getDelimiter(_source: string, text: string): string {
+function getDelimiter(text: string): string {
   // Sniff from the header line, not the source. The upload decoder normalises
   // every spreadsheet AND csv to pipe-delimited text, so KFin uploads are pipe
   // too — keying off `source === "kfintech"` would have mis-split them.
@@ -588,49 +713,13 @@ function getDelimiter(_source: string, text: string): string {
 }
 
 /**
- * Decide whether the first line is a header and build the column map.
- * A real header is detected when alias-matching actually finds a key column
- * (folio / PAN / mandate ref) — far more robust than literal keyword sniffing,
- * which failed on CAMS files that don't print the words "PAN"/"AUM"/"BROKERAGE".
- * Falls back to the positional default map when no header is recognised.
- */
-/**
- * A first line made of column NAMES that resolveHeader could not place means a
- * layout this importer does not know. Reading it by position anyway put scheme
- * codes in the folio column and created a client per scheme (Attitude
- * Financial, 9 Oct 2026); and the ARN in the folio column of a KFintech SIP
- * report. Refuse instead, naming the columns, so the file is marked failed and
- * the layout gets added. A file with no header row at all still reads by
+ * The name production code and tests know for a refused layout. The parsers
+ * throw RtaLayoutError (no header with a key column in the first lines, or a
+ * required column missing); there is no positional fallback at all — stricter
+ * than the 2026-10-09 production rule, which still read a header-less file by
  * position.
  */
-export class UnknownRtaLayoutError extends Error {}
-function assertKnownLayout(start: number, firstLine: string, delim: string, what: string): void {
-  if (start !== 0) return;
-  const cells = splitLine(firstLine, delim).map((c) => c.trim()).filter(Boolean);
-  if (cells.length < 3) return;
-  const named = cells.filter((c) => /^[A-Za-z][A-Za-z0-9 _./()&-]*$/.test(c) && !/^\d/.test(c));
-  if (named.length / cells.length < 0.8) return;
-  throw new UnknownRtaLayoutError(
-    `Unrecognised ${what} layout — no folio or PAN column among: ${cells.slice(0, 8).join(", ")}${cells.length > 8 ? ", …" : ""}. Nothing was imported.`
-  );
-}
-
-function resolveHeader(
-  firstLine: string,
-  delim: string,
-  aliases: Record<string, string[]>,
-  fallback: Record<string, number>
-): { start: number; indexMap: Record<string, number> } {
-  const detected = buildHeaderIndexMap(splitLine(firstLine ?? "", delim), aliases);
-  if (
-    detected.folioNumber !== undefined ||
-    detected.pan !== undefined ||
-    detected.mandateRefNo !== undefined
-  ) {
-    return { start: 1, indexMap: detected };
-  }
-  return { start: 0, indexMap: fallback };
-}
+export { RtaLayoutError as UnknownRtaLayoutError };
 
 /**
  * Split one delimited line into fields.
@@ -638,65 +727,10 @@ function resolveHeader(
  * The comma case delegates to the shared RFC-4180 reader, which treats both `"`
  * and `'` as quotes — CAMS's "CSVWH" mailback wraps every text field in SINGLE
  * quotes, and the hand-rolled splitter this replaced only knew double quotes, so
- * every value arrived with its apostrophes attached (`'AJNPB9093L'`) and matched
- * nothing downstream. Same defect the transaction feed carried; fixed in both so
- * a single-quoted SIP register / brokerage / AUM statement parses too.
+ * every value arrived with its apostrophes attached and matched nothing
+ * downstream.
  */
 function splitLine(line: string, delim: string): string[] {
   if (delim === ",") return parseCsv(line)[0] ?? [];
   return line.split(delim);
-}
-
-function normaliseFrequency(freq: string): "monthly" | "quarterly" | "weekly" | "fortnightly" | "yearly" {
-  const f = freq.toLowerCase();
-  // CAMS WBR49 codes: OM once a month, OW once a week, Q quarterly, OF / FN
-  // fortnightly, OY / Y yearly. (D, daily, has no slot and stays monthly.)
-  const code = f.trim();
-  if (code === "ow" || code === "w") return "weekly";
-  if (code === "q" || code === "oq") return "quarterly";
-  if (code === "of" || code === "fn") return "fortnightly";
-  if (code === "oy" || code === "y") return "yearly";
-  if (f.includes("quarter")) return "quarterly";
-  if (f.includes("weekly")) return "weekly";
-  if (f.includes("fortnight")) return "fortnightly";
-  if (f.includes("year")) return "yearly";
-  return "monthly";
-}
-
-function normaliseMandateStatus(s: string): "pending" | "active" | "expired" | "rejected" | "cancelled" {
-  const status = s.toLowerCase();
-  if (status.includes("active") || status.includes("approved") || status.includes("success")) return "active";
-  if (status.includes("expired")) return "expired";
-  if (status.includes("reject") || status.includes("fail")) return "rejected";
-  if (status.includes("cancel")) return "cancelled";
-  return "pending";
-}
-
-const MONTHS_MAP: Record<string, string> = {
-  JAN: "01", FEB: "02", MAR: "03", APR: "04", MAY: "05", JUN: "06",
-  JUL: "07", AUG: "08", SEP: "09", OCT: "10", NOV: "11", DEC: "12",
-};
-
-function normaliseDate(d?: string): string | null {
-  if (!d) return null;
-  const s = d.trim();
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-  const dmy = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
-  if (dmy) {
-    let day = parseInt(dmy[1], 10);
-    let mon = parseInt(dmy[2], 10);
-    if (mon > 12 && day <= 12) [day, mon] = [mon, day]; // MM/DD feed — swap
-    return `${dmy[3]}-${String(mon).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-  }
-  // DD-MON-YYYY (e.g. 31-May-2026, common in CAMS AUM exports).
-  const dmon = s.match(/^(\d{1,2})[-\/ ]([A-Za-z]{3})[A-Za-z]*[-\/ ](\d{4})/);
-  if (dmon) {
-    const mm = MONTHS_MAP[dmon[2].toUpperCase()];
-    if (mm) return `${dmon[3]}-${mm}-${dmon[1].padStart(2, "0")}`;
-  }
-  return null;
-}
-
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
 }

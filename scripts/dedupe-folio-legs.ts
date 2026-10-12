@@ -28,6 +28,7 @@
  *   tsx scripts/dedupe-folio-legs.ts --tenant <uuid> [--apply]
  */
 import "dotenv/config";
+import { refuseIfRtaWritesStopped } from "./lib/rta-script-guard";
 import { sql } from "drizzle-orm";
 import { withTenant } from "../src/db/client";
 
@@ -75,6 +76,9 @@ export function dedupeLegs(legs: Leg[]): { kept: Leg[]; dropped: number; dropped
 
 async function main() {
   if (!T || T.startsWith("--")) throw new Error("Pass --tenant <uuid>. Add --apply to write.");
+  // A firm under RTA governance (validate-first, paused, halted, emergency) is
+  // never rewritten by a script — the release's write guard (B-1 integration).
+  if (APPLY) await refuseIfRtaWritesStopped(T, "dedupe-folio-legs");
   console.log(APPLY ? "APPLY — writing changes" : "DRY RUN — nothing is written (add --apply)");
   const folios = await withTenant(T, async (tx) =>
     (await tx.execute(sql`

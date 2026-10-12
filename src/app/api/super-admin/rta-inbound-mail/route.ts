@@ -24,6 +24,9 @@ const OUTCOMES = new Set([
   "confirmation",
   "no_attachment",
   "unroutable",
+  // Routed only by forgeable headers, or no evidence the mail came from the
+  // registrar (lib/rta/mail-trust) — logged, held, never imported.
+  "quarantined",
   "error",
 ]);
 

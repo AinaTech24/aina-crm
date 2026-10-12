@@ -16,6 +16,7 @@
  * processed.
  */
 
+import { rtaWriteDenial } from "@/lib/rta/write-guard";
 import { sql } from "drizzle-orm";
 import { withTenant, type Tx } from "@/db/client";
 import { loadDashboardThresholds } from "@/lib/dashboard/thresholds";
@@ -39,6 +40,9 @@ export async function matchBookedBusiness(
   const summary: MatchSummary = {
     checked: 0, pending: 0, confirmed: 0, mismatch: 0, rejected: 0, not_found: 0, not_applicable: 0,
   };
+  // A paused / halted firm's RTA-derived state does not move (Phase 3H) —
+  // this runs after imports, nightly and from a script.
+  if (await rtaWriteDenial(tx, tenantId, "derived")) return summary;
   const thresholds = await loadDashboardThresholds(tx);
 
   // An entry that no longer counts lets go of the RTA records it held.

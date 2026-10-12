@@ -147,7 +147,15 @@ describe.skipIf(!TEST_DB)("RTA import matches the clients the firm already has",
     expect(s.investors.matchedByName).toBe(0);
   });
 
-  it("moves a placeholder's history with its folio and folds the placeholder away", async () => {
+  // B-1 integration (2026-10-12). On main this test asserted that a PAN master
+  // MOVES a folio off an import placeholder, with its transactions, and folds
+  // the placeholder away. The RTA release switched that move OFF on the owner's
+  // instruction of 2026-10-08 (AUTO_REASSIGN_FROM_PLACEHOLDER, lib/rta/import.ts):
+  // the folio is held back for review with a reason and nothing moves. The
+  // integrated build keeps the owner's instruction; this test now pins it. When
+  // the flag is switched on, releaseFormerOwners (main's "history follows the
+  // folio") is the code that moves the history and folds the placeholder.
+  it("holds a placeholder's folio for review instead of moving it (owner instruction 2026-10-08)", async () => {
     const placeholder = randomUUID();
     await insertClient(placeholder, { name: "Feed Person", rta: "NOPAN:NFEEDPERSON" });
     const [f] = await q<{ id: string }>(sql`
@@ -158,13 +166,13 @@ describe.skipIf(!TEST_DB)("RTA import matches the clients the firm already has",
       INSERT INTO transactions (tenant_id, investor_id, folio_id, folio_number, amc_code, scheme_code, scheme_name, type, direction, amount, units, nav, order_id, order_date, status)
       VALUES (${tenant}::uuid, ${placeholder}::uuid, ${f.id}::uuid, 'F-PH-1', 'P', 'P1746', 'Test Fund', 'purchase', 'in', 1000, 10, 100, ${"ord-" + tenant.slice(0, 8)}, '2026-09-01', 'processed')
     `);
-    await run([rec("AAAPF5555E", "FEED PERSON TWO", "F-PH-1")]);
-    const owner = await folioOwner("F-PH-1");
-    expect(owner).not.toBe(placeholder);
+    const s = await run([rec("AAAPF5555E", "FEED PERSON TWO", "F-PH-1")]);
+    expect(await folioOwner("F-PH-1")).toBe(placeholder);
+    expect((s.exceptions ?? []).some((e) => /import placeholder/.test(e.reason))).toBe(true);
     const [t] = await q<{ investor_id: string }>(sql`SELECT investor_id FROM transactions WHERE tenant_id = ${tenant}::uuid AND folio_number = 'F-PH-1'`);
-    expect(t.investor_id).toBe(owner);
+    expect(t.investor_id).toBe(placeholder);
     const [ph] = await q<{ merged_into_id: string | null }>(sql`SELECT merged_into_id FROM investors WHERE id = ${placeholder}::uuid`);
-    expect(ph.merged_into_id).toBe(owner);
+    expect(ph.merged_into_id).toBeNull();
   });
 
   it("a holdings row with no PAN never takes a folio from the PAN client who holds it", async () => {

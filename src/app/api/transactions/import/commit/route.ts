@@ -6,6 +6,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  * match get errored. Maps transaction type/direction/status to enum values.
  */
 
+import { assertRtaWritesAllowed } from "@/lib/rta/write-guard";
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
 import crypto from "node:crypto";
@@ -124,6 +125,10 @@ export async function POST(req: NextRequest) {
     const lastTxByInvestor = new Map<string, string>();
 
     await withTenant(session.tenantId, async (tx) => {
+      // Registrar rows imported by hand are a second way into the RTA-derived
+      // tables: refused for a stopped or validate-first firm (Phase 3H). Other
+      // firms keep this import exactly as before.
+      await assertRtaWritesAllowed(tx, session.tenantId, "bypass");
       for (let i = 0; i < parse.data.rows.length; i++) {
         const row = parse.data.rows[i];
         const pan = pick(row, reverse.pan).toUpperCase();

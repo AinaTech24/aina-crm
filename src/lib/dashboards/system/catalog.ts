@@ -131,6 +131,11 @@ export const SYSTEM_WIDGETS: SystemWidgetMeta[] = [
     supports: ["period", ...CLIENT],
   },
   {
+    key: "registrar_aum", title: "Registrar AUM", category: "Practice", defaultSize: "L", sizes: ["M", "L"],
+    description: "Each registrar's holdings statement per ARN, with its date, full-book and coverage status, beside the CRM's live-NAV valuation.",
+    supports: ["rm", "branch", "segment", "category", "family", "tags", "leadSource"],
+  },
+  {
     key: "aum_mix", title: "AUM mix", category: "Practice", defaultSize: "M", sizes: ["M", "L"],
     description: "AUM by fund house and by client category, with concentration.",
     supports: ["rm", "branch", "segment", "category", "family", "tags", "leadSource", "amc"],

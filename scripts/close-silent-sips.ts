@@ -27,6 +27,7 @@
  *   tsx scripts/close-silent-sips.ts --tenant <uuid> --apply
  */
 import "dotenv/config";
+import { refuseIfRtaWritesStopped } from "./lib/rta-script-guard";
 import { sql } from "drizzle-orm";
 import { withTenant } from "../src/db/client";
 import { refreshActiveSipAmount } from "../src/lib/metrics/sip";
@@ -42,6 +43,9 @@ const monthly = sql`(s.amount::numeric * CASE s.frequency WHEN 'quarterly' THEN 
 
 async function main() {
   if (!T || T.startsWith("--")) throw new Error("Pass --tenant <uuid>. Add --apply to write.");
+  // A firm under RTA governance (validate-first, paused, halted, emergency) is
+  // never rewritten by a script — the release's write guard (B-1 integration).
+  if (APPLY) await refuseIfRtaWritesStopped(T, "close-silent-sips");
   console.log(APPLY ? "APPLY — writing changes" : "DRY RUN — nothing is written (add --apply)");
   try {
     await withTenant(T, async (tx) => {

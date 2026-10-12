@@ -40,6 +40,7 @@
  *   tsx scripts/backfill-folio-scheme-codes.ts --tenant <uuid> --apply
  */
 
+import { rtaGovernedTenants } from "./lib/rta-script-guard";
 import { sql } from "drizzle-orm";
 import { withSystem } from "../src/db/client";
 import { loadNavIndex, normSchemeName, type NavIndex } from "../src/lib/finance/scheme-match";
@@ -64,6 +65,14 @@ async function main() {
   console.log(`[backfill] ${APPLY ? "APPLY — writing changes" : "DRY RUN — nothing will be written"}`);
   console.log(`[backfill] scope: ${TENANT ? `tenant ${TENANT}` : "ALL tenants"}`);
 
+  // This rewrites leg codes by NAME. A firm under RTA governance (any
+  // activation, a halt) keeps evidence-only scheme identity (Phase 3H): skipped.
+  const governed = await rtaGovernedTenants();
+  if (APPLY && governed.emergency) { console.error(`[backfill] refused: emergency shutdown — ${governed.emergency}`); process.exit(1); }
+  if (TENANT && governed.skip.has(TENANT)) { console.error(`[backfill] refused: firm ${TENANT} is under RTA governance — its scheme identity changes only by evidence`); process.exit(1); }
+  const skipIds = [...governed.skip];
+  if (skipIds.length) console.log(`[backfill] skipping ${skipIds.length} firm(s) under RTA governance`);
+
   await withSystem(async (tx) => {
     const navIndex: NavIndex = await loadNavIndex(tx);
     console.log(`[backfill] NAV master: ${navIndex.size} schemes, ${navIndex.byName.size} distinct names`);
@@ -80,6 +89,7 @@ async function main() {
          WHERE f.schemes IS NOT NULL
            AND jsonb_array_length(f.schemes) > 0
            ${TENANT ? sql`AND f.tenant_id = ${TENANT}::uuid` : sql``}
+           ${skipIds.length ? sql`AND f.tenant_id::text NOT IN (${sql.join(skipIds.map((t) => sql`${t}`), sql`, `)})` : sql``}
          ORDER BY f.id
       `)
     ).rows as Array<{ id: string; tenant_id: string; schemes: Leg[] }>;

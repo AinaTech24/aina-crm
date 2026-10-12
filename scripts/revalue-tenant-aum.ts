@@ -8,6 +8,7 @@
  *   tsx scripts/revalue-tenant-aum.ts --tenant <uuid> --apply
  */
 import "dotenv/config";
+import { refuseIfRtaWritesStopped } from "./lib/rta-script-guard";
 import { sql } from "drizzle-orm";
 import { withTenant } from "../src/db/client";
 import { recomputeInvestorsAum } from "../src/lib/finance/aum-persist";
@@ -32,6 +33,9 @@ async function totals() {
 
 async function main() {
   if (!T || T.startsWith("--")) throw new Error("Pass --tenant <uuid>");
+  // A firm under RTA governance (validate-first, paused, halted, emergency) is
+  // never rewritten by a script — the release's write guard (B-1 integration).
+  if (APPLY) await refuseIfRtaWritesStopped(T, "revalue-tenant-aum");
   console.log(`before: ${await totals()}`);
   if (!APPLY) return;
   let cursor: string | null = null, n = 0;

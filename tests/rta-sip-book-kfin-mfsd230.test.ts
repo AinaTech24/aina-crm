@@ -9,7 +9,7 @@ const row = (acno: string, trType: string, amount: string) =>
   `128MCGP|ARN-000001|128|${acno}|MC|Axis Mid Cap Fund - Regular Growth|A Client|1 Road|||Pune|Maharashtra|411001|a@b.in|||${trType}|Monthly|05/01/2020|05/12/2040|60|120|61|${amount}|Normal|12345|100000001|By SIP|01/01/2020|900000001|HDFC Bank|00011122233|A Client|Normal|||||A01`;
 
 describe("KFintech MFSD230 SIP/STP report", () => {
-  const rows = parseSipBook([HEADER, row("91012345678", "SIP", "5000.00"), row("91087654321", "STP", "2500.00")].join("\n"), "kfintech");
+  const rows = parseSipBook([HEADER, row("91012345678", "SIP", "5000.00"), row("91087654321", "STP", "2500.00")].join("\n"), "kfintech").rows;
 
   it("reads the folio from ACNO, never the ARN", () => {
     expect(rows).toHaveLength(2);

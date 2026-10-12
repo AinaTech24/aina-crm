@@ -13,14 +13,24 @@
  *      numeric prefix → lexicographic == chronological).
  *   3. Applies each file NOT already in the ledger, inside its own
  *      transaction, then records { filename, checksum, applied_at }.
- *   4. If a file's checksum changed after it was applied, it WARNS (we
- *      never silently re-run — edit-after-apply is a mistake to surface).
+ *   4. If a file's checksum changed after it was applied, or an applied file
+ *      is gone, it BLOCKS: nothing is applied and it exits 2 (Phase 3H — an
+ *      applied migration is immutable; a correction is a NEW migration). The
+ *      only exception is an exact (ledger, file) checksum pair listed in
+ *      drizzle/migrations/drift-acknowledged.json, which goes through review.
+ *   5. Every attempt is logged in `_migration_runs`; a `-- migrate:no-transaction`
+ *      file whose attempt did not finish is reported as PARTIAL and blocks
+ *      until an operator inspects it and re-runs with --resume <file>.
  *
  * Idempotent: re-running applies only new files. Safe in CI + prod.
  *
  * Usage:
  *   npm run migrate:all                apply all pending
  *   npm run migrate:all -- --dry       list pending without applying
+ *   npm run migrate:all -- --check     release gate: report drift / missing /
+ *                                      partial / pending; exit 2 on a blocker
+ *   npm run migrate:all -- --until <f> apply pending files up to and including f
+ *   npm run migrate:all -- --resume <f> allow a partly-applied no-transaction file to re-run
  *   npm run migrate:all -- --baseline  record pending files as applied WITHOUT
  *                                      running them — for adopting the ledger
  *                                      on a DB that was already migrated the
@@ -31,9 +41,10 @@
 import "dotenv/config";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { sql } from "drizzle-orm";
 import { splitStatements } from "./lib/sql-split";
+import { migrationChecksum, planMigrations, type DriftAck, type RunRow } from "./lib/migration-plan";
 
 // This runner applies schema/RLS migrations cross-tenant, so it legitimately
 // needs system (RLS-bypassing) DB access. withSystem() is gated by this flag;
@@ -57,10 +68,14 @@ const DRY = process.argv.includes("--dry");
  * only genuinely-new files.
  */
 const BASELINE = process.argv.includes("--baseline");
+const CHECK = process.argv.includes("--check");
+const argAfter = (flag: string) => { const i = process.argv.indexOf(flag); return i === -1 ? null : process.argv[i + 1] ?? null; };
+const UNTIL = argAfter("--until");
+const RESUME = process.argv.flatMap((a, i) => (a === "--resume" && process.argv[i + 1] ? [process.argv[i + 1]] : []));
+const ACKS_FILE = join(MIGRATIONS_DIR, "drift-acknowledged.json");
 
-function checksum(text: string): string {
-  return createHash("sha256").update(text).digest("hex").slice(0, 16);
-}
+const checksum = migrationChecksum;
+const isNoTx = (text: string) => /^--\s*migrate:no-transaction\s*$/m.test(text);
 
 async function main() {
   // Migrations need DDL — always connect as the privileged role (DATABASE_URL),
@@ -68,10 +83,13 @@ async function main() {
   // the shared client at the master URL BEFORE importing it (it reads the
   // connection string at module load).
   if (process.env.DATABASE_URL) process.env.APP_DATABASE_URL = process.env.DATABASE_URL;
+  // Declared tooling (src/db/runtime-role.ts): the only process allowed the migration role.
+  process.env.DB_TOOLING = "1";
   const { withSystem, pool } = await import("../src/db/client");
 
   const files = readdirSync(MIGRATIONS_DIR)
     .filter((f) => f.endsWith(".sql"))
+    .filter((f) => !UNTIL || f <= UNTIL)
     .sort(); // zero-padded numeric prefixes sort chronologically
 
   await withSystem(async (tx) => {
@@ -82,6 +100,19 @@ async function main() {
         applied_at timestamptz NOT NULL DEFAULT now()
       )
     `);
+    // Every attempt, so a no-transaction file that died half-way is visible.
+    await tx.execute(sql`
+      CREATE TABLE IF NOT EXISTS _migration_runs (
+        id bigserial PRIMARY KEY,
+        filename text NOT NULL,
+        checksum text NOT NULL,
+        no_transaction boolean NOT NULL DEFAULT false,
+        status text NOT NULL CHECK (status IN ('started', 'failed', 'done')),
+        started_at timestamptz NOT NULL DEFAULT now(),
+        finished_at timestamptz,
+        error text
+      )
+    `);
   });
 
   const appliedRows = await withSystem(async (tx) =>
@@ -89,28 +120,34 @@ async function main() {
       await tx.execute(sql`SELECT filename, checksum FROM _applied_migrations`)
     ).rows as Array<{ filename: string; checksum: string }>
   );
-  const applied = new Map(appliedRows.map((r) => [r.filename, r.checksum]));
 
-  const pending: string[] = [];
-  const drifted: string[] = [];
-  for (const f of files) {
+  const runs = await withSystem(async (tx) =>
+    ((await tx.execute(sql`SELECT filename, checksum, status, no_transaction FROM _migration_runs ORDER BY id`)).rows as any[])
+      .map((r): RunRow => ({ filename: r.filename, checksum: r.checksum, status: r.status, noTransaction: r.no_transaction }))
+  );
+  let acks: DriftAck[] = [];
+  if (existsSync(ACKS_FILE)) acks = JSON.parse(readFileSync(ACKS_FILE, "utf8"));
+  // With --until the files after it are simply not considered (an older database).
+  const fileFacts = files.map((f) => {
     const text = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
-    const cs = checksum(text);
-    if (!applied.has(f)) {
-      pending.push(f);
-    } else if (applied.get(f) !== cs) {
-      drifted.push(f);
-    }
+    return { filename: f, checksum: checksum(text), noTransaction: isNoTx(text) };
+  });
+  const ledgerInScope = UNTIL ? appliedRows.filter((r) => r.filename <= UNTIL) : appliedRows;
+  const plan = planMigrations({ files: fileFacts, ledger: ledgerInScope, runs, acks, resume: RESUME });
+  const pending = plan.pending;
+  for (const d of plan.drift.filter((x) => x.acknowledged)) {
+    console.warn(`[migrate] ${d.filename}: checksum ${d.ledgerChecksum} → ${d.fileChecksum} acknowledged in drift-acknowledged.json`);
   }
-
-  if (drifted.length) {
-    console.warn(
-      `[migrate] ⚠ ${drifted.length} already-applied file(s) changed on disk (NOT re-run):`
-    );
-    for (const f of drifted) console.warn(`    ~ ${f}`);
-    console.warn(
-      "    If a change is intentional, add a NEW migration instead of editing an applied one."
-    );
+  for (const f of plan.rolledBack) console.warn(`[migrate] ${f}: a previous attempt failed and was rolled back — it is pending again`);
+  if (plan.blockers.length) {
+    console.error(`[migrate] ✗ BLOCKED — ${plan.blockers.length} problem(s); nothing was applied:`);
+    for (const b of plan.blockers) console.error(`    ✗ ${b}`);
+    process.exit(2);
+  }
+  if (CHECK) {
+    console.log(`[migrate] check: ${appliedRows.length} applied, ${pending.length} pending, ${plan.drift.length} acknowledged drift, 0 blockers.`);
+    for (const f of pending) console.log(`    + ${f}`);
+    process.exit(0);
   }
 
   // Bootstrap gate. A file whose header carries
@@ -165,7 +202,7 @@ async function main() {
         await tx.execute(sql`
           INSERT INTO _applied_migrations (filename, checksum)
           VALUES (${f}, ${cs})
-          ON CONFLICT (filename) DO UPDATE SET checksum = EXCLUDED.checksum, applied_at = now()
+          ON CONFLICT (filename) DO NOTHING
         `);
       });
       console.log(`    = ${f}`);
@@ -213,8 +250,14 @@ async function main() {
     // Scanned over the whole file, not just the header: the marker changes how
     // the file is APPLIED, so missing it because a header ran long would fail in
     // a way that reads like a SQL bug.
-    const noTx = /^--\s*migrate:no-transaction\s*$/m.test(text);
+    const noTx = isNoTx(text);
     const client = await pool.connect();
+    // Logged OUTSIDE the migration's transaction, so a failure or a killed
+    // process still leaves the attempt on record.
+    const runId = (await client.query(
+      `INSERT INTO _migration_runs (filename, checksum, no_transaction, status) VALUES ($1, $2, $3, 'started') RETURNING id`,
+      [f, cs, noTx]
+    )).rows[0].id;
     try {
       if (noTx) {
         await client.query("SELECT set_config('app.is_platform_admin', 'true', false)");
@@ -225,16 +268,21 @@ async function main() {
         await client.query("SELECT set_config('app.is_platform_admin', 'true', true)");
         await client.query(text);
       }
+      // A pending file is never in the ledger, so this never overwrites an
+      // applied checksum (that would erase the evidence the plan relies on).
       await client.query(
         `INSERT INTO _applied_migrations (filename, checksum)
          VALUES ($1, $2)
-         ON CONFLICT (filename) DO UPDATE SET checksum = EXCLUDED.checksum, applied_at = now()`,
+         ON CONFLICT (filename) DO NOTHING`,
         [f, cs]
       );
       if (!noTx) await client.query("COMMIT");
+      await client.query(`UPDATE _migration_runs SET status = 'done', finished_at = now() WHERE id = $1`, [runId]);
       console.log("ok");
     } catch (err: any) {
       await client.query("ROLLBACK").catch(() => {});
+      await client.query(`UPDATE _migration_runs SET status = 'failed', finished_at = now(), error = $2 WHERE id = $1`,
+        [runId, String(err?.message ?? err).slice(0, 2000)]).catch(() => {});
       console.log("FAILED");
       // Postgres reports the position; surface it so the failing statement is
       // findable rather than guessed at.

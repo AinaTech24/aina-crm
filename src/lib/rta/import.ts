@@ -24,6 +24,9 @@ import type { RtaFolioRecord } from "./types";
 import { resolveSchemeIdentity } from "./resolve-scheme";
 import { ownersOfFolios, releaseFormerOwners } from "./former-owners";
 import { followMerges, resolveNoPanClients, resolvePanClients, type ClientHint } from "./client-match";
+import { InvestorDirectory, nopanFolioKey, type Resolution } from "./identity";
+import { panHolderType } from "./owner";
+import { validPan } from "./values";
 
 /**
  * Build a Postgres array literal that binds a JS array as ONE array value.
@@ -55,10 +58,39 @@ export type RtaImportSummary = {
   /** Total market value across the feed (holdings imports only). */
   aum?: number;
   amcs: { code: string; name: string; folios: number }[];
+  /**
+   * Folios held back, with why: a client in Trash, an ambiguous match, or a
+   * folio the CRM holds under a different (non-placeholder) client. Nothing in
+   * them was written. `row` is the record's position in the parsed file.
+   */
+  exceptions: Array<{ row: number; reason: string }>;
+  /** Folios that moved from an import placeholder to their PAN-keyed client,
+   *  with how many transactions / SIPs moved with them. */
+  moved: { folios: number; transactions: number; sips: number };
+  /**
+   * Identities kept SEPARATE for want of strong evidence, for staff review
+   * (Phase 3F): e.g. a minor keyed only on guardian PAN + name at one registrar
+   * while a client with that key holds only the other registrar's folios.
+   * Written, not held — they are reported so a person can decide to merge.
+   */
+  reviews?: Array<{ row: number; reason: string }>;
 };
 
 // Drizzle transaction — typed loosely to match the codebase's withTenant callers.
 type Tx = any;
+
+/**
+ * Automatic re-pointing of a folio from an import PLACEHOLDER (a PAN-less
+ * client the importer stood up, keyed on the folio) to the PAN-keyed client a
+ * master file names — with that folio's transactions and SIPs.
+ *
+ * DISABLED (owner's instruction, 2026-10-08): the effect of moving money
+ * between client records on valuations, business entries and reports is under
+ * review. While off, such a folio is HELD BACK with a reason (Exceptions page)
+ * and nothing is reassigned; the code path stays so the reviewed behaviour can
+ * be switched on in one place.
+ */
+export const AUTO_REASSIGN_FROM_PLACEHOLDER = false;
 
 const chunk = <T,>(arr: T[], n: number): T[][] => {
   const out: T[][] = [];
@@ -74,7 +106,11 @@ export async function importRtaFolios(
     dryRun?: boolean;
     assignRmId?: string | null;
     reportType?: string;
+    /** The registrar's own report name for leg provenance (WBR4 is read by the R9 parser); defaults to reportType. */
+    sourceReport?: string | null;
     kind?: "master" | "holdings" | "full";
+    /** Validate-first lineage: the staging batch these legs were committed from. */
+    sourceBatchId?: string;
     quotaCap?: number;
     /** Called after each upsert batch so the worker can report live progress. */
     onProgress?: (phase: "clients" | "folios", done: number, total: number) => void;
@@ -88,48 +124,111 @@ export async function importRtaFolios(
   //       unlocks live-NAV valuation) from the AMFI master via ISIN / name. This
   //       turns "P"/"K"/"117" into real AMC names and the file's descriptions
   //       into canonical scheme names. Read-only, so it runs for dry-run too.
-  await resolveSchemeIdentity(tx, records);
+  // Validate-first (a staging batch): evidence only — the registrar's ISIN or
+  // a confirmed mapping (scheme_rta_codes), never a scheme name (Phase 3H).
+  await resolveSchemeIdentity(tx, records, opts.sourceBatchId ? { evidenceOnly: { tenantId } } : undefined);
 
-  // ── 1. Resolve each folio to a CLIENT. Adults key on PAN. A minor folio is
-  //       operated under a guardian and has no PAN of its own, so it keys on a
-  //       deterministic synthetic id (guardian PAN + minor name) — it is NEVER
-  //       merged into the guardian's own PAN. Each guardian is ensured to exist
-  //       as their own client (stubbed from name if they don't otherwise appear).
+  // ── 1. Resolve each folio to a CLIENT. Adults key on a VALID PAN. A minor
+  //       folio is operated under a guardian and has no PAN of its own, so it
+  //       keys on a deterministic synthetic id (guardian PAN + minor name) — it
+  //       is NEVER merged into the guardian's own PAN. Each guardian is ensured
+  //       to exist as their own client (stubbed from name if they don't
+  //       otherwise appear).
+  //
+  //       A folio with no valid PAN keeps the client the CRM already files it
+  //       under; a folio new to the CRM gets a placeholder keyed on the FOLIO.
+  //       (It used to key on the holder's mobile, else email, else name — so a
+  //       couple sharing one phone number, or two people called the same, were
+  //       merged into ONE client.)
+  //
+  //       Every match obeys the client's lifecycle (lib/rta/identity.ts): a
+  //       merged client resolves to its survivor; a client in Trash, or an
+  //       ambiguous match, holds the folio back with a reason.
   const slug = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  // For a PAN-less adult folio, derive a deterministic NATURAL key (mobile, else
-  // email, else name) so the holding still imports (pan stays NULL — we never
-  // fabricate a PAN) and the same person's PAN-less folios group together.
-  const naturalKeyFor = (inv: RtaFolioRecord["investor"]): string | null => {
-    const mobile = (inv.mobile ?? "").replace(/\D/g, "").slice(-10);
-    if (mobile.length === 10) return `M${mobile}`;
-    const email = (inv.email ?? "").trim().toLowerCase();
-    if (email) return `E${email}`;
-    const n = slug(inv.name ?? "");
-    return n ? `N${n}` : null;
+  const dir = new InvestorDirectory(tx, tenantId);
+  await dir.preload({
+    pans: records.flatMap((r) => [r.investor.pan, r.investor.guardianPan]),
+    folios: records.map((r) => r.folioNumber),
+    nopanKeys: [...new Set(records.map((r) => nopanFolioKey(r.folioNumber)))],
+  });
+  const exceptions: Array<{ row: number; reason: string }> = [];
+  const reviews: Array<{ row: number; reason: string }> = [];
+
+  /** The pool of CRM folio rows this record's folio is: same AMC code, else an AMC-less row. */
+  const folioPool = async (r: RtaFolioRecord) => {
+    const rows = await dir.foliosFor(r.folioNumber);
+    const exact = rows.filter((f) => (f.amc_code ?? "").trim() === (r.amcCode ?? "").trim());
+    return exact.length ? exact : rows.filter((f) => !(f.amc_code ?? "").trim());
   };
-  const clientKeyFor = (
-    inv: RtaFolioRecord["investor"]
-  ): { key: string | null; isMinor: boolean; guardianPan: string | null; noPan: boolean } => {
+  /** Who the CRM files this folio under today. */
+  const currentOwner = async (r: RtaFolioRecord): Promise<Resolution> => {
+    const owners = [...new Set((await folioPool(r)).map((f) => f.investor_id).filter((x): x is string => !!x))];
+    if (!owners.length) return { kind: "none" };
+    if (owners.length > 1) return { kind: "ambiguous", reason: `the CRM files folio ${r.folioNumber} under ${owners.length} different clients` };
+    return dir.lifecycle(owners[0]);
+  };
+
+  type KeyResult = { key: string | null; isMinor: boolean; guardianPan: string | null; noPan: boolean; block?: string };
+  const clientKeyFor = async (r: RtaFolioRecord): Promise<KeyResult> => {
+    const inv = r.investor;
     const isMinor = inv.category === "minor" || !!inv.isMinor;
+    const own = validPan(inv.pan);
     if (isMinor) {
-      const gp = (inv.guardianPan ?? "").toUpperCase().trim() || null;
-      const own = inv.pan ? inv.pan.toUpperCase() : null;
+      const gp = validPan(inv.guardianPan);
       // ALWAYS "MINOR:"-prefixed so a minor key can never equal an adult's plain
       // PAN. Scope by guardian PAN + name when available, else the minor's own
-      // PAN. If neither exists, fall back to a natural key (PAN-less import)
-      // rather than dropping the holding.
-      const key = gp && inv.name ? `MINOR:${gp}:${slug(inv.name)}` : own ? `MINOR:${own}` : null;
+      // PAN.
+      let key = gp && inv.name ? `MINOR:${gp}:${slug(inv.name)}` : own ? `MINOR:${own}` : null;
+      // A name + guardian key is weak evidence. When the client already keyed
+      // on it holds folios ONLY at the other registrar, this registrar's minor
+      // is NOT linked to it by name: it gets a registrar-scoped provisional
+      // identity, and the possible match is reported for a person to decide.
+      // (Existing links are never changed: a key with folios here is reused.)
+      if (key && gp && inv.name) {
+        const existing = await dir.byPanColumn(key);
+        if (existing.kind === "found") {
+          const rtas = (await tx.execute(sql`SELECT DISTINCT rta::text AS rta FROM folios WHERE tenant_id = ${tenantId}::uuid AND investor_id = ${existing.id}::uuid`)).rows as Array<{ rta: string }>;
+          if (rtas.length && !rtas.some((x) => x.rta === r.rta)) {
+            key = `${key}:${r.rta.toUpperCase()}`;
+            reviews.push({ row: records.indexOf(r) + 1, reason: `folio ${r.folioNumber}: a minor matching an existing client only by guardian PAN and name, at another registrar — kept as a separate provisional client; merge only after review` });
+          }
+        }
+      }
       if (key) return { key, isMinor: true, guardianPan: gp, noPan: false };
-      const nk = naturalKeyFor(inv);
-      return { key: nk ? `NOPAN:${nk}` : null, isMinor: true, guardianPan: gp, noPan: !!nk };
+    } else if (own) {
+      // Owner rules (lib/rta/owner.ts, Phase 3E on this path too):
+      //  - an HUF's investment never goes to the Karta's individual PAN;
+      if (inv.category === "huf" && panHolderType(own) !== "huf") {
+        return { key: null, isMinor: false, guardianPan: null, noPan: false, block: "the registrar marks this holder an HUF but the PAN is an individual's (the Karta's) — the Karta is never made the owner; held" };
+      }
+      //  - the folio on record decides: a minor's folio reported with the
+      //    minor's recorded guardian's PAN stays the minor's;
+      const onRecord = await currentOwner(r);
+      if (onRecord.kind === "found" && validPan(dir.info(onRecord.id)?.pan) !== own) {
+        if ((await dir.recordedGuardianPan(onRecord.id)) === own) return { key: `ID:${onRecord.id}`, isMinor: true, guardianPan: null, noPan: false };
+      }
+      //  - a folio NOT on record whose report states no holder type, under a
+      //    PAN whose client is a recorded guardian, may be the minor's: held —
+      //    except where the real files show the registrar never prints a
+      //    guardian's PAN on a minor's row (KFintech MFSD203 leaves it blank,
+      //    12/12 minor positions, 2026-10-08).
+      const guardianPanPossible = !(r.rta === "kfintech" && opts.reportType === "MFSD203");
+      if (onRecord.kind === "none" && !inv.taxStatus && guardianPanPossible) {
+        const p = await dir.byPan(own);
+        if (p.kind === "found" && (await dir.isRecordedGuardian(p.id))) {
+          return { key: null, isMinor: false, guardianPan: null, noPan: false, block: "this folio is not on record, the report states no holder type, and the PAN's client is the recorded guardian of a minor — the folio may be the minor's; import the master (MFSD211 / R9) first; held" };
+        }
+      }
+      return { key: own, isMinor: false, guardianPan: null, noPan: false };
     }
-    if (inv.pan) return { key: inv.pan.toUpperCase(), isMinor: false, guardianPan: null, noPan: false };
-    // No PAN: import with pan NULL, keyed on a natural id (mobile / email / name),
-    // NOPAN:-prefixed so it can never collide with a real PAN. A row with NO
-    // identity at all (no PAN, name, mobile, or email) is a data-gap folio, not a
-    // client — skip it rather than create a nameless "Unnamed" stub.
-    const nk = naturalKeyFor(inv);
-    return { key: nk ? `NOPAN:${nk}` : null, isMinor: false, guardianPan: null, noPan: !!nk };
+    // No usable PAN.
+    const owner = await currentOwner(r);
+    if (owner.kind === "found") return { key: `ID:${owner.id}`, isMinor, guardianPan: null, noPan: false };
+    if (owner.kind !== "none") return { key: null, isMinor, guardianPan: null, noPan: false, block: owner.reason };
+    // A row with NO identity at all (no PAN and no name) is a data-gap folio,
+    // not a client — skip it rather than create a nameless stub.
+    if (!(inv.name ?? "").trim()) return { key: null, isMinor, guardianPan: null, noPan: false };
+    return { key: nopanFolioKey(r.folioNumber), isMinor, guardianPan: null, noPan: true };
   };
 
   type ClientEntry = {
@@ -143,13 +242,25 @@ export async function importRtaFolios(
   const minorGuardianPan = new Map<string, string>(); // minor key -> guardian PAN
   const guardianNames = new Map<string, string>(); // guardian PAN -> name
   const noPanKeys = new Set<string>(); // keys whose client has NO PAN (pan stays NULL)
+  /** Keys that resolve to an existing client id (no upsert): ID:<uuid> → uuid. */
+  const idKeys = new Map<string, string>();
   let skippedNoPan = 0;
 
-  for (const r of records) {
-    const { key, isMinor, guardianPan, noPan } = clientKeyFor(r.investor);
+  for (let i = 0; i < records.length; i++) {
+    const r = records[i];
+    const { key, isMinor, guardianPan, noPan, block } = await clientKeyFor(r);
+    if (block) {
+      recordKeys.push(null);
+      exceptions.push({ row: i + 1, reason: `folio ${r.folioNumber}: ${block}` });
+      continue;
+    }
     recordKeys.push(key);
     if (!key) {
       skippedNoPan++;
+      continue;
+    }
+    if (key.startsWith("ID:")) {
+      idKeys.set(key, key.slice(3));
       continue;
     }
     if (noPan) noPanKeys.add(key);
@@ -171,6 +282,35 @@ export async function importRtaFolios(
       });
     }
   }
+
+  // Lifecycle of every key that would be upserted: an existing client in Trash
+  // blocks the key (the upsert would otherwise write into the trashed row); a
+  // merged one redirects to its survivor, which is NOT re-upserted.
+  await dir.preloadPanColumn([...clientByKey.keys()].filter((k) => !noPanKeys.has(k)));
+  const blockedKeys = new Map<string, string>();
+  const mergedPanKeys: string[] = []; // PAN keys whose row was merged away — the survivor takes the slot
+  for (const key of [...clientByKey.keys()]) {
+    const res = noPanKeys.has(key) ? await dir.byNopanKey(key) : await dir.byPanColumn(key);
+    if (res.kind === "found" && res.viaMerge) {
+      if (!noPanKeys.has(key)) mergedPanKeys.push(key);
+      clientByKey.delete(key);
+      noPanKeys.delete(key);
+      idKeys.set(key, res.id);
+    } else if (res.kind === "blocked" || res.kind === "ambiguous") {
+      clientByKey.delete(key);
+      noPanKeys.delete(key);
+      blockedKeys.set(key, res.reason);
+    }
+  }
+  for (let i = 0; i < records.length; i++) {
+    const key = recordKeys[i];
+    if (key && blockedKeys.has(key)) {
+      exceptions.push({ row: i + 1, reason: `folio ${records[i].folioNumber}: ${blockedKeys.get(key)}` });
+      recordKeys[i] = null;
+    }
+  }
+  for (const [minorKey, gp] of [...minorGuardianPan]) if (blockedKeys.has(gp)) minorGuardianPan.delete(minorKey);
+
   const pans = [...clientByKey.keys()];
   // PAN-bearing keys (real PANs + MINOR: synthetic ids) go in the `pan` column;
   // NOPAN: keys are stored separately with pan NULL.
@@ -187,8 +327,24 @@ export async function importRtaFolios(
   for (const [key, entry] of clientByKey) {
     hints.set(key, { name: entry.inv.name, dob: entry.inv.dob ?? null, isMinor: entry.isMinor });
   }
-  const panRes = await resolvePanClients(tx, tenantId, panKeys, { write: !dryRun, hints });
-  const noPanRes = await resolveNoPanClients(tx, tenantId, noPanList, { write: !dryRun, hints });
+  // Validate-first (a staging batch): identity comes from the folio on record
+  // and the owner's own PAN only (lib/rta/owner.ts) — a name never links a
+  // registrar row to a client, so no name hints are passed and nothing is
+  // adopted by name. The existing importer keeps production's careful
+  // name adoption (an unambiguous, PAN-less, firm-entered client).
+  //
+  // A minor's key (MINOR:…) is never adopted by name on either path: a minor
+  // is linked by the folio on record or its own PAN, never by a name match
+  // (Phase 3F rule; B-1 integration, 2026-10-12).
+  const adoptionHints = opts.sourceBatchId
+    ? new Map<string, ClientHint>()
+    : new Map([...hints].filter(([k]) => !k.startsWith("MINOR:")));
+  const panRes = await resolvePanClients(tx, tenantId, panKeys, { write: !dryRun, hints: adoptionHints });
+  // A key whose client an operator merged away lands on the survivor (above);
+  // the survivor also takes the PAN slot, so the next file's upsert and every
+  // `pan =` lookup reach it directly (lib/rta/client-match). No adoption here.
+  if (mergedPanKeys.length) await resolvePanClients(tx, tenantId, mergedPanKeys, { write: !dryRun });
+  const noPanRes = await resolveNoPanClients(tx, tenantId, noPanList, { write: !dryRun, hints: adoptionHints });
   const existingPans = panRes.known;
   const existingNoPan = noPanRes.known;
 
@@ -272,7 +428,8 @@ export async function importRtaFolios(
   const investorsCreated =
     panKeys.filter((p) => !existingPans.has(p)).length +
     noPanList.filter((k) => !existingNoPan.has(k) && !skipNoPan.has(k)).length;
-  const investorsUpdated = pans.length - investorsCreated;
+  const linkedExisting = new Set(idKeys.values()).size;
+  const investorsUpdated = pans.length - investorsCreated + linkedExisting;
   const uniqueFolioKeys = [...new Set(folioKeys)];
   const foliosCreated = uniqueFolioKeys.filter((k) => !existingFolios.has(k)).length;
   const foliosUpdated = uniqueFolioKeys.length - foliosCreated;
@@ -283,7 +440,7 @@ export async function importRtaFolios(
     rta,
     reportType: opts.reportType ?? "",
     investors: {
-      total: pans.length,
+      total: pans.length + linkedExisting,
       created: investorsCreated,
       updated: investorsUpdated,
       minors: minorsCount,
@@ -293,6 +450,9 @@ export async function importRtaFolios(
     schemes,
     aum: kind !== "master" ? records.reduce((n, r) => n + (r.aum ?? 0), 0) : undefined,
     amcs,
+    exceptions,
+    moved: { folios: 0, transactions: 0, sips: 0 },
+    reviews,
   };
 
   if (dryRun) return summary;
@@ -442,10 +602,11 @@ export async function importRtaFolios(
   }
 
   // ── 4. Resolve client key → investor id, then upsert folios ────────────────
-  //       Keys resolved in step 2 keep that answer; a key created just now is
+  //       Keys resolved before (ID: keys from the folio on record, merges
+  //       followed) and in step 2 keep that answer; a key created just now is
   //       read back from its slot (the PAN-unique row, or its no-PAN key) with
   //       merges followed, so a folio never lands on a retired record.
-  const keyToId = new Map<string, string>([...panRes.ids, ...noPanRes.ids]);
+  const keyToId = new Map<string, string>([...idKeys, ...panRes.ids, ...noPanRes.ids]);
   const slotIds = new Map<string, string>();
   for (const part of chunk(panKeys.filter((k) => !keyToId.has(k)), 1000)) {
     if (!part.length) continue;
@@ -492,7 +653,18 @@ export async function importRtaFolios(
         amcCode: r.amcCode,
         amcName: r.amcName || r.amcCode,
         rta: r.rta,
-        schemes: r.schemes,
+        // A holdings statement stamps each leg with its own figures, date and
+        // report. A master carries no holdings and stamps nothing.
+        schemes: kind === "master" ? r.schemes : r.schemes.map((s) => ({
+          ...s,
+          sourceUnits: s.units ?? null,
+          sourceValue: s.value ?? null,
+          sourceNav: s.navDerived ? null : s.nav ?? null,
+          sourceAsOf: r.reportDate ?? null,
+          sourceReport: opts.sourceReport ?? opts.reportType ?? null,
+          sourceArn: s.arn ?? null,
+          ...(opts.sourceBatchId ? { sourceBatchId: opts.sourceBatchId } : {}),
+        })),
         ...(r.aum != null ? { aum: String(r.aum) } : {}),
       };
     })
@@ -543,31 +715,44 @@ export async function importRtaFolios(
     sql.raw(`(CASE WHEN (${a}->>'units') ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN (${a}->>'units')::numeric END)`);
   const legArn = (a: "keep" | "incoming") =>
     sql.raw(`NULLIF(NULLIF(NULLIF(upper(trim(COALESCE(${a}->>'arn', ''))), ''), '0'), 'NOT PROVIDED')`);
+  // The same holding: the same scheme code, or the same REGISTRAR code (Phase
+  // 3H — validate-first legs carry rtaSchemeCode beside the canonical AMFI
+  // code). The weaker rules — a non-blank normalised name, or (production fix
+  // of 8 Oct 2026) the same units where a side has no name — apply only toward
+  // a leg that carries no registrar code, so an evidence-resolved leg never
+  // merges with another by name or units alone.
+  //   - Two BLANK names are not one scheme: '' = '' let one nameless leg
+  //     replace every nameless leg of the folio.
+  //   - The CAMS AUM statement names a holding by the registrar's code
+  //     ("D157") and no scheme name, the master by AMFI code and name, so
+  //     neither key matched and the folio kept both — 158 legs, Rs 8.19 Cr, on
+  //     one client (8 Oct 2026). The same units in one folio are one holding
+  //     when a side has no name (unless two real ARNs differ: a split) or
+  //     exactly one side has no real ARN. Two named legs under real ARNs are
+  //     never matched on units — a split, or two options of one scheme.
+  const sameHolding = sql`(
+        (incoming->>'schemeCode') = (keep->>'schemeCode')
+     OR ((incoming->>'rtaSchemeCode') IS NOT NULL AND (incoming->>'rtaSchemeCode') = (keep->>'rtaSchemeCode'))
+     OR (((incoming->>'rtaSchemeCode') IS NULL OR (keep->>'rtaSchemeCode') IS NULL)
+         AND (
+              (${legName("incoming")} <> '' AND ${legName("incoming")} = ${legName("keep")})
+           OR (${legUnits("incoming")} > 0.001
+               AND abs(${legUnits("incoming")} - ${legUnits("keep")}) <= 0.001
+               AND CASE WHEN ${legName("incoming")} = '' OR ${legName("keep")} = ''
+                        THEN NOT (${legArn("incoming")} IS NOT NULL AND ${legArn("keep")} IS NOT NULL
+                                  AND ${legArn("incoming")} <> ${legArn("keep")})
+                        ELSE (${legArn("incoming")} IS NULL) <> (${legArn("keep")} IS NULL) END)
+         ))
+  )`;
+  /** A missing (or "0" / "NOT PROVIDED") ARN is a wildcard on both sides — see below. */
+  const arnCompatible = sql`(${legArn("keep")} IS NULL OR ${legArn("incoming")} IS NULL OR ${legArn("keep")} = ${legArn("incoming")})`;
+  const olderThanKeep = sql`((keep->>'sourceAsOf') IS NOT NULL AND (incoming->>'sourceAsOf') IS NOT NULL AND (incoming->>'sourceAsOf') < (keep->>'sourceAsOf'))`;
   const mergedSchemes = sql`(
     SELECT COALESCE(jsonb_agg(keep), '[]'::jsonb)
       FROM jsonb_array_elements(COALESCE(${foliosTable.schemes}, '[]'::jsonb)) AS keep
      WHERE NOT EXISTS (
        SELECT 1 FROM jsonb_array_elements(COALESCE(excluded.schemes, '[]'::jsonb)) AS incoming
-        WHERE (
-                (incoming->>'schemeCode') = (keep->>'schemeCode')
-             -- Two BLANK names are not one scheme: '' = '' let one nameless
-             -- leg replace every nameless leg of the folio.
-             OR (${legName("incoming")} <> '' AND ${legName("incoming")} = ${legName("keep")})
-             -- The CAMS AUM statement names a holding by the registrar's code
-             -- ("D157") and no scheme name, the master by AMFI code and name,
-             -- so neither key matched and the folio kept both — 158 legs, Rs
-             -- 8.19 Cr, on Nimesh C Shah (8 Oct 2026). The same units in one
-             -- folio are one holding when a side has no name (unless two real
-             -- ARNs differ: a split) or exactly one side has no real ARN. Two
-             -- named legs under real ARNs are never matched on units — a split,
-             -- or two options of one scheme.
-             OR (${legUnits("incoming")} > 0.001
-                 AND abs(${legUnits("incoming")} - ${legUnits("keep")}) <= 0.001
-                 AND CASE WHEN ${legName("incoming")} = '' OR ${legName("keep")} = ''
-                          THEN NOT (${legArn("incoming")} IS NOT NULL AND ${legArn("keep")} IS NOT NULL
-                                    AND ${legArn("incoming")} <> ${legArn("keep")})
-                          ELSE (${legArn("incoming")} IS NULL) <> (${legArn("keep")} IS NULL) END)
-              )
+        WHERE ${sameHolding}
           -- A MISSING arn is a WILDCARD ON BOTH SIDES, and both directions
           -- matter:
           --   stored none, incoming one -> a leg written before per-ARN
@@ -589,13 +774,21 @@ export async function importRtaFolios(
           -- it until the next ARN'd statement restores it. That is the right
           -- way to be wrong: an understated split is recoverable, a double
           -- count looks correct.
-          AND (
-                ${legArn("keep")} IS NULL
-             OR ${legArn("incoming")} IS NULL
-             OR ${legArn("keep")} = ${legArn("incoming")}
-              )
+          AND ${arnCompatible}
+          -- Phase 3E: an OLDER statement never replaces a newer one. When both
+          -- legs are dated and the stored one is newer, it stays.
+          AND NOT ${olderThanKeep}
      )
-  ) || COALESCE(excluded.schemes, '[]'::jsonb)`;
+  ) || COALESCE((
+    SELECT jsonb_agg(incoming)
+      FROM jsonb_array_elements(COALESCE(excluded.schemes, '[]'::jsonb)) AS incoming
+     WHERE NOT EXISTS (
+       SELECT 1 FROM jsonb_array_elements(COALESCE(${foliosTable.schemes}, '[]'::jsonb)) AS keep
+        WHERE ${sameHolding}
+          AND ${arnCompatible}
+          AND ${olderThanKeep}
+     )
+  ), '[]'::jsonb)`;
 
   const folioSet =
     kind !== "master"
@@ -621,6 +814,49 @@ export async function importRtaFolios(
           schemes: sql`case when jsonb_array_length(coalesce(${foliosTable.schemes}, '[]'::jsonb)) = 0 then excluded.schemes else ${foliosTable.schemes} end`,
           updatedAt: sql`now()`,
         };
+
+  // ── 4a. Re-pointing an existing folio. When AUTO_REASSIGN_FROM_PLACEHOLDER
+  //        is on (it is OFF — see the constant), the registrar's file may
+  //        move a folio only off an import PLACEHOLDER (a client the importer
+  //        stood up with no PAN of its own, keyed on the folio) onto the
+  //        client the file names — and then that folio's transactions and SIPs
+  //        move with it, so the money is never counted on both. A folio the CRM
+  //        files under any other client is NOT reassigned: it is held back for
+  //        review. (It used to be overwritten unconditionally, and the
+  //        transactions stayed behind on the old client.)
+  const moves: Array<{ folioNumber: string; amcCode: string; from: string; to: string }> = [];
+  {
+    const keep: typeof folioValues = [];
+    for (const v of folioValues) {
+      const rec = folioByKey.get(`${v.amcCode}::${v.folioNumber}`)!.r;
+      const owners = [...new Set((await folioPool(rec)).map((f) => f.investor_id).filter((x): x is string => !!x))];
+      let held: string | null = null;
+      for (const owner of owners) {
+        if (owner === v.investorId) continue;
+        const life = await dir.lifecycle(owner);
+        if (life.kind === "found" && life.id === v.investorId) continue; // merged into this client
+        if (life.kind === "found" && dir.isPlaceholder(owner)) {
+          if (AUTO_REASSIGN_FROM_PLACEHOLDER) {
+            moves.push({ folioNumber: v.folioNumber, amcCode: v.amcCode, from: owner, to: v.investorId });
+            continue;
+          }
+          held = `folio ${v.folioNumber} is filed under an import placeholder (a client created without a PAN); moving it and its transactions to the client this file names needs review — automatic reassignment is switched off, nothing was moved`;
+          break;
+        }
+        held =
+          life.kind === "blocked" || life.kind === "ambiguous"
+            ? `folio ${v.folioNumber}: ${life.reason}`
+            : `folio ${v.folioNumber} is filed under a different client in the CRM — not reassigned by this import; review it (Merge Clients, or correct the folio's client)`;
+        break;
+      }
+      if (held) {
+        exceptions.push({ row: records.indexOf(rec) + 1, reason: held });
+        continue;
+      }
+      keep.push(v);
+    }
+    folioValues.splice(0, folioValues.length, ...keep);
+  }
 
   // Who holds these folios before the upsert re-points them — a client that
   // loses folios is settled afterwards (lib/rta/former-owners.ts).
@@ -678,6 +914,28 @@ export async function importRtaFolios(
       });
     foliosDone += part.length;
     opts.onProgress?.("folios", foliosDone, folioValues.length);
+  }
+
+  // ── 4b. Move each re-pointed folio's transactions and SIPs off the
+  //        placeholder — only rows on THAT folio row, nothing else of theirs.
+  for (const m of moves) {
+    const t = await tx.execute(sql`
+      UPDATE transactions SET investor_id = ${m.to}::uuid, updated_at = now()
+       WHERE tenant_id = ${tenantId}::uuid AND investor_id = ${m.from}::uuid
+         AND folio_id = (SELECT id FROM folios WHERE tenant_id = ${tenantId}::uuid
+                           AND amc_code = ${m.amcCode} AND folio_number = ${m.folioNumber})
+      RETURNING id
+    `);
+    const sp = await tx.execute(sql`
+      UPDATE sips SET investor_id = ${m.to}::uuid, updated_at = now()
+       WHERE tenant_id = ${tenantId}::uuid AND investor_id = ${m.from}::uuid
+         AND folio_id = (SELECT id FROM folios WHERE tenant_id = ${tenantId}::uuid
+                           AND amc_code = ${m.amcCode} AND folio_number = ${m.folioNumber})
+      RETURNING id
+    `);
+    summary.moved.folios++;
+    summary.moved.transactions += t.rows.length;
+    summary.moved.sips += sp.rows.length;
   }
 
   // ── 5. Holdings/full feeds refresh the cached investor AUM + last-txn-at ────

@@ -17,7 +17,7 @@ import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
-import { fetchNavAll, parseNavAll, type NavRecord } from "@/lib/finance/nav-feed";
+import { fetchNavAll, importNavAll } from "@/lib/finance/nav-feed";
 import { planSql, coarseSql } from "@/lib/schemes/classify";
 
 export const dynamic = "force-dynamic";
@@ -44,43 +44,18 @@ export async function POST() {
 
     // 0b. Empty OR un-enriched → fetch the live AMFI feed now (network OUTSIDE
     //     the transaction). The upsert below then backfills the new columns.
-    let navRecords: NavRecord[] = [];
+    // Through the one validated, provenance-recorded path (Phase 3I): layout
+    // checked column by column, an older file never overwrites a newer NAV,
+    // the import recorded in amfi_feed_imports.
+    let navSeeded = 0;
     if (navCount === 0 || typed === 0) {
       const body = await fetchNavAll();
-      navRecords = parseNavAll(body);
+      const imp = await importNavAll(body, { source: "download", sourceRef: "schemes/sync", by: session.userId });
+      if (imp.status === "rejected") return NextResponse.json({ error: `The AMFI feed was refused: ${imp.reason}` }, { status: 502 });
+      navSeeded = imp.written;
     }
 
     const result = await withTenant(session.tenantId, async (tx) => {
-      // 0c. Seed the shared universe from the freshly-fetched AMFI feed (batched).
-      let navSeeded = 0;
-      if (navRecords.length) {
-        const BATCH = 500;
-        for (let i = 0; i < navRecords.length; i += BATCH) {
-          const batch = navRecords.slice(i, i + BATCH);
-          const values = sql.join(
-            batch.map(
-              (r) => sql`(${r.schemeCode}, ${r.isin}, ${r.isinReinvest}, ${r.schemeName}, ${r.amcName}, ${r.schemeType}, ${r.schemeCategory}, ${r.nav}, ${r.navDate}, now())`
-            ),
-            sql`, `
-          );
-          await tx.execute(sql`
-            INSERT INTO scheme_nav (scheme_code, isin, isin_reinvest, scheme_name, amc_name, scheme_type, scheme_category, nav, nav_date, updated_at)
-            VALUES ${values}
-            ON CONFLICT (scheme_code) DO UPDATE SET
-              isin = EXCLUDED.isin,
-              isin_reinvest = EXCLUDED.isin_reinvest,
-              scheme_name = EXCLUDED.scheme_name,
-              amc_name = EXCLUDED.amc_name,
-              scheme_type = COALESCE(EXCLUDED.scheme_type, scheme_nav.scheme_type),
-              scheme_category = COALESCE(EXCLUDED.scheme_category, scheme_nav.scheme_category),
-              nav = EXCLUDED.nav,
-              nav_date = EXCLUDED.nav_date,
-              updated_at = now()
-          `);
-        }
-        navSeeded = navRecords.length;
-      }
-
       // 1. AMC master — one row per distinct AMC name in the shared catalog.
       await tx.execute(sql`
         INSERT INTO amc_master (id, tenant_id, code, name, created_at, updated_at)

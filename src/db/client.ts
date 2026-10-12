@@ -3,20 +3,23 @@ import { sql } from "drizzle-orm";
 import { Pool, type PoolClient } from "pg";
 import * as schema from "./schema";
 
-// The APP connects with APP_DATABASE_URL when set — a NON-superuser role
-// (mfd_app) so Postgres Row-Level Security is actually enforced (a superuser
-// bypasses RLS even with FORCE, defeating tenant isolation). Falls back to
-// DATABASE_URL, which is also what migrations/seed/scripts use (they need DDL,
-// so they run as the privileged role). Setting APP_DATABASE_URL is opt-in:
-// nothing changes until it's provided.
-// `||` not `??`: an EMPTY APP_DATABASE_URL means "not provided". The DB-backed
-// tests set it to "" to force the pool onto DATABASE_URL; with `??` that empty
-// string was taken as the connection string and the pool threw
-// "DATABASE_URL is not set" in CI.
-const connectionString = process.env.APP_DATABASE_URL || process.env.DATABASE_URL;
-if (!connectionString) {
-  throw new Error("DATABASE_URL is not set");
+import { describeUrl, inspectRole, isBuildPhase, isProductionEnv, resolveDatabaseConnection, roleProblems, RuntimeDatabaseError, type RoleReport } from "./runtime-role";
+
+// Which role the runtime connects as (final security patch — runtime-role.ts):
+// APP_DATABASE_URL, the restricted application role. In production there is NO
+// fallback to DATABASE_URL (the migration role): a missing APP_DATABASE_URL
+// refuses to start, with a non-secret diagnostic. Migration tooling declares
+// itself with DB_TOOLING=1 (scripts/migrate-all.ts). Outside production
+// (development, CI, isolated rehearsal databases) the fallback stays, loudly.
+// `||` not `??` in the policy: an EMPTY APP_DATABASE_URL means "not provided"
+// (the DB-backed tests set it to "" to use DATABASE_URL).
+const connection = resolveDatabaseConnection(process.env);
+if (!connection.ok) {
+  throw new RuntimeDatabaseError("database connection", [connection.reason], describeUrl(process.env.APP_DATABASE_URL || process.env.DATABASE_URL));
 }
+if (connection.warning && process.env.DB_QUIET !== "1") console.warn(`[db] ${connection.warning}`);
+const connectionString = connection.url;
+export const connectionSource = connection.source;
 
 /**
  * HMR-safe singleton for the pg pool + drizzle client.
@@ -82,53 +85,55 @@ if (!globalThis.__mfd_db) {
 export type DbClient = typeof db;
 
 /**
- * SECURITY: assert the app is NOT connected as a superuser / BYPASSRLS role.
+ * SECURITY: the role this process is connected as, and whether the runtime may
+ * use it (runtime-role.ts roleProblems): no superuser, BYPASSRLS, CREATEROLE,
+ * ownership (direct or through membership), privileged membership, trigger-
+ * skipping or dangerous table privilege.
  *
- * Postgres superusers (and roles with BYPASSRLS) ignore Row-Level Security
- * entirely — even with FORCE ROW LEVEL SECURITY — so every tenant_isolation
- * policy becomes inert and isolation rests only on explicit `tenant_id`
- * predicates in app code. The app must connect via APP_DATABASE_URL as the
- * non-superuser `mfd_app` role (see `npm run db:provision-app-role`).
- *
- * Runs once, fire-and-forget. In production it hard-fails (exit) on a
- * privileged role so the misconfiguration is loud, not a silent data-leak;
- * in dev it warns. Override (NOT recommended) with ALLOW_SUPERUSER_DB=1.
+ * `assertRuntimeDatabase(kind)` is AWAITED by the web server (instrumentation)
+ * and the worker before they serve anything. In production a problem — or
+ * DB_TOOLING set on a runtime process — throws RuntimeDatabaseError (the
+ * caller exits non-zero with the diagnostics); outside production it warns.
+ * There is no override in production (ALLOW_SUPERUSER_DB is ignored there).
  */
-async function assertNonBypassingRole(): Promise<void> {
+export async function assertRuntimeDatabase(kind: "web" | "worker", env: NodeJS.ProcessEnv = process.env): Promise<RoleReport> {
+  const target = describeUrl(connectionString);
+  const problems: string[] = [];
+  if (env.DB_TOOLING === "1") problems.push("DB_TOOLING=1 is set: tooling credentials are for migrations, never for the web or worker process");
+  if (connectionSource === "development_fallback") problems.push("APP_DATABASE_URL is not set (connected with DATABASE_URL)");
+  const report = await inspectRole((text, params) => pool.query(text, params));
+  problems.push(...roleProblems(report));
+  if (!problems.length) return report;
+  const production = isProductionEnv(env) && !isBuildPhase(env);
+  if (production) throw new RuntimeDatabaseError(kind, problems, target);
+  if (env.ALLOW_SUPERUSER_DB !== "1" && env.DB_QUIET !== "1") {
+    console.warn(`[db] SECURITY (${kind}, development only — production refuses this): connected to ${target}:\n  - ${problems.join("\n  - ")}`);
+  }
+  return report;
+}
+
+/** Fire-and-forget check for any other entry point (scripts, routes loaded before instrumentation). */
+async function checkRoleOnLoad(): Promise<void> {
+  if (connectionSource === "tooling") return; // migrations: privileged by design
   try {
-    const res = await pool.query(
-      `SELECT current_user AS role, r.rolsuper, r.rolbypassrls
-         FROM pg_roles r WHERE r.rolname = current_user`
-    );
-    const row = res.rows[0] as { role: string; rolsuper: boolean; rolbypassrls: boolean } | undefined;
-    if (!row || (!row.rolsuper && !row.rolbypassrls)) return; // safe role
-    if (process.env.ALLOW_SUPERUSER_DB === "1") return; // explicit override
-
-    const why = row.rolsuper ? "is a SUPERUSER" : "has BYPASSRLS";
-    const msg =
-      `[db] SECURITY: connected as '${row.role}' which ${why} — Row-Level Security is NOT enforced; ` +
-      `tenant isolation relies solely on explicit predicates. Provision + use the non-superuser role: ` +
-      `\`npm run db:provision-app-role\` then set APP_DATABASE_URL=postgres://mfd_app:<pw>@host/db.`;
-
-    // `next build` runs with NODE_ENV=production and imports route modules to
-    // collect page data — but it is NOT serving traffic, so the hard-exit must
-    // NOT fire there or it kills the build worker (mis-reported as a confusing
-    // "Cannot find module for page" error). Only refuse at actual server start.
-    const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
-    if (process.env.NODE_ENV === "production" && !isBuildPhase) {
-      console.error(msg + " Refusing to start in production (set ALLOW_SUPERUSER_DB=1 to override).");
+    const report = await inspectRole((text, params) => pool.query(text, params));
+    const problems = roleProblems(report);
+    if (!problems.length) return;
+    const msg = `[db] SECURITY: connected to ${describeUrl(connectionString)}:\n  - ${problems.join("\n  - ")}`;
+    if (isProductionEnv(process.env) && !isBuildPhase(process.env)) {
+      console.error(msg + "\nRefusing to run in production.");
       process.exit(1);
-    } else {
+    } else if (process.env.ALLOW_SUPERUSER_DB !== "1" && process.env.DB_QUIET !== "1") {
       console.warn(msg);
     }
   } catch {
-    // Never let the safety check itself break startup.
+    // The awaited startup checks (instrumentation, worker) are the gate; this one never breaks a script.
   }
 }
 
 if (!globalThis.__mfd_db_role_checked) {
   globalThis.__mfd_db_role_checked = true;
-  void assertNonBypassingRole();
+  void checkRoleOnLoad();
 }
 
 /**

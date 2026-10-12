@@ -18,6 +18,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  *   reason written on it, and "Sync all" never picks it again.
  */
 
+import { assertRtaWritesAllowed } from "@/lib/rta/write-guard";
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -66,6 +67,7 @@ export async function POST(req: NextRequest) {
     const out = await withTenant(
       session.tenantId,
       async (tx) => {
+        if (action === "sync") await assertRtaWritesAllowed(tx, session.tenantId, "bypass");
         // "Sync all": the next batch of syncable breaks the page's filter shows.
         const ids =
           "all" in body

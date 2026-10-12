@@ -38,6 +38,7 @@
  *
  * Requires APP_DATABASE_URL (preferred) or DATABASE_URL.
  */
+import { refuseIfRtaWritesStopped } from "./lib/rta-script-guard";
 import "dotenv/config";
 import pg from "pg";
 
@@ -82,6 +83,7 @@ async function step(c: pg.Client, label: string, sql: string, params: unknown[] 
 
 async function main() {
   console.log(`\n${TENANT_LABEL}  [${TENANT}]`);
+  if (EXECUTE) await refuseIfRtaWritesStopped(TENANT, "cleanup-ahpal-rta");
   console.log(EXECUTE ? "MODE: EXECUTE — rows will be deleted" : "MODE: DRY RUN — nothing will be written");
 
   const c = await connect();

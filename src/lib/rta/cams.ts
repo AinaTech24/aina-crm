@@ -6,11 +6,13 @@
  * (amc_code × foliochk × product/scheme) carrying units (clos_bal), market value
  * (rupee_bal), full KYC (tax_status, DOB, CKYC), bank, up to 3 nominees, plus
  * occupation and ARN. So it imports as kind="full": master fields AND folio
- * valuations + AUM. Dates are Excel serials (e.g. 46188 → 2026-06-15).
+ * valuations + AUM. Dates arrive as ISO (a date-formatted cell, converted by
+ * xls.ts), as bare Excel serials (e.g. 46188 → 2026-06-15) or as text.
  */
 
 import type { RtaFolioRecord, RtaNominee, InvestorCategory, Residency } from "./types";
-import { num, amcNameFromDescription, canonicalizeAmcNames, maskAccount, pct, dmyToIso } from "./kfintech";
+import { amcNameFromDescription, canonicalizeAmcNames, maskAccount, pct, PanTally } from "./kfintech";
+import { excelSerialToIso, readDate, readNumber } from "./values";
 
 /** Columns that uniquely identify the CAMS folio statement. */
 const SIGNATURE = ["foliochk", "rupee_bal", "clos_bal", "pan_no", "sch_name"];
@@ -21,39 +23,35 @@ export function isCamsFile(header: string[]): boolean {
 }
 
 /**
- * Excel serial (e.g. "46188"), bare "YYYYMMDD", or "DD/MM/YYYY" → ISO yyyy-mm-dd.
+ * A CAMS date cell → ISO yyyy-mm-dd, or null.
+ *
+ * Accepted, in this order:
+ *   - ISO YYYY-MM-DD — what xls.ts now emits for a date-FORMATTED spreadsheet
+ *     cell (it converts the serial itself, timezone-proof). This form was
+ *     missing, so it would have fallen through to null.
+ *   - bare YYYYMMDD, D/M/YYYY and the other day-first text forms `readDate`
+ *     knows, each checked against the calendar (31/02/2024 is null, not
+ *     "2024-02-31" for Postgres to reject).
+ *   - a bare Excel serial (e.g. "46188") — a date column the sheet did NOT
+ *     format as a date — converted by pure arithmetic (`excelSerialToIso`),
+ *     bounded to a plausible window.
  *
  * The bare-YYYYMMDD branch is not optional. CAMS ships dates of birth as plain
- * 8-digit numbers in some exports; without this they fell through to the Excel
- * branch, where 19850612 days past 1899 lands in the year 56249 and
- * `toISOString()` returns "+056249-02-11...". That went straight into
- * `investors.dob` (a `date` column), Postgres rejected it, and the WHOLE tenant
- * transaction aborted — a 5,000-folio master lost to one cell.
- *
- * The serial branch is bounded to a plausible window for the same reason: a
- * value outside it is not a date we can trust, and returning null loses one
- * field instead of the entire file.
+ * 8-digit numbers in some exports; without it they fell through to the Excel
+ * branch, where 19850612 days past 1899 lands in the year 56249. That went
+ * straight into `investors.dob` (a `date` column), Postgres rejected it, and
+ * the WHOLE tenant transaction aborted — a 5,000-folio master lost to one cell.
+ * `readDate` reads YYYYMMDD before anything treats the digits as a serial.
  */
 const EXCEL_SERIAL_MAX = 60000; // ~year 2064
-function camsDate(s?: string): string | null {
+export function camsDate(s?: string): string | null {
   const v = (s ?? "").trim();
   if (!v) return null;
-  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(v)) return dmyToIso(v);
-
-  // Bare YYYYMMDD, e.g. "19850612". Must be tested BEFORE the serial branch.
-  const ymd = v.match(/^(\d{4})(\d{2})(\d{2})$/);
-  if (ymd) {
-    const [, y, m, d] = ymd;
-    const yr = Number(y), mo = Number(m), dy = Number(d);
-    if (yr < 1900 || yr > 2100 || mo < 1 || mo > 12 || dy < 1 || dy > 31) return null;
-    return `${y}-${m}-${d}`;
-  }
-
-  const n = Number(v);
-  if (Number.isFinite(n) && n > 0 && n <= EXCEL_SERIAL_MAX) {
-    // Excel epoch 1899-12-30 (covers the 1900 leap-year bug for n >= 60).
-    const d = new Date(Math.round(n) * 86400000 + Date.UTC(1899, 11, 30));
-    return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+  const r = readDate(v, "dmy");
+  if (r.ok) return r.value;
+  if (/^\d+(?:\.\d+)?$/.test(v)) {
+    const n = Number(v);
+    if (n > 0 && n <= EXCEL_SERIAL_MAX) return excelSerialToIso(n);
   }
   return null;
 }
@@ -142,6 +140,8 @@ export function parseCamsFile(rows: string[][]): {
 
   const groups = new Map<string, RtaFolioRecord>();
   let missingPan = 0;
+  let badBalances = 0;
+  const pans = new PanTally();
 
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r];
@@ -155,7 +155,7 @@ export function parseCamsFile(rows: string[][]): {
 
     let rec = groups.get(key);
     if (!rec) {
-      const pan = get(C.pan).toUpperCase() || null;
+      const pan = pans.pan(get(C.pan));
       if (!pan) missingPan++;
 
       const nominees: RtaNominee[] = [];
@@ -188,7 +188,7 @@ export function parseCamsFile(rows: string[][]): {
           category: mapCategory(tax),
           residency: mapResidency(tax),
           isMinor: mapCategory(tax) === "minor",
-          guardianPan: get(C.guardPan).toUpperCase() || null,
+          guardianPan: pans.guardianPan(get(C.guardPan)),
           guardianName: get(C.guardName) || null,
           kycVerified: !!get(C.ckyc),
           ckycNumber: get(C.ckyc) || null,
@@ -218,8 +218,15 @@ export function parseCamsFile(rows: string[][]): {
     }
 
     const product = get(C.product);
-    const units = num(get(C.closBal));
-    const value = num(get(C.rupeeBal));
+    // Strict read (Phase 2B): a blank balance is UNKNOWN, a stated 0 is ZERO.
+    // The old `num(...) || undefined` did both wrong — blank became 0, and a
+    // fully redeemed holding the registrar reports as 0 / 0 became "units
+    // unknown" (19 of 1,237 legs of a real R9), so the stale units stayed.
+    const unitsRead = readNumber(get(C.closBal));
+    const valueRead = readNumber(get(C.rupeeBal));
+    if (!unitsRead.ok || !valueRead.ok) badBalances++;
+    const units = unitsRead.ok ? unitsRead.value : null;
+    const value = valueRead.ok ? valueRead.value : null;
     const rowArn = get(C.broker) || undefined;
     if (product) {
       // A folio can list the same product across multiple rows (lots) — merge
@@ -230,25 +237,29 @@ export function parseCamsFile(rows: string[][]): {
       // same one, and collapsing the two would hide which ARN earns on it.
       const existing = rec.schemes.find((s) => s.schemeCode === product && s.arn === rowArn);
       if (existing) {
-        existing.units = (existing.units ?? 0) + units || undefined;
-        existing.value = (existing.value ?? 0) + value || undefined;
+        existing.units = existing.units === undefined || units === null ? undefined : existing.units + units;
+        existing.value = existing.value === undefined || value === null ? undefined : existing.value + value;
         existing.nav = existing.units && existing.value ? +(existing.value / existing.units).toFixed(4) : existing.nav;
       } else {
         rec.schemes.push({
           schemeCode: product,
           schemeName: get(C.schName),
           isin: get(C.isin).toUpperCase() || undefined,
-          units: units || undefined,
-          nav: units > 0 && value > 0 ? +(value / units).toFixed(4) : undefined,
-          value: value || undefined,
+          units: units ?? undefined,
+          nav: units !== null && value !== null && units > 0 && value > 0 ? +(value / units).toFixed(4) : undefined,
+          value: value ?? undefined,
+          // R9 prints no NAV: the figure above is value ÷ units, not the registrar's.
+          navDerived: true,
           arn: rowArn,
         });
       }
-      rec.aum = (rec.aum ?? 0) + value;
+      rec.aum = (rec.aum ?? 0) + (value ?? 0);
     }
   }
 
   const folios = [...groups.values()];
   canonicalizeAmcNames(folios);
-  return { reportType: "R9", folios, missingPan, warnings: [] };
+  const warnings = pans.warnings();
+  if (badBalances) warnings.push(`${badBalances} row(s) carried a closing balance or value that is not a readable number — stored as unknown, not as 0`);
+  return { reportType: "R9", folios, missingPan, warnings };
 }

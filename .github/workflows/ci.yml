@@ -104,3 +104,5 @@ jobs:
         run: node scripts/provision-app-role.mjs
       - name: DB-backed unit tests (RLS isolation · share-token · webhook sigs)
         run: npx vitest run
+      - name: RTA emergency-shutdown drill (alone — it halts every firm in the database)
+        run: npm run test:emergency

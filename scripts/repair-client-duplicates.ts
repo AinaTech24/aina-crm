@@ -20,6 +20,7 @@
  *   tsx scripts/repair-client-duplicates.ts --tenant <uuid> [--apply]
  */
 import "dotenv/config";
+import { refuseIfRtaWritesStopped } from "./lib/rta-script-guard";
 import { sql } from "drizzle-orm";
 import { withTenant } from "../src/db/client";
 import { mergeInvestors } from "../src/lib/investors/merge";
@@ -115,6 +116,9 @@ function plan(rows: Row[]) {
 
 async function main() {
   if (!T || T.startsWith("--")) throw new Error("Pass --tenant <uuid>. Add --apply to write.");
+  // A firm under RTA governance (validate-first, paused, halted, emergency) is
+  // never rewritten by a script — the release's write guard (B-1 integration).
+  if (APPLY) await refuseIfRtaWritesStopped(T, "repair-client-duplicates");
   console.log(APPLY ? "APPLY" : "DRY RUN (add --apply)");
   const rows = await load();
   const { pairs, review } = plan(rows);

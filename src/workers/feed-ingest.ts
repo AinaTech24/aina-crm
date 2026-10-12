@@ -17,14 +17,14 @@
  *   e.g.  feed-inbox/3a82.../incoming/cams__daily_transaction_feed__2026-06-03.csv
  *         feed-inbox/3a82.../incoming/kfintech__sip_rejection_report__2026-06-03.csv
  *
- * Idempotency: ingestRtaText() dedupes by file checksum, and the processor
+ * Idempotency: ingestRtaFile() dedupes by file checksum, and the processor
  * upserts every row by natural key, so re-processing a file is a no-op.
  */
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { withTenant } from "@/db/client";
-import { ingestRtaText } from "@/lib/rta/ingest";
+import { ingestRtaFile } from "@/lib/rta/ingest";
 import { RTA_FILE_KINDS, RTA_SOURCES, type RtaFileKind, type RtaSource } from "@/db/schema/rta_imports";
 
 export interface FeedIngestResult {
@@ -62,10 +62,17 @@ async function moveTo(srcFile: string, destDir: string) {
   });
 }
 
+const TENANT_DIR = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function runFeedIngest(): Promise<FeedIngestResult> {
   const startedAt = Date.now();
-  const root = process.env.RTA_FEED_DIR ?? "./feed-inbox";
+  // No default folder (Phase 3H): an unset RTA_FEED_DIR used to fall back to
+  // ./feed-inbox, so every worker scanned a folder nobody configured.
+  const root = (process.env.RTA_FEED_DIR ?? "").trim();
   const sourceMode = process.env.RTA_FEED_SOURCE ?? "local_dir";
+  if (!root) {
+    return { enabled: false, tenantsScanned: 0, filesFound: 0, filesIngested: 0, filesFailed: 0, durationMs: Date.now() - startedAt };
+  }
 
   if (sourceMode === "sftp") {
     let SftpClient;
@@ -90,7 +97,12 @@ export async function runFeedIngest(): Promise<FeedIngestResult> {
         for (const f of filesList) {
           const parsed = parseFeedFileName(f.name);
           if (!parsed) continue;
-          const tenantId = process.env.RTA_FEED_SFTP_TENANT_ID ?? "default";
+          // One configured firm per SFTP source; never a placeholder id.
+          const tenantId = (process.env.RTA_FEED_SFTP_TENANT_ID ?? "").trim();
+          if (!TENANT_DIR.test(tenantId)) {
+            console.error("[feed-ingest] RTA_FEED_SFTP_TENANT_ID is not a firm id — SFTP files left on the server");
+            break;
+          }
           const tenantInbox = path.join(root, tenantId, "incoming");
           await ensureDir(tenantInbox);
           const localPath = path.join(tenantInbox, f.name);
@@ -102,10 +114,12 @@ export async function runFeedIngest(): Promise<FeedIngestResult> {
       } finally {
         await sftp.end().catch(() => {});
       }
-    } else {
-      // Simulation mode: automatically write a mock feed file to the incoming folder
-      // for a mock tenant to simulate RTA drops.
-      const mockTenantId = "3a825fcd-bfb9-4786-9a25-e5f88eb22111"; // A demo tenant UUID
+    } else if (process.env.RTA_FEED_SFTP_SIMULATE === "1" && process.env.NODE_ENV !== "production"
+               && TENANT_DIR.test((process.env.RTA_FEED_SFTP_TENANT_ID ?? "").trim())) {
+      // Simulation, ONLY when asked for outside production, for the configured
+      // firm. It used to run whenever the SFTP library was missing and wrote a
+      // fake feed for a hard-coded firm, which the same tick then imported.
+      const mockTenantId = (process.env.RTA_FEED_SFTP_TENANT_ID ?? "").trim();
       const incomingDir = path.join(root, mockTenantId, "incoming");
       await ensureDir(incomingDir);
       const dateStr = new Date().toISOString().slice(0, 10);
@@ -122,10 +136,6 @@ CAMS|12345678|ABCDE1234F|Anil Mehta|INF209K01UN1|Aditya Birla Sun Life Frontline
     }
   }
 
-  if (!root && sourceMode !== "sftp") {
-    return { enabled: false, tenantsScanned: 0, filesFound: 0, filesIngested: 0, filesFailed: 0, durationMs: Date.now() - startedAt };
-  }
-
   await ensureDir(root);
   let tenantDirs: string[] = [];
   try {
@@ -140,6 +150,10 @@ CAMS|12345678|ABCDE1234F|Anil Mehta|INF209K01UN1|Aditya Birla Sun Life Frontline
   let filesFailed = 0;
 
   for (const tenantId of tenantDirs) {
+    if (!TENANT_DIR.test(tenantId)) {
+      console.warn(`[feed-ingest] ignoring folder '${tenantId}' — a tenant folder must be named with the firm's id`);
+      continue;
+    }
     const incoming = path.join(root, tenantId, "incoming");
     let files: string[] = [];
     try {
@@ -163,17 +177,25 @@ CAMS|12345678|ABCDE1234F|Anil Mehta|INF209K01UN1|Aditya Birla Sun Life Frontline
       }
       filesFound++;
       try {
-        const text = await fs.readFile(full, "utf8");
+        // Read BYTES: the shared detector tells a zip from an .xlsx and decodes
+        // spreadsheets, DBF and UTF-16 the same way as the upload worker.
+        // Reading as UTF-8 text mangled every binary file.
+        const bytes = new Uint8Array(await fs.readFile(full));
         const res = await withTenant(tenantId, async (tx) =>
-          ingestRtaText(tx, {
+          ingestRtaFile(tx, {
             tenantId,
             source: meta.source,
             kind: meta.kind,
             fileName,
-            text,
+            bytes,
             uploadedBy: null,
           })
         );
+        if (res.status === "held") {
+          // Paused / halted firm: leave the file where it is; the next tick retries it.
+          console.log(`[feed-ingest] ${tenantId}: ${fileName} held — ${res.error ?? "imports paused"}`);
+          continue;
+        }
         if (res.status === "failed") {
           filesFailed++;
           await moveTo(full, path.join(root, tenantId, "failed"));

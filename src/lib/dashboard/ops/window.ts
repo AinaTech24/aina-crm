@@ -469,3 +469,16 @@ export function tasksHref(extra: Record<string, string | undefined> = {}): strin
   const s = q.toString();
   return `/dashboard/tasks${s ? `?${s}` : ""}`;
 }
+
+/**
+ * One rejected instruction. An STP is reported as two legs (out of the source
+ * scheme, into the target) that share the registrar's switch reference; that
+ * reference is a short number, unique only within the client's folio, date
+ * and amount — so the key carries all of them. Every other row is its own
+ * instruction. The amount of an instruction is its largest leg (the legs of
+ * one STP carry the same amount).
+ */
+export const rejectedInstructionKey = (t = "t") => sql.raw(
+  `CASE WHEN ${t}.type = 'stp' AND NULLIF(btrim(${t}.raw_feed_row->>'switchRef'), '') IS NOT NULL
+        THEN concat_ws('|', 'stp', ${t}.investor_id::text, ${t}.folio_number, ${t}.order_date::text, abs(${t}.amount::numeric)::text, btrim(${t}.raw_feed_row->>'switchRef'))
+        ELSE ${t}.id::text END`);

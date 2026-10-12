@@ -25,6 +25,10 @@ import { maskPan } from "@/lib/investors/pan-display";
 
 export type ExceptionReasonKey =
   | "unknown_client"
+  | "identity_review"
+  | "txn_conflict"
+  | "unsupported_txn"
+  | "invalid_value"
   | "folio_missing"
   | "missing_field"
   | "amount_unread"
@@ -43,16 +47,47 @@ const CATEGORIES: Category[] = [
     pattern: "not in client master|could not be attached to a client|not linked to a client",
   },
   {
+    key: "identity_review",
+    label: "Held back: client or folio needs review",
+    action:
+      "The row points at a client in Trash, a merged client whose survivor is gone, more than one possible client, or a folio the CRM files under someone else. Nothing was reassigned. Restore or fix the client (or the folio's client), then re-upload the file.",
+    pattern:
+      "held back for review|filed under an import placeholder|in Trash|matches [0-9]+ different clients|different client in the CRM|filed under a different client|merge history|merged into a record|under [0-9]+ different clients",
+  },
+  {
+    key: "txn_conflict",
+    label: "Transaction number repeated or already used by a different transaction",
+    action:
+      "The registrar's transaction number on these rows already belongs to a different transaction in the CRM (folio, scheme, date, type or amount differ). The existing record was left unchanged. Check both against the registrar statement.",
+    pattern: "already in the CRM for a different transaction|appears [0-9]+ times in this file",
+  },
+  {
+    key: "unsupported_txn",
+    label: "Transaction not applied: type, status or direction not verified",
+    action:
+      "Reversals, cancellations, unrecognised transaction codes or statuses, switch/STP rows without an IN/OUT leg, and negative money-in rows are held back rather than guessed. Send an example to support so the code can be mapped from the registrar's documentation.",
+    pattern:
+      "reversal|not one this importer recognises|not guessed|not assumed|IN or the OUT leg|not one this importer reads",
+  },
+  {
+    key: "missing_field",
+    label: "Row is missing a folio, scheme, PAN or reference",
+    action: "The registrar left a key field blank on these rows. Nothing to fix in the CRM; ask the registrar if they matter.",
+    pattern: "row carries no",
+  },
+  {
+    key: "invalid_value",
+    label: "Unreadable or missing value (date, amount, units)",
+    action:
+      "A date or number on these rows could not be read with certainty (blank, impossible date, two-digit year, unknown number format) and was not guessed. Check the file is the report it was uploaded as; if it is, send it to support.",
+    pattern:
+      "is blank|calendar date|not a number|thousands separator|two signs|two-digit year|bare number|not a date|date order|is ambiguous|truncated or mis-delimited|neither a value nor a NAV|negative units|month name",
+  },
+  {
     key: "folio_missing",
     label: "Folio not in the CRM yet",
     action: "Import the folio master / holdings file first, then re-upload this file.",
     pattern: "import the folio master first|could not be created",
-  },
-  {
-    key: "missing_field",
-    label: "Row has no folio or scheme",
-    action: "The registrar left the folio or scheme blank on these rows. Nothing to fix in the CRM; ask the registrar if they matter.",
-    pattern: "row carries no",
   },
   {
     key: "amount_unread",
@@ -81,7 +116,7 @@ const UNRECORDED: Category = {
 };
 
 /** Written to the errors list, but not an exception. */
-const INFO_PATTERN = "were first seen in this report and created";
+const INFO_PATTERN = "were first seen in this report and created|has no frequency column|moved from an import placeholder";
 
 export const EXCEPTION_REASONS: Category[] = [...CATEGORIES, UNRECORDED];
 

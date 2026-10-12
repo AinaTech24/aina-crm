@@ -7,7 +7,7 @@ describe("CAMS 'C' layout (FOLIOCHK / PAN_PEKRN)", () => {
       "AMC_CODE|PRODUCT_CODE|FOLIOCHK|INV_NAME|PAN_PEKRN|SCH_NAME|CLOS_BAL|NAV|RUPEE_BAL|BROK_DLR_CODE",
       "H|HHRERP|1234567890|A Client|ABCDE1234F|HDFC Balanced Advantage Fund - Regular Growth|100.5|500|50250|ARN-000001",
     ].join("\n");
-    const [r] = parseAumStatement(text, "cams");
+    const [r] = parseAumStatement(text, "cams").rows;
     expect(r.folioNumber).toBe("1234567890");
     expect(r.schemeCode).toBe("HHRERP");
     expect(r.pan).toBe("ABCDE1234F");
@@ -24,9 +24,11 @@ describe("an unrecognised header is refused, not read by position", () => {
   it("SIP register", () => {
     expect(() => parseSipBook("Prodcode|Agent|Fund|Accountno|Scheme\n128MCGP|ARN-1|128|9101|MC", "kfintech")).toThrow(UnknownRtaLayoutError);
   });
-  it("a file with no header row still reads by position", () => {
-    const rows = parseAumStatement("ABCDE1234F|9101234|128MCGP|Axis Mid Cap|10|100|1000", "kfintech");
-    expect(rows[0].folioNumber).toBe("9101234");
-    expect(rows[0].aumValue).toBe(1000);
+  // B-1 integration (2026-10-12): main read a headerless AUM file by
+  // position; the RTA release refuses it (no positional fallback — a
+  // registrar file whose columns cannot be named is never guessed at).
+  // This is a deliberate, documented behaviour change.
+  it("a file with no header row is refused, never read by position", () => {
+    expect(() => parseAumStatement("ABCDE1234F|9101234|128MCGP|Axis Mid Cap|10|100|1000", "kfintech")).toThrow(UnknownRtaLayoutError);
   });
 });

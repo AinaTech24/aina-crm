@@ -15,7 +15,8 @@ import { ColumnManager } from "@/components/common/ColumnManager";
 import { Pager } from "@/components/common/Pager";
 import { ModuleTabs, SIP_TABS } from "@/components/common/ModuleTabs";
 import { sipNextDue, indiaToday } from "@/lib/sips/next-due";
-import { clientWhere, sipMonthlySql, textList, type MetricScope } from "@/lib/metrics";
+import { clientWhere, getSipBookCompleteness, sipMonthlySql, textList, type MetricScope } from "@/lib/metrics";
+import { SipCompletenessPanel } from "@/components/sips/SipCompletenessPanel";
 import { visibleClientSql } from "@/lib/transactions/client-scope";
 
 const SIPS_COLUMNS = [
@@ -207,6 +208,9 @@ export default async function SipsPage({
     };
   });
 
+  // How much of the firm's registrations the registrars have verified (Phase 3G).
+  const coverage = await withTenant(session.tenantId, (tx) => getSipBookCompleteness(tx, session.tenantId));
+
   return (
     <div className="space-y-6 max-w-7xl">
       <PageHeaderCard title={<><TrendingUp className="size-6 text-muted-foreground" /> SIP Book</>} actions={<><div className="flex items-center gap-2 flex-wrap">
@@ -236,6 +240,8 @@ export default async function SipsPage({
         <Stat icon={AlertTriangle} label="Stopped this month" value={data.lostMtd.toLocaleString("en-IN")} hint="SIPs stopped or rejected since the 1st of this month." />
         <Stat icon={Calendar} label="Expiring (90 days)" value={data.expiringSoon.toLocaleString("en-IN")} hint="Active SIPs whose end date falls in the next 90 days." />
       </div>
+
+      <SipCompletenessPanel data={coverage} />
 
       <CompactFilterBar
         totalCount={data.filteredTotal}

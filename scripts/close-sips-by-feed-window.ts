@@ -28,6 +28,7 @@
  *   tsx scripts/close-sips-by-feed-window.ts --tenant <uuid> [--days 75] --apply
  */
 import "dotenv/config";
+import { refuseIfRtaWritesStopped } from "./lib/rta-script-guard";
 import { sql } from "drizzle-orm";
 import { withTenant } from "../src/db/client";
 import { refreshActiveSipAmount, sipMonthlySql } from "../src/lib/metrics/sip";
@@ -49,6 +50,9 @@ const cr = (n: unknown) => `Rs ${(Number(n) / 1e7).toFixed(2)} Cr`;
 
 async function main() {
   if (!T || T.startsWith("--")) throw new Error("Pass --tenant <uuid>");
+  // A firm under RTA governance (validate-first, paused, halted, emergency) is
+  // never rewritten by a script — the release's write guard (B-1 integration).
+  if (APPLY) await refuseIfRtaWritesStopped(T, "close-sips-by-feed-window");
   console.log(APPLY ? "APPLY" : "DRY RUN (add --apply)");
   try {
     await withTenant(T, async (tx) => {

@@ -15,7 +15,7 @@
 #
 # First run on a FRESH database (order matters):
 #   1. real values in .env.production  2. APP_DOMAIN set  3. compose build
-#   4. compose run --rm web-blue npm run db:push
+#   4. compose run --rm web-blue npm run migrate:all   (builds the whole schema; never db:push)
 #   5. compose run --rm web-blue npm run db:provision-app-role
 #   6. bash ~/run-deploy.sh
 

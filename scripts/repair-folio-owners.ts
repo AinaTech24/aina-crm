@@ -32,6 +32,7 @@
  */
 
 import "dotenv/config";
+import { refuseIfRtaWritesStopped } from "./lib/rta-script-guard";
 import { appendFileSync, writeFileSync } from "node:fs";
 import { sql } from "drizzle-orm";
 import { withTenant } from "../src/db/client";
@@ -128,6 +129,9 @@ async function plan(): Promise<{ moves: Move[]; unproven: { folios: number; aum:
 
 async function main() {
   if (!T) throw new Error("Pass --tenant <uuid>. Add --apply to write.");
+  // A firm under RTA governance (validate-first, paused, halted, emergency) is
+  // never rewritten by a script — the release's write guard (B-1 integration).
+  if (APPLY) await refuseIfRtaWritesStopped(T, "repair-folio-owners");
   console.log(APPLY ? "APPLY — writing changes" : "DRY RUN — nothing is written (add --apply)");
   const before = await totals();
   console.log(`\nnow:   ${before.clients} live clients, ${before.funded} holding money, ${cr(before.aum)} (folio register ${cr(before.folioAum)}); ${before.folios} folios, ${before.valued} with a balance`);

@@ -70,6 +70,9 @@ export const sipRejections = pgTable(
     rejectionAmount: numeric("rejection_amount", { precision: 18, scale: 2 }).notNull(),
     rejectionReason: text("rejection_reason"),
     schemeName: text("scheme_name"),
+    /** Canonical AMFI scheme code and the registrar's own code (migration 0238). */
+    schemeCode: text("scheme_code"),
+    rtaSchemeCode: text("rta_scheme_code"),
     folioNumber: text("folio_number"),
     amcName: text("amc_name"),
 

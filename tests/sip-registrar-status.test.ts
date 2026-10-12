@@ -11,7 +11,7 @@ const kRow = (folio: string, amount: string, terminate: string, status: string) 
   `W|Pune|Pune|1|${folio}|A Client|01/01/2020|05/01/2020|05/12/2040|240|${amount}|BC|GP|ARN-1|X||Sundaram Business Cycle Fund|ABCDE1234F|EXISTING FOLIO WITH SIP|ECS|176|176BCGP|Monthly|SIP|||${terminate}|${status}||||||||||||`;
 
 describe("KFintech MFSD243 status", () => {
-  const rows = parseSipBook([MFSD243, kRow("6101", "5000", "", "Live SIP"), kRow("6102", "2000", "12/03/2024", "Terminated by Investor")].join("\n"), "kfintech");
+  const rows = parseSipBook([MFSD243, kRow("6101", "5000", "", "Live SIP"), kRow("6102", "2000", "12/03/2024", "Terminated by Investor")].join("\n"), "kfintech").rows;
 
   it("reads the Status and TerminateDate columns", () => {
     expect(rows).toHaveLength(2);

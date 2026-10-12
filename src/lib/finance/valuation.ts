@@ -1,4 +1,5 @@
 /** One folio-aware valuation contract for profile, portal, PDF and stored AUM. */
+import { navCutoffIso } from "./nav-age";
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { xirr, type CashFlow } from "./xirr";
@@ -26,6 +27,13 @@ export type SchemeHolding = {
   realisedGain: number | null; dividend: number | null; hasTxns: boolean;
   historyCoverage: "ledger" | "snapshot_only" | "incomplete";
   snapshotDate: string | null;
+  /**
+   * What the registrar's statement itself said for this holding (Phase 3E) —
+   * units and value as printed, with the statement's date and report. Kept
+   * apart from `currentValue` (units × the latest NAV the CRM holds); null
+   * when no dated statement covers the holding.
+   */
+  registrar: { units: number | null; value: number | null; asOf: string | null; report: string | null } | null;
 };
 export type InvestorValuation = {
   currentValue: number;
@@ -56,16 +64,22 @@ export type ValuationTransaction = PositionIdentity & {
   nav_scheme_name?: string | null;
   /** The AMFI scheme this row resolved to (by code, else by name). */
   amfi_code?: string | null;
+  /** Validate-first row (scheme identified by evidence): never priced by name. */
+  evidence_tracked?: boolean | null;
 };
 type SnapshotScheme = {
   schemeCode?: string | null; schemeName?: string | null; units?: number | string;
   nav?: number | string; value?: number | string; navDate?: string | null;
   asOf?: string | null; snapshotDate?: string | null;
+  sourceUnits?: number | string | null; sourceValue?: number | string | null;
+  sourceAsOf?: string | null; sourceReport?: string | null;
 };
 export type ValuationSnapshot = PositionIdentity & {
   scheme: SnapshotScheme; latest_nav?: number | string | null; latest_nav_date?: string | null;
   snapshot_date?: string | null; nav_scheme_name?: string | null;
   amfi_code?: string | null;
+  /** A leg carrying schemeStatus (evidence-tracked, Phase 3H): never priced by name. */
+  evidence_tracked?: boolean | null;
 };
 const finite = (v: unknown): number | null => {
   if (v == null || v === "") return null;
@@ -125,14 +139,20 @@ export async function loadValuationRows(tx: Tx, investorIds: string[]) {
   // under the other client (8 Oct 2026: 76,614 such transactions at Ahpal,
   // 12,029 at Sandeep Garg). So: this batch's own transactions on folios it
   // holds (or on none), plus transactions filed elsewhere on folios it holds.
+  const navCutoff = navCutoffIso();
   const cols = sql`COALESCE(fi.investor_id, t.investor_id) AS investor_id,
            COALESCE(fi.id, fn.id, t.folio_id) AS folio_id,
            COALESCE(fi.folio_number, fn.folio_number, t.folio_number) AS folio_number,
            COALESCE(fi.amc_code, fn.amc_code, t.amc_code) AS amc_code,
            COALESCE(fi.amc_name, fn.amc_name, t.amc_name) AS amc_name,
            t.scheme_code, t.scheme_name, t.direction, t.type, t.amount, t.units,
-           t.order_date, n.nav AS latest_nav, n.nav_date AS latest_nav_date, n.scheme_name AS nav_scheme_name,
-           n.scheme_code AS amfi_code, t.id AS txn_id`;
+           t.order_date,
+           -- Phase 3I: a validate-first transaction never takes a NAV older than NAV_MAX_AGE_DAYS as current.
+           CASE WHEN t.source_feed = 'rta_validate_first' AND n.nav_date < ${navCutoff}::date THEN NULL ELSE n.nav END AS latest_nav,
+           n.nav_date AS latest_nav_date, n.scheme_name AS nav_scheme_name,
+           n.scheme_code AS amfi_code, t.id AS txn_id,
+           -- A validate-first row's scheme is identified by evidence: never priced by NAME (priceByName skips it).
+           (t.source_feed IS NOT DISTINCT FROM 'rta_validate_first') AS evidence_tracked`;
   const joins = sql`LEFT JOIN folios fi ON fi.id = t.folio_id AND fi.tenant_id = t.tenant_id
     LEFT JOIN folios fn ON t.folio_id IS NULL AND fn.tenant_id = t.tenant_id
       AND fn.investor_id = t.investor_id AND fn.amc_code = t.amc_code AND fn.folio_number = t.folio_number
@@ -153,9 +173,14 @@ export async function loadValuationRows(tx: Tx, investorIds: string[]) {
   `)).rows as unknown as ValuationTransaction[];
   const snapshots = (await tx.execute(sql`
     SELECT f.investor_id, f.id AS folio_id, f.folio_number, f.amc_code, f.amc_name,
-           sc AS scheme, n.nav AS latest_nav, n.nav_date AS latest_nav_date, n.scheme_name AS nav_scheme_name,
+           sc AS scheme,
+           -- Phase 3I: an evidence-tracked leg takes the AMFI NAV only when its scheme is resolved and the NAV is current;
+           -- otherwise its own registrar-stated figures stand (and priceByName never prices it by name).
+           CASE WHEN sc ? 'schemeStatus' AND (sc->>'schemeStatus' NOT IN ('resolved_isin', 'confirmed') OR n.nav_date < ${navCutoff}::date) THEN NULL ELSE n.nav END AS latest_nav,
+           n.nav_date AS latest_nav_date, n.scheme_name AS nav_scheme_name,
            n.scheme_code AS amfi_code,
-           COALESCE(sc->>'snapshotDate', f.details->>'holdingsAsOf') AS snapshot_date
+           (sc ? 'schemeStatus') AS evidence_tracked,
+           COALESCE(sc->>'snapshotDate', sc->>'sourceAsOf', f.details->>'holdingsAsOf') AS snapshot_date
     FROM folios f CROSS JOIN LATERAL jsonb_array_elements(COALESCE(f.schemes, '[]'::jsonb)) AS sc
     LEFT JOIN scheme_nav n ON n.scheme_code = sc->>'schemeCode'
     WHERE f.tenant_id IN (${tenants}) AND f.investor_id IN (${ids})
@@ -181,8 +206,12 @@ async function navIndexFor(tx: Tx): Promise<NavIndex> {
   return navIndexCache.index;
 }
 async function priceByName(tx: Tx, transactions: ValuationTransaction[], snapshots: ValuationSnapshot[]) {
-  const needT = transactions.filter((r) => positive(r.latest_nav) == null && r.scheme_name && !codeLikeName(r.scheme_name, r.scheme_code));
-  const needS = snapshots.filter((r) => positive(r.latest_nav) == null && r.scheme?.schemeName);
+  // Evidence-tracked rows (validate-first transactions, holdings legs carrying
+  // schemeStatus) are identified by registrar ISIN / confirmation only (Phase
+  // 3H/3I): they are NEVER priced by name — unresolved or stale, they keep the
+  // registrar's stated value.
+  const needT = transactions.filter((r) => !r.evidence_tracked && positive(r.latest_nav) == null && r.scheme_name && !codeLikeName(r.scheme_name, r.scheme_code));
+  const needS = snapshots.filter((r) => !r.evidence_tracked && positive(r.latest_nav) == null && r.scheme?.schemeName);
   if (!needT.length && !needS.length) return;
   const index = await navIndexFor(tx);
   if (!index.size) return;
@@ -297,7 +326,7 @@ export function computeInvestorValuation(rows: ValuationTransaction[], snapshots
     folioNumber: r.folio_number ?? null, folioNumbers: r.folio_number ? [r.folio_number] : [], folioId: r.folio_id ?? null,
     netUnits: 0, investedNet: null, investedEstimate: null, latestNav: null, navDate: null, currentValue: null,
     gain: null, xirr: null, kind: null, priced: false, startDate: null, avgDays: null,
-    realisedGain: null, dividend: null, hasTxns: false, historyCoverage: "snapshot_only", snapshotDate: null,
+    realisedGain: null, dividend: null, hasTxns: false, historyCoverage: "snapshot_only", snapshotDate: null, registrar: null,
   });
   for (const r of rows) {
     const key = canonFor(r);
@@ -332,7 +361,7 @@ export function computeInvestorValuation(rows: ValuationTransaction[], snapshots
     h.kind = p.sip && p.lump ? "mixed" : p.sip ? "sip" : p.lump ? "lumpsum" : null;
   }
   // Sum ARN legs within their own folio and scheme. Another folio never suppresses them.
-  type Snap = { holding: SchemeHolding; value: number; units: number; hasValue: boolean; navFromMaster: boolean };
+  type Snap = { holding: SchemeHolding; value: number; units: number; hasValue: boolean; navFromMaster: boolean; src: { units: number | null; value: number | null; asOf: string | null; report: string | null } | null };
   const snapshotParts = new Map<string, Map<string, Snap>>();
   // Statements that say, in so many words, 0 units (a blank is not a zero).
   const zeroKeys = new Set<string>();
@@ -369,7 +398,16 @@ export function computeInvestorValuation(rows: ValuationTransaction[], snapshots
     if (!parts) { parts = new Map(); snapshotParts.set(key, parts); }
     // ARN legs of ONE code add up; a second code for the same holding does not.
     let s = parts.get(own);
-    if (!s) { s = { holding: makeHolding(identity), value: 0, units: 0, hasValue: true, navFromMaster: false }; parts.set(own, s); }
+    if (!s) { s = { holding: makeHolding(identity), value: 0, units: 0, hasValue: true, navFromMaster: false, src: null }; parts.set(own, s); }
+    // The registrar's own figures, summed over this holding's ARN legs.
+    if (sc.sourceAsOf) {
+      const su = finite(sc.sourceUnits), sv = finite(sc.sourceValue);
+      s.src = {
+        units: su == null ? s.src?.units ?? null : (s.src?.units ?? 0) + su,
+        value: sv == null ? s.src?.value ?? null : (s.src?.value ?? 0) + sv,
+        asOf: dateOnly(sc.sourceAsOf), report: sc.sourceReport ?? null,
+      };
+    }
     s.units += units; s.value += value ?? 0; s.hasValue &&= value != null;
     s.holding.latestNav = nav;
     s.navFromMaster = positive(r.latest_nav) != null;
@@ -420,6 +458,7 @@ export function computeInvestorValuation(rows: ValuationTransaction[], snapshots
       }
     }
     const snapshotWins = !!s && (!p || Math.abs(h.netUnits - snapshotUnits) > DUST);
+    h.registrar = s?.src ?? null;
     const ledgerUnits = h.netUnits;
     if (s) h.snapshotDate = s.holding.snapshotDate;
     // The statement says 0 units for a holding the history still shows open:

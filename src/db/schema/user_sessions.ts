@@ -23,6 +23,10 @@ export const userSessions = pgTable(
     ipAddress: text("ip_address"),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow().notNull(),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    /** How the session was authenticated (migration 0244; lib/auth/issue-session AuthMethod). */
+    authMethod: text("auth_method"),
+    /** Set only when the session was created by a completed TOTP / backup-code challenge; cleared by a security change. */
+    mfaVerifiedAt: timestamp("mfa_verified_at", { withTimezone: true }),
     ...timestamps,
   },
   (t) => ({

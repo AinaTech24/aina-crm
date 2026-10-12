@@ -14,7 +14,9 @@ import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { FileText, CheckCircle2, AlertTriangle, Clock, ArrowRight } from "lucide-react";
 import { withTenant } from "@/db/client";
-import { requireSession } from "@/lib/auth/session";
+import { requirePageSession } from "@/lib/auth/session";
+import { ImportAccessDenied } from "@/components/rta/ImportAccessDenied";
+import { maskImportRow, rtaImportPageDenial } from "@/lib/rta/import-access";
 import { formatDate, formatRelative } from "@/lib/utils";
 import {
   RTA_FILE_TYPES,
@@ -29,7 +31,12 @@ import { RtaImportsTable } from "@/components/rta/RtaImportsTable";
 export const dynamic = "force-dynamic";
 
 export default async function RtaImportsPage() {
-  const session = await requireSession();
+  const session = await requirePageSession();
+
+  // Import batches, their remarks and row-error counts are firm-wide: the
+  // import capability on an un-narrowed book (lib/rta/import-access).
+  const denial = await rtaImportPageDenial(session);
+  if (denial) return <ImportAccessDenied message={denial.message} />;
 
   const data = await withTenant(session.tenantId, async (tx) => {
     // Latest successful import per kind
@@ -41,12 +48,15 @@ export default async function RtaImportsPage() {
       ORDER BY kind, period_end DESC, created_at DESC
     `);
 
-    // Recent history (last 30 imports across all kinds)
+    // Recent history (last 30 imports across all kinds). `file_stored` is false
+    // for drop-folder rows (file_key 'feed:<sha>' — the file was never kept),
+    // which therefore cannot be re-imported.
     const recent = await tx.execute(sql`
       SELECT
         rfi.id, rfi.source, rfi.kind, rfi.period_start, rfi.period_end,
         rfi.file_name, rfi.status, rfi.rows_total, rfi.rows_imported,
         rfi.rows_skipped, rfi.rows_failed, rfi.created_at, rfi.parsed_at, rfi.remarks,
+        (rfi.file_key IS NOT NULL AND rfi.file_key NOT LIKE 'feed:%') AS file_stored,
         u.name AS uploaded_by_name
       FROM rta_file_imports rfi
       LEFT JOIN users u ON u.id = rfi.uploaded_by
@@ -61,6 +71,7 @@ export default async function RtaImportsPage() {
         rfi.id, rfi.source, rfi.kind, rfi.period_start, rfi.period_end,
         rfi.file_name, rfi.status, rfi.rows_total, rfi.rows_imported,
         rfi.rows_skipped, rfi.rows_failed, rfi.created_at, rfi.parsed_at, rfi.remarks,
+        (rfi.file_key IS NOT NULL AND rfi.file_key NOT LIKE 'feed:%') AS file_stored,
         rfi.deleted_at, u.name AS uploaded_by_name
       FROM rta_file_imports rfi
       LEFT JOIN users u ON u.id = rfi.uploaded_by
@@ -71,8 +82,9 @@ export default async function RtaImportsPage() {
 
     return {
       latestByKind: new Map((latest.rows as any[]).map((r) => [r.kind, r])),
-      recent: recent.rows as any[],
-      trashed: trashed.rows as any[],
+      // Remarks can quote a PAN (older rows were stored unmasked) — mask on read.
+      recent: (recent.rows as any[]).map(maskImportRow),
+      trashed: (trashed.rows as any[]).map(maskImportRow),
     };
   });
 

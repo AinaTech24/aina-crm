@@ -264,6 +264,7 @@ export async function POST(req: NextRequest) {
   }
 
   const token = await issueSessionToken({
+    auth: "signup",
     userId,
     tenantId,
     branchId,

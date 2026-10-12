@@ -17,11 +17,15 @@ CAMS/KFintech ──daily──▶ MFD's inbox
                               │  one-time auto-forward rule (set by the MFD)
                               ▼
    rta-<token>@crm.ainatech.in   OR   rta@crm.ainatech.in
-     (unique per firm — primary)      (shared — needs a registered sender)
+     (unique per firm — the ONLY       (shared — no longer imports:
+      address that imports)             a sender header proves nothing)
                               │  catch-all delivers into the single rta@ mailbox
                               ▼
    rta-inbox-poller (worker, every ~120s)
-     • resolve tenant: (a) recipient alias, else (b) registered sender mailbox
+     • resolve tenant by recipient alias ONLY (header-matched mail → quarantined)
+     • require proof per mail (lib/rta/mail-trust.ts): registrar DKIM/DMARC pass
+       in OUR server's Authentication-Results — else quarantined, nothing
+       imported (a decrypting archive is NOT accepted as sender proof)
      • capture any Gmail/Outlook forwarding-confirmation code (for the UI)
      • classify each attachment by report-code + sender → (source, kind)
      • push attachment to S3, enqueue the EXISTING rta.import job
@@ -33,29 +37,41 @@ CAMS/KFintech ──daily──▶ MFD's inbox
 
 - **Client** deduped by **PAN**; **folios** by **(amc_code, folio_number)** — a client
   with many folios (incl. CAMS + KFintech) keeps them all.
-- **Idempotent**: whole-file dedupe by sha256; re-forwarding the same file is a no-op.
+- **Re-forwarding** the same file while it is still in flight is skipped. A file that
+  already finished is imported again — safe because the importers are idempotent
+  (transactions key on the registrar's transaction number; see CLAUDE.md, "RTA import").
 - **Never lost**: every message is logged to `rta_inbound_messages` and visible at
   **Aina Admin → Inbound Mail** (routed or not); unrecognised attachment → skipped +
-  logged; wrong password → import row marked `failed` with a clear reason.
+  logged; wrong password → import row marked `rejected` ("not this firm's archive")
+  with its reason; store/queue failure → outcome `error`, the SES copy is parked in
+  `rta-inbound-failed/` (IMAP: message flagged, not marked read) — never deleted.
 
 ---
 
 ## Addressing: two ways in
 
-| | Per-firm alias (primary) | Shared address |
+| | Per-firm alias | Shared address |
 |---|---|---|
 | Address | `rta-<token>@crm.ainatech.in` | `rta@crm.ainatech.in` |
-| Routes on | the recipient address | the mailbox the firm forwards **from** |
-| Setup | none — it just works | firm must register its sending mailbox first |
-| Strength | unguessable token | a `From` header is spoofable |
+| Routes on | the recipient address | — |
+| Imports? | **yes**, with proof per attachment (below) | **no** — quarantined (Oct 2026) |
+| Strength | unguessable token | a `From` / forwarder header is spoofable |
 
-The alias is **tried first and always wins**; sender matching is only consulted when
-no alias matched, so a spoofed sender can never override a real alias. A mailbox
-registered by **two** firms resolves to *nothing* (quarantined) rather than a guess —
-misrouting a book into the wrong tenant is far worse than a message needing a human.
+Since RTA Phase 2 (Oct 2026) only the alias routes mail to a firm. Mail that would
+only have matched a registered sending mailbox is logged as **Quarantined** with no
+firm attached. The registered mailboxes are still used for one thing: recognising an
+**authenticated** Gmail/Outlook forwarding-confirmation mail for that firm.
 
-Firms register their sending mailbox on the **RTA Mailback** card
-(Settings → Integrations). Collisions are rejected at registration with a clear error.
+**Proof per attachment.** Routing by alias is not enough on its own — anyone who
+learns an alias can mail it. An attachment (or a file downloaded from a link in the
+mail) is imported only when either our receiving server's `Authentication-Results`
+shows `dkim=pass` or `dmarc=pass` for a domain in `REGISTRAR_DOMAINS`
+(`src/lib/rta/mail-trust.ts` — **to be confirmed by the owner** against the domains
+CAMS and KFintech actually sign with). An archive that the firm's saved password
+opens is recorded in the quarantine reason but is **not** proof of the sender
+(owner's decision, 2026-10-08). For IMAP
+mail, set `RTA_IMAP_AUTHSERV_ID` to the receiving server's authserv-id; unset, no
+IMAP authentication result is trusted.
 
 ### The Gmail/Outlook confirmation code
 Gmail emails a verification code to whichever address you enter. That mail lands in
@@ -138,7 +154,8 @@ server. Confirm `[rta-inbox] mailback poller started` in the worker logs.
 | **Anything** — start here | **Aina Admin → Inbound Mail** | Every polled message with its outcome, body snippet, and per-attachment verdict. |
 | Nothing imports | worker logs `[rta-inbox]` | Env not set, catch-all not confirmed, or MX wrong. |
 | Import `failed` — "Could not open the zip" | RTA Imports screen | Wrong/missing CAMS or KFintech password — re-enter on the card. |
-| Outcome **Unroutable** | Inbound Mail | Address didn't match a firm (typo / rotated token) AND the sending mailbox isn't registered. |
+| Outcome **Unroutable** | Inbound Mail | Address didn't match a firm (typo / rotated token). |
+| Outcome **Quarantined** | Inbound Mail | Not imported: routed only by a sender header, or the mail is not authenticated as a registrar (no registrar DKIM/DMARC pass from our receiving server). SES copies wait in `rta-inbound-held/` and are retried hourly. |
 | Outcome **No RTA file** | Inbound Mail → expand row | Reached the right firm, but no attachment carried a known report code — add the pattern to the classifier. |
 | Outcome **Already imported** | Inbound Mail | Safe no-op — the same file was already in flight. |
 | A file type isn't picked up | classifier | Filename report-code not recognised → quarantined, not mis-imported. Add the pattern to `src/lib/rta/classify-mailback.ts`. |

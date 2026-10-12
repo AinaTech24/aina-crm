@@ -82,11 +82,26 @@ export interface InboundRawMessage {
   senderCandidates: string[];
   attachments: InboundAttachment[];
   /**
+   * Every Authentication-Results header VALUE, in the order the message carries
+   * them — topmost (most recently added, i.e. our own receiving server's) first.
+   * lib/rta/mail-trust decides which one, if any, to trust.
+   */
+  authResults: string[];
+  /** Which reader produced this message — decides the trusted authserv-id. */
+  transport?: "ses" | "imap";
+  /**
    * Set by the RTA poller's logInbound once it has decided what this mail was
-   * (imported / unroutable / …). The S3 inbound source reads it to choose
-   * between deleting the stored mail and holding it for a retry.
+   * (imported / unroutable / quarantined / error …). The S3 inbound source reads
+   * it to choose between deleting the stored mail, holding it for a retry, and
+   * parking it for inspection; the IMAP reader to choose \Seen vs \Flagged.
    */
   outcome?: string;
+  /**
+   * Set by the poller when part of the mail could not be stored or queued even
+   * though the outcome is otherwise final (e.g. one of two attachments failed):
+   * the source copy must be kept for inspection, not deleted.
+   */
+  keepSource?: boolean;
 }
 
 const EMAIL_RE = /[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}/gi;
@@ -130,6 +145,21 @@ function collectSenderCandidates(parsed: any, fromAddr?: string): string[] {
   return [...out];
 }
 
+/**
+ * Authentication-Results values in header order (topmost first). mailparser's
+ * `headerLines` keeps the raw lines in the order they appear in the message.
+ */
+function collectAuthResults(parsed: any): string[] {
+  const out: string[] = [];
+  for (const line of parsed?.headerLines ?? []) {
+    if (String(line?.key ?? "").toLowerCase() !== "authentication-results") continue;
+    const raw = String(line?.line ?? "");
+    const colon = raw.indexOf(":");
+    out.push((colon >= 0 ? raw.slice(colon + 1) : raw).trim());
+  }
+  return out;
+}
+
 function collectRecipients(parsed: any, envelope: any): string[] {
   const out = new Set<string>();
   const add = (v: any) => {
@@ -166,7 +196,12 @@ function collectRecipients(parsed: any, envelope: any): string[] {
  * Shared by the IMAP reader and the S3 (Amazon SES) reader, so both feed
  * handleMessage exactly the same thing.
  */
-export async function parseInboundSource(source: Buffer, uid: number, envelope?: any): Promise<InboundRawMessage> {
+export async function parseInboundSource(
+  source: Buffer,
+  uid: number,
+  envelope?: any,
+  transport?: "ses" | "imap"
+): Promise<InboundRawMessage> {
   const parsed = await simpleParser(source);
   const fromAddr = parsed.from?.value?.[0];
   const attachments: InboundAttachment[] = (parsed.attachments ?? [])
@@ -189,14 +224,23 @@ export async function parseInboundSource(source: Buffer, uid: number, envelope?:
     recipients: collectRecipients(parsed, envelope),
     senderCandidates: collectSenderCandidates(parsed, fromAddr?.address),
     attachments,
+    authResults: collectAuthResults(parsed),
+    transport,
   };
 }
 
 /**
- * Poll the INBOX for UNSEEN messages and hand each (with attachments + recipient
- * candidates) to `handler`. Each message is marked \Seen after the handler runs
- * — success OR failure — so a poison message can't loop every tick (the caller's
- * dedupe + quarantine guarantee correctness). Bounded by `limit` per call.
+ * Poll the INBOX for UNSEEN, UNFLAGGED messages and hand each (with attachments
+ * + recipient candidates) to `handler`. Bounded by `limit` per call.
+ *
+ * After the handler:
+ *   • handled (imported, duplicate, quarantined, …) → \Seen;
+ *   • the handler THREW, or reported outcome "error" / keepSource (an
+ *     attachment could not be stored or queued) → left UNSEEN and marked
+ *     \Flagged instead. Marking it \Seen used to drop it from automation for
+ *     good under a reassuring log line; flagged it stays visible in the mailbox
+ *     for inspection, and the search below skips it so one poison message can't
+ *     loop every tick or starve newer mail. To retry it, clear the flag.
  *
  * Uses a dedicated ingest mailbox (we own it), so marking \Seen as the
  * high-water is safe — unlike imapFetchSince, which polls the MFD's own mailbox
@@ -222,24 +266,27 @@ export async function processUnseenMailback(
   try {
     const lock = await client.getMailboxLock("INBOX");
     try {
-      const uids = (await client.search({ seen: false }, { uid: true })) || [];
+      const uids = (await client.search({ seen: false, flagged: false }, { uid: true })) || [];
       if (uids.length) {
         // imapflow accepts a comma-joined UID list as the fetch range.
         const take = uids.slice(0, limit).join(",");
         const msgs: InboundRawMessage[] = [];
         for await (const m of client.fetch(take, { uid: true, source: true, envelope: true }, { uid: true })) {
           if (!m.uid || !m.source) continue;
-          msgs.push(await parseInboundSource(m.source as Buffer, m.uid, m.envelope));
+          msgs.push(await parseInboundSource(m.source as Buffer, m.uid, m.envelope, "imap"));
         }
         for (const msg of msgs) {
+          let failed = false;
           try {
             await handler(msg);
           } catch (e) {
+            failed = true;
             // Class + code only: a failed query's message carries its parameters.
             console.error(`[rta-inbox] handler error uid=${msg.uid}: ${errorRef(e)}`);
           }
+          if (msg.outcome === "error" || msg.keepSource) failed = true;
           try {
-            await client.messageFlagsAdd(String(msg.uid), ["\\Seen"], { uid: true });
+            await client.messageFlagsAdd(String(msg.uid), [failed ? "\\Flagged" : "\\Seen"], { uid: true });
           } catch {
             /* best-effort — a re-read is deduped by checksum */
           }

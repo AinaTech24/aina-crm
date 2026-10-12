@@ -59,9 +59,8 @@ cp .env.example .env
 #   - RESEND_API_KEY        (your Resend account)
 #   - GEMINI_API_KEY or ANTHROPIC_API_KEY (AI features)
 
-# 3. Push schema and run RLS migration
-npm run db:push
-psql $DATABASE_URL -f drizzle/migrations/0001_rls_policies.sql
+# 3. Build the schema (every migration, RLS policies included, checksummed)
+npm run migrate:all
 
 # 4. Seed the 24 pre-built recipes
 npm run seed
