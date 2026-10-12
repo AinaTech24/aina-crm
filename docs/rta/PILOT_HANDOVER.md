@@ -52,7 +52,24 @@ A mismatch anywhere in this table is a stop: the environment is not the reviewed
 
 **B-1 status (2026-10-12): integrated in development, awaiting the owner's review.** Authorized by the owner ("RTA PRODUCTION BLOCKER B-1: SAFE CODEBASE INTEGRATION"). The reconciled candidate below merges `main` `a16628c5` into the release; report, conflict decisions, regression and real-file reconciliation: `docs/rta/B1_INTEGRATION.md`. Until the owner approves it and a new tag is pushed, **`c26e676` stays the accepted pin and neither commit may be deployed.** Decisions the owner is asked to confirm before approval: I-1 – I-4 in that report (placeholder folio moves held, same-PAN twins held, a folio filed under another client held, headerless files refused).
 
-#### 0.1a Reconciled candidate (proposed — not accepted, not tagged)
+**B-1 stabilisation (2026-10-12): `f61d202` is superseded by `aab763c4` (§0.1b).** The owner accepted the integration direction for development and asked for stabilisation; `main` meanwhile gained `88bc0178` (client types, migration `0233_client_type_details.sql`), which is now merged too. Evidence A–L: `docs/rta/B1_STABILISATION.md`. Still not accepted, not tagged, not deployable.
+
+#### 0.1b Stabilised candidate (proposed — not accepted, not tagged)
+
+| Item | Value | How to verify |
+|---|---|---|
+| Candidate commit (application code) | `aab763c420466b6a70a3ad62f20530f7a334153f` (`aab763c4`, branch `claude/relaxed-mendel-01jprq`) | `git rev-parse aab763c4^{commit}` |
+| Contains production and the release | `main` `88bc0178f8b8bd0eff4f3bbf97492ccf5b98961c`, `a16628c5` and `c26e676` are all ancestors | `for c in 88bc0178 a16628c5 c26e676; do git merge-base --is-ancestor $c aab763c4 \|\| echo MISSING $c; done` prints nothing |
+| Deployed tree = candidate code | commits after `aab763c4` may change `docs/` only | `git diff --name-only aab763c4 <deployed commit> -- . ':(exclude)docs'` prints nothing |
+| Frozen artifact | whole tree `67c67e834b7e00e055d07076daf0e83ce69f08cb`; `src/` `88816411a6791aea05dbb7723597d7c4e20c9e84`; `drizzle/migrations/` `4a66501e6aa6f6a64724eff26a23687e6cfd872b` | `git rev-parse aab763c4^{tree} aab763c4:src aab763c4:drizzle/migrations` |
+| Migrations | 283 files = `main`'s 271 byte for byte + the release's 12 (`0233_rta_staging` – `0244`, unchanged); lock SHA-256 `9a2fb53fbab7967a4dc6f304bcd5ba542a91de0dc7a74d172d6e80581fe3ef49` (one entry added, none changed); concatenation `b2b6d0269139bd1efc3e6b63d55ad09323b1a8336cac88221774634c8c450e23`; ledger digest `eb49785a924cc2e31b2dc4d2e0b2b4f9`, reached both fresh and by upgrading a `main` 88bc0178-state database (271) by 12 files, identical schema | `node scripts/check-migration-lock.mjs`; `git diff --name-status origin/main aab763c4 -- drizzle/migrations/` shows only additions |
+| Production ledger check | `docs/rta/handover/b1-production-ledger-check.sql` (read-only): `COMPATIBLE` at 270 + 13 pending or 271 + 12 pending; `STOP` on the reverted `0240_aum_month_end.sql`, a changed checksum or an already-applied release file | run by the DBA (PR-5) |
+| Production's own files kept byte for byte | as §0.1a, against `main` `88bc0178` | `git diff --stat 88bc0178 aab763c4 -- terraform .github/workflows/deploy.yml scripts/ssm-deploy.sh scripts/manual-deploy.sh scripts/prod-change.sh scripts/prod-lock.sh src/lib/sql src/lib/observability/log-safe.ts` prints nothing |
+| Proposed tag (not created) | `rta-kfintech-pilot-candidate-2026-10-12-b1s`, annotated, on `aab763c4` — only on the owner's approval; `rta-kfintech-pilot-candidate-2026-10-10` stays on `c26e676` | — |
+
+The candidate is valid only if production runs `main` `88bc0178` or an ancestor of it (PR-3). A later push to `main` must be merged and re-qualified first.
+
+#### 0.1a Reconciled candidate (superseded by §0.1b — kept for the record)
 
 | Item | Value | How to verify |
 |---|---|---|
