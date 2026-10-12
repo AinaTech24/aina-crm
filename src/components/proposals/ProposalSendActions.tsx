@@ -9,12 +9,19 @@
  * `primary` (a draft): WhatsApp is the page's main action. Once the proposal
  * has gone, sending again is secondary to recording the client's answer.
  * Outcomes surface as toasts (no inline banners).
+ *
+ * The send route refuses a proposal with no suitability note — the written
+ * reason it suits the client, which the PDF and the audit trail carry. The
+ * note's box sits further down the page, so a refused send used to end at a
+ * toast telling the RM to "capture" a note they could not see. Now the button
+ * asks for it, saves it on the proposal and finishes the send.
  */
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Mail, MessageCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
+import { promptDialog } from "@/components/ui/ConfirmProvider";
 
 export function ProposalSendActions({
   id,
@@ -35,15 +42,46 @@ export function ProposalSendActions({
 
   const locked = status === "accepted" || status === "rejected";
 
+  /** Ask for the suitability note and save it on the proposal. False when the RM cancelled or it failed. */
+  async function captureNote(): Promise<boolean> {
+    const note = await promptDialog({
+      title: "Suitability note",
+      label: "Why does this proposal suit the client?",
+      placeholder: "e.g. Long-term wealth creation; the funds sit within the client's risk profile and 10-year horizon.",
+      multiline: true,
+      maxLength: 2000,
+      confirmLabel: "Save and send",
+    });
+    if (!note?.trim()) return false;
+    const res = await fetch(`/api/proposals/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ suitabilityNote: note.trim() }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      toast.error(j.error ?? `Save failed (${res.status})`, "Couldn't save the suitability note");
+      return false;
+    }
+    return true;
+  }
+
   async function send(channel: "email" | "whatsapp") {
     setBusy(channel);
     try {
-      const res = await fetch(`/api/proposals/${id}/send`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ channel }),
-      });
-      const j = await res.json().catch(() => ({}));
+      const post = () =>
+        fetch(`/api/proposals/${id}/send`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ channel }),
+        });
+      let res = await post();
+      let j = await res.json().catch(() => ({}));
+      if (res.status === 412 && j.field === "suitabilityNote") {
+        if (!(await captureNote())) return;
+        res = await post();
+        j = await res.json().catch(() => ({}));
+      }
       if (!res.ok) {
         toast.error(j.error ?? `Send failed (${res.status})`, "Couldn't send proposal");
         return;
