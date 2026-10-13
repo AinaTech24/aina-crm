@@ -21,6 +21,8 @@ import { BottomSheet } from "../ui/BottomSheet";
 import { LoadingState, ErrorState } from "../states";
 import { FieldRenderer } from "./FieldRenderer";
 import { api, ApiError } from "../../api/client";
+import { useFormDraft } from "../../lib/useFormDraft";
+import { useConnectivity } from "../../state/connectivity";
 import { queuedPost } from "../../lib/offlineQueue";
 import { palette, spacing, fontSize, fontWeight } from "../../theme/tokens";
 import type { FormSpec, FormValues, SectionSpec } from "../../features/forms/types";
@@ -52,9 +54,18 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
     queryFn: () => api.get<any>(`${spec.endpoint}/${editId}`),
   });
 
-  const [form, setForm] = useState<FormValues>(() =>
-    typeof spec.initial === "function" ? spec.initial(params) : { ...spec.initial }
-  );
+  const draftEnabled = !isEdit && spec.endpoint === "/api/leads";
+  const draft = useFormDraft<FormValues>("new-lead", () => {
+    const base = typeof spec.initial === "function" ? spec.initial(params) : { ...spec.initial };
+    if (spec.endpoint === "/api/tasks") for (const key of ["title", "description", "relatedLeadId", "relatedInvestorId"]) if (params[key]) base[key] = params[key];
+    return base;
+  }, draftEnabled);
+  const form = draft.value, setForm = draft.setValue;
+  const online = useConnectivity(s => s.online);
+  const [moreDetails, setMoreDetails] = useState(false);
+  const quickKeys = new Set(["name", "phone", "source", "referredByInvestorId", "followUpDate"]);
+  const quickLead = draftEnabled && !moreDetails;
+  const showField = (f: { key: string; visibleIf?: (v: FormValues) => boolean }) => (!quickLead || quickKeys.has(f.key)) && (!f.visibleIf || f.visibleIf(form));
   const [hydrated, setHydrated] = useState(!isEdit);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [banner, setBanner] = useState<string | null>(null);
@@ -148,6 +159,7 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
         : ["/api/leads", "/api/activities"].includes(spec.endpoint)
           ? await queuedPost<any>(spec.endpoint, finalBody, spec.title)
           : await api.post<any>(spec.endpoint, finalBody);
+      if (draftEnabled) await draft.clear().catch(() => {});
       for (const key of spec.invalidate ?? []) qc.invalidateQueries({ queryKey: [key] });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       if (isEdit) {
@@ -186,7 +198,7 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
 
   // In edit mode, wait for the record before rendering the form (avoids a flash
   // of empty fields then a jump when values arrive).
-  if (isEdit && !hydrated) {
+  if (!draft.ready || (isEdit && !hydrated)) {
     return (
       <View style={styles.screen}>
         <ScreenHeader title={headerTitle} onBack={() => router.back()} />
@@ -224,13 +236,15 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          {draft.status ? <Text variant="caption" tone="muted" style={{ marginBottom: spacing.md }}>{draft.status}</Text> : null}
+          {!online && (isEdit || !["/api/leads", "/api/activities"].includes(spec.endpoint)) ? <Text tone="warning" style={{ marginBottom: spacing.md }}>This form needs a connection to submit.</Text> : null}
           {current.sections
-            .filter((section) => (!section.visibleIf || section.visibleIf(form)) && section.fields.some((f) => !f.visibleIf || f.visibleIf(form)))
+            .filter((section) => (!section.visibleIf || section.visibleIf(form)) && section.fields.some(showField))
             .map((section, si) => (
             <View key={si} style={styles.section}>
               {section.title ? <Text style={styles.sectionTitle}>{section.title.toUpperCase()}</Text> : null}
               {section.fields
-                .filter((f) => !f.visibleIf || f.visibleIf(form))
+                .filter(showField)
                 .map((f) => (
                   <FieldRenderer
                     key={f.key}
@@ -244,6 +258,7 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
             </View>
           ))}
 
+          {draftEnabled ? <Button label={moreDetails ? "Hide optional details" : "More details (optional)"} variant="secondary" onPress={() => setMoreDetails(!moreDetails)} /> : null}
           {banner ? (
             <Text variant="body" tone="danger" center style={{ marginTop: spacing.sm, color: palette.danger }}>
               {banner}

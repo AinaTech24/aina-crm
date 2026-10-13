@@ -14,7 +14,6 @@ import { ColumnManager } from "@/components/common/ColumnManager";
 import { MoreMenu } from "@/components/common/MoreMenu";
 import { buttonClass } from "@/components/ui/button-class";
 import { srPastSlaSql, srWhere } from "@/lib/metrics";
-import { serviceRequestScopeSql, srClientVisibleSql } from "@/lib/service-requests/access";
 
 const SR_COLUMNS = [
   { key: "ticket", label: "Ticket #", required: true },
@@ -117,30 +116,23 @@ export default async function ServiceRequestsPage({
   const dr = dateRangeCond(sp, "created", "sr.created_at");
   if (dr) conds.push(dr);
   // Tab counts are taken over every other filter, before the tab narrows.
-  const countConds = [...conds];
+  const countWhere = sql`WHERE ${sql.join(conds, sql` AND `)}`;
   if (tab) {
     const st = TABS.find((t) => t.key === tab)!.statuses;
     conds.push(sql`sr.status IN (${sql.join(st.map((v) => sql`${v}`), sql`, `)})`);
   }
+  const whereClause =
+    conds.length === 0 ? sql`` : sql`WHERE ${sql.join(conds, sql` AND `)}`;
 
   const result = await withTenant(session.tenantId, async (tx) => {
-    // Only tickets this viewer may see; a ticket assigned to them about a
-    // client outside their book shows no client details.
-    const scope = await serviceRequestScopeSql(tx, session, "sr");
-    const clientVisible = await srClientVisibleSql(tx, session, "sr");
-    const whereClause = sql`WHERE ${sql.join([...conds, scope], sql` AND `)}`;
-    const countWhere = sql`WHERE ${sql.join([...countConds, scope], sql` AND `)}`;
     const rows = await tx.execute(sql`
-      SELECT sr.id, sr.ticket_no, sr.type, sr.subject, sr.description,
+      SELECT sr.id, sr.ticket_no, sr.investor_id, sr.type, sr.subject, sr.description,
              sr.status, sr.priority, sr.assigned_to_user_id,
              sr.sla_response_at, sr.sla_resolution_at, sr.responded_at, sr.resolved_at,
              sr.escalated_at, sr.escalated_to_user_id, sr.remarks,
              jsonb_array_length(COALESCE(sr.attachments, '[]'::jsonb)) AS attach_count,
              sr.created_at,
-             CASE WHEN ${clientVisible} THEN i.name END AS investor_name,
-             CASE WHEN ${clientVisible} THEN i.avatar_url END AS investor_avatar_url,
-             CASE WHEN ${clientVisible} THEN sr.investor_id END AS investor_id,
-             u.name AS assignee_name,
+             i.name AS investor_name, i.avatar_url AS investor_avatar_url, u.name AS assignee_name,
              CASE
                WHEN sr.resolved_at IS NOT NULL
                  THEN EXTRACT(DAY FROM sr.resolved_at - sr.created_at)::int

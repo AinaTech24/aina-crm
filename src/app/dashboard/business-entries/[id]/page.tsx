@@ -6,8 +6,6 @@ import { ChevronLeft, User, Calendar, Briefcase } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { businessEntries, businessEntryLines, investors, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { can } from "@/lib/auth/rbac";
-import { isClientVisible } from "@/lib/transactions/client-scope";
 import { formatINR } from "@/lib/utils";
 import { ASSET_CLASS_LABELS, ASSET_CLASS_ORDER, type AssetClass } from "@/lib/business/asset-class";
 import { BusinessEntryActions } from "@/components/business/BusinessEntryActions";
@@ -35,11 +33,6 @@ export default async function BusinessEntryDetailPage({ params }: { params: Prom
       .where(and(eq(businessEntries.id, id), eq(businessEntries.tenantId, session.tenantId)))
       .limit(1);
     if (!entry) return null;
-    // Same rule as GET /api/business-entries/[id]: an RM opens only their own
-    // bookings, and nobody opens one on a client outside their scope.
-    const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "reports.business", session.permissions);
-    if (!seesAll && entry.rmId !== session.userId) return null;
-    if (entry.rmId !== session.userId && !(await isClientVisible(tx, session, entry.investorId))) return null;
     const lines = await tx.select().from(businessEntryLines).where(eq(businessEntryLines.entryId, id)).orderBy(asc(businessEntryLines.sortOrder));
     const rm = entry.rmId ? (await tx.select({ name: users.name }).from(users).where(eq(users.id, entry.rmId)).limit(1))[0] : null;
     let email: string | null = null;

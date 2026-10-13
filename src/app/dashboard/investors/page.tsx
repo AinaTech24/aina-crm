@@ -6,7 +6,7 @@ import { withTenant } from "@/db/client";
 import { customFieldDefs, investors } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
-import { investorScopeCondition, investorScopeSql, requireInvestorView } from "@/lib/investors/access";
+import { investorScopeCondition, requireInvestorView } from "@/lib/investors/access";
 import { RecomputeTiersButton } from "@/components/investors/RecomputeTiersButton";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { dateRangeFilter } from "@/lib/filters/date-range";
@@ -301,7 +301,7 @@ export default async function InvestorsPage({
     }
 
     // Possible-duplicate count (same PAN / mobile) — surfaced as a banner.
-    const dupCount = await countPossibleDuplicates(tx as any, session.tenantId, await investorScopeSql(tx, session, "investors"));
+    const dupCount = await countPossibleDuplicates(tx as any, session.tenantId);
 
     // "Needs attention" quick filter (needs_data=1): the dashboard's "clients
     // missing data" count for this viewer's book, taken with the list's own

@@ -8,7 +8,6 @@ import { withTenant } from "@/db/client";
 import { businessEntries, users, investors } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
-import { visibleClientOrOwnSql } from "@/lib/transactions/client-scope";
 import { formatINR } from "@/lib/utils";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
@@ -53,9 +52,6 @@ export default async function BusinessEntriesPage({
   const { rows, kpi, rms } = await withTenant(session.tenantId, async (tx) => {
     const conds: any[] = [eq(businessEntries.tenantId, session.tenantId)];
     if (!seesAll) conds.push(eq(businessEntries.rmId, session.userId));
-    // Viewer scope: their own bookings, or entries on clients they may see.
-    const viewScope = await visibleClientOrOwnSql(tx, session, businessEntries.investorId, businessEntries.rmId);
-    conds.push(viewScope);
     if (q) conds.push(or(ilike(businessEntries.clientName, `%${q}%`), ilike(businessEntries.amcName, `%${q}%`))!);
     if (statusFilter.length) conds.push(inArray(businessEntries.status, statusFilter as any));
     if (productFilter.length) conds.push(inArray(businessEntries.productType, productFilter as any));
@@ -99,7 +95,6 @@ export default async function BusinessEntriesPage({
         COALESCE(SUM(total_amount) FILTER (WHERE date_trunc('month', business_date) = date_trunc('month', current_date)), 0)::numeric AS mtd_gross
       FROM business_entries
       WHERE tenant_id = ${session.tenantId}::uuid AND status <> 'cancelled'${seesAll ? sql`` : sql` AND rm_id = ${session.userId}::uuid`}
-        AND ${viewScope}
     `);
     const kpi = (kpiRes.rows[0] as any) ?? { entries: 0, fy_gross: 0, mtd_gross: 0 };
 

@@ -9,11 +9,18 @@ import * as Haptics from "expo-haptics";
 import { useCallIntent, type CallIntent } from "../../state/callIntent";
 import { usePrefs } from "../../state/prefs";
 import { simCallsAvailable } from "./simCallSync";
+import { callPermissionGranted } from "./simCallSync";
+import { getAccountScope } from "../../lib/accountScope";
+import { toast } from "../../lib/toast";
 
-export function startCall(intent: Omit<CallIntent, "armedAt">) {
+export async function startCall(intent: Omit<CallIntent, "armedAt">) {
   const phone = (intent.phone ?? "").trim();
   if (!phone) return;
-  if (!usePrefs.getState().autoLogCalls || !simCallsAvailable) useCallIntent.getState().arm({ ...intent, phone });
+  const scope = getAccountScope();
+  const auto = usePrefs.getState().autoLogCalls && simCallsAvailable && await callPermissionGranted().catch(() => false);
+  if (getAccountScope().generation !== scope.generation) return;
+  if (!auto) useCallIntent.getState().arm({ ...intent, phone });
   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-  Linking.openURL(`tel:${phone}`).catch(() => {});
+  try { await Linking.openURL(`tel:${phone.replace(/[^+\d*#]/g, "")}`); }
+  catch { if (getAccountScope().generation === scope.generation) { useCallIntent.getState().clear(); toast.error("Could not open the phone dialer. Try calling from your phone app."); } }
 }

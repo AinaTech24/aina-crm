@@ -13,13 +13,11 @@ const KEY = "device_prefs_v1";
 
 export interface Prefs {
   /**
-   * Log calls automatically instead of asking. When on, returning to the app
-   * after a call places the log immediately (duration ≈ time away), so nothing
-   * is ever lost to a dismissed prompt. Notes can be added afterwards from the
-   * call's detail screen.
+   * Import actual Android call metadata for uniquely matched CRM contacts,
+   * while the app is open or on resume. Opt-in is scoped to account and device.
    */
   autoLogCalls: boolean;
-  /** Outcome recorded by an auto-log, since we can't detect it. */
+  /** Legacy preference retained for stored-payload compatibility. */
   autoLogOutcome: string;
   /**
    * Require Face ID / Touch ID / fingerprint to open the app (cold start and

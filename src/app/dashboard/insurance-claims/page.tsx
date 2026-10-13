@@ -7,7 +7,6 @@ import { withTenant } from "@/db/client";
 import { insuranceClaims, investors, insurancePolicies, users, CLAIM_STATUSES, CLAIM_MODES } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
-import { claimClientScopeSql } from "@/lib/insurance/register-access";
 import { formatINR } from "@/lib/utils";
 import { claimTatDays, claimAgeDays, OPEN_CLAIM_STATUSES } from "@/lib/insurance/claim-status";
 import { Pager } from "@/components/common/Pager";
@@ -58,11 +57,7 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
 
   const data = await withTenant(session.tenantId, async (tx) => {
     // Explicit tenant: a superuser connection bypasses RLS.
-    // Only claims whose client is in the viewer's scope (firm switch /
-    // customised "assigned only" / branch) — the list, its count and the chips.
-    const scope = await claimClientScopeSql(tx, session, sql`${insuranceClaims.investorId}`, sql`${insuranceClaims.rmId}`);
-    const bareScope = await claimClientScopeSql(tx, session, sql`insurance_claims.investor_id`, sql`insurance_claims.rm_id`);
-    const conds: any[] = [eq(insuranceClaims.tenantId, session.tenantId), scope];
+    const conds: any[] = [eq(insuranceClaims.tenantId, session.tenantId)];
     // status — one value, any CLAIM_STATUSES key ("empty" included): the
     // dashboard's Claims card links each of its status rows here.
     if (mode) conds.push(eq(insuranceClaims.claimMode, mode as any));
@@ -91,11 +86,11 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
 
     const cnt = await tx.select({ c: sql<number>`count(*)::int` }).from(insuranceClaims).where(where as any);
 
-    const byStatus = await tx.execute(sql`SELECT claim_status, count(*)::int AS c FROM insurance_claims WHERE ${bareScope} GROUP BY claim_status`);
+    const byStatus = await tx.execute(sql`SELECT claim_status, count(*)::int AS c FROM insurance_claims GROUP BY claim_status`);
     const statusCounts: Record<string, number> = {};
     for (const r of byStatus.rows as any[]) statusCounts[r.claim_status] = Number(r.c);
 
-    const byMode = await tx.execute(sql`SELECT claim_mode, count(*)::int AS c FROM insurance_claims WHERE claim_mode IS NOT NULL AND ${bareScope} GROUP BY claim_mode`);
+    const byMode = await tx.execute(sql`SELECT claim_mode, count(*)::int AS c FROM insurance_claims WHERE claim_mode IS NOT NULL GROUP BY claim_mode`);
     const modeCounts: Record<string, number> = {};
     for (const r of byMode.rows as any[]) modeCounts[r.claim_mode] = Number(r.c);
 
@@ -107,7 +102,6 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
         count(*) FILTER (WHERE claim_status = 'rejected')::int AS rejected,
         COALESCE(SUM(settled_amount::numeric),0) AS settled_amount
       FROM insurance_claims
-      WHERE ${bareScope}
     `);
     return { rows, filteredTotal: Number(cnt[0]?.c ?? 0), statusCounts, modeCounts, s: stats.rows[0] as any };
   });

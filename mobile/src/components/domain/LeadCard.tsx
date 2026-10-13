@@ -4,7 +4,10 @@
  */
 
 import React from "react";
-import { View, StyleSheet } from "react-native";
+import { useRouter } from "expo-router";
+import { Feather } from "@expo/vector-icons";
+import { startCall } from "../../features/activities/callAndLog";
+import { View, Pressable, StyleSheet } from "react-native";
 import { Card } from "../ui/Card";
 import { Text } from "../ui/Text";
 import { StatusPill } from "../ui/StatusPill";
@@ -19,12 +22,13 @@ function BandChip({ band }: { band?: string | null }) {
   const c = BAND_TONE[band] ?? palette.muted;
   return (
     <View style={[styles.band, { backgroundColor: c + "1A" }]}>
-      <Text style={{ fontSize: 10.5, color: c, fontWeight: fontWeight.bold }}>{band.toUpperCase()}</Text>
+      <Text style={{ fontSize: 12, color: c, fontWeight: fontWeight.bold }}>{band.toUpperCase()}</Text>
     </View>
   );
 }
 
 export function LeadCard({ lead, onPress, compact }: { lead: Lead; onPress: () => void; compact?: boolean }) {
+  const router = useRouter();
   const meta = stageMeta(lead.stage);
   const overdue = !!lead.nextFollowUpAt && new Date(lead.nextFollowUpAt).getTime() < Date.now() && !lead.convertedAt;
   const amount = lead.intendedAmount ?? lead.expectedBusinessAmount;
@@ -56,7 +60,6 @@ export function LeadCard({ lead, onPress, compact }: { lead: Lead; onPress: () =
             {titleCase(lead.source) || "—"}{lead.city ? ` · ${lead.city}` : ""}{lead.ownerName ? ` · RM ${lead.ownerName}` : ""}
           </Text>
           <View style={styles.badges}>
-            <BandChip band={lead.scoreBand} />
             {meta ? <StatusPill label={meta.label} tone={meta.tone} size="sm" /> : null}
             {overdue ? <StatusPill label="Overdue" tone="danger" size="sm" dot={false} /> : null}
           </View>
@@ -66,6 +69,10 @@ export function LeadCard({ lead, onPress, compact }: { lead: Lead; onPress: () =
           <Text variant="subtitle">{inr(amount)}</Text>
           {lead.nextFollowUpAt ? <Text variant="caption" tone={overdue ? "danger" : "muted"}>{fmtDate(lead.nextFollowUpAt)}</Text> : null}
         </View>
+      </View>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.lg, marginTop: spacing.sm }}>
+        {lead.phone ? <Pressable accessibilityRole="button" accessibilityLabel={`Call ${lead.name}`} style={{ minHeight: 48, justifyContent: "center" }} onPress={() => startCall({ subjectType: "lead", subjectId: lead.id, name: lead.name || "Contact", phone: lead.phone! })}><Text tone="brand">Call</Text></Pressable> : null}
+        <Pressable accessibilityRole="button" style={{ minHeight: 48, justifyContent: "center", flex: 1 }} onPress={() => router.push({ pathname: "/m/tasks/new", params: { relatedLeadId: lead.id, title: "Follow up with " + lead.name } } as any)}><Text tone="brand">Follow up</Text></Pressable>
       </View>
     </Card>
   );

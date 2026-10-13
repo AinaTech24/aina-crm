@@ -1,6 +1,6 @@
 # Aina CRM mobile
 
-Native Expo Router / React Native field-team app for Owner, Branch Head, RM and Operations. The five tabs are Home, Leads, Clients, Activities and More. It connects to https://crm.ainatech.in with existing CRM accounts. Some secondary web modules retain a WebView fallback.
+Native Expo Router / React Native field-team app for Owner, Branch Head, RM and Operations. The five tabs are Home, Leads, Clients, Work and More. Work groups Follow-ups, Tasks, Meetings and Calls. It connects to https://crm.ainatech.in with existing CRM accounts. Some secondary web modules retain a WebView fallback.
 
 See [the interview requirements](../docs/AINA-MOBILE-REQUIREMENTS.md) for the agreed scope and [the test handover](../docs/AINA-MOBILE-HANDOVER.md) for limitations and phone checks.
 
@@ -36,7 +36,8 @@ The preview profile produces an internally distributed signed APK. Production pr
 - More → Targets & achievement: monthly meeting, mutual-fund and insurance measures; Owner/Branch Head set targets.
 - Cached reads and an account-isolated offline queue for supported lead, activity and task changes. Server idempotency keys prevent duplicate queued writes.
 - Settings → automatic SIM call logging: per-account/device opt-in, permission required. Imports metadata only for uniquely matched CRM numbers while the app is open or when it resumes. Manual call notes remain available when Android does not grant access.
-- Call detail → Call summary: confirm participants agreed to recording and AI processing, choose an existing recording, review and save the English draft. Supports English, Hindi and Gujarati speech through the configured audio-capable Gemini service. The app does not capture SIM call audio.
+- Work → Calls: visible logging/permission state, incoming/outgoing/not-answered/needs-notes filters, call-back actions and queued-write review. A 24-hour recheck catches late-written Android call metadata without crossing opt-in; imported call IDs prevent repeated enqueueing.
+- Call detail → After-call summary: choose an existing recording, confirm participants agreed to recording and AI processing, review and save the English draft. Supports auto/mixed, English, Hindi and Gujarati speech through the configured audio-capable Gemini service. Drafts are stored by account and call; concurrent note edits are protected on the matching backend. The app does not capture SIM call audio. See [the calls improvement report](../docs/AINA-MOBILE-CALLS-2026-10-12.md) for deployment requirements and phone checks.
 
 ## Push setup still required
 

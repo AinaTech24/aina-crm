@@ -23,7 +23,7 @@ export interface WorklistItem {
 }
 
 export interface DashboardHome {
-  scope: "firm" | "me";
+  scope: "firm" | "branch" | "me";
   kpis: Kpi[];
   worklist: WorklistItem[];
 }
@@ -64,7 +64,7 @@ export interface Touchpoint {
   years: number | null;
 }
 export interface MyDay {
-  scope: "firm" | "me";
+  scope: "firm" | "branch" | "me";
   date: string | null;
   meetings: DayMeeting[];
   followups: DayFollowup[];
@@ -77,10 +77,10 @@ export interface MyDay {
 export function useMyDay(date?: string) {
   return useQuery({
     queryKey: ["my-day", date ?? "today"],
+    refetchInterval: 60_000,
     queryFn: () => api.get<MyDay>("/api/dashboard/my-day", date ? { date } : undefined),
     staleTime: 60_000,
-    // Keep the previous day's plan on screen while the next one loads — tapping
-    // through the week strip shouldn't flash a skeleton each time.
+    // Each date must display only its own actionable records.
 
   });
 }

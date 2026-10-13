@@ -6,7 +6,6 @@ import { XOctagon, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatINR } from "@/lib/utils";
-import { visibleClientExists, visibleClientSql } from "@/lib/transactions/client-scope";
 import { SipRejectionsTable } from "@/components/sip-rejections/SipRejectionsTable";
 import { NewSipRejectionButton } from "@/components/sip-rejections/NewSipRejectionButton";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
@@ -44,11 +43,7 @@ export default async function SipRejectionsPage({
   const mtdOnly = sp.mtd === "1";
 
   const data = await withTenant(session.tenantId, async (tx) => {
-    // Viewer scope: a rejection is visible only when its client is. The rows
-    // join investors as i; the tiles and the per-RM table test it by EXISTS.
-    const filters: any[] = [await visibleClientSql(tx, session, "i")];
-    const statScope = await visibleClientExists(tx, session, sql.raw("sip_rejections.investor_id"));
-    const byRmScope = await visibleClientExists(tx, session, sql.raw("r.investor_id"));
+    const filters: any[] = [];
     if (q) {
       filters.push(
         sql`(i.name ILIKE ${`%${q}%`} OR r.scheme_name ILIKE ${`%${q}%`} OR r.amc_name ILIKE ${`%${q}%`} OR r.folio_number ILIKE ${`%${q}%`} OR r.rejection_reason ILIKE ${`%${q}%`})`
@@ -132,7 +127,6 @@ export default async function SipRejectionsPage({
           AND (now() - status_changed_at) > interval '7 days')::int AS age_7p
       FROM sip_rejections
       WHERE tenant_id = ${session.tenantId}::uuid
-        AND ${statScope}
     `);
     const s = stats.rows[0] as any;
 
@@ -146,7 +140,6 @@ export default async function SipRejectionsPage({
       LEFT JOIN users u ON u.id = r.assigned_rm_id
       WHERE r.tenant_id = ${session.tenantId}::uuid
         AND r.recovery_status IN ('pending','client_contacted','bank_issue','mandate_issue')
-        AND ${byRmScope}
       GROUP BY COALESCE(u.name, '— Unassigned —')
       ORDER BY overdue_count DESC, open_count DESC
       LIMIT 12

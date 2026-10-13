@@ -7,9 +7,6 @@ import { requireSession } from "@/lib/auth/session";
 import { can, requireAny } from "@/lib/auth/rbac";
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { TaskDetailPage } from "./TaskDetailPage";
-import { taskInScope } from "@/lib/tasks/scope";
-import { dataWallApplies, investorScopeCondition } from "@/lib/investors/access";
-import { loadViewableLead } from "@/lib/leads/access";
 
 /**
  * One task as a full page — the same editor as the task list's dialog
@@ -44,30 +41,19 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
       // The person an open "Need information" question is waiting on.
       openInfoRequest(task.meta)?.askedToId === session.userId;
     if (!canViewAll && !mine) return null;
-    // view.all reaches only tasks whose client / lead is in scope.
-    if (!(await taskInScope(tx, session, id))) return null;
 
     // The names the list shows beside a task — a task reaches its client or
     // lead through the explicit link OR the legacy subject columns.
     const investorId = task.relatedInvestorId ?? (task.subjectType === "investor" ? task.subjectId : null);
     const leadId = task.relatedLeadId ?? (task.subjectType === "lead" ? task.subjectId : null);
-    // A client / lead outside the viewer's scope is not named — only under
-    // the data wall; without it every task names its client / lead, as before.
-    const wallOn = await dataWallApplies(tx, session);
-    const cap = (c: Parameters<typeof can>[1]) => can(session.roles, c, session.permissions);
-    const invAllowed = !wallOn || cap("investor.view.all") || cap("investor.view.assigned");
-    const invScope = wallOn && investorId && invAllowed
-      ? await investorScopeCondition(tx, session) : undefined;
-    const leadVisible = !wallOn ? true : leadId && (cap("lead.view.all") || cap("lead.view.assigned"))
-      ? !!(await loadViewableLead(tx, session, leadId)) : !leadId;
     const [assignee, investor, lead] = await Promise.all([
       task.assigneeId
         ? tx.select({ name: users.name }).from(users).where(eq(users.id, task.assigneeId)).limit(1)
         : Promise.resolve([]),
-      investorId && invAllowed
-        ? tx.select({ name: investors.name }).from(investors).where(and(eq(investors.id, investorId), invScope)).limit(1)
+      investorId
+        ? tx.select({ name: investors.name }).from(investors).where(eq(investors.id, investorId)).limit(1)
         : Promise.resolve([]),
-      leadId && leadVisible ? tx.select({ name: leads.name }).from(leads).where(eq(leads.id, leadId)).limit(1) : Promise.resolve([]),
+      leadId ? tx.select({ name: leads.name }).from(leads).where(eq(leads.id, leadId)).limit(1) : Promise.resolve([]),
     ]);
     return {
       task,

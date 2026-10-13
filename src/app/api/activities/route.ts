@@ -67,6 +67,12 @@ export async function GET(req: NextRequest) {
     const q = (sp.get("q") ?? "").trim();
     const from = sp.get("from") ?? "";
     const to = sp.get("to") ?? "";
+    const direction = sp.get("direction") || undefined;
+    const status = sp.get("status") || undefined;
+    if ((direction && !z.enum(ACTIVITY_DIRECTIONS).safeParse(direction).success) || (status && !z.enum(ACTIVITY_STATUSES).safeParse(status).success)) {
+      return NextResponse.json({ error: "Invalid call filter" }, { status: 400 });
+    }
+    const needsNotes = sp.get("needsNotes") === "1";
 
     const data = await withTenant(
       session.tenantId,
@@ -74,6 +80,9 @@ export async function GET(req: NextRequest) {
         const conds: any[] = [sql`a.tenant_id = ${session.tenantId}::uuid`];
         if (session.mobile) conds.push(mobileActivityScope(session));
         if (kind.length) conds.push(sql`a.kind IN (${sql.join(kind.map((k) => sql`${k}`), sql`, `)})`);
+        if (direction) conds.push(sql`a.direction = ${direction}`);
+        if (status) conds.push(sql`a.status = ${status}`);
+        if (needsNotes) conds.push(sql`btrim(COALESCE(a.notes, '')) = ''`);
         if (subjectType) conds.push(sql`a.subject_type = ${subjectType}`);
         if (subjectId) conds.push(sql`a.subject_id = ${subjectId}::uuid`);
         if (q) conds.push(sql`(a.subject_name ILIKE ${`%${q}%`} OR a.subject ILIKE ${`%${q}%`} OR a.notes ILIKE ${`%${q}%`})`);

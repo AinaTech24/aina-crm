@@ -33,7 +33,6 @@ import {
   STATUS_ISSUED_EXCLUDED, type Line,
 } from "@/lib/insurance/book";
 import { seesWholeInsuranceBook } from "@/lib/dashboard/insurance/access";
-import { insuranceClientScopeSql } from "@/lib/insurance/register-access";
 import { uuidList } from "@/lib/metrics";
 
 // The policy form's labels, commercial lines included (lib/insurance/book.ts).
@@ -143,10 +142,6 @@ export default async function InsurancePage({
     // the investor alias `i`; the bare aggregates (stats/statusCounts) use a
     // sub-select on investor_id.
     if (!seesAll) filters.push(sql`(p.sold_by_user_id = ${session.userId}::uuid OR i.rm_id = ${session.userId}::uuid)`);
-    // And only policies whose client is in the viewer's client scope (firm
-    // switch / customised "assigned only" / branch lock).
-    filters.push(await insuranceClientScopeSql(tx, session, sql`p.investor_id`));
-    const bareClientScope = await insuranceClientScopeSql(tx, session, sql`insurance_policies.investor_id`);
     // The same book for the headline stats and the status chips, so "All" is
     // the unfiltered list's row count.
     const bareScope = sql` WHERE tenant_id = ${session.tenantId}::uuid
@@ -154,7 +149,7 @@ export default async function InsurancePage({
           seesAll
             ? sql``
             : sql` AND (sold_by_user_id = ${session.userId}::uuid OR investor_id IN (SELECT id FROM investors WHERE rm_id = ${session.userId}::uuid))`
-        } AND ${bareClientScope}`;
+        }`;
     if (q) {
       filters.push(
         sql`(p.policy_number ILIKE ${`%${q}%`} OR p.plan_name ILIKE ${`%${q}%`} OR p.insurer ILIKE ${`%${q}%`} OR i.name ILIKE ${`%${q}%`}

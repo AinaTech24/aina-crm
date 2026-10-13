@@ -2,17 +2,9 @@
  * CallLogPrompt — turns a call placed from inside the app into a logged activity.
  * Mounted once at the app shell.
  *
- * Two modes, driven by the `autoLogCalls` device preference:
- *   OFF (default) — shows the "Log this call?" sheet: pick outcome, duration and
- *                   what was discussed.
- *   ON            — logs immediately on return, with duration ≈ time away, so a
- *                   busy RM never loses a call to a dismissed prompt. Notes can
- *                   be added later from the call's detail screen.
- *
- * What this can and can't know: we detect calls PLACED FROM THE APP (we armed
- * the intent) and infer duration from time-away. We cannot read the OS call log
- * — real connect/duration and calls dialled outside the app need READ_CALL_LOG
- * and a development build (Android only; iOS never allows it).
+ * Manual mode prompts for outcome, actual duration and discussion. When
+ * Android metadata import is enabled and permitted, startCall does not arm
+ * this prompt. Time away from the app is never used as call duration.
  */
 
 import React, { useEffect, useRef, useState } from "react";
@@ -24,7 +16,6 @@ import { Button } from "../../components/ui/Button";
 import { TextField } from "../../components/ui/TextField";
 import { SelectField } from "../../components/ui/SelectField";
 import { useCallIntent } from "../../state/callIntent";
-import { usePrefs } from "../../state/prefs";
 import { useLogActivity, ACTIVITY_OUTCOMES } from "./api";
 import { toast } from "../../lib/toast";
 import { palette, spacing, radius } from "../../theme/tokens";
@@ -33,12 +24,6 @@ import { errorMessage } from "../../lib/errors";
 // Below this, the "call" was almost certainly cancelled before connecting —
 // don't nag. Above it, prompt to log.
 const MIN_CALL_MS = 5000;
-
-const fmtDur = (secs: number) => {
-  const m = Math.floor(secs / 60);
-  const s = secs % 60;
-  return m > 0 ? `${m}m ${s}s` : `${s}s`;
-};
 
 export function CallLogPrompt() {
   const pending = useCallIntent((s) => s.pending);
@@ -79,8 +64,9 @@ export function CallLogPrompt() {
     if (!pending) return dismiss();
     setErr(null);
     const min = parseFloat(durationMin);
+    if (durationMin.trim() && (!Number.isFinite(min) || min < 0 || min > 1440)) return setErr("Enter the actual duration between 0 and 1,440 minutes, or leave it blank.");
     try {
-      await log.mutateAsync({
+      const saved = await log.mutateAsync({
         subjectType: pending.subjectType,
         subjectId: pending.subjectId,
         kind: "call",
@@ -89,8 +75,10 @@ export function CallLogPrompt() {
         status: outcome || undefined,
         notes: notes || undefined,
         durationSec: min > 0 ? Math.round(min * 60) : undefined,
+        occurredAt: new Date(pending.armedAt).toISOString(),
       });
-      toast.success(`Call with ${pending.name} logged`);
+      if (saved !== null) toast.success(`Call with ${pending.name} logged`);
+      else toast.info(`Call with ${pending.name} saved on this phone; awaiting sync`);
       dismiss();
     } catch (e) {
       setErr(errorMessage(e, "Could not log the call."));
