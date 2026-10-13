@@ -23,6 +23,7 @@ import { require as requireCap, requireAny, can } from "@/lib/auth/rbac";
 import { cleanUccCodes } from "@/lib/investors/ucc";
 import { isMinorKey, ownPan } from "@/lib/investors/pan-display";
 import { CLIENT_TYPE_KEYS, TypeDetailsSchema, canNominate, cleanTypeDetails, singleHoldingOnly } from "@/lib/investors/client-types";
+import { applyFamilySharedDetails, familyHeadedBy, familySharedDetails } from "@/lib/families/shared-details";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { healthFields } from "@/lib/investors/health";
 import { computeNextReview } from "@/lib/investors/review-cadence";
@@ -96,6 +97,9 @@ const Patch = z.object({
   investorCategory: z.enum(CLIENT_TYPE_KEYS).optional(),
   /** What the client type adds (guardian, Karta, entity, NRI…) — lib/investors/client-types.ts. */
   typeDetails: TypeDetailsSchema.nullish(),
+  /** A minor's guardian, when the guardian is a client too. Their risk
+   *  profile becomes the minor's (migration 0234). */
+  guardianInvestorId: z.string().uuid().nullable().optional(),
   rmId: z.string().uuid().optional(),
   // Client-service preferences
   statementCadence: z.enum(["off", "monthly", "quarterly"]).optional(),
@@ -419,6 +423,44 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         if (singleHoldingOnly(nextType)) typePatch.modeOfHolding = "Single";
       }
 
+      // A minor's guardian as a client: the one picked, else the client whose
+      // PAN is the guardian PAN typed. The minor then carries the guardian's
+      // risk profile (a database rule, migration 0234).
+      delete (fields as any).guardianInvestorId;
+      if (nextType === "minor") {
+        let gid: string | null | undefined = parse.data.guardianInvestorId;
+        if (gid) {
+          const ok = (await tx.execute(sql`
+            SELECT 1 FROM investors WHERE id = ${gid}::uuid AND tenant_id = ${session.tenantId}::uuid
+              AND id <> ${id}::uuid AND deleted_at IS NULL`)).rows.length;
+          if (!ok) gid = undefined;
+        } else if (gid === undefined && !(before as any).guardianInvestorId) {
+          const gp = String(((typePatch.typeDetails ?? (before as any).typeDetails) as any)?.guardian?.pan ?? "").trim().toUpperCase();
+          if (gp) {
+            const g = (await tx.execute(sql`
+              SELECT id FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND pan = ${gp}
+                AND id <> ${id}::uuid AND deleted_at IS NULL AND merged_into_id IS NULL
+              ORDER BY dedup_pan DESC LIMIT 1`)).rows[0] as { id: string } | undefined;
+            gid = g?.id;
+          }
+        }
+        if (gid !== undefined) typePatch.guardianInvestorId = gid;
+      }
+
+      // What the family owns is not the member's to edit: the head's address
+      // (for a member) and the family's review frequency (for everyone in it).
+      // lib/families/shared-details.ts keeps them in step.
+      if ((before as any).familyId) {
+        const shared = await familySharedDetails(tx, (before as any).familyId);
+        if (shared.address && shared.headId !== id) delete (fields as any).address;
+        if (shared.reviewFrequency) {
+          for (const k of ["reviewFrequency", "reviewFrequencyDays"] as const) {
+            delete (fields as any)[k];
+            delete (parse.data as any)[k];
+          }
+        }
+      }
+
       const merged = { ...before, ...fields, ...panPatch, ...mirror, ...typePatch };
       const health = healthFields(merged as any);
 
@@ -483,6 +525,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // Re-score with the full inputs (the open-SR-breach flag included), so the
       // stored score equals what the client page and the drawer show.
       await getClientHealth(tx, session.tenantId, id);
+
+      // A family head's new address is every member's new address.
+      if ((fields as any).address !== undefined) {
+        const headed = await familyHeadedBy(tx, session.tenantId, id);
+        if (headed) {
+          await applyFamilySharedDetails(tx, {
+            tenantId: session.tenantId, familyId: headed, actorUserId: session.userId, reason: "head_address_changed",
+          });
+        }
+      }
 
       // Advance the lead-to-client blueprint when this edit is the real-world
       // signal for a journey milestone (UCC activated / mandate registered).

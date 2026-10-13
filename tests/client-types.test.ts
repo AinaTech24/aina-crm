@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   TypeDetailsSchema, canNominate, cleanTypeDetails, clientTypeFromTaxStatus, clientTypeOptions,
   hasPersonalDetails, majorityDate, singleHoldingOnly,
+  ALL_TAX_STATUSES, defaultHouseholdType, defaultTaxStatus, taxStatusOptions, withCurrent,
 } from "@/lib/investors/client-types";
 
 describe("client types — who may nominate", () => {
@@ -103,5 +104,28 @@ describe("client types — details follow the type", () => {
   it("rejects a malformed guardian PAN", () => {
     expect(TypeDetailsSchema.safeParse({ guardian: { pan: "ABC123" } }).success).toBe(false);
     expect(TypeDetailsSchema.safeParse({ guardian: { pan: "abcde1234f" } }).success).toBe(true);
+  });
+});
+
+describe("client types — dropdowns follow the type", () => {
+  it("offers the tax statuses that fit the type, all of them for Other", () => {
+    expect(taxStatusOptions("huf")).toEqual(["HUF"]);
+    expect(taxStatusOptions("minor")).toContain("On behalf of minor");
+    expect(taxStatusOptions("other")).toEqual(ALL_TAX_STATUSES);
+    expect(defaultTaxStatus("individual")).toBe("Resident Individual");
+    expect(defaultTaxStatus("other")).toBe("");
+  });
+
+  it("derives the household type from the type and the family", () => {
+    expect(defaultHouseholdType("huf", false)).toBe("HUF");
+    expect(defaultHouseholdType("llp", true)).toBe("Company");
+    expect(defaultHouseholdType("individual", true)).toBe("Family");
+    expect(defaultHouseholdType("minor", false)).toBe("Individual");
+  });
+
+  it("keeps a value on file that the list lacks", () => {
+    expect(withCurrent(["A", "B"], "Z")).toEqual(["A", "B", "Z"]);
+    expect(withCurrent(["A", "B"], "A")).toEqual(["A", "B"]);
+    expect(withCurrent(["A", "B"], "")).toEqual(["A", "B"]);
   });
 });

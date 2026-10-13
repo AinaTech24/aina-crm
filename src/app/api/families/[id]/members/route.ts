@@ -38,6 +38,7 @@ import { loadViewableInvestor } from "@/lib/investors/access";
 import { HEAD_ROLE, isHeadRole } from "@/lib/families/roles";
 import { onClientFamilyMapped } from "@/lib/families/journey";
 import { applyHeadRmToMembers } from "@/lib/families/head-rm";
+import { applyFamilySharedDetails } from "@/lib/families/shared-details";
 
 export const dynamic = "force-dynamic";
 
@@ -151,6 +152,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         reason: headChanged ? "head_changed" : "mapped_to_family",
         clientMeta,
       });
+      // The head's address and the family's review frequency, the same way.
+      await applyFamilySharedDetails(tx, {
+        tenantId: session.tenantId,
+        familyId,
+        onlyInvestorIds: headChanged ? undefined : linked,
+        actorUserId: session.userId,
+        reason: headChanged ? "head_changed" : "mapped_to_family",
+        clientMeta,
+      });
 
       if (linked.length) {
         await recordAudit(tx, {
@@ -207,6 +217,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             clientMeta,
           });
           rmAssigned = rm.reassigned;
+          await applyFamilySharedDetails(tx, {
+            tenantId: session.tenantId, familyId, actorUserId: session.userId, reason: "head_changed", clientMeta,
+          });
         }
       } else {
         await tx.update(investors).set({ familyRole, updatedAt: new Date() } as any).where(eq(investors.id, investorId));
