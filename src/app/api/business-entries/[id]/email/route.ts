@@ -10,6 +10,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { isClientVisible } from "@/lib/transactions/client-scope";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { businessEntries, businessEntryLines, investors } from "@/db/schema";
 import { emailAdapter } from "@/lib/comms/adapters/resend";
@@ -42,6 +43,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         if (!entry) return { error: "not_found" as const };
         // RMs may only email confirmations for their own bookings.
         if (!seesAllEntries(session) && entry.rmId !== session.userId) return { error: "forbidden" as const };
+        // Viewer scope: their own booking, or one on a client they may see.
+        if (entry.rmId !== session.userId && !(await isClientVisible(tx, session, entry.investorId))) return { error: "not_found" as const };
         const lines = await tx
           .select()
           .from(businessEntryLines)

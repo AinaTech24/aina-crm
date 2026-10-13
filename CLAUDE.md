@@ -477,11 +477,6 @@ three or four days later. The two are linked, never added together:
   and rejected by a rejected or bounced first debit of the same amount. A SIP
   top-up has no RTA record of its own and is not checked.
 - RTA business that nobody booked counts for the client's RM.
-- **Operations works the exceptions** on the Operations Dashboard's Rejections tab,
-  "Booked vs RTA" (`lib/dashboard/ops/booked-rta.ts`, anchor `booked-rta`): lines
-  rejected, not found or with a different amount, booked in the period, and
-  processed RTA purchases that settle no booking (only from the firm's first
-  counted entry; SIP instalments never count as unbooked).
 - Business Entries shows each entry's outcome and filters by it (`?rta=`);
   backfill or re-run by hand with `tsx scripts/match-business-rta.ts`.
 

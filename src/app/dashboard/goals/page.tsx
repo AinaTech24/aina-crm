@@ -14,6 +14,7 @@ import { Pager } from "@/components/common/Pager";
 import { EmptyState, InlineEmpty } from "@/components/common/EmptyState";
 import { buttonClass } from "@/components/ui/button-class";
 import { computeStoredGoal } from "@/lib/goal-planning/stored";
+import { goalClientScopeSql, visibleGoalInvestorIdsSql } from "@/lib/goal-planning/access";
 
 export const dynamic = "force-dynamic";
 
@@ -46,9 +47,9 @@ export default async function GoalsPage({
   const { rows, stats } = await withTenant(session.tenantId, async (tx) => {
     // Owner slice for non-managers — only goals whose client is assigned to them.
     // Exclude goals whose client is soft-deleted (consistent with the list below).
-    const statsScope = canViewAll
-      ? sql` WHERE (investor_id IS NULL OR investor_id IN (SELECT id FROM investors WHERE deleted_at IS NULL))`
-      : sql` WHERE investor_id IN (SELECT id FROM investors WHERE rm_id = ${session.userId}::uuid AND deleted_at IS NULL)`;
+    // The shared client scope (firm switch / customised "assigned only" /
+    // branch) is applied on top of that, here and on the list.
+    const statsScope = sql` WHERE investor_id IN ${await visibleGoalInvestorIdsSql(tx, session)}`;
     // KPIs from a single aggregate over ALL goals — not the paginated slice
     // (the old code derived counts from a LIMIT 200 page, so they capped/lied
     // once a firm had more than 200 goals).
@@ -71,7 +72,11 @@ export default async function GoalsPage({
       .leftJoin(investors, eq(investors.id, goals.investorId))
       // Exclude goals whose client has been soft-deleted (they live in Trash) —
       // they were showing here with links that 404'd on the deleted client.
-      .where(and(isNull(investors.deletedAt), canViewAll ? undefined : eq(investors.rmId, session.userId)))
+      .where(and(
+        isNull(investors.deletedAt),
+        canViewAll ? undefined : eq(investors.rmId, session.userId),
+        await goalClientScopeSql(tx, session, "investors"),
+      ))
       .orderBy(orderBy)
       .limit(PAGE_SIZE)
       .offset((page - 1) * PAGE_SIZE);

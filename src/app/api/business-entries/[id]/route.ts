@@ -12,6 +12,7 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { isClientVisible } from "@/lib/transactions/client-scope";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { businessEntries, businessEntryLines, eventsOutbox } from "@/db/schema";
@@ -58,6 +59,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       if (!entry) return null;
       // RMs may only open their own bookings.
       if (!seesAllEntries(session) && entry.rmId !== session.userId) return null;
+      // Viewer scope: their own booking, or one on a client they may see.
+      if (entry.rmId !== session.userId && !(await isClientVisible(tx, session, entry.investorId))) return null;
       const lines = await tx
         .select()
         .from(businessEntryLines)
@@ -92,6 +95,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (!before) return "not_found" as const;
       // RMs may only edit their own bookings.
       if (!seesAllEntries(session) && before.rmId !== session.userId) return "forbidden" as const;
+      // Viewer scope: their own booking, or one on a client they may see.
+      if (before.rmId !== session.userId && !(await isClientVisible(tx, session, before.investorId))) return "not_found" as const;
+      // …and it may only be re-pointed at a client they may see.
+      if (b.investorId && !(await isClientVisible(tx, session, b.investorId))) return "no_client" as const;
 
       const set: Record<string, unknown> = { updatedAt: new Date() };
       if (b.investorId !== undefined) set.investorId = b.investorId;
@@ -192,6 +199,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
 
     if (outcome === "not_found") return NextResponse.json({ error: "not found" }, { status: 404 });
+    if (outcome === "no_client") return NextResponse.json({ error: "client not found" }, { status: 400 });
     if (outcome === "forbidden") return NextResponse.json({ error: "you can only edit entries you booked" }, { status: 403 });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
@@ -207,13 +215,15 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const meta = clientMetaFromHeaders(req.headers);
     const outcome = await withTenant(session.tenantId, async (tx) => {
       const [before] = await tx
-        .select({ id: businessEntries.id, clientName: businessEntries.clientName, rmId: businessEntries.rmId, status: businessEntries.status })
+        .select({ id: businessEntries.id, clientName: businessEntries.clientName, rmId: businessEntries.rmId, status: businessEntries.status, investorId: businessEntries.investorId })
         .from(businessEntries)
         .where(and(eq(businessEntries.id, id), eq(businessEntries.tenantId, session.tenantId)))
         .limit(1);
       if (!before) return "not_found" as const;
       // RMs may only cancel their own bookings.
       if (!seesAllEntries(session) && before.rmId !== session.userId) return "forbidden" as const;
+      // Viewer scope: their own booking, or one on a client they may see.
+      if (before.rmId !== session.userId && !(await isClientVisible(tx, session, before.investorId))) return "not_found" as const;
       // Soft delete: business entries are revenue/AUM records that feed the FY/MTD
       // book, scorecards and reconciliation — void them (status='cancelled')
       // rather than hard-deleting the row + its audit trail.

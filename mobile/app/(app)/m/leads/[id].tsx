@@ -6,7 +6,6 @@
  */
 
 import { toast } from "../../../../src/lib/toast";
-import { errorMessage } from "../../../../src/lib/errors";
 import { FollowUpField } from "../../../../src/components/form/FollowUpField";
 import React, { useState, useEffect } from "react";
 import { View, ScrollView, Pressable, Linking, RefreshControl, StyleSheet } from "react-native";
@@ -327,13 +326,13 @@ function LogActivitySheet({ visible, onClose, onSubmit, pending }: { visible: bo
   const [note, setNote] = useState("");
   const [type, setType] = useState("note");
   const [next, setNext] = useState("");
-  const submit = async () => { if (!note.trim()) return; if (next && !Number.isFinite(new Date(next).getTime())) { toast.error("Choose a valid follow-up time"); return; } try { await onSubmit({ note: note.trim(), activityType: type, nextFollowUpAt: next ? new Date(next).toISOString() : undefined }); setNote(""); setNext(""); setType("note"); } catch (error) { toast.error(errorMessage(error)); } };
+  const submit = async () => { if (!note.trim()) return; if (next && !Number.isFinite(new Date(next).getTime())) { toast.error("Choose a valid follow-up time"); return; } try { await onSubmit({ note: note.trim(), activityType: type, nextFollowUpAt: next ? new Date(next).toISOString() : undefined }); setNote(""); setNext(""); setType("note"); } catch { /* Mutation displays the error; preserve the draft. */ } };
   return (
     <BottomSheet visible={visible} onClose={onClose} title="Log activity">
       <Text variant="label" tone="muted" style={{ marginBottom: spacing.xs }}>Type</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}><Segmented<string> options={ACTIVITY_TYPES} value={type} onChange={setType} /></ScrollView>
       <View style={{ height: spacing.md }} />
-      <TextField label="Note" disabled={pending} value={note} onChangeText={setNote} placeholder="What happened?" multiline required />
+      <TextField label="Note" value={note} onChangeText={setNote} placeholder="What happened?" multiline required />
       <FollowUpField value={next} onChange={setNext} />
       <View style={{ height: spacing.md }} />
       <Button label="Save activity" full loading={pending} onPress={submit} />

@@ -27,6 +27,7 @@ import { PdfRow } from "@/components/common/ClickableRow";
 import { EmptyState } from "@/components/common/EmptyState";
 import { MoreMenu, type MoreMenuItem } from "@/components/common/MoreMenu";
 import { financialPlans, investors, leads } from "@/db/schema";
+import { planInvestorScopeSql, planLeadScopeSql, planScopeSql } from "@/lib/financial-plans/access";
 
 export const dynamic = "force-dynamic";
 
@@ -64,13 +65,16 @@ export default async function FinancialPlansPage({
     // Server-side filter (was filtered in JS over the whole table before).
     const conds: any[] = [];
     if (!seesAll) conds.push(eq(financialPlans.preparedByUserId, session.userId));
+    // The subject's scope too: a plan is listed only when its client / lead is visible.
+    const planScope = await planScopeSql(tx, session);
+    conds.push(planScope);
     if (q) conds.push(or(ilike(financialPlans.planNumber, `%${q}%`), ilike(investors.name, `%${q}%`), ilike(leads.name, `%${q}%`)));
     if (statusFilter.length) conds.push(inArray(financialPlans.status, statusFilter as any));
     const dr = dateRangeCond(sp, "created", "financial_plans.created_at");
     if (dr) conds.push(dr);
     const where = conds.length ? and(...conds) : undefined;
     // Same owner slice for the raw-SQL KPI aggregate below.
-    const statsScope = seesAll ? sql`` : sql` WHERE prepared_by_user_id = ${session.userId}::uuid`;
+    const statsScope = sql` WHERE ${planScope}`;
 
     // One page of filtered rows.
     const rows = await tx
@@ -130,6 +134,8 @@ export default async function FinancialPlansPage({
              AND ((i.id IS NOT NULL AND i.deleted_at IS NULL) OR (l.id IS NOT NULL AND COALESCE(l.lost_reason, '') <> '__deleted__'))
              ${seesAll ? sql`` : sql`AND (d.assigned_rm_id = ${session.userId}::uuid OR d.created_by = ${session.userId}::uuid
                                       OR i.rm_id = ${session.userId}::uuid OR l.owner_id = ${session.userId}::uuid)`}
+             AND (i.id IS NULL OR ${await planInvestorScopeSql(tx, session, "i")})
+             AND (l.id IS NULL OR ${planLeadScopeSql(session, "l")})
            ORDER BY done_at DESC NULLS LAST
            LIMIT 8
         `)).rows as Array<{ id: string; subject_type: string; status: string; name: string | null; done_at: string | null; total: number }>)

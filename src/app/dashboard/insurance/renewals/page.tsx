@@ -5,6 +5,7 @@ import { CalendarClock, AlertTriangle, IndianRupee, ShieldAlert, Shield } from "
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
+import { insuranceClientScopeSql } from "@/lib/insurance/register-access";
 import { formatDate, formatINR } from "@/lib/utils";
 import { StatusChips, type StatusChip } from "@/components/common/StatusChips";
 import { ContactQuickActions } from "@/components/common/ContactQuickActions";
@@ -42,6 +43,8 @@ export default async function RenewalsPage({ searchParams }: { searchParams: Pro
     const rowScope = seesAll
       ? sql``
       : sql` AND (p.sold_by_user_id = ${session.userId}::uuid OR i.rm_id = ${session.userId}::uuid)`;
+    // Both: only policies whose client is in the viewer's client scope.
+    const clientScope = await insuranceClientScopeSql(tx, session, sql`p.investor_id`);
     const counts = (await tx.execute(sql`
       SELECT
         COUNT(*) FILTER (WHERE ${BUCKET_SQL.overdue})::int AS overdue,
@@ -50,14 +53,14 @@ export default async function RenewalsPage({ searchParams }: { searchParams: Pro
         COUNT(*) FILTER (WHERE ${BUCKET_SQL.lapsing})::int AS lapsing,
         COALESCE(SUM(p.annual_premium::numeric) FILTER (WHERE ${BUCKET_SQL.overdue} OR ${BUCKET_SQL.this_week} OR ${BUCKET_SQL.next_30}), 0)::numeric AS due_premium
       FROM insurance_policies p
-      WHERE p.tenant_id = ${session.tenantId}::uuid AND p.status = 'active' AND p.next_premium_due_date IS NOT NULL${countScope}
+      WHERE p.tenant_id = ${session.tenantId}::uuid AND p.status = 'active' AND p.next_premium_due_date IS NOT NULL${countScope} AND ${clientScope}
     `)).rows[0] as any;
 
     const rows = (await tx.execute(sql`
       SELECT p.id, p.plan_name, p.insurer, p.policy_number, p.next_premium_due_date, p.annual_premium::numeric AS annual_premium,
              p.premium_frequency, p.grace_period_days, i.name AS client, i.phone, i.whatsapp_phone, i.email
       FROM insurance_policies p LEFT JOIN investors i ON i.id = p.investor_id
-      WHERE p.tenant_id = ${session.tenantId}::uuid AND p.status = 'active' AND p.next_premium_due_date IS NOT NULL AND (${BUCKET_SQL[bucket]})${rowScope}
+      WHERE p.tenant_id = ${session.tenantId}::uuid AND p.status = 'active' AND p.next_premium_due_date IS NOT NULL AND (${BUCKET_SQL[bucket]})${rowScope} AND ${clientScope}
       ORDER BY p.next_premium_due_date ASC
       LIMIT 300
     `)).rows as any[];

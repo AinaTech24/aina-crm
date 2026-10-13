@@ -16,7 +16,7 @@ export function MonthField({ value, onChange, disabled }: { value: string; onCha
       <Button label="›" accessibilityLabel="Next month" variant="secondary" disabled={disabled} onPress={() => move(1)} />
     </View>
     <BottomSheet visible={open} onClose={() => setOpen(false)} title="Choose month">
-      <SelectField label="Year" value={year} options={Array.from({ length: 11 }, (_, i) => ({ value: String(new Date().getFullYear() - 5 + i), label: String(new Date().getFullYear() - 5 + i) }))} onChange={v => onChange(`${v}-${month}`)} />
+      <SelectField label="Year" value={year} options={Array.from({ length: 11 }, (_, i) => { const y = String(new Date().getFullYear() - 5 + i); return { value: y, label: y }; })} onChange={v => onChange(`${v}-${month}`)} />
       <SelectField label="Month" value={month} options={Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1).padStart(2, "0"), label: new Date(2026, i, 1).toLocaleDateString("en-IN", { month: "long" }) }))} onChange={v => onChange(`${year}-${v}`)} />
       <Button label="Done" onPress={() => setOpen(false)} />
     </BottomSheet>

@@ -1,12 +1,69 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { ChevronLeft, BarChart3 } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatINR, formatDate } from "@/lib/utils";
 import { ReportExportButtons } from "@/components/reports/ReportExportButtons";
+import { can } from "@/lib/auth/rbac";
+import type { SessionUser } from "@/lib/auth/session";
+import { clientScopeNarrows, dataWallApplies, investorScopeSql } from "@/lib/investors/access";
+import { leadScopeSql } from "@/lib/leads/access";
+import { familyScopeSql } from "@/lib/families/access";
+import { serviceRequestScopeSql } from "@/lib/service-requests/access";
+
+/**
+ * Row scope every report query runs under — the viewer's client / lead /
+ * family / ticket access, the same rules as the list pages. A report can never
+ * show a client the viewer could not open from the Clients list.
+ *   inv(col)   the client id in `col` is visible
+ *   lead(col)  the lead id in `col` is visible
+ *   fam(col)   the family id in `col` is visible
+ *   sr         service_requests aliased `sr` is visible
+ *   srTable    service_requests (unaliased) is visible
+ */
+type ReportScope = {
+  inv: (col: string) => SQL;
+  lead: (col: string) => SQL;
+  fam: (col: string) => SQL;
+  sr: SQL;
+  srTable: SQL;
+};
+
+async function buildReportScope(tx: any, session: SessionUser, wallOn: boolean): Promise<ReportScope> {
+  // Without the data wall the reports run over the firm's rows, as before.
+  if (!wallOn) return { inv: () => sql`TRUE`, lead: () => sql`TRUE`, fam: () => sql`TRUE`, sr: sql`TRUE`, srTable: sql`TRUE` };
+  const cap = (c: Parameters<typeof can>[1]) => can(session.roles, c, session.permissions);
+  const invAllowed = cap("investor.view.all") || cap("investor.view.assigned");
+  const leadAllowed = cap("lead.view.all") || cap("lead.view.assigned");
+  // A firm-wide client viewer keeps rows whose client (or family) is missing
+  // or deleted — the EXISTS would drop them.
+  const clientsFree = invAllowed && !(await clientScopeNarrows(tx, session));
+  const invScope = invAllowed ? await investorScopeSql(tx, session, "rs_i") : sql`FALSE`;
+  const leadScope = leadAllowed ? leadScopeSql(session, "rs_l") : sql`FALSE`;
+  const famScope = invAllowed || cap("family.view") ? await familyScopeSql(tx, session, "rs_f") : sql`FALSE`;
+  return {
+    inv: (col) => clientsFree ? sql`TRUE` : sql`EXISTS (SELECT 1 FROM investors rs_i WHERE rs_i.id = ${sql.raw(col)} AND ${invScope})`,
+    lead: (col) => sql`EXISTS (SELECT 1 FROM leads rs_l WHERE rs_l.id = ${sql.raw(col)} AND ${leadScope})`,
+    fam: (col) => clientsFree ? sql`TRUE` : sql`EXISTS (SELECT 1 FROM families rs_f WHERE rs_f.id = ${sql.raw(col)} AND ${famScope})`,
+    sr: await serviceRequestScopeSql(tx, session, "sr"),
+    srTable: await serviceRequestScopeSql(tx, session, "service_requests"),
+  };
+}
+
+/** Firm / team MIS — the report audience (the sidebar shows Reports to them). */
+function isReportManager(session: SessionUser) {
+  return (["reports.business", "reports.manage", "reports.team"] as const)
+    .some((c) => can(session.roles, c, session.permissions));
+}
+
+/** The marketing team — the audience of the campaign / content reports. */
+function isMarketingViewer(session: SessionUser) {
+  return (["campaign.send", "dashboard.view.marketing"] as const)
+    .some((c) => can(session.roles, c, session.permissions));
+}
 
 /**
  * Generic report viewer. Routes /dashboard/reports/<key> through a registry
@@ -19,7 +76,11 @@ const REPORTS: Record<
     title: string;
     desc: string;
     columns: { key: string; label: string; format?: "inr" | "date" | "number" }[];
-    runSql: (sqlTag: typeof sql) => any;
+    /** Firm / team MIS (per-RM, per-employee, campaign, funnel) — managers only. */
+    manager?: boolean;
+    /** A campaign / content report — the marketing team may open it too. */
+    marketing?: boolean;
+    runSql: (sqlTag: typeof sql, s: ReportScope) => any;
   }
 > = {
   daily_sip_added: {
@@ -30,9 +91,9 @@ const REPORTS: Record<
       { key: "count", label: "Count", format: "number" },
       { key: "amount", label: "Monthly SIP value", format: "inr" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT created_at::date AS day, COUNT(*)::int AS count, COALESCE(SUM(amount::numeric),0) AS amount
-      FROM sips WHERE created_at >= now() - interval '30 days'
+      FROM sips WHERE created_at >= now() - interval '30 days' AND ${s.inv("sips.investor_id")}
       GROUP BY 1 ORDER BY 1 DESC LIMIT 30
     `,
   },
@@ -44,10 +105,10 @@ const REPORTS: Record<
       { key: "count", label: "Count", format: "number" },
       { key: "amount", label: "Amount", format: "inr" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT order_date::date AS day, COUNT(*)::int AS count, COALESCE(SUM(amount::numeric),0) AS amount
       FROM transactions WHERE type = 'lumpsum' AND status = 'successful'
-        AND order_date >= now() - interval '30 days'
+        AND order_date >= now() - interval '30 days' AND ${s.inv("transactions.investor_id")}
       GROUP BY 1 ORDER BY 1 DESC LIMIT 30
     `,
   },
@@ -59,10 +120,10 @@ const REPORTS: Record<
       { key: "count", label: "Count", format: "number" },
       { key: "amount", label: "Redeemed", format: "inr" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT order_date::date AS day, COUNT(*)::int AS count, COALESCE(SUM(amount::numeric),0) AS amount
       FROM transactions WHERE type = 'redemption' AND status = 'successful'
-        AND order_date >= now() - interval '30 days'
+        AND order_date >= now() - interval '30 days' AND ${s.inv("transactions.investor_id")}
       GROUP BY 1 ORDER BY 1 DESC LIMIT 30
     `,
   },
@@ -75,13 +136,13 @@ const REPORTS: Record<
       { key: "redemption", label: "Redemption", format: "inr" },
       { key: "net", label: "Net", format: "inr" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT order_date::date AS day,
         COALESCE(SUM(CASE WHEN direction='inflow' THEN amount::numeric END),0) AS gross,
         COALESCE(SUM(CASE WHEN direction='outflow' THEN amount::numeric END),0) AS redemption,
         COALESCE(SUM(CASE WHEN direction='inflow' THEN amount::numeric ELSE -amount::numeric END),0) AS net
       FROM transactions WHERE status = 'successful'
-        AND order_date >= now() - interval '30 days'
+        AND order_date >= now() - interval '30 days' AND ${s.inv("transactions.investor_id")}
       GROUP BY 1 ORDER BY 1 DESC LIMIT 30
     `,
   },
@@ -95,10 +156,10 @@ const REPORTS: Record<
       { key: "reason_code", label: "Reason" },
       { key: "created_at", label: "When", format: "date" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT i.name, t.scheme_name, t.amount, t.reason_code, t.created_at
       FROM transactions t LEFT JOIN investors i ON i.id = t.investor_id
-      WHERE t.type = 'sip' AND t.status = 'rejected'
+      WHERE t.type = 'sip' AND t.status = 'rejected' AND ${s.inv("t.investor_id")}
       ORDER BY t.created_at DESC LIMIT 100
     `,
   },
@@ -110,13 +171,14 @@ const REPORTS: Record<
       { key: "count", label: "Count", format: "number" },
       { key: "monthly_value", label: "Monthly value", format: "inr" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT scheme_name, COUNT(*)::int AS count, COALESCE(SUM(amount::numeric),0) AS monthly_value
-      FROM sips WHERE status = 'active' AND scheme_name IS NOT NULL
+      FROM sips WHERE status = 'active' AND scheme_name IS NOT NULL AND ${s.inv("sips.investor_id")}
       GROUP BY scheme_name ORDER BY monthly_value DESC LIMIT 50
     `,
   },
   rm_business: {
+    manager: true,
     title: "RM-wise Business",
     desc: "AUM and SIP book per RM.",
     columns: [
@@ -125,11 +187,11 @@ const REPORTS: Record<
       { key: "aum", label: "AUM", format: "inr" },
       { key: "sip_book", label: "SIP book", format: "inr" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT u.name AS rm_name, COUNT(i.id)::int AS clients,
         COALESCE(SUM(i.aum::numeric),0) AS aum,
         COALESCE(SUM(i.active_sip_amount::numeric),0) AS sip_book
-      FROM users u LEFT JOIN investors i ON i.rm_id = u.id AND i.status = 'active' AND i.deleted_at IS NULL
+      FROM users u LEFT JOIN investors i ON i.rm_id = u.id AND i.status = 'active' AND i.deleted_at IS NULL AND ${s.inv("i.id")}
       WHERE 'rm' = ANY(u.roles) GROUP BY u.id, u.name ORDER BY aum DESC
     `,
   },
@@ -143,9 +205,9 @@ const REPORTS: Record<
       { key: "active_sip_amount", label: "Active SIP", format: "inr" },
       { key: "last_review_at", label: "Last review", format: "date" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT name, segment_tag, aum, active_sip_amount, last_review_at
-      FROM investors WHERE status = 'active' AND deleted_at IS NULL ORDER BY aum::numeric DESC LIMIT 100
+      FROM investors WHERE status = 'active' AND deleted_at IS NULL AND ${s.inv("investors.id")} ORDER BY aum::numeric DESC LIMIT 100
     `,
   },
   dormant: {
@@ -156,9 +218,9 @@ const REPORTS: Record<
       { key: "aum", label: "AUM", format: "inr" },
       { key: "last_transaction_at", label: "Last txn", format: "date" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT name, aum, last_transaction_at FROM investors
-      WHERE status = 'active' AND deleted_at IS NULL
+      WHERE status = 'active' AND deleted_at IS NULL AND ${s.inv("investors.id")}
         AND (last_transaction_at IS NULL OR last_transaction_at < now() - make_interval(days => COALESCE((SELECT dormancy_window_days FROM tenants WHERE id = investors.tenant_id), 180)))
       ORDER BY last_transaction_at NULLS FIRST LIMIT 100
     `,
@@ -172,9 +234,9 @@ const REPORTS: Record<
       { key: "last_review_at", label: "Last review", format: "date" },
       { key: "next_review_at", label: "Next review", format: "date" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT name, segment_tag, last_review_at, next_review_at FROM investors
-      WHERE status = 'active' AND deleted_at IS NULL AND next_review_at IS NOT NULL
+      WHERE status = 'active' AND deleted_at IS NULL AND next_review_at IS NOT NULL AND ${s.inv("investors.id")}
       ORDER BY next_review_at ASC LIMIT 100
     `,
   },
@@ -187,9 +249,9 @@ const REPORTS: Record<
       { key: "status", label: "Status" },
       { key: "sla_resolution_at", label: "SLA", format: "date" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT ticket_no, type, status, sla_resolution_at
-      FROM service_requests WHERE status IN ('open', 'in_progress')
+      FROM service_requests WHERE status IN ('open', 'in_progress') AND ${s.srTable}
       ORDER BY sla_resolution_at ASC NULLS LAST LIMIT 100
     `,
   },
@@ -202,11 +264,11 @@ const REPORTS: Record<
       { key: "converted", label: "Converted", format: "number" },
       { key: "rate", label: "Rate %", format: "number" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT source, COUNT(*)::int AS total,
         COUNT(*) FILTER (WHERE converted_investor_id IS NOT NULL)::int AS converted,
         ROUND(100.0 * COUNT(*) FILTER (WHERE converted_investor_id IS NOT NULL) / NULLIF(COUNT(*),0), 1) AS rate
-      FROM leads GROUP BY source ORDER BY total DESC
+      FROM leads WHERE ${s.lead("leads.id")} GROUP BY source ORDER BY total DESC
     `,
   },
   // -------------------- Module 5: Family Mapping reports --------------------
@@ -220,14 +282,15 @@ const REPORTS: Record<
       { key: "sip", label: "Combined SIP", format: "inr" },
       { key: "primary", label: "Primary client" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT COALESCE(f.family_name, f.head_name) AS family_name,
         COUNT(i.id)::int AS members,
         COALESCE(SUM(i.aum::numeric), 0)::numeric AS aum,
         COALESCE(SUM(i.active_sip_amount::numeric), 0)::numeric AS sip,
         (SELECT name FROM investors WHERE id = f.primary_investor_id) AS primary
       FROM families f
-      LEFT JOIN investors i ON i.family_id = f.id AND i.deleted_at IS NULL AND i.merged_into_id IS NULL AND i.status NOT IN ('closed', 'exited')
+      LEFT JOIN investors i ON i.family_id = f.id AND i.deleted_at IS NULL AND i.merged_into_id IS NULL AND i.status NOT IN ('closed', 'exited') AND ${s.inv("i.id")}
+      WHERE ${s.fam("f.id")}
       GROUP BY f.id ORDER BY aum DESC NULLS LAST LIMIT 200
     `,
   },
@@ -240,13 +303,14 @@ const REPORTS: Record<
       { key: "monthly_sip", label: "Monthly SIP", format: "inr" },
       { key: "yearly_run_rate", label: "Yearly run-rate", format: "inr" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT COALESCE(f.family_name, f.head_name) AS family_name,
         COUNT(i.id) FILTER (WHERE i.active_sip_amount::numeric > 0)::int AS members_with_sip,
         COALESCE(SUM(i.active_sip_amount::numeric), 0)::numeric AS monthly_sip,
         COALESCE(SUM(i.active_sip_amount::numeric) * 12, 0)::numeric AS yearly_run_rate
       FROM families f
-      LEFT JOIN investors i ON i.family_id = f.id AND i.deleted_at IS NULL AND i.merged_into_id IS NULL AND i.status NOT IN ('closed', 'exited')
+      LEFT JOIN investors i ON i.family_id = f.id AND i.deleted_at IS NULL AND i.merged_into_id IS NULL AND i.status NOT IN ('closed', 'exited') AND ${s.inv("i.id")}
+      WHERE ${s.fam("f.id")}
       GROUP BY f.id
       HAVING SUM(i.active_sip_amount::numeric) > 0
       ORDER BY monthly_sip DESC LIMIT 200
@@ -263,12 +327,12 @@ const REPORTS: Record<
       { key: "rm_name", label: "RM" },
       { key: "onboarded_at", label: "Client since", format: "date" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT i.name, i.pan, i.segment_tag, i.aum,
         u.name AS rm_name, i.onboarded_at
       FROM investors i
       LEFT JOIN users u ON u.id = i.rm_id
-      WHERE i.deleted_at IS NULL AND i.merged_into_id IS NULL AND i.status NOT IN ('closed', 'exited') AND i.family_id IS NULL
+      WHERE i.deleted_at IS NULL AND i.merged_into_id IS NULL AND i.status NOT IN ('closed', 'exited') AND i.family_id IS NULL AND ${s.inv("i.id")}
       ORDER BY i.aum::numeric DESC NULLS LAST LIMIT 500
     `,
   },
@@ -282,14 +346,14 @@ const REPORTS: Record<
       { key: "last_review_at", label: "Last review", format: "date" },
       { key: "next_review_at", label: "Next review", format: "date" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT COALESCE(f.family_name, f.head_name) AS family_name,
         COUNT(i.id)::int AS members,
         COALESCE(SUM(i.aum::numeric), 0)::numeric AS combined_aum,
         f.last_review_at, f.next_review_at
       FROM families f
-      LEFT JOIN investors i ON i.family_id = f.id AND i.deleted_at IS NULL AND i.merged_into_id IS NULL AND i.status NOT IN ('closed', 'exited')
-      WHERE f.next_review_at IS NOT NULL
+      LEFT JOIN investors i ON i.family_id = f.id AND i.deleted_at IS NULL AND i.merged_into_id IS NULL AND i.status NOT IN ('closed', 'exited') AND ${s.inv("i.id")}
+      WHERE f.next_review_at IS NOT NULL AND ${s.fam("f.id")}
         AND f.next_review_at <= now() + interval '30 days'
       GROUP BY f.id ORDER BY f.next_review_at ASC LIMIT 200
     `,
@@ -306,7 +370,7 @@ const REPORTS: Record<
       { key: "is_minor", label: "Minor?" },
       { key: "rm_name", label: "Family RM" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT i.name AS investor_name,
         COALESCE(f.family_name, f.head_name) AS family_name,
         i.family_role,
@@ -318,7 +382,7 @@ const REPORTS: Record<
       JOIN families f ON f.id = i.family_id
       LEFT JOIN users u ON u.id = COALESCE(f.rm_id, i.rm_id)
       WHERE i.family_id IS NOT NULL
-        AND i.deleted_at IS NULL
+        AND i.deleted_at IS NULL AND ${s.inv("i.id")}
         AND i.dob IS NOT NULL
         AND (i.aum::numeric IS NULL OR i.aum::numeric = 0)
         AND (
@@ -339,14 +403,14 @@ const REPORTS: Record<
       { key: "total_target", label: "Total target", format: "inr" },
       { key: "avg_target", label: "Avg target", format: "inr" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT category,
         COUNT(DISTINCT investor_id)::int AS client_count,
         COUNT(*)::int AS goal_count,
         COALESCE(SUM(target_amount::numeric), 0)::numeric AS total_target,
         COALESCE(AVG(target_amount::numeric), 0)::numeric AS avg_target
       FROM goals
-      WHERE status NOT IN ('abandoned')
+      WHERE status NOT IN ('abandoned') AND ${s.inv("goals.investor_id")}
       GROUP BY category ORDER BY client_count DESC
     `,
   },
@@ -364,13 +428,13 @@ const REPORTS: Record<
       { key: "gap_amount", label: "Gap", format: "inr" },
       { key: "target_date", label: "Target", format: "date" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT i.name AS investor_name, g.name AS goal_name, g.category,
         g.target_amount, g.current_value,
         g.required_monthly_sip, g.existing_monthly_sip, g.gap_amount, g.target_date
       FROM goals g
       LEFT JOIN investors i ON i.id = g.investor_id
-      WHERE g.status = 'behind_track'
+      WHERE g.status = 'behind_track' AND ${s.inv("g.investor_id")}
       ORDER BY g.gap_amount::numeric DESC NULLS LAST LIMIT 200
     `,
   },
@@ -387,12 +451,12 @@ const REPORTS: Record<
       { key: "target_date", label: "Target", format: "date" },
       { key: "status", label: "Status" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT i.name AS investor_name, g.name AS goal_name, g.category,
         g.target_amount, g.current_value, g.gap_amount, g.target_date, g.status
       FROM goals g
       LEFT JOIN investors i ON i.id = g.investor_id
-      WHERE g.status NOT IN ('achieved', 'abandoned')
+      WHERE g.status NOT IN ('achieved', 'abandoned') AND ${s.inv("g.investor_id")}
         AND g.target_date <= current_date + interval '5 years'
         AND g.target_date >= current_date
       ORDER BY g.target_date ASC LIMIT 500
@@ -411,13 +475,13 @@ const REPORTS: Record<
       { key: "target_date", label: "Retirement year", format: "date" },
       { key: "status", label: "Status" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT i.name AS investor_name, g.name AS goal_name,
         g.target_amount, g.current_value,
         g.required_monthly_sip, g.existing_monthly_sip, g.target_date, g.status
       FROM goals g
       LEFT JOIN investors i ON i.id = g.investor_id
-      WHERE g.category = 'retirement' AND g.status NOT IN ('abandoned')
+      WHERE g.category = 'retirement' AND g.status NOT IN ('abandoned') AND ${s.inv("g.investor_id")}
       ORDER BY g.target_date ASC LIMIT 300
     `,
   },
@@ -434,14 +498,14 @@ const REPORTS: Record<
       { key: "target_date", label: "Target year", format: "date" },
       { key: "status", label: "Status" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT i.name AS investor_name, g.name AS goal_name,
         g.target_amount, g.current_value,
         g.required_monthly_sip, g.existing_monthly_sip, g.target_date, g.status
       FROM goals g
       LEFT JOIN investors i ON i.id = g.investor_id
       WHERE g.category IN ('child_education', 'education')
-        AND g.status NOT IN ('abandoned')
+        AND g.status NOT IN ('abandoned') AND ${s.inv("g.investor_id")}
       ORDER BY g.target_date ASC LIMIT 300
     `,
   },
@@ -456,7 +520,7 @@ const REPORTS: Record<
       { key: "outflow", label: "Outflow", format: "inr" },
       { key: "net", label: "Net", format: "inr" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT COALESCE(amc_name, amc_code, '—') AS amc,
         COUNT(*)::int AS transactions,
         COALESCE(SUM(CASE WHEN direction = 'inflow' THEN amount::numeric ELSE 0 END), 0) AS inflow,
@@ -464,7 +528,7 @@ const REPORTS: Record<
         COALESCE(SUM(CASE WHEN direction = 'inflow' THEN amount::numeric ELSE -amount::numeric END), 0) AS net
       FROM transactions
       WHERE status IN ('successful','processed')
-        AND order_date >= current_date - interval '90 days'
+        AND order_date >= current_date - interval '90 days' AND ${s.inv("transactions.investor_id")}
       GROUP BY COALESCE(amc_name, amc_code, '—')
       ORDER BY net DESC LIMIT 100
     `,
@@ -482,7 +546,7 @@ const REPORTS: Record<
       { key: "recovery_rate", label: "Recovery %", format: "number" },
       { key: "outstanding", label: "Outstanding ₹", format: "inr" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT to_char(date_trunc('month', rejection_date), 'Mon YYYY') AS month,
         COUNT(*)::int AS rejections,
         COALESCE(SUM(rejection_amount::numeric), 0)::numeric AS rejected_value,
@@ -497,7 +561,7 @@ const REPORTS: Record<
         COALESCE(SUM(CASE WHEN recovery_status NOT IN ('recovered', 'not_recoverable')
           THEN rejection_amount::numeric ELSE 0 END), 0)::numeric AS outstanding
       FROM sip_rejections
-      WHERE rejection_date >= date_trunc('month', now()) - interval '5 months'
+      WHERE rejection_date >= date_trunc('month', now()) - interval '5 months' AND ${s.inv("sip_rejections.investor_id")}
       GROUP BY date_trunc('month', rejection_date)
       ORDER BY date_trunc('month', rejection_date) DESC
     `,
@@ -515,13 +579,13 @@ const REPORTS: Record<
       { key: "start_date", label: "Start", format: "date" },
       { key: "rm_name", label: "RM" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT i.name AS investor_name, s.scheme_name, s.amc_name, s.amount,
              s.frequency, s.start_date, u.name AS rm_name
       FROM sips s
       LEFT JOIN investors i ON i.id = s.investor_id
       LEFT JOIN users u ON u.id = COALESCE(s.rm_id, i.rm_id)
-      WHERE s.status = 'active'
+      WHERE s.status = 'active' AND ${s.inv("s.investor_id")}
         AND s.created_at >= date_trunc('month', now())
       ORDER BY s.created_at DESC LIMIT 500
     `,
@@ -538,7 +602,7 @@ const REPORTS: Record<
       { key: "days_left", label: "Days left", format: "number" },
       { key: "rm_name", label: "RM" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT i.name AS investor_name, s.scheme_name, s.amc_name, s.amount,
              s.end_date,
              (s.end_date - current_date)::int AS days_left,
@@ -546,7 +610,7 @@ const REPORTS: Record<
       FROM sips s
       LEFT JOIN investors i ON i.id = s.investor_id
       LEFT JOIN users u ON u.id = COALESCE(s.rm_id, i.rm_id)
-      WHERE s.status = 'active' AND s.end_date IS NOT NULL
+      WHERE s.status = 'active' AND s.end_date IS NOT NULL AND ${s.inv("s.investor_id")}
         AND s.end_date BETWEEN current_date AND current_date + interval '120 days'
       ORDER BY s.end_date ASC LIMIT 500
     `,
@@ -562,7 +626,7 @@ const REPORTS: Record<
       { key: "months_since_change", label: "Months unchanged", format: "number" },
       { key: "rm_name", label: "RM" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT i.name AS investor_name, i.segment_tag,
              i.active_sip_amount AS current_monthly_sip, i.aum,
              EXTRACT(MONTH FROM age(now(), MAX(s.created_at)))::int
@@ -571,7 +635,7 @@ const REPORTS: Record<
       FROM investors i
       LEFT JOIN sips s ON s.investor_id = i.id AND s.status = 'active'
       LEFT JOIN users u ON u.id = i.rm_id
-      WHERE i.status = 'active' AND i.deleted_at IS NULL
+      WHERE i.status = 'active' AND i.deleted_at IS NULL AND ${s.inv("i.id")}
         AND i.segment_tag IN ('HNI', 'Affluent')
         AND i.active_sip_amount::numeric > 0
       GROUP BY i.id, u.name
@@ -580,6 +644,7 @@ const REPORTS: Record<
     `,
   },
   rm_sip_book: {
+    manager: true,
     title: "RM-wise SIP Book",
     desc: "Active SIP count + monthly inflow grouped by relationship manager.",
     columns: [
@@ -590,7 +655,7 @@ const REPORTS: Record<
       { key: "added_mtd", label: "Added MTD", format: "number" },
       { key: "stopped_mtd", label: "Stopped MTD", format: "number" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT COALESCE(u.name, '— unassigned —') AS rm_name,
         COUNT(*) FILTER (WHERE s.status = 'active')::int AS active_sips,
         COALESCE(SUM(CASE WHEN s.status = 'active' THEN s.amount::numeric ELSE 0 END), 0)::numeric AS monthly_sip,
@@ -602,6 +667,7 @@ const REPORTS: Record<
       FROM sips s
       LEFT JOIN investors i ON i.id = s.investor_id
       LEFT JOIN users u ON u.id = COALESCE(s.rm_id, i.rm_id)
+      WHERE ${s.inv("s.investor_id")}
       GROUP BY u.id, u.name
       ORDER BY monthly_sip DESC LIMIT 100
     `,
@@ -617,7 +683,7 @@ const REPORTS: Record<
       { key: "outflow", label: "Outflow", format: "inr" },
       { key: "net", label: "Net", format: "inr" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT COALESCE(scheme_category, '—') AS category,
         COUNT(*)::int AS transactions,
         COUNT(DISTINCT investor_id)::int AS investors_count,
@@ -626,7 +692,7 @@ const REPORTS: Record<
         COALESCE(SUM(CASE WHEN direction = 'inflow' THEN amount::numeric ELSE -amount::numeric END), 0) AS net
       FROM transactions
       WHERE status IN ('successful','processed')
-        AND order_date >= current_date - interval '90 days'
+        AND order_date >= current_date - interval '90 days' AND ${s.inv("transactions.investor_id")}
       GROUP BY COALESCE(scheme_category, '—')
       ORDER BY net DESC LIMIT 50
     `,
@@ -647,7 +713,7 @@ const REPORTS: Record<
       { key: "status", label: "Status" },
       { key: "breached", label: "Breached?" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT sr.ticket_no,
         i.name AS investor_name,
         COALESCE(sr.sebi_category, 'Other') AS sebi_category,
@@ -661,7 +727,7 @@ const REPORTS: Record<
       FROM service_requests sr
       LEFT JOIN investors i ON i.id = sr.investor_id
       LEFT JOIN users u ON u.id = sr.assigned_to_user_id
-      WHERE sr.type = 'complaint'
+      WHERE sr.type = 'complaint' AND ${s.sr}
         AND sr.status IN ('open','in_progress','escalated','waiting_customer')
       ORDER BY sr.sla_resolution_at ASC NULLS LAST, sr.created_at ASC
       LIMIT 500
@@ -681,7 +747,7 @@ const REPORTS: Record<
       { key: "within_sla", label: "Within SLA?" },
       { key: "resolution_notes", label: "Resolution notes" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT sr.ticket_no,
         i.name AS investor_name,
         COALESCE(sr.sebi_category, 'Other') AS sebi_category,
@@ -698,7 +764,7 @@ const REPORTS: Record<
       FROM service_requests sr
       LEFT JOIN investors i ON i.id = sr.investor_id
       LEFT JOIN users u ON u.id = sr.assigned_to_user_id
-      WHERE sr.type = 'complaint'
+      WHERE sr.type = 'complaint' AND ${s.sr}
         AND sr.status IN ('resolved','closed')
         AND sr.resolved_at >= now() - interval '90 days'
       ORDER BY sr.resolved_at DESC
@@ -717,7 +783,7 @@ const REPORTS: Record<
       { key: "breached", label: "Breached", format: "number" },
       { key: "sla_compliance_pct", label: "SLA %", format: "number" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT to_char(date_trunc('month', resolved_at), 'Mon YYYY') AS month,
         COUNT(*)::int AS total_resolved,
         ROUND(AVG(EXTRACT(DAY FROM resolved_at - created_at))::numeric, 1) AS avg_tat_days,
@@ -735,7 +801,7 @@ const REPORTS: Record<
           / NULLIF(COUNT(*) FILTER (WHERE sla_resolution_at IS NOT NULL), 0),
         1) AS sla_compliance_pct
       FROM service_requests
-      WHERE type = 'complaint'
+      WHERE type = 'complaint' AND ${s.srTable}
         AND status IN ('resolved','closed')
         AND resolved_at IS NOT NULL
         AND resolved_at >= date_trunc('month', now()) - interval '11 months'
@@ -745,6 +811,8 @@ const REPORTS: Record<
   },
   // -------------------- Module 16: Marketing Campaigns reports --------------------
   campaign_leads: {
+    manager: true,
+    marketing: true,
     title: "Campaign-wise leads",
     desc: "Leads generated by each marketing campaign — lifetime view sorted by leads.",
     columns: [
@@ -757,7 +825,7 @@ const REPORTS: Record<
       { key: "campaign_cost", label: "Cost", format: "inr" },
       { key: "cost_per_lead", label: "Cost / Lead", format: "inr" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT name,
         COALESCE(kind, channel) AS kind,
         theme,
@@ -775,6 +843,8 @@ const REPORTS: Record<
     `,
   },
   campaign_conversion: {
+    manager: true,
+    marketing: true,
     title: "Campaign-wise conversion",
     desc: "Leads → meetings → conversions funnel per campaign, with conversion %.",
     columns: [
@@ -788,7 +858,7 @@ const REPORTS: Record<
       { key: "cost", label: "Cost", format: "inr" },
       { key: "cost_per_conversion", label: "Cost / Conv", format: "inr" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT name,
         COALESCE(kind, channel) AS kind,
         COALESCE(leads_generated, 0) AS leads,
@@ -810,6 +880,8 @@ const REPORTS: Record<
     `,
   },
   marketing_calendar: {
+    manager: true,
+    marketing: true,
     title: "Monthly marketing calendar",
     desc: "Campaigns by month — count, total leads, conversions, spend per month.",
     columns: [
@@ -821,7 +893,7 @@ const REPORTS: Record<
       { key: "converted", label: "Converted", format: "number" },
       { key: "spend", label: "Spend", format: "inr" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT to_char(date_trunc('month', COALESCE(start_date, created_at)), 'Mon YYYY') AS month,
         COUNT(*)::int AS campaigns,
         string_agg(DISTINCT COALESCE(kind, channel), ', ') AS types,
@@ -837,6 +909,8 @@ const REPORTS: Record<
     `,
   },
   pending_approval_content: {
+    manager: true,
+    marketing: true,
     title: "Pending approval content",
     desc: "Campaigns whose content / compliance / approval gate is still open — owner action queue.",
     columns: [
@@ -850,7 +924,7 @@ const REPORTS: Record<
       { key: "days_in_queue", label: "Days waiting", format: "number" },
       { key: "remarks", label: "Remarks" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT name,
         COALESCE(kind, channel) AS kind,
         theme, start_date,
@@ -883,7 +957,7 @@ const REPORTS: Record<
       { key: "avg_tat_days", label: "Avg TAT (d)", format: "number" },
       { key: "breach_pct", label: "Breach %", format: "number" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT COALESCE(sebi_category, 'Other') AS category,
         COUNT(*)::int AS total,
         COUNT(*) FILTER (WHERE status IN ('open','in_progress','waiting_customer'))::int AS open_count,
@@ -903,7 +977,7 @@ const REPORTS: Record<
           ) / NULLIF(COUNT(*), 0),
         1) AS breach_pct
       FROM service_requests
-      WHERE type = 'complaint'
+      WHERE type = 'complaint' AND ${s.srTable}
       GROUP BY COALESCE(sebi_category, 'Other')
       ORDER BY total DESC
     `,
@@ -914,6 +988,7 @@ const REPORTS: Record<
   // ───────────────────────────────────────────────────────────────────────
 
   employee_tasks: {
+    manager: true,
     title: "Employee-wise tasks",
     desc:
       "For every team member: open tasks, overdue, due today, due this week, completed last 30 days, and SLA-breach count.",
@@ -927,7 +1002,7 @@ const REPORTS: Record<
       { key: "completed_30d", label: "Completed 30d", format: "number" },
       { key: "sla_breached", label: "SLA breach", format: "number" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT
         u.name,
         COALESCE(u.department, '—') AS department,
@@ -956,6 +1031,7 @@ const REPORTS: Record<
   },
 
   rm_clients: {
+    manager: true,
     title: "RM-wise clients",
     desc:
       "Client headcount per RM split by segment and tier. Useful for territory rebalancing.",
@@ -970,7 +1046,7 @@ const REPORTS: Record<
       { key: "tier_c", label: "Tier C", format: "number" },
       { key: "aum", label: "AUM", format: "inr" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT
         u.name AS rm_name,
         COUNT(i.id)::int AS total_clients,
@@ -982,7 +1058,7 @@ const REPORTS: Record<
         COUNT(i.id) FILTER (WHERE i.service_tier = 'C')::int AS tier_c,
         COALESCE(SUM(i.aum::numeric), 0) AS aum
       FROM users u
-      LEFT JOIN investors i ON i.rm_id = u.id AND i.status = 'active' AND i.deleted_at IS NULL
+      LEFT JOIN investors i ON i.rm_id = u.id AND i.status = 'active' AND i.deleted_at IS NULL AND ${s.inv("i.id")}
       WHERE 'rm' = ANY(u.roles) AND u.status = 'active'
       GROUP BY u.id, u.name
       ORDER BY total_clients DESC
@@ -990,6 +1066,7 @@ const REPORTS: Record<
   },
 
   rm_reviews: {
+    manager: true,
     title: "RM-wise reviews",
     desc:
       "Per-RM review-meeting metrics: scheduled, completed last 30/90 days, overdue follow-ups, and review-cadence health.",
@@ -1001,7 +1078,7 @@ const REPORTS: Record<
       { key: "no_show", label: "No-shows 90d", format: "number" },
       { key: "clients_no_recent_review", label: "Clients overdue review", format: "number" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT
         u.name AS rm_name,
         COUNT(m.id) FILTER (
@@ -1018,7 +1095,7 @@ const REPORTS: Record<
         )::int AS no_show,
         (
           SELECT COUNT(*)::int FROM investors i
-          WHERE i.rm_id = u.id AND i.status = 'active' AND i.deleted_at IS NULL
+          WHERE i.rm_id = u.id AND i.status = 'active' AND i.deleted_at IS NULL AND ${s.inv("i.id")}
             AND (i.next_review_at IS NULL OR i.next_review_at < current_date)
         ) AS clients_no_recent_review
       FROM users u
@@ -1030,6 +1107,7 @@ const REPORTS: Record<
   },
 
   blueprint_drop_off: {
+    manager: true,
     title: "Lead drop-off analysis",
     desc:
       "Where leads stall in the lead-to-client journey. Counts every lead that ever entered each stage and how many advanced past it — exposes the funnel's leakiest steps.",
@@ -1042,7 +1120,7 @@ const REPORTS: Record<
       { key: "breach_pct", label: "SLA breach %", format: "number" },
       { key: "avg_hours_in_stage", label: "Avg hrs in stage", format: "number" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT
         bs.stage_name,
         bs.stage_order,
@@ -1082,7 +1160,7 @@ const REPORTS: Record<
       { key: "sla_days", label: "SLA (days)", format: "number" },
       { key: "overdue_days", label: "Overdue (days)", format: "number" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT
         l.name,
         bs.stage_name,
@@ -1095,7 +1173,7 @@ const REPORTS: Record<
       JOIN leads l ON l.id = lbi.lead_id
       JOIN blueprint_stages bs ON bs.blueprint_id = lbi.blueprint_id AND bs.stage_key = lbi.current_stage_key
       LEFT JOIN users u ON u.id = l.owner_id
-      WHERE lbi.status = 'in_progress'
+      WHERE lbi.status = 'in_progress' AND ${s.lead("l.id")}
         AND bs.sla_days IS NOT NULL
         AND lbi.stage_entered_at + (bs.sla_days || ' days')::interval < now()
       ORDER BY overdue_days DESC
@@ -1104,6 +1182,7 @@ const REPORTS: Record<
   },
 
   blueprint_pipeline_by_rm: {
+    manager: true,
     title: "RM-wise blueprint pipeline",
     desc:
       "For each RM: how many leads/clients sit in each phase of the Lead → Client SOP. Surfaces who has bandwidth and who's holding the line.",
@@ -1119,7 +1198,7 @@ const REPORTS: Record<
       { key: "converted_30d", label: "Active 30d", format: "number" },
     ],
     // Stage keys mirror the 30-stage SOP in src/lib/blueprints/lead_to_client.ts.
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT
         u.name AS rm_name,
         COUNT(lbi.id) FILTER (WHERE lbi.current_stage_key = 'new')::int AS new_leads,
@@ -1149,6 +1228,7 @@ const REPORTS: Record<
   },
 
   blueprint_lost_reasons: {
+    manager: true,
     title: "Lead loss reasons",
     desc:
       "Why leads die — every lost lead grouped by the disposition that closed it, with the average time-to-loss. Answers \"why are we losing leads?\".",
@@ -1158,7 +1238,7 @@ const REPORTS: Record<
       { key: "share_pct", label: "Share %", format: "number" },
       { key: "avg_days_to_lose", label: "Avg days to loss", format: "number" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       WITH lost AS (
         SELECT COALESCE(NULLIF(lsh.transition_name, 'system'), 'Unspecified') AS reason,
                EXTRACT(EPOCH FROM (lsh.entered_at - lbi.started_at)) / 86400.0 AS days_to_lose
@@ -1180,6 +1260,7 @@ const REPORTS: Record<
   },
 
   rm_pending: {
+    manager: true,
     title: "RM-wise pending work",
     desc:
       "What's on each RM's plate right now: open tasks (with overdue split), open SRs, pending proposals, and SIP rejections awaiting recovery.",
@@ -1192,7 +1273,7 @@ const REPORTS: Record<
       { key: "pending_proposals", label: "Proposals out", format: "number" },
       { key: "sip_rejections_pending", label: "SIP recovery pending", format: "number" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT
         u.name AS rm_name,
         (
@@ -1244,13 +1325,13 @@ const REPORTS: Record<
       { key: "outflow", label: "Outflow", format: "inr" },
       { key: "net", label: "Net", format: "inr" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT to_char(date_trunc('month', order_date), 'Mon YYYY') AS month,
         COALESCE(SUM(CASE WHEN direction = 'inflow' THEN amount::numeric ELSE 0 END), 0) AS inflow,
         COALESCE(SUM(CASE WHEN direction = 'outflow' THEN amount::numeric ELSE 0 END), 0) AS outflow,
         COALESCE(SUM(CASE WHEN direction = 'inflow' THEN amount::numeric ELSE -amount::numeric END), 0) AS net
       FROM transactions
-      WHERE status IN ('successful', 'processed')
+      WHERE status IN ('successful', 'processed') AND ${s.inv("transactions.investor_id")}
         AND order_date >= date_trunc('month', now()) - interval '11 months'
       GROUP BY date_trunc('month', order_date)
       ORDER BY date_trunc('month', order_date) DESC
@@ -1269,19 +1350,20 @@ const REPORTS: Record<
       { key: "updated_at", label: "When", format: "date" },
       { key: "rm_name", label: "RM" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT i.name AS investor_name, s.scheme_name, s.amc_name, s.amount, s.status,
         s.updated_at, u.name AS rm_name
       FROM sips s
       LEFT JOIN investors i ON i.id = s.investor_id
       LEFT JOIN users u ON u.id = COALESCE(s.rm_id, i.rm_id)
-      WHERE s.status IN ('stopped', 'rejected')
+      WHERE s.status IN ('stopped', 'rejected') AND ${s.inv("s.investor_id")}
         AND s.updated_at >= date_trunc('month', now())
       ORDER BY s.updated_at DESC LIMIT 500
     `,
   },
 
   branch_business: {
+    manager: true,
     title: "Branch-wise Business",
     desc: "Clients, AUM and SIP book per branch.",
     columns: [
@@ -1290,20 +1372,21 @@ const REPORTS: Record<
       { key: "aum", label: "AUM", format: "inr" },
       { key: "sip_book", label: "SIP book", format: "inr" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT COALESCE(b.name, '— Unassigned —') AS branch_name,
         COUNT(i.id)::int AS clients,
         COALESCE(SUM(i.aum::numeric), 0) AS aum,
         COALESCE(SUM(i.active_sip_amount::numeric), 0) AS sip_book
       FROM investors i
       LEFT JOIN branches b ON b.id = i.branch_id
-      WHERE i.status = 'active' AND i.deleted_at IS NULL
+      WHERE i.status = 'active' AND i.deleted_at IS NULL AND ${s.inv("i.id")}
       GROUP BY b.id, b.name
       ORDER BY aum DESC
     `,
   },
 
   team_productivity: {
+    manager: true,
     title: "Team Productivity",
     desc: "Per team member: open tasks, tasks completed (30d), review meetings done (30d), and leads owned.",
     columns: [
@@ -1314,7 +1397,7 @@ const REPORTS: Record<
       { key: "meetings_30d", label: "Meetings 30d", format: "number" },
       { key: "leads_owned", label: "Leads owned", format: "number" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT u.name, COALESCE(u.department, '—') AS department,
         COUNT(t.id) FILTER (WHERE t.status IN ('open','in_progress'))::int AS open_tasks,
         COUNT(t.id) FILTER (WHERE t.status = 'completed' AND t.completed_at >= now() - interval '30 days')::int AS completed_30d,
@@ -1339,14 +1422,14 @@ const REPORTS: Record<
       { key: "avg_aum", label: "Avg AUM", format: "inr" },
       { key: "sip_book", label: "SIP book", format: "inr" },
     ],
-    runSql: (sql) => sql`
+    runSql: (sql, s) => sql`
       SELECT COALESCE(segment_tag, 'Unclassified') AS segment,
         COUNT(*)::int AS clients,
         COALESCE(SUM(aum::numeric), 0) AS aum,
         COALESCE(AVG(aum::numeric), 0) AS avg_aum,
         COALESCE(SUM(active_sip_amount::numeric), 0) AS sip_book
       FROM investors
-      WHERE status = 'active' AND deleted_at IS NULL
+      WHERE status = 'active' AND deleted_at IS NULL AND ${s.inv("investors.id")}
       GROUP BY segment_tag
       ORDER BY aum DESC
     `,
@@ -1361,10 +1444,21 @@ export default async function ReportPage({ params }: { params: Promise<{ key: st
   if (!report) notFound();
 
   const session = await requireSession();
-  const rows = await withTenant(session.tenantId, async (tx) => {
-    const r = await tx.execute(report.runSql(sql));
+  const result = await withTenant(session.tenantId, async (tx) => {
+    const wallOn = await dataWallApplies(tx, session);
+    // Under the data wall, per-RM / per-employee / campaign MIS is for the
+    // report audience only (marketing for the campaign / content reports);
+    // everyone else 404s rather than learning the report exists. Without the
+    // wall every report opens, as before.
+    if (wallOn && report.manager && !isReportManager(session) && !(report.marketing && isMarketingViewer(session))) {
+      return null;
+    }
+    const scope = await buildReportScope(tx, session, wallOn);
+    const r = await tx.execute(report.runSql(sql, scope));
     return r.rows as any[];
   });
+  if (!result) notFound();
+  const rows = result;
 
   return (
     <div className="space-y-6 max-w-7xl">

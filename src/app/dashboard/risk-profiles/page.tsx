@@ -5,6 +5,7 @@ import { ShieldCheck, AlertTriangle, Plus, ArrowRight, Search, X } from "lucide-
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireAny, can } from "@/lib/auth/rbac";
+import { investorScopeSql } from "@/lib/investors/access";
 import { formatDate } from "@/lib/utils";
 import { Pager } from "@/components/common/Pager";
 import { ExportButton } from "@/components/export/ExportButton";
@@ -79,11 +80,13 @@ export default async function RiskProfilesPage({
     // The clients the page lists — active clients of this firm, an RM's own
     // book for non-managers, narrowed by a dashboard drill-down's rm / branch
     // (lib/metrics/risk.ts: the same base every risk-profile count uses).
-    const base = riskProfileBaseSql({
+    const baseOnly = riskProfileBaseSql({
       tenantId: session.tenantId,
       rmIds: canViewAll ? (sp.rm ? sp.rm.split(",") : undefined) : [session.userId],
       branchIds: sp.branch ? sp.branch.split(",") : undefined,
     });
+    // Plus the shared client data scope (branch / own book).
+    const base = sql`(${baseOnly} AND ${await investorScopeSql(tx, session, "i")})`;
     const search = q
       ? sql`(i.name ILIKE ${`%${q}%`} OR i.pan ILIKE ${`%${q.toUpperCase()}%`})`
       : sql`TRUE`;

@@ -17,6 +17,7 @@ type Size = "md" | "sm" | "lg";
 
 interface ButtonProps {
   label: string;
+  /** Spoken name when the visible label is a symbol (e.g. a ‹ / › arrow). */
   accessibilityLabel?: string;
   onPress?: () => void;
   variant?: Variant;
@@ -41,7 +42,7 @@ function useButtonBits(size: Size, variant: Variant) {
   // Primary=chrome vs Accent=highlights split) — chrome (header/tabs/avatars)
   // stays on `brand` elsewhere.
   const { accent, accentDark } = useBrand();
-  const height = size === "lg" ? 54 : size === "sm" ? 48 : TOUCH_MIN;
+  const height = size === "lg" ? 54 : size === "sm" ? 38 : TOUCH_MIN;
   const v =
     variant === "primary"
       ? { bg: accent, fg: palette.white, border: accent }
@@ -61,7 +62,7 @@ function Inner({ loading, icon, label, size, fg }: { loading?: boolean; icon?: R
   );
 }
 
-const APressable = Animated.createAnimatedComponent(Pressable);
+const AView = Animated.createAnimatedComponent(View);
 
 function fire(haptic: boolean | undefined, onPress?: () => void) {
   if (haptic !== false) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -75,7 +76,7 @@ function AnimatedButton(p: ButtonProps) {
   const { height, v } = useButtonBits(size, variant);
   const isDisabled = p.disabled || p.loading;
   return (
-    <APressable
+    <Pressable
       accessibilityRole="button"
       accessibilityLabel={p.accessibilityLabel ?? p.label}
       accessibilityState={{ disabled: !!isDisabled, busy: !!p.loading }}
@@ -83,10 +84,12 @@ function AnimatedButton(p: ButtonProps) {
       onPress={() => fire(p.haptic, p.onPress)}
       onPressIn={() => (scale.value = withTiming(0.97, { duration: 80 }))}
       onPressOut={() => (scale.value = withTiming(1, { duration: 120 }))}
-      style={[styles.base, { minHeight: height, backgroundColor: v.bg, borderColor: v.border }, isDisabled && { opacity: 0.5 }, animStyle, p.full ? { width: "100%" } : undefined, p.style]}
+      style={p.full ? { width: "100%" } : undefined}
     >
+      <AView style={[styles.base, { height, backgroundColor: v.bg, borderColor: v.border }, isDisabled && { opacity: 0.5 }, animStyle, p.style]}>
         <Inner loading={p.loading} icon={p.icon} label={p.label} size={size} fg={v.fg} />
-    </APressable>
+      </AView>
+    </Pressable>
   );
 }
 
@@ -101,7 +104,7 @@ function StaticButton(p: ButtonProps) {
       accessibilityState={{ disabled: !!isDisabled, busy: !!p.loading }}
       disabled={isDisabled}
       onPress={() => fire(p.haptic, p.onPress)}
-      style={({ pressed }) => [styles.base, { minHeight: height, backgroundColor: v.bg, borderColor: v.border }, isDisabled && { opacity: 0.5 }, pressed && { opacity: 0.9 }, p.full ? { width: "100%" } : undefined, p.style]}
+      style={({ pressed }) => [styles.base, { height, backgroundColor: v.bg, borderColor: v.border }, isDisabled && { opacity: 0.5 }, pressed && { opacity: 0.9 }, p.full ? { width: "100%" } : undefined, p.style]}
     >
       <Inner loading={p.loading} icon={p.icon} label={p.label} size={size} fg={v.fg} />
     </Pressable>
@@ -116,8 +119,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xl,
   },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
 });
