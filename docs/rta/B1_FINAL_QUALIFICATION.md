@@ -593,3 +593,42 @@ financial harnesses on `7ed48d2d` = `d7aa60a8` + `f086c294` + G-1): FS-7, P0
 (only per-build random ids differ; the FS-7 collision firm's 6 altered rows are
 picked by id order, so which file they fall in varies, total 6 quarantined,
 1,055 matched, legacy fingerprint unchanged before / after).
+
+## N. Final candidate `44468322` — G-1 final hardening + `main` `74dc6c6e` (2026-10-14)
+
+**What changed since `f7055e92` (§M):**
+
+1. **The G-1 final hardening** (hotfix `00b2f7a9`, `docs/security/G1_GUARDIAN_HOTFIX.md` §8). The changes:
+   - a minor's risk is its own assessment on about 50 read paths;
+   - removing a link clears the copied profile;
+   - a refused typed guardian PAN is reported;
+   - `GET /api/audit` is scoped to the caller's book;
+   - the QRR AI route checks access to the record;
+   - the risk-drift report applies the data wall.
+
+   **No migration.** The proposed `0245` (stop copying) is under `docs/security/` for separate review.
+
+2. **`main` `d334b35b` and `74dc6c6e`** (both deployed; production runs `74dc6c6e`). Brought in through the hotfix branch: merge `cec1ae7e` had 7 conflicts, all in risk readers, with both sides kept.
+
+3. **Integration (RTA side):**
+   - **`f9e2957e`:**
+     - `CLAUDE.md` and `src/lib/rta/import.ts` conflicts resolved, both sides kept;
+     - `restoreTrashedHolders` is a `derived` RTA writer, so a stopped firm is left as it is. Test: `tests/rta-holds-money-guard-db.test.ts`, 2 tests; it fails without the guard.
+     - The importer's India Post pincode fill skips validate-first batches. It would otherwise run inside the posting transaction that holds the kill-switch rows FOR SHARE, for up to about 4 s per pincode, which would delay a halt.
+   - **`44468322`:** six of `main`'s new `as any` casts are typed. The ratchet now reads 3,427, within the 3,429 baseline. Type-only change.
+
+**Results** (local, restricted role, RLS enforced unless stated):
+
+| Check | Result |
+|---|---|
+| tsc, lint, `check:rbac` / `rls` / `migrations` / `schema` / `colors` / `mathimports` / `calc` / `finance` / `spine` / `labels` / `sql`, `migrate --check` | pass on `f9e2957e`. `check:asany` failed there (3,433 > 3,429, from `main`'s new casts) and passes on `44468322` (3,427). |
+| Full DB suite | **1,291 passed** / 2 skipped. The skips are the usual local pair: the emergency drill, which runs in its own step, and one environment-only skip. |
+| Emergency drill / immutability drill | 1 / 1 · 0 failures |
+| FS-7 legacy, P0 (legacy, clean, scope), nine-file legacy (merged and the `main` `b795fdba` reference) | **identical** to the `d7aa60a8` baseline |
+| FS-7 collision | **identical totals**: 1,055 matched and 6 quarantined per pass; only the split between the two files varies with random ids, as before |
+| 3L | identical apart from the activation timestamps |
+| Infrastructure harness | **43 / 43** |
+| Validate-first browser | **17 / 17**: 3 active SIPs, 13 captions, 24 held, 0 resolvable, unchanged |
+| G-1 (hotfix branch, same code) | guardian-link 16, guardian-exposure 12, minor-risk-sql 2. The exposure tests against the pre-hardening code: 12 / 12 fail, 11 of them on the defect itself. Browser 31 / 31. |
+
+The migrations tree is `5781e010…`, identical to `d7aa60a8`, with 284 files. Fingerprints are in handover §0.1f.

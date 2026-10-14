@@ -58,6 +58,25 @@ A mismatch anywhere in this table is a stop: the environment is not the reviewed
 
 **Owner decision (2026-10-14, "APPROVE FINAL DEVELOPMENT RELEASE CANDIDATE & START OPERATIONAL PREFLIGHT"):** `d7aa60a8` is approved for development release tagging; integrated `main` baseline `f563e7ac`. **Development release qualification: GO. Production deployment and pilot activation: NO-GO.** Development is frozen again: no software change unless a concrete new defect or release-blocking compatibility issue is found; no push to `main` or `deploy/aws`; no deployment of code or Terraform; no production migration; no financial posting. The tag authorizes nothing beyond the tag.
 
+#### 0.1f Final candidate (2026-10-14, owner instruction "G-1 FINAL SECURITY HARDENING AND PRODUCTION HOTFIX READINESS") — not approved, not tagged
+
+Supersedes §0.1e as the code to qualify next. `d7aa60a8` stays the approved
+development release and the only commit the proposed tag may name (§0.1c /
+§0.1d); this candidate needs its own owner review and its own tag.
+
+| Item | Value | How to verify |
+|---|---|---|
+| Candidate commit | `44468322b1c6ed4975fe200862b111149a2176e3` (later commits docs only) | `git diff --name-only 44468322 <head> -- . ':(exclude)docs'` prints nothing |
+| What it adds to `f7055e92` | the G-1 final hardening (`00b2f7a9`: a minor's risk is its own assessment on every read path; link removal clears the copy; refused typed PANs reported; the client history route scoped; QRR AI route record check; risk-drift data wall) and `main` `d334b35b` (money-holding clients never deleted) + `74dc6c6e` (client-type fields; pincode only from RTA files), through the hotfix branch (`cec1ae7e`) | `for c in f7055e92 00b2f7a9 d334b35b 74dc6c6e; do git merge-base --is-ancestor $c 44468322 \|\| echo MISSING $c; done` prints nothing |
+| Integration decisions | `restoreTrashedHolders` (main) asks the RTA write guard as a `derived` writer — a stopped firm is left as it is (`tests/rta-holds-money-guard-db.test.ts`, fails without the guard); the legacy importer's India Post pincode fill (main) skips a validate-first batch, which runs inside the posting transaction holding the kill-switch rows; six of main's new `as any` casts typed (ratchet 3427 ≤ 3429). Conflicts: `CLAUDE.md`, `src/lib/rta/import.ts` (kept both) | `git show f9e2957e 44468322` |
+| Frozen artifact | tree `181907488381841917033300c21cdf645b13fabd`; `src/` `73f7cd92c7e3b1c324fb4af6940c29227a9027bc`; `drizzle/migrations/` `5781e010b734e74dbf191256d72b61c9523716d6` (**identical to `d7aa60a8`**); `tests/` `0d50ff2f8f9c357422bf5b8381f23673f7aecae1`; `scripts/` `062b80f8661587efccbc832b56e4e6f3a7c0e4eb` | `git rev-parse 44468322^{tree} 44468322:src 44468322:drizzle/migrations 44468322:tests 44468322:scripts` |
+| Migrations | unchanged: 284; lock `025d640c…`; `main` adds none (production stays at 272) | `node scripts/check-migration-lock.mjs` |
+| Evidence | locally on the code: every guard (after typing the casts), `migrate --check`, full DB suite 1,291 passed / 2 skipped (the usual local pair), emergency drill 1 / 1, immutability drill; FS-7 / P0 / 3L / nine-file legacy / `main` reference identical to `d7aa60a8`; infrastructure harness 43 / 43; validate-first browser 17 / 17; G-1 tests 30 / 30 + 31 / 31 browser on the hotfix branch; GitHub CI on the pushed head | `B1_FINAL_QUALIFICATION.md` §N |
+
+Valid only while production runs `74dc6c6e` (deploy run 299, 08:52 UTC) or an
+ancestor (PR-3). `main` moved five times on 2026-10-14; any further push must
+be merged and re-qualified first.
+
 #### 0.1e Updated integrated candidate (2026-10-14, owner instruction "URGENT G-1 SECURITY FIX AND FINAL RTA RELEASE UPDATE") — not approved, not tagged
 
 `d7aa60a8` stays the approved development release and the only commit the
@@ -73,9 +92,7 @@ code to qualify next; it needs its own owner review and its own tag.
 | Migrations | unchanged: 284; lock `025d640c…`; concatenation `25a08833…`; ledger `a9bb87a5…`; `main`'s new commits add none (production stays at 272) | `node scripts/check-migration-lock.mjs` |
 | Evidence | real CI green on the code (run 316: 1,266 DB tests, 0 skipped + drill; 991 unit); locally every guard, full DB suite, drills, FS-7 / P0 / 3L / nine-file legacy identical to `d7aa60a8`, infrastructure harness 43 / 43, browser 17 / 17; G-1: 16 / 16 DB, 21 / 21 browser | `B1_FINAL_QUALIFICATION.md` §M |
 
-Valid only while production runs `b795fdba` (deployed 05:46 UTC) or an ancestor (PR-3). `main`
-moved three times on 2026-10-14; any further push must be merged and
-re-qualified first.
+Superseded by §0.1f (production moved to `74dc6c6e`).
 
 #### 0.1c Approved development release (owner, 2026-10-14) — remote tag pending an authorized maintainer
 
