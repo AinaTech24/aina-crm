@@ -22,7 +22,7 @@ Read from Terraform, the deploy workflow and the compose file on `main` (`terraf
 
 ---
 
-## 1. Release verification — done 2026-10-12, from the repository
+## 1. Release verification — 2026-10-12, updated 2026-10-14, from the repository
 
 | # | Check | Result | Status |
 |---|---|---|---|
@@ -45,9 +45,12 @@ Read from Terraform, the deploy workflow and the compose file on `main` (`terraf
 | RV-17 | Final candidate (handover §0.1c) | `d7aa60a8f50b0947e85917b6e11de09fba4a3e08`: `main` `f563e7ac` integrated; evidence `docs/rta/B1_FINAL_QUALIFICATION.md` | PASS (development) |
 | RV-18 | Real CI runs every DB-backed test | runner PostgreSQL + test admin + restricted role; 1,233 passed, 0 failed, 0 skipped (+ drill) | PASS (development) |
 | RV-19 | 39 legacy differences reconciled; historical diagnostic prepared | row → group → economic transaction, 447 / 447 rows traced; `rta-legacy-impact-diagnostic.ts` + exposure SQL (not run on production) | PASS (development) |
-| RV-20 | Owner approval of `d7aa60a8` and the tag `rta-kfintech-pilot-candidate-2026-10-14-b1f` | not yet given | NOT VERIFIED |
+| RV-20 | Owner approval of `d7aa60a8` and the tag `rta-kfintech-pilot-candidate-2026-10-14-b1f` | approved for development release tagging (owner, 2026-10-14); re-verified that day: `main` `f563e7ac` fully contained, fingerprints, 284 migrations = lock, CI run 305 green on the exact SHA (1,233 DB tests, 0 skipped, + drill) | PASS (approval) |
+| RV-21 | Remote tag `rta-kfintech-pilot-candidate-2026-10-14-b1f` → `d7aa60a8` | the development session's tag push was refused by the remote; **no remote tag exists**. An authorized maintainer creates it with handover §0.1d and records both `ls-remote` lines | NOT VERIFIED |
+| RV-22 | `main` after approval | `f086c294` (deploy tooling / Terraform bootstrap / CLAUDE.md; no `src/`, no migration); trial merge with `d7aa60a8` clean; NOT integrated (freeze). A deployable artifact must merge `main`'s head first | recorded |
+| RV-23 | Guardian-link defect in `main`'s client master (G-1) | cross-book link and disclosure, PAN-twin guess, merged guardian — `B1_FINAL_QUALIFICATION.md` §L; fix proposed (`handover/guardian-link-fix.patch`), not applied | **OPEN** (production defect, separate from the pilot) |
 
-**B-1 (2026-10-12): the reconciliation was authorized and is done in development** — first candidate `f61d202` (`docs/rta/B1_INTEGRATION.md`), stabilised as `aab763c4` (`docs/rta/B1_STABILISATION.md`, conditionally accepted) and qualified with `main` `f563e7ac` as **`d7aa60a8`** (`docs/rta/B1_FINAL_QUALIFICATION.md`). It becomes the release only after the owner's approval (RV-20) and a new tag. Until then `c26e676` stays the accepted pin; none of them is deployed. Every check below is run on the candidate once accepted; F part 1 on `c26e676` is not evidence for it.
+**B-1 (2026-10-12): the reconciliation was authorized and is done in development** — first candidate `f61d202` (`docs/rta/B1_INTEGRATION.md`), stabilised as `aab763c4` (`docs/rta/B1_STABILISATION.md`, conditionally accepted) and qualified with `main` `f563e7ac` as **`d7aa60a8`** (`docs/rta/B1_FINAL_QUALIFICATION.md`). The owner approved it on 2026-10-14 (RV-20); the remote tag waits for a maintainer (RV-21). It is a development release only: none of these commits is deployed or authorized for deployment. Every check below is run on the candidate once accepted; F part 1 on `c26e676` is not evidence for it.
 
 ---
 
@@ -63,13 +66,32 @@ Read from Terraform, the deploy workflow and the compose file on `main` (`terraf
 
 ---
 
+## 2a. First production read-only checks — operator sequence A – H (2026-10-14)
+
+Nothing in this sequence writes, deploys, migrates, activates or repairs. Each step points at the row that holds the exact command; only the rows marked *new* were added here. Run in this order and **stop at the first stop condition** — report it, do not work around it. Production SQL always runs as `PGOPTIONS='-c default_transaction_read_only=on' psql "$PROD_RO"`. No development session holds production access: every step is executed by the named role.
+
+| Step | What | Rows (exact command there) | Role | Expected | Evidence to keep | Stop if |
+|---|---|---|---|---|---|---|
+| A | AWS account, no change in flight, the commit production runs | PR-1, PR-2, PR-3 | Infra | `972971302420`; lock free; host / last deploy `f086c294` or `f563e7ac` | the three outputs | another account; a lock held by an unknown session; any other commit (the candidate is re-integrated against it first) |
+| B | Migration ledger and the reverted `0240` | PR-5 (count / newest / digest, then `docs/rta/handover/b1-production-ledger-check.sql`) and `SELECT filename, checksum, applied_at FROM _applied_migrations WHERE filename = '0240_aum_month_end.sql';` | DBA | `272 \| 0234_minor_risk_from_guardian.sql \| 2ed089067e530ec25b28fb9a755cca5c`; verdict `COMPATIBLE · 272 · 12 pending`; **no `0240` row** | outputs | any `STOP` verdict; a `0240` row; a changed checksum — escalate to development, never edit a migration |
+| C | `mfd_app` and RLS | PR-6, PR-7, PR-16 | DBA + Infra | role flags all false, owns nothing, member of nothing privileged; 0 tables without forced RLS; containers `app=set master=absent`; two designated operators with two-factor | outputs (ids only) | any true flag / ownership / membership; `master=PRESENT`; an operator without two-factor |
+| D | Backups and restore capability | PR-4, PR-9 (a restore is proven only by C-2 / X-4 on the copy) | DBA | encrypted, not public, retention 7, deletion protection, latest restorable time within minutes, daily snapshots `available` | outputs | no snapshot in 24 h; PITR not available |
+| E | Historical financial impact (read-only) | E-5 (exposure), E-7 (duplicates), E-8 (guardian links) on production; E-6 (re-read of the stored registrar files) on the copy | DBA (+ Infra for E-6's storage access) | counts recorded per firm; nothing changed | SQL outputs, `legacy-impact.json` (masked) | an error from a read-only query (report it; never retry as a writer) |
+| F | Headerless RTA files | E-9 | DBA, then Infra (first lines of the listed objects) | per firm / month counts; the listed objects carry registrar headers | outputs, inspection notes (no data rows) | a firm whose AUM / SIP imports were read positionally — decided in E-4 before that firm is touched |
+| G | AMFI reference and KFintech mappings | production today: `SELECT count(*), max(nav_date) FROM scheme_nav;` — the provenance and mapping tables (`amfi_feed_imports`, `scheme_registrar_map`, `registrar_amc_identity`, `scheme_rta_codes`) arrive with the release's migrations, so `relation … does not exist` is the expected answer in production. The approved KFintech mappings are verified on the copy: A-1 – A-3, B-1 – B-3 | DBA; Op 1 / Op 2 on the copy | production: counts recorded; copy: as A / B | outputs | on the copy: B (ii) ≠ 0, a code resolved by name |
+| H | Security, storage, SES, Redis, alerts, reconciliation | PR-8, PR-10 – PR-15; `curl -fsS https://<CRM domain>/api/health` (200). `GET /api/health/rta-reconciliation` and the 06:30 IST reconciliation exist only in the release: X-5, X-6 on the copy | Infra + DBA | as in each row; `/api/health` 200 | outputs | as in each row |
+
+Step E is the only one that reads client-level records; its outputs are aggregates or masked. A non-zero count is not a defect by itself: it goes to E-4 for a signed decision.
+
+---
+
 ## 3. PR — production, read-only (start here)
 
 | ID | Objective | Command / procedure | Role | Expected | Evidence | Risk | Stop if | Status |
 |---|---|---|---|---|---|---|---|---|
 | PR-1 | Right AWS account | `aws sts get-caller-identity --query '[Account,Arn]' --output text` | Infra | `972971302420`, a named human or least-privilege role (not root) | output | Low | another account | NOT VERIFIED |
 | PR-2 | No production change in flight | `bash scripts/prod-change.sh status` | Infra | free, or held by a named change you know | output | Low | held by an unknown session | NOT VERIFIED |
-| PR-3 | Which code production runs | `aws s3 ls s3://aina-crm-deploy-artifacts-972971302420/releases/ \| sort \| tail -3` (the SHA is in each key) and `gh run list --workflow "Deploy to AWS (EC2)" --limit 5` | Infra | newest successful deploy is `a16628c5` — the candidate's first parent (repo head on 2026-10-12). Also on the instance: the deployed SHA the host records (`scripts/manual-deploy.sh` deploys bypass Actions) | output | Low | any other commit, or unknown: the candidate is re-integrated against it before anything else | NOT VERIFIED |
+| PR-3 | Which code production runs | `aws s3 ls s3://aina-crm-deploy-artifacts-972971302420/releases/ \| sort \| tail -3` (the SHA is in each key) and `gh run list --workflow "Deploy to AWS (EC2)" --limit 5` | Infra | newest successful deploy is `f086c294` (deploy run started 2026-10-14 04:47 UTC) or `f563e7ac` — the same application code and 272 migrations. Also on the instance: the deployed SHA the host records (`scripts/manual-deploy.sh` deploys bypass Actions) | output | Low | any other commit, or unknown: the candidate is re-integrated against it before anything else | NOT VERIFIED |
 | PR-4 | Database identity and protection | `aws rds describe-db-instances --db-instance-identifier mfd-growth-os-db --query 'DBInstances[0].{Engine:EngineVersion,Class:DBInstanceClass,GB:AllocatedStorage,MaxGB:MaxAllocatedStorage,Encrypted:StorageEncrypted,Public:PubliclyAccessible,MultiAZ:MultiAZ,Retention:BackupRetentionPeriod,Restorable:LatestRestorableTime,DeletionProtection:DeletionProtection}'` | DBA | 16.x; `Encrypted` true; `Public` false; `Retention` 7; `DeletionProtection` true; `Restorable` within minutes. `MultiAZ` false is recorded as a risk (single AZ) | output | Low | public, unencrypted, retention < 7, restorable time hours old | NOT VERIFIED |
 | PR-5 | Production migration state | `SELECT count(*), max(filename), md5(string_agg(filename \|\| ':' \|\| checksum, ',' ORDER BY filename COLLATE "C")) FROM _applied_migrations;` then `docs/rta/handover/b1-production-ledger-check.sql` (both read-only) | DBA | `272 \| 0234_minor_risk_from_guardian.sql \| 2ed089067e530ec25b28fb9a755cca5c` (main `f563e7ac`, deployed 2026-10-13); 271 `9d53e5c78c2d79f7b29eea0d4d8e0065` or 270 `d81993198b6288513fe6913400b7966c` for an older main; the ledger check's verdict `COMPATIBLE`. In particular no row for `0240_aum_month_end.sql` (added and reverted on `main` on 2026-10-08): the runner refuses to migrate a ledger holding it (`--check` exit 2, nothing applied — rehearsed) | output | Low | any other value: the copy's migration plan differs — investigate before C | NOT VERIFIED |
 | PR-6 | App role cannot bypass RLS / own anything | handover FS-2 step 2 (role flags, memberships, `session_replication_role`, object / database / function owners, tables without forced RLS) | DBA | `mfd_app` all flags false, member of nothing privileged, owns 0 objects; 0 tables without forced RLS | 5 outputs | Low | any true flag, ownership or membership | NOT VERIFIED |
@@ -100,7 +122,7 @@ Queries on tables added by `0233`–`0244` (posting controls, activations, `amfi
 | C-4 | Sensitive data | the copy holds real investor data: access only for the named DBA and operators; encrypted (inherited); outputs masked; deleted (with a final snapshot under the same access rules) when the preflight ends | DBA + compliance | access list recorded | list, deletion date | High | the copy shared outside the named people | NOT VERIFIED |
 | C-5 | A name production can never match | on the copy only, connected to `postgres` with no session on `mfd`: `ALTER DATABASE mfd RENAME TO mfd_preflight;` | DBA | copy database `mfd_preflight`; the posting gate then refuses any connection whose database is not `mfd_preflight` — production's `mfd` can never match | output | Medium | run on any endpoint other than the copy's | NOT VERIFIED |
 | C-6 | Source unchanged | rerun PR-5 on production; `aws cloudtrail lookup-events --lookup-attributes AttributeKey=ResourceName,AttributeValue=mfd-growth-os-db --start-time <C-2 start> --query 'Events[].[EventTime,EventName,Username]' --output text` | DBA | PR-5 identical; only the restore read / describe events, no `Modify*` / `Reboot*` on production | both outputs | Low | any change event on production | NOT VERIFIED |
-| C-7 | Release migrations and checksums | on the rehearsal host, at the tag: `node scripts/check-migration-lock.mjs`; `DATABASE_URL=$COPY_ADMIN npx tsx scripts/migrate-all.ts --check` | DBA | `✓ 282 migrations match`; `270 applied, 12 pending, 0 acknowledged drift, 0 blockers` | outputs | Low | any blocker | NOT VERIFIED |
+| C-7 | Release migrations and checksums | on the rehearsal host, at the tag: `node scripts/check-migration-lock.mjs`; `DATABASE_URL=$COPY_ADMIN npx tsx scripts/migrate-all.ts --check` | DBA | `✓ 284 migrations match`; `272 applied, 12 pending, 0 acknowledged drift, 0 blockers` (13 / 14 pending if the copy predates `main` `f563e7ac` / `88bc0178`) | outputs | Low | any blocker | NOT VERIFIED |
 | C-8 | Recovery point before migrating | `aws rds create-db-snapshot --db-instance-identifier <target> --db-snapshot-identifier <target>-pre-migrate` | DBA | `available` | id | Low | — | NOT VERIFIED |
 | C-9 | Rehearse the migrations | `time DATABASE_URL=$COPY_ADMIN npx tsx scripts/migrate-all.ts`; then PR-5's query on the copy; `DATABASE_URL=$COPY_ADMIN npm run -s check:rls`; `DATABASE_URL=$COPY_ADMIN npm run -s check:schema` | DBA | `applied 12` (13 / 14 if the copy predates `main` `f563e7ac` / `88bc0178`), exit 0, duration recorded; `284 \| 0244_… \| a9bb87a582387db2697310e3e66fa895`; RLS 189 tables; schema 199 tables | outputs, duration, any error text | Medium | a failed file (never edit it — return it) | NOT VERIFIED |
 | C-10 | Restricted roles on the copy (FS-2) | FS-2 step 2 queries on the copy; start the tagged worker once with `APP_DATABASE_URL` unset and once with the migration URL, `NODE_ENV=production` | DBA + Infra | role checks as PR-6; both starts exit 1 with `refusing to start`, no password printed; with the app URL: `✓ Database role 'mfd_app' verified` | outputs | Low | the worker starts on the migration role | NOT VERIFIED |
@@ -123,13 +145,18 @@ Development, for reference only: of all **219** KFintech registrar codes seen, *
 
 ---
 
-## 6. E — historical diagnostics (on the copy; production read-only only if separately authorized)
+## 6. E — historical diagnostics (E-5, E-7, E-8, E-9 read-only on production per §2a — the owner's instruction of 2026-10-14; the rest on the copy)
 
 | ID | Objective | Command / procedure | Role | Expected | Evidence | Risk | Stop if | Status |
 |---|---|---|---|---|---|---|---|---|
 | E-1 | Identity, ownership and duplicate findings | `DATABASE_URL=$COPY_APP ALLOW_SYSTEM_TX=1 npx tsx scripts/rta-historical-diagnostics.ts --tenant <firm> --json diag.json` | DBA | exit 0; READ ONLY transaction; masked output. Covers PAN-less placeholders, `MINOR:` keys and guardian folios, HUF rows, folios with two owners, reused registrar transaction numbers, duplicate SIPs, stale holdings | `diag.json` (masked) | Medium | an unexplained two-owner folio; a minor / HUF finding on an in-scope folio without a decision | NOT VERIFIED |
 | E-2 | Scheme Master duplicates | `DATABASE_URL=$COPY_APP ALLOW_SYSTEM_TX=1 npx tsx scripts/scheme-master-duplicates.ts --tenant <firm>` | DBA | exit 0; ends `Nothing was changed.` | output | Low | — | NOT VERIFIED |
 | E-3 | Existing legacy transactions (EC-1 step 1, FS-7 step 1) | handover EC-1 step 1 queries; FS-7 step 1 | DBA | counts recorded; no ledger rows | outputs | Medium | numbers twice without explanation | NOT VERIFIED |
+| E-5 *new* | Legacy KFintech exposure (production, read-only) | `PGOPTIONS='-c default_transaction_read_only=on' psql "$PROD_RO" -f docs/rta/handover/b1-legacy-impact-exposure.sql` | DBA | per firm: legacy KFintech rows, redemption-like, outflow lumpsum, zero-amount, amount on record; stored feed imports per firm. EXPOSURE only — it cannot name an affected record | output | Low | — | NOT VERIFIED |
+| E-6 *new* | Legacy KFintech impact confirmed from the stored registrar files: truncated multi-lot redemptions, folio-correction legs counted as business, unrecognised codes | on the copy, at the tag, for each firm with exposure in E-5: `DATABASE_URL=$COPY_APP S3_BUCKET=<uploads bucket> npx tsx scripts/rta-legacy-impact-diagnostic.ts --tenant <firm> --imports --json legacy-impact.json` — storage credentials limited to `s3:GetObject` under `tenants/<firm>/rta/` (Infra grants, then revokes). READ ONLY transaction, restricted role | DBA + Infra | per category: transactions, rows, registrar ₹ vs CRM ₹, ≤ 3 masked examples. Development sample: 39 of 1,100 (15 truncated, 18 correction legs, 6 unrecognised). **No production figure exists until this runs** | `legacy-impact.json` | Medium | a firm with exposure and no stored file: the registrar's file for that period is needed | NOT VERIFIED |
+| E-7 *new* | Duplicate economic transactions (production, read-only) | `… -f docs/rta/handover/b1-duplicate-economic-check.sql` (replace `<firm>` in part 2) | DBA | `duplicate_shaped_groups` 0; any other number is an upper bound to review, not a finding | output | Medium | — | NOT VERIFIED |
+| E-8 *new* | Guardian links, defect G-1 (production, read-only) | `… -f docs/rta/handover/guardian-link-check.sql` | DBA; compliance reviews | per firm: links to another RM / branch; to merged, deleted or minor records; shared-PAN guardians; typed PAN ≠ linked PAN | output | High | — (a non-zero count is decided in E-4; nothing is unlinked) | NOT VERIFIED |
+| E-9 *new* | Headerless AUM / SIP-book files (I-4) | `… -f docs/rta/handover/b1-headerless-impact-check.sql`; Infra then reads the first 10 lines of the listed stored objects (no data rows copied) | DBA + Infra | counts per firm / month; the header on line 1 for the files `main` read correctly | outputs, notes | Medium | — | NOT VERIFIED |
 | E-4 | Signed review | operator 1 and compliance sign a decision per finding: accept / fix outside the pilot / exclude the client. **No merge, no repair** | Op 1 + compliance | every finding decided | minutes | High | an undecided in-scope finding | NOT VERIFIED |
 
 ---
@@ -170,7 +197,7 @@ Use handover **§6** (sign-off sheet, "Who records which check", R1–R6, signat
 
 ---
 
-## 10. GO / NO-GO — evidence available on 2026-10-12
+## 10. GO / NO-GO — evidence available on 2026-10-14
 
 | Condition | Status | Basis |
 |---|---|---|
@@ -181,7 +208,8 @@ Use handover **§6** (sign-off sheet, "Who records which check", R1–R6, signat
 | Stabilised candidate (RV-13 – RV-15) | PASS (development) | `aab763c4`: `main` `88bc0178` merged, 15 clean full runs, CI green under its own env, I-6 harness 42 / 42, migrations 271 + 12 — `docs/rta/B1_STABILISATION.md` |
 | Owner review of `aab763c4` (RV-16) | PASS (conditional) | accepted for continued qualification |
 | Final candidate (RV-17 – RV-19) | PASS (development) | `d7aa60a8`: `main` `f563e7ac` integrated, real CI with every DB test run, 39 differences reconciled, harness 43 / 43, browser 17 / 17 — `docs/rta/B1_FINAL_QUALIFICATION.md` |
-| Owner approval of `d7aa60a8` + tag (RV-20) | NOT VERIFIED | proposed tag `rta-kfintech-pilot-candidate-2026-10-14-b1f` |
+| Owner approval of `d7aa60a8` (RV-20) | PASS (approval) | owner, 2026-10-14 — development release only |
+| Remote tag (RV-21) | NOT VERIFIED | session refused; maintainer per handover §0.1d |
 | A. AMFI integrity and mapping | NOT VERIFIED | A-1 – A-3 not run |
 | B. Schemes verified or held | NOT VERIFIED | B-1 – B-3 not run on a production copy |
 | C. Migration rehearsal | NOT VERIFIED | no authorized copy yet |
@@ -189,6 +217,33 @@ Use handover **§6** (sign-off sheet, "Who records which check", R1–R6, signat
 | E. Diagnostics reviewed | NOT VERIFIED | E-1 – E-4 not run |
 | F. Dry run + two-person approval | NOT VERIFIED (not done) | F1 not run; F2 not authorized |
 | EC-1 – EC-6, FS-1 – FS-10 | NOT VERIFIED | operator evidence pending |
+| G-1 guardian-link defect (RV-23) | OPEN | production defect in `main`'s client master; E-8 counts and the owner's fix decision before a pilot firm is activated |
 | R1 – R6 | not met | follows from the above |
 
-**Decision: NO-GO.** Development and rehearsal results (handover §4, FS-7, FS-8) are not production evidence. Next human actions: (1) the owner reviews candidate `d7aa60a8` (RV-20), then a new tag; (2) DBA and infrastructure engineer run PR-1 – PR-18 now — PR-3 and PR-5 decide whether the candidate matches production; (3) the owner authorizes C in writing.
+**Decision: NO-GO.** Development and rehearsal results (handover §4, FS-7, FS-8) are not production evidence. Next human actions: (1) a maintainer creates the tag (handover §0.1d, RV-21); (2) DBA and infrastructure engineer run §2a A – H now — A and B decide whether the candidate matches production; (3) the owner decides G-1 (RV-23) and authorizes C in writing; (4) the final pilot rehearsal (§11) on the copy.
+
+---
+
+## 11. Final pilot rehearsal — on an authorized isolated production copy (DBA-led)
+
+**No production change is approved.** The rehearsal runs on the copy built in §4, at the tag, with the copy's own bucket, Redis and worker (C-3). It reuses the rows above; it adds no new procedure. Every item is PASS only with its evidence; one FAIL stops the rehearsal.
+
+| # | Rehearsal item | Rows | Pass when |
+|---|---|---|---|
+| R-a | Migration compatibility | C-7, C-9, C-10 (+ B on the copy) | `272 applied, 12 pending`, then 284 · `a9bb87a582387db2697310e3e66fa895`; RLS 189; roles refuse privileged starts |
+| R-b | Scheme Master / AMFI | A-1 – A-3, B-1, B-2 | two identical hashes; `applied`; every pilot code `isin_verified*`; B (ii) = 0; unresolved codes held |
+| R-c | MFSD211 investor master | F1-1, F1-3 (MFSD211 first) | every row posted, matched or held with a reason; no client created by name |
+| R-d | MFSD201 transactions on verified schemes | F1-3, F1-4 | posted only with an AMFI code; `matched_existing` explained; the other EC-1 counts 0 |
+| R-e | Investor ownership | F1-5, E-8 | folio on record decides; minor / HUF rows never posted to guardian / Karta; G-1 links on in-scope clients decided |
+| R-f | Multi-lot redemptions | F1-5 | one transaction per registrar number, every lot kept, amount = the registrar's |
+| R-g | Rejections and corrections | F1-5, F1-8 | refused instructions recorded rejected (0 units), counts = ledger; folio corrections held |
+| R-h | Import duplication prevention | F1-7, E-7 on the copy after F1 | re-import: `already_posted` only; no duplicate-shaped group created by the pilot |
+| R-i | Emergency halt | X-1, X-2 | nothing written after a pause / halt; release needs two people |
+| R-j | Financial reconciliation | F1-3 reconciles, X-5 | every `reconcile` 0; a scheduled run `ok`; the deliberate failure alerts and is acknowledged |
+| R-k | Backup and recovery | C-8, C-11, X-3, X-4 | reversal + undo reconcile 0; a snapshot restores with the expected ledger digest |
+| R-l | Out of scope stays out | F1-6, B-3 | CAMS and MFSD203 refused (`blocked`, no batch) |
+
+MFSD203 (holdings / AUM) and MFSD243 (SIP registrations) may be added to the copy's activation **only as a separate, recorded rehearsal scope** to test AUM and SIP views; they stay outside the pilot's `reportCodes` (MFSD211 + MFSD201). CAMS financial posting stays disabled throughout.
+
+Sign-off for the rehearsal and the pilot is handover **§6** (no second form): it already names the pilot firm and ARN, platform operators 1 and 2, DBA, infrastructure (AWS) engineer, compliance reviewer, responsible business owner, on-call monitoring owner, and the authorized start and expiry dates. **The pilot stays NO-GO until A – F, EC-1 – EC-6, FS-1 – FS-10 and R1 – R6 there are PASS with evidence. A release tag does not authorize deployment.**
+

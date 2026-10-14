@@ -336,8 +336,8 @@ mobile app, landing page, proposals, client master, compliance scan, two APIs
   two triggers). **Observation, not changed** (main's code): the new guardian
   link looks a guardian up by PAN and, if two live records share that PAN,
   takes one (`ORDER BY dedup_pan DESC LIMIT 1`). The RTA engine's guardian
-  check reads that link; PAN twins are already held under I-2, so posting is
-  not affected, but the link itself can be a guess.
+  check reads that link. *Superseded by §L (2026-10-14): the link is also not
+  scoped to the user's book — blocker G-1.*
 - **Deployment / infrastructure:** none (`deploy.yml`, scripts, `terraform/`
   unchanged).
 
@@ -435,8 +435,9 @@ None blocks the KFintech pilot. Known and recorded:
    amount is recorded and labelled as such).
 4. **No automatic retry** after a connection loss during posting — by design;
    the operator procedure (§G) is the recovery.
-5. **`main`'s guardian link** picks one of two live records sharing a PAN
-   (observation, §F) — `main`'s code; RTA posting is unaffected (I-2 hold).
+5. **`main`'s guardian link** — assessed in §L (2026-10-14): a production
+   access and data-integrity defect in `main`'s client master, reported as
+   blocker **G-1**, separate from the pilot; correction proposed, not applied.
 6. **Historical data**: `main`'s importer is proven (on the sample) to have
    truncated multi-lot redemptions, posted correction legs and unrecognised
    codes. Whether production firms are affected needs §D's diagnostic; any
@@ -454,6 +455,11 @@ None blocks the KFintech pilot. Known and recorded:
 | J6 | `b1-legacy-impact-exposure.sql`, then `rta-legacy-impact-diagnostic.ts --imports` per exposed firm | counts recorded; no repair | NOT VERIFIED |
 | J7 | Handover PR-1 – PR-18, A–F, FS-1 – FS-10 on THIS candidate (F part 1 in particular) | per handover | NOT VERIFIED |
 | J8 | Production change lock held for every step; nothing outside it | lock history | NOT VERIFIED |
+| J9 | `b1-duplicate-economic-check.sql` (read-only; preflight E-7) | `duplicate_shaped_groups` 0, else reviewed | NOT VERIFIED |
+| J10 | `guardian-link-check.sql` (read-only; preflight E-8, §L) | counts recorded; G-1 decided by the owner | NOT VERIFIED |
+| J11 | Remote tag created by an authorized maintainer (handover §0.1d) | `^{}` = `d7aa60a8f50b0947e85917b6e11de09fba4a3e08` | NOT VERIFIED |
+
+The operator order for J1 – J10 is `PREFLIGHT_CHECKLIST.md` §2a (A – H).
 
 ## K. Recommendation
 
@@ -466,3 +472,93 @@ None blocks the KFintech pilot. Known and recorded:
 - **Production pilot: NO-GO** until the owner approves `d7aa60a8` and its tag,
   and J1 – J8 pass. Nothing here authorizes deployment, migration, activation,
   posting, repair or merging.
+
+## L. Guardian-PAN relationship risk (operational preflight Task 4b, 2026-10-14)
+
+**Verdict: unsafe — production blocker G-1 (access + data integrity), in
+`main`'s client master, separate from the RTA pilot.** It is live in
+production today if production runs `f563e7ac` (PR-3). The candidate
+`d7aa60a8` carries the same code unchanged (it integrates `main`); nothing in
+the freeze was changed for it. A correction is proposed, not applied.
+
+**The code** (`main` `f563e7ac`, `src/app/api/investors/route.ts` POST and
+`src/app/api/investors/[id]/route.ts` PATCH): a minor's guardian link
+(`investors.guardian_investor_id`) is either the `guardianInvestorId` sent by
+the client, accepted if it is any non-deleted record **in the firm**, or the
+first live record whose PAN equals the typed guardian PAN
+(`ORDER BY dedup_pan DESC LIMIT 1`). Neither path applies the user's client
+scope (`investorScopeSql`), excludes a merged record (explicit id) or a minor,
+or refuses an ambiguous PAN. Migration `0234_minor_risk_from_guardian` then
+copies the linked record's risk category, score, signed date and provisional
+flag onto the minor and keeps them in step. The minor's edit page reads the
+guardian's name and risk profile with no scope check; the Risk Profiles page
+and export print the guardian's name.
+
+**Targeted development test** (local PostgreSQL 16, all 284 migrations, the
+real route handlers with a mocked session; the firm's data wall
+`restrict_user_data_scope` on, then off):
+
+| # | Case | Result on `main`'s code |
+|---|---|---|
+| 1 | RM A (own book only) creates a minor and types the PAN of RM B's client G as the guardian PAN. RM A cannot open G (`GET` → 403) | **linked to G**; the minor (RM A's) carries G's risk `aggressive`, score, signed date; `GET` of the minor returns G's id; the edit page shows **G's name and risk** |
+| 2 | RM A sends `guardianInvestorId` = G's id | **accepted** (201), linked, G's risk copied |
+| 3 | Two live records share a PAN: X (RM B, holds `dedup_pan`, `conservative`) and Y (RM A, Excel-loaded, `aggressive`) | links **X** — the other RM's record — not RM A's own; with neither holding `dedup_pan` the pick is arbitrary (one run picked X 4 of 4 times, another Y 4 of 4) |
+| 4 | Owner sends `guardianInvestorId` of a MERGED (retired) record | **accepted**; the minor takes the retired record's risk and does **not** follow the survivor's later change |
+| 5 | RM A edits their own minor (`PATCH`) and types G's PAN | **linked to G** |
+| 6 | RTA `InvestorDirectory.isGuardianOf(G, minor)` after case 1 | **true** |
+
+With the wall off (the firm's shared-book default) the RM can already list
+every client, so case 1 is not a new disclosure there — but 3, 4 and 6 hold
+either way. By inspection, merging a guardian does not repoint the minors'
+links either: the merge moves `investor_id` columns only, so a minor keeps a
+link to the retired record (case 4's state).
+
+**Answers.**
+- *Incorrect guardian relationship?* **Yes** — a typo or a guessed PAN links
+  a stranger silently; PAN twins link whichever record sorts first; a merged
+  record can be linked; a minor can be linked as a guardian (explicit id).
+- *Reveal another client's information?* **Yes, at a firm with the data wall
+  on (or a customised user)**: a PAN typed on one's own minor returns the
+  out-of-book client's **name** (edit page, Risk Profiles page / export) and
+  **risk category, score and signed date** (on the minor). Within one firm
+  only — every query is tenant-scoped and RLS holds; no cross-firm exposure.
+- *Ownership outside the RTA engine?* **No folio, transaction, RM, family or
+  AUM moves** because of the link. What it does change outside RTA is the
+  minor's **risk profile**, which drives suitability: an MF proposal's gate
+  ("client-confirmed risk profile signed in the last 12 months") is passed
+  with another person's profile, and `risk.*` merge tokens in the minor's
+  emails print it. Inside the RTA engine: a row naming the linked adult's PAN
+  on the minor's folio is attributed to the folio's owner of record instead
+  of being held for review (identity.ts `ownerOf` / legacy `process.ts`), the
+  guardian holder recorded in `folio_holders` follows the link, and the
+  adult's own new-folio CAMS rows are held as "a recorded guardian" (fail
+  closed). The KFintech pilot (MFSD211 + MFSD201; a minor's PAN is blank in
+  KFintech files) is not exposed to the first two.
+
+**Smallest correction (proposed, not applied):**
+`docs/rta/handover/guardian-link-fix.patch` — one helper
+(`src/lib/investors/guardian-link.ts`, `guardianCandidate`) used by both
+routes: a guardian link may point only at a **live, non-merged, non-minor
+client inside the user's `investorScopeSql`**, and a typed PAN links only when
+**exactly one** such client holds it; anything else stays unlinked (never a
+guess). No migration, no data change. Verified in development: applies
+cleanly to `main` `f563e7ac` and to `d7aa60a8`; `tsc` clean;
+`tests/guardian-link-db.test.ts` 4 / 4 (out-of-book PAN / id refused, own
+client linked, twins: one in scope links / two link nothing, merged and minor
+refused). Two follow-ups for the same review, not in the patch: the merge
+should repoint `guardian_investor_id` to the survivor (with its un-merge
+record), and the edit page should name an out-of-scope guardian only as "a
+client outside your book".
+
+**Existing links** are counted, never rewritten:
+`docs/rta/handover/guardian-link-check.sql` (read-only, counts per firm:
+links to another RM / branch, merged / deleted / minor guardians, shared PAN,
+typed PAN ≠ linked PAN, risk not the guardian's). It is preflight row E-8;
+each non-zero count goes to the firm's owner and compliance (E-4).
+
+**Effect on the pilot decision:** G-1 does not block the development release
+(the release does not touch this code) but it is a production defect that
+exists independently of the pilot. Its fix needs the owner's approval, its own
+review / CI and a production deployment authorization; until then E-8 is run
+and decided before any pilot firm is activated.
+

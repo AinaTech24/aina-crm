@@ -54,9 +54,11 @@ A mismatch anywhere in this table is a stop: the environment is not the reviewed
 
 **B-1 stabilisation (2026-10-12): `f61d202` is superseded by `aab763c4` (§0.1b).** The owner accepted the integration direction for development and asked for stabilisation; `main` meanwhile gained `88bc0178` (client types, migration `0233_client_type_details.sql`), which is now merged too. Evidence A–L: `docs/rta/B1_STABILISATION.md`. Still not accepted, not tagged, not deployable.
 
-**B-1 final qualification (2026-10-14): `aab763c4` (conditionally accepted) is superseded by `d7aa60a8` (§0.1c).** `main` advanced to `f563e7ac` (deployed 2026-10-13, migration `0234_minor_risk_from_guardian`), now integrated; real CI runs every DB-backed test (no skips). Evidence A–K: `docs/rta/B1_FINAL_QUALIFICATION.md`. Not accepted, not tagged, not deployable.
+**B-1 final qualification (2026-10-14): `aab763c4` (conditionally accepted) is superseded by `d7aa60a8` (§0.1c).** `main` advanced to `f563e7ac` (deployed 2026-10-13, migration `0234_minor_risk_from_guardian`), now integrated; real CI runs every DB-backed test (no skips). Evidence A–K: `docs/rta/B1_FINAL_QUALIFICATION.md`. 
 
-#### 0.1c Final candidate (proposed — not accepted, not tagged)
+**Owner decision (2026-10-14, "APPROVE FINAL DEVELOPMENT RELEASE CANDIDATE & START OPERATIONAL PREFLIGHT"):** `d7aa60a8` is approved for development release tagging; integrated `main` baseline `f563e7ac`. **Development release qualification: GO. Production deployment and pilot activation: NO-GO.** Development is frozen again: no software change unless a concrete new defect or release-blocking compatibility issue is found; no push to `main` or `deploy/aws`; no deployment of code or Terraform; no production migration; no financial posting. The tag authorizes nothing beyond the tag.
+
+#### 0.1c Approved development release (owner, 2026-10-14) — remote tag pending an authorized maintainer
 
 | Item | Value | How to verify |
 |---|---|---|
@@ -66,9 +68,30 @@ A mismatch anywhere in this table is a stop: the environment is not the reviewed
 | Frozen artifact | tree `f0f2bba2852a832d84a30b0f15a7277ad41c14fd`; `src/` `5ef95f6ab8c0e5765ca846b66025d2e2c4ab4d50`; `drizzle/migrations/` `5781e010b734e74dbf191256d72b61c9523716d6` | `git rev-parse d7aa60a8^{tree} d7aa60a8:src d7aa60a8:drizzle/migrations` |
 | Migrations | 284 = `main`'s 272 byte for byte + the release's 12; lock SHA-256 `025d640cfb1f88c280641bd1dd9f058d482de6f927b71c375aac798b910c72e8`; concatenation `25a08833c8dbd39f9e3114fbb07016d904177860f29c24ce3bedd434181ed472`; ledger digest `a9bb87a582387db2697310e3e66fa895` fresh and after upgrading a 272-state database | `node scripts/check-migration-lock.mjs` |
 | Production ledger check | `docs/rta/handover/b1-production-ledger-check.sql`: `COMPATIBLE · 272 · 12 pending` expected (271 / 270 also compatible); `STOP` on `0240_aum_month_end.sql`, a changed checksum or an applied release file | DBA, read-only |
-| Proposed tag (not created) | `rta-kfintech-pilot-candidate-2026-10-14-b1f`, annotated, on `d7aa60a8` — only on the owner's approval; `rta-kfintech-pilot-candidate-2026-10-10` stays on `c26e676` | — |
+| Release tag | `rta-kfintech-pilot-candidate-2026-10-14-b1f`, annotated, on `d7aa60a8` — approved 2026-10-14. Created in the development session (tag object `d60979ccbb91810f22f9bcfb58a65d1fa42006b2`, peels to `d7aa60a8`), but **the push of the tag ref was refused by the remote** (`send-pack: unexpected disconnect … the remote end hung up`, 5 attempts; branch pushes from the same session succeed): the session may not create tags. **The remote has no such tag — an authorized maintainer creates it** (§0.1d). `rta-kfintech-pilot-candidate-2026-10-10` stays on `c26e676`, untouched | `git ls-remote origin 'refs/tags/rta-kfintech-pilot-candidate-2026-10-14-b1f*'` → the `^{}` line is `d7aa60a8f50b0947e85917b6e11de09fba4a3e08` |
+| Re-verified at approval (2026-10-14) | `origin/main` = `f563e7ac` at verification, 0 of its commits missing from `d7aa60a8`; all five fingerprints above; 284 files = 284 lock entries, lock and concatenation SHA-256 as above, `check-migration-lock` and `check-migration-dups` pass; CI run 305 (`ci.yml`, head `d7aa60a8`) success: DB vitest 1,233 passed / 0 failed / 0 skipped + the separate emergency drill 1 passed; the tag did not exist remotely | `B1_FINAL_QUALIFICATION.md` §A, §E, §H |
+| Documentation revision | this handover, `PREFLIGHT_CHECKLIST.md`, `B1_FINAL_QUALIFICATION.md` §L and `docs/rta/handover/*` at the branch head that records this row (docs only after `d7aa60a8`: `git diff --name-only d7aa60a8 <head> -- . ':(exclude)docs'` prints nothing) | `git log --oneline d7aa60a8..origin/claude/relaxed-mendel-01jprq` |
+| `main` after approval | **`f086c294`** (2026-10-14 10:17 IST, "the laptop signs in with IAM Identity Center"): `scripts/aws-deploy-role.sh`, `terraform/bootstrap/main.tf`, `CLAUDE.md` only — no `src/`, no migration (still 272). Its "Deploy to AWS (EC2)" run started 04:47 UTC. Trial merge with `d7aa60a8`: no conflict. Not integrated (freeze): the tag stays on `d7aa60a8`; **a deployable artifact must first merge `main`'s head** (else it would put back the retired assume-role deploy script) | `git merge-tree --write-tree --name-only d7aa60a8 origin/main` prints a tree id only |
 
-Valid only if production runs `f563e7ac` or an ancestor of it (PR-3 / J1). A later push to `main` must be merged and re-qualified first; `main`'s new migrations must be numbered from 0245.
+Valid only if production runs `f563e7ac`, `f086c294` (same application code and migrations) or an ancestor (PR-3 / J1). A later push to `main` must be merged and re-qualified first; `main`'s new migrations must be numbered from 0245.
+
+#### 0.1d Creating the release tag — for an authorized maintainer
+
+The development session could not push the tag (above). A maintainer with tag permission runs, from any clone, nothing else:
+
+```bash
+git fetch origin
+git cat-file -t d7aa60a8f50b0947e85917b6e11de09fba4a3e08                 # commit
+git rev-parse d7aa60a8f50b0947e85917b6e11de09fba4a3e08^{tree}           # f0f2bba2852a832d84a30b0f15a7277ad41c14fd
+git ls-remote origin 'refs/tags/rta-kfintech-pilot-candidate-2026-10-14-b1f*'   # must print nothing
+git tag -a rta-kfintech-pilot-candidate-2026-10-14-b1f d7aa60a8f50b0947e85917b6e11de09fba4a3e08 \
+  -m "AINA CRM KFintech pilot development release (B-1 final). Approved by the owner 2026-10-14. Integrated main f563e7ac. Tree f0f2bba2852a832d84a30b0f15a7277ad41c14fd; 284 migrations, lock sha256 025d640cfb1f88c280641bd1dd9f058d482de6f927b71c375aac798b910c72e8; CI run 305 green. Evidence docs/rta/B1_FINAL_QUALIFICATION.md. NOT authorized for deployment, migration, activation or posting."
+git push origin refs/tags/rta-kfintech-pilot-candidate-2026-10-14-b1f
+git ls-remote origin 'refs/tags/rta-kfintech-pilot-candidate-2026-10-14-b1f*'   # the ^{} line must be d7aa60a8f50b0947e85917b6e11de09fba4a3e08
+git ls-remote origin 'refs/tags/rta-kfintech-pilot-candidate-2026-10-10*'       # unchanged: 2f7aab47… → c26e67636f8bbfac3d80eed30152d7ac1af0aa4f
+```
+
+Never `git push --tags`, never `-f`, never touch the 2026-10-10 tag. Record the two `ls-remote` outputs as RV-21 evidence.
 
 #### 0.1b Stabilised candidate (superseded by §0.1c — kept for the record)
 
@@ -1244,6 +1267,7 @@ Every field is blank on purpose. Complete it in ink or in the ticket; do not pre
 | FS-8 cancelled import cannot resume after Redis recovery (in F) | NOT VERIFIED | | |
 | FS-9 rejection counting consistent with the ledger (in F, then daily) | NOT VERIFIED | | |
 | FS-10 nightly reconciliation alert reaches an accountable person (in D) | NOT VERIFIED | | |
+| G-1 guardian links: E-8 counts reviewed and the fix decided (`B1_FINAL_QUALIFICATION.md` §L) | OPEN | | |
 
 **Release rule (owner, 2026-10-10).** No firm is activated unless ALL of these hold, each with its evidence in the ticket:
 

@@ -1,0 +1,253 @@
+PROPOSED — NOT APPLIED. Guardian-link correction for production blocker G-1
+(docs/rta/B1_FINAL_QUALIFICATION.md §L). Prepared 2026-10-14 under the
+development freeze: it is NOT part of the approved candidate d7aa60a8 and needs
+the owner's separate approval, its own branch / review / CI, and a production
+deployment authorization before it reaches any environment.
+
+Applies cleanly to main f563e7ac and to d7aa60a8:   git apply --check <this file>
+Verified in development: tsc clean; tests/guardian-link-db.test.ts 4/4 with the
+firm data wall on (an RM cannot link another RM's client by PAN or id; the RM's
+own client links; PAN twins: one in scope links it, two link nothing; never a
+merged record or a minor). Changes no data and no migration: links already
+stored are reported by docs/rta/handover/guardian-link-check.sql, never
+rewritten.
+
+diff --git a/src/app/api/investors/[id]/route.ts b/src/app/api/investors/[id]/route.ts
+index c35f53b1..cc1be5a2 100644
+--- a/src/app/api/investors/[id]/route.ts
++++ b/src/app/api/investors/[id]/route.ts
+@@ -1,4 +1,5 @@
+ import { assertInvestorAccess, investorScopeCondition } from "@/lib/investors/access";
++import { guardianCandidate } from "@/lib/investors/guardian-link";
+ import { handleApiError } from "@/lib/api/error-handler";
+ /**
+  * Single investor endpoints.
+@@ -430,19 +431,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
+       if (nextType === "minor") {
+         let gid: string | null | undefined = parse.data.guardianInvestorId;
+         if (gid) {
+-          const ok = (await tx.execute(sql`
+-            SELECT 1 FROM investors WHERE id = ${gid}::uuid AND tenant_id = ${session.tenantId}::uuid
+-              AND id <> ${id}::uuid AND deleted_at IS NULL`)).rows.length;
+-          if (!ok) gid = undefined;
++          gid = (await guardianCandidate(tx, session, { id: gid, excludeId: id })) ?? undefined;
+         } else if (gid === undefined && !(before as any).guardianInvestorId) {
+           const gp = String(((typePatch.typeDetails ?? (before as any).typeDetails) as any)?.guardian?.pan ?? "").trim().toUpperCase();
+-          if (gp) {
+-            const g = (await tx.execute(sql`
+-              SELECT id FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND pan = ${gp}
+-                AND id <> ${id}::uuid AND deleted_at IS NULL AND merged_into_id IS NULL
+-              ORDER BY dedup_pan DESC LIMIT 1`)).rows[0] as { id: string } | undefined;
+-            gid = g?.id;
+-          }
++          gid = (await guardianCandidate(tx, session, { pan: gp, excludeId: id })) ?? undefined;
+         }
+         if (gid !== undefined) typePatch.guardianInvestorId = gid;
+       }
+diff --git a/src/app/api/investors/route.ts b/src/app/api/investors/route.ts
+index 97049b20..99b22ca4 100644
+--- a/src/app/api/investors/route.ts
++++ b/src/app/api/investors/route.ts
+@@ -27,6 +27,7 @@ import { applyRiskCategory, RISK_CATEGORIES } from "@/lib/risk-profile/apply";
+ import { cleanUccCodes } from "@/lib/investors/ucc";
+ import { investors, eventsOutbox } from "@/db/schema";
+ import { familyHeadRmId } from "@/lib/families/head-rm";
++import { guardianCandidate } from "@/lib/investors/guardian-link";
+ 
+ export const dynamic = "force-dynamic";
+ 
+@@ -235,21 +236,9 @@ export async function POST(req: NextRequest) {
+       // profile (a database rule, migration 0234).
+       let guardianInvestorId: string | null = null;
+       if (body.investorCategory === "minor") {
+-        if (body.guardianInvestorId) {
+-          const ok = (await tx.execute(sql`
+-            SELECT 1 FROM investors WHERE id = ${body.guardianInvestorId}::uuid
+-              AND tenant_id = ${session.tenantId}::uuid AND deleted_at IS NULL`)).rows.length;
+-          if (ok) guardianInvestorId = body.guardianInvestorId;
+-        } else {
+-          const gp = String(body.typeDetails?.guardian?.pan ?? "").trim().toUpperCase();
+-          if (gp) {
+-            const g = (await tx.execute(sql`
+-              SELECT id FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND pan = ${gp}
+-                AND deleted_at IS NULL AND merged_into_id IS NULL
+-              ORDER BY dedup_pan DESC LIMIT 1`)).rows[0] as { id: string } | undefined;
+-            guardianInvestorId = g?.id ?? null;
+-          }
+-        }
++        guardianInvestorId = body.guardianInvestorId
++          ? await guardianCandidate(tx, session, { id: body.guardianInvestorId })
++          : await guardianCandidate(tx, session, { pan: String(body.typeDetails?.guardian?.pan ?? "").trim().toUpperCase() });
+       }
+ 
+       const inserted = await tx
+diff --git a/src/lib/investors/guardian-link.ts b/src/lib/investors/guardian-link.ts
+new file mode 100644
+index 00000000..94015795
+--- /dev/null
++++ b/src/lib/investors/guardian-link.ts
+@@ -0,0 +1,30 @@
++import { sql } from "drizzle-orm";
++import type { SessionUser } from "@/lib/auth/session";
++import { investorScopeSql } from "@/lib/investors/access";
++
++/**
++ * The client record a minor's guardian link may point at (investors.guardian_investor_id).
++ * The link copies the guardian's risk profile onto the minor (migration 0234) and
++ * the minor's pages name the guardian, so it may only point at a live, adult
++ * client the user can already see, and a typed PAN links only when exactly one
++ * such client holds it. Anything else is left unlinked, never guessed.
++ */
++export async function guardianCandidate(
++  tx: any,
++  session: SessionUser,
++  by: { id?: string | null; pan?: string | null; excludeId?: string },
++): Promise<string | null> {
++  if (!by.id && !by.pan) return null;
++  let scope;
++  try { scope = await investorScopeSql(tx, session, "g"); } catch { return null; }
++  const rows = (await tx.execute(sql`
++    SELECT g.id::text AS id FROM investors g
++     WHERE g.tenant_id = ${session.tenantId}::uuid
++       AND ${by.id ? sql`g.id = ${by.id}::uuid` : sql`g.pan = ${by.pan}`}
++       ${by.excludeId ? sql`AND g.id <> ${by.excludeId}::uuid` : sql``}
++       AND g.deleted_at IS NULL AND g.merged_into_id IS NULL
++       AND coalesce(g.investor_category, '') <> 'minor'
++       AND ${scope}
++     LIMIT 2`)).rows as Array<{ id: string }>;
++  return rows.length === 1 ? rows[0].id : null;
++}
+diff --git a/tests/guardian-link-db.test.ts b/tests/guardian-link-db.test.ts
+new file mode 100644
+index 00000000..735d110b
+--- /dev/null
++++ b/tests/guardian-link-db.test.ts
+@@ -0,0 +1,128 @@
++/**
++ * Proposed fix — guardian link scope of main f563e7ac's guardian link
++ * (POST /api/investors, PATCH /api/investors/[id], migration 0234 triggers,
++ * RTA InvestorDirectory.isGuardianOf). Records CURRENT behaviour; asserts what
++ * the code does today so the report can cite it.
++ */
++import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
++import { randomUUID } from "node:crypto";
++import { NextRequest } from "next/server";
++
++const TEST_DB = process.env.TEST_DATABASE_URL;
++const h = vi.hoisted(() => ({ session: null as any }));
++vi.mock("@/lib/auth/session", () => ({ requireSession: vi.fn(async () => h.session) }));
++vi.mock("@/lib/auth/license", async (orig) => ({
++  ...(await orig<typeof import("@/lib/auth/license")>()),
++  assertActiveLicense: vi.fn(async () => {}),
++  assertInvestorQuota: vi.fn(async () => {}),
++  assertModuleEnabled: vi.fn(async () => {}),
++}));
++
++const rnd = () => Array.from({ length: 4 }, () => "ABCDEFGHJKLMNPQRSTUVWXYZ"[Math.floor(Math.random() * 24)]).join("");
++const pan = () => `${rnd().slice(0, 3)}P${rnd()[0]}${String(1000 + Math.floor(Math.random() * 8999))}${rnd()[0]}`;
++
++describe.skipIf(!TEST_DB)("guardian link — current main behaviour (DB)", () => {
++  let withTenant: typeof import("@/db/client").withTenant;
++  let withSystem: typeof import("@/db/client").withSystem;
++  let sql: typeof import("drizzle-orm").sql;
++  const t = randomUUID(), owner = randomUUID(), rmA = randomUUID(), rmB = randomUUID();
++  const G1 = randomUUID(), X = randomUUID(), Y = randomUUID(), M0 = randomUUID(), S = randomUUID();
++  const PG1 = pan(), PTWIN = pan(), PM = pan();
++  const sessionOf = (userId: string, roles: string[]) => ({ userId, tenantId: t, roles, permissions: [], branchId: null, sid: "s" });
++  const one = async (s: any) => withTenant(t, async (tx) => (await tx.execute(s)).rows[0] as any);
++  const post = async (body: any) => {
++    const { POST } = await import("@/app/api/investors/route");
++    const res = await POST(new NextRequest("http://x/api/investors", { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" } }));
++    return { status: res.status, body: await res.json() };
++  };
++  const patch = async (id: string, body: any) => {
++    const { PATCH } = await import("@/app/api/investors/[id]/route");
++    const res = await PATCH(new NextRequest(`http://x/api/investors/${id}`, { method: "PATCH", body: JSON.stringify(body), headers: { "content-type": "application/json" } }), { params: Promise.resolve({ id }) });
++    return { status: res.status, body: await res.json().catch(() => null) };
++  };
++  const get = async (id: string) => {
++    const { GET } = await import("@/app/api/investors/[id]/route");
++    const res = await GET(new NextRequest(`http://x/api/investors/${id}`), { params: Promise.resolve({ id }) });
++    return { status: res.status, body: await res.json().catch(() => null) };
++  };
++  const minorBody = (guardianPan: string, extra: any = {}) => ({
++    name: `Minor ${randomUUID().slice(0, 6)}`, investorCategory: "minor", dob: "2015-05-05", segmentTag: "Retail",
++    typeDetails: { guardian: { name: "Typed Guardian", pan: guardianPan, relation: "father" } }, ...extra,
++  });
++
++  beforeAll(async () => {
++    process.env.DATABASE_URL = TEST_DB!;
++    process.env.APP_DATABASE_URL = "";
++    process.env.ALLOW_SYSTEM_TX = "1";
++    process.env.ENCRYPTION_KEY ||= "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
++    (process.env as Record<string, string>).NODE_ENV = "test";
++    ({ withTenant, withSystem } = await import("@/db/client"));
++    ({ sql } = await import("drizzle-orm"));
++    await withSystem(async (tx) => {
++      await tx.execute(sql`INSERT INTO tenants (id, legal_name, display_name, arn, restrict_user_data_scope) VALUES (${t}::uuid, 'Guardian scratch', 'Guardian scratch', ${"ARN-G" + t.slice(0, 6)}, ${process.env.GUARD_OPEN_BOOK ? false : true})`);
++      for (const [id, roles, nm] of [[owner, ["owner"], "Owner"], [rmA, ["rm"], "RM A"], [rmB, ["rm"], "RM B"]] as const) {
++        await tx.execute(sql`INSERT INTO users (id, tenant_id, email, name, roles, status) VALUES (${id}::uuid, ${t}::uuid, ${`${nm.replace(" ", "")}-${t.slice(0, 8)}@example.test`}, ${nm}, ARRAY[${roles[0]}]::text[], 'active')`);
++      }
++    });
++    await withTenant(t, async (tx) => {
++      const ins = (id: string, p: string, name: string, rm: string, risk: string, dedup: boolean, merged: string | null = null) => tx.execute(sql`
++        INSERT INTO investors (id, tenant_id, pan, name, rm_id, risk_profile, risk_profile_score, risk_profile_signed_at, risk_profile_provisional, dedup_pan, merged_into_id, status)
++        VALUES (${id}::uuid, ${t}::uuid, ${p}, ${name}, ${rm}::uuid, ${risk}, 42, now(), false, ${dedup}, ${merged}::uuid, ${merged ? "inactive" : "active"})`);
++      await ins(G1, PG1, "Outside Book Guardian", rmB, "aggressive", true);        // RM B's client
++      await ins(X, PTWIN, "Twin On B's Book", rmB, "conservative", true);           // PAN holder
++      await ins(Y, PTWIN, "Twin On A's Book", rmA, "aggressive", false);            // Excel-loaded twin
++      await ins(S, PM, "Survivor", rmA, "moderate", true);
++      await ins(M0, PM, "Retired Loser", rmA, "conservative", false, S);           // merged into S
++    });
++  });
++
++  afterAll(async () => {
++    const tryRun = async (s: any) => { try { await withSystem((tx) => tx.execute(s)); } catch { /* best effort */ } };
++    for (const table of ["events_outbox", "audit_log", "investors", "users"]) await tryRun(sql.raw(`DELETE FROM ${table} WHERE tenant_id = '${t}'`));
++    await tryRun(sql`DELETE FROM tenants WHERE id = ${t}::uuid`);
++  });
++
++  const linkOf = async (r: { body: any }) => (await one(sql`SELECT guardian_investor_id::text g, risk_profile FROM investors WHERE id = ${r.body.id ?? r.body.investor?.id}::uuid`));
++  const G2 = randomUUID(), PG2 = pan();
++  beforeAll(async () => {
++    await withTenant(t, (tx) => tx.execute(sql`INSERT INTO investors (id, tenant_id, pan, name, rm_id, risk_profile, dedup_pan, status)
++      VALUES (${G2}::uuid, ${t}::uuid, ${PG2}, 'Own Book Guardian', ${rmA}::uuid, 'moderate', true, 'active')`));
++  });
++
++  it("an RM cannot link another RM's client — by PAN or by id — and learns nothing", async () => {
++    h.session = sessionOf(rmA, ["rm"]);
++    expect((await linkOf(await post(minorBody(PG1)))).g).toBeNull();
++    expect((await linkOf(await post(minorBody("", { guardianInvestorId: G1, typeDetails: { guardian: { name: "x", pan: pan(), relation: "father" } } })))).g).toBeNull();
++    const own = randomUUID();
++    await withTenant(t, (tx) => tx.execute(sql`INSERT INTO investors (id, tenant_id, pan, name, rm_id, investor_category, is_minor, dob)
++      VALUES (${own}::uuid, ${t}::uuid, ${"MINOR:" + pan()}, 'Own Minor', ${rmA}::uuid, 'minor', true, '2014-01-01')`));
++    expect((await patch(own, { typeDetails: { guardian: { name: "t", pan: PG1, relation: "mother" } } })).status).toBe(200);
++    expect((await one(sql`SELECT guardian_investor_id FROM investors WHERE id = ${own}::uuid`)).guardian_investor_id).toBeNull();
++    expect((await patch(own, { guardianInvestorId: G1 })).status).toBe(200);
++    expect((await one(sql`SELECT guardian_investor_id FROM investors WHERE id = ${own}::uuid`)).guardian_investor_id).toBeNull();
++  });
++
++  it("an RM links their own client, by PAN and by id; the minor takes the guardian's risk", async () => {
++    h.session = sessionOf(rmA, ["rm"]);
++    const a = await linkOf(await post(minorBody(PG2)));
++    expect(a).toEqual({ g: G2, risk_profile: "moderate" });
++    expect((await linkOf(await post(minorBody("", { guardianInvestorId: G2, typeDetails: { guardian: { name: "x", pan: PG2, relation: "father" } } })))).g).toBe(G2);
++  });
++
++  it("PAN twins: one in the RM's scope links it; two in scope link nothing", async () => {
++    h.session = sessionOf(rmA, ["rm"]);
++    expect((await linkOf(await post(minorBody(PTWIN)))).g).toBe(Y);
++    h.session = sessionOf(owner, ["owner"]);
++    expect((await linkOf(await post(minorBody(PTWIN)))).g).toBeNull();
++    expect((await linkOf(await post(minorBody(PG1)))).g).toBe(G1); // the owner sees the whole book
++  });
++
++  it("never a merged (retired) record or a minor", async () => {
++    h.session = sessionOf(owner, ["owner"]);
++    expect((await linkOf(await post(minorBody("", { guardianInvestorId: M0, typeDetails: { guardian: { name: "x", pan: PM, relation: "father" } } })))).g).toBeNull();
++    expect((await linkOf(await post(minorBody(PM)))).g).toBe(S); // the retired twin is not a candidate
++    const minor = await post(minorBody(PG2));
++    const mid = minor.body.id ?? minor.body.investor?.id;
++    expect((await linkOf(await post(minorBody("", { guardianInvestorId: mid, typeDetails: { guardian: { name: "x", pan: pan(), relation: "father" } } })))).g).toBeNull();
++  });
++});
