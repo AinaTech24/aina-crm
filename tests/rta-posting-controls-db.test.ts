@@ -237,7 +237,9 @@ describe.skipIf(!TEST_DB)("posting controls — controlled mode (DB)", () => {
     await expect(withTenant(other, (tx) => gate.assertPostingAllowed(tx, t))).rejects.toThrow(/not scoped to this firm/);
     const pg = await import("pg");
     const { drizzle } = await import("drizzle-orm/node-postgres");
-    const su = new pg.default.Client({ connectionString: TEST_DB!.replace(/\/\/[^@]+@/, "//postgres:postgres@") });
+    // The provided test admin (a superuser of the disposable test cluster); the
+    // old fallback guessed a postgres:postgres login, which CI's cluster has not.
+    const su = new pg.default.Client({ connectionString: process.env.ADMIN_DATABASE_URL ?? TEST_DB!.replace(/\/\/[^@]+@/, "//postgres:postgres@") });
     await su.connect();
     try {
       await su.query("BEGIN");

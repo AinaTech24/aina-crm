@@ -87,6 +87,31 @@ async function main() {
   process.env.DB_TOOLING = "1";
   const { withSystem, pool } = await import("../src/db/client");
 
+  // One runner at a time per database (B-1 qualification, 2026-10-14). A
+  // second migrate:all — a concurrent deploy, a retried job — waits here and
+  // then plans against the ledger the first one committed, so no file runs
+  // twice (the ledger insert is ON CONFLICT DO NOTHING, so without this an
+  // idempotent file's data statements could). A session lock on its own
+  // connection: released when this process ends, crash included. --check and
+  // --dry only read, so they never wait.
+  //
+  // The waiter POLLS with pg_try_advisory_lock instead of blocking in
+  // pg_advisory_lock: a session blocked in a statement holds a snapshot, and
+  // CREATE INDEX CONCURRENTLY (no-transaction files such as 0213) waits for
+  // every older snapshot — the lock holder would then time out behind its
+  // own waiters (seen in the concurrency drill). Each attempt is a short
+  // autocommit statement, so nothing is held between attempts.
+  if (!CHECK && !DRY) {
+    const lockClient = await pool.connect();
+    let announced = false;
+    for (;;) {
+      const got = await lockClient.query("SELECT pg_try_advisory_lock(hashtext('migrate-all:ledger')) AS ok");
+      if (got.rows[0]?.ok) break;
+      if (!announced) { console.log("[migrate] another migration run holds the lock — waiting for it to finish …"); announced = true; }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
+
   const files = readdirSync(MIGRATIONS_DIR)
     .filter((f) => f.endsWith(".sql"))
     .filter((f) => !UNTIL || f <= UNTIL)
