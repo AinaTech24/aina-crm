@@ -42,6 +42,7 @@ const KIND_LABEL: Record<string, string> = {
   NameDob: "Same name + date of birth",
   NameContact: "Same name + phone / email",
   Name: "Same name",
+  SimilarName: "Similar name, one without PAN",
   Phone: "Same phone",
   Email: "Same email",
 };
