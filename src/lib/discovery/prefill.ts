@@ -18,6 +18,7 @@
  */
 
 import { eq, sql } from "drizzle-orm";
+import { minorSql } from "@/lib/risk-profile/own-assessment";
 import type { withTenant } from "@/db/client";
 import { financialDiscoveries } from "@/db/schema";
 import { assetClassOf } from "@/lib/investors/asset-class";
@@ -121,6 +122,7 @@ export async function loadDiscoveryPrefill(
     SELECT name, name_as_per_pan, dob, pan, phone, email, address, residency_status,
            occupation, nominee_name, nominee_relation, nominees,
            risk_profile, risk_profile_signed_at, COALESCE(risk_profile_provisional, false) AS provisional,
+           ${minorSql("investors")} AS is_minor_client,
            aum::numeric AS aum, active_sip_amount::numeric AS active_sip_amount
       FROM investors
      WHERE id = ${subjectId}::uuid AND tenant_id = ${tenantId}::uuid LIMIT 1
@@ -271,7 +273,9 @@ async function latestRisk(tx: Tx, tenantId: string, subjectId: string, inv: Row 
       responseId: str(r.id),
     };
   }
-  if (inv?.risk_profile) {
+  // A minor's risk is their own assessment, never the guardian's copy (G-1):
+  // no fallback to the row, which 0234 fills from the guardian.
+  if (inv?.risk_profile && inv.is_minor_client !== true) {
     return {
       category: str(inv.risk_profile),
       score: null,

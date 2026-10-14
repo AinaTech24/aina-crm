@@ -19,6 +19,7 @@ import { sql, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { applyRiskCategory, type RiskCategory } from "@/lib/risk-profile/apply";
 import { categoryForAge, type AgeBand } from "@/lib/risk-profile/age-bands";
+import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
 
 export type SkipReason = "no_dob" | "already_profiled" | "unchanged";
 
@@ -53,8 +54,10 @@ export async function planAgeAssignment(
   opts: { tenantId: string; bands: AgeBand[]; rmId?: string; refreshProvisional?: boolean; scope?: SQL }
 ): Promise<AssignmentPlan> {
   const rmScope = sql`${opts.rmId ? sql` AND i.rm_id = ${opts.rmId}::uuid` : sql``}${opts.scope ? sql` AND ${opts.scope}` : sql``}`;
+  // A minor's risk is their own assessment, never the guardian's copy (G-1).
+  const own = clientRiskSql("i");
   const res = await tx.execute(sql`
-    SELECT i.id, i.name, i.risk_profile, i.risk_profile_provisional,
+    SELECT i.id, i.name, ${own.category} AS risk_profile, ${own.provisional} AS risk_profile_provisional,
            CASE WHEN i.dob IS NULL THEN NULL
                 ELSE date_part('year', age(i.dob))::int END AS age
       FROM investors i

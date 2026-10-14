@@ -352,7 +352,10 @@ export function ClientDetailsForm({
         setErr((j.error ?? `Save failed (${res.status})`) + (fields ? ` — check: ${fields}` : ""));
         return;
       }
-      notify.success("Client details saved");
+      const saved = await res.json().catch(() => ({}));
+      // A typed guardian PAN that linked nobody is said, never silent (G-1).
+      if (saved?.guardianNotice) notify.warning(saved.guardianNotice, "Guardian not linked");
+      else notify.success("Client details saved");
       router.push(backHref);
       router.refresh();
     } finally {
@@ -585,13 +588,27 @@ export function ClientDetailsForm({
           </Field>
         )}
         {flags.showRisk && kind === "minor" && (
-          <Field label="Risk profile" hint={guardianLink.hidden ? "The guardian is outside your book, so their profile is not shown." : guardianLink.id ? `Same as the guardian${guardianLink.name ? ` (${guardianLink.name})` : ""}.` : "Link the guardian's client record above — a minor takes the guardian's risk profile."}>
-            {(id, d) => (
-              <div id={id} aria-describedby={d} className="input-base flex w-full items-center bg-secondary/60 text-muted-foreground">
-                {guardianLink.hidden ? "Not shown" : guardianLink.id ? (guardianLink.riskProfile ? humanise(guardianLink.riskProfile) : "Guardian has no risk profile yet") : f.riskProfile ? humanise(f.riskProfile) : "—"}
-              </div>
+          // Two things, never one (G-1): the assessment recorded for THIS
+          // account — what suitability uses — and, for reference, the
+          // guardian's own profile, which is not the minor's.
+          <>
+            <Field label="Risk profile (this account)" hint="Assessed for the minor's account, answered by the guardian. This is what suitability uses.">
+              {(id, d) => (
+                <div id={id} aria-describedby={d} className="input-base flex w-full items-center bg-secondary/60 text-muted-foreground">
+                  {f.riskProfile ? humanise(f.riskProfile) : "Not recorded for this account yet"}
+                </div>
+              )}
+            </Field>
+            {guardianLink.id && (
+              <Field label="Guardian's own risk profile" hint={guardianLink.hidden ? "The guardian is outside your book, so their profile is not shown." : "The guardian's assessment of themselves — for reference only, not this account's."}>
+                {(id, d) => (
+                  <div id={id} aria-describedby={d} className="input-base flex w-full items-center bg-secondary/60 text-muted-foreground">
+                    {guardianLink.hidden ? "Not shown" : guardianLink.riskProfile ? humanise(guardianLink.riskProfile) : "None on record"}
+                  </div>
+                )}
+              </Field>
             )}
-          </Field>
+          </>
         )}
         {flags.showRisk && kind !== "minor" && (
           <Field label="Risk profile">

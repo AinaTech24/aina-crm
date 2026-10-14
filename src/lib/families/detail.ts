@@ -20,16 +20,18 @@ import { families, investors, users } from "@/db/schema";
 import type { SessionUser } from "@/lib/auth/session";
 import { loadViewableFamily } from "./access";
 import { isLiveMember, isNextGenProspect, hasNominee } from "./health";
+import { withOwnRiskForMinors } from "@/lib/risk-profile/own-assessment";
 
 export async function loadFamilyDetail(tx: any, session: SessionUser, familyId: string) {
   if (!(await loadViewableFamily(tx, session, familyId))) return null;
   const fam = (await tx.select().from(families).where(and(eq(families.id, familyId), eq(families.tenantId, session.tenantId))).limit(1))[0];
   if (!fam) return null;
 
-  const members = (await tx
+  // A minor's risk is their own assessment, never the guardian's copy (G-1).
+  const members = (await withOwnRiskForMinors(tx, session.tenantId, await tx
     .select()
     .from(investors)
-    .where(and(eq(investors.familyId, familyId), isNull(investors.deletedAt), isNull(investors.mergedIntoId)))) as Array<
+    .where(and(eq(investors.familyId, familyId), isNull(investors.deletedAt), isNull(investors.mergedIntoId))))) as Array<
     typeof investors.$inferSelect
   >;
   // Head first, then by AUM.

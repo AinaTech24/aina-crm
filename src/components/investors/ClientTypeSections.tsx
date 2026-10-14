@@ -72,7 +72,7 @@ export function ClientTypeSections({
         <FieldSection title="Guardian">
           {onGuardianLinkChange && (
             <Field label="Guardian's client record" className="sm:col-span-2"
-              hint="Pick the guardian if they are a client — their details fill in, and the minor takes their risk profile.">
+              hint="Pick the guardian if they are a client — their details fill in. The minor's own risk profile is recorded for the minor's account.">
               {(id, d) => (
                 <div id={id} aria-describedby={d}>
                   <InvestorLookup

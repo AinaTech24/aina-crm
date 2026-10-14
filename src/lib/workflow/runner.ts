@@ -16,6 +16,7 @@ import { handlers } from "./actions";
 import type { RunContext } from "./context";
 import { normalizeWorkflowEvent } from "./event-context";
 import { pickNextNode, pauseResumeHandle } from "./transitions";
+import { withOwnRiskForMinor } from "@/lib/risk-profile/own-assessment";
 
 export interface StartRunInput {
   tenantId: string;
@@ -393,11 +394,12 @@ async function buildContext(
   };
 }
 
-async function loadSubject(tx: Tx, type: string, id: string, tenantId: string): Promise<Record<string, any> | null> {
+export async function loadSubject(tx: Tx, type: string, id: string, tenantId: string): Promise<Record<string, any> | null> {
   switch (type) {
     case "investor": {
       const [r] = await tx.select().from(investors).where(and(eq(investors.id, id), eq(investors.tenantId, tenantId)));
-      return r as any;
+      // A minor's risk is their own assessment, never the guardian's copy (G-1).
+      return r ? ((await withOwnRiskForMinor(tx, tenantId, r)) as any) : (r as any);
     }
     case "lead": {
       const [r] = await tx.select().from(leads).where(and(eq(leads.id, id), eq(leads.tenantId, tenantId)));

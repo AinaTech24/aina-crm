@@ -27,6 +27,7 @@
 
 import { assertRtaWritesAllowed } from "@/lib/rta/write-guard";
 import { GUARDIAN_MOVED_KEY, GUARDIAN_UNLINKED_KEY, auditGuardianChange, isEligibleGuardian, type GuardianCandidateRow } from "@/lib/investors/guardian-link";
+import { minorOwnRiskColumns } from "@/lib/risk-profile/own-assessment";
 import { sql, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
@@ -362,6 +363,16 @@ export async function mergeInvestors(tx: Tx, input: MergeInput): Promise<MergeRe
     moved[survivorMayGuard ? GUARDIAN_MOVED_KEY : GUARDIAN_UNLINKED_KEY] = guarded.map((r) => r.id);
     movedCounts[survivorMayGuard ? GUARDIAN_MOVED_KEY : GUARDIAN_UNLINKED_KEY] = guarded.length;
     for (const m of guarded) {
+      if (!survivorMayGuard) {
+        // The link is gone, so the old guardian's copied profile goes too: the
+        // minor's own latest assessment, else none (0234 copies only while a
+        // link exists). Un-merge relinks, and 0234 copies the profile back.
+        const own = await minorOwnRiskColumns(tx, tenantId, m.id);
+        await tx.execute(sql`
+          UPDATE investors SET risk_profile = ${own.riskProfile}, risk_profile_score = ${own.riskProfileScore},
+                 risk_profile_signed_at = ${own.riskProfileSignedAt}, risk_profile_provisional = ${own.riskProfileProvisional}
+           WHERE id = ${m.id}::uuid AND tenant_id = ${tenantId}::uuid`);
+      }
       await auditGuardianChange(tx, {
         tenantId, actorUserId: byUserId ?? null, minorId: m.id,
         before: loserId, after: survivorMayGuard ? survivorId : null, via: "merge",

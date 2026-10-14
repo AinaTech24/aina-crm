@@ -42,6 +42,8 @@ export type MemberForHealth = {
   kycStatus?: string | null;
   nomineeName?: string | null;
   nominees?: unknown;
+  /** For a minor, pass their OWN assessment (clientRiskSql / withOwnRiskForMinors),
+   *  never the row's columns, which may hold the guardian's copy (G-1). */
   riskProfile?: string | null;
   riskProfileSignedAt?: Date | string | null;
   aum?: string | number | null;

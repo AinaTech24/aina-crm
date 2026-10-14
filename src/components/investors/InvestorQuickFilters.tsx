@@ -3,6 +3,9 @@ import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
 import { investorScopeSql } from "@/lib/investors/access";
+import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
+
+const RISK_SIGNED = clientRiskSql("investors").signedAt;
 
 /**
  * Quick-filter chip strip for the Investors list page.
@@ -62,7 +65,8 @@ export async function InvestorQuickFilters({
           )::int AS dormant,
           COUNT(*) FILTER (
             WHERE status = 'active'
-              AND (risk_profile_signed_at IS NULL OR risk_profile_signed_at < now() - interval '365 days')
+              -- A minor's risk is their own assessment, never the guardian's copy (G-1).
+              AND (${RISK_SIGNED} IS NULL OR ${RISK_SIGNED} < now() - interval '365 days')
           )::int AS rp_stale,
           COUNT(*) FILTER (
             WHERE status = 'active' AND dob IS NOT NULL

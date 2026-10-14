@@ -12,6 +12,7 @@ import { buildInvestorWhere } from "@/lib/investors/list-filters";
 import { can } from "@/lib/auth/rbac";
 import { d, dIst, userName } from "../helpers";
 import type { ExportModule } from "../types";
+import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
 
 const i = (c: string) => sql.raw(`investors.${c}`);
 
@@ -79,8 +80,9 @@ export const clientsExport: ExportModule = {
     { key: "sip", label: "Monthly SIP", group: "Investments", sql: i("active_sip_amount"), kind: "money", default: true },
     { key: "inflow", label: "Lifetime inflow", group: "Investments", sql: i("lifetime_inflow"), kind: "money" },
     { key: "outflow", label: "Lifetime outflow", group: "Investments", sql: i("lifetime_outflow"), kind: "money" },
-    { key: "risk", label: "Risk profile", group: "Investments", sql: i("risk_profile") },
-    { key: "risk_signed", label: "Risk profile signed on", group: "Investments", sql: dIst(i("risk_profile_signed_at")), kind: "date" },
+    // A minor's risk is their own assessment, never the guardian's copy (G-1).
+    { key: "risk", label: "Risk profile", group: "Investments", sql: clientRiskSql("investors").category },
+    { key: "risk_signed", label: "Risk profile signed on", group: "Investments", sql: dIst(clientRiskSql("investors").signedAt), kind: "date" },
     { key: "health", label: "Health score", group: "Investments", sql: i("health_score"), kind: "number" },
 
     { key: "last_txn", label: "Last transaction", group: "Relationship", sql: dIst(i("last_transaction_at")), kind: "date" },

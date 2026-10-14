@@ -14,6 +14,10 @@
  *
  * Every page is checked twice: the raw document the browser receives (HTML +
  * the React Server Components payload inside it) and the rendered text.
+ *
+ * Since the final hardening, a MINOR's risk is the minor's own assessment for
+ * everyone (the owner too); the guardian's profile appears only as the
+ * guardian's, labelled, to a user who may open the guardian.
  */
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
@@ -71,21 +75,28 @@ try {
     [`/dashboard/investors/${MH}/edit`, "edit page"],
     [`/dashboard/investors/${MH}`, "client page"],
     [`/dashboard/risk-profiles?filter=current,not_profiled,due,expired,awaiting`, "risk profiles list"],
+    [`/dashboard/investors`, "client list"],
   ]) {
     const r = await a.raw(path);
     check(r.status === 200, `RM A ${what}: ${r.status}`);
-    if (what === "risk profiles list") {
+    if (what === "client list") {
+      // Filter menus list the firm's categories; the guardian's name is the leak.
+      check(!r.text.includes(HIDDEN_NAME), `RM A ${what} document never names the hidden guardian`);
+      check(r.text.includes(MINOR_HIDDEN_NAME), `RM A ${what} shows the minor (the page ran)`);
+    } else if (what === "risk profiles list") {
       // The page also carries the firm's age-band settings, which name every
       // category — so check the minor's own row, and the guardian's name anywhere.
       check(!r.text.includes(HIDDEN_NAME), `RM A ${what} document never names the hidden guardian`);
       const row = r.text.match(new RegExp(`name\\\\?":\\\\?"${MINOR_HIDDEN_NAME}\\\\?".*?risk_profile\\\\?":(null|\\\\?"[a-z_]+)`));
       check(!!row && row[1] === "null", `RM A ${what}: the minor's row carries no risk (${row ? row[1] : "row not found"})`);
+      const grow = r.text.match(new RegExp(`name\\\\?":\\\\?"${MINOR_HIDDEN_NAME}\\\\?".*?guardian_risk_profile\\\\?":(null|\\\\?"[a-z_]+)`));
+      check(!!grow && grow[1] === "null", `RM A ${what}: no guardian's profile beside the minor (${grow ? grow[1] : "row not found"})`);
     } else {
       check(leaks(r.text).length === 0, `RM A ${what} document carries no hidden guardian name / risk (${leaks(r.text).join(", ") || "none"})`);
     }
     const t = await a.rendered(path);
     check(!/license is|no_subscription/i.test(t), `RM A ${what} renders the page itself (not a licence block)`);
-    const tl = what === "risk profiles list" ? (t.includes(HIDDEN_NAME) ? [HIDDEN_NAME] : []) : leaks(t);
+    const tl = what === "risk profiles list" || what === "client list" ? (t.includes(HIDDEN_NAME) ? [HIDDEN_NAME] : []) : leaks(t);
     check(tl.length === 0, `RM A ${what} rendered DOM carries none (${tl.join(", ") || "none"})`);
     if (what === "edit page") check(t.includes("outside your book"), "RM A edit page says the guardian is outside their book");
   }
@@ -94,6 +105,13 @@ try {
   check(JSON.parse(api.text).investor?.riskProfile === null, "RM A API: the minor's copied risk is null");
   const g = await a.raw(`/api/investors/${GH}`);
   check(g.status === 403 || g.status === 404, `RM A cannot open the guardian directly (${g.status})`);
+  // The change history follows the client's own access; a minor's carries no copy.
+  const ga = await a.raw(`/api/audit?entityType=investor&entityId=${GH}`);
+  check(ga.status === 404 && !ga.text.includes(HIDDEN_NAME), `RM A cannot read the guardian's history by id (${ga.status})`);
+  const ma = await a.raw(`/api/audit?entityType=investor&entityId=${MH}`);
+  check(ma.status === 200 && leaks(ma.text).length === 0, `RM A minor's history: ${ma.status}, leaks ${leaks(ma.text).join(", ") || "none"}`);
+  const list = await a.raw(`/api/investors?limit=200`);
+  check(list.status === 200 && leaks(list.text).length === 0 && list.text.includes(MH), `RM A GET /api/investors: ${list.status}, leaks ${leaks(list.text).join(", ") || "none"}`);
 
   const pick = await a.send("PATCH", `/api/investors/${MV}`, { guardianInvestorId: GH });
   check(pick.status === 400 && leaks(pick.text).length === 0, `RM A linking the hidden guardian by id is refused without detail (${pick.status})`);
@@ -104,7 +122,10 @@ try {
   const od = await o.raw(`/dashboard/investors/${MH}/edit`);
   check(od.text.includes(HIDDEN_NAME), "the owner (whole book) is shown the guardian's name");
   const oapi = JSON.parse((await o.raw(`/api/investors/${MH}`)).text);
-  check(oapi.investor?.riskProfile === HIDDEN_RISK, "the owner sees the minor's risk");
+  check(oapi.investor?.riskProfile === null, "the owner too: the minor's risk is its own assessment (none yet), never the guardian's copy");
+  const ot = await o.rendered(`/dashboard/investors/${MH}/edit`);
+  check(ot.includes("Guardian's own risk profile") && ot.includes("Very aggressive") && ot.includes("Not recorded for this account yet"),
+    "the owner's edit page shows the guardian's profile as the guardian's, beside the minor's own (none)");
 } finally {
   await browser.close();
 }

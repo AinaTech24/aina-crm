@@ -26,6 +26,7 @@ import { familyScopeSql, requireFamilyView, canEditFamilies } from "@/lib/famili
 import { LIVE_MEMBER_JOIN } from "@/lib/families/live";
 import { investorScopeSql } from "@/lib/investors/access";
 import { aliveClient } from "@/lib/metrics/scope";
+import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
 
 export const dynamic = "force-dynamic";
 
@@ -195,9 +196,11 @@ export default async function FamiliesPage({
     const pageIds = famRows.map((x) => String(x.id));
     const membersByFamily = new Map<string, MemberForHealth[]>();
     if (pageIds.length) {
+      // A minor's risk is their own assessment, never the guardian's copy (G-1).
+      const rk = clientRiskSql("i");
       const mem = await tx.execute(sql`
         SELECT id, family_id, name, status, dob, is_minor, kyc_status, nominee_name, nominees,
-               risk_profile, risk_profile_signed_at, aum, active_sip_amount
+               ${rk.category} AS risk_profile, ${rk.signedAt} AS risk_profile_signed_at, aum, active_sip_amount
           FROM investors i
          WHERE ${aliveClient("i")} AND family_id IN (${sql.join(pageIds.map((id) => sql`${id}::uuid`), sql`, `)})
       `);

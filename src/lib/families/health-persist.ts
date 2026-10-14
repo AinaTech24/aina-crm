@@ -20,6 +20,7 @@ import { eq, isNotNull } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { families, investors } from "@/db/schema";
 import { familyHealth, type MemberForHealth } from "./health";
+import { withOwnRiskForMinors } from "@/lib/risk-profile/own-assessment";
 
 /** Re-score one family by id and persist. Returns the new score/band, or null
  *  if the family wasn't found (RLS-scoped or deleted). */
@@ -31,7 +32,8 @@ export async function recomputeFamilyHealth(
   const fam = (await tx.select().from(families).where(eq(families.id, familyId)).limit(1))[0];
   if (!fam) return null;
 
-  const members = await tx.select().from(investors).where(eq(investors.familyId, familyId));
+  // A minor's risk is their own assessment, never the guardian's copy (G-1).
+  const members = await withOwnRiskForMinors(tx, fam.tenantId, await tx.select().from(investors).where(eq(investors.familyId, familyId)));
   const { score, band } = familyHealth(fam as any, members as MemberForHealth[], now);
 
   await tx
@@ -71,7 +73,11 @@ export async function recomputeAllFamilyHealth(
   if (fams.length === 0) return tally;
 
   // All linked members in one shot, bucketed by family.
-  const members = await tx.select().from(investors).where(isNotNull(investors.familyId));
+  // A minor's risk is their own assessment, never the guardian's copy (G-1)
+  // — per firm, since the nightly run spans firms.
+  const linked = await tx.select().from(investors).where(isNotNull(investors.familyId));
+  const members = (await Promise.all([...new Set(linked.map((m) => m.tenantId))].map((tn) =>
+    withOwnRiskForMinors(tx, tn, linked.filter((m) => m.tenantId === tn))))).flat();
   const byFamily = new Map<string, MemberForHealth[]>();
   for (const m of members as any[]) {
     const fid = m.familyId as string;

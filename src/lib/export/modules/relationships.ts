@@ -6,6 +6,7 @@
  * scopes through the client / lead the row belongs to).
  */
 
+import { clientRiskSql, minorSql } from "@/lib/risk-profile/own-assessment";
 import { sql, type SQL } from "drizzle-orm";
 import { can, requireAny } from "@/lib/auth/rbac";
 import type { SessionUser } from "@/lib/auth/session";
@@ -288,8 +289,8 @@ const VERIFICATION_LABELS: Record<string, string> = {
 const PAN_RE = `'^[A-Z]{5}[0-9]{4}[A-Z]$'`;
 const i = (c: string) => sql.raw(`i.${c}`);
 
-/** A linked minor whose guardian this viewer may not open (the `g` join is scoped). */
-const HIDDEN_GUARDIAN = sql`(i.guardian_investor_id IS NOT NULL AND (i.investor_category = 'minor' OR i.is_minor) AND g.id IS NULL)`;
+/** A minor's risk is their own assessment, never the guardian's copy (G-1). */
+const OWN_RISK = clientRiskSql("i");
 
 export const riskProfilesExport: ExportModule = {
   key: "risk-profiles",
@@ -298,7 +299,8 @@ export const riskProfilesExport: ExportModule = {
   piiSubject: "investor",
   canView: hasInvestorView,
   // The guardian is joined only when this user may open them (G-1): a hidden
-  // guardian's name is blank and a linked minor's copied risk is blank too.
+  // guardian's name is blank. A minor's risk columns are the minor's own
+  // assessment, never the guardian's copy (migration 0234).
   from: async (tx, session) => sql`investors i
     LEFT JOIN investors g ON g.id = i.guardian_investor_id AND g.tenant_id = i.tenant_id AND ${await investorScopeSql(tx, session, "g")}
     LEFT JOIN LATERAL (
@@ -340,16 +342,17 @@ export const riskProfilesExport: ExportModule = {
     { key: "pan", label: "PAN", group: "Client", sql: sql.raw(`(CASE WHEN upper(i.pan) ~ ${PAN_RE} THEN upper(i.pan) END)`), pii: "pan" },
     { key: "minor", label: "Minor", group: "Client", sql: sql.raw(`(i.is_minor IS TRUE OR upper(btrim(i.pan)) LIKE 'MINOR:%')`), kind: "bool" },
     { key: "guardian", label: "Guardian", group: "Client", sql: sql`g.name` },
+    { key: "guardian_risk", label: "Guardian's own risk category (not this account's)", group: "Client", sql: sql`(CASE WHEN ${minorSql("i")} THEN initcap(replace(g.risk_profile, '_', ' ')) END)` },
     { key: "rm", label: "Relationship manager", group: "Client", sql: userName(i("rm_id")), default: true },
     { key: "branch", label: "Branch", group: "Client", sql: sql`(SELECT b.name FROM branches b WHERE b.id = i.branch_id)` },
     { key: "phone", label: "Mobile", group: "Client", sql: i("phone"), pii: "phone" },
     { key: "email", label: "Email", group: "Client", sql: i("email"), pii: "email" },
 
-    { key: "category", label: "Risk category", group: "Risk profile", sql: sql`(CASE WHEN ${HIDDEN_GUARDIAN} THEN NULL ELSE initcap(replace(i.risk_profile, '_', ' ')) END)`, default: true },
-    { key: "suggested", label: "Suggested from age (not confirmed)", group: "Risk profile", sql: sql`(i.risk_profile_provisional IS TRUE)`, kind: "bool" },
+    { key: "category", label: "Risk category", group: "Risk profile", sql: sql`initcap(replace(${OWN_RISK.category}, '_', ' '))`, default: true },
+    { key: "suggested", label: "Suggested from age (not confirmed)", group: "Risk profile", sql: sql`(${OWN_RISK.provisional} IS TRUE)`, kind: "bool" },
     { key: "status", label: "Status", group: "Risk profile", sql: labelCase(riskBucketCaseSql(), RISK_BUCKET_LABELS), default: true },
-    { key: "score", label: "Score", group: "Risk profile", sql: sql`(CASE WHEN ${HIDDEN_GUARDIAN} THEN rp.total_score ELSE COALESCE(rp.total_score, i.risk_profile_score) END)`, kind: "number", default: true },
-    { key: "signed", label: "Last signed", group: "Risk profile", sql: dIst(sql`(CASE WHEN ${HIDDEN_GUARDIAN} THEN NULL ELSE i.risk_profile_signed_at END)`), kind: "date", default: true },
+    { key: "score", label: "Score", group: "Risk profile", sql: sql`COALESCE(rp.total_score, ${OWN_RISK.score})`, kind: "number", default: true },
+    { key: "signed", label: "Last signed", group: "Risk profile", sql: dIst(OWN_RISK.signedAt), kind: "date", default: true },
     { key: "next_review", label: "Next review", group: "Risk profile", sql: d(sql`rp.next_review_at`), kind: "date", default: true },
     { key: "profile_date", label: "Profile date", group: "Risk profile", sql: d(sql`rp.profile_date`), kind: "date" },
     { key: "verification", label: "How it was taken", group: "Risk profile", sql: labelCase(sql`rp.verification_method`, VERIFICATION_LABELS) },

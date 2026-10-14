@@ -50,6 +50,8 @@ export function clientCompleteness(inv: AnyRow): Completeness {
     { key: "occupation", label: "Occupation", filled: nonEmpty(pick(inv, "occupation")) },
     { key: "kyc", label: "KYC verified", filled: kyc === "verified" || kyc === "registered" },
     { key: "pan_aadhaar", label: "PAN–Aadhaar linked", filled: panAadhaar === "linked" || panAadhaar === "not_applicable" },
+    // A minor's risk is their own assessment, never the guardian's copy (G-1): callers pass a
+    // minor's row through clientRiskSql / withOwnRiskForMinors before scoring it.
     { key: "risk_profile", label: "Risk profile", filled: nonEmpty(pick(inv, "riskProfile", "risk_profile")) },
     { key: "nominee", label: "Nominee", filled: nonEmpty(pick(inv, "nominees")) || nonEmpty(pick(inv, "nomineeName", "nominee_name")) },
     { key: "bank", label: "Bank account", filled: nonEmpty(pick(inv, "bankAccounts", "bank_accounts")) || nonEmpty(pick(inv, "bankName", "bank_name")) },
