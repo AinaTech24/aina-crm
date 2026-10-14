@@ -60,7 +60,11 @@ abort() { echo "ABORT: $1"; rm -rf "$STAGE"; release_change_lock "ABORTED before
 # ---- 2. reclaim disk ----------------------------------------------------------
 # Exited one-off containers (repair / revalue jobs) pin their image; `docker rmi` then
 # refuses silently — this is what filled the disk to 98% on 8 Oct 2026.
-docker ps -aq --filter status=exited | xargs -r docker rm >/dev/null 2>&1 || true
+# ONLY finished one-off jobs of OUR image — never another exited container (an old unrelated
+# postgres container lives on this box).
+for img in $(docker images mfd-app -q | sort -u); do
+  docker ps -aq --filter status=exited --filter "ancestor=$img" | xargs -r docker rm >/dev/null 2>&1 || true
+done
 docker images mfd-app --format '{{.Tag}}' | grep '^prev-' | sort -r | tail -n +3 | while read -r old; do
   docker rmi "mfd-app:$old" >/dev/null 2>&1 && echo "dropped old rollback image mfd-app:$old" || echo "kept mfd-app:$old (in use)"
 done
