@@ -54,7 +54,23 @@ A mismatch anywhere in this table is a stop: the environment is not the reviewed
 
 **B-1 stabilisation (2026-10-12): `f61d202` is superseded by `aab763c4` (§0.1b).** The owner accepted the integration direction for development and asked for stabilisation; `main` meanwhile gained `88bc0178` (client types, migration `0233_client_type_details.sql`), which is now merged too. Evidence A–L: `docs/rta/B1_STABILISATION.md`. Still not accepted, not tagged, not deployable.
 
-#### 0.1b Stabilised candidate (proposed — not accepted, not tagged)
+**B-1 final qualification (2026-10-14): `aab763c4` (conditionally accepted) is superseded by `d7aa60a8` (§0.1c).** `main` advanced to `f563e7ac` (deployed 2026-10-13, migration `0234_minor_risk_from_guardian`), now integrated; real CI runs every DB-backed test (no skips). Evidence A–K: `docs/rta/B1_FINAL_QUALIFICATION.md`. Not accepted, not tagged, not deployable.
+
+#### 0.1c Final candidate (proposed — not accepted, not tagged)
+
+| Item | Value | How to verify |
+|---|---|---|
+| Candidate commit (application code) | `d7aa60a8f50b0947e85917b6e11de09fba4a3e08` | `git rev-parse d7aa60a8^{commit}` |
+| Contains production and the release | `main` `f563e7ac2cf4e21767e48b28e4e75d47f4d21d5f`, `88bc0178`, `a16628c5` and `c26e676` are ancestors | `for c in f563e7ac 88bc0178 a16628c5 c26e676; do git merge-base --is-ancestor $c d7aa60a8 \|\| echo MISSING $c; done` prints nothing |
+| Deployed tree = candidate code | later commits change `docs/` only | `git diff --name-only d7aa60a8 <deployed commit> -- . ':(exclude)docs'` prints nothing |
+| Frozen artifact | tree `f0f2bba2852a832d84a30b0f15a7277ad41c14fd`; `src/` `5ef95f6ab8c0e5765ca846b66025d2e2c4ab4d50`; `drizzle/migrations/` `5781e010b734e74dbf191256d72b61c9523716d6` | `git rev-parse d7aa60a8^{tree} d7aa60a8:src d7aa60a8:drizzle/migrations` |
+| Migrations | 284 = `main`'s 272 byte for byte + the release's 12; lock SHA-256 `025d640cfb1f88c280641bd1dd9f058d482de6f927b71c375aac798b910c72e8`; concatenation `25a08833c8dbd39f9e3114fbb07016d904177860f29c24ce3bedd434181ed472`; ledger digest `a9bb87a582387db2697310e3e66fa895` fresh and after upgrading a 272-state database | `node scripts/check-migration-lock.mjs` |
+| Production ledger check | `docs/rta/handover/b1-production-ledger-check.sql`: `COMPATIBLE · 272 · 12 pending` expected (271 / 270 also compatible); `STOP` on `0240_aum_month_end.sql`, a changed checksum or an applied release file | DBA, read-only |
+| Proposed tag (not created) | `rta-kfintech-pilot-candidate-2026-10-14-b1f`, annotated, on `d7aa60a8` — only on the owner's approval; `rta-kfintech-pilot-candidate-2026-10-10` stays on `c26e676` | — |
+
+Valid only if production runs `f563e7ac` or an ancestor of it (PR-3 / J1). A later push to `main` must be merged and re-qualified first; `main`'s new migrations must be numbered from 0245.
+
+#### 0.1b Stabilised candidate (superseded by §0.1c — kept for the record)
 
 | Item | Value | How to verify |
 |---|---|---|
