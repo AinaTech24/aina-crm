@@ -939,11 +939,9 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           <KV label="Tax status" value={inv.taxStatus ?? "—"} />
           <KV label="PAN–Aadhaar link" value={inv.panAadhaarLinkStatus ?? "—"} cap edit={{ id: inv.id, field: "panAadhaarLinkStatus", type: "select", options: PAN_AADHAAR_OPTS, value: inv.panAadhaarLinkStatus ?? "", nullable: true }} />
           <KV label="CKYC number" value={inv.ckycNumber ?? "—"} mono edit={{ id: inv.id, field: "ckycNumber", value: inv.ckycNumber ?? "", nullable: true }} />
-          <KV label="CKYC expiry" value={inv.ckycExpiryAt ? formatDate(inv.ckycExpiryAt) : "—"} edit={{ id: inv.id, field: "ckycExpiryAt", type: "date", value: inv.ckycExpiryAt ? String(inv.ckycExpiryAt).slice(0, 10) : "", nullable: true }} />
           <KV label="KYC validated" value={inv.kycValidatedAt ? formatDate(inv.kycValidatedAt) : "—"} edit={{ id: inv.id, field: "kycValidatedAt", type: "date", value: inv.kycValidatedAt ? String(inv.kycValidatedAt).slice(0, 10) : "", nullable: true }} />
           <KV label="KRA" value={inv.kraName ?? "—"} />
           <KV label="FATCA status" value={inv.fatcaStatus ?? "—"} cap />
-          <KV label="FATCA expiry" value={inv.fatcaExpiryAt ? formatDate(inv.fatcaExpiryAt) : "—"} />
           {showRisk && <Status label="Risk profile" value={inv.riskProfile ?? "not_assessed"} good={!!inv.riskProfile && !!inv.riskProfileSignedAt} />}
           {showPan && <KV label="UCC (BSE)" value={inv.bseUccCode ?? "—"} mono edit={{ id: inv.id, field: "bseUccCode", value: inv.bseUccCode ?? "", nullable: true }} />}
           {showPan && <KV label="CAN (NSE)" value={inv.nseCanCode ?? "—"} mono edit={{ id: inv.id, field: "nseCanCode", value: inv.nseCanCode ?? "", nullable: true }} />}
@@ -980,7 +978,6 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           <KV label="Total lumpsum" value={formatINR(data.totalLumpsum)} sub="Successful purchases" />
           {showInflow && <KV label="Lifetime inflow" value={formatINR(Number(inv.lifetimeInflow ?? 0))} />}
           {showInflow && <KV label="Lifetime outflow" value={formatINR(Number(inv.lifetimeOutflow ?? 0))} />}
-          <KV label="Service tier" value={inv.serviceTier ?? "—"} />
           <KV label="Last transaction" value={inv.lastTransactionAt ? formatRelative(inv.lastTransactionAt) : "Never"} />
           {showStatus && (
             <Status

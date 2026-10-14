@@ -22,6 +22,8 @@ import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
 import { Button } from "@/components/ui/Button";
 import { NomineesField } from "@/components/investors/NomineesField";
+import { InvestorLookup } from "@/components/common/InvestorLookup";
+import { ownPan } from "@/lib/investors/pan-display";
 import { formatDate } from "@/lib/format";
 import type { Nominee } from "@/lib/investors/nominee";
 import {
@@ -33,9 +35,15 @@ const input = "input-base w-full";
 const panInput = `${input} font-mono uppercase tracking-wide`;
 const panValue = (v: string) => v.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10);
 
+/** The guardian's own client record, when they are a client (migration 0234:
+ *  the minor then carries the guardian's risk profile). */
+export type GuardianLink = { id: string | null; name: string | null; riskProfile?: string | null };
+
 export function ClientTypeSections({
-  type, value, onChange, dob, nominees, onNomineesChange, showNominees = true,
+  type, value, onChange, dob, nominees, onNomineesChange, showNominees = true, guardianLink, onGuardianLinkChange,
 }: {
+  guardianLink?: GuardianLink;
+  onGuardianLinkChange?: (g: GuardianLink) => void;
   type: string;
   value: ClientTypeDetails;
   onChange: (v: ClientTypeDetails) => void;
@@ -57,6 +65,39 @@ export function ClientTypeSections({
     <>
       {def.kind === "minor" && (
         <FieldSection title="Guardian">
+          {onGuardianLinkChange && (
+            <Field label="Guardian's client record" className="sm:col-span-2"
+              hint="Pick the guardian if they are a client — their details fill in, and the minor takes their risk profile.">
+              {(id, d) => (
+                <div id={id} aria-describedby={d}>
+                  <InvestorLookup
+                    value={guardianLink?.id ?? null}
+                    displayName={guardianLink?.name ?? null}
+                    placeholder="Search the guardian by name, PAN, mobile…"
+                    onClear={() => onGuardianLinkChange({ id: null, name: null, riskProfile: null })}
+                    onSelect={async (gid, gname) => {
+                      onGuardianLinkChange({ id: gid, name: gname });
+                      const r = await fetch(`/api/investors/${gid}`).then((x) => (x.ok ? x.json() : null)).catch(() => null);
+                      const g = r?.investor;
+                      if (!g) return;
+                      onGuardianLinkChange({ id: gid, name: gname, riskProfile: g.riskProfile ?? null });
+                      onChange({
+                        ...value,
+                        guardian: {
+                          ...(value.guardian ?? {}),
+                          name: g.name ?? gname,
+                          pan: ownPan(g.pan) ?? value.guardian?.pan ?? "",
+                          dob: g.dob ? String(g.dob).slice(0, 10) : value.guardian?.dob ?? "",
+                          mobile: g.phone ?? value.guardian?.mobile ?? "",
+                          email: g.email ?? value.guardian?.email ?? "",
+                        },
+                      });
+                    }}
+                  />
+                </div>
+              )}
+            </Field>
+          )}
           <Field label="Guardian's name" required>
             {(id, d) => <input id={id} aria-describedby={d} value={value.guardian?.name ?? ""} onChange={(e) => sub("guardian", { name: e.target.value })} className={input} />}
           </Field>

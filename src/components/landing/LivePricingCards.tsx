@@ -87,7 +87,10 @@ export function LivePricingCards({ initial }: { initial: LandingPlan[] }) {
               </span>
             )}
             <h3 className="font-extrabold text-xl text-foreground">{p.name}</h3>
-            <p className="text-xs text-muted-foreground mt-2 min-h-[30px] leading-relaxed">{p.tagline}</p>
+            {/* Two lines at most; the full tagline is the hover title. */}
+            {p.tagline && (
+              <p className="text-xs text-muted-foreground mt-2 leading-relaxed line-clamp-2" title={p.tagline}>{p.tagline}</p>
+            )}
 
             <div className="mt-4 pt-4 border-t border-border/40">
               {custom ? (
@@ -127,14 +130,7 @@ export function LivePricingCards({ initial }: { initial: LandingPlan[] }) {
             </div>
 
             {p.inheritsLabel && <p className="mt-5 text-sm font-bold text-foreground">{p.inheritsLabel}</p>}
-            <ul className="mt-5 flex flex-col gap-2.5 flex-grow">
-              {p.features.map((f) => (
-                <li key={f} className="flex items-start gap-2.5 text-xs text-muted-foreground font-medium">
-                  <Check className="size-3.5 text-emerald-600 mt-0.5 shrink-0" />
-                  <span>{f}</span>
-                </li>
-              ))}
-            </ul>
+            <FeatureList features={p.features} />
 
             {custom || p.ctaHref.startsWith("tel:") || /^https?:/.test(p.ctaHref) ? (
               <a href={p.ctaHref} className={`mt-8 w-full ${p.featured ? "btn-primary !bg-red-600 hover:!bg-red-700" : "btn-primary"} font-bold py-3 text-center justify-center shadow-md inline-flex items-center gap-2`}>
@@ -148,6 +144,38 @@ export function LivePricingCards({ initial }: { initial: LandingPlan[] }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/** The plan's first few features; the rest open on request, so a long plan
+ *  does not turn its card into a wall of text. */
+const SHOWN = 6;
+
+function FeatureList({ features }: { features: string[] }) {
+  const [all, setAll] = useState(false);
+  const shown = all ? features : features.slice(0, SHOWN);
+  const hidden = features.length - SHOWN;
+  return (
+    <div className="mt-5 flex-grow">
+      <ul className="flex flex-col gap-2.5">
+        {shown.map((f) => (
+          <li key={f} className="flex items-start gap-2.5 text-xs text-muted-foreground font-medium">
+            <Check className="size-3.5 text-emerald-600 mt-0.5 shrink-0" />
+            <span>{f}</span>
+          </li>
+        ))}
+      </ul>
+      {hidden > 0 && (
+        <button
+          type="button"
+          onClick={() => setAll((v) => !v)}
+          aria-expanded={all}
+          className="mt-3 min-h-6 text-xs font-semibold text-primary hover:underline"
+        >
+          {all ? "Show less" : `+ ${hidden} more`}
+        </button>
+      )}
     </div>
   );
 }

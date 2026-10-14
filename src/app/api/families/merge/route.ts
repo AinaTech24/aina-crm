@@ -19,6 +19,7 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { recomputeFamilyHealth } from "@/lib/families/health-persist";
 import { familyScopeSql } from "@/lib/families/access";
 import { applyHeadRmToMembers } from "@/lib/families/head-rm";
+import { applyFamilySharedDetails } from "@/lib/families/shared-details";
 
 export const dynamic = "force-dynamic";
 
@@ -94,6 +95,15 @@ export async function POST(req: NextRequest) {
         // RM; if the survivor had no head and just adopted the loser's, every
         // member follows that new head.
         await applyHeadRmToMembers(tx, {
+          tenantId: session.tenantId,
+          familyId: survivorId,
+          onlyInvestorIds: survivorHead ? moving : undefined,
+          actorUserId: session.userId,
+          reason: survivorHead ? "families_merged" : "head_changed",
+          clientMeta: meta,
+        });
+        // …and the head's address and the family's review frequency.
+        await applyFamilySharedDetails(tx, {
           tenantId: session.tenantId,
           familyId: survivorId,
           onlyInvestorIds: survivorHead ? moving : undefined,

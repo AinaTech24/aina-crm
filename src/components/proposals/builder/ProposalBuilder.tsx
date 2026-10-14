@@ -32,6 +32,7 @@ import Link from "next/link";
 import type { ProposalSnapshot } from "@/lib/proposals/snapshot";
 import { PROPOSAL_ACCEPTANCE_TEXT } from "@/lib/proposals/acceptance";
 import { itemKindLabel, itemName } from "@/lib/proposals/items";
+import { draftSuitabilityNote } from "@/lib/proposals/suitability-note";
 import { RecipientPicker, type Recipient } from "./RecipientPicker";
 import { RecommendStep, type Item } from "./RecommendStep";
 
@@ -113,6 +114,24 @@ export function ProposalBuilder({ proposalId: initialId }: { proposalId?: string
   const [err, setErr] = useState<string | null>(null);
 
   const locked = !!proposalId && !EDITABLE.includes(meta.status);
+
+  // The suitability note is drafted from what the earlier steps captured — the
+  // client, their confirmed risk profile, the funds and the amounts — the
+  // first time the advisor reaches the Send step with the box still empty.
+  // They read it, add what only they know, and it is theirs from then on.
+  const noteDrafted = useRef(false);
+  useEffect(() => {
+    if (step !== 3 || locked || noteDrafted.current) return;
+    noteDrafted.current = true;
+    if (suitabilityNote.trim()) return;
+    const draft = draftSuitabilityNote({
+      clientName: recipient?.name ?? "",
+      riskProfile: snapshot?.risk.status === "Completed" ? snapshot.risk.category : null,
+      goals: snapshot?.goals ?? [],
+      items,
+    });
+    if (draft) setSuitabilityNote(draft.slice(0, 2000));
+  }, [step, locked, suitabilityNote, recipient, snapshot, items]);
 
   // ── Load: an existing proposal, or a recipient passed in the URL ─────────
   useEffect(() => {

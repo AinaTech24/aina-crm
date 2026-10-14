@@ -16,6 +16,11 @@
  * details; personal fields show only for a person; and only an individual
  * gets nominees — everyone else sees that nomination is not available.
  *
+ * What the FAMILY owns is shown, not asked (lib/families/shared-details.ts):
+ * a member's address is the head's and everyone's review frequency is the
+ * family's. A minor's risk profile is the guardian's (migration 0234), so a
+ * minor shows it and links the guardian's client record instead.
+ *
  * PAN is editable so a typo or a PAN-less import can be corrected. The value
  * shown is the client's OWN PAN: an import key in the column (a minor filed
  * under the guardian's PAN) is never put in the box, and such a client's PAN
@@ -23,6 +28,7 @@
  */
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 import { RmSelector } from "@/components/common/RmSelector";
@@ -32,7 +38,8 @@ import { Field, FieldSection } from "@/components/ui/Field";
 import { FormActions } from "@/components/ui/FormActions";
 import { Button } from "@/components/ui/Button";
 import { notify } from "@/components/ui/Toast";
-import { ClientTypeSections } from "@/components/investors/ClientTypeSections";
+import { ClientTypeSections, type GuardianLink } from "@/components/investors/ClientTypeSections";
+import { usePincodeAutofill } from "@/lib/pincode/use-pincode";
 import { UccCodesField } from "@/components/investors/UccCodesField";
 import { cleanUccCodes } from "@/lib/investors/ucc";
 import { isMinorKey, ownPan } from "@/lib/investors/pan-display";
@@ -42,6 +49,7 @@ import type { Nominee } from "@/lib/investors/nominee";
 import {
   TypeDetailsSchema, canNominate, cleanTypeDetails, clientTypeDef, clientTypeOptions, hasAdultDetails,
   hasPersonalDetails, majorityDate, singleHoldingOnly, CLIENT_TYPE_KEYS, type ClientTypeDetails,
+  HOUSEHOLD_TYPES, INCOME_RANGES, MARITAL_STATUSES, defaultHouseholdType, defaultTaxStatus, taxStatusOptions, withCurrent,
 } from "@/lib/investors/client-types";
 
 type Investor = Record<string, any>;
@@ -64,12 +72,33 @@ export type ClientDetailsFlags = {
   showInflow: boolean;
 };
 
+/** The client's family, as the edit page loads it. */
+export type ClientFamilyContext = {
+  id: string;
+  name: string;
+  headName: string | null;
+  isHead: boolean;
+  headHasAddress: boolean;
+  reviewFrequency: string | null;
+};
+
+const REVIEW_LABEL: Record<string, string> = {
+  monthly: "Monthly", quarterly: "Quarterly", half_yearly: "Half-yearly", annual: "Yearly",
+};
+
 const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 const KYC_STATUSES = ["pending", "registered", "verified", "hold", "rejected", "expired", "re_kyc_required"];
 const MANDATE_STATUSES = ["none", "pending", "active", "expired", "rejected", "cancelled"];
 const CLIENT_STATUSES = ["active", "dormant", "inactive", "redemption_risk", "closed", "exited"];
 
-export function ClientDetailsForm({ investor, flags }: { investor: Investor; flags: ClientDetailsFlags }) {
+export function ClientDetailsForm({
+  investor, flags, family = null, guardian = null,
+}: {
+  investor: Investor;
+  flags: ClientDetailsFlags;
+  family?: ClientFamilyContext | null;
+  guardian?: { id: string; name: string; riskProfile: string | null } | null;
+}) {
   const router = useRouter();
   const backHref = `/dashboard/investors/${investor.id}`;
   const [busy, setBusy] = useState(false);
@@ -123,7 +152,6 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
     investorCategory: investor.investorCategory ?? "individual",
     segmentTag: investor.segmentTag ?? "",
     clientCategory: investor.clientCategory ?? "",
-    serviceTier: investor.serviceTier ?? "",
     // A custom day cadence (reviewFrequencyDays) is shown as "days_<n>" so the
     // one dropdown covers both presets and "every N days".
     reviewFrequency: investor.reviewFrequencyDays ? `days_${investor.reviewFrequencyDays}` : investor.reviewFrequency ?? "",
@@ -134,11 +162,9 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
     taxStatus: investor.taxStatus ?? "",
     panAadhaarLinkStatus: investor.panAadhaarLinkStatus ?? "",
     ckycNumber: investor.ckycNumber ?? "",
-    ckycExpiryAt: day(investor.ckycExpiryAt),
     kycValidatedAt: day(investor.kycValidatedAt),
     kraName: investor.kraName ?? "",
     fatcaStatus: investor.fatcaStatus ?? "",
-    fatcaExpiryAt: day(investor.fatcaExpiryAt),
     nominees: seedNominees,
     bankAccounts: seedBanks,
     bseUccCode: investor.bseUccCode ?? "",
@@ -158,10 +184,28 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
   const kind = clientTypeDef(f.investorCategory).kind;
   const personal = hasPersonalDetails(f.investorCategory);
   const adult = hasAdultDetails(f.investorCategory);
+  const [guardianLink, setGuardianLink] = useState<GuardianLink>({
+    id: guardian?.id ?? null, name: guardian?.name ?? null, riskProfile: guardian?.riskProfile ?? null,
+  });
+  // What the family owns: a member's address (the head's) and the cadence.
+  const addressFromFamily = !!family && !family.isHead && family.headHasAddress;
+  const reviewFromFamily = !!family?.reviewFrequency;
 
   function set<K extends keyof typeof f>(k: K, v: (typeof f)[K]) {
     setF((s) => ({ ...s, [k]: v }));
   }
+
+  // A new client type brings its own tax status and household type.
+  function setType(type: string) {
+    setF((s) => ({
+      ...s,
+      investorCategory: type,
+      taxStatus: taxStatusOptions(type).includes(s.taxStatus) ? s.taxStatus : defaultTaxStatus(type),
+      householdType: defaultHouseholdType(type, !!family),
+    }));
+  }
+
+  usePincodeAutofill(f.pincode, (p) => setF((s) => ({ ...s, city: p.city, state: p.state, country: s.country || "India" })));
 
   const hasContact = flags.showPhone || flags.showEmail || flags.showAddress;
   const input = "input-base w-full";
@@ -210,13 +254,16 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
         alternatePhone: f.alternatePhone || null,
         whatsappPhone: f.whatsappPhone || null,
         email: emailOk(f.email) ? f.email || "" : undefined,
-        address: {
-          line1: f.line1 || undefined,
-          city: f.city || undefined,
-          state: f.state || undefined,
-          pincode: f.pincode || undefined,
-          country: f.country || undefined,
-        },
+        // A family member's address is the head's — not sent from here.
+        ...(addressFromFamily ? {} : {
+          address: {
+            line1: f.line1 || undefined,
+            city: f.city || undefined,
+            state: f.state || undefined,
+            pincode: f.pincode || undefined,
+            country: f.country || undefined,
+          },
+        }),
         occupation: f.occupation || null,
         incomeRange: f.incomeRange || null,
         employerName: f.employerName || null,
@@ -228,25 +275,28 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
         taxStatus: f.taxStatus || null,
         panAadhaarLinkStatus: inSet(f.panAadhaarLinkStatus, ["linked", "not_linked", "pending", "not_applicable"]) ?? null,
         ckycNumber: f.ckycNumber || null,
-        ckycExpiryAt: f.ckycExpiryAt || null,
         kycValidatedAt: f.kycValidatedAt || null,
         kraName: f.kraName || null,
         fatcaStatus: inSet(f.fatcaStatus, ["pending", "verified", "expired"]) ?? null,
-        fatcaExpiryAt: f.fatcaExpiryAt || null,
         investorCategory: inSet(f.investorCategory, [...CLIENT_TYPE_KEYS]),
         typeDetails: details,
         segmentTag: inSet(f.segmentTag, ["HNI", "Affluent", "Retail", "NRI", "Corporate"]),
         clientCategory: inSet(f.clientCategory, ["A", "B", "C", "D"]) ?? null,
-        serviceTier: inSet(f.serviceTier, ["A", "B", "C"]) ?? null,
         // "days_<n>" → custom cadence; anything else → a preset. Exactly one of
         // the two is set, so the API's computeNextReview picks the right basis.
-        reviewFrequency: /^days_\d+$/.test(f.reviewFrequency)
-          ? null
-          : inSet(f.reviewFrequency, ["monthly", "quarterly", "half_yearly", "annual"]) ?? null,
-        reviewFrequencyDays: /^days_\d+$/.test(f.reviewFrequency) ? Number(f.reviewFrequency.slice(5)) : null,
+        // A family's cadence is the family's — not sent from here.
+        ...(reviewFromFamily ? {} : {
+          reviewFrequency: /^days_\d+$/.test(f.reviewFrequency)
+            ? null
+            : inSet(f.reviewFrequency, ["monthly", "quarterly", "half_yearly", "annual"]) ?? null,
+          reviewFrequencyDays: /^days_\d+$/.test(f.reviewFrequency) ? Number(f.reviewFrequency.slice(5)) : null,
+        }),
         rmId: f.rmId || undefined,
         kycStatus: inSet(f.kycStatus, KYC_STATUSES),
-        riskProfile: inSet(f.riskProfile, ["conservative", "moderate", "aggressive", "very_aggressive"]),
+        // A minor's risk profile is the guardian's; the minor links the guardian.
+        ...(kind === "minor"
+          ? { guardianInvestorId: guardianLink.id ?? (guardian ? null : undefined) }
+          : { riskProfile: inSet(f.riskProfile, ["conservative", "moderate", "aggressive", "very_aggressive"]) }),
         // Only an individual can nominate; the API ignores a list for anyone else.
         ...(canNominate(f.investorCategory)
           ? {
@@ -311,7 +361,7 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
       <FieldSection title="Identity">
         <Field label="Client type">
           {(id) => (
-            <SelectField id={id} value={f.investorCategory} onChange={(e) => set("investorCategory", e.target.value)} className="w-full">
+            <SelectField id={id} value={f.investorCategory} onChange={(e) => setType(e.target.value)} className="w-full">
               {clientTypeOptions(investor.investorCategory).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </SelectField>
           )}
@@ -360,7 +410,11 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
         </Field>
         {adult && (
         <Field label="Marital status">
-          {(id) => <input id={id} value={f.maritalStatus} onChange={(e) => set("maritalStatus", e.target.value)} placeholder="e.g. Married" className={input} />}
+          {(id) => (
+            <SelectField id={id} value={f.maritalStatus} onChange={(e) => set("maritalStatus", e.target.value)} className="w-full" placeholder="Select">
+              <option value="">Select</option>{withCurrent(MARITAL_STATUSES, f.maritalStatus).map((m) => <option key={m} value={m}>{m}</option>)}
+            </SelectField>
+          )}
         </Field>
         )}
         <Field label="Mother’s name">
@@ -390,6 +444,8 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
         nominees={f.nominees}
         onNomineesChange={(n) => set("nominees", n)}
         showNominees={flags.showNominee}
+        guardianLink={guardianLink}
+        onGuardianLinkChange={setGuardianLink}
       />
 
       {hasContact && (
@@ -406,13 +462,25 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
           )}
           <Field label="Mobile belongs to">{(id) => <input id={id} value={f.mobileRelation} onChange={(e) => set("mobileRelation", e.target.value)} placeholder="self / spouse / …" className={input} />}</Field>
           <Field label="Email belongs to">{(id) => <input id={id} value={f.emailRelation} onChange={(e) => set("emailRelation", e.target.value)} placeholder="self / spouse / …" className={input} />}</Field>
-          {flags.showAddress && (
+          {flags.showAddress && addressFromFamily && (
+            <Field label="Address" className="sm:col-span-2" hint={<>Same as the family head{family?.headName ? ` (${family.headName})` : ""} — change it on the head&rsquo;s record.</>}>
+              {(id, d) => (
+                <div id={id} aria-describedby={d} className="input-base flex min-h-9 w-full items-center bg-secondary/60 text-muted-foreground">
+                  {[f.line1, f.city, f.state, f.pincode, f.country].filter(Boolean).join(", ") || "—"}
+                </div>
+              )}
+            </Field>
+          )}
+          {flags.showAddress && !addressFromFamily && (
             <>
               <Field label="Address line" className="sm:col-span-2">{(id) => <input id={id} value={f.line1} onChange={(e) => set("line1", e.target.value)} className={input} />}</Field>
+              <Field label="Pincode" hint="City and state fill in from it.">{(id, d) => <input id={id} aria-describedby={d} value={f.pincode} onChange={(e) => set("pincode", e.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" className={input} />}</Field>
               <Field label="City">{(id) => <input id={id} value={f.city} onChange={(e) => set("city", e.target.value)} className={input} />}</Field>
               <Field label="State">{(id) => <input id={id} value={f.state} onChange={(e) => set("state", e.target.value)} className={input} />}</Field>
-              <Field label="Pincode">{(id) => <input id={id} value={f.pincode} onChange={(e) => set("pincode", e.target.value)} inputMode="numeric" className={input} />}</Field>
               <Field label="Country">{(id) => <input id={id} value={f.country} onChange={(e) => set("country", e.target.value)} className={input} />}</Field>
+              {family?.isHead && (
+                <p className="sm:col-span-2 text-xs text-muted-foreground">The family&rsquo;s members take this address.</p>
+              )}
             </>
           )}
         </FieldSection>
@@ -420,7 +488,13 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
 
       <FieldSection title="Profile">
         {adult && <Field label="Occupation">{(id) => <input id={id} value={f.occupation} onChange={(e) => set("occupation", e.target.value)} className={input} />}</Field>}
-        <Field label={kind === "person" || kind === "minor" ? "Income range" : "Gross annual income"}>{(id) => <input id={id} value={f.incomeRange} onChange={(e) => set("incomeRange", e.target.value)} className={input} />}</Field>
+        <Field label={kind === "person" || kind === "minor" ? "Income range" : "Gross annual income"}>
+          {(id) => (
+            <SelectField id={id} value={f.incomeRange} onChange={(e) => set("incomeRange", e.target.value)} className="w-full" placeholder="Select">
+              <option value="">Select</option>{withCurrent(INCOME_RANGES, f.incomeRange).map((m) => <option key={m} value={m}>{m}</option>)}
+            </SelectField>
+          )}
+        </Field>
         {adult && <Field label="Employer">{(id) => <input id={id} value={f.employerName} onChange={(e) => set("employerName", e.target.value)} className={input} />}</Field>}
         <Field label="Client category (A–D)">
           {(id) => (
@@ -449,7 +523,13 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
             </SelectField>
           )}
         </Field>
-        <Field label="Household type">{(id) => <input id={id} value={f.householdType} onChange={(e) => set("householdType", e.target.value)} placeholder="Family / Individual" className={input} />}</Field>
+        <Field label="Household type">
+          {(id) => (
+            <SelectField id={id} value={f.householdType} onChange={(e) => set("householdType", e.target.value)} className="w-full" placeholder="Select">
+              <option value="">Select</option>{withCurrent(HOUSEHOLD_TYPES, f.householdType).map((m) => <option key={m} value={m}>{m}</option>)}
+            </SelectField>
+          )}
+        </Field>
         {flags.showRm && (
           <Field label="Assigned RM">{() => <RmSelector value={f.rmId || null} onChange={(id) => set("rmId", id ?? "")} placeholder="— Unassigned —" />}</Field>
         )}
@@ -465,7 +545,16 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
             )}
           </Field>
         )}
-        {flags.showRisk && (
+        {flags.showRisk && kind === "minor" && (
+          <Field label="Risk profile" hint={guardianLink.id ? `Same as the guardian${guardianLink.name ? ` (${guardianLink.name})` : ""}.` : "Link the guardian's client record above — a minor takes the guardian's risk profile."}>
+            {(id, d) => (
+              <div id={id} aria-describedby={d} className="input-base flex w-full items-center bg-secondary/60 text-muted-foreground">
+                {guardianLink.id ? (guardianLink.riskProfile ? humanise(guardianLink.riskProfile) : "Guardian has no risk profile yet") : f.riskProfile ? humanise(f.riskProfile) : "—"}
+              </div>
+            )}
+          </Field>
+        )}
+        {flags.showRisk && kind !== "minor" && (
           <Field label="Risk profile">
             {(id) => (
               <SelectField id={id} value={f.riskProfile} onChange={(e) => set("riskProfile", e.target.value)} className="w-full" placeholder="Select">
@@ -481,7 +570,13 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
             </SelectField>
           )}
         </Field>
-        <Field label="Tax status">{(id) => <input id={id} value={f.taxStatus} onChange={(e) => set("taxStatus", e.target.value)} className={input} />}</Field>
+        <Field label="Tax status">
+          {(id) => (
+            <SelectField id={id} value={f.taxStatus} onChange={(e) => set("taxStatus", e.target.value)} className="w-full" placeholder="Select">
+              <option value="">Select</option>{withCurrent(taxStatusOptions(f.investorCategory), f.taxStatus).map((m) => <option key={m} value={m}>{m}</option>)}
+            </SelectField>
+          )}
+        </Field>
         <Field label="PAN–Aadhaar link">
           {(id) => (
             <SelectField id={id} value={f.panAadhaarLinkStatus} onChange={(e) => set("panAadhaarLinkStatus", e.target.value)} className="w-full" placeholder="Select">
@@ -491,7 +586,6 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
         </Field>
         <Field label="KRA">{(id) => <input id={id} value={f.kraName} onChange={(e) => set("kraName", e.target.value)} className={input} />}</Field>
         <Field label="CKYC number">{(id) => <input id={id} value={f.ckycNumber} onChange={(e) => set("ckycNumber", e.target.value)} className={`${input} font-mono`} />}</Field>
-        <Field label="CKYC expiry">{(id) => <DateField id={id} value={f.ckycExpiryAt} onChange={(e) => set("ckycExpiryAt", e.target.value)} className="w-full" />}</Field>
         <Field label="KYC validated on">{(id) => <DateField id={id} value={f.kycValidatedAt} onChange={(e) => set("kycValidatedAt", e.target.value)} className="w-full" />}</Field>
         <Field label="FATCA status">
           {(id) => (
@@ -500,7 +594,6 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
             </SelectField>
           )}
         </Field>
-        <Field label="FATCA expiry">{(id) => <DateField id={id} value={f.fatcaExpiryAt} onChange={(e) => set("fatcaExpiryAt", e.target.value)} className="w-full" />}</Field>
         <Field label="UCC (BSE)">{(id) => <input id={id} value={f.bseUccCode} onChange={(e) => set("bseUccCode", e.target.value)} className={input} />}</Field>
         <Field label="CAN (NSE)">{(id) => <input id={id} value={f.nseCanCode} onChange={(e) => set("nseCanCode", e.target.value)} className={input} />}</Field>
         <div className="sm:col-span-2">
@@ -535,32 +628,35 @@ export function ClientDetailsForm({ investor, flags }: { investor: Investor; fla
         </FieldSection>
       )}
 
+      {(flags.showAum || flags.showSip || flags.showInflow) && (
       <FieldSection title="Financials">
-        <Field label="Service tier">
-          {(id) => (
-            <SelectField id={id} value={f.serviceTier} onChange={(e) => set("serviceTier", e.target.value)} className="w-full" placeholder="Select">
-              <option value="">Select</option><option value="A">A — Quarterly</option><option value="B">B — Half-yearly</option><option value="C">C — Annual</option>
-            </SelectField>
-          )}
-        </Field>
-        {(flags.showAum || flags.showSip || flags.showInflow) && (
           <div className="sm:col-span-2 grid grid-cols-2 gap-3 lg:grid-cols-4">
             {flags.showAum && <RO label="Current AUM" value={formatINR(Number(investor.aum ?? 0))} />}
             {flags.showSip && <RO label="Monthly SIP" value={formatINR(Number(investor.activeSipAmount ?? 0))} />}
             {flags.showInflow && <RO label="Lifetime inflow" value={formatINR(Number(investor.lifetimeInflow ?? 0))} />}
             {flags.showInflow && <RO label="Lifetime outflow" value={formatINR(Number(investor.lifetimeOutflow ?? 0))} />}
           </div>
-        )}
       </FieldSection>
+      )}
 
       <FieldSection title="Review & lifecycle">
+        {reviewFromFamily ? (
+          <Field label="Review frequency" hint={<>From the family — change it on <Link href={`/dashboard/families/${family!.id}`} className="underline">{family!.name}</Link>.</>}>
+            {(id, d) => (
+              <div id={id} aria-describedby={d} className="input-base flex w-full items-center bg-secondary/60 text-muted-foreground">
+                {REVIEW_LABEL[family!.reviewFrequency!] ?? humanise(family!.reviewFrequency!)}
+              </div>
+            )}
+          </Field>
+        ) : (
         <Field label="Review frequency">
           {(id) => (
-            <SelectField id={id} value={f.reviewFrequency} onChange={(e) => set("reviewFrequency", e.target.value)} className="w-full" placeholder="Auto (by service tier)">
-              <option value="">Auto (by service tier)</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="days_100">Every 100 days</option><option value="half_yearly">Half-yearly</option><option value="annual">Yearly</option>
+            <SelectField id={id} value={f.reviewFrequency} onChange={(e) => set("reviewFrequency", e.target.value)} className="w-full" placeholder="Auto">
+              <option value="">Auto</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="days_100">Every 100 days</option><option value="half_yearly">Half-yearly</option><option value="annual">Yearly</option>
             </SelectField>
           )}
         </Field>
+        )}
         {flags.showStatus && (
           <Field label="Client status">
             {(id) => (

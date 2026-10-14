@@ -39,6 +39,9 @@ export interface ActivityFilters {
   mine?: string; // "1"
   from?: string; // yyyy-mm-dd
   to?: string;
+  direction?: "inbound" | "outbound";
+  status?: string;
+  needsNotes?: string;
 }
 
 export function useActivities(filters: ActivityFilters = {}) {
@@ -50,6 +53,9 @@ export function useActivities(filters: ActivityFilters = {}) {
       mine: filters.mine || undefined,
       from: filters.from || undefined,
       to: filters.to || undefined,
+      direction: filters.direction || undefined,
+      status: filters.status || undefined,
+      needsNotes: filters.needsNotes || undefined,
     }),
   });
 }
@@ -83,7 +89,7 @@ export function useLogActivity() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: Record<string, any>) => queuedPost<{ id: string }>("/api/activities", body, "Activity log"),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["activities"] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["activities"] }); qc.invalidateQueries({ queryKey: ["activity-timeline"] }); },
   });
 }
 

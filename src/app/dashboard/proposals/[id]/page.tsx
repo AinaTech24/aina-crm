@@ -25,6 +25,8 @@ import { Badge } from "@/components/ui/Badge";
 import { ProposalStatusActions } from "@/components/proposals/ProposalStatusActions";
 import { ProposalSendActions } from "@/components/proposals/ProposalSendActions";
 import { ProposalSuitabilityPanel } from "@/components/proposals/ProposalSuitabilityPanel";
+import { draftSuitabilityNote } from "@/lib/proposals/suitability-note";
+import { loadProposalSnapshot } from "@/lib/proposals/snapshot";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
 import { DownloadButton } from "@/components/common/SecureLinkButtons";
 import { ProposalTimeline } from "@/components/proposals/ProposalTimeline";
@@ -89,10 +91,20 @@ export default async function ProposalDetailPage({
       .from(proposals)
       .where(and(eq(proposals.tenantId, p.tenantId), eq(proposals.proposalNumber, p.proposalNumber)))
       .orderBy(asc(proposals.version));
-    return { p, inv, versions };
+    // The suitability note, drafted from this proposal and the client's CONFIRMED risk profile.
+    const snap = await loadProposalSnapshot(tx, p.tenantId, {
+      investorId: p.investorId, familyId: (p as any).familyId ?? null, leadId: p.leadId,
+    });
+    const suggestedNote = draftSuitabilityNote({
+      clientName: String(p.recipientName ?? ""),
+      riskProfile: snap?.risk.status === "Completed" ? snap.risk.category : null,
+      goals: snap?.goals ?? [],
+      items: (p.products ?? []) as any[],
+    });
+    return { p, inv, versions, suggestedNote };
   });
   if (!data) notFound();
-  const { p, inv, versions } = data;
+  const { p, inv, versions, suggestedNote } = data;
   const products = (p.products ?? []) as any[];
   const accepted = Array.isArray(p.acceptedItems) ? new Set(p.acceptedItems as number[]) : null;
   const latest = versions[versions.length - 1];
@@ -255,6 +267,7 @@ export default async function ProposalDetailPage({
               hasPhone={!!phone}
               status={p.status}
               primary={isDraft}
+              suggestedNote={suggestedNote}
             />
             <ProposalStatusActions id={p.id} status={p.status} version={p.version ?? 1} group="decide" />
           </div>
@@ -299,6 +312,7 @@ export default async function ProposalDetailPage({
         proposalId={p.id}
         initialSuitabilityNote={(p as any).suitabilityNote}
         initialOverrideReason={(p as any).suitabilityOverrideReason}
+        suggestedNote={suggestedNote}
         clientRiskProfile={inv?.riskProfile as any}
         schemes={products
           .filter((it: any) => it.kind === "mf")

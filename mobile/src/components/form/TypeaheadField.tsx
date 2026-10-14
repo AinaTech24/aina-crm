@@ -19,7 +19,11 @@ export function TypeaheadField({
   field,
   value,
   onChange,
+  onSelect,
+  displayLabel,
 }: {
+  onSelect?: (row: any) => void;
+  displayLabel?: string;
   field: FieldSpec;
   value: string;
   onChange: (v: string) => void;
@@ -53,6 +57,7 @@ export function TypeaheadField({
 
   const pick = (row: any) => {
     onChange(getValue(row));
+    onSelect?.(row);
     setSelectedLabel(getLabel(row));
     setOpen(false);
     setTerm("");
@@ -64,7 +69,7 @@ export function TypeaheadField({
     setSelectedLabel("");
   };
 
-  const display = value ? selectedLabel || "Selected" : field.placeholder ?? "Search…";
+  const display = value ? displayLabel || selectedLabel || "Selected" : field.placeholder ?? "Search…";
 
   return (
     <View style={{ marginBottom: spacing.lg }}>

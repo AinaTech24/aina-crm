@@ -99,6 +99,14 @@ type CodeRow = {
   status: string; amfi_scheme_code: string | null; confirmed: boolean; status_reason: string | null; reason_code: string | null;
 };
 type NavFacts = { code: string; amc: string | null; name: string | null; plan: string | null; option: string | null; currentNav: boolean };
+/** Row shapes read below (type-only). */
+type NavRow = { scheme_code: string; amc_name: string | null; scheme_name: string | null; plan: string | null; option_name: string | null; current_nav: boolean | null };
+type CodeStatusRow = { rta: string; rta_amc_code: string; rta_scheme_code: string; status: SchemeStatus; status_reason: string | null; amfi_scheme_code: string | null; scheme_name: string | null; amc_name: string | null };
+type CodeKeyRow = { rta: string; rta_amc_code: string; rta_scheme_code: string };
+type CandidateDetailRow = { scheme_code: string; scheme_name: string; amc_name: string; plan: string | null; option_name: string | null; nav: number | null; nav_date: string | null; isins: string[] | null; taken: string[] | null };
+type HistoryRow = { at: string; action: string; actor: string | null; second_actor?: string | null; reason: string | null; detail: unknown };
+type AmcIdentityRow = { id: string; rta: string; rta_amc_code: string; amfi_amc: string | null; role: string | null; basis: string | null; status: string };
+type PlatformMapRow = { id: string; rta: string; rta_amc_code: string; rta_scheme_code: string; amfi_scheme_code: string; basis: string | null; status: string };
 
 /**
  * Everything decideScheme needs about a firm's codes under some registrar
@@ -158,7 +166,7 @@ async function loadDecisionContext(tx: Tx, tenantId: string, amcs: Array<{ rta: 
   if (named.length) {
     for (const r of (await tx.execute(sql`
       SELECT n.scheme_code, n.amc_name, n.scheme_name, n.plan, n.option_name, ${activeSql} AS current_nav
-        FROM scheme_nav n WHERE n.scheme_code IN (${sql.join(named.map((c) => sql`${c}`), sql`, `)})`)).rows as any[]) {
+        FROM scheme_nav n WHERE n.scheme_code IN (${sql.join(named.map((c) => sql`${c}`), sql`, `)})`)).rows as NavRow[]) {
       nav.set(r.scheme_code, { code: r.scheme_code, amc: r.amc_name, name: r.scheme_name, plan: r.plan, option: r.option_name, currentNav: !!r.current_nav });
     }
   }
@@ -389,7 +397,7 @@ export async function loadSchemeResolutions(tx: Tx, tenantId: string, keys: Sche
       FROM scheme_rta_codes c
       LEFT JOIN scheme_nav n ON n.scheme_code = c.amfi_scheme_code
      WHERE c.tenant_id = ${tenantId}::uuid
-       AND (c.rta, c.rta_amc_code, c.rta_scheme_code) IN (${sql.join(uniq.map((k) => sql`(${k.rta}, ${k.amcCode}, ${k.schemeCode})`), sql`, `)})`)).rows as any[];
+       AND (c.rta, c.rta_amc_code, c.rta_scheme_code) IN (${sql.join(uniq.map((k) => sql`(${k.rta}, ${k.amcCode}, ${k.schemeCode})`), sql`, `)})`)).rows as CodeStatusRow[];
   for (const r of rows) {
     out.set(keyOf({ rta: r.rta, amcCode: r.rta_amc_code, schemeCode: r.rta_scheme_code }), {
       status: r.status, reason: r.status_reason ?? "", amfiSchemeCode: isResolved(r.status) ? r.amfi_scheme_code : null,
@@ -486,7 +494,7 @@ export async function confirmSchemeCode(tx: Tx, tenantId: string, codeId: string
   if (!target.currentNav) warnings.push("AMFI's last NAV for this scheme is historical (closed, matured or merged) — its NAV is not current");
   const dup = (await tx.execute(sql`
     SELECT rta, rta_amc_code, rta_scheme_code FROM scheme_rta_codes
-     WHERE tenant_id = ${tenantId}::uuid AND id <> ${codeId}::uuid AND rta = ${c.rta} AND amfi_scheme_code = ${input.amfiSchemeCode} AND status IN ('resolved_isin', 'confirmed')`)).rows as any[];
+     WHERE tenant_id = ${tenantId}::uuid AND id <> ${codeId}::uuid AND rta = ${c.rta} AND amfi_scheme_code = ${input.amfiSchemeCode} AND status IN ('resolved_isin', 'confirmed')`)).rows as CodeKeyRow[];
   if (dup.length) warnings.push(`registrar code ${dup.map((x) => `${x.rta_amc_code}/${x.rta_scheme_code}`).join(", ")} already maps to this AMFI scheme`);
   await tx.execute(sql`
     UPDATE scheme_rta_codes SET amfi_scheme_code = ${input.amfiSchemeCode}, status = ${d.status}, status_reason = ${d.reason}, reason_code = ${d.reasonCode},
@@ -602,7 +610,7 @@ export async function schemeCandidates(tx: Tx, tenantId: string, codeId: string,
            array_remove(ARRAY[n.isin_payout_growth, n.isin_reinvest, CASE WHEN n.isin_payout_growth IS NULL THEN n.isin END], NULL) AS isins,
            (SELECT array_agg(o.rta_amc_code || '/' || o.rta_scheme_code) FROM scheme_rta_codes o
              WHERE o.tenant_id = ${tenantId}::uuid AND o.rta = ${c.rta} AND o.id <> ${codeId}::uuid AND o.amfi_scheme_code = n.scheme_code AND o.status IN ('resolved_isin', 'confirmed')) AS taken
-      FROM scheme_nav n WHERE n.scheme_code IN (${sql.join(codes.map((x) => sql`${x}`), sql`, `)})`)).rows as any[];
+      FROM scheme_nav n WHERE n.scheme_code IN (${sql.join(codes.map((x) => sql`${x}`), sql`, `)})`)).rows as CandidateDetailRow[];
   const byCode = new Map(details.map((d) => [d.scheme_code, d]));
   const candidates = codes.flatMap((code) => {
     const d = byCode.get(code);
@@ -631,15 +639,15 @@ export async function schemeCandidates(tx: Tx, tenantId: string, codeId: string,
 async function decisionHistory(tx: Tx, tenantId: string, c: CodeRow, identity: AmcIdentity | undefined): Promise<DecisionHistoryEntry[]> {
   const firm = (await tx.execute(sql`
     SELECT at::text AS at, action, actor_user_id::text AS actor, reason, after AS detail FROM audit_log
-     WHERE tenant_id = ${tenantId}::uuid AND entity_type = 'scheme_rta_code' AND entity_id = ${c.id}::uuid ORDER BY at`)).rows as any[];
+     WHERE tenant_id = ${tenantId}::uuid AND entity_type = 'scheme_rta_code' AND entity_id = ${c.id}::uuid ORDER BY at`)).rows as HistoryRow[];
   const scheme = (await tx.execute(sql`
     SELECT e.at::text AS at, e.action, e.actor::text AS actor, e.second_actor::text AS second_actor, e.reason, e.after AS detail
       FROM scheme_registrar_map_events e JOIN scheme_registrar_map m ON m.id = e.map_id
-     WHERE m.rta = ${c.rta} AND m.rta_amc_code = ${c.rta_amc_code} AND m.rta_scheme_code = ${c.rta_scheme_code} ORDER BY e.at`)).rows as any[];
+     WHERE m.rta = ${c.rta} AND m.rta_amc_code = ${c.rta_amc_code} AND m.rta_scheme_code = ${c.rta_scheme_code} ORDER BY e.at`)).rows as HistoryRow[];
   const amc = (await tx.execute(sql`
     SELECT e.at::text AS at, e.action, e.actor::text AS actor, e.second_actor::text AS second_actor, e.reason, e.after AS detail
       FROM registrar_amc_identity_events e JOIN registrar_amc_identity i ON i.id = e.identity_id
-     WHERE i.rta = ${c.rta} AND i.rta_amc_code = ${c.rta_amc_code} ORDER BY e.at`)).rows as any[];
+     WHERE i.rta = ${c.rta} AND i.rta_amc_code = ${c.rta_amc_code} ORDER BY e.at`)).rows as HistoryRow[];
   void identity;
   return [
     ...firm.map((r) => ({ at: r.at, source: "firm" as const, action: r.action, actor: r.actor, reason: r.reason, detail: r.detail })),
@@ -683,7 +691,7 @@ export async function approveAmcIdentity(systemTx: Tx, input: { rta: "cams" | "k
 /** One operator may revoke an AMC identity (stopping is never two-person). Every firm holding the registrar AMC is re-decided. */
 export async function revokeAmcIdentity(systemTx: Tx, input: { id: string; by: string; reason: string }) {
   if ((input.reason ?? "").trim().length < 10) throw new SchemeMappingError("say why (at least 10 characters)");
-  const before = (await systemTx.execute(sql`SELECT * FROM registrar_amc_identity WHERE id = ${input.id}::uuid FOR UPDATE`)).rows[0] as any;
+  const before = (await systemTx.execute(sql`SELECT * FROM registrar_amc_identity WHERE id = ${input.id}::uuid FOR UPDATE`)).rows[0] as AmcIdentityRow | undefined;
   if (!before) throw Object.assign(new SchemeMappingError("AMC identity not found"), { status: 404 });
   if (before.status === "revoked") return { unchanged: true };
   await systemTx.execute(sql`
@@ -716,7 +724,7 @@ export async function approvePlatformMapping(systemTx: Tx, input: { rta: "cams" 
   if (wrongAmc) throw new SchemeMappingError(`not approved: ${wrongAmc} — record a documented succession first if the AMC really changed`);
   const live = (await systemTx.execute(sql`
     SELECT id, amfi_scheme_code, basis, status FROM scheme_registrar_map
-     WHERE rta = ${input.rta} AND rta_amc_code = ${input.amcCode} AND rta_scheme_code = ${input.schemeCode} AND status <> 'revoked' FOR UPDATE`)).rows[0] as any;
+     WHERE rta = ${input.rta} AND rta_amc_code = ${input.amcCode} AND rta_scheme_code = ${input.schemeCode} AND status <> 'revoked' FOR UPDATE`)).rows[0] as Pick<PlatformMapRow, "id" | "amfi_scheme_code" | "basis" | "status"> | undefined;
   if (live && live.amfi_scheme_code !== input.amfiSchemeCode) throw new SchemeMappingError(`a live mapping says AMFI ${live.amfi_scheme_code} — revoke it first`);
   if (live) return { id: live.id as string, unchanged: true, firmsRedecided: 0, tenantIds: [] as string[], key: null };
   const row = (await systemTx.execute(sql`
@@ -733,7 +741,7 @@ export async function approvePlatformMapping(systemTx: Tx, input: { rta: "cams" 
 /** One operator may revoke (stopping is never two-person). Every firm holding the code is re-decided — its transactions are held again where nothing else resolves it. */
 export async function revokePlatformMapping(systemTx: Tx, input: { id: string; by: string; reason: string }) {
   if ((input.reason ?? "").trim().length < 10) throw new SchemeMappingError("say why (at least 10 characters)");
-  const before = (await systemTx.execute(sql`SELECT * FROM scheme_registrar_map WHERE id = ${input.id}::uuid FOR UPDATE`)).rows[0] as any;
+  const before = (await systemTx.execute(sql`SELECT * FROM scheme_registrar_map WHERE id = ${input.id}::uuid FOR UPDATE`)).rows[0] as PlatformMapRow | undefined;
   if (!before) throw Object.assign(new SchemeMappingError("mapping not found"), { status: 404 });
   if (before.status === "revoked") return { unchanged: true };
   await systemTx.execute(sql`

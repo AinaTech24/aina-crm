@@ -6,6 +6,11 @@
  * the Karta and coparceners, an entity for its incorporation, signatories and
  * beneficial owners, an NRI for overseas details. Personal fields, joint
  * holders and nominees are for individuals only.
+ *
+ * Added into a family, a member takes the head's address and the family's
+ * review frequency (lib/families/shared-details.ts), so neither is asked. A
+ * minor's risk profile is the guardian's (migration 0234), so it is not asked
+ * either; the guardian's client record is linked instead.
  */
 
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
@@ -16,11 +21,13 @@ import { ChevronLeft, HeartHandshake } from "lucide-react";
 import { RmSelector } from "@/components/common/RmSelector";
 import { SelectField as UiSelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
-import { ClientTypeSections } from "@/components/investors/ClientTypeSections";
+import { ClientTypeSections, type GuardianLink } from "@/components/investors/ClientTypeSections";
 import {
   TypeDetailsSchema, canNominate, cleanTypeDetails, clientTypeDef, clientTypeOptions, hasAdultDetails,
   hasPersonalDetails, majorityDate, singleHoldingOnly, CLIENT_TYPE_KEYS, type ClientTypeDetails,
+  HOUSEHOLD_TYPES, MARITAL_STATUSES, defaultHouseholdType, defaultTaxStatus, taxStatusOptions,
 } from "@/lib/investors/client-types";
+import { usePincodeAutofill } from "@/lib/pincode/use-pincode";
 import type { Nominee } from "@/lib/investors/nominee";
 import { ReferralsField } from "@/components/investors/ReferralsField";
 import type { Referral } from "@/lib/investors/referral";
@@ -66,13 +73,13 @@ function NewInvestorPageInner() {
     segmentTag: "Retail",
     clientCategory: "",
     riskProfile: "",
-    householdType: "", // Family or Individual
+    householdType: defaultHouseholdType(startType, !!familyId),
     familyOwnerName: "",
     referralClientName: "",
     modeOfHolding: "",
     bseUccCode: "", // UCC No
     uccCodes: [] as string[],
-    taxStatus: "",
+    taxStatus: defaultTaxStatus(startType),
     residencyStatus: "",
     kycStatus: "pending",
     // Second / joint holder
@@ -95,6 +102,30 @@ function NewInvestorPageInner() {
   });
   const [nominees, setNominees] = useState<Nominee[]>([]);
   const [typeDetails, setTypeDetails] = useState<ClientTypeDetails>({});
+  const [guardianLink, setGuardianLink] = useState<GuardianLink>({ id: null, name: null, riskProfile: null });
+  // The family this client joins: what it already owns is not asked again.
+  const [family, setFamily] = useState<{ name: string; headName: string | null; headAddress: boolean; reviewFrequency: string | null; becomesHead: boolean } | null>(null);
+  useEffect(() => {
+    if (!familyId) return;
+    let live = true;
+    (async () => {
+      const fam = await fetch(`/api/families/${familyId}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      if (!fam || !live) return;
+      const becomesHead = !fam.primaryInvestorId || ["self", "head", "primary"].includes(familyRole);
+      let headName: string | null = null;
+      let headAddress = false;
+      if (fam.primaryInvestorId && !becomesHead) {
+        const h = await fetch(`/api/investors/${fam.primaryInvestorId}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+        headName = h?.investor?.name ?? null;
+        const a = h?.investor?.address;
+        headAddress = !!a && typeof a === "object" && Object.values(a).some((v) => String(v ?? "").trim());
+      }
+      if (live) setFamily({ name: fam.familyName ?? fam.headName ?? "the family", headName, headAddress, reviewFrequency: fam.reviewFrequency ?? null, becomesHead });
+    })();
+    return () => { live = false; };
+  }, [familyId, familyRole]);
+  const addressFromFamily = !!family && !family.becomesHead && family.headAddress;
+  const reviewFromFamily = !!family?.reviewFrequency;
   const kind = clientTypeDef(form.investorCategory).kind;
   const personal = hasPersonalDetails(form.investorCategory);
   const adult = hasAdultDetails(form.investorCategory);
@@ -108,6 +139,16 @@ function NewInvestorPageInner() {
   function set(k: string, v: string) {
     setForm((s) => ({ ...s, [k]: v }));
   }
+  // A new client type brings its own tax status and household type.
+  function setType(type: string) {
+    setForm((s) => ({
+      ...s,
+      investorCategory: type,
+      taxStatus: taxStatusOptions(type).includes(s.taxStatus) ? s.taxStatus : defaultTaxStatus(type),
+      householdType: defaultHouseholdType(type, !!familyId),
+    }));
+  }
+  usePincodeAutofill(form.pincode, (p) => setForm((s) => ({ ...s, city: p.city, state: p.state, country: s.country || "India" })));
   const u = (v: string) => v.trim() || undefined;
 
   // Next meeting date = last meeting date + review frequency (auto-derived).
@@ -170,7 +211,8 @@ function NewInvestorPageInner() {
           phone: u(form.phone),
           mobileRelation: u(form.mobileRelation),
           whatsappPhone: form.whatsappPhone || form.phone || undefined,
-          address: {
+          // A family member takes the head's address when mapped in.
+          address: addressFromFamily ? undefined : {
             line1: u(form.street),
             city: u(form.city),
             state: u(form.state),
@@ -181,7 +223,9 @@ function NewInvestorPageInner() {
           typeDetails: details,
           segmentTag: form.segmentTag,
           clientCategory: form.clientCategory || undefined,
-          riskProfile: form.riskProfile || undefined,
+          // A minor's risk profile is the guardian's (migration 0234).
+          riskProfile: kind === "minor" ? undefined : form.riskProfile || undefined,
+          guardianInvestorId: kind === "minor" ? guardianLink.id ?? undefined : undefined,
           householdType: u(form.householdType),
           familyOwnerName: u(form.familyOwnerName),
           referralClientName: u(form.referralClientName),
@@ -224,7 +268,7 @@ function NewInvestorPageInner() {
           anniversaryDate: adult ? u(form.anniversaryDate) : undefined,
           lastReviewAt: u(form.lastReviewAt),
           nextReviewAt: u(form.nextReviewAt),
-          reviewFrequency: form.reviewFrequency || undefined,
+          reviewFrequency: reviewFromFamily ? undefined : form.reviewFrequency || undefined,
           notes: u(form.notes),
           customFields: Object.keys(customFields).length ? customFields : undefined,
         }),
@@ -271,7 +315,7 @@ function NewInvestorPageInner() {
       <form onSubmit={submit} className="space-y-4">
         {/* Identity & personal */}
         <Section title={personal ? "Identity & personal" : "Identity"}>
-          <SelectField label="Client type" value={form.investorCategory} onChange={(v) => set("investorCategory", v)} options={clientTypeOptions()} />
+          <SelectField label="Client type" value={form.investorCategory} onChange={setType} options={clientTypeOptions()} />
           <Field label={kind === "huf" ? "HUF name" : kind === "entity" ? "Entity name" : kind === "minor" ? "Minor's full name" : "Full name"} value={form.name} onChange={(v) => set("name", v)} required />
           <Field label={kind === "minor" ? "Minor's PAN (if any)" : "PAN card no"} value={form.pan} onChange={(v) => set("pan", v.toUpperCase())} required={kind !== "minor"} placeholder="ABCDE1234F" />
           {personal && (<>
@@ -285,7 +329,7 @@ function NewInvestorPageInner() {
           <Field label="Birth place" value={form.birthPlace} onChange={(v) => set("birthPlace", v)} />
           <Field label="Mother's name" value={form.motherName} onChange={(v) => set("motherName", v)} />
           {adult && (<>
-          <SelectField label="Marital status" value={form.maritalStatus} onChange={(v) => set("maritalStatus", v)} options={["", "Single", "Married", "Divorced", "Widowed"]} />
+          <SelectField label="Marital status" value={form.maritalStatus} onChange={(v) => set("maritalStatus", v)} options={["", ...MARITAL_STATUSES]} />
           <Field label="Profession" value={form.occupation} onChange={(v) => set("occupation", v)} />
           <Field label="Company name" value={form.employerName} onChange={(v) => set("employerName", v)} />
           </>)}
@@ -300,6 +344,8 @@ function NewInvestorPageInner() {
           dob={form.dob}
           nominees={nominees}
           onNomineesChange={setNominees}
+          guardianLink={guardianLink}
+          onGuardianLinkChange={setGuardianLink}
         />
 
         {/* Contact */}
@@ -313,18 +359,24 @@ function NewInvestorPageInner() {
 
         {/* Mailing address */}
         <Section title="Mailing address" cols={1}>
+          {addressFromFamily ? (
+            <p className="text-sm text-muted-foreground">
+              Same as the family head{family?.headName ? ` (${family.headName})` : ""} — filled in when the client joins the family.
+            </p>
+          ) : (<>
           <Field label="Mailing street" value={form.street} onChange={(v) => set("street", v)} placeholder="House / building, street, area" />
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <Field label="Pincode" value={form.pincode} onChange={(v) => set("pincode", v.replace(/\D/g, "").slice(0, 6))} placeholder="City and state fill in" />
             <Field label="City" value={form.city} onChange={(v) => set("city", v)} />
             <Field label="State" value={form.state} onChange={(v) => set("state", v)} />
-            <Field label="Zip" value={form.pincode} onChange={(v) => set("pincode", v)} />
             <Field label="Country" value={form.country} onChange={(v) => set("country", v)} />
           </div>
+          </>)}
         </Section>
 
         {/* Classification */}
         <Section title="Classification & compliance">
-          <SelectField label="Family or individual" value={form.householdType} onChange={(v) => set("householdType", v)} options={["", "Individual", "Family", "Family head", "Family member"]} />
+          <SelectField label="Household type" value={form.householdType} onChange={(v) => set("householdType", v)} options={["", ...HOUSEHOLD_TYPES]} />
           <Field label="Family owner" value={form.familyOwnerName} onChange={(v) => set("familyOwnerName", v)} placeholder="head of family (if part of one)" />
           <SelectField label="Segment" value={form.segmentTag} onChange={(v) => set("segmentTag", v)} options={["HNI", "Affluent", "Retail", "NRI", "Corporate"]} />
           <SelectField label="Client category" value={form.clientCategory} onChange={(v) => set("clientCategory", v)} options={[{ value: "", label: "Select" }, { value: "A", label: "A" }, { value: "B", label: "B" }, { value: "C", label: "C" }, { value: "D", label: "D" }]} />
@@ -338,10 +390,19 @@ function NewInvestorPageInner() {
           <div className="sm:col-span-2">
             <UccCodesField value={form.uccCodes} onChange={(v) => setForm((p) => ({ ...p, uccCodes: v }))} label="Other UCC codes" />
           </div>
-          <Field label="Tax status" value={form.taxStatus} onChange={(v) => set("taxStatus", v)} placeholder="e.g. Resident Individual" />
+          <SelectField label="Tax status" value={form.taxStatus} onChange={(v) => set("taxStatus", v)} options={["", ...taxStatusOptions(form.investorCategory)]} />
           <SelectField label="Residential status" value={form.residencyStatus} onChange={(v) => set("residencyStatus", v)} options={[{ value: "", label: "Select" }, { value: "indian_resident", label: "Indian resident" }, { value: "nri", label: "NRI" }, { value: "oci", label: "OCI" }, { value: "pio", label: "PIO" }, { value: "foreign_national", label: "Foreign national" }]} />
           <SelectField label="KYC status" value={form.kycStatus} onChange={(v) => set("kycStatus", v)} options={[{ value: "pending", label: "Pending" }, { value: "registered", label: "Registered" }, { value: "verified", label: "Verified" }, { value: "hold", label: "Hold" }, { value: "rejected", label: "Rejected" }, { value: "expired", label: "Expired" }, { value: "re_kyc_required", label: "Re-KYC required" }]} />
+          {kind === "minor" ? (
+            <div className="block">
+              <div className="text-xs font-medium mb-1">Risk profile</div>
+              <div className="input-base flex items-center bg-secondary/60 text-muted-foreground">
+                {guardianLink.id ? (guardianLink.riskProfile ? `Same as guardian — ${guardianLink.riskProfile.replace(/_/g, " ")}` : "Same as guardian (none yet)") : "Same as the guardian once linked"}
+              </div>
+            </div>
+          ) : (
           <SelectField label="Risk profile" value={form.riskProfile} onChange={(v) => set("riskProfile", v)} options={[{ value: "", label: "Select" }, { value: "conservative", label: "Conservative" }, { value: "moderate", label: "Moderate" }, { value: "aggressive", label: "Aggressive" }, { value: "very_aggressive", label: "Very aggressive" }]} />
+          )}
         </Section>
 
         {/* Second / joint holder — individuals only */}
@@ -375,7 +436,16 @@ function NewInvestorPageInner() {
           {adult && <Field label="Anniversary date" type="date" value={form.anniversaryDate} onChange={(v) => set("anniversaryDate", v)} />}
           <Field label="Last meeting date" type="date" value={form.lastReviewAt} onChange={(v) => set("lastReviewAt", v)} />
           <Field label="Next meeting date" type="date" future value={form.nextReviewAt} onChange={(v) => set("nextReviewAt", v)} />
+          {reviewFromFamily ? (
+            <div className="block">
+              <div className="text-xs font-medium mb-1">Review frequency</div>
+              <div className="input-base flex items-center bg-secondary/60 text-muted-foreground">
+                {`From the family — ${({ monthly: "Monthly", quarterly: "Quarterly", half_yearly: "Half-yearly", annual: "Annual" } as Record<string, string>)[family!.reviewFrequency!] ?? family!.reviewFrequency}`}
+              </div>
+            </div>
+          ) : (
           <SelectField label="Review frequency" value={form.reviewFrequency} onChange={(v) => set("reviewFrequency", v)} options={[{ value: "", label: "Select" }, { value: "monthly", label: "Monthly" }, { value: "quarterly", label: "Quarterly" }, { value: "half_yearly", label: "Half-yearly" }, { value: "annual", label: "Annual" }]} />
+          )}
         </Section>
 
         {/* Notes */}

@@ -8,7 +8,9 @@ import { loadTenantLicense } from "@/lib/auth/license";
 import { isFieldAllowed } from "@/lib/auth/field-gate";
 import { loadViewableInvestor } from "@/lib/investors/access";
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
-import { ClientDetailsForm } from "@/components/investors/ClientDetailsForm";
+import { ClientDetailsForm, type ClientFamilyContext } from "@/components/investors/ClientDetailsForm";
+import { sql } from "drizzle-orm";
+import { familySharedDetails } from "@/lib/families/shared-details";
 
 export const dynamic = "force-dynamic";
 
@@ -26,9 +28,35 @@ export default async function EditClientDetailsPage({ params }: { params: Promis
   const editsAll = can(session.roles, "investor.edit.all", session.permissions);
   if (!editsAll && !can(session.roles, "investor.edit.assigned", session.permissions)) redirect(clientHref);
 
-  const inv = await withTenant(session.tenantId, (tx) => loadViewableInvestor(tx, session, id),
-    { userId: session.userId, branchId: session.branchId ?? undefined, roles: session.roles });
-  if (!inv) notFound();
+  // The client, their family (what the family owns is shown, not asked:
+  // lib/families/shared-details.ts) and, for a minor, the guardian's record.
+  const loaded = await withTenant(session.tenantId, async (tx) => {
+    const inv = await loadViewableInvestor(tx, session, id);
+    if (!inv) return null;
+    let family: ClientFamilyContext | null = null;
+    if ((inv as any).familyId) {
+      const shared = await familySharedDetails(tx, (inv as any).familyId);
+      const f = (await tx.execute(sql`
+        SELECT f.id, COALESCE(f.family_name, f.head_name) AS name, h.name AS head_name
+          FROM families f LEFT JOIN investors h ON h.id = f.primary_investor_id AND h.tenant_id = f.tenant_id
+         WHERE f.id = ${(inv as any).familyId}::uuid AND f.tenant_id = ${session.tenantId}::uuid LIMIT 1`)).rows[0] as { id: string; name: string; head_name: string | null } | undefined;
+      if (f) {
+        family = {
+          id: f.id, name: f.name, headName: f.head_name, isHead: shared.headId === id,
+          headHasAddress: !!shared.address, reviewFrequency: shared.reviewFrequency,
+        };
+      }
+    }
+    let guardian: { id: string; name: string; riskProfile: string | null } | null = null;
+    if ((inv as any).guardianInvestorId) {
+      const g = (await tx.execute(sql`
+        SELECT id, name, risk_profile FROM investors WHERE id = ${(inv as any).guardianInvestorId}::uuid AND tenant_id = ${session.tenantId}::uuid LIMIT 1`)).rows[0] as { id: string; name: string; risk_profile: string | null } | undefined;
+      if (g) guardian = { id: g.id, name: g.name, riskProfile: g.risk_profile };
+    }
+    return { inv, family, guardian };
+  }, { userId: session.userId, branchId: session.branchId ?? undefined, roles: session.roles });
+  if (!loaded) notFound();
+  const { inv, family, guardian } = loaded;
   if (!editsAll) {
     const branchScoped = !session.roles.includes("owner") && session.roles.includes("branch_head") && !!session.branchId;
     if (branchScoped ? inv.branchId !== session.branchId : inv.rmId !== session.userId) redirect(clientHref);
@@ -61,7 +89,7 @@ export default async function EditClientDetailsPage({ params }: { params: Promis
         subtitle={inv.name}
         breadcrumb={[{ label: "Clients", href: "/dashboard/investors" }, { label: inv.name, href: clientHref }, { label: "Edit" }]}
       />
-      <ClientDetailsForm investor={JSON.parse(JSON.stringify(inv))} flags={flags} />
+      <ClientDetailsForm investor={JSON.parse(JSON.stringify(inv))} flags={flags} family={family} guardian={guardian} />
     </div>
   );
 }

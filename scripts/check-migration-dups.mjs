@@ -49,6 +49,13 @@ const BASELINE = new Set([
   // investors, the other creates the rta_staging_* tables: their fresh-DB order
   // (client_type_details first) is immaterial.
   "0233",
+  // 0234_minor_risk_from_guardian (main, 2026-10-13, deployed) + 0234_folio_holders
+  // (the RTA release, locked). Same reasoning as 0233: neither can be renamed.
+  // One adds triggers and an index on investors, the other creates
+  // folio_holders and two nullable investors columns: independent, so the
+  // fresh order (folio_holders first) and the upgrade order (minor_risk first,
+  // as production applied it) build the same schema — verified.
+  "0234",
 ]);
 
 const files = fs.readdirSync(DIR).filter((f) => /^\d+_.*\.sql$/.test(f));

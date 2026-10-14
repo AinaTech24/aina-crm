@@ -20,7 +20,7 @@ import { Text } from "../../../src/components/ui/Text";
 import { StatusPill } from "../../../src/components/ui/StatusPill";
 import { Skeleton } from "../../../src/components/ui/Skeleton";
 import { useMe } from "../../../src/api/me";
-import { queuedPatch } from "../../../src/lib/offlineQueue";
+import { queuedPatch, useOfflineQueue } from "../../../src/lib/offlineQueue";
 import { useDashboardHome, useMyDay, useMyPerformance, isoDay, type Kpi, type DayMeeting, type DayFollowup, type DayTask, type Touchpoint, type AgendaDay, type MyPerformance, type PerfKpi } from "../../../src/features/dashboard/api";
 import { useCommandCenter, toneColor, featherIcon, toMobileRoute, type CommandGroup, type CommandItem } from "../../../src/features/command-center/api";
 import { useRecentlyViewed } from "../../../src/state/recentlyViewed";
@@ -72,10 +72,12 @@ export default function Home() {
   const dash = useDashboardHome();
   const [today, setToday] = React.useState(() => isoDay(new Date()));
   const [selected, setSelected] = React.useState(today);
+  const todayRef = React.useRef(today);
   React.useEffect(() => {
     const refreshDay = () => {
       const next = isoDay(new Date());
-      setToday(previous => { if (previous !== next) setSelected(value => value === previous ? next : value); return next; });
+      const previous = todayRef.current;
+      if (previous !== next) { todayRef.current = next; setToday(next); setSelected(value => value === previous ? next : value); }
     };
     const sub = AppState.addEventListener("change", state => { if (state === "active") refreshDay(); });
     const timer = setInterval(refreshDay, 30_000);
@@ -135,20 +137,7 @@ export default function Home() {
         )}
       </Animated.View>
 
-      {/* Clock-in nudge — only while the day is still unstarted, so it disappears
-          the moment it stops being useful rather than nagging all day. */}
-      {attendance.data && !todayAttendance?.clock_in_at ? (
-        <Pressable style={styles.clockBanner} onPress={() => router.push("/m/attendance" as any)}>
-          <View style={styles.clockIcon}><Feather name="log-in" size={18} color={toneColors("success").fg} /></View>
-          <View style={{ flex: 1 }}>
-            <Text variant="body" style={{ fontWeight: fontWeight.semibold }}>You haven't clocked in</Text>
-            <Text variant="caption" tone="muted">Start your day</Text>
-          </View>
-          <Feather name="chevron-right" size={18} color={palette.faint} />
-        </Pressable>
-      ) : null}
-
-      <Card style={{ marginTop: spacing.lg }}>
+      {manager || operations ? <Card style={{ marginTop: spacing.lg }}>
         <Text variant="subtitle">{manager ? (roles.includes("owner") ? "Firm overview" : "Your branch") : operations ? "Operations desk" : "Your day, in focus"}</Text>
         <Text tone="muted" style={{ marginTop: spacing.xs }}>{manager ? "Review achievement, team workload and business." : operations ? "Enter business and resolve pending client work." : "Start with overdue work, then your next meeting or follow-up."}</Text>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.md, marginTop: spacing.sm }}>
@@ -158,7 +147,7 @@ export default function Home() {
               <Pressable key={action.label} accessibilityRole="button" style={{ minHeight: 48, justifyContent: "center" }} onPress={() => router.push(action.route as any)}><Text tone="brand">{action.label}</Text></Pressable>
             ))}
         </View>
-      </Card>
+      </Card> : null}
       {manager ? <>
       {/* Hero — book at a glance */}
       {dash.isLoading ? (
@@ -196,22 +185,6 @@ export default function Home() {
             </Pressable>
           ))}
         </View>
-      ) : null}
-
-      {/* NEEDS YOU NOW — bounced SIPs, rejected mandates, redemption risk, SLA
-          breaches. Money leaves the book when these wait, so they sit above the
-          day's plan. Each row calls/WhatsApps the client without a detour. */}
-      {urgent.length > 0 ? (
-        <>
-          <View style={styles.stripHead}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
-              <Feather name="alert-triangle" size={13} color={toneColors("danger").fg} />
-              <Text variant="caption" style={{ color: toneColors("danger").fg, letterSpacing: 0.6, fontWeight: fontWeight.semibold }}>NEEDS YOU NOW</Text>
-            </View>
-            {atRisk > 0 ? <Text variant="caption" tone="muted">{inr(atRisk)} at risk</Text> : null}
-          </View>
-          {urgent.map((g) => <UrgentGroup key={g.key} g={g} router={router} />)}
-        </>
       ) : null}
 
       {/* WEEK STRIP — what's scheduled over the next 14 days; tap a day for its plan */}
@@ -265,6 +238,35 @@ export default function Home() {
           ) : null}
         </>
       )}
+
+      {/* NEEDS YOU NOW — bounced SIPs, rejected mandates, redemption risk, SLA
+          breaches. Money leaves the book when these wait, so they sit above the
+          day's plan. Each row calls/WhatsApps the client without a detour. */}
+      {urgent.length > 0 ? (
+        <>
+          <View style={styles.stripHead}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+              <Feather name="alert-triangle" size={13} color={toneColors("danger").fg} />
+              <Text variant="caption" style={{ color: toneColors("danger").fg, letterSpacing: 0.6, fontWeight: fontWeight.semibold }}>NEEDS YOU NOW</Text>
+            </View>
+            {atRisk > 0 ? <Text variant="caption" tone="muted">{inr(atRisk)} at risk</Text> : null}
+          </View>
+          {urgent.map((g) => <UrgentGroup key={g.key} g={g} router={router} />)}
+        </>
+      ) : null}
+
+      {/* Clock-in nudge — only while the day is still unstarted, so it disappears
+          the moment it stops being useful rather than nagging all day. */}
+      {attendance.data && !todayAttendance?.clock_in_at ? (
+        <Pressable style={styles.clockBanner} onPress={() => router.push("/m/attendance" as any)}>
+          <View style={styles.clockIcon}><Feather name="log-in" size={18} color={toneColors("success").fg} /></View>
+          <View style={{ flex: 1 }}>
+            <Text variant="body" style={{ fontWeight: fontWeight.semibold }}>You haven't clocked in</Text>
+            <Text variant="caption" tone="muted">Start your day</Text>
+          </View>
+          <Feather name="chevron-right" size={18} color={palette.faint} />
+        </Pressable>
+      ) : null}
 
       {!manager ? <>
       {/* Hero — book at a glance */}
@@ -497,13 +499,14 @@ function FollowupRow({ f, onOpen }: { f: DayFollowup; onOpen: () => void }) {
 }
 
 function TaskRow({ t, busy, onDone, onOpen }: { t: DayTask; busy: boolean; onDone: () => void; onOpen: () => void }) {
+  const queued = useOfflineQueue(s => s.items.find(w => w.path === `/api/tasks/${t.id}` && (w.body as any)?.status === "completed"));
   return (
     <View style={styles.planRow}>
-      <Pressable onPress={onDone} disabled={busy} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Mark "${t.title ?? "task"}" done`}><Feather name="circle" size={22} color={palette.faint} /></Pressable>
+      <Pressable onPress={onDone} disabled={busy || !!queued} style={{ minWidth: 48, minHeight: 48, justifyContent: "center", alignItems: "center" }} accessibilityRole="button" accessibilityLabel={`Mark "${t.title ?? "task"}" done`}><Feather name="circle" size={22} color={palette.faint} /></Pressable>
       <Pressable style={{ flex: 1 }} onPress={onOpen}>
         <Text variant="body" numberOfLines={1}>{t.title ?? "Task"}</Text>
         <Text variant="caption" numberOfLines={1} style={t.overdue ? { color: toneColors("danger").fg } : undefined} tone={t.overdue ? undefined : "muted"}>
-          {t.overdue ? "Overdue" : timeLabel(t.due_at) || "Due"}
+          {queued ? (queued.status === "failed" ? "Completion needs review in Sync" : "Completion saved on phone · Sync pending") : t.overdue ? "Overdue" : timeLabel(t.due_at) || "Due"}
         </Text>
       </Pressable>
       {t.priority ? <StatusPill label={titleCase(t.priority)} tone={PRIORITY_TONE[t.priority] ?? "neutral"} size="sm" dot={false} /> : null}

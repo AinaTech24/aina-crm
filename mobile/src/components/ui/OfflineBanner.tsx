@@ -28,15 +28,15 @@ export function OfflineBanner() {
     : pending ? `${pending} saved on this phone · ${online ? "Sync pending" : "Offline"}`
     : "Offline · Some actions need a connection";
   return (
-    <Animated.View entering={FadeInDown.duration(200)} style={[styles.bar, { paddingTop: insets.top + 6 }]}>
+    <Animated.View entering={FadeInDown.duration(200)} style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 6) }]}>
       <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={() => router.push("/sync" as any)} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 48, flex: 1, justifyContent: "center" }}>
       <Feather name="wifi-off" size={13} color={palette.white} />
-      <Text style={{ color: palette.white, fontWeight: fontWeight.medium, fontSize: 12 }}>{label}</Text>
+      <Text style={{ color: palette.white, fontWeight: fontWeight.medium, fontSize: 13, flexShrink: 1 }}>{label}</Text>
       </Pressable>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  bar: { position: "absolute", top: 0, left: 0, right: 0, zIndex: 100, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, paddingBottom: 6, backgroundColor: palette.danger },
+  bar: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, paddingBottom: 6, backgroundColor: palette.ink },
 });

@@ -259,3 +259,53 @@ export function clientTypeFromTaxStatus(text: string | null | undefined): Client
   if (s.includes("nri") || s.includes("non resident") || s.includes("non-resident")) return "nri";
   return "individual";
 }
+
+/* ─────────────────────────── the master's dropdowns ─────────────────────────── */
+
+/** Tax status as the registrars and exchanges word it, by client type. */
+const TAX_STATUS_BY_TYPE: Record<ClientType, string[]> = {
+  individual: ["Resident Individual"],
+  nri: ["NRI – Repatriable (NRE)", "NRI – Non-repatriable (NRO)"],
+  minor: ["On behalf of minor", "NRI minor"],
+  sole_proprietor: ["Sole proprietorship"],
+  huf: ["HUF"],
+  company: ["Company", "Body corporate"],
+  corporate: ["Company", "Body corporate"],
+  llp: ["LLP"],
+  partnership: ["Partnership firm"],
+  trust: ["Trust"],
+  aop_boi: ["Society", "AOP / BOI"],
+  other: [],
+};
+export const ALL_TAX_STATUSES = [...new Set(Object.values(TAX_STATUS_BY_TYPE).flat())];
+
+/** The tax statuses that fit the type (all of them for "Other"). */
+export function taxStatusOptions(type: string | null | undefined): string[] {
+  const own = TAX_STATUS_BY_TYPE[clientTypeDef(type).key] ?? [];
+  return own.length ? own : ALL_TAX_STATUSES;
+}
+
+/** The tax status a new record of this type starts with. */
+export function defaultTaxStatus(type: string | null | undefined): string {
+  return TAX_STATUS_BY_TYPE[clientTypeDef(type).key]?.[0] ?? "";
+}
+
+export const MARITAL_STATUSES = ["Single", "Married", "Divorced", "Widowed"];
+
+/** The firm's income bands (the same labels as the income_range master). */
+export const INCOME_RANGES = ["Below ₹5L", "₹5L – ₹15L", "₹15L – ₹50L", "₹50L – ₹1Cr", "₹1Cr – ₹5Cr", "Above ₹5Cr"];
+
+export const HOUSEHOLD_TYPES = ["Individual", "Family", "Company", "HUF"];
+
+/** Household type from the client type and whether the client is in a family. */
+export function defaultHouseholdType(type: string | null | undefined, inFamily: boolean): string {
+  const kind = clientTypeDef(type).kind;
+  if (kind === "huf") return "HUF";
+  if (kind === "entity") return "Company";
+  return inFamily ? "Family" : "Individual";
+}
+
+/** A dropdown's options, keeping a value already on file that the list lacks. */
+export function withCurrent(options: string[], current: string | null | undefined): string[] {
+  return current && !options.includes(current) ? [...options, current] : options;
+}

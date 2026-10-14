@@ -6,6 +6,9 @@
  */
 
 import React from "react";
+import { useRouter } from "expo-router";
+import { Feather } from "@expo/vector-icons";
+import { startCall } from "../../features/activities/callAndLog";
 import { View, Pressable, StyleSheet } from "react-native";
 import { Card } from "../ui/Card";
 import { Text } from "../ui/Text";
@@ -21,12 +24,13 @@ const SEGMENT_TONE: Record<string, string> = { HNI: palette.violet, Affluent: pa
 function MiniBadge({ label, color }: { label: string; color: string }) {
   return (
     <View style={[styles.mini, { backgroundColor: color + "1A" }]}>
-      <Text style={{ fontSize: 10.5, color, fontWeight: fontWeight.semibold }}>{label}</Text>
+      <Text style={{ fontSize: 12, color, fontWeight: fontWeight.semibold }}>{label}</Text>
     </View>
   );
 }
 
 export function InvestorCard({ investor, onPress, onLongPress }: { investor: Investor; onPress: () => void; onLongPress?: () => void }) {
+  const router = useRouter();
   const status = investorStatusBadge(investor.status);
   const kyc = kycBadge(investor.kycStatus);
   const health = investor.healthBand;
@@ -43,13 +47,10 @@ export function InvestorCard({ investor, onPress, onLongPress }: { investor: Inv
         <View style={{ flex: 1, gap: 3 }}>
           <Text variant="subtitle" numberOfLines={1}>{investor.name}</Text>
           <Text variant="caption" tone="muted" numberOfLines={1}>
-            {investor.pan ?? "PAN —"}
+            {investor.pan ? `••••••${investor.pan.slice(-4)}` : "PAN missing"}
             {investor.city ? ` · ${investor.city}` : ""}
           </Text>
           <View style={styles.badges}>
-            {investor.segmentTag ? <MiniBadge label={investor.segmentTag} color={SEGMENT_TONE[investor.segmentTag] ?? palette.muted} /> : null}
-            {investor.clientCategory ? <MiniBadge label={`Cat ${investor.clientCategory}`} color={palette.ink70} /> : null}
-            {investor.serviceTier ? <MiniBadge label={`Tier ${investor.serviceTier}`} color={palette.brand} /> : null}
             <StatusPill label={status.label} tone={status.tone} size="sm" />
             <StatusPill label={kyc.label} tone={kyc.tone} size="sm" dot={false} />
           </View>
@@ -63,6 +64,11 @@ export function InvestorCard({ investor, onPress, onLongPress }: { investor: Inv
             <Text variant="caption" tone="faint">Health {investor.healthScore}</Text>
           ) : null}
         </View>
+      </View>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.lg, marginTop: spacing.sm }}>
+        {investor.phone ? <Pressable accessibilityRole="button" accessibilityLabel={`Call ${investor.name}`} style={{ minHeight: 48, justifyContent: "center" }} onPress={() => startCall({ subjectType: "investor", subjectId: investor.id, name: investor.name || "Contact", phone: investor.phone! })}><Text tone="brand">Call</Text></Pressable> : null}
+        <Pressable accessibilityRole="button" style={{ minHeight: 48, justifyContent: "center", flex: 1 }} onPress={() => router.push({ pathname: "/m/tasks/new", params: { relatedInvestorId: investor.id, title: "Follow up with " + investor.name } } as any)}><Text tone="brand">Follow up</Text></Pressable>
+        {onLongPress ? <Pressable accessibilityRole="button" accessibilityLabel="More client actions" onPress={onLongPress} style={{ minWidth: 48, minHeight: 48, alignItems: "center", justifyContent: "center" }}><Feather name="more-horizontal" size={22} color={palette.ink} /></Pressable> : null}
       </View>
     </Card>
   );

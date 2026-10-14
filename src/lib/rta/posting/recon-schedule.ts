@@ -174,7 +174,8 @@ export async function reconMonitorTick(opts: { now?: Date; env?: NodeJS.ProcessE
              error = ${`no heartbeat for more than ${p.staleRunSeconds} s — the worker stopped or crashed during the run`}
        WHERE status = 'running' AND heartbeat_at < now() - make_interval(secs => ${p.staleRunSeconds}::int)
        RETURNING id::text AS id, slot_date::text AS slot, trigger, worker,
-                 (SELECT count(*) FROM rta_reconciliation_run_firms f WHERE f.run_id = rta_reconciliation_runs.id)::int AS firms_done`)).rows as any[];
+                 (SELECT count(*) FROM rta_reconciliation_run_firms f WHERE f.run_id = rta_reconciliation_runs.id)::int AS firms_done`)).rows as
+      Array<{ id: string; slot: string; trigger: string; worker: string | null; firms_done: number }>;
     for (const r of dead) {
       out.incomplete.push(r.id);
       await raiseOpsAlert(tx, {
@@ -238,20 +239,24 @@ export async function reconHealth(opts: { now?: Date; env?: NodeJS.ProcessEnv } 
   const now = opts.now ?? new Date();
   const slot = dueSlot(now, env);
   return withSystem(async (tx: Tx) => {
-    const hb = (await tx.execute(sql`SELECT last_heartbeat_at, EXTRACT(EPOCH FROM (now() - last_heartbeat_at)) / 60.0 AS age FROM scheduler_state WHERE job_name = ${MONITOR_JOB}`)).rows[0] as any;
+    const hb = (await tx.execute(sql`SELECT last_heartbeat_at, EXTRACT(EPOCH FROM (now() - last_heartbeat_at)) / 60.0 AS age FROM scheduler_state WHERE job_name = ${MONITOR_JOB}`)).rows[0] as
+      { last_heartbeat_at: string | Date | null; age: string | number | null } | undefined;
     const slotRun = (await tx.execute(sql`
       SELECT status FROM rta_reconciliation_runs WHERE slot_date = ${slot.slotDate}::date AND trigger IN ('schedule', 'catch_up')
-       ORDER BY started_at DESC LIMIT 1`)).rows[0] as any;
+       ORDER BY started_at DESC LIMIT 1`)).rows[0] as { status: string } | undefined;
     const last = (await tx.execute(sql`
       SELECT slot_date::text, trigger, status, started_at, completed_at, firms_checked, firms_with_discrepancy, heartbeat_at,
              heartbeat_at < now() - make_interval(secs => ${p.staleRunSeconds}::int) AS stale
-        FROM rta_reconciliation_runs WHERE trigger IN ('schedule', 'catch_up') ORDER BY started_at DESC LIMIT 1`)).rows[0] as any;
+        FROM rta_reconciliation_runs WHERE trigger IN ('schedule', 'catch_up') ORDER BY started_at DESC LIMIT 1`)).rows[0] as {
+        slot_date: string; trigger: string; status: string; started_at: string | Date; completed_at: string | Date | null;
+        firms_checked: number | null; firms_with_discrepancy: number | null; heartbeat_at: string | Date | null; stale: boolean | null;
+      } | undefined;
     const a = (await tx.execute(sql`
       SELECT count(*) FILTER (WHERE status = 'open')::int AS open,
              count(*) FILTER (WHERE status = 'open' AND delivery_state = 'undeliverable')::int AS undeliverable,
              count(*) FILTER (WHERE status = 'open' AND escalated_at IS NOT NULL)::int AS escalated,
              count(*) FILTER (WHERE status = 'open' AND severity = 'critical')::int AS critical
-        FROM ops_alerts`)).rows[0] as any;
+        FROM ops_alerts`)).rows[0] as { open: number; undeliverable: number; escalated: number; critical: number };
 
     const problems: string[] = [];
     const age = hb?.age == null ? null : Number(hb.age);

@@ -75,7 +75,8 @@ export async function resolveHeldTransaction(
     const ex = String(e.posting_reason ?? e.reason ?? "");
     if (!isResolvable(e)) throw new ResolutionError(`this transaction is held for "${ex.split(":")[0] || e.posting_outcome}", which is not an ownership question — it cannot be resolved by choosing a client`);
 
-    const inv = (await tx.execute(sql`SELECT id, pan, is_minor, investor_category, deleted_at, merged_into_id FROM investors WHERE tenant_id = ${tenantId}::uuid AND id = ${decision.investorId}::uuid`)).rows[0] as any;
+    const inv = (await tx.execute(sql`SELECT id, pan, is_minor, investor_category, deleted_at, merged_into_id FROM investors WHERE tenant_id = ${tenantId}::uuid AND id = ${decision.investorId}::uuid`)).rows[0] as
+      { id: string; pan: string | null; is_minor: boolean | null; investor_category: string | null; deleted_at: string | Date | null; merged_into_id: string | null } | undefined;
     if (!inv || inv.deleted_at || inv.merged_into_id) throw new ResolutionError("the chosen client is not a live client of this firm");
     const holder = (e.attrs?.holder ?? {}) as { ownerType?: string };
     if (holder.ownerType === "minor" && !inv.is_minor) {
@@ -89,7 +90,7 @@ export async function resolveHeldTransaction(
       throw new ResolutionError("the registrar reports a different PAN for this owner than the chosen client's — choose the client holding that PAN, or correct the client record first");
     }
 
-    const folio = (await tx.execute(sql`SELECT id, investor_id FROM folios WHERE tenant_id = ${tenantId}::uuid AND amc_code = ${e.amc_code} AND folio_number = ${e.folio_number}`)).rows[0] as any;
+    const folio = (await tx.execute(sql`SELECT id, investor_id FROM folios WHERE tenant_id = ${tenantId}::uuid AND amc_code = ${e.amc_code} AND folio_number = ${e.folio_number}`)).rows[0] as { id: string; investor_id: string } | undefined;
     if (folio && String(folio.investor_id) !== String(inv.id)) throw new ResolutionError("the folio is on record under a different client — nothing is reassigned here (use Merge Clients or an ownership change)");
     let folioId = folio?.id ? String(folio.id) : null;
     if (!folioId) {

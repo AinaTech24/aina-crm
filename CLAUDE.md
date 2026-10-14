@@ -410,6 +410,8 @@ head, the name and notes — nothing else (the firm's request, 2026-10-02).
   a default, not a lock — a member's RM can be changed on their record. Only
   `rm_id` moves (as the client page and bulk Assign RM do), and each change is
   audited as `investor.rm_from_family_head`.
+- **Members take the head's address and the family's review frequency** the
+  same way (`lib/families/shared-details.ts`, 2026-10-13; see "Client types").
 - Do not put Category, Relationship Manager, Review frequency or First
   meeting date back on the create form.
 
@@ -442,6 +444,27 @@ the imports and every label; never copy the enum again.
   "company". The client book's "corporate" bucket counts company, corporate,
   LLP, partnership and society/AOP.
 - `/dashboard/investors/new?type=minor` opens Add client ready for a type.
+- **A minor's risk profile IS the guardian's** (2026-10-13, migration 0234).
+  The minor links the guardian's client record
+  (`investors.guardian_investor_id`: picked in the Guardian section, else
+  found by the guardian PAN typed), and two triggers keep the category, score,
+  signed date and provisional flag equal to the guardian's — on any write path.
+  The forms show it read-only for a minor and never send `riskProfile`.
+- **Dropdowns, not free text** (lists in client-types.ts): tax status by type
+  (`taxStatusOptions`, defaulted on a type change), marital status, income
+  range, household type (Individual · Family · Company · HUF). `withCurrent`
+  keeps an imported value the list lacks. Pincode fills city and state
+  (`/api/pincode/[pin]` → India Post, cached; `usePincodeAutofill`).
+- **Removed from the client master at the firm's request (2026-10-13)**: CKYC
+  expiry and FATCA expiry (neither expires) and Service tier (the review
+  frequency says the same). The columns stay; do not put the fields back.
+- **What the family owns is not asked again** (`lib/families/shared-details.ts`):
+  a member's address is the head's, and every member's review frequency is the
+  family's. Applied with the head's RM (mapping, head change, merge) and when
+  the head's address or the family's cadence changes; audited as
+  `investor.details_from_family`. The investor PATCH ignores a member's
+  address (head has one) and review frequency (family has one); the forms show
+  both as "from the family".
 
 ## Booked business vs the RTA
 

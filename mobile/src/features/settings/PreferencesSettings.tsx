@@ -5,7 +5,7 @@
  */
 
 import React, { useEffect, useState } from "react";
-import { View, Pressable, Platform, StyleSheet } from "react-native";
+import { View, Pressable, Platform, StyleSheet, Linking, AppState } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { Screen } from "../../components/ui/Screen";
 import { Card } from "../../components/ui/Card";
@@ -16,8 +16,8 @@ import { useTranslation } from "react-i18next";
 import { biometricAvailable, biometricLabel, biometricPrompt } from "../../components/AppLock";
 import { LANGUAGES } from "../../i18n";
 import { usePrefs } from "../../state/prefs";
-import { enableSimCalls, syncSimCalls } from "../activities/simCallSync";
-import { ACTIVITY_OUTCOMES } from "../activities/api";
+import * as Notifications from "expo-notifications";
+import { enableSimCalls, syncSimCalls, useCallSyncStatus, callPermissionGranted, simCallsAvailable } from "../activities/simCallSync";
 import { toast } from "../../lib/toast";
 import { spacing, palette, radius, fontWeight } from "../../theme/tokens";
 import { toneColors } from "../../theme";
@@ -25,11 +25,21 @@ import { errorMessage } from "../../lib/errors";
 
 export function PreferencesSettings() {
   const autoLogCalls = usePrefs((s) => s.autoLogCalls);
-  const autoLogOutcome = usePrefs((s) => s.autoLogOutcome);
   const appLock = usePrefs((s) => s.appLock);
   const language = usePrefs((s) => s.language);
   const setPref = usePrefs((s) => s.set);
   const { t } = useTranslation();
+  const sync = useCallSyncStatus();
+  const [permission, setPermission] = useState<boolean | null>(null);
+  const [notifications, setNotifications] = useState("Checking…");
+  useEffect(() => {
+    const check = () => {
+      callPermissionGranted().then(setPermission).catch(() => setPermission(false));
+      if (Platform.OS !== "web") Notifications.getPermissionsAsync().then(p => setNotifications(p.granted ? "Allowed on this phone" : "Not allowed on this phone")).catch(() => setNotifications("Unavailable in this build"));
+      else setNotifications("Requires the mobile app");
+    };
+    check(); const sub = AppState.addEventListener("change", state => { if (state === "active") check(); }); return () => sub.remove();
+  }, [autoLogCalls]);
 
   // null = still checking; false = no enrolled biometrics on this device.
   const [bioOk, setBioOk] = useState<boolean | null>(Platform.OS === "web" ? false : null);
@@ -101,7 +111,7 @@ export function PreferencesSettings() {
               <Text variant="caption" tone="muted" style={{ marginTop: 2 }}>
                 {autoLogCalls
                   ? "Matching incoming, outgoing and missed SIM calls sync when you open this app."
-                  : "You'll be asked to log each call when you return to the app."}
+                  : "Calls started from Aina CRM prompt you for a manual log when you return."}
               </Text>
             </View>
             <View style={[styles.switch, autoLogCalls && styles.switchOn]}>
@@ -109,12 +119,19 @@ export function PreferencesSettings() {
             </View>
           </Pressable>
 
+          <Text tone="muted" style={{ marginTop: spacing.md }}>Phone permission: {!simCallsAvailable ? "Unavailable in this build" : permission === null ? "Checking…" : permission ? "Granted" : "Not granted"}</Text>
+          <Text tone="muted">Notifications: {notifications}</Text>
+          <Text variant="caption" tone="muted">Push delivery also requires your firm's notification service to be configured.</Text>
+          {Platform.OS !== "web" ? <Pressable accessibilityRole="button" style={{ minHeight: 48, justifyContent: "center" }} onPress={() => Linking.openSettings()}><Text tone="brand">Open phone settings</Text></Pressable> : null}
           {autoLogCalls ? (
             <View style={styles.sub}>
               <Text variant="caption" tone="faint" style={{ marginTop: spacing.sm }}>
                 Duration and direction come from Android. Only uniquely matched CRM numbers are uploaded. No audio is recorded.
               </Text>
-              <Pressable accessibilityRole="button" onPress={() => syncSimCalls().then(() => toast.success("Call sync checked")).catch((e) => toast.error(e.message))} style={{ paddingVertical: spacing.md }}><Text tone="brand">Sync calls now</Text></Pressable>
+              <Text tone="muted">Last check: {sync.checkedAt ? new Date(sync.checkedAt).toLocaleString("en-IN") : "Not yet checked this session"}</Text>
+              {sync.checkedAt ? <Text tone="muted">{sync.matched} matching calls saved or queued · {sync.skipped} unmatched or ambiguous calls left on this phone</Text> : null}
+              {sync.error ? <Text tone="danger">{sync.error}</Text> : null}
+              <Pressable accessibilityRole="button" disabled={sync.busy} onPress={() => syncSimCalls().catch((e) => toast.error(errorMessage(e)))} style={{ minHeight: 48, justifyContent: "center" }}><Text tone="brand">{sync.busy ? "Checking calls…" : "Sync calls now"}</Text></Pressable>
             </View>
           ) : null}
         </Card>

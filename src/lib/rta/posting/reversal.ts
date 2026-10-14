@@ -131,7 +131,7 @@ export async function reverseBatchTx(tx: Tx, tenantId: string, batchId: string, 
       }
       if (investors.length) {
         const invIds = sql.join(investors.map((i) => sql`${i}::uuid`), sql`, `);
-        for (const r of (await tx.execute(sql`SELECT id::text, last_transaction_at FROM investors WHERE id IN (${invIds})`)).rows as any[]) {
+        for (const r of (await tx.execute(sql`SELECT id::text, last_transaction_at FROM investors WHERE id IN (${invIds})`)).rows as Array<{ id: string; last_transaction_at: string | Date | null }>) {
           lastTxBefore[r.id] = r.last_transaction_at == null ? null : new Date(r.last_transaction_at).toISOString();
         }
       }

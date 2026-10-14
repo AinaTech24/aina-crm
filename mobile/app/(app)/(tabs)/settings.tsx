@@ -5,6 +5,7 @@
  */
 
 import React from "react";
+import { useMe } from "../../../src/api/me";
 import { View, Pressable, Platform, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import * as Application from "expo-application";
@@ -33,7 +34,7 @@ const SECTIONS: Section[] = [
   { icon: "users", title: "Team & roles", desc: "Invite team members, assign roles, manage seats.", route: "/m/employees" },
   { icon: "share-2", title: "Desks (sub-branch teams)", desc: "Group each branch into desks (DK, RC, 1…) and assign RMs — drives the monthly MIS roll-ups.", route: "/m/settings-desks" },
   { icon: "git-branch", title: "Auto-assignment rules", desc: "Route new leads & clients to your team automatically — round-robin or load-balanced.", route: "/m/settings-assignment-rules" },
-  { icon: "target", title: "Targets & quota", desc: "Set monthly business, new-meeting and renewal-meeting targets per team member — track vs achievement.", route: "/m/settings-targets" },
+  { icon: "target", title: "Annual quotas", desc: "Annual CRM quotas. Monthly commitments are in Targets & achievement.", route: "/m/settings-targets" },
   { icon: "credit-card", title: "Billing & subscription", desc: "Current plan, payment history, renewal.", route: "/m/billing" },
   { icon: "message-circle", title: "WhatsApp connection", desc: "Your Aina WhatsApp number and Meta template approvals.", route: "/m/settings-whatsapp" },
   { icon: "mail", title: "Email setup", desc: "Sending domain, DKIM, transactional + marketing streams.", route: "/m/settings-email" },
@@ -43,6 +44,12 @@ const SECTIONS: Section[] = [
 
 export default function Settings() {
   const router = useRouter();
+  const me = useMe().data;
+  const caps = me?.capabilities ?? [];
+  const personal = ["/sync", "/m/settings-preferences", "/m/settings-security"];
+  const capFor: Record<string, string> = { "/m/employees": "settings.users", "/m/billing": "settings.billing", "/m/settings-desks": "settings.desks", "/m/settings-assignment-rules": "settings.desks", "/m/settings-targets": "dashboard.view.owner" };
+  const visible = SECTIONS.filter(s => personal.includes(s.route) || caps.includes(capFor[s.route] ?? "settings.masters"));
+  const sections = [...visible.filter(s => personal.includes(s.route)), ...visible.filter(s => !personal.includes(s.route))];
   const signOut = useSession((s) => s.signOut);
   const { t } = useTranslation();
 
@@ -52,18 +59,21 @@ export default function Settings() {
         {t("settings.title")}
       </Text>
       <Card flat style={{ padding: 0, overflow: "hidden" }}>
-        {SECTIONS.map((s, i) => (
+        {sections.map((s, i) => (
+          <React.Fragment key={s.title}>
+          {i === 0 || (personal.includes(sections[i - 1].route) && !personal.includes(s.route)) ? <Text variant="label" tone="muted" style={{ padding: spacing.lg }}>{personal.includes(s.route) ? "PERSONAL" : "FIRM ADMINISTRATION"}</Text> : null}
           <Pressable
             key={s.title}
-            style={[styles.row, i < SECTIONS.length - 1 && styles.divider]}
+            style={[styles.row, i < sections.length - 1 && styles.divider]}
             onPress={() => router.push(s.route as any)}
           >
             <View style={styles.iconWrap}>
               <Feather name={s.icon} size={17} color={palette.brandDark} />
             </View>
-            <Text variant="body" style={{ flex: 1, color: palette.ink }}>{s.title}</Text>
+            <View style={{ flex: 1 }}><Text variant="body">{s.title}</Text><Text variant="caption" tone="muted" style={{ marginTop: 3 }}>{s.desc}</Text></View>
             <Feather name="chevron-right" size={16} color={palette.faint} />
           </Pressable>
+          </React.Fragment>
         ))}
       </Card>
 

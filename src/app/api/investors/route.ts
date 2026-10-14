@@ -48,6 +48,8 @@ const CreateBody = z.object({
   investorCategory: z.enum(CLIENT_TYPE_KEYS).default("individual"),
   /** What the client type adds (guardian, Karta, entity, NRI…) — lib/investors/client-types.ts. */
   typeDetails: TypeDetailsSchema.optional(),
+  /** A minor's guardian who is a client too (else found by the guardian PAN). */
+  guardianInvestorId: z.string().uuid().optional(),
   rmId: z.string().uuid().optional(),
   familyId: z.string().uuid().optional(),
   bseUccCode: z.string().optional(),
@@ -228,6 +230,28 @@ export async function POST(req: NextRequest) {
       let rmId = (canAssignAnyRm ? body.rmId : undefined) ?? session.userId;
       if (body.familyId && canAssignAnyRm && !body.rmId) rmId = (await familyHeadRmId(tx, body.familyId)) ?? rmId;
 
+      // A minor's guardian as a client: the one picked, else the client whose
+      // PAN is the guardian PAN. The minor then carries the guardian's risk
+      // profile (a database rule, migration 0234).
+      let guardianInvestorId: string | null = null;
+      if (body.investorCategory === "minor") {
+        if (body.guardianInvestorId) {
+          const ok = (await tx.execute(sql`
+            SELECT 1 FROM investors WHERE id = ${body.guardianInvestorId}::uuid
+              AND tenant_id = ${session.tenantId}::uuid AND deleted_at IS NULL`)).rows.length;
+          if (ok) guardianInvestorId = body.guardianInvestorId;
+        } else {
+          const gp = String(body.typeDetails?.guardian?.pan ?? "").trim().toUpperCase();
+          if (gp) {
+            const g = (await tx.execute(sql`
+              SELECT id FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND pan = ${gp}
+                AND deleted_at IS NULL AND merged_into_id IS NULL
+              ORDER BY dedup_pan DESC LIMIT 1`)).rows[0] as { id: string } | undefined;
+            guardianInvestorId = g?.id ?? null;
+          }
+        }
+      }
+
       const inserted = await tx
         .insert(investors)
         .values({
@@ -251,6 +275,7 @@ export async function POST(req: NextRequest) {
           nominees: canNominate(body.investorCategory) ? body.nominees ?? [] : [],
           typeDetails: cleanTypeDetails(body.investorCategory, body.typeDetails),
           isMinor: body.investorCategory === "minor",
+          guardianInvestorId,
           referrals: body.referrals ?? [],
           nomineeName: (canNominate(body.investorCategory) && body.nominees?.[0]?.name) || null,
           nomineeRelation: (canNominate(body.investorCategory) && body.nominees?.[0]?.relation) || null,

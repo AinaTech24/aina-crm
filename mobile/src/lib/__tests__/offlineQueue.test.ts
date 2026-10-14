@@ -40,6 +40,28 @@ beforeEach(() => {
   store.mockImplementation(async (key, value) => { disk.set(key, value); });
   post.mockResolvedValue({ id: "saved" });
 });
+
+test("correcting a validation rejection creates a new request identity and preserves the original subject", async () => {
+  post.mockRejectedValueOnce(new ApiError(400, "Invalid notes"));
+  await expect(queuedPost(input.path, { subject_id: "original", notes: "Bad" }, input.label)).rejects.toThrow();
+  const item = queue().items[0];
+  expect(item.httpStatus).toBe(400);
+  await queue().reviseFields(item.id, { notes: "Corrected" });
+  expect(post.mock.calls[1][1]).toEqual({ subject_id: "original", notes: "Corrected" });
+  expect(post.mock.calls[1][2]).not.toEqual(post.mock.calls[0][2]);
+  expect(queue().items).toHaveLength(0);
+});
+
+test("does not let correction change assignment or retry an uncertain write as a new request", async () => {
+  post.mockRejectedValueOnce(new ApiError(400, "Invalid notes"));
+  await expect(queuedPost(input.path, input.body, input.label)).rejects.toThrow();
+  const item = queue().items[0];
+  await expect(queue().reviseFields(item.id, { owner_user_id: "someone-else" })).rejects.toThrow();
+  post.mockRejectedValueOnce(new ApiError(503, "Try later"));
+  await queuedPost(input.path, input.body, input.label);
+  const pending = queue().items.find(w => w.status === "pending")!;
+  await expect(queue().reviseFields(pending.id, { notes: "Changed" })).rejects.toThrow();
+});
 test.each([429, 503])("retains HTTP %s and reuses its request key", async (status) => {
   post.mockRejectedValueOnce(new ApiError(status, "Try later"));
   await expect(queuedPost(input.path, input.body, input.label)).resolves.toBeNull();

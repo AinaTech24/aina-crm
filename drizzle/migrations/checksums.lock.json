@@ -272,6 +272,7 @@
   "0233_client_type_details.sql": "1231d8f2e440972a",
   "0233_rta_staging.sql": "e92c15cc8d95a3d2",
   "0234_folio_holders.sql": "26c1fbf745da393c",
+  "0234_minor_risk_from_guardian.sql": "33869550c6da1ca6",
   "0235_rta_validate_first.sql": "a30cba378f266020",
   "0236_rta_posting_controls.sql": "c707df8750bd3123",
   "0237_rta_regimes.sql": "de59e795c3096b67",
