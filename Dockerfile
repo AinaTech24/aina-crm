@@ -1,24 +1,70 @@
 # syntax=docker/dockerfile:1
 #
-# One image, two roles:
-#   - web    → `npm run start`        (next start, port 3000, GET /api/health)
-#   - worker → `npm run worker:prod`  (tsx src/workers/index.ts)
-#   - tasks  → `npm run migrate:all` / `npm run seed` / backfills (one-off ECS tasks)
+# One image, three roles (unchanged):
+#   - web     → `npm run start`        (next start, port 3000, GET /api/health)
+#   - worker  → `npm run worker:prod`  (tsx src/workers/index.ts)
+#   - migrate → `npm run migrate:all` / `npm run check:schema` / one-off scripts (tsx)
 #
-# Build once, run with different CMD/entrypoint per ECS service. tsx is a runtime
-# dependency so the worker + migration scripts run straight from source — no
-# separate compile step.
+# LAYOUT — built so that a normal release changes ONE small layer (the app), not
+# the whole image (2026-10-14; the old single `COPY --from=build /app` layer was
+# 3.2 GB and changed on every release):
+#
+#   os        OS + fonts + the `app` user                         (changes ~never)
+#   deps-prod production node_modules (npm ci --omit=dev)          (changes with package-lock.json)
+#   build     full install + `next build`                          (build only — NOT shipped)
+#   runtime   os + deps-prod + .next + src/scripts/drizzle/public  (the app layers are ~180 MB)
+#
+# What is deliberately NOT in the runtime image (measured on the 3.52 GB image):
+#   - .next/cache        2.0 GB  Next's compile cache; useless once built
+#   - dev dependencies   typescript, eslint, vitest, drizzle-kit, tailwind, @types/* …
+#   - the musl SWC binary (131 MB): this image is glibc, Next loads the -gnu one
+#   - npm's download cache
+#
+# tsx IS a runtime dependency (package.json): the worker, `migrate:all`,
+# `check:schema` and the maintenance scripts all run TypeScript straight from
+# source through it. The old comment here claimed that; package.json did not.
+#
+# No secret is ever baked in. The build-stage placeholders below never reach the
+# runtime stage; real values arrive only at run time through env_file.
 
-# ---- deps: install node_modules (cached on package-lock) ----------------------
-FROM node:20-bookworm-slim AS deps
+ARG NODE_IMAGE=node:20-bookworm-slim
+
+# ---- os: the part of the runtime that almost never changes --------------------
+FROM ${NODE_IMAGE} AS os
+WORKDIR /app
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000
+# Render every server-side date and time in India time (the container is UTC by
+# default, which put every server-rendered time 5h30m behind). This image runs
+# web-blue, web-green, the worker AND the one-off tasks, so one line covers all
+# of them. Formatters should still pass timeZone: "Asia/Kolkata" explicitly.
+ENV TZ=Asia/Kolkata
+# curl for the container healthcheck; run as non-root.
+# fontconfig + DejaVu/Liberation/Noto fonts so server-side SVG→PNG branding
+# (sharp/librsvg) renders text instead of tofu boxes.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      curl fontconfig fonts-dejavu-core fonts-liberation \
+      fonts-noto-core fonts-noto-ui-core \
+    && rm -rf /var/lib/apt/lists/* \
+    && fc-cache -f \
+    && groupadd -r app && useradd -r -g app -m app
+
+# ---- deps-prod: production node_modules only ----------------------------------
+FROM ${NODE_IMAGE} AS deps-prod
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+# --omit=dev keeps everything the app, the worker and the migration scripts load
+# (tsx included). `rm` drops the musl SWC build npm installs next to the glibc
+# one; `npm cache clean` and the rm of ~/.npm keep the download cache out.
+RUN npm ci --omit=dev --no-audit --no-fund \
+    && rm -rf node_modules/@next/swc-linux-arm64-musl node_modules/@next/swc-linux-x64-musl \
+    && npm cache clean --force \
+    && rm -rf /root/.npm /tmp/*
 
-# ---- build: compile the Next.js app ------------------------------------------
-FROM node:20-bookworm-slim AS build
+# ---- build: compile the Next.js app (full install; nothing here is shipped) ---
+FROM ${NODE_IMAGE} AS build
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 # NEXT_PUBLIC_* are inlined into the client bundle at BUILD time — must be passed
@@ -26,89 +72,45 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ARG NEXT_PUBLIC_APP_URL
 ARG NEXT_PUBLIC_SITE_URL
 ARG NEXT_PUBLIC_S3_PUBLIC_URL
+# Identifies THIS build in /api/health (next.config.ts prefers it to `git`,
+# which does not exist inside the build).
+ARG BUILD_GIT_SHA=
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL \
     NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL \
-    NEXT_PUBLIC_S3_PUBLIC_URL=$NEXT_PUBLIC_S3_PUBLIC_URL
+    NEXT_PUBLIC_S3_PUBLIC_URL=$NEXT_PUBLIC_S3_PUBLIC_URL \
+    BUILD_GIT_SHA=$BUILD_GIT_SHA
 # Build-time placeholders so module-load guards (db/client, redis, auth) don't
 # throw while `next build` collects page data. NO database/redis is contacted —
 # every data route is force-dynamic — and the REAL values are injected only at
-# runtime via env_file. These never reach the runtime stage (separate FROM).
+# runtime. These live in the build stage only; they are not in the runtime image.
 ENV DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build \
     REDIS_URL=redis://127.0.0.1:6379 \
     NEXTAUTH_SECRET=build-time-placeholder-not-used-at-runtime
-# Bound V8's old-space heap for the build. Inside the container Node can't read
-# the host's real memory, so it picks a default ceiling too low for a cold
-# `next build` and OOMs ("Ineffective mark-compacts near heap limit"). Scoped to
-# the build stage only — the runtime stage is a separate FROM.
+# Bound V8's old-space heap for the build (a container cannot read the host's real
+# memory, so Node's default ceiling is too low for a cold `next build`).
 ENV NODE_OPTIONS=--max-old-space-size=4096
-# DO NOT reintroduce a BuildKit cache mount here without reading this first.
-#
-# This line was briefly:
-#   RUN --mount=type=cache,target=/app/.next/cache,sharing=locked npm run build
-# to keep Next's compilation cache across builds (the build is ~10 min of a
-# ~13 min deploy on this 2-vCPU box, because `COPY . .` gives every build an
-# empty .next/).
-#
-# It broke deploys. `sharing=locked` serialises concurrent builds on the cache
-# and waits WITHOUT A TIMEOUT, so as soon as two deploys overlapped the second
-# build blocked indefinitely, never wrote DEPLOY_DONE_EXIT, and the workflow
-# died on its 40-minute command_timeout. Deploys went 16m/success to
-# 43m/54m/57m/failure the moment it landed, and stayed broken until it was
-# reverted.
-#
-# If this is worth revisiting: use `sharing=shared` (concurrent readers, no
-# blocking) or drop `sharing=` entirely, and only after confirming the box's
-# docker actually runs BuildKit — the legacy builder rejects `RUN --mount`
-# outright. Faster deploys are not worth unreliable ones.
-RUN npm run build
+# DO NOT add a BuildKit `--mount=type=cache` with sharing=locked for .next/cache:
+# on the old on-server builder it blocked deploys indefinitely. Build-cache reuse
+# now comes from the CI runner's layer cache instead.
+RUN npm run build \
+    && rm -rf .next/cache
 
-# ---- runtime: lean image that runs either role -------------------------------
-FROM node:20-bookworm-slim AS runtime
-WORKDIR /app
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000
-# Render every server-side date and time in India time.
-#
-# Without this the container runs in UTC, and every date or time the server
-# formats — which in this app is most of them, since pages render on the
-# server — comes out 5h30m behind. Proven on this exact base image with one
-# timestamp, 2026-09-25T20:00Z (01:30 IST on the 26th):
-#
-#                       no TZ (UTC)        TZ=Asia/Kolkata
-#   formatDate()        25 Sept 2026       26 Sept 2026
-#   getDate()           25                 26
-#   toLocaleTimeString  8:00:00 pm         1:30:00 am
-#
-# So it is not only "dates are off near midnight": every server-rendered TIME
-# is 5h30m early, all day — meeting times, last-contact stamps, and the dates
-# and times inside WhatsApp and email the worker sends. The date slips to the
-# day before only between 00:00 and 05:30 IST, which is why it looked like a
-# rare midnight bug.
-#
-# It never reproduces on a developer's laptop, because that is already set to
-# India time. To see it locally, format with { timeZone: "UTC" }.
-#
-# This image runs web-blue, web-green, the worker AND the one-off tasks, so
-# this one line covers all of them. It is a backstop, not the whole fix: date
-# formatters should still pass timeZone: "Asia/Kolkata" explicitly, so a date
-# comes out right in any container, including one started without this image.
-# tzdata is already in bookworm-slim, so the zone resolves from the OS as well
-# as from Node's own ICU copy.
-ENV TZ=Asia/Kolkata
-# curl for the container healthcheck; run as non-root.
-# fontconfig + DejaVu/Liberation fonts so server-side SVG→PNG branding
-# (sharp/librsvg, used by the content-library co-brand strip) actually renders
-# text — without a font installed every glyph falls back to tofu (□) boxes.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      curl fontconfig fonts-dejavu-core fonts-liberation \
-      fonts-noto-core fonts-noto-ui-core \
-    && rm -rf /var/lib/apt/lists/* \
-    && fc-cache -f \
-    && groupadd -r app && useradd -r -g app -m app
-COPY --from=build --chown=app:app /app ./
+# ---- runtime: lean image that runs any of the three roles ---------------------
+FROM os AS runtime
+# Layer 1 (stable): production dependencies.
+COPY --from=deps-prod --chown=app:app /app/node_modules ./node_modules
+# Layer 2: the compiled app (no .next/cache).
+COPY --from=build --chown=app:app /app/.next ./.next
+# Layer 3: what the worker, migrations and scripts run from source.
+COPY --chown=app:app package.json next.config.ts tsconfig.json ./
+COPY --chown=app:app public ./public
+COPY --chown=app:app drizzle ./drizzle
+COPY --chown=app:app scripts ./scripts
+COPY --chown=app:app src ./src
 USER app
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
   CMD curl -fsS http://localhost:3000/api/health || exit 1
-# Default command = web. The worker ECS service overrides this with:
+# Default command = web. The worker service overrides it with:
 #   command: ["npm","run","worker:prod"]
 CMD ["npm", "run", "start"]
