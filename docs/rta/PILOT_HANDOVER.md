@@ -58,6 +58,25 @@ A mismatch anywhere in this table is a stop: the environment is not the reviewed
 
 **Owner decision (2026-10-14, "APPROVE FINAL DEVELOPMENT RELEASE CANDIDATE & START OPERATIONAL PREFLIGHT"):** `d7aa60a8` is approved for development release tagging; integrated `main` baseline `f563e7ac`. **Development release qualification: GO. Production deployment and pilot activation: NO-GO.** Development is frozen again: no software change unless a concrete new defect or release-blocking compatibility issue is found; no push to `main` or `deploy/aws`; no deployment of code or Terraform; no production migration; no financial posting. The tag authorizes nothing beyond the tag.
 
+#### 0.1e Updated integrated candidate (2026-10-14, owner instruction "URGENT G-1 SECURITY FIX AND FINAL RTA RELEASE UPDATE") — not approved, not tagged
+
+`d7aa60a8` stays the approved development release and the only commit the
+proposed tag may name (§0.1c / §0.1d). This candidate supersedes it as the
+code to qualify next; it needs its own owner review and its own tag.
+
+| Item | Value | How to verify |
+|---|---|---|
+| Candidate commit | `f7055e9284f60e833f49a1e98ef142988ceb2271` (= `ccd9e18c` + `tests/rta-placeholder-sweep-db.test.ts`; later commits docs only) | `git rev-parse f7055e92^{commit}` |
+| What it adds to `d7aa60a8` | `main` `f086c294` (IAM Identity Center deploy sign-in — `scripts/aws-deploy-role.sh`, `terraform/bootstrap/main.tf` byte-identical to `main`), `main` `bee06293` (client-master dropdowns) and `b795fdba` (RTA placeholder sweep), and the G-1 fix `0c4f9e7e` / `ea287acf` (`docs/security/G1_GUARDIAN_HOTFIX.md`) | `for c in d7aa60a8 f086c294 b795fdba ea287acf; do git merge-base --is-ancestor $c f7055e92 \|\| echo MISSING $c; done` prints nothing |
+| Integration decisions | one conflict each: `src/lib/investors/merge.ts` imports (kept both), `CLAUDE.md` (kept both). `lib/rta/placeholder-sweep.ts` (main's) now asks the RTA write guard as a `derived` writer: a stopped firm is left untouched. No `src/lib/rta` posting, staging or identity file changed; a DB test pins the sweep's guard | `git show 2f26bb1b -- src/lib/rta/placeholder-sweep.ts` |
+| Frozen artifact | tree `9b391a83ae23803a080bdc27ce30e0313defbb01`; `src/` `64b4b658cf67abf3afc351a6fca6b51eae7e4e94`; `drizzle/migrations/` `5781e010b734e74dbf191256d72b61c9523716d6` (**identical to `d7aa60a8`**); `tests/` `19e87621f42f63b9601935dbdc01a21534b6e313`; `scripts/` `9b258a52109153d3cf6b45acd4ee6497280e4037` | `git rev-parse f7055e92^{tree} f7055e92:src f7055e92:drizzle/migrations f7055e92:tests f7055e92:scripts` |
+| Migrations | unchanged: 284; lock `025d640c…`; concatenation `25a08833…`; ledger `a9bb87a5…`; `main`'s new commits add none (production stays at 272) | `node scripts/check-migration-lock.mjs` |
+| Evidence | real CI green on the code (run 316: 1,266 DB tests, 0 skipped + drill; 991 unit); locally every guard, full DB suite, drills, FS-7 / P0 / 3L / nine-file legacy identical to `d7aa60a8`, infrastructure harness 43 / 43, browser 17 / 17; G-1: 16 / 16 DB, 21 / 21 browser | `B1_FINAL_QUALIFICATION.md` §M |
+
+Valid only while production runs `b795fdba` or an ancestor (PR-3). `main`
+moved three times on 2026-10-14; any further push must be merged and
+re-qualified first.
+
 #### 0.1c Approved development release (owner, 2026-10-14) — remote tag pending an authorized maintainer
 
 | Item | Value | How to verify |

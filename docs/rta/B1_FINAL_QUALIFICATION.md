@@ -456,7 +456,7 @@ None blocks the KFintech pilot. Known and recorded:
 | J7 | Handover PR-1 – PR-18, A–F, FS-1 – FS-10 on THIS candidate (F part 1 in particular) | per handover | NOT VERIFIED |
 | J8 | Production change lock held for every step; nothing outside it | lock history | NOT VERIFIED |
 | J9 | `b1-duplicate-economic-check.sql` (read-only; preflight E-7) | `duplicate_shaped_groups` 0, else reviewed | NOT VERIFIED |
-| J10 | `guardian-link-check.sql` (read-only; preflight E-8, §L) | counts recorded; G-1 decided by the owner | NOT VERIFIED |
+| J10 | `docs/security/g1-guardian-impact.sql` (read-only; preflight E-8, §L) | counts recorded; each finding decided by the owner / compliance | NOT VERIFIED |
 | J11 | Remote tag created by an authorized maintainer (handover §0.1d) | `^{}` = `d7aa60a8f50b0947e85917b6e11de09fba4a3e08` | NOT VERIFIED |
 
 The operator order for J1 – J10 is `PREFLIGHT_CHECKLIST.md` §2a (A – H).
@@ -535,30 +535,61 @@ link to the retired record (case 4's state).
   closed). The KFintech pilot (MFSD211 + MFSD201; a minor's PAN is blank in
   KFintech files) is not exposed to the first two.
 
-**Smallest correction (proposed, not applied):**
-`docs/rta/handover/guardian-link-fix.patch` — one helper
-(`src/lib/investors/guardian-link.ts`, `guardianCandidate`) used by both
-routes: a guardian link may point only at a **live, non-merged, non-minor
-client inside the user's `investorScopeSql`**, and a typed PAN links only when
-**exactly one** such client holds it; anything else stays unlinked (never a
-guess). No migration, no data change. Verified in development: applies
-cleanly to `main` `f563e7ac` and to `d7aa60a8`; `tsc` clean;
-`tests/guardian-link-db.test.ts` 4 / 4 (out-of-book PAN / id refused, own
-client linked, twins: one in scope links / two link nothing, merged and minor
-refused). Two follow-ups for the same review, not in the patch: the merge
-should repoint `guardian_investor_id` to the survivor (with its un-merge
-record), and the edit page should name an out-of-scope guardian only as "a
-client outside your book".
+**Fixed in development (owner approval of 2026-10-14, "URGENT G-1 SECURITY FIX").**
+The fix, its tests, the read-only impact SQL and the production hotfix plan
+are in `docs/security/G1_GUARDIAN_HOTFIX.md` (branch `claude/g1-guardian-hotfix`,
+commit `0c4f9e7e`, based on `main` `f086c294`; not merged, not deployed). It
+supersedes the proposed patch and the first E-8 query of this section (both
+removed). The candidate integrates it (handover §0.1e).
 
-**Existing links** are counted, never rewritten:
-`docs/rta/handover/guardian-link-check.sql` (read-only, counts per firm:
-links to another RM / branch, merged / deleted / minor guardians, shared PAN,
-typed PAN ≠ linked PAN, risk not the guardian's). It is preflight row E-8;
-each non-zero count goes to the firm's owner and compliance (E-4).
-
-**Effect on the pilot decision:** G-1 does not block the development release
-(the release does not touch this code) but it is a production defect that
-exists independently of the pilot. Its fix needs the owner's approval, its own
-review / CI and a production deployment authorization; until then E-8 is run
+**Effect on the pilot decision:** G-1 is a production defect independent of
+the pilot. Its fix is ready in development; its production deployment needs
+the owner's separate authorization (G1_GUARDIAN_HOTFIX.md §6), and E-8 is run
 and decided before any pilot firm is activated.
 
+
+## M. Updated candidate `f7055e92` — current `main` + the G-1 fix (2026-10-14)
+
+Owner instruction "URGENT G-1 SECURITY FIX AND FINAL RTA RELEASE UPDATE".
+`d7aa60a8` stays the approved development release (its tag waits for a
+maintainer, §0.1d); `f7055e92` (code `ccd9e18c` + one test) is the next
+candidate, not approved, not tagged.
+
+**`main` moved three times after `d7aa60a8` was approved** (none adds a migration):
+
+| Commit | What | Code / infra / deploy | Production |
+|---|---|---|---|
+| `f086c294` | laptop deploy sign-in by IAM Identity Center (`aina-deploy` profile); `mfd-deploy` removed from the Terraform state-bucket policy | deploy tooling + Terraform bootstrap + CLAUDE.md | deployed (Deploy to AWS run success) |
+| `bee06293` | client-master dropdowns for the remaining free-text fields | application (client forms, `client-types.ts`, places / pincode) | deployed (success) |
+| `b795fdba` | empty PAN-less registrar placeholders go to the Trash after imports and nightly; Merge Clients "similar name, one without PAN" | application + RTA worker + daily ops scanner | its deploy was still running when checked — confirm in PR-3 |
+
+**Integration** (non-deploying branch `claude/relaxed-mendel-01jprq`):
+`b4aeadd4` (merge `f086c294`, no conflict; the deploy script and Terraform file
+byte-identical to `main`), `7ed48d2d` (merge the G-1 fix; one import conflict in
+`src/lib/investors/merge.ts`, kept both), `2f26bb1b` (merge `b795fdba`;
+`CLAUDE.md` conflict, kept both; **`lib/rta/placeholder-sweep.ts` now asks the
+RTA write guard as a `derived` writer**, so a paused / halted / ended / emergency
+firm is never touched — the release's rule for every writer on registrar data),
+`ccd9e18c` (merge the typed G-1 fix), `f7055e92` (a DB test for the sweep's
+guard: `tests/rta-placeholder-sweep-db.test.ts`, 2 / 2, and it fails with the
+guard removed). No file under `src/lib/rta/posting`,
+`staging`, `identity` or `owner` changed; migrations identical to `d7aa60a8`.
+
+**Results on `ccd9e18c` (code identical to `f7055e92`):**
+
+| Run | Result |
+|---|---|
+| **Real GitHub CI** run 316 (all three jobs) | DB job (runner PostgreSQL, restricted role): **1,266 passed · 0 failed**, the drill alone in its own step 1 / 1, no-skip guard ✓ — includes `guardian-link-db.test.ts` 16 / 16; quality job: tsc, every ratchet (as-any 3,425 ≤ 3,429), **991** unit tests, lint; mobile ✓ |
+| Local guards | `tsc`, lint and 12 ratchets / checks 0; `migrate-all --check` 284 applied, 0 pending, 0 blockers; emergency drill 1 / 1; migration immutability drill 0 failures |
+| Local full DB suite | 1,265 passed, 2 skipped (the drill, run alone, and the one local-only skip seen on every local run since B-1; real CI skips none) + the sweep test 2 / 2 |
+| FS-7, P0, 3L, legacy nine files | identical to the `d7aa60a8` baseline: FS-7 legacy fingerprint unchanged before / after, collision firm 6 quarantined / 1,055 matched (split between the two files follows the per-build random ids); P0 legacy / clean / scope identical (21 / 21 figures); 3L identical (ids and times aside); the nine-file legacy run identical — and `main` `b795fdba` gives the same legacy figures as `f563e7ac` (that harness uses the direct importer, so main's worker-side sweep is covered by the DB test above) |
+| Infrastructure harness | **43 / 43** (real Next, Chromium, S3 emulator, Redis, killable workers, crash / outage / halt drills) |
+| Browser (validate-first screens) | **17 / 17** — same figures as before (3 active SIPs = verified registrations, 13 registrar captions, 24 held, 0 resolvable) |
+| G-1 browser check (`scripts/g1-guardian-ui.mjs`) on the hotfix head `c046ecfc` | 21 / 21 |
+
+**Effect of the G-1 merge on the RTA figures, measured separately** (the
+financial harnesses on `7ed48d2d` = `d7aa60a8` + `f086c294` + G-1): FS-7, P0
+21 / 21, 3L and the nine-file legacy run identical to the `d7aa60a8` baseline
+(only per-build random ids differ; the FS-7 collision firm's 6 altered rows are
+picked by id order, so which file they fall in varies, total 6 quarantined,
+1,055 matched, legacy fingerprint unchanged before / after).
