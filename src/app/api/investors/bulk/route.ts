@@ -236,7 +236,7 @@ export async function POST(req: NextRequest) {
         action: `investor.bulk_${action}`,
         entityType: "investor",
         entityId: session.tenantId,
-        after: { action, value: value ?? null, count: updated.length, ids: targets, ...(kept.length ? { keptHoldingMoney: kept.map((k) => k.id) } : {}) } as any,
+        after: { action, value: value ?? null, count: updated.length, ids: targets, ...(kept.length ? { keptHoldingMoney: kept.map((k) => k.id) } : {}) },
         ...meta,
       });
       return updated.length;

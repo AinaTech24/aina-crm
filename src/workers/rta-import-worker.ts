@@ -1247,7 +1247,7 @@ export function startRtaImportWorker() {
           await matchBookedBusinessAfterImport((job.data as any)?.tenantId);
           await syncRtaJourneysAfterImport((job.data as any)?.tenantId);
           await retireEmptyPlaceholdersAfterImport((job.data as any)?.tenantId);
-          await restoreTrashedHoldersAfterImport((job.data as any)?.tenantId);
+          await restoreTrashedHoldersAfterImport((job.data as RichImportJob | undefined)?.tenantId);
           return summary;
         }
         await runRtaImportJob(job.data as RtaImportJob);

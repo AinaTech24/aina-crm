@@ -409,7 +409,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
   const personal = hasPersonalDetails(inv.investorCategory);
   const adult = hasAdultDetails(inv.investorCategory);
   const nominates = canNominate(inv.investorCategory);
-  const typeDetails = ((inv as any).typeDetails ?? {}) as ClientTypeDetails;
+  const typeDetails = (inv.typeDetails ?? {}) as ClientTypeDetails;
   // Derived client-360 insights (all from already-loaded data).
   const completeness = clientCompleteness(inv as any);
   // Holdings stored without a category take it from the AMFI master, so this
@@ -886,7 +886,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           {adult && <KV label="Anniversary" value={inv.anniversaryDate ? formatDate(inv.anniversaryDate) : "—"} edit={{ id: inv.id, field: "anniversaryDate", type: "date", value: inv.anniversaryDate ? String(inv.anniversaryDate).slice(0, 10) : "", nullable: true }} />}
         </Group>
 
-        <ClientTypeGroups kind={typeKind} type={inv.investorCategory} dob={inv.dob ? String(inv.dob).slice(0, 10) : null} details={typeDetails} guardianId={(inv as any).guardianInvestorId ?? null} showPan={showPan} />
+        <ClientTypeGroups kind={typeKind} type={inv.investorCategory} dob={inv.dob ? String(inv.dob).slice(0, 10) : null} details={typeDetails} guardianId={inv.guardianInvestorId ?? null} showPan={showPan} />
 
         <Group title="Contact">
           {showPhone && <KV label="Mobile" value={inv.phone ?? "—"} edit={{ id: inv.id, field: "phone", type: "tel", value: inv.phone ?? "" }} />}
@@ -1261,7 +1261,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
         investorId={inv.id}
         kyc={showKyc ? inv.kycStatus === "verified" : null}
         risk={showRisk ? (isRiskProfileMissing ? "missing" : isRiskProfileExpired ? "expired" : "ok") : null}
-        nominee={showNominee && nominates ? !!inv.nomineeName || ((inv.nominees as any[] | null)?.length ?? 0) > 0 || !!typeDetails.nominationOptOut : null}
+        nominee={showNominee && nominates ? !!inv.nomineeName || ((inv.nominees as unknown[] | null)?.length ?? 0) > 0 || !!typeDetails.nominationOptOut : null}
         bank={showBank ? !!(inv.bankAccountNumberMasked || inv.bankName) : null}
         emailVerified={inv.email ? !!inv.emailVerifiedAt : null}
         phoneVerified={inv.phone ? !!inv.phoneVerifiedAt : null}
