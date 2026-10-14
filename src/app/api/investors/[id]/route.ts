@@ -1,4 +1,5 @@
 import { assertInvestorAccess, investorScopeCondition } from "@/lib/investors/access";
+import { GUARDIAN_NOT_LINKED, auditGuardianChange, redactHiddenGuardianRisk, resolveGuardian } from "@/lib/investors/guardian-link";
 import { handleApiError } from "@/lib/api/error-handler";
 /**
  * Single investor endpoints.
@@ -273,7 +274,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       const nm = names.rows[0] as { rm_name: string | null; branch_name: string | null } | undefined;
 
       return {
-        investor: { ...inv, ...(health ? { healthScore: health.score, healthBand: health.band } : {}) },
+        // A linked minor's risk fields are the guardian's; hidden when the viewer cannot open that guardian (G-1).
+        investor: { ...(await redactHiddenGuardianRisk(tx, session, inv as any)), ...(health ? { healthScore: health.score, healthBand: health.band } : {}) },
         rm: inv.rmId && nm?.rm_name ? { id: inv.rmId, name: nm.rm_name } : null,
         branch: inv.branchId && nm?.branch_name ? { id: inv.branchId, name: nm.branch_name } : null,
         health: health ? { score: health.score, band: health.band } : null,
@@ -423,26 +425,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         if (singleHoldingOnly(nextType)) typePatch.modeOfHolding = "Single";
       }
 
-      // A minor's guardian as a client: the one picked, else the client whose
-      // PAN is the guardian PAN typed. The minor then carries the guardian's
-      // risk profile (a database rule, migration 0234).
+      // A minor's guardian as a client: the one picked, else the ONE client
+      // whose PAN is the guardian PAN typed — only a live adult individual this
+      // user can open (lib/investors/guardian-link.ts, G-1). The minor then
+      // carries the guardian's risk profile (a database rule, migration 0234).
+      // Re-sending the guardian already on record changes nothing (and is not
+      // re-checked), so an editor who cannot open that guardian can still save
+      // the minor's other details; null unlinks.
       delete (fields as any).guardianInvestorId;
+      let guardianVia: "picked" | "pan" | "unlinked" | null = null;
       if (nextType === "minor") {
+        const current = ((before as any).guardianInvestorId ?? null) as string | null;
         let gid: string | null | undefined = parse.data.guardianInvestorId;
-        if (gid) {
-          const ok = (await tx.execute(sql`
-            SELECT 1 FROM investors WHERE id = ${gid}::uuid AND tenant_id = ${session.tenantId}::uuid
-              AND id <> ${id}::uuid AND deleted_at IS NULL`)).rows.length;
-          if (!ok) gid = undefined;
-        } else if (gid === undefined && !(before as any).guardianInvestorId) {
-          const gp = String(((typePatch.typeDetails ?? (before as any).typeDetails) as any)?.guardian?.pan ?? "").trim().toUpperCase();
-          if (gp) {
-            const g = (await tx.execute(sql`
-              SELECT id FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND pan = ${gp}
-                AND id <> ${id}::uuid AND deleted_at IS NULL AND merged_into_id IS NULL
-              ORDER BY dedup_pan DESC LIMIT 1`)).rows[0] as { id: string } | undefined;
-            gid = g?.id;
-          }
+        if (gid && gid === current) gid = undefined;
+        else if (gid) {
+          gid = await resolveGuardian(tx, session, { id: gid, minorId: id });
+          if (!gid) return "bad_guardian" as const;
+          guardianVia = "picked";
+        } else if (gid === null) {
+          guardianVia = "unlinked";
+        } else if (!current) {
+          const gp = ((typePatch.typeDetails ?? (before as any).typeDetails) as any)?.guardian?.pan;
+          gid = (await resolveGuardian(tx, session, { pan: gp, minorId: id })) ?? undefined;
+          if (gid) guardianVia = "pan";
         }
         if (gid !== undefined) typePatch.guardianInvestorId = gid;
       }
@@ -589,6 +594,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         meta: { userId: session.userId } as any,
       } as any);
 
+      if (guardianVia) {
+        await auditGuardianChange(tx, {
+          tenantId: session.tenantId, actorUserId: session.userId, minorId: id,
+          before: ((before as any).guardianInvestorId ?? null), after: ((after[0] as any).guardianInvestorId ?? null),
+          via: guardianVia,
+        });
+      }
+
       // Attribute the edit on the audit trail so "last modified by" reflects it
       // (the change-log drawer + RecordProvenance read this).
       await recordAudit(tx, {
@@ -609,9 +622,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // re-score the family this investor belongs to (no-op if unlinked).
       await recomputeFamilyHealthForInvestor(tx, id);
 
-      return after[0];
+      return redactHiddenGuardianRisk(tx, session, after[0] as any);
     });
 
+    if (result === "bad_guardian") return NextResponse.json({ error: GUARDIAN_NOT_LINKED, field: "guardianInvestorId" }, { status: 400 });
     if (result === "bad_rm") return NextResponse.json({ error: "selected RM is not a user in this firm" }, { status: 400 });
     if (result === "bad_pan") return NextResponse.json({ error: "PAN should look like ABCDE1234F.", field: "pan" }, { status: 400 });
     if (result === "pan_locked")

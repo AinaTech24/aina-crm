@@ -119,15 +119,22 @@ export default async function RiskProfilesPage({
     // One page of investors + their latest response via a LATERAL join (uses
     // rpr_investor_signed_idx; fetches exactly one response per page row — no
     // unbounded DISTINCT ON over the whole book).
+    // The guardian is named only when this user may open them (G-1).
+    const guardianScope = await investorScopeSql(tx, session, "g");
+    // A linked minor's risk is the guardian's copy (migration 0234): blank when that guardian is hidden.
+    const hiddenGuardian = sql`(i.guardian_investor_id IS NOT NULL AND (i.investor_category = 'minor' OR i.is_minor) AND g.id IS NULL)`;
     const rows = await tx.execute(sql`
       SELECT
-        i.id, i.name, i.pan, i.avatar_url, i.risk_profile, i.risk_profile_signed_at, i.risk_profile_score,
+        i.id, i.name, i.pan, i.avatar_url,
+        CASE WHEN ${hiddenGuardian} THEN NULL ELSE i.risk_profile END AS risk_profile,
+        CASE WHEN ${hiddenGuardian} THEN NULL ELSE i.risk_profile_signed_at END AS risk_profile_signed_at,
+        CASE WHEN ${hiddenGuardian} THEN NULL ELSE i.risk_profile_score END AS risk_profile_score,
         i.risk_profile_provisional, i.is_minor, g.name AS guardian_name,
         ${riskBucketCaseSql()} AS bucket,
         rp.id AS profile_id, rp.total_score, rp.next_review_at, rp.signed_at AS latest_signed_at,
         rp.document_url AS signed_doc_key, rp.verification_method
       FROM investors i
-      LEFT JOIN investors g ON g.id = i.guardian_investor_id AND g.tenant_id = i.tenant_id
+      LEFT JOIN investors g ON g.id = i.guardian_investor_id AND g.tenant_id = i.tenant_id AND ${guardianScope}
       LEFT JOIN LATERAL (
         SELECT id, total_score, next_review_at, signed_at, document_url, verification_method
         FROM risk_profile_responses r

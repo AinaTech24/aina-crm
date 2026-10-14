@@ -1,3 +1,4 @@
+import { suitabilityProfile } from "@/lib/risk-profile/own-assessment";
 import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/proposals/[id]/send
@@ -44,7 +45,7 @@ import { createShareToken } from "@/lib/share-tokens";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { gateClientSend } from "@/lib/comms/guarded-send";
 import { advanceJourneyForProposal } from "@/lib/proposals/journey";
-import { proposals, tenants, communications, investors } from "@/db/schema";
+import { proposals, tenants, communications } from "@/db/schema";
 import { checkAlignment } from "@/lib/proposal/risk-alignment";
 import { loadProposalSnapshot } from "@/lib/proposals/snapshot";
 import { loadProposalAppetite, type ProposalAppetite } from "@/lib/proposals/appetite";
@@ -335,14 +336,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
       let clientProfile: any = null;
       if (p.recipientType === "investor" && p.investorId) {
-        const inv = (
-          await tx
-            .select({ rp: investors.riskProfile })
-            .from(investors)
-            .where(and(eq(investors.id, p.investorId), eq(investors.tenantId, session.tenantId)))
-            .limit(1)
-        )[0];
-        clientProfile = inv?.rp ?? null;
+        // The same profile the gate above read: for a minor linked to a
+        // guardian, the minor's own assessment, never the guardian's copy (G-1).
+        clientProfile = (await suitabilityProfile(tx, session.tenantId, p.investorId)).category;
       }
       const alignment = mfLines.length ? checkAlignment(clientProfile, mfLines) : null;
       if (alignment?.overall === "block" && !(isOwner && hasOverride)) {

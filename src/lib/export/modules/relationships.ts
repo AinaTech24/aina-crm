@@ -288,14 +288,19 @@ const VERIFICATION_LABELS: Record<string, string> = {
 const PAN_RE = `'^[A-Z]{5}[0-9]{4}[A-Z]$'`;
 const i = (c: string) => sql.raw(`i.${c}`);
 
+/** A linked minor whose guardian this viewer may not open (the `g` join is scoped). */
+const HIDDEN_GUARDIAN = sql`(i.guardian_investor_id IS NOT NULL AND (i.investor_category = 'minor' OR i.is_minor) AND g.id IS NULL)`;
+
 export const riskProfilesExport: ExportModule = {
   key: "risk-profiles",
   label: "Risk Profiles",
   fileName: "risk-profiles",
   piiSubject: "investor",
   canView: hasInvestorView,
-  from: sql`investors i
-    LEFT JOIN investors g ON g.id = i.guardian_investor_id AND g.tenant_id = i.tenant_id
+  // The guardian is joined only when this user may open them (G-1): a hidden
+  // guardian's name is blank and a linked minor's copied risk is blank too.
+  from: async (tx, session) => sql`investors i
+    LEFT JOIN investors g ON g.id = i.guardian_investor_id AND g.tenant_id = i.tenant_id AND ${await investorScopeSql(tx, session, "g")}
     LEFT JOIN LATERAL (
       SELECT r.total_score, r.next_review_at, r.signed_at, r.signed_by_name, r.verification_method,
              r.profile_date, r.age, r.investment_horizon, r.income_stability, r.risk_capacity, r.risk_tolerance,
@@ -340,11 +345,11 @@ export const riskProfilesExport: ExportModule = {
     { key: "phone", label: "Mobile", group: "Client", sql: i("phone"), pii: "phone" },
     { key: "email", label: "Email", group: "Client", sql: i("email"), pii: "email" },
 
-    { key: "category", label: "Risk category", group: "Risk profile", sql: sql`initcap(replace(i.risk_profile, '_', ' '))`, default: true },
+    { key: "category", label: "Risk category", group: "Risk profile", sql: sql`(CASE WHEN ${HIDDEN_GUARDIAN} THEN NULL ELSE initcap(replace(i.risk_profile, '_', ' ')) END)`, default: true },
     { key: "suggested", label: "Suggested from age (not confirmed)", group: "Risk profile", sql: sql`(i.risk_profile_provisional IS TRUE)`, kind: "bool" },
     { key: "status", label: "Status", group: "Risk profile", sql: labelCase(riskBucketCaseSql(), RISK_BUCKET_LABELS), default: true },
-    { key: "score", label: "Score", group: "Risk profile", sql: sql`COALESCE(rp.total_score, i.risk_profile_score)`, kind: "number", default: true },
-    { key: "signed", label: "Last signed", group: "Risk profile", sql: dIst(i("risk_profile_signed_at")), kind: "date", default: true },
+    { key: "score", label: "Score", group: "Risk profile", sql: sql`(CASE WHEN ${HIDDEN_GUARDIAN} THEN rp.total_score ELSE COALESCE(rp.total_score, i.risk_profile_score) END)`, kind: "number", default: true },
+    { key: "signed", label: "Last signed", group: "Risk profile", sql: dIst(sql`(CASE WHEN ${HIDDEN_GUARDIAN} THEN NULL ELSE i.risk_profile_signed_at END)`), kind: "date", default: true },
     { key: "next_review", label: "Next review", group: "Risk profile", sql: d(sql`rp.next_review_at`), kind: "date", default: true },
     { key: "profile_date", label: "Profile date", group: "Risk profile", sql: d(sql`rp.profile_date`), kind: "date" },
     { key: "verification", label: "How it was taken", group: "Risk profile", sql: labelCase(sql`rp.verification_method`, VERIFICATION_LABELS) },

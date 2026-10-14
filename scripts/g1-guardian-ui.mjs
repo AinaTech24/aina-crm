@@ -1,0 +1,112 @@
+/**
+ * G-1 browser check (2026-10-14): does any page or API response hand a user a
+ * guardian they may not open — name or risk — through a minor's record?
+ *
+ * Run against a LOCAL dev server and a LOCAL database seeded with one firm
+ * (data wall on): a minor in RM A's book linked to a guardian in RM B's book
+ * (a link made before the fix), and a minor linked to a guardian in RM A's own
+ * book. Sessions come from scripts/dev-session.mjs (local only, no password).
+ *
+ *   BASE=http://localhost:3100 RM_A=<uuid> OWNER=<uuid> MINOR_HIDDEN=<uuid> MINOR_VISIBLE=<uuid> \
+ *   MINOR_HIDDEN_NAME="…" HIDDEN_NAME="…" HIDDEN_RISK=very_aggressive VISIBLE_NAME="…" HIDDEN_GUARDIAN=<uuid> \
+ *   SESSION_DATABASE_URL=<local admin URL, only for minting the cookie> \
+ *     node scripts/g1-guardian-ui.mjs
+ *
+ * Every page is checked twice: the raw document the browser receives (HTML +
+ * the React Server Components payload inside it) and the rendered text.
+ */
+import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+let chromium;
+try { ({ chromium } = require("playwright-core")); } catch { ({ chromium } = require("/opt/node-tools/node_modules/playwright-core")); }
+
+const env = (k) => { const v = process.env[k]; if (!v) { console.error(`missing ${k}`); process.exit(2); } return v; };
+const BASE = env("BASE");
+const RM_A = env("RM_A"), OWNER = env("OWNER");
+const MH = env("MINOR_HIDDEN"), MV = env("MINOR_VISIBLE"), GH = env("HIDDEN_GUARDIAN");
+const MINOR_HIDDEN_NAME = env("MINOR_HIDDEN_NAME");
+const HIDDEN_NAME = env("HIDDEN_NAME"), HIDDEN_RISK = env("HIDDEN_RISK"), VISIBLE_NAME = env("VISIBLE_NAME");
+const riskWords = [HIDDEN_RISK, HIDDEN_RISK.replace(/_/g, " "), HIDDEN_RISK.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())];
+
+const cookieFor = (userId) => {
+  // dev-session reads `users` directly, which RLS hides from the app role: give
+  // it the LOCAL admin connection (SESSION_DATABASE_URL) when one is set.
+  const out = execFileSync("node", ["scripts/dev-session.mjs", userId], {
+    encoding: "utf8",
+    env: { ...process.env, ...(process.env.SESSION_DATABASE_URL ? { DATABASE_URL: process.env.SESSION_DATABASE_URL } : {}) },
+  });
+  const m = out.match(/COOKIE mfd_session=(\S+)/);
+  if (!m) throw new Error("dev-session printed no cookie");
+  return m[1];
+};
+
+let pass = 0, fail = 0;
+const check = (ok, label) => { if (ok) pass++; else fail++; console.log(`${ok ? "✓" : "✗"} ${label}`); };
+const leaks = (text) => [HIDDEN_NAME, ...riskWords].filter((w) => text.includes(w));
+
+const browser = await chromium.launch();
+async function as(userId) {
+  const ctx = await browser.newContext();
+  await ctx.addCookies([{ name: "mfd_session", value: cookieFor(userId), url: BASE }]);
+  const page = await ctx.newPage();
+  const raw = async (path) => { const r = await ctx.request.get(BASE + path); return { status: r.status(), text: await r.text() }; };
+  // Everything in the live DOM: text in collapsed sections and input values too
+  // (stricter than what is on screen).
+  const rendered = async (path) => {
+    await page.goto(BASE + path, { waitUntil: "networkidle", timeout: 180_000 });
+    return page.evaluate(() => document.body.textContent + "\n" + [...document.querySelectorAll("input,textarea")].map((e) => e.value).join("\n"));
+  };
+  const send = async (method, path, body) => {
+    const r = await ctx.request.fetch(BASE + path, { method, data: body, headers: { "content-type": "application/json", origin: BASE } });
+    return { status: r.status(), text: await r.text() };
+  };
+  return { ctx, raw, rendered, send };
+}
+
+try {
+  const a = await as(RM_A);
+  for (const [path, what] of [
+    [`/dashboard/investors/${MH}/edit`, "edit page"],
+    [`/dashboard/investors/${MH}`, "client page"],
+    [`/dashboard/risk-profiles?filter=current,not_profiled,due,expired,awaiting`, "risk profiles list"],
+  ]) {
+    const r = await a.raw(path);
+    check(r.status === 200, `RM A ${what}: ${r.status}`);
+    if (what === "risk profiles list") {
+      // The page also carries the firm's age-band settings, which name every
+      // category — so check the minor's own row, and the guardian's name anywhere.
+      check(!r.text.includes(HIDDEN_NAME), `RM A ${what} document never names the hidden guardian`);
+      const row = r.text.match(new RegExp(`name\\\\?":\\\\?"${MINOR_HIDDEN_NAME}\\\\?".*?risk_profile\\\\?":(null|\\\\?"[a-z_]+)`));
+      check(!!row && row[1] === "null", `RM A ${what}: the minor's row carries no risk (${row ? row[1] : "row not found"})`);
+    } else {
+      check(leaks(r.text).length === 0, `RM A ${what} document carries no hidden guardian name / risk (${leaks(r.text).join(", ") || "none"})`);
+    }
+    const t = await a.rendered(path);
+    check(!/license is|no_subscription/i.test(t), `RM A ${what} renders the page itself (not a licence block)`);
+    const tl = what === "risk profiles list" ? (t.includes(HIDDEN_NAME) ? [HIDDEN_NAME] : []) : leaks(t);
+    check(tl.length === 0, `RM A ${what} rendered DOM carries none (${tl.join(", ") || "none"})`);
+    if (what === "edit page") check(t.includes("outside your book"), "RM A edit page says the guardian is outside their book");
+  }
+  const api = await a.raw(`/api/investors/${MH}`);
+  check(api.status === 200 && leaks(api.text).length === 0, `RM A GET /api/investors/<minor>: ${api.status}, leaks ${leaks(api.text).join(", ") || "none"}`);
+  check(JSON.parse(api.text).investor?.riskProfile === null, "RM A API: the minor's copied risk is null");
+  const g = await a.raw(`/api/investors/${GH}`);
+  check(g.status === 403 || g.status === 404, `RM A cannot open the guardian directly (${g.status})`);
+
+  const pick = await a.send("PATCH", `/api/investors/${MV}`, { guardianInvestorId: GH });
+  check(pick.status === 400 && leaks(pick.text).length === 0, `RM A linking the hidden guardian by id is refused without detail (${pick.status})`);
+  const vis = await a.raw(`/dashboard/investors/${MV}/edit`);
+  check(vis.text.includes(VISIBLE_NAME), "RM A edit page of the in-book minor still names its in-book guardian");
+
+  const o = await as(OWNER);
+  const od = await o.raw(`/dashboard/investors/${MH}/edit`);
+  check(od.text.includes(HIDDEN_NAME), "the owner (whole book) is shown the guardian's name");
+  const oapi = JSON.parse((await o.raw(`/api/investors/${MH}`)).text);
+  check(oapi.investor?.riskProfile === HIDDEN_RISK, "the owner sees the minor's risk");
+} finally {
+  await browser.close();
+}
+console.log(`\n${pass} passed, ${fail} failed`);
+process.exit(fail ? 1 : 0);

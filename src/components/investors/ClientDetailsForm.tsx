@@ -97,7 +97,7 @@ export function ClientDetailsForm({
   investor: Investor;
   flags: ClientDetailsFlags;
   family?: ClientFamilyContext | null;
-  guardian?: { id: string; name: string; riskProfile: string | null } | null;
+  guardian?: { id: string; name: string | null; riskProfile: string | null; hidden?: boolean } | null;
 }) {
   const router = useRouter();
   const backHref = `/dashboard/investors/${investor.id}`;
@@ -185,7 +185,7 @@ export function ClientDetailsForm({
   const personal = hasPersonalDetails(f.investorCategory);
   const adult = hasAdultDetails(f.investorCategory);
   const [guardianLink, setGuardianLink] = useState<GuardianLink>({
-    id: guardian?.id ?? null, name: guardian?.name ?? null, riskProfile: guardian?.riskProfile ?? null,
+    id: guardian?.id ?? null, name: guardian?.name ?? null, riskProfile: guardian?.riskProfile ?? null, hidden: !!guardian?.hidden,
   });
   // What the family owns: a member's address (the head's) and the cadence.
   const addressFromFamily = !!family && !family.isHead && family.headHasAddress;
@@ -546,10 +546,10 @@ export function ClientDetailsForm({
           </Field>
         )}
         {flags.showRisk && kind === "minor" && (
-          <Field label="Risk profile" hint={guardianLink.id ? `Same as the guardian${guardianLink.name ? ` (${guardianLink.name})` : ""}.` : "Link the guardian's client record above — a minor takes the guardian's risk profile."}>
+          <Field label="Risk profile" hint={guardianLink.hidden ? "The guardian is outside your book, so their profile is not shown." : guardianLink.id ? `Same as the guardian${guardianLink.name ? ` (${guardianLink.name})` : ""}.` : "Link the guardian's client record above — a minor takes the guardian's risk profile."}>
             {(id, d) => (
               <div id={id} aria-describedby={d} className="input-base flex w-full items-center bg-secondary/60 text-muted-foreground">
-                {guardianLink.id ? (guardianLink.riskProfile ? humanise(guardianLink.riskProfile) : "Guardian has no risk profile yet") : f.riskProfile ? humanise(f.riskProfile) : "—"}
+                {guardianLink.hidden ? "Not shown" : guardianLink.id ? (guardianLink.riskProfile ? humanise(guardianLink.riskProfile) : "Guardian has no risk profile yet") : f.riskProfile ? humanise(f.riskProfile) : "—"}
               </div>
             )}
           </Field>
