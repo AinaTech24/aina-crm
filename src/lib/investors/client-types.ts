@@ -297,6 +297,46 @@ export const INCOME_RANGES = ["Below ₹5L", "₹5L – ₹15L", "₹15L – ₹
 
 export const HOUSEHOLD_TYPES = ["Individual", "Family", "Company", "HUF"];
 
+/**
+ * Occupations while the firm's own list loads (the same labels the
+ * `occupation` master is seeded with, lib/masters/seeds.ts). The form shows
+ * the firm's list from Settings → Masters → Occupations.
+ */
+export const OCCUPATIONS = [
+  "Salaried", "Self-Employed", "Business Owner", "Professional (Doctor/CA/Lawyer)", "Retired", "Homemaker", "Student", "Other",
+];
+
+/** Whose mobile / email it is — SEBI's declaration for a contact that is not the client's own. */
+export const CONTACT_OWNERS = ["Self", "Spouse", "Dependent children", "Dependent parents", "Dependent siblings", "Guardian"];
+
+/** The KYC registration agencies. */
+export const KRAS = ["CVL KRA", "NDML KRA", "CAMS KRA", "KFintech KRA", "NSE KRA (DotEx)"];
+
+/** A nominee's relation to the client. */
+export const NOMINEE_RELATIONS = [
+  "Spouse", "Son", "Daughter", "Father", "Mother", "Brother", "Sister", "Grandson", "Granddaughter",
+  "Grandfather", "Grandmother", "Son-in-law", "Daughter-in-law", "Nephew", "Niece", "Other",
+];
+
+/** A coparcener's relation to the Karta. */
+export const COPARCENER_RELATIONS = [
+  "Spouse", "Son", "Daughter", "Grandson", "Granddaughter", "Brother", "Nephew", "Mother", "Daughter-in-law", "Other",
+];
+
+/** An entity's authorised signatory. */
+export const SIGNATORY_DESIGNATIONS = [
+  "Director", "Managing Director", "Whole-time Director", "Partner", "Designated Partner", "Trustee",
+  "Managing Trustee", "Proprietor", "President", "Secretary", "Treasurer", "Chief Financial Officer",
+  "Company Secretary", "Authorised signatory", "Other",
+];
+
+/** What an entity does. */
+export const BUSINESS_NATURES = [
+  "Manufacturing", "Trading", "Services", "IT / software", "Financial services / investment",
+  "Real estate / construction", "Healthcare", "Education", "Agriculture", "Professional services",
+  "Retail", "Transport / logistics", "Hospitality", "Charitable / non-profit", "Other",
+];
+
 /** Household type from the client type and whether the client is in a family. */
 export function defaultHouseholdType(type: string | null | undefined, inFamily: boolean): string {
   const kind = clientTypeDef(type).kind;

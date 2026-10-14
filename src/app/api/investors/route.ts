@@ -266,6 +266,7 @@ export async function POST(req: NextRequest) {
           dob: body.dob || null,
           gender: body.gender ?? null,
           occupation: body.occupation || null,
+          incomeRange: body.incomeRange || null,
           employerName: body.employerName || null,
           segmentTag: body.segmentTag,
           investorCategory: body.investorCategory,

@@ -26,7 +26,10 @@ import {
   TypeDetailsSchema, canNominate, cleanTypeDetails, clientTypeDef, clientTypeOptions, hasAdultDetails,
   hasPersonalDetails, majorityDate, singleHoldingOnly, CLIENT_TYPE_KEYS, type ClientTypeDetails,
   HOUSEHOLD_TYPES, MARITAL_STATUSES, defaultHouseholdType, defaultTaxStatus, taxStatusOptions,
+  CONTACT_OWNERS, INCOME_RANGES, OCCUPATIONS, withCurrent,
 } from "@/lib/investors/client-types";
+import { COUNTRIES, INDIAN_STATES, canonicalCountry, canonicalState, isIndianAddress } from "@/lib/geo/places";
+import { useMasterLabels } from "@/lib/masters/use-master-labels";
 import { usePincodeAutofill } from "@/lib/pincode/use-pincode";
 import type { Nominee } from "@/lib/investors/nominee";
 import { ReferralsField } from "@/components/investors/ReferralsField";
@@ -53,7 +56,8 @@ function NewInvestorPageInner() {
     birthPlace: "",
     motherName: "",
     maritalStatus: "",
-    occupation: "", // Profession
+    occupation: "",
+    incomeRange: "",
     employerName: "", // Company Name
     aadhaarLast4: "",
     // Contact
@@ -149,6 +153,8 @@ function NewInvestorPageInner() {
     }));
   }
   usePincodeAutofill(form.pincode, (p) => setForm((s) => ({ ...s, city: p.city, state: p.state, country: s.country || "India" })));
+  // The firm's own occupation list (Settings → Masters → Occupations).
+  const occupations = useMasterLabels("occupation", OCCUPATIONS);
   const u = (v: string) => v.trim() || undefined;
 
   // Next meeting date = last meeting date + review frequency (auto-derived).
@@ -204,6 +210,7 @@ function NewInvestorPageInner() {
           motherName: personal ? u(form.motherName) : undefined,
           maritalStatus: adult ? u(form.maritalStatus) : undefined,
           occupation: adult ? u(form.occupation) : undefined,
+          incomeRange: u(form.incomeRange),
           employerName: adult ? u(form.employerName) : undefined,
           aadhaarLast4: personal ? u(form.aadhaarLast4) : undefined,
           email: u(form.email),
@@ -330,7 +337,8 @@ function NewInvestorPageInner() {
           <Field label="Mother's name" value={form.motherName} onChange={(v) => set("motherName", v)} />
           {adult && (<>
           <SelectField label="Marital status" value={form.maritalStatus} onChange={(v) => set("maritalStatus", v)} options={["", ...MARITAL_STATUSES]} />
-          <Field label="Profession" value={form.occupation} onChange={(v) => set("occupation", v)} />
+          <SelectField label="Occupation" value={form.occupation} onChange={(v) => set("occupation", v)} options={["", ...withCurrent(occupations, form.occupation)]} />
+          <SelectField label="Income range" value={form.incomeRange} onChange={(v) => set("incomeRange", v)} options={["", ...INCOME_RANGES]} />
           <Field label="Company name" value={form.employerName} onChange={(v) => set("employerName", v)} />
           </>)}
           <Field label="Aadhaar card (last 4)" value={form.aadhaarLast4} onChange={(v) => set("aadhaarLast4", v.replace(/\D/g, "").slice(0, 4))} placeholder="last 4 digits only" />
@@ -351,9 +359,9 @@ function NewInvestorPageInner() {
         {/* Contact */}
         <Section title="Contact">
           <Field label="Email" type="email" value={form.email} onChange={(v) => set("email", v)} />
-          <Field label="Email relation" value={form.emailRelation} onChange={(v) => set("emailRelation", v)} placeholder="self / spouse / …" />
+          <SelectField label="Email belongs to" value={form.emailRelation} onChange={(v) => set("emailRelation", v)} options={["", ...withCurrent(CONTACT_OWNERS, form.emailRelation)]} />
           <Field label="Mobile" value={form.phone} onChange={(v) => set("phone", v)} placeholder="+919XXXXXXXXX" />
-          <Field label="Mobile relation" value={form.mobileRelation} onChange={(v) => set("mobileRelation", v)} placeholder="self / spouse / …" />
+          <SelectField label="Mobile belongs to" value={form.mobileRelation} onChange={(v) => set("mobileRelation", v)} options={["", ...withCurrent(CONTACT_OWNERS, form.mobileRelation)]} />
           <Field label="WhatsApp" value={form.whatsappPhone} onChange={(v) => set("whatsappPhone", v)} placeholder="Same as mobile if blank" />
         </Section>
 
@@ -368,8 +376,12 @@ function NewInvestorPageInner() {
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
             <Field label="Pincode" value={form.pincode} onChange={(v) => set("pincode", v.replace(/\D/g, "").slice(0, 6))} placeholder="City and state fill in" />
             <Field label="City" value={form.city} onChange={(v) => set("city", v)} />
-            <Field label="State" value={form.state} onChange={(v) => set("state", v)} />
-            <Field label="Country" value={form.country} onChange={(v) => set("country", v)} />
+            {isIndianAddress(form.country) ? (
+              <SelectField label="State" value={canonicalState(form.state) ?? form.state} onChange={(v) => set("state", v)} options={["", ...withCurrent(INDIAN_STATES, canonicalState(form.state) ?? form.state)]} searchable />
+            ) : (
+              <Field label="State" value={form.state} onChange={(v) => set("state", v)} />
+            )}
+            <SelectField label="Country" value={canonicalCountry(form.country) ?? form.country} onChange={(v) => set("country", v)} options={["", ...withCurrent(COUNTRIES, canonicalCountry(form.country) ?? form.country)]} searchable />
           </div>
           </>)}
         </Section>
@@ -410,11 +422,11 @@ function NewInvestorPageInner() {
         <Section title="Second / joint holder (optional)">
           <Field label="First name" value={form.secondHolderFirstName} onChange={(v) => set("secondHolderFirstName", v)} />
           <Field label="Last name" value={form.secondHolderLastName} onChange={(v) => set("secondHolderLastName", v)} />
-          <Field label="Occupation" value={form.secondHolderOccupation} onChange={(v) => set("secondHolderOccupation", v)} />
+          <SelectField label="Occupation" value={form.secondHolderOccupation} onChange={(v) => set("secondHolderOccupation", v)} options={["", ...withCurrent(occupations, form.secondHolderOccupation)]} />
           <Field label="Company name" value={form.secondHolderCompanyName} onChange={(v) => set("secondHolderCompanyName", v)} />
           <Field label="Birth place" value={form.secondHolderBirthPlace} onChange={(v) => set("secondHolderBirthPlace", v)} />
           <Field label="Mother's name" value={form.secondHolderMotherName} onChange={(v) => set("secondHolderMotherName", v)} />
-          <SelectField label="Marital status" value={form.secondHolderMaritalStatus} onChange={(v) => set("secondHolderMaritalStatus", v)} options={["", "Single", "Married", "Divorced", "Widowed"]} />
+          <SelectField label="Marital status" value={form.secondHolderMaritalStatus} onChange={(v) => set("secondHolderMaritalStatus", v)} options={["", ...MARITAL_STATUSES]} />
         </Section>
         )}
 
@@ -535,16 +547,18 @@ function SelectField({
   value,
   onChange,
   options,
+  searchable,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   options: Array<string | { value: string; label: string }>;
+  searchable?: boolean;
 }) {
   return (
     <label className="block">
       <div className="text-xs font-medium mb-1">{label}</div>
-      <UiSelectField value={value} onChange={(e) => onChange(e.target.value)} className="w-full">
+      <UiSelectField value={value} onChange={(e) => onChange(e.target.value)} className="w-full" searchable={searchable}>
         {options.map((o) => {
           const opt = typeof o === "string" ? { value: o, label: o || "Select" } : o;
           return (

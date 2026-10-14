@@ -5,6 +5,8 @@
  * null: the person types the city and state themselves, nothing breaks.
  */
 
+import { canonicalState } from "@/lib/geo/places";
+
 export type PincodePlace = { city: string; state: string };
 
 const cache = new Map<string, PincodePlace | null>();
@@ -17,7 +19,9 @@ export async function lookupPincode(pin: string): Promise<PincodePlace | null> {
     if (!res.ok) return null;
     const j = (await res.json()) as Array<{ Status?: string; PostOffice?: Array<{ District?: string; State?: string }> | null }>;
     const po = j?.[0]?.Status === "Success" ? j[0].PostOffice?.[0] : undefined;
-    const place = po?.District && po?.State ? { city: po.District, state: po.State } : null;
+    // The state as the client master's dropdown names it (India Post writes
+    // "Chattisgarh", "Pondicherry" …).
+    const place = po?.District && po?.State ? { city: po.District, state: canonicalState(po.State) ?? po.State } : null;
     // Remember a definite answer, including "no such pincode"; a network
     // failure (thrown above) is not remembered, so it is tried again.
     cache.set(pin, place);
