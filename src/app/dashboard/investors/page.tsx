@@ -637,6 +637,7 @@ export default async function InvestorsPage({
             total={total}
             flags={{ showPan, showCategory: true, showTier, showSegment, showAum, showSip, showKyc, showStatus }}
             massUpdate={massUpdate}
+            canMerge={session.roles.some((r) => r === "owner" || r === "branch_head")}
           />
           <Pager
             page={page}

@@ -210,6 +210,11 @@ export const SYSTEM_WIDGETS: SystemWidgetMeta[] = [
     description: "Existing clients taking another product: open opportunities, won and lost in the period, conversion, and products held per client.",
     supports: ["period", "rm", "branch", "segment", "category", "family", "tags", "leadSource"],
   },
+  {
+    key: "owner_dependency", title: "Owner dependency", category: "Practice", defaultSize: "M", sizes: ["M", "L"],
+    description: "Could the firm run a month without you? Clients, open tasks, positions and processes that rest on the owner alone. Firm-wide only.",
+    supports: [],
+  },
 ];
 
 export const SYSTEM_WIDGETS_BY_KEY: Record<string, SystemWidgetMeta> = Object.fromEntries(

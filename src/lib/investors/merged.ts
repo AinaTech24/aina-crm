@@ -169,6 +169,27 @@ export async function searchMergeCandidates(tx: Tx, q: string, limit = 25, scope
     digits.length >= 4
       ? sql` OR regexp_replace(COALESCE(i.phone, ''), '\\D', '', 'g') LIKE ${"%" + digits + "%"}`
       : sql``;
+  return loadCandidates(tx, sql`${scope}
+       AND (
+         i.name ILIKE ${like} OR i.pan ILIKE ${like} OR i.email ILIKE ${like}
+         OR i.address->>'line1' ILIKE ${like} OR i.address->>'city' ILIKE ${like}${phoneClause}
+       )`, limit);
+}
+
+/**
+ * The same candidate rows for clients picked by id — the Clients list's
+ * "Merge" bulk action, which already knows which records are one person.
+ * Returned in the order asked; ids outside `scope`, deleted or already merged
+ * are simply absent.
+ */
+export async function loadMergeCandidatesByIds(tx: Tx, ids: string[], scope: SQL = sql`TRUE`): Promise<MergeCandidate[]> {
+  if (ids.length === 0) return [];
+  const rows = await loadCandidates(tx, sql`${scope} AND i.id IN (${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)})`, ids.length);
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  return ids.map((id) => byId.get(id)).filter((r): r is MergeCandidate => !!r);
+}
+
+async function loadCandidates(tx: Tx, where: SQL, limit: number): Promise<MergeCandidate[]> {
   const rows = (await tx.execute(sql`
     SELECT i.id, i.name, i.pan, i.email, i.phone, i.status,
            COALESCE(i.aum::numeric, 0) AS aum,
@@ -179,11 +200,7 @@ export async function searchMergeCandidates(tx: Tx, q: string, limit = 25, scope
       FROM investors i
      WHERE i.deleted_at IS NULL
        AND i.merged_into_id IS NULL
-       AND ${scope}
-       AND (
-         i.name ILIKE ${like} OR i.pan ILIKE ${like} OR i.email ILIKE ${like}
-         OR i.address->>'line1' ILIKE ${like} OR i.address->>'city' ILIKE ${like}${phoneClause}
-       )
+       AND ${where}
      ORDER BY i.aum::numeric DESC NULLS LAST
      LIMIT ${limit}
   `)).rows as any[];

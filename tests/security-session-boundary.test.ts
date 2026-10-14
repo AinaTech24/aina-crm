@@ -4,7 +4,7 @@ const context = vi.hoisted(() => ({ headers: new Headers(), token: "", revoked: 
 vi.mock("react", () => ({ cache: (fn: unknown) => fn }));
 vi.mock("next/headers", () => ({ headers: async () => context.headers,
   cookies: async () => ({ get: () => context.token ? { value: context.token } : undefined }) }));
-vi.mock("@/lib/auth/revocation", () => ({ isSessionRevoked: async () => context.revoked, isDeviceSessionRevoked: async () => context.revoked }));
+vi.mock("@/lib/auth/revocation", () => ({ isSessionRevoked: async () => context.revoked, isDeviceSessionRevoked: async () => context.revoked, isSessionOrDeviceRevoked: async () => context.revoked }));
 import { getSession } from "@/lib/auth/session";
 import { signSession, verifySession } from "@/lib/auth/jwt";
 import { middleware } from "@/middleware";

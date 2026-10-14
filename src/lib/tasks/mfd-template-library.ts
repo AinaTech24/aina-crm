@@ -56,7 +56,7 @@ export const MFD_TASK_TEMPLATE_LIBRARY: MfdTaskTemplate[] = [
       "Confirm scheme, amount and mode (fresh folio vs additional purchase) with the client",
       "Verify client KYC is valid and folio / UCC is active",
       "Confirm scheme suitability against the client's risk profile and record the client's go-ahead",
-      "Collect payment instruction (net-banking / UPI / cheque / RTGS) — check the cut-off (2:30 PM liquid, 3:00 PM other schemes) for same-day NAV",
+      "Collect payment instruction (net-banking / UPI / cheque / RTGS) — check the cut-off (1:30 PM liquid and overnight, 3:00 PM other schemes) for same-day NAV",
       "Place the purchase order on BSE Star MF / NSE NMF II before cut-off",
       "Confirm payment realisation / mandate debit success",
       "Share order confirmation + expected units-allotment date with the client",
@@ -99,7 +99,7 @@ export const MFD_TASK_TEMPLATE_LIBRARY: MfdTaskTemplate[] = [
       "Place the redemption before cut-off; note the T+2/T+3 settlement date",
       "Confirm redemption proceeds are credited to the registered bank account",
       "Update CRM holdings and notify the client with the realised amount",
-      "Advise on reinvestment / tax-harvesting where relevant",
+      "Discuss reinvestment / tax-harvesting options where relevant",
     ],
   },
   {

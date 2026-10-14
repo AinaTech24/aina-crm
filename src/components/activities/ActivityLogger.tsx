@@ -61,7 +61,10 @@ export function LogActivityButton({
   );
 }
 
-function LogActivityDrawer({ subject: fixed, onClose, initialKind = "call" }: { subject?: Subject; onClose: () => void; initialKind?: string }) {
+/** Exported for the global launchers (ContactLogPrompt, GlobalLogActivity). */
+export function LogActivityDrawer({
+  subject: fixed, onClose, initialKind = "call", initialStatus = "",
+}: { subject?: Subject; onClose: () => void; initialKind?: string; initialStatus?: string }) {
   const router = useRouter();
   const [subject, setSubject] = useState<Subject | null>(fixed ?? null);
   const [kind, setKind] = useState<string>(initialKind);
@@ -69,7 +72,7 @@ function LogActivityDrawer({ subject: fixed, onClose, initialKind = "call" }: { 
   // worklist on that day (the desk reads activities.next_followup_at).
   const [nextFollowup, setNextFollowup] = useState("");
   const [direction, setDirection] = useState<string>("outbound");
-  const [status, setStatus] = useState<string>("");
+  const [status, setStatus] = useState<string>(initialStatus);
   const [subjectLine, setSubjectLine] = useState("");
   const [notes, setNotes] = useState("");
   const [durationMin, setDurationMin] = useState("");

@@ -1,3 +1,4 @@
+import { cache } from "react";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -46,6 +47,7 @@ import {
   IndianRupee,
   Landmark,
   Crosshair,
+  Sparkles,
 } from "lucide-react";
 import { eq, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
@@ -64,11 +66,11 @@ import { BirthdayBell } from "@/components/layout/BirthdayBell";
 import { HelpMenu } from "@/components/layout/HelpMenu";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { DesktopSidebar } from "@/components/layout/DesktopSidebar";
-import { SessionRegister } from "@/components/layout/SessionRegister";
 import { CustomizableNav, type NavItemData } from "@/components/layout/CustomizableNav";
 import { loadModuleControls } from "@/lib/platform/module-controls";
 import { QuickCreateFab } from "@/components/layout/QuickCreateFab";
 import { CommandPalette } from "@/components/layout/CommandPalette";
+import { ActivityLauncher } from "@/components/activities/ActivityLauncher";
 import ProductTour from "@/components/layout/ProductTour";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { ProfileMenu } from "@/components/layout/ProfileMenu";
@@ -124,6 +126,10 @@ const NAV: NavSection[] = [
       // above the groups; the module kill-switch still hides it, because
       // moduleControls is checked for every item below.
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+      // Who to call today and why, ranked by what is at stake (lib/nba). It had
+      // no way in but a typed address; the cue has to be where people look.
+      { href: "/dashboard/next-best-action", label: "Next Best Action", icon: Sparkles,
+        roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
       // My Day was removed 2026-10-01 at the firm's request; /dashboard/command-center
       // now redirects here.
     ],
@@ -132,6 +138,11 @@ const NAV: NavSection[] = [
     title: "Work",
     items: [
       { href: "/dashboard/tasks", label: "Tasks", icon: ListChecks, module: "tasks" },
+      // Plan the morning, close the evening (lib/daily-tracker). Clocking in and
+      // the 6:30 pm "close your day" nudge both open it.
+      // accessKey: the page is gated as part of Tasks (gatedNavKeyForPath), so
+      // the menu item follows the same grant rather than showing a locked page.
+      { href: "/dashboard/tasks/daily", accessKey: "/dashboard/tasks", label: "Daily Job Tracker", icon: CalendarCheck, module: "tasks" },
       { href: "/dashboard/review-meetings", label: "Meetings", icon: Presentation, module: "review_meetings",
         roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
       { href: "/dashboard/service-requests", label: "Service Requests", icon: LifeBuoy, module: "service_requests" },
@@ -227,6 +238,18 @@ const NAV: NavSection[] = [
     ],
   },
   {
+    // Working ON the firm (The E-Myth Revisited, 2026-10-08): the systems map,
+    // positions, the service promise, measures and the strategic objective
+    // (all under /dashboard/practice), and the operations manual — the SOP
+    // library, now open to everyone because an SOP nobody can find is no SOP.
+    title: "Practice",
+    items: [
+      { href: "/dashboard/practice", label: "Practice Systems", icon: Network,
+        roles: ["owner", "branch_head", "compliance"] },
+      { href: "/dashboard/sops", label: "Operations Manual", icon: ScrollText },
+    ],
+  },
+  {
     // Configure-once reference data and back-office tooling. Shown only to the
     // people who run the back office, and collapsed unless you are on one of
     // its pages. The pages keep their own guards; this only trims the menu.
@@ -283,7 +306,6 @@ const PALETTE_ONLY: NavSection[] = [
     title: "Compliance",
     items: [
       { href: "/dashboard/compliance", label: "Compliance & DDQ readiness", icon: FileCheck, module: "ddq", roles: ["owner", "compliance"] },
-      { href: "/dashboard/sops", label: "SOP library", icon: ScrollText, roles: ["owner", "compliance"] },
       { href: "/dashboard/audit-log", label: "Audit log", icon: ClipboardCheck, module: "audit_log", roles: ["owner", "compliance"] },
       { href: "/dashboard/legal-registrations", label: "Legal registrations", icon: Stamp, roles: ["owner", "compliance"] },
       { href: "/dashboard/sub-distributors", label: "Sub-distributors", icon: Network, roles: ["owner", "compliance"] },
@@ -318,25 +340,24 @@ function NavBlockedNotice() {
   );
 }
 
+/**
+ * The firm's row, read ONCE per request: generateMetadata (tab title, favicon)
+ * and the layout (logo, theme, name) both need it, and each used to open its
+ * own transaction for it. React cache() shares the result within a request.
+ */
+const getShellTenant = cache(async (tenantId: string) =>
+  withTenant(tenantId, async (tx) => {
+    const [t] = await tx.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+    return t;
+  })
+);
+
 export async function generateMetadata(): Promise<Metadata> {
   // Per-tenant favicon + browser-tab title. Wrapped in try/catch so a metadata
   // hiccup (e.g. no session) never takes down the dashboard render.
   try {
     const session = await requireSession();
-    const branding = await withTenant(session.tenantId, async (tx) => {
-      const [t] = await tx
-        .select({
-          displayName: tenants.displayName,
-          logoUrl: tenants.logoUrl,
-          logoIconUrl: tenants.logoIconUrl,
-          logoMarkUrl: tenants.logoMarkUrl,
-          faviconUrl: tenants.faviconUrl,
-        })
-        .from(tenants)
-        .where(eq(tenants.id, session.tenantId))
-        .limit(1);
-      return t;
-    });
+    const branding = await getShellTenant(session.tenantId);
     const icon = pickLogo(branding, "favicon");
     return {
       title: branding?.displayName ? `${branding.displayName} — CRM` : undefined,
@@ -371,8 +392,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const pathname = reqHeaders.get("x-pathname") ?? "";
   const pathAllowed = isPathAllowedWhenRestricted(pathname);
 
-  const { tenant, userModules, avatarUrl, twoFaEnabled, whatsNewUnread, navBadges, branchList } = await withTenant(session.tenantId, async (tx) => {
-    const [t] = await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1);
+  const tenantP = getShellTenant(session.tenantId);
+  const { userModules, avatarUrl, twoFaEnabled, whatsNewUnread, navBadges, branchList, firmLayoutRows } = await withTenant(session.tenantId, async (tx) => {
     // Per-user sidebar module grant (Module-19). null = inherit all tenant modules.
     const [u] = await tx
       .select({ enabledModules: users.enabledModules, avatarUrl: users.avatarUrl, twoFaEnabled: users.twoFaEnabled })
@@ -391,42 +412,38 @@ export default async function DashboardLayout({ children }: { children: React.Re
     // Sidebar count badges -- ONLY where the reader has something to act on:
     // their overdue tasks, the service requests waiting on them, and leave
     // they can approve. Everything else is noise that trains people to ignore
-    // badges. This layout wraps every page, so each count runs in its own
-    // savepoint and falls back to 0 rather than taking the app down.
+    // badges. This layout wraps every page, so the counts run in ONE statement
+    // in its own savepoint and fall back to 0 rather than taking the app down
+    // (they used to be three statements in three savepoints: ~9 round trips).
     const isLeaveApprover = session.roles.some((r) => r === "owner" || r === "branch_head");
     const srSeeAll = can(session.roles, "service_request.view.all", session.permissions);
-    const countOf = async (q: ReturnType<typeof sql>): Promise<number> => {
-      try {
-        const r = await tx.transaction(async (sp) => sp.execute(q));
-        return Number((r.rows[0] as { n?: number } | undefined)?.n ?? 0);
-      } catch {
-        return 0;
-      }
-    };
-    const [tasksOverdue, srOpen, leavePending] = await Promise.all([
-      // Overdue tasks assigned to ME — lib/metrics/tasks.ts, the same
-      // definition as every overdue count on the dashboards and My Day.
-      countOf(sql`
-        SELECT count(*)::int AS n FROM tasks t
-         WHERE t.tenant_id = ${session.tenantId}::uuid
-           AND t.assignee_id = ${session.userId}::uuid
-           AND ${overdueTaskSql("t")}`),
-      // waiting_customer is excluded on purpose: the ball is in the client's court.
-      countOf(sql`
-        SELECT count(*)::int AS n FROM service_requests
-         WHERE tenant_id = ${session.tenantId}::uuid
-           AND status IN ('open', 'in_progress', 'escalated')
-           AND ${srSeeAll ? sql`TRUE` : sql`assigned_to_user_id = ${session.userId}::uuid`}`),
-      // Only managers approve leave, and never their own -- so nobody else is
-      // shown a count they can do nothing about.
-      isLeaveApprover
-        ? countOf(sql`
-            SELECT count(*)::int AS n FROM leave_applications
-             WHERE tenant_id = ${session.tenantId}::uuid
-               AND status = 'requested'
-               AND employee_user_id <> ${session.userId}::uuid`)
-        : Promise.resolve(0),
-    ]);
+    const badges = await tx
+      .transaction(async (sp) => sp.execute(sql`
+        SELECT
+          -- Overdue tasks assigned to ME — lib/metrics/tasks.ts, the same
+          -- definition as every overdue count on the dashboards and My Day.
+          (SELECT count(*)::int FROM tasks t
+            WHERE t.tenant_id = ${session.tenantId}::uuid
+              AND t.assignee_id = ${session.userId}::uuid
+              AND ${overdueTaskSql("t")}) AS tasks_overdue,
+          -- waiting_customer is excluded on purpose: the ball is in the client's court.
+          (SELECT count(*)::int FROM service_requests
+            WHERE tenant_id = ${session.tenantId}::uuid
+              AND status IN ('open', 'in_progress', 'escalated')
+              AND ${srSeeAll ? sql`TRUE` : sql`assigned_to_user_id = ${session.userId}::uuid`}) AS sr_open,
+          -- Only managers approve leave, and never their own -- so nobody else
+          -- is shown a count they can do nothing about.
+          ${isLeaveApprover
+            ? sql`(SELECT count(*)::int FROM leave_applications
+                    WHERE tenant_id = ${session.tenantId}::uuid
+                      AND status = 'requested'
+                      AND employee_user_id <> ${session.userId}::uuid)`
+            : sql`0`} AS leave_pending`))
+      .then((r) => r.rows[0] as { tasks_overdue?: number; sr_open?: number; leave_pending?: number } | undefined)
+      .catch(() => undefined);
+    const tasksOverdue = Number(badges?.tasks_overdue ?? 0);
+    const srOpen = Number(badges?.sr_open ?? 0);
+    const leavePending = Number(badges?.leave_pending ?? 0);
 
     // "Switch branch" opens the firm cockpit for one branch, so only a viewer of
     // the firm cockpit is offered it. Own savepoint: a failure hides the item,
@@ -440,8 +457,17 @@ export default async function DashboardLayout({ children }: { children: React.Re
           .catch(() => [])
       : [];
 
+    // Firm-wide layout defaults (owner-set) — injected as a global so the
+    // RelatedLists + ColumnManager components can use them as the fallback
+    // before a user personalizes (their own localStorage choice still wins).
+    // Read in this transaction rather than a second one.
+    const firmLayoutRows = await tx
+      .select({ moduleKey: tenantUiLayouts.moduleKey, kind: tenantUiLayouts.kind, data: tenantUiLayouts.data })
+      .from(tenantUiLayouts)
+      .where(eq(tenantUiLayouts.tenantId, session.tenantId));
+
     return {
-      tenant: t,
+      firmLayoutRows,
       userModules: (u?.enabledModules as string[] | null) ?? null,
       avatarUrl: (u?.avatarUrl as string | null) ?? null,
       twoFaEnabled: !!u?.twoFaEnabled,
@@ -457,15 +483,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     };
   });
 
-  // Firm-wide layout defaults (owner-set) — injected as a global so the
-  // RelatedLists + ColumnManager components can use them as the fallback before
-  // a user personalizes (their own localStorage choice still wins).
-  const firmLayoutRows = await withTenant(session.tenantId, async (tx) =>
-    tx
-      .select({ moduleKey: tenantUiLayouts.moduleKey, kind: tenantUiLayouts.kind, data: tenantUiLayouts.data })
-      .from(tenantUiLayouts)
-      .where(eq(tenantUiLayouts.tenantId, session.tenantId))
-  );
+  const tenant = await tenantP;
   const firmLayoutMap: Record<string, Record<string, any>> = {};
   for (const r of firmLayoutRows) (firmLayoutMap[r.moduleKey] ??= {})[r.kind] = r.data;
   const layoutAdmin = can(session.roles, "settings.users", session.permissions);
@@ -474,7 +492,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // never reaches the browser and nobody is offered an action that would 403.
   const perms = session.permissions;
   const cap = (c: Parameters<typeof can>[1]) => can(session.roles, c, perms);
+  const canLogActivity = cap("investor.note.add") || cap("lead.edit.all") || cap("lead.edit.assigned");
   const quickAddItems: QuickAddItem[] = [
+    // First: the thing an RM does most often. Opens the Log activity drawer with
+    // a client / lead picker in place (ActivityLauncher) — no page to find first.
+    { label: "Log a call", href: "#log-call", hint: "Call, WhatsApp, visit or note", action: "log-activity" as const, show: canLogActivity },
     { label: "Lead", href: "/dashboard/leads/new", show: cap("lead.edit.all") || cap("lead.edit.assigned") },
     { label: "Client", href: "/dashboard/investors/new", show: cap("investor.edit.all") || cap("investor.edit.assigned") },
     { label: "Family", href: "/dashboard/families/new", show: cap("family.create") },
@@ -487,11 +509,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
     { label: "Proposal", href: "/dashboard/proposals/new", show: cap("proposal.write") },
     { label: "Insurance policy", href: "/dashboard/insurance/new", show: cap("insurance.write") },
     { label: "Service query", href: "/dashboard/service-requests/new", show: cap("service_request.manage") },
-    // A note belongs to a client, so it is added from that client's page.
+    // The note on the client's own page (Notes tab) is still the long-form one;
+    // a quick note is "Log a call" above with type Note.
     { label: "Note", href: "/dashboard/investors", hint: "Pick a client to add a note", show: cap("investor.note.add") },
   ]
     .filter((i) => i.show)
-    .map(({ label, href, hint }) => ({ label, href, hint }));
+    .map(({ label, href, hint, action }) => ({ label, href, hint, action }));
 
   // Sidebar badge uses the square icon variant, falling back to monogram → full
   // logo so a firm that only uploaded a wide logo still gets a sensible badge.
@@ -735,7 +758,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <>
               {license.isRestricted && pathAllowed && <RestrictedBanner license={license} />}
               {children}
-              <SessionRegister />
             </>
           )}
         </div>
@@ -747,6 +769,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
       {/* Ctrl/⌘-K command palette — jump to any module, quick-create, or search
           records. Gets the same role/license-filtered nav as the sidebar. */}
       {!license.isRestricted && <CommandPalette navItems={paletteNavItems} />}
+      {/* "How did the call go?" after any Call / WhatsApp launcher, and the
+          global Log a call drawer (Ctrl/⌘-K, + Add, the floating button). */}
+      {!license.isRestricted && <ActivityLauncher />}
       {/* First-run coachmark tour — runs once, spotlighting nav, search, Ctrl+K,
           quick-create and notifications so a new user isn't overwhelmed. */}
       {!license.isRestricted && <ProductTour />}

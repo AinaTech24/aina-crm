@@ -72,9 +72,9 @@ export function NbaFocusMode({ actions }: { actions: FocusAction[] }) {
       )}
 
       <div className="flex items-center gap-2 mt-4 pt-3 border-t border-border flex-wrap">
-        <ContactQuickActions phone={a.phone} email={a.email} message={a.message} show={["whatsapp", "call", "email"]} size={16} />
+        <ContactQuickActions phone={a.phone} email={a.email} message={a.message} show={["whatsapp", "call", "email"]} size={16} logFor={{ type: a.subjectType, id: a.subjectId, name: a.subjectName }} />
         <LogActivityButton subject={{ type: a.subjectType, id: a.subjectId, name: a.subjectName, phone: a.phone }} label="Log" variant="secondary" />
-        <NbaRowActions snoozeKey={a.snoozeKey} name={a.subjectName} label={a.label} reason={a.reason} phone={a.phone} email={a.email} />
+        <NbaRowActions snoozeKey={a.snoozeKey} name={a.subjectName} label={a.label} reason={a.reason} phone={a.phone} email={a.email} logFor={{ type: a.subjectType, id: a.subjectId, name: a.subjectName }} />
         <button
           onClick={() => setI(Math.min(actions.length - 1, idx + 1))}
           disabled={idx >= actions.length - 1}

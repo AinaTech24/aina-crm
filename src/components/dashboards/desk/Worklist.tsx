@@ -112,7 +112,7 @@ function RowActions({ i, perms }: { i: WorkItem; perms: Perms }) {
     : i.leadId ? { type: "lead" as const, id: i.leadId, name, phone: i.phone } : null;
   return (
     <span className="flex items-center justify-end gap-0.5">
-      <ContactQuickActions phone={i.phone} email={i.email} show={["call", "whatsapp", "email"]} />
+      <ContactQuickActions phone={i.phone} email={i.email} show={["call", "whatsapp", "email"]} logFor={subject} />
       {perms.canNote && subject && <LogActivityButton subject={subject} iconOnly defaultKind="note" label={`Add note — ${name}`} />}
       {perms.canComplete && i.taskId && <CompleteTaskButton taskId={i.taskId} title={i.action} />}
       {perms.canSchedule && i.meetingId && (

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { notify } from "@/components/ui/Toast";
 import { useRouter } from "next/navigation";
 import { Sparkles, Clock, Check, X, Loader2 } from "lucide-react";
+import { announceContact, type ContactLogSubject } from "@/lib/activities/contact-log";
 
 /**
  * Per-row actions for a Next-Best-Action: AI-draft outreach, snooze, done,
@@ -19,6 +20,7 @@ export function NbaRowActions({
   phone,
   email,
   channel = "whatsapp",
+  logFor,
 }: {
   snoozeKey: string;
   name: string;
@@ -27,6 +29,8 @@ export function NbaRowActions({
   phone?: string | null;
   email?: string | null;
   channel?: "whatsapp" | "email" | "sms";
+  /** The client / lead — after the draft opens, asks "Did you send it?" to log it. */
+  logFor?: ContactLogSubject | null;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
@@ -62,8 +66,10 @@ export function NbaRowActions({
       if (phone) {
         const num = phone.replace(/[^\d]/g, "");
         window.open(`https://wa.me/${num}?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+        if (logFor) announceContact({ ...logFor, channel: "whatsapp" });
       } else if (email) {
         window.open(`mailto:${email}?body=${encodeURIComponent(text)}`, "_blank");
+        if (logFor) announceContact({ ...logFor, channel: "email" });
       } else {
         await navigator.clipboard.writeText(text).catch(() => {});
         notify.success("Drafted message copied to clipboard.");

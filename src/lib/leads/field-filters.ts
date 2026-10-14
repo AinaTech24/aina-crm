@@ -106,20 +106,31 @@ const BOOK_ARRAY_LISTS: [string, SQL][] = [
  * trip; at most 200 values per list.
  */
 export async function loadLeadFilterOptions(tx: any, tenantId: string, bookWhere: SQL): Promise<LeadFilterOptions> {
+  // The book is read ONCE (materialized CTE) and every list groups that —
+  // one scan of leads instead of one per list (see loadInvestorFilterOptions).
+  const cols = [
+    ...BOOK_TEXT_LISTS.map(([, expr], i) => sql`btrim(${expr}) AS ${sql.raw(`c${i}`)}`),
+    ...BOOK_ARRAY_LISTS.map(([, expr], i) => sql`CASE WHEN jsonb_typeof(${expr}) = 'array' THEN ${expr} ELSE '[]'::jsonb END AS ${sql.raw(`a${i}`)}`),
+  ];
   const parts = [
-    ...BOOK_TEXT_LISTS.map(([key, expr]) => sql`
-      (SELECT ${key}::text AS f, lower(btrim(${expr})) AS v, min(btrim(${expr})) AS l
-       FROM leads WHERE ${bookWhere} AND btrim(COALESCE(${expr}, '')) <> ''
-       GROUP BY 2 ORDER BY 3 LIMIT 200)`),
-    ...BOOK_ARRAY_LISTS.map(([key, expr]) => sql`
+    ...BOOK_TEXT_LISTS.map(([key], i) => {
+      const c = sql.raw(`c${i}`);
+      return sql`
+      (SELECT ${key}::text AS f, lower(${c}) AS v, min(${c}) AS l
+       FROM book WHERE COALESCE(${c}, '') <> ''
+       GROUP BY 2 ORDER BY 3 LIMIT 200)`;
+    }),
+    ...BOOK_ARRAY_LISTS.map(([key], i) => sql`
       (SELECT ${key}::text AS f, e AS v, e AS l
-       FROM leads, jsonb_array_elements_text(CASE WHEN jsonb_typeof(${expr}) = 'array' THEN ${expr} ELSE '[]'::jsonb END) AS e
-       WHERE ${bookWhere} AND btrim(e) <> ''
+       FROM book, jsonb_array_elements_text(${sql.raw(`a${i}`)}) AS e
+       WHERE btrim(e) <> ''
        GROUP BY e ORDER BY e LIMIT 200)`),
     sql`(SELECT 'subdist'::text AS f, id::text AS v, name AS l FROM sub_distributors WHERE tenant_id = ${tenantId}::uuid ORDER BY name LIMIT 200)`,
     sql`(SELECT 'branch'::text AS f, id::text AS v, name AS l FROM branches WHERE tenant_id = ${tenantId}::uuid ORDER BY name LIMIT 200)`,
   ];
-  const res = await tx.execute(sql.join(parts, sql` UNION ALL `));
+  const res = await tx.execute(sql`
+    WITH book AS MATERIALIZED (SELECT ${sql.join(cols, sql`, `)} FROM leads WHERE ${bookWhere})
+    ${sql.join(parts, sql` UNION ALL `)}`);
   const out: LeadFilterOptions = {};
   for (const r of res.rows as { f: string; v: string; l: string }[]) {
     const label =

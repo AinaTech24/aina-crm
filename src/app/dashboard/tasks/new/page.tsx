@@ -316,6 +316,9 @@ export default function NewTaskPage() {
         }))
         .filter((c) => c.text.length > 0);
       if (cleanChecklist.length > 0) payload.checklist = cleanChecklist;
+      // The template applied — recorded on the task (meta.templateId) so the
+      // template's SOPs show in the task's "How we do this".
+      if (templateId) payload.templateId = templateId;
       if (form.recurrence) {
         payload.recurrence = form.recurrence;
         if (form.recurrenceUntil) payload.recurrenceUntil = form.recurrenceUntil;
