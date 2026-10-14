@@ -363,7 +363,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
 
     return {
       // A linked minor's risk fields are the guardian's: hidden when the viewer cannot open that guardian (G-1).
-      investor: await redactHiddenGuardianRisk(tx, session, inv as any),
+      investor: await redactHiddenGuardianRisk(tx, session, inv),
       folios: foliosRows,
       sips: sipsRows,
       goals: goalsRows,

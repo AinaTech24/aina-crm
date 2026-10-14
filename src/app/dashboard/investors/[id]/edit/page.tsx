@@ -51,8 +51,8 @@ export default async function EditClientDetailsPage({ params }: { params: Promis
     // The guardian's record only when this user may open it (G-1): otherwise
     // the form learns that a guardian is linked, never who, and the minor's
     // own risk fields — the guardian's copy (migration 0234) — are blanked.
-    const guardian = await guardianForViewer(tx, session, (inv as any).guardianInvestorId);
-    const shown = guardian?.hidden ? await redactHiddenGuardianRisk(tx, session, inv as any) : inv;
+    const guardian = await guardianForViewer(tx, session, inv.guardianInvestorId);
+    const shown = guardian?.hidden ? await redactHiddenGuardianRisk(tx, session, inv) : inv;
     return { inv: shown as typeof inv, family, guardian };
   }, { userId: session.userId, branchId: session.branchId ?? undefined, roles: session.roles });
   if (!loaded) notFound();

@@ -275,7 +275,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
       return {
         // A linked minor's risk fields are the guardian's; hidden when the viewer cannot open that guardian (G-1).
-        investor: { ...(await redactHiddenGuardianRisk(tx, session, inv as any)), ...(health ? { healthScore: health.score, healthBand: health.band } : {}) },
+        investor: { ...(await redactHiddenGuardianRisk(tx, session, inv)), ...(health ? { healthScore: health.score, healthBand: health.band } : {}) },
         rm: inv.rmId && nm?.rm_name ? { id: inv.rmId, name: nm.rm_name } : null,
         branch: inv.branchId && nm?.branch_name ? { id: inv.branchId, name: nm.branch_name } : null,
         health: health ? { score: health.score, band: health.band } : null,
@@ -435,7 +435,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       delete (fields as any).guardianInvestorId;
       let guardianVia: "picked" | "pan" | "unlinked" | null = null;
       if (nextType === "minor") {
-        const current = ((before as any).guardianInvestorId ?? null) as string | null;
+        const current = before.guardianInvestorId ?? null;
         let gid: string | null | undefined = parse.data.guardianInvestorId;
         if (gid && gid === current) gid = undefined;
         else if (gid) {
@@ -445,7 +445,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         } else if (gid === null) {
           guardianVia = "unlinked";
         } else if (!current) {
-          const gp = ((typePatch.typeDetails ?? (before as any).typeDetails) as any)?.guardian?.pan;
+          const gp = ((typePatch.typeDetails ?? before.typeDetails) as { guardian?: { pan?: string } } | null)?.guardian?.pan;
           gid = (await resolveGuardian(tx, session, { pan: gp, minorId: id })) ?? undefined;
           if (gid) guardianVia = "pan";
         }
@@ -597,7 +597,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (guardianVia) {
         await auditGuardianChange(tx, {
           tenantId: session.tenantId, actorUserId: session.userId, minorId: id,
-          before: ((before as any).guardianInvestorId ?? null), after: ((after[0] as any).guardianInvestorId ?? null),
+          before: before.guardianInvestorId ?? null, after: after[0].guardianInvestorId ?? null,
           via: guardianVia,
         });
       }
@@ -622,7 +622,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // re-score the family this investor belongs to (no-op if unlinked).
       await recomputeFamilyHealthForInvestor(tx, id);
 
-      return redactHiddenGuardianRisk(tx, session, after[0] as any);
+      return redactHiddenGuardianRisk(tx, session, after[0]);
     });
 
     if (result === "bad_guardian") return NextResponse.json({ error: GUARDIAN_NOT_LINKED, field: "guardianInvestorId" }, { status: 400 });
