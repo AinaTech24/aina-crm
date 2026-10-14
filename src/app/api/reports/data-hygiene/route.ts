@@ -24,6 +24,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireAny } from "@/lib/auth/rbac";
 import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
+import { missingDobSql, needsNomineeSql, panAadhaarGapSql } from "@/lib/investors/type-rules";
 
 export const dynamic = "force-dynamic";
 
@@ -42,16 +43,15 @@ export async function GET() {
           COUNT(*) FILTER (WHERE pan IS NULL OR pan = '')             AS pan_missing,
           COUNT(*) FILTER (WHERE phone IS NULL OR phone = '')         AS phone_missing,
           COUNT(*) FILTER (WHERE email IS NULL OR email = '')         AS email_missing,
-          COUNT(*) FILTER (WHERE dob IS NULL)                         AS dob_missing,
-          COUNT(*) FILTER (WHERE nominee_name IS NULL
-                              OR nominee_name = '')                   AS nominee_missing,
+          COUNT(*) FILTER (WHERE ${missingDobSql("")})                AS dob_missing,
+          COUNT(*) FILTER (WHERE ${needsNomineeSql("")})              AS nominee_missing,
           COUNT(*) FILTER (WHERE bank_account_masked IS NULL
                               OR bank_account_masked = '')            AS bank_missing,
           COUNT(*) FILTER (WHERE ${rkAll.category} IS NULL
                               OR ${rkAll.signedAt} IS NULL)           AS risk_missing,
           COUNT(*) FILTER (WHERE kyc_status != 'verified')             AS kyc_unverified,
           COUNT(*) FILTER (WHERE rm_id IS NULL)                       AS rm_missing,
-          COUNT(*) FILTER (WHERE pan_aadhaar_link_status = 'not_linked' OR pan_aadhaar_link_status IS NULL) AS pan_aadhaar_unlinked,
+          COUNT(*) FILTER (WHERE ${panAadhaarGapSql("")}) AS pan_aadhaar_unlinked,
           COUNT(*)                                                    AS total
         FROM investors
         WHERE status IN ('active', 'dormant') AND deleted_at IS NULL
@@ -64,9 +64,8 @@ export async function GET() {
           COUNT(*) FILTER (WHERE i.pan IS NULL OR i.pan = '')          AS pan_missing,
           COUNT(*) FILTER (WHERE i.phone IS NULL OR i.phone = '')      AS phone_missing,
           COUNT(*) FILTER (WHERE i.email IS NULL OR i.email = '')      AS email_missing,
-          COUNT(*) FILTER (WHERE i.dob IS NULL)                        AS dob_missing,
-          COUNT(*) FILTER (WHERE i.nominee_name IS NULL
-                              OR i.nominee_name = '')                  AS nominee_missing,
+          COUNT(*) FILTER (WHERE ${missingDobSql("i")})                AS dob_missing,
+          COUNT(*) FILTER (WHERE ${needsNomineeSql("i")})              AS nominee_missing,
           COUNT(*) FILTER (WHERE i.bank_account_masked IS NULL
                               OR i.bank_account_masked = '')           AS bank_missing,
           COUNT(*) FILTER (WHERE ${rk.category} IS NULL

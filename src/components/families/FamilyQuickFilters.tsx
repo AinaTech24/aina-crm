@@ -1,5 +1,6 @@
 import { sql, type SQL } from "drizzle-orm";
 import { LIVE_MEMBER_JOIN } from "@/lib/families/live";
+import { needsNomineeSql } from "@/lib/investors/type-rules";
 
 /**
  * Quick-filter OPTIONS (with live row counts) for the Families list, fed to
@@ -34,7 +35,7 @@ export async function familyQuickFilterOptions(
       SELECT
         f.id, f.primary_investor_id, f.rm_id, f.next_review_at, f.health_band,
         COUNT(i.id) AS members,
-        BOOL_OR(i.id IS NOT NULL AND (i.nominee_name IS NULL OR i.nominee_name = '')) AS any_no_nominee,
+        BOOL_OR(i.id IS NOT NULL AND ${needsNomineeSql("i")}) AS any_no_nominee,
         BOOL_OR(i.is_minor = true) AS has_minor,
         BOOL_OR(i.segment_tag = 'HNI') AS any_hni
       FROM families f

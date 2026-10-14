@@ -36,6 +36,7 @@ import {
   type MyWindow,
   taskIsAbout,
 } from "./window";
+import { missingAdultTextSql, missingDobSql, needsNomineeSql } from "@/lib/investors/type-rules";
 
 /* ────────────────────────── §5 + §6 the book ────────────────────────── */
 
@@ -494,20 +495,20 @@ export async function loadDataQuality(tx: Tx, w: MyWindow): Promise<DataQuality>
   const r = (await tx.execute(sql`
     SELECT COUNT(*)::int AS clients,
       COUNT(*) FILTER (WHERE pan IS NULL OR btrim(pan) = '')::int                        AS no_pan,
-      COUNT(*) FILTER (WHERE dob IS NULL)::int                                            AS no_dob,
+      COUNT(*) FILTER (WHERE ${missingDobSql("")})::int                                   AS no_dob,
       COUNT(*) FILTER (WHERE email IS NULL OR btrim(email) = '')::int                      AS no_email,
       COUNT(*) FILTER (WHERE phone IS NULL OR btrim(phone) = '')::int                      AS no_phone,
       COUNT(*) FILTER (WHERE client_category IS NULL OR btrim(client_category) = '')::int  AS no_category,
       COUNT(*) FILTER (WHERE family_id IS NULL)::int                                       AS no_family,
       COUNT(*) FILTER (WHERE kyc_status IS NULL OR kyc_status NOT IN ('validated','registered','verified'))::int AS kyc_gap,
-      COUNT(*) FILTER (WHERE nominee_name IS NULL OR btrim(nominee_name) = '')::int        AS no_nominee,
-      COUNT(*) FILTER (WHERE occupation IS NULL OR btrim(occupation) = '')::int          AS no_profession,
-      COUNT(*) FILTER (WHERE employer_name IS NULL OR btrim(employer_name) = '')::int    AS no_company,
+      COUNT(*) FILTER (WHERE ${needsNomineeSql("")})::int                                 AS no_nominee,
+      COUNT(*) FILTER (WHERE ${missingAdultTextSql("", "occupation")})::int               AS no_profession,
+      COUNT(*) FILTER (WHERE ${missingAdultTextSql("", "employer_name")})::int            AS no_company,
       -- A minor's risk is their own assessment, never the guardian's copy (G-1).
       COUNT(*) FILTER (WHERE ${clientRiskSql("investors").category} IS NULL)::int          AS no_risk,
       COUNT(*) FILTER (WHERE notes IS NULL OR btrim(notes) = '')::int                    AS no_remarks,
       COUNT(*) FILTER (WHERE (pan IS NOT NULL AND btrim(pan) <> '')
-                         AND dob IS NOT NULL
+                         AND NOT ${missingDobSql("")}
                          AND (email IS NOT NULL AND btrim(email) <> '')
                          AND (phone IS NOT NULL AND btrim(phone) <> '')
                          AND (client_category IS NOT NULL AND btrim(client_category) <> ''))::int AS complete

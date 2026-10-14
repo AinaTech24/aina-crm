@@ -7,6 +7,9 @@
  * (raw SQL row) keys, so the same function serves the detail page and the list.
  */
 
+import { typeHas } from "@/lib/investors/type-rules";
+import { canNominate } from "@/lib/investors/client-types";
+
 type AnyRow = Record<string, any>;
 
 function pick(inv: AnyRow, ...keys: string[]): any {
@@ -39,25 +42,33 @@ export function clientCompleteness(inv: AnyRow): Completeness {
   const kyc = String(pick(inv, "kycStatus", "kyc_status") ?? "");
   const panAadhaar = String(pick(inv, "panAadhaarLinkStatus", "pan_aadhaar_link_status") ?? "");
 
-  const checks: CompletenessField[] = [
+  // Only what this type of client can have (lib/investors/type-rules.ts):
+  // no gender or birthday for an HUF / entity, no occupation or PAN–Aadhaar
+  // link for a minor, no nominee for anyone who cannot nominate.
+  const type = pick(inv, "investorCategory", "investor_category") as string | null;
+  const adult = typeHas.adultFields(type);
+  const personal = typeHas.dob(type);
+  const nominates = canNominate(type);
+  const all: Array<CompletenessField & { applies?: boolean }> = [
     { key: "name", label: "Name", filled: nonEmpty(pick(inv, "name")) },
     { key: "pan", label: "PAN", filled: nonEmpty(pick(inv, "pan")) },
-    { key: "dob", label: "Date of birth", filled: nonEmpty(pick(inv, "dob")) },
-    { key: "gender", label: "Gender", filled: nonEmpty(pick(inv, "gender")) },
+    { key: "dob", label: "Date of birth", filled: nonEmpty(pick(inv, "dob")), applies: personal },
+    { key: "gender", label: "Gender", filled: nonEmpty(pick(inv, "gender")), applies: personal },
     { key: "email", label: "Email", filled: nonEmpty(pick(inv, "email")) },
     { key: "phone", label: "Mobile", filled: nonEmpty(pick(inv, "phone")) },
     { key: "address", label: "Address", filled: addrFilled },
-    { key: "occupation", label: "Occupation", filled: nonEmpty(pick(inv, "occupation")) },
+    { key: "occupation", label: "Occupation", filled: nonEmpty(pick(inv, "occupation")), applies: adult },
     { key: "kyc", label: "KYC verified", filled: kyc === "verified" || kyc === "registered" },
-    { key: "pan_aadhaar", label: "PAN–Aadhaar linked", filled: panAadhaar === "linked" || panAadhaar === "not_applicable" },
+    { key: "pan_aadhaar", label: "PAN–Aadhaar linked", filled: panAadhaar === "linked" || panAadhaar === "not_applicable", applies: adult },
     // A minor's risk is their own assessment, never the guardian's copy (G-1): callers pass a
     // minor's row through clientRiskSql / withOwnRiskForMinors before scoring it.
     { key: "risk_profile", label: "Risk profile", filled: nonEmpty(pick(inv, "riskProfile", "risk_profile")) },
-    { key: "nominee", label: "Nominee", filled: nonEmpty(pick(inv, "nominees")) || nonEmpty(pick(inv, "nomineeName", "nominee_name")) },
+    { key: "nominee", label: "Nominee", filled: nonEmpty(pick(inv, "nominees")) || nonEmpty(pick(inv, "nomineeName", "nominee_name")) || !!(pick(inv, "typeDetails", "type_details") as any)?.nominationOptOut, applies: nominates },
     { key: "bank", label: "Bank account", filled: nonEmpty(pick(inv, "bankAccounts", "bank_accounts")) || nonEmpty(pick(inv, "bankName", "bank_name")) },
     { key: "rm", label: "Assigned RM", filled: nonEmpty(pick(inv, "rmId", "rm_id")) },
     { key: "segment", label: "Segment / category", filled: nonEmpty(pick(inv, "segmentTag", "segment_tag")) || nonEmpty(pick(inv, "clientCategory", "client_category")) },
   ];
+  const checks: CompletenessField[] = all.filter((c) => c.applies !== false).map(({ applies: _a, ...c }) => c);
 
   const filled = checks.filter((c) => c.filled).length;
   const total = checks.length;

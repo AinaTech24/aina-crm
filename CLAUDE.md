@@ -478,8 +478,24 @@ the imports and every label; never copy the enum again.
 - **Dropdowns, not free text** (lists in client-types.ts): tax status by type
   (`taxStatusOptions`, defaulted on a type change), marital status, income
   range, household type (Individual · Family · Company · HUF). `withCurrent`
-  keeps an imported value the list lacks. Pincode fills city and state
-  (`/api/pincode/[pin]` → India Post, cached; `usePincodeAutofill`).
+  keeps an imported value the list lacks.
+- **Pincode → city / state only in RTA imports** (2026-10-14, the firm's
+  call after a day of form auto-fill that overwrote typed cities with India
+  Post districts): the forms never fill from the pincode. `importRtaFolios`
+  completes a registrar row that has a pincode and a BLANK (or "NA" / "-")
+  city or state (`lib/pincode/fill.ts`, India Post via `lookupPincode`);
+  nothing written is ever replaced. Do not put form auto-fill back.
+- **Each type sees only its own fields** (2026-10-14), on the client page as
+  in the forms: personal fields for a person or minor, adult fields
+  (marital status, occupation, employer, PAN–Aadhaar link, anniversary) for
+  an individual, the type's own card (Guardian · Karta & coparceners ·
+  Entity + signatories / owners · Overseas details · Business), and the
+  Nomination section only where `canNominate`. Every "missing" count —
+  health score, completeness, compliance gaps, data-quality cards, list
+  `gaps=` filters, quick filters, family filters, data hygiene, the
+  assistant — goes through `lib/investors/type-rules.ts` (`needsNomineeSql`,
+  `missingDobSql`, `panAadhaarGapSql`, `missingAdultTextSql`); never write
+  `nominee_name IS NULL` or `dob IS NULL` as a gap again.
 - **Removed from the client master at the firm's request (2026-10-13)**: CKYC
   expiry and FATCA expiry (neither expires) and Service tier (the review
   frequency says the same). The columns stay; do not put the fields back.
@@ -564,6 +580,14 @@ client).
   its PAN twin under "Similar name, one without PAN" (`similarNames` in
   `lib/investors/duplicate-clusters.ts`: spaces moved, one letter off, an
   initial for a word — never a different first name), and a person merges.
+- **A client who holds money with the registrar is never in the Trash**
+  (`lib/investors/holds-money.ts`, 2026-10-14): a folio with a value or an
+  active SIP. Delete (one or bulk) keeps them and says why — merge a
+  duplicate, mark a leaver Closed / Exited; every purge (by hand, Empty Trash,
+  the 30-day retention purge) skips them; after each RTA import and nightly,
+  one found in the Trash is restored (audit `investor.restore`, reason
+  `holds_money_with_registrar`). Nimesh's "Thakor Rushin Jitendrabhai"
+  (₹28.33 L) had been bulk-deleted with his PAN-less twin.
 
 ## Webhook handlers
 

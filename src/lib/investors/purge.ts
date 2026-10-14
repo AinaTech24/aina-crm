@@ -16,7 +16,8 @@
  * client, then the clients themselves — the rest cascades (migration 0131).
  */
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { holdsMoneySql } from "@/lib/investors/holds-money";
 import type { Tx } from "@/db/client";
 import { minorOwnRiskColumns } from "@/lib/risk-profile/own-assessment";
 import {
@@ -56,11 +57,13 @@ export async function purgeInvestorsChunk(tx: Tx, tenantId: string, ids: string[
   const T = tenantId;
   const scope = and(eq(investors.tenantId, T), inArray(investors.id, ids));
 
-  // What is about to be destroyed, recorded while it still exists.
+  // What is about to be destroyed, recorded while it still exists. A client
+  // who still holds money with the registrar is never erased
+  // (lib/investors/holds-money.ts) — it is restored instead.
   const doomed = await tx
     .select({ id: investors.id, name: investors.name, pan: investors.pan })
     .from(investors)
-    .where(scope);
+    .where(and(scope, sql`NOT ${holdsMoneySql("investors")}`));
   if (!doomed.length) return 0;
 
   const realIds = doomed.map((d) => d.id);

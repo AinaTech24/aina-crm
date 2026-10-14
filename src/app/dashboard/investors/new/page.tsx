@@ -30,7 +30,6 @@ import {
 } from "@/lib/investors/client-types";
 import { COUNTRIES, INDIAN_STATES, canonicalCountry, canonicalState, isIndianAddress } from "@/lib/geo/places";
 import { useMasterLabels } from "@/lib/masters/use-master-labels";
-import { usePincodeAutofill } from "@/lib/pincode/use-pincode";
 import type { Nominee } from "@/lib/investors/nominee";
 import { ReferralsField } from "@/components/investors/ReferralsField";
 import type { Referral } from "@/lib/investors/referral";
@@ -153,7 +152,6 @@ function NewInvestorPageInner() {
       householdType: defaultHouseholdType(type, !!familyId),
     }));
   }
-  usePincodeAutofill(form.pincode, (p) => setForm((s) => ({ ...s, city: p.city, state: p.state, country: s.country || "India" })));
   // The firm's own occupation list (Settings → Masters → Occupations).
   const occupations = useMasterLabels("occupation", OCCUPATIONS);
   const u = (v: string) => v.trim() || undefined;
@@ -377,13 +375,13 @@ function NewInvestorPageInner() {
           ) : (<>
           <Field label="Mailing street" value={form.street} onChange={(v) => set("street", v)} placeholder="House / building, street, area" />
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-            <Field label="Pincode" value={form.pincode} onChange={(v) => set("pincode", v.replace(/\D/g, "").slice(0, 6))} placeholder="City and state fill in" />
             <Field label="City" value={form.city} onChange={(v) => set("city", v)} />
             {isIndianAddress(form.country) ? (
               <SelectField label="State" value={canonicalState(form.state) ?? form.state} onChange={(v) => set("state", v)} options={["", ...withCurrent(INDIAN_STATES, canonicalState(form.state) ?? form.state)]} searchable />
             ) : (
               <Field label="State" value={form.state} onChange={(v) => set("state", v)} />
             )}
+            <Field label="Pincode" value={form.pincode} onChange={(v) => set("pincode", v.replace(/\D/g, "").slice(0, 6))} />
             <SelectField label="Country" value={canonicalCountry(form.country) ?? form.country} onChange={(v) => set("country", v)} options={["", ...withCurrent(COUNTRIES, canonicalCountry(form.country) ?? form.country)]} searchable />
           </div>
           </>)}

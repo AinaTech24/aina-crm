@@ -13,6 +13,7 @@ import { withTenant } from "@/db/client";
 import { formatINR } from "@/lib/utils";
 import type { SessionUser } from "@/lib/auth/session";
 import { investorScopeSql } from "@/lib/investors/access";
+import { needsNomineeSql } from "@/lib/investors/type-rules";
 
 /**
  * KPI strip for the Investors list page.
@@ -53,7 +54,7 @@ export async function InvestorKpiStrip({
               )
           )::int AS kyc_expiring,
           COUNT(*) FILTER (
-            WHERE status = 'active' AND (nominee_name IS NULL OR nominee_name = '')
+            WHERE status = 'active' AND ${needsNomineeSql("")}
           )::int AS nominee_missing,
           COUNT(*) FILTER (
             WHERE status = 'active'

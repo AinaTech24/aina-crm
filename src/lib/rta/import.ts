@@ -23,6 +23,7 @@ import { investors, folios as foliosTable } from "@/db/schema";
 import type { RtaFolioRecord } from "./types";
 import { resolveSchemeIdentity } from "./resolve-scheme";
 import { ownersOfFolios, releaseFormerOwners } from "./former-owners";
+import { fillCityStateFromPincode } from "@/lib/pincode/fill";
 import { followMerges, resolveNoPanClients, resolvePanClients, type ClientHint } from "./client-match";
 
 /**
@@ -89,6 +90,11 @@ export async function importRtaFolios(
   //       turns "P"/"K"/"117" into real AMC names and the file's descriptions
   //       into canonical scheme names. Read-only, so it runs for dry-run too.
   await resolveSchemeIdentity(tx, records);
+
+  // ── 0b. A row with a pincode and no city / state gets them from the pincode
+  //        (lib/pincode/fill.ts) — blanks only, never what the file or the
+  //        firm wrote. Not for a dry run: it calls India Post.
+  if (!dryRun) await fillCityStateFromPincode(records.map((r) => r.investor?.address));
 
   // ── 1. Resolve each folio to a CLIENT. Adults key on PAN. A minor folio is
   //       operated under a guardian and has no PAN of its own, so it keys on a
