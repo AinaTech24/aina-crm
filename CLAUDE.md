@@ -542,6 +542,13 @@ client).
   once. Pinned by `tests/rta-ownership-resolution-db.test.ts`. A registrar
   folio correction has its own category (`registrar_correction`), never
   "upload again".
+- **Did the legacy importer affect a firm's records?** (read-only, prepared
+  2026-10-14): exposure from the database alone,
+  `docs/rta/handover/b1-legacy-impact-exposure.sql`; confirmation by re-reading
+  the firm's stored KFintech files with the release's parser,
+  `tsx scripts/rta-legacy-impact-diagnostic.ts --tenant <id> --imports`
+  (truncated multi-lot redemptions, correction legs, unrecognised codes vs
+  consistent; masked examples). It repairs nothing.
 - **Tests that write the GLOBAL AMFI reference** (`amfi_feed_imports`,
   `scheme_nav`, `scheme_registrar_map`, `registrar_amc_identity`) or trigger
   `redecideEverywhere` hold `tests/helpers/global-amfi-lock.ts` for the whole
@@ -1722,6 +1729,23 @@ database. Rules that follow from this:
   applied history.
 - Lettered suffixes (`0044a`) slot a file between two applied numbers without
   renumbering history; `check-migration-dups` accepts them.
+- **One runner at a time** (2026-10-14): `migrate-all` takes a database
+  advisory lock by POLLING `pg_try_advisory_lock` (a session blocked in
+  `pg_advisory_lock` holds a snapshot that `CREATE INDEX CONCURRENTLY` waits
+  on). A second run waits, then plans against the committed ledger.
+- **`main` and the RTA release share 0233 and 0234** (main's
+  `0233_client_type_details`, `0234_minor_risk_from_guardian`; the release's
+  `0233_rta_staging` … `0244`). Both pairs are grandfathered and locked —
+  never rename either side. Until the release is merged into `main`, number
+  every new migration from **0245** on.
+- **CI's db job runs PostgreSQL ON the runner, never a service container**
+  (`scripts/ci/provision-test-db.sh`): the RTA development posting gate
+  posts only to a loopback server, so every posting test failed against a
+  container. Two disposable roles with random masked passwords (`ci_admin`
+  test admin + migrations, `mfd_app` restricted), Redis for the queue tests,
+  and `scripts/ci/assert-no-db-skips.mjs` fails the job if any DB-backed test
+  is skipped (the emergency drill runs alone in its own step). A DB test must
+  take the admin from `ADMIN_DATABASE_URL`, never guess a `postgres` login.
 
 ### Add a new queryable field on investors
 1. Append a `FieldDef` to `investorCatalog.fields` in `src/lib/filter/catalog.ts`.

@@ -457,6 +457,16 @@ async function main() {
     let f = await waitImport(ck.o1, up.json?.importId, 30_000);
     let path = "automatic retry";
     const firstOutcome = { status: f.status, remark: String((await one(`SELECT left(coalesce(remarks, ''), 160) r FROM rta_file_imports WHERE id = $1`, [up.json?.importId])).r).replace(/[A-Z]{5}[0-9]{4}[A-Z]/g, "<pan>") };
+    // What the Exceptions / Imports team sees BEFORE acting (final qualification, Task 5):
+    // the import is visibly failed with a reason, nothing of it is posted, its file is kept.
+    const failedState = f.status === "completed" ? null : {
+      status: f.status,
+      reasonShown: firstOutcome.remark.length > 0,
+      fileKept: !!(await one(`SELECT file_key FROM rta_file_imports WHERE id = $1`, [up.json?.importId])).file_key,
+      postedOutcomes: (await one(`SELECT count(*)::int n FROM rta_staging_economic_txns e JOIN rta_staging_batches b ON b.id = e.batch_id
+                                   WHERE b.import_id = $1 AND e.posting_outcome IN ('posted', 'matched_existing', 'rejected_recorded')`, [up.json?.importId])).n,
+      ledgerRows: (await one(`SELECT count(*)::int n FROM rta_posted_transactions p JOIN rta_staging_batches b ON b.id = p.batch_id WHERE b.import_id = $1`, [up.json?.importId])).n,
+    };
     if (f.status !== "completed") {
       // Validate-first records an interrupted posting as a failed import with its
       // reason (nothing written); the documented recovery is a re-import.
@@ -469,6 +479,17 @@ async function main() {
     const after = await counts(T1);
     check("database lost during posting: the retry posts every transaction exactly once", f.status === "completed" && n === N2 && after.ledger - before.ledger === N2 && after.transactions - before.transactions === N2, `${f.status} via ${path}, ${n} of ${N2}`,
       { exercised: "after the rollback the job is retried", expected: { committed: N2, ledgerAdded: N2 }, actual: { firstOutcome, status: f.status, path, committed: n, ledgerAdded: after.ledger - before.ledger, workerRestarts: restarts }, reconcile: await reconcile(T1) });
+    if (failedState) {
+      // The recovery itself: audited, and a second re-import of a completed file is refused.
+      const audits = (await one(`SELECT count(*)::int n FROM audit_log WHERE tenant_id = $1 AND action = 'rta_import.reimport' AND entity_id = $2::uuid`, [T1, up.json?.importId])).n;
+      const again = await api(`/api/rta-imports/${up.json?.importId}/reimport`, ck.o1, {});
+      const afterAgain = await counts(T1);
+      check("failed import recovery: visibly failed with a reason, nothing posted, file kept; the re-import is audited; a second re-import is refused",
+        failedState.status === "failed" && failedState.reasonShown && failedState.fileKept && failedState.postedOutcomes === 0 && failedState.ledgerRows === 0
+          && audits === 1 && again.status === 409 && JSON.stringify(afterAgain) === JSON.stringify(after),
+        `before recovery: ${failedState.status}, reason shown ${failedState.reasonShown}, file kept ${failedState.fileKept}, ${failedState.postedOutcomes} posted outcomes, ${failedState.ledgerRows} ledger rows · re-import audit rows ${audits} · second re-import HTTP ${again.status}`,
+        { exercised: "the Exceptions / Imports team's view of the failed import, then the operator re-import and a repeated re-import", expected: { status: "failed", reasonShown: true, fileKept: true, postedOutcomes: 0, ledgerRows: 0, reimportAudits: 1, secondReimport: 409, recordsUnchanged: true }, actual: { ...failedState, reimportAudits: audits, secondReimport: again.status, recordsUnchanged: JSON.stringify(afterAgain) === JSON.stringify(after) } });
+    }
   }
 
   // 8c. Emergency halt and resume: one operator halts; a file arriving during

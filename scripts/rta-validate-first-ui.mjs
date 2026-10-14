@@ -53,7 +53,12 @@ let status = await go("/dashboard");
 check("owner dashboard loads", status === 200 && !page.url().includes("/login"), `HTTP ${status}`);
 const aumTile = page.locator(".dash-kpi").filter({ hasText: /^AUM/ }).first();
 const tileText = (await aumTile.innerText().catch(() => "")) ?? "";
-check("AUM tile names the registrar statements behind it", /Registrar statements: /.test(tileText), tileText.match(/Registrar statements:.*/)?.[0] ?? "no footer");
+// The footer names the registrar statements behind the units — or, when part of
+// the figure is NOT at a current AMFI NAV (an unmapped scheme at the registrar's
+// dated value), it says so instead, in warning colour (pre-flight "AUM tile date
+// honesty"). Either way the tile must say what the figure rests on.
+const aumFooter = tileText.match(/Registrar statements:.*/)?.[0] ?? tileText.match(/.*(?:at registrar statement value|at an older NAV)[^\n]*/)?.[0] ?? null;
+check("AUM tile says what the figure rests on (registrar statements, or the part not at a current AMFI NAV)", !!aumFooter, aumFooter ?? "no footer");
 if (EXPECT.aumWarn != null) check("AUM tile warns when a statement is stale / partial / mixed", (await aumTile.locator(".text-warning-foreground").count()) > 0 === EXPECT.aumWarn);
 const regCard = page.getByText("Registrar statements (firm total)");
 check("Registrar AUM card renders", (await regCard.count()) > 0);
