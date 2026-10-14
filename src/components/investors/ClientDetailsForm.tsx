@@ -39,7 +39,6 @@ import { FormActions } from "@/components/ui/FormActions";
 import { Button } from "@/components/ui/Button";
 import { notify } from "@/components/ui/Toast";
 import { ClientTypeSections, type GuardianLink } from "@/components/investors/ClientTypeSections";
-import { usePincodeAutofill } from "@/lib/pincode/use-pincode";
 import { UccCodesField } from "@/components/investors/UccCodesField";
 import { cleanUccCodes } from "@/lib/investors/ucc";
 import { isMinorKey, ownPan } from "@/lib/investors/pan-display";
@@ -208,7 +207,6 @@ export function ClientDetailsForm({
     }));
   }
 
-  usePincodeAutofill(f.pincode, (p) => setF((s) => ({ ...s, city: p.city, state: p.state, country: s.country || "India" })));
   // The firm's own occupation list (Settings → Masters → Occupations).
   const occupations = useMasterLabels("occupation", OCCUPATIONS);
 
@@ -494,7 +492,6 @@ export function ClientDetailsForm({
           {flags.showAddress && !addressFromFamily && (
             <>
               <Field label="Address line" className="sm:col-span-2">{(id) => <input id={id} value={f.line1} onChange={(e) => set("line1", e.target.value)} className={input} />}</Field>
-              <Field label="Pincode" hint="City and state fill in from it.">{(id, d) => <input id={id} aria-describedby={d} value={f.pincode} onChange={(e) => set("pincode", e.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" className={input} />}</Field>
               <Field label="City">{(id) => <input id={id} value={f.city} onChange={(e) => set("city", e.target.value)} className={input} />}</Field>
               <Field label="State">
                 {(id) => isIndianAddress(f.country) ? (
@@ -505,6 +502,7 @@ export function ClientDetailsForm({
                   <input id={id} value={f.state} onChange={(e) => set("state", e.target.value)} className={input} />
                 )}
               </Field>
+              <Field label="Pincode">{(id) => <input id={id} value={f.pincode} onChange={(e) => set("pincode", e.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" className={input} />}</Field>
               <Field label="Country">
                 {(id) => (
                   <SelectField id={id} value={canonicalCountry(f.country) ?? f.country} onChange={(e) => set("country", e.target.value)} className="w-full" placeholder="Select" searchable>
@@ -633,13 +631,13 @@ export function ClientDetailsForm({
             </SelectField>
           )}
         </Field>
-        <Field label="PAN–Aadhaar link">
+        {adult && <Field label="PAN–Aadhaar link">
           {(id) => (
             <SelectField id={id} value={f.panAadhaarLinkStatus} onChange={(e) => set("panAadhaarLinkStatus", e.target.value)} className="w-full" placeholder="Select">
               <option value="">Select</option>{[["linked", "Linked"], ["not_linked", "Not linked"], ["pending", "Pending"], ["not_applicable", "Not applicable"]].map(([k, l]) => <option key={k} value={k}>{l}</option>)}
             </SelectField>
           )}
-        </Field>
+        </Field>}
         <Field label="KRA">
           {(id) => (
             <SelectField id={id} value={f.kraName} onChange={(e) => set("kraName", e.target.value)} className="w-full" placeholder="Select">

@@ -23,6 +23,7 @@ import { investors, folios as foliosTable } from "@/db/schema";
 import type { RtaFolioRecord } from "./types";
 import { resolveSchemeIdentity } from "./resolve-scheme";
 import { ownersOfFolios, releaseFormerOwners } from "./former-owners";
+import { fillCityStateFromPincode } from "@/lib/pincode/fill";
 import { followMerges, resolveNoPanClients, resolvePanClients, type ClientHint } from "./client-match";
 import { InvestorDirectory, nopanFolioKey, type Resolution } from "./identity";
 import { panHolderType } from "./owner";
@@ -127,6 +128,15 @@ export async function importRtaFolios(
   // Validate-first (a staging batch): evidence only — the registrar's ISIN or
   // a confirmed mapping (scheme_rta_codes), never a scheme name (Phase 3H).
   await resolveSchemeIdentity(tx, records, opts.sourceBatchId ? { evidenceOnly: { tenantId } } : undefined);
+
+  // ── 0b. A row with a pincode and no city / state gets them from the pincode
+  //        (lib/pincode/fill.ts) — blanks only, never what the file or the
+  //        firm wrote. Not for a dry run: it calls India Post. Not for a
+  //        validate-first batch either: that runs inside the posting
+  //        transaction, which holds the kill-switch rows FOR SHARE, and a slow
+  //        or unreachable India Post (4 s a pincode) would keep an operator's
+  //        halt waiting. The legacy importer fills as on main.
+  if (!dryRun && !opts.sourceBatchId) await fillCityStateFromPincode(records.map((r) => r.investor?.address));
 
   // ── 1. Resolve each folio to a CLIENT. Adults key on a VALID PAN. A minor
   //       folio is operated under a guardian and has no PAN of its own, so it

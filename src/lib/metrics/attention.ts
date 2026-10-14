@@ -22,6 +22,7 @@ import { STATUS_IN_FORCE, CLAIM_OPEN, inList } from "@/lib/insurance/book";
 import { POLICY_FROM, policyWhere } from "./insurance";
 import { clientRecordWhere, clientWhere, col, type MetricScope } from "./scope";
 import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
+import { missingDobSql, needsNomineeSql } from "@/lib/investors/type-rules";
 
 const today = sql`(now() AT TIME ZONE 'Asia/Kolkata')::date`;
 
@@ -38,8 +39,8 @@ export function missingDataSql(alias = "i"): SQL {
   const rk = clientRiskSql(alias.replace(/[^a-zA-Z0-9_]/g, "") || "investors");
   return sql`(
     ${c("pan")} IS NULL OR btrim(${c("pan")}) = ''
-    OR ${c("dob")} IS NULL
-    OR ${c("nominee_name")} IS NULL OR btrim(${c("nominee_name")}) = ''
+    OR ${missingDobSql(alias)}
+    OR ${needsNomineeSql(alias)}
     OR ${c("bank_account_masked")} IS NULL OR btrim(${c("bank_account_masked")}) = ''
     OR ${c("kyc_status")} IS NULL OR ${c("kyc_status")} NOT IN ('validated', 'registered', 'verified')
     OR ${rk.category} IS NULL OR ${rk.signedAt} IS NULL

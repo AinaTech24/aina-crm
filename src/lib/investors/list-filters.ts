@@ -17,6 +17,7 @@ import { aliveClient, cleanIds, textList, uuidList } from "@/lib/metrics/scope";
 import { missingDataSql, reviewOverdueSql } from "@/lib/metrics/attention";
 import { investorFieldFilterConds } from "@/lib/investors/field-filters";
 import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
+import { missingAdultTextSql, missingDobSql, needsNomineeSql, panAadhaarGapSql } from "@/lib/investors/type-rules";
 
 // A minor's risk is their own assessment, never the guardian's copy (G-1).
 const RISK = clientRiskSql("investors");
@@ -245,7 +246,7 @@ export function buildInvestorConditions(
     )`);
   }
   if (qf.no_nominee) {
-    conditions.push(sql`(${investors.nomineeName} IS NULL OR ${investors.nomineeName} = '')`);
+    conditions.push(needsNomineeSql("investors"));
   }
   if (qf.rp_stale) {
     conditions.push(
@@ -304,11 +305,11 @@ export function buildInvestorConditions(
         conditions.push(sql`(${investors.email} IS NULL OR ${investors.email} = '')`);
         break;
       case "dob":
-        conditions.push(sql`${investors.dob} IS NULL`);
+        conditions.push(missingDobSql("investors"));
         break;
       case "nominee":
-        // Blank means blank after trimming — the compliance card's count.
-        conditions.push(sql`(${investors.nomineeName} IS NULL OR btrim(${investors.nomineeName}) = '')`);
+        // Only a type that can nominate — the compliance card's count (lib/investors/type-rules.ts).
+        conditions.push(needsNomineeSql("investors"));
         break;
       case "bank":
         conditions.push(
@@ -331,16 +332,16 @@ export function buildInvestorConditions(
         conditions.push(sql`${RISK.category} IS NULL`);
         break;
       case "occupation":
-        conditions.push(sql`(${investors.occupation} IS NULL OR btrim(${investors.occupation}) = '')`);
+        conditions.push(missingAdultTextSql("investors", "occupation"));
         break;
       case "employer":
-        conditions.push(sql`(${investors.employerName} IS NULL OR btrim(${investors.employerName}) = '')`);
+        conditions.push(missingAdultTextSql("investors", "employer_name"));
         break;
       case "notes":
         conditions.push(sql`(${investors.notes} IS NULL OR btrim(${investors.notes}) = '')`);
         break;
       case "pan_aadhaar":
-        conditions.push(sql`(${investors.panAadhaarLinkStatus} = 'not_linked' OR ${investors.panAadhaarLinkStatus} IS NULL)`);
+        conditions.push(panAadhaarGapSql("investors"));
         break;
       case "marketing_consent":
         // No marketing consent granted and still in force (lib/metrics/compliance.ts).

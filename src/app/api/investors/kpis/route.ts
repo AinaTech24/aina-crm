@@ -13,6 +13,7 @@ import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { investorScopeSql } from "@/lib/investors/access";
 import { assertModuleEnabled } from "@/lib/auth/license";
+import { needsNomineeSql } from "@/lib/investors/type-rules";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -47,7 +48,7 @@ export async function GET() {
               )
             )::int AS kyc_expiring,
             COUNT(*) FILTER (
-              WHERE status = 'active' AND (nominee_name IS NULL OR nominee_name = '')
+              WHERE status = 'active' AND ${needsNomineeSql("")}
             )::int AS nominee_missing,
             COUNT(*) FILTER (
               WHERE status = 'active' AND (last_transaction_at IS NULL OR last_transaction_at < now() - make_interval(days => COALESCE((SELECT dormancy_window_days FROM tenants WHERE id = investors.tenant_id), 180)))
