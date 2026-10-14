@@ -33,18 +33,13 @@ fail() { echo "ARTIFACT REFUSED: $*" >&2; exit 1; }
 MF="$DIR/manifest.json"
 [ -f "$MF" ] || fail "no manifest.json in $DIR"
 
-# One node call reads the manifest and prints KEY=value lines (no jq on the box/laptop).
-FIELDS=$(MF="$MF" node -e '
-  let m; try { m = JSON.parse(require("fs").readFileSync(process.env.MF, "utf8")); } catch (e) { console.log("PARSE=bad"); process.exit(0); }
-  const g = (v) => (v === undefined || v === null ? "" : String(v));
-  console.log("PARSE=ok");
-  console.log("SCHEMA=" + g(m.schema)); console.log("SHADOW=" + g(m.shadow)); console.log("COMMIT=" + g(m.commit));
-  console.log("CI=" + g(m.ci && m.ci.conclusion)); console.log("CIRUN=" + g(m.ci && m.ci.runId));
-  console.log("ARCH=" + g(m.arch)); console.log("FILE=" + g(m.artifact && m.artifact.file));
-  console.log("SHA256=" + g(m.artifact && m.artifact.sha256)); console.log("BYTES=" + g(m.artifact && m.artifact.bytes));
-  console.log("CREATED=" + g(m.builtAt)); console.log("IMAGEID=" + g(m.image && m.image.id));
-') || fail "cannot read manifest"
-get() { echo "$FIELDS" | sed -n "s/^$1=//p" | head -1; }
+# shellcheck source=lib/json.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/json.sh"
+jvalid "$MF" || fail "manifest.json is not valid JSON"
+get() { case "$1" in
+  SCHEMA) jfield "$MF" schema;; SHADOW) jfield "$MF" shadow;; COMMIT) jfield "$MF" commit;; CI) jfield "$MF" ci.conclusion;; CIRUN) jfield "$MF" ci.runId;;
+  ARCH) jfield "$MF" arch;; FILE) jfield "$MF" artifact.file;; SHA256) jfield "$MF" artifact.sha256;; BYTES) jfield "$MF" artifact.bytes;;
+  CREATED) jfield "$MF" builtAt;; IMAGEID) jfield "$MF" image.id;; PARSE) echo ok;; esac; }
 [ "$(get PARSE)" = ok ]                 || fail "manifest.json is not valid JSON"
 [ "$(get SCHEMA)" = 1 ]                 || fail "unsupported manifest schema '$(get SCHEMA)'"
 # A shadow artifact is accepted ONLY with --allow-shadow (artifact-deploy.sh passes it

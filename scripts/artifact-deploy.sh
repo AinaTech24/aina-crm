@@ -28,6 +28,8 @@ COMMIT="${2:?commit}"; SHA256="${3:?sha256}"
 DEPLOY_SESSION="${4:-artifact-deploy ${COMMIT:0:8}}"
 APP_DIR="${APP_DIR:-$HOME/app}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib/json.sh
+. "$HERE/lib/json.sh"
 STAGE="$HOME/artifact-staging/${COMMIT:0:12}"
 SHADOW="${SHADOW:-0}"
 BUCKET_OK="s3://aina-crm-deploy-artifacts-972971302420/verified/"
@@ -76,7 +78,8 @@ df -h / | tail -1 | awk '{print "=== disk before: " $3 " used, " $4 " free (" $5
 mkdir -p "$STAGE"
 case "$SRC" in s3://*) aws s3 cp "${SRC%/}/manifest.json" "$STAGE/manifest.json" --only-show-errors --region ap-south-1 || abort "cannot fetch manifest.json";;
                *)      cp "$SRC/manifest.json" "$STAGE/manifest.json" || abort "no manifest.json in $SRC";; esac
-NUM=$(MF="$STAGE/manifest.json" node -e 'const m=JSON.parse(require("fs").readFileSync(process.env.MF,"utf8"));console.log([m.artifact.file,m.artifact.bytes,m.image.uncompressedBytes].join(" "))') || abort "unreadable manifest"
+jvalid "$STAGE/manifest.json" || abort "unreadable manifest"
+NUM="$(jfield "$STAGE/manifest.json" artifact.file) $(jfield "$STAGE/manifest.json" artifact.bytes) $(jfield "$STAGE/manifest.json" image.uncompressedBytes)"
 read -r AFILE ABYTES IBYTES <<<"$NUM"
 bash "$HERE/disk-gate.sh" --image-bytes "$IBYTES" --artifact-bytes "$ABYTES" || abort "disk gate: not enough free space" 3
 
@@ -88,9 +91,10 @@ bash "$HERE/artifact-verify.sh" "$STAGE" --commit "$COMMIT" --sha256 "$SHA256" "
 
 # ---- 5. load -----------------------------------------------------------------
 echo "=== loading image $(date) ==="
-LOADED=$(gzip -dc "$STAGE/$AFILE" | docker load | sed -n 's/^Loaded image: //p' | tail -1)
+case "$AFILE" in *.zst) DECOMP="zstd -dc";; *.gz) DECOMP="gzip -dc";; *) abort "unknown artifact type $AFILE" 5;; esac
+LOADED=$($DECOMP "$STAGE/$AFILE" | docker load | sed -n 's/^Loaded image: //p' | tail -1)
 [ -n "$LOADED" ] || abort "docker load produced no image" 5
-WANT_ID=$(MF="$STAGE/manifest.json" node -e 'console.log(JSON.parse(require("fs").readFileSync(process.env.MF,"utf8")).image.id)')
+WANT_ID=$(jfield "$STAGE/manifest.json" image.id)
 GOT_ID=$(docker image inspect "$LOADED" --format '{{.Id}}')
 [ "$GOT_ID" = "$WANT_ID" ] || { docker rmi "$LOADED" >/dev/null 2>&1 || true; abort "loaded image id $GOT_ID != manifest $WANT_ID" 5; }
 docker tag "$LOADED" "$TAG"
