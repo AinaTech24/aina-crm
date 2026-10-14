@@ -541,6 +541,17 @@ client).
 - **Duplicates already in a book**: `tsx scripts/repair-rta-duplicates.ts
   --tenant <id>` (dry run; `--apply`, `--placeholders`). It is heavy on a large
   book, so run it out of hours.
+- **An empty PAN-less placeholder goes to the Trash on its own**
+  (`lib/rta/placeholder-sweep.ts`, 2026-10-14): after every RTA import and in
+  the nightly ops scan, a `NOPAN:` client older than an hour that holds
+  nothing, that no row refers to (every `investor_id` / `subject_id` /
+  `entity_id`-style column, found from the schema) and that no person ever
+  edited is trashed (restorable) and loses its key. Nimesh C Shah had 130 —
+  the AUM statement's spelling of clients the folio master had already
+  adopted. A placeholder that holds anything stays: Merge Clients suggests
+  its PAN twin under "Similar name, one without PAN" (`similarNames` in
+  `lib/investors/duplicate-clusters.ts`: spaces moved, one letter off, an
+  initial for a word — never a different first name), and a person merges.
 
 ## Webhook handlers
 
