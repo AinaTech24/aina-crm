@@ -12,6 +12,8 @@ import { useState } from "react";
 import { Plus, Trash2, Upload, FileText, Loader2 } from "lucide-react";
 import type { Nominee } from "@/lib/investors/nominee";
 import { DateField } from "@/components/ui/DateField";
+import { SelectField } from "@/components/ui/SelectField";
+import { NOMINEE_RELATIONS, withCurrent } from "@/lib/investors/client-types";
 
 export function NomineesField({
   value,
@@ -99,12 +101,13 @@ export function NomineesField({
               placeholder="ABCDE1234F"
             />
             <Inp label="Date of birth" type="date" value={n.dob ?? ""} onChange={(v) => update(i, { dob: v })} />
-            <Inp
-              label="Relation with client"
-              value={n.relation ?? ""}
-              onChange={(v) => update(i, { relation: v })}
-              placeholder="spouse / son / daughter / …"
-            />
+            <label className="block">
+              <div className="text-xs font-medium mb-1">Relation with client</div>
+              <SelectField value={n.relation ?? ""} onChange={(e) => update(i, { relation: e.target.value })} className="w-full" placeholder="Select">
+                <option value="">Select</option>
+                {withCurrent(NOMINEE_RELATIONS, n.relation).map((r) => <option key={r} value={r}>{r}</option>)}
+              </SelectField>
+            </label>
 
             {/* PAN document upload */}
             <label className="block">

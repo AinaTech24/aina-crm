@@ -28,8 +28,10 @@ import { formatDate } from "@/lib/format";
 import type { Nominee } from "@/lib/investors/nominee";
 import {
   FATCA_ENTITY_CLASSES, GUARDIAN_RELATIONS, NRI_ACCOUNT_TYPES,
+  BUSINESS_NATURES, COPARCENER_RELATIONS, SIGNATORY_DESIGNATIONS, withCurrent,
   canNominate, clientTypeDef, clientTypeLabel, majorityDate, type ClientTypeDetails,
 } from "@/lib/investors/client-types";
+import { COUNTRIES, canonicalCountry } from "@/lib/geo/places";
 
 const input = "input-base w-full";
 const panInput = `${input} font-mono uppercase tracking-wide`;
@@ -162,7 +164,7 @@ export function ClientTypeSections({
               addLabel="Add coparcener"
               cols={[
                 { key: "name", label: "Name", grow: true },
-                { key: "relation", label: "Relation to Karta", width: "sm:w-44" },
+                { key: "relation", label: "Relation to Karta", width: "sm:w-44", options: COPARCENER_RELATIONS },
                 { key: "dob", label: "Date of birth", date: true, width: "sm:w-44" },
               ]}
             />
@@ -183,7 +185,12 @@ export function ClientTypeSections({
               {(id) => <input id={id} value={value.entity?.placeOfIncorporation ?? ""} onChange={(e) => sub("entity", { placeOfIncorporation: e.target.value })} className={input} />}
             </Field>
             <Field label="Nature of business">
-              {(id) => <input id={id} value={value.entity?.natureOfBusiness ?? ""} onChange={(e) => sub("entity", { natureOfBusiness: e.target.value })} className={input} />}
+              {(id) => (
+                <SelectField id={id} value={value.entity?.natureOfBusiness ?? ""} onChange={(e) => sub("entity", { natureOfBusiness: e.target.value })} className="w-full" placeholder="Select">
+                  <option value="">Select</option>
+                  {withCurrent(BUSINESS_NATURES, value.entity?.natureOfBusiness).map((b) => <option key={b} value={b}>{b}</option>)}
+                </SelectField>
+              )}
             </Field>
             <Field label="Net worth (₹)">
               {(id) => <input id={id} value={String(value.entity?.netWorth ?? "")} onChange={(e) => sub("entity", { netWorth: e.target.value.replace(/[^0-9.]/g, "") as any })} inputMode="decimal" className={input} />}
@@ -214,7 +221,7 @@ export function ClientTypeSections({
               cols={[
                 { key: "name", label: "Name", grow: true },
                 { key: "pan", label: "PAN", pan: true, width: "sm:w-36" },
-                { key: "designation", label: "Designation", width: "sm:w-40" },
+                { key: "designation", label: "Designation", width: "sm:w-44", options: SIGNATORY_DESIGNATIONS },
                 { key: "mobile", label: "Mobile", width: "sm:w-36" },
                 { key: "email", label: "Email", width: "sm:w-48" },
               ]}
@@ -240,7 +247,12 @@ export function ClientTypeSections({
       {type === "nri" && (
         <FieldSection title="Overseas details">
           <Field label="Country of residence">
-            {(id) => <input id={id} value={value.nri?.countryOfResidence ?? ""} onChange={(e) => sub("nri", { countryOfResidence: e.target.value })} className={input} />}
+            {(id) => (
+              <SelectField id={id} value={canonicalCountry(value.nri?.countryOfResidence) ?? value.nri?.countryOfResidence ?? ""} onChange={(e) => sub("nri", { countryOfResidence: e.target.value })} className="w-full" placeholder="Select" searchable>
+                <option value="">Select</option>
+                {withCurrent(COUNTRIES, canonicalCountry(value.nri?.countryOfResidence) ?? value.nri?.countryOfResidence).map((c) => <option key={c} value={c}>{c}</option>)}
+              </SelectField>
+            )}
           </Field>
           <Field label="Bank account type">
             {(id) => (
@@ -254,7 +266,12 @@ export function ClientTypeSections({
             {(id) => <input id={id} value={value.nri?.overseasAddress ?? ""} onChange={(e) => sub("nri", { overseasAddress: e.target.value })} className={input} />}
           </Field>
           <Field label="Country of tax residence">
-            {(id) => <input id={id} value={value.nri?.taxResidencyCountry ?? ""} onChange={(e) => sub("nri", { taxResidencyCountry: e.target.value })} className={input} />}
+            {(id) => (
+              <SelectField id={id} value={canonicalCountry(value.nri?.taxResidencyCountry) ?? value.nri?.taxResidencyCountry ?? ""} onChange={(e) => sub("nri", { taxResidencyCountry: e.target.value })} className="w-full" placeholder="Select" searchable>
+                <option value="">Select</option>
+                {withCurrent(COUNTRIES, canonicalCountry(value.nri?.taxResidencyCountry) ?? value.nri?.taxResidencyCountry).map((c) => <option key={c} value={c}>{c}</option>)}
+              </SelectField>
+            )}
           </Field>
           <Field label="Foreign tax ID (TIN)">
             {(id) => <input id={id} value={value.nri?.foreignTin ?? ""} onChange={(e) => sub("nri", { foreignTin: e.target.value })} className={`${input} font-mono`} />}
@@ -295,7 +312,7 @@ export function ClientTypeSections({
 
 /* ─────────────────────────────── row lists ─────────────────────────────── */
 
-type Col = { key: string; label: string; grow?: boolean; width?: string; date?: boolean; pan?: boolean; numeric?: boolean };
+type Col = { key: string; label: string; grow?: boolean; width?: string; date?: boolean; pan?: boolean; numeric?: boolean; options?: string[] };
 
 function Rows<T extends Record<string, any>>({ rows, onChange, blank, cols, addLabel, hint }: {
   rows: T[]; onChange: (r: T[]) => void; blank: T; cols: Col[]; addLabel: string; hint?: string;
@@ -309,6 +326,13 @@ function Rows<T extends Record<string, any>>({ rows, onChange, blank, cols, addL
           {cols.map((c) => c.date ? (
             <div key={c.key} className={`min-w-0 basis-full sm:basis-auto sm:shrink-0 ${c.width ?? ""}`}>
               <DateField value={r[c.key] ?? ""} onChange={(e) => patch(i, c.key, e.target.value)} aria-label={c.label} className="w-full" />
+            </div>
+          ) : c.options ? (
+            <div key={c.key} className={`min-w-0 basis-full sm:basis-auto sm:shrink-0 ${c.width ?? ""}`}>
+              <SelectField value={r[c.key] ?? ""} onChange={(e) => patch(i, c.key, e.target.value)} aria-label={c.label} className="w-full" placeholder={c.label}>
+                <option value="">{c.label}</option>
+                {withCurrent(c.options, r[c.key]).map((o) => <option key={o} value={o}>{o}</option>)}
+              </SelectField>
             </div>
           ) : (
             <input

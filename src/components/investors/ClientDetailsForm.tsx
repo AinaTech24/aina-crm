@@ -50,7 +50,10 @@ import {
   TypeDetailsSchema, canNominate, cleanTypeDetails, clientTypeDef, clientTypeOptions, hasAdultDetails,
   hasPersonalDetails, majorityDate, singleHoldingOnly, CLIENT_TYPE_KEYS, type ClientTypeDetails,
   HOUSEHOLD_TYPES, INCOME_RANGES, MARITAL_STATUSES, defaultHouseholdType, defaultTaxStatus, taxStatusOptions, withCurrent,
+  CONTACT_OWNERS, KRAS, OCCUPATIONS,
 } from "@/lib/investors/client-types";
+import { COUNTRIES, INDIAN_STATES, canonicalCountry, canonicalState, isIndianAddress } from "@/lib/geo/places";
+import { useMasterLabels } from "@/lib/masters/use-master-labels";
 
 type Investor = Record<string, any>;
 
@@ -206,6 +209,8 @@ export function ClientDetailsForm({
   }
 
   usePincodeAutofill(f.pincode, (p) => setF((s) => ({ ...s, city: p.city, state: p.state, country: s.country || "India" })));
+  // The firm's own occupation list (Settings → Masters → Occupations).
+  const occupations = useMasterLabels("occupation", OCCUPATIONS);
 
   const hasContact = flags.showPhone || flags.showEmail || flags.showAddress;
   const input = "input-base w-full";
@@ -460,8 +465,20 @@ export function ClientDetailsForm({
           {flags.showEmail && (
             <Field label="Email">{(id) => <input id={id} value={f.email} onChange={(e) => set("email", e.target.value)} inputMode="email" className={input} />}</Field>
           )}
-          <Field label="Mobile belongs to">{(id) => <input id={id} value={f.mobileRelation} onChange={(e) => set("mobileRelation", e.target.value)} placeholder="self / spouse / …" className={input} />}</Field>
-          <Field label="Email belongs to">{(id) => <input id={id} value={f.emailRelation} onChange={(e) => set("emailRelation", e.target.value)} placeholder="self / spouse / …" className={input} />}</Field>
+          <Field label="Mobile belongs to">
+            {(id) => (
+              <SelectField id={id} value={f.mobileRelation} onChange={(e) => set("mobileRelation", e.target.value)} className="w-full" placeholder="Select">
+                <option value="">Select</option>{withCurrent(CONTACT_OWNERS, f.mobileRelation).map((m) => <option key={m} value={m}>{m}</option>)}
+              </SelectField>
+            )}
+          </Field>
+          <Field label="Email belongs to">
+            {(id) => (
+              <SelectField id={id} value={f.emailRelation} onChange={(e) => set("emailRelation", e.target.value)} className="w-full" placeholder="Select">
+                <option value="">Select</option>{withCurrent(CONTACT_OWNERS, f.emailRelation).map((m) => <option key={m} value={m}>{m}</option>)}
+              </SelectField>
+            )}
+          </Field>
           {flags.showAddress && addressFromFamily && (
             <Field label="Address" className="sm:col-span-2" hint={<>Same as the family head{family?.headName ? ` (${family.headName})` : ""} — change it on the head&rsquo;s record.</>}>
               {(id, d) => (
@@ -476,8 +493,22 @@ export function ClientDetailsForm({
               <Field label="Address line" className="sm:col-span-2">{(id) => <input id={id} value={f.line1} onChange={(e) => set("line1", e.target.value)} className={input} />}</Field>
               <Field label="Pincode" hint="City and state fill in from it.">{(id, d) => <input id={id} aria-describedby={d} value={f.pincode} onChange={(e) => set("pincode", e.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" className={input} />}</Field>
               <Field label="City">{(id) => <input id={id} value={f.city} onChange={(e) => set("city", e.target.value)} className={input} />}</Field>
-              <Field label="State">{(id) => <input id={id} value={f.state} onChange={(e) => set("state", e.target.value)} className={input} />}</Field>
-              <Field label="Country">{(id) => <input id={id} value={f.country} onChange={(e) => set("country", e.target.value)} className={input} />}</Field>
+              <Field label="State">
+                {(id) => isIndianAddress(f.country) ? (
+                  <SelectField id={id} value={canonicalState(f.state) ?? f.state} onChange={(e) => set("state", e.target.value)} className="w-full" placeholder="Select" searchable>
+                    <option value="">Select</option>{withCurrent(INDIAN_STATES, canonicalState(f.state) ?? f.state).map((m) => <option key={m} value={m}>{m}</option>)}
+                  </SelectField>
+                ) : (
+                  <input id={id} value={f.state} onChange={(e) => set("state", e.target.value)} className={input} />
+                )}
+              </Field>
+              <Field label="Country">
+                {(id) => (
+                  <SelectField id={id} value={canonicalCountry(f.country) ?? f.country} onChange={(e) => set("country", e.target.value)} className="w-full" placeholder="Select" searchable>
+                    <option value="">Select</option>{withCurrent(COUNTRIES, canonicalCountry(f.country) ?? f.country).map((m) => <option key={m} value={m}>{m}</option>)}
+                  </SelectField>
+                )}
+              </Field>
               {family?.isHead && (
                 <p className="sm:col-span-2 text-xs text-muted-foreground">The family&rsquo;s members take this address.</p>
               )}
@@ -487,7 +518,15 @@ export function ClientDetailsForm({
       )}
 
       <FieldSection title="Profile">
-        {adult && <Field label="Occupation">{(id) => <input id={id} value={f.occupation} onChange={(e) => set("occupation", e.target.value)} className={input} />}</Field>}
+        {adult && (
+          <Field label="Occupation">
+            {(id) => (
+              <SelectField id={id} value={f.occupation} onChange={(e) => set("occupation", e.target.value)} className="w-full" placeholder="Select">
+                <option value="">Select</option>{withCurrent(occupations, f.occupation).map((m) => <option key={m} value={m}>{m}</option>)}
+              </SelectField>
+            )}
+          </Field>
+        )}
         <Field label={kind === "person" || kind === "minor" ? "Income range" : "Gross annual income"}>
           {(id) => (
             <SelectField id={id} value={f.incomeRange} onChange={(e) => set("incomeRange", e.target.value)} className="w-full" placeholder="Select">
@@ -584,7 +623,13 @@ export function ClientDetailsForm({
             </SelectField>
           )}
         </Field>
-        <Field label="KRA">{(id) => <input id={id} value={f.kraName} onChange={(e) => set("kraName", e.target.value)} className={input} />}</Field>
+        <Field label="KRA">
+          {(id) => (
+            <SelectField id={id} value={f.kraName} onChange={(e) => set("kraName", e.target.value)} className="w-full" placeholder="Select">
+              <option value="">Select</option>{withCurrent(KRAS, f.kraName).map((m) => <option key={m} value={m}>{m}</option>)}
+            </SelectField>
+          )}
+        </Field>
         <Field label="CKYC number">{(id) => <input id={id} value={f.ckycNumber} onChange={(e) => set("ckycNumber", e.target.value)} className={`${input} font-mono`} />}</Field>
         <Field label="KYC validated on">{(id) => <DateField id={id} value={f.kycValidatedAt} onChange={(e) => set("kycValidatedAt", e.target.value)} className="w-full" />}</Field>
         <Field label="FATCA status">

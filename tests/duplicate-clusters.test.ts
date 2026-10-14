@@ -5,7 +5,7 @@
  * and a household sharing one email under different names is only "shared".
  */
 import { describe, expect, it } from "vitest";
-import { findClusters } from "@/lib/investors/duplicate-clusters";
+import { findClusters, similarNames } from "@/lib/investors/duplicate-clusters";
 
 let n = 0;
 const rec = (v: Partial<{ name: string; pan: string; phone: string; email: string; dob: string; is_minor: boolean; whatsapp_phone: string }>) => ({
@@ -58,5 +58,41 @@ describe("findClusters", () => {
 
   it("a stronger rule hides the weaker group with the same records", () => {
     expect(kinds([rec({ name: "Asha Mehta", pan: "AAAPA1111A", dob: "1980-01-02", email: "a@x.in" }), rec({ name: "Asha Mehta", pan: "AAAPA1111A", dob: "1980-01-02", email: "a@x.in" })])).toEqual(["PAN:2"]);
+  });
+});
+
+// Real pairs from Nimesh C Shah Financial Services, 14 Oct 2026: the AUM
+// statement's spelling (no PAN) beside the folio master's (with PAN).
+describe("similarNames — a registrar's spelling of the same person", () => {
+  it.each([
+    ["Behnaz Porus Dastur", "BEHNAZ PORAS DASTUR"],
+    ["KIRITKUMAR MOHANLAL SHAH", "KIRIT KUMAR MOHANLAL SHAH"],
+    ["HITENDRAKUMARMOHANLALSHAH", "HITENDRAKUMAR MOHANLAL SHAH"],
+    ["Nital J Mehta", "Nital Jignesh Mehta"],
+    ["Ushaben Hemantkumar Shah", "USHABEN H SHAH"],
+    ["Dipak Kashiram Rana Huf (Huf)", "DIPAK KASHIRAM RANA HUF"],
+    ["Himanshu Jayvadan Kapadia", "HEMANSHU JAYVADAN KAPADIA"],
+    ["Kumudben Rameshchanra Shah", "KUMUDBEN RAMESHCHANDRA SHAH"],
+    ["Chetna Natvarlal Golwala", "CHETNA NATWARLAL GOLWALA"],
+  ])("%s ≈ %s", (a, b) => expect(similarNames(a, b)).toBe(true));
+
+  it.each([
+    ["Anila Bhupendra Shah", "TEJAS BHUPENDRA SHAH"],
+    ["Vincy Amish Anajwala", "DHRUVI AMISH ANAJWALA"],
+    ["Chandrakant Mohanlal Surati", "NISHABEN CHANDRAKANT SURATI"],
+    ["Gitaben Maheshbhai Prajapati", "GEETA MAHESHBHAI PRAJAPATI"],
+    ["Devang D Shah", "MANISH D SHAH HUF"],
+    ["Nilesh Natvarlal Golwala (Huf)", "Nilesh Natvarlal Golwala"],
+  ])("%s is not %s", (a, b) => expect(similarNames(a, b)).toBe(false));
+});
+
+describe("findClusters — SimilarName", () => {
+  it("pairs a PAN-less record with the PAN client it spells differently", () => {
+    expect(kinds([rec({ name: "BEHNAZ PORAS DASTUR", pan: "AAAPD1111A" }), rec({ name: "Behnaz Porus Dastur" })])).toEqual(["SimilarName:2"]);
+  });
+
+  it("never two PAN clients, and never across a date of birth", () => {
+    expect(kinds([rec({ name: "BEHNAZ PORAS DASTUR", pan: "AAAPD1111A" }), rec({ name: "Behnaz Porus Dastur", pan: "BBBPD2222B" })])).toEqual([]);
+    expect(kinds([rec({ name: "BEHNAZ PORAS DASTUR", pan: "AAAPD1111A", dob: "1970-01-01" }), rec({ name: "Behnaz Porus Dastur", dob: "1990-01-01" })])).toEqual([]);
   });
 });

@@ -56,6 +56,7 @@ import { recomputeAllGoals } from "@/lib/goal-planning/recompute";
 import { recomputeCombinedAum, revalueAllFolios } from "@/lib/finance/aum-persist";
 import { matchProposalExecutions } from "@/lib/proposals/execution";
 import { matchBookedBusiness } from "@/lib/business/rta-match";
+import { retireEmptyPlaceholders } from "@/lib/rta/placeholder-sweep";
 import { syncRtaJourneys } from "@/lib/blueprints/rta-route";
 import { completeExpiredSips } from "@/lib/finance/sip-lifecycle";
 import { eventsOutbox, investors, folios, suitabilityMatrixEntries } from "@/db/schema";
@@ -122,6 +123,7 @@ interface ScanResult {
   /** Booked business lines checked against the RTA, and those flagged (not found / rejected / mismatch). */
   rtaLinesChecked: number;
   rtaLinesFlagged: number;
+  placeholdersRetired: number;
   durationMs: number;
 }
 
@@ -191,6 +193,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
     automationAlerts: 0,
     rtaLinesChecked: 0,
     rtaLinesFlagged: 0,
+    placeholdersRetired: 0,
     durationMs: 0,
   };
 
@@ -1268,6 +1271,14 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
     console.error("[daily-ops] matching booked business failed for", tenantId, (e as Error)?.message);
   }
 
+  // ── Registrar placeholders left holding nothing go to the Trash, so a client
+  // never shows twice — once with a PAN, once without (lib/rta/placeholder-sweep.ts).
+  try {
+    result.placeholdersRetired = await withTenant(tenantId, (tx) => retireEmptyPlaceholders(tx, tenantId), { roles: ["system"] });
+  } catch (e) {
+    console.error("[daily-ops] retiring empty placeholders failed for", tenantId, (e as Error)?.message);
+  }
+
   // ── Physical route: forms with the RTA settle from the feed (lib/blueprints/rta-route.ts).
   try {
     await withTenant(tenantId, (tx) => syncRtaJourneys(tx, tenantId), { roles: ["system"] });
@@ -1402,6 +1413,7 @@ export async function runDailyOpsScan(): Promise<{
     automationAlerts: 0,
     rtaLinesChecked: 0,
     rtaLinesFlagged: 0,
+    placeholdersRetired: 0,
   };
   // Each tenant scan is fully independent (its own withTenant tx, RLS-scoped to
   // that tenant's rows), so they can run concurrently without lock contention.
@@ -1446,6 +1458,7 @@ export async function runDailyOpsScan(): Promise<{
       totals.automationAlerts += r.automationAlerts;
       totals.rtaLinesChecked += r.rtaLinesChecked;
       totals.rtaLinesFlagged += r.rtaLinesFlagged;
+      totals.placeholdersRetired += r.placeholdersRetired;
   };
   const worker = async () => {
     for (;;) {

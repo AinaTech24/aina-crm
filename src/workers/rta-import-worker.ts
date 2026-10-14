@@ -50,6 +50,7 @@ import { isSpreadsheet, readSpreadsheetToRows } from "@/lib/rta/xls";
 import { RICH_KINDS } from "@/lib/rta/classify-mailback";
 import { getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config";
 import { matchBookedBusinessAfterImport } from "@/lib/business/rta-match";
+import { retireEmptyPlaceholdersAfterImport } from "@/lib/rta/placeholder-sweep";
 import { syncRtaJourneysAfterImport } from "@/lib/blueprints/rta-route";
 
 /** Job timeout and reaper threshold, from one setting (lib/rta/job-timing.ts). */
@@ -1244,6 +1245,7 @@ export function startRtaImportWorker() {
           });
           await matchBookedBusinessAfterImport((job.data as any)?.tenantId);
           await syncRtaJourneysAfterImport((job.data as any)?.tenantId);
+          await retireEmptyPlaceholdersAfterImport((job.data as any)?.tenantId);
           return summary;
         }
         await runRtaImportJob(job.data as RtaImportJob);
@@ -1252,6 +1254,9 @@ export function startRtaImportWorker() {
         await matchBookedBusinessAfterImport((job.data as RtaImportJob).tenantId);
         // …and settle clients whose physical forms are with the RTA (lib/blueprints/rta-route.ts).
         await syncRtaJourneysAfterImport((job.data as RtaImportJob).tenantId);
+        // …and retire PAN-less placeholders the import left holding nothing
+        // (lib/rta/placeholder-sweep.ts), so nobody shows twice in the list.
+        await retireEmptyPlaceholdersAfterImport((job.data as RtaImportJob).tenantId);
       } finally {
         // Purge the source file ONLY once it has actually been imported.
         //
