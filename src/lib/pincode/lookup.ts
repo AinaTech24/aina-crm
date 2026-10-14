@@ -2,7 +2,9 @@
  * City and state for an Indian pincode — India Post's public directory
  * (api.postalpincode.in), asked by the server and remembered in memory, so a
  * pincode is looked up once per process. A slow or failed lookup answers
- * null: the person types the city and state themselves, nothing breaks.
+ * null, and so does an answer that is not a real place ("NA", a number).
+ * Used only to complete registrar rows (lib/pincode/fill.ts); the client
+ * forms never fill from it.
  */
 
 import { canonicalState } from "@/lib/geo/places";
@@ -21,7 +23,8 @@ export async function lookupPincode(pin: string): Promise<PincodePlace | null> {
     const po = j?.[0]?.Status === "Success" ? j[0].PostOffice?.[0] : undefined;
     // The state as the client master's dropdown names it (India Post writes
     // "Chattisgarh", "Pondicherry" …).
-    const place = po?.District && po?.State ? { city: po.District, state: canonicalState(po.State) ?? po.State } : null;
+    const real = (v?: string) => !!v && /[A-Za-z]{3}/.test(v) && !/^N\.?A\.?$/i.test(v.trim());
+    const place = real(po?.District) && real(po?.State) ? { city: po!.District!.trim(), state: canonicalState(po!.State!) ?? po!.State!.trim() } : null;
     // Remember a definite answer, including "no such pincode"; a network
     // failure (thrown above) is not remembered, so it is tried again.
     cache.set(pin, place);

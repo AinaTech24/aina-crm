@@ -11,9 +11,10 @@
  *   NRI                Overseas details
  *   Sole proprietor    Business name
  *
- * and Nomination: nominees (or a recorded opt-out) for an individual, and a
- * plain "not available" for everyone else — only individual holders can
- * nominate. Shared by the Add client form and the client details editor.
+ * and Nomination: nominees (or a recorded opt-out) for an individual only —
+ * no other type sees the section at all (the firm's rule, 14 Oct 2026: each
+ * type sees only its own fields). Shared by the Add client form and the
+ * client details editor.
  */
 
 import { Plus, Trash2 } from "lucide-react";
@@ -29,7 +30,7 @@ import type { Nominee } from "@/lib/investors/nominee";
 import {
   FATCA_ENTITY_CLASSES, GUARDIAN_RELATIONS, NRI_ACCOUNT_TYPES,
   BUSINESS_NATURES, COPARCENER_RELATIONS, SIGNATORY_DESIGNATIONS, withCurrent,
-  canNominate, clientTypeDef, clientTypeLabel, majorityDate, type ClientTypeDetails,
+  canNominate, clientTypeDef, majorityDate, type ClientTypeDetails,
 } from "@/lib/investors/client-types";
 import { COUNTRIES, canonicalCountry } from "@/lib/geo/places";
 
@@ -284,9 +285,8 @@ export function ClientTypeSections({
         </FieldSection>
       )}
 
-      {showNominees && (
+      {showNominees && canNominate(type) && (
         <FieldSection title="Nomination">
-          {canNominate(type) ? (
             <div className="sm:col-span-2 space-y-3">
               <NomineesField value={nominees} onChange={onNomineesChange} />
               {nominees.every((n) => !(n.name ?? "").trim()) && (
@@ -296,11 +296,6 @@ export function ClientTypeSections({
                 </label>
               )}
             </div>
-          ) : (
-            <p className="sm:col-span-2 text-sm text-muted-foreground">
-              Not available for {clientTypeLabel(type).replace(/ \(.*\)$/, "")} — only individual holders can nominate.
-            </p>
-          )}
         </FieldSection>
       )}
     </>

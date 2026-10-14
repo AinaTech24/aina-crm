@@ -11,6 +11,7 @@ import { withTenant } from "@/db/client";
 import { firmSnapshot } from "@/lib/ai/firm-snapshot";
 import { buildAiScope } from "@/lib/ai/scope";
 import type { SessionUser } from "@/lib/auth/session";
+import { needsNomineeSql } from "@/lib/investors/type-rules";
 
 export type AssistantCtx = {
   tenantId: string;
@@ -117,7 +118,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
           if (a?.city) conds.push(sql`lower(address->>'city') = lower(${String(a.city)})`);
           if (a?.min_aum != null) conds.push(sql`COALESCE(aum,0)::numeric >= ${Number(a.min_aum)}`);
           if (a?.min_sip != null) conds.push(sql`COALESCE(active_sip_amount,0)::numeric >= ${Number(a.min_sip)}`);
-          if (a?.no_nominee) conds.push(sql`(nominee_name IS NULL OR nominee_name = '')`);
+          if (a?.no_nominee) conds.push(needsNomineeSql(""));
           if (a?.dormant) conds.push(dormantCond(sql`last_transaction_at`, ctx));
 
           const order =
@@ -186,7 +187,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
           ];
           if (a?.dormant) conds.push(dormantCond(sql`i.last_transaction_at`, ctx));
           if (a?.kyc_pending) conds.push(sql`i.kyc_status NOT IN ('verified','registered')`);
-          if (a?.no_nominee) conds.push(sql`(i.nominee_name IS NULL OR i.nominee_name = '')`);
+          if (a?.no_nominee) conds.push(needsNomineeSql("i"));
           const limit = clampLimit(a?.limit, 15, 50);
           const r = await tx.execute(sql`
             SELECT ${groupExpr} AS grp, COUNT(*)::int AS clients,
@@ -524,7 +525,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
             SELECT
               COUNT(*)::int AS total,
               COUNT(*) FILTER (WHERE kyc_status IS NULL OR kyc_status NOT IN ('verified','registered'))::int AS missing_kyc,
-              COUNT(*) FILTER (WHERE nominee_name IS NULL OR nominee_name = '')::int AS missing_nominee,
+              COUNT(*) FILTER (WHERE ${needsNomineeSql("")})::int AS missing_nominee,
               COUNT(*) FILTER (WHERE rm_id IS NULL)::int AS missing_rm,
               COUNT(*) FILTER (WHERE NULLIF(address->>'city','') IS NULL)::int AS missing_city,
               COUNT(*) FILTER (WHERE ${dormantCond(sql`last_transaction_at`, ctx)})::int AS dormant

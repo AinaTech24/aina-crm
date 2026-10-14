@@ -26,6 +26,7 @@ import { familyScopeSql, requireFamilyView, canEditFamilies } from "@/lib/famili
 import { LIVE_MEMBER_JOIN } from "@/lib/families/live";
 import { investorScopeSql } from "@/lib/investors/access";
 import { aliveClient } from "@/lib/metrics/scope";
+import { needsNomineeSql } from "@/lib/investors/type-rules";
 
 export const dynamic = "force-dynamic";
 
@@ -97,7 +98,7 @@ export default async function FamiliesPage({
 
     // Member-level conditions go in HAVING via boolean aggregates over LIVE members.
     const having: any[] = [];
-    if (qf.nominee_gap) having.push(sql`BOOL_OR(i.id IS NOT NULL AND (i.nominee_name IS NULL OR i.nominee_name = '')) = true`);
+    if (qf.nominee_gap) having.push(sql`BOOL_OR(i.id IS NOT NULL AND ${needsNomineeSql("i")}) = true`);
     if (qf.has_minor) having.push(sql`BOOL_OR(i.is_minor = true) = true`);
     if (qf.hni) having.push(sql`BOOL_OR(i.segment_tag = 'HNI') = true`);
     if (qf.single) having.push(sql`COUNT(i.id) = 1`);

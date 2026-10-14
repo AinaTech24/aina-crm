@@ -22,6 +22,7 @@ import { investorScopeSql } from "@/lib/investors/access";
 import { leadScopeSql } from "@/lib/leads/access";
 import { taskScopeSql } from "@/lib/tasks/scope";
 import { meetingScopeSql } from "@/lib/review-meetings/scope";
+import { needsNomineeSql } from "@/lib/investors/type-rules";
 
 export const dynamic = "force-dynamic";
 
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest) {
             COALESCE(SUM(aum) FILTER (WHERE status <> 'closed' AND merged_into_id IS NULL AND deleted_at IS NULL), 0)::numeric AS total_aum,
             COALESCE(SUM(active_sip_amount) FILTER (WHERE status <> 'closed' AND merged_into_id IS NULL AND deleted_at IS NULL), 0)::numeric AS monthly_sip_book,
             COUNT(*) FILTER (WHERE kyc_status NOT IN ('verified','registered') AND deleted_at IS NULL)::int AS kyc_pending,
-            COUNT(*) FILTER (WHERE (nominee_name IS NULL OR nominee_name = '') AND deleted_at IS NULL AND status <> 'closed')::int AS no_nominee,
+            COUNT(*) FILTER (WHERE ${needsNomineeSql("")} AND deleted_at IS NULL AND status <> 'closed')::int AS no_nominee,
             COUNT(*) FILTER (WHERE segment_tag = 'HNI' AND deleted_at IS NULL)::int AS hni_clients,
             COUNT(*) FILTER (WHERE last_transaction_at < now() - make_interval(days => (SELECT dormancy_window_days FROM tenants WHERE id = ${session.tenantId}::uuid)) AND deleted_at IS NULL AND status <> 'closed')::int AS dormant_clients,
             (SELECT dormancy_window_days FROM tenants WHERE id = ${session.tenantId}::uuid)::int AS dormancy_window_days
