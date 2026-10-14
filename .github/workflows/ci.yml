@@ -65,29 +65,17 @@ jobs:
   db-checks:
     name: Migrate · RLS coverage
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: mfd
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s --health-timeout 5s --health-retries 10
+    # PostgreSQL and Redis run ON the runner, disposable, provisioned by
+    # scripts/ci/provision-test-db.sh — not a service container. The RTA
+    # development posting gate posts only to a database server on this machine
+    # (inet_server_addr() must be loopback); a service container reports its
+    # Docker address, so every posting test was refused (2026-10-14). The gate
+    # is not relaxed. Two roles, random masked passwords, nothing from
+    # production: ci_admin (test admin + migrations) and mfd_app (restricted
+    # application role — RLS is enforced only for it). The script writes
+    # DATABASE_URL / ADMIN_DATABASE_URL (ci_admin), TEST_DATABASE_URL and
+    # APP_DB_PASSWORD (mfd_app) and TEST_REDIS_URL to the job environment.
     env:
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/mfd
-      # Activates the DB-backed vitest suites (RLS isolation, share-token claim)
-      # which skipIf(!TEST_DATABASE_URL) — previously dead in CI because no job
-      # set this while also having a database.
-      #
-      # This URL is the NON-superuser `mfd_app` role (provisioned below, after
-      # migrate). Postgres superusers bypass Row-Level Security no matter what
-      # FORCE says, so the RLS-isolation suite is only meaningful — and only
-      # passes — on this role. DATABASE_URL stays the superuser for DDL.
-      TEST_DATABASE_URL: postgres://mfd_app:ci-app-role@localhost:5432/mfd
-      APP_DB_PASSWORD: ci-app-role
       ALLOW_SYSTEM_TX: "1"
     steps:
       - uses: actions/checkout@v4
@@ -96,13 +84,18 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - name: Provision a disposable PostgreSQL + Redis on the runner (test admin and restricted roles)
+        run: bash scripts/ci/provision-test-db.sh
       - name: Apply migrations
         run: npm run migrate:all
       - name: RLS coverage guard (every tenant table has a policy)
         run: npm run check:rls
       - name: Provision the non-superuser app role (RLS is only enforced for it)
         run: node scripts/provision-app-role.mjs
-      - name: DB-backed unit tests (RLS isolation · share-token · webhook sigs)
-        run: npx vitest run
+      - name: DB-backed tests (RLS isolation · runtime role · RTA posting · share-token · webhook sigs)
+        run: npx vitest run --reporter=default --reporter=json --outputFile=vitest-db.json
+      - name: No DB-backed test skipped (a skipped security or posting test is not a pass)
+        if: always()
+        run: node scripts/ci/assert-no-db-skips.mjs vitest-db.json
       - name: RTA emergency-shutdown drill (alone — it halts every firm in the database)
         run: npm run test:emergency
