@@ -39,6 +39,7 @@ import { cleanUccCodes } from "@/lib/investors/ucc";
 import { CustomFieldsSection, missingRequired, type CustomFieldDef } from "@/components/common/CustomFieldInputs";
 import { FormActions } from "@/components/ui/FormActions";
 import { Button, buttonClass } from "@/components/ui/Button";
+import { notify } from "@/components/ui/Toast";
 
 function NewInvestorPageInner() {
   const router = useRouter();
@@ -286,6 +287,8 @@ function NewInvestorPageInner() {
         return;
       }
       const j = await res.json();
+      // A typed guardian PAN that linked nobody is said, never silent (G-1).
+      if (j.guardianNotice) notify.warning(j.guardianNotice, "Guardian not linked");
       if (familyId) {
         await fetch(`/api/families/${familyId}/members`, {
           method: "POST",
@@ -407,10 +410,18 @@ function NewInvestorPageInner() {
           <SelectField label="KYC status" value={form.kycStatus} onChange={(v) => set("kycStatus", v)} options={[{ value: "pending", label: "Pending" }, { value: "registered", label: "Registered" }, { value: "verified", label: "Verified" }, { value: "hold", label: "Hold" }, { value: "rejected", label: "Rejected" }, { value: "expired", label: "Expired" }, { value: "re_kyc_required", label: "Re-KYC required" }]} />
           {kind === "minor" ? (
             <div className="block">
-              <div className="text-xs font-medium mb-1">Risk profile</div>
+              {/* The guardian's profile is not the minor's (G-1): the account is
+                  assessed on its own once created; the guardian's is shown for
+                  reference only. */}
+              <div className="text-xs font-medium mb-1">Risk profile (this account)</div>
               <div className="input-base flex items-center bg-secondary/60 text-muted-foreground">
-                {guardianLink.id ? (guardianLink.riskProfile ? `Same as guardian — ${guardianLink.riskProfile.replace(/_/g, " ")}` : "Same as guardian (none yet)") : "Same as the guardian once linked"}
+                Recorded for the minor's account after it is created
               </div>
+              {guardianLink.id && guardianLink.riskProfile && (
+                <div className="mt-1 text-2xs text-muted-foreground">
+                  Guardian's own profile: {guardianLink.riskProfile.replace(/_/g, " ")} — for reference, not this account's.
+                </div>
+              )}
             </div>
           ) : (
           <SelectField label="Risk profile" value={form.riskProfile} onChange={(v) => set("riskProfile", v)} options={[{ value: "", label: "Select" }, { value: "conservative", label: "Conservative" }, { value: "moderate", label: "Moderate" }, { value: "aggressive", label: "Aggressive" }, { value: "very_aggressive", label: "Very aggressive" }]} />

@@ -24,6 +24,7 @@ import { sql } from "drizzle-orm";
 import type { SessionUser } from "@/lib/auth/session";
 import { investorScopeSql } from "@/lib/investors/access";
 import { recordAudit } from "@/lib/audit";
+import { withOwnRiskForMinor } from "@/lib/risk-profile/own-assessment";
 
 /** `investor_merges.moved` keys for guardian links a merge moved / removed. */
 export const GUARDIAN_MOVED_KEY = "investors.guardian_investor_id";
@@ -32,6 +33,10 @@ export const GUARDIAN_UNLINKED_KEY = "investors.guardian_unlinked";
 /** One message for every refused pick — it must not say WHY. */
 export const GUARDIAN_NOT_LINKED =
   "That client can't be linked as this minor's guardian. A guardian must be an adult individual client you can open; pick them from your clients, or leave the guardian's details typed in.";
+
+/** What a save says when a typed guardian PAN linked nobody — also never why. */
+export const GUARDIAN_PAN_NOT_LINKED =
+  "Saved — but the guardian is not linked to a client record. Their details are kept as typed, and the minor has no risk profile of its own until one is recorded for the minor's account. To link a guardian who is your client, pick them under \"Guardian's client record\".";
 
 /** Client types that are one natural person. */
 export const GUARDIAN_TYPES = ["individual", "nri", "sole_proprietor"] as const;
@@ -145,12 +150,32 @@ export async function auditGuardianChange(
 }
 
 /**
+ * A typed guardian PAN that linked nobody. Recorded without the reason (the
+ * minor's history is visible to its RM, and the reason — shared PAN, another
+ * RM's client — is exactly what must not reach them); the impact report
+ * (docs/security/g1-guardian-impact.sql) re-derives it for compliance.
+ */
+export async function auditGuardianNotLinked(
+  tx: any, input: { tenantId: string; actorUserId: string | null; minorId: string },
+): Promise<void> {
+  await recordAudit(tx, {
+    tenantId: input.tenantId,
+    actorUserId: input.actorUserId ?? undefined,
+    actorType: input.actorUserId ? "user" : "system",
+    action: "investor.guardian_not_linked",
+    entityType: "investor",
+    entityId: input.minorId,
+    after: { via: "pan" },
+  });
+}
+
+/**
  * What a viewer may see of a minor's guardian: the record when they can open
  * it, else only that one exists. Never the name or risk of a hidden guardian.
  */
 export async function guardianForViewer(
   tx: any,
-  session: SessionUser,
+  session: Viewer,
   guardianId: string | null | undefined,
 ): Promise<{ id: string; name: string | null; riskProfile: string | null; hidden: boolean } | null> {
   if (!guardianId) return null;
@@ -162,31 +187,26 @@ export async function guardianForViewer(
   return g ? { id: g.id, name: g.name, riskProfile: g.risk_profile, hidden: false } : null;
 }
 
-/** The risk fields 0234 copies from the guardian onto a linked minor. */
-export const INHERITED_RISK_FIELDS = ["riskProfile", "riskProfileScore", "riskProfileSignedAt", "riskProfileProvisional", "riskProfileVersion"] as const;
-
 /**
- * A linked minor's risk fields ARE the guardian's (migration 0234). When the
- * viewer cannot open the guardian, those fields are the guardian's risk
- * information, so they are blanked on the way out. The stored row is untouched.
+ * A client record on its way to a screen or an API response. For a MINOR, the
+ * risk fields become the minor's own latest assessment — never migration
+ * 0234's copy of the guardian's, whoever is looking (G-1). The guardian's own
+ * profile is shown separately, only through `guardianForViewer`. The stored
+ * row is untouched. Anyone else's record is returned unchanged.
  */
-export async function redactHiddenGuardianRisk<T extends Record<string, any>>(tx: any, session: SessionUser, inv: T): Promise<T> {
-  const gid = inv?.guardianInvestorId ?? inv?.guardian_investor_id;
-  const minor = inv?.investorCategory === "minor" || inv?.investor_category === "minor" || inv?.isMinor === true || inv?.is_minor === true;
-  if (!gid || !minor) return inv;
-  if (await viewerMaySee(tx, session, String(gid))) return inv;
-  const out: Record<string, any> = { ...inv };
-  for (const k of INHERITED_RISK_FIELDS) if (k in out) out[k] = k === "riskProfileProvisional" ? false : null;
-  for (const k of ["risk_profile", "risk_profile_score", "risk_profile_signed_at", "risk_profile_version"]) if (k in out) out[k] = null;
-  return out as T;
+export async function withMinorOwnRisk<T extends Record<string, any>>(tx: any, session: Viewer, inv: T): Promise<T> {
+  return withOwnRiskForMinor(tx, session.tenantId, inv);
 }
 
-/** Is this client a linked minor whose guardian the viewer may not open? */
-export async function guardianRiskHidden(tx: any, session: Viewer, investorId: string): Promise<boolean> {
-  const r = (await tx.execute(sql`
-    SELECT guardian_investor_id::text AS gid, investor_category, is_minor FROM investors
-     WHERE id = ${investorId}::uuid AND tenant_id = ${session.tenantId}::uuid LIMIT 1`)).rows[0] as
-    { gid: string | null; investor_category: string | null; is_minor: boolean | null } | undefined;
-  if (!r?.gid || !(r.investor_category === "minor" || r.is_minor)) return false;
-  return !(await viewerMaySee(tx, session, r.gid));
+const RISK_KEYS = [
+  "riskProfile", "riskProfileScore", "riskProfileSignedAt", "riskProfileProvisional",
+  "risk_profile", "risk_profile_score", "risk_profile_signed_at", "risk_profile_provisional",
+] as const;
+
+/** Pure: a copy of `row` with the risk fields blanked (a minor's history rows
+ *  carry 0234's copies of whichever guardian was linked at the time). */
+export function stripRiskKeys<T extends Record<string, any>>(row: T): T {
+  const out: Record<string, any> = { ...row };
+  for (const k of RISK_KEYS) if (k in out) out[k] = /provisional/i.test(k) ? false : null;
+  return out as T;
 }

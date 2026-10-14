@@ -15,7 +15,8 @@ import {
   Mail,
 } from "lucide-react";
 import { withTenant } from "@/db/client";
-import { proposals, investors } from "@/db/schema";
+import { proposals } from "@/db/schema";
+import { suitabilityProfile } from "@/lib/risk-profile/own-assessment";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { dataWallAppliesFor } from "@/lib/investors/access";
@@ -82,8 +83,10 @@ export default async function ProposalDetailPage({
   const data = await withTenant(session.tenantId, async (tx) => {
     const p = await loadViewableProposal(tx, session, id);
     if (!p) return null;
+    // A minor's risk is their own assessment, never the guardian's copy (G-1) —
+    // the same profile the send gate checks.
     const inv = p.investorId
-      ? (await tx.select().from(investors).where(eq(investors.id, p.investorId)).limit(1))[0]
+      ? { riskProfile: (await suitabilityProfile(tx, p.tenantId, p.investorId)).category }
       : null;
     // Every version of this proposal, oldest first.
     const versions = await tx

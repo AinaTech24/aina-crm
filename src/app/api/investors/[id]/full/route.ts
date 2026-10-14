@@ -21,6 +21,7 @@ import { assetClassExposure } from "@/lib/investors/asset-class";
 import { assessSuitability } from "@/lib/investors/suitability";
 import { clientCompleteness } from "@/lib/investors/completeness";
 import { crossSellOpportunities } from "@/lib/investors/cross-sell";
+import { withOwnRiskForMinor } from "@/lib/risk-profile/own-assessment";
 import {
   investors, folios, sips, goals, transactions, communications, tasks,
   serviceRequests, consents, auditLog, users, families, reviewMeetings, riskProfileResponses,
@@ -43,7 +44,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const data = await withTenant(
       session.tenantId,
       async (tx) => {
-        const inv = await loadViewableInvestor(tx, session, id);
+        // A minor's risk is their own assessment, never the guardian's copy (G-1).
+        const found = await loadViewableInvestor(tx, session, id);
+        const inv = found ? await withOwnRiskForMinor(tx, session.tenantId, found) : found;
         if (!inv || (inv as any).deletedAt) return null;
 
         const [foliosRows, sipsRows, goalsRows, commsRows, tasksRows, srRows, consentsRows, rmRow, familyRow, lumpsumSum, valuation, reviewMeetingsRows, riskHistoryRows, recentTxRows, txCountRow, sipBouncesRow] = await Promise.all([

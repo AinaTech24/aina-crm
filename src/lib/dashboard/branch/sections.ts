@@ -19,6 +19,7 @@
 
 import { sql, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
+import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
 import { formatDate, humanise } from "@/lib/format";
 import type { DashboardThresholds } from "@/lib/dashboard/thresholds";
 import {
@@ -84,6 +85,8 @@ export async function loadWindowMetrics(
   const DEAD = asInList(TASK_DEAD);
   // Money moved is BOOKED business (lib/dashboard/my/booked.ts).
   const bk = (await loadBookedFlows(tx, w.scope, { t: { from, to } })).flows.t;
+  // A minor's risk is their own assessment, never the guardian's copy (G-1).
+  const rk = clientRiskSql("investors");
   const r = (await tx.execute(sql`
     SELECT
       (SELECT COUNT(*)::int FROM investors i
@@ -100,8 +103,8 @@ export async function loadWindowMetrics(
       (SELECT COUNT(*)::int FROM leads
         WHERE ${leadsMatch(w)} AND created_at >= ${from}::date AND created_at < (${to}::date + 1)) AS new_leads,
       (SELECT COUNT(*)::int FROM investors
-        WHERE ${clientsWhere(w.scope)} AND COALESCE(risk_profile_provisional, false) = false
-          AND risk_profile_signed_at >= ${from}::date AND risk_profile_signed_at < (${to}::date + 1)) AS risk_profiles,
+        WHERE ${clientsWhere(w.scope)} AND ${rk.provisional} = false
+          AND ${rk.signedAt} >= ${from}::date AND ${rk.signedAt} < (${to}::date + 1)) AS risk_profiles,
       (SELECT COALESCE(SUM(annual_premium::numeric) FILTER (WHERE policy_type IN (${LIFE})), 0)
          FROM insurance_policies WHERE ${premiumMatch(w)} AND status NOT IN ('lapsed','surrendered','cancelled')
           AND policy_start_date BETWEEN ${from}::date AND ${to}::date) AS life,

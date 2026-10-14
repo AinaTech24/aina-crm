@@ -26,6 +26,7 @@
 
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
+import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
 
 /** A raw SQL result row. Postgres hands numerics back as strings, so every
  *  field goes through num() / numOrNull() before it is used. */
@@ -262,7 +263,8 @@ export async function loadOpportunities(tx: Tx, w: MyWindow): Promise<Opportunit
                  OR lower(COALESCE(s->>'schemeName', '')) LIKE '%liquid%'))                      AS liquid_value,
            EXISTS (SELECT 1 FROM families fam WHERE fam.primary_investor_id = i.id)              AS is_head,
            (i.family_id IS NOT NULL)                                                             AS has_family,
-           (i.risk_profile IS NULL)                                                              AS risk_missing,
+           -- A minor's risk is their own assessment, never the guardian's copy (G-1).
+           (${clientRiskSql("i").category} IS NULL)                                              AS risk_missing,
            (SELECT MAX(m.meeting_date) FROM review_meetings m
              WHERE m.investor_id = i.id AND m.status = 'completed')                              AS last_meeting,
            EXISTS (SELECT 1 FROM transactions t WHERE t.investor_id = i.id AND t.status = 'rejected'
@@ -408,14 +410,16 @@ export type RiskDesk = {
  * category is worse than a blank one because it looks like a signed answer.
  */
 export async function loadRiskDesk(tx: Tx, w: MyWindow): Promise<RiskDesk> {
+  // A minor's risk is their own assessment, never the guardian's copy (G-1).
+  const rk = clientRiskSql("investors");
   const totals = (await tx.execute(sql`
     SELECT
-      COUNT(*) FILTER (WHERE risk_profile IS NOT NULL AND COALESCE(risk_profile_provisional, false) = false)::int AS completed,
-      COUNT(*) FILTER (WHERE risk_profile IS NULL)::int                                                          AS pending,
-      COUNT(*) FILTER (WHERE COALESCE(risk_profile_provisional, false))::int                                     AS provisional,
-      COUNT(*) FILTER (WHERE risk_profile IS NOT NULL
-                         AND risk_profile_signed_at IS NOT NULL
-                         AND risk_profile_signed_at < now() - interval '1 year')::int                            AS due_review
+      COUNT(*) FILTER (WHERE ${rk.category} IS NOT NULL AND ${rk.provisional} = false)::int AS completed,
+      COUNT(*) FILTER (WHERE ${rk.category} IS NULL)::int                                   AS pending,
+      COUNT(*) FILTER (WHERE ${rk.provisional})::int                                        AS provisional,
+      COUNT(*) FILTER (WHERE ${rk.category} IS NOT NULL
+                         AND ${rk.signedAt} IS NOT NULL
+                         AND ${rk.signedAt} < now() - interval '1 year')::int               AS due_review
       FROM investors
      WHERE ${clientsWhere(w.scope)}
   `)).rows[0] as Row | undefined;
@@ -429,16 +433,17 @@ export async function loadRiskDesk(tx: Tx, w: MyWindow): Promise<RiskDesk> {
       LEFT JOIN investors i ON i.id = p.investor_id
      WHERE ${staffMatch("prepared_by_user_id", w, "p")}
        AND p.status NOT IN ('draft','expired','rejected')
-       AND (i.risk_profile IS NULL OR COALESCE(i.risk_profile_provisional, false))
+       AND (${clientRiskSql("i").category} IS NULL OR ${clientRiskSql("i").provisional})
   `)).rows[0] as Row | undefined;
 
   const rows = (await tx.execute(sql`
-    SELECT id, name, client_category, aum, risk_profile, risk_profile_provisional, risk_profile_signed_at
+    SELECT id, name, client_category, aum, ${rk.category} AS risk_profile, ${rk.provisional} AS risk_profile_provisional,
+           ${rk.signedAt} AS risk_profile_signed_at
       FROM investors
      WHERE ${clientsWhere(w.scope)}
-       AND (risk_profile IS NULL
-            OR COALESCE(risk_profile_provisional, false)
-            OR risk_profile_signed_at < now() - interval '1 year')
+       AND (${rk.category} IS NULL
+            OR ${rk.provisional}
+            OR ${rk.signedAt} < now() - interval '1 year')
      ORDER BY aum::numeric DESC NULLS LAST
      LIMIT 10
   `)).rows as Array<Record<string, unknown>>;
@@ -498,7 +503,8 @@ export async function loadDataQuality(tx: Tx, w: MyWindow): Promise<DataQuality>
       COUNT(*) FILTER (WHERE nominee_name IS NULL OR btrim(nominee_name) = '')::int        AS no_nominee,
       COUNT(*) FILTER (WHERE occupation IS NULL OR btrim(occupation) = '')::int          AS no_profession,
       COUNT(*) FILTER (WHERE employer_name IS NULL OR btrim(employer_name) = '')::int    AS no_company,
-      COUNT(*) FILTER (WHERE risk_profile IS NULL)::int                                    AS no_risk,
+      -- A minor's risk is their own assessment, never the guardian's copy (G-1).
+      COUNT(*) FILTER (WHERE ${clientRiskSql("investors").category} IS NULL)::int          AS no_risk,
       COUNT(*) FILTER (WHERE notes IS NULL OR btrim(notes) = '')::int                    AS no_remarks,
       COUNT(*) FILTER (WHERE (pan IS NOT NULL AND btrim(pan) <> '')
                          AND dob IS NOT NULL

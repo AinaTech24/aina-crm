@@ -14,6 +14,7 @@ import { requireSession } from "@/lib/auth/session";
 import { buildNextBestActions } from "@/lib/nba/engine";
 import { generateClientBrief } from "@/lib/ai/assistant";
 import { loadViewableInvestor } from "@/lib/investors/access";
+import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
 
 export const dynamic = "force-dynamic";
 
@@ -28,11 +29,13 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
         // Only a client the caller may open (403 with no client access, 404
         // outside their book) — the brief is that client's whole picture.
         if (!(await loadViewableInvestor(tx, session, id))) return null;
+        // A minor's risk is their own assessment, never the guardian's copy (G-1).
+        const r = clientRiskSql("i");
         const inv = (await tx.execute(sql`
-          SELECT name, service_tier, risk_profile, segment_tag,
-                 COALESCE(aum,0)::numeric AS aum, COALESCE(active_sip_amount,0)::numeric AS sip,
-                 last_contact_at, onboarded_at, nominee_name, email, risk_profile_signed_at
-          FROM investors WHERE id = ${id}::uuid AND tenant_id = ${session.tenantId}::uuid LIMIT 1
+          SELECT i.name, i.service_tier, ${r.category} AS risk_profile, i.segment_tag,
+                 COALESCE(i.aum,0)::numeric AS aum, COALESCE(i.active_sip_amount,0)::numeric AS sip,
+                 i.last_contact_at, i.onboarded_at, i.nominee_name, i.email, ${r.signedAt} AS risk_profile_signed_at
+          FROM investors i WHERE i.id = ${id}::uuid AND i.tenant_id = ${session.tenantId}::uuid LIMIT 1
         `)).rows[0] as any;
         if (!inv) return null;
 

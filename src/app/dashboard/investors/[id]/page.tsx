@@ -29,7 +29,7 @@ import {
 } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { loadViewableInvestor } from "@/lib/investors/access";
-import { redactHiddenGuardianRisk } from "@/lib/investors/guardian-link";
+import { withMinorOwnRisk } from "@/lib/investors/guardian-link";
 import { formatINR, formatDate, formatRelative, formatPhone, isValidIndianMobile } from "@/lib/utils";
 import { formatMoney, formatPercent } from "@/lib/format";
 import { fromActivities, fromCommunications, fromMeetings, fromServiceRequests, fromTasks, mergeTimeline } from "@/lib/timeline";
@@ -363,7 +363,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
 
     return {
       // A linked minor's risk fields are the guardian's: hidden when the viewer cannot open that guardian (G-1).
-      investor: await redactHiddenGuardianRisk(tx, session, inv),
+      investor: await withMinorOwnRisk(tx, session, inv),
       folios: foliosRows,
       sips: sipsRows,
       goals: goalsRows,

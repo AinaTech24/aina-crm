@@ -444,7 +444,7 @@ the imports and every label; never copy the enum again.
   "company". The client book's "corporate" bucket counts company, corporate,
   LLP, partnership and society/AOP.
 - `/dashboard/investors/new?type=minor` opens Add client ready for a type.
-- **A minor's risk profile IS the guardian's** (2026-10-13, migration 0234).
+- **Migration 0234 copies the guardian's risk onto a linked minor's row** (2026-10-13) — a copy no reader uses since G-1 (below).
   The minor links the guardian's client record
   (`investors.guardian_investor_id`: picked in the Guardian section, else
   found by the guardian PAN typed), and two triggers keep the category, score,
@@ -459,10 +459,22 @@ the imports and every label; never copy the enum again.
   `_unlinked`, ids only). A guardian the viewer cannot open is never named, and
   the minor's copied risk is blanked for them (`redactHiddenGuardianRisk`).
   Merging a guardian moves its minors' links to the survivor (un-merge restores).
-- **The copy is not the minor's suitability** (G-1): gates and client messages
-  read `suitabilityProfile` (`lib/risk-profile/own-assessment.ts`) — for a
-  linked minor only an assessment recorded for the minor's own account counts.
-  Never read `investors.risk_profile*` for a suitability decision about a minor.
+- **A minor's risk is the minor's own assessment — for every reader** (G-1,
+  final hardening 2026-10-14). The 0234 copy on the row is never read: screens,
+  APIs, exports, filters, dashboards, PDFs, AI prompts, messages, automations
+  and gates use `clientRiskSql(alias)` (SQL), `withOwnRiskForMinors` /
+  `withOwnRiskForMinor` (fetched rows) or `suitabilityProfile` (one client), all
+  in `lib/risk-profile/own-assessment.ts` — for a minor (linked or not) the
+  latest `risk_profile_responses` row for the minor's account, else nothing.
+  A new reader of `investors.risk_profile*` must use one of them. The
+  guardian's own profile is shown only as the guardian's, labelled, through
+  `guardianForViewer`. Removing a link (edit, turning adult, re-typed PAN,
+  merge into a non-guardian, purge) writes back the minor's own assessment or
+  nothing (`minorOwnRiskColumns`). A typed guardian PAN that links nobody saves
+  the minor unlinked and answers `guardianNotice` (one fixed text, never why),
+  audited as `investor.guardian_not_linked`. A client's change history
+  (`GET /api/audit`) follows the client's own access. Stopping the copy itself
+  is a proposed migration for review: `docs/security/proposed-0245-minor-risk-no-copy.sql`.
 - **Dropdowns, not free text** (lists in client-types.ts): tax status by type
   (`taxStatusOptions`, defaulted on a type change), marital status, income
   range, household type (Individual · Family · Company · HUF). `withCurrent`

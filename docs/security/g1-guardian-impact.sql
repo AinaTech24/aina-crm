@@ -135,3 +135,30 @@ WITH f AS (
 SELECT tenant_id, finding, '…' || right(minor_id::text, 6) AS minor_record
   FROM ranked WHERE n <= 5
  ORDER BY tenant_id, finding, minor_record;
+
+-- ── 5. Copies still stored on rows (final hardening, 2026-10-14) ────────────
+--    No reader uses a minor's row risk any more (G1_GUARDIAN_HOTFIX.md §8.1),
+--    but the copies are still stored. These counts size the reviewed clean-up
+--    that would follow the proposed migration (proposed-0245-minor-risk-no-copy.sql);
+--    nothing here changes them.
+WITH own AS (
+  SELECT DISTINCT r.tenant_id, r.investor_id FROM risk_profile_responses r
+)
+SELECT m.tenant_id,
+       count(*) FILTER (WHERE (m.investor_category = 'minor' OR m.is_minor) AND m.guardian_investor_id IS NOT NULL
+                          AND m.risk_profile IS NOT NULL AND o.investor_id IS NULL)          AS linked_minor_row_is_copy_only,
+       count(*) FILTER (WHERE (m.investor_category = 'minor' OR m.is_minor) AND m.guardian_investor_id IS NULL
+                          AND m.risk_profile IS NOT NULL AND o.investor_id IS NULL)          AS unlinked_minor_row_risk_without_own_assessment,
+       count(*) FILTER (WHERE NOT (m.investor_category = 'minor' OR m.is_minor)
+                          AND m.guardian_investor_id IS NOT NULL)                           AS adult_still_linked_to_a_guardian
+  FROM investors m
+  LEFT JOIN own o ON o.tenant_id = m.tenant_id AND o.investor_id = m.id
+ WHERE m.deleted_at IS NULL AND m.merged_into_id IS NULL
+ GROUP BY m.tenant_id
+HAVING count(*) FILTER (WHERE (m.investor_category = 'minor' OR m.is_minor) AND m.risk_profile IS NOT NULL AND o.investor_id IS NULL) > 0
+    OR count(*) FILTER (WHERE NOT (m.investor_category = 'minor' OR m.is_minor) AND m.guardian_investor_id IS NOT NULL) > 0
+ ORDER BY m.tenant_id;
+
+-- Not measurable from the database: who read a client's change history through
+-- GET /api/audit before it was scoped (reads are not audited). Web access logs
+-- of that path, filtered to entityType=investor, are the only source.

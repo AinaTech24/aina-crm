@@ -26,6 +26,10 @@ import { sql, type SQL } from "drizzle-orm";
 import type { CompactFilter } from "@/components/common/CompactFilterBar";
 import { humanise } from "@/lib/format";
 import { textList } from "@/lib/metrics/scope";
+import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
+
+// A minor's risk is their own assessment, never the guardian's copy (G-1).
+const RISK = clientRiskSql("investors");
 
 type Params = Record<string, string | undefined>;
 type Option = { value: string; label: string };
@@ -93,7 +97,7 @@ const BOOK_TEXT_LISTS: [string, SQL][] = [
   ["nominee_rel", sql`investors.nominee_relation`],
   ["bank", sql`investors.bank_name`],
   ["mandate", sql`investors.mandate_status`],
-  ["risk", sql`investors.risk_profile`],
+  ["risk", RISK.category],
   ["statement", sql`investors.statement_cadence`],
   ["review_freq", sql`investors.review_frequency`],
 ];
@@ -381,9 +385,10 @@ export function investorFieldFilterConds(sp: Params): SQL[] {
   out.push(inAmount(sql`investors.mandate_amount`, sp.mandate_amt_min, sp.mandate_amt_max));
   contains("ucc", (p) => sql`(investors.bse_ucc_code ILIKE ${p} OR investors.nse_can_code ILIKE ${p}
     OR COALESCE(investors.ucc_codes::text, '') ILIKE ${p})`);
-  many("risk", (v) => textIn(sql`investors.risk_profile`, v));
-  flag("risk_provisional", sql`investors.risk_profile_provisional = true`, sql`COALESCE(investors.risk_profile_provisional, false) = false`);
-  out.push(inDates(sql`investors.risk_profile_signed_at`, sp.risk_signed_from, sp.risk_signed_to));
+  // A minor's risk is their own assessment, never the guardian's copy (G-1).
+  many("risk", (v) => textIn(RISK.category, v));
+  flag("risk_provisional", sql`${RISK.provisional} = true`, sql`${RISK.provisional} = false`);
+  out.push(inDates(RISK.signedAt, sp.risk_signed_from, sp.risk_signed_to));
   many("health", (v) => sql`investors.health_band IN (${textList(v.filter((x) => ["green", "amber", "red"].includes(x)))})`);
   many("statement", (v) => textIn(sql`investors.statement_cadence`, v));
 

@@ -150,7 +150,8 @@ describe.skipIf(!TEST_DB)("G-1 guardian link — security regression (DB)", () =
     h.session = sess(rmA, ["rm"]);
     const res = await call("POST", "/api/investors", minor({ gpan: P.gB }));
     expect(res.status).toBe(201);
-    expect(res.body).toEqual({ id: res.body.id, guardianLinked: false });
+    // Not linked — and said so (G-1 Task 4), in words that never say why.
+    expect(res.body).toEqual({ id: res.body.id, guardianLinked: false, guardianNotice: G.GUARDIAN_PAN_NOT_LINKED });
     expect((await linkOf(res.body.id)).g).toBeNull();
     expect(res.text).not.toContain("Guardian Other Book");
     expect(res.text).not.toContain("very_aggressive");
@@ -215,7 +216,10 @@ describe.skipIf(!TEST_DB)("G-1 guardian link — security regression (DB)", () =
       expect(res.body.error).toBe(createAnswer);
     }
     expect((await linkOf(id)).g).toBeNull();
-    expect(await audits(id)).toBe(0);
+    // No link was made; the typed PAN that linked nobody is recorded once, with no reason.
+    const acts = (await withTenant(t, async (tx) => (await tx.execute(sql`SELECT action, after FROM audit_log WHERE entity_id = ${id}::uuid AND action LIKE 'investor.guardian_%'`)).rows)) as any[];
+    expect(acts.map((x) => x.action)).toEqual(["investor.guardian_not_linked"]);
+    expect(acts[0].after).toEqual({ via: "pan" });
   });
 
   it("edit: links in the book by PAN or pick, unlinks with null — each change audited", async () => {
@@ -233,7 +237,7 @@ describe.skipIf(!TEST_DB)("G-1 guardian link — security regression (DB)", () =
   });
 
   /* ── An existing link to a guardian the viewer cannot open ──────────── */
-  it("existing cross-book link: GET / PATCH / edit-page data never show the guardian's name or risk; saving other fields keeps the link", async () => {
+  it("existing cross-book link: GET / PATCH never show the guardian's name or risk — to anyone the minor's risk is its own assessment; saving other fields keeps the link", async () => {
     const id = await ownMinor(rmA, ids.gB); // legacy data: linked before the fix
     expect((await linkOf(id)).risk_profile).toBe("very_aggressive"); // 0234 copied it
     h.session = sess(rmA, ["rm"]);
@@ -249,12 +253,15 @@ describe.skipIf(!TEST_DB)("G-1 guardian link — security regression (DB)", () =
     expect((await linkOf(id)).g).toBe(ids.gB); // re-sent link unchanged, not re-checked
     const view = await withTenant(t, (tx) => G.guardianForViewer(tx, sess(rmA, ["rm"]) as any, ids.gB));
     expect(view).toEqual({ id: ids.gB, name: null, riskProfile: null, hidden: true });
-    expect(await withTenant(t, (tx) => G.guardianRiskHidden(tx, sess(rmA, ["rm"]) as any, id))).toBe(true);
     // RM B (the guardian's RM) and the owner see it.
     const vb = await withTenant(t, (tx) => G.guardianForViewer(tx, sess(rmB, ["rm"]) as any, ids.gB));
     expect(vb?.name).toBe("Guardian Other Book");
+    // The owner may open the guardian — and still the MINOR's risk is the
+    // minor's own assessment (none yet), never the guardian's copy; the
+    // guardian's own profile is shown only through the link.
     h.session = sess(owner, ["owner"]);
-    expect((await call("GET", `/api/investors/${id}`)).body.investor.riskProfile).toBe("very_aggressive");
+    expect((await call("GET", `/api/investors/${id}`)).body.investor.riskProfile).toBeNull();
+    expect((await withTenant(t, (tx) => G.guardianForViewer(tx, sess(owner, ["owner"]) as any, ids.gB)))?.riskProfile).toBe("very_aggressive");
   });
 
   it("risk-profiles export: a hidden guardian is never named and the minor's copied risk is blank; the guardian's RM sees both", async () => {
@@ -263,7 +270,7 @@ describe.skipIf(!TEST_DB)("G-1 guardian link — security regression (DB)", () =
     const { riskProfilesExport } = await import("@/lib/export/modules/relationships");
     const csvFor = async (s: any) => {
       try {
-        const f = await runExport(s, riskProfilesExport, ["name", "guardian", "category", "signed"], "csv", new URLSearchParams("filter=current,not_profiled,due,expired,awaiting"));
+        const f = await runExport(s, riskProfilesExport, ["name", "guardian", "guardian_risk", "category", "signed"], "csv", new URLSearchParams("filter=current,not_profiled,due,expired,awaiting"));
         return f.body.toString("utf8");
       } catch (e: any) { return `REFUSED:${e?.status ?? e?.message}`; }
     };
@@ -274,6 +281,11 @@ describe.skipIf(!TEST_DB)("G-1 guardian link — security regression (DB)", () =
     expect(row).not.toMatch(/Very Aggressive/i);
     const o = await csvFor(sess(owner, ["owner"]));
     expect(o).toContain("Guardian Other Book");
+    // For the owner the guardian's own category appears in its own, labelled
+    // column; the minor's risk category column stays the minor's (empty).
+    const orows = o.split("\n").filter((l) => l.includes("Edited Minor") && l.includes("Guardian Other Book"));
+    expect(orows.length).toBeGreaterThan(0);
+    for (const l of orows) expect(l.split(",").filter((c) => /Very Aggressive/i.test(c)).length).toBe(1);
     void id;
   });
 

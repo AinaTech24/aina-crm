@@ -42,6 +42,7 @@ import { loadClientLinkTokens } from "@/lib/comms/client-links";
 import { installClientEmailTemplates } from "@/lib/templates/install-client-emails";
 import { STARTER_TEMPLATES } from "@/lib/email-designer/starters";
 import { riskBucketSql } from "@/lib/risk-profile/buckets";
+import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -94,8 +95,10 @@ export async function POST(req: NextRequest) {
         const rmScope = seesAll ? sql`` : sql` AND i.rm_id = ${session.userId}::uuid`;
         // Plus the shared client data scope (branch / own book).
         const dataScope = await investorScopeSql(tx, session, "i");
+        // A minor's risk is their own assessment, never the guardian's copy (G-1).
+        const ownRisk = clientRiskSql("i");
         const rows = (await tx.execute(sql`
-          SELECT i.id, i.name, i.email, i.risk_profile_provisional AS provisional,
+          SELECT i.id, i.name, i.email, ${ownRisk.provisional} AS provisional,
                  EXISTS (
                    SELECT 1 FROM communications c
                     WHERE c.tenant_id = i.tenant_id AND c.investor_id = i.id AND c.channel = 'email'

@@ -7,7 +7,7 @@ import { can } from "@/lib/auth/rbac";
 import { loadTenantLicense } from "@/lib/auth/license";
 import { isFieldAllowed } from "@/lib/auth/field-gate";
 import { loadViewableInvestor } from "@/lib/investors/access";
-import { guardianForViewer, redactHiddenGuardianRisk } from "@/lib/investors/guardian-link";
+import { guardianForViewer, withMinorOwnRisk } from "@/lib/investors/guardian-link";
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { ClientDetailsForm, type ClientFamilyContext } from "@/components/investors/ClientDetailsForm";
 import { sql } from "drizzle-orm";
@@ -52,7 +52,7 @@ export default async function EditClientDetailsPage({ params }: { params: Promis
     // the form learns that a guardian is linked, never who, and the minor's
     // own risk fields — the guardian's copy (migration 0234) — are blanked.
     const guardian = await guardianForViewer(tx, session, inv.guardianInvestorId);
-    const shown = guardian?.hidden ? await redactHiddenGuardianRisk(tx, session, inv) : inv;
+    const shown = await withMinorOwnRisk(tx, session, inv);
     return { inv: shown as typeof inv, family, guardian };
   }, { userId: session.userId, branchId: session.branchId ?? undefined, roles: session.roles });
   if (!loaded) notFound();

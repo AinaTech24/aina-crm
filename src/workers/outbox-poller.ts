@@ -23,6 +23,7 @@ import { MODULES } from "@/lib/workflow-rules/modules";
 import { handleBlueprintStageEvent } from "@/lib/blueprints/event-consumers";
 import { captureError } from "@/lib/observability/capture";
 import { normalizeWorkflowEvent } from "@/lib/workflow/event-context";
+import { withOwnRiskForMinor } from "@/lib/risk-profile/own-assessment";
 
 const BATCH_SIZE = 200;
 /** After this many failed attempts an event is dead-lettered: it stays in the
@@ -106,6 +107,28 @@ export async function pollOutboxOnce(): Promise<{ processed: number; errors: num
   return { processed, errors };
 }
 
+const RISK_PAYLOAD_KEYS = [
+  "riskProfile", "risk_profile", "riskProfileScore", "risk_profile_score",
+  "riskProfileSignedAt", "risk_profile_signed_at", "riskProfileProvisional", "risk_profile_provisional",
+];
+
+/** An investor event whose payload carries risk fields: for a MINOR, those
+ *  fields become the minor's own latest assessment (G-1). Others unchanged. */
+async function withOwnRiskForMinorEvent(tenantId: string, event: any): Promise<any> {
+  if (event?.entity_type !== "investor" || !event.entity_id) return event;
+  const hasRisk = (o: unknown) => !!o && typeof o === "object" && RISK_PAYLOAD_KEYS.some((k) => k in (o as object));
+  if (!hasRisk(event.after) && !hasRisk(event.before)) return event;
+  return withTenant(tenantId, async (tx) => {
+    const fix = async (o: any) => {
+      if (!hasRisk(o)) return o;
+      const { __g1Id, ...own } = await withOwnRiskForMinor(tx, tenantId, { ...o, __g1Id: event.entity_id }, "__g1Id");
+      void __g1Id;
+      return own;
+    };
+    return { ...event, after: await fix(event.after), before: await fix(event.before) };
+  });
+}
+
 async function processEvent(event: any) {
   const tenantId: string = event.tenant_id;
 
@@ -116,6 +139,10 @@ async function processEvent(event: any) {
     await handleBlueprintStageEvent(event);
     return;
   }
+
+  // A minor's risk is their own assessment, never the guardian's copy (G-1):
+  // trigger / wait criteria, rules and run snapshots below all read this payload.
+  event = await withOwnRiskForMinorEvent(tenantId, event);
 
   // 1) Find subscribed workflow triggers
   const triggers = await withTenant(tenantId, async (tx) => {

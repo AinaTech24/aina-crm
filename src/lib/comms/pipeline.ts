@@ -38,6 +38,7 @@ import { whatsappAdapter, whatsappProviderId } from "./adapters/whatsapp";
 import { emailAdapter } from "./adapters/resend";
 import { smsAdapter } from "./adapters/msg91";
 import { getTenantIntegration } from "./integrations";
+import { withOwnRiskForMinor } from "@/lib/risk-profile/own-assessment";
 import { resolveEmailSender } from "./sender";
 import { consumeRateLimit } from "./rate-limit";
 import { loadClientLinkTokens, wantsClientLinkTokens } from "@/lib/comms/client-links";
@@ -123,7 +124,7 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
   // 1 + 2. Resolve template + render  (free-form path skips the template)
   // -----------------------------------------------------------
   const tenantRow = await loadTenant(tx, input.tenantId);
-  const subject = input.investorId ? await loadInvestor(tx, input.investorId) : null;
+  const subject = input.investorId ? await loadInvestor(tx, input.investorId, input.tenantId) : null;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let version: any;
@@ -856,10 +857,12 @@ function absoluteAppUrl(url: string): string {
   return `${base}${url.startsWith("/") ? "" : "/"}${url}`;
 }
 
-async function loadInvestor(tx: Tx, id: string) {
+export async function loadInvestor(tx: Tx, id: string, tenantId: string) {
   const { investors, users } = await import("@/db/schema");
-  const [i] = await tx.select().from(investors).where(eq(investors.id, id));
-  if (!i) return null;
+  const [row] = await tx.select().from(investors).where(eq(investors.id, id));
+  if (!row) return null;
+  // A minor's risk is their own assessment, never the guardian's copy (G-1).
+  const i = await withOwnRiskForMinor(tx, tenantId, row);
   // Enrich with the computed merge tokens templates use but that aren't columns:
   // investor.first_name (first word of name) and investor.rm_name (the RM's name).
   const enriched: any = { ...i };

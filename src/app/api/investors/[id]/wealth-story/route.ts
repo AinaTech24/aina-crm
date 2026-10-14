@@ -22,6 +22,7 @@ import { pickLogo } from "@/lib/branding/logo";
 import { emailAdapter } from "@/lib/comms/adapters/resend";
 import { resolveEmailSender } from "@/lib/comms/sender";
 import { emailLogoHeaderHtml } from "@/lib/comms/email-logo";
+import { withOwnRiskForMinor } from "@/lib/risk-profile/own-assessment";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -60,7 +61,7 @@ const monLabel = (iso: string) =>
 /* ────────────────────────── data loader ────────────────────────── */
 
 async function loadStory(tx: any, tenantId: string, investorId: string): Promise<WealthStory | null> {
-  const [inv] = await tx
+  const [found] = await tx
     .select({
       id: investors.id,
       name: investors.name,
@@ -72,7 +73,9 @@ async function loadStory(tx: any, tenantId: string, investorId: string): Promise
     .from(investors)
     .where(and(eq(investors.id, investorId), eq(investors.tenantId, tenantId), isNull(investors.deletedAt)))
     .limit(1);
-  if (!inv) return null;
+  if (!found) return null;
+  // A minor's risk is their own assessment, never the guardian's copy (G-1).
+  const inv = await withOwnRiskForMinor(tx, tenantId, found);
 
   const to = new Date();
   const from = new Date(to);

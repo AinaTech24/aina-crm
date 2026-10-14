@@ -15,6 +15,7 @@
  */
 
 import { sql } from "drizzle-orm";
+import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
 
 type Tx = { execute: (q: any) => Promise<{ rows: any[] }> };
 
@@ -263,11 +264,13 @@ export async function buildNextBestActions(
   }
   // 8. Risk profile stale (SEBI annual) → AUM.
   {
+    // A minor's risk is their own assessment, never the guardian's copy (G-1).
+    const rk = clientRiskSql("i");
     const r = await tx.execute(sql`
-      SELECT i.id, i.name, i.avatar_url, i.phone, i.email, COALESCE(i.aum,0)::numeric AS aum, i.risk_profile_signed_at, u.name AS rm_name
+      SELECT i.id, i.name, i.avatar_url, i.phone, i.email, COALESCE(i.aum,0)::numeric AS aum, ${rk.signedAt} AS risk_profile_signed_at, u.name AS rm_name
       FROM investors i LEFT JOIN users u ON u.id = i.rm_id
       WHERE i.merged_into_id IS NULL AND i.deleted_at IS NULL AND i.status = 'active'
-        AND (i.risk_profile_signed_at IS NULL OR i.risk_profile_signed_at < now() - interval '365 days') ${invScope}
+        AND (${rk.signedAt} IS NULL OR ${rk.signedAt} < now() - interval '365 days') ${invScope}
       ORDER BY i.aum DESC NULLS LAST ${cap}
     `);
     for (const x of r.rows) {

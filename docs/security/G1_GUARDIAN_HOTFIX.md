@@ -1,10 +1,12 @@
 # G-1 — Guardian-PAN link: security hotfix (development only)
 
 **Status (2026-10-14): fixed and tested in development on `claude/g1-guardian-hotfix`
-— head `c046ecfc` = the fix (`0c4f9e7e`, typed in `ea287acf`) on top of
-`main` `b795fdba`, the head of `main` when it was last verified. Not merged to
-`main`, not deployed, nothing run against production.** Pushing this branch to `main` deploys it: that needs the
-owner's separate, explicit authorization (§6).
+— the first fix (`0c4f9e7e`, typed in `ea287acf`, on `main` `b795fdba` at
+`c046ecfc`) plus the **final hardening** of §8 (every read path, removal of a
+link, refused typed PANs, the client history route). Not merged to `main`, not
+deployed, nothing run against production.** Pushing this branch to `main`
+deploys it: that needs the owner's separate, explicit authorization (§6). The
+business decision the hardening leaves open is in §9.
 
 ## 1. Root cause
 
@@ -35,7 +37,7 @@ held; no cross-firm exposure was possible or found.
 
 | File | Change |
 |---|---|
-| `src/lib/investors/guardian-link.ts` (new) | One rule for every writer: a guardian is a live, non-merged **adult individual** (individual / NRI / sole proprietor, not a minor, ≥ 18 when a DOB is on record, an individual's PAN — 4th letter P — when a PAN is on record); a typed PAN resolves only when **exactly one** live record in the firm holds it; the user must be able to open that record (`investorScopeSql`); a picked id passes the same checks. Every refusal is the same `null` / one message. `auditGuardianChange` (ids only), `guardianForViewer`, `redactHiddenGuardianRisk`, `guardianRiskHidden`. |
+| `src/lib/investors/guardian-link.ts` (new) | One rule for every writer: a guardian is a live, non-merged **adult individual** (individual / NRI / sole proprietor, not a minor, ≥ 18 when a DOB is on record, an individual's PAN — 4th letter P — when a PAN is on record); a typed PAN resolves only when **exactly one** live record in the firm holds it; the user must be able to open that record (`investorScopeSql`); a picked id passes the same checks. Every refusal is the same `null` / one message. `auditGuardianChange` (ids only), `auditGuardianNotLinked`, `guardianForViewer`, `withMinorOwnRisk` (§8). |
 | `src/app/api/investors/route.ts` | Create: picked id → `resolveGuardian`, refused → 400 with one message; typed PAN → `resolveGuardian`, refused → created unlinked. Response says only `guardianLinked: true/false`. Audit `investor.guardian_linked`. |
 | `src/app/api/investors/[id]/route.ts` | Edit: same checks; re-sending the guardian already on record is a no-op (an RM can still save a minor whose existing guardian is outside their book); `null` unlinks; audit on every change. GET and PATCH responses blank a linked minor's copied risk when the viewer cannot open the guardian. |
 | `src/app/dashboard/investors/[id]/edit/page.tsx`, `ClientDetailsForm.tsx`, `ClientTypeSections.tsx` | The Edit page shows "A client outside your book" and "Not shown" instead of a hidden guardian's name and risk; the minor's copied risk is blanked before it reaches the browser. |
@@ -124,9 +126,149 @@ owner / compliance review §2 of the impact SQL daily.
 
 ## 7. Preserved behaviour
 
-- A minor linked to a guardian the user can open behaves exactly as since 2026-10-13: the 0234 triggers copy and follow the guardian's profile; the Edit page names the guardian and shows their category.
+- A minor linked to a guardian the user can open: the link, the 0234 triggers (which keep copying and following the guardian's profile on the row) and the Edit page naming the guardian are as since 2026-10-13. **Changed by §8:** the guardian's category is shown as the guardian's ("Guardian's own risk profile — not this account's"), and every screen, export, message and gate shows the MINOR's own assessment as the minor's risk.
 - The owner and anyone with the whole book can link any eligible guardian.
 - One guardian may be linked to any number of minors (no one-minor rule).
 - Adults' risk profiles, gates, proposals and messages read exactly as before.
 - Creating a minor never fails because a typed PAN did not resolve; only an explicit pick of an ineligible record is refused.
 - The legacy RTA master import's own guardian linking (`src/lib/rta/import.ts` step 6, the registrar's stated guardian PAN) is unchanged: it is a system path with no user, and the impact SQL counts its results like any other link.
+
+## 8. Final hardening (owner's instruction of 2026-10-14, second round)
+
+### 8.1 One rule for every reader (Task 1)
+
+The first fix blanked the copy on five screens for a viewer who could not open
+the guardian. Two read-only inventories then found **about 45 more readers**
+of the copied columns: the Clients list API and page, both client exports, the
+mobile 360 view, the change-history route, the Risk Profiles tabs and
+"suggested" marker, the RM / branch desks, command centre, next best action,
+health scores, family pages, filters and segments, the risk-drift report,
+meeting prep, discovery (including the public `/fd/` link), the proposal page,
+the proposal PDF (staff, emailed, public), AI prompts, client-message merge
+tokens, workflow subjects and outbox events, and the expiry / drift scanners.
+Blanking per viewer cannot work for most of them (a message, an automation or
+a PDF has no viewer), so the rule is now:
+
+> **For a minor, the risk fields are the minor's own latest assessment
+> (`risk_profile_responses` for the minor's account), never the row's copy —
+> for every reader, every viewer. For everyone else, the row, exactly as
+> before.** The guardian's profile appears only as the guardian's, labelled,
+> through the link, to a user who may open the guardian (`guardianForViewer`).
+
+The minor's own assessment is the minor's information, so whoever may see the
+minor may see it — no viewer check is needed, and the same value is the safe
+input for suitability. Helpers in `src/lib/risk-profile/own-assessment.ts`:
+`clientRiskSql(alias)` (SQL), `withOwnRiskForMinors` / `withOwnRiskForMinor`
+(rows already fetched), `suitabilityProfile` (one client). Every changed site
+carries the comment "A minor's risk is their own assessment, never the
+guardian's copy (G-1)".
+
+Server-side, never only in the browser: the values are replaced in the query
+or before the response / RSC payload is built.
+
+Access fixes found on the way (pre-existing, same class of defect):
+
+| Route | Was | Now |
+|---|---|---|
+| `GET /api/audit?entityType=investor&entityId=` (ChangeLog drawer) | any user could read the full before / after rows of ANY client by id — e.g. the hidden guardian's id the minor's record returns | the caller must be able to open the client (`investorScopeSql`), else 404; a minor's history has the risk fields blanked (they are copies of whichever guardian was linked) |
+| `POST /api/ai/qrr-commentary` | any investor id accepted (capability only) | `loadViewableInvestor`, 404 before any model call |
+| Risk-drift report | managers / `reports.*` saw the whole firm regardless of the data wall | `investorScopeSql` added |
+| Client Excel export | "Risk score" column ignored the licence's risk-field gate | gated like "Risk profile" |
+
+Not changed, stated for the record: `type_details.guardian` (the guardian's
+name / PAN / relation / contact TYPED on the minor's record) is part of the
+minor's own account record (a registrar requires it) and is shown with the
+minor; a link made before the fix may have pre-filled it from the guardian's
+record — the impact SQL's `typed_pan_differs` and §2 counts point a reviewer at
+those. The legacy RTA master import's guardian link (registrar-stated PAN) is
+untouched (RTA code freeze); its links are read under the same rule.
+
+### 8.2 Migration 0234 — what it does, and the smallest safe correction (Task 2)
+
+| Question | Finding |
+|---|---|
+| Fields copied | `risk_profile`, `risk_profile_score`, `risk_profile_signed_at`, `risk_profile_provisional` (not `risk_profile_version`). |
+| Events that refresh the copy | BEFORE INSERT / **any** UPDATE of a row with `investor_category = 'minor'` and a link (an address edit re-copies); AFTER UPDATE of the guardian's four risk columns (pushed to every linked minor). |
+| Events that do NOT | Unlinking (the copy stayed and became the minor's "own"); the minor changing type (turning 18: the copy stayed as the adult's own); the guardian merged, trashed or purged (purge cleared the link, the copy stayed); `is_minor` without the category. |
+| The minor's own assessment | Recorded in `risk_profile_responses`, but the row is immediately overwritten by the copy while a link exists — the row never shows it. |
+| Distinguishable? | **No**, not on the row: same columns, `provisional` false, the guardian's signing date. |
+| Unauthorized readers | §8.1 — about 50 sites, now on the rule. |
+| Stale data after link / unlink | Yes, before this patch — now: removing a link in the application (edit, turning adult, re-typed PAN, merge into a non-guardian, purge) writes back the minor's own latest assessment or nothing (`minorOwnRiskColumns`), audited; a link removed by any other writer still leaves a stale copy, which no reader uses (§8.1) and the impact SQL counts (§5 of the SQL). |
+| Misleading history after a guardian change | Yes: the copy silently replaces category and "signed" date with the new guardian's; the old values exist only in the `investor.update` audit rows. Proposals store no risk snapshot (the proposal page reads the live value — now the minor's own), so nothing stored is rewritten. |
+
+**Smallest safe correction (proposed for separate review, NOT applied):**
+`docs/security/proposed-0245-minor-risk-no-copy.sql` drops the two triggers and
+their functions — no data change, rollback re-creates them from 0234. Once the
+copy stops, the minor's row holds only what is recorded for the minor, and the
+guardian's profile is read through the authorized relationship
+(`guardianForViewer`) — no duplication of another client's data. Clearing the
+copies already on minors' rows is a separate, reviewed, dry-run-first
+remediation (§5 step 5) under the change lock. The application code of this
+patch is correct with or without the migration (it never reads a minor's row
+risk).
+
+### 8.3 Suitability (Task 3)
+
+| Check | Result |
+|---|---|
+| MF proposal generation | The builder's prefill (`loadProposalSnapshot`) reads `suitabilityProfile`: a minor with no own assessment is "Not completed". |
+| Proposal send | `POST /api/proposals/[id]/send` gate reads the same snapshot; the alignment check reads `suitabilityProfile`. The proposal page's suitability panel and the proposal PDF (staff, emailed, public) now read it too — they no longer contradict the gate. |
+| Opportunity journey | `loadFacts` reads `suitabilityProfile`; the "client-confirmed profile within 12 months" gate stays closed on a copy. |
+| An incorrect guardian link | Cannot pass any gate: a minor's suitability never reads the row, linked or not — including a stale copy left on an unlinked minor (tested). |
+| Display | Inherited and assessed are separate on the Edit page, new-client form, client summary strip, Risk Profiles page and export ("Guardian's own risk profile — not this account's"). |
+| Earlier snapshots | Proposals store no risk snapshot; the stored suitability note, override reason and per-scheme reasons are untouched. Nothing stored is rewritten. |
+| Provisional own assessments | An age-band suggestion recorded for the minor's account is provisional and satisfies no gate (unchanged rule). |
+
+### 8.4 Refused typed guardian PAN (Task 4)
+
+Creating or editing a minor with a typed guardian PAN that links nobody (no
+client, a shared PAN, another RM's client, an HUF / company PAN, a teenager)
+now:
+
+- still saves the minor (with the guardian's details as typed) — the minor is
+  never blocked for a typed PAN;
+- answers `guardianLinked: false` plus ONE fixed notice
+  (`GUARDIAN_PAN_NOT_LINKED`) that never says why, shown to the user as a
+  warning ("Guardian not linked");
+- records `investor.guardian_not_linked` (`{ via: "pan" }` — no reason, since
+  the minor's history is visible to its RM);
+- never carries a copied profile: an unlinked minor has no guardian's risk.
+
+Re-typing the guardian PAN on a linked minor to a DIFFERENT person moves the
+link to that person when they may be linked, else removes it (and its copy)
+with the same notice — a record must never name one guardian and copy
+another's profile.
+
+### 8.5 Evidence
+
+See the evidence table below (§8.6) — filled from the runs of this patch.
+
+## 9. Decision note — minors and their guardians (for the business owner and the compliance reviewer)
+
+**What the CRM does today (interim, until you decide):** a minor's risk
+profile, for every screen, export, message and suitability gate, is ONLY an
+assessment recorded for the minor's own account. The guardian's own profile is
+shown beside it, labelled as the guardian's, to staff who may see the
+guardian. A minor with no assessment of its own is "not profiled": no MF
+proposal can be sent for it.
+
+**The question:** for a minor's mutual fund investments, what assessment
+establishes suitability?
+
+| Option | What it means | Consequence |
+|---|---|---|
+| A. The minor's account is assessed on its own (interim rule) | The guardian answers the questionnaire **for the minor's account** — horizon, objective and capacity are the minor's (often long horizon, education goal); recorded and signed for the minor. | Each minor needs one assessment; nothing is shared between clients; matches how the CRM now behaves. |
+| B. The guardian's own profile stands for the minor | The guardian's assessment of themselves is reused for every minor they represent. | Needs a documented policy reason; one guardian's profile change silently changes every minor's suitability; the migration in §8.2 would NOT be applied and the copy would need an explicit, visible "inherited from guardian on <date>" marker before any gate could use it. |
+| C. Both | The minor's account is assessed; the guardian's profile is a cross-check (e.g. a warning if the minor's portfolio exceeds the guardian's band). | Most information; most work. |
+
+**Please decide:**
+
+1. Which option is the firm's suitability policy for minors (A, B or C)?
+2. Should migration `proposed-0245-minor-risk-no-copy.sql` (stop copying) be
+   scheduled for review? (Recommended with A or C.)
+3. For minors whose MF proposals were sent while only a copy existed (impact
+   SQL §3): does each need a fresh assessment of the minor's account before the
+   next recommendation?
+4. Privacy: for links where a user saw a client outside their book (impact SQL
+   §2), the reviewer decides whether a notification is required under the
+   firm's privacy procedure.

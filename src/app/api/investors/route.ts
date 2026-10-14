@@ -27,7 +27,8 @@ import { applyRiskCategory, RISK_CATEGORIES } from "@/lib/risk-profile/apply";
 import { cleanUccCodes } from "@/lib/investors/ucc";
 import { investors, eventsOutbox } from "@/db/schema";
 import { familyHeadRmId } from "@/lib/families/head-rm";
-import { GUARDIAN_NOT_LINKED, auditGuardianChange, resolveGuardian } from "@/lib/investors/guardian-link";
+import { GUARDIAN_NOT_LINKED, GUARDIAN_PAN_NOT_LINKED, auditGuardianChange, auditGuardianNotLinked, guardianPan, resolveGuardian } from "@/lib/investors/guardian-link";
+import { withOwnRiskForMinors } from "@/lib/risk-profile/own-assessment";
 
 export const dynamic = "force-dynamic";
 
@@ -173,7 +174,9 @@ export async function GET(req: NextRequest) {
           .from(investors)
           .where(where as any);
 
-        return { rows, total: Number(countRes[0]?.c ?? 0), page, limit };
+        // A minor's risk is their own assessment, never the guardian's copy (G-1).
+        const shown = await withOwnRiskForMinors(tx, session.tenantId, rows);
+        return { rows: shown, total: Number(countRes[0]?.c ?? 0), page, limit };
       },
       { userId: session.userId, branchId: session.branchId, roles: session.roles }
     );
@@ -220,6 +223,7 @@ export async function POST(req: NextRequest) {
     const id = uuid();
     const clientMeta = clientMetaFromHeaders(req.headers);
     let guardianLinked = false;
+    let guardianPanTried = false;
     await withTenant(session.tenantId, async (tx) => {
       // Sanitize firm custom fields against their definitions before storing.
       const cfDefs = await loadCustomFieldDefs(tx, session.tenantId, "investor");
@@ -237,7 +241,8 @@ export async function POST(req: NextRequest) {
       // can open (lib/investors/guardian-link.ts, G-1). The minor then carries
       // the guardian's risk profile (a database rule, migration 0234). A
       // refused pick stops the save with one message that never says why; a
-      // typed PAN that resolves to nobody simply leaves the minor unlinked.
+      // typed PAN that resolves to nobody leaves the minor unlinked — and the
+      // response says so (guardianNotice), and the history records it.
       let guardianInvestorId: string | null = null;
       if (body.investorCategory === "minor") {
         if (body.guardianInvestorId) {
@@ -245,6 +250,7 @@ export async function POST(req: NextRequest) {
           if (!guardianInvestorId) throw Object.assign(new Error(GUARDIAN_NOT_LINKED), { status: 400 });
         } else {
           guardianInvestorId = await resolveGuardian(tx, session, { pan: body.typeDetails?.guardian?.pan });
+          guardianPanTried = !guardianInvestorId && !!guardianPan(body.typeDetails?.guardian?.pan);
         }
       }
       guardianLinked = !!guardianInvestorId;
@@ -342,6 +348,7 @@ export async function POST(req: NextRequest) {
           before: null, after: guardianInvestorId, via: body.guardianInvestorId ? "picked" : "pan",
         });
       }
+      if (guardianPanTried) await auditGuardianNotLinked(tx, { tenantId: session.tenantId, actorUserId: session.userId, minorId: id });
 
       await recordAudit(tx, {
         tenantId: session.tenantId,
@@ -371,7 +378,12 @@ export async function POST(req: NextRequest) {
       }
     });
 
-    return NextResponse.json(body.investorCategory === "minor" ? { id, guardianLinked } : { id }, { status: 201 });
+    return NextResponse.json(
+      body.investorCategory === "minor"
+        ? { id, guardianLinked, ...(guardianPanTried ? { guardianNotice: GUARDIAN_PAN_NOT_LINKED } : {}) }
+        : { id },
+      { status: 201 },
+    );
   } catch (err: any) {
     if (String(err?.message ?? "").includes("investors_tenant_pan_unique")) {
       return NextResponse.json({ error: "investor with this PAN already exists" }, { status: 409 });

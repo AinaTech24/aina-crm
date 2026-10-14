@@ -33,6 +33,7 @@ import { MENU_ICON, MENU_ITEM } from "@/components/ui/menu-item-class";
 import { formatMoney } from "@/lib/format";
 import type { MassUpdateOptions } from "@/components/investors/MassUpdateDialog";
 import { ensureHealthFresh } from "@/lib/metrics/health";
+import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
 
 /** AUM bands for the filter: lower bound inclusive, upper exclusive. */
 const AUM_PRESETS = [
@@ -202,7 +203,8 @@ export default async function InvestorsPage({
         email: investors.email,
         phone: investors.phone,
         occupation: investors.occupation,
-        riskProfile: investors.riskProfile,
+        // A minor's risk is their own assessment, never the guardian's copy (G-1).
+        riskProfile: sql<string | null>`${clientRiskSql("investors").category}`,
         panAadhaarLinkStatus: investors.panAadhaarLinkStatus,
         rmId: investors.rmId,
         nomineeName: investors.nomineeName,

@@ -22,6 +22,8 @@ export type InvestorForHealth = {
   nomineeName?: string | null;
   bankAccountNumberMasked?: string | null;
   panAadhaarLinkStatus?: string | null;
+  /** For a minor, pass their OWN assessment (clientRiskSql / withOwnRiskForMinors),
+   *  never the row's columns, which may hold the guardian's copy (G-1). */
   riskProfile?: string | null;
   riskProfileSignedAt?: Date | string | null;
   redemptionRiskFlaggedAt?: Date | string | null;

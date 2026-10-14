@@ -30,6 +30,7 @@ import { investors, folios, sips, goals, transactions, tenants } from "@/db/sche
 import { requireSession } from "@/lib/auth/session";
 import { formatINR, formatDate } from "@/lib/utils";
 import { PrintReportButton } from "@/components/investors/PrintReportButton";
+import { withOwnRiskForMinor } from "@/lib/risk-profile/own-assessment";
 
 export const dynamic = "force-dynamic";
 
@@ -53,8 +54,10 @@ export default async function ReviewReportPage({
   ))[0];
 
   const data = await withTenant(session.tenantId, async (tx) => {
-    const inv = (await tx.select().from(investors).where(eq(investors.id, id)).limit(1))[0];
-    if (!inv) return null;
+    const row = (await tx.select().from(investors).where(eq(investors.id, id)).limit(1))[0];
+    if (!row) return null;
+    // A minor's risk is their own assessment, never the guardian's copy (G-1).
+    const inv = await withOwnRiskForMinor(tx, session.tenantId, row);
     const foliosRows = await tx.select().from(folios).where(eq(folios.investorId, id));
     const sipsRows = await tx.select().from(sips).where(eq(sips.investorId, id));
     const goalsRows = await tx.select().from(goals).where(eq(goals.investorId, id));

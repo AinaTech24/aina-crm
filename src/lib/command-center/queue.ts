@@ -19,6 +19,7 @@
 import { sql } from "drizzle-orm";
 import { leadOpenSql } from "@/lib/metrics/leads";
 import { riskBucketSql } from "@/lib/risk-profile/buckets";
+import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
 
 export type Severity = "now" | "today" | "soon";
 
@@ -531,14 +532,16 @@ export async function buildCommandQueue(
   // same active clients (lib/metrics/risk.ts), so this count is the row count
   // of the page it opens.
   {
+    // A minor's risk is their own assessment, never the guardian's copy (G-1).
+    const rk = clientRiskSql("i");
     const r = await tx.execute(sql`
-      SELECT i.id, i.name, i.risk_profile_signed_at, count(*) OVER() AS total
+      SELECT i.id, i.name, ${rk.signedAt} AS risk_profile_signed_at, count(*) OVER() AS total
       FROM investors i
       WHERE i.deleted_at IS NULL AND i.merged_into_id IS NULL
         AND i.status IN ('active', 'redemption_risk')
         AND (${riskBucketSql("due")} OR ${riskBucketSql("expired")})
         ${scope("i.rm_id", userId, firmWide)}${cscope("i.id")}
-      ORDER BY i.risk_profile_signed_at ASC NULLS FIRST
+      ORDER BY ${rk.signedAt} ASC NULLS FIRST
       LIMIT 5
     `);
     if (r.rows.length) {
