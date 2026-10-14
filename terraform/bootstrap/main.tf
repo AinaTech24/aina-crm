@@ -10,11 +10,12 @@
 # Lock-out safety:
 #  - prevent_destroy on the bucket; versioning keeps every state version
 #    (NoncurrentDays 90, newest 20) for recovery;
-#  - the bucket policy denies everyone except the account root, mfd-deploy and
-#    the infrastructure-admin roles. The ROOT user can always delete a bucket
+#  - the bucket policy denies everyone except the account root and the
+#    infrastructure-admin roles (the IAM Identity Center AinaInfraAdmin role;
+#    mfd-deploy was removed 2026-10-14). The ROOT user can always delete a bucket
 #    policy that locks others out, so a bad policy is recoverable.
-#  - When IAM Identity Center replaces mfd-deploy, ADD the new admin role here
-#    and verify init / state pull / plan / locking BEFORE removing mfd-deploy.
+#  - A new admin path must be ADDED here and verified (init / state pull / plan /
+#    locking) BEFORE the old one is removed.
 #
 # State holds secrets (the DB master password, in ../). Treat this bucket as a
 # secret store. Imported 2026-10-09 exactly as created; DO NOT apply without
@@ -134,7 +135,6 @@ resource "aws_s3_bucket_policy" "tfstate" {
           "ArnNotLike" : {
             "aws:PrincipalArn" : [
               "arn:aws:iam::972971302420:root",
-              "arn:aws:iam::972971302420:user/mfd-deploy",
               "arn:aws:iam::972971302420:role/aina-crm-admin",
               "arn:aws:iam::972971302420:role/aws-reserved/sso.amazonaws.com/*/AWSReservedSSO_AinaInfraAdmin_*"
             ]

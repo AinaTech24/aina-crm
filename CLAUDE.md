@@ -1844,12 +1844,15 @@ bash scripts/prod-change.sh history
   `rollback-bluegreen.sh` take and release it themselves (released only when
   `/api/health` answers 200; a failed deploy releases it only if the colour
   still serving is healthy). A deploy waits up to 30 minutes for the lock.
-- **No administrator key for a deploy.** `manual-deploy.sh` and
-  `prod-change.sh` first swap the laptop's identity for short-lived
-  credentials of the role `aina-crm-manual-deploy`
-  (`scripts/aws-deploy-role.sh`): upload under the artifacts bucket's
-  `releases/` and SSM commands on the production instance, nothing else (no
-  RDS, IAM, security groups or other buckets).
+- **No administrator key for a deploy, and no long-lived AWS key at all.**
+  `manual-deploy.sh` and `prod-change.sh` use the SSO profile
+  `aina-deploy` (IAM Identity Center permission set AinaDeploy, 1-hour
+  credentials, MFA at login; `scripts/aws-deploy-role.sh`): upload under the
+  artifacts bucket's `releases/` and SSM commands on the production instance,
+  nothing else (no RDS, IAM, security groups or other buckets). Sign in first
+  with `aws sso login --profile aina-deploy`. Infrastructure work uses
+  `--profile aina-admin` (AinaInfraAdmin) and read-only monitoring
+  `--profile aina-ops` (AinaOpsReadOnly).
 - **A deploy inside a wider change**: take the lock under a space-free session
   name, then `DEPLOY_SESSION=<that name> FORCE=1 bash scripts/manual-deploy.sh
   <sha>`; `ssm-deploy.sh` sees `held-by` and deploys under it without
