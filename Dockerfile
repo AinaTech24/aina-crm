@@ -79,20 +79,20 @@ ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL \
     NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL \
     NEXT_PUBLIC_S3_PUBLIC_URL=$NEXT_PUBLIC_S3_PUBLIC_URL \
     BUILD_GIT_SHA=$BUILD_GIT_SHA
-# Build-time placeholders so module-load guards (db/client, redis, auth) don't
-# throw while `next build` collects page data. NO database/redis is contacted —
-# every data route is force-dynamic — and the REAL values are injected only at
-# runtime. These live in the build stage only; they are not in the runtime image.
-ENV DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build \
-    REDIS_URL=redis://127.0.0.1:6379 \
-    NEXTAUTH_SECRET=build-time-placeholder-not-used-at-runtime
+# Build-time placeholders so module-load guards (db/client, redis, auth) don't throw
+# while `next build` collects page data. NO database/redis is contacted — every data
+# route is force-dynamic — and the REAL values are injected only at runtime. They are
+# given INLINE to the one RUN below (not ENV), so they are in no image configuration.
 # Bound V8's old-space heap for the build (a container cannot read the host's real
 # memory, so Node's default ceiling is too low for a cold `next build`).
 ENV NODE_OPTIONS=--max-old-space-size=4096
 # DO NOT add a BuildKit `--mount=type=cache` with sharing=locked for .next/cache:
 # on the old on-server builder it blocked deploys indefinitely. Build-cache reuse
 # now comes from the CI runner's layer cache instead.
-RUN npm run build \
+RUN DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build \
+    REDIS_URL=redis://127.0.0.1:6379 \
+    NEXTAUTH_SECRET=build-time-placeholder-not-used-at-runtime \
+    npm run build \
     && rm -rf .next/cache
 
 # ---- runtime: lean image that runs any of the three roles ---------------------

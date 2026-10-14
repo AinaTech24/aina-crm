@@ -81,9 +81,9 @@ git checkout -q -- src/lib/utils.ts
 CH_B=$(awk 'NR==FNR{a[$1]=1;next} !($1 in a) && $2>1000{s+=$2} END{print s+0}' "$OUT/A.blobs" "$OUT/B.blobs")
 m registry_changed_layers_normal_release_bytes "$CH_B"
 # C: dependencies change (package.json differs → install layers rebuild)
-node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p["x-shadow-bump"]=String(Date.now());fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")'
+npm install --package-lock-only --ignore-scripts --no-audit --no-fund --save is-number@7.0.0 >/dev/null 2>&1   # a REAL dependency change: node_modules content changes
 t=$(date +%s); oci C > "$OUT/C.blobs"; m new_build_seconds_dependency_change "$(secs $t)"
-git checkout -q -- package.json
+git checkout -q -- package.json package-lock.json
 CH_C=$(awk 'NR==FNR{a[$1]=1;next} !($1 in a) && $2>1000{s+=$2} END{print s+0}' "$OUT/A.blobs" "$OUT/C.blobs")
 m registry_changed_layers_dependency_change_bytes "$CH_C"
 # storage for 5 releases in a registry = one full image + 4 normal-release deltas
@@ -94,9 +94,12 @@ rm -f "$OUT"/A.tar "$OUT"/B.tar "$OUT"/C.tar
 # ---------------------------------------------------------------- manifest (ties the artifact to commit + digest)
 SHA256=$(sha256sum "$OUT/image.tar.gz" | cut -d' ' -f1)
 cat > "$OUT/manifest.json" <<EOF
-{ "commit": "$SHA", "imageId": "$IMGID", "artifact": "image.tar.gz", "artifactSha256": "$SHA256",
-  "artifactBytes": $(stat -c %s "$OUT/image.tar.gz"), "builtAt": "$(date -u +%FT%TZ)", "arch": "$(uname -m)",
-  "workflowRun": "${GITHUB_SERVER_URL:-}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-0}", "shadow": true }
+{ "schema": 1, "shadow": true, "commit": "$SHA",
+  "ci": { "conclusion": "shadow", "runId": "${GITHUB_RUN_ID:-0}", "workflow": "CI" },
+  "arch": "$(uname -m)", "builtAt": "$(date -u +%FT%TZ)",
+  "artifact": { "file": "image.tar.gz", "sha256": "$SHA256", "bytes": $(stat -c %s "$OUT/image.tar.gz") },
+  "image": { "id": "$IMGID", "uncompressedBytes": $(docker image inspect shadow-new --format "{{.Size}}") },
+  "workflowRun": "${GITHUB_SERVER_URL:-}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-0}" }
 EOF
 cat "$OUT/manifest.json"
 
