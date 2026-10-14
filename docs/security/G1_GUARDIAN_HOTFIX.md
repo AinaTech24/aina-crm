@@ -1,9 +1,10 @@
 # G-1 — Guardian-PAN link: security hotfix (development only)
 
 **Status (2026-10-14): fixed and tested in development on `claude/g1-guardian-hotfix`
-— the first fix (`0c4f9e7e`, typed in `ea287acf`, on `main` `b795fdba` at
-`c046ecfc`) plus the **final hardening** of §8 (every read path, removal of a
-link, refused typed PANs, the client history route). Not merged to `main`, not
+— the first fix (`0c4f9e7e`, typed in `ea287acf`) plus the **final
+hardening** of §8 (every read path, removal of a link, refused typed PANs, the
+client history route), on top of `main` **`74dc6c6e`** (merged in `cec1ae7e`;
+the head of `main` and what production runs — deploy run 299, 08:52 UTC). Not merged to `main`, not
 deployed, nothing run against production.** Pushing this branch to `main`
 deploys it: that needs the owner's separate, explicit authorization (§6). The
 business decision the hardening leaves open is in §9.
@@ -101,7 +102,7 @@ audited — never a bulk SQL change, never a merge):
 
 ## 6. Production rollout (NOT executed — needs the owner's explicit authorization)
 
-Independent of the RTA Import Engine: the branch is `main` (`b795fdba` when
+Independent of the RTA Import Engine: the branch is `main` (`74dc6c6e` when
 verified) + this patch only (no RTA-engine file, no migration).
 
 1. **Approve**: owner authorizes the hotfix deployment in writing; reviewer reads the diff (22 files) and this document.
@@ -112,7 +113,7 @@ verified) + this patch only (no RTA-engine file, no migration).
 6. **Verify** (production, as the operator, no client data copied out): `GET /api/health` 200; with a designated **test firm** and two test RM users created for verification: a minor in RM A's book, a guardian in RM B's book → typing the guardian's PAN on the minor does not link; picking it answers the generic 400; the Edit page shows "A client outside your book"; the owner can link it; `investor.guardian_linked` audit row written. Then re-run §2 of the impact SQL with `made_at` after the deploy time: `guardian_outside_actor_book_today` must be **0**.
 7. **Release the lock** with the result: `release "<session>" "PASS: …"`.
 
-**Rollback**: code only (no migration, no data change) — `bash scripts/rollback-bluegreen.sh` to the previous colour, or redeploy the `main` commit that was serving before (`b795fdba` when verified — confirm in PR-3) with `scripts/manual-deploy.sh <sha>` under the change lock. Audit rows written by the hotfix stay (harmless). Links made under the hotfix are valid under the old code too.
+**Rollback**: code only (no migration, no data change) — `bash scripts/rollback-bluegreen.sh` to the previous colour, or redeploy the `main` commit that was serving before (`74dc6c6e` when verified — confirm in PR-3) with `scripts/manual-deploy.sh <sha>` under the change lock. Audit rows written by the hotfix stay (harmless). Links made under the hotfix are valid under the old code too.
 
 **Monitoring for 14 days**: daily, §2 of the impact SQL for links made since the deploy (expect 0 outside the actor's book) and `SELECT count(*) FROM audit_log WHERE action LIKE 'investor.guardian_%' AND at > now() - interval '1 day'`; any 4xx spike on `/api/investors` in the web logs (a legitimate pick refused would surface as user reports of "can't be linked as this minor's guardian").
 
@@ -252,6 +253,8 @@ another's profile.
 | Unit (no DB) | **505 passed** / 54 DB-only skipped |
 | Full DB suite on the 272-migration database as `mfd_app` (RLS on) | **559 / 559** |
 | Impact SQL (`g1-guardian-impact.sql`, incl. new §5) | runs read-only (`default_transaction_read_only=on`) without error on the test database |
+| GitHub CI on `7b283e61` (run 326, `main`'s `ci.yml`) | all three jobs green; DB job 559 / 559 incl. guardian-link 16, guardian-exposure 12, minor-risk-sql 2 (as the superuser — `main`'s CI does not enforce RLS; the local runs above do) |
+| After merging `main` `74dc6c6e` (`cec1ae7e`): 7 conflicts, all where both sides edited a reader — imports kept both; the RM-desk data gaps and the completeness checklist keep main's type rules with the minor's own risk; main's new code adds no risk reader (sweep identical) | all static checks pass; unit **513** passed / 54 DB-only skipped; full DB **567 / 567** (`mfd_app`, RLS on); browser **31 / 31** |
 
 ## 9. Decision note — minors and their guardians (for the business owner and the compliance reviewer)
 
