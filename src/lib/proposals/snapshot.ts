@@ -18,6 +18,7 @@
  * belong to investors). That is reported as such, never as zeros.
  */
 
+import { suitabilityProfile, suitabilityStatus } from "@/lib/risk-profile/own-assessment";
 import { withSchemeCategories } from "@/lib/investors/scheme-categories";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { folios, goals, investors, leads, families } from "@/db/schema";
@@ -109,7 +110,11 @@ async function investorSnapshot(tx: Tx, tenantId: string, investorId: string): P
       .where(and(eq(folios.tenantId, tenantId), eq(folios.investorId, investorId)))
   );
   const exposure = assetClassExposure(folioRows as any);
-  const suit = assessSuitability(inv.riskProfile ?? null, exposure.equityPct, exposure.classifiedPct);
+  // A minor linked to a guardian: the row holds the guardian's copy (0234);
+  // suitability reads only the minor's own assessment (G-1).
+  const own = await suitabilityProfile(tx, tenantId, investorId);
+  const riskCategory = own.inheritedIgnored ? own.category : inv.riskProfile ?? null;
+  const suit = assessSuitability(riskCategory, exposure.equityPct, exposure.classifiedPct);
 
   const goalRows = await tx
     .select({ name: goals.name, targetDate: goals.targetDate })
@@ -127,12 +132,14 @@ async function investorSnapshot(tx: Tx, tenantId: string, investorId: string): P
     rm: summary?.rm ?? null,
     hasEmail: !!inv.email,
     hasPhone: !!inv.phone,
-    risk: {
-      category: inv.riskProfile ?? null,
-      score: inv.riskScore != null ? Number(inv.riskScore) : null,
-      signedAt: inv.riskSignedAt ? new Date(inv.riskSignedAt).toISOString() : null,
-      status: summary?.risk ?? "Not completed",
-    },
+    risk: own.inheritedIgnored
+      ? { category: own.category, score: own.score, signedAt: own.signedAt, status: suitabilityStatus(own) }
+      : {
+          category: inv.riskProfile ?? null,
+          score: inv.riskScore != null ? Number(inv.riskScore) : null,
+          signedAt: inv.riskSignedAt ? new Date(inv.riskSignedAt).toISOString() : null,
+          status: summary?.risk ?? "Not completed",
+        },
     holdings: {
       aum,
       sipBook: summary?.sipBook ?? 0,

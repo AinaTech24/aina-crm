@@ -37,7 +37,10 @@ const panValue = (v: string) => v.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(
 
 /** The guardian's own client record, when they are a client (migration 0234:
  *  the minor then carries the guardian's risk profile). */
-export type GuardianLink = { id: string | null; name: string | null; riskProfile?: string | null };
+export type GuardianLink = { id: string | null; name: string | null; riskProfile?: string | null; hidden?: boolean };
+
+/** What the form says for a linked guardian the user may not open (G-1). */
+export const HIDDEN_GUARDIAN_LABEL = "A client outside your book";
 
 export function ClientTypeSections({
   type, value, onChange, dob, nominees, onNomineesChange, showNominees = true, guardianLink, onGuardianLinkChange,
@@ -72,7 +75,7 @@ export function ClientTypeSections({
                 <div id={id} aria-describedby={d}>
                   <InvestorLookup
                     value={guardianLink?.id ?? null}
-                    displayName={guardianLink?.name ?? null}
+                    displayName={guardianLink?.hidden ? HIDDEN_GUARDIAN_LABEL : guardianLink?.name ?? null}
                     placeholder="Search the guardian by name, PAN, mobile…"
                     onClear={() => onGuardianLinkChange({ id: null, name: null, riskProfile: null })}
                     onSelect={async (gid, gname) => {

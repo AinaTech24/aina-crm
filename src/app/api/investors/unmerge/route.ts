@@ -15,6 +15,7 @@
  * Owner / branch-head only, one transaction, audited.
  */
 
+import { GUARDIAN_MOVED_KEY, GUARDIAN_UNLINKED_KEY, auditGuardianChange } from "@/lib/investors/guardian-link";
 import { handleApiError } from "@/lib/api/error-handler";
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
@@ -92,6 +93,31 @@ export async function POST(req: NextRequest) {
                  AND id IN (${sql.join(part.map((v) => sql`${v}::uuid`), sql`, `)})
             `);
             restored += (r as any).rowCount ?? 0;
+          }
+        }
+
+        // Guardian links the merge moved to the survivor (or removed, when the
+        // survivor could not be a guardian) go back to the loser — only where
+        // nobody has changed them since (G-1). Audited per minor.
+        const relinks: Array<[string, string]> = [[GUARDIAN_MOVED_KEY, "moved"], [GUARDIAN_UNLINKED_KEY, "unlinked"]];
+        for (const [key, how] of relinks) {
+          const ids = Array.isArray(moved[key]) ? moved[key] : [];
+          for (let i = 0; i < ids.length; i += 500) {
+            const part = ids.slice(i, i + 500);
+            const back = (await tx.execute(sql`
+              UPDATE investors SET guardian_investor_id = ${loserId}::uuid, updated_at = now()
+               WHERE tenant_id = ${session.tenantId}::uuid
+                 AND id IN (${sql.join(part.map((v) => sql`${v}::uuid`), sql`, `)})
+                 AND ${how === "moved" ? sql`guardian_investor_id = ${survivorId}::uuid` : sql`guardian_investor_id IS NULL`}
+               RETURNING id::text AS id`)).rows as Array<{ id: string }>;
+            for (const m of back) {
+              await auditGuardianChange(tx, {
+                tenantId: session.tenantId, actorUserId: session.userId, minorId: m.id,
+                before: how === "moved" ? survivorId : null, after: loserId, via: "merge",
+                meta: { unmerge: mergeId },
+              });
+            }
+            restored += back.length;
           }
         }
 

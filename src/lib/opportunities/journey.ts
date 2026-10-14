@@ -52,6 +52,7 @@
  * (or, later, by named automations).
  */
 
+import { suitabilityProfile } from "@/lib/risk-profile/own-assessment";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { clientOpportunities, eventsOutbox, tasks, type ClientOpportunity, type NeedsAnalysis } from "@/db/schema";
@@ -165,9 +166,14 @@ export async function loadFacts(tx: Tx, opp: ClientOpportunity): Promise<Facts> 
     if (r) fixedDeposit = r;
   }
 
-  const signed = inv?.risk_profile_signed_at ? new Date(inv.risk_profile_signed_at) : null;
+  // A minor linked to a guardian carries the guardian's copy (migration 0234);
+  // only an assessment of the minor's own account counts here (G-1).
+  const own = await suitabilityProfile(tx, opp.tenantId, opp.investorId);
+  const signedRaw = own.inheritedIgnored ? own.signedAt : inv?.risk_profile_signed_at;
+  const provisional = own.inheritedIgnored ? own.provisional : inv?.risk_profile_provisional;
+  const signed = signedRaw ? new Date(signedRaw) : null;
   const yearAgo = new Date(Date.now() - 365 * 864e5);
-  const riskState: Facts["riskState"] = inv?.risk_profile_provisional
+  const riskState: Facts["riskState"] = provisional
     ? "awaiting"
     : !signed ? "not_profiled" : signed >= yearAgo ? "current" : "expired";
   const uccCodes = Array.isArray(inv?.ucc_codes) ? (inv!.ucc_codes as string[]) : [];

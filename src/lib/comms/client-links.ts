@@ -19,6 +19,7 @@
  * An unresolved token renders blank rather than blocking the send.
  */
 
+import { suitabilityProfile } from "@/lib/risk-profile/own-assessment";
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { shareTokens } from "@/db/schema";
@@ -346,22 +347,9 @@ async function resolveCanonicalProfile(
   tenantId: string,
   investorId: string
 ): Promise<{ category: string | null; score: number | null; signedAt: string | null }> {
-  const r = await tx.execute(sql`
-    SELECT risk_profile, risk_profile_score, risk_profile_signed_at
-    FROM investors
-    WHERE id = ${investorId}::uuid AND tenant_id = ${tenantId}::uuid LIMIT 1
-  `);
-  const row = r.rows?.[0] as
-    | {
-        risk_profile?: string | null;
-        risk_profile_score?: number | null;
-        risk_profile_signed_at?: string | Date | null;
-      }
-    | undefined;
-  const signedAt = row?.risk_profile_signed_at;
-  return {
-    category: row?.risk_profile ?? null,
-    score: row?.risk_profile_score ?? null,
-    signedAt: signedAt ? new Date(signedAt).toISOString() : null,
-  };
+  // The client's own profile. For a minor linked to a guardian the row holds
+  // the guardian's copy (migration 0234): a message to the minor never states
+  // it as theirs — only an assessment of the minor's own account (G-1).
+  const p = await suitabilityProfile(tx, tenantId, investorId);
+  return { category: p.category, score: p.score, signedAt: p.signedAt };
 }

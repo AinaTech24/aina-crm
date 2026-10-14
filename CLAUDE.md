@@ -450,6 +450,19 @@ the imports and every label; never copy the enum again.
   found by the guardian PAN typed), and two triggers keep the category, score,
   signed date and provisional flag equal to the guardian's — on any write path.
   The forms show it read-only for a minor and never send `riskProfile`.
+- **Who may be a guardian, and who may see one (G-1, 2026-10-14)** —
+  `lib/investors/guardian-link.ts` is the only way to set the link: a live,
+  non-merged adult individual (person type, not a minor, an individual's PAN)
+  that the USER CAN OPEN (`investorScopeSql`), found by a PAN only when exactly
+  one live record holds it; a picked id passes the same checks; every refusal
+  answers the same; every change is audited (`investor.guardian_linked` /
+  `_unlinked`, ids only). A guardian the viewer cannot open is never named, and
+  the minor's copied risk is blanked for them (`redactHiddenGuardianRisk`).
+  Merging a guardian moves its minors' links to the survivor (un-merge restores).
+- **The copy is not the minor's suitability** (G-1): gates and client messages
+  read `suitabilityProfile` (`lib/risk-profile/own-assessment.ts`) — for a
+  linked minor only an assessment recorded for the minor's own account counts.
+  Never read `investors.risk_profile*` for a suitability decision about a minor.
 - **Dropdowns, not free text** (lists in client-types.ts): tax status by type
   (`taxStatusOptions`, defaulted on a type change), marital status, income
   range, household type (Individual · Family · Company · HUF). `withCurrent`

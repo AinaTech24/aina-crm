@@ -27,6 +27,7 @@ import { applyRiskCategory, RISK_CATEGORIES } from "@/lib/risk-profile/apply";
 import { cleanUccCodes } from "@/lib/investors/ucc";
 import { investors, eventsOutbox } from "@/db/schema";
 import { familyHeadRmId } from "@/lib/families/head-rm";
+import { GUARDIAN_NOT_LINKED, auditGuardianChange, resolveGuardian } from "@/lib/investors/guardian-link";
 
 export const dynamic = "force-dynamic";
 
@@ -218,6 +219,7 @@ export async function POST(req: NextRequest) {
 
     const id = uuid();
     const clientMeta = clientMetaFromHeaders(req.headers);
+    let guardianLinked = false;
     await withTenant(session.tenantId, async (tx) => {
       // Sanitize firm custom fields against their definitions before storing.
       const cfDefs = await loadCustomFieldDefs(tx, session.tenantId, "investor");
@@ -230,27 +232,22 @@ export async function POST(req: NextRequest) {
       let rmId = (canAssignAnyRm ? body.rmId : undefined) ?? session.userId;
       if (body.familyId && canAssignAnyRm && !body.rmId) rmId = (await familyHeadRmId(tx, body.familyId)) ?? rmId;
 
-      // A minor's guardian as a client: the one picked, else the client whose
-      // PAN is the guardian PAN. The minor then carries the guardian's risk
-      // profile (a database rule, migration 0234).
+      // A minor's guardian as a client: the one picked, else the ONE client
+      // whose PAN is the guardian PAN — only a live adult individual this user
+      // can open (lib/investors/guardian-link.ts, G-1). The minor then carries
+      // the guardian's risk profile (a database rule, migration 0234). A
+      // refused pick stops the save with one message that never says why; a
+      // typed PAN that resolves to nobody simply leaves the minor unlinked.
       let guardianInvestorId: string | null = null;
       if (body.investorCategory === "minor") {
         if (body.guardianInvestorId) {
-          const ok = (await tx.execute(sql`
-            SELECT 1 FROM investors WHERE id = ${body.guardianInvestorId}::uuid
-              AND tenant_id = ${session.tenantId}::uuid AND deleted_at IS NULL`)).rows.length;
-          if (ok) guardianInvestorId = body.guardianInvestorId;
+          guardianInvestorId = await resolveGuardian(tx, session, { id: body.guardianInvestorId });
+          if (!guardianInvestorId) throw Object.assign(new Error(GUARDIAN_NOT_LINKED), { status: 400 });
         } else {
-          const gp = String(body.typeDetails?.guardian?.pan ?? "").trim().toUpperCase();
-          if (gp) {
-            const g = (await tx.execute(sql`
-              SELECT id FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND pan = ${gp}
-                AND deleted_at IS NULL AND merged_into_id IS NULL
-              ORDER BY dedup_pan DESC LIMIT 1`)).rows[0] as { id: string } | undefined;
-            guardianInvestorId = g?.id ?? null;
-          }
+          guardianInvestorId = await resolveGuardian(tx, session, { pan: body.typeDetails?.guardian?.pan });
         }
       }
+      guardianLinked = !!guardianInvestorId;
 
       const inserted = await tx
         .insert(investors)
@@ -338,6 +335,13 @@ export async function POST(req: NextRequest) {
         meta: { userId: session.userId } as any,
       } as any);
 
+      if (guardianInvestorId) {
+        await auditGuardianChange(tx, {
+          tenantId: session.tenantId, actorUserId: session.userId, minorId: id,
+          before: null, after: guardianInvestorId, via: body.guardianInvestorId ? "picked" : "pan",
+        });
+      }
+
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,
@@ -366,7 +370,7 @@ export async function POST(req: NextRequest) {
       }
     });
 
-    return NextResponse.json({ id }, { status: 201 });
+    return NextResponse.json(body.investorCategory === "minor" ? { id, guardianLinked } : { id }, { status: 201 });
   } catch (err: any) {
     if (String(err?.message ?? "").includes("investors_tenant_pan_unique")) {
       return NextResponse.json({ error: "investor with this PAN already exists" }, { status: 409 });

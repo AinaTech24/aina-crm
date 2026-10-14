@@ -18,6 +18,7 @@ import type { ReactNode } from "react";
 import { withTenant } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
 import { loadClientSummary } from "@/lib/investors/summary";
+import { guardianRiskHidden } from "@/lib/investors/guardian-link";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { formatCount, formatDate, formatMoney, humanise } from "@/lib/format";
@@ -55,7 +56,15 @@ export async function ClientSummaryStrip({
   investorName: string;
   show: Show;
 }) {
-  const s = await withTenant(session.tenantId, (tx) => loadClientSummary(tx, session.tenantId, investorId), {
+  const s = await withTenant(session.tenantId, async (tx) => {
+    const sum = await loadClientSummary(tx, session.tenantId, investorId);
+    // A linked minor's risk is the guardian's copy: not shown when the viewer
+    // cannot open that guardian (G-1).
+    if (sum && (await guardianRiskHidden(tx, session, investorId))) {
+      sum.risk = "Not completed"; sum.riskCategory = null; sum.riskSigned = null;
+    }
+    return sum;
+  }, {
     userId: session.userId,
     branchId: session.branchId ?? undefined,
     roles: session.roles,

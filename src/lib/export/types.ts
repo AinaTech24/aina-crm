@@ -51,8 +51,9 @@ export type ExportModule = {
   canView: (session: SessionUser) => boolean;
   /** Clients use `investor.bulk_export` instead of `data.export`. */
   exportCapability?: "data.export" | "investor.bulk_export";
-  /** FROM (and JOINs) — aliases the columns and `where` refer to. */
-  from: SQL;
+  /** FROM (and JOINs) — aliases the columns and `where` refer to. A function
+   *  when a JOIN itself depends on the viewer (the risk export's guardian, G-1). */
+  from: SQL | ((tx: Tx, session: SessionUser) => Promise<SQL>);
   /**
    * Every condition: the tenant, the viewer's access scope, and the list
    * page's own filters read from its URL (`params`). Return the list; the
