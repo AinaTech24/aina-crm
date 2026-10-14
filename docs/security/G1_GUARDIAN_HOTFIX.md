@@ -1,8 +1,9 @@
 # G-1 — Guardian-PAN link: security hotfix (development only)
 
 **Status (2026-10-14): fixed and tested in development on `claude/g1-guardian-hotfix`
-(based on `main` `f086c294`). Not merged to `main`, not deployed, nothing run
-against production.** Pushing this branch to `main` deploys it: that needs the
+— head `c046ecfc` = the fix (`0c4f9e7e`, typed in `ea287acf`) on top of
+`main` `b795fdba`, the head of `main` when it was last verified. Not merged to
+`main`, not deployed, nothing run against production.** Pushing this branch to `main` deploys it: that needs the
 owner's separate, explicit authorization (§6).
 
 ## 1. Root cause
@@ -73,7 +74,8 @@ rewritten.
 | `tests/guardian-link-db.test.ts` on a fresh database built from `main`'s 272 migrations (ledger `2ed089067e530ec25b28fb9a755cca5c` — production's expected digest), restricted role `mfd_app`, data wall on | **16 / 16** — unique PAN; two live records sharing a PAN (refused even for the owner and when one is the RM's); guardian outside / inside the RM's book; merged record; HUF PAN; minor; under-18; unknown id; another firm's id and PAN; Create and Edit; one indistinguishable 400 for every refused pick; no hidden name / risk in GET, PATCH or the edit-page data; saving other fields keeps an existing hidden link; owner and the guardian's RM still see it; audit rows (ids only, no PAN); Risk Profiles export (hidden name and copied risk blank for the RM; shown to the owner); the 0234 copy still follows an in-book guardian; suitability gate / proposal snapshot / `risk.*` tokens ignore the copy and accept the minor's own assessment; adults unchanged; merge moves links to the survivor (audited) and un-merge restores them; an HUF survivor unlinks instead |
 | Same suite against the ORIGINAL route / export / gate / merge code | **12 of 16 fail** (the 4 that pass are the pure eligibility rule and behaviour the old code shared); the old code did NOT leak across firms — its cross-firm failure is a 201 where the fix answers 400 |
 | Browser, `scripts/g1-guardian-ui.mjs` (Chromium, real Next dev server, licensed firm, data wall on, a pre-fix cross-book link) | **21 / 21** — the Edit page, client page and Risk Profiles list return 200 and render the real page; neither the HTML + RSC payload nor the live DOM (incl. input values and collapsed sections) carries the hidden guardian's name or risk; the Edit page says "A client outside your book"; `GET /api/investors/<minor>` has `riskProfile: null`; the RM cannot open the guardian (404); a direct `PATCH` picking the hidden guardian → 400 without detail; an in-book guardian is still named; the owner sees both |
-| `main`'s CI on the branch | `tsc` clean; `check:rbac`, `check:migrations`, `check:calc`, `check:colors`, `check:asany` (baseline 3429), `check:mathimports`, `lint` pass; `npm test` 486 passed / 42 DB-only skipped; full DB run **528 / 528** (57 files) |
+| Locally on `c046ecfc` (main `b795fdba` + the fix) | `tsc` clean; `check:rbac`, `check:migrations`, `check:calc`, `check:colors`, `check:asany` (≤ baseline 3429, no new cast), `check:mathimports`, `lint` pass; `npm test` 503 passed / 42 DB-only skipped; full DB run against the 272-migration database as `mfd_app` (RLS enforced) **545 / 545**; the browser check re-run on this head **21 / 21** |
+| GitHub CI (`ci.yml`, `main`'s workflow) on `0c4f9e7e`, `ea287acf` and `c046ecfc` (runs 312, 314, 315) | all three jobs green; the DB job ran `guardian-link-db.test.ts` 16 / 16 (528 / 528 on `0c4f9e7e`). **Note:** `main`'s CI DB job uses a service container and connects as the superuser `postgres` ("Row-Level Security is NOT enforced" in its log) — a weakness of `main`'s CI, not of this patch; the local runs above use the restricted role. The RTA release's CI (runner PostgreSQL, restricted role, no-skip guard) runs the same tests with RLS enforced: run 316 on the integrated candidate |
 
 ## 5. Existing records (read-only; no repair)
 
@@ -97,8 +99,8 @@ audited — never a bulk SQL change, never a merge):
 
 ## 6. Production rollout (NOT executed — needs the owner's explicit authorization)
 
-Independent of the RTA Import Engine: the branch is `main` `f086c294` + this
-patch only (no RTA file, no migration).
+Independent of the RTA Import Engine: the branch is `main` (`b795fdba` when
+verified) + this patch only (no RTA-engine file, no migration).
 
 1. **Approve**: owner authorizes the hotfix deployment in writing; reviewer reads the diff (22 files) and this document.
 2. **CI**: open a pull request `claude/g1-guardian-hotfix` → `main`; GitHub CI green (`ci.yml`'s three jobs). Re-check that `main` has not moved (else merge it in, re-run).
@@ -108,7 +110,7 @@ patch only (no RTA file, no migration).
 6. **Verify** (production, as the operator, no client data copied out): `GET /api/health` 200; with a designated **test firm** and two test RM users created for verification: a minor in RM A's book, a guardian in RM B's book → typing the guardian's PAN on the minor does not link; picking it answers the generic 400; the Edit page shows "A client outside your book"; the owner can link it; `investor.guardian_linked` audit row written. Then re-run §2 of the impact SQL with `made_at` after the deploy time: `guardian_outside_actor_book_today` must be **0**.
 7. **Release the lock** with the result: `release "<session>" "PASS: …"`.
 
-**Rollback**: code only (no migration, no data change) — `bash scripts/rollback-bluegreen.sh` to the previous colour, or redeploy `f086c294` with `scripts/manual-deploy.sh f086c294` under the change lock. Audit rows written by the hotfix stay (harmless). Links made under the hotfix are valid under the old code too.
+**Rollback**: code only (no migration, no data change) — `bash scripts/rollback-bluegreen.sh` to the previous colour, or redeploy the `main` commit that was serving before (`b795fdba` when verified — confirm in PR-3) with `scripts/manual-deploy.sh <sha>` under the change lock. Audit rows written by the hotfix stay (harmless). Links made under the hotfix are valid under the old code too.
 
 **Monitoring for 14 days**: daily, §2 of the impact SQL for links made since the deploy (expect 0 outside the actor's book) and `SELECT count(*) FROM audit_log WHERE action LIKE 'investor.guardian_%' AND at > now() - interval '1 day'`; any 4xx spike on `/api/investors` in the web logs (a legitimate pick refused would surface as user reports of "can't be linked as this minor's guardian").
 
