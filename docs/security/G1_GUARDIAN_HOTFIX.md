@@ -239,9 +239,19 @@ link to that person when they may be linked, else removes it (and its copy)
 with the same notice — a record must never name one guardian and copy
 another's profile.
 
-### 8.5 Evidence
+### 8.5 Evidence (hardening commit `00b2f7a9`, local; GitHub CI in §8.6 once run)
 
-See the evidence table below (§8.6) — filled from the runs of this patch.
+| Check | Result |
+|---|---|
+| `tests/guardian-exposure-db.test.ts` (new) — real PostgreSQL, restricted role `mfd_app`, data wall on, real route handlers | **12 / 12**: refused typed PAN on Create / Edit (one notice, never why; audited without a reason; a linking PAN gives no notice); a re-typed PAN moves the link or removes link + copy; unlink writes back the minor's own assessment or nothing; turning adult removes link + copy (audited); merge into an HUF survivor clears the copy, un-merge restores link + copy; purging a guardian clears its minors' copy; `GET /api/audit`: another book's client 404, a minor's history carries no copied risk although the stored rows do, the guardian's RM reads it; Clients list API (RM and owner), Excel export and clients export: the minor's risk is its own; Risk Profiles bucket = not profiled and a risk filter does not match the minor on a copy; a stale copy on an unlinked minor satisfies nothing; proposal PDF risk line is the minor's own; message tokens / workflow subject read the minor's own; QRR AI route 404 outside the book before any model call |
+| The same 12 against the code BEFORE this round (`e5942b59`) | **12 / 12 fail** — 11 on the defect itself (the copy or the guardian's `very_aggressive` came back, the history route answered with the secret, the AI route answered 200 and called the model, the bucket said "current", the stale copy said "moderate" …); 1 (messages) fails on a missing export, so it proves nothing about the old code |
+| `tests/guardian-link-db.test.ts` (updated to the rule) | **16 / 16** |
+| `tests/minor-risk-sql.test.ts` (new, pure) | **2 / 2** — the filter catalog's string equals `clientRiskSql("inv").category`; every expression reads the minor's own assessment and the row for others |
+| Browser `scripts/g1-guardian-ui.mjs` (Chromium, real Next dev server, licensed firm, data wall on, a pre-fix cross-book link) | **31 / 31** — Edit page, client page, Risk Profiles list (row risk null AND no guardian's profile beside it), Clients list page: raw HTML + RSC payload and live DOM carry no hidden guardian name / risk; minor API null; guardian 404; guardian's history 404; minor's history clean; `GET /api/investors` clean; refused pick 400; in-book guardian still named; the owner sees the guardian's name, the minor's own (empty) risk, and the guardian's profile labelled as the guardian's |
+| Static checks on the hotfix tree | `tsc`, `lint`, `check:rbac`, `check:migrations`, `check:colors`, `check:asany` (≤ 3429), `check:mathimports`, `check:labels`, `check:sql`, `check:calc`, `check:finance`, `check:spine` — all pass |
+| Unit (no DB) | **505 passed** / 54 DB-only skipped |
+| Full DB suite on the 272-migration database as `mfd_app` (RLS on) | **559 / 559** |
+| Impact SQL (`g1-guardian-impact.sql`, incl. new §5) | runs read-only (`default_transaction_read_only=on`) without error on the test database |
 
 ## 9. Decision note — minors and their guardians (for the business owner and the compliance reviewer)
 
