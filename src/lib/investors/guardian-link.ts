@@ -141,7 +141,7 @@ export async function auditGuardianChange(
     before: { guardianInvestorId: input.before ?? null },
     after: { guardianInvestorId: input.after ?? null, via: input.via },
     ...(input.meta ? { meta: input.meta } : {}),
-  } as any);
+  });
 }
 
 /**

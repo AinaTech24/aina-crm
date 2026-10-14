@@ -29,7 +29,7 @@ export type SuitabilityProfile = {
   inheritedIgnored: boolean;
 };
 
-const iso = (v: unknown) => (v ? new Date(v as any).toISOString() : null);
+const iso = (v: unknown) => (v ? new Date(v as string | number | Date).toISOString() : null);
 
 export async function suitabilityProfile(tx: any, tenantId: string, investorId: string): Promise<SuitabilityProfile> {
   const inv = (await tx.execute(sql`
