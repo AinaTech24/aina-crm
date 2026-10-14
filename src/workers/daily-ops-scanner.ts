@@ -57,6 +57,7 @@ import { recomputeCombinedAum, revalueAllFolios } from "@/lib/finance/aum-persis
 import { matchProposalExecutions } from "@/lib/proposals/execution";
 import { matchBookedBusiness } from "@/lib/business/rta-match";
 import { retireEmptyPlaceholders } from "@/lib/rta/placeholder-sweep";
+import { holdsMoneySql, restoreTrashedHolders } from "@/lib/investors/holds-money";
 import { syncRtaJourneys } from "@/lib/blueprints/rta-route";
 import { completeExpiredSips } from "@/lib/finance/sip-lifecycle";
 import { eventsOutbox, investors, folios, suitabilityMatrixEntries } from "@/db/schema";
@@ -124,6 +125,7 @@ interface ScanResult {
   rtaLinesChecked: number;
   rtaLinesFlagged: number;
   placeholdersRetired: number;
+  holdersRestored: number;
   durationMs: number;
 }
 
@@ -194,6 +196,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
     rtaLinesChecked: 0,
     rtaLinesFlagged: 0,
     placeholdersRetired: 0,
+    holdersRestored: 0,
     durationMs: 0,
   };
 
@@ -1279,6 +1282,14 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
     console.error("[daily-ops] retiring empty placeholders failed for", tenantId, (e as Error)?.message);
   }
 
+  // ── A client in the Trash who still holds money with the registrar comes
+  // back (lib/investors/holds-money.ts) — before the retention purge can erase them.
+  try {
+    result.holdersRestored = await withTenant(tenantId, (tx) => restoreTrashedHolders(tx, tenantId), { roles: ["system"] });
+  } catch (e) {
+    console.error("[daily-ops] restoring money-holding clients failed for", tenantId, (e as Error)?.message);
+  }
+
   // ── Physical route: forms with the RTA settle from the feed (lib/blueprints/rta-route.ts).
   try {
     await withTenant(tenantId, (tx) => syncRtaJourneys(tx, tenantId), { roles: ["system"] });
@@ -1341,9 +1352,11 @@ export async function runDailyOpsScan(): Promise<{
     const due = await withSystem(async (tx) => {
       const days = await readSoftDeleteRetentionDays(tx as any);
       const r = await tx.execute(sql`
-        SELECT id, tenant_id FROM investors
+        SELECT id, tenant_id FROM investors i
         WHERE deleted_at IS NOT NULL
           AND deleted_at < now() - make_interval(days => ${days})
+          -- Never erase a client who still holds money with the registrar.
+          AND NOT ${holdsMoneySql("i")}
         LIMIT 200
       `);
       return r.rows as Array<{ id: string; tenant_id: string }>;
@@ -1410,6 +1423,7 @@ export async function runDailyOpsScan(): Promise<{
     rtaLinesChecked: 0,
     rtaLinesFlagged: 0,
     placeholdersRetired: 0,
+    holdersRestored: 0,
   };
   // Each tenant scan is fully independent (its own withTenant tx, RLS-scoped to
   // that tenant's rows), so they can run concurrently without lock contention.
@@ -1455,6 +1469,7 @@ export async function runDailyOpsScan(): Promise<{
       totals.rtaLinesChecked += r.rtaLinesChecked;
       totals.rtaLinesFlagged += r.rtaLinesFlagged;
       totals.placeholdersRetired += r.placeholdersRetired;
+      totals.holdersRestored += r.holdersRestored;
   };
   const worker = async () => {
     for (;;) {

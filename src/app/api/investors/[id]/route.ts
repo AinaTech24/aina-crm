@@ -33,6 +33,7 @@ import { registerNomineePanDocs } from "@/lib/investors/nominee-docs";
 import { recomputeFamilyHealthForInvestor } from "@/lib/families/health-persist";
 import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
 import { getClientHealth } from "@/lib/metrics/health";
+import { clientsHoldingMoney, holdersMessage } from "@/lib/investors/holds-money";
 import {
   investors,
   folios,
@@ -651,6 +652,12 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         .limit(1);
       if (!inv) return "not_found" as const;
 
+      // A client who still holds money with the registrar is never trashed or
+      // purged (lib/investors/holds-money.ts): a duplicate is merged, a client
+      // who left is marked Closed / Exited.
+      const holders = await clientsHoldingMoney(tx, session.tenantId, [id]);
+      if (holders.length) return { holds: holdersMessage(holders) };
+
       if (!purge) {
         // ── Soft delete → Trash bin. Preserves the whole owned-data subgraph so
         // recovery (clearing deleted_at) restores the client intact.
@@ -719,6 +726,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       return "ok" as const;
     });
     if (outcome === "not_found") return NextResponse.json({ error: "not found" }, { status: 404 });
+    if (typeof outcome === "object") return NextResponse.json({ error: outcome.holds, holdsMoney: true }, { status: 409 });
     return NextResponse.json({ ok: true, trashed: outcome === "trashed" });
   } catch (err: any) {
     return handleApiError(err);

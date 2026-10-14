@@ -539,6 +539,14 @@ client).
   its PAN twin under "Similar name, one without PAN" (`similarNames` in
   `lib/investors/duplicate-clusters.ts`: spaces moved, one letter off, an
   initial for a word — never a different first name), and a person merges.
+- **A client who holds money with the registrar is never in the Trash**
+  (`lib/investors/holds-money.ts`, 2026-10-14): a folio with a value or an
+  active SIP. Delete (one or bulk) keeps them and says why — merge a
+  duplicate, mark a leaver Closed / Exited; every purge (by hand, Empty Trash,
+  the 30-day retention purge) skips them; after each RTA import and nightly,
+  one found in the Trash is restored (audit `investor.restore`, reason
+  `holds_money_with_registrar`). Nimesh's "Thakor Rushin Jitendrabhai"
+  (₹28.33 L) had been bulk-deleted with his PAN-less twin.
 
 ## Webhook handlers
 

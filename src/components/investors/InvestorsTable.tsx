@@ -181,6 +181,8 @@ export function InvestorsTable({
         setErr(j.error ?? `Failed (${res.status})`);
         return;
       }
+      // Clients still holding money with the registrar are never deleted.
+      if (j.keptMessage) notify.warning(j.keptMessage, "Some clients were kept");
       setSelected(new Set());
       router.refresh();
     } catch (e: any) {
