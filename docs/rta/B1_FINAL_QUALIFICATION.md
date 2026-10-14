@@ -55,7 +55,7 @@ them.
 
 | Run | Tree | Result |
 |---|---|---|
-| **Real GitHub CI** (`ci.yml`, all three jobs) | `a1c952c1`; the final commit's own run in §H | DB job: **1,233 passed · 0 failed · 0 skipped** (+ emergency drill 1 passed in its own step); quality job: tsc, every ratchet, 974 unit tests, lint; mobile: pass |
+| **Real GitHub CI** (`ci.yml`, all three jobs) | `a1c952c1` (run 304) and the candidate `d7aa60a8` (run 305), identical results | DB job: **1,233 passed · 0 failed · 0 skipped** (+ emergency drill 1 passed in its own step); quality job: tsc, every ratchet, 974 unit tests, lint; mobile: pass |
 | CI db job emulated locally (Node 20, only the variables the script writes) | `a1c952c1` | migrate 284, check:rls 189, 1,233 passed / 0 failed / 1 skipped (drill), no-skip guard ✓, drill ✓ |
 | Local guards | `d7aa60a8` | `tsc` 0 · lint 0 · check:rbac / migrations / calc / colors / asany (3,429 = baseline) / mathimports / labels / schema / finance / spine / sql / rls all 0 · `migrate-all --check` 284 applied, 0 pending, 0 blockers · immutability drill 0 failures · `build:check` (production `next build`, Dockerfile build placeholders) 0 |
 | **Infrastructure harness** — real `next dev`, real Chromium, S3 emulator, Redis, separate killable worker processes, synthetic labelled fixture | `d7aa60a8` | **43 / 43** (table below) |
@@ -393,7 +393,7 @@ needed — the failure is recorded, nothing is half-written):
 | `drizzle/migrations/` | `5781e010b734e74dbf191256d72b61c9523716d6` |
 | `tests/` · `scripts/` | `180976710dca1ab7f7047b834580024a7e039400` · `eac8cdb376ba3d4436249bb8aad6632d65bec718` |
 | Migrations | **284**; lock SHA-256 `025d640cfb1f88c280641bd1dd9f058d482de6f927b71c375aac798b910c72e8`; concatenation `25a08833c8dbd39f9e3114fbb07016d904177860f29c24ce3bedd434181ed472`; ledger digest **`a9bb87a582387db2697310e3e66fa895`** |
-| Real CI on the candidate | run 305 (figures recorded in the follow-up docs commit) |
+| Real CI on the candidate | run 305 (`38512095893`) **success**, all three jobs: migrate 284, check:rls 189, `mfd_app` superuser=false bypassrls=false, **DB tests 1,233 passed · 0 failed · 0 skipped** (no-skip guard ✓), emergency drill 1 passed; unit tests 974, as-any 3,429 = baseline, lint; mobile. No credential in either log |
 | Proposed tag (**not created**) | `rta-kfintech-pilot-candidate-2026-10-14-b1f`, annotated, on `d7aa60a8`; `rta-kfintech-pilot-candidate-2026-10-10` stays on `c26e676` |
 
 Commits since the conditionally accepted `aab763c4`:
