@@ -561,7 +561,7 @@ candidate, not approved, not tagged.
 |---|---|---|---|
 | `f086c294` | laptop deploy sign-in by IAM Identity Center (`aina-deploy` profile); `mfd-deploy` removed from the Terraform state-bucket policy | deploy tooling + Terraform bootstrap + CLAUDE.md | deployed (Deploy to AWS run success) |
 | `bee06293` | client-master dropdowns for the remaining free-text fields | application (client forms, `client-types.ts`, places / pincode) | deployed (success) |
-| `b795fdba` | empty PAN-less registrar placeholders go to the Trash after imports and nightly; Merge Clients "similar name, one without PAN" | application + RTA worker + daily ops scanner | its deploy was still running when checked — confirm in PR-3 |
+| `b795fdba` | empty PAN-less registrar placeholders go to the Trash after imports and nightly; Merge Clients "similar name, one without PAN" | application + RTA worker + daily ops scanner | deployed (Deploy to AWS run 297 success, 05:46 UTC) — production runs it unless PR-3 says otherwise |
 
 **Integration** (non-deploying branch `claude/relaxed-mendel-01jprq`):
 `b4aeadd4` (merge `f086c294`, no conflict; the deploy script and Terraform file

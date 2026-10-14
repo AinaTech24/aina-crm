@@ -73,7 +73,7 @@ code to qualify next; it needs its own owner review and its own tag.
 | Migrations | unchanged: 284; lock `025d640c…`; concatenation `25a08833…`; ledger `a9bb87a5…`; `main`'s new commits add none (production stays at 272) | `node scripts/check-migration-lock.mjs` |
 | Evidence | real CI green on the code (run 316: 1,266 DB tests, 0 skipped + drill; 991 unit); locally every guard, full DB suite, drills, FS-7 / P0 / 3L / nine-file legacy identical to `d7aa60a8`, infrastructure harness 43 / 43, browser 17 / 17; G-1: 16 / 16 DB, 21 / 21 browser | `B1_FINAL_QUALIFICATION.md` §M |
 
-Valid only while production runs `b795fdba` or an ancestor (PR-3). `main`
+Valid only while production runs `b795fdba` (deployed 05:46 UTC) or an ancestor (PR-3). `main`
 moved three times on 2026-10-14; any further push must be merged and
 re-qualified first.
 
