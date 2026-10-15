@@ -8,7 +8,13 @@
  *      → into that client;
  *   2. two live records with the same PAN AND the same name;
  *   3. the same MINOR filed under each guardian's PAN (keys "MINOR:<pan>:…"):
- *      same name AND the same date of birth, mobile or email → one record.
+ *      same name AND the same date of birth, mobile or email → one record;
+ *   4. one adult under two valid PANs ONE character apart (a registrar's typo)
+ *      with a shared mobile, email or date of birth, one name containing or
+ *      respelling the other, and no conflicting date of birth → the record whose
+ *      PAN reads as a person (4th letter P), then the KYC-verified one, survives
+ *      (15 Oct 2026: Nimesh's DIPAK KASHIRAM RANA AAUPR8108G beside DIPAK RANA
+ *      AAUPR8108Q; the same in four firms).
  * Listed only (never merged here): one PAN on records with DIFFERENT names
  * (often a guardian's PAN on a child's record), and one name under DIFFERENT
  * real PANs (two people, or a mistyped PAN) — both need a person.
@@ -17,21 +23,25 @@
  * then the oldest. Dry run by default; --apply writes, 25 merges per
  * transaction. Run it while no RTA import is in progress.
  *
- *   tsx scripts/repair-client-duplicates.ts --tenant <uuid> [--apply]
+ *   tsx scripts/repair-client-duplicates.ts --tenant <uuid> [--only "PAN one character"] [--apply]
+ *
+ * --only keeps the merges whose rule contains that text (the listing is unchanged).
  */
 import "dotenv/config";
 import { sql } from "drizzle-orm";
 import { withTenant } from "../src/db/client";
 import { mergeInvestors } from "../src/lib/investors/merge";
 import { nameMatchKey } from "../src/lib/rta/client-match";
+import { panOneApart, similarNames } from "../src/lib/investors/duplicate-clusters";
 
 const args = process.argv.slice(2);
 const T = args[args.indexOf("--tenant") + 1];
 const APPLY = args.includes("--apply");
+const ONLY = args.includes("--only") ? args[args.indexOf("--only") + 1] : null;
 
 type Row = {
   id: string; name: string | null; pan: string | null; rta_nopan_key: string | null; dob: string | null;
-  mob: string; email: string; aum: number; folios: number; created_at: string;
+  mob: string; email: string; aum: number; folios: number; created_at: string; kyc: string | null; is_minor: boolean;
 };
 type Pair = { survivor: Row; loser: Row; rule: string; mismatch: boolean };
 
@@ -44,7 +54,7 @@ async function load(): Promise<Row[]> {
   return withTenant(T, async (tx) => {
     await tx.execute(sql`SET LOCAL statement_timeout = '120s'`);
     const rows = (await tx.execute(sql`
-      SELECT i.id, i.name, upper(nullif(trim(i.pan), '')) AS pan, i.rta_nopan_key, i.dob, i.created_at,
+      SELECT i.id, i.name, upper(nullif(trim(i.pan), '')) AS pan, i.rta_nopan_key, i.dob, i.created_at, i.kyc_status AS kyc, COALESCE(i.is_minor, false) AS is_minor,
              right(regexp_replace(COALESCE(i.phone, ''), '[^0-9]', '', 'g'), 10) AS mob, lower(trim(COALESCE(i.email, ''))) AS email,
              COALESCE(i.aum, 0)::numeric AS aum,
              (SELECT count(*) FROM folios f WHERE f.tenant_id = i.tenant_id AND f.investor_id = i.id)::int AS folios
@@ -105,6 +115,30 @@ function plan(rows: Row[]) {
       if (same && !conflict) add(s, l, "same minor under another guardian", true);
     }
   }
+  // 4. one adult, two PANs one character apart
+  const VALID = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
+  const words = (n: string | null) => (nk({ name: n } as Row) ?? "").split(" ").filter(Boolean);
+  const contained = (a: string | null, b: string | null) => {
+    const wa = words(a), wb = words(b); const [sh, lo] = wa.length <= wb.length ? [wa, wb] : [wb, wa];
+    return sh.length >= 2 && sh.every((w) => lo.includes(w));
+  };
+  const adults = rows.filter((r) => r.pan && VALID.test(r.pan) && !r.is_minor && !used.has(r.id));
+  const byMask = new Map<string, Row[]>();
+  for (const r of adults) for (let k = 0; k < 10; k++) { const m = `${k}:${r.pan!.slice(0, k)}_${r.pan!.slice(k + 1)}`; byMask.set(m, [...(byMask.get(m) ?? []), r]); }
+  const personFirst = (a: Row, b: Row) =>
+    (b.pan![3] === "P" ? 1 : 0) - (a.pan![3] === "P" ? 1 : 0) ||
+    (b.kyc === "verified" ? 1 : 0) - (a.kyc === "verified" ? 1 : 0) || rank(a, b);
+  for (const g of byMask.values()) {
+    for (let i = 0; i < g.length; i++) for (let j = i + 1; j < g.length; j++) {
+      const a = g[i], b = g[j];
+      if (!panOneApart(a.pan!, b.pan!) || (a.dob && b.dob && a.dob !== b.dob)) continue;
+      const contact = (a.mob.length === 10 && a.mob === b.mob) || (!!a.email && a.email === b.email) || (!!a.dob && a.dob === b.dob);
+      const names = (nk(a) && nk(a) === nk(b)) || contained(a.name, b.name) || similarNames(a.name, b.name);
+      if (!contact || !names) continue;
+      const [s, l] = [a, b].sort(personFirst);
+      add(s, l, "one person, PAN one character apart", true);
+    }
+  }
   // listed: one name, several real PANs
   for (const g of byName.values()) {
     const pans = [...new Set(g.map((r) => r.pan).filter((p): p is string => !!p && !p.startsWith("MINOR:")))];
@@ -117,7 +151,10 @@ async function main() {
   if (!T || T.startsWith("--")) throw new Error("Pass --tenant <uuid>. Add --apply to write.");
   console.log(APPLY ? "APPLY" : "DRY RUN (add --apply)");
   const rows = await load();
-  const { pairs, review } = plan(rows);
+  const planned = plan(rows);
+  const review = planned.review;
+  const pairs = ONLY ? planned.pairs.filter((p) => p.rule.includes(ONLY)) : planned.pairs;
+  if (ONLY) console.log(`only: rules containing "${ONLY}" (${pairs.length} of ${planned.pairs.length} merges)`);
   const funded = (rs: Row[]) => rs.filter((r) => r.aum > 0).length;
   const losers = new Set(pairs.map((p) => p.loser.id));
   console.log(`now: ${rows.length} live records · ${funded(rows)} holding money`);
