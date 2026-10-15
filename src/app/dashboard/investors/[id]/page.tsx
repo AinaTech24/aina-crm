@@ -52,6 +52,7 @@ import { ReferralSection } from "@/components/investors/ReferralSection";
 import { CustomFieldsCard } from "@/components/common/CustomFieldsCard";
 import { RiskProfilePdfButtons } from "@/components/risk-profile/RiskProfileName";
 import { SendRiskProfileLinkButton } from "@/components/risk-profile/SendRiskProfileLinkButton";
+import { UploadRiskProfileButton } from "@/components/risk-profile/UploadRiskProfileButton";
 import { loadTenantLicense } from "@/lib/auth/license";
 import { isFieldAllowed } from "@/lib/auth/field-gate";
 import { InvestorBlueprintStageBar } from "@/components/investors/InvestorBlueprintStageBar";
@@ -1048,6 +1049,9 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
             </h2>
             <div className="flex items-center gap-3">
               <SendRiskProfileLinkButton investorId={inv.id} />
+              {can(session.roles, "risk_profile.manage", session.permissions) && inv.investorCategory !== "minor" && (
+                <UploadRiskProfileButton initialClient={{ id: inv.id, name: inv.name }} appearance="link" />
+              )}
               <Link
                 href={`/dashboard/risk-profiles/new?investorId=${inv.id}`}
                 className="text-xs font-semibold text-primary hover:underline"
