@@ -1,0 +1,33 @@
+name: CI (mobile, main)
+
+# deploy.yml ignores pushes that only touch mobile/ (nothing to deploy), so those pushes would
+# get no checks at all. This runs just the mobile job for them.
+on:
+  push:
+    branches: [main]
+    paths: ['mobile/**']
+
+concurrency:
+  group: ci-mobile-main
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  mobile:
+    name: Mobile types and regression tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test -- --runInBand
