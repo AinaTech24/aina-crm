@@ -78,6 +78,7 @@ import { InvestorAvatarEditor } from "@/components/investors/InvestorAvatarEdito
 import { EmailRelatedList } from "@/components/comms/EmailRelatedList";
 import { can } from "@/lib/auth/rbac";
 import { ClientExitButton } from "@/components/investors/ClientExitButton";
+import { KycCheckButton } from "@/components/investors/KycCheckButton";
 import { WhatsAppRelatedList } from "@/components/comms/WhatsAppRelatedList";
 import { InvestorDetailTabs } from "@/components/investors/InvestorDetailTabs";
 import { EditClientDetailsLink } from "@/components/investors/EditClientDetailsLink";
@@ -213,6 +214,16 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
   const showNominee = isFieldAllowed(license, "investor", "nominee_name") || isFieldAllowed(license, "investor", "nominee");
   const showBank = isFieldAllowed(license, "investor", "bank_account_number_masked") || isFieldAllowed(license, "investor", "bank");
   const showRm = isFieldAllowed(license, "investor", "rm_id") || isFieldAllowed(license, "investor", "rm");
+
+  // The firm's NSE MF Invest connection: the KYC status can be fetched from the KRA (lib/kyc/).
+  const nseKyc = showKyc
+    ? await withTenant(session.tenantId, async (tx) => {
+        const r = await tx.execute(sql`SELECT 1 FROM tenant_integrations
+           WHERE tenant_id = ${session.tenantId}::uuid AND provider = 'nse_mf' AND user_id IS NULL AND is_active LIMIT 1`);
+        return r.rows.length > 0;
+      })
+    : false;
+  const canCheckKyc = can(session.roles, "investor.edit.all", session.permissions) || can(session.roles, "investor.edit.assigned", session.permissions);
 
   const data = await withTenant(session.tenantId, async (tx) => {
     // Data scope: a client outside the viewer's book (or no client capability
@@ -955,6 +966,19 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
 
         <Group title="Compliance status">
           {showKyc && <Status label="KYC status" value={inv.kycStatus} good={inv.kycStatus === "verified"} />}
+          {showKyc && (nseKyc || inv.kycCheckedAt) && (
+            <KV
+              label="KRA check"
+              node={
+                <KycCheckButton
+                  investorId={inv.id}
+                  remark={inv.kycStatusRemark ?? null}
+                  checkedAt={inv.kycCheckedAt ? new Date(inv.kycCheckedAt as any).toISOString() : null}
+                  canCheck={nseKyc && canCheckKyc && !!inv.pan}
+                />
+              }
+            />
+          )}
           <KV label="Residential status" value={inv.residencyStatus ?? "—"} cap edit={{ id: inv.id, field: "residencyStatus", type: "select", options: RESIDENCY_OPTS, value: inv.residencyStatus ?? "", nullable: true }} />
           <KV label="Tax status" value={inv.taxStatus ?? "—"} />
           {adult && <KV label="PAN–Aadhaar link" value={inv.panAadhaarLinkStatus ?? "—"} cap edit={{ id: inv.id, field: "panAadhaarLinkStatus", type: "select", options: PAN_AADHAAR_OPTS, value: inv.panAadhaarLinkStatus ?? "", nullable: true }} />}

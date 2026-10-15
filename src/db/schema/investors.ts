@@ -150,6 +150,11 @@ export const investors = pgTable(
     ckycNumber: text("ckyc_number"),
     ckycExpiryAt: date("ckyc_expiry_at"),
     kraName: text("kra_name"),
+    /** What the KRA last said, in its own words ("KYC Validated", "ON HOLD"),
+     *  when, and through which connection (migration 0237, lib/kyc/). */
+    kycStatusRemark: text("kyc_status_remark"),
+    kycCheckedAt: timestamp("kyc_checked_at", { withTimezone: true }),
+    kycCheckSource: text("kyc_check_source"),
     fatcaStatus: text("fatca_status", { enum: ["pending", "verified", "expired"] }),
     fatcaExpiryAt: date("fatca_expiry_at"),
 

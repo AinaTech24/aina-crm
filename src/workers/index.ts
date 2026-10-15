@@ -27,6 +27,7 @@ import { startRtaImportWorker } from "./rta-import-worker";
 import { startDailyBriefingWorker } from "./daily-briefing";
 import { startWeeklyDigestWorker } from "./weekly-digest";
 import { runDailyOpsScan } from "./daily-ops-scanner";
+import { runKycRefresh } from "@/lib/kyc/refresh";
 import { runMonthlyComplianceSweep } from "./monthly-compliance-seeder";
 import { runReconciliationScan } from "./reconciliation-scanner";
 import { runAumRefresh } from "./aum-refresh";
@@ -159,6 +160,14 @@ if (groups.includes("briefing")) {
  * to reason about.
  */
 scheduleDaily("ops", "daily-ops-scanner", 6, 30, runDailyOpsScan, "DAILY_OPS_ON_BOOT");
+
+/**
+ * KYC status from the KRA, by PAN, through each firm's own NSE MF Invest
+ * connection (lib/kyc/refresh.ts). 02:30 UTC = 08:00 IST, inside NSE's working
+ * day. Only firms that saved their keys and left the daily refresh on; one call
+ * at a time, oldest check first, capped per firm.
+ */
+scheduleDaily("ops", "kyc-status-refresh", 2, 30, runKycRefresh, "KYC_REFRESH_ON_BOOT");
 
 /**
  * Daily firm snapshot — records each tenant's AUM / clients / SIP book at 00:05
