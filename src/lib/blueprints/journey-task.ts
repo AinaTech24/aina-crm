@@ -16,6 +16,26 @@ import type { Tx } from "@/db/client";
 import { tasks } from "@/db/schema";
 import { v4 as uuid } from "uuid";
 import { createNotification } from "@/lib/notifications/create";
+import { LEAD_PHASE_LAST_ORDER, LEAD_TO_CLIENT_STAGES } from "./lead_to_client";
+
+const CODE_ORDER = new Map(LEAD_TO_CLIENT_STAGES.map((s) => [s.key, s.order] as const));
+
+/** Is this step part of client onboarding (after the lead phase)? Decided by the
+ *  step's place in the SOP in code, not by the firm's stored copy of the
+ *  blueprint: a firm whose blueprint was copied before the SOP was renumbered
+ *  would otherwise put these steps on the wrong side of the boundary and get no
+ *  task. The stored order is the fallback for a step the code does not know. */
+export function isOnboardingStage(stageKey: string, storedOrder: number | null | undefined): boolean {
+  const order = CODE_ORDER.get(stageKey) ?? storedOrder ?? 0;
+  return order > LEAD_PHASE_LAST_ORDER;
+}
+
+/** What creating the step's task came to — echoed to the screen so the person
+ *  moving the step sees the task (or why there is none). */
+export type JourneyTaskResult =
+  | { status: "created"; id: string; title: string; assigneeName: string | null }
+  | { status: "exists"; title: string | null }
+  | { status: "skipped"; reason: string };
 
 /** What the person moving the step chose in the pop-up (all optional). */
 export interface JourneyTaskInput {
@@ -53,16 +73,16 @@ export async function createJourneyTask(
     actorUserId?: string | null;
     input?: JourneyTaskInput;
   },
-): Promise<void> {
+): Promise<JourneyTaskResult> {
   const open = await tx.execute(sql`
-    SELECT 1 FROM tasks
+    SELECT title FROM tasks
     WHERE tenant_id = ${p.tenantId}::uuid AND deleted_at IS NULL
       AND status NOT IN ('completed', 'cancelled')
       AND meta->>'journeyLeadId' = ${p.leadId}
       AND meta->>'journeyStageKey' = ${p.stageKey}
     LIMIT 1
   `);
-  if (open.rows.length) return;
+  if (open.rows.length) return { status: "exists", title: (open.rows[0] as { title?: string }).title ?? null };
 
   // The lead, and the client it became (the blueprint subject can also be a
   // client with no lead row).
@@ -97,13 +117,16 @@ export async function createJourneyTask(
     assigneeId = (r.rows[0] as { id?: string } | undefined)?.id ?? null;
   }
   assigneeId = assigneeId ?? lead?.owner_id ?? p.actorUserId ?? null;
-  if (!assigneeId) return; // nobody to give it to — never block the step
+  if (!assigneeId) return { status: "skipped", reason: "no one to assign it to" }; // never block the step
 
-  const dept = await tx.execute(sql`SELECT department FROM users WHERE id = ${assigneeId}::uuid LIMIT 1`);
-  const department = (dept.rows[0] as { department?: string } | undefined)?.department ?? null;
+  const dept = await tx.execute(sql`SELECT department, name FROM users WHERE id = ${assigneeId}::uuid LIMIT 1`);
+  const assignee = dept.rows[0] as { department?: string; name?: string } | undefined;
+  const department = assignee?.department ?? null;
 
+  const taskId = uuid();
+  const title = p.input?.title ?? `Onboarding: ${p.stageName}${clientName ? ` — ${clientName}` : ""}`;
   await tx.insert(tasks).values({
-    id: uuid(),
+    id: taskId,
     tenantId: p.tenantId,
     assigneeId,
     createdById: p.actorUserId ?? null,
@@ -113,7 +136,7 @@ export async function createJourneyTask(
     relatedInvestorId: investorId,
     relatedLeadId: lead ? p.leadId : null,
     type: p.input?.type ?? "onboarding",
-    title: p.input?.title ?? `Onboarding: ${p.stageName}${clientName ? ` — ${clientName}` : ""}`,
+    title,
     description: p.input?.description ?? `Client onboarding step "${p.stageName}".`,
     priority: p.input?.priority ?? "normal",
     status: "open",
@@ -128,9 +151,11 @@ export async function createJourneyTask(
       kind: "task.assigned",
       title: `New task: ${p.input?.title ?? p.stageName}`,
       body: "A client onboarding step was assigned to you",
-      linkUrl: "/dashboard/tasks?view=assigned_to_me",
+      linkUrl: "/dashboard/tasks?view=to_me",
       severity: "info",
       meta: { lead_id: p.leadId, stage: p.stageKey },
     });
   }
+
+  return { status: "created", id: taskId, title, assigneeName: assignee?.name ?? null };
 }

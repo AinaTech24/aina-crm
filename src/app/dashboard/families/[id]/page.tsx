@@ -28,6 +28,8 @@ import { AddFamilyTaskButton } from "@/components/families/AddFamilyTaskButton";
 import { RemoveMemberButton } from "@/components/families/RemoveMemberButton";
 import { MemberRoleSelect } from "@/components/families/MemberRoleSelect";
 import { FamilyEditPanel } from "@/components/families/FamilyEditPanel";
+import { DuplicateGroup } from "@/components/investors/DuplicateMerge";
+import { loadFamilyMemberDuplicates } from "@/lib/families/member-duplicates";
 import { FamilyHealthCard } from "@/components/families/FamilyHealthCard";
 import { FamilyPortfolioAllocation } from "@/components/families/FamilyPortfolioAllocation";
 import { FamilyTouchpoints } from "@/components/families/FamilyTouchpoints";
@@ -157,8 +159,12 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
       `),
     ]);
 
+    // The same person listed twice among the members (one with a PAN, one a registrar's spelling without).
+    const repeated = await loadFamilyMemberDuplicates(tx, session.tenantId, detail.members as any[]);
+
     return {
       ...detail,
+      repeated,
       rmOpts: rmOpts.rows as Array<{ id: string; name: string }>,
       meetings: meetings.rows as any[],
       taskRows: taskRows.rows as any[],
@@ -172,6 +178,8 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
   const { family, members, liveMembers, head, totals } = data;
   const familyName = family.familyName ?? family.headName;
   const canEdit = canEditFamilies(session);
+  // Merging clients is the owner's tool (Merge Clients).
+  const canMerge = can(session.roles, "dashboard.view.owner", session.permissions);
   const canDelete = can(session.roles, "family.delete", session.permissions) || can(session.roles, "investor.edit.all", session.permissions);
   const review = familyReviewState(family as any);
   const closedCount = members.length - liveMembers.length;
@@ -303,6 +311,16 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
               title={`Members (${members.length})`}
               action={canEdit ? <AddMemberDialog familyId={id} familyName={familyName} /> : undefined}
             />
+            {canMerge && data.repeated.length > 0 && (
+              <div className="mx-5 mb-4 space-y-3 rounded-lg border border-warning/50 bg-warning/5 p-4">
+                <div className="text-sm font-medium">
+                  {data.repeated.length === 1 ? "One person is listed twice in this family" : `${data.repeated.length} people are listed twice in this family`}
+                </div>
+                {data.repeated.map((c) => (
+                  <DuplicateGroup key={`${c.kind}-${c.gkey}`} kind={c.kind} gkey={c.gkey} members={c.members} />
+                ))}
+              </div>
+            )}
             {members.length === 0 ? (
               <InlineEmpty
                 icon={Users}

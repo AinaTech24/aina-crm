@@ -46,7 +46,7 @@ import {
   stageFlavour,
 } from "./lead_to_client";
 import { checkPrerequisites } from "./prerequisites";
-import { closeJourneyTask, createJourneyTask, type JourneyTaskInput } from "./journey-task";
+import { closeJourneyTask, createJourneyTask, isOnboardingStage, type JourneyTaskInput, type JourneyTaskResult } from "./journey-task";
 
 const MODULE = "leads";
 
@@ -227,6 +227,8 @@ export interface TransitionResult {
   code?: "no_transition" | "role" | "prereq" | "terminal" | "stage_not_found";
   fromStage?: string;
   toStage?: string;
+  /** What the step's task in the Tasks module came to (client onboarding steps). */
+  task?: JourneyTaskResult;
 }
 
 export async function transitionTo(
@@ -438,18 +440,19 @@ export async function transitionTo(
   // Client onboarding → Tasks module. Leaving a client-phase step closes its
   // task; entering one (not a pass-through hop, not a terminal) opens one for
   // the step's owner. Retry stages with their own task (mandate_reject) skip.
-  if (fromStage && fromStage.stageOrder > LEAD_PHASE_LAST_ORDER) {
+  let journeyTask: JourneyTaskResult | undefined;
+  if (fromStage && isOnboardingStage(currentStageKey, fromStage.stageOrder)) {
     await closeJourneyTask(tx, tenantId, leadId, currentStageKey, opts.actorUserId);
   }
   if (
     !opts.suppressAutomations &&
-    toStage.stageOrder > LEAD_PHASE_LAST_ORDER &&
+    isOnboardingStage(toStageKey, toStage.stageOrder) &&
     disposition === "in_progress" &&
     stageFlavour(toStageKey) !== "terminal_failure" &&
     stageFlavour(toStageKey) !== "terminal_success" &&
     toStageKey !== "mandate_reject"
   ) {
-    await createJourneyTask(tx, {
+    journeyTask = await createJourneyTask(tx, {
       tenantId,
       leadId,
       stageKey: toStageKey,
@@ -470,7 +473,7 @@ export async function transitionTo(
     );
   }
 
-  return { ok: true, fromStage: currentStageKey, toStage: toStageKey };
+  return { ok: true, fromStage: currentStageKey, toStage: toStageKey, task: journeyTask };
 }
 
 // ── Read helpers for the UI ─────────────────────────────────────────────

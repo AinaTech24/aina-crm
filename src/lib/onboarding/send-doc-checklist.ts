@@ -26,6 +26,7 @@ import { emailAdapter } from "@/lib/comms/adapters/resend";
 import { resolveEmailSender } from "@/lib/comms/sender";
 import { emailLogoHeaderHtml } from "@/lib/comms/email-logo";
 import { dispatch } from "@/lib/comms/pipeline";
+import { nameAndLinkVariables, pickTemplateRow } from "@/lib/comms/template-variables";
 import { getChecklist, type ClientType } from "@/lib/onboarding/doc-checklists";
 import { getFieldChecklist } from "@/lib/onboarding/kyc-fields";
 import { ensureDocCollectionTemplate } from "@/lib/onboarding/doc-template";
@@ -158,7 +159,7 @@ export async function sendDocChecklist(opts: {
   if (phone) {
     const tmpl = await withTenant(tenantId, async (tx) => {
       const rows = await tx
-        .select({ key: templates.key, name: templates.name, vars: templateVersions.variables })
+        .select({ key: templates.key, name: templates.name, locale: templates.locale, vars: templateVersions.variables })
         .from(templates)
         .innerJoin(templateVersions, eq(templateVersions.id, templates.currentVersionId))
         .where(and(
@@ -166,21 +167,17 @@ export async function sendDocChecklist(opts: {
           eq(templates.channel as any, "whatsapp" as any),
           eq(templates.status, "approved"),
         ));
-      return rows.find((r) => /doc|kyc|onboard|document|collect|upload|checklist/i.test(`${r.key} ${r.name}`)) ?? null;
+      // The copy dispatch() will look up (its locale), not just the first that matches.
+      return pickTemplateRow(rows.filter((r) => /doc|kyc|onboard|document|collect|upload|checklist/i.test(`${r.key} ${r.name}`)));
     });
 
     try {
       waStatus = await withTenant(tenantId, async (tx) => {
         if (tmpl) {
           waUsedTemplate = true;
-          const varKeys = ((tmpl.vars as any[]) ?? []).map((v) => v?.key).filter(Boolean);
-          const linkKey = varKeys.find((k: string) => /url|link|doc|upload/i.test(k)) ?? varKeys[0];
-          const nameKey = varKeys.find((k: string) => /name|client|investor/i.test(k));
-          const variables: Record<string, string> = {};
-          if (linkKey) variables[linkKey] = url;
-          if (nameKey) variables[nameKey] = name;
+          const variables = nameAndLinkVariables(tmpl.vars as any[], { name, link: url });
           const r = await dispatch(tx, {
-            tenantId, channel: "whatsapp", templateKey: tmpl.key,
+            tenantId, channel: "whatsapp", templateKey: tmpl.key, locale: tmpl.locale,
             recipient: phone, variables, category: "utility",
             investorId: investorId ?? undefined, leadId: investorId ? undefined : id,
           } as any);

@@ -42,6 +42,7 @@ import { confirmDialog } from "@/components/ui/ConfirmProvider";
 import { ScheduleMeetingModal } from "@/components/review-meetings/ScheduleMeetingModal";
 import { CompleteMeetingModal } from "@/components/review-meetings/CompleteMeetingModal";
 import { DateTimeField } from "@/components/ui/DateTimeField";
+import { notify } from "@/components/ui/Toast";
 
 /** Does this href open the schedule-meeting page? If so we pop a modal instead. */
 const isMeetingHref = (href: string) => /\/review-meetings\/new\b/.test(href);
@@ -81,6 +82,19 @@ const TASK_ON_TRANSITION: Record<string, TransitionTask> = {
 /** Steps whose pop-up opens every time: the task ones (assignee + due date) and
  *  the two "already active" ones (UCC number, mandate details). */
 const POPUP_STAGES = new Set([...Object.keys(TASK_ON_TRANSITION), "ucc_activated", "mandate_activated"]);
+
+/** Tell the person what became of the step's task in the Tasks module (the
+ *  advance API reports it for client onboarding steps only). */
+function announceTask(task?: { status: string; title?: string | null; assigneeName?: string | null; reason?: string }) {
+  if (!task) return;
+  if (task.status === "created") {
+    notify.success(`"${task.title}"${task.assigneeName ? ` — assigned to ${task.assigneeName}` : ""}. It is in Tasks, open.`, "Task created");
+  } else if (task.status === "exists") {
+    notify.info(`${task.title ? `"${task.title}" is` : "This step's task is"} already open in Tasks.`, "Task already open");
+  } else if (task.status === "skipped") {
+    notify.warning(`No task was created for this step (${task.reason ?? "unknown reason"}).`, "Task not created");
+  }
+}
 
 /** Loop stages that schedule a next-touch reminder for the lead owner. */
 const NEXT_TOUCH_STAGES = new Set(["call_back_later", "call_not_connected", "contact_in_future"]);
@@ -311,6 +325,8 @@ export function GuidedStageActions({
       console.warn("[advance] failed:", j.error);
       return false;
     }
+    const d = await res.json().catch(() => ({}));
+    announceTask(d?.task);
     return true;
   }
 
@@ -651,6 +667,7 @@ export function GuidedStageActions({
 
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d?.error ?? "Failed to complete transition");
+      announceTask(d?.task);
 
       setTransitioningAction(null);
       setCallBackAt("");

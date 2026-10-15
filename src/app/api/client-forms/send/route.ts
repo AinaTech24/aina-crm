@@ -35,6 +35,7 @@ import { ensureClientFormTemplate, type ClientFormKind } from "@/lib/client-form
 import { ensureDocCollectionTemplate } from "@/lib/onboarding/doc-template";
 import { emailAdapter } from "@/lib/comms/adapters/resend";
 import { resolveEmailSender } from "@/lib/comms/sender";
+import { nameAndLinkVariables, pickTemplateRow } from "@/lib/comms/template-variables";
 import { emailLogoHeaderHtml } from "@/lib/comms/email-logo";
 import { dispatch } from "@/lib/comms/pipeline";
 
@@ -211,7 +212,7 @@ export async function POST(req: NextRequest) {
       try {
         waStatus = await withTenant(session.tenantId, async (tx) => {
           const rows = await tx
-            .select({ key: templates.key, name: templates.name, vars: templateVersions.variables })
+            .select({ key: templates.key, name: templates.name, locale: templates.locale, vars: templateVersions.variables })
             .from(templates)
             .innerJoin(templateVersions, eq(templateVersions.id, templates.currentVersionId))
             .where(and(
@@ -219,19 +220,15 @@ export async function POST(req: NextRequest) {
               eq(templates.channel as any, "whatsapp" as any),
               eq(templates.status, "approved"),
             ));
-          const tmpl = rows.find((t) => form.match.test(`${t.key} ${t.name}`)) ?? null;
+          // The copy dispatch() will look up (its locale), not just the first that matches.
+          const tmpl = pickTemplateRow(rows.filter((t) => form.match.test(`${t.key} ${t.name}`)));
           usedTemplate = !!tmpl;
           const link = subjectType === "investor" ? { investorId: subjectId } : { leadId: subjectId };
 
           if (tmpl) {
-            const varKeys = ((tmpl.vars as any[]) ?? []).map((v) => v?.key).filter(Boolean);
-            const linkKey = varKeys.find((k: string) => /url|link/i.test(k)) ?? varKeys[0];
-            const nameKey = varKeys.find((k: string) => /name|client|investor/i.test(k));
-            const variables: Record<string, string> = {};
-            if (linkKey) variables[linkKey] = url;
-            if (nameKey) variables[nameKey] = name;
+            const variables = nameAndLinkVariables(tmpl.vars as any[], { name, link: url });
             const d = await dispatch(tx, {
-              tenantId: session.tenantId, channel: "whatsapp", templateKey: tmpl.key,
+              tenantId: session.tenantId, channel: "whatsapp", templateKey: tmpl.key, locale: tmpl.locale,
               recipient: phone, variables, category: "utility", ...link,
             } as any);
             return String((d as any)?.status ?? "queued");
