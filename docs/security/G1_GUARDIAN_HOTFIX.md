@@ -1,13 +1,15 @@
 # G-1 — Guardian-PAN link: security hotfix (development only)
 
-**Status (2026-10-14): fixed and tested in development on `claude/g1-guardian-hotfix`
-— the first fix (`0c4f9e7e`, typed in `ea287acf`) plus the **final
-hardening** of §8 (every read path, removal of a link, refused typed PANs, the
-client history route), on top of `main` **`74dc6c6e`** (merged in `cec1ae7e`;
-the head of `main` and what production runs — deploy run 299, 08:52 UTC). Not merged to `main`, not
-deployed, nothing run against production.** Pushing this branch to `main`
-deploys it: that needs the owner's separate, explicit authorization (§6). The
-business decision the hardening leaves open is in §9.
+**Status (2026-10-15): release candidate for the owner's explicit
+authorization — `claude/g1-guardian-hotfix` at `00e07718` (code) + the docs
+commit that follows it, on top of `main` `74dc6c6e` (what production runs —
+deploy run 299; `origin/main` re-fetched 2026-10-15 and unchanged).** It holds
+the first fix (`0c4f9e7e`, `ea287acf`), the final hardening of §8 and the
+incomplete-onboarding controls of §10. Not merged to `main`, not deployed,
+nothing run against production, no migration. Pushing to `main` deploys
+(§13.6); that needs the owner's separate, explicit authorization (§13.10).
+Acceptance matrix: §14. Interim minor-suitability policy for decision: §12.
+Proposed 0245: assessed in §11, not applied. §6 is superseded by §13.
 
 ## 1. Root cause
 
@@ -100,7 +102,7 @@ audited — never a bulk SQL change, never a merge):
 3. For each MF proposal / message that rested on a copy: compliance decides whether the recommendation needs a fresh assessment of the minor's account; the RM records it; nothing is withdrawn automatically.
 4. Re-run the SQL: the counts the decisions addressed fall to 0 or are recorded as accepted.
 
-## 6. Production rollout (NOT executed — needs the owner's explicit authorization)
+## 6. Production rollout — SUPERSEDED by §13 (kept for the record)
 
 Independent of the RTA Import Engine: the branch is `main` (`74dc6c6e` when
 verified) + this patch only (no RTA-engine file, no migration).
@@ -285,3 +287,261 @@ establishes suitability?
 4. Privacy: for links where a user saw a client outside their book (impact SQL
    §2), the reviewer decides whether a notification is required under the
    firm's privacy procedure.
+
+> §9 is answered for the interim by §12 (the owner's proposed interim control
+> of 2026-10-15); its options remain the long-term question.
+
+## 10. Incomplete minor onboarding — a refused typed guardian PAN (2026-10-15)
+
+A typed guardian PAN that links nobody still saves the minor — the guardian
+may simply not be a client, and refusing would tell the user why (shared PAN,
+another RM's client). It can no longer pass for complete.
+
+| Owner's requirement | How it is met | Evidence |
+|---|---|---|
+| 1. Explicit warning | Create and Edit answer `guardianLinked: false` + `guardianNotice`: "Saved — but the guardian is not linked to a client record, so the guardian is NOT VERIFIED … No mutual fund proposal can go to this minor until the guardian is linked or the owner or compliance confirms them …" — shown as a warning toast. | `guardian-verification-db` #1, `guardian-exposure-db` #1 |
+| 2. Clearly incomplete | A status DERIVED from the record and its audit trail (`lib/investors/guardian-verification.ts`; no table, no migration): **linked** (guardian client on record) · **confirmed** (owner / compliance verified it, after the last refusal) · **pending** (latest guardian event is a refused typed PAN, a removed link, or a link the row no longer carries) · **not_recorded** (no guardian event — saved before this rule). The client page shows "Guardian not verified" for pending. `GET /api/investors/[id]/guardian-verification`. | DB #1, #4; browser (RM A and owner) |
+| 3. Guardian-dependent workflows not "verified" | The status is the only "verified" signal; nothing else treats an unlinked guardian as verified. | — |
+| 4. MF gates cannot pass | Journey gate for **proposal** (MF) and **MF transaction** adds "The minor's guardian verified" (unsatisfied while pending); `POST /api/proposals/[id]/send` answers **412** `field: "guardian"`. Both apply even when the minor's OWN assessment is current; neither can be satisfied by the guardian's profile or the 0234 copy (§8). | DB #1, #3; mutation: removing either gate fails the test |
+| 5. No duplicate on retry | The minor's key is `MINOR:<own PAN>` or `MINOR:<guardian PAN>:<NAME>`; the unique index refuses a second record. **Defect found and fixed:** the create route detected the violation from `err.message`, which Drizzle wraps — a retry answered **500** (still no second record). It now reads `.cause` as the PATCH route does and answers **409**. | DB #2 (two retries, one record, one refusal in history); mutation: the old check fails it |
+| 6. Audited resolution | (a) Link the guardian's client record in the Guardian section (`investor.guardian_linked`), or (b) owner / compliance (`compliance.approve`) "Confirm guardian" with a note of what was checked → `POST …/guardian-verification`, written straight to `audit_log` as `investor.guardian_verified` (actor, note, before/after) — the status IS that row, so an unrecorded confirmation never takes effect. An RM gets 403; a second confirmation 409; a later refused PAN makes it pending again. | DB #3, #4; browser |
+| 7. No leak in messages | The refusal, the notice, the 412 and the 409 are fixed sentences: no name, PAN, guardian, RM or "exists in another book". A user who cannot open the minor gets 404 on the status route. | DB #1–#4 assert no hidden name / PAN / risk in any response |
+
+**Limitations (explicit):**
+
+- **`not_recorded` is not blocked.** Minors saved before this rule with no
+  guardian link and no guardian event (e.g. the RTA import, or a typed PAN
+  before 2026-10-14) are not treated as pending: blocking them is a policy
+  change for the firm (§12, decision 5). Impact SQL §7 counts them.
+- **The 409 is an existence oracle, as for every client.** Retrying with the
+  same name and guardian PAN says "a client with these details is already on
+  record" — the same as the PAN dedup check every client create has always
+  had. It names nobody. A retry with a differently spelled name creates a
+  second minor (the key includes the name); Merge Clients resolves it.
+- **Confirmation is one person.** The owner or a compliance user confirms
+  alone; there is no two-person rule and the confirmer may be the creator.
+- **The note is free text** visible in the client's history to whoever can
+  open the client — staff should record what was seen, not copy documents.
+
+## 11. Proposed migration 0245 (stop the 0234 copy) — assessment, not applied
+
+Tested only on disposable local copies (`mfd_p245`, `mfd_p245r`, created from
+the hotfix test database), never on any shared database.
+
+| Question | Finding |
+|---|---|
+| Does anything else depend on the copy? | `pg_depend`: the two functions are used only by their two triggers; no other function body names them. The application reads no minor's row risk since §8 (sweep re-run 2026-10-15). The RTA candidate (`44468322`) reads `guardian_investor_id` (`isGuardianOf`) but never the copied fields and never names the triggers. The index `investors_guardian_idx` from 0234 is kept (0245 does not drop it). |
+| Full suite with 0245 applied | **561 / 573 pass.** The 12 failures are all one kind: a test PRECONDITION asserting the copy exists on the row (e.g. `expect(row.risk_profile).toBe("moderate") // 0234's copy`). With those 16 copy-only assertions removed in scratch copies (not committed), all **28** guardian-link / exposure tests pass, plus the 6 onboarding tests — linking, re-typing, unlinking, turning adult, merge (incl. into an ineligible survivor), **un-merge restoring the link**, purge, history, filters and gates behave the same. |
+| Historical records intact | Forward: a hash of every investor row's risk columns + link, the `risk_profile_responses` count and the `audit_log` count are **identical** before and after; re-applying is a no-op. Copies already on rows stay (a separate, reviewed clean-up). |
+| Merge / un-merge / minor → major | Unaffected (above): they move or clear the LINK in application code; G-1 writes back the minor's own assessment or nothing on unlink. |
+| Existing copies | Need a separately approved, dry-run-first review (impact SQL §5 sizes them). 0245 changes none. |
+| Rollback | `docs/security/proposed-0245-rollback.sql` = 0234's function and trigger definitions verbatim, **without** 0234's closing backfill UPDATE, so a rollback changes no row. Tested forward → rollback: data hash unchanged throughout; `pg_get_triggerdef` and function bodies identical to 0234's; a newly linked minor is copied again. In the chain a rollback ships as a new forward migration. |
+| Numbering | `main` (`74dc6c6e`) ends at 0234; the RTA candidate (`44468322`) at 0244; 0245 is free on both. On the RTA branch the new file must be added to `checksums.lock.json` (a new file, which the immutability check allows). |
+
+**Risk assessment:** low technical risk (no data change, dependency-free,
+tested rollback). The real change is behavioural — a guardian's later profile
+change no longer reaches the minor's row — which the application already
+ignores. Prerequisite: the policy decision of §12 (it formally retires the
+firm's 2026-10-13 rule). Recommended ordering: deploy the hotfix (it does not
+need 0245) → decide §12 → review and schedule 0245 as its own change under
+the change lock → then the separately approved clean-up of stored copies.
+**Not run, not merged.**
+
+## 12. Interim minor-suitability control and the decision note
+
+**Proposed interim control (the owner's wording, 2026-10-15):**
+"A minor investment account requires its own explicitly verified
+account-specific suitability assessment, recorded through the authorized
+guardian where appropriate. A guardian's personal risk profile is supporting
+context only and is not automatically the minor account's suitability
+assessment."
+
+**What the CRM enforces today (verified, §8 + §10):**
+
+- Every suitability reader (proposal send gate, journey gate, snapshot,
+  appetite, PDF, client links, messages, AI) uses only the minor's own latest
+  `risk_profile_responses` row — never the 0234 copy and never the guardian's
+  profile. Tests: `guardian-link-db` "suitability …", `guardian-exposure-db`
+  "stale copy … satisfies nothing", `guardian-verification-db` #1.
+- A confirmed, non-provisional assessment of the minor's account signed in the
+  last 12 months is required for an MF proposal (unchanged rule, now applied to
+  the minor's own record).
+- A minor whose guardian is pending verification cannot get an MF proposal
+  even with its own assessment (§10).
+- The guardian's own profile is shown only as "Guardian's own risk profile —
+  not this account's", to staff who may open the guardian.
+- Nothing rewrites, deletes or re-dates existing suitability history.
+
+**What the CRM does NOT yet enforce (the control's gaps — for decision, not
+built):** it does not record WHO attested the minor's assessment (the
+questionnaire records `signed_by_name` and an OTP / RM-entry method, not "as
+guardian of"); an RM can still record a category directly ("rm_entry", the
+same as for adults) and that counts as the minor's own assessment; it does not
+force reassessment on a change of guardian or at 18.
+
+**Decisions needed (owner + compliance; nothing here is a regulatory claim):**
+
+1. **Who completes and attests** the minor's assessment — the guardian on
+   record only (link or confirmed), or also the RM entering it? Should an
+   RM-entered category count for a minor at all?
+2. **Whose assessment it is** — recorded against the minor's account (the
+   CRM's behaviour now) with the attesting guardian named, or treated as the
+   guardian's?
+3. **When reassessment is required** — the current 12-month rule only, or also
+   on a material change (goal, horizon)?
+4. **Change of guardian** — does a new guardian invalidate the existing
+   assessment (block MF proposals until re-attested), or carry it?
+5. **Minor becomes major** — the CRM now drops the guardian link and keeps the
+   account's own assessment. Should turning 18 force a fresh assessment by the
+   (now adult) client before the next recommendation? And should older minors
+   with no guardian event (`not_recorded`, §10) be blocked like `pending`?
+6. **Existing assessments and historical proposals** — impact SQL §3 / §6 list
+   minors whose proposals may have rested on a copy. Review case by case; the
+   CRM changes no history. Does each need a fresh assessment of the minor's
+   account before the next recommendation?
+
+Each answer that adds a rule is a separate, small change after this hotfix.
+
+## 13. Release plan for the production hotfix (NOT executed)
+
+### 13.1 Exact release
+- **Branch** `claude/g1-guardian-hotfix`; **code commit `00e07718`**, plus the
+  docs-only commit that records this plan (the head when authorized; nothing
+  but `docs/` and `CLAUDE.md` after `00e07718`).
+- **Base**: `main` `74dc6c6e` (production). `origin/main` re-fetched
+  2026-10-15: still `74dc6c6e` → compatible, no integration needed. **If
+  `main` has moved when the release is authorized, stop and request review
+  before merging it in.**
+- **Changed vs `74dc6c6e`**: 84 files — 72 under `src/` (17 API routes, 10
+  dashboard pages, 9 `lib/investors`, 5 investor components, 4 exports, 4
+  dashboard loaders, 3 `lib/risk-profile`, 3 families, 2 metrics, 2 comms, 1
+  each in workflow, workflow-rules, reports, proposals, proposal, opportunities,
+  nba, filter, discovery, command-center, portal and two workers), 6 test
+  files, 1 browser script, `CLAUDE.md`, 4 files in `docs/security/`. Full list:
+  `git diff --name-status 74dc6c6e <head>`.
+
+### 13.2 Evidence (2026-10-15, on `00e07718`)
+| Check | Result |
+|---|---|
+| Static: `lint`, `check:types`, `check:rbac`, `check:migrations`, `check:colors`, `check:asany` (≤ 3429), `check:mathimports`, `check:labels`, `check:sql`, `check:calc`, `check:finance`, `check:spine` | all pass |
+| Full vitest suite against a 272-migration database as `mfd_app` (no superuser, no BYPASSRLS — RLS enforced) | **573 / 573** |
+| Unit only (no DB) | **514** passed, 59 DB-only skipped |
+| Guardian suites | link 16, exposure 12, verification 6, minor-risk-sql 2 |
+| Mutation checks this round | removing the send-route gate, the journey gate or the `.cause` 409 each fails `guardian-verification-db` |
+| Browser (`scripts/g1-guardian-ui.mjs`, Chromium, real Next server, data wall on, a pre-fix cross-book link with the guardian's `very_aggressive` copy on the minor's row) | **51 / 51** (§14) |
+| Impact SQL | runs read-only without error; §6 exercised with a seeded proposal on a throwaway copy |
+| GitHub CI | to be read on the pushed head (`main`'s `ci.yml`; its DB job runs as the superuser, so the RLS evidence is the local run above) |
+
+### 13.3 Database changes
+**None.** No migration, no data change; the ledger stays at 272. 0245 is NOT
+part of this release (§11).
+
+### 13.4 Change lock
+`bash scripts/prod-change.sh status` → `acquire "G-1 guardian hotfix" "<session>"`
+(exit 3 = someone else holds it: stop and wait) → deploy → checks →
+`release "<session>" "PASS: …"`. One change at a time; no other production
+change during the window.
+
+### 13.5 Backup / recovery prerequisites
+No schema or data change, so recovery is a code rollback. Before deploying,
+confirm (read-only, `--profile aina-ops`) that the latest RDS automated
+snapshot is from the last 24 h and point-in-time restore is enabled — the
+standing safety net, not a step this release needs. Run impact SQL §1–§8
+read-only and keep the output (the "before" baseline).
+
+### 13.6 Deployment trigger
+`deploy.yml` runs on **any push to `main` or `deploy/aws`** (and manual
+dispatch): merging the pull request IS the deploy (blue-green via SSM,
+health-gated; the migrate step finds nothing to apply). Therefore: open a PR
+`claude/g1-guardian-hotfix` → `main` only when authorized; CI green on the PR
+head; merge only inside the change-lock window. Never push `deploy/aws`.
+
+### 13.7 Post-deploy tests (production, operator, designated test firm; no client data copied out)
+1. `GET /api/health` 200; `SELECT count(*) FROM _applied_migrations` = 272.
+2. Test firm, data wall on, two test RMs: guardian in RM B's book. RM A types
+   that PAN on a new minor → 201 with the "NOT VERIFIED" notice; client page
+   shows "Guardian not verified"; MF proposal send → 412; RM A "Confirm" → 403.
+3. Same minor retried → 409, one record.
+4. Owner confirms with a note → "Guardian verified"; `investor.guardian_verified` row exists.
+5. RM A: `GET /api/audit?entityType=investor&entityId=<RM B's client>` → 404.
+6. A linked minor: client page / Risk Profiles / export show the minor's own
+   risk (none) — never the guardian's.
+7. Impact SQL §2 for links made after the deploy: `guardian_outside_actor_book_today` = 0.
+
+### 13.8 Monitoring and incident response (14 days)
+Daily: impact SQL §2 (post-deploy links outside the actor's book: expect 0) and
+§7 (pending count, so stuck minors are seen); 5xx on `/api/investors*`,
+`/api/proposals/*/send`, `/api/audit` (expect none — the 409 fix removes the
+duplicate-create 500); 412 `field: "guardian"` volume (expected, each a minor
+awaiting confirmation). Any sign of a guardian's name or risk shown outside the
+guardian's book is a security incident: take the change lock, roll back
+(13.9) if the cause is the release, and notify the privacy / compliance
+reviewer.
+
+### 13.9 Containment and rollback
+Code only: `bash scripts/rollback-bluegreen.sh` (previous colour) or
+`scripts/manual-deploy.sh 74dc6c6e` under the lock. Nothing to undo in the
+database: audit rows written by the release (`guardian_linked`,
+`guardian_not_linked`, `guardian_verified`) are harmless to the old code.
+**Rolling back re-opens G-1** (the old code links cross-book and reads the
+copy) — use only for a release defect, and re-instate the interim
+containment (staff not to type guardian PANs; daily §2 review).
+
+### 13.10 Approval checkpoints
+1. Owner: written authorization to release `<head>` (this plan).
+2. Reviewer: reads the diff and §8 / §10 / §14; confirms `main` unchanged.
+3. CI green on the PR head.
+4. DBA: pre-deploy impact SQL run read-only and stored.
+5. Change lock acquired.
+6. Merge (= deploy).
+7. Post-deploy tests 13.7 pass → lock released with the result.
+8. Compliance: receives the impact output (§13.11) and the §12 decisions.
+Separately and later: 0245 (§11), the copy clean-up, the §12 rules.
+
+### 13.11 Production impact check (for the authorized DBA; read-only)
+`PGOPTIONS='-c default_transaction_read_only=on' psql "$PROD_RO" -f docs/security/g1-guardian-impact.sql`
+(a read-only role; never the master; under no write transaction). It prints
+aggregates and masked ids (last 6 characters) only — never a PAN, name,
+contact or portfolio figure:
+
+| Owner's question | Section |
+|---|---|
+| Links to merged / deleted / minor / non-person / under-18 / non-individual-PAN records | §1, §4 |
+| Duplicate-PAN links | §1 `guardian_pan_shared`, §4 |
+| Links outside the creator's book | §2 (Client-Master links, judged against today's book) |
+| Inherited risk | §1 `risk_not_guardians`, §3, §5 |
+| Affected MF proposals | §3 (counts), §6 (one masked row per proposal: sent date, linked, guardian in another RM's book, whether the minor's OWN assessment existed at send, owner override) |
+| Incomplete onboarding | §7 (linked / confirmed / pending / not_recorded) |
+| Disclosure through the previously unscoped routes | §8 sizes it (client histories per firm; cross-book minors' histories). WHO read them is not in the database: search the web access logs for `GET /api/audit?entityType=investor` and `POST /api/ai/qrr-commentary/` before the deploy, join each request's session user to the client's RM / branch, and pass every read outside the reader's book to the privacy / compliance reviewer as a suspected disclosure. |
+
+Nothing is repaired. Every non-zero count is a list for a person.
+
+## 14. Final acceptance matrix (2026-10-15, `00e07718`, restricted `mfd_app`, RLS on)
+
+"Hidden" = a guardian in another RM's book with `very_aggressive`, linked to a
+minor in RM A's book before the fix, the copy still on the minor's row.
+
+| Surface | Verified by | Result |
+|---|---|---|
+| Create Client (typed PAN, picked id) | link-db create ×7; exposure #1; verification #1–#2 | out-of-book / ineligible / shared / other-firm never link; one notice / one 400, never why; audited |
+| Edit Client | link-db edit ×3; exposure #2; browser edit page | same rules; re-typed PAN moves or removes link + copy; hidden guardian not named |
+| Guardian PAN lookup + direct-id linking | link-db (PAN, id, other firm, merged, HUF, minor, under 18) | refused identically |
+| Restricted RM books (data wall) | all DB suites with `restrict_user_data_scope = true`; browser | no hidden name / risk |
+| Client list + Client 360 | exposure "client list API"; browser client list + client page (raw HTML + RSC + DOM) | minor's own risk only |
+| RM Dashboard | browser (raw + RSC + DOM) | none |
+| Branch Head Dashboard | browser, branch head of the minor's branch (hidden guardian in another branch) | none |
+| Risk Profiles | exposure "tabs and filters"; link-db export; browser list | copy = not profiled; no filter match; guardian named only to their RM |
+| MF proposals + suitability | link-db suitability; exposure stale copy + PDF; verification #1, #3; browser new-proposal form | copy satisfies nothing; pending guardian blocks |
+| Client exports | exposure (Excel export, clients module); link-db risk-profiles export | minor's own risk; hidden guardian never named |
+| Emails / WhatsApp / automation merge fields | exposure "client messages and automations" (merge tokens, workflow subject, outbox event) | minor's own risk |
+| AI and public responses | exposure "AI QRR … 404 before any model call"; client-brief scoped (§8.1); public proposal page / approval use the snapshot (own risk); portal no longer selects risk | none |
+| Server-rendered payloads | browser raw document = HTML + RSC payload, every page above | none |
+| Client history / audit routes | exposure "history"; browser guardian history 404, minor history clean | out-of-book 404; minors' copied risk stripped |
+
+**Limitations:** (1) `main`'s GitHub CI runs the DB suite as the superuser,
+so RLS is proven by the local `mfd_app` runs, not CI. (2) The browser check
+covers the pages listed, not every one of the CRM's pages; the remaining
+readers are covered by the SQL sweep + helper tests (§8.1). (3) Who read
+client histories before the fix is not in the database (§13.11). (4) Copies
+remain stored on rows until 0245 + a reviewed clean-up (§11). (5) §10's
+`not_recorded` minors are not blocked pending the §12 decision.
