@@ -12,7 +12,10 @@
  *   4. one adult under two valid PANs ONE character apart (a registrar's typo)
  *      with a shared mobile, email or date of birth, one name containing or
  *      respelling the other, and no conflicting date of birth → the record whose
- *      PAN reads as a person (4th letter P), then the KYC-verified one, survives
+ *      PAN reads as a person (4th letter P), then the one the registrar's money
+ *      sits on (its PAN is the one the fund house holds), then the KYC-verified
+ *      one, survives. KYC came first until two merges kept the empty record
+ *      (We Care's Ankit Gupta, Ahpal's Prateek Patel — reversed the same day)
  *      (15 Oct 2026: Nimesh's DIPAK KASHIRAM RANA AAUPR8108G beside DIPAK RANA
  *      AAUPR8108Q; the same in four firms).
  * Listed only (never merged here): one PAN on records with DIFFERENT names
@@ -127,6 +130,7 @@ function plan(rows: Row[]) {
   for (const r of adults) for (let k = 0; k < 10; k++) { const m = `${k}:${r.pan!.slice(0, k)}_${r.pan!.slice(k + 1)}`; byMask.set(m, [...(byMask.get(m) ?? []), r]); }
   const personFirst = (a: Row, b: Row) =>
     (b.pan![3] === "P" ? 1 : 0) - (a.pan![3] === "P" ? 1 : 0) ||
+    b.aum - a.aum || b.folios - a.folios ||
     (b.kyc === "verified" ? 1 : 0) - (a.kyc === "verified" ? 1 : 0) || rank(a, b);
   for (const g of byMask.values()) {
     for (let i = 0; i < g.length; i++) for (let j = i + 1; j < g.length; j++) {
