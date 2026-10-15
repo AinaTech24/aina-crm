@@ -1366,6 +1366,42 @@ For staging or longer-lived environments, run `next start` behind a
 process supervisor (pm2 / systemd / Docker `restart: unless-stopped`)
 so the OS handles crash recovery for you.
 
+### How a push reaches production — the verified artifact (2026-10-15)
+
+The production box **never builds**. A push to `main` runs ONE workflow
+(`.github/workflows/deploy.yml`, "Deploy to AWS (EC2)"):
+
+```
+CI once (ci-core.yml) → build the slim image on a standard arm64 runner
+  → runtime-files gate → docker save | zstd + manifest
+  → S3 verified/<commit>/<runId>-<attempt>/  (OIDC role aina-crm-github-deploy: PutObject only)
+  → SSM → box: disk gate → download → artifact-verify.sh → docker load
+  → migrate → schema guard → blue/green switch  (scripts/artifact-deploy.sh, run-deploy-artifact.sh)
+```
+
+- **Only CI can create a verified artifact; the box can only read it.** The GitHub
+  role has `s3:PutObject` on `verified/*` (no Delete); the instance role has
+  `s3:GetObject` on `verified/*` (no Put, no List). Keys carry the full commit SHA and
+  run id + attempt, so a key is never reused (a re-run bumps the attempt).
+- **The box refuses** a wrong commit, failed CI, shadow flag, wrong architecture, a
+  stale artifact (> 14 days) or any SHA-256 mismatch — against the manifest AND
+  against the digest the build job passes inside the SSM command.
+- **Disk gate** (`scripts/disk-gate.sh`) aborts before any download/load; the log
+  prints CURRENT FREE / REQUIRED FREE / ARTIFACT SIZE / IMAGE SIZE / SAFETY HEADROOM.
+- **Every deploy measures itself** (`scripts/deploy-sampler.py`): the workflow log ends
+  with `=== DEPLOY METRICS ===` (host RAM, swap, dockerd RSS, container peaks, disk,
+  durations). A normal deploy takes ~1 minute on the box.
+- **Anything the image needs at runtime must be IN the image.** The old on-box
+  `COPY . .` silently carried untracked files (`rds-ca.pem` — the first verified
+  deploy failed on it, safely). The build job has a gate for the files production
+  needs; add to it when the box starts depending on another file.
+- **Emergency path**: `deploy-legacy.yml` (manual) still builds on the server. Docs-,
+  mobile-, terraform-, artifacts- and reports-only pushes do not deploy.
+- Pushes to a branch run `ci.yml` (cancelled by a newer push); `main` is validated by
+  the deploy workflow, never twice. Don't dispatch a deploy while another one is
+  *pending*: GitHub keeps only the newest pending run per concurrency group and
+  cancels the older one.
+
 ### Production change control — one change at a time
 
 Since 2026-10-09 (the firm's rule) only ONE session or person changes
