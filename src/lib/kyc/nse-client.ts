@@ -53,6 +53,9 @@ function headers(creds: NseCredentials): Record<string, string> {
   };
 }
 
+/** One field of a JSON body that may be anything. */
+const field = (o: unknown, k: string): unknown => (o && typeof o === "object" ? (o as Record<string, unknown>)[k] : undefined);
+
 const str = (v: unknown) => (v == null || v === "" ? null : String(v).trim() || null);
 
 /** The answer may arrive bare, wrapped in `data`, or as a one-element array. */
@@ -96,16 +99,16 @@ export async function nseKycCheck(creds: NseCredentials, pan: string): Promise<N
     body = null;
   }
   if (res.status === 401 || res.status === 403) {
-    const msg = str((body as any)?.message) ?? "Invalid authorization header or IP address not mapped with user.";
+    const msg = str(field(body, "message")) ?? "Invalid authorization header or IP address not mapped with user.";
     return { ok: false, kind: "auth", status: res.status, message: msg };
   }
   if (!res.ok) {
-    const msg = str((body as any)?.message) ?? `NSE answered HTTP ${res.status}`;
+    const msg = str(field(body, "message")) ?? `NSE answered HTTP ${res.status}`;
     return { ok: false, kind: "http", status: res.status, message: msg };
   }
   const answer = parseKycAnswer(body);
   if (!answer) {
-    const msg = str((body as any)?.message) ?? str((body as any)?.error) ?? "NSE's answer had no KYC status";
+    const msg = str(field(body, "message")) ?? str(field(body, "error")) ?? "NSE's answer had no KYC status";
     return { ok: false, kind: "bad_response", status: res.status, message: msg };
   }
   return { ok: true, answer };

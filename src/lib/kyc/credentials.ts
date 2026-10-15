@@ -75,7 +75,7 @@ async function writeRow(tx: Tx, tenantId: string, cfg: Stored, isActive = true) 
       .where(eq(tenantIntegrations.id, existing.id));
     return;
   }
-  await tx.insert(tenantIntegrations).values({ tenantId, userId: null, provider: PROVIDER, encryptedConfig, isActive } as any);
+  await tx.insert(tenantIntegrations).values({ tenantId, userId: null, provider: PROVIDER, encryptedConfig, isActive });
 }
 
 /** The credentials to call NSE with, or null when the firm has not connected (or switched it off). */

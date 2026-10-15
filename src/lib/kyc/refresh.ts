@@ -25,7 +25,7 @@ import { eventsOutbox } from "@/db/schema/outbox";
 import { recordAudit } from "@/lib/audit";
 import { getNseCredentials, noteNseState } from "./credentials";
 import { nseKycCheck, type NseCallResult, type NseCredentials } from "./nse-client";
-import { kraLabel, kycVerdict, nseDate, PAN_RE } from "./nse-status";
+import { kraLabel, kycVerdict, nseDate, PAN_RE, type CrmKycStatus } from "./nse-status";
 
 export const NIGHTLY_CAP = 400;
 const RECHECK_UNVERIFIED_DAYS = 3;
@@ -62,7 +62,7 @@ export async function recordKycAnswer(
       outcome: "error", statusBefore: before, statusAfter: before, changed: false,
       error: `${result.kind}${result.status ? ` ${result.status}` : ""}: ${result.message}`.slice(0, 500),
       checkedBy: byUserId,
-    } as any);
+    });
     return { outcome: "error", changed: false, statusBefore: before, statusAfter: before, remark: null, kra: null, error: result.message, authFailed: result.kind === "auth" };
   }
 
@@ -70,8 +70,9 @@ export async function recordKycAnswer(
   const verdict = kycVerdict(a.flag, a.remark);
   const kra = kraLabel(a.kraName);
   const outcome = verdict.kind === "service_down" ? "service_down" : "ok";
-  const after = verdict.kind === "status" ? verdict.status : before;
-  const changed = verdict.kind === "status" && after !== before;
+  const newStatus: CrmKycStatus | null = verdict.kind === "status" ? verdict.status : null;
+  const after = newStatus ?? before;
+  const changed = newStatus !== null && newStatus !== before;
 
   // The KRA answered for a different PAN — never write it onto this client.
   if (a.pan && a.pan !== subject.pan) {
@@ -79,7 +80,7 @@ export async function recordKycAnswer(
       tenantId, investorId: subject.id, pan: subject.pan, source: "nse_mf", trigger, outcome: "error",
       kraFlag: a.flag, kraRemark: a.remark, kraName: a.kraName, statusBefore: before, statusAfter: before,
       error: "NSE answered for a different PAN", checkedBy: byUserId,
-    } as any);
+    });
     return { outcome: "error", changed: false, statusBefore: before, statusAfter: before, remark: a.remark, kra, error: "NSE answered for a different PAN" };
   }
 
@@ -89,7 +90,7 @@ export async function recordKycAnswer(
     statusBefore: before, statusAfter: after, changed,
     error: verdict.kind === "unknown" ? `Unrecognised KRA remark: ${a.remark ?? a.flag ?? "(blank)"}` : null,
     checkedBy: byUserId,
-  } as any);
+  });
 
   if (outcome === "service_down") {
     return { outcome, changed: false, statusBefore: before, statusAfter: before, remark: a.remark, kra, error: "The KRA's service is down — status unchanged" };
@@ -100,13 +101,13 @@ export async function recordKycAnswer(
   await tx
     .update(investors)
     .set({
-      ...(changed ? { kycStatus: after as any, kycLastUpdatedBy: byUserId } : {}),
+      ...(changed && newStatus ? { kycStatus: newStatus, kycLastUpdatedBy: byUserId } : {}),
       ...(validatedOn && !subject.kycValidatedAt ? { kycValidatedAt: validatedOn } : {}),
       kycStatusRemark: a.remark,
       ...(kra ? { kraName: kra } : {}),
       kycCheckedAt: new Date(),
       kycCheckSource: "nse_mf",
-    } as any)
+    })
     .where(sql`${investors.id} = ${subject.id}::uuid AND ${investors.tenantId} = ${tenantId}::uuid`);
 
   if (changed) {
@@ -129,7 +130,7 @@ export async function recordKycAnswer(
       before: { kycStatus: before },
       after: { kycStatus: after, kraRemark: a.remark, kra, source: "nse_mf" },
       meta: { trigger, actorUserId: byUserId },
-    } as any);
+    });
   }
 
   return {
@@ -204,7 +205,8 @@ async function dueSubjects(tx: Tx, tenantId: string, limit: number): Promise<Sub
                                              ELSE make_interval(days => ${RECHECK_UNVERIFIED_DAYS}::int) END)
      ORDER BY kyc_checked_at NULLS FIRST, created_at
      LIMIT ${limit}::int`);
-  return (r.rows as any[]).map((x) => ({ id: String(x.id), pan: String(x.pan), kycStatus: x.kyc_status ?? null, kycValidatedAt: x.kyc_validated_at ?? null }));
+  const rows = r.rows as Array<{ id: string; pan: string; kyc_status: string | null; kyc_validated_at: string | null }>;
+  return rows.map((x) => ({ id: String(x.id), pan: String(x.pan), kycStatus: x.kyc_status ?? null, kycValidatedAt: x.kyc_validated_at ?? null }));
 }
 
 export type KycRefreshResult = {
@@ -223,7 +225,7 @@ export async function runKycRefresh(): Promise<KycRefreshResult> {
       SELECT ti.tenant_id FROM tenant_integrations ti JOIN tenants t ON t.id = ti.tenant_id
        WHERE ti.provider = 'nse_mf' AND ti.user_id IS NULL AND ti.is_active
          AND t.status IN ('active', 'trial')`);
-    return (r.rows as any[]).map((x) => String(x.tenant_id));
+    return (r.rows as Array<{ tenant_id: string }>).map((x) => String(x.tenant_id));
   });
 
   let checked = 0;

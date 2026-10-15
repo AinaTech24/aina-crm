@@ -973,7 +973,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
                 <KycCheckButton
                   investorId={inv.id}
                   remark={inv.kycStatusRemark ?? null}
-                  checkedAt={inv.kycCheckedAt ? new Date(inv.kycCheckedAt as any).toISOString() : null}
+                  checkedAt={inv.kycCheckedAt ? new Date(inv.kycCheckedAt).toISOString() : null}
                   canCheck={nseKyc && canCheckKyc && !!inv.pan}
                 />
               }

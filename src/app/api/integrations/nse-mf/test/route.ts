@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
          WHERE tenant_id = ${session.tenantId}::uuid AND deleted_at IS NULL AND merged_into_id IS NULL
            AND upper(btrim(pan)) ~ '^[A-Z]{5}[0-9]{4}[A-Z]$'
          ORDER BY updated_at DESC LIMIT 1`);
-      pan = String((r.rows[0] as any)?.pan ?? "");
+      pan = String((r.rows[0] as { pan?: string } | undefined)?.pan ?? "");
     }
     return { creds, pan };
   });
