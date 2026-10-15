@@ -26,9 +26,19 @@
  *     merged_into_id, survivor_id, loser_id, subject_id or entity_id, found
  *     from the schema itself, so a table added later is covered without a
  *     change here;
- *   - no person ever edited it (audit_log by a user).
+ *   - no person ever edited it (audit_log by a user);
+ *   - and if it sits in a family, that family also holds a live client with a
+ *     PAN whose name is the same person's (lib/investors/duplicate-clusters
+ *     similarNames) — so retiring it never takes someone out of their family.
  * A placeholder that holds anything at all is left alone: choosing the client
  * it belongs to is a person's call (Merge Clients suggests the likely one).
+ *
+ * What does NOT count as a person's work (15 Oct 2026, Nimesh C Shah's
+ * "Dilip Manilal Modi Huf (Huf)", beside "Dilip Manilal Modi Huf", both in the
+ * Modi family): the family's own bookkeeping — changing the head's address
+ * wrote `investor.details_from_family` on every member, in the user's
+ * request, and a queued notification (events_outbox) named the record. Both
+ * made the sweep read an empty twin as "someone's work" and keep it.
  *
  * The retired row loses its NOPAN key, so a later file for that name cannot
  * attach a folio to a client in the Trash; it stands up a fresh placeholder
@@ -38,6 +48,13 @@
 import { sql } from "drizzle-orm";
 import { withTenant, type Tx } from "@/db/client";
 import { recordAudit } from "@/lib/audit";
+import { similarNames } from "@/lib/investors/duplicate-clusters";
+
+/** Tables whose rows only NOTIFY about a client; trashing the client loses nothing they hold. */
+const NOTIFICATION_TABLES = new Set(["events_outbox"]);
+
+/** Audit actions the system writes on its own when a family changes — not a person editing the client. */
+const AUTOMATIC_AUDIT_ACTIONS = ["investor.details_from_family", "investor.rm_from_family_head"];
 
 /** Columns that point at a client, wherever they appear. */
 const REF_COLUMNS = [
@@ -61,11 +78,11 @@ export async function findEmptyPlaceholders(
 ): Promise<EmptyPlaceholder[]> {
   const minAge = opts.minAgeMinutes ?? 60;
   const cands = (await tx.execute(sql`
-    SELECT id::text AS id, name, rta_nopan_key FROM investors
+    SELECT id::text AS id, name, rta_nopan_key, family_id::text AS family_id FROM investors
      WHERE tenant_id = ${tenantId}::uuid AND pan IS NULL AND rta_nopan_key LIKE 'NOPAN:%'
        AND deleted_at IS NULL AND merged_into_id IS NULL
        AND created_at < now() - make_interval(mins => ${minAge}::int)
-  `)).rows as EmptyPlaceholder[];
+  `)).rows as Array<EmptyPlaceholder & { family_id: string | null }>;
   if (!cands.length) return [];
 
   const cols = (await tx.execute(sql`
@@ -85,7 +102,7 @@ export async function findEmptyPlaceholders(
   for (const col of cols) {
     if (!left.size) break;
     // The audit trail is read below: only a PERSON's edit keeps a placeholder.
-    if (col.table_name === "audit_log") continue;
+    if (col.table_name === "audit_log" || NOTIFICATION_TABLES.has(col.table_name)) continue;
     const ids = [...left];
     const column = sql.raw(`"${col.column_name}"`);
     const match = col.data_type === "uuid"
@@ -110,10 +127,25 @@ export async function findEmptyPlaceholders(
        WHERE tenant_id = ${tenantId}::uuid AND entity_type = 'investor'
          AND entity_id = ANY(${uuidArray([...left])}::uuid[])
          AND actor_user_id IS NOT NULL
+         AND action <> ALL(${uuidArray(AUTOMATIC_AUDIT_ACTIONS)}::text[])
     `)).rows as Array<{ id: string }>;
     for (const r of touched) left.delete(r.id);
   }
-  return cands.filter((c) => left.has(c.id));
+
+  // A placeholder in a family leaves only if the family still holds that
+  // person under their PAN — otherwise they would silently drop out of it.
+  const inFamily = cands.filter((c) => left.has(c.id) && c.family_id);
+  if (inFamily.length) {
+    const twins = (await tx.execute(sql`
+      SELECT family_id::text AS family_id, name FROM investors
+       WHERE tenant_id = ${tenantId}::uuid AND family_id = ANY(${uuidArray([...new Set(inFamily.map((c) => c.family_id!))])}::uuid[])
+         AND pan IS NOT NULL AND deleted_at IS NULL AND merged_into_id IS NULL
+    `)).rows as Array<{ family_id: string; name: string }>;
+    for (const c of inFamily) {
+      if (!twins.some((t) => t.family_id === c.family_id && similarNames(c.name, t.name))) left.delete(c.id);
+    }
+  }
+  return cands.filter((c) => left.has(c.id)).map(({ id, name, rta_nopan_key }) => ({ id, name, rta_nopan_key }));
 }
 
 /** Move these placeholders to the Trash, one audit row each. Returns how many moved. */
