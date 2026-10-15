@@ -117,7 +117,8 @@ export async function ensureClientFormTemplate(
       await tx.insert(templates).values({
         id: tplId, tenantId, key: spec.key, channel: "whatsapp",
         name: spec.name, description: spec.description,
-        category: spec.category, locale: "en", status: "draft", currentVersionId: verId,
+        // "en-IN" so the Meta import matches this row instead of adding a twin (see onboarding/doc-template.ts).
+        category: spec.category, locale: "en-IN", status: "draft", currentVersionId: verId,
       } as any);
       await tx.insert(templateVersions).values({
         id: verId, templateId: tplId, tenantId, versionNumber: 1,

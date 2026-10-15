@@ -91,6 +91,19 @@ export interface DispatchResult {
     findings?: ComplianceResult["findings"] };
 }
 
+/** The person an automatic send goes out as: the client's RM, or a lead's owner. Undefined when there is none. */
+async function ownerOfRecipient(tx: Tx, input: DispatchInput): Promise<string | undefined> {
+  if (input.investorId) {
+    const r = await tx.execute(sql`SELECT rm_id::text AS id FROM investors WHERE id = ${input.investorId}::uuid AND tenant_id = ${input.tenantId}::uuid LIMIT 1`);
+    return ((r.rows[0] as { id?: string | null } | undefined)?.id) ?? undefined;
+  }
+  if (input.leadId) {
+    const r = await tx.execute(sql`SELECT owner_id::text AS id FROM leads WHERE id = ${input.leadId}::uuid AND tenant_id = ${input.tenantId}::uuid LIMIT 1`);
+    return ((r.rows[0] as { id?: string | null } | undefined)?.id) ?? undefined;
+  }
+  return undefined;
+}
+
 export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchResult> {
   const communicationId = uuid();
 
@@ -625,7 +638,23 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
       // One resolver decides the sender: the acting RM's own mailbox → the firm
       // mailbox (SMTP / OAuth) → Resend with the firm's sender identity. OAuth
       // mailboxes get a freshly-minted access token inside resolveEmailSender.
-      const sender = await resolveEmailSender(tx, input.tenantId, input.actorUserId);
+      //
+      // An automatic send (a workflow rule, a stage automation) has no one acting,
+      // so it goes as the client's own relationship manager (a lead's owner): their
+      // mailbox, their name, replies to them. Without this a firm whose only
+      // connected mailbox is a person's — Nimesh C Shah's is the owner's — could
+      // never send an automatic email, and it fell through to Resend, which has
+      // no platform key on production (15 Oct 2026).
+      const senderUserId = input.actorUserId ?? (await ownerOfRecipient(tx, input));
+      const sender = await resolveEmailSender(tx, input.tenantId, senderUserId);
+      // Nothing can send: say so BEFORE the delivery is marked as sent, so the
+      // row reads "no email account connected", not "provider outcome unknown;
+      // reconciliation required" — nothing reached any provider.
+      if (!sender.smtp?.host && !sender.apiKey && !process.env.RESEND_API_KEY) {
+        throw new Error(
+          "No email account is connected for this firm. Connect one in Settings → Email (the firm's mailbox, or the relationship manager's own), then send again."
+        );
+      }
       await markSending();
       adapterResult = await emailAdapter.send({
         tenantId: input.tenantId,
