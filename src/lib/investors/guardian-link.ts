@@ -36,7 +36,7 @@ export const GUARDIAN_NOT_LINKED =
 
 /** What a save says when a typed guardian PAN linked nobody — also never why. */
 export const GUARDIAN_PAN_NOT_LINKED =
-  "Saved — but the guardian is not linked to a client record. Their details are kept as typed, and the minor has no risk profile of its own until one is recorded for the minor's account. To link a guardian who is your client, pick them under \"Guardian's client record\".";
+  "Saved — but the guardian is not linked to a client record, so the guardian is NOT VERIFIED. Their details are kept as typed. No mutual fund proposal can go to this minor until the guardian is linked or the owner or compliance confirms them, and the minor has no risk profile of its own until one is recorded for the minor's account. To link a guardian who is your client, pick them under \"Guardian's client record\".";
 
 /** Client types that are one natural person. */
 export const GUARDIAN_TYPES = ["individual", "nri", "sole_proprietor"] as const;

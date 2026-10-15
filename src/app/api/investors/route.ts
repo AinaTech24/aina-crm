@@ -188,6 +188,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  let creatingMinor = false;
   try {
     const session = await requireSession();
     // An RM creates clients into their OWN book — requiring investor.edit.all
@@ -204,6 +205,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
     }
     const body = parse.data;
+    creatingMinor = body.investorCategory === "minor";
 
     // A minor is filed the way the registrar import files one (lib/rta/import.ts):
     // MINOR:<own PAN>, or — with no PAN of their own — MINOR:<guardian PAN>:<NAME>,
@@ -385,8 +387,19 @@ export async function POST(req: NextRequest) {
       { status: 201 },
     );
   } catch (err: any) {
-    if (String(err?.message ?? "").includes("investors_tenant_pan_unique")) {
-      return NextResponse.json({ error: "investor with this PAN already exists" }, { status: 409 });
+    // Drizzle wraps the driver error: the constraint is on .cause (the PATCH
+    // route reads it the same way). Reading .message alone answered a 500.
+    const pg = `${err?.message ?? ""} ${err?.cause?.message ?? ""} ${err?.cause?.constraint ?? ""}`;
+    if (pg.includes("investors_tenant_pan_unique")) {
+      // A minor's key is built from the guardian's PAN and the name, so a
+      // retry of the same minor lands here instead of making a second record.
+      // The answer names nobody and says nothing about the guardian.
+      return NextResponse.json(
+        { error: creatingMinor
+            ? "A client with these details is already on record. Search the client list before adding them again."
+            : "investor with this PAN already exists" },
+        { status: 409 },
+      );
     }
     return handleApiError(err);
   }

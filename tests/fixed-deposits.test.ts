@@ -79,7 +79,7 @@ describe("FD opportunity journey", () => {
   const opp = { id: "o1", tenantId: "t", investorId: "i", product: "fd_bonds_ncd", pipeline: "general", status: "open", createdAt: new Date() } as ClientOpportunity;
   const facts = (fd: Facts["fixedDeposit"]): Facts => ({
     kycStatus: null, kycVerified: false, hasUcc: false, mandateStatus: null, mandateAmount: null, riskState: "not_profiled",
-    riskSignedAt: null, proposal: null, policy: null, transaction: null, fixedDeposit: fd,
+    riskSignedAt: null, guardian: "not_applicable", proposal: null, policy: null, transaction: null, fixedDeposit: fd,
   });
   it("passes Executed once an FD is on record", () => {
     expect(skipReason("gen_executed", opp, facts(null))).toBeNull();

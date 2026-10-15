@@ -159,6 +159,80 @@ HAVING count(*) FILTER (WHERE (m.investor_category = 'minor' OR m.is_minor) AND 
     OR count(*) FILTER (WHERE NOT (m.investor_category = 'minor' OR m.is_minor) AND m.guardian_investor_id IS NOT NULL) > 0
  ORDER BY m.tenant_id;
 
+-- ── 6. MF proposals to minors since 0234, for the compliance reviewer ──────
+--    One row per proposal (masked ids, dates, flags; never a name or figure).
+--    own_assessment_before_send = the minor's OWN account had a signed,
+--    confirmed assessment when it was sent; false means the send may have
+--    rested on the guardian's copy.
+SELECT p.tenant_id,
+       '…' || right(p.id::text, 6)                                         AS proposal,
+       '…' || right(m.id::text, 6)                                         AS minor_record,
+       p.status, p.sent_at::date AS sent_on,
+       (m.guardian_investor_id IS NOT NULL)                                AS linked_now,
+       (g.id IS NOT NULL AND g.rm_id IS DISTINCT FROM m.rm_id)             AS guardian_other_rm,
+       EXISTS (SELECT 1 FROM risk_profile_responses r
+                WHERE r.tenant_id = m.tenant_id AND r.investor_id = m.id
+                  AND NOT COALESCE(r.provisional, false)
+                  AND r.signed_at <= COALESCE(p.sent_at, p.created_at))     AS own_assessment_before_send,
+       (p.suitability_override_reason IS NOT NULL)                         AS owner_override
+  FROM proposals p
+  JOIN investors m ON m.id = p.investor_id AND m.tenant_id = p.tenant_id
+                  AND (m.investor_category = 'minor' OR m.is_minor)
+  LEFT JOIN investors g ON g.id = m.guardian_investor_id AND g.tenant_id = m.tenant_id
+ WHERE p.created_at >= timestamptz '2026-10-13 00:00+05:30'
+   AND p.status NOT IN ('draft')
+   AND EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(p.products, '[]'::jsonb)) it WHERE it ->> 'kind' = 'mf')
+ ORDER BY p.tenant_id, sent_on NULLS LAST, proposal;
+
+-- ── 7. Minors whose guardian is not verified (2026-10-15 onboarding rule) ───
+--    pending      = latest guardian event is a refused typed PAN, a removed
+--                   link, or a link the row no longer carries: MF proposals are
+--                   blocked until the guardian is linked or confirmed.
+--    not_recorded = an unlinked minor with no guardian event (saved before the
+--                   rule): NOT blocked; listed for the firm's policy decision.
+WITH ev AS (
+  SELECT DISTINCT ON (a.tenant_id, a.entity_id) a.tenant_id, a.entity_id, a.action
+    FROM audit_log a
+   WHERE a.entity_type = 'investor'
+     AND a.action IN ('investor.guardian_linked', 'investor.guardian_unlinked',
+                      'investor.guardian_not_linked', 'investor.guardian_verified')
+   ORDER BY a.tenant_id, a.entity_id, a.at DESC, a.id DESC
+)
+SELECT m.tenant_id,
+       count(*) FILTER (WHERE m.guardian_investor_id IS NOT NULL)                                AS linked,
+       count(*) FILTER (WHERE m.guardian_investor_id IS NULL AND ev.action = 'investor.guardian_verified') AS confirmed,
+       count(*) FILTER (WHERE m.guardian_investor_id IS NULL AND ev.action IN
+                          ('investor.guardian_not_linked', 'investor.guardian_unlinked', 'investor.guardian_linked')) AS pending,
+       count(*) FILTER (WHERE m.guardian_investor_id IS NULL AND ev.action IS NULL)             AS not_recorded
+  FROM investors m
+  LEFT JOIN ev ON ev.tenant_id = m.tenant_id AND ev.entity_id = m.id
+ WHERE (m.investor_category = 'minor' OR m.is_minor) AND m.deleted_at IS NULL AND m.merged_into_id IS NULL
+ GROUP BY m.tenant_id
+ ORDER BY m.tenant_id;
+
+-- ── 8. Size of what the unscoped routes COULD have disclosed ────────────────
+--    Before the hotfix, GET /api/audit?entityType=investor&entityId=<id>
+--    returned ANY client's change history to any signed-in user of the firm
+--    who knew or guessed the id, and the AI QRR commentary route loaded any
+--    client by id. Reads were not audited, so the database cannot say who
+--    read what. This sizes the surface: per firm, how many client histories
+--    there were and how many of them belong to minors linked to a guardian in
+--    another RM's book (the G-1 case). The readers are only in web access
+--    logs (see G1_GUARDIAN_HOTFIX.md §13.6 for the log query).
+SELECT a.tenant_id,
+       t.restrict_user_data_scope                                          AS data_wall_on,
+       count(DISTINCT a.entity_id)                                         AS clients_with_history,
+       count(*)                                                            AS history_rows,
+       count(DISTINCT a.entity_id) FILTER (WHERE EXISTS (
+         SELECT 1 FROM investors m JOIN investors g ON g.id = m.guardian_investor_id AND g.tenant_id = m.tenant_id
+          WHERE m.id = a.entity_id AND m.tenant_id = a.tenant_id AND g.rm_id IS DISTINCT FROM m.rm_id)) AS cross_book_minor_histories
+  FROM audit_log a JOIN tenants t ON t.id = a.tenant_id
+ WHERE a.entity_type = 'investor'
+ GROUP BY a.tenant_id, t.restrict_user_data_scope
+ ORDER BY a.tenant_id;
+
 -- Not measurable from the database: who read a client's change history through
--- GET /api/audit before it was scoped (reads are not audited). Web access logs
--- of that path, filtered to entityType=investor, are the only source.
+-- GET /api/audit, or asked the AI QRR commentary for a client, before those
+-- routes were scoped (reads are not audited). Web access logs of those paths
+-- are the only source; any read by a user outside the client's book goes to
+-- the privacy / compliance reviewer as a suspected disclosure.

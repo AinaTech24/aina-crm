@@ -1,4 +1,5 @@
 import { suitabilityProfile } from "@/lib/risk-profile/own-assessment";
+import { GUARDIAN_PENDING_MESSAGE, guardianVerification } from "@/lib/investors/guardian-verification";
 import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/proposals/[id]/send
@@ -332,6 +333,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             { status: 412 }
           );
         }
+      }
+
+      // A minor whose guardian is not verified (G-1): no mutual fund proposal.
+      if (mfLines.length && p.investorId
+          && (await guardianVerification(tx, session.tenantId, p.investorId)) === "pending") {
+        return NextResponse.json({ error: GUARDIAN_PENDING_MESSAGE, field: "guardian" }, { status: 412 });
       }
 
       let clientProfile: any = null;

@@ -19,6 +19,9 @@ import { withTenant } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
 import { loadClientSummary } from "@/lib/investors/summary";
 import { guardianForViewer } from "@/lib/investors/guardian-link";
+import { guardianVerification, guardianVerificationLabel } from "@/lib/investors/guardian-verification";
+import { can } from "@/lib/auth/rbac";
+import { ConfirmGuardianButton } from "@/components/investors/ConfirmGuardianButton";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { formatCount, formatDate, formatMoney, humanise } from "@/lib/format";
@@ -51,7 +54,7 @@ const Gap = ({ children }: { children: ReactNode }) => (
 export async function ClientSummaryStrip({
   session, investorId, investorName, show,
 }: {
-  session: Pick<SessionUser, "tenantId" | "userId" | "branchId" | "roles">;
+  session: Pick<SessionUser, "tenantId" | "userId" | "branchId" | "roles"> & Partial<Pick<SessionUser, "permissions">>;
   investorId: string;
   investorName: string;
   show: Show;
@@ -62,7 +65,9 @@ export async function ClientSummaryStrip({
     // profile is shown beside it, labelled, only to a user who may open the
     // guardian (G-1).
     const g = sum?.guardianId ? await guardianForViewer(tx, session, sum.guardianId) : null;
-    return sum ? { ...sum, guardianRisk: g && !g.hidden ? g.riskProfile : null } : null;
+    // A minor whose guardian could not be linked says so here (G-1).
+    const guardian = sum ? await guardianVerification(tx, session.tenantId, investorId) : "not_applicable";
+    return sum ? { ...sum, guardianRisk: g && !g.hidden ? g.riskProfile : null, guardian } : null;
   }, {
     userId: session.userId,
     branchId: session.branchId ?? undefined,
@@ -133,6 +138,15 @@ export async function ClientSummaryStrip({
             )}
             {s.guardianRisk && (
               <div className="text-2xs text-muted-foreground">Guardian's: {humanise(s.guardianRisk)} (not this account's)</div>
+            )}
+          </Cell>
+        )}
+        {s.guardian !== "not_applicable" && (
+          <Cell label="Guardian">
+            <Badge raw tone={s.guardian === "pending" ? "warning" : "neutral"}>{guardianVerificationLabel(s.guardian)}</Badge>
+            {(s.guardian === "pending" || s.guardian === "not_recorded")
+              && can(session.roles, "compliance.approve", session.permissions) && (
+              <ConfirmGuardianButton investorId={investorId} />
             )}
           </Cell>
         )}

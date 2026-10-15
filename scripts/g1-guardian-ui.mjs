@@ -118,6 +118,38 @@ try {
   const vis = await a.raw(`/dashboard/investors/${MV}/edit`);
   check(vis.text.includes(VISIBLE_NAME), "RM A edit page of the in-book minor still names its in-book guardian");
 
+  // Dashboards and the proposal form (2026-10-15): the RM's own desk, and the
+  // Branch Head Dashboard of the minor's branch (the hidden guardian is in
+  // another branch; the minor's row still carries the guardian's 0234 copy).
+  const pages = [[a, "RM A", "/dashboard", "RM dashboard"], [a, "RM A", `/dashboard/proposals/new?investorId=${MH}`, "new proposal form"]];
+  const BH = process.env.BRANCH_HEAD;
+  if (BH) pages.push([await as(BH), "branch head", "/dashboard", "Branch Head dashboard"]);
+  for (const [who, label, path, what] of pages) {
+    const r = await who.raw(path);
+    check(r.status === 200, `${label} ${what}: ${r.status}`);
+    check(leaks(r.text).length === 0, `${label} ${what} document carries no hidden guardian name / risk (${leaks(r.text).join(", ") || "none"})`);
+    const t = await who.rendered(path);
+    check(!/license is|no_subscription/i.test(t), `${label} ${what} renders the page itself (not a licence block)`);
+    const tl = leaks(t);
+    check(tl.length === 0, `${label} ${what} rendered DOM carries none (${tl.join(", ") || "none"})`);
+    const must = { "Branch Head dashboard": "Branch", "RM dashboard": "UI RM A", "new proposal form": MINOR_HIDDEN_NAME }[what];
+    check(t.includes(must), `${label} ${what} is the real page (shows "${must}")`);
+  }
+
+  // A minor whose typed guardian PAN linked nobody (incomplete onboarding).
+  const MP = process.env.MINOR_PENDING;
+  if (MP) {
+    const t = await a.rendered(`/dashboard/investors/${MP}`);
+    check(t.includes("Guardian not verified"), "RM A client page of a minor with an unlinked guardian says \"Guardian not verified\"");
+    check(!t.includes("Confirm guardian"), "RM A is not offered \"Confirm guardian\"");
+    const st = await a.raw(`/api/investors/${MP}/guardian-verification`);
+    check(st.status === 200 && JSON.parse(st.text).status === "pending", `RM A reads the status: ${st.text}`);
+    const self = await a.send("POST", `/api/investors/${MP}/guardian-verification`, { note: "I checked it myself, honestly." });
+    check(self.status === 403, `RM A cannot confirm the guardian (${self.status})`);
+    const ot = await (await as(OWNER)).rendered(`/dashboard/investors/${MP}`);
+    check(ot.includes("Guardian not verified") && ot.includes("Confirm guardian"), "the owner sees the status and the \"Confirm guardian\" action");
+  }
+
   const o = await as(OWNER);
   const od = await o.raw(`/dashboard/investors/${MH}/edit`);
   check(od.text.includes(HIDDEN_NAME), "the owner (whole book) is shown the guardian's name");

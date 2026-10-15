@@ -15,7 +15,7 @@ const opp = (over: Partial<ClientOpportunity> = {}): ClientOpportunity => ({
 
 const facts = (over: Partial<Facts> = {}): Facts => ({
   kycStatus: "verified", kycVerified: true, hasUcc: true, mandateStatus: "active", mandateAmount: 25000,
-  riskState: "current", riskSignedAt: new Date().toISOString(), proposal: null, policy: null, transaction: null, fixedDeposit: null,
+  riskState: "current", riskSignedAt: new Date().toISOString(), guardian: "not_applicable", proposal: null, policy: null, transaction: null, fixedDeposit: null,
   ...over,
 });
 
