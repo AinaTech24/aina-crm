@@ -209,8 +209,17 @@ type MergePreview = {
 
 const CONFIRM_WORD = "MERGE";
 
-export function MergeCompareDialog({ members, onClose, onMerged }: { members: Member[]; onClose: () => void; onMerged: () => void }) {
-  const [survivorId, setSurvivorId] = useState<string>(() => defaultSurvivor(members));
+export function MergeCompareDialog({
+  members, onClose, onMerged, initialSurvivorId,
+}: {
+  members: Member[];
+  onClose: () => void;
+  onMerged: () => void;
+  /** The record the person already chose to keep (Merge by search's "Main client"). */
+  initialSurvivorId?: string;
+}) {
+  const [survivorId, setSurvivorId] = useState<string>(() =>
+    initialSurvivorId && members.some((m) => m.id === initialSurvivorId) ? initialSurvivorId : defaultSurvivor(members));
   /** Records taking part. Everything starts included; the kept one always is. */
   const [included, setIncluded] = useState<Set<string>>(() => new Set(members.map((m) => m.id)));
   const [preview, setPreview] = useState<MergePreview | null>(null);

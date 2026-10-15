@@ -1,16 +1,21 @@
 "use client";
 
 /**
- * Merge by search — find the records yourself, tick them, then "Compare &
- * merge" opens the SAME dialog Find Duplicates uses (MergeCompareDialog):
- * choose which records take part, which one is the primary, and field by
- * field which value the merged record keeps. One merge screen everywhere, so
- * nobody has to learn two.
+ * Merge by search — two searches, the way the firm asked for it (14 Oct 2026):
+ *
+ *   1. Main client       the record that stays
+ *   2. Client to merge   the record that goes into it
+ *
+ * With both chosen, the two sit side by side and "Merge" opens the SAME
+ * dialog Find Duplicates uses (MergeCompareDialog) with the main client
+ * already set as the record to keep — so the field-by-field choice, the PAN
+ * guard, the preview of what moves and the undo are the ones every merge has.
+ * Everything runs through src/lib/investors/merge.ts.
  */
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, GitMerge, Loader2, Search, X } from "lucide-react";
+import { ArrowDown, ArrowLeftRight, GitMerge, Loader2, Search, X } from "lucide-react";
 import { buttonClass } from "@/components/ui/button-class";
 import { MergeCompareDialog, type Member } from "@/components/investors/DuplicateMerge";
 
@@ -40,20 +45,100 @@ const toMember = (c: Candidate): Member => ({
   rm_name: null,
 });
 
+const identifiers = (c: Candidate) =>
+  [c.pan, c.phone, c.email, c.address ?? c.city].filter(Boolean).join(" · ") || "No PAN, mobile or email";
+
 export function MergeClientTool() {
   const router = useRouter();
+  const [main, setMain] = useState<Candidate | null>(null);
+  const [other, setOther] = useState<Candidate | null>(null);
+  const [merging, setMerging] = useState(false);
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <ClientPicker
+          step="1"
+          title="Main client"
+          hint="This record stays."
+          picked={main}
+          onPick={setMain}
+          exclude={other?.id}
+        />
+        <ClientPicker
+          step="2"
+          title="Client to merge"
+          hint="This record goes into the main client."
+          picked={other}
+          onPick={setOther}
+          exclude={main?.id}
+        />
+      </div>
+
+      {main && other && (
+        <div className="card-surface p-5 space-y-4">
+          <div className="grid items-center gap-3 md:grid-cols-[1fr_auto_1fr]">
+            <ChosenCard label="Client to merge" c={other} />
+            <div className="flex justify-center text-muted-foreground" aria-hidden>
+              <ArrowDown className="size-5 md:-rotate-90" />
+            </div>
+            <ChosenCard label="Main client — stays" c={main} highlight />
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => { setMain(other); setOther(main); }}
+              className={buttonClass("ghost")}
+            >
+              <ArrowLeftRight className="size-4" aria-hidden /> Swap
+            </button>
+            <button type="button" onClick={() => setMerging(true)} className={buttonClass("primary")}>
+              <GitMerge className="size-4" aria-hidden /> Merge
+            </button>
+          </div>
+        </div>
+      )}
+
+      {merging && main && other && (
+        <MergeCompareDialog
+          members={[toMember(main), toMember(other)]}
+          initialSurvivorId={main.id}
+          onClose={() => setMerging(false)}
+          onMerged={() => {
+            setMerging(false);
+            setMain(null);
+            setOther(null);
+            router.refresh();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** One search box: type, pick a client from the results; the pick shows with Change. */
+function ClientPicker({
+  step, title, hint, picked, onPick, exclude,
+}: {
+  step: string;
+  title: string;
+  hint: string;
+  picked: Candidate | null;
+  onPick: (c: Candidate | null) => void;
+  exclude?: string;
+}) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Candidate[]>([]);
   const [searching, setSearching] = useState(false);
-  const [picked, setPicked] = useState<Candidate[]>([]);
-  const [comparing, setComparing] = useState(false);
   const seq = useRef(0);
+  const inputId = `merge-search-${step}`;
 
   // Debounced search; `seq` stops a slow earlier request overwriting fresher results.
   useEffect(() => {
     const term = q.trim();
-    if (term.length < 2) {
+    if (picked || term.length < 2) {
       setResults([]);
+      setSearching(false);
       return;
     }
     const mine = ++seq.current;
@@ -68,117 +153,84 @@ export function MergeClientTool() {
       }
     }, 300);
     return () => clearTimeout(t);
-  }, [q]);
+  }, [q, picked]);
 
-  const isPicked = (id: string) => picked.some((p) => p.id === id);
-  function toggle(c: Candidate) {
-    setPicked((prev) => (prev.some((p) => p.id === c.id) ? prev.filter((p) => p.id !== c.id) : [...prev, c]));
-  }
+  const shown = results.filter((c) => c.id !== exclude);
 
   return (
-    <div className="space-y-4">
-      {/* Step 1 — find */}
-      <div className="card-surface p-5">
-        <h2 className="text-sm font-semibold">1. Find the records</h2>
-        <p className="text-xs text-muted-foreground">Search by name, PAN, email, mobile or address, and tick every record that is the same person.</p>
-        <div className="relative mt-3">
-          <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Type at least 2 characters…"
-            aria-label="Search clients to merge"
-            className="input-base w-full pl-9"
-            autoFocus
-          />
-          {searching && <Loader2 className="size-4 absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-muted-foreground" />}
-        </div>
+    <div className="card-surface p-5">
+      <label htmlFor={inputId} className="block text-sm font-semibold">
+        {step}. {title}
+      </label>
+      <p className="text-xs text-muted-foreground">{hint}</p>
 
-        {q.trim().length >= 2 && (
-          results.length === 0 && !searching ? (
-            <p className="mt-3 text-xs text-muted-foreground">No clients match that search.</p>
-          ) : (
-            <ul className="mt-3 max-h-80 overflow-y-auto divide-y divide-border rounded-lg border border-border">
-              {results.map((c) => {
-                const on = isPicked(c.id);
-                return (
-                  <li key={c.id}>
-                    <button
-                      type="button"
-                      onClick={() => toggle(c)}
-                      aria-pressed={on}
-                      className={`w-full text-left px-4 py-2.5 flex items-center gap-3 transition ${on ? "bg-primary/5" : "hover:bg-secondary/50"}`}
-                    >
-                      <span className={`size-4 rounded border grid place-items-center shrink-0 ${on ? "bg-primary border-primary text-primary-foreground" : "border-border"}`}>
-                        {on && <Check className="size-3" />}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-medium truncate">{c.name}</span>
-                        <span className="block text-2xs text-muted-foreground truncate tabular-nums">
-                          {[c.pan, c.phone, c.email, c.address ?? c.city].filter(Boolean).join(" · ") || "no identifiers"}
-                        </span>
-                      </span>
-                      <span className="text-right shrink-0">
-                        <span className="block text-xs font-medium tabular-nums">{c.aum > 0 ? inr(c.aum) : "No AUM"}</span>
-                        <span className="block text-2xs text-muted-foreground">{c.folios} folio{c.folios === 1 ? "" : "s"}</span>
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )
-        )}
-      </div>
-
-      {/* Step 2 — compare & merge */}
-      <div className="card-surface p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold">2. Compare and merge</h2>
-            <p className="text-xs text-muted-foreground">
-              {picked.length === 0
-                ? "The records you tick appear here."
-                : picked.length === 1
-                  ? "Tick at least one more record."
-                  : "Next you choose the primary record and which value to keep for each field."}
-            </p>
+      {picked ? (
+        <div className="mt-3 flex items-start gap-3 rounded-lg border border-primary/40 bg-primary/5 px-4 py-3">
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium truncate">{picked.name}</div>
+            <div className="text-2xs text-muted-foreground truncate tabular-nums">{identifiers(picked)}</div>
+            <div className="text-2xs text-muted-foreground tabular-nums">
+              {picked.aum > 0 ? inr(picked.aum) : "No AUM"} · {picked.folios} folio{picked.folios === 1 ? "" : "s"}
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setComparing(true)}
-            disabled={picked.length < 2}
-            className={buttonClass("primary")}
-          >
-            <GitMerge className="size-4" aria-hidden /> Compare &amp; merge {picked.length >= 2 ? `(${picked.length})` : ""}
+          <button type="button" onClick={() => { onPick(null); setQ(""); }} className={buttonClass("ghost", "sm")}>
+            <X className="size-3.5" aria-hidden /> Change
           </button>
         </div>
-        {picked.length > 0 && (
-          <ul className="mt-3 flex flex-wrap gap-2">
-            {picked.map((c) => (
-              <li key={c.id} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-secondary/50 py-1 pl-3 pr-1 text-xs">
-                <span className="font-medium">{c.name}</span>
-                {c.pan && <span className="font-mono text-muted-foreground">{c.pan}</span>}
-                <button type="button" onClick={() => toggle(c)} className="btn-icon size-6" aria-label={`Remove ${c.name}`}>
-                  <X className="size-3.5" />
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      {comparing && (
-        <MergeCompareDialog
-          members={picked.map(toMember)}
-          onClose={() => setComparing(false)}
-          onMerged={() => {
-            setPicked([]);
-            setQ("");
-            router.refresh();
-          }}
-        />
+      ) : (
+        <>
+          <div className="relative mt-3">
+            <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden />
+            <input
+              id={inputId}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Name, PAN, mobile or email"
+              className="input-base w-full pl-9"
+              autoComplete="off"
+            />
+            {searching && <Loader2 className="size-4 absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-muted-foreground" />}
+          </div>
+          {q.trim().length >= 2 && !searching && shown.length === 0 && (
+            <p className="mt-3 text-xs text-muted-foreground">No clients match that search.</p>
+          )}
+          {shown.length > 0 && (
+            <ul className="mt-3 max-h-72 overflow-y-auto divide-y divide-border rounded-lg border border-border">
+              {shown.map((c) => (
+                <li key={c.id}>
+                  <button
+                    type="button"
+                    onClick={() => onPick(c)}
+                    className="w-full text-left px-4 py-2.5 flex items-center gap-3 hover:bg-secondary/50 transition"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium truncate">{c.name}</span>
+                      <span className="block text-2xs text-muted-foreground truncate tabular-nums">{identifiers(c)}</span>
+                    </span>
+                    <span className="text-right shrink-0">
+                      <span className="block text-xs font-medium tabular-nums">{c.aum > 0 ? inr(c.aum) : "No AUM"}</span>
+                      <span className="block text-2xs text-muted-foreground">{c.folios} folio{c.folios === 1 ? "" : "s"}</span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
+    </div>
+  );
+}
+
+function ChosenCard({ label, c, highlight }: { label: string; c: Candidate; highlight?: boolean }) {
+  return (
+    <div className={`rounded-lg px-4 py-3 ${highlight ? "border border-primary/40 bg-primary/5" : "bg-secondary/70"}`}>
+      <div className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="mt-1 text-sm font-semibold truncate">{c.name}</div>
+      <div className="text-2xs text-muted-foreground truncate tabular-nums">{identifiers(c)}</div>
+      <div className="text-2xs text-muted-foreground tabular-nums">
+        {c.aum > 0 ? inr(c.aum) : "No AUM"} · {c.folios} folio{c.folios === 1 ? "" : "s"}
+      </div>
     </div>
   );
 }
