@@ -55,6 +55,7 @@ import { recomputeAllFamilyHealth } from "@/lib/families/health-persist";
 import { recomputeAllGoals } from "@/lib/goal-planning/recompute";
 import { recomputeCombinedAum, revalueAllFolios } from "@/lib/finance/aum-persist";
 import { matchProposalExecutions } from "@/lib/proposals/execution";
+import { checkRtaFeedHealth } from "@/lib/rta/feed-health";
 import { matchBookedBusiness } from "@/lib/business/rta-match";
 import { retireEmptyPlaceholders } from "@/lib/rta/placeholder-sweep";
 import { holdsMoneySql, restoreTrashedHolders } from "@/lib/investors/holds-money";
@@ -725,6 +726,16 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
         }
       } catch (e) {
         console.warn(`[daily-ops] tenant ${tenantId}: proposal execution matching failed:`, (e as Error)?.message);
+      }
+
+      // ── RTA feed health: has this firm's registrar data stopped? ───────
+      // Files that no saved password opens, or no mail at all for a week, tell
+      // the owners (lib/rta/feed-health.ts). Its own savepoint.
+      try {
+        const alerts = await tx.transaction((sp) => checkRtaFeedHealth(sp, tenantId));
+        if (alerts > 0) console.log(`[daily-ops] tenant ${tenantId}: ${alerts} RTA feed alert(s) sent`);
+      } catch (e) {
+        console.warn(`[daily-ops] tenant ${tenantId}: RTA feed health check failed:`, (e as Error)?.message);
       }
 
       // ── CS5: AUM "moments that matter" ────────────────────────────────
