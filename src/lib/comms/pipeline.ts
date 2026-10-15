@@ -104,6 +104,16 @@ async function ownerOfRecipient(tx: Tx, input: DispatchInput): Promise<string | 
   return undefined;
 }
 
+/** The firm's (first) active owner, for an automatic send nobody else can carry. */
+async function firmOwnerId(tx: Tx, tenantId: string): Promise<string | undefined> {
+  const r = await tx.execute(sql`
+    SELECT id::text AS id FROM users
+     WHERE tenant_id = ${tenantId}::uuid AND status = 'active' AND 'owner' = ANY(roles)
+     ORDER BY created_at LIMIT 1
+  `);
+  return ((r.rows[0] as { id?: string } | undefined)?.id) ?? undefined;
+}
+
 export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchResult> {
   const communicationId = uuid();
 
@@ -645,8 +655,19 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
       // connected mailbox is a person's — Nimesh C Shah's is the owner's — could
       // never send an automatic email, and it fell through to Resend, which has
       // no platform key on production (15 Oct 2026).
+      //
+      // If that RM has no mailbox either, and the firm has no firm-wide mailbox or
+      // Resend key, the automatic send goes through the firm OWNER's mailbox, so one
+      // RM without a mailbox does not stop the firm's automatic email.
       const senderUserId = input.actorUserId ?? (await ownerOfRecipient(tx, input));
-      const sender = await resolveEmailSender(tx, input.tenantId, senderUserId);
+      let sender = await resolveEmailSender(tx, input.tenantId, senderUserId);
+      if (!input.actorUserId && !sender.smtp?.host && !sender.apiKey && !process.env.RESEND_API_KEY) {
+        const ownerId = await firmOwnerId(tx, input.tenantId);
+        if (ownerId && ownerId !== senderUserId) {
+          const viaOwner = await resolveEmailSender(tx, input.tenantId, ownerId);
+          if (viaOwner.smtp?.host) sender = viaOwner;
+        }
+      }
       // Nothing can send: say so BEFORE the delivery is marked as sent, so the
       // row reads "no email account connected", not "provider outcome unknown;
       // reconciliation required" — nothing reached any provider.
