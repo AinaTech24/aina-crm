@@ -1,0 +1,102 @@
+name: CI core
+
+# The checks themselves (typecheck, guards, tests, migrations, mobile). Reusable: the branch/PR
+# workflow (ci.yml) and the deploy workflow call it, so a push to main is validated ONCE.
+on:
+  workflow_call:
+
+jobs:
+  quality:
+    name: Typecheck · RBAC · Calc · Tests
+    runs-on: ubuntu-latest
+    env:
+      # `tsc --noEmit` over the whole app outgrew Node's default ~2 GB heap on
+      # the runner (2026-10-01: "JavaScript heap out of memory" after ~2 min,
+      # which failed verify and so skipped every deploy). A standard runner
+      # has at least 7 GB; give the checks 6 GB of it.
+      NODE_OPTIONS: --max-old-space-size=6144
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: RBAC guard (every mutation route is capability/session gated)
+        run: npm run check:rbac
+      - name: Migration numbering guard (no new duplicate prefixes)
+        run: npm run check:migrations
+      - name: Calculator math assertions
+        run: npm run check:calc
+      - name: Hardcoded-color ratchet (shared components stay themeable)
+        run: npm run check:colors
+      - name: as-any ratchet (type-safety doesn't regress)
+        run: npm run check:asany
+      - name: Math-convention import guard (no file mixes nominal + effective)
+        run: npm run check:mathimports
+      - name: Unit tests (money math + central spine)
+        run: npm test
+      - name: Lint
+        run: npm run lint
+
+  mobile:
+    name: Mobile types and regression tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test -- --runInBand
+
+  db-checks:
+    name: Migrate · RLS coverage
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mfd
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/mfd
+      # Activates the DB-backed vitest suites (RLS isolation, share-token claim)
+      # which skipIf(!TEST_DATABASE_URL) — previously dead in CI because no job
+      # set this while also having a database.
+      #
+      # This URL is the NON-superuser `mfd_app` role (provisioned below, after
+      # migrate). Postgres superusers bypass Row-Level Security no matter what
+      # FORCE says, so the RLS-isolation suite is only meaningful — and only
+      # passes — on this role. DATABASE_URL stays the superuser for DDL.
+      TEST_DATABASE_URL: postgres://mfd_app:ci-app-role@localhost:5432/mfd
+      APP_DB_PASSWORD: ci-app-role
+      ALLOW_SYSTEM_TX: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Apply migrations
+        run: npm run migrate:all
+      - name: RLS coverage guard (every tenant table has a policy)
+        run: npm run check:rls
+      - name: Provision the non-superuser app role (RLS is only enforced for it)
+        run: node scripts/provision-app-role.mjs
+      - name: DB-backed unit tests (RLS isolation · share-token · webhook sigs)
+        run: npx vitest run

@@ -16,7 +16,8 @@ import { require as requireCap, requireAny, can } from "@/lib/auth/rbac";
 import { assertActiveLicense, assertModuleEnabled, assertInvestorQuota } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { buildInvestorConditions } from "@/lib/investors/list-filters";
-import { investorScopeCondition } from "@/lib/investors/access";
+import { investorScopeCondition, investorScopeSql } from "@/lib/investors/access";
+import { existingClientForPan } from "@/lib/investors/client-return";
 import { healthFields } from "@/lib/investors/health";
 import { NomineesArray } from "@/lib/investors/nominee";
 import { ReferralsArray } from "@/lib/investors/referral";
@@ -220,6 +221,24 @@ export async function POST(req: NextRequest) {
     } else {
       if (!typedPan) return NextResponse.json({ error: "PAN is required.", field: "pan" }, { status: 400 });
       storedPan = typedPan;
+    }
+
+    // A PAN already in the CRM is never a second client. Someone who left
+    // (Exited / Closed) is brought back, someone in the Trash restored — with
+    // their history, family and documents — rather than typed in again
+    // (lib/investors/client-return.ts).
+    const existing = await withTenant(session.tenantId, async (tx) => {
+      const visible = await investorScopeSql(tx, session, "i2").catch(() => sql`FALSE`);
+      return existingClientForPan(tx, session.tenantId, storedPan, visible);
+    }, { userId: session.userId, branchId: session.branchId ?? undefined, roles: session.roles });
+    if (existing) {
+      const error =
+        existing.state === "trash"
+          ? "This client was deleted and is in the Trash. Restore them to bring back their history."
+          : existing.state === "exited"
+            ? "This client is already in the CRM, marked as exited. Reactivate them instead of adding them again."
+            : "A client with this PAN already exists.";
+      return NextResponse.json({ error, field: "pan", existing }, { status: 409 });
     }
 
     const id = uuid();

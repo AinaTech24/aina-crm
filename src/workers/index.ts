@@ -6,6 +6,7 @@
  * `WORKER_GROUPS=outbox,wf,seg` etc.
  */
 
+import v8 from "node:v8";
 import "dotenv/config";
 import { startOutboxPollerWorker } from "./outbox-poller";
 import { startWorkflowRunnerWorker } from "./workflow-runner";
@@ -231,15 +232,21 @@ if (groups.includes("monthly")) {
 }
 
 /**
- * Daily NAV refresh — downloads the AMFI NAVAll feed once a day at 07:00 local
+ * Daily NAV refresh — downloads the AMFI NAVAll feed once a day at 06:00 local
  * time (after the prior day's NAVs are published) and upserts scheme_nav. This
  * is what keeps live portfolio valuation + XIRR current. Self-scheduled tick,
  * same rationale as the daily-ops scanner (single sweep, not per-tenant).
+ *
+ * It must run BEFORE the 06:30 daily-ops scanner, which saves every client's
+ * AUM from these NAVs. At 07:00 it ran after it, so the stored AUM the
+ * dashboards read was a day behind the client page's live figure (15 Oct
+ * 2026: Ahpal Rs 720.45 Cr stored vs Rs 726.47 Cr on the pages, We Care
+ * Rs 8.26 Cr behind).
  */
 scheduleDaily(
   "nav",
   "nav-refresh",
-  7,
+  6,
   0,
   async () => {
     const r = await refreshNav();
@@ -250,7 +257,7 @@ scheduleDaily(
 
 /**
  * Daily MF scheme catalog sync — pulls the full scheme list from mfapi.in at
- * 06:30 (before the AMFI NAV refresh) and progressively enriches scheme detail
+ * 05:30 (before the AMFI NAV refresh) and progressively enriches scheme detail
  * (fund house / type / category / latest NAV). Platform-shared (mf_schemes),
  * so every MFD tenant gets the same up-to-date scheme + AMC + NAV catalog,
  * which powers the scheme/AMC autocomplete. Lives in the "nav" group.
@@ -258,7 +265,7 @@ scheduleDaily(
 scheduleDaily(
   "nav",
   "mfapi-catalog",
-  6,
+  5,
   30,
   async () => {
     const c = await syncMfSchemeCatalog();
@@ -269,7 +276,7 @@ scheduleDaily(
 );
 
 /**
- * Reconciliation scanner — fires once a day at 07:30 local (after the 07:00
+ * Reconciliation scanner — fires once a day at 07:30 local (after the 06:00
  * NAV refresh). Turns newly-ingested RTA transactions (redemptions, SIP
  * bounces) into automation events so the recipes chase them hands-off, and
  * reports AUM drift. Self-scheduled tick, same rationale as the ops scanner.
@@ -367,6 +374,26 @@ process.on("uncaughtException", (err) => {
 });
 
 console.log(`✓ Worker process up. Groups: ${groups.join(", ")}`);
+
+// Memory shape every 5 minutes (heap used / total / RSS / external, with the peaks since
+// boot), so a heap cap for the worker can be chosen from measurements. Read-only; unref'd
+// so it never keeps the process alive.
+{
+  const mb = (n: number) => Math.round(n / 1024 / 1024);
+  let peakRss = 0;
+  let peakHeap = 0;
+  const logMem = () => {
+    const m = process.memoryUsage();
+    peakRss = Math.max(peakRss, m.rss);
+    peakHeap = Math.max(peakHeap, m.heapUsed);
+    console.log(
+      `[mem] rss=${mb(m.rss)}MB heapUsed=${mb(m.heapUsed)}MB heapTotal=${mb(m.heapTotal)}MB external=${mb(m.external)}MB ` +
+        `arrayBuffers=${mb(m.arrayBuffers)}MB heapLimit=${mb(v8.getHeapStatistics().heap_size_limit)}MB peakRss=${mb(peakRss)}MB peakHeap=${mb(peakHeap)}MB`
+    );
+  };
+  setInterval(logMem, 5 * 60 * 1000).unref();
+  setTimeout(logMem, 60 * 1000).unref();
+}
 
 const shutdown = async () => {
   console.log("Shutting down workers...");

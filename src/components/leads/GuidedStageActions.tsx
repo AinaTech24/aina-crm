@@ -78,6 +78,10 @@ const TASK_ON_TRANSITION: Record<string, TransitionTask> = {
   mandate_create: { title: "Register the SIP mandate (NACH / e-mandate)", type: "follow_up", department: "operations", priority: "high", dueInDays: 3 },
 };
 
+/** Steps whose pop-up opens every time: the task ones (assignee + due date) and
+ *  the two "already active" ones (UCC number, mandate details). */
+const POPUP_STAGES = new Set([...Object.keys(TASK_ON_TRANSITION), "ucc_activated", "mandate_activated"]);
+
 /** Loop stages that schedule a next-touch reminder for the lead owner. */
 const NEXT_TOUCH_STAGES = new Set(["call_back_later", "call_not_connected", "contact_in_future"]);
 
@@ -463,7 +467,11 @@ export function GuidedStageActions({
           // Nothing to fill in, nothing to ask: move straight on. The pop-up
           // takes no notes (removed at the firm's request), so it opens only
           // for a step's required fields.
-          if (!(pre.missingFields ?? []).length) {
+          // The five steps that hand work to someone (fresh KYC, create UCC,
+          // register mandate) or record what the client already has (UCC,
+          // mandate) always open it: it is where the task is assigned and the
+          // UCC / mandate details are typed.
+          if (!(pre.missingFields ?? []).length && !POPUP_STAGES.has(action.targetStage)) {
             const moved = await advance(action.targetStage, `Action: ${action.label}`);
             if (!moved) {
               setOutcome({ kind: "error", message: "Couldn't move to this step. Please try again." });
@@ -621,6 +629,17 @@ export function GuidedStageActions({
             ...(isNotQualified ? { lostReason, lostAt: new Date().toISOString() } : {}),
           },
           callBackAt: needsNextTouch ? callBackAt : undefined,
+          // The engine creates the step's task in the Tasks module.
+          task: taskSpec
+            ? {
+                assigneeId: taskAssigneeId,
+                dueAt: taskDueAt ? new Date(taskDueAt).toISOString() : undefined,
+                title: taskSpec.title,
+                type: taskSpec.type,
+                priority: taskSpec.priority,
+                description: `Auto-created on the "${transitioningAction.targetStage.replace(/_/g, " ")}" transition.`,
+              }
+            : undefined,
           uccNumber: isUccActivated ? uccNumber.trim() : undefined,
           mandateBank: isMandateActivated ? (selectedBank?.bankName ?? mandateBankName.trim()) : undefined,
           mandateIfsc: isMandateActivated ? selectedBank?.ifsc : undefined,
@@ -632,31 +651,6 @@ export function GuidedStageActions({
 
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d?.error ?? "Failed to complete transition");
-
-      // Auto-create the task assigned to the chosen team member (the task API
-      // notifies them). The stage already moved, so a task failure is surfaced
-      // (don't silently drop it) but the transition stands — re-clicking Save
-      // retries the task (the transition is idempotent).
-      if (taskSpec) {
-        const tRes = await fetch(`/api/tasks`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            title: taskSpec.title,
-            description: remarks ? `From onboarding transition. ${remarks}` : `Auto-created on the "${transitioningAction.targetStage.replace(/_/g, " ")}" transition.`,
-            type: taskSpec.type,
-            priority: taskSpec.priority,
-            department: taskSpec.department,
-            assigneeId: taskAssigneeId,
-            dueAt: taskDueAt || undefined,
-            relatedLeadId: leadId,
-          }),
-        });
-        if (!tRes.ok) {
-          const td = await tRes.json().catch(() => ({}));
-          throw new Error(`Stage moved, but the task couldn't be created: ${td?.error ?? `HTTP ${tRes.status}`}. Click Save again to retry.`);
-        }
-      }
 
       setTransitioningAction(null);
       setCallBackAt("");

@@ -133,6 +133,10 @@ export function buildInvestorConditions(
     if (named.length !== status.length) parts.push(sql`COALESCE(${investors.status}, '') = ''`);
     conditions.push(parts.length === 1 ? parts[0] : or(...parts)!);
   }
+  // live=1 — the client list's default view: a client who left (Closed /
+  // Exited) is kept, not deleted, and stays out of the list until shown.
+  if (sp.live === "1") conditions.push(sql`COALESCE(${investors.status}, '') NOT IN ('closed', 'exited')`);
+
   // ctype — the Client book's "By client type" (lib/metrics/book.ts
   // clientTypeSql, restated over the investors table): corporate, else the
   // family's primary member as head, else another family member, else

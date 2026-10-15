@@ -38,6 +38,7 @@ export function RowActions({
   permanent = false,
   onDeleted,
   redirectTo,
+  confirmNote,
   inline = false,
   menuItem = false,
   deleteIcon: DeleteIcon = Trash2,
@@ -53,6 +54,8 @@ export function RowActions({
   /** When set, navigate here after a successful delete (e.g. back to the list
    *  from a detail page) instead of refreshing the current — now gone — record. */
   redirectTo?: string;
+  /** A line added to the delete confirmation (e.g. what to do instead). */
+  confirmNote?: string;
   /** Render Edit + Delete as two side-by-side icon buttons instead of a "⋯" menu. */
   inline?: boolean;
   /** Render the destructive action as one labelled row inside a record's More menu. */
@@ -107,9 +110,9 @@ export function RowActions({
 
   const subject = itemName ? `"${itemName}"` : itemLabel;
   const past = verb.endsWith("e") ? `${verb}d` : `${verb}ed`; // Delete→Deleted, Archive→Archived, Lock→Locked
-  const confirmMessage = permanent
+  const confirmMessage = (permanent
     ? `Permanently delete ${subject}? This cannot be undone.`
-    : `${verb} ${subject}?`;
+    : `${verb} ${subject}?`) + (confirmNote ? ` ${confirmNote}` : "");
 
   async function doDelete() {
     if (!deleteUrl) return;

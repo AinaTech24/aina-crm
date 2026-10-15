@@ -76,6 +76,7 @@ import { RecordNotes } from "@/components/common/RecordNotes";
 import { InvestorAvatarEditor } from "@/components/investors/InvestorAvatarEditor";
 import { EmailRelatedList } from "@/components/comms/EmailRelatedList";
 import { can } from "@/lib/auth/rbac";
+import { ClientExitButton } from "@/components/investors/ClientExitButton";
 import { WhatsAppRelatedList } from "@/components/comms/WhatsAppRelatedList";
 import { InvestorDetailTabs } from "@/components/investors/InvestorDetailTabs";
 import { EditClientDetailsLink } from "@/components/investors/EditClientDetailsLink";
@@ -523,6 +524,9 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
               <ChangeLogButton entityType="investor" entityId={inv.id} triggerClassName={MENU_ITEM} />
               <RelatedListsManager moduleKey="investors-detail" sections={INVESTOR_DETAIL_SECTIONS} triggerClassName={MENU_ITEM} />
               <RecordMenuSeparator />
+              {(can(session.roles, "investor.edit.all", session.permissions) || can(session.roles, "investor.edit.assigned", session.permissions)) && (
+                <ClientExitButton investorId={inv.id} name={inv.name} status={inv.status ?? null} />
+              )}
               <RowActions
                 menuItem
                 deleteUrl={`/api/investors/${inv.id}`}
@@ -530,6 +534,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
                 itemName={inv.name}
                 verb="Delete"
                 redirectTo="/dashboard/investors"
+                confirmNote="A deleted client is erased for good after 30 days in the Trash. If they may come back, use Mark as exited instead — nothing is lost."
               />
             </RecordMenu>
           </>

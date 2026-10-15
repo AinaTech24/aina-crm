@@ -119,6 +119,10 @@ export default async function InvestorsPage({
   // "no clients yet".
   const filtering = Object.entries(sp).some(([k, v]) => !!v && !["view", "sort", "dir", "page"].includes(k));
   const view = sp.view === "kanban" ? "kanban" : "table";
+  // A client who left is marked Exited / Closed, not deleted
+  // (lib/investors/client-return.ts). The list leaves them out unless asked
+  // (?exited=1), a status is picked, or someone searches for them by name.
+  const hideExited = !status.length && !q && sp.exited !== "1";
   const userId = session.userId;
   // Only firm-wide viewers (owner / branch_head) get the "RM" book-slice filter.
   // Client data is capability-gated: marketing / team members with no
@@ -159,7 +163,7 @@ export default async function InvestorsPage({
   const PAGE_SIZE = 50;
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
 
-  const { rows, total, kanbanRows, rms, allIds, dupCount, massUpdate, needsDataCount, fieldFilterOptions, customDefs } = await withTenant(session.tenantId, async (tx) => {
+  const { rows, total, kanbanRows, rms, allIds, dupCount, massUpdate, needsDataCount, fieldFilterOptions, customDefs, exitedCount } = await withTenant(session.tenantId, async (tx) => {
     // The Health column reads the stored score. Re-score anyone not scored
     // since this morning first (days-since-contact moves with the calendar),
     // so the list shows what the client page and the drawer show. A no-op
@@ -172,8 +176,13 @@ export default async function InvestorsPage({
     // whole firm’s client list (and could export it) — the JSON API scoped
     // correctly but this page did not.
     const scope = await investorScopeCondition(tx, session);
-    const filters = buildInvestorWhere(sp, userId);
+    const filters = buildInvestorWhere(hideExited ? { ...sp, live: "1" } : sp, userId);
     const where = scope ? and(filters as any, scope) : filters;
+    const exitedWhere = buildInvestorWhere({ status: "closed" }, userId);
+    const exitedCount = Number((await tx
+      .select({ c: sql<number>`count(*)::int` })
+      .from(investors)
+      .where(scope ? and(exitedWhere as any, scope) : exitedWhere))[0]?.c ?? 0);
 
     // Project only the columns the table + kanban actually read — the table
     // never needs the heavy/sensitive jsonb (kycData, nominees, crossSell,
@@ -353,10 +362,20 @@ export default async function InvestorsPage({
       .where(sql`${customFieldDefs.tenantId} = ${session.tenantId}::uuid AND ${customFieldDefs.entity} = 'investor'`)
       .orderBy(asc(customFieldDefs.sortOrder), asc(customFieldDefs.label));
 
-    return { rows: r, total: Number(c[0]?.c ?? 0), kanbanRows, rms, allIds, dupCount, massUpdate, needsDataCount, fieldFilterOptions, customDefs };
+    return { rows: r, total: Number(c[0]?.c ?? 0), kanbanRows, rms, allIds, dupCount, massUpdate, needsDataCount, fieldFilterOptions, customDefs, exitedCount };
   }, { userId: session.userId, branchId: session.branchId, roles: session.roles });
 
   const rmOptions = (rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
+
+  // The "exited clients hidden — show" switch keeps every other filter.
+  const exitedHref = (show: boolean) => {
+    const q2 = new URLSearchParams(
+      Object.entries(sp).filter(([k, val]) => !!val && k !== "exited" && k !== "page") as [string, string][],
+    );
+    if (show) q2.set("exited", "1");
+    const qs = q2.toString();
+    return `/dashboard/investors${qs ? `?${qs}` : ""}`;
+  };
 
   // Switching Table ⇄ Kanban keeps the filters; it used to drop them all.
   const viewHref = (v: "table" | "kanban") => {
@@ -569,6 +588,21 @@ export default async function InvestorsPage({
         }
       />
 
+      {/* Clients who left are kept, not deleted, and listed only when asked. */}
+      {exitedCount > 0 && !status.length && !q && (
+        <div className="text-xs text-muted-foreground">
+          {hideExited ? (
+            <Link href={exitedHref(true)} className="hover:text-foreground hover:underline">
+              {exitedCount.toLocaleString("en-IN")} exited {exitedCount === 1 ? "client is" : "clients are"} hidden — show
+            </Link>
+          ) : (
+            <Link href={exitedHref(false)} className="hover:text-foreground hover:underline">
+              Showing exited clients — hide them
+            </Link>
+          )}
+        </div>
+      )}
+
       {view === "kanban" ? (
         <div className="card-surface p-3">
           <div className="flex items-center justify-between mb-3 px-1">
@@ -594,7 +628,7 @@ export default async function InvestorsPage({
         // Brand-new tenant with zero investors AND no active filter → big friendly EmptyState.
         // Otherwise just a short "no matches" line so the filter UI stays in context.
         <div className="card-surface overflow-hidden">
-          {total === 0 && !filtering ? (
+          {total === 0 && !filtering && !exitedCount ? (
             <div className="p-6">
               <EmptyState
                 icon={Users}

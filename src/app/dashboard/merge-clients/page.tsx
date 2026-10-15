@@ -5,7 +5,8 @@ import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
  *   Suggested duplicates   groups the CRM found (PAN / name + date of birth) →
  *                          Compare & merge, or "Not duplicates"; plus the exact-PAN
  *                          auto-merge, the one thing the system may do alone
- *   Merge by search        find records yourself → the same Compare & merge
+ *   Merge by search        search the main client and the client to merge →
+ *                          the same Compare & merge, main client kept
  *   Merge history          every merge (filter: automatic only), each undoable
  *
  * Both merge entry points open ONE dialog (MergeCompareDialog): tick the

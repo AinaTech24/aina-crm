@@ -160,7 +160,7 @@ export async function loadValuationRows(tx: Tx, investorIds: string[]) {
     LEFT JOIN scheme_nav n ON n.scheme_code = sc->>'schemeCode'
     WHERE f.tenant_id IN (${tenants}) AND f.investor_id IN (${ids})
   `)).rows as unknown as ValuationSnapshot[];
-  await priceByName(tx, transactions, snapshots);
+  await priceByName(tx, transactions, snapshots, tenantRows.map((r) => r.tenant_id));
   return { transactions, snapshots };
 }
 
@@ -180,8 +180,36 @@ async function navIndexFor(tx: Tx): Promise<NavIndex> {
   }
   return navIndexCache.index;
 }
-async function priceByName(tx: Tx, transactions: ValuationTransaction[], snapshots: ValuationSnapshot[]) {
-  const needT = transactions.filter((r) => positive(r.latest_nav) == null && r.scheme_name && !codeLikeName(r.scheme_name, r.scheme_code));
+/**
+ * The full scheme name each registrar code carries somewhere in a firm's book.
+ * A KFintech feed can name a scheme by its code alone — "NY" for 108NYGP, UTI
+ * Nifty Next 50 Index Fund — and such a row could not be priced: Sandeep Garg
+ * held ~Rs 60 L of it with no current value on 15 Oct 2026. One scan of the
+ * firm's ledger and folio legs, cached like the NAV index.
+ */
+const codeNameCache = new Map<string, { at: number; names: Map<string, string> }>();
+async function firmCodeNames(tx: Tx, tenantId: string): Promise<Map<string, string>> {
+  const hit = codeNameCache.get(tenantId);
+  if (hit && Date.now() - hit.at < NAV_INDEX_TTL_MS) return hit.names;
+  const rows = (await tx.execute(sql`
+    SELECT code, name FROM (
+      (SELECT DISTINCT ON (scheme_code) scheme_code AS code, trim(scheme_name) AS name
+         FROM transactions WHERE tenant_id = ${tenantId}::uuid AND scheme_code IS NOT NULL AND length(trim(COALESCE(scheme_name, ''))) > 4
+        ORDER BY scheme_code, length(trim(scheme_name)) DESC)
+      UNION ALL
+      (SELECT DISTINCT ON (sc->>'schemeCode') sc->>'schemeCode' AS code, trim(sc->>'schemeName') AS name
+         FROM folios f CROSS JOIN LATERAL jsonb_array_elements(COALESCE(f.schemes, '[]'::jsonb)) sc
+        WHERE f.tenant_id = ${tenantId}::uuid AND sc->>'schemeCode' IS NOT NULL AND length(trim(COALESCE(sc->>'schemeName', ''))) > 4
+        ORDER BY sc->>'schemeCode', length(trim(sc->>'schemeName')) DESC)
+    ) x
+  `)).rows as Array<{ code: string; name: string }>;
+  const names = new Map<string, string>();
+  for (const r of rows) if (!codeLikeName(r.name, r.code) && !names.has(r.code)) names.set(r.code, r.name);
+  codeNameCache.set(tenantId, { at: Date.now(), names });
+  return names;
+}
+async function priceByName(tx: Tx, transactions: ValuationTransaction[], snapshots: ValuationSnapshot[], tenantIds: string[] = []) {
+  const needT = transactions.filter((r) => positive(r.latest_nav) == null && r.scheme_name);
   const needS = snapshots.filter((r) => positive(r.latest_nav) == null && r.scheme?.schemeName);
   if (!needT.length && !needS.length) return;
   const index = await navIndexFor(tx);
@@ -192,8 +220,22 @@ async function priceByName(tx: Tx, transactions: ValuationTransaction[], snapsho
     if (!memo.has(k)) memo.set(k, lookupNav(index, null, name, hintNav));
     return memo.get(k)!;
   };
+  // A row named only by its code borrows the full name the code carries: in
+  // this batch first (the holdings file, other rows), else in the firm's book.
+  const fullName = new Map<string, string>();
+  const learn = (code: string | null | undefined, name: string | null | undefined) => {
+    if (code && name && !codeLikeName(name, code) && !fullName.has(code)) fullName.set(code, name.trim());
+  };
+  for (const r of snapshots) learn(r.scheme?.schemeCode, r.scheme?.schemeName);
+  for (const r of transactions) learn(r.scheme_code, r.scheme_name);
+  const coded = needT.filter((r) => codeLikeName(r.scheme_name, r.scheme_code) && r.scheme_code);
+  if (coded.some((r) => !fullName.has(String(r.scheme_code))) && tenantIds.length === 1) {
+    for (const [code, name] of await firmCodeNames(tx, tenantIds[0])) if (!fullName.has(code)) fullName.set(code, name);
+  }
   for (const r of needT) {
-    const h = hit(String(r.scheme_name));
+    const name = codeLikeName(r.scheme_name, r.scheme_code) ? fullName.get(String(r.scheme_code ?? "")) : String(r.scheme_name);
+    if (!name) continue;
+    const h = hit(name);
     if (h) { r.latest_nav = h.nav; r.latest_nav_date = h.navDate; r.amfi_code = h.code; }
   }
   for (const r of needS) {

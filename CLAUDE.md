@@ -512,6 +512,31 @@ the imports and every label; never copy the enum again.
   address (head has one) and review frequency (family has one); the forms show
   both as "from the family".
 
+## A client who leaves — Exited, not deleted
+
+The firm's question of 2026-10-15: a client with no AUM or no business today
+may come back, so deleting them (Trash, erased after 30 days) means typing
+everything in again. Instead:
+
+- **Mark as exited** (client page → More, or bulk "Update a field" →
+  Status): the record keeps its history, family, RM, notes and documents,
+  leaves the client list (`live=1`, the list's default — "N exited clients are
+  hidden — show", `?exited=1`; a name search or a status filter still finds
+  them) and every dashboard count (`aliveClient`). The Delete confirmation
+  says so.
+- **Coming back is automatic**: after every RTA import a dormant / closed /
+  exited client with an inflow transaction (purchase, SIP instalment) in the
+  last 45 days dated on or after the day they left is Active again, audited
+  `investor.reactivated`, and their RM is told "… is back"
+  (`lib/investors/client-return.ts`). Redemptions never count.
+- **Dates**: a trigger (migration 0235) writes `exited_at` when a status
+  becomes closed / exited and `dormant_since` for dormant, on every write
+  path, and clears them when the client returns.
+- **Adding the same PAN again** never makes a second client:
+  `POST /api/investors` answers 409 with `existing` (`existingClientForPan`,
+  merges followed; a client outside the viewer's book has no name), and Add
+  client offers Reactivate (exited), Restore (in the Trash) or Open.
+
 ## Booked business vs the RTA
 
 Operations does the work the day an RM asks and books it as a **business
@@ -1395,6 +1420,42 @@ and can be served from any Node host.
 For staging or longer-lived environments, run `next start` behind a
 process supervisor (pm2 / systemd / Docker `restart: unless-stopped`)
 so the OS handles crash recovery for you.
+
+### How a push reaches production — the verified artifact (2026-10-15)
+
+The production box **never builds**. A push to `main` runs ONE workflow
+(`.github/workflows/deploy.yml`, "Deploy to AWS (EC2)"):
+
+```
+CI once (ci-core.yml) → build the slim image on a standard arm64 runner
+  → runtime-files gate → docker save | zstd + manifest
+  → S3 verified/<commit>/<runId>-<attempt>/  (OIDC role aina-crm-github-deploy: PutObject only)
+  → SSM → box: disk gate → download → artifact-verify.sh → docker load
+  → migrate → schema guard → blue/green switch  (scripts/artifact-deploy.sh, run-deploy-artifact.sh)
+```
+
+- **Only CI can create a verified artifact; the box can only read it.** The GitHub
+  role has `s3:PutObject` on `verified/*` (no Delete); the instance role has
+  `s3:GetObject` on `verified/*` (no Put, no List). Keys carry the full commit SHA and
+  run id + attempt, so a key is never reused (a re-run bumps the attempt).
+- **The box refuses** a wrong commit, failed CI, shadow flag, wrong architecture, a
+  stale artifact (> 14 days) or any SHA-256 mismatch — against the manifest AND
+  against the digest the build job passes inside the SSM command.
+- **Disk gate** (`scripts/disk-gate.sh`) aborts before any download/load; the log
+  prints CURRENT FREE / REQUIRED FREE / ARTIFACT SIZE / IMAGE SIZE / SAFETY HEADROOM.
+- **Every deploy measures itself** (`scripts/deploy-sampler.py`): the workflow log ends
+  with `=== DEPLOY METRICS ===` (host RAM, swap, dockerd RSS, container peaks, disk,
+  durations). A normal deploy takes ~1 minute on the box.
+- **Anything the image needs at runtime must be IN the image.** The old on-box
+  `COPY . .` silently carried untracked files (`rds-ca.pem` — the first verified
+  deploy failed on it, safely). The build job has a gate for the files production
+  needs; add to it when the box starts depending on another file.
+- **Emergency path**: `deploy-legacy.yml` (manual) still builds on the server. Docs-,
+  mobile-, terraform-, artifacts- and reports-only pushes do not deploy.
+- Pushes to a branch run `ci.yml` (cancelled by a newer push); `main` is validated by
+  the deploy workflow, never twice. Don't dispatch a deploy while another one is
+  *pending*: GitHub keeps only the newest pending run per concurrency group and
+  cancels the older one.
 
 ### Production change control — one change at a time
 

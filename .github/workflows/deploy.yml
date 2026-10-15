@@ -1,49 +1,160 @@
 name: Deploy to AWS (EC2)
 
-# Ships the checked-out tree to the EC2 box and runs the blue-green deploy
-# script that already lives there (~/run-deploy.sh): prune → build → migrate →
-# schema guard → start the idle colour → health-check → stop the old colour.
-# A failed deploy leaves the previous colour serving, so it cannot take the
-# site down.
+# The production box NEVER builds. CI passes -> a standard ARM64 runner builds the slim
+# image once -> it is packaged (docker save | zstd), described by a manifest (commit,
+# architecture, CI result, build time, SHA-256s) and uploaded to the S3 `verified/`
+# prefix, which ONLY this workflow's OIDC role can write. The box downloads it,
+# verifies it (scripts/artifact-verify.sh: commit, CI result, SHA-256 against the digest
+# reported HERE, architecture, age), checks the disk gate, `docker load`s it and does the
+# blue/green switch (scripts/artifact-deploy.sh). An unverified artifact is refused.
 #
-# Transport (2026-10-07): GitHub OIDC → IAM role aina-crm-github-deploy →
-# S3 (release tarball) + SSM Run Command → the instance. No SSH and no
-# long-lived AWS keys in GitHub. The role trusts ONLY this repo's
-# `production` environment (deployable from main and deploy/aws), may upload
-# only to the deploy-artifacts bucket's releases/ prefix, and may run only
-# AWS-RunShellScript on the production instance. On the box,
-# scripts/ssm-deploy.sh (taken from the tarball) does what the SSH step did.
+# Triggers: every push to main EXCEPT docs / mobile / terraform / artifacts / reports-only changes
+# (nothing to deploy), and manual dispatch (build-only | deploy). The legacy build-on-server workflow
+# (deploy-legacy.yml) stays as a manual emergency path.
 #
-# NOTE ON .env: the box owns its own ~/app/.env and .env.production. This
-# workflow never reads or writes them, so production secrets stay on the box.
+#   mode build-only : build + verify + upload the artifact; the box is not touched
+#   mode deploy     : ... and deploy it under the production change lock
 
 on:
   push:
-    # main is the deploy branch: merging to main ships. deploy/aws is kept for
-    # pinning a deploy to a specific commit without moving main.
-    branches: [main, deploy/aws]
+    branches: [main]
+    paths-ignore: ['docs/**', '**/*.md', 'mobile/**', 'terraform/**', 'artifacts/**', 'reports/**', '.github/workflows/image-shadow.yml']
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "build-only = upload the verified artifact, do not deploy; deploy = also deploy it"
+        type: choice
+        options: [build-only, deploy]
+        default: build-only
 
+# One deploy at a time (shared with the legacy workflow). Never cancel a run that may be
+# changing production; a burst of pushes keeps only the newest pending run.
 concurrency:
-  # Two deploys at once fight over the Docker build and the blue/green state
-  # file. Queue them instead of cancelling — a half-finished deploy is worse
-  # than a slow one.
   group: deploy-aws
   cancel-in-progress: false
 
-jobs:
-  # Run the same safety checks against the exact revision being deployed.
-  verify:
-    uses: ./.github/workflows/ci.yml
+permissions:
+  contents: read
 
-  deploy:
+jobs:
+  # The same checks CI runs, on the exact revision being deployed. A red CI = no artifact.
+  verify:
+    uses: ./.github/workflows/ci-core.yml
+
+  build:
+    name: Build slim image (arm64) and publish the verified artifact
     needs: verify
-    runs-on: ubuntu-latest
-    # The IAM role trusts only tokens for this environment, which only main and
-    # deploy/aws may use (Settings → Environments → production).
+    # a STANDARD GitHub-hosted arm64 runner (not a larger runner)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
     environment: production
     permissions:
-      id-token: write   # GitHub OIDC token for the AWS role
+      id-token: write   # GitHub OIDC -> the deploy role (write access to verified/ only)
+      contents: read
+    env:
+      AWS_REGION: ap-south-1
+      ARTIFACT_BUCKET: aina-crm-deploy-artifacts-972971302420
+      DEPLOY_ROLE: arn:aws:iam::972971302420:role/aina-crm-github-deploy
+    outputs:
+      prefix: ${{ steps.pkg.outputs.prefix }}
+      image_sha256: ${{ steps.pkg.outputs.image_sha256 }}
+      scripts_sha256: ${{ steps.pkg.outputs.scripts_sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: mfd-app:${{ github.sha }}
+          build-args: |
+            NEXT_PUBLIC_APP_URL=https://crm.ainatech.in
+            NEXT_PUBLIC_SITE_URL=https://crm.ainatech.in
+            NEXT_PUBLIC_S3_PUBLIC_URL=https://crm.ainatech.in
+            BUILD_GIT_SHA=${{ github.sha }}
+          # dependency layers are reused across runs; the Next build re-runs when source changes
+          cache-from: type=gha,scope=app
+          cache-to: type=gha,mode=max,scope=app
+      - name: Gate - the image carries what production needs at runtime
+        run: |
+          set -euo pipefail
+          # files the server's env points at that git does not hold (an untracked copy used to be
+          # baked in by the on-box `COPY . .`); a missing one made the first verified deploy fail
+          docker run --rm --entrypoint sh "mfd-app:${GITHUB_SHA}" -c '
+            test "$(grep -c "BEGIN CERTIFICATE" /app/rds-ca.pem)" -ge 100 &&
+            test -f /app/package.json && test -d /app/.next && test -d /app/drizzle && test -f /app/scripts/migrate-all.ts &&
+            test "$(id -un)" = app'
+          echo "runtime files present"
+      - name: Package (docker save | zstd), manifest, deploy-scripts bundle
+        id: pkg
+        env:
+          CI_RESULT: ${{ needs.verify.result }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          SHA12="${GITHUB_SHA:0:12}"
+          docker tag "mfd-app:${GITHUB_SHA}" "mfd-app:${SHA12}"
+          IMG_ID=$(docker image inspect "mfd-app:${SHA12}" --format '{{.Id}}')
+          IMG_BYTES=$(docker image inspect "mfd-app:${SHA12}" --format '{{.Size}}')
+          docker save "mfd-app:${SHA12}" | zstd -T0 -3 -q -o out/image.tar.zst
+          tar czf out/deploy-scripts.tgz scripts/artifact-deploy.sh scripts/artifact-verify.sh scripts/disk-gate.sh \
+            scripts/run-deploy-artifact.sh scripts/deploy-sampler.py scripts/prod-lock.sh scripts/lib/json.sh
+          IMG_SHA=$(sha256sum out/image.tar.zst | cut -d' ' -f1)
+          SCR_SHA=$(sha256sum out/deploy-scripts.tgz | cut -d' ' -f1)
+          IMG_FILE_BYTES=$(stat -c %s out/image.tar.zst)
+          PREFIX="verified/${GITHUB_SHA}/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          export IMG_ID IMG_BYTES IMG_SHA SCR_SHA IMG_FILE_BYTES
+          node -e '
+            const e = process.env, fs = require("fs");
+            fs.writeFileSync("out/manifest.json", JSON.stringify({
+              schema: 1, shadow: false, commit: e.GITHUB_SHA,
+              ci: { conclusion: e.CI_RESULT, runId: e.GITHUB_RUN_ID, workflow: "CI" },
+              arch: "aarch64", builtAt: new Date().toISOString(),
+              artifact: { file: "image.tar.zst", sha256: e.IMG_SHA, bytes: Number(e.IMG_FILE_BYTES) },
+              scripts: { file: "deploy-scripts.tgz", sha256: e.SCR_SHA },
+              image: { id: e.IMG_ID, uncompressedBytes: Number(e.IMG_BYTES) },
+              workflowRun: `${e.GITHUB_SERVER_URL}/${e.GITHUB_REPOSITORY}/actions/runs/${e.GITHUB_RUN_ID}`
+            }, null, 1));'
+          cat out/manifest.json
+          {
+            echo "prefix=${PREFIX}"
+            echo "image_sha256=${IMG_SHA}"
+            echo "scripts_sha256=${SCR_SHA}"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### Verified artifact"
+            echo "| | |"; echo "|---|---|"
+            echo "| commit | \`${GITHUB_SHA}\` |"
+            echo "| prefix | \`s3://${ARTIFACT_BUCKET}/${PREFIX}/\` |"
+            echo "| image (uncompressed) | $(numfmt --to=iec --suffix=B "${IMG_BYTES}") |"
+            echo "| artifact (zstd) | $(numfmt --to=iec --suffix=B "${IMG_FILE_BYTES}") |"
+            echo "| sha256 | \`${IMG_SHA}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: AWS credentials (OIDC, no stored keys)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE }}
+          role-session-name: gh-build-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Upload to the verified/ prefix (manifest last)
+        run: |
+          set -euo pipefail
+          P="s3://${ARTIFACT_BUCKET}/${{ steps.pkg.outputs.prefix }}"
+          aws s3 cp out/image.tar.zst "$P/image.tar.zst" --only-show-errors
+          aws s3 cp out/deploy-scripts.tgz "$P/deploy-scripts.tgz" --only-show-errors
+          aws s3 cp out/manifest.json "$P/manifest.json" --only-show-errors
+          echo "uploaded to $P"
+
+  deploy:
+    name: Deploy the verified artifact (blue/green) via SSM
+    needs: build
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.mode == 'deploy' }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    environment: production
+    permissions:
+      id-token: write
       contents: read
     env:
       AWS_REGION: ap-south-1
@@ -51,76 +162,48 @@ jobs:
       ARTIFACT_BUCKET: aina-crm-deploy-artifacts-972971302420
       DEPLOY_ROLE: arn:aws:iam::972971302420:role/aina-crm-github-deploy
     steps:
-      - uses: actions/checkout@v4
-
-      # The box holds a plain source tree (NOT a git checkout), so we ship the
-      # tree rather than pulling on the far side.
-      - name: Package the tree
-        run: |
-          tar czf app.tgz \
-            --exclude='node_modules' --exclude='.next' --exclude='.git' \
-            src public drizzle scripts \
-            package.json package-lock.json next.config.ts tsconfig.json \
-            drizzle.config.ts postcss.config.js tailwind.config.ts \
-            vitest.config.ts
-          ls -lh app.tgz
-
       - name: AWS credentials (OIDC, no stored keys)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ env.DEPLOY_ROLE }}
           role-session-name: gh-deploy-${{ github.run_id }}
           aws-region: ${{ env.AWS_REGION }}
-
-      - name: Upload the release
-        run: |
-          echo "RELEASE_KEY=releases/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}.tgz" >> "$GITHUB_ENV"
-          aws s3 cp app.tgz "s3://${ARTIFACT_BUCKET}/releases/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}.tgz" --only-show-errors
-
-      # One SSM command does the whole deploy and waits for it (like the SSH
-      # step did): download the tarball with the INSTANCE role, take
-      # scripts/ssm-deploy.sh from it, run it as ec2-user. ssm-deploy.sh holds
-      # ~/.deploy.lock for the duration, so deploys never overlap on the box.
-      - name: Deploy (blue-green) via SSM and wait for the result
+      # The digests below come from the BUILD job (not from S3), travel inside the SSM command,
+      # and are what the box compares the downloaded files against.
+      - name: Deploy via SSM and wait for the result
+        env:
+          PREFIX: ${{ needs.build.outputs.prefix }}
+          IMG_SHA: ${{ needs.build.outputs.image_sha256 }}
+          SCR_SHA: ${{ needs.build.outputs.scripts_sha256 }}
         run: |
           set -euo pipefail
-          params=$(jq -n --arg uri "s3://${ARTIFACT_BUCKET}/${RELEASE_KEY}" --arg who "github-actions-run-${GITHUB_RUN_ID}-${GITHUB_SHA::8}" '{
-            executionTimeout: ["3300"],
+          P="s3://${ARTIFACT_BUCKET}/${PREFIX}"
+          WHO="github-actions-run-${GITHUB_RUN_ID}-${GITHUB_SHA::8}"
+          params=$(jq -n --arg p "$P" --arg c "$GITHUB_SHA" --arg i "$IMG_SHA" --arg s "$SCR_SHA" --arg w "$WHO" '{
+            executionTimeout: ["2400"],
             commands: [
               "set -euo pipefail",
-              ("aws s3 cp \"" + $uri + "\" /tmp/app.tgz --only-show-errors --region ap-south-1"),
-              "chown ec2-user:ec2-user /tmp/app.tgz",
-              "tar xzf /tmp/app.tgz -O scripts/ssm-deploy.sh > /tmp/ssm-deploy.sh",
-              "chmod 755 /tmp/ssm-deploy.sh",
-              ("runuser -l ec2-user -c \"bash /tmp/ssm-deploy.sh /tmp/app.tgz " + $who + "\"")
+              ("aws s3 cp \"" + $p + "/deploy-scripts.tgz\" /tmp/deploy-scripts.tgz --only-show-errors --region ap-south-1"),
+              ("echo \"" + $s + "  /tmp/deploy-scripts.tgz\" | sha256sum -c -"),
+              "rm -rf /home/ec2-user/deploy-bin && mkdir -p /home/ec2-user/deploy-bin",
+              "tar xzf /tmp/deploy-scripts.tgz -C /home/ec2-user/deploy-bin && chown -R ec2-user:ec2-user /home/ec2-user/deploy-bin",
+              ("runuser -l ec2-user -c \"bash /home/ec2-user/deploy-bin/scripts/artifact-deploy.sh " + $p + "/ " + $c + " " + $i + " " + $w + "\"")
             ]
           }')
-          CID=$(aws ssm send-command \
-            --instance-ids "$INSTANCE_ID" \
-            --document-name AWS-RunShellScript \
-            --comment "GitHub deploy run ${GITHUB_RUN_ID} ${GITHUB_SHA::8}" \
-            --timeout-seconds 600 \
-            --parameters "$params" \
-            --query Command.CommandId --output text)
+          CID=$(aws ssm send-command --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript \
+            --comment "verified-artifact deploy ${GITHUB_SHA::8} run ${GITHUB_RUN_ID}" --timeout-seconds 600 \
+            --parameters "$params" --query Command.CommandId --output text)
           echo "SSM command: $CID"
-
           status=Pending
-          for _ in $(seq 1 220); do   # up to ~55 min
-            sleep 15
-            status=$(aws ssm get-command-invocation --command-id "$CID" --instance-id "$INSTANCE_ID" \
-              --query Status --output text 2>/dev/null || echo Pending)
+          for _ in $(seq 1 300); do   # up to ~50 min
+            sleep 10
+            status=$(aws ssm get-command-invocation --command-id "$CID" --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null || echo Pending)
             case "$status" in Pending|InProgress|Delayed) continue ;; *) break ;; esac
           done
-
-          aws ssm get-command-invocation --command-id "$CID" --instance-id "$INSTANCE_ID" \
-            --query StandardOutputContent --output text || true
-          aws ssm get-command-invocation --command-id "$CID" --instance-id "$INSTANCE_ID" \
-            --query StandardErrorContent --output text | tail -40 || true
+          aws ssm get-command-invocation --command-id "$CID" --instance-id "$INSTANCE_ID" --query StandardOutputContent --output text || true
+          aws ssm get-command-invocation --command-id "$CID" --instance-id "$INSTANCE_ID" --query StandardErrorContent --output text | tail -40 || true
           if [ "$status" = "Cancelled" ]; then
-            # Someone ran `aws ssm cancel-command` on it (on 8 Oct 2026 the
-            # laptop's mfd-deploy key cancelled a healthy deploy at 10 min; a
-            # box deploy takes ~12). Not a code failure: re-run this workflow.
-            echo "::error::The deploy was CANCELLED on AWS (aws ssm cancel-command), not failed by the code. A box deploy takes ~12 minutes; do not cancel it. Re-run this workflow to ship."
+            echo "::error::The deploy was CANCELLED on AWS (aws ssm cancel-command), not failed by the code. Re-run this workflow to ship."
             exit 1
           fi
           if [ "$status" != "Success" ]; then

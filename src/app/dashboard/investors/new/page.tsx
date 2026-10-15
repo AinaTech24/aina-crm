@@ -138,6 +138,31 @@ function NewInvestorPageInner() {
   const [customFields, setCustomFields] = useState<Record<string, any>>({});
   const [cfDefs, setCfDefs] = useState<CustomFieldDef[]>([]);
   const [err, setErr] = useState<string | null>(null);
+  // The PAN belongs to a client already in the CRM (someone who left, or in
+  // the Trash): bring them back instead of adding a second record.
+  const [existing, setExisting] = useState<{ id: string | null; name: string | null; state: "trash" | "exited" | "active" } | null>(null);
+  const [reviving, setReviving] = useState(false);
+  async function bringBack() {
+    if (!existing?.id) return;
+    setReviving(true);
+    try {
+      const res = existing.state === "trash"
+        ? await fetch(`/api/investors/${existing.id}/restore`, { method: "POST" })
+        : await fetch(`/api/investors/${existing.id}`, {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ status: "active" }),
+          });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setErr(j.error ?? `That didn't go through (${res.status}).`);
+        return;
+      }
+      router.push(`/dashboard/investors/${existing.id}`);
+    } finally {
+      setReviving(false);
+    }
+  }
   const [busy, setBusy] = useState(false);
 
   function set(k: string, v: string) {
@@ -176,6 +201,7 @@ function NewInvestorPageInner() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
+    setExisting(null);
     setBusy(true);
     try {
       const missCf = missingRequired(cfDefs, customFields);
@@ -282,6 +308,7 @@ function NewInvestorPageInner() {
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
         setErr(j.error ?? "Create failed");
+        setExisting(j.existing ?? null);
         return;
       }
       const j = await res.json();
@@ -486,7 +513,23 @@ function NewInvestorPageInner() {
             is five sections long — it used to sit below the fold with nothing
             to say it was there. The error lives in the same bar as the button
             that triggered it, rather than scrolling away above it. */}
-        <FormActions status={err ? <span role="alert" className="text-destructive">{err}</span> : null}>
+        <FormActions
+          status={err ? (
+            <span role="alert" className="flex flex-wrap items-center gap-2">
+              <span className={existing ? "text-foreground" : "text-destructive"}>{err}</span>
+              {existing?.id && existing.state !== "active" && (
+                <Button type="button" variant="secondary" size="sm" loading={reviving} onClick={bringBack}>
+                  {existing.state === "trash" ? "Restore client" : "Reactivate client"}
+                </Button>
+              )}
+              {existing?.id && existing.state === "active" && (
+                <Link href={`/dashboard/investors/${existing.id}`} className={buttonClass("secondary", "sm")}>
+                  Open {existing.name ?? "client"}
+                </Link>
+              )}
+            </span>
+          ) : null}
+        >
           <Link href="/dashboard/investors" className={buttonClass("secondary")}>
             Cancel
           </Link>

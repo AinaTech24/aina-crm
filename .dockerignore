@@ -19,3 +19,18 @@ terraform
 scratch
 node-local
 *.tsbuildinfo
+
+# CI builds from a full checkout (the old server build used a trimmed tarball),
+# so keep everything the image never uses out of the build context:
+mobile
+artifacts
+reports
+tests
+*.tar.gz
+*.apk
+*.xlsx
+dummy-*.csv
+.github
+.easignore
+*.md
+!public/**/*.md

@@ -52,3 +52,20 @@ resource "aws_iam_role_policy_attachment" "ec2_cloudwatch_agent" {
   role       = aws_iam_role.ec2.name
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
 }
+
+# The box downloads the verified artifact (GetObject only, that prefix only — no List).
+resource "aws_iam_role_policy" "aina_crm_verified_artifacts_read" {
+  name = "aina-crm-verified-artifacts-read"
+  role = aws_iam_role.ec2.id
+  policy = jsonencode({
+    "Version" : "2012-10-17",
+    "Statement" : [
+      {
+        "Sid" : "ReadVerifiedArtifacts",
+        "Effect" : "Allow",
+        "Action" : "s3:GetObject",
+        "Resource" : "arn:aws:s3:::aina-crm-deploy-artifacts-972971302420/verified/*"
+      }
+    ]
+  })
+}

@@ -13,6 +13,7 @@
  *   because the only query is a trivial `SELECT 1`.
  */
 
+import v8 from "node:v8";
 import { NextResponse } from "next/server";
 import { pool } from "@/db/client";
 
@@ -46,6 +47,10 @@ export async function GET() {
         heapUsedMb: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
         heapTotalMb: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
         rssMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
+        // Memory shape, so any heap cap is chosen from measurements, not guesses.
+        externalMb: Math.round(process.memoryUsage().external / 1024 / 1024),
+        arrayBuffersMb: Math.round(process.memoryUsage().arrayBuffers / 1024 / 1024),
+        heapLimitMb: Math.round(v8.getHeapStatistics().heap_size_limit / 1024 / 1024),
         db: dbResult ? "ok" : "weird",
         respondedInMs: Date.now() - startedAt,
       },
