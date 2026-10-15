@@ -482,6 +482,31 @@ the imports and every label; never copy the enum again.
   address (head has one) and review frequency (family has one); the forms show
   both as "from the family".
 
+## A client who leaves — Exited, not deleted
+
+The firm's question of 2026-10-15: a client with no AUM or no business today
+may come back, so deleting them (Trash, erased after 30 days) means typing
+everything in again. Instead:
+
+- **Mark as exited** (client page → More, or bulk "Update a field" →
+  Status): the record keeps its history, family, RM, notes and documents,
+  leaves the client list (`live=1`, the list's default — "N exited clients are
+  hidden — show", `?exited=1`; a name search or a status filter still finds
+  them) and every dashboard count (`aliveClient`). The Delete confirmation
+  says so.
+- **Coming back is automatic**: after every RTA import a dormant / closed /
+  exited client with an inflow transaction (purchase, SIP instalment) in the
+  last 45 days dated on or after the day they left is Active again, audited
+  `investor.reactivated`, and their RM is told "… is back"
+  (`lib/investors/client-return.ts`). Redemptions never count.
+- **Dates**: a trigger (migration 0235) writes `exited_at` when a status
+  becomes closed / exited and `dormant_since` for dormant, on every write
+  path, and clears them when the client returns.
+- **Adding the same PAN again** never makes a second client:
+  `POST /api/investors` answers 409 with `existing` (`existingClientForPan`,
+  merges followed; a client outside the viewer's book has no name), and Add
+  client offers Reactivate (exited), Restore (in the Trash) or Open.
+
 ## Booked business vs the RTA
 
 Operations does the work the day an RM asks and books it as a **business

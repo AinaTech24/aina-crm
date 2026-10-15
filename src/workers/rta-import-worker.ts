@@ -41,6 +41,7 @@ import { getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config"
 import { matchBookedBusinessAfterImport } from "@/lib/business/rta-match";
 import { retireEmptyPlaceholdersAfterImport } from "@/lib/rta/placeholder-sweep";
 import { restoreTrashedHoldersAfterImport } from "@/lib/investors/holds-money";
+import { reactivateReturningClientsAfterImport } from "@/lib/investors/client-return";
 import { syncRtaJourneysAfterImport } from "@/lib/blueprints/rta-route";
 
 export type RtaImportJob = {
@@ -947,6 +948,7 @@ export function startRtaImportWorker() {
           await syncRtaJourneysAfterImport((job.data as any)?.tenantId);
           await retireEmptyPlaceholdersAfterImport((job.data as any)?.tenantId);
           await restoreTrashedHoldersAfterImport((job.data as any)?.tenantId);
+          await reactivateReturningClientsAfterImport((job.data as any)?.tenantId);
           return summary;
         }
         await runRtaImportJob(job.data as RtaImportJob);
@@ -961,6 +963,9 @@ export function startRtaImportWorker() {
         // …and bring back anyone in the Trash the registrar says still holds money
         // (lib/investors/holds-money.ts).
         await restoreTrashedHoldersAfterImport((job.data as RtaImportJob).tenantId);
+        // …and a dormant / exited client who invested again is Active again
+        // (lib/investors/client-return.ts).
+        await reactivateReturningClientsAfterImport((job.data as RtaImportJob).tenantId);
       } finally {
         // Purge the source file ONLY once it has actually been imported.
         //
