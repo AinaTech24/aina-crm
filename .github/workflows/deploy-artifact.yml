@@ -77,6 +77,16 @@ jobs:
           # dependency layers are reused across runs; the Next build re-runs when source changes
           cache-from: type=gha,scope=app
           cache-to: type=gha,mode=max,scope=app
+      - name: Gate - the image carries what production needs at runtime
+        run: |
+          set -euo pipefail
+          # files the server's env points at that git does not hold (an untracked copy used to be
+          # baked in by the on-box `COPY . .`); a missing one made the first verified deploy fail
+          docker run --rm --entrypoint sh "mfd-app:${GITHUB_SHA}" -c '
+            test "$(grep -c "BEGIN CERTIFICATE" /app/rds-ca.pem)" -ge 100 &&
+            test -f /app/package.json && test -d /app/.next && test -d /app/drizzle && test -f /app/scripts/migrate-all.ts &&
+            test "$(id -un)" = app'
+          echo "runtime files present"
       - name: Package (docker save | zstd), manifest, deploy-scripts bundle
         id: pkg
         env:
