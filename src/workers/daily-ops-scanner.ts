@@ -53,9 +53,9 @@ import { recomputeAllHealth } from "@/lib/investors/health-persist";
 import { refreshActiveSipAmount } from "@/lib/metrics/sip";
 import { recomputeAllFamilyHealth } from "@/lib/families/health-persist";
 import { recomputeAllGoals } from "@/lib/goal-planning/recompute";
-import { recomputeCombinedAum, revalueAllFolios } from "@/lib/finance/aum-persist";
 import { matchProposalExecutions } from "@/lib/proposals/execution";
 import { checkRtaFeedHealth } from "@/lib/rta/feed-health";
+import { waitForAumRefresh } from "./aum-refresh";
 import { matchBookedBusiness } from "@/lib/business/rta-match";
 import { retireEmptyPlaceholders } from "@/lib/rta/placeholder-sweep";
 import { holdsMoneySql, restoreTrashedHolders } from "@/lib/investors/holds-money";
@@ -91,17 +91,6 @@ interface ScanResult {
   familyHealthScored: number;
   /** Goals whose progress/required-SIP/status were refreshed this run. */
   goalsRecomputed: number;
-  /** Investors whose stored AUM was re-valued against live NAV this run. */
-  aumRevalued: number;
-  /** Folios whose holdings were repriced at live NAV this run. */
-  foliosRevalued: number;
-  /** Holdings that could be priced by neither AMFI code nor scheme name, and
-   *  the rupee value sitting in them. A book can only go stale through this
-   *  number, so it is carried all the way out to scheduler_state. */
-  legsUnpriced: number;
-  legsUnpricedValue: number;
-  /** Clients left at their previous AUM because a holding could not be priced. */
-  aumSkippedUnpriced: number;
   /** `goal.drift` events emitted this run (one per investor with a behind goal). */
   goalDrift: number;
   /** `insurance.premium_due` events emitted (one per investor at a milestone). */
@@ -179,11 +168,6 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
     healthScored: 0,
     familyHealthScored: 0,
     goalsRecomputed: 0,
-    aumRevalued: 0,
-    foliosRevalued: 0,
-    legsUnpriced: 0,
-    legsUnpricedValue: 0,
-    aumSkippedUnpriced: 0,
     goalDrift: 0,
     premiumDue: 0,
     policyLapsed: 0,
@@ -692,27 +676,11 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
       result.goalsRecomputed = goalsRes.recomputed;
 
       // ── Live AUM revaluation ──────────────────────────────────────────
-      // The headline audit fix: investors.aum (firm/RM AUM, tiering, exports,
-      // AI briefs) and the folio rollup (review report, commission-expected)
-      // were stored at import and never repriced. Revalue both against the
-      // live AMFI NAV feed nightly so every surface agrees with today's NAV.
-      // Folios first (so their repriced values are available), then investors.
-      const folioVal = await revalueAllFolios(tx);
-      result.foliosRevalued = folioVal.folios;
-      result.legsUnpriced = folioVal.unpriced;
-      result.legsUnpricedValue = folioVal.unpricedValue;
-      const aumVal = await recomputeCombinedAum(tx);
-      result.aumRevalued = aumVal.updated;
-      result.aumSkippedUnpriced = aumVal.skippedUnpriced;
-      // A firm whose holdings cannot be priced is the one failure mode that
-      // looks identical to "nothing changed today". Say so per tenant.
-      if (folioVal.unpriced > 0) {
-        console.warn(
-          `[daily-ops] tenant ${tenantId}: ${folioVal.unpriced} holding(s) could not be priced ` +
-            `(Rs ${Math.round(folioVal.unpricedValue / 100000)} lakh); ` +
-            `priced ${folioVal.pricedByCode} by code, ${folioVal.pricedByName} by name`
-        );
-      }
+      // No longer here. It ran inside this one transaction, so an error in any
+      // of the sections around it rolled the firm's AUM back, and it ran on the
+      // scan's clock rather than after the NAV download. It is its own job now:
+      // src/workers/aum-refresh.ts, chained after the 06:00 NAV refresh. The
+      // milestone and protection-gap sections below read the AUM it saved.
 
       // ── Proposals: did the client invest what they accepted? ──────────
       // Matches accepted proposals to the purchases the RTA feed has brought
@@ -1323,6 +1291,10 @@ export async function runDailyOpsScan(): Promise<{
   failedTenants: string[];
   durationMs: number;
 }> {
+  // The milestone and protection-gap sections read the AUM the NAV job saves; if
+  // that is mid-run in this process (a restart ran both catch-ups together), let
+  // it finish rather than read half-updated figures.
+  await waitForAumRefresh();
   const startedAt = Date.now();
 
   // ── Auto-purge: permanently remove soft-deleted tenants whose retention
@@ -1416,11 +1388,6 @@ export async function runDailyOpsScan(): Promise<{
     healthScored: 0,
     familyHealthScored: 0,
     goalsRecomputed: 0,
-    aumRevalued: 0,
-    foliosRevalued: 0,
-    legsUnpriced: 0,
-    legsUnpricedValue: 0,
-    aumSkippedUnpriced: 0,
     goalDrift: 0,
     premiumDue: 0,
     policyLapsed: 0,
@@ -1463,11 +1430,6 @@ export async function runDailyOpsScan(): Promise<{
       totals.healthScored += r.healthScored;
       totals.familyHealthScored += r.familyHealthScored;
       totals.goalsRecomputed += r.goalsRecomputed;
-      totals.aumRevalued += r.aumRevalued;
-      totals.foliosRevalued += r.foliosRevalued;
-      totals.legsUnpriced += r.legsUnpriced;
-      totals.legsUnpricedValue += r.legsUnpricedValue;
-      totals.aumSkippedUnpriced += r.aumSkippedUnpriced;
       totals.goalDrift += r.goalDrift;
       totals.premiumDue += r.premiumDue;
       totals.policyLapsed += r.policyLapsed;
