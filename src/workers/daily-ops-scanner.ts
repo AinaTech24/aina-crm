@@ -47,6 +47,7 @@
  */
 
 import { eq, sql } from "drizzle-orm";
+import { riskExpiresOnSql } from "@/lib/risk-profile/expiry";
 import { withSystem, withTenant } from "@/db/client";
 import { readSoftDeleteRetentionDays } from "@/lib/platform/retention";
 import { recomputeAllHealth } from "@/lib/investors/health-persist";
@@ -368,7 +369,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
         WHERE risk_profile_signed_at IS NOT NULL
           AND status = 'active'
           AND deleted_at IS NULL
-          AND risk_profile_signed_at < CURRENT_DATE - INTERVAL '365 days'
+          AND ${riskExpiresOnSql("investors")} < CURRENT_DATE
       `);
       result.riskExpired = riskRows.rows.length;
       for (const row of riskRows.rows as Array<{

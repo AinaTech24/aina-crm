@@ -15,6 +15,7 @@
  */
 
 import { sql } from "drizzle-orm";
+import { riskExpiresOnSql } from "@/lib/risk-profile/expiry";
 
 type Tx = { execute: (q: any) => Promise<{ rows: any[] }> };
 
@@ -267,7 +268,7 @@ export async function buildNextBestActions(
       SELECT i.id, i.name, i.avatar_url, i.phone, i.email, COALESCE(i.aum,0)::numeric AS aum, i.risk_profile_signed_at, u.name AS rm_name
       FROM investors i LEFT JOIN users u ON u.id = i.rm_id
       WHERE i.merged_into_id IS NULL AND i.deleted_at IS NULL AND i.status = 'active'
-        AND (i.risk_profile_signed_at IS NULL OR i.risk_profile_signed_at < now() - interval '365 days') ${invScope}
+        AND (i.risk_profile_signed_at IS NULL OR ${riskExpiresOnSql("i")} < CURRENT_DATE) ${invScope}
       ORDER BY i.aum DESC NULLS LAST ${cap}
     `);
     for (const x of r.rows) {

@@ -7,9 +7,12 @@
  *
  *   awaiting      a category was suggested from age; the client has not confirmed
  *   not_profiled  no signed profile at all
- *   current       signed within the last 11 months
- *   due           signed 11–12 months ago: re-profile before it lapses
- *   expired       signed more than 12 months ago
+ *   current       more than a month left before it lapses
+ *   due           lapses within the month: re-profile before it does
+ *   expired       lapsed
+ *
+ * A profile lapses a year after it was signed, or on the "Expire On" date an
+ * uploaded profile states (lib/risk-profile/expiry.ts).
  *
  * A suggestion outranks everything else: it is not a profile, and the client's
  * next step is to confirm it, whatever an older signature says.
@@ -17,6 +20,7 @@
  * Fragments reference the investors table as `i`.
  */
 import { sql, type SQL } from "drizzle-orm";
+import { riskExpiresOnSql } from "./expiry";
 
 export type RiskBucket = "not_profiled" | "due" | "current" | "expired" | "awaiting";
 
@@ -48,12 +52,12 @@ export function riskBucketSql(key: RiskBucket): SQL {
     case "not_profiled":
       return sql`(${confirmed} AND i.risk_profile_signed_at IS NULL)`;
     case "current":
-      return sql`(${confirmed} AND i.risk_profile_signed_at >= now() - interval '11 months')`;
+      return sql`(${confirmed} AND ${riskExpiresOnSql()} > (CURRENT_DATE + interval '1 month')::date)`;
     case "due":
-      return sql`(${confirmed} AND i.risk_profile_signed_at < now() - interval '11 months'
-                  AND i.risk_profile_signed_at >= now() - interval '12 months')`;
+      return sql`(${confirmed} AND ${riskExpiresOnSql()} >= CURRENT_DATE
+                  AND ${riskExpiresOnSql()} <= (CURRENT_DATE + interval '1 month')::date)`;
     case "expired":
-      return sql`(${confirmed} AND i.risk_profile_signed_at < now() - interval '12 months')`;
+      return sql`(${confirmed} AND ${riskExpiresOnSql()} < CURRENT_DATE)`;
   }
 }
 

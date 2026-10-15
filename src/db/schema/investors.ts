@@ -220,6 +220,10 @@ export const investors = pgTable(
       enum: ["conservative", "moderate", "aggressive", "very_aggressive"],
     }),
     riskProfileSignedAt: timestamp("risk_profile_signed_at", { withTimezone: true }),
+    /** A risk profile that states its own expiry (an uploaded one); counts only while
+     *  riskProfileExpiryFor equals riskProfileSignedAt — see migration 0236 / lib/risk-profile/expiry.ts. */
+    riskProfileExpiresOn: date("risk_profile_expires_on"),
+    riskProfileExpiryFor: timestamp("risk_profile_expiry_for", { withTimezone: true }),
     riskProfileVersion: integer("risk_profile_version"),
     /** True when the category was assigned in bulk from AGE, not from the
      *  client's own answers — a suggestion awaiting their confirmation.

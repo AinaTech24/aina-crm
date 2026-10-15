@@ -25,6 +25,7 @@
  */
 
 import { sql } from "drizzle-orm";
+import { riskExpiresOnSql } from "@/lib/risk-profile/expiry";
 import type { Tx } from "@/db/client";
 
 /** A raw SQL result row. Postgres hands numerics back as strings, so every
@@ -416,7 +417,7 @@ export async function loadRiskDesk(tx: Tx, w: MyWindow): Promise<RiskDesk> {
       COUNT(*) FILTER (WHERE COALESCE(risk_profile_provisional, false))::int                                     AS provisional,
       COUNT(*) FILTER (WHERE risk_profile IS NOT NULL
                          AND risk_profile_signed_at IS NOT NULL
-                         AND risk_profile_signed_at < now() - interval '1 year')::int                            AS due_review
+                         AND ${riskExpiresOnSql("investors")} < CURRENT_DATE)::int                            AS due_review
       FROM investors
      WHERE ${clientsWhere(w.scope)}
   `)).rows[0] as Row | undefined;
@@ -439,7 +440,7 @@ export async function loadRiskDesk(tx: Tx, w: MyWindow): Promise<RiskDesk> {
      WHERE ${clientsWhere(w.scope)}
        AND (risk_profile IS NULL
             OR COALESCE(risk_profile_provisional, false)
-            OR risk_profile_signed_at < now() - interval '1 year')
+            OR ${riskExpiresOnSql("investors")} < CURRENT_DATE)
      ORDER BY aum::numeric DESC NULLS LAST
      LIMIT 10
   `)).rows as Array<Record<string, unknown>>;

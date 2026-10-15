@@ -1,4 +1,5 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
+import { riskProfileLapsed } from "@/lib/risk-profile/expiry";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
@@ -418,9 +419,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
   );
   const suitability = assessSuitability((inv as any).riskProfile ?? null, exposure.equityPct, exposure.classifiedPct);
   const isRiskProfileMissing = !inv.riskProfile;
-  const isRiskProfileExpired = inv.riskProfileSignedAt
-    ? new Date(inv.riskProfileSignedAt).getTime() < Date.now() - 365 * 24 * 60 * 60 * 1000
-    : false;
+  const isRiskProfileExpired = riskProfileLapsed(inv);
 
   // Profile fields still blank, beyond the compliance items the checklist
   // already tracks as pills (KYC, risk profile, nominee, bank).

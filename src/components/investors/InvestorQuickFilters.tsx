@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { riskExpiresOnSql } from "@/lib/risk-profile/expiry";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
@@ -63,7 +64,7 @@ export async function InvestorQuickFilters({
           )::int AS dormant,
           COUNT(*) FILTER (
             WHERE status = 'active'
-              AND (risk_profile_signed_at IS NULL OR risk_profile_signed_at < now() - interval '365 days')
+              AND (risk_profile_signed_at IS NULL OR ${riskExpiresOnSql("investors")} < CURRENT_DATE)
           )::int AS rp_stale,
           COUNT(*) FILTER (
             WHERE status = 'active' AND dob IS NOT NULL
