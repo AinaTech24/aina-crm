@@ -45,6 +45,24 @@ esac
 # ---- 1. locks (same rules as scripts/ssm-deploy.sh) --------------------------
 exec 9>"$HOME/.deploy.lock"
 flock -w 1800 9 || { echo "another deploy has held the lock for 30 minutes"; exit 1; }
+# Self-measuring: RAM / swap / Docker / CPU / disk are sampled for the whole deploy and
+# printed as a DEPLOY METRICS block at the end (also saved in ~/deploy-metrics/).
+METRICS_DIR="$HOME/deploy-metrics"; mkdir -p "$METRICS_DIR"
+MFILE="$METRICS_DIR/$(date -u +%Y%m%dT%H%M%S)-${COMMIT:0:8}.json"; SFLAG="$METRICS_DIR/.sampling-$$"; SAMPLER=""
+T_START=$(date +%s); D_DOWNLOAD=0; D_LOAD=0
+if command -v python3 >/dev/null 2>&1 && [ -f "$HERE/deploy-sampler.py" ]; then
+  touch "$SFLAG"; python3 "$HERE/deploy-sampler.py" run "$SFLAG" "$MFILE" >/dev/null 2>&1 & SAMPLER=$!
+fi
+mark() { grep -ao "MARK $1 [0-9]*" "$HOME/deploy-current.log" 2>/dev/null | tail -1 | awk '{print $3}'; }
+finish_metrics() {
+  [ -n "$SAMPLER" ] || return 0
+  rm -f "$SFLAG"; sleep 4; wait "$SAMPLER" 2>/dev/null || true; SAMPLER=""
+  local ms me mg ma mc mw; ms=$(mark migrate_start); me=$(mark migrate_end); mg=$(mark schema_end); ma=$(mark colour_start); mc=$(mark colour_healthy); mw=$(mark cutover_done)
+  python3 "$HERE/deploy-sampler.py" report "$MFILE" "download=$D_DOWNLOAD" "docker_load=$D_LOAD"     "migration=$(( ${me:-0} - ${ms:-0} ))" "schema_guard=$(( ${mg:-0} - ${me:-0} ))" "new_colour_start_to_healthy=$(( ${mc:-0} - ${ma:-0} ))"     "total=$(( $(date +%s) - T_START ))" 2>&1 || true
+}
+trap finish_metrics EXIT
+# the change-lock script travels in the verified bundle (like ssm-deploy.sh did)
+if [ -f "$HERE/prod-lock.sh" ]; then cp "$HERE/prod-lock.sh" "$HOME/prod-lock.sh.new" && mv "$HOME/prod-lock.sh.new" "$HOME/prod-lock.sh"; fi
 PROD_LOCK="$HOME/prod-lock.sh"; OWN_LOCK=0
 if [ "$SHADOW" != 1 ] && [ -f "$PROD_LOCK" ]; then
   if bash "$PROD_LOCK" held-by "$DEPLOY_SESSION"; then echo "=== change lock already held by $DEPLOY_SESSION ==="
@@ -84,15 +102,19 @@ read -r AFILE ABYTES IBYTES <<<"$NUM"
 bash "$HERE/disk-gate.sh" --image-bytes "$IBYTES" --artifact-bytes "$ABYTES" || abort "disk gate: not enough free space" 3
 
 # ---- 4. download + verify (nothing is loaded into Docker yet) ----------------
+T_D0=$(date +%s)
 case "$SRC" in s3://*) aws s3 cp "${SRC%/}/$AFILE" "$STAGE/$AFILE" --only-show-errors --region ap-south-1 || abort "cannot download $AFILE";;
                *)      cp "$SRC/$AFILE" "$STAGE/$AFILE" || abort "no $AFILE in $SRC";; esac
+D_DOWNLOAD=$(( $(date +%s) - T_D0 ))
 VFLAGS=(); [ "$SHADOW" = 1 ] && VFLAGS=(--allow-shadow)
 bash "$HERE/artifact-verify.sh" "$STAGE" --commit "$COMMIT" --sha256 "$SHA256" "${VFLAGS[@]}" || abort "artifact failed verification" 4
 
 # ---- 5. load -----------------------------------------------------------------
 echo "=== loading image $(date) ==="
 case "$AFILE" in *.zst) DECOMP="zstd -dc";; *.gz) DECOMP="gzip -dc";; *) abort "unknown artifact type $AFILE" 5;; esac
+T_L0=$(date +%s)
 LOADED=$($DECOMP "$STAGE/$AFILE" | docker load | sed -n 's/^Loaded image: //p' | tail -1)
+D_LOAD=$(( $(date +%s) - T_L0 ))
 [ -n "$LOADED" ] || abort "docker load produced no image" 5
 WANT_ID=$(jfield "$STAGE/manifest.json" image.id)
 GOT_ID=$(docker image inspect "$LOADED" --format '{{.Id}}')

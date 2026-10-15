@@ -22,19 +22,21 @@ df -h / | tail -1 | awk '{print "--- disk: " $3 " used, " $4 " free (" $5 ") ---
 echo "=== image in use $(date) ==="
 docker image inspect mfd-app:latest --format '{{.Id}} {{.Size}}' || { echo "DEPLOY_DONE_EXIT=1 (no mfd-app:latest)"; exit 1; }
 
-echo "=== migrate $(date) ==="
+echo "=== migrate $(date) ==="; echo "MARK migrate_start $(date +%s)"
 $COMPOSE run --rm migrate
+echo "MARK migrate_end $(date +%s)"
 RC=$?; [ $RC -ne 0 ] && { echo "DEPLOY_DONE_EXIT=$RC (migrate failed  old colour still serving)"; exit $RC; }
 
 echo "=== schema guard $(date) ==="
 $COMPOSE run --rm migrate npm run check:schema
+echo "MARK schema_end $(date +%s)"
 RC=$?; [ $RC -ne 0 ] && { echo "DEPLOY_DONE_EXIT=$RC (schema drift  old colour still serving)"; exit $RC; }
 
 ACTIVE=$(cat $STATE 2>/dev/null)
 if [ "$ACTIVE" = "blue" ]; then TARGET=green; else TARGET=blue; fi
 echo "=== active=${ACTIVE:-none} target=$TARGET $(date) ==="
 
-echo "=== start $TARGET (verified image) ==="
+echo "=== start $TARGET (verified image) ==="; echo "MARK colour_start $(date +%s)"
 $COMPOSE --profile "$TARGET" up -d --no-deps "web-$TARGET"
 RC=$?; [ $RC -ne 0 ] && { echo "DEPLOY_DONE_EXIT=$RC (could not start $TARGET  old colour still serving)"; exit $RC; }
 
@@ -54,6 +56,7 @@ if [ $ok -ne 1 ]; then
   exit 1
 fi
 
+echo "MARK colour_healthy $(date +%s)"
 # The new colour must be running the commit that was verified, not just "a" build.
 if [ -n "$WANT" ]; then
   HEALTH=$(docker exec "app-web-$TARGET" curl -fsS http://localhost:3000/api/health 2>/dev/null)
@@ -74,6 +77,7 @@ if [ -n "$ACTIVE" ] && [ "$ACTIVE" != "$TARGET" ]; then
   $COMPOSE --profile "$ACTIVE" rm -f "web-$ACTIVE"
 fi
 
+echo "MARK cutover_done $(date +%s)"
 echo "=== refresh worker to new image $(date) ==="
 $COMPOSE up -d --no-deps worker
 

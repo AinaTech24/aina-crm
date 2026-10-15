@@ -29,7 +29,11 @@ EXTRA=$((256 * 1024 * 1024))
 REQ=$(( ART + IMG * 125 / 100 + EXTRA ))
 GATE=$(( REQ + HEAD ))
 gb() { awk -v b="$1" 'BEGIN{printf "%.2f GB", b/1073741824}'; }
-echo "disk gate: free $(gb "$FREE") of $(gb "$SIZE") | need $(gb "$REQ") (artifact $(gb "$ART") + 1.25 x image $(gb "$IMG") + 0.25) + headroom $(gb "$HEAD") = $(gb "$GATE")"
+echo "DISK GATE  CURRENT FREE SPACE : $(gb "$FREE") of $(gb "$SIZE")"
+echo "DISK GATE  REQUIRED FREE SPACE: $(gb "$GATE")  (= need $(gb "$REQ") + headroom $(gb "$HEAD"))"
+echo "DISK GATE  ARTIFACT SIZE      : $(gb "$ART")"
+echo "DISK GATE  IMAGE SIZE         : $(gb "$IMG") uncompressed (loading needs 1.25 x = $(gb $(( IMG * 125 / 100 ))))"
+echo "DISK GATE  SAFETY HEADROOM    : $(gb "$HEAD")"
 if [ "$FREE" -ge "$GATE" ]; then
   echo "disk gate: PASS (would leave $(gb $((FREE - REQ))) free after loading)"; exit 0
 fi

@@ -6,6 +6,7 @@
  * `WORKER_GROUPS=outbox,wf,seg` etc.
  */
 
+import v8 from "node:v8";
 import "dotenv/config";
 import { startOutboxPollerWorker } from "./outbox-poller";
 import { startWorkflowRunnerWorker } from "./workflow-runner";
@@ -367,6 +368,26 @@ process.on("uncaughtException", (err) => {
 });
 
 console.log(`✓ Worker process up. Groups: ${groups.join(", ")}`);
+
+// Memory shape every 5 minutes (heap used / total / RSS / external, with the peaks since
+// boot), so a heap cap for the worker can be chosen from measurements. Read-only; unref'd
+// so it never keeps the process alive.
+{
+  const mb = (n: number) => Math.round(n / 1024 / 1024);
+  let peakRss = 0;
+  let peakHeap = 0;
+  const logMem = () => {
+    const m = process.memoryUsage();
+    peakRss = Math.max(peakRss, m.rss);
+    peakHeap = Math.max(peakHeap, m.heapUsed);
+    console.log(
+      `[mem] rss=${mb(m.rss)}MB heapUsed=${mb(m.heapUsed)}MB heapTotal=${mb(m.heapTotal)}MB external=${mb(m.external)}MB ` +
+        `arrayBuffers=${mb(m.arrayBuffers)}MB heapLimit=${mb(v8.getHeapStatistics().heap_size_limit)}MB peakRss=${mb(peakRss)}MB peakHeap=${mb(peakHeap)}MB`
+    );
+  };
+  setInterval(logMem, 5 * 60 * 1000).unref();
+  setTimeout(logMem, 60 * 1000).unref();
+}
 
 const shutdown = async () => {
   console.log("Shutting down workers...");

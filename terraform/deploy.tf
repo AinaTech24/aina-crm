@@ -191,3 +191,26 @@ resource "aws_s3_bucket_policy" "deploy_artifacts" {
     ]
   })
 }
+
+# ── Verified artifacts (2026-10-14): the box deploys a pre-built image ───────────
+# CI builds the slim image on a GitHub arm64 runner and uploads it under the bucket's
+# verified/ prefix. THIS role may write ONLY there (one action, one prefix). It is a
+# separate inline policy on the GitHub role alone: the laptop role (manual_deploy) and the
+# AinaDeploy permission set cannot write to verified/, so everything the box accepts as
+# "verified" came from the CI build job. The box's artifact-verify.sh additionally checks
+# the SHA-256 against the digest the workflow reports over SSM.
+resource "aws_iam_role_policy" "github_deploy_verified_write" {
+  name = "aina-crm-verified-artifacts-write"
+  role = aws_iam_role.github_deploy.id
+  policy = jsonencode({
+    "Version" : "2012-10-17",
+    "Statement" : [
+      {
+        "Sid" : "WriteVerifiedArtifactsOnly",
+        "Effect" : "Allow",
+        "Action" : "s3:PutObject",
+        "Resource" : "arn:aws:s3:::aina-crm-deploy-artifacts-972971302420/verified/*"
+      }
+    ]
+  })
+}
