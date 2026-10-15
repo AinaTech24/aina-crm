@@ -478,14 +478,12 @@ guardian's book is a security incident: take the change lock, roll back
 (13.9) if the cause is the release, and notify the privacy / compliance
 reviewer.
 
-### 13.9 Containment and rollback
-Code only: `bash scripts/rollback-bluegreen.sh` (previous colour) or
-`scripts/manual-deploy.sh 74dc6c6e` under the lock. Nothing to undo in the
-database: audit rows written by the release (`guardian_linked`,
-`guardian_not_linked`, `guardian_verified`) are harmless to the old code.
-**Rolling back re-opens G-1** (the old code links cross-book and reads the
-copy) — use only for a release defect, and re-instate the interim
-containment (staff not to type guardian PANs; daily §2 review).
+### 13.9 Containment and rollback (revised 2026-10-15: no rollback that silently re-opens G-1)
+**Order of preference — fix forward, never back to the vulnerable code first.**
+1. **A defect only in the §10 onboarding controls** (e.g. the guardian gate blocks a legitimate proposal, the confirm route misbehaves): revert only commit `00e07718`'s gate lines (journey `guardianGate` + the send-route 412 + the status cell) in a small follow-up PR. This leaves every G-1 protection (§2, §8) in place. Interim workaround while that ships: the owner / compliance "Confirm guardian" action clears a pending minor immediately.
+2. **A defect in the hardening** (a page or export errors): fix forward in a small PR on the hotfix branch; the previous colour is NOT used, because it carries the exploitable link and the unscoped history route.
+3. **Full code rollback** (`scripts/rollback-bluegreen.sh` or `scripts/manual-deploy.sh 74dc6c6e`) only for an outage the above cannot fix in time. It knowingly re-opens G-1, so it needs the owner's written risk acceptance for a stated, short window, and the compensating controls that exist today, which are procedural, not technical (there is no flag): (a) staff instructed in writing not to type guardian PANs on minors or pick guardians outside their own clients; (b) impact SQL §2 and §7 run daily by the DBA and reviewed by compliance; (c) web-log watch on `GET /api/audit?entityType=investor`. **They do not stop the exploit; they only detect it.** Re-deploy the fix forward as soon as the defect is cured.
+Nothing to undo in the database: audit rows written by the release are harmless to any version. Never roll back to a commit before `74dc6c6e`.
 
 ### 13.10 Approval checkpoints
 1. Owner: written authorization to release `<head>` (this plan).
