@@ -78,6 +78,10 @@ const TASK_ON_TRANSITION: Record<string, TransitionTask> = {
   mandate_create: { title: "Register the SIP mandate (NACH / e-mandate)", type: "follow_up", department: "operations", priority: "high", dueInDays: 3 },
 };
 
+/** Steps whose pop-up opens every time: the task ones (assignee + due date) and
+ *  the two "already active" ones (UCC number, mandate details). */
+const POPUP_STAGES = new Set([...Object.keys(TASK_ON_TRANSITION), "ucc_activated", "mandate_activated"]);
+
 /** Loop stages that schedule a next-touch reminder for the lead owner. */
 const NEXT_TOUCH_STAGES = new Set(["call_back_later", "call_not_connected", "contact_in_future"]);
 
@@ -463,7 +467,11 @@ export function GuidedStageActions({
           // Nothing to fill in, nothing to ask: move straight on. The pop-up
           // takes no notes (removed at the firm's request), so it opens only
           // for a step's required fields.
-          if (!(pre.missingFields ?? []).length) {
+          // The five steps that hand work to someone (fresh KYC, create UCC,
+          // register mandate) or record what the client already has (UCC,
+          // mandate) always open it: it is where the task is assigned and the
+          // UCC / mandate details are typed.
+          if (!(pre.missingFields ?? []).length && !POPUP_STAGES.has(action.targetStage)) {
             const moved = await advance(action.targetStage, `Action: ${action.label}`);
             if (!moved) {
               setOutcome({ kind: "error", message: "Couldn't move to this step. Please try again." });
