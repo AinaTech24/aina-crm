@@ -343,7 +343,6 @@ export const riskProfilesExport: ExportModule = {
     { key: "pan", label: "PAN", group: "Client", sql: sql.raw(`(CASE WHEN upper(i.pan) ~ ${PAN_RE} THEN upper(i.pan) END)`), pii: "pan" },
     { key: "minor", label: "Minor", group: "Client", sql: sql.raw(`(i.is_minor IS TRUE OR upper(btrim(i.pan)) LIKE 'MINOR:%')`), kind: "bool" },
     { key: "guardian", label: "Guardian", group: "Client", sql: sql`g.name` },
-    { key: "guardian_risk", label: "Guardian's own risk category (not this account's)", group: "Client", sql: sql`(CASE WHEN ${minorSql("i")} THEN initcap(replace(g.risk_profile, '_', ' ')) END)` },
     { key: "rm", label: "Relationship manager", group: "Client", sql: userName(i("rm_id")), default: true },
     { key: "branch", label: "Branch", group: "Client", sql: sql`(SELECT b.name FROM branches b WHERE b.id = i.branch_id)` },
     { key: "phone", label: "Mobile", group: "Client", sql: i("phone"), pii: "phone" },
@@ -369,6 +368,7 @@ export const riskProfilesExport: ExportModule = {
     { key: "objective", label: "Investment objective", group: "Answers", sql: sql`replace(rp.investment_objective, '_', ' ')` },
     { key: "mf_experience", label: "MF experience", group: "Answers", sql: sql`replace(rp.mf_experience, '_', ' ')` },
     { key: "net_worth", label: "Net worth band", group: "Answers", sql: sql`replace(rp.net_worth_band, '_', ' ')` },
+    { key: "guardian_risk", label: "Guardian's own risk category (not this account's)", group: "Client", sql: sql`(CASE WHEN ${minorSql("i")} THEN initcap(replace(g.risk_profile, '_', ' ')) END)` },
   ],
 };
 

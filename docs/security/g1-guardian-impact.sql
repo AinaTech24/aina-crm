@@ -185,28 +185,29 @@ SELECT p.tenant_id,
  ORDER BY p.tenant_id, sent_on NULLS LAST, proposal;
 
 -- ── 7. Minors whose guardian is not verified (2026-10-15 onboarding rule) ───
---    pending      = latest guardian event is a refused typed PAN, a removed
---                   link, or a link the row no longer carries: MF proposals are
---                   blocked until the guardian is linked or confirmed.
+--    pending      = latest guardian event is a refused typed PAN, a minor saved
+--                   with no guardian, a removed link, or a link the row no longer
+--                   carries: MF proposals (individual or family) are blocked until
+--                   the guardian's client record is linked. There is no manual
+--                   "confirm" state.
 --    not_recorded = an unlinked minor with no guardian event (saved before the
 --                   rule): NOT blocked; listed for the firm's policy decision.
+--    "minor" here includes a client under 18 by date of birth.
 WITH ev AS (
   SELECT DISTINCT ON (a.tenant_id, a.entity_id) a.tenant_id, a.entity_id, a.action
     FROM audit_log a
    WHERE a.entity_type = 'investor'
-     AND a.action IN ('investor.guardian_linked', 'investor.guardian_unlinked',
-                      'investor.guardian_not_linked', 'investor.guardian_verified')
+     AND a.action IN ('investor.guardian_linked', 'investor.guardian_unlinked', 'investor.guardian_not_linked')
    ORDER BY a.tenant_id, a.entity_id, a.at DESC, a.id DESC
 )
 SELECT m.tenant_id,
        count(*) FILTER (WHERE m.guardian_investor_id IS NOT NULL)                                AS linked,
-       count(*) FILTER (WHERE m.guardian_investor_id IS NULL AND ev.action = 'investor.guardian_verified') AS confirmed,
-       count(*) FILTER (WHERE m.guardian_investor_id IS NULL AND ev.action IN
-                          ('investor.guardian_not_linked', 'investor.guardian_unlinked', 'investor.guardian_linked')) AS pending,
+       count(*) FILTER (WHERE m.guardian_investor_id IS NULL AND ev.action IS NOT NULL)         AS pending,
        count(*) FILTER (WHERE m.guardian_investor_id IS NULL AND ev.action IS NULL)             AS not_recorded
   FROM investors m
   LEFT JOIN ev ON ev.tenant_id = m.tenant_id AND ev.entity_id = m.id
- WHERE (m.investor_category = 'minor' OR m.is_minor) AND m.deleted_at IS NULL AND m.merged_into_id IS NULL
+ WHERE (m.investor_category = 'minor' OR m.is_minor OR (m.dob IS NOT NULL AND m.dob > current_date - interval '18 years'))
+   AND m.deleted_at IS NULL AND m.merged_into_id IS NULL
  GROUP BY m.tenant_id
  ORDER BY m.tenant_id;
 

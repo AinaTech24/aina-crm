@@ -18,7 +18,7 @@
  *
  * What the FAMILY owns is shown, not asked (lib/families/shared-details.ts):
  * a member's address is the head's and everyone's review frequency is the
- * family's. A minor's risk profile is the guardian's (migration 0234), so a
+ * family's. A minor's risk profile is the minor's own assessment (G-1) — the guardian's is shown beside it, labelled — so a
  * minor shows it and links the guardian's client record instead.
  *
  * PAN is editable so a typo or a PAN-less import can be corrected. The value
@@ -296,7 +296,7 @@ export function ClientDetailsForm({
         }),
         rmId: f.rmId || undefined,
         kycStatus: inSet(f.kycStatus, KYC_STATUSES),
-        // A minor's risk profile is the guardian's; the minor links the guardian.
+        // A minor's risk profile is the minor's own assessment; the minor links the guardian.
         ...(kind === "minor"
           ? { guardianInvestorId: guardianLink.id ?? (guardian ? null : undefined) }
           : { riskProfile: inSet(f.riskProfile, ["conservative", "moderate", "aggressive", "very_aggressive"]) }),

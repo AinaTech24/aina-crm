@@ -20,8 +20,6 @@ import type { SessionUser } from "@/lib/auth/session";
 import { loadClientSummary } from "@/lib/investors/summary";
 import { guardianForViewer } from "@/lib/investors/guardian-link";
 import { guardianVerification, guardianVerificationLabel } from "@/lib/investors/guardian-verification";
-import { can } from "@/lib/auth/rbac";
-import { ConfirmGuardianButton } from "@/components/investors/ConfirmGuardianButton";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { formatCount, formatDate, formatMoney, humanise } from "@/lib/format";
@@ -54,7 +52,7 @@ const Gap = ({ children }: { children: ReactNode }) => (
 export async function ClientSummaryStrip({
   session, investorId, investorName, show,
 }: {
-  session: Pick<SessionUser, "tenantId" | "userId" | "branchId" | "roles"> & Partial<Pick<SessionUser, "permissions">>;
+  session: Pick<SessionUser, "tenantId" | "userId" | "branchId" | "roles">;
   investorId: string;
   investorName: string;
   show: Show;
@@ -144,10 +142,6 @@ export async function ClientSummaryStrip({
         {s.guardian !== "not_applicable" && (
           <Cell label="Guardian">
             <Badge raw tone={s.guardian === "pending" ? "warning" : "neutral"}>{guardianVerificationLabel(s.guardian)}</Badge>
-            {(s.guardian === "pending" || s.guardian === "not_recorded")
-              && can(session.roles, "compliance.approve", session.permissions) && (
-              <ConfirmGuardianButton investorId={investorId} />
-            )}
           </Cell>
         )}
         <Cell label="Open tasks" href="#rel-tasks">

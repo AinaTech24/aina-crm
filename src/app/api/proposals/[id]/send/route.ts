@@ -1,5 +1,5 @@
 import { suitabilityProfile } from "@/lib/risk-profile/own-assessment";
-import { GUARDIAN_PENDING_MESSAGE, guardianVerification } from "@/lib/investors/guardian-verification";
+import { minorProposalGate } from "@/lib/proposals/minor-gate";
 import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/proposals/[id]/send
@@ -335,10 +335,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         }
       }
 
-      // A minor whose guardian is not verified (G-1): no mutual fund proposal.
-      if (mfLines.length && p.investorId
-          && (await guardianVerification(tx, session.tenantId, p.investorId)) === "pending") {
-        return NextResponse.json({ error: GUARDIAN_PENDING_MESSAGE, field: "guardian" }, { status: 412 });
+      // Every minor the proposal covers (the client, or a family's head and
+      // members): a verified guardian and the minor's OWN confirmed assessment
+      // (lib/proposals/minor-gate.ts). The owner override below applies only to
+      // the alignment verdict, never to the guardian or the assessment.
+      const minorRefusal = await minorProposalGate(tx, session.tenantId, {
+        investorId: p.investorId, familyId: (p as any).familyId ?? null, products: p.products,
+      });
+      if (minorRefusal && minorRefusal.kind !== "alignment") {
+        return NextResponse.json({ error: minorRefusal.error, field: minorRefusal.field }, { status: 412 });
+      }
+      if (minorRefusal?.kind === "alignment" && !(isOwner && hasOverride)) {
+        return NextResponse.json({ error: minorRefusal.error, field: minorRefusal.field, alignment: minorRefusal.alignment }, { status: 412 });
       }
 
       let clientProfile: any = null;

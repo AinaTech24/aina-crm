@@ -8,8 +8,8 @@
  *      send route both refuse, even with the minor's own current assessment;
  *   3. retrying the same minor makes no second record, and the refusal names
  *      nobody;
- *   4. the owner / compliance resolve it with a note (audited), or linking the
- *      guardian's client record does; an RM cannot self-confirm;
+ *   4. only linking the guardian's client record resolves it (there is no
+ *      "confirm by note": owner decision 2026-10-15);
  *   5. no answer carries the guardian's name, PAN or risk.
  *
  * Real PostgreSQL (RLS on, restricted app role), real route handlers.
@@ -41,7 +41,7 @@ describe("guardian verification status (pure)", () => {
     expect(guardianVerificationFrom(minor, "investor.guardian_not_linked")).toBe("pending");
     expect(guardianVerificationFrom(minor, "investor.guardian_unlinked")).toBe("pending");
     expect(guardianVerificationFrom(minor, "investor.guardian_linked")).toBe("pending"); // the link is gone
-    expect(guardianVerificationFrom(minor, "investor.guardian_verified")).toBe("confirmed");
+    expect(guardianVerificationFrom(minor, "investor.guardian_verified")).toBe("not_recorded"); // no such state
     expect(guardianVerificationFrom(minor, null)).toBe("not_recorded");
   });
 });
@@ -65,9 +65,9 @@ describe.skipIf(!TEST_DB)("G-1 — incomplete minor onboarding (DB)", () => {
   const post = async (body: any) => json(await (await import("@/app/api/investors/route")).POST(req("POST", "/api/investors", body)));
   const patch = async (id: string, body: any) =>
     json(await (await import("@/app/api/investors/[id]/route")).PATCH(req("PATCH", `/api/investors/${id}`, body), { params: Promise.resolve({ id }) }));
-  const gv = async (id: string, method: "GET" | "POST", body?: any) => {
+  const gv = async (id: string, method: "GET") => {
     const m = await import("@/app/api/investors/[id]/guardian-verification/route");
-    return json(await (m as any)[method](req(method, `/api/investors/${id}/guardian-verification`, body), { params: Promise.resolve({ id }) }));
+    return json(await (m as any)[method](req(method, `/api/investors/${id}/guardian-verification`), { params: Promise.resolve({ id }) }));
   };
   const send = async (id: string) => {
     const m = await import("@/app/api/proposals/[id]/send/route");
@@ -173,36 +173,6 @@ describe.skipIf(!TEST_DB)("G-1 — incomplete minor onboarding (DB)", () => {
     // Exactly one refusal on record for the one minor — the failed retries left nothing.
     const a = await one(sql`SELECT count(*)::int AS n FROM audit_log WHERE tenant_id = ${t}::uuid AND entity_id = ${first.body.id}::uuid AND action = 'investor.guardian_not_linked'`);
     expect(a.n).toBe(1);
-  });
-
-  it("resolution: an RM cannot confirm; owner / compliance confirm with a note (audited) and the gate opens; a second confirm is refused", async () => {
-    h.session = sess(rmA, ["rm"]);
-    const kid = (await post(minorBody(PB, "Kid Resolve"))).body.id;
-    await ownAssessment(kid);
-    const rmTry = await gv(kid, "POST", { note: "I checked the birth certificate." });
-    expect(rmTry.status).toBe(403);
-    expect(await status(kid)).toBe("pending");
-
-    h.session = sess(compliance, ["compliance"]);
-    const noNote = await gv(kid, "POST", { note: "ok" });
-    expect(noNote.status).toBe(400);
-    const ok = await gv(kid, "POST", { note: "Birth certificate and guardian's PAN card seen in branch." });
-    expect(ok.status).toBe(200);
-    expect(ok.body).toEqual({ status: "confirmed", label: "Guardian verified" });
-    const audit = await one(sql`SELECT actor_user_id::text AS actor, reason, before, after FROM audit_log WHERE entity_id = ${kid}::uuid AND action = 'investor.guardian_verified'`);
-    expect(audit.actor).toBe(compliance);
-    expect(audit.reason).toMatch(/Birth certificate/);
-    expect(audit.before).toEqual({ status: "pending" });
-    expect(await status(kid)).toBe("confirmed");
-    const gate = await proposalGate(kid);
-    expect(gate.every((p) => p.satisfied)).toBe(true);
-    const twice = await gv(kid, "POST", { note: "Confirming once more, by mistake." });
-    expect(twice.status).toBe(409);
-
-    // A later refused PAN on the same minor makes it pending again.
-    h.session = sess(rmA, ["rm"]);
-    await patch(kid, { typeDetails: { guardian: { name: "Typed", pan: pan(), relation: "mother" } } });
-    expect(await status(kid)).toBe("pending");
   });
 
   it("linking the guardian's client record resolves it; an RM outside the book gets 404, not the status", async () => {

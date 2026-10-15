@@ -345,7 +345,7 @@ export async function mergeInvestors(tx: Tx, input: MergeInput): Promise<MergeRe
   // then follows the survivor's (migration 0234).
   const survivorRow = (await tx.execute(sql`
     SELECT investor_category, is_minor, dob, pan, status, deleted_at, NULL::uuid AS merged_into_id
-      FROM investors WHERE id = ${survivorId}::uuid`)).rows[0] as GuardianCandidateRow | undefined;
+      FROM investors WHERE id = ${survivorId}::uuid AND tenant_id = ${tenantId}::uuid`)).rows[0] as GuardianCandidateRow | undefined;
   const survivorMayGuard = !!survivorRow && isEligibleGuardian(survivorRow);
   const guarded = (await tx.execute(sql`
     UPDATE investors SET guardian_investor_id = ${survivorMayGuard ? sql`${survivorId}::uuid` : sql`NULL`}, updated_at = now()

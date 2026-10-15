@@ -38,6 +38,7 @@ export async function GET(req: NextRequest) {
     const entityType = (sp.get("entityType") ?? "").trim();
     const entityId = (sp.get("entityId") ?? "").trim();
     if (!entityType || !entityId) return NextResponse.json({ error: "entityType and entityId are required" }, { status: 400 });
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(entityId)) return NextResponse.json({ error: "entityId must be an id" }, { status: 400 });
 
     // Privileged histories are gated; everyone else can read normal record logs.
     if (SENSITIVE_ENTITY_TYPES.has(entityType)) {

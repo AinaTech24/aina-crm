@@ -472,12 +472,14 @@ the imports and every label; never copy the enum again.
   merge into a non-guardian, purge) writes back the minor's own assessment or
   nothing (`minorOwnRiskColumns`). A typed guardian PAN that links nobody saves
   the minor unlinked and answers `guardianNotice` (one fixed text, never why),
-  audited as `investor.guardian_not_linked`. Such a minor is "Guardian not
+  audited as `investor.guardian_not_linked`. Such a minor — and any minor saved without a guardian — is "Guardian not
   verified" (`lib/investors/guardian-verification.ts`, derived from the audit
-  trail — no column): no MF proposal or MF transaction step until the
-  guardian is linked or the owner / compliance confirms it
-  (`POST /api/investors/[id]/guardian-verification`, audited
-  `investor.guardian_verified`). A client's change history
+  trail and the date of birth; no column): no MF proposal (individual or FAMILY
+  — every minor it covers, `lib/proposals/minor-gate.ts`), MF journey step, or
+  CRM "mark sent / accepted" until the guardian's client record is linked.
+  There is NO "confirm by note": a guardian who is not a CRM client stays
+  pending until a verified-identity-evidence workflow exists (owner decision,
+  2026-10-15). Duplicate-PAN clients are never merged automatically. A client's change history
   (`GET /api/audit`) follows the client's own access. Stopping the copy itself
   is a proposed migration for review: `docs/security/proposed-0245-minor-risk-no-copy.sql`.
 - **Dropdowns, not free text** (lists in client-types.ts): tax status by type

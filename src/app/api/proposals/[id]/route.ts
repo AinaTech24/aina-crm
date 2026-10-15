@@ -19,6 +19,7 @@ import { proposalTotals } from "@/lib/proposals/projections";
 import { advanceJourneyForProposal, startOnboarding, currentStage, journeyLeadId, notifyOpportunity } from "@/lib/proposals/journey";
 import { proposalOwnerId } from "@/lib/proposals/public-link";
 import { loadViewableProposal } from "@/lib/proposals/access";
+import { minorProposalGate } from "@/lib/proposals/minor-gate";
 
 /**
  * Fields that ARE the proposal's content. Once it has been sent these are
@@ -29,6 +30,8 @@ import { loadViewableProposal } from "@/lib/proposals/access";
  */
 const CONTENT_FIELDS = ["title", "summary", "coverLetter", "disclaimer", "type", "products", "totalInvestment", "expectedCorpus", "riskRating", "attachments"] as const;
 const EDITABLE_STATUSES = ["draft", "ready"];
+// Statuses that say the client has been given the proposal (or has accepted it).
+const MARKS_SHARED = ["sent", "viewed", "accepted", "partially_approved", "executed"];
 
 export const dynamic = "force-dynamic";
 
@@ -111,6 +114,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
 
       const patch: any = { ...parse.data, updatedAt: new Date() };
+
+      // Recording a proposal as shared with the client (or already accepted)
+      // in the CRM must clear the same minor rules as the send route: a
+      // verified guardian and the minor's own confirmed assessment, for every
+      // minor the proposal covers (lib/proposals/minor-gate.ts).
+      if (patch.status && patch.status !== before.status && MARKS_SHARED.includes(patch.status) && !before.sentAt) {
+        const refusal = await minorProposalGate(tx, session.tenantId, {
+          investorId: before.investorId, familyId: (before as any).familyId ?? null, products: patch.products ?? before.products,
+        });
+        const ownerOverride = session.roles.includes("owner") && !!String((before as any).suitabilityOverrideReason ?? patch.suitabilityOverrideReason ?? "").trim();
+        if (refusal && !(refusal.kind === "alignment" && ownerOverride)) {
+          throw Object.assign(new Error(refusal.error), { status: 412 });
+        }
+      }
 
       // Stamp status-transition timestamps when status flips
       if (patch.status && patch.status !== before.status) {

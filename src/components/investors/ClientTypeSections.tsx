@@ -39,7 +39,7 @@ const panInput = `${input} font-mono uppercase tracking-wide`;
 const panValue = (v: string) => v.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10);
 
 /** The guardian's own client record, when they are a client (migration 0234:
- *  the minor then carries the guardian's risk profile). */
+ *  the guardian's profile is shown beside the minor's own, never as it). */
 export type GuardianLink = { id: string | null; name: string | null; riskProfile?: string | null; hidden?: boolean };
 
 /** What the form says for a linked guardian the user may not open (G-1). */

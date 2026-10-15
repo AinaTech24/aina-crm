@@ -374,6 +374,8 @@ describe.skipIf(!TEST_DB)("G-1 guardian link — security regression (DB)", () =
     expect((await linkOf(kid2)).g).toBeNull();
     const mergeId2 = (await one(sql`SELECT id::text AS id FROM investor_merges WHERE loser_id = ${hufOld}::uuid`)).id;
     expect((await call("POST", "/api/investors/unmerge", { mergeId: mergeId2 })).status).toBe(200);
-    expect((await linkOf(kid2)).g).toBe(hufOld);
+    // The restored loser carries an HUF-type PAN, so it can never be a guardian: un-merge
+    // does not point the minor back at it (the same rules as a link made by hand).
+    expect((await linkOf(kid2)).g).toBeNull();
   });
 });

@@ -366,7 +366,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
     } as any);
 
     return {
-      // A linked minor's risk fields are the guardian's: hidden when the viewer cannot open that guardian (G-1).
+      // A minor's risk fields are the minor's own assessment for every viewer; the guardian's is shown only through guardianForViewer (G-1).
       investor: await withMinorOwnRisk(tx, session, inv),
       folios: foliosRows,
       sips: sipsRows,
@@ -1426,7 +1426,7 @@ function ClientTypeGroups({
     const turns18 = majorityDate(dob);
     return (
       <Group title="Guardian">
-        <KV label="Guardian" node={g.name ? (guardianId ? <Link href={`/dashboard/investors/${guardianId}`} className="hover:underline">{g.name}</Link> : g.name) : null} sub={guardianId ? "Risk profile is the guardian's" : undefined} />
+        <KV label="Guardian" node={g.name ? (guardianId ? <Link href={`/dashboard/investors/${guardianId}`} className="hover:underline">{g.name}</Link> : g.name) : null} />
         <KV label="Relationship" value={label(GUARDIAN_RELATIONS, g.relation)} />
         <KV label="Guardian's PAN" node={pan(g.pan)} />
         <KV label="Guardian's date of birth" value={day(g.dob)} />

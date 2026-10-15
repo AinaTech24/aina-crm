@@ -136,7 +136,8 @@ try {
     check(t.includes(must), `${label} ${what} is the real page (shows "${must}")`);
   }
 
-  // A minor whose typed guardian PAN linked nobody (incomplete onboarding).
+  // A minor whose typed guardian PAN linked nobody (incomplete onboarding):
+  // clearly not verified, and NOBODY is offered a way to "confirm" it.
   const MP = process.env.MINOR_PENDING;
   if (MP) {
     const t = await a.rendered(`/dashboard/investors/${MP}`);
@@ -145,9 +146,11 @@ try {
     const st = await a.raw(`/api/investors/${MP}/guardian-verification`);
     check(st.status === 200 && JSON.parse(st.text).status === "pending", `RM A reads the status: ${st.text}`);
     const self = await a.send("POST", `/api/investors/${MP}/guardian-verification`, { note: "I checked it myself, honestly." });
-    check(self.status === 403, `RM A cannot confirm the guardian (${self.status})`);
-    const ot = await (await as(OWNER)).rendered(`/dashboard/investors/${MP}`);
-    check(ot.includes("Guardian not verified") && ot.includes("Confirm guardian"), "the owner sees the status and the \"Confirm guardian\" action");
+    check(self.status === 405 || self.status === 404, `there is no way to confirm a guardian by note (${self.status})`);
+    const own = await (await as(OWNER)).rendered(`/dashboard/investors/${MP}`);
+    check(own.includes("Guardian not verified") && !own.includes("Confirm guardian"), "the owner sees the status and no \"Confirm guardian\" action");
+    const ownPost = await (await as(OWNER)).send("POST", `/api/investors/${MP}/guardian-verification`, { note: "Seen the documents in branch, verified." });
+    check(ownPost.status === 405 || ownPost.status === 404, `not even the owner can confirm by note (${ownPost.status})`);
   }
 
   const o = await as(OWNER);

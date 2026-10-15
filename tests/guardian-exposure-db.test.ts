@@ -188,7 +188,8 @@ describe.skipIf(!TEST_DB)("G-1 — guardian-derived risk on every read path (DB)
     h.session = sess(owner, ["owner"]);
     const un = await (await import("@/app/api/investors/unmerge/route")).POST(req("POST", "/api/investors/unmerge", { mergeId }));
     expect(un.status).toBe(200);
-    expect(await row(kid)).toMatchObject({ g: hOld, risk_profile: "aggressive" });
+    // hOld carries an HUF-type PAN: it cannot be a guardian, so un-merge does not relink it.
+    expect(await row(kid)).toMatchObject({ g: null, risk_profile: null });
   });
 
   it("erasing a guardian (purge) removes the copy from their minors", async () => {

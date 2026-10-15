@@ -430,7 +430,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // A minor's guardian as a client: the one picked, else the ONE client
       // whose PAN is the guardian PAN typed — only a live adult individual this
       // user can open (lib/investors/guardian-link.ts, G-1). The minor then
-      // carries the guardian's risk profile (a database rule, migration 0234).
+      // carries a copy of the guardian's risk profile on its row (a database rule, migration 0234) that no reader uses (G-1).
       // Re-sending the guardian already on record changes nothing (and is not
       // re-checked), so an editor who cannot open that guardian can still save
       // the minor's other details; null unlinks. Typing a DIFFERENT guardian
@@ -761,7 +761,18 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       await tx.update(leads).set({ convertedInvestorId: null } as any).where(and(eq(leads.tenantId, T), eq(leads.convertedInvestorId, id)));
       await tx.update(leads).set({ referredByInvestorId: null } as any).where(and(eq(leads.tenantId, T), eq(leads.referredByInvestorId, id)));
       await tx.update(families).set({ primaryInvestorId: null } as any).where(and(eq(families.tenantId, T), eq(families.primaryInvestorId, id)));
-      await tx.update(investors).set({ guardianInvestorId: null } as any).where(and(eq(investors.tenantId, T), eq(investors.guardianInvestorId, id)));
+      // A minor whose guardian is erased keeps their record, guardian cleared,
+      // the erased guardian's copied risk replaced by the minor's own assessment
+      // (or none), and the removal audited — as lib/investors/purge.ts does (G-1).
+      const orphaned = await tx.update(investors).set({ guardianInvestorId: null } as any)
+        .where(and(eq(investors.tenantId, T), eq(investors.guardianInvestorId, id)))
+        .returning({ id: investors.id });
+      for (const m of orphaned) {
+        if (m.id === id) continue;
+        await tx.update(investors).set((await minorOwnRiskColumns(tx, T, m.id)) as any)
+          .where(and(eq(investors.tenantId, T), eq(investors.id, m.id)));
+        await auditGuardianChange(tx, { tenantId: T, actorUserId: session.userId, minorId: m.id, before: id, after: null, via: "delete" });
+      }
 
       // Permanent hard delete — folios/transactions/sips/proposals/goals/etc.
       // cascade automatically (migration 0131).

@@ -207,7 +207,7 @@ function guardianGate(f: Facts, client: string): Prerequisite[] {
   return f.guardian === "pending" ? [{
     label: "The minor's guardian verified",
     satisfied: false,
-    hint: "Link the guardian's client record in the Guardian section, or ask the owner or compliance to confirm the guardian.",
+    hint: "Link the guardian's client record (Edit client → Guardian's client record). A guardian who is not a CRM client stays pending.",
     cta: { href: `${client}#master`, label: "Open client details" },
   }] : [];
 }

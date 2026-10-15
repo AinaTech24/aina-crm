@@ -9,7 +9,11 @@
  *   · a client who already has a REAL (client-answered) profile — overwriting a
  *     signed profile with a guess from age is the one thing that would make
  *     this dangerous, so those are skipped and reported, never re-labelled;
- *   · a client with no date of birth — listed as skipped rather than guessed at.
+ *   · a client with no date of birth — listed as skipped rather than guessed at;
+ *   · a MINOR (G-1): a minor account needs its own explicitly verified,
+ *     account-specific assessment recorded through the guardian. A category
+ *     inferred from the child's age is not that, so minors are left out of
+ *     the plan altogether (they are not counted as active clients here).
  *
  * An existing PROVISIONAL profile may be refreshed (the bands changed, or the
  * client had a birthday) — that is the only overwrite, and only when asked for.
@@ -19,7 +23,7 @@ import { sql, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { applyRiskCategory, type RiskCategory } from "@/lib/risk-profile/apply";
 import { categoryForAge, type AgeBand } from "@/lib/risk-profile/age-bands";
-import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
+import { clientRiskSql, minorSql } from "@/lib/risk-profile/own-assessment";
 
 export type SkipReason = "no_dob" | "already_profiled" | "unchanged";
 
@@ -62,7 +66,8 @@ export async function planAgeAssignment(
                 ELSE date_part('year', age(i.dob))::int END AS age
       FROM investors i
      WHERE i.tenant_id = ${opts.tenantId}::uuid
-       AND i.status = 'active' AND i.deleted_at IS NULL AND i.merged_into_id IS NULL${rmScope}
+       AND i.status = 'active' AND i.deleted_at IS NULL AND i.merged_into_id IS NULL
+       AND NOT ${minorSql("i")}${rmScope}
      ORDER BY i.name ASC
   `);
 

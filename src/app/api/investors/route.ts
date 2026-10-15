@@ -231,6 +231,12 @@ export async function POST(req: NextRequest) {
       const visible = await investorScopeSql(tx, session, "i2").catch(() => sql`FALSE`);
       return existingClientForPan(tx, session.tenantId, storedPan, visible);
     }, { userId: session.userId, branchId: session.branchId ?? undefined, roles: session.roles });
+    if (existing && body.investorCategory === "minor" && (!existing.id || existing.state === "active")) {
+      // A retry of the same minor, or a key held by a client this user cannot
+      // open: one sentence that names nobody and says nothing about a PAN, a
+      // guardian or the record's state.
+      return NextResponse.json({ error: "A client with these details is already on record. Search the client list before adding them again." }, { status: 409 });
+    }
     if (existing) {
       const error =
         existing.state === "trash"
@@ -260,7 +266,7 @@ export async function POST(req: NextRequest) {
       // A minor's guardian as a client: the one picked, else the ONE client
       // whose PAN is the guardian PAN — only a live adult individual this user
       // can open (lib/investors/guardian-link.ts, G-1). The minor then carries
-      // the guardian's risk profile (a database rule, migration 0234). A
+      // the guardian's risk profile on its row (a database rule, migration 0234) that no reader uses (G-1). A
       // refused pick stops the save with one message that never says why; a
       // typed PAN that resolves to nobody leaves the minor unlinked — and the
       // response says so (guardianNotice), and the history records it.
@@ -271,8 +277,11 @@ export async function POST(req: NextRequest) {
           if (!guardianInvestorId) throw Object.assign(new Error(GUARDIAN_NOT_LINKED), { status: 400 });
         } else {
           guardianInvestorId = await resolveGuardian(tx, session, { pan: body.typeDetails?.guardian?.pan });
-          guardianPanTried = !guardianInvestorId && !!guardianPan(body.typeDetails?.guardian?.pan);
         }
+        // Any minor saved without a linked guardian is "not verified" — a typed
+        // PAN that linked nobody, or no guardian PAN at all (the audit row is
+        // what the status and the MF proposal gates read).
+        guardianPanTried = !guardianInvestorId;
       }
       guardianLinked = !!guardianInvestorId;
 
@@ -369,7 +378,7 @@ export async function POST(req: NextRequest) {
           before: null, after: guardianInvestorId, via: body.guardianInvestorId ? "picked" : "pan",
         });
       }
-      if (guardianPanTried) await auditGuardianNotLinked(tx, { tenantId: session.tenantId, actorUserId: session.userId, minorId: id });
+      if (guardianPanTried) await auditGuardianNotLinked(tx, { tenantId: session.tenantId, actorUserId: session.userId, minorId: id, via: guardianPan(body.typeDetails?.guardian?.pan) ? "pan" : "none" });
 
       await recordAudit(tx, {
         tenantId: session.tenantId,

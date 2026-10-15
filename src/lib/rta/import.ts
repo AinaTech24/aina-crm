@@ -24,6 +24,7 @@ import type { RtaFolioRecord } from "./types";
 import { resolveSchemeIdentity } from "./resolve-scheme";
 import { ownersOfFolios, releaseFormerOwners } from "./former-owners";
 import { fillCityStateFromPincode } from "@/lib/pincode/fill";
+import { auditGuardianChange, isEligibleGuardian } from "@/lib/investors/guardian-link";
 import { followMerges, resolveNoPanClients, resolvePanClients, type ClientHint } from "./client-match";
 
 /**
@@ -732,20 +733,66 @@ export async function importRtaFolios(
 
   // ── 6. Link each minor to its guardian + group them into one family. ───────
   if (minorGuardianPan.size > 0) {
-    const linkPairs = [...minorGuardianPan.entries()]
+    const statedPairs = [...minorGuardianPan.entries()]
       .map(([minorKey, gp]) => ({ minorId: keyToId.get(minorKey), guardianId: keyToId.get(gp) }))
       .filter((x): x is { minorId: string; guardianId: string } => !!x.minorId && !!x.guardianId);
 
-    // (a) guardian_investor_id + is_minor on each minor.
+    // The registrar's stated guardian is linked only when it passes the same
+    // rules as a link made by hand (lib/investors/guardian-link.ts, G-1): a
+    // live, non-merged adult individual that is the ONLY live holder of its PAN,
+    // and never the minor itself. Anything else leaves the minor unlinked — and
+    // "not verified" — instead of pointing it at the wrong person. Each link
+    // that changes is audited (system actor).
+    const guardianRows = new Map<string, any>();
+    for (const part of chunk([...new Set(statedPairs.map((x) => x.guardianId))], 1000)) {
+      const rows = await tx.execute(sql`
+        SELECT g.id::text AS id, g.investor_category, g.is_minor, g.dob, g.pan, g.status, g.deleted_at, g.merged_into_id,
+               (SELECT count(*) FROM investors o WHERE o.tenant_id = g.tenant_id AND upper(btrim(o.pan)) = upper(btrim(g.pan))
+                   AND o.deleted_at IS NULL AND o.merged_into_id IS NULL) AS pan_holders
+          FROM investors g WHERE g.tenant_id = ${tenantId}::uuid AND g.id IN (${sql.join(part.map((p) => sql`${p}::uuid`), sql`, `)})`);
+      for (const row of rows.rows as any[]) guardianRows.set(String(row.id), row);
+    }
+    const linkPairs = statedPairs.filter((x) => {
+      const g = guardianRows.get(x.guardianId);
+      return !!g && x.guardianId !== x.minorId && Number(g.pan_holders) === 1 && isEligibleGuardian(g);
+    });
+    const refusedMinorIds = statedPairs.filter((x) => !linkPairs.includes(x)).map((x) => x.minorId);
+
+    // (a) is_minor on every minor; guardian_investor_id only on an accepted link.
+    for (const part of chunk(statedPairs, 500)) {
+      if (!part.length) continue;
+      await tx.execute(sql`
+        UPDATE investors SET is_minor = true, updated_at = now()
+         WHERE tenant_id = ${tenantId}::uuid AND is_minor IS NOT TRUE
+           AND id IN (${sql.join(part.map((x) => sql`${x.minorId}::uuid`), sql`, `)})`);
+    }
     for (const part of chunk(linkPairs, 500)) {
       if (!part.length) continue;
       const mids = part.map((x) => x.minorId);
       const gids = part.map((x) => x.guardianId);
-      await tx.execute(sql`
+      const changed = (await tx.execute(sql`
         UPDATE investors m SET guardian_investor_id = v.gid::uuid, is_minor = true, updated_at = now()
         FROM (SELECT unnest(${pgArray(mids, "uuid")}) AS mid, unnest(${pgArray(gids, "uuid")}) AS gid) v
-        WHERE m.id = v.mid AND m.tenant_id = ${tenantId}::uuid
-      `);
+        WHERE m.id = v.mid AND m.tenant_id = ${tenantId}::uuid AND m.guardian_investor_id IS DISTINCT FROM v.gid::uuid
+        RETURNING m.id::text AS id, v.gid::text AS gid`)).rows as Array<{ id: string; gid: string }>;
+      if (!dryRun) {
+        for (const c of changed) {
+          await auditGuardianChange(tx, { tenantId, actorUserId: null, minorId: c.id, before: null, after: c.gid, via: "import" });
+        }
+      }
+    }
+    if (!dryRun) {
+      for (const part of chunk(refusedMinorIds, 500)) {
+        if (!part.length) continue;
+        await tx.execute(sql`
+          INSERT INTO audit_log (id, tenant_id, actor_type, action, entity_type, entity_id, after)
+          SELECT gen_random_uuid(), ${tenantId}::uuid, 'system', 'investor.guardian_not_linked', 'investor', m.id, '{"via":"import"}'::jsonb
+            FROM investors m
+           WHERE m.tenant_id = ${tenantId}::uuid AND m.guardian_investor_id IS NULL
+             AND m.id IN (${sql.join(part.map((x) => sql`${x}::uuid`), sql`, `)})
+             AND NOT EXISTS (SELECT 1 FROM audit_log a WHERE a.tenant_id = m.tenant_id AND a.entity_id = m.id
+                              AND a.action = 'investor.guardian_not_linked')`);
+      }
     }
 
     // (b) One household family per guardian — reuse the guardian's existing

@@ -9,7 +9,7 @@
  *
  * Added into a family, a member takes the head's address and the family's
  * review frequency (lib/families/shared-details.ts), so neither is asked. A
- * minor's risk profile is the guardian's (migration 0234), so it is not asked
+ * minor's risk profile is the minor's own assessment (G-1), so it is not copied from the guardian
  * either; the guardian's client record is linked instead.
  */
 
@@ -255,7 +255,7 @@ function NewInvestorPageInner() {
           typeDetails: details,
           segmentTag: form.segmentTag,
           clientCategory: form.clientCategory || undefined,
-          // A minor's risk profile is the guardian's (migration 0234).
+          // A minor's risk profile is the minor's own assessment (G-1).
           riskProfile: kind === "minor" ? undefined : form.riskProfile || undefined,
           guardianInvestorId: kind === "minor" ? guardianLink.id ?? undefined : undefined,
           householdType: u(form.householdType),

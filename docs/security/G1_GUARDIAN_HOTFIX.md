@@ -1,15 +1,14 @@
 # G-1 — Guardian-PAN link: security hotfix (development only)
 
-**Status (2026-10-15): release candidate for the owner's explicit
-authorization — `claude/g1-guardian-hotfix` at `00e07718` (code) + the docs
-commit that follows it, on top of `main` `74dc6c6e` (what production runs —
-deploy run 299; `origin/main` re-fetched 2026-10-15 and unchanged).** It holds
-the first fix (`0c4f9e7e`, `ea287acf`), the final hardening of §8 and the
-incomplete-onboarding controls of §10. Not merged to `main`, not deployed,
-nothing run against production, no migration. Pushing to `main` deploys
-(§13.6); that needs the owner's separate, explicit authorization (§13.10).
-Acceptance matrix: §14. Interim minor-suitability policy for decision: §12.
-Proposed 0245: assessed in §11, not applied. §6 is superseded by §13.
+**Status (2026-10-15, second release gate): corrected release candidate on
+`claude/g1-guardian-hotfix`, with `main` `9c2d5228` merged in (the new
+verified-artifact deploy pipeline and migration 0235 are main's, not this
+hotfix's).** Holds the first fix (§1–§7), the final hardening (§8), the onboarding
+controls (§10) and the owner's corrections of §15. Not merged to `main`, not
+deployed, nothing run against production; **this hotfix adds no migration.**
+Merging to `main` deploys (see `G1_RELEASE_RUNBOOK.md`); that needs the owner's
+separate, explicit authorization. §10's "Confirm guardian" and §13's deploy
+steps are SUPERSEDED — by §15 and by `G1_RELEASE_RUNBOOK.md`.
 
 ## 1. Root cause
 
@@ -543,3 +542,19 @@ readers are covered by the SQL sweep + helper tests (§8.1). (3) Who read
 client histories before the fix is not in the database (§13.11). (4) Copies
 remain stored on rows until 0245 + a reviewed clean-up (§11). (5) §10's
 `not_recorded` minors are not blocked pending the §12 decision.
+
+## 15. Corrections after the second release gate (2026-10-15, owner decisions 1–4)
+
+| Decision | Change | Test |
+|---|---|---|
+| 1. Never confirm a deleted, merged or inactive minor | The "Confirm guardian" action is **removed** (no POST route, no button, no "confirmed" state; a stray `investor.guardian_verified` audit row means nothing). Nothing can be confirmed on any record. | `guardian-corrections-db` #1 |
+| 2. Ambiguous / ineligible guardian never confirmed; external guardian needs identity evidence | Because the CRM has no verified-identity-evidence workflow, a guardian who is **not** a CRM client stays **pending**. The only resolution is the normal link (Edit client → Guardian's client record, or a typed PAN that resolves to exactly one eligible, live, openable client): live adult individual, only holder of its PAN, in the user's book, audited. Duplicate-PAN clients are never merged automatically. **Business effect:** a minor whose guardian is not a CRM client cannot receive an MF proposal until that guardian is added as a client or the evidence workflow is built. | #1–#3 |
+| 3. Family proposals | `lib/proposals/minor-gate.ts`: for an individual OR family proposal with MF lines, **every** live minor it covers (the client; a family's head and every member) needs a linked guardian and its own confirmed assessment (signed, not provisional, under 12 months); alignment is checked against each minor's own category (owner override applies only to alignment). Applied in the send route **and** in the status change that records a proposal sent / accepted in the CRM, which used to bypass the send gates entirely. Minor-ness includes a client under 18 by date of birth, so switching the type away and back does not clear it. A minor created with no guardian PAN is now pending (audited `via: none`), not "not recorded". | #2–#5 |
+| 4. Related gaps | **Hard delete** of a guardian now writes back the minor's own risk (or none) and audits the unlink, as purge does. **Un-merge** relinks only to a loser that is still an eligible guardian and only a record that is still a minor. **Outbox**: an event for a purged minor loses the copied risk keys. **Registrar import** (`lib/rta/import.ts` step 6): the stated guardian is linked only if eligible and the only live holder of its PAN, never the minor itself; accepted links and refusals are audited (system actor, no duplicates on re-import). **Bulk age assignment** leaves minors out. **Export**: the new "Guardian's own risk category" column is the LAST column, so existing column positions are unchanged. **Labels**: the client page no longer says "Risk profile is the guardian's"; stale comments fixed. **Dedup**: with main's new existing-client check, a retry of a minor, or a key held by a client the user cannot open, answers one neutral sentence and no `existing` object. Also: audit route rejects a non-UUID `entityId` (400); the merge survivor lookup filters by tenant. | #6–#12 |
+
+**Limitations that remain (explicit):** (1) a minor saved before this rule with no link and no guardian event
+(`not_recorded`) is still not blocked — a policy decision (§12); (2) the audit-time ordering of guardian events uses
+the transaction start, so a concurrent edit and link could order oddly (low); (3) the PATCH-based status change
+applies the minor rules but the pre-existing adult paths there are unchanged; (4) `main`'s CI runs as a superuser, so
+RLS is proven by the local `mfd_app` runs; (5) copies still sit on minors' rows until the separately approved 0245;
+(6) the RTA release branch carries its own copy of `rta/import.ts` — it needs this change at integration, not now.

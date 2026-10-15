@@ -15,7 +15,7 @@
  * Owner / branch-head only, one transaction, audited.
  */
 
-import { GUARDIAN_MOVED_KEY, GUARDIAN_UNLINKED_KEY, auditGuardianChange } from "@/lib/investors/guardian-link";
+import { GUARDIAN_MOVED_KEY, GUARDIAN_UNLINKED_KEY, auditGuardianChange, isEligibleGuardian } from "@/lib/investors/guardian-link";
 import { handleApiError } from "@/lib/api/error-handler";
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
@@ -97,7 +97,16 @@ export async function POST(req: NextRequest) {
         // Guardian links the merge moved to the survivor (or removed, when the
         // survivor could not be a guardian) go back to the loser — only where
         // nobody has changed them since (G-1). Audited per minor.
-        const relinks: Array<[string, string]> = [[GUARDIAN_MOVED_KEY, "moved"], [GUARDIAN_UNLINKED_KEY, "unlinked"]];
+        // Only to a loser that may still be a guardian, and only for a record
+        // that is still a minor — the same rules as a link made by hand.
+        const loserRow = ((await tx.execute(sql`
+          SELECT investor_category, is_minor, dob, pan, status, deleted_at, merged_into_id FROM investors
+           WHERE tenant_id = ${session.tenantId}::uuid AND id = ${loserId}::uuid`)).rows[0] ?? null) as any;
+        // The loser is still marked merged here (this unmerge clears that below),
+        // so judge it as it will be once restored: its status before the merge.
+        const loserMayGuard = !!loserRow
+          && isEligibleGuardian({ ...loserRow, merged_into_id: null, deleted_at: null, status: row.loser_status ?? loserRow.status });
+        const relinks: Array<[string, string]> = loserMayGuard ? [[GUARDIAN_MOVED_KEY, "moved"], [GUARDIAN_UNLINKED_KEY, "unlinked"]] : [];
         for (const [key, how] of relinks) {
           const ids = Array.isArray(moved[key]) ? moved[key] : [];
           for (let i = 0; i < ids.length; i += 500) {
@@ -106,6 +115,7 @@ export async function POST(req: NextRequest) {
               UPDATE investors SET guardian_investor_id = ${loserId}::uuid, updated_at = now()
                WHERE tenant_id = ${session.tenantId}::uuid
                  AND id IN (${sql.join(part.map((v) => sql`${v}::uuid`), sql`, `)})
+                 AND (investor_category = 'minor' OR is_minor)
                  AND ${how === "moved" ? sql`guardian_investor_id = ${survivorId}::uuid` : sql`guardian_investor_id IS NULL`}
                RETURNING id::text AS id`)).rows as Array<{ id: string }>;
             for (const m of back) {
