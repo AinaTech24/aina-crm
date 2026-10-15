@@ -107,6 +107,11 @@ COPY --chown=app:app public ./public
 COPY --chown=app:app drizzle ./drizzle
 COPY --chown=app:app scripts ./scripts
 COPY --chown=app:app src ./src
+# The RDS CA bundle: DATABASE_URL / APP_DATABASE_URL carry sslrootcert=/app/rds-ca.pem. The old
+# server-side `COPY . .` picked up an untracked copy lying in ~/app; a CI-built image has no such
+# file, so it ships the public AWS bundle (docker/rds-global-bundle.pem, a superset of the one the
+# box had) instead. Public trust anchors, not a secret.
+COPY --chown=app:app docker/rds-global-bundle.pem /app/rds-ca.pem
 USER app
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \

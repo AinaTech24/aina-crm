@@ -123,6 +123,7 @@ need "no private key material in /app (excluding node_modules)" "[ -z \"\$(docke
 need "no AKIA access key id in app files" "[ -z \"\$(docker run --rm --entrypoint sh '$IMG' -c 'grep -rlE \"AKIA[0-9A-Z]{16}\" /app/src /app/scripts /app/.next /app/public /app/drizzle 2>/dev/null | head -1')\" ]"
 need "no .next/cache in the image"    "! docker run --rm --entrypoint sh '$IMG' -c 'test -d /app/.next/cache'"
 need "runs as the non-root user"      "[ \"\$(docker run --rm --entrypoint id '$IMG' -un)\" = app ]"
+need "/app/rds-ca.pem is shipped and readable (DATABASE_URL names it as sslrootcert)" "[ \$(docker run --rm --entrypoint sh '$IMG' -c 'grep -c BEGIN.CERTIFICATE /app/rds-ca.pem') -ge 100 ]"
 
 echo
 [ "$FAILS" = 0 ] && { echo "SMOKE: ALL CHECKS PASSED"; exit 0; } || { echo "SMOKE: $FAILS CHECK(S) FAILED"; exit 1; }

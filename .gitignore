@@ -18,6 +18,8 @@
 # misc
 .DS_Store
 *.pem
+# AWS RDS public CA bundle (not a secret) baked into the image: DATABASE_URL names /app/rds-ca.pem
+!docker/rds-global-bundle.pem
 
 # debug
 npm-debug.log*
