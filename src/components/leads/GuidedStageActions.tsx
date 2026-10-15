@@ -621,6 +621,17 @@ export function GuidedStageActions({
             ...(isNotQualified ? { lostReason, lostAt: new Date().toISOString() } : {}),
           },
           callBackAt: needsNextTouch ? callBackAt : undefined,
+          // The engine creates the step's task in the Tasks module.
+          task: taskSpec
+            ? {
+                assigneeId: taskAssigneeId,
+                dueAt: taskDueAt ? new Date(taskDueAt).toISOString() : undefined,
+                title: taskSpec.title,
+                type: taskSpec.type,
+                priority: taskSpec.priority,
+                description: `Auto-created on the "${transitioningAction.targetStage.replace(/_/g, " ")}" transition.`,
+              }
+            : undefined,
           uccNumber: isUccActivated ? uccNumber.trim() : undefined,
           mandateBank: isMandateActivated ? (selectedBank?.bankName ?? mandateBankName.trim()) : undefined,
           mandateIfsc: isMandateActivated ? selectedBank?.ifsc : undefined,
@@ -632,31 +643,6 @@ export function GuidedStageActions({
 
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d?.error ?? "Failed to complete transition");
-
-      // Auto-create the task assigned to the chosen team member (the task API
-      // notifies them). The stage already moved, so a task failure is surfaced
-      // (don't silently drop it) but the transition stands — re-clicking Save
-      // retries the task (the transition is idempotent).
-      if (taskSpec) {
-        const tRes = await fetch(`/api/tasks`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            title: taskSpec.title,
-            description: remarks ? `From onboarding transition. ${remarks}` : `Auto-created on the "${transitioningAction.targetStage.replace(/_/g, " ")}" transition.`,
-            type: taskSpec.type,
-            priority: taskSpec.priority,
-            department: taskSpec.department,
-            assigneeId: taskAssigneeId,
-            dueAt: taskDueAt || undefined,
-            relatedLeadId: leadId,
-          }),
-        });
-        if (!tRes.ok) {
-          const td = await tRes.json().catch(() => ({}));
-          throw new Error(`Stage moved, but the task couldn't be created: ${td?.error ?? `HTTP ${tRes.status}`}. Click Save again to retry.`);
-        }
-      }
 
       setTransitioningAction(null);
       setCallBackAt("");

@@ -46,6 +46,7 @@ import {
   stageFlavour,
 } from "./lead_to_client";
 import { checkPrerequisites } from "./prerequisites";
+import { closeJourneyTask, createJourneyTask, type JourneyTaskInput } from "./journey-task";
 
 const MODULE = "leads";
 
@@ -211,6 +212,9 @@ export interface TransitionOptions {
    *  intermediate hops of a multi-stage walk so only the FINAL target fires
    *  its recipes (a passed-through stage shouldn't trigger sends). */
   suppressAutomations?: boolean;
+  /** What the person moving the step chose for the step's task (assignee, due
+   *  date, wording). Optional — the engine fills the rest. */
+  task?: JourneyTaskInput;
   /** Threaded into the audit_log row for forensics. */
   ipAddress?: string | null;
   userAgent?: string | null;
@@ -429,6 +433,32 @@ export async function transitionTo(
         } as any)
         .onConflictDoNothing({ target: eventsOutbox.dedupKey, where: sql`dedup_key IS NOT NULL` });
     }
+  }
+
+  // Client onboarding → Tasks module. Leaving a client-phase step closes its
+  // task; entering one (not a pass-through hop, not a terminal) opens one for
+  // the step's owner. Retry stages with their own task (mandate_reject) skip.
+  if (fromStage && fromStage.stageOrder > LEAD_PHASE_LAST_ORDER) {
+    await closeJourneyTask(tx, tenantId, leadId, currentStageKey, opts.actorUserId);
+  }
+  if (
+    !opts.suppressAutomations &&
+    toStage.stageOrder > LEAD_PHASE_LAST_ORDER &&
+    disposition === "in_progress" &&
+    stageFlavour(toStageKey) !== "terminal_failure" &&
+    stageFlavour(toStageKey) !== "terminal_success" &&
+    toStageKey !== "mandate_reject"
+  ) {
+    await createJourneyTask(tx, {
+      tenantId,
+      leadId,
+      stageKey: toStageKey,
+      stageName: toStage.stageName,
+      ownerRole: toStage.ownerRole ?? null,
+      slaDays: toStage.slaDays ?? null,
+      actorUserId: opts.actorUserId ?? null,
+      input: opts.task,
+    });
   }
 
   // Entering a route's own step records the route (exchange / physical), so the
