@@ -578,3 +578,47 @@ proposal. Test: `guardian-corrections-db` "legacy minors …" (each of the four 
 **Business effect:** every existing minor without a valid linked guardian is blocked from MF proposals until a
 valid guardian client is linked. Never create fictitious investments or portfolios to register a guardian; a
 guardian can be added as an ordinary client record with their own details.
+
+## 17. Integration of main 523143bc — risk-profile upload and expiry made minor-safe (2026-10-16)
+
+Owner authorization "apply final two blockers and complete PR #19". Commits: `de7caf27` (§16 applied) and the
+merge of `main` **523143bc** (risk-profile upload + Expire On with migration 0236, client exit dates 0235,
+KYC checks 0237). No migration was edited; `git diff origin/main HEAD -- drizzle` is empty.
+
+**Seven conflicts — each decided by the rule "a minor's risk and its expiry are the minor's own assessment":**
+
+| File | main brought | Kept |
+|---|---|---|
+| `lib/risk-profile/buckets.ts` | windows on the stored Expire On | main's windows (current > +1 month; due ≤ 1 month; expired < today) over `clientRiskSql(...).expiresOn` |
+| `lib/dashboard/branch/rm-ledger.ts` | due-for-review counts by `riskExpiresOnSql` | `rk.*` columns; due = `rk.expiresOn < CURRENT_DATE` |
+| `lib/dashboard/my/clients.ts` | same | same as above |
+| `lib/investors/summary.ts` | stale = lapsed by the stored expiry | the minor's own category / signed / expiry; stale = `riskProfileLapsed` on those |
+| `lib/nba/engine.ts` | "review risk profile" when expired | `(rk.signedAt IS NULL OR rk.expiresOn < CURRENT_DATE)` |
+| `workers/daily-ops-scanner.ts` | expiry notifications from the stored date | `ownRisk.expiresOn < CURRENT_DATE` |
+| `components/investors/InvestorQuickFilters.tsx` | "risk expired / expiring" filters | the same filters over `clientRiskSql("investors").expiresOn` |
+
+**Expiry (`clientRiskSql(alias).expiresOn`, `suitabilityProfile().expiresOn`, `withOwnRiskForMinors`):** an adult reads
+main's rule unchanged (`riskExpiresOnSql` — the stated Expire On, else signed + 1 year). A minor reads its own latest
+assessment: that response's `next_review_at` (an upload's Expire On), else signed + 1 year; no own assessment → no expiry
+(still "Not completed"). The 0234/0236 copy of the guardian's expiry pair on the minor's row is never read. A guardian
+change renews nothing. `suitabilityStatus` now returns "Due for review" once the expiry has passed, so every gate
+(proposal minor gate, journey, MF suitability) refuses a lapsed assessment; a new upload renews it.
+
+**Upload (`lib/risk-profile/upload.ts`, `/api/risk-profiles/upload`):** main refused every minor ("a minor's risk profile
+is the guardian's"). Now an authorized user (`risk_profile.manage`, the client in their book) may upload a minor's OWN
+assessment only when `guardianVerifiedForMf` passes; otherwise 409 `field: guardian` before the file is stored. The row is
+the minor's (`rm_remarks` "Assessment of the minor's own account …", audit `forMinorAccount`, `guardianInvestorId`); it
+never copies the guardian's values and never rewrites or deletes an existing assessment. The GET no longer names the
+guardian or returns the guardian's risk. The button shows on a minor's page with a short note.
+
+**Tests:** new `tests/guardian-expiry-upload-db.test.ts` (9: minor own expiry vs a guardian copy of 2031, no own
+assessment, upload renews, an earlier stated expiry lapses, guardian change does not renew, upload refused without a
+verified guardian, list helper; adult rule unchanged; route 403 / 404 / 409 and no guardian data) — each correction
+mutation-checked. main's `tests/risk-profile-upload.test.ts` minor case rewritten to the new rule.
+
+**Qualification on the merge (`82ec4b29`), restricted `mfd_app` (no superuser / BYPASSRLS), ledger 275 → 275:** DB suite
+73 files, 658 / 658, 0 skipped; unit-only 568 passed (90 DB-only skipped by design there); lint, typecheck, rbac,
+migrations, as-any, colors, labels, sql, calc, finance, spine, RLS coverage (176 tables) pass; `build:check` passes;
+browser check `scripts/g1-guardian-ui.mjs` 52 / 52. §15 limitation (1) — `not_recorded` minors not blocked — is closed by §16.
+
+Release sheet for the operators: `docs/security/G1_RELEASE_SIGNOFF.md`.

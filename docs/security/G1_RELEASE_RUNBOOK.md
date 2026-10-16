@@ -1,14 +1,16 @@
 # G-1 hotfix — release runbook (NOT executed; for the authorized operators)
 
-Replaces §13 of `G1_GUARDIAN_HOTFIX.md`, which described the old deploy pipeline. Written 2026-10-15 against
-`origin/main` 9c2d5228; the PR head SHA is in the pull request. Nothing here may be run without the owner's written authorization.
+Replaces §13 of `G1_GUARDIAN_HOTFIX.md`, which described the old deploy pipeline. Updated 2026-10-16 against
+`origin/main` 523143bc (integrated into the PR); the PR head SHA is in the pull request and in `G1_RELEASE_SIGNOFF.md`,
+which is the sheet the operators fill in. Nothing here may be run without the owner's written authorization.
 
 ## 0. How a deploy happens now (main's verified-artifact pipeline)
 A push to `main` (not docs / `*.md` / mobile / terraform / reports only) runs CI → builds an arm64 image once →
 uploads it to `s3://aina-crm-deploy-artifacts-…/verified/` → the box verifies commit, CI result and SHA-256 → blue/green
 switch. `deploy/aws` no longer deploys. `workflow_dispatch` offers `mode: build-only | deploy`. The deploy job takes and
-releases the production change lock itself. Main also carries migration 0235 (client exit dates) from its own earlier
-work; **this hotfix adds none**, so merging this PR applies exactly the migrations main already has pending and nothing of ours.
+releases the production change lock itself. Main carries migrations 0235 (client exit dates), 0236 (risk-profile expiry)
+and 0237 (KYC checks) from its own work, byte-identical in this branch; **this hotfix adds none**, so merging this PR applies
+exactly the migrations main already has pending and nothing of ours.
 
 ## 1. Operator steps (each needs the named person's own authorization)
 1. **Running SHA.** `curl -s https://crm.ainatech.in/api/health` → field `build` is the SHA baked into the running
@@ -34,7 +36,10 @@ work; **this hotfix adds none**, so merging this PR applies exactly the migratio
    a. `GET /api/health` → 200 and `build` = the merge commit SHA; `SELECT count(*) FROM _applied_migrations` unchanged (no migration).
    b. RM A creates a minor typing a guardian PAN that belongs to a client in RM B's book → 201, `guardianLinked:false`, warning toast; client page shows "Guardian not verified"; no name/risk of RM B's client anywhere.
    c. Same minor retried → 409, still one record.
-   d. MF proposal send for that minor → 412 (`field: "guardian"`).
+   d. MF proposal send for that minor → 412 (`field: "guardian"`); marking it sent / accepted in the CRM → 412 too.
+   d2. A legacy minor with no guardian on record, or linked to a record that fails today's rules → MF proposal 412 (`field: "guardian"`).
+   d3. Risk-profile upload for an unverified minor → 409 (`field: "guardian"`); after a valid link, the upload is recorded on the
+       minor's own account and its Expire On drives the minor's expiry (never the guardian's).
    e. No one is offered "Confirm guardian", and `POST /api/investors/<minor>/guardian-verification` answers 405. Linking the guardian's client record (Edit client) is the only resolution; afterwards the MF proposal is allowed once the minor has its own assessment.
    e2. A family proposal covering that minor is refused (412) too.
    f. RM A `GET /api/audit?entityType=investor&entityId=<RM B's client>` → 404.
