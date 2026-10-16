@@ -24,7 +24,7 @@
  */
 
 import { sql } from "drizzle-orm";
-import { schemeNameKey } from "./scheme-name-key";
+import { schemeHouse, schemeNameKey } from "./scheme-name-key";
 
 type Tx = any;
 
@@ -53,38 +53,98 @@ export type NavIndex = {
   byKey?: Map<string, Array<NavEntry & { name: string }>>;
   /** Every scheme with its name words, for lookupNavFuzzy. */
   all?: Array<NavEntry & { name: string; words: Set<string>; direct: boolean }>;
+  /** ISIN (either of a scheme's two AMFI columns) → entry, or null where two
+   *  scheme codes claim one ISIN and their NAVs disagree. */
+  byIsin?: Map<string, NavEntry | null>;
+  /** Schemes AMFI's NAVAll does not list but mfapi.in does, with a NAV no older
+   *  than MFAPI_MAX_AGE_DAYS. Consulted only after every AMFI route has failed,
+   *  so it can never change a price AMFI could give. */
+  fallback?: NavIndex;
   size: number;
 };
 
-/** One pull of the platform-shared NAV master, indexed both ways. */
-export async function loadNavIndex(tx: Tx): Promise<NavIndex> {
-  const res = await tx.execute(
-    sql`SELECT scheme_code, scheme_name, nav, nav_date FROM scheme_nav WHERE nav IS NOT NULL`
-  );
+/** One scheme as the index builder wants it. `alt_name` is the same AMFI code's
+ *  name in mf_schemes (mfapi.in), which always spells out plan and option. */
+export type NavSourceRow = {
+  scheme_code: string | null;
+  scheme_name: string | null;
+  nav: string | number;
+  nav_date: string | Date | null;
+  isin?: string | null;
+  isin_reinvest?: string | null;
+  alt_name?: string | null;
+};
+
+/** A mfapi NAV older than this is not offered as a price: the holding is live at
+ *  the registrar, so a months-old NAV would be worse than the statement's own. */
+export const MFAPI_MAX_AGE_DAYS = 45;
+
+const PLAN_OR_OPTION = /\b(direct|regular|growth|idcw|dividend|bonus|payout|reinvest\w*|cumulative|income distribution)\b/i;
+
+/**
+ * The name to index a scheme under. AMFI's feed sometimes leaves its Plan and
+ * Option columns EMPTY (Motilal Oswal Large Cap [127LCGP], Business Cycle
+ * [127BCGP]): the row says only "Motilal Oswal Large Cap Fund", and the parser
+ * cannot tell regular from direct or growth from IDCW — all four codes land
+ * under one key and the lookup (rightly) refuses to choose. mf_schemes carries
+ * the same AMFI code under a name that does say. Borrow it, but only when the
+ * AMFI name states neither plan nor option AND every word of it appears in the
+ * mfapi name — the same scheme, just fully named.
+ */
+export function indexName(amfiName: string | null | undefined, altName: string | null | undefined): string {
+  const name = String(amfiName ?? "");
+  const alt = String(altName ?? "");
+  if (!alt || PLAN_OR_OPTION.test(name) || !PLAN_OR_OPTION.test(alt)) return name;
+  const a = schemeNameKey(name);
+  const b = schemeNameKey(alt);
+  if (!a || !b) return name;
+  const have = new Set(b.tokens.split(" "));
+  // "growth" is invented by schemeNameKey for a name with no option word.
+  const own = a.tokens.split(" ").filter((t) => t !== "growth");
+  return own.every((t) => have.has(t)) ? alt : name;
+}
+
+const toIsoDate = (d: string | Date | null): string | null =>
+  d == null ? null : String(d instanceof Date ? d.toISOString() : d).slice(0, 10);
+
+/** Pure: index a set of scheme rows. `loadNavIndex` is this plus two queries. */
+export function buildNavIndex(rows: NavSourceRow[], extra: NavSourceRow[] = []): NavIndex {
   const byCode = new Map<string, NavEntry>();
   const byName = new Map<string, NavEntry | null>();
   const byKey: NonNullable<NavIndex["byKey"]> = new Map();
   const all: NonNullable<NavIndex["all"]> = [];
+  const byIsin: NonNullable<NavIndex["byIsin"]> = new Map();
 
-  for (const r of res.rows as Array<{
-    scheme_code: string | null;
-    scheme_name: string | null;
-    nav: string | number;
-    nav_date: string | null;
-  }>) {
+  const addIsin = (isin: string | null | undefined, entry: NavEntry) => {
+    const k = String(isin ?? "").trim().toUpperCase();
+    if (!/^[A-Z]{2}[A-Z0-9]{9}\d$/.test(k)) return;
+    const prev = byIsin.get(k);
+    if (prev === undefined) byIsin.set(k, entry);
+    else if (prev && prev.code !== entry.code) {
+      // Two codes, one ISIN (a scheme re-coded): the one with the newer NAV
+      // stands; a tie on date with different NAVs is a coin flip, so refuse.
+      if ((entry.navDate ?? "") > (prev.navDate ?? "")) byIsin.set(k, entry);
+      else if ((entry.navDate ?? "") === (prev.navDate ?? "") && Math.abs(entry.nav - prev.nav) / prev.nav > 0.001) byIsin.set(k, null);
+    }
+  };
+
+  for (const r of rows) {
     const nav = Number(r.nav);
     if (r.scheme_code == null || !isFinite(nav) || nav <= 0) continue;
-    const navDate = r.nav_date == null ? null : String((r.nav_date as unknown) instanceof Date ? (r.nav_date as unknown as Date).toISOString() : r.nav_date).slice(0, 10);
-    const entry: NavEntry = { code: String(r.scheme_code), nav, navDate };
+    const entry: NavEntry = { code: String(r.scheme_code), nav, navDate: toIsoDate(r.nav_date) };
     byCode.set(entry.code, entry);
-    const sk = schemeNameKey(r.scheme_name);
+    addIsin(r.isin, entry);
+    addIsin(r.isin_reinvest, entry);
+
+    const name = indexName(r.scheme_name, r.alt_name);
+    const sk = schemeNameKey(name);
     if (sk) {
       const k = `${sk.tokens}|${sk.direct ? "d" : "r"}`;
-      byKey.set(k, [...(byKey.get(k) ?? []), { ...entry, name: String(r.scheme_name ?? "") }]);
-      all.push({ ...entry, name: String(r.scheme_name ?? ""), words: new Set(sk.tokens.split(" ")), direct: sk.direct });
+      byKey.set(k, [...(byKey.get(k) ?? []), { ...entry, name }]);
+      all.push({ ...entry, name, words: new Set(sk.tokens.split(" ")), direct: sk.direct });
     }
 
-    const key = normSchemeName(r.scheme_name);
+    const key = normSchemeName(name);
     if (!key) continue;
     if (!byName.has(key)) {
       byName.set(key, entry);
@@ -95,10 +155,34 @@ export async function loadNavIndex(tx: Tx): Promise<NavIndex> {
       if (existing && existing.code !== entry.code) byName.set(key, null);
     }
   }
-  return { byCode, byName, byKey, all, size: byCode.size };
+  const index: NavIndex = { byCode, byName, byKey, all, byIsin, size: byCode.size };
+  if (extra.length) {
+    const fb = buildNavIndex(extra);
+    if (fb.size) index.fallback = fb;
+  }
+  return index;
 }
 
-export type NavHit = NavEntry & { via: "code" | "name" | "key" | "nav" };
+/** One pull of the platform-shared NAV master, indexed both ways. */
+export async function loadNavIndex(tx: Tx): Promise<NavIndex> {
+  const res = await tx.execute(
+    sql`SELECT n.scheme_code, n.scheme_name, n.nav, n.nav_date, n.isin, n.isin_reinvest, m.scheme_name AS alt_name
+          FROM scheme_nav n LEFT JOIN mf_schemes m ON m.scheme_code = n.scheme_code
+         WHERE n.nav IS NOT NULL`
+  );
+  // Second source for what AMFI does not list: mfapi.in's catalog (synced daily,
+  // NAV refreshed every ~20 days — hence the age cap).
+  const extra = await tx.execute(
+    sql`SELECT m.scheme_code, m.scheme_name, m.nav, m.nav_date, m.isin
+          FROM mf_schemes m
+         WHERE m.nav IS NOT NULL AND m.nav > 0 AND m.is_active
+           AND m.nav_date >= current_date - ${MFAPI_MAX_AGE_DAYS}::int
+           AND NOT EXISTS (SELECT 1 FROM scheme_nav n WHERE n.scheme_code = m.scheme_code)`
+  );
+  return buildNavIndex(res.rows as NavSourceRow[], extra.rows as NavSourceRow[]);
+}
+
+export type NavHit = NavEntry & { via: "code" | "name" | "key" | "nav" | "isin" | "mfapi" };
 
 /**
  * The candidate whose NAV is nearest the registrar statement's own NAV — the
@@ -118,26 +202,66 @@ function nearestByNav<T extends NavEntry>(cands: T[], hint: number): T | null {
 }
 
 /**
- * No AMFI scheme has the registrar name's key ("HDFC Childrens Fund (Lock-In)
- * - Regular Plan'", a name the registrar cut off mid-word): the scheme of the
- * same fund house, same plan, sharing most of its words, whose NAV is near the
- * statement's — only when exactly one fits. Needs the statement's NAV.
+ * No AMFI scheme has the registrar name's key. Two ways that happens: the
+ * registrar cut the name off mid-word ("HDFC Childrens Fund (Lock-In) - Regular
+ * Plan'"), or the fund was RENAMED and the registrar still prints the old name
+ * ("ICICI Prudential Dividend Yield Equity Fund" -> "...Dividend Yield Fund";
+ * "Kotak Global Emerging Market Overseas Equity Omni FOF" -> "...Active FOF";
+ * "Old Bridge Focused Equity Fund" -> "Old Bridge Focused Fund").
+ *
+ * Similarity is scored on the words that make a fund THIS fund: the house name
+ * ("ICICI Prudential" is in nearly every ICICI scheme) and the option words
+ * ("Growth") are set aside first, because counting them lets "ICICI Prudential
+ * Quant Fund" look 60% like "ICICI Prudential Value Fund" and a coincidence of
+ * NAV then decides. Candidates are ranked on that overlap FIRST and only the top
+ * tier — within 0.1 of the best, so a near-tie stays a tie — goes on to the NAV
+ * test: exactly one of them must sit near the statement's NAV. Needs the
+ * statement's NAV.
  */
 export function lookupNavFuzzy(index: NavIndex, schemeName: string | null | undefined, hintNav: number): NavHit | null {
   const sk = schemeNameKey(schemeName);
   if (!sk || !index.all?.length || !(hintNav > 0)) return null;
-  const words = new Set(sk.tokens.split(" "));
-  const house = String(schemeName ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().split(" ")[0];
-  const near = index.all.filter((c) => {
-    if (c.direct !== sk.direct || !c.words.has(house)) return false;
+  const house = schemeHouse(schemeName);
+  const ofHouse = index.all.filter((c) => c.direct === sk.direct && c.words.has(house));
+  if (!ofHouse.length) return null;
+  // Words in at least half of the house's schemes are the house's name, not a fund's.
+  // Too few schemes to tell (a hand-built index): only the house word itself.
+  const df = new Map<string, number>();
+  for (const c of ofHouse) for (const w of c.words) df.set(w, (df.get(w) ?? 0) + 1);
+  const generic = (w: string) => w === house || FUZZY_OPTION_WORDS.has(w) || (ofHouse.length >= 12 && (df.get(w) ?? 0) / ofHouse.length >= 0.5);
+  const specific = (words: Set<string>) => new Set([...words].filter((w) => !generic(w)));
+  const mine = specific(new Set(sk.tokens.split(" ")));
+  if (!mine.size) return null;
+  const scored: Array<{ c: NonNullable<NavIndex["all"]>[number]; j: number }> = [];
+  for (const c of ofHouse) {
+    const theirs = specific(c.words);
+    if (!theirs.size) continue;
     let shared = 0;
-    for (const w of words) if (c.words.has(w)) shared++;
-    return shared / Math.max(words.size, c.words.size) >= 0.5;
-  });
-  const newest = near.reduce((m, c) => ((c.navDate ?? "") > m ? (c.navDate ?? "") : m), "");
-  const hit = nearestByNav(near.filter((c) => (c.navDate ?? "") === newest), hintNav);
+    for (const w of mine) if (theirs.has(w)) shared++;
+    const j = shared / (mine.size + theirs.size - shared);
+    if (shared > 0 && j >= 0.5) scored.push({ c, j });
+  }
+  if (!scored.length) return null;
+  const best = Math.max(...scored.map((x) => x.j));
+  const tier = scored.filter((x) => x.j >= best - 0.1).map((x) => x.c);
+  // A scheme whose NAV has stopped publishing must not outrank a live one.
+  const newest = tier.reduce((m, c) => ((c.navDate ?? "") > m ? (c.navDate ?? "") : m), "");
+  const live = tier.filter((c) => daysBetween(c.navDate, newest) <= 10);
+  const hit = nearestByNav(live, hintNav);
   if (!hit) return null;
   return { code: hit.code, nav: hit.nav, navDate: hit.navDate, via: "nav" };
+}
+
+const FUZZY_OPTION_WORDS = new Set([
+  "growth", "idcw", "bonus", "payout", "reinvest",
+  // A registrar's tag on the name, not part of the fund's identity:
+  // "HDFC Childrens Fund (Lock-In)", "(Close Ended)", "(Interval)".
+  "lock", "in", "close", "closed", "ended", "interval",
+]);
+
+function daysBetween(a: string | null, b: string): number {
+  if (!a || !b) return a === b ? 0 : Infinity;
+  return Math.abs(Date.parse(b) - Date.parse(a)) / 86_400_000;
 }
 
 /**
@@ -182,8 +306,11 @@ export function lookupNavByKey(index: NavIndex, schemeName: string | null | unde
 }
 
 /**
- * Price one stored leg. Code first (authoritative), then the canonical name.
- * Returns null when neither resolves, or when the name is ambiguous.
+ * Price one stored leg. ISIN first (exact, and the only thing that tells a
+ * regular plan from a direct one when AMFI leaves its plan columns blank), then
+ * the code (authoritative), then the canonical name. Returns null when none
+ * resolves, or when the name is ambiguous. When AMFI cannot price it at all the
+ * same routes run once more against mfapi.in's catalog.
  */
 export function lookupNav(
   index: NavIndex,
@@ -191,12 +318,31 @@ export function lookupNav(
   schemeName: string | null | undefined,
   /** The NAV a registrar statement printed for this holding, when there is one. */
   hintNav?: number | null,
+  /** The ISIN the registrar's file carried for this holding, when it did. */
+  isin?: string | null,
 ): NavHit | null {
+  const hit = lookupIn(index, schemeCode, schemeName, hintNav, isin);
+  if (hit || !index.fallback) return hit;
+  const fb = lookupIn(index.fallback, schemeCode, schemeName, hintNav, isin);
+  return fb ? { ...fb, via: "mfapi" } : null;
+}
+
+function lookupIn(
+  index: NavIndex,
+  schemeCode: string | null | undefined,
+  schemeName: string | null | undefined,
+  hintNav?: number | null,
+  isin?: string | null,
+): NavHit | null {
+  const hint = hintNav && hintNav > 0 ? hintNav : null;
+  if (isin) {
+    const byIsin = index.byIsin?.get(String(isin).trim().toUpperCase());
+    if (byIsin) return { ...byIsin, via: "isin" };
+  }
   if (schemeCode) {
     const byCode = index.byCode.get(String(schemeCode));
     if (byCode) return { ...byCode, via: "code" };
   }
-  const hint = hintNav && hintNav > 0 ? hintNav : null;
   // A name match whose NAV is far from the statement's is another option or
   // plan of the scheme (Growth vs IDCW, Regular vs Direct): not this holding.
   const plausible = (h: NavHit | null) => (h && hint && Math.abs(h.nav - hint) / hint > 0.25 ? null : h);

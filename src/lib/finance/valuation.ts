@@ -58,7 +58,7 @@ export type ValuationTransaction = PositionIdentity & {
   amfi_code?: string | null;
 };
 type SnapshotScheme = {
-  schemeCode?: string | null; schemeName?: string | null; units?: number | string;
+  schemeCode?: string | null; schemeName?: string | null; isin?: string | null; units?: number | string;
   nav?: number | string; value?: number | string; navDate?: string | null;
   asOf?: string | null; snapshotDate?: string | null;
 };
@@ -215,9 +215,9 @@ async function priceByName(tx: Tx, transactions: ValuationTransaction[], snapsho
   const index = await navIndexFor(tx);
   if (!index.size) return;
   const memo = new Map<string, ReturnType<typeof lookupNav>>();
-  const hit = (name: string, hintNav: number | null = null) => {
-    const k = `${name}|${hintNav ?? ""}`;
-    if (!memo.has(k)) memo.set(k, lookupNav(index, null, name, hintNav));
+  const hit = (name: string, hintNav: number | null = null, isin: string | null = null) => {
+    const k = `${name}|${hintNav ?? ""}|${isin ?? ""}`;
+    if (!memo.has(k)) memo.set(k, lookupNav(index, null, name, hintNav, isin));
     return memo.get(k)!;
   };
   // A row named only by its code borrows the full name the code carries: in
@@ -239,7 +239,7 @@ async function priceByName(tx: Tx, transactions: ValuationTransaction[], snapsho
     if (h) { r.latest_nav = h.nav; r.latest_nav_date = h.navDate; r.amfi_code = h.code; }
   }
   for (const r of needS) {
-    const h = hit(String(r.scheme.schemeName), positive(r.scheme.nav));
+    const h = hit(String(r.scheme.schemeName), positive(r.scheme.nav), r.scheme.isin ?? null);
     if (h) { r.latest_nav = h.nav; r.latest_nav_date = h.navDate; r.amfi_code = h.code; }
   }
 }

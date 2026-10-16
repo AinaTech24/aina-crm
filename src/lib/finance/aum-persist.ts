@@ -119,6 +119,7 @@ export async function recomputeInvestorsAum(tx: Tx, investorIds: string[]): Prom
 type FolioScheme = {
   schemeCode: string;
   schemeName: string;
+  isin?: string;
   category?: string;
   units?: number;
   nav?: number;
@@ -132,9 +133,16 @@ export type RevalueStats = {
   legs: number;
   pricedByCode: number;
   pricedByName: number;
+  /** Priced by the leg's own ISIN (an exact key; counted apart from names). */
+  pricedByIsin: number;
+  /** Priced from mfapi.in because AMFI's NAVAll does not list the scheme. */
+  pricedByMfapi: number;
   unpriced: number;
   /** Rupee value sitting in legs that could not be priced by either key. */
   unpricedValue: number;
+  /** The largest unpriced legs (up to 25) — the "No NAV" list: counted at their
+   *  last stored value, named here so someone can chase them. */
+  unpricedLegs: Array<{ folioId: string; schemeCode: string; schemeName: string; isin: string | null; units: number; value: number }>;
 };
 
 /**
@@ -153,13 +161,24 @@ export type RevalueStats = {
  * that prices nothing by code and everything by name still looks "fine" from
  * the folio count alone.
  */
+const UNPRICED_LIST_CAP = 25;
+function noteUnpriced(stats: RevalueStats, folioId: string, s: FolioScheme, units: number) {
+  const value = Number(s.value ?? 0);
+  const list = stats.unpricedLegs;
+  if (list.length >= UNPRICED_LIST_CAP && value <= list[list.length - 1].value) return;
+  list.push({ folioId, schemeCode: s.schemeCode, schemeName: s.schemeName, isin: s.isin ?? null, units, value });
+  list.sort((a, b) => b.value - a.value);
+  if (list.length > UNPRICED_LIST_CAP) list.pop();
+}
+
 export async function revalueAllFolios(
   tx: Tx,
   batchSize = 500
 ): Promise<RevalueStats> {
   const navIndex = await loadNavIndex(tx);
   const stats: RevalueStats = {
-    folios: 0, legs: 0, pricedByCode: 0, pricedByName: 0, unpriced: 0, unpricedValue: 0,
+    folios: 0, legs: 0, pricedByCode: 0, pricedByName: 0, pricedByIsin: 0, pricedByMfapi: 0,
+    unpriced: 0, unpricedValue: 0, unpricedLegs: [],
   };
   if (navIndex.size === 0) return stats;
 
@@ -190,9 +209,11 @@ export async function revalueAllFolios(
       const next = schemes.map((s) => {
         const units = Number(s.units ?? 0);
         stats.legs++;
-        const hit = lookupNav(navIndex, s.schemeCode, s.schemeName, Number(s.nav) > 0 ? Number(s.nav) : null);
+        const hit = lookupNav(navIndex, s.schemeCode, s.schemeName, Number(s.nav) > 0 ? Number(s.nav) : null, s.isin);
         if (hit && isFinite(units) && units > 0) {
           if (hit.via === "code") stats.pricedByCode++;
+          else if (hit.via === "isin") stats.pricedByIsin++;
+          else if (hit.via === "mfapi") stats.pricedByMfapi++;
           else stats.pricedByName++;
           const value = Math.round(units * hit.nav * 100) / 100;
           if (s.nav !== hit.nav || s.value !== value) changed = true;
@@ -203,6 +224,7 @@ export async function revalueAllFolios(
         // it, because this is exactly the case that hid a stale book.
         stats.unpriced++;
         stats.unpricedValue += Number(s.value ?? 0);
+        if (units > 0) noteUnpriced(stats, f.id, s, units);
         folioAum += Number(s.value ?? 0);
         return s;
       });
