@@ -204,7 +204,7 @@ const hasNeedsAnalysis = (n: NeedsAnalysis | null | undefined) =>
 
 /** A minor whose guardian could not be linked or was removed (G-1). */
 function guardianGate(f: Facts, client: string): Prerequisite[] {
-  return f.guardian === "pending" ? [{
+  return f.guardian === "pending" || f.guardian === "not_recorded" ? [{
     label: "The minor's guardian verified",
     satisfied: false,
     hint: "Link the guardian's client record (Edit client → Guardian's client record). A guardian who is not a CRM client stays pending.",

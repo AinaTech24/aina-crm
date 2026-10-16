@@ -15,7 +15,7 @@
  * accepted in the CRM — both must refuse the same way.
  */
 import { sql } from "drizzle-orm";
-import { guardianMinorSql, guardianVerification, GUARDIAN_PENDING_MESSAGE } from "@/lib/investors/guardian-verification";
+import { guardianMinorSql, guardianVerifiedForMf, GUARDIAN_PENDING_MESSAGE } from "@/lib/investors/guardian-verification";
 import { suitabilityProfile, suitabilityStatus } from "@/lib/risk-profile/own-assessment";
 import { checkAlignment } from "@/lib/proposal/risk-alignment";
 
@@ -68,7 +68,7 @@ export async function minorProposalGate(
     .map((it) => ({ name: it.schemeName ?? "Scheme", riskRating: it.riskRating ?? null }));
   let alignment: MinorGateRefusal | null = null;
   for (const id of minors) {
-    if ((await guardianVerification(tx, tenantId, id)) === "pending") {
+    if (!(await guardianVerifiedForMf(tx, tenantId, id))) {
       return { kind: "guardian", error: GUARDIAN_PENDING_MESSAGE, field: "guardian" };
     }
   }

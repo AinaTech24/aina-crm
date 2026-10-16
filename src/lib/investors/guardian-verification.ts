@@ -6,17 +6,17 @@
  * do is leave the account looking complete. The status is DERIVED from the
  * record and its audit trail, so no table or migration is needed:
  *
- *  - linked       the minor points at a guardian client (`guardian_investor_id`),
- *                 which `resolveGuardian` vetted when the link was made: a live,
- *                 non-merged adult individual, the only holder of its PAN, in the
- *                 user's book.
+ *  - linked       the minor points at a guardian client (`guardian_investor_id`)
+ *                 that is STILL a live, non-merged adult individual, the only live
+ *                 holder of its PAN, and not the minor — re-checked on every read,
+ *                 so a link made before these rules that fails them is pending.
  *  - pending      the latest guardian event is a refused typed PAN or no PAN at
  *                 all on create (`investor.guardian_not_linked`), a removed link
  *                 (`investor.guardian_unlinked`), or a link the row no longer
  *                 carries (a purged or merged guardian).
  *  - not_recorded no guardian event at all — a minor saved before this rule.
- *                 Reported, not blocked: blocking every older minor is a policy
- *                 decision for the firm (docs/security/G1_GUARDIAN_HOTFIX.md §12).
+ *                 Blocked for MF like pending (owner's interim policy,
+ *                 2026-10-15: `guardianVerifiedForMf`).
  *  - not_applicable not a minor.
  *
  * There is deliberately NO way to mark a guardian "verified" without linking a
@@ -27,10 +27,11 @@
  * exactly one eligible client the user can open). Duplicate-PAN clients are
  * never merged automatically; Merge Clients is a person's decision.
  *
- * `pending` blocks an MF proposal (journey gates, the proposal send route and
- * the proposal status change). Nothing here reads or copies a guardian's risk.
+ * Anything but `linked` blocks an MF proposal for a minor (journey gates, the
+ * proposal send route and the proposal status change). Nothing here reads or copies a guardian's risk.
  */
 import { sql } from "drizzle-orm";
+import { isEligibleGuardian, type GuardianCandidateRow } from "@/lib/investors/guardian-link";
 
 export type GuardianVerification = "linked" | "pending" | "not_recorded" | "not_applicable";
 
@@ -80,7 +81,37 @@ export async function guardianVerification(tx: any, tenantId: string, investorId
      WHERE i.tenant_id = ${tenantId}::uuid AND i.id = ${investorId}::uuid
   `)).rows[0] as { is_minor: boolean; guardian_investor_id: string | null; latest: string | null } | undefined;
   if (!r) return "not_applicable";
-  return guardianVerificationFrom({ isMinor: !!r.is_minor, guardianInvestorId: r.guardian_investor_id }, r.latest);
+  const status = guardianVerificationFrom({ isMinor: !!r.is_minor, guardianInvestorId: r.guardian_investor_id }, r.latest);
+  if (status !== "linked") return status;
+  // A link counts only while the guardian it points at is STILL a valid
+  // guardian: a live, non-merged adult individual, the only live holder of its
+  // PAN, and not the minor itself — the rules a link made today must pass. A
+  // link made before those rules existed (the Client Master of 2026-10-13, the
+  // registrar import) that fails them is not verified (pending).
+  return (await linkIsValid(tx, tenantId, investorId, r.guardian_investor_id!)) ? "linked" : "pending";
+}
+
+async function linkIsValid(tx: any, tenantId: string, minorId: string, guardianId: string): Promise<boolean> {
+  if (guardianId === minorId) return false;
+  const g = (await tx.execute(sql`
+    SELECT g.investor_category, g.is_minor, g.dob, g.pan, g.status, g.deleted_at, g.merged_into_id,
+           (SELECT count(*) FROM investors o
+             WHERE o.tenant_id = g.tenant_id AND g.pan IS NOT NULL AND upper(btrim(o.pan)) = upper(btrim(g.pan))
+               AND o.deleted_at IS NULL AND o.merged_into_id IS NULL) AS holders
+      FROM investors g WHERE g.tenant_id = ${tenantId}::uuid AND g.id = ${guardianId}::uuid
+  `)).rows[0] as (GuardianCandidateRow & { holders: number | string }) | undefined;
+  if (!g || !isEligibleGuardian(g)) return false;
+  return !g.pan || Number(g.holders) === 1;
+}
+
+/**
+ * The MF rule (owner's interim policy, 2026-10-15): a minor may be covered by a
+ * mutual fund proposal only with a uniquely identified, eligible, linked
+ * guardian. `not_recorded` (a minor saved before the rule) does NOT pass.
+ */
+export async function guardianVerifiedForMf(tx: any, tenantId: string, investorId: string): Promise<boolean> {
+  const s = await guardianVerification(tx, tenantId, investorId);
+  return s === "linked" || s === "not_applicable";
 }
 
 /** Human label, shared by the client page and the API. */
@@ -88,7 +119,7 @@ export function guardianVerificationLabel(v: GuardianVerification): string | nul
   switch (v) {
     case "linked": return "Guardian linked";
     case "pending": return "Guardian not verified";
-    case "not_recorded": return "Guardian verification not recorded";
+    case "not_recorded": return "Guardian not verified (none on record)";
     default: return null;
   }
 }

@@ -237,3 +237,55 @@ SELECT a.tenant_id,
 -- routes were scoped (reads are not audited). Web access logs of those paths
 -- are the only source; any read by a user outside the client's book goes to
 -- the privacy / compliance reviewer as a suspected disclosure.
+
+-- ── 9. Legacy minors under the owner's interim MF policy (2026-10-15) ──────
+--    An MF proposal may cover a minor only with a uniquely identified, eligible,
+--    linked guardian AND the minor's own confirmed assessment. This sizes who the
+--    release will block, and why. "Minor" includes under 18 by date of birth.
+--    gate_state: ok (linked to a valid guardian) · no_guardian (no link) ·
+--    guardian_<reason> (the link fails today's rules).
+WITH m AS (
+  SELECT i.tenant_id, i.id, i.guardian_investor_id AS gid
+    FROM investors i
+   WHERE (i.investor_category = 'minor' OR i.is_minor OR (i.dob IS NOT NULL AND i.dob > current_date - interval '18 years'))
+     AND i.deleted_at IS NULL AND i.merged_into_id IS NULL
+), judged AS (
+  SELECT m.tenant_id, m.id,
+         CASE
+           WHEN m.gid IS NULL                                                     THEN 'no_guardian'
+           WHEN g.id IS NULL                                                      THEN 'guardian_missing'
+           WHEN g.id = m.id                                                       THEN 'guardian_self'
+           WHEN g.deleted_at IS NOT NULL                                          THEN 'guardian_deleted'
+           WHEN g.merged_into_id IS NOT NULL                                      THEN 'guardian_merged'
+           WHEN g.status IN ('closed', 'exited')                                  THEN 'guardian_inactive'
+           WHEN COALESCE(g.investor_category, 'individual') NOT IN ('individual', 'nri', 'sole_proprietor') THEN 'guardian_not_a_person'
+           WHEN g.is_minor                                                        THEN 'guardian_is_minor'
+           WHEN g.dob IS NOT NULL AND g.dob > current_date - interval '18 years'  THEN 'guardian_under_18'
+           WHEN upper(btrim(g.pan)) ~ '^[A-Z]{5}[0-9]{4}[A-Z]$' AND substr(upper(btrim(g.pan)), 4, 1) <> 'P' THEN 'guardian_pan_not_individual'
+           WHEN g.pan IS NOT NULL AND (SELECT count(*) FROM investors o WHERE o.tenant_id = g.tenant_id
+                  AND upper(btrim(o.pan)) = upper(btrim(g.pan)) AND o.deleted_at IS NULL AND o.merged_into_id IS NULL) > 1
+                                                                                  THEN 'guardian_pan_shared'
+           ELSE 'ok'
+         END AS gate_state,
+         EXISTS (SELECT 1 FROM risk_profile_responses r
+                  WHERE r.tenant_id = m.tenant_id AND r.investor_id = m.id AND NOT COALESCE(r.provisional, false)
+                    AND r.signed_at > now() - interval '12 months') AS own_assessment_current,
+         EXISTS (SELECT 1 FROM proposals p
+                  WHERE p.tenant_id = m.tenant_id
+                    AND (p.investor_id = m.id OR p.family_id = (SELECT family_id FROM investors x WHERE x.id = m.id))
+                    AND p.status IN ('draft', 'ready', 'sent', 'viewed', 'changes_requested')
+                    AND EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(p.products, '[]'::jsonb)) it WHERE it ->> 'kind' = 'mf')) AS open_mf_proposal
+    FROM m LEFT JOIN investors g ON g.id = m.gid AND g.tenant_id = m.tenant_id
+)
+SELECT tenant_id, gate_state,
+       count(*)                                         AS minors,
+       count(*) FILTER (WHERE own_assessment_current)   AS with_own_current_assessment,
+       count(*) FILTER (WHERE open_mf_proposal)         AS with_open_mf_proposal,
+       (gate_state = 'ok')                              AS mf_allowed_if_assessed
+  FROM judged
+ GROUP BY tenant_id, gate_state
+ ORDER BY tenant_id, gate_state;
+-- Masked examples for §9 (at most 5 per firm and state; the id's last 6 characters):
+--   re-run the CTE above and finish with
+--   SELECT tenant_id, gate_state, '…' || right(id::text, 6) FROM (SELECT j.*, row_number() OVER
+--     (PARTITION BY tenant_id, gate_state ORDER BY id) n FROM judged j WHERE gate_state <> 'ok') x WHERE n <= 5;

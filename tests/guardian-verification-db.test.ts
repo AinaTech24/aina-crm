@@ -188,13 +188,15 @@ describe.skipIf(!TEST_DB)("G-1 — incomplete minor onboarding (DB)", () => {
     expect(other.text).not.toContain("linked");
   });
 
-  it("an adult or a minor saved with no guardian event is not blocked by this rule (reported as not_recorded)", async () => {
+  it("an adult is not affected; a minor saved before the rule with no guardian (not_recorded) IS blocked for MF (owner's interim policy)", async () => {
     expect(await status(gA)).toBe("not_applicable");
     const id = randomUUID();
     await withTenant(t, (tx) => tx.execute(sql`INSERT INTO investors (id, tenant_id, pan, name, rm_id, investor_category, is_minor, dob, status)
       VALUES (${id}::uuid, ${t}::uuid, ${"MINOR:" + pan()}, 'Old Kid', ${rmA}::uuid, 'minor', true, '2014-01-01', 'active')`));
     expect(await status(id)).toBe("not_recorded");
     await ownAssessment(id);
-    expect((await proposalGate(id)).every((p) => p.satisfied)).toBe(true);
+    const gate = await proposalGate(id);
+    expect(gate.find((p) => /guardian/i.test(p.label))?.satisfied).toBe(false);
+    expect(gate.find((p) => /risk profile/i.test(p.label))?.satisfied).toBe(true);
   });
 });

@@ -141,7 +141,7 @@ export async function ClientSummaryStrip({
         )}
         {s.guardian !== "not_applicable" && (
           <Cell label="Guardian">
-            <Badge raw tone={s.guardian === "pending" ? "warning" : "neutral"}>{guardianVerificationLabel(s.guardian)}</Badge>
+            <Badge raw tone={s.guardian === "pending" || s.guardian === "not_recorded" ? "warning" : "neutral"}>{guardianVerificationLabel(s.guardian)}</Badge>
           </Cell>
         )}
         <Cell label="Open tasks" href="#rel-tasks">

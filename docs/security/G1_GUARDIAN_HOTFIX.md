@@ -558,3 +558,23 @@ the transaction start, so a concurrent edit and link could order oddly (low); (3
 applies the minor rules but the pre-existing adult paths there are unchanged; (4) `main`'s CI runs as a superuser, so
 RLS is proven by the local `mfd_app` runs; (5) copies still sit on minors' rows until the separately approved 0245;
 (6) the RTA release branch carries its own copy of `rta/import.ts` — it needs this change at integration, not now.
+
+## 16. Legacy minors — release blocker found at the final sign-off and its fix (2026-10-15)
+
+Under the owner's proposed interim policy ("a minor account must have a uniquely identified, eligible and
+verified guardian relationship and its own confirmed suitability assessment before an MF proposal"), the
+candidate `6e070538` still let a minor with its own confirmed assessment through the MF gate (individual and
+family) when it had **no guardian on record** (saved before the rule, `not_recorded`) or a **legacy link to a
+record that fails today's rules** — an HUF-PAN record, a merged record, one of two records sharing a PAN, or
+another minor. Probe on `6e070538`: all five cases passed.
+
+**Fix:** `guardianVerification` re-checks an existing link on every read (live, non-merged adult individual,
+sole live holder of its PAN, not the minor); a failing link reads `pending`. `guardianVerifiedForMf` passes
+only `linked` (or a non-minor), so `not_recorded` blocks too — in the proposal send route, the CRM status
+change, family proposals and the journey's MF gates. No data is changed. Impact SQL §9 counts, per firm, how
+many minors each state covers, how many have their own current assessment and how many have an open MF
+proposal. Test: `guardian-corrections-db` "legacy minors …" (each of the four parts mutation-checked).
+
+**Business effect:** every existing minor without a valid linked guardian is blocked from MF proposals until a
+valid guardian client is linked. Never create fictitious investments or portfolios to register a guardian; a
+guardian can be added as an ordinary client record with their own details.

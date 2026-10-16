@@ -477,6 +477,10 @@ the imports and every label; never copy the enum again.
   trail and the date of birth; no column): no MF proposal (individual or FAMILY
   — every minor it covers, `lib/proposals/minor-gate.ts`), MF journey step, or
   CRM "mark sent / accepted" until the guardian's client record is linked.
+  A link counts only while its guardian is STILL eligible (live, non-merged
+  adult individual, sole holder of its PAN, not the minor), and a minor with
+  no guardian on record ("not_recorded", saved before the rule) is blocked
+  for MF too (owner's interim policy, `guardianVerifiedForMf`).
   There is NO "confirm by note": a guardian who is not a CRM client stays
   pending until a verified-identity-evidence workflow exists (owner decision,
   2026-10-15). Duplicate-PAN clients are never merged automatically. A client's change history

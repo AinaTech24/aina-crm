@@ -188,6 +188,41 @@ describe.skipIf(!TEST_DB)("G-1 final corrections (DB)", () => {
     expect((await patchProposal(p2, { status: "sent" })).status).toBe(200);
   });
 
+  it("legacy minors (owner's interim policy): no guardian on record, or a link to an HUF-PAN, merged, shared-PAN or minor record, never pass the MF gate — even with the minor's own assessment", async () => {
+    const { minorProposalGate } = await import("@/lib/proposals/minor-gate");
+    const mf = [{ kind: "mf", schemeName: "Liquid Fund", riskRating: "low" }];
+    const legacy = async (guardian: string | null) => {
+      const id = await minorRow(rmA, { guardian }); await ownAssessment(id); return id;
+    };
+    const ins = (id: string, p: string, cat: string, extra: { merged?: string; dedup?: boolean } = {}) => withTenant(t, (tx) => tx.execute(sql`
+      INSERT INTO investors (id, tenant_id, pan, name, rm_id, investor_category, is_minor, dob, merged_into_id, status, dedup_pan)
+      VALUES (${id}::uuid, ${t}::uuid, ${p}, 'Legacy G', ${rmA}::uuid, ${cat}, ${cat === "minor"}, ${cat === "minor" ? "2014-01-01" : "1980-01-01"}, ${extra.merged ?? null}::uuid, 'active', ${extra.dedup ?? true})`));
+    const huf = randomUUID(); await ins(huf, pan("H"), "individual");
+    const live = randomUUID(); await ins(live, pan(), "individual");
+    const merged = randomUUID(); await ins(merged, pan(), "individual", { merged: live, dedup: false });
+    const sp = pan(); const s1 = randomUUID(), s2 = randomUUID(); await ins(s1, sp, "individual"); await ins(s2, sp, "individual", { dedup: false });
+    const otherMinor = randomUUID(); await ins(otherMinor, "MINOR:" + pan(), "minor");
+    const cases: Array<[string, string | null, string]> = [
+      ["no guardian on record", null, "not_recorded"], ["HUF-PAN guardian", huf, "pending"], ["merged guardian", merged, "pending"],
+      ["shared-PAN guardian", s1, "pending"], ["a minor as guardian", otherMinor, "pending"],
+    ];
+    for (const [label, guardian, expected] of cases) {
+      const kid = await legacy(guardian);
+      expect(await status(kid), label).toBe(expected);
+      const res = await withTenant(t, (tx) => minorProposalGate(tx, t, { investorId: kid, products: mf }));
+      expect(res?.kind, label).toBe("guardian");
+      const fam = await family(await adult(rmA, "Legacy Head"));
+      await withTenant(t, (tx) => tx.execute(sql`UPDATE investors SET family_id = ${fam}::uuid WHERE id = ${kid}::uuid`));
+      const famRes = await withTenant(t, (tx) => minorProposalGate(tx, t, { familyId: fam, products: mf }));
+      expect(famRes?.kind, `${label} (family)`).toBe("guardian");
+    }
+    // A valid legacy link (live adult individual, sole holder of an individual PAN) still passes.
+    const good = await adult(rmA, "Valid Legacy Parent");
+    const ok = await legacy(good);
+    expect(await status(ok)).toBe("linked");
+    expect(await withTenant(t, (tx) => minorProposalGate(tx, t, { investorId: ok, products: mf }))).toBeNull();
+  });
+
   /* ── 4 ─────────────────────────────────────────────────────────────── */
   it("hard delete of a guardian: the minor is unlinked, the guardian's copied risk goes, the removal is audited, the minor is pending", async () => {
     const g = await adult(rmA, "Erased Parent");
