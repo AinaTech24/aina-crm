@@ -1,0 +1,85 @@
+name: Private-runner emulation (no deploy)
+
+# TEST ONLY. A PRIVATE repository's standard arm64 runner is 2 vCPU / 8 GB RAM / 14 GB SSD; this
+# public repository's is 4 vCPU / 16 GB. This job builds the production image inside a BuildKit
+# container limited to 2 CPUs and 8 GB with NO swap, so the build is exactly as constrained as it
+# would be on the private runner, and reports time, peak memory and disk. It has no environment,
+# no AWS credentials, no id-token and no secrets: it can never deploy or upload anything.
+on:
+  workflow_dispatch:
+  push:
+    branches: [cost/private-runner-test]
+    paths: ['.github/workflows/private-runner-emulation.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  emulate:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Runner as GitHub gives it
+        run: |
+          echo "cpus=$(nproc) mem=$(free -m | awk '/Mem/{print $2}')MB disk free=$(df -h / | awk 'NR==2{print $4}')"
+      - uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            memory=8g
+            memory-swap=8g
+            cpuset-cpus=0-1
+      - name: Prove the limits are applied
+        run: |
+          C=$(docker ps --filter name=buildx_buildkit --format '{{.Names}}' | head -1)
+          docker inspect "$C" --format 'builder {{.Name}} memory={{.HostConfig.Memory}} swap={{.HostConfig.MemorySwap}} cpuset={{.HostConfig.CpusetCpus}}'
+          echo "BUILDER=$C" >> "$GITHUB_ENV"
+      - name: Sample builder memory and host disk
+        run: |
+          ( while true; do
+              docker stats --no-stream --format '{{.MemUsage}}' "$BUILDER" 2>/dev/null | awk '{print $1}' >> /tmp/mem.log
+              df -m / | awk 'NR==2{print $4}' >> /tmp/disk.log
+              sleep 3
+            done ) &
+          echo $! > /tmp/sampler.pid
+      - name: Cold build (no cache) - the worst case
+        run: |
+          S=$(date +%s)
+          docker buildx build --load -t mfd-app:emu \
+            --build-arg NEXT_PUBLIC_APP_URL=https://crm.ainatech.in --build-arg NEXT_PUBLIC_SITE_URL=https://crm.ainatech.in \
+            --build-arg NEXT_PUBLIC_S3_PUBLIC_URL=https://crm.ainatech.in --build-arg BUILD_GIT_SHA=${GITHUB_SHA} . 2>&1 | tail -5
+          echo "COLD_BUILD_SECONDS=$(( $(date +%s)-S ))" | tee -a "$GITHUB_ENV"
+      - name: Release rebuild (one source file changed, layer cache warm)
+        run: |
+          echo "// emulation touch" >> src/app/api/health/route.ts
+          S=$(date +%s)
+          docker buildx build --load -t mfd-app:emu2 \
+            --build-arg NEXT_PUBLIC_APP_URL=https://crm.ainatech.in --build-arg NEXT_PUBLIC_SITE_URL=https://crm.ainatech.in \
+            --build-arg NEXT_PUBLIC_S3_PUBLIC_URL=https://crm.ainatech.in --build-arg BUILD_GIT_SHA=${GITHUB_SHA} . 2>&1 | tail -3
+          echo "REBUILD_SECONDS=$(( $(date +%s)-S ))" | tee -a "$GITHUB_ENV"
+      - name: Package on 2 cores (docker save | zstd)
+        run: |
+          S=$(date +%s)
+          docker save mfd-app:emu2 | taskset -c 0,1 zstd -T2 -3 -q -o /tmp/image.tar.zst
+          echo "PACKAGE_SECONDS=$(( $(date +%s)-S ))" | tee -a "$GITHUB_ENV"
+          echo "ARTIFACT_MB=$(( $(stat -c %s /tmp/image.tar.zst)/1048576 ))" | tee -a "$GITHUB_ENV"
+      - name: Report
+        if: always()
+        run: |
+          kill "$(cat /tmp/sampler.pid)" 2>/dev/null || true
+          node -e '
+            const fs=require("fs");
+            const mb=s=>{const n=parseFloat(s);return /GiB/.test(s)?n*1024:/MiB/.test(s)?n:/KiB/.test(s)?n/1024:n/1048576};
+            const mem=fs.readFileSync("/tmp/mem.log","utf8").split("\n").filter(Boolean).map(mb);
+            const disk=fs.readFileSync("/tmp/disk.log","utf8").split("\n").filter(Boolean).map(Number);
+            const e=process.env;
+            const out=[
+             "| measure | value |","|---|---|",
+             `| cold build (no cache), 2 CPU / 8 GB | ${e.COLD_BUILD_SECONDS} s |`,
+             `| release rebuild, cache warm | ${e.REBUILD_SECONDS} s |`,
+             `| docker save + zstd on 2 cores | ${e.PACKAGE_SECONDS} s (${e.ARTIFACT_MB} MB) |`,
+             `| builder container peak memory (limit 8192 MB, no swap) | ${Math.round(Math.max(...mem))} MB |`,
+             `| runner disk free: start / lowest | ${disk[0]} / ${Math.min(...disk)} MB |`];
+            console.log(out.join("\n"));
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,"### Private-runner emulation (2 vCPU / 8 GB / no swap)\n"+out.join("\n")+"\n");'
+          docker system df
