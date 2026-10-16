@@ -269,7 +269,11 @@ WITH m AS (
          END AS gate_state,
          EXISTS (SELECT 1 FROM risk_profile_responses r
                   WHERE r.tenant_id = m.tenant_id AND r.investor_id = m.id AND NOT COALESCE(r.provisional, false)
-                    AND r.signed_at > now() - interval '12 months') AS own_assessment_current,
+                    AND r.signed_at IS NOT NULL
+                    AND r.id = (SELECT r2.id FROM risk_profile_responses r2 WHERE r2.tenant_id = m.tenant_id AND r2.investor_id = m.id
+                                 ORDER BY COALESCE(r2.signed_at, r2.created_at) DESC LIMIT 1)
+                    -- the minor's OWN expiry (an upload states one; else signed + 1 year), never the guardian's copied dates
+                    AND COALESCE(r.next_review_at, (r.signed_at + interval '1 year')::date) >= CURRENT_DATE) AS own_assessment_current,
          EXISTS (SELECT 1 FROM proposals p
                   WHERE p.tenant_id = m.tenant_id
                     AND (p.investor_id = m.id OR p.family_id = (SELECT family_id FROM investors x WHERE x.id = m.id))

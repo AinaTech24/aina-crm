@@ -150,6 +150,11 @@ export const investors = pgTable(
     ckycNumber: text("ckyc_number"),
     ckycExpiryAt: date("ckyc_expiry_at"),
     kraName: text("kra_name"),
+    /** What the KRA last said, in its own words ("KYC Validated", "ON HOLD"),
+     *  when, and through which connection (migration 0237, lib/kyc/). */
+    kycStatusRemark: text("kyc_status_remark"),
+    kycCheckedAt: timestamp("kyc_checked_at", { withTimezone: true }),
+    kycCheckSource: text("kyc_check_source"),
     fatcaStatus: text("fatca_status", { enum: ["pending", "verified", "expired"] }),
     fatcaExpiryAt: date("fatca_expiry_at"),
 
@@ -220,6 +225,10 @@ export const investors = pgTable(
       enum: ["conservative", "moderate", "aggressive", "very_aggressive"],
     }),
     riskProfileSignedAt: timestamp("risk_profile_signed_at", { withTimezone: true }),
+    /** A risk profile that states its own expiry (an uploaded one); counts only while
+     *  riskProfileExpiryFor equals riskProfileSignedAt — see migration 0236 / lib/risk-profile/expiry.ts. */
+    riskProfileExpiresOn: date("risk_profile_expires_on"),
+    riskProfileExpiryFor: timestamp("risk_profile_expiry_for", { withTimezone: true }),
     riskProfileVersion: integer("risk_profile_version"),
     /** True when the category was assigned in bulk from AGE, not from the
      *  client's own answers — a suggestion awaiting their confirmation.

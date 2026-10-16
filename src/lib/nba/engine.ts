@@ -270,7 +270,7 @@ export async function buildNextBestActions(
       SELECT i.id, i.name, i.avatar_url, i.phone, i.email, COALESCE(i.aum,0)::numeric AS aum, ${rk.signedAt} AS risk_profile_signed_at, u.name AS rm_name
       FROM investors i LEFT JOIN users u ON u.id = i.rm_id
       WHERE i.merged_into_id IS NULL AND i.deleted_at IS NULL AND i.status = 'active'
-        AND (${rk.signedAt} IS NULL OR ${rk.signedAt} < now() - interval '365 days') ${invScope}
+        AND (${rk.signedAt} IS NULL OR ${rk.expiresOn} < CURRENT_DATE) ${invScope}
       ORDER BY i.aum DESC NULLS LAST ${cap}
     `);
     for (const x of r.rows) {

@@ -354,6 +354,38 @@ Bank / corporate / NBFC / post-office FDs a client placed through the firm —
 - **Access follows the client** (`investorScopeSql` / `loadViewableInvestor`);
   writes need `investor.edit.*`. Soft delete (`deleted_at`).
 
+## KYC status from the KRA (NSE MF Invest)
+
+Each firm connects its OWN NSE MF Invest (NMF II) API user at Settings →
+Integrations ("NSE MF Invest — KYC status", owner only): Login User ID,
+member code, API Secret, API Member License Key, Live / UAT. Stored encrypted
+in `tenant_integrations` (provider `nse_mf`); the secrets are write-only.
+Code: `src/lib/kyc/` (nse-auth · nse-status · nse-client · credentials ·
+refresh), migration 0237.
+
+- **NSE must whitelist the server's IP** against that user (up to 4 per user;
+  production's Elastic IP, shown on the card, `NSE_EGRESS_IP` overrides). A 403
+  is the keys or the IP. KYC_CHECK answers only in Live.
+- **Auth** (`nse-auth.ts`, protocol v1.9.6 pp. 5–6): AES-128 of
+  `secret|nonce` keyed by PBKDF2(license key, salt), sent as
+  `base64(iv::salt::cipher)`. The PBKDF2 iteration count (1000) and hash
+  (SHA-1) are AesUtil's — the spec does not print them; they are the first
+  thing to check if a correct key set gets 403 from a whitelisted IP.
+- **The remark is the meaning** (`nse-status.ts`): Validated → verified,
+  Registered → registered, Under process / Not available → pending, On hold →
+  hold, Rejected → rejected, Deactivate / Incomplete / CVL MF KYC →
+  re_kyc_required. Service down, a failed call, an unknown remark or an answer
+  for another PAN NEVER changes the status — it is recorded in `kyc_checks`
+  and nothing else.
+- **Every answer is history**: a `kyc_checks` row; a change also writes audit
+  `investor.kyc_from_kra` and the event `investor.kyc_status_changed`.
+  `investors.kyc_status_remark` / `kyc_checked_at` / `kra_name` show on the
+  client page ("KRA check", with Check now for whoever may edit the client).
+- **Nightly** `kyc-status-refresh` (02:30 UTC = 08:00 IST): firms with the
+  daily refresh on; live clients with a valid PAN, oldest check first, every
+  3 days until verified then every 30; 400 a firm a night, one call at a
+  time, outside any transaction; a refused login stops the firm's run.
+
 ## Website complaint form
 
 Each firm gets one public link, `/complaint/<token>` (`tenants.complaint_form_token`,
@@ -481,6 +513,15 @@ the imports and every label; never copy the enum again.
   adult individual, sole holder of its PAN, not the minor), and a minor with
   no guardian on record ("not_recorded", saved before the rule) is blocked
   for MF too (owner's interim policy, `guardianVerifiedForMf`).
+- **A minor's risk-profile upload and expiry are the minor's own** (G-1 × main's
+  0236, 2026-10-16). Upload Risk Profile records the assessment on the MINOR'S
+  account (`lib/risk-profile/upload.ts`) once the guardian is verified — never
+  "upload it on the guardian's record". A minor's expiry is the own latest
+  assessment's `next_review_at` (an upload's stated Expire On), else signed + 1
+  year — `clientRiskSql(alias).expiresOn`, `suitabilityProfile().expiresOn`,
+  `withOwnRiskForMinors` (expiry pair) — never the guardian's dates that 0234 /
+  0236 copy onto the row. Adults keep `lib/risk-profile/expiry.ts` exactly.
+  A new reader of risk expiry must use `clientRiskSql(...).expiresOn`.
   There is NO "confirm by note": a guardian who is not a CRM client stays
   pending until a verified-identity-evidence workflow exists (owner decision,
   2026-10-15). Duplicate-PAN clients are never merged automatically. A client's change history

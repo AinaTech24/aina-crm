@@ -52,7 +52,7 @@
  * (or, later, by named automations).
  */
 
-import { suitabilityProfile } from "@/lib/risk-profile/own-assessment";
+import { suitabilityProfile, suitabilityStatus } from "@/lib/risk-profile/own-assessment";
 import { guardianVerification, type GuardianVerification } from "@/lib/investors/guardian-verification";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
@@ -176,9 +176,14 @@ export async function loadFacts(tx: Tx, opp: ClientOpportunity): Promise<Facts> 
   const provisional = own.inheritedIgnored ? own.provisional : inv?.risk_profile_provisional;
   const signed = signedRaw ? new Date(signedRaw) : null;
   const yearAgo = new Date(Date.now() - 365 * 864e5);
-  const riskState: Facts["riskState"] = provisional
+  // A minor: the own assessment's own expiry (an upload states one) decides,
+  // never the guardian's copied dates (G-1 + migration 0236).
+  const minorState = own.inheritedIgnored
+    ? ({ Completed: "current", Provisional: "awaiting", "Due for review": "expired", "Not completed": "not_profiled" } as const)[suitabilityStatus(own)]
+    : null;
+  const riskState: Facts["riskState"] = minorState ?? (provisional
     ? "awaiting"
-    : !signed ? "not_profiled" : signed >= yearAgo ? "current" : "expired";
+    : !signed ? "not_profiled" : signed >= yearAgo ? "current" : "expired");
   const uccCodes = Array.isArray(inv?.ucc_codes) ? (inv!.ucc_codes as string[]) : [];
 
   return {

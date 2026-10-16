@@ -10,6 +10,7 @@
  */
 
 import { sql } from "drizzle-orm";
+import { riskProfileLapsed } from "@/lib/risk-profile/expiry";
 import type { withTenant } from "@/db/client";
 import { asInList, num, PROPOSAL_LIVE, SR_CLOSED, TASK_DEAD, taskIsAbout } from "@/lib/dashboard/my/window";
 import { clientRiskSql, minorSql } from "@/lib/risk-profile/own-assessment";
@@ -54,6 +55,7 @@ export async function loadClientSummary(tx: Tx, tenantId: string, investorId: st
            u.name                                                                      AS rm,
            i.aum::numeric AS aum, i.active_sip_amount::numeric AS sip, i.next_review_at,
            ${own.category} AS risk_profile, ${own.signedAt} AS risk_profile_signed_at,
+           ${own.expiresOn} AS risk_expires_on,
            ${own.provisional}                                                          AS provisional,
            CASE WHEN ${minorSql("i")} THEN i.guardian_investor_id::text END             AS guardian_id,
            (SELECT MAX(m.meeting_date) FROM review_meetings m
@@ -83,9 +85,16 @@ export async function loadClientSummary(tx: Tx, tenantId: string, investorId: st
 
   const str = (v: unknown) => (v == null || v === "" ? null : String(v));
   const signed = str(r.risk_profile_signed_at);
-  // A signed profile is re-done a year after signing — the same rule as the
-  // dashboards' "Due for review".
-  const stale = signed != null && Date.parse(signed) < Date.now() - 365 * 864e5;
+  // A signed profile is re-done when it lapses — a year after signing, or the
+  // "Expire On" date an uploaded one states (lib/risk-profile/expiry.ts) — the
+  // same rule as the dashboards' "Due for review".
+  // For a minor the expiry is the minor's own assessment's (clientRiskSql), never
+  // the guardian's copied dates; the pair below makes expiry.ts use it as given.
+  const stale = riskProfileLapsed({
+    riskProfileSignedAt: signed,
+    riskProfileExpiresOn: str(r.risk_expires_on),
+    riskProfileExpiryFor: signed,
+  });
   const risk: ClientSummary["risk"] = r.risk_profile == null ? "Not completed"
     : r.provisional === true ? "Provisional"
     : stale ? "Due for review"

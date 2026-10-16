@@ -7,6 +7,7 @@ import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
 import { needsNomineeSql } from "@/lib/investors/type-rules";
 
 const RISK_SIGNED = clientRiskSql("investors").signedAt;
+const RISK_EXPIRES = clientRiskSql("investors").expiresOn;
 
 /**
  * Quick-filter chip strip for the Investors list page.
@@ -67,7 +68,7 @@ export async function InvestorQuickFilters({
           COUNT(*) FILTER (
             WHERE status = 'active'
               -- A minor's risk is their own assessment, never the guardian's copy (G-1).
-              AND (${RISK_SIGNED} IS NULL OR ${RISK_SIGNED} < now() - interval '365 days')
+              AND (${RISK_SIGNED} IS NULL OR ${RISK_EXPIRES} < CURRENT_DATE)
           )::int AS rp_stale,
           COUNT(*) FILTER (
             WHERE status = 'active' AND dob IS NOT NULL

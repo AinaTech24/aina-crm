@@ -21,12 +21,18 @@
  * Read-only: nothing here writes a risk profile or an audit row.
  */
 import { sql } from "drizzle-orm";
+import { riskExpiresOn, riskExpiresOnSql, riskProfileLapsed } from "./expiry";
 
 export type SuitabilityProfile = {
   category: string | null;
   score: number | null;
   signedAt: string | null;
   provisional: boolean;
+  /** YYYY-MM-DD the profile lapses (valid THROUGH it); null with no signed profile.
+   *  An adult: lib/risk-profile/expiry.ts on the row. A minor: the own assessment's
+   *  stated review / expiry date, else one year after it was signed — never the
+   *  guardian's copied dates (0234 / 0236). */
+  expiresOn: string | null;
   /** The client is a minor: only their own assessment was read, and whatever
    *  the `investors` row carries (a guardian's copy, current or stale) was
    *  ignored. Callers use this profile's fields instead of the row's. */
@@ -34,13 +40,23 @@ export type SuitabilityProfile = {
 };
 
 const iso = (v: unknown) => (v ? new Date(v as string | number | Date).toISOString() : null);
+const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
+const dayOf = (v: unknown) => (v == null ? null : v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10));
+
+/** A minor's own assessment lapses on its stated review / expiry date (an upload
+ *  states one; the questionnaire and RM entry record signed + 1 year), else one
+ *  year after it was signed. No signed assessment → null. */
+function ownExpiresOn(signedAt: unknown, nextReviewAt: unknown): string | null {
+  if (!signedAt) return null;
+  return dayOf(nextReviewAt) ?? day(riskExpiresOn({ riskProfileSignedAt: signedAt as any }));
+}
 
 export async function suitabilityProfile(tx: any, tenantId: string, investorId: string): Promise<SuitabilityProfile> {
   const inv = (await tx.execute(sql`
     SELECT risk_profile, risk_profile_score, risk_profile_signed_at, COALESCE(risk_profile_provisional, false) AS provisional,
-           guardian_investor_id, investor_category, is_minor
+           risk_profile_expires_on, risk_profile_expiry_for, guardian_investor_id, investor_category, is_minor
       FROM investors WHERE id = ${investorId}::uuid AND tenant_id = ${tenantId}::uuid LIMIT 1`)).rows[0] as Record<string, any> | undefined;
-  if (!inv) return { category: null, score: null, signedAt: null, provisional: false, inheritedIgnored: false };
+  if (!inv) return { category: null, score: null, signedAt: null, provisional: false, expiresOn: null, inheritedIgnored: false };
   const minor = inv.investor_category === "minor" || inv.is_minor === true;
   if (!minor) {
     return {
@@ -48,11 +64,12 @@ export async function suitabilityProfile(tx: any, tenantId: string, investorId: 
       score: inv.risk_profile_score == null ? null : Number(inv.risk_profile_score),
       signedAt: iso(inv.risk_profile_signed_at),
       provisional: inv.provisional === true,
+      expiresOn: day(riskExpiresOn({ riskProfileSignedAt: inv.risk_profile_signed_at, riskProfileExpiresOn: inv.risk_profile_expires_on, riskProfileExpiryFor: inv.risk_profile_expiry_for })),
       inheritedIgnored: false,
     };
   }
   const own = (await tx.execute(sql`
-    SELECT final_category, total_score, signed_at, provisional FROM risk_profile_responses
+    SELECT final_category, total_score, signed_at, provisional, next_review_at FROM risk_profile_responses
      WHERE tenant_id = ${tenantId}::uuid AND investor_id = ${investorId}::uuid
      ORDER BY COALESCE(signed_at, created_at) DESC LIMIT 1`)).rows[0] as Record<string, any> | undefined;
   return {
@@ -60,17 +77,20 @@ export async function suitabilityProfile(tx: any, tenantId: string, investorId: 
     score: own?.total_score == null ? null : Number(own.total_score),
     signedAt: iso(own?.signed_at),
     provisional: own?.provisional === true,
+    expiresOn: ownExpiresOn(own?.signed_at, own?.next_review_at),
     inheritedIgnored: true,
   };
 }
 
-/** The 12-month rule, for a profile `suitabilityProfile` took from the minor's
- *  own assessment (callers keep their existing rule for everyone else). */
-export function suitabilityStatus(p: SuitabilityProfile, now = Date.now()): "Completed" | "Provisional" | "Due for review" | "Not completed" {
+/** Completed / Provisional / Due for review (lapsed) / Not completed, from the
+ *  profile's own expiry (`expiresOn`: valid THROUGH that date, as
+ *  lib/risk-profile/expiry.ts decides for everyone). */
+export function suitabilityStatus(p: SuitabilityProfile, now = new Date()): "Completed" | "Provisional" | "Due for review" | "Not completed" {
   if (!p.category) return "Not completed";
   if (p.provisional) return "Provisional";
   if (!p.signedAt) return "Not completed";
-  return Date.parse(p.signedAt) < now - 365 * 864e5 ? "Due for review" : "Completed";
+  const lapsed = riskProfileLapsed({ riskProfileSignedAt: p.signedAt, riskProfileExpiresOn: p.expiresOn, riskProfileExpiryFor: p.signedAt }, now);
+  return lapsed ? "Due for review" : "Completed";
 }
 
 /**
@@ -85,9 +105,11 @@ export async function minorOwnRiskColumns(tx: any, tenantId: string, minorId: st
   riskProfileScore: number | null;
   riskProfileSignedAt: Date | null;
   riskProfileProvisional: boolean;
+  riskProfileExpiresOn: string | null;
+  riskProfileExpiryFor: Date | null;
 }> {
   const own = (await tx.execute(sql`
-    SELECT final_category, total_score, signed_at, provisional FROM risk_profile_responses
+    SELECT final_category, total_score, signed_at, provisional, next_review_at FROM risk_profile_responses
      WHERE tenant_id = ${tenantId}::uuid AND investor_id = ${minorId}::uuid
      ORDER BY COALESCE(signed_at, created_at) DESC LIMIT 1`)).rows[0] as Record<string, any> | undefined;
   return {
@@ -95,6 +117,8 @@ export async function minorOwnRiskColumns(tx: any, tenantId: string, minorId: st
     riskProfileScore: own?.total_score == null ? null : Number(own.total_score),
     riskProfileSignedAt: own?.signed_at ? new Date(own.signed_at) : null,
     riskProfileProvisional: own?.provisional === true,
+    riskProfileExpiresOn: ownExpiresOn(own?.signed_at, own?.next_review_at),
+    riskProfileExpiryFor: own?.signed_at ? new Date(own.signed_at) : null,
   };
 }
 
@@ -129,6 +153,15 @@ function ownLatest(alias: string, column: string) {
                ORDER BY COALESCE(r_own.signed_at, r_own.created_at) DESC LIMIT 1)`;
 }
 
+function ownLatestExpiry(alias: string) {
+  const a = (c: string) => sql.raw(`${alias}.${c}`);
+  return sql`(SELECT CASE WHEN r_own.signed_at IS NULL THEN NULL
+                          ELSE COALESCE(r_own.next_review_at, (r_own.signed_at + interval '1 year')::date) END
+                FROM risk_profile_responses r_own
+               WHERE r_own.tenant_id = ${a("tenant_id")} AND r_own.investor_id = ${a("id")}
+               ORDER BY COALESCE(r_own.signed_at, r_own.created_at) DESC LIMIT 1)`;
+}
+
 /**
  * The client's risk columns as any reader may use them (see above), as SQL
  * expressions over the `investors` row under `alias`. Use in place of
@@ -142,6 +175,8 @@ export function clientRiskSql(alias: string) {
     score: sql`(CASE WHEN ${minor} THEN ${ownLatest(alias, "total_score")} ELSE ${a("risk_profile_score")} END)`,
     signedAt: sql`(CASE WHEN ${minor} THEN ${ownLatest(alias, "signed_at")} ELSE ${a("risk_profile_signed_at")} END)`,
     provisional: sql`(CASE WHEN ${minor} THEN COALESCE(${ownLatest(alias, "provisional")}, false) ELSE COALESCE(${a("risk_profile_provisional")}, false) END)`,
+    /** DATE the profile lapses (valid THROUGH it); NULL with no signed profile. */
+    expiresOn: sql`(CASE WHEN ${minor} THEN ${ownLatestExpiry(alias)} ELSE ${riskExpiresOnSql(alias)} END)`,
   };
 }
 
@@ -151,6 +186,8 @@ const RISK_ROW_KEYS = {
   score: ["riskProfileScore", "risk_profile_score"],
   signedAt: ["riskProfileSignedAt", "risk_profile_signed_at"],
   provisional: ["riskProfileProvisional", "risk_profile_provisional"],
+  expiresOn: ["riskProfileExpiresOn", "risk_profile_expires_on"],
+  expiryFor: ["riskProfileExpiryFor", "risk_profile_expiry_for"],
 } as const;
 
 /**
@@ -166,15 +203,15 @@ export async function withOwnRiskForMinors<T extends Record<string, any>>(
   const idKey = opts.idKey ?? "id";
   const ids = [...new Set(rows.map((r) => r?.[idKey]).filter(Boolean).map(String))];
   if (!ids.length) return rows;
-  const own = new Map<string, { category: string | null; score: number | null; signedAt: Date | null; provisional: boolean }>();
+  const own = new Map<string, { category: string | null; score: number | null; signedAt: Date | null; provisional: boolean; expiresOn: string | null; expiryFor: Date | null }>();
   // Chunked: a bound parameter per id, and Postgres allows 65,535 per statement.
   for (let k = 0; k < ids.length; k += 5000) {
     const part = ids.slice(k, k + 5000);
     const res = await tx.execute(sql`
-      SELECT m.id::text AS id, o.final_category, o.total_score, o.signed_at, COALESCE(o.provisional, false) AS provisional
+      SELECT m.id::text AS id, o.final_category, o.total_score, o.signed_at, COALESCE(o.provisional, false) AS provisional, o.next_review_at
         FROM investors m
         LEFT JOIN LATERAL (
-          SELECT r.final_category, r.total_score, r.signed_at, r.provisional FROM risk_profile_responses r
+          SELECT r.final_category, r.total_score, r.signed_at, r.provisional, r.next_review_at FROM risk_profile_responses r
            WHERE r.tenant_id = m.tenant_id AND r.investor_id = m.id
            ORDER BY COALESCE(r.signed_at, r.created_at) DESC LIMIT 1) o ON true
        WHERE m.tenant_id = ${tenantId}::uuid
@@ -186,6 +223,9 @@ export async function withOwnRiskForMinors<T extends Record<string, any>>(
         score: r.total_score == null ? null : Number(r.total_score),
         signedAt: r.signed_at ? new Date(r.signed_at) : null,
         provisional: r.provisional === true,
+        // The own assessment's expiry, paired with its own signed date (expiry.ts reads the pair).
+        expiresOn: ownExpiresOn(r.signed_at, r.next_review_at),
+        expiryFor: r.signed_at ? new Date(r.signed_at) : null,
       });
     }
   }

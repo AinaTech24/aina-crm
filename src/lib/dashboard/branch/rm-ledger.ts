@@ -209,7 +209,7 @@ export async function loadRmLedger(
       COUNT(*) FILTER (WHERE ${rk.category} IS NULL)::int                    AS risk_pending,
       COUNT(*) FILTER (WHERE ${rk.provisional})::int                         AS risk_provisional,
       COUNT(*) FILTER (WHERE ${rk.category} IS NOT NULL AND ${rk.signedAt} IS NOT NULL
-                         AND ${rk.signedAt} < now() - interval '1 year')::int AS risk_due
+                         AND ${rk.expiresOn} < CURRENT_DATE)::int AS risk_due
       FROM (SELECT bc.*, (${w.today}::date - last_contact_at::date) AS d FROM bc) x
      GROUP BY bucket
   `)).rows as Array<Record<string, unknown>>;

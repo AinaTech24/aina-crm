@@ -27,8 +27,10 @@ import { startRtaImportWorker } from "./rta-import-worker";
 import { startDailyBriefingWorker } from "./daily-briefing";
 import { startWeeklyDigestWorker } from "./weekly-digest";
 import { runDailyOpsScan } from "./daily-ops-scanner";
+import { runKycRefresh } from "@/lib/kyc/refresh";
 import { runMonthlyComplianceSweep } from "./monthly-compliance-seeder";
 import { runReconciliationScan } from "./reconciliation-scanner";
+import { runAumRefresh } from "./aum-refresh";
 import { runHoldingsReconciliation } from "./reconciliation-holdings";
 import { runMarketScan } from "./market-scanner";
 import { runFeedIngest } from "./feed-ingest";
@@ -160,6 +162,14 @@ if (groups.includes("briefing")) {
 scheduleDaily("ops", "daily-ops-scanner", 6, 30, runDailyOpsScan, "DAILY_OPS_ON_BOOT");
 
 /**
+ * KYC status from the KRA, by PAN, through each firm's own NSE MF Invest
+ * connection (lib/kyc/refresh.ts). 02:30 UTC = 08:00 IST, inside NSE's working
+ * day. Only firms that saved their keys and left the daily refresh on; one call
+ * at a time, oldest check first, capped per firm.
+ */
+scheduleDaily("ops", "kyc-status-refresh", 2, 30, runKycRefresh, "KYC_REFRESH_ON_BOOT");
+
+/**
  * Daily firm snapshot — records each tenant's AUM / clients / SIP book at 00:05
  * local, powering the copilot's AUM/SIP trend. Scheduled early so the missed-run
  * catch-up in scheduleDaily seeds the very first data point immediately on the
@@ -242,6 +252,10 @@ if (groups.includes("monthly")) {
  * dashboards read was a day behind the client page's live figure (15 Oct
  * 2026: Ahpal Rs 720.45 Cr stored vs Rs 726.47 Cr on the pages, We Care
  * Rs 8.26 Cr behind).
+ *
+ * The AUM save itself now follows the download in this same job (aum-refresh.ts):
+ * it used to sit inside the scan transaction, where any other section failing
+ * rolled every firm back.
  */
 scheduleDaily(
   "nav",
@@ -249,8 +263,22 @@ scheduleDaily(
   6,
   0,
   async () => {
-    const r = await refreshNav();
-    console.log(`[nav-refresh] upserted ${r.written} schemes (nav date ~${r.navDate})`);
+    // Prices first, then every client's AUM at those prices — one chain, so the
+    // AUM can never be saved before the NAVs it needs, including on the
+    // catch-up run after a restart (src/workers/aum-refresh.ts).
+    let navError: unknown = null;
+    try {
+      const r = await refreshNav();
+      console.log(`[nav-refresh] upserted ${r.written} schemes (nav date ~${r.navDate})`);
+    } catch (err) {
+      // A failed download leaves yesterday's NAVs, but new registrar data still
+      // needs its AUM saved. Record the failure after the refresh has run.
+      navError = err;
+      captureError("[nav-refresh] AMFI download failed", err);
+    }
+    const aum = await runAumRefresh();
+    if (navError) throw navError;
+    return aum;
   },
   "NAV_REFRESH_ON_BOOT"
 );

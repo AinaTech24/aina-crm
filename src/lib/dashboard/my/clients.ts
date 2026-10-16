@@ -420,7 +420,7 @@ export async function loadRiskDesk(tx: Tx, w: MyWindow): Promise<RiskDesk> {
       COUNT(*) FILTER (WHERE ${rk.provisional})::int                                        AS provisional,
       COUNT(*) FILTER (WHERE ${rk.category} IS NOT NULL
                          AND ${rk.signedAt} IS NOT NULL
-                         AND ${rk.signedAt} < now() - interval '1 year')::int               AS due_review
+                         AND ${rk.expiresOn} < CURRENT_DATE)::int                         AS due_review
       FROM investors
      WHERE ${clientsWhere(w.scope)}
   `)).rows[0] as Row | undefined;
@@ -444,7 +444,7 @@ export async function loadRiskDesk(tx: Tx, w: MyWindow): Promise<RiskDesk> {
      WHERE ${clientsWhere(w.scope)}
        AND (${rk.category} IS NULL
             OR ${rk.provisional}
-            OR ${rk.signedAt} < now() - interval '1 year')
+            OR ${rk.expiresOn} < CURRENT_DATE)
      ORDER BY aum::numeric DESC NULLS LAST
      LIMIT 10
   `)).rows as Array<Record<string, unknown>>;

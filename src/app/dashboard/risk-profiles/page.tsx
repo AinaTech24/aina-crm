@@ -12,6 +12,7 @@ import { ExportButton } from "@/components/export/ExportButton";
 import { RiskProfileName, RiskProfilePdfButtons } from "@/components/risk-profile/RiskProfileName";
 import { SignedFormButton } from "@/components/risk-profile/SignedFormButton";
 import { SendRiskProfileLinkButton } from "@/components/risk-profile/SendRiskProfileLinkButton";
+import { UploadRiskProfileButton } from "@/components/risk-profile/UploadRiskProfileButton";
 import { BulkAssignByAge } from "@/components/risk-profile/BulkAssignByAge";
 import { RiskSelectionProvider, RowSelect, SelectAllOnPage, RiskBulkBar } from "@/components/risk-profile/RiskProfileBulkSend";
 import { InlineEmpty } from "@/components/common/EmptyState";
@@ -181,6 +182,7 @@ export default async function RiskProfilesPage({
       <PageHeaderCard title={<><ShieldCheck className="size-6 text-muted-foreground" /> Risk Profiles</>} actions={<><div className="flex items-center gap-2">
           <ExportButton module="risk-profiles" />
           {canManage && <BulkAssignByAge initialBands={data.bands} />}
+          {canManage && <UploadRiskProfileButton />}
           <Link href="/dashboard/risk-profiles/new" className="btn-primary">
             <Plus className="size-4" /> New Risk Profile
           </Link>
@@ -344,6 +346,7 @@ export default async function RiskProfilesPage({
                               <SignedFormButton profileId={String(r.profile_id)} />
                             )}
                             <RiskProfilePdfButtons profileId={r.profile_id ?? null} name={r.name} />
+                            {canManage && !r.is_minor && <UploadRiskProfileButton initialClient={{ id: String(r.id), name: r.name }} appearance="row" />}
                             <SendRiskProfileLinkButton investorId={String(r.id)} appearance="row" />
                             <Link
                               href={`/dashboard/risk-profiles/new?investorId=${r.id}`}
