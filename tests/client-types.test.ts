@@ -116,6 +116,23 @@ describe("client types — dropdowns follow the type", () => {
     expect(defaultTaxStatus("other")).toBe("");
   });
 
+  it("every status a type offers maps back to a type of the same kind", () => {
+    for (const t of ["individual", "nri", "minor", "sole_proprietor", "huf", "company", "llp", "partnership", "trust", "aop_boi"]) {
+      for (const s of taxStatusOptions(t)) {
+        const back = clientTypeFromTaxStatus(s);
+        // Company and Corporate share a list; every other type maps to itself.
+        expect(back, `${t}: ${s}`).toBe(t);
+      }
+    }
+  });
+
+  it("offers the registrar statuses for institutions, funds and foreign investors", () => {
+    expect(taxStatusOptions("company")).toEqual(expect.arrayContaining(["Bank", "Insurance Company", "Mutual Fund", "Foreign Portfolio Investor (FPI)"]));
+    expect(taxStatusOptions("trust")).toEqual(expect.arrayContaining(["Provident Fund", "Pension Fund"]));
+    expect(taxStatusOptions("nri")).toEqual(expect.arrayContaining(["NRI – Others", "Person of Indian Origin (PIO)"]));
+    expect(ALL_TAX_STATUSES).toContain("Others");
+  });
+
   it("derives the household type from the type and the family", () => {
     expect(defaultHouseholdType("huf", false)).toBe("HUF");
     expect(defaultHouseholdType("llp", true)).toBe("Company");
