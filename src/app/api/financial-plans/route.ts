@@ -33,6 +33,7 @@ const LiabilitySchema = z.object({
   name: z.string().min(1).max(200),
   value: z.number().min(0),
   monthlyEmi: z.number().min(0).optional(),
+  tenureMonths: z.number().int().min(0).optional(),
 });
 
 const GoalSchema = z.object({

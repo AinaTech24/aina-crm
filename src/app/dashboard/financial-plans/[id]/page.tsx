@@ -476,6 +476,9 @@ export default async function FinancialPlanDetailPage({
                       {l.monthlyEmi && (
                         <span className="text-2xs text-muted-foreground block">EMI: {formatINR(l.monthlyEmi)}/mo</span>
                       )}
+                      {l.tenureMonths ? (
+                        <span className="text-2xs text-muted-foreground block">Tenure: {l.tenureMonths} months</span>
+                      ) : null}
                     </div>
                     <span className="font-semibold tabular-nums text-rose-600">{formatINR(Number(l.value || 0))}</span>
                   </div>

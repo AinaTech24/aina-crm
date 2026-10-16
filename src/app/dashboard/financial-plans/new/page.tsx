@@ -44,6 +44,7 @@ type Liability = {
   name: string;
   value: number;
   monthlyEmi?: number;
+  tenureMonths?: number;
 };
 
 type Goal = {
@@ -956,6 +957,14 @@ function PlanFormContent() {
                           value={l.monthlyEmi || ""}
                           onChange={(e) => patchLiability(i, { monthlyEmi: e.target.value ? Number(e.target.value) : undefined })}
                           className="input-base text-xs py-1"
+                        />
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder="Loan tenure (months)"
+                          value={l.tenureMonths || ""}
+                          onChange={(e) => patchLiability(i, { tenureMonths: e.target.value ? Number(e.target.value) : undefined })}
+                          className="input-base text-xs py-1 col-span-2"
                         />
                       </div>
                     </div>

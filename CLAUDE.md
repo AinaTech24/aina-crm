@@ -281,6 +281,16 @@ the client page's Overview tab.
   Each opens `/dashboard/opportunities/[id]`, where the journey runs: the same
   `OpportunityCard` the client page uses, plus history, details (Edit), the
   client and its tasks. "New opportunity" there picks the client.
+- **Proposal approval, then transaction review** (2026-10-16, migration 0239).
+  The step after "Client accepted" is gated on the client having APPROVED the
+  proposal (`AFTER_ACCEPTED` in stages.ts); until then the journey waits, and
+  `onProposalEvent("accepted")` moves it on by itself. An MF journey now ends
+  Transaction placed → **Approve / reject transaction** (`txn_review`) → Won,
+  and is never skipped or advanced generically: `decideTransaction` /
+  `POST /api/opportunities/[id]/transaction-review`. Approve wins the client and
+  creates a "client won" task (`meta.wonOpportunityId`, so closing does not
+  complete it); reject needs a reason, returns to Transaction placed with a fix
+  task, and the rejected transaction no longer counts in `loadFacts`.
 - **Follow-ups ARE tasks.** An opportunity's next follow-up is its earliest
   open task with `meta.opportunityId` — there is no column. The follow-up date
   chosen at creation is the first task's due date (10:00 IST; default two
@@ -301,6 +311,16 @@ the client page's Overview tab.
   board has a "Later" column and tile. Started from the card ("Client wants it
   later") or the New opportunity dialog (Now / Later). Diwali dates are a
   table in later-core — add the next year as the calendar rolls on.
+
+## Moving folios between two clients
+
+Clients list → select exactly two → **Merge** (bulk bar) opens
+`FolioTransferDialog`: pick the direction, tick the folios (their schemes are
+listed), optionally move their transactions and SIPs, and confirm
+(`/api/investors/folio-transfer`, `lib/investors/folio-transfer.ts`; owner /
+branch head, merge scope, a PAN clash needs an explicit tick). The unit is the
+folio — a folio belongs to one client, so schemes inside it travel with it. To
+fold a whole duplicate record away use Merge Clients (`mergeInvestors`).
 
 ## Meetings — attendees and action items
 

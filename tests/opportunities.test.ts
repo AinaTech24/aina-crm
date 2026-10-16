@@ -76,6 +76,37 @@ describe("gates", () => {
   });
 });
 
+describe("proposal approval and transaction review", () => {
+  const stepsAfterAccepted = ["mf_kyc", "ins_proposal_form", "gen_executed"];
+  it("waits for the client to approve the proposal before the step after Client accepted", () => {
+    for (const t of stepsAfterAccepted) {
+      expect(gateFor(t, opp(), facts()).some((p) => !p.satisfied), t).toBe(true);
+      const sent = facts({ proposal: { id: "p", status: "sent", type: "mutual_fund" } });
+      expect(gateFor(t, opp(), sent).some((p) => !p.satisfied), t).toBe(true);
+      const ok = facts({ proposal: { id: "p", status: "accepted", type: "mutual_fund" } });
+      expect(gateFor(t, opp(), ok).every((p) => p.satisfied), t).toBe(true);
+    }
+  });
+
+  it("an MF journey ends Transaction placed → Approve / reject transaction → Won", () => {
+    expect(nextStage("mf", "mf_transaction")).toBe("txn_review");
+    expect(nextStage("mf", "txn_review")).toBe("won");
+    const t = new Set(opportunityTransitions().map((x) => `${x.from}>${x.to}`));
+    expect(t.has("txn_review>mf_transaction")).toBe(true); // a rejection goes back
+    expect(t.has("txn_review>lost")).toBe(true);
+  });
+
+  it("never skips the review: a person approves or rejects", () => {
+    expect(skipReason("txn_review", opp(), facts({ transaction: { id: "t", orderDate: null, amount: 1 } }))).toBeNull();
+  });
+
+  it("seeded stage orders are a strict sequence", () => {
+    const orders = OPPORTUNITY_STAGES.map((s) => s.order);
+    expect(new Set(orders).size).toBe(orders.length);
+    expect(orders).toEqual([...orders].sort((a, b) => a - b));
+  });
+});
+
 describe("skips", () => {
   it("skips what an existing MF client already has", () => {
     const o = opp();

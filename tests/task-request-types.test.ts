@@ -17,6 +17,13 @@ import { FINANCIAL_TASK_TYPES } from "@/lib/dashboard/my/window";
 import { OPS_TYPES } from "@/lib/dashboard/ops/window";
 
 describe("task request types", () => {
+  it("ends every request, financial or not, with an RTA data check sub-task", () => {
+    for (const r of REQUEST_TYPES) {
+      expect(r.checklist[r.checklist.length - 1], r.key).toBe("RTA data check");
+      expect(r.checklist.filter((c) => c === "RTA data check"), r.key).toHaveLength(1);
+    }
+  });
+
   it("has unique keys", () => {
     const keys = REQUEST_TYPES.map((r) => r.key);
     expect(new Set(keys).size).toBe(keys.length);

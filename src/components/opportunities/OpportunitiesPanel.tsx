@@ -35,6 +35,7 @@ import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import { notify } from "@/components/ui/Toast";
+import { promptDialog } from "@/components/ui/ConfirmProvider";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
 import { formatDate, formatMoney } from "@/lib/format";
 import { OPPORTUNITY_PRODUCTS, productPipeline } from "@/lib/opportunities/products";
@@ -206,7 +207,7 @@ export function OpportunityCard({ o, canWork, staff, onChange, onReload, detailH
   /** "Open" link to the opportunity's own page (on the client page). */
   detailHref?: string;
 }) {
-  const [busy, setBusy] = useState<"advance" | "sync" | null>(null);
+  const [busy, setBusy] = useState<"advance" | "sync" | "approve" | "reject" | null>(null);
   const [blocked, setBlocked] = useState<Prerequisite[] | null>(null);
   const [losing, setLosing] = useState(false);
   const [needsOpen, setNeedsOpen] = useState(false);
@@ -234,6 +235,31 @@ export function OpportunityCard({ o, canWork, staff, onChange, onReload, detailH
       }
       if (j.skipped?.length) notify.success(`Moved on — ${j.skipped.length} step${j.skipped.length === 1 ? "" : "s"} already on file`);
       else notify.success(j.stage === "won" ? "Marked won" : "Moved on");
+      onChange(j.opportunity);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function decide(decision: "approve" | "reject") {
+    let remarks: string | undefined;
+    if (decision === "reject") {
+      const why = await promptDialog({ title: "Why was the transaction rejected?", confirmLabel: "Reject transaction", multiline: true });
+      if (!why) return;
+      remarks = why;
+    }
+    setBusy(decision);
+    try {
+      const res = await fetch(`/api/opportunities/${o.id}/transaction-review`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ decision, remarks }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        notify.error(j.error ?? "Could not record the decision");
+        if (j.opportunity) onChange(j.opportunity);
+        return;
+      }
+      notify.success(decision === "approve" ? "Transaction approved — client won, and a task is created" : "Rejected — sent back to Transaction placed");
       onChange(j.opportunity);
     } finally {
       setBusy(null);
@@ -321,7 +347,19 @@ export function OpportunityCard({ o, canWork, staff, onChange, onReload, detailH
 
       {canWork && !o.later && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          {o.next && (
+          {o.status === "open" && o.current.key === "txn_review" && (
+            <>
+              <Button variant="primary" size="sm" loading={busy === "approve"} disabled={busy != null}
+                icon={<Sparkles className="size-4" />} onClick={() => decide("approve")}>
+                Approve transaction
+              </Button>
+              <Button size="sm" loading={busy === "reject"} disabled={busy != null}
+                icon={<XCircle className="size-4" />} onClick={() => decide("reject")}>
+                Reject transaction
+              </Button>
+            </>
+          )}
+          {o.next && o.current.key !== "txn_review" && (
             <Button variant="primary" size="sm" loading={busy === "advance"} disabled={gateOpen || busy != null}
               icon={o.next.key === "won" ? <Sparkles className="size-4" /> : <ChevronRight className="size-4" />}
               onClick={advance}>
