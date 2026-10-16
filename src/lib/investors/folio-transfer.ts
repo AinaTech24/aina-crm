@@ -47,7 +47,11 @@ export async function loadTransferClients(tx: Tx, tenantId: string, ids: string[
       FROM folios f
      WHERE f.tenant_id = ${tenantId}::uuid AND f.investor_id IN (${list})
      ORDER BY f.amc_name, f.folio_number
-  `)).rows as any[];
+  `)).rows as Array<{
+    id: string; investor_id: string; folio_number: string; amc_name: string; aum: number;
+    schemes: Array<{ schemeName?: string; schemeCode?: string; units?: number; value?: number }> | null;
+    txns: number; sips: number;
+  }>;
   return people.map((p) => ({
     ...p,
     folios: folios
@@ -57,7 +61,7 @@ export async function loadTransferClients(tx: Tx, tenantId: string, ids: string[
         folioNumber: f.folio_number,
         amcName: f.amc_name,
         aum: Number(f.aum),
-        schemes: (Array.isArray(f.schemes) ? f.schemes : []).map((s: any) => ({
+        schemes: (Array.isArray(f.schemes) ? f.schemes : []).map((s) => ({
           name: String(s?.schemeName ?? s?.schemeCode ?? "Scheme"),
           units: s?.units != null ? Number(s.units) : null,
           value: s?.value != null ? Number(s.value) : null,

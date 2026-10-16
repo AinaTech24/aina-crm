@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
       { userId: session.userId, branchId: session.branchId, roles: session.roles },
     );
     if ("error" in result) {
-      return NextResponse.json(result, { status: (result as any).code === "pan_mismatch" ? 409 : result.error.includes("not found") ? 404 : 400 });
+      return NextResponse.json(result, { status: "code" in result && result.code === "pan_mismatch" ? 409 : result.error.includes("not found") ? 404 : 400 });
     }
     return NextResponse.json(result);
   } catch (err: any) {
