@@ -150,7 +150,10 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "deploy_artifacts"
   }
 }
 
-# Releases are disposable: kept 14 days.
+# Releases are disposable: kept 14 days. Verified artifacts (CI-built images, verified/<sha>/<run>/)
+# are kept 30 days: a recovery window well past the 14-day age limit artifact-verify.sh enforces by
+# default (an older one needs ARTIFACT_MAX_AGE_DAYS set deliberately). Rollback itself uses the
+# mfd-app:prev-* image tags on the box, not S3.
 resource "aws_s3_bucket_lifecycle_configuration" "deploy_artifacts" {
   bucket = aws_s3_bucket.deploy_artifacts.id
   rule {
@@ -161,6 +164,19 @@ resource "aws_s3_bucket_lifecycle_configuration" "deploy_artifacts" {
     }
     expiration {
       days = 14
+    }
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 1
+    }
+  }
+  rule {
+    id     = "expire-verified-30d"
+    status = "Enabled"
+    filter {
+      prefix = "verified/"
+    }
+    expiration {
+      days = 30
     }
     abort_incomplete_multipart_upload {
       days_after_initiation = 1
