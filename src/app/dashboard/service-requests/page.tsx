@@ -8,6 +8,7 @@ import { can } from "@/lib/auth/rbac";
 import { ServiceRequestsTable } from "@/components/service-requests/ServiceRequestsTable";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { ExportButton } from "@/components/export/ExportButton";
+import { ServiceFormShareButton } from "@/components/service-requests/ServiceFormShareButton";
 import { dateRangeCond } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
@@ -75,6 +76,9 @@ export default async function ServiceRequestsPage({
   // The firm's public complaint link — for whoever runs the firm's tickets.
   const canSeeComplaintForm = (["service_request.view.all", "service_request.manage", "compliance.view"] as const)
     .some((cap) => can(session.roles, cap, session.permissions));
+  // The firm's service request link, sent to clients.
+  const canSeeServiceForm = (["service_request.view.all", "service_request.manage"] as const)
+    .some((cap) => can(session.roles, cap, session.permissions));
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const status = (sp.status ?? "").split(",").filter(Boolean);
@@ -103,7 +107,7 @@ export default async function ServiceRequestsPage({
     conds.push(sql`sr.assigned_to_user_id IN (${sql.join(assigneeFilter.map((v) => sql`${v}::uuid`), sql`, `)})`);
   if (q) {
     conds.push(
-      sql`(sr.ticket_no ILIKE ${`%${q}%`} OR sr.subject ILIKE ${`%${q}%`} OR i.name ILIKE ${`%${q}%`} OR u.name ILIKE ${`%${q}%`})`
+      sql`(sr.ticket_no ILIKE ${`%${q}%`} OR sr.subject ILIKE ${`%${q}%`} OR i.name ILIKE ${`%${q}%`} OR sr.requester_name ILIKE ${`%${q}%`} OR u.name ILIKE ${`%${q}%`})`
     );
   }
   if (status.length)
@@ -137,7 +141,10 @@ export default async function ServiceRequestsPage({
              sr.escalated_at, sr.escalated_to_user_id, sr.remarks,
              jsonb_array_length(COALESCE(sr.attachments, '[]'::jsonb)) AS attach_count,
              sr.created_at,
-             CASE WHEN ${clientVisible} THEN i.name END AS investor_name,
+             COALESCE(
+               CASE WHEN ${clientVisible} THEN i.name END,
+               CASE WHEN sr.investor_id IS NULL THEN sr.requester_name END
+             ) AS investor_name,
              CASE WHEN ${clientVisible} THEN i.avatar_url END AS investor_avatar_url,
              CASE WHEN ${clientVisible} THEN sr.investor_id END AS investor_id,
              u.name AS assignee_name,
@@ -189,20 +196,36 @@ export default async function ServiceRequestsPage({
   return (
     <div className="space-y-6 max-w-7xl">
       <PageHeaderCard title={<><LifeBuoy className="size-6 text-muted-foreground" /> Service Requests</>} actions={<><div className="flex items-center gap-2">
-          {canSeeComplaintForm && (
+          {(canSeeComplaintForm || canSeeServiceForm) && (
             <MoreMenu
               label="More"
               items={[
-                {
-                  href: "/dashboard/complaints/website-form",
-                  label: "Complaint form for your website",
-                  description: "One link clients can use to send you a complaint",
-                  tooltip:
-                    "Put this link on your website. Every complaint sent through it arrives here as a complaint, with the 21-day clock started.",
-                },
+                ...(canSeeServiceForm
+                  ? [
+                      {
+                        href: "/dashboard/service-requests/website-form",
+                        label: "Service request form for clients",
+                        description: "A link you send a client so they can ask for a service",
+                        tooltip:
+                          "Send this link to a client. They choose the services they need, and each one arrives here as a request with its own service ID.",
+                      },
+                    ]
+                  : []),
+                ...(canSeeComplaintForm
+                  ? [
+                      {
+                        href: "/dashboard/complaints/website-form",
+                        label: "Complaint form for your website",
+                        description: "One link clients can use to send you a complaint",
+                        tooltip:
+                          "Put this link on your website. Every complaint sent through it arrives here as a complaint, with the 21-day clock started.",
+                      },
+                    ]
+                  : []),
               ]}
             />
           )}
+          {canSeeServiceForm && <ServiceFormShareButton />}
           <ExportButton module="service-requests" />
           <Link href="/dashboard/service-requests/new" className={buttonClass("primary")}>
             <Plus className="size-4" /> New request

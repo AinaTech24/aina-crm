@@ -109,6 +109,9 @@ export const serviceRequests = pgTable(
 
     /** Free-text RM remarks — spec § Module 13. */
     remarks: text("remarks"),
+    /** Who asked, when the request came through the public service request form
+     *  and no client record matched — so the list can still name them. */
+    requesterName: text("requester_name"),
     /** Resolution write-up — spec § Module 14 Complaint Register. */
     resolutionNotes: text("resolution_notes"),
     /** Set true once an escalation notification has been raised — idempotency for the recipe. */

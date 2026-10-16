@@ -242,46 +242,74 @@ if (groups.includes("monthly")) {
 }
 
 /**
- * Daily NAV refresh — downloads the AMFI NAVAll feed once a day at 06:00 local
- * time (after the prior day's NAVs are published) and upserts scheme_nav. This
- * is what keeps live portfolio valuation + XIRR current. Self-scheduled tick,
- * same rationale as the daily-ops scanner (single sweep, not per-tenant).
+ * Download the AMFI feed, then save every client's AUM at those prices — one
+ * chain, so the AUM can never be saved before the NAVs it needs, including on
+ * the catch-up run after a restart (src/workers/aum-refresh.ts).
  *
- * It must run BEFORE the 06:30 daily-ops scanner, which saves every client's
- * AUM from these NAVs. At 07:00 it ran after it, so the stored AUM the
- * dashboards read was a day behind the client page's live figure (15 Oct
- * 2026: Ahpal Rs 720.45 Cr stored vs Rs 726.47 Cr on the pages, We Care
- * Rs 8.26 Cr behind).
+ * `onlyIfChanged` is for the extra runs through the day: AMFI publishes from the
+ * evening of the NAV date through the next morning, one fund house after
+ * another, so a single 06:00 download leaves late publishers on the day before
+ * until the next 06:00 — a day behind, every day. A run that finds no new NAV
+ * stops after the download; one that does re-saves the AUM.
  *
- * The AUM save itself now follows the download in this same job (aum-refresh.ts):
- * it used to sit inside the scan transaction, where any other section failing
- * rolled every firm back.
+ * Runs are queued one behind another: several catch-ups can fire together after
+ * a restart, and two downloads upserting scheme_nav at once would only fight.
  */
-scheduleDaily(
-  "nav",
-  "nav-refresh",
-  6,
-  0,
-  async () => {
-    // Prices first, then every client's AUM at those prices — one chain, so the
-    // AUM can never be saved before the NAVs it needs, including on the
-    // catch-up run after a restart (src/workers/aum-refresh.ts).
+let navChain: Promise<unknown> = Promise.resolve();
+function refreshNavAndAum(tag: string, onlyIfChanged: boolean) {
+  const job = async () => {
     let navError: unknown = null;
+    let changed = 1;
     try {
       const r = await refreshNav();
-      console.log(`[nav-refresh] upserted ${r.written} schemes (nav date ~${r.navDate})`);
+      changed = r.changed;
+      console.log(`[${tag}] upserted ${r.written} schemes, ${r.changed} with a new NAV (nav date ~${r.navDate})`);
     } catch (err) {
-      // A failed download leaves yesterday's NAVs, but new registrar data still
+      // A failed download leaves the NAVs we have, but new registrar data still
       // needs its AUM saved. Record the failure after the refresh has run.
       navError = err;
-      captureError("[nav-refresh] AMFI download failed", err);
+      captureError(`[${tag}] AMFI download failed`, err);
     }
-    const aum = await runAumRefresh();
+    let aum: unknown = { navChanged: changed };
+    if (!onlyIfChanged || (changed > 0 && !navError)) aum = await runAumRefresh();
     if (navError) throw navError;
     return aum;
-  },
-  "NAV_REFRESH_ON_BOOT"
-);
+  };
+  const run = navChain.then(job, job);
+  navChain = run.catch(() => undefined);
+  return run;
+}
+
+/**
+ * Daily NAV refresh — 06:00 local, always followed by the AUM save. This is
+ * what keeps live portfolio valuation + XIRR current. Self-scheduled tick, same
+ * rationale as the daily-ops scanner (single sweep, not per-tenant).
+ *
+ * It must run BEFORE the 06:30 daily-ops scanner (which reads the saved AUM). At
+ * 07:00 it ran after it, so the stored AUM the dashboards read was a day behind
+ * the client page's live figure (15 Oct 2026: Ahpal Rs 720.45 Cr stored vs
+ * Rs 726.47 Cr on the pages).
+ *
+ * The AUM save follows the download in this same chain (aum-refresh.ts): it used
+ * to sit inside the scan transaction, where any other section failing rolled
+ * every firm back.
+ */
+scheduleDaily("nav", "nav-refresh", 6, 0, () => refreshNavAndAum("nav-refresh", false), "NAV_REFRESH_ON_BOOT");
+
+/**
+ * Extra NAV passes through AMFI's publishing window (22:00 and 23:30 the night
+ * of the NAV date; 09:00 and 12:00 for the slow publishers). Each re-saves the
+ * AUM only when the download brought a new NAV, so a quiet pass costs one
+ * download. Job names are separate so each has its own missed-run catch-up.
+ */
+for (const [name, hour, minute] of [
+  ["nav-refresh-2200", 22, 0],
+  ["nav-refresh-2330", 23, 30],
+  ["nav-refresh-0900", 9, 0],
+  ["nav-refresh-1200", 12, 0],
+] as const) {
+  scheduleDaily("nav", name, hour, minute, () => refreshNavAndAum(name, true));
+}
 
 /**
  * Daily MF scheme catalog sync — pulls the full scheme list from mfapi.in at

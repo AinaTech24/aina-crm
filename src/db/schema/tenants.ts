@@ -165,6 +165,11 @@ export const tenants = pgTable(
      *  its website and email signature. Same rules as the complaint link. */
     feedbackFormToken: text("feedback_form_token"),
     feedbackFormEnabled: boolean("feedback_form_enabled").notNull().default(true),
+    /** The firm's public service request form, /service-request/<token> (migration
+     *  0238): the link the firm sends a client to ask for a service. Same rules as
+     *  the complaint link. */
+    serviceFormToken: text("service_form_token"),
+    serviceFormEnabled: boolean("service_form_enabled").notNull().default(true),
     /** Soft delete — set by a platform admin from the super-admin panel. A
      *  non-null value hides the tenant from the list and blocks its logins. */
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -174,6 +179,7 @@ export const tenants = pgTable(
   (t) => ({
     arnUnique: uniqueIndex("tenants_arn_unique").on(t.arn),
     complaintFormTokenUnique: uniqueIndex("tenants_complaint_form_token_unique").on(t.complaintFormToken),
+    serviceFormTokenUnique: uniqueIndex("tenants_service_form_token_unique").on(t.serviceFormToken),
     feedbackFormTokenUnique: uniqueIndex("tenants_feedback_form_token_unique").on(t.feedbackFormToken),
   })
 );

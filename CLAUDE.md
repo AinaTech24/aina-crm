@@ -414,6 +414,33 @@ form for your website" (`/dashboard/complaints/website-form`). Code:
   (2026-10-01); `/dashboard/complaints/disclosure` redirects to the register.
   Do not restore it.
 
+## Service request form — email never opens a ticket
+
+A client asks for a service through the firm's **service request form**
+(`/service-request/<token>`, `tenants.service_form_token`, migration 0238), sent
+by link or put on the website: Service Requests → ⋯ → "Service request form for
+clients" (`/dashboard/service-requests/website-form`). Code:
+`src/lib/service-requests/` (`web-submission.ts` reads the form, `web-form.ts`
+the rest), `POST /api/public/service-requests/[token]`, and
+`PATCH /api/service-requests/website-form` (`service_request.manage`: switch
+off, or replace the link).
+
+- **The service chosen opens a request** (the API still takes up to 6) through
+  `openServiceRequest`, so each has its own service ID (`SR-YYYY-NNNNN`), shown
+  on the thank-you page. The same client re-sending the same service within a
+  day gets the open request's ID back, not a second ticket.
+- **Linked to a client only when the email or mobile typed matches exactly one
+  live client**; it then goes to that client's RM, else the owner (both
+  notified). The acknowledgement is sent only when the EMAIL matched. The form
+  asks no PAN or folio. "Other" opens a box for what the client needs. Abuse controls as the
+  complaint form: 20/hour per IP, 120/hour per link, honeypot.
+- **Incoming email does NOT open a service request** (the firm's decision of
+  2026-10-16). It once did, and the firm's own "SIP INSTALLMENT REMINDER" mail
+  — whose footer says "bank account" — opened 332 "Bank update" tickets at one
+  firm (483 in ten days, 474 escalated). Do not put `imap-poller` → ticket back.
+  `scripts/close-auto-email-tickets.ts` (dry run; `--tenant`, `--apply`) closes
+  the ones already in a register, never one a person has touched.
+
 ## Creating a family
 
 The New family form (`/dashboard/families/new`, `NewFamilyForm`) asks for the
