@@ -45,7 +45,7 @@ async function main() {
     } else {
       index = await loadNavIndex(tx);
     }
-      const tenants = (await tx.execute(sql`SELECT id, name FROM tenants ORDER BY name`)).rows as Array<{ id: string; name: string }>;
+      const tenants = (await tx.execute(sql`SELECT id, display_name AS name FROM tenants ORDER BY display_name`)).rows as Array<{ id: string; name: string }>;
       return { index, tenants };
     });
     console.log(`NAV index: ${index.size} AMFI schemes${index.fallback ? `, +${index.fallback.size} from mfapi` : ""}${LEGACY ? " (legacy)" : ""}`);

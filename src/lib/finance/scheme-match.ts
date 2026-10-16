@@ -197,8 +197,45 @@ function nearestByNav<T extends NavEntry>(cands: T[], hint: number): T | null {
     .filter((x) => x.d <= 0.1)
     .sort((a, b) => a.d - b.d);
   if (!scored.length) return null;
+  // Everything in reach is ONE price (a growth and an IDCW option of a scheme that
+  // has never paid out; Axis Children's lock-in and no-lock-in at 25.4945 / 25.4914):
+  // which of them it is cannot change the valuation. Only when NOTHING else is in
+  // reach — a regular plan 3% under its direct twin is another price, and refused.
+  const first = scored[0].c.nav;
+  if (scored.length > 1 && scored.every((x) => Math.abs(x.c.nav - first) / first <= 0.0005)) return scored[0].c;
   if (scored.length > 1 && scored[1].d < Math.max(scored[0].d * 2, 0.005)) return null;
   return scored[0].c;
+}
+
+/**
+ * No AMFI scheme has the registrar name's key ("HDFC Childrens Fund (Lock-In)
+ * - Regular Plan'", a name the registrar cut off mid-word): the scheme of the
+ * same fund house, same plan, sharing most of its words, whose NAV is near the
+ * statement's — only when exactly one fits. Needs the statement's NAV.
+ *
+ * This is the matcher as deployed, and it is the FALLBACK. Its word overlap counts
+ * the house name and "Growth", so it finds true renames the stricter by-words match
+ * cannot (Axis Bluechip -> Axis Large Cap, Quant Active -> Quant Multi Cap: 805
+ * legs, Rs 37.7 Cr on 16 Oct 2026) but also picks a sibling whose NAV happens to
+ * agree (Nippon Focused Equity -> Nippon ELSS, WhiteOak Ultra Short -> WhiteOak
+ * Liquid, UTI Dividend Yield -> UTI Liquid IDCW). lookupNavFuzzyByWords runs first;
+ * this only gets what that one refuses.
+ */
+export function lookupNavFuzzy(index: NavIndex, schemeName: string | null | undefined, hintNav: number): NavHit | null {
+  const sk = schemeNameKey(schemeName);
+  if (!sk || !index.all?.length || !(hintNav > 0)) return null;
+  const words = new Set(sk.tokens.split(" "));
+  const house = String(schemeName ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().split(" ")[0];
+  const near = index.all.filter((c) => {
+    if (c.direct !== sk.direct || !c.words.has(house)) return false;
+    let shared = 0;
+    for (const w of words) if (c.words.has(w)) shared++;
+    return shared / Math.max(words.size, c.words.size) >= 0.5;
+  });
+  const newest = near.reduce((m, c) => ((c.navDate ?? "") > m ? (c.navDate ?? "") : m), "");
+  const hit = nearestByNav(near.filter((c) => (c.navDate ?? "") === newest), hintNav);
+  if (!hit) return null;
+  return { code: hit.code, nav: hit.nav, navDate: hit.navDate, via: "nav" };
 }
 
 /**
@@ -218,11 +255,17 @@ function nearestByNav<T extends NavEntry>(cands: T[], hint: number): T | null {
  * test: exactly one of them must sit near the statement's NAV. Needs the
  * statement's NAV.
  */
-export function lookupNavFuzzy(index: NavIndex, schemeName: string | null | undefined, hintNav: number): NavHit | null {
+export function lookupNavFuzzyByWords(index: NavIndex, schemeName: string | null | undefined, hintNav: number): NavHit | null {
   const sk = schemeNameKey(schemeName);
   if (!sk || !index.all?.length || !(hintNav > 0)) return null;
   const house = schemeHouse(schemeName);
-  const ofHouse = index.all.filter((c) => c.direct === sk.direct && c.words.has(house));
+  const mineWords = new Set(sk.tokens.split(" "));
+  const optionOf = (w: Set<string>) => (w.has("idcw") ? "idcw" : w.has("bonus") ? "bonus" : "growth");
+  // Same plan AND same option: a Growth holding is never an IDCW scheme.
+  let ofHouse = index.all.filter((c) => c.direct === sk.direct && c.words.has(house) && optionOf(c.words) === optionOf(mineWords));
+  // A scheme whose NAV has stopped publishing is not a rename target.
+  const latest = ofHouse.reduce((m, c) => ((c.navDate ?? "") > m ? (c.navDate ?? "") : m), "");
+  ofHouse = ofHouse.filter((c) => daysBetween(c.navDate, latest) <= 10);
   if (!ofHouse.length) return null;
   // Words in at least half of the house's schemes are the house's name, not a fund's.
   // Too few schemes to tell (a hand-built index): only the house word itself.
@@ -230,7 +273,7 @@ export function lookupNavFuzzy(index: NavIndex, schemeName: string | null | unde
   for (const c of ofHouse) for (const w of c.words) df.set(w, (df.get(w) ?? 0) + 1);
   const generic = (w: string) => w === house || FUZZY_OPTION_WORDS.has(w) || (ofHouse.length >= 12 && (df.get(w) ?? 0) / ofHouse.length >= 0.5);
   const specific = (words: Set<string>) => new Set([...words].filter((w) => !generic(w)));
-  const mine = specific(new Set(sk.tokens.split(" ")));
+  const mine = specific(mineWords);
   if (!mine.size) return null;
   const scored: Array<{ c: NonNullable<NavIndex["all"]>[number]; j: number }> = [];
   for (const c of ofHouse) {
@@ -354,5 +397,5 @@ function lookupIn(
   }
   const byKey = plausible(lookupNavByKey(index, schemeName, hint));
   if (byKey) return byKey;
-  return hint ? lookupNavFuzzy(index, schemeName, hint) : null;
+  return hint ? (lookupNavFuzzyByWords(index, schemeName, hint) ?? lookupNavFuzzy(index, schemeName, hint)) : null;
 }

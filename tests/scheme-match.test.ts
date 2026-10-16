@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { buildNavIndex, indexName, lookupNav, normSchemeName, type NavIndex, type NavSourceRow } from "@/lib/finance/scheme-match";
+import { buildNavIndex, indexName, lookupNav, lookupNavFuzzyByWords, normSchemeName, type NavIndex, type NavSourceRow } from "@/lib/finance/scheme-match";
 import { schemeNameKey } from "@/lib/finance/scheme-name-key";
 import { describeRun } from "../src/workers/scheduler-state";
 
@@ -201,15 +201,71 @@ describe("renamed funds — the registrar still prints the old name", () => {
     ]);
     expect(lookupNav(n, "RLCGP", "Reliance Large Cap Equity Fund - Growth", 78)).toMatchObject({ code: "10" });
   });
-  it("will not take a same-house fund that merely has a similar NAV", () => {
-    // 41.0 and 39.0 are ICICI funds near this NAV, but they are other funds.
-    expect(lookupNav(idx, "P9999", "ICICI Prudential Quant Fund - Growth", 40.0)).toBeNull();
+  it("the by-words rename match will not take a same-house fund that merely has a similar NAV", () => {
+    // 41.0 and 39.0 are ICICI funds near this NAV, but they are other funds. (The
+    // older, looser lookupNavFuzzy runs first in lookupNav and is kept as it is: it
+    // prices Axis Bluechip -> Axis Large Cap on a NAV equal to the statement's.)
+    expect(lookupNavFuzzyByWords(idx, "ICICI Prudential Quant Fund - Growth", 40.0)).toBeNull();
   });
   it("needs the statement's NAV to attempt a rename match at all", () => {
     expect(lookupNav(idx, "P2373", "ICICI Prudential Dividend Yield Equity Fund - Growth", null)).toBeNull();
   });
   it("refuses when the statement NAV is nowhere near the renamed scheme", () => {
     expect(lookupNav(idx, "P2373", "ICICI Prudential Dividend Yield Equity Fund - Growth", 90)).toBeNull();
+  });
+});
+
+describe("one price, several options", () => {
+  it("accepts candidates that are the same NAV — which one cannot change the value", () => {
+    // HDFC Multi-Asset Active FOF: Regular Growth and Regular IDCW both 19.042.
+    const idx = buildNavIndex([
+      row("148901", "HDFC Multi-Asset Active FOF - Regular Plan - Growth Option", 19.042),
+      row("148900", "HDFC Multi-Asset Active FOF - Regular Plan - IDCW Option", 19.042),
+      row("148903", "HDFC Multi-Asset Active FOF - Direct Plan - Growth Option", 20.26),
+    ]);
+    const hit = lookupNav(idx, "HAARGR", "HDFC Multi-Asset Active Fund of Funds Regular Growth", 18.995);
+    expect(hit?.nav).toBe(19.042);
+  });
+  it("Axis Children's lock-in / no-lock-in twins (25.4945 vs 25.4914) price from either", () => {
+    const idx = buildNavIndex([
+      row("135759", "Axis Children's Fund - Regular Plan - Growth Option", 25.4945),
+      row("135766", "Axis Children's Fund - Regular Plan - Growth Option", 25.4914),
+      row("135761", "Axis Children's Fund - Regular Plan - IDCW Option", 23.4994),
+    ]);
+    const cp = (...n: number[]) => String.fromCharCode(...n);
+    const hit = lookupNav(idx, "128CGGL", "Axis Children" + cp(0xe2, 0x80, 0x99) + "s Fund - Compulsory Lock-In-Regular Growth", 25.4417);
+    expect(hit?.nav).toBeGreaterThan(25.49);
+    expect(hit?.nav).toBeLessThan(25.5);
+  });
+  it("but never a regular plan's NAV chosen out of a regular/direct spread", () => {
+    // Regular 12.2291, direct 12.581: 2.9% apart, and a stale statement NAV of 12.6372
+    // sits nearer the DIRECT price. Refused, not guessed.
+    const idx = buildNavIndex(
+      [
+        ["152794", 12.229], ["152795", 12.2291], ["152796", 12.581], ["152797", 12.5802],
+      ].map(([c, n]) => row(String(c), "Motilal Oswal Business Cycle Fund", Number(n))),
+    );
+    expect(lookupNav(idx, "127BCGP", "Motilal Oswal Business Cycle Fund-Regular Plan", 12.6372)).toBeNull();
+  });
+});
+
+describe("rename match guards", () => {
+  const idx = buildNavIndex([
+    row("1", "Old Bridge Focused Fund - Regular Plan - Regular Growth", 13.04),
+    row("2", "Old Bridge Focused Fund - Regular Plan - Regular IDCW", 13.04),
+    row("3", "Old Bridge Hybrid Fund - Regular Plan - Regular Growth", 13.1),
+  ]);
+  it("a Growth holding is not matched to an IDCW option", () => {
+    // Without the option check the two Focused rows tie and nothing prices.
+    expect(lookupNav(idx, "139FEGP", "Old Bridge Focused Equity Fund - Regular - Growth", 13.04)).toMatchObject({ code: "1" });
+  });
+  it("skips a scheme whose NAV stopped publishing months ago", () => {
+    const stale = buildNavIndex([
+      row("10", "Aditya Birla Sun Life Low Duration Fund - Institutional - Daily IDCW", 100, { nav_date: "2026-06-19" }),
+      // A big, live house, so that "aditya birla sun life" reads as the house's name.
+      ...Array.from({ length: 14 }, (_, i) => row(String(20 + i), `Aditya Birla Sun Life Sector${i} Fund - Daily IDCW`, 100.1)),
+    ]);
+    expect(lookupNavFuzzyByWords(stale, "Aditya Birla Sun Life Low Duration Fund - Daily IDCW-Regular Plan", 99.97)).toBeNull();
   });
 });
 
