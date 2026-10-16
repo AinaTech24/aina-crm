@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { runAumRefresh, type AumRefreshDeps } from "../src/workers/aum-refresh";
 import { describeRun } from "../src/workers/scheduler-state";
 
-const stats = (over: Record<string, number> = {}) => ({
-  folios: 10, legs: 20, pricedByCode: 15, pricedByName: 4, unpriced: 1, unpricedValue: 250000, ...over,
+const stats = (over: Record<string, unknown> = {}) => ({
+  folios: 10, legs: 20, pricedByCode: 15, pricedByName: 4, pricedByIsin: 0, pricedByMfapi: 0, unpriced: 1, unpricedValue: 250000, unpricedLegs: [], ...over,
 });
 
 function deps(over: Partial<AumRefreshDeps> = {}): AumRefreshDeps {

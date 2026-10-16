@@ -112,7 +112,7 @@ async function refreshAll(deps: AumRefreshDeps): Promise<AumRefreshResult> {
         if (v.unpriced > 0) {
           console.warn(
             `[aum-refresh] tenant ${tenantId}: ${v.unpriced} holding(s) could not be priced ` +
-              `(Rs ${Math.round(v.unpricedValue / 100000)} lakh); priced ${v.pricedByCode} by code, ${v.pricedByName} by name`
+              `(Rs ${Math.round(v.unpricedValue / 100000)} lakh); priced ${v.pricedByCode} by code, ${v.pricedByName} by name, ${v.pricedByIsin} by ISIN, ${v.pricedByMfapi} by mfapi`
           );
         }
       } catch (err) {
