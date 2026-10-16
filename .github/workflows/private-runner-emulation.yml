@@ -83,3 +83,25 @@ jobs:
             console.log(out.join("\n"));
             fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,"### Private-runner emulation (2 vCPU / 8 GB / no swap)\n"+out.join("\n")+"\n");'
           docker system df
+
+  ci-emulate:
+    # The heaviest CI job (typecheck, guards, unit tests, lint) pinned to 2 CPUs, to see what the
+    # private x64 standard runner (2 vCPU / 8 GB) would take; peak memory comes from /usr/bin/time.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      NODE_OPTIONS: --max-old-space-size=6144
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Quality checks on 2 CPUs
+        run: |
+          S=$(date +%s)
+          /usr/bin/time -v taskset -c 0,1 bash -c 'npx tsc --noEmit && npm run check:rbac && npm run check:migrations && npm run check:calc && npm run check:colors && npm run check:asany && npm run check:mathimports && npm test && npm run lint' 2> /tmp/time.txt
+          echo "QUALITY_2CPU_SECONDS=$(( $(date +%s)-S ))"
+          grep -E "Maximum resident|Elapsed" /tmp/time.txt
+          { echo "### CI quality job on 2 CPUs"; echo "$(( $(date +%s)-S )) s; $(grep 'Maximum resident' /tmp/time.txt)"; } >> "$GITHUB_STEP_SUMMARY"
