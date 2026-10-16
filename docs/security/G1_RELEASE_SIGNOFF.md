@@ -1,14 +1,14 @@
 # G-1 guardian hotfix — release sign-off sheet
 
-Prepared 2026-10-15, updated 2026-10-16. PR: https://github.com/AinaTech24/aina-crm/pull/19 (draft, unmerged, not deployed).
+Prepared 2026-10-15, updated 2026-10-16 (main `e11903fc`). PR: https://github.com/AinaTech24/aina-crm/pull/19 (draft, unmerged, not deployed).
 Nothing in this sheet has been executed against production. It is filled in by the people named in §1.
 
 ## 0. State at preparation
 | Item | Value |
 |---|---|
 | Code commit (tested) | `82ec4b29` — merge of main `523143bc` into the hotfix, after `de7caf27` (legacy minors, `G1_GUARDIAN_HOTFIX.md` §16) |
-| PR head | `82ec4b29` plus the docs-only commit that adds this sheet (the PR shows the exact head; nothing but `docs/` after `82ec4b29`) |
-| Integrated `origin/main` | `523143bc` (re-check §3 step 2 at release time) |
+| PR head | the commit that records this line (the PR shows it). After `82ec4b29`: docs only, plus the merge of main `e11903fc` (`terraform/deploy.tf` only, owner Option A, 2026-10-16). `src/`, `tests/`, `drizzle/` are byte-identical to `82ec4b29` |
+| Integrated `origin/main` | `e11903fc` (2026-10-16; includes `523143bc`). Re-check §3 step 2 at release time |
 | Migrations added by the hotfix | **None.** 0235 / 0236 / 0237 are main's, byte-identical (0236 sha256 `8a17d0dc…63e4c1`, 0237 `e7dc2b8d…2dab3`) |
 | Previous blockers | Legacy minors — fixed (`G1_GUARDIAN_HOTFIX.md` §16). Main's upload / expiry conflicts — resolved (§17) |
 | Local qualification | DB suite 658 / 658 (0 skipped) as `mfd_app`; build, lint, types, static checks pass; browser 52 / 52 |
