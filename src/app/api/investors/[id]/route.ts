@@ -443,7 +443,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const current = (before.guardianInvestorId as string | null) ?? null;
       if (nextType === "minor") {
         const typedNow = guardianPan(((typePatch.typeDetails ?? before.typeDetails) as { guardian?: { pan?: string } } | null)?.guardian?.pan);
-        const typedBefore = guardianPan(((before as any).typeDetails as { guardian?: { pan?: string } } | null)?.guardian?.pan);
+        const typedBefore = guardianPan((before.typeDetails as { guardian?: { pan?: string } } | null)?.guardian?.pan);
         let gid: string | null | undefined = parse.data.guardianInvestorId;
         if (gid && gid === current) gid = undefined;
         else if (gid) {

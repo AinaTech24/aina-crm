@@ -322,7 +322,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       //    client's confirmed profile (signed, not provisional, < 12 months).
       if (mfLines.length) {
         const snap = await loadProposalSnapshot(tx, session.tenantId, {
-          investorId: p.investorId, familyId: (p as any).familyId ?? null, leadId: p.leadId,
+          investorId: p.investorId, familyId: p.familyId ?? null, leadId: p.leadId,
         });
         if (snap?.risk.status !== "Completed") {
           const why = snap?.risk.status === "Provisional" ? "is only provisional (not confirmed by the client)"

@@ -121,9 +121,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // minor the proposal covers (lib/proposals/minor-gate.ts).
       if (patch.status && patch.status !== before.status && MARKS_SHARED.includes(patch.status) && !before.sentAt) {
         const refusal = await minorProposalGate(tx, session.tenantId, {
-          investorId: before.investorId, familyId: (before as any).familyId ?? null, products: patch.products ?? before.products,
+          investorId: before.investorId, familyId: before.familyId ?? null, products: patch.products ?? before.products,
         });
-        const ownerOverride = session.roles.includes("owner") && !!String((before as any).suitabilityOverrideReason ?? patch.suitabilityOverrideReason ?? "").trim();
+        const ownerOverride = session.roles.includes("owner") && !!String(before.suitabilityOverrideReason ?? patch.suitabilityOverrideReason ?? "").trim();
         if (refusal && !(refusal.kind === "alignment" && ownerOverride)) {
           throw Object.assign(new Error(refusal.error), { status: 412 });
         }

@@ -180,7 +180,7 @@ export async function GET(req: NextRequest) {
       row["FATCA status"] = (inv as any).fatcaStatus ?? "";
       row["FATCA expiry"] = ymd((inv as any).fatcaExpiryAt);
       if (show.risk) row["Risk profile"] = inv.riskProfile ?? "";
-      if (show.risk) row["Risk score"] = (inv as any).riskProfileScore ?? "";
+      if (show.risk) row["Risk score"] = inv.riskProfileScore ?? "";
       // ── Nominee ──
       if (show.nominee) row["Nominee"] = inv.nomineeName ?? "";
       if (show.nominee) row["Nominee relation"] = (inv as any).nomineeRelation ?? "";
