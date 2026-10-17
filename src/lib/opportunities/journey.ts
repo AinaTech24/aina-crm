@@ -619,10 +619,12 @@ async function closeOpportunity(
     `);
   }
 
-  // The opportunity's open tasks end with it.
+  // The opportunity's open tasks end with it — its follow-ups and the steps'
+  // hand-offs to operations (steps.ts).
   await tx.execute(sql`
     UPDATE tasks SET status = 'completed', completed_at = now(), updated_at = now()
-     WHERE tenant_id = ${opp.tenantId}::uuid AND meta ->> 'opportunityId' = ${opp.id}
+     WHERE tenant_id = ${opp.tenantId}::uuid
+       AND (meta ->> 'opportunityId' = ${opp.id} OR meta ->> 'opportunityStepOf' = ${opp.id})
        AND status IN ('open', 'in_progress', 'blocked')
   `);
 
@@ -777,6 +779,10 @@ export type OpportunityView = {
   gate: Prerequisite[];
   /** The current stage is already satisfied — a sync would move it on. */
   canSync: boolean;
+  /** The meeting scheduled from the opportunity (steps.ts), while it is on. */
+  meeting: { id: string; at: string; status: string; mode: string | null } | null;
+  /** Steps handed to operations and still open (steps.ts assign_ops). */
+  stepTasks: Array<{ stage: string; title: string; assigneeName: string | null; dueAt: string | null }>;
 };
 
 export async function listOpportunities(
@@ -809,6 +815,30 @@ export async function listOpportunities(
      GROUP BY 1
   `)).rows as Array<{ oid: string; due: string | Date }>;
   for (const r of fu) followUps.set(r.oid, new Date(r.due).toISOString());
+
+  // The meetings scheduled from them, and the steps handed to operations.
+  const meetingIds = rows.map((r) => r.meetingId).filter(Boolean) as string[];
+  const meetings = new Map<string, { id: string; at: string; status: string; mode: string | null }>();
+  if (meetingIds.length) {
+    const ms = (await tx.execute(sql`
+      SELECT id, meeting_date, status, meeting_mode FROM review_meetings
+       WHERE tenant_id = ${tenantId}::uuid AND id IN (${sql.join(meetingIds.map((i) => sql`${i}::uuid`), sql`, `)})
+    `)).rows as Array<{ id: string; meeting_date: string | Date; status: string; meeting_mode: string | null }>;
+    for (const m of ms) meetings.set(m.id, { id: m.id, at: new Date(m.meeting_date).toISOString(), status: m.status, mode: m.meeting_mode });
+  }
+  const stepTasks = new Map<string, OpportunityView["stepTasks"]>();
+  const st = (await tx.execute(sql`
+    SELECT t.meta ->> 'opportunityStepOf' AS oid, t.meta ->> 'opportunityStep' AS stage, t.title, t.due_at, u.name AS assignee
+      FROM tasks t LEFT JOIN users u ON u.id = t.assignee_id
+     WHERE t.tenant_id = ${tenantId}::uuid AND t.status IN ('open', 'in_progress', 'blocked')
+       AND t.meta ->> 'opportunityStepOf' IN (${sql.join(rows.map((r) => sql`${r.id}`), sql`, `)})
+     ORDER BY t.due_at ASC NULLS LAST
+  `)).rows as Array<{ oid: string; stage: string; title: string; due_at: string | Date | null; assignee: string | null }>;
+  for (const t of st) {
+    const list = stepTasks.get(t.oid) ?? [];
+    list.push({ stage: t.stage, title: t.title, assigneeName: t.assignee, dueAt: t.due_at ? new Date(t.due_at).toISOString() : null });
+    stepTasks.set(t.oid, list);
+  }
 
   // The money a parked opportunity waits for.
   const inflowIds = rows.map((r) => r.expectedInflowId).filter(Boolean) as string[];
@@ -906,6 +936,8 @@ export async function listOpportunities(
       next: next ? { key: next, name: stageName(next as OpportunityStageKey) } : null,
       gate,
       canSync,
+      meeting: opp.status === "open" && opp.meetingId ? meetings.get(opp.meetingId) ?? null : null,
+      stepTasks: opp.status === "open" ? (stepTasks.get(opp.id) ?? []).filter((t) => t.stage === cur) : [],
     });
   }
   return out;
