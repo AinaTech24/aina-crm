@@ -57,8 +57,8 @@ export async function loadFamilyDetail(tx: any, session: SessionUser, familyId: 
   const totalAum = live.reduce((s, m) => s + Number(m.aum ?? 0), 0);
   const totalSip = live.reduce((s, m) => s + Number(m.activeSipAmount ?? 0), 0);
   // Only individuals nominate: an HUF, minor or entity is never a gap.
-  const nominating = live.filter((m) => nominationApplies(m as any));
-  const withNominee = nominating.filter((m) => !nomineeGap(m as any)).length;
+  const nominating = live.filter((m) => nominationApplies(m));
+  const withNominee = nominating.filter((m) => !nomineeGap(m)).length;
   const nextGen = live.filter((m) => isNextGenProspect(m as any));
 
   return {

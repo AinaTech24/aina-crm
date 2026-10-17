@@ -60,7 +60,7 @@ export async function deleteServiceRequests(
       action: "service_request.delete",
       entityType: "service_request",
       entityId: String(r.id),
-      before: r as any,
+      before: r,
       ...clientMeta,
     });
   }
