@@ -46,7 +46,7 @@ import {
   stageFlavour,
 } from "./lead_to_client";
 import { checkPrerequisites } from "./prerequisites";
-import { closeJourneyTask, createJourneyTask, isOnboardingStage, type JourneyTaskInput, type JourneyTaskResult } from "./journey-task";
+import { createJourneyTask, isOnboardingStage, type JourneyTaskInput, type JourneyTaskResult } from "./journey-task";
 
 const MODULE = "leads";
 
@@ -437,13 +437,12 @@ export async function transitionTo(
     }
   }
 
-  // Client onboarding → Tasks module. Leaving a client-phase step closes its
-  // task; entering one (not a pass-through hop, not a terminal) opens one for
-  // the step's owner. Retry stages with their own task (mandate_reject) skip.
+  // Client onboarding → Tasks module. Entering a client-phase step (not a
+  // pass-through hop, not a terminal) opens a task for the step's owner. Leaving
+  // a step does NOT close its task: it stays open until the assignee completes
+  // it in the Tasks module (the firm's rule of 2026-10-17). Retry stages with
+  // their own task (mandate_reject) skip.
   let journeyTask: JourneyTaskResult | undefined;
-  if (fromStage && isOnboardingStage(currentStageKey, fromStage.stageOrder)) {
-    await closeJourneyTask(tx, tenantId, leadId, currentStageKey, opts.actorUserId);
-  }
   if (
     !opts.suppressAutomations &&
     isOnboardingStage(toStageKey, toStage.stageOrder) &&
