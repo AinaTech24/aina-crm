@@ -1478,32 +1478,6 @@ If you need the old behaviour (no wrapper) for debugging, use
 `next build` rewrites every time to add `<distDir>/types` to `include`, leaving
 a dangling path that makes `tsc --noEmit` fail with TS6053.
 
-### Before you push — the pre-push guard
-
-A push to `main` deploys, and CI's `verify` job runs first. A check that fails
-there blocks the deploy after the push. `.githooks/pre-push` runs the same
-checks on the exact commit being pushed (a temporary worktree, so another
-session's uncommitted edits cannot hide or cause a failure) and refuses the
-push if any fails. Turn it on once per clone:
-
-```bash
-git config core.hooksPath .githooks
-```
-
-- **What it runs** (`scripts/pre-push-verify.sh`, mirrors `ci.yml`): RBAC,
-  migration numbering, calc, colours, **as-any ratchet**, math imports, then
-  typecheck, unit tests and lint (~4.5 min). A failing cheap guard stops it in
-  seconds. If `mobile/` changed it also runs the mobile checks; if `drizzle/` or
-  `src/db/` changed it applies every migration to an empty scratch database,
-  runs the RLS coverage guard and the DB-backed tests (needs the local Postgres
-  from `.env.development.local`). When `ci.yml` changes, change the script.
-- **It fails closed**: a missing local Postgres or `node_modules` blocks the
-  push with a message, it never passes silently. `git push --no-verify` skips it
-  — do not, on `main`.
-- **Deploys still queue**: two pushes close together run one after the other
-  (`concurrency: deploy-aws`, about 10 minutes each). That is waiting, not a
-  failure.
-
 ### Production / demos / end-user delivery — `npm run start:prod`
 
 This runs `next build && next start`. **None of the dev-server
