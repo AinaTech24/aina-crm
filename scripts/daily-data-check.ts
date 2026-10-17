@@ -110,10 +110,13 @@ async function main() {
     say(`  AUM ${cr(d.live[0].aum)} over ${d.live[0].n} live clients (clients saved ${fmtAge(hoursAgo(d.live[0].upd))}; folios saved ${fmtAge(hoursAgo(d.folioAum[0].upd))}); snapshots: ${d.snaps.map((s: any) => `${day(s.snapshot_date)} ${cr(s.total_aum)}`).join(" · ") || "none"}`);
     if (d.snaps.length && hoursAgo(d.snaps[0].snapshot_date) > 24 * 3) problems.push(`${t.name}: newest firm snapshot is ${day(d.snaps[0].snapshot_date)}`);
     const own = d.byStatus.filter((r: any) => r.status !== "rejected").map((r: any) => `${r.n} ${r.status}`);
-    say(`  RTA files in ${DAYS}d: ${own.length ? own.join(", ") : "NONE"}${foreign ? ` (+${foreign} other firms' files ignored — shared mailbox, normal)` : ""}${realRejected ? `, ${realRejected} REJECTED` : ""}   last good import: ${d.latest[0] ? `${d.latest[0].kind} ${fmtAge(hoursAgo(d.latest[0].up))}` : "never"}`);
+    say(`  RTA files in ${DAYS}d: ${own.length ? own.join(", ") : "NONE"}${foreign ? ` (+${foreign} files not opened: another firm's, or this firm's with no saved password that fits)` : ""}${realRejected ? `, ${realRejected} REJECTED` : ""}   last good import: ${d.latest[0] ? `${d.latest[0].kind} ${fmtAge(hoursAgo(d.latest[0].up))}` : "never"}`);
     // No file of this firm's own in the window — and the last good import is old, or never.
     const ownCount = d.byStatus.filter((r: any) => r.status !== "rejected").reduce((n: number, r: any) => n + Number(r.n), 0);
     if (!ownCount && Number(d.live[0].n) > 50) problems.push(`${t.name}: no RTA file of its own in ${DAYS} days (last good import ${d.latest[0] ? fmtAge(hoursAgo(d.latest[0].up)) : "never"})`);
+    // A firm whose own daily feed has not imported in 2 days while files were turned away is probably locked out.
+    const feedFresh = d.latest.find((r: any) => r.kind === "daily_transaction_feed" && hoursAgo(r.up) < 48);
+    if (foreign > 0 && !feedFresh && Number(d.live[0].n) > 50) problems.push(`${t.name}: ${foreign} RTA file(s) not opened and no daily feed imported in 2 days — saved mailback passwords may be wrong`);
     if (realRejected) problems.push(`${t.name}: ${realRejected} RTA import(s) rejected for a reason other than another firm's file`);
     if (failed) problems.push(`${t.name}: ${failed} RTA import(s) failed`);
     for (const r of d.bad) say(`  ! ${r.status} ${day(r.created_at)} ${r.kind} ${r.file_name}${r.why ? ` — ${r.why}` : ""}`);
