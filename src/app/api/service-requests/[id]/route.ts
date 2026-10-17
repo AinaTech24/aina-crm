@@ -5,6 +5,8 @@ import { handleApiError } from "@/lib/api/error-handler";
  *   GET    /api/service-requests/[id]   — fetch one ticket
  *   PATCH  /api/service-requests/[id]   — update status / priority / assignee / resolution
  *   DELETE /api/service-requests/[id]   — close (status='closed')
+ *   DELETE /api/service-requests/[id]?permanent=1 — delete for good
+ *          (service_request.delete; never a complaint — lib/service-requests/delete.ts)
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -18,6 +20,7 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { sql } from "drizzle-orm";
 import { serviceRequests, eventsOutbox } from "@/db/schema";
 import { canSeeServiceRequest } from "@/lib/service-requests/access";
+import { deleteServiceRequests } from "@/lib/service-requests/delete";
 
 export const dynamic = "force-dynamic";
 
@@ -164,6 +167,20 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params;
   try {
     const session = await requireSession();
+    if (req.nextUrl.searchParams.get("permanent") === "1") {
+      requireCap(session.roles, "service_request.delete", session.permissions);
+      await assertActiveLicense(session.tenantId, session.roles);
+      const r = await withTenant(session.tenantId, (tx) =>
+        deleteServiceRequests(tx, session, [id], clientMetaFromHeaders(req.headers)));
+      if (r.complaints.length) {
+        return NextResponse.json(
+          { error: "A complaint stays in the complaint register, so it cannot be deleted. Close it instead." },
+          { status: 409 },
+        );
+      }
+      if (!r.deleted.length) return NextResponse.json({ error: "not found" }, { status: 404 });
+      return NextResponse.json({ ok: true, deleted: true });
+    }
     requireCap(session.roles, "service_request.manage", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const clientMeta = clientMetaFromHeaders(req.headers);
