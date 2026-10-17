@@ -561,6 +561,26 @@ the imports and every label; never copy the enum again.
   address (head has one) and review frequency (family has one); the forms show
   both as "from the family".
 
+## Financial Health Check — filled from the CRM
+
+Picking an existing client on a NEW health check (`/dashboard/financial-plans/new`,
+not an edit, not "start from a fact-find") fills it from what the firm already
+holds (2026-10-17): `GET /api/financial-plans/prefill?investorId=`
+(`financial_plan.view` + `loadViewableInvestor`) over
+`lib/financial-plans/from-crm.ts`.
+
+- Profiling: age from DOB; spouse's age and children from the family when the
+  client is its head or the head's spouse; the risk profile.
+- Assets: mutual funds summed by class — AMFI category (`withSchemeCategories`)
+  read with `classifyScheme`, gold by name, hybrid as "other" — and live FDs
+  as debt.
+- Protection: in-force life (term, endowment, money-back, ULIP, other life) and
+  health (health, critical illness, group health) sum assured + annual premium.
+- Goals: live goals with the Goals module's current value and existing SIP; a
+  goal kept in future rupees comes at 0% inflation (as the fact-find import).
+- Only blanks are filled; a second pick swaps what the first one filled; what
+  the RM typed stays. Income, expenses and loans are not CRM records.
+
 ## A client who leaves — Exited, not deleted
 
 The firm's question of 2026-10-15: a client with no AUM or no business today
