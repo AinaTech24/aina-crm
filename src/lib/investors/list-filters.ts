@@ -16,7 +16,11 @@ import { investors } from "@/db/schema";
 import { aliveClient, cleanIds, textList, uuidList } from "@/lib/metrics/scope";
 import { missingDataSql, reviewOverdueSql } from "@/lib/metrics/attention";
 import { investorFieldFilterConds } from "@/lib/investors/field-filters";
+import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
 import { missingAdultTextSql, missingDobSql, needsNomineeSql, panAadhaarGapSql } from "@/lib/investors/type-rules";
+
+// A minor's risk is their own assessment, never the guardian's copy (G-1).
+const RISK = clientRiskSql("investors");
 
 export type InvestorListParams = Record<string, string | undefined>;
 
@@ -250,7 +254,7 @@ export function buildInvestorConditions(
   }
   if (qf.rp_stale) {
     conditions.push(
-      sql`(${investors.riskProfileSignedAt} IS NULL OR ${investors.riskProfileSignedAt} < now() - interval '365 days')`
+      sql`(${RISK.signedAt} IS NULL OR ${RISK.signedAt} < now() - interval '365 days')`
     );
   }
   if (qf.dormant) {
@@ -318,7 +322,7 @@ export function buildInvestorConditions(
         break;
       case "risk_profile":
         conditions.push(
-          sql`(${investors.riskProfile} IS NULL OR ${investors.riskProfileSignedAt} IS NULL)`
+          sql`(${RISK.category} IS NULL OR ${RISK.signedAt} IS NULL)`
         );
         break;
       case "rm":
@@ -329,7 +333,7 @@ export function buildInvestorConditions(
         conditions.push(sql`(${investors.kycStatus} IS NULL OR ${investors.kycStatus} NOT IN ('validated','registered','verified'))`);
         break;
       case "risk_pending":
-        conditions.push(sql`${investors.riskProfile} IS NULL`);
+        conditions.push(sql`${RISK.category} IS NULL`);
         break;
       case "occupation":
         conditions.push(missingAdultTextSql("investors", "occupation"));

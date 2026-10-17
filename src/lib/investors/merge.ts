@@ -25,6 +25,8 @@
  * would be impossible to un-merge with the same code.
  */
 
+import { GUARDIAN_MOVED_KEY, GUARDIAN_UNLINKED_KEY, auditGuardianChange, isEligibleGuardian, type GuardianCandidateRow } from "@/lib/investors/guardian-link";
+import { minorOwnRiskColumns } from "@/lib/risk-profile/own-assessment";
 import { sql, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
@@ -333,6 +335,45 @@ export async function mergeInvestors(tx: Tx, input: MergeInput): Promise<MergeRe
              THEN ${survivorId}::uuid ELSE NULL END
      WHERE f.primary_investor_id = ${loserId}::uuid${tf("families")}`);
   await tx.execute(sql`UPDATE activities SET subject_id = ${survivorId}::uuid WHERE subject_type = 'investor' AND subject_id = ${loserId}::uuid${tf("activities")}`);
+
+  // A minor's guardian link follows the person (G-1). The merge says loser and
+  // survivor are ONE person, so a minor linked to the retired loser now points
+  // at the survivor — if the survivor can be a guardian at all (a live adult
+  // individual, lib/investors/guardian-link.ts); otherwise the link is removed
+  // rather than left on a retired record. Both are recorded so un-merge puts
+  // them back, and each minor's change is audited. The minor's risk profile
+  // then follows the survivor's (migration 0234).
+  const survivorRow = (await tx.execute(sql`
+    SELECT investor_category, is_minor, dob, pan, status, deleted_at, NULL::uuid AS merged_into_id
+      FROM investors WHERE id = ${survivorId}::uuid AND tenant_id = ${tenantId}::uuid`)).rows[0] as GuardianCandidateRow | undefined;
+  const survivorMayGuard = !!survivorRow && isEligibleGuardian(survivorRow);
+  const guarded = (await tx.execute(sql`
+    UPDATE investors SET guardian_investor_id = ${survivorMayGuard ? sql`${survivorId}::uuid` : sql`NULL`}, updated_at = now()
+     WHERE guardian_investor_id = ${loserId}::uuid AND tenant_id = ${tenantId}::uuid AND id <> ${survivorId}::uuid
+     RETURNING id::text AS id`)).rows as Array<{ id: string }>;
+  if (guarded.length) {
+    // Keys that are not table names: the un-merge loop skips them and restores
+    // them explicitly (SAFE_TABLE in the unmerge route).
+    moved[survivorMayGuard ? GUARDIAN_MOVED_KEY : GUARDIAN_UNLINKED_KEY] = guarded.map((r) => r.id);
+    movedCounts[survivorMayGuard ? GUARDIAN_MOVED_KEY : GUARDIAN_UNLINKED_KEY] = guarded.length;
+    for (const m of guarded) {
+      if (!survivorMayGuard) {
+        // The link is gone, so the old guardian's copied profile goes too: the
+        // minor's own latest assessment, else none (0234 copies only while a
+        // link exists). Un-merge relinks, and 0234 copies the profile back.
+        const own = await minorOwnRiskColumns(tx, tenantId, m.id);
+        await tx.execute(sql`
+          UPDATE investors SET risk_profile = ${own.riskProfile}, risk_profile_score = ${own.riskProfileScore},
+                 risk_profile_signed_at = ${own.riskProfileSignedAt}, risk_profile_provisional = ${own.riskProfileProvisional}
+           WHERE id = ${m.id}::uuid AND tenant_id = ${tenantId}::uuid`);
+      }
+      await auditGuardianChange(tx, {
+        tenantId, actorUserId: byUserId ?? null, minorId: m.id,
+        before: loserId, after: survivorMayGuard ? survivorId : null, via: "merge",
+        meta: { survivorId, loserId },
+      });
+    }
+  }
 
   // Snapshot the survivor's reconciled fields BEFORE anything writes to them.
   // The fill below (and any operator pick) changes the surviving record, and

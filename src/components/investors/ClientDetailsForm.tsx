@@ -18,7 +18,7 @@
  *
  * What the FAMILY owns is shown, not asked (lib/families/shared-details.ts):
  * a member's address is the head's and everyone's review frequency is the
- * family's. A minor's risk profile is the guardian's (migration 0234), so a
+ * family's. A minor's risk profile is the minor's own assessment (G-1) — the guardian's is shown beside it, labelled — so a
  * minor shows it and links the guardian's client record instead.
  *
  * PAN is editable so a typo or a PAN-less import can be corrected. The value
@@ -99,7 +99,7 @@ export function ClientDetailsForm({
   investor: Investor;
   flags: ClientDetailsFlags;
   family?: ClientFamilyContext | null;
-  guardian?: { id: string; name: string; riskProfile: string | null } | null;
+  guardian?: { id: string; name: string | null; riskProfile: string | null; hidden?: boolean } | null;
 }) {
   const router = useRouter();
   const backHref = `/dashboard/investors/${investor.id}`;
@@ -187,7 +187,7 @@ export function ClientDetailsForm({
   const personal = hasPersonalDetails(f.investorCategory);
   const adult = hasAdultDetails(f.investorCategory);
   const [guardianLink, setGuardianLink] = useState<GuardianLink>({
-    id: guardian?.id ?? null, name: guardian?.name ?? null, riskProfile: guardian?.riskProfile ?? null,
+    id: guardian?.id ?? null, name: guardian?.name ?? null, riskProfile: guardian?.riskProfile ?? null, hidden: !!guardian?.hidden,
   });
   // What the family owns: a member's address (the head's) and the cadence.
   const addressFromFamily = !!family && !family.isHead && family.headHasAddress;
@@ -296,7 +296,7 @@ export function ClientDetailsForm({
         }),
         rmId: f.rmId || undefined,
         kycStatus: inSet(f.kycStatus, KYC_STATUSES),
-        // A minor's risk profile is the guardian's; the minor links the guardian.
+        // A minor's risk profile is the minor's own assessment; the minor links the guardian.
         ...(kind === "minor"
           ? { guardianInvestorId: guardianLink.id ?? (guardian ? null : undefined) }
           : { riskProfile: inSet(f.riskProfile, ["conservative", "moderate", "aggressive", "very_aggressive"]) }),
@@ -350,7 +350,10 @@ export function ClientDetailsForm({
         setErr((j.error ?? `Save failed (${res.status})`) + (fields ? ` — check: ${fields}` : ""));
         return;
       }
-      notify.success("Client details saved");
+      const saved = await res.json().catch(() => ({}));
+      // A typed guardian PAN that linked nobody is said, never silent (G-1).
+      if (saved?.guardianNotice) notify.warning(saved.guardianNotice, "Guardian not linked");
+      else notify.success("Client details saved");
       router.push(backHref);
       router.refresh();
     } finally {
@@ -583,13 +586,27 @@ export function ClientDetailsForm({
           </Field>
         )}
         {flags.showRisk && kind === "minor" && (
-          <Field label="Risk profile" hint={guardianLink.id ? `Same as the guardian${guardianLink.name ? ` (${guardianLink.name})` : ""}.` : "Link the guardian's client record above — a minor takes the guardian's risk profile."}>
-            {(id, d) => (
-              <div id={id} aria-describedby={d} className="input-base flex w-full items-center bg-secondary/60 text-muted-foreground">
-                {guardianLink.id ? (guardianLink.riskProfile ? humanise(guardianLink.riskProfile) : "Guardian has no risk profile yet") : f.riskProfile ? humanise(f.riskProfile) : "—"}
-              </div>
+          // Two things, never one (G-1): the assessment recorded for THIS
+          // account — what suitability uses — and, for reference, the
+          // guardian's own profile, which is not the minor's.
+          <>
+            <Field label="Risk profile (this account)" hint="Assessed for the minor's account, answered by the guardian. This is what suitability uses.">
+              {(id, d) => (
+                <div id={id} aria-describedby={d} className="input-base flex w-full items-center bg-secondary/60 text-muted-foreground">
+                  {f.riskProfile ? humanise(f.riskProfile) : "Not recorded for this account yet"}
+                </div>
+              )}
+            </Field>
+            {guardianLink.id && (
+              <Field label="Guardian's own risk profile" hint={guardianLink.hidden ? "The guardian is outside your book, so their profile is not shown." : "The guardian's assessment of themselves — for reference only, not this account's."}>
+                {(id, d) => (
+                  <div id={id} aria-describedby={d} className="input-base flex w-full items-center bg-secondary/60 text-muted-foreground">
+                    {guardianLink.hidden ? "Not shown" : guardianLink.riskProfile ? humanise(guardianLink.riskProfile) : "None on record"}
+                  </div>
+                )}
+              </Field>
             )}
-          </Field>
+          </>
         )}
         {flags.showRisk && kind !== "minor" && (
           <Field label="Risk profile">

@@ -19,6 +19,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { holdsMoneySql } from "@/lib/investors/holds-money";
 import type { Tx } from "@/db/client";
+import { minorOwnRiskColumns } from "@/lib/risk-profile/own-assessment";
 import {
   activities,
   auditLog,
@@ -130,11 +131,19 @@ export async function purgeInvestorsChunk(tx: Tx, tenantId: string, ids: string[
     .update(families)
     .set({ primaryInvestorId: null } as any)
     .where(and(eq(families.tenantId, T), inArray(families.primaryInvestorId, realIds)));
-  // A minor whose guardian is being erased keeps their record, guardian cleared.
-  await tx
+  // A minor whose guardian is being erased keeps their record, guardian cleared
+  // — and the erased guardian's risk profile that migration 0234 copied onto
+  // it goes too: the minor's own latest assessment, else none (G-1).
+  const orphaned = await tx
     .update(investors)
     .set({ guardianInvestorId: null } as any)
-    .where(and(eq(investors.tenantId, T), inArray(investors.guardianInvestorId, realIds)));
+    .where(and(eq(investors.tenantId, T), inArray(investors.guardianInvestorId, realIds)))
+    .returning({ id: investors.id });
+  for (const m of orphaned) {
+    if (realIds.includes(m.id)) continue;
+    const own = await minorOwnRiskColumns(tx, T, m.id);
+    await tx.update(investors).set(own as any).where(and(eq(investors.tenantId, T), eq(investors.id, m.id)));
+  }
 
   const removed = await tx
     .delete(investors)

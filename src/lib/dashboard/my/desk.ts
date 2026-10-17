@@ -31,6 +31,7 @@
 
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
+import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
 import { formatDate } from "@/lib/format";
 import { attendeeIsAnyUser } from "@/lib/review-meetings/attendees";
 import type { DashboardThresholds } from "@/lib/dashboard/thresholds";
@@ -934,10 +935,12 @@ export async function loadMeetingPrep(tx: Tx, w: MyWindow, limit = 6): Promise<M
   const ids = [...new Set(meetings.map((m) => String(m.investor_id)))];
   const IDS = sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `);
 
+  // A minor's risk is their own assessment, never the guardian's copy (G-1).
+  const rk = clientRiskSql("i");
   const clients = (await tx.execute(sql`
     SELECT i.id, i.name, upper(NULLIF(btrim(i.client_category), '')) AS category, i.aum::numeric AS aum,
-           i.active_sip_amount::numeric AS sip, i.next_review_at, i.risk_profile, i.risk_profile_signed_at,
-           COALESCE(i.risk_profile_provisional, false) AS provisional,
+           i.active_sip_amount::numeric AS sip, i.next_review_at, ${rk.category} AS risk_profile, ${rk.signedAt} AS risk_profile_signed_at,
+           ${rk.provisional} AS provisional,
            COALESCE(f.family_name, f.head_name) AS family,
            (SELECT COUNT(*)::int FROM tasks tk WHERE ${taskIsAbout("tk", sql`i.id`)} AND tk.deleted_at IS NULL
              AND tk.status NOT IN (${DEAD_TASK}))                                            AS open_tasks,
@@ -1168,6 +1171,8 @@ export type Onboarding = {
  * exist), so a client who has transacted is never shown stuck at "Proposal".
  */
 export async function loadOnboarding(tx: Tx, w: MyWindow): Promise<Onboarding> {
+  // A minor's risk is their own assessment, never the guardian's copy (G-1).
+  const rk = clientRiskSql("i");
   const rows = (await tx.execute(sql`
     SELECT i.id, i.name, upper(NULLIF(btrim(i.client_category), '')) AS category,
            to_char(${onboardedDateSql("i")}, 'YYYY-MM-DD') AS onboarded_on,
@@ -1178,7 +1183,7 @@ export async function loadOnboarding(tx: Tx, w: MyWindow): Promise<Onboarding> {
              AND (i.pan IS NOT NULL AND btrim(i.pan) <> '') AND i.dob IS NOT NULL
              AND (i.phone IS NOT NULL AND btrim(i.phone) <> '')
              AND (i.email IS NOT NULL AND btrim(i.email) <> ''))                            AS kyc,
-           (i.risk_profile IS NOT NULL AND COALESCE(i.risk_profile_provisional, false) = false) AS risk,
+           (${rk.category} IS NOT NULL AND ${rk.provisional} = false) AS risk,
            EXISTS (SELECT 1 FROM proposals p WHERE p.investor_id = i.id)                    AS proposal,
            EXISTS (SELECT 1 FROM transactions t WHERE t.investor_id = i.id
                     AND t.status IN ('processed','successful'))                              AS transacted,

@@ -39,8 +39,11 @@ const panInput = `${input} font-mono uppercase tracking-wide`;
 const panValue = (v: string) => v.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10);
 
 /** The guardian's own client record, when they are a client (migration 0234:
- *  the minor then carries the guardian's risk profile). */
-export type GuardianLink = { id: string | null; name: string | null; riskProfile?: string | null };
+ *  the guardian's profile is shown beside the minor's own, never as it). */
+export type GuardianLink = { id: string | null; name: string | null; riskProfile?: string | null; hidden?: boolean };
+
+/** What the form says for a linked guardian the user may not open (G-1). */
+export const HIDDEN_GUARDIAN_LABEL = "A client outside your book";
 
 export function ClientTypeSections({
   type, value, onChange, dob, nominees, onNomineesChange, showNominees = true, guardianLink, onGuardianLinkChange,
@@ -70,12 +73,12 @@ export function ClientTypeSections({
         <FieldSection title="Guardian">
           {onGuardianLinkChange && (
             <Field label="Guardian's client record" className="sm:col-span-2"
-              hint="Pick the guardian if they are a client — their details fill in, and the minor takes their risk profile.">
+              hint="Pick the guardian if they are a client — their details fill in. The minor's own risk profile is recorded for the minor's account.">
               {(id, d) => (
                 <div id={id} aria-describedby={d}>
                   <InvestorLookup
                     value={guardianLink?.id ?? null}
-                    displayName={guardianLink?.name ?? null}
+                    displayName={guardianLink?.hidden ? HIDDEN_GUARDIAN_LABEL : guardianLink?.name ?? null}
                     placeholder="Search the guardian by name, PAN, mobile…"
                     onClear={() => onGuardianLinkChange({ id: null, name: null, riskProfile: null })}
                     onSelect={async (gid, gname) => {

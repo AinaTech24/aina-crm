@@ -523,12 +523,57 @@ the imports and every label; never copy the enum again.
   "company". The client book's "corporate" bucket counts company, corporate,
   LLP, partnership and society/AOP.
 - `/dashboard/investors/new?type=minor` opens Add client ready for a type.
-- **A minor's risk profile IS the guardian's** (2026-10-13, migration 0234).
+- **Migration 0234 copies the guardian's risk onto a linked minor's row** (2026-10-13) — a copy no reader uses since G-1 (below).
   The minor links the guardian's client record
   (`investors.guardian_investor_id`: picked in the Guardian section, else
   found by the guardian PAN typed), and two triggers keep the category, score,
   signed date and provisional flag equal to the guardian's — on any write path.
   The forms show it read-only for a minor and never send `riskProfile`.
+- **Who may be a guardian, and who may see one (G-1, 2026-10-14)** —
+  `lib/investors/guardian-link.ts` is the only way to set the link: a live,
+  non-merged adult individual (person type, not a minor, an individual's PAN)
+  that the USER CAN OPEN (`investorScopeSql`), found by a PAN only when exactly
+  one live record holds it; a picked id passes the same checks; every refusal
+  answers the same; every change is audited (`investor.guardian_linked` /
+  `_unlinked`, ids only). A guardian the viewer cannot open is never named, and
+  the minor's copied risk is blanked for them (`redactHiddenGuardianRisk`).
+  Merging a guardian moves its minors' links to the survivor (un-merge restores).
+- **A minor's risk is the minor's own assessment — for every reader** (G-1,
+  final hardening 2026-10-14). The 0234 copy on the row is never read: screens,
+  APIs, exports, filters, dashboards, PDFs, AI prompts, messages, automations
+  and gates use `clientRiskSql(alias)` (SQL), `withOwnRiskForMinors` /
+  `withOwnRiskForMinor` (fetched rows) or `suitabilityProfile` (one client), all
+  in `lib/risk-profile/own-assessment.ts` — for a minor (linked or not) the
+  latest `risk_profile_responses` row for the minor's account, else nothing.
+  A new reader of `investors.risk_profile*` must use one of them. The
+  guardian's own profile is shown only as the guardian's, labelled, through
+  `guardianForViewer`. Removing a link (edit, turning adult, re-typed PAN,
+  merge into a non-guardian, purge) writes back the minor's own assessment or
+  nothing (`minorOwnRiskColumns`). A typed guardian PAN that links nobody saves
+  the minor unlinked and answers `guardianNotice` (one fixed text, never why),
+  audited as `investor.guardian_not_linked`. Such a minor — and any minor saved without a guardian — is "Guardian not
+  verified" (`lib/investors/guardian-verification.ts`, derived from the audit
+  trail and the date of birth; no column): no MF proposal (individual or FAMILY
+  — every minor it covers, `lib/proposals/minor-gate.ts`), MF journey step, or
+  CRM "mark sent / accepted" until the guardian's client record is linked.
+  A link counts only while its guardian is STILL eligible (live, non-merged
+  adult individual, sole holder of its PAN, not the minor), and a minor with
+  no guardian on record ("not_recorded", saved before the rule) is blocked
+  for MF too (owner's interim policy, `guardianVerifiedForMf`).
+- **A minor's risk-profile upload and expiry are the minor's own** (G-1 × main's
+  0236, 2026-10-16). Upload Risk Profile records the assessment on the MINOR'S
+  account (`lib/risk-profile/upload.ts`) once the guardian is verified — never
+  "upload it on the guardian's record". A minor's expiry is the own latest
+  assessment's `next_review_at` (an upload's stated Expire On), else signed + 1
+  year — `clientRiskSql(alias).expiresOn`, `suitabilityProfile().expiresOn`,
+  `withOwnRiskForMinors` (expiry pair) — never the guardian's dates that 0234 /
+  0236 copy onto the row. Adults keep `lib/risk-profile/expiry.ts` exactly.
+  A new reader of risk expiry must use `clientRiskSql(...).expiresOn`.
+  There is NO "confirm by note": a guardian who is not a CRM client stays
+  pending until a verified-identity-evidence workflow exists (owner decision,
+  2026-10-15). Duplicate-PAN clients are never merged automatically. A client's change history
+  (`GET /api/audit`) follows the client's own access. Stopping the copy itself
+  is a proposed migration for review: `docs/security/proposed-0245-minor-risk-no-copy.sql`.
 - **Dropdowns, not free text** (lists in client-types.ts): tax status by type
   (`taxStatusOptions`, defaulted on a type change), marital status, income
   range, household type (Individual · Family · Company · HUF). `withCurrent`

@@ -27,6 +27,7 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { dispatch } from "@/lib/comms/pipeline";
 import { installClientEmailTemplates } from "@/lib/templates/install-client-emails";
 import { investorScopeSql } from "@/lib/investors/access";
+import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -63,12 +64,13 @@ export async function POST(req: NextRequest) {
         const rmScope = seesAll ? sql`` : sql` AND i.rm_id = ${session.userId}::uuid`;
         // Plus the shared client data scope (branch / own book).
         const dataScope = await investorScopeSql(tx, session, "i");
+        // A minor's risk is their own assessment, never the guardian's copy (G-1).
         const rows = (await tx.execute(sql`
           SELECT i.id, i.name, i.email
             FROM investors i
            WHERE i.tenant_id = ${session.tenantId}::uuid
              AND i.status = 'active' AND i.deleted_at IS NULL AND i.merged_into_id IS NULL
-             AND i.risk_profile_provisional = true${idScope}${rmScope}
+             AND ${clientRiskSql("i").provisional} = true${idScope}${rmScope}
              AND ${dataScope}
            ORDER BY i.name ASC
         `)).rows as Array<{ id: string; name: string; email: string | null }>;

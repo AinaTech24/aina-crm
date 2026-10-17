@@ -6,7 +6,8 @@
  *                                                 assessedBy?, remarks?
  *
  * Everything is checked BEFORE the file is stored: the client is in the
- * viewer's book, a minor is refused, the dates make sense, the file really is a
+ * viewer's book, a minor has a verified guardian (the assessment is recorded on
+ * the minor's own account — G-1), the dates make sense, the file really is a
  * PDF. See lib/risk-profile/upload.ts for what is recorded and why.
  */
 
@@ -21,7 +22,8 @@ import { loadViewableInvestor } from "@/lib/investors/access";
 import { isS3Configured, putObject, vaultKey } from "@/lib/storage/s3";
 import { firmFolderName } from "@/lib/storage/firm-folder";
 import { indiaToday } from "@/lib/fixed-deposits/terms";
-import { riskExpiresOn } from "@/lib/risk-profile/expiry";
+import { suitabilityProfile } from "@/lib/risk-profile/own-assessment";
+import { guardianVerifiedForMf, GUARDIAN_PENDING_MESSAGE } from "@/lib/investors/guardian-verification";
 import {
   MAX_PDF_BYTES,
   UploadFieldsSchema,
@@ -50,21 +52,16 @@ export async function GET(req: NextRequest) {
     const out = await withTenant(session.tenantId, async (tx) => {
       const inv = await loadViewableInvestor(tx, session, investorId);
       if (!inv) return null;
-      let guardianName: string | null = null;
-      if (inv.investorCategory === "minor" && inv.guardianInvestorId) {
-        const g = await loadViewableInvestor(tx, session, inv.guardianInvestorId);
-        guardianName = g?.name ?? "the guardian";
-      }
-      const current: CurrentRiskProfile | null = inv.riskProfile
-        ? {
-            category: inv.riskProfile,
-            score: inv.riskProfileScore ?? null,
-            signedAt: day(inv.riskProfileSignedAt),
-            expiresOn: day(riskExpiresOn(inv)),
-            provisional: !!inv.riskProfileProvisional,
-          }
+      // A minor: whether the guardian is verified — never who the guardian is.
+      const isMinor = inv.investorCategory === "minor" || !!inv.isMinor;
+      const minor = isMinor ? { guardianVerified: await guardianVerifiedForMf(tx, session.tenantId, inv.id) } : null;
+      // The client's OWN current profile: for a minor, the minor's own latest
+      // assessment — never the guardian's copy on the row (G-1).
+      const own = await suitabilityProfile(tx, session.tenantId, inv.id);
+      const current: CurrentRiskProfile | null = own.category
+        ? { category: own.category, score: own.score, signedAt: day(own.signedAt), expiresOn: own.expiresOn, provisional: own.provisional }
         : null;
-      return { id: inv.id, name: inv.name, minorOf: guardianName, current };
+      return { id: inv.id, name: inv.name, minor, current };
     });
     if (!out) return NextResponse.json({ error: "Client not found" }, { status: 404 });
     return NextResponse.json(out);
@@ -110,8 +107,11 @@ export async function POST(req: NextRequest) {
     // Check the client BEFORE storing anything.
     const investor = await withTenant(session.tenantId, (tx) => loadViewableInvestor(tx, session, fields.investorId));
     if (!investor) return NextResponse.json({ error: "Client not found" }, { status: 404 });
-    if (investor.investorCategory === "minor" && investor.guardianInvestorId) {
-      return NextResponse.json({ error: "A minor's risk profile is the guardian's — upload it on the guardian's record." }, { status: 409 });
+    // A minor: only with a verified guardian (the rule lib/risk-profile/upload.ts
+    // enforces again inside the write). Checked before the file is stored.
+    const guardianOk = await withTenant(session.tenantId, (tx) => guardianVerifiedForMf(tx, session.tenantId, investor.id));
+    if (!guardianOk) {
+      return NextResponse.json({ error: `${GUARDIAN_PENDING_MESSAGE} A minor's risk profile can be recorded once the guardian is verified.`, field: "guardian" }, { status: 409 });
     }
 
     const key = vaultKey(session.tenantId, "kyc", file.name || "risk-profile.pdf", {

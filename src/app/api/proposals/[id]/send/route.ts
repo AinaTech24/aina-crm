@@ -1,3 +1,5 @@
+import { suitabilityProfile } from "@/lib/risk-profile/own-assessment";
+import { minorProposalGate } from "@/lib/proposals/minor-gate";
 import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/proposals/[id]/send
@@ -44,7 +46,7 @@ import { createShareToken } from "@/lib/share-tokens";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { gateClientSend } from "@/lib/comms/guarded-send";
 import { advanceJourneyForProposal } from "@/lib/proposals/journey";
-import { proposals, tenants, communications, investors } from "@/db/schema";
+import { proposals, tenants, communications } from "@/db/schema";
 import { checkAlignment } from "@/lib/proposal/risk-alignment";
 import { loadProposalSnapshot } from "@/lib/proposals/snapshot";
 import { loadProposalAppetite, type ProposalAppetite } from "@/lib/proposals/appetite";
@@ -320,7 +322,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       //    client's confirmed profile (signed, not provisional, < 12 months).
       if (mfLines.length) {
         const snap = await loadProposalSnapshot(tx, session.tenantId, {
-          investorId: p.investorId, familyId: (p as any).familyId ?? null, leadId: p.leadId,
+          investorId: p.investorId, familyId: p.familyId ?? null, leadId: p.leadId,
         });
         if (snap?.risk.status !== "Completed") {
           const why = snap?.risk.status === "Provisional" ? "is only provisional (not confirmed by the client)"
@@ -333,16 +335,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         }
       }
 
+      // Every minor the proposal covers (the client, or a family's head and
+      // members): a verified guardian and the minor's OWN confirmed assessment
+      // (lib/proposals/minor-gate.ts). The owner override below applies only to
+      // the alignment verdict, never to the guardian or the assessment.
+      const minorRefusal = await minorProposalGate(tx, session.tenantId, {
+        investorId: p.investorId, familyId: (p as any).familyId ?? null, products: p.products,
+      });
+      if (minorRefusal && minorRefusal.kind !== "alignment") {
+        return NextResponse.json({ error: minorRefusal.error, field: minorRefusal.field }, { status: 412 });
+      }
+      if (minorRefusal?.kind === "alignment" && !(isOwner && hasOverride)) {
+        return NextResponse.json({ error: minorRefusal.error, field: minorRefusal.field, alignment: minorRefusal.alignment }, { status: 412 });
+      }
+
       let clientProfile: any = null;
       if (p.recipientType === "investor" && p.investorId) {
-        const inv = (
-          await tx
-            .select({ rp: investors.riskProfile })
-            .from(investors)
-            .where(and(eq(investors.id, p.investorId), eq(investors.tenantId, session.tenantId)))
-            .limit(1)
-        )[0];
-        clientProfile = inv?.rp ?? null;
+        // The same profile the gate above read: for a minor linked to a
+        // guardian, the minor's own assessment, never the guardian's copy (G-1).
+        clientProfile = (await suitabilityProfile(tx, session.tenantId, p.investorId)).category;
       }
       const alignment = mfLines.length ? checkAlignment(clientProfile, mfLines) : null;
       if (alignment?.overall === "block" && !(isOwner && hasOverride)) {

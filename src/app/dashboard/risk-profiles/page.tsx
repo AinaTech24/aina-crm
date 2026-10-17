@@ -17,6 +17,7 @@ import { BulkAssignByAge } from "@/components/risk-profile/BulkAssignByAge";
 import { RiskSelectionProvider, RowSelect, SelectAllOnPage, RiskBulkBar } from "@/components/risk-profile/RiskProfileBulkSend";
 import { InlineEmpty } from "@/components/common/EmptyState";
 import { RISK_BUCKETS, parseRiskBucket, riskBucketSql, riskBucketCaseSql, type RiskBucket } from "@/lib/risk-profile/buckets";
+import { clientRiskSql, minorSql } from "@/lib/risk-profile/own-assessment";
 import { displayPan, isMinorKey } from "@/lib/investors/pan-display";
 import { resolveAgeBands } from "@/lib/risk-profile/age-bands";
 import { Avatar } from "@/components/ui/Avatar";
@@ -36,9 +37,10 @@ const PAGE_SIZE = 50;
 
 /** Ordering per tab, most actionable first. */
 function orderClause(key: RiskBucket) {
-  if (key === "current") return sql`i.risk_profile_signed_at DESC NULLS LAST`;
+  const signed = clientRiskSql("i").signedAt;
+  if (key === "current") return sql`${signed} DESC NULLS LAST`;
   // Due / expired: the longest-lapsed first.
-  if (key === "due" || key === "expired") return sql`i.risk_profile_signed_at ASC`;
+  if (key === "due" || key === "expired") return sql`${signed} ASC`;
   return sql`i.name ASC`;
 }
 
@@ -120,15 +122,25 @@ export default async function RiskProfilesPage({
     // One page of investors + their latest response via a LATERAL join (uses
     // rpr_investor_signed_idx; fetches exactly one response per page row — no
     // unbounded DISTINCT ON over the whole book).
+    // The guardian is named only when this user may open them (G-1).
+    const guardianScope = await investorScopeSql(tx, session, "g");
+    // A minor's row shows the minor's OWN assessment, never the guardian's
+    // copy (migration 0234); the guardian's profile is shown beside it,
+    // labelled as theirs, only to a user who may open the guardian (G-1).
+    const own = clientRiskSql("i");
     const rows = await tx.execute(sql`
       SELECT
-        i.id, i.name, i.pan, i.avatar_url, i.risk_profile, i.risk_profile_signed_at, i.risk_profile_score,
-        i.risk_profile_provisional, i.is_minor, g.name AS guardian_name,
+        i.id, i.name, i.pan, i.avatar_url,
+        ${own.category} AS risk_profile,
+        ${own.signedAt} AS risk_profile_signed_at,
+        ${own.score} AS risk_profile_score,
+        ${own.provisional} AS risk_profile_provisional, i.is_minor, g.name AS guardian_name,
+        CASE WHEN ${minorSql("i")} THEN g.risk_profile END AS guardian_risk_profile,
         ${riskBucketCaseSql()} AS bucket,
         rp.id AS profile_id, rp.total_score, rp.next_review_at, rp.signed_at AS latest_signed_at,
         rp.document_url AS signed_doc_key, rp.verification_method
       FROM investors i
-      LEFT JOIN investors g ON g.id = i.guardian_investor_id AND g.tenant_id = i.tenant_id
+      LEFT JOIN investors g ON g.id = i.guardian_investor_id AND g.tenant_id = i.tenant_id AND ${guardianScope}
       LEFT JOIN LATERAL (
         SELECT id, total_score, next_review_at, signed_at, document_url, verification_method
         FROM risk_profile_responses r
@@ -295,6 +307,11 @@ export default async function RiskProfilesPage({
                             </span>
                           ) : (
                             <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                          {r.guardian_risk_profile && (
+                            <div className="mt-1 text-2xs text-muted-foreground" title="The guardian's own profile — not an assessment of this minor's account">
+                              Guardian's: {String(r.guardian_risk_profile).replace(/_/g, " ")} (not this account's)
+                            </div>
                           )}
                         </td>
                         <td className="py-3 tabular-nums">{score ?? "—"}</td>

@@ -17,6 +17,7 @@ import { RiskProfileWizard } from "@/components/risk-profile/RiskProfileWizard";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { loadActiveTemplate } from "@/lib/risk-profile/template";
 import { formatDate } from "@/lib/format";
+import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
 
 export const dynamic = "force-dynamic";
 
@@ -42,12 +43,14 @@ export default async function NewRiskProfilePage({
       // Data scope: only clients in the viewer's book (none without client view).
       const scope = await investorScopeSql(tx, session, "i")
         .catch((e: any) => { if (e?.status === 403) return sql`FALSE`; throw e; });
+      // A minor's risk is their own assessment, never the guardian's copy (G-1).
+      const rk = clientRiskSql("i");
       const r = await tx.execute(sql`
-        SELECT i.id, i.name, i.pan, i.segment_tag, i.risk_profile, i.risk_profile_signed_at
+        SELECT i.id, i.name, i.pan, i.segment_tag, ${rk.category} AS risk_profile, ${rk.signedAt} AS risk_profile_signed_at
         FROM investors i
         WHERE i.status = 'active' AND i.deleted_at IS NULL AND ${scope}
         ${searchCond}
-        ORDER BY (i.risk_profile_signed_at IS NULL) DESC, i.risk_profile_signed_at ASC NULLS FIRST, i.name
+        ORDER BY (${rk.signedAt} IS NULL) DESC, ${rk.signedAt} ASC NULLS FIRST, i.name
         LIMIT 200
       `);
       return r.rows as any[];

@@ -21,6 +21,10 @@
 
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
+import type { SessionUser } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
+import { investorScopeSql } from "@/lib/investors/access";
+import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
 
 export type AssetClass = "equity" | "debt" | "hybrid" | "other";
 
@@ -147,22 +151,31 @@ type FolioBlob = {
 export async function computeRiskDrift(
   tx: Tx,
   tenantId: string,
-  opts: { rmId?: string } = {}
+  opts: { session: SessionUser; rmId?: string },
 ): Promise<{ rows: RiskDriftRow[]; summary: RiskDriftSummary }> {
   // RM scope: when an rmId is passed (a non-manager viewing their own book),
   // only that RM's clients are scanned — managers pass no rmId.
   const rmScope = opts.rmId ? sql` AND i.rm_id = ${opts.rmId}::uuid` : sql``;
+  // Never list a client the viewer may not open: the firm's data wall applies
+  // on top of the report capability; with no client view at all, no client.
+  const s = opts.session;
+  const viewScope = can(s.roles, "investor.view.all", s.permissions) || can(s.roles, "investor.view.assigned", s.permissions)
+    ? await investorScopeSql(tx, s, "i")
+    : sql`FALSE`;
+  // A minor's risk is their own assessment, never the guardian's copy (G-1).
+  const rk = clientRiskSql("i");
 
   const res = await tx.execute(sql`
     SELECT
-      i.id, i.name, i.risk_profile, i.rm_id,
+      i.id, i.name, ${rk.category} AS risk_profile, i.rm_id,
       COALESCE(SUM(f.aum::numeric), 0) AS folio_aum,
       jsonb_agg(jsonb_build_object('aum', f.aum, 'schemes', f.schemes)) AS folios
     FROM investors i
     JOIN folios f ON f.investor_id = i.id AND f.closed_at IS NULL
     WHERE i.tenant_id = ${tenantId}::uuid
-      AND i.risk_profile IS NOT NULL
+      AND ${rk.category} IS NOT NULL
       AND i.deleted_at IS NULL${rmScope}
+      AND ${viewScope}
     GROUP BY i.id
     HAVING COALESCE(SUM(f.aum::numeric), 0) > 0
     ORDER BY SUM(f.aum::numeric) DESC

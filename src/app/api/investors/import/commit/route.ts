@@ -39,6 +39,7 @@ import { healthFields } from "@/lib/investors/health";
 import { parseUccCell } from "@/lib/investors/ucc";
 import { loadCustomFieldDefs, sanitizeCustomFields } from "@/lib/custom-fields/values";
 import { applyRiskCategory, normalizeRiskCategory } from "@/lib/risk-profile/apply";
+import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
 import { investors } from "@/db/schema";
 import { CLIENT_TYPE_KEYS, clientTypeFromTaxStatus } from "@/lib/investors/client-types";
 
@@ -168,8 +169,9 @@ export async function POST(req: NextRequest) {
         // never updated.
         const dataScope = await investorScopeSql(tx, session, "investors")
           .catch((e: any) => { if (e?.status === 403) return sql`TRUE`; throw e; });
+        // A minor's risk is their own assessment, never the guardian's copy (G-1).
         const existing = await tx.execute(
-          sql`SELECT id, rm_id, pan, email, phone, address, custom_fields, risk_profile, (${dataScope}) AS in_scope FROM investors WHERE tenant_id = ${session.tenantId}::uuid`
+          sql`SELECT id, rm_id, pan, email, phone, address, custom_fields, ${clientRiskSql("investors").category} AS risk_profile, (${dataScope}) AS in_scope FROM investors WHERE tenant_id = ${session.tenantId}::uuid`
         );
         for (const e of existing.rows as any[]) {
           const src =

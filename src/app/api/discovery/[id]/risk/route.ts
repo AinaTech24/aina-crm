@@ -22,6 +22,7 @@ import { computeDiscovery, type DiscoveryData } from "@/lib/discovery/calc";
 import { toCanonicalCategory } from "@/lib/discovery/risk";
 import { loadDiscoveryPrefill } from "@/lib/discovery/prefill";
 import { applyRiskCategory } from "@/lib/risk-profile/apply";
+import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
 import { clientMetaFromHeaders, recordAudit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
@@ -41,8 +42,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
       await assertCanEditSubject(tx, session, disc.subjectType, disc.subjectId);
 
+      // A minor's risk is their own assessment, never the guardian's copy (G-1).
+      const ownRisk = clientRiskSql("i");
       const onRecord = (await tx.execute(sql`
-        SELECT (i.risk_profile IS NOT NULL
+        SELECT (${ownRisk.category} IS NOT NULL
                 OR EXISTS (SELECT 1 FROM risk_profile_responses r
                             WHERE r.investor_id = i.id AND r.tenant_id = i.tenant_id)) AS has
           FROM investors i

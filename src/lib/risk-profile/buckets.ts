@@ -20,7 +20,7 @@
  * Fragments reference the investors table as `i`.
  */
 import { sql, type SQL } from "drizzle-orm";
-import { riskExpiresOnSql } from "./expiry";
+import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
 
 export type RiskBucket = "not_profiled" | "due" | "current" | "expired" | "awaiting";
 
@@ -45,19 +45,21 @@ export function parseRiskBucket(v: string | undefined): RiskBucket {
 }
 
 export function riskBucketSql(key: RiskBucket): SQL {
-  const confirmed = sql`i.risk_profile_provisional IS NOT TRUE`;
+  // A minor's risk is their own assessment, never the guardian's copy (G-1).
+  const r = clientRiskSql("i");
+  const confirmed = sql`${r.provisional} IS NOT TRUE`;
   switch (key) {
     case "awaiting":
-      return sql`i.risk_profile_provisional = true`;
+      return sql`${r.provisional} = true`;
     case "not_profiled":
-      return sql`(${confirmed} AND i.risk_profile_signed_at IS NULL)`;
+      return sql`(${confirmed} AND ${r.signedAt} IS NULL)`;
     case "current":
-      return sql`(${confirmed} AND ${riskExpiresOnSql()} > (CURRENT_DATE + interval '1 month')::date)`;
+      return sql`(${confirmed} AND ${r.expiresOn} > (CURRENT_DATE + interval '1 month')::date)`;
     case "due":
-      return sql`(${confirmed} AND ${riskExpiresOnSql()} >= CURRENT_DATE
-                  AND ${riskExpiresOnSql()} <= (CURRENT_DATE + interval '1 month')::date)`;
+      return sql`(${confirmed} AND ${r.expiresOn} >= CURRENT_DATE
+                  AND ${r.expiresOn} <= (CURRENT_DATE + interval '1 month')::date)`;
     case "expired":
-      return sql`(${confirmed} AND ${riskExpiresOnSql()} < CURRENT_DATE)`;
+      return sql`(${confirmed} AND ${r.expiresOn} < CURRENT_DATE)`;
   }
 }
 

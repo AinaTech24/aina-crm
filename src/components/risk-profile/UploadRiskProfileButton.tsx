@@ -30,7 +30,7 @@ import { formatDate } from "@/lib/format";
 
 type Client = { id: string; name: string; pan?: string | null };
 type Current = { category: string | null; score: number | null; signedAt: string | null; expiresOn: string | null; provisional: boolean };
-type Info = { id: string; name: string; minorOf: string | null; current: Current | null };
+type Info = { id: string; name: string; minor: { guardianVerified: boolean } | null; current: Current | null };
 
 const CATEGORIES: Array<[string, string]> = [
   ["", "Select…"],
@@ -127,7 +127,7 @@ export function UploadRiskProfileButton({
   const problems = useMemo(() => {
     const p: string[] = [];
     if (!client) p.push("Choose the client.");
-    if (info?.minorOf) p.push(`A minor's risk profile is the guardian's — upload it on ${info.minorOf}'s record.`);
+    if (info?.minor && !info.minor.guardianVerified) p.push("This minor's guardian is not verified — link the guardian's client record first.");
     if (!category) p.push("Choose the risk profile.");
     if (score.trim() === "" || !/^\d+$/.test(score.trim())) p.push("Enter the risk score as a whole number.");
     if (!assessedOn) p.push("Enter the date it was assessed.");
@@ -249,13 +249,19 @@ export function UploadRiskProfileButton({
             </div>
 
             {/* What they have now, and what this does */}
-            {info?.minorOf && (
+            {info?.minor && !info.minor.guardianVerified && (
               <div className="flex gap-2 rounded-md border border-warning/50 bg-warning/5 p-3 text-xs">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
-                <span>{info.name} is a minor: their risk profile is the guardian's. Upload it on <strong>{info.minorOf}</strong>'s record.</span>
+                <span>{info.name} is a minor whose guardian is not verified. Link the guardian's client record (Edit client) before recording the minor's risk profile.</span>
               </div>
             )}
-            {info && !info.minorOf && (
+            {info?.minor?.guardianVerified && (
+              <div className="flex gap-2 rounded-md bg-secondary/60 p-3 text-xs">
+                <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                <span>{info.name} is a minor: this records the assessment of the minor&apos;s own account, given through the guardian. It does not change the guardian&apos;s own profile.</span>
+              </div>
+            )}
+            {info && (!info.minor || info.minor.guardianVerified) && (
               <div className="flex gap-2 rounded-md bg-secondary/60 p-3 text-xs">
                 <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                 {info.current ? (

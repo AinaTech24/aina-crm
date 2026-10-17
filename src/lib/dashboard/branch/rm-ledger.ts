@@ -31,8 +31,8 @@
  */
 
 import { sql, type SQL } from "drizzle-orm";
-import { riskExpiresOnSql } from "@/lib/risk-profile/expiry";
 import type { Tx } from "@/db/client";
+import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
 import {
   asInList, FINANCIAL_TASK_TYPES, LEAD_CLOSED_STAGES, num, PROPOSAL_LIVE,
   PROPOSAL_LOST, PROPOSAL_WON, SR_OPEN_ON_US,
@@ -183,6 +183,8 @@ export async function loadRmLedger(
   `)).rows as Array<{ id: string; name: string; status: string; roles: string }>;
 
   /* ── client facts, by bucket ────────────────────────────────────────── */
+  // A minor's risk is their own assessment, never the guardian's copy (G-1).
+  const rk = clientRiskSql("x");
   const book = (await tx.execute(sql`
     WITH bc AS (${BC})
     SELECT bucket,
@@ -202,12 +204,12 @@ export async function loadRmLedger(
                          AND (email IS NOT NULL AND btrim(email) <> '')
                          AND (phone IS NOT NULL AND btrim(phone) <> '')
                          AND (client_category IS NOT NULL AND btrim(client_category) <> ''))::int AS complete,
-      COUNT(*) FILTER (WHERE risk_profile IS NOT NULL
-                         AND COALESCE(risk_profile_provisional, false) = false)::int AS risk_signed,
-      COUNT(*) FILTER (WHERE risk_profile IS NULL)::int                      AS risk_pending,
-      COUNT(*) FILTER (WHERE COALESCE(risk_profile_provisional, false))::int AS risk_provisional,
-      COUNT(*) FILTER (WHERE risk_profile IS NOT NULL AND risk_profile_signed_at IS NOT NULL
-                         AND ${riskExpiresOnSql("x")} < CURRENT_DATE)::int AS risk_due
+      COUNT(*) FILTER (WHERE ${rk.category} IS NOT NULL
+                         AND ${rk.provisional} = false)::int                 AS risk_signed,
+      COUNT(*) FILTER (WHERE ${rk.category} IS NULL)::int                    AS risk_pending,
+      COUNT(*) FILTER (WHERE ${rk.provisional})::int                         AS risk_provisional,
+      COUNT(*) FILTER (WHERE ${rk.category} IS NOT NULL AND ${rk.signedAt} IS NOT NULL
+                         AND ${rk.expiresOn} < CURRENT_DATE)::int AS risk_due
       FROM (SELECT bc.*, (${w.today}::date - last_contact_at::date) AS d FROM bc) x
      GROUP BY bucket
   `)).rows as Array<Record<string, unknown>>;

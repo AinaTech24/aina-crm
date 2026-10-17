@@ -23,6 +23,7 @@ import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireAny } from "@/lib/auth/rbac";
+import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
 import { missingDobSql, needsNomineeSql, panAadhaarGapSql } from "@/lib/investors/type-rules";
 
 export const dynamic = "force-dynamic";
@@ -34,6 +35,9 @@ export async function GET() {
     const rows = await withTenant(session.tenantId, async (tx) => {
       // One round-trip — Postgres aggregates with FILTER are very cheap
       // on an indexed table even at 5M clients.
+      // A minor's risk is their own assessment, never the guardian's copy (G-1).
+      const rkAll = clientRiskSql("investors");
+      const rk = clientRiskSql("i");
       const r = await tx.execute(sql`
         SELECT
           COUNT(*) FILTER (WHERE pan IS NULL OR pan = '')             AS pan_missing,
@@ -43,8 +47,8 @@ export async function GET() {
           COUNT(*) FILTER (WHERE ${needsNomineeSql("")})              AS nominee_missing,
           COUNT(*) FILTER (WHERE bank_account_masked IS NULL
                               OR bank_account_masked = '')            AS bank_missing,
-          COUNT(*) FILTER (WHERE risk_profile IS NULL
-                              OR risk_profile_signed_at IS NULL)      AS risk_missing,
+          COUNT(*) FILTER (WHERE ${rkAll.category} IS NULL
+                              OR ${rkAll.signedAt} IS NULL)           AS risk_missing,
           COUNT(*) FILTER (WHERE kyc_status != 'verified')             AS kyc_unverified,
           COUNT(*) FILTER (WHERE rm_id IS NULL)                       AS rm_missing,
           COUNT(*) FILTER (WHERE ${panAadhaarGapSql("")}) AS pan_aadhaar_unlinked,
@@ -64,8 +68,8 @@ export async function GET() {
           COUNT(*) FILTER (WHERE ${needsNomineeSql("i")})              AS nominee_missing,
           COUNT(*) FILTER (WHERE i.bank_account_masked IS NULL
                               OR i.bank_account_masked = '')           AS bank_missing,
-          COUNT(*) FILTER (WHERE i.risk_profile IS NULL
-                              OR i.risk_profile_signed_at IS NULL)     AS risk_missing,
+          COUNT(*) FILTER (WHERE ${rk.category} IS NULL
+                              OR ${rk.signedAt} IS NULL)               AS risk_missing,
           COUNT(*) FILTER (WHERE i.kyc_status != 'verified')           AS kyc_unverified,
           COUNT(*) FILTER (WHERE i.rm_id IS NULL)                      AS rm_missing,
           COUNT(*) FILTER (WHERE i.pan_aadhaar_link_status = 'not_linked'

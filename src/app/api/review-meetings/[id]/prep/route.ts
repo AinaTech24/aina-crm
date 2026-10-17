@@ -21,6 +21,7 @@ import { can, requireAny } from "@/lib/auth/rbac";
 import { generateMeetingPrepPoints } from "@/lib/ai/assistant";
 import { isAiConfigured } from "@/lib/ai/provider";
 import { canSeeMeeting } from "@/lib/review-meetings/scope";
+import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
 
 export const dynamic = "force-dynamic";
 
@@ -58,8 +59,10 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
         let client: Record<string, unknown>;
         let goals: GoalRow[] = [];
         if (!isLead) {
+          // A minor's risk is their own assessment, never the guardian's copy (G-1).
+          const ownRisk = clientRiskSql("i");
           const inv = (await tx.execute(sql`
-            SELECT i.name, i.risk_profile, i.service_tier,
+            SELECT i.name, ${ownRisk.category} AS risk_profile, i.service_tier,
                    COALESCE(i.aum, 0)::numeric AS aum,
                    i.last_transaction_at,
                    (SELECT count(*) FROM sips s

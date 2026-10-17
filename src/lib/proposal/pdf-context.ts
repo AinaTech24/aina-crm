@@ -7,6 +7,7 @@
 
 import { and, eq } from "drizzle-orm";
 import { investors, users } from "@/db/schema";
+import { suitabilityProfile } from "@/lib/risk-profile/own-assessment";
 import type { ProposalBrand, ProposalClient, ProposalPreparer } from "./proposal-pdf";
 
 type Tx = any;
@@ -38,16 +39,17 @@ export async function loadProposalPdfPeople(
         .where(and(eq(users.id, p.preparedByUserId), eq(users.tenantId, p.tenantId)))
         .limit(1)
     : [];
-  const [client] = p.investorId
+  const [row] = p.investorId
     ? await tx
-        .select({
-          riskProfile: investors.riskProfile,
-          riskProfileSignedAt: investors.riskProfileSignedAt,
-          riskProfileProvisional: investors.riskProfileProvisional,
-        })
+        .select({ id: investors.id })
         .from(investors)
         .where(and(eq(investors.id, p.investorId), eq(investors.tenantId, p.tenantId)))
         .limit(1)
     : [];
-  return { preparedBy: preparedBy ?? null, client: client ?? null };
+  // A minor's risk is their own assessment, never the guardian's copy (G-1).
+  const own = row ? await suitabilityProfile(tx, p.tenantId, row.id) : null;
+  const client: ProposalClient | null = own
+    ? { riskProfile: own.category, riskProfileSignedAt: own.signedAt, riskProfileProvisional: own.provisional }
+    : null;
+  return { preparedBy: preparedBy ?? null, client };
 }

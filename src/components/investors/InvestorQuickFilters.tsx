@@ -1,10 +1,13 @@
 import Link from "next/link";
-import { riskExpiresOnSql } from "@/lib/risk-profile/expiry";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
 import { investorScopeSql } from "@/lib/investors/access";
+import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
 import { needsNomineeSql } from "@/lib/investors/type-rules";
+
+const RISK_SIGNED = clientRiskSql("investors").signedAt;
+const RISK_EXPIRES = clientRiskSql("investors").expiresOn;
 
 /**
  * Quick-filter chip strip for the Investors list page.
@@ -64,7 +67,8 @@ export async function InvestorQuickFilters({
           )::int AS dormant,
           COUNT(*) FILTER (
             WHERE status = 'active'
-              AND (risk_profile_signed_at IS NULL OR ${riskExpiresOnSql("investors")} < CURRENT_DATE)
+              -- A minor's risk is their own assessment, never the guardian's copy (G-1).
+              AND (${RISK_SIGNED} IS NULL OR ${RISK_EXPIRES} < CURRENT_DATE)
           )::int AS rp_stale,
           COUNT(*) FILTER (
             WHERE status = 'active' AND dob IS NOT NULL

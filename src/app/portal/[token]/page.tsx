@@ -21,7 +21,6 @@ export default async function InvestorPortalPage({ params }: { params: Promise<{
       aum: investors.aum,
       activeSipAmount: investors.activeSipAmount,
       kycStatus: investors.kycStatus,
-      riskProfile: investors.riskProfile,
       nomineeName: investors.nomineeName,
     }).from(investors).where(eq(investors.id, access.investorId)).limit(1);
     const clientGoals = access.scopes.includes("goals")

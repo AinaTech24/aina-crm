@@ -24,6 +24,7 @@ import { isFieldAllowed } from "@/lib/auth/field-gate";
 import { buildInvestorWhere } from "@/lib/investors/list-filters";
 import { investorScopeCondition } from "@/lib/investors/access";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { withOwnRiskForMinors } from "@/lib/risk-profile/own-assessment";
 
 export const dynamic = "force-dynamic";
 
@@ -146,7 +147,9 @@ export async function GET(req: NextRequest) {
           after: { count: r.length, filters: sp } as any,
           ...clientMetaFromHeaders(req.headers),
         });
-        return r;
+        // A minor's risk is their own assessment, never the guardian's copy (G-1).
+        const own = await withOwnRiskForMinors(tx, session.tenantId, r.map((x) => x.inv));
+        return r.map((x, k) => ({ ...x, inv: own[k] }));
       },
       { userId: session.userId, branchId: session.branchId, roles: session.roles }
     );
@@ -177,7 +180,7 @@ export async function GET(req: NextRequest) {
       row["FATCA status"] = (inv as any).fatcaStatus ?? "";
       row["FATCA expiry"] = ymd((inv as any).fatcaExpiryAt);
       if (show.risk) row["Risk profile"] = inv.riskProfile ?? "";
-      row["Risk score"] = (inv as any).riskProfileScore ?? "";
+      if (show.risk) row["Risk score"] = inv.riskProfileScore ?? "";
       // ── Nominee ──
       if (show.nominee) row["Nominee"] = inv.nomineeName ?? "";
       if (show.nominee) row["Nominee relation"] = (inv as any).nomineeRelation ?? "";

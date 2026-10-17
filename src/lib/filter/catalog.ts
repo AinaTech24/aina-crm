@@ -215,7 +215,14 @@ export const investorCatalog: SubjectCatalog = {
       key: "risk_profile",
       label: "Risk profile",
       type: "enum",
-      sql: "inv.risk_profile",
+      // A minor's risk is their own assessment, never the guardian's copy (G-1)
+      // — the same expression as clientRiskSql("inv").category.
+      sql:
+        "(CASE WHEN (inv.investor_category = 'minor' OR COALESCE(inv.is_minor, false)) THEN " +
+        "(SELECT r_own.final_category FROM risk_profile_responses r_own " +
+        "WHERE r_own.tenant_id = inv.tenant_id AND r_own.investor_id = inv.id " +
+        "ORDER BY COALESCE(r_own.signed_at, r_own.created_at) DESC LIMIT 1) " +
+        "ELSE inv.risk_profile END)",
       ops: COMMON_ENUM_OPS,
       enumValues: ["conservative", "moderate", "aggressive", "very_aggressive"],
     },

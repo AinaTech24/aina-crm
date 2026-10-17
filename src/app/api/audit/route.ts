@@ -9,6 +9,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { investorScopeSql } from "@/lib/investors/access";
+import { stripRiskKeys } from "@/lib/investors/guardian-link";
+import { minorSql } from "@/lib/risk-profile/own-assessment";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +38,7 @@ export async function GET(req: NextRequest) {
     const entityType = (sp.get("entityType") ?? "").trim();
     const entityId = (sp.get("entityId") ?? "").trim();
     if (!entityType || !entityId) return NextResponse.json({ error: "entityType and entityId are required" }, { status: 400 });
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(entityId)) return NextResponse.json({ error: "entityId must be an id" }, { status: 400 });
 
     // Privileged histories are gated; everyone else can read normal record logs.
     if (SENSITIVE_ENTITY_TYPES.has(entityType)) {
@@ -45,6 +49,18 @@ export async function GET(req: NextRequest) {
     }
 
     const rows = await withTenant(session.tenantId, async (tx) => {
+      // A client's history carries the whole record in before / after, so it
+      // follows the client's own access (the firm's data wall) — otherwise any
+      // id, e.g. a minor's hidden guardian's, opened the full record (G-1).
+      let hideRisk = false;
+      if (entityType === "investor") {
+        const scope = await investorScopeSql(tx, session, "i");
+        const seen = await tx.execute(sql`
+          SELECT ${minorSql("i")} AS minor FROM investors i
+           WHERE i.id = ${entityId}::uuid AND i.tenant_id = ${session.tenantId}::uuid AND ${scope} LIMIT 1`);
+        if (!seen.rows.length) return null;
+        hideRisk = (seen.rows[0] as { minor: boolean }).minor === true;
+      }
       const r = await tx.execute(sql`
         SELECT a.id, a.action, a.actor_type, a.at, a.before, a.after, a.reason,
                u.name AS actor_name
@@ -55,8 +71,15 @@ export async function GET(req: NextRequest) {
         ORDER BY a.at DESC
         LIMIT 200
       `);
-      return r.rows as any[];
+      const entries = r.rows as any[];
+      if (!hideRisk) return entries;
+      // A minor's history rows carry migration 0234's copies of whichever
+      // guardian was linked at the time — not the minor's information. The
+      // minor's own assessments are in the risk profile history instead.
+      const strip = (o: unknown) => (o && typeof o === "object" && !Array.isArray(o) ? stripRiskKeys(o as Record<string, unknown>) : o);
+      return entries.map((e) => ({ ...e, before: strip(e.before), after: strip(e.after) }));
     });
+    if (rows === null) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({ entries: rows });
   } catch (err: any) {
     return handleApiError(err);

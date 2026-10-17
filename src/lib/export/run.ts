@@ -82,10 +82,11 @@ export async function runExport(
 
   const rows = await withTenant(session.tenantId, async (tx) => {
     const conds = await mod.where(tx, session, params);
+    const from = typeof mod.from === "function" ? await mod.from(tx, session) : mod.from;
     const select = sql.join(picked.map((c, i) => sql`${c.sql} AS ${sql.raw(`"c${i}"`)}`), sql`, `);
     const r = await tx.execute(sql`
       SELECT ${select}
-        FROM ${mod.from}
+        FROM ${from}
        WHERE ${conds.length ? sql.join(conds, sql` AND `) : sql`TRUE`}
        ${mod.orderBy ? sql`ORDER BY ${mod.orderBy}` : sql``}
        LIMIT ${MAX_EXPORT_ROWS + 1}

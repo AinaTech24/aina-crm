@@ -7,6 +7,7 @@ import { can } from "@/lib/auth/rbac";
 import { loadTenantLicense } from "@/lib/auth/license";
 import { isFieldAllowed } from "@/lib/auth/field-gate";
 import { loadViewableInvestor } from "@/lib/investors/access";
+import { guardianForViewer, withMinorOwnRisk } from "@/lib/investors/guardian-link";
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { ClientDetailsForm, type ClientFamilyContext } from "@/components/investors/ClientDetailsForm";
 import { sql } from "drizzle-orm";
@@ -47,13 +48,12 @@ export default async function EditClientDetailsPage({ params }: { params: Promis
         };
       }
     }
-    let guardian: { id: string; name: string; riskProfile: string | null } | null = null;
-    if ((inv as any).guardianInvestorId) {
-      const g = (await tx.execute(sql`
-        SELECT id, name, risk_profile FROM investors WHERE id = ${(inv as any).guardianInvestorId}::uuid AND tenant_id = ${session.tenantId}::uuid LIMIT 1`)).rows[0] as { id: string; name: string; risk_profile: string | null } | undefined;
-      if (g) guardian = { id: g.id, name: g.name, riskProfile: g.risk_profile };
-    }
-    return { inv, family, guardian };
+    // The guardian's record only when this user may open it (G-1): otherwise
+    // the form learns that a guardian is linked, never who, and the minor's
+    // own risk fields — the guardian's copy (migration 0234) — are blanked.
+    const guardian = await guardianForViewer(tx, session, inv.guardianInvestorId);
+    const shown = await withMinorOwnRisk(tx, session, inv);
+    return { inv: shown as typeof inv, family, guardian };
   }, { userId: session.userId, branchId: session.branchId ?? undefined, roles: session.roles });
   if (!loaded) notFound();
   const { inv, family, guardian } = loaded;

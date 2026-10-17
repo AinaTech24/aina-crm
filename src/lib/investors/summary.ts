@@ -13,6 +13,7 @@ import { sql } from "drizzle-orm";
 import { riskProfileLapsed } from "@/lib/risk-profile/expiry";
 import type { withTenant } from "@/db/client";
 import { asInList, num, PROPOSAL_LIVE, SR_CLOSED, TASK_DEAD, taskIsAbout } from "@/lib/dashboard/my/window";
+import { clientRiskSql, minorSql } from "@/lib/risk-profile/own-assessment";
 
 type Tx = Parameters<Parameters<typeof withTenant>[1]>[0];
 
@@ -26,9 +27,12 @@ export type ClientSummary = {
   lastMeeting: string | null;
   nextReview: string | null;
   risk: "Completed" | "Provisional" | "Due for review" | "Not completed";
-  /** The profile itself — conservative / moderate / aggressive — when one is on file. */
+  /** The profile itself — conservative / moderate / aggressive — when one is on file.
+   *  For a minor, the minor's own assessment, never the guardian's copy (G-1). */
   riskCategory: string | null;
   riskSigned: string | null;
+  /** A minor's linked guardian (shown only through guardianForViewer). */
+  guardianId: string | null;
   openTasks: number;
   openQueries: number;
   pendingProposals: number;
@@ -42,14 +46,18 @@ export type ClientSummary = {
 const CLAIM_DONE = ["settled_fully", "settled_partially", "rejected", "withdrawn"] as const;
 
 export async function loadClientSummary(tx: Tx, tenantId: string, investorId: string): Promise<ClientSummary | null> {
+  // A minor's risk is their own assessment, never the guardian's copy (G-1).
+  const own = clientRiskSql("i");
   const r = (await tx.execute(sql`
     SELECT i.family_id,
            COALESCE(NULLIF(btrim(f.family_name), ''), f.head_name)                     AS family,
            upper(NULLIF(btrim(i.client_category), ''))                                 AS category,
            u.name                                                                      AS rm,
            i.aum::numeric AS aum, i.active_sip_amount::numeric AS sip, i.next_review_at,
-           i.risk_profile, i.risk_profile_signed_at, i.risk_profile_expires_on, i.risk_profile_expiry_for,
-           COALESCE(i.risk_profile_provisional, false)                                 AS provisional,
+           ${own.category} AS risk_profile, ${own.signedAt} AS risk_profile_signed_at,
+           ${own.expiresOn} AS risk_expires_on,
+           ${own.provisional}                                                          AS provisional,
+           CASE WHEN ${minorSql("i")} THEN i.guardian_investor_id::text END             AS guardian_id,
            (SELECT MAX(m.meeting_date) FROM review_meetings m
              WHERE m.investor_id = i.id AND m.status = 'completed')                    AS last_meeting,
            (SELECT COUNT(*)::int FROM tasks tk
@@ -80,10 +88,12 @@ export async function loadClientSummary(tx: Tx, tenantId: string, investorId: st
   // A signed profile is re-done when it lapses — a year after signing, or the
   // "Expire On" date an uploaded one states (lib/risk-profile/expiry.ts) — the
   // same rule as the dashboards' "Due for review".
+  // For a minor the expiry is the minor's own assessment's (clientRiskSql), never
+  // the guardian's copied dates; the pair below makes expiry.ts use it as given.
   const stale = riskProfileLapsed({
     riskProfileSignedAt: signed,
-    riskProfileExpiresOn: str(r.risk_profile_expires_on),
-    riskProfileExpiryFor: str(r.risk_profile_expiry_for),
+    riskProfileExpiresOn: str(r.risk_expires_on),
+    riskProfileExpiryFor: signed,
   });
   const risk: ClientSummary["risk"] = r.risk_profile == null ? "Not completed"
     : r.provisional === true ? "Provisional"
@@ -102,6 +112,7 @@ export async function loadClientSummary(tx: Tx, tenantId: string, investorId: st
     risk,
     riskCategory: str(r.risk_profile),
     riskSigned: signed,
+    guardianId: str(r.guardian_id),
     openTasks: num(r.open_tasks),
     openQueries: num(r.open_queries),
     pendingProposals: num(r.props),

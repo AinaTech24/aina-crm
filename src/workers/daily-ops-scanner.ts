@@ -47,7 +47,6 @@
  */
 
 import { eq, sql } from "drizzle-orm";
-import { riskExpiresOnSql } from "@/lib/risk-profile/expiry";
 import { withSystem, withTenant } from "@/db/client";
 import { readSoftDeleteRetentionDays } from "@/lib/platform/retention";
 import { recomputeAllHealth } from "@/lib/investors/health-persist";
@@ -62,6 +61,7 @@ import { retireEmptyPlaceholders } from "@/lib/rta/placeholder-sweep";
 import { holdsMoneySql, restoreTrashedHolders } from "@/lib/investors/holds-money";
 import { syncRtaJourneys } from "@/lib/blueprints/rta-route";
 import { completeExpiredSips } from "@/lib/finance/sip-lifecycle";
+import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
 import { eventsOutbox, investors, folios, suitabilityMatrixEntries } from "@/db/schema";
 
 interface ScanResult {
@@ -364,12 +364,14 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
       }
 
       // ── 6. Risk profile > 365 days old (regulatory annual review) ─────
+      // A minor's risk is their own assessment, never the guardian's copy (G-1).
+      const ownRisk = clientRiskSql("i");
       const riskRows = await tx.execute(sql`
-        SELECT id, name, risk_profile_signed_at, rm_id FROM investors
-        WHERE risk_profile_signed_at IS NOT NULL
-          AND status = 'active'
-          AND deleted_at IS NULL
-          AND ${riskExpiresOnSql("investors")} < CURRENT_DATE
+        SELECT i.id, i.name, ${ownRisk.signedAt} AS risk_profile_signed_at, i.rm_id FROM investors i
+        WHERE ${ownRisk.signedAt} IS NOT NULL
+          AND i.status = 'active'
+          AND i.deleted_at IS NULL
+          AND ${ownRisk.expiresOn} < CURRENT_DATE
       `);
       result.riskExpired = riskRows.rows.length;
       for (const row of riskRows.rows as Array<{
@@ -1009,12 +1011,14 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
       // Scans active investors with a registered risk profile and AUM > 0.
       // Computes actual equity % from folios and flags a drift if it exceeds
       // the suitability matrix long-term equity target by >15% absolute.
+      // A minor's risk is their own assessment, never the guardian's copy (G-1).
+      const driftRisk = clientRiskSql("i");
       const driftInvestors = await tx.execute(sql`
-        SELECT id, name, risk_profile, rm_id, aum FROM investors
-        WHERE status = 'active'
-          AND deleted_at IS NULL
-          AND risk_profile IS NOT NULL
-          AND aum > 0
+        SELECT i.id, i.name, ${driftRisk.category} AS risk_profile, i.rm_id, i.aum FROM investors i
+        WHERE i.status = 'active'
+          AND i.deleted_at IS NULL
+          AND ${driftRisk.category} IS NOT NULL
+          AND i.aum > 0
       `);
 
       const matrixRows = await tx.select().from(suitabilityMatrixEntries);

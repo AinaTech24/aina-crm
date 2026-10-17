@@ -34,6 +34,7 @@ import {
 import { v4 as uuid } from "uuid";
 import { autoAdvance } from "@/lib/blueprints/auto-advance";
 import { renderTemplateText } from "@/lib/comms/tokens";
+import { withOwnRiskForMinor } from "@/lib/risk-profile/own-assessment";
 
 export interface ActionContext {
   tenantId: string;
@@ -52,6 +53,13 @@ export interface ActionResult {
 }
 
 export async function executeAction(action: Action, ctx: ActionContext): Promise<ActionResult> {
+  // A minor's risk is their own assessment, never the guardian's copy (G-1):
+  // the record's risk_profile* fields become {{risk_profile*}} tokens below.
+  if (ctx.subjectType === "investor" && ctx.subjectId && ctx.record) {
+    const { __g1Id, ...own } = await withOwnRiskForMinor(ctx.tx, ctx.tenantId, { ...ctx.record, __g1Id: ctx.subjectId }, "__g1Id");
+    void __g1Id;
+    ctx = { ...ctx, record: own };
+  }
   switch (action.type) {
     case "send_email":
       return runSendEmail(action.config, ctx);

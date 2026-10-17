@@ -19,6 +19,9 @@ import { v4 as uuid } from "uuid";
 import type { Tx } from "@/db/client";
 import { eventsOutbox, investors, riskProfileResponses } from "@/db/schema";
 import { recordAudit } from "@/lib/audit";
+import { guardianMinorSql, guardianVerifiedForMf, GUARDIAN_PENDING_MESSAGE } from "@/lib/investors/guardian-verification";
+import { suitabilityProfile } from "@/lib/risk-profile/own-assessment";
+import { sql } from "drizzle-orm";
 
 export const UPLOAD_CATEGORIES = ["conservative", "moderate", "aggressive", "very_aggressive"] as const;
 export const MAX_PDF_BYTES = 10 * 1024 * 1024;
@@ -83,9 +86,14 @@ export async function recordUploadedRiskProfile(
 ): Promise<UploadResult> {
   const { tenantId, userId, investor, fields, documentKey, today } = args;
 
-  // A minor cannot sign a profile: it is the guardian's (migration 0234).
-  if (investor.investorCategory === "minor" && investor.guardianInvestorId) {
-    throw refuse("A minor's risk profile is the guardian's — upload it on the guardian's record.", 409);
+  // A minor's assessment belongs to the MINOR'S ACCOUNT (G-1, the owner's interim
+  // policy): it is recorded here, on the minor, never on the guardian — and only
+  // while the minor has a verified guardian (a valid linked client), through
+  // whom it is given. A linked guardian is no reason to refuse.
+  const isMinor = !!(await tx.execute(sql`
+    SELECT ${guardianMinorSql("i")} AS m FROM investors i WHERE i.tenant_id = ${tenantId}::uuid AND i.id = ${investor.id}::uuid`)).rows[0]?.m;
+  if (isMinor && !(await guardianVerifiedForMf(tx, tenantId, investor.id))) {
+    throw refuse(`${GUARDIAN_PENDING_MESSAGE} A minor's risk profile can be recorded once the guardian is verified.`, 409);
   }
   const dateError = validateUploadDates(fields.assessedOn, fields.expiresOn, today);
   if (dateError) throw refuse(dateError, 400);
@@ -106,7 +114,7 @@ export async function recordUploadedRiskProfile(
     signedAt,
     signedByName: investor.name,
     nextReviewAt: fields.expiresOn,
-    rmRemarks: remarks,
+    rmRemarks: isMinor ? ["Assessment of the minor's own account", remarks].filter(Boolean).join(" — ") : remarks,
     verificationMethod: "client_physical",
     createdById: userId,
     provisional: false,
@@ -114,7 +122,11 @@ export async function recordUploadedRiskProfile(
   } as any);
 
   // Newest wins: an older profile uploaded late is kept in the history only.
-  const currentSigned = investor.riskProfileSignedAt ? new Date(investor.riskProfileSignedAt).getTime() : null;
+  // A minor's "current" is the minor's own latest assessment — never the
+  // guardian's signed date that migrations 0234 / 0236 copy onto the row.
+  const ownSigned = isMinor ? (await suitabilityProfile(tx, tenantId, investor.id)).signedAt : null;
+  const currentSignedRaw = isMinor ? ownSigned : investor.riskProfileSignedAt;
+  const currentSigned = currentSignedRaw ? new Date(currentSignedRaw).getTime() : null;
   const becameCurrent = currentSigned == null || signedAt.getTime() >= currentSigned;
   if (becameCurrent) {
     await tx
@@ -149,7 +161,8 @@ export async function recordUploadedRiskProfile(
     action: "risk_profile.upload",
     entityType: "risk_profile_response",
     entityId: id,
-    after: { investorId: investor.id, category: fields.category, score: fields.score, assessedOn: fields.assessedOn, expiresOn: fields.expiresOn, becameCurrent } as any,
+    after: { investorId: investor.id, category: fields.category, score: fields.score, assessedOn: fields.assessedOn, expiresOn: fields.expiresOn, becameCurrent,
+             ...(isMinor ? { forMinorAccount: true, guardianInvestorId: investor.guardianInvestorId ?? null } : {}) } as any,
     ...(args.clientMeta ?? {}),
   } as any);
 

@@ -1,4 +1,6 @@
 import { assertInvestorAccess, investorScopeCondition } from "@/lib/investors/access";
+import { GUARDIAN_NOT_LINKED, GUARDIAN_PAN_NOT_LINKED, auditGuardianChange, auditGuardianNotLinked, guardianPan, resolveGuardian, withMinorOwnRisk } from "@/lib/investors/guardian-link";
+import { minorOwnRiskColumns, withOwnRiskForMinor } from "@/lib/risk-profile/own-assessment";
 import { handleApiError } from "@/lib/api/error-handler";
 /**
  * Single investor endpoints.
@@ -274,7 +276,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       const nm = names.rows[0] as { rm_name: string | null; branch_name: string | null } | undefined;
 
       return {
-        investor: { ...inv, ...(health ? { healthScore: health.score, healthBand: health.band } : {}) },
+        // A linked minor's risk fields are the guardian's; hidden when the viewer cannot open that guardian (G-1).
+        investor: { ...(await withMinorOwnRisk(tx, session, inv)), ...(health ? { healthScore: health.score, healthBand: health.band } : {}) },
         rm: inv.rmId && nm?.rm_name ? { id: inv.rmId, name: nm.rm_name } : null,
         branch: inv.branchId && nm?.branch_name ? { id: inv.branchId, name: nm.branch_name } : null,
         health: health ? { score: health.score, band: health.band } : null,
@@ -424,29 +427,57 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         if (singleHoldingOnly(nextType)) typePatch.modeOfHolding = "Single";
       }
 
-      // A minor's guardian as a client: the one picked, else the client whose
-      // PAN is the guardian PAN typed. The minor then carries the guardian's
-      // risk profile (a database rule, migration 0234).
+      // A minor's guardian as a client: the one picked, else the ONE client
+      // whose PAN is the guardian PAN typed — only a live adult individual this
+      // user can open (lib/investors/guardian-link.ts, G-1). The minor then
+      // carries a copy of the guardian's risk profile on its row (a database rule, migration 0234) that no reader uses (G-1).
+      // Re-sending the guardian already on record changes nothing (and is not
+      // re-checked), so an editor who cannot open that guardian can still save
+      // the minor's other details; null unlinks. Typing a DIFFERENT guardian
+      // PAN than the linked guardian's moves the link to that PAN's client —
+      // or, when it resolves to nobody this user may link, removes it: the
+      // record must never name one guardian and copy another's profile.
       delete (fields as any).guardianInvestorId;
+      let guardianVia: "picked" | "pan" | "unlinked" | null = null;
+      let guardianPanTried = false;
+      const current = (before.guardianInvestorId as string | null) ?? null;
       if (nextType === "minor") {
+        const typedNow = guardianPan(((typePatch.typeDetails ?? before.typeDetails) as { guardian?: { pan?: string } } | null)?.guardian?.pan);
+        const typedBefore = guardianPan((before.typeDetails as { guardian?: { pan?: string } } | null)?.guardian?.pan);
         let gid: string | null | undefined = parse.data.guardianInvestorId;
-        if (gid) {
-          const ok = (await tx.execute(sql`
-            SELECT 1 FROM investors WHERE id = ${gid}::uuid AND tenant_id = ${session.tenantId}::uuid
-              AND id <> ${id}::uuid AND deleted_at IS NULL`)).rows.length;
-          if (!ok) gid = undefined;
-        } else if (gid === undefined && !(before as any).guardianInvestorId) {
-          const gp = String(((typePatch.typeDetails ?? (before as any).typeDetails) as any)?.guardian?.pan ?? "").trim().toUpperCase();
-          if (gp) {
-            const g = (await tx.execute(sql`
-              SELECT id FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND pan = ${gp}
-                AND id <> ${id}::uuid AND deleted_at IS NULL AND merged_into_id IS NULL
-              ORDER BY dedup_pan DESC LIMIT 1`)).rows[0] as { id: string } | undefined;
-            gid = g?.id;
+        if (gid && gid === current) gid = undefined;
+        else if (gid) {
+          gid = await resolveGuardian(tx, session, { id: gid, minorId: id });
+          if (!gid) return "bad_guardian" as const;
+          guardianVia = "picked";
+        } else if (gid === null) {
+          if (current) guardianVia = "unlinked";
+        } else {
+          let retype = false;
+          if (current && typedNow && typedNow !== typedBefore) {
+            const linked = (await tx.execute(sql`SELECT upper(btrim(pan)) AS pan FROM investors WHERE id = ${current}::uuid AND tenant_id = ${session.tenantId}::uuid`)).rows[0] as { pan: string | null } | undefined;
+            retype = guardianPan(linked?.pan) !== typedNow;
+          }
+          if (!current || retype) {
+            const found = typedNow ? await resolveGuardian(tx, session, { pan: typedNow, minorId: id }) : null;
+            if (found) { gid = found; guardianVia = "pan"; }
+            else if (retype) { gid = null; guardianVia = "unlinked"; }
+            guardianPanTried = !!typedNow && !found && (retype || typedNow !== typedBefore);
           }
         }
         if (gid !== undefined) typePatch.guardianInvestorId = gid;
+      } else if (current) {
+        // No longer a minor (turned 18, re-typed): a guardian link means
+        // nothing for them, and 0234 stops copying — so the link goes, and
+        // so does the old guardian's profile it left behind.
+        typePatch.guardianInvestorId = null;
+        guardianVia = "unlinked";
       }
+      // Removing a link removes the copied profile with it: the row goes back
+      // to the client's own latest assessment, else none (G-1). 0234 copies
+      // only while a link exists, so otherwise the old guardian's profile would
+      // stay and read as the client's own.
+      if (guardianVia === "unlinked") Object.assign(typePatch, await minorOwnRiskColumns(tx, session.tenantId, id));
 
       // What the family owns is not the member's to edit: the head's address
       // (for a member) and the family's review frequency (for everyone in it).
@@ -463,7 +494,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
 
       const merged = { ...before, ...fields, ...panPatch, ...mirror, ...typePatch };
-      const health = healthFields(merged as any);
+      // A minor's risk is their own assessment, never the guardian's copy (G-1).
+      const health = healthFields((await withOwnRiskForMinor(tx, session.tenantId, merged as Record<string, any>)) as any);
 
       // When the review cadence changes (preset OR custom days), re-derive the
       // next review date from the last review (or onboarding, or today) so the
@@ -590,6 +622,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         meta: { userId: session.userId } as any,
       } as any);
 
+      if (guardianVia) {
+        await auditGuardianChange(tx, {
+          tenantId: session.tenantId, actorUserId: session.userId, minorId: id,
+          before: before.guardianInvestorId ?? null, after: after[0].guardianInvestorId ?? null,
+          via: guardianVia,
+        });
+      }
+      if (guardianPanTried) await auditGuardianNotLinked(tx, { tenantId: session.tenantId, actorUserId: session.userId, minorId: id });
+
       // Attribute the edit on the audit trail so "last modified by" reflects it
       // (the change-log drawer + RecordProvenance read this).
       await recordAudit(tx, {
@@ -610,9 +651,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // re-score the family this investor belongs to (no-op if unlinked).
       await recomputeFamilyHealthForInvestor(tx, id);
 
-      return after[0];
+      const out = await withMinorOwnRisk(tx, session, after[0]);
+      // A typed guardian PAN that linked nobody is said, never silent (G-1):
+      // the minor is saved with the guardian's details as typed and no link.
+      return guardianPanTried ? { ...out, guardianLinked: false, guardianNotice: GUARDIAN_PAN_NOT_LINKED } : out;
     });
 
+    if (result === "bad_guardian") return NextResponse.json({ error: GUARDIAN_NOT_LINKED, field: "guardianInvestorId" }, { status: 400 });
     if (result === "bad_rm") return NextResponse.json({ error: "selected RM is not a user in this firm" }, { status: 400 });
     if (result === "bad_pan") return NextResponse.json({ error: "PAN should look like ABCDE1234F.", field: "pan" }, { status: 400 });
     if (result === "pan_locked")
@@ -716,7 +761,18 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       await tx.update(leads).set({ convertedInvestorId: null } as any).where(and(eq(leads.tenantId, T), eq(leads.convertedInvestorId, id)));
       await tx.update(leads).set({ referredByInvestorId: null } as any).where(and(eq(leads.tenantId, T), eq(leads.referredByInvestorId, id)));
       await tx.update(families).set({ primaryInvestorId: null } as any).where(and(eq(families.tenantId, T), eq(families.primaryInvestorId, id)));
-      await tx.update(investors).set({ guardianInvestorId: null } as any).where(and(eq(investors.tenantId, T), eq(investors.guardianInvestorId, id)));
+      // A minor whose guardian is erased keeps their record, guardian cleared,
+      // the erased guardian's copied risk replaced by the minor's own assessment
+      // (or none), and the removal audited — as lib/investors/purge.ts does (G-1).
+      const orphaned = await tx.update(investors).set({ guardianInvestorId: null } as any)
+        .where(and(eq(investors.tenantId, T), eq(investors.guardianInvestorId, id)))
+        .returning({ id: investors.id });
+      for (const m of orphaned) {
+        if (m.id === id) continue;
+        await tx.update(investors).set((await minorOwnRiskColumns(tx, T, m.id)) as any)
+          .where(and(eq(investors.tenantId, T), eq(investors.id, m.id)));
+        await auditGuardianChange(tx, { tenantId: T, actorUserId: session.userId, minorId: m.id, before: id, after: null, via: "delete" });
+      }
 
       // Permanent hard delete — folios/transactions/sips/proposals/goals/etc.
       // cascade automatically (migration 0131).

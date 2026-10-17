@@ -21,6 +21,7 @@ import type { Tx } from "@/db/client";
 import { STATUS_IN_FORCE, CLAIM_OPEN, inList } from "@/lib/insurance/book";
 import { POLICY_FROM, policyWhere } from "./insurance";
 import { clientRecordWhere, clientWhere, col, type MetricScope } from "./scope";
+import { clientRiskSql } from "@/lib/risk-profile/own-assessment";
 import { missingDobSql, needsNomineeSql } from "@/lib/investors/type-rules";
 
 const today = sql`(now() AT TIME ZONE 'Asia/Kolkata')::date`;
@@ -34,13 +35,15 @@ export function reviewOverdueSql(alias = "i"): SQL {
 /** Missing any of the data a client file needs, on an investors alias. */
 export function missingDataSql(alias = "i"): SQL {
   const c = (k: string) => col(alias, k);
+  // A minor's risk is their own assessment, never the guardian's copy (G-1).
+  const rk = clientRiskSql(alias.replace(/[^a-zA-Z0-9_]/g, "") || "investors");
   return sql`(
     ${c("pan")} IS NULL OR btrim(${c("pan")}) = ''
     OR ${missingDobSql(alias)}
     OR ${needsNomineeSql(alias)}
     OR ${c("bank_account_masked")} IS NULL OR btrim(${c("bank_account_masked")}) = ''
     OR ${c("kyc_status")} IS NULL OR ${c("kyc_status")} NOT IN ('validated', 'registered', 'verified')
-    OR ${c("risk_profile")} IS NULL OR ${c("risk_profile_signed_at")} IS NULL
+    OR ${rk.category} IS NULL OR ${rk.signedAt} IS NULL
   )`;
 }
 

@@ -28,6 +28,8 @@ import { applyRiskCategory, RISK_CATEGORIES } from "@/lib/risk-profile/apply";
 import { cleanUccCodes } from "@/lib/investors/ucc";
 import { investors, eventsOutbox } from "@/db/schema";
 import { familyHeadRmId } from "@/lib/families/head-rm";
+import { GUARDIAN_NOT_LINKED, GUARDIAN_PAN_NOT_LINKED, auditGuardianChange, auditGuardianNotLinked, guardianPan, resolveGuardian } from "@/lib/investors/guardian-link";
+import { withOwnRiskForMinors } from "@/lib/risk-profile/own-assessment";
 
 export const dynamic = "force-dynamic";
 
@@ -173,7 +175,9 @@ export async function GET(req: NextRequest) {
           .from(investors)
           .where(where as any);
 
-        return { rows, total: Number(countRes[0]?.c ?? 0), page, limit };
+        // A minor's risk is their own assessment, never the guardian's copy (G-1).
+        const shown = await withOwnRiskForMinors(tx, session.tenantId, rows);
+        return { rows: shown, total: Number(countRes[0]?.c ?? 0), page, limit };
       },
       { userId: session.userId, branchId: session.branchId, roles: session.roles }
     );
@@ -185,6 +189,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  let creatingMinor = false;
   try {
     const session = await requireSession();
     // An RM creates clients into their OWN book — requiring investor.edit.all
@@ -201,6 +206,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
     }
     const body = parse.data;
+    creatingMinor = body.investorCategory === "minor";
 
     // A minor is filed the way the registrar import files one (lib/rta/import.ts):
     // MINOR:<own PAN>, or — with no PAN of their own — MINOR:<guardian PAN>:<NAME>,
@@ -225,6 +231,12 @@ export async function POST(req: NextRequest) {
       const visible = await investorScopeSql(tx, session, "i2").catch(() => sql`FALSE`);
       return existingClientForPan(tx, session.tenantId, storedPan, visible);
     }, { userId: session.userId, branchId: session.branchId ?? undefined, roles: session.roles });
+    if (existing && body.investorCategory === "minor" && (!existing.id || existing.state === "active")) {
+      // A retry of the same minor, or a key held by a client this user cannot
+      // open: one sentence that names nobody and says nothing about a PAN, a
+      // guardian or the record's state.
+      return NextResponse.json({ error: "A client with these details is already on record. Search the client list before adding them again." }, { status: 409 });
+    }
     if (existing) {
       const error =
         existing.state === "trash"
@@ -237,6 +249,8 @@ export async function POST(req: NextRequest) {
 
     const id = uuid();
     const clientMeta = clientMetaFromHeaders(req.headers);
+    let guardianLinked = false;
+    let guardianPanTried = false;
     await withTenant(session.tenantId, async (tx) => {
       // Sanitize firm custom fields against their definitions before storing.
       const cfDefs = await loadCustomFieldDefs(tx, session.tenantId, "investor");
@@ -249,27 +263,27 @@ export async function POST(req: NextRequest) {
       let rmId = (canAssignAnyRm ? body.rmId : undefined) ?? session.userId;
       if (body.familyId && canAssignAnyRm && !body.rmId) rmId = (await familyHeadRmId(tx, body.familyId)) ?? rmId;
 
-      // A minor's guardian as a client: the one picked, else the client whose
-      // PAN is the guardian PAN. The minor then carries the guardian's risk
-      // profile (a database rule, migration 0234).
+      // A minor's guardian as a client: the one picked, else the ONE client
+      // whose PAN is the guardian PAN — only a live adult individual this user
+      // can open (lib/investors/guardian-link.ts, G-1). The minor then carries
+      // the guardian's risk profile on its row (a database rule, migration 0234) that no reader uses (G-1). A
+      // refused pick stops the save with one message that never says why; a
+      // typed PAN that resolves to nobody leaves the minor unlinked — and the
+      // response says so (guardianNotice), and the history records it.
       let guardianInvestorId: string | null = null;
       if (body.investorCategory === "minor") {
         if (body.guardianInvestorId) {
-          const ok = (await tx.execute(sql`
-            SELECT 1 FROM investors WHERE id = ${body.guardianInvestorId}::uuid
-              AND tenant_id = ${session.tenantId}::uuid AND deleted_at IS NULL`)).rows.length;
-          if (ok) guardianInvestorId = body.guardianInvestorId;
+          guardianInvestorId = await resolveGuardian(tx, session, { id: body.guardianInvestorId });
+          if (!guardianInvestorId) throw Object.assign(new Error(GUARDIAN_NOT_LINKED), { status: 400 });
         } else {
-          const gp = String(body.typeDetails?.guardian?.pan ?? "").trim().toUpperCase();
-          if (gp) {
-            const g = (await tx.execute(sql`
-              SELECT id FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND pan = ${gp}
-                AND deleted_at IS NULL AND merged_into_id IS NULL
-              ORDER BY dedup_pan DESC LIMIT 1`)).rows[0] as { id: string } | undefined;
-            guardianInvestorId = g?.id ?? null;
-          }
+          guardianInvestorId = await resolveGuardian(tx, session, { pan: body.typeDetails?.guardian?.pan });
         }
+        // Any minor saved without a linked guardian is "not verified" — a typed
+        // PAN that linked nobody, or no guardian PAN at all (the audit row is
+        // what the status and the MF proposal gates read).
+        guardianPanTried = !guardianInvestorId;
       }
+      guardianLinked = !!guardianInvestorId;
 
       const inserted = await tx
         .insert(investors)
@@ -358,6 +372,14 @@ export async function POST(req: NextRequest) {
         meta: { userId: session.userId } as any,
       } as any);
 
+      if (guardianInvestorId) {
+        await auditGuardianChange(tx, {
+          tenantId: session.tenantId, actorUserId: session.userId, minorId: id,
+          before: null, after: guardianInvestorId, via: body.guardianInvestorId ? "picked" : "pan",
+        });
+      }
+      if (guardianPanTried) await auditGuardianNotLinked(tx, { tenantId: session.tenantId, actorUserId: session.userId, minorId: id, via: guardianPan(body.typeDetails?.guardian?.pan) ? "pan" : "none" });
+
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,
@@ -386,10 +408,26 @@ export async function POST(req: NextRequest) {
       }
     });
 
-    return NextResponse.json({ id }, { status: 201 });
+    return NextResponse.json(
+      body.investorCategory === "minor"
+        ? { id, guardianLinked, ...(guardianPanTried ? { guardianNotice: GUARDIAN_PAN_NOT_LINKED } : {}) }
+        : { id },
+      { status: 201 },
+    );
   } catch (err: any) {
-    if (String(err?.message ?? "").includes("investors_tenant_pan_unique")) {
-      return NextResponse.json({ error: "investor with this PAN already exists" }, { status: 409 });
+    // Drizzle wraps the driver error: the constraint is on .cause (the PATCH
+    // route reads it the same way). Reading .message alone answered a 500.
+    const pg = `${err?.message ?? ""} ${err?.cause?.message ?? ""} ${err?.cause?.constraint ?? ""}`;
+    if (pg.includes("investors_tenant_pan_unique")) {
+      // A minor's key is built from the guardian's PAN and the name, so a
+      // retry of the same minor lands here instead of making a second record.
+      // The answer names nobody and says nothing about the guardian.
+      return NextResponse.json(
+        { error: creatingMinor
+            ? "A client with these details is already on record. Search the client list before adding them again."
+            : "investor with this PAN already exists" },
+        { status: 409 },
+      );
     }
     return handleApiError(err);
   }

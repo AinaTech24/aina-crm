@@ -58,6 +58,8 @@
  * (or, later, by named automations).
  */
 
+import { suitabilityProfile, suitabilityStatus } from "@/lib/risk-profile/own-assessment";
+import { guardianVerification, type GuardianVerification } from "@/lib/investors/guardian-verification";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { clientOpportunities, eventsOutbox, tasks, type ClientOpportunity, type NeedsAnalysis } from "@/db/schema";
@@ -103,6 +105,8 @@ export type Facts = {
   mandateAmount: number | null;
   riskState: "awaiting" | "not_profiled" | "current" | "expired";
   riskSignedAt: string | null;
+  /** A minor's guardian check (lib/investors/guardian-verification.ts). */
+  guardian: GuardianVerification;
   proposal: { id: string; status: string; type: string } | null;
   policy: { id: string; status: string; policyType: string | null } | null;
   transaction: { id: string; orderDate: string | null; amount: number | null } | null;
@@ -185,11 +189,21 @@ export async function loadFacts(tx: Tx, opp: ClientOpportunity): Promise<Facts> 
     if (r) fixedDeposit = r;
   }
 
-  const signed = inv?.risk_profile_signed_at ? new Date(inv.risk_profile_signed_at) : null;
+  // A minor linked to a guardian carries the guardian's copy (migration 0234);
+  // only an assessment of the minor's own account counts here (G-1).
+  const own = await suitabilityProfile(tx, opp.tenantId, opp.investorId);
+  const signedRaw = own.inheritedIgnored ? own.signedAt : inv?.risk_profile_signed_at;
+  const provisional = own.inheritedIgnored ? own.provisional : inv?.risk_profile_provisional;
+  const signed = signedRaw ? new Date(signedRaw) : null;
   const yearAgo = new Date(Date.now() - 365 * 864e5);
-  const riskState: Facts["riskState"] = inv?.risk_profile_provisional
+  // A minor: the own assessment's own expiry (an upload states one) decides,
+  // never the guardian's copied dates (G-1 + migration 0236).
+  const minorState = own.inheritedIgnored
+    ? ({ Completed: "current", Provisional: "awaiting", "Due for review": "expired", "Not completed": "not_profiled" } as const)[suitabilityStatus(own)]
+    : null;
+  const riskState: Facts["riskState"] = minorState ?? (provisional
     ? "awaiting"
-    : !signed ? "not_profiled" : signed >= yearAgo ? "current" : "expired";
+    : !signed ? "not_profiled" : signed >= yearAgo ? "current" : "expired");
   const uccCodes = Array.isArray(inv?.ucc_codes) ? (inv!.ucc_codes as string[]) : [];
 
   return {
@@ -200,6 +214,7 @@ export async function loadFacts(tx: Tx, opp: ClientOpportunity): Promise<Facts> 
     mandateAmount: inv?.mandate_amount == null ? null : Number(inv.mandate_amount),
     riskState,
     riskSignedAt: signed ? signed.toISOString() : null,
+    guardian: await guardianVerification(tx, opp.tenantId, opp.investorId),
     proposal: proposal ?? null,
     policy,
     transaction,
@@ -212,11 +227,24 @@ const hasNeedsAnalysis = (n: NeedsAnalysis | null | undefined) =>
 
 /* ─────────────────────────────── gates ─────────────────────────────── */
 
+/** A minor whose guardian could not be linked or was removed (G-1). */
+function guardianGate(f: Facts, client: string): Prerequisite[] {
+  return f.guardian === "pending" || f.guardian === "not_recorded" ? [{
+    label: "The minor's guardian verified",
+    satisfied: false,
+    hint: "Link the guardian's client record (Edit client → Guardian's client record). A guardian who is not a CRM client stays pending.",
+    cta: { href: `${client}#master`, label: "Open client details" },
+  }] : [];
+}
+
 /** What must already be true to ENTER `target`. Empty = nothing. */
 export function gateFor(target: string, opp: ClientOpportunity, f: Facts): Prerequisite[] {
   const client = `/dashboard/investors/${opp.investorId}`;
   if (target === "proposal" && opp.pipeline === "mf") {
-    return [{
+    // A minor whose guardian could not be linked or was removed: no proposal
+    // until the guardian is linked or confirmed (G-1). Never satisfied by the
+    // guardian's own risk profile — the one below is the account's own.
+    return [...guardianGate(f, client), {
       label: "A client-confirmed risk profile signed in the last 12 months",
       satisfied: f.riskState === "current",
       hint: f.riskState === "awaiting"
@@ -245,6 +273,7 @@ export function gateFor(target: string, opp: ClientOpportunity, f: Facts): Prere
   }
   if (target === "mf_transaction") {
     const out: Prerequisite[] = [
+      ...guardianGate(f, client),
       { label: "KYC verified", satisfied: f.kycVerified,
         hint: f.kycStatus && f.kycStatus !== "verified" ? `KYC is ${f.kycStatus.replace(/_/g, " ")}.` : undefined,
         cta: { href: `${client}#master`, label: "Open client details" } },

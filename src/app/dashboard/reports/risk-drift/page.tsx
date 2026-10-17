@@ -37,6 +37,7 @@ export default async function RiskDriftPage() {
 
   const data = await withTenant(session.tenantId, async (tx) => {
     const { rows, summary } = await computeRiskDrift(tx, session.tenantId, {
+      session,
       rmId: seesAll ? undefined : session.userId,
     });
     const rmRows = await tx.select({ id: users.id, name: users.name }).from(users);

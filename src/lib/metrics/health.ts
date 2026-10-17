@@ -26,6 +26,7 @@ import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { investors } from "@/db/schema";
 import { clientHealth, type HealthBreakdown, type InvestorForHealth } from "@/lib/investors/health";
+import { withOwnRiskForMinor, withOwnRiskForMinors } from "@/lib/risk-profile/own-assessment";
 
 /** The client has a service request past its resolution SLA (the SR page's `breached`). */
 export function srBreachExistsSql(investorId: SQL): SQL {
@@ -48,9 +49,11 @@ async function breachedAmong(tx: Tx, ids: string[]): Promise<Set<string>> {
 export async function getClientHealth(
   tx: Tx, tenantId: string, clientId: string, now: Date = new Date(),
 ): Promise<HealthBreakdown | null> {
-  const [row] = await tx.select().from(investors)
+  const [found] = await tx.select().from(investors)
     .where(and(eq(investors.id, clientId), eq(investors.tenantId, tenantId))).limit(1);
-  if (!row) return null;
+  if (!found) return null;
+  // A minor's risk is their own assessment, never the guardian's copy (G-1).
+  const row = await withOwnRiskForMinor(tx, tenantId, found);
   const breach = await breachedAmong(tx, [clientId]);
   const health = clientHealth({ ...(row as InvestorForHealth), hasOpenSrBreach: breach.has(clientId) }, now);
   if ((row as { healthScore?: number | null }).healthScore !== health.score
@@ -88,10 +91,15 @@ export async function refreshClientHealth(
         OR ${investors.healthScoredAt} < date_trunc('day', now() AT TIME ZONE 'Asia/Kolkata') AT TIME ZONE 'Asia/Kolkata')`);
     }
     if (cursor) conds.push(sql`${investors.id} > ${cursor}::uuid`);
-    const page = await tx.select().from(investors)
+    const raw = await tx.select().from(investors)
       .where(conds.length ? and(...conds) : undefined)
       .orderBy(investors.id).limit(batchSize);
-    if (page.length === 0) break;
+    if (raw.length === 0) break;
+    // A minor's risk is their own assessment, never the guardian's copy (G-1)
+    // — per firm, since a system-context refresh spans firms.
+    const page = (await Promise.all([...new Set(raw.map((r) => r.tenantId))].map((tn) =>
+      withOwnRiskForMinors(tx, tn, raw.filter((r) => r.tenantId === tn))))).flat()
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
     const breach = await breachedAmong(tx, page.map((r) => r.id));
     const rows: SQL[] = [];

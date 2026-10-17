@@ -6,6 +6,7 @@
  * scopes through the client / lead the row belongs to).
  */
 
+import { clientRiskSql, minorSql } from "@/lib/risk-profile/own-assessment";
 import { sql, type SQL } from "drizzle-orm";
 import { can, requireAny } from "@/lib/auth/rbac";
 import type { SessionUser } from "@/lib/auth/session";
@@ -289,14 +290,20 @@ const VERIFICATION_LABELS: Record<string, string> = {
 const PAN_RE = `'^[A-Z]{5}[0-9]{4}[A-Z]$'`;
 const i = (c: string) => sql.raw(`i.${c}`);
 
+/** A minor's risk is their own assessment, never the guardian's copy (G-1). */
+const OWN_RISK = clientRiskSql("i");
+
 export const riskProfilesExport: ExportModule = {
   key: "risk-profiles",
   label: "Risk Profiles",
   fileName: "risk-profiles",
   piiSubject: "investor",
   canView: hasInvestorView,
-  from: sql`investors i
-    LEFT JOIN investors g ON g.id = i.guardian_investor_id AND g.tenant_id = i.tenant_id
+  // The guardian is joined only when this user may open them (G-1): a hidden
+  // guardian's name is blank. A minor's risk columns are the minor's own
+  // assessment, never the guardian's copy (migration 0234).
+  from: async (tx, session) => sql`investors i
+    LEFT JOIN investors g ON g.id = i.guardian_investor_id AND g.tenant_id = i.tenant_id AND ${await investorScopeSql(tx, session, "g")}
     LEFT JOIN LATERAL (
       SELECT r.total_score, r.next_review_at, r.signed_at, r.signed_by_name, r.verification_method,
              r.profile_date, r.age, r.investment_horizon, r.income_stability, r.risk_capacity, r.risk_tolerance,
@@ -341,11 +348,11 @@ export const riskProfilesExport: ExportModule = {
     { key: "phone", label: "Mobile", group: "Client", sql: i("phone"), pii: "phone" },
     { key: "email", label: "Email", group: "Client", sql: i("email"), pii: "email" },
 
-    { key: "category", label: "Risk category", group: "Risk profile", sql: sql`initcap(replace(i.risk_profile, '_', ' '))`, default: true },
-    { key: "suggested", label: "Suggested from age (not confirmed)", group: "Risk profile", sql: sql`(i.risk_profile_provisional IS TRUE)`, kind: "bool" },
+    { key: "category", label: "Risk category", group: "Risk profile", sql: sql`initcap(replace(${OWN_RISK.category}, '_', ' '))`, default: true },
+    { key: "suggested", label: "Suggested from age (not confirmed)", group: "Risk profile", sql: sql`(${OWN_RISK.provisional} IS TRUE)`, kind: "bool" },
     { key: "status", label: "Status", group: "Risk profile", sql: labelCase(riskBucketCaseSql(), RISK_BUCKET_LABELS), default: true },
-    { key: "score", label: "Score", group: "Risk profile", sql: sql`COALESCE(rp.total_score, i.risk_profile_score)`, kind: "number", default: true },
-    { key: "signed", label: "Last signed", group: "Risk profile", sql: dIst(i("risk_profile_signed_at")), kind: "date", default: true },
+    { key: "score", label: "Score", group: "Risk profile", sql: sql`COALESCE(rp.total_score, ${OWN_RISK.score})`, kind: "number", default: true },
+    { key: "signed", label: "Last signed", group: "Risk profile", sql: dIst(OWN_RISK.signedAt), kind: "date", default: true },
     { key: "next_review", label: "Next review", group: "Risk profile", sql: d(sql`rp.next_review_at`), kind: "date", default: true },
     { key: "profile_date", label: "Profile date", group: "Risk profile", sql: d(sql`rp.profile_date`), kind: "date" },
     { key: "verification", label: "How it was taken", group: "Risk profile", sql: labelCase(sql`rp.verification_method`, VERIFICATION_LABELS) },
@@ -361,6 +368,7 @@ export const riskProfilesExport: ExportModule = {
     { key: "objective", label: "Investment objective", group: "Answers", sql: sql`replace(rp.investment_objective, '_', ' ')` },
     { key: "mf_experience", label: "MF experience", group: "Answers", sql: sql`replace(rp.mf_experience, '_', ' ')` },
     { key: "net_worth", label: "Net worth band", group: "Answers", sql: sql`replace(rp.net_worth_band, '_', ' ')` },
+    { key: "guardian_risk", label: "Guardian's own risk category (not this account's)", group: "Client", sql: sql`(CASE WHEN ${minorSql("i")} THEN initcap(replace(g.risk_profile, '_', ' ')) END)` },
   ],
 };
 

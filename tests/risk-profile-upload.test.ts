@@ -156,10 +156,25 @@ describe.skipIf(!TEST_DB)("recordUploadedRiskProfile", () => {
     expect((await bucket(ids.b)).b).toBe("current");
   });
 
-  it("a minor's profile is the guardian's: refused on the minor, copied to them from the guardian", async () => {
-    await expect(upload(ids.minor, {})).rejects.toMatchObject({ status: 409 });
+  it("a minor's upload is the MINOR'S OWN assessment (G-1): recorded on the minor with a verified guardian; the guardian's upload never becomes it", async () => {
+    const { suitabilityProfile } = await import("@/lib/risk-profile/own-assessment");
+    const r = await upload(ids.minor, { assessedOn: "2026-03-03", expiresOn: "2029-03-03", category: "moderate", score: 22 });
+    expect(r.becameCurrent).toBe(true);
+    const h = (await q(sql`SELECT final_category, next_review_at::text nr, basis, verification_method, rm_remarks FROM risk_profile_responses WHERE investor_id = ${ids.minor}::uuid`)).rows as any[];
+    expect(h).toHaveLength(1);
+    expect(h[0]).toMatchObject({ final_category: "moderate", nr: "2029-03-03", basis: "uploaded", verification_method: "client_physical" });
+    expect(h[0].rm_remarks).toMatch(/minor's own account/);
+    // The guardian's own upload: 0234 / 0236 still copy it onto the minor's ROW,
+    // but the minor's suitability is the minor's own assessment and its expiry.
     await upload(ids.guardian, { assessedOn: "2026-04-01", expiresOn: "2028-04-01", category: "aggressive", score: 33 });
-    expect(await row(ids.minor)).toMatchObject({ risk_profile: "aggressive", signed: "2026-04-01", stated: "2028-04-01", expires: "2028-04-01" });
+    expect(await row(ids.minor)).toMatchObject({ risk_profile: "aggressive" }); // the copy, which no reader uses
+    const own = await withSystem((tx) => suitabilityProfile(tx, tenant, ids.minor));
+    expect(own).toMatchObject({ category: "moderate", score: 22, expiresOn: "2029-03-03", inheritedIgnored: true });
+    // No guardian on record: refused (the guardian must be verified first), nothing written.
+    const orphan = randomUUID();
+    await q(sql`INSERT INTO investors (id, tenant_id, name, dedup_pan, investor_category, is_minor) VALUES (${orphan}::uuid, ${tenant}::uuid, 'Unlinked Child', false, 'minor', true)`);
+    await expect(upload(orphan, {})).rejects.toMatchObject({ status: 409 });
+    expect(((await q(sql`SELECT count(*)::int n FROM risk_profile_responses WHERE investor_id = ${orphan}::uuid`)).rows[0] as any).n).toBe(0);
   });
 
   it("bad dates are refused and nothing is written", async () => {

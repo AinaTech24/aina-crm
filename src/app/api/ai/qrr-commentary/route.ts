@@ -18,7 +18,9 @@ import { and, desc, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireAny } from "@/lib/auth/rbac";
-import { investors, transactions, reviewMeetings } from "@/db/schema";
+import { transactions, reviewMeetings } from "@/db/schema";
+import { loadViewableInvestor } from "@/lib/investors/access";
+import { withOwnRiskForMinor } from "@/lib/risk-profile/own-assessment";
 import { generateQrrCommentary } from "@/lib/ai/assistant";
 
 export const dynamic = "force-dynamic";
@@ -41,10 +43,12 @@ export async function POST(req: NextRequest) {
     }
 
     const ctx = await withTenant(session.tenantId, async (tx) => {
-      const inv = (
-        await tx.select().from(investors).where(eq(investors.id, parse.data.investorId)).limit(1)
-      )[0];
-      if (!inv) return null;
+      // Only a client the caller may open (404 outside their book, same as the
+      // client page) — the commentary is built from that client's record.
+      const viewable = await loadViewableInvestor(tx, session, parse.data.investorId);
+      if (!viewable) return null;
+      // A minor's risk is their own assessment, never the guardian's copy (G-1).
+      const inv = await withOwnRiskForMinor(tx, session.tenantId, viewable);
       const recent = await tx
         .select({
           orderDate: transactions.orderDate,

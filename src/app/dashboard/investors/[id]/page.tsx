@@ -30,6 +30,7 @@ import {
 } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { loadViewableInvestor } from "@/lib/investors/access";
+import { withMinorOwnRisk } from "@/lib/investors/guardian-link";
 import { formatINR, formatDate, formatRelative, formatPhone, isValidIndianMobile } from "@/lib/utils";
 import { formatMoney, formatPercent } from "@/lib/format";
 import { fromActivities, fromCommunications, fromMeetings, fromServiceRequests, fromTasks, mergeTimeline } from "@/lib/timeline";
@@ -378,7 +379,8 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
     } as any);
 
     return {
-      investor: inv,
+      // A minor's risk fields are the minor's own assessment for every viewer; the guardian's is shown only through guardianForViewer (G-1).
+      investor: await withMinorOwnRisk(tx, session, inv),
       folios: foliosRows,
       sips: sipsRows,
       goals: goalsRows,
@@ -1073,7 +1075,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
             </h2>
             <div className="flex items-center gap-3">
               <SendRiskProfileLinkButton investorId={inv.id} />
-              {can(session.roles, "risk_profile.manage", session.permissions) && inv.investorCategory !== "minor" && (
+              {can(session.roles, "risk_profile.manage", session.permissions) && (
                 <UploadRiskProfileButton initialClient={{ id: inv.id, name: inv.name }} appearance="link" />
               )}
               <Link
@@ -1451,7 +1453,7 @@ function ClientTypeGroups({
     const turns18 = majorityDate(dob);
     return (
       <Group title="Guardian">
-        <KV label="Guardian" node={g.name ? (guardianId ? <Link href={`/dashboard/investors/${guardianId}`} className="hover:underline">{g.name}</Link> : g.name) : null} sub={guardianId ? "Risk profile is the guardian's" : undefined} />
+        <KV label="Guardian" node={g.name ? (guardianId ? <Link href={`/dashboard/investors/${guardianId}`} className="hover:underline">{g.name}</Link> : g.name) : null} />
         <KV label="Relationship" value={label(GUARDIAN_RELATIONS, g.relation)} />
         <KV label="Guardian's PAN" node={pan(g.pan)} />
         <KV label="Guardian's date of birth" value={day(g.dob)} />
