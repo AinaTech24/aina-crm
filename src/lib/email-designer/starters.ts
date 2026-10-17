@@ -760,6 +760,7 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
         b({ type: "logo" } as any),
         b({ type: "heading", text: "Thank you for your time", level: "h2", align: "left" } as any),
         b({ type: "text", html: "Dear {{investor.name}},<br><br>It was a pleasure meeting with you. Thank you for your time. Here's a quick summary of what we discussed and the next steps we agreed on.", align: "left" } as any),
+        b({ type: "text", html: "<b>Meeting held on:</b> {{meeting_held_on}}<br><b>Agenda:</b> {{meeting_agenda}}", align: "left" } as any),
         b({ type: "text", html: "<b>Next steps / action items:</b><br>We've noted the key points, the decisions we reached, and who will action each item and by when. We'll follow up on these and keep you updated on progress.", align: "left" } as any),
         b({ type: "text", html: "If I've missed anything or you have questions, just reply to this email. Looking forward to moving ahead together.", align: "left" } as any),
         b({ type: "button", label: "View your portal", url: "{{system.dashboard_url}}", align: "center", style: "solid", fullWidth: false } as any),

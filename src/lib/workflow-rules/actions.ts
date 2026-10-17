@@ -189,6 +189,7 @@ async function enrichmentVars(ctx: ActionContext): Promise<Record<string, string
   const rec = ctx.record as {
     rm_id?: string | null; owner_id?: string | null; assigned_to_user_id?: string | null; assignee_id?: string | null;
     meeting_date?: string | null; meeting_mode?: string | null; location_or_link?: string | null;
+    discussion_points?: string | null;
   };
   const out: Record<string, string> = {};
   const uid = rec.rm_id ?? rec.owner_id ?? rec.assigned_to_user_id ?? rec.assignee_id;
@@ -205,8 +206,13 @@ async function enrichmentVars(ctx: ActionContext): Promise<Record<string, string
     const d = new Date(rec.meeting_date);
     if (!isNaN(d.getTime())) {
       out.meeting_when = d.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" });
+      // The day it was held, without the time — for minutes / thank-you mails.
+      out.meeting_held_on = d.toLocaleDateString("en-IN", { dateStyle: "medium", timeZone: "Asia/Kolkata" });
     }
   }
+  // The agenda typed on the meeting (Discussion points).
+  const agenda = String(rec.discussion_points ?? "").trim();
+  if (agenda) out.meeting_agenda = agenda;
   // Online meetings carry a join link the client needs. {{meeting_join}} is a
   // ready-made line that's blank for offline meetings / when no link was pasted,
   // so templates can include it unconditionally.

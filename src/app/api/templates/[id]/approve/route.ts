@@ -64,7 +64,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // WA templates still need Meta approval — keep template.status = pending_approval
       // until the sync worker flips to APPROVED on the external side.
       if (tpl?.channel !== "whatsapp") {
-        await tx.update(templates).set({ status: "approved" } as any).where(and(eq(templates.id, id), eq(templates.tenantId, session.tenantId)));
+        // The approved version replaces whichever one was in use.
+        await tx
+          .update(templates)
+          .set({ status: "approved", currentVersionId: ver.id } as any)
+          .where(and(eq(templates.id, id), eq(templates.tenantId, session.tenantId)));
       }
 
       await recordAudit(tx, {

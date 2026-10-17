@@ -36,6 +36,11 @@ export function buildSampleVariables(): Record<string, unknown> {
   const out: Record<string, any> = {};
   for (const f of MERGE_FIELDS) {
     const [root, ...rest] = f.token.split(".");
+    // A flat token ({{minutes}}) is a plain value, not a namespace.
+    if (rest.length === 0) {
+      out[root] = f.example;
+      continue;
+    }
     out[root] ??= {};
     let cur: any = out[root];
     for (let i = 0; i < rest.length - 1; i++) {
