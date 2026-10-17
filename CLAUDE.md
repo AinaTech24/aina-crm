@@ -291,6 +291,19 @@ the client page's Overview tab.
   creates a "client won" task (`meta.wonOpportunityId`, so closing does not
   complete it); reject needs a reason, returns to Transaction placed with a fix
   task, and the rejected transaction no longer counts in `loadFacts`.
+- **Each step asks for what it needs** (2026-10-17, migration 0240,
+  `lib/opportunities/steps.ts`, `POST /api/opportunities/[id]/step`,
+  `StepActions.tsx`): Need identified → Log call (no answer stays, with a
+  retry date) or Schedule meeting (made through the Meetings API, linked as
+  `meeting_id`; completing it in Meetings moves the journey on); Discussion →
+  Meeting done / Reschedule; Client accepted, KYC verified, UCC active (code),
+  Mandate active (ref, limit), Order placed (amount, date, order no.), and the
+  insurance and general steps each record their facts on the client and in
+  `step_details`. Back-office steps can be handed to an operations person
+  ("Assign to operations": a task with `meta.opportunityStepOf`, not the
+  follow-up). Every pop-up offers the next follow-up date and no notes box.
+  Gates still apply; KYC / UCC / mandate buttons stay clickable because they
+  record the fact the gate asks for.
 - **Follow-ups ARE tasks.** An opportunity's next follow-up is its earliest
   open task with `meta.opportunityId` — there is no column. The follow-up date
   chosen at creation is the first task's due date (10:00 IST; default two
