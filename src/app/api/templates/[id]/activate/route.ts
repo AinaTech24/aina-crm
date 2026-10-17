@@ -87,7 +87,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
       await tx
         .update(templates)
-        .set({ currentVersionId: ver.id, status: "approved", updatedAt: new Date() } as any)
+        .set({ currentVersionId: ver.id, status: "approved", updatedAt: new Date() })
         .where(and(eq(templates.id, id), eq(templates.tenantId, session.tenantId)));
 
       await recordAudit(tx, {

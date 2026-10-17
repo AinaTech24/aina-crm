@@ -166,7 +166,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
         // Approved straight away: this version replaces whichever one was in use.
         await tx
           .update(templates)
-          .set({ status: "approved", currentVersionId: ver.id } as any)
+          .set({ status: "approved", currentVersionId: ver.id })
           .where(and(eq(templates.id, id), eq(templates.tenantId, session.tenantId)));
       } else if (!liveElsewhere) {
         await tx.update(templates).set({ status: templateStatus } as any).where(and(eq(templates.id, id), eq(templates.tenantId, session.tenantId)));

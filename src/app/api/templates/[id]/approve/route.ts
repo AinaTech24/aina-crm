@@ -67,7 +67,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // The approved version replaces whichever one was in use.
         await tx
           .update(templates)
-          .set({ status: "approved", currentVersionId: ver.id } as any)
+          .set({ status: "approved", currentVersionId: ver.id })
           .where(and(eq(templates.id, id), eq(templates.tenantId, session.tenantId)));
       }
 
