@@ -66,6 +66,7 @@ export function OpportunitiesPanel({ investorId, investorName }: { investorId: s
   const params = useSearchParams();
   const [items, setItems] = useState<OpportunityView[] | null>(null);
   const [staff, setStaff] = useState<Staff[]>([]);
+  const [assignees, setAssignees] = useState<{ list: Staff[]; me: string | null }>({ list: [], me: null });
   const [canWork, setCanWork] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState<{ product: string } | null>(null);
@@ -78,6 +79,7 @@ export function OpportunitiesPanel({ investorId, investorName }: { investorId: s
       if (!res.ok) throw new Error(j.error ?? "Could not load opportunities");
       setItems(j.items ?? []);
       setStaff(j.staff ?? []);
+      setAssignees({ list: j.assignees ?? [], me: j.me ?? null });
       setCanWork(!!j.canWork);
       setError(null);
       return (j.items ?? []) as OpportunityView[];
@@ -191,6 +193,7 @@ export function OpportunitiesPanel({ investorId, investorName }: { investorId: s
           initialProduct={creating.product}
           openProducts={openProducts}
           staff={staff}
+          assignees={assignees}
           onClose={() => setCreating(null)}
           onCreated={async () => { setCreating(null); await load(); router.refresh(); }}
         />
@@ -493,21 +496,24 @@ function StageRail({ stages }: { stages: OpportunityView["stages"] }) {
 
 /* ─────────────────────────────── dialogs ─────────────────────────────── */
 
-export function NewOpportunityDialog({ investorId: fixedInvestorId, investorName: fixedInvestorName, initialProduct, openProducts: fixedOpen, staff: fixedStaff, onClose, onCreated }: {
+export function NewOpportunityDialog({ investorId: fixedInvestorId, investorName: fixedInvestorName, initialProduct, openProducts: fixedOpen, staff: fixedStaff, assignees: fixedAssignees, onClose, onCreated }: {
   /** The client — omitted in the Opportunities module, where the dialog picks one. */
   investorId?: string; investorName?: string;
   initialProduct: string; openProducts?: Set<string>; staff?: Staff[];
+  /** Who it may be assigned to (GET …/opportunities `assignees`), and the viewer — the default. */
+  assignees?: { list: Staff[]; me: string | null };
   onClose: () => void; onCreated: (opportunity?: OpportunityView) => void;
 }) {
   const [client, setClient] = useState<{ id: string; name: string } | null>(
     fixedInvestorId ? { id: fixedInvestorId, name: fixedInvestorName ?? "" } : null,
   );
-  // Picked in the module: what that client already has open, and who can co-own.
-  const [picked, setPicked] = useState<{ open: Set<string>; staff: Staff[] } | null>(null);
+  // Picked in the module: what that client already has open, who can co-own, who it can be assigned to.
+  const [picked, setPicked] = useState<{ open: Set<string>; staff: Staff[]; assignees: { list: Staff[]; me: string | null } } | null>(null);
   const [product, setProduct] = useState(initialProduct);
   const [value, setValue] = useState("");
   const [mode, setMode] = useState<"" | "sip" | "lumpsum">("");
   const [coOwnerId, setCoOwnerId] = useState("");
+  const [ownerId, setOwnerId] = useState("");
   const [followUpOn, setFollowUpOn] = useState(istDay(2));
   // "Later": the client wants it, but not yet — started parked.
   const [when, setWhen] = useState<"now" | "later">("now");
@@ -518,7 +524,16 @@ export function NewOpportunityDialog({ investorId: fixedInvestorId, investorName
   const pipeline = product ? productPipeline(product) : null;
   const openProducts = fixedOpen ?? picked?.open ?? new Set<string>();
   const staff = fixedStaff ?? picked?.staff ?? [];
-  const insuranceTeam = useMemo(() => staff.filter((s) => s.insurance), [staff]);
+  const insuranceTeam = useMemo(() => staff.filter((s) => s.insurance && s.id !== ownerId), [staff, ownerId]);
+  const assignTo = fixedAssignees ?? picked?.assignees ?? null;
+
+  // Assigned to the person creating it, unless they can't take this client.
+  useEffect(() => {
+    if (!assignTo) return setOwnerId("");
+    setOwnerId((cur) => assignTo.list.some((s) => s.id === cur) ? cur
+      : assignTo.list.some((s) => s.id === assignTo.me) ? assignTo.me!
+      : assignTo.list[0]?.id ?? "");
+  }, [assignTo]);
 
   async function pickClient(id: string, name: string) {
     setClient({ id, name });
@@ -526,13 +541,14 @@ export function NewOpportunityDialog({ investorId: fixedInvestorId, investorName
     const res = await fetch(`/api/investors/${id}/opportunities`, { cache: "no-store" }).catch(() => null);
     const j = res?.ok ? await res.json().catch(() => ({})) : {};
     const open = new Set<string>(((j.items ?? []) as OpportunityView[]).filter((o) => o.status === "open").map((o) => o.product));
-    setPicked({ open, staff: j.staff ?? [] });
+    setPicked({ open, staff: j.staff ?? [], assignees: { list: j.assignees ?? [], me: j.me ?? null } });
     if (open.has(product)) setProduct("");
   }
 
   async function save() {
     if (!client) return setErr("Pick the client.");
     if (!product) return setErr("Pick a product.");
+    if (!ownerId) return setErr("Pick who it is assigned to.");
     if (when === "now" && followUpOn && followUpOn < istDay()) return setErr("The follow-up date can't be in the past.");
     const laterErr = when === "later" ? laterError(later) : null;
     if (laterErr) return setErr(laterErr);
@@ -546,7 +562,8 @@ export function NewOpportunityDialog({ investorId: fixedInvestorId, investorName
           product,
           expectedValue: value ? Number(value.replace(/[^0-9.]/g, "")) : null,
           investmentMode: pipeline === "mf" && mode ? mode : null,
-          coOwnerId: coOwnerId || null,
+          ownerId,
+          coOwnerId: coOwnerId && coOwnerId !== ownerId ? coOwnerId : null,
           notes: notes.trim() || null,
           source: initialProduct ? "cross_sell" : "manual",
           followUpOn: when === "now" ? followUpOn || null : null,
@@ -559,7 +576,7 @@ export function NewOpportunityDialog({ investorId: fixedInvestorId, investorName
         ? "Already open — showing that one"
         : when === "later"
           ? `Saved for later — back on ${formatDate(later.day)}, with a reminder before it`
-          : `Opportunity started — follow-up on ${formatDate(followUpOn || istDay(2))} is on the owner's list`);
+          : `Opportunity started — follow-up on ${formatDate(followUpOn || istDay(2))} is on ${ownerId === assignTo?.me ? "your" : `${assignTo?.list.find((s) => s.id === ownerId)?.name ?? "the owner"}'s`} list`);
       onCreated(j.opportunity);
     } finally {
       setBusy(false);
@@ -597,6 +614,18 @@ export function NewOpportunityDialog({ investorId: fixedInvestorId, investorName
                   {p.label}{openProducts.has(p.key) ? " — already open" : ""}
                 </option>
               ))}
+            </SelectField>
+            )}
+          </Field>
+          <Field label="Assign to" required>
+            {(id, d) => (
+            <SelectField id={id} aria-describedby={d} value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className="w-full"
+              disabled={!assignTo || assignTo.list.length === 0}>
+              {!assignTo
+                ? <option value="">{client ? "Loading…" : "Pick the client first"}</option>
+                : assignTo.list.length === 0
+                  ? <option value="">Nobody can take this client</option>
+                  : assignTo.list.map((s) => <option key={s.id} value={s.id}>{s.id === assignTo.me ? `${s.name} (me)` : s.name}</option>)}
             </SelectField>
             )}
           </Field>

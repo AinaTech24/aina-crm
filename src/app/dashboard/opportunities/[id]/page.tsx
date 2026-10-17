@@ -14,6 +14,7 @@ import { requireSession } from "@/lib/auth/session";
 import { requireInvestorView } from "@/lib/investors/access";
 import { canWorkOpportunities, loadViewableOpportunity } from "@/lib/opportunities/access";
 import { listOpportunities } from "@/lib/opportunities/journey";
+import { opportunityAssignees } from "@/lib/opportunities/assignees";
 import { stageName } from "@/lib/opportunities/stages";
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { Badge } from "@/components/ui/Badge";
@@ -68,11 +69,12 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
            ORDER BY name LIMIT 300`)).rows as Array<{ id: string; name: string; roles: string[] }>)
           .map((u) => ({ id: u.id, name: cleanName(u.name) ?? u.name, insurance: (u.roles ?? []).includes("insurance_team") }))
       : [];
-    return { view, client, history, tasks, staff };
+    const assignees = canWork && view.status === "open" ? await opportunityAssignees(tx, session, view.investorId) : [];
+    return { view, client, history, tasks, staff, assignees };
   }, { userId: session.userId, branchId: session.branchId ?? undefined, roles: session.roles });
 
   if (!data) notFound();
-  const { view: o, client, history, tasks, staff } = data;
+  const { view: o, client, history, tasks, staff, assignees } = data;
   const nowMs = Date.now();
 
   return (
@@ -132,7 +134,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
             </ul>
           </section>
 
-          <OpportunityDetailsCard o={o} canWork={canWork} staff={staff} />
+          <OpportunityDetailsCard o={o} canWork={canWork} staff={staff} assignees={assignees} />
 
           <section className="card-surface p-5">
             <h2 className="section-title">Tasks</h2>
