@@ -1,0 +1,4 @@
+# Shell scripts and git hooks must stay LF: with core.autocrlf=true (Windows) a
+# fresh checkout would turn them into CRLF and bash fails on the carriage return.
+*.sh text eol=lf
+.githooks/* text eol=lf
