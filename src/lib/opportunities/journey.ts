@@ -34,8 +34,6 @@
  * ── Skips (automatic, each with a history row saying why) ─────────────────
  *   suitability       the gate above is already met
  *   proposal/accepted a matching proposal is sent / accepted
- *   mf_kyc / mf_ucc   KYC verified / UCC on record
- *   mf_mandate        lumpsum, or an active mandate whose limit covers the SIP
  *   mf_transaction    a purchase or SIP on the client since the opportunity opened
  *   ins_*             the policy is recorded / past underwriting / issued
  * "Need identified" and "Discussion" are people talking and are never skipped
@@ -233,30 +231,32 @@ export function gateFor(target: string, opp: ClientOpportunity, f: Facts): Prere
       hint: "Record it on this opportunity before sharing a quote.",
     }];
   }
+  const out: Prerequisite[] = [];
   if (AFTER_ACCEPTED.has(target)) {
     const status = f.proposal?.status ?? null;
-    return [{
+    out.push({
       label: "The client has approved the proposal",
       satisfied: !!status && PROPOSAL_ACCEPTED.has(status),
       hint: !f.proposal ? "No proposal has been shared yet."
         : "Waiting for the client — the journey moves on as soon as they approve it.",
       cta: f.proposal ? { href: `/dashboard/proposals/${f.proposal.id}`, label: "Open proposal" } : undefined,
-    }];
+    });
   }
+  // KYC, UCC and mandate are client onboarding, not steps here — but no
+  // order is placed without them.
   if (target === "mf_transaction") {
-    const out: Prerequisite[] = [
+    out.push(
       { label: "KYC verified", satisfied: f.kycVerified,
         hint: f.kycStatus && f.kycStatus !== "verified" ? `KYC is ${f.kycStatus.replace(/_/g, " ")}.` : undefined,
         cta: { href: `${client}#master`, label: "Open client details" } },
       { label: "A UCC / CAN on record", satisfied: f.hasUcc, cta: { href: `${client}#master`, label: "Open client details" } },
-    ];
+    );
     if (opp.investmentMode === "sip") {
       out.push({ label: "An active mandate for the SIP", satisfied: mandateCovers(opp, f),
         hint: mandateHint(opp, f) });
     }
-    return out;
   }
-  return [];
+  return out;
 }
 
 function mandateCovers(opp: ClientOpportunity, f: Facts): boolean {
@@ -289,13 +289,6 @@ export function skipReason(stage: string, opp: ClientOpportunity, f: Facts): Ski
       return f.proposal && PROPOSAL_SENT.has(f.proposal.status) ? { kind: "evidence", reason: "proposal shared" } : null;
     case "accepted":
       return f.proposal && PROPOSAL_ACCEPTED.has(f.proposal.status) ? { kind: "evidence", reason: "client accepted the proposal" } : null;
-    case "mf_kyc":
-      return f.kycVerified ? { kind: "on_file", reason: "KYC verified" } : null;
-    case "mf_ucc":
-      return f.hasUcc ? { kind: "on_file", reason: "UCC on record" } : null;
-    case "mf_mandate":
-      if (opp.investmentMode !== "sip") return { kind: "on_file", reason: "lumpsum — no mandate needed" };
-      return mandateCovers(opp, f) ? { kind: "on_file", reason: "an active mandate covers the SIP" } : null;
     case "mf_transaction":
       return f.transaction
         ? { kind: "evidence", reason: `transaction on ${f.transaction.orderDate ? formatDate(f.transaction.orderDate) : "record"}` }

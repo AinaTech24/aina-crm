@@ -26,10 +26,10 @@ import type { Staff } from "./OpportunitiesPanel";
 
 type Action =
   | "log_call" | "schedule_meeting" | "reschedule_meeting" | "meeting_done" | "quote_shared" | "record_acceptance"
-  | "assign_ops" | "kyc_verified" | "ucc_active" | "mandate_active" | "order_placed"
+  | "assign_ops" | "order_placed"
   | "form_submitted" | "underwriting_cleared" | "policy_issued" | "executed" | "move";
 
-type FieldKey = "on" | "outcome" | "meeting" | "assignee" | "uccCode" | "mandate" | "amount" | "orderNo" | "formNo" | "policyNo";
+type FieldKey = "on" | "outcome" | "meeting" | "assignee" | "amount" | "orderNo" | "formNo" | "policyNo";
 
 type Spec = {
   action: Action;
@@ -39,9 +39,6 @@ type Spec = {
   primary?: boolean;
   /** Moves the journey on — so the next step's gate applies. */
   moves: boolean;
-  /** Records the very fact the gate asks for (KYC, UCC, mandate), so the
-   *  gate never greys it out; the server still checks it. */
-  satisfiesGate?: boolean;
   fields: FieldKey[];
   onLabel?: string;
   /** Ask for the next follow-up (not when the step ends the journey). */
@@ -50,7 +47,7 @@ type Spec = {
 
 const MODES: Array<[string, string]> = [["office", "At the office"], ["client_place", "At the client's place"], ["online", "Video call"], ["phone", "Phone call"]];
 const OPS_TITLE: Record<string, string> = {
-  mf_kyc: "Verify KYC", mf_ucc: "Create the UCC", mf_mandate: "Register the SIP mandate", mf_transaction: "Place the order",
+  mf_transaction: "Place the order",
   ins_proposal_form: "Submit the proposal form", ins_underwriting: "Track underwriting", gen_executed: "Execute the investment",
 };
 
@@ -87,12 +84,6 @@ function specsFor(o: OpportunityView): Spec[] {
       return [{ action: "quote_shared", label: "Quote shared outside the CRM", title: "Quote shared", moves: true, fields: ["on"], onLabel: "Shared on", followUp: true }];
     case "accepted":
       return [{ action: "record_acceptance", label: "Client accepted", title: "Client accepted", icon: <CheckCircle2 className="size-4" />, primary: true, moves: true, fields: ["on"], onLabel: "Accepted on", followUp: true }];
-    case "mf_kyc":
-      return [{ action: "kyc_verified", satisfiesGate: true, label: "KYC verified", title: "KYC verified", icon: <CheckCircle2 className="size-4" />, primary: true, moves: true, fields: ["on"], onLabel: "Verified on", followUp: true }, assign];
-    case "mf_ucc":
-      return [{ action: "ucc_active", satisfiesGate: true, label: "UCC active", title: "UCC active", icon: <CheckCircle2 className="size-4" />, primary: true, moves: true, fields: ["uccCode"], followUp: true }, assign];
-    case "mf_mandate":
-      return [{ action: "mandate_active", satisfiesGate: true, label: "Mandate active", title: "Mandate active", icon: <CheckCircle2 className="size-4" />, primary: true, moves: true, fields: ["mandate"], followUp: true }, assign];
     case "mf_transaction":
       return [{ action: "order_placed", label: "Order placed", title: "Order placed", icon: <CheckCircle2 className="size-4" />, primary: true, moves: true, fields: ["amount", "on", "orderNo"], onLabel: "Placed on", followUp: true }, assign];
     case "ins_proposal_form":
@@ -124,7 +115,7 @@ export function StepActions({ o, staff, gateOpen, onChange }: {
     <>
       {specs.map((s) => (
         <Button key={s.action} size="sm" variant={s.primary ? "primary" : "secondary"} icon={s.icon}
-          disabled={s.moves && gateOpen && !s.satisfiesGate} onClick={() => setOpen(s)}>
+          disabled={s.moves && gateOpen} onClick={() => setOpen(s)}>
           {s.label}
         </Button>
       ))}
@@ -151,9 +142,6 @@ function StepDialog({ o, spec, staff, onClose, onDone }: {
   const [mode, setMode] = useState(o.meeting?.mode ?? "office");
   const [assigneeId, setAssigneeId] = useState("");
   const [dueOn, setDueOn] = useState(istDay(2));
-  const [uccCode, setUccCode] = useState("");
-  const [mandateRef, setMandateRef] = useState("");
-  const [mandateAmount, setMandateAmount] = useState(o.investmentMode === "sip" && o.expectedValue ? String(o.expectedValue) : "");
   const [amount, setAmount] = useState(o.expectedValue ? String(o.expectedValue) : "");
   const [orderNo, setOrderNo] = useState("");
   const [formNo, setFormNo] = useState("");
@@ -184,8 +172,6 @@ function StepDialog({ o, spec, staff, onClose, onDone }: {
   async function save(force = false) {
     if (noAnswer && !followUpOn) return notify.error("Pick when to try again.");
     if (has("assignee") && !assigneeId) return notify.error("Pick who does it.");
-    if (has("uccCode") && !uccCode.trim()) return notify.error("Enter the UCC.");
-    if (has("mandate") && !mandateRef.trim()) return notify.error("Enter the mandate reference.");
     if (has("amount") && !(Number(amount) > 0)) return notify.error("Enter the amount.");
     if (has("policyNo") && !policyNo.trim()) return notify.error("Enter the policy number.");
     setBusy(true);
@@ -222,9 +208,6 @@ function StepDialog({ o, spec, staff, onClose, onDone }: {
         outcome: has("outcome") ? outcome : null,
         assigneeId: has("assignee") ? assigneeId : null,
         dueOn: has("assignee") ? dueOn : null,
-        uccCode: has("uccCode") ? uccCode.trim() : null,
-        mandateRef: has("mandate") ? mandateRef.trim() : null,
-        mandateAmount: has("mandate") && Number(mandateAmount) > 0 ? Number(mandateAmount) : null,
         amount: has("amount") ? Number(amount) : null,
         orderNo: has("orderNo") ? orderNo.trim() : null,
         formNo: has("formNo") ? formNo.trim() : null,
@@ -291,11 +274,6 @@ function StepDialog({ o, spec, staff, onClose, onDone }: {
             <Field label="Due on" required>
               {(id, d) => <DateField id={id} aria-describedby={d} value={dueOn} onChange={(e) => setDueOn(e.target.value)} min={today} />}
             </Field>
-          </>)}
-          {has("uccCode") && text("UCC", uccCode, setUccCode, { required: true, mono: true })}
-          {has("mandate") && (<>
-            {text("Mandate reference", mandateRef, setMandateRef, { required: true, mono: true })}
-            {text("Mandate limit (₹)", mandateAmount, setMandateAmount, { numeric: true })}
           </>)}
           {has("amount") && text("Amount (₹)", amount, setAmount, { required: true, numeric: true })}
           {has("orderNo") && text("Order number", orderNo, setOrderNo, { mono: true })}

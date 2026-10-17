@@ -4,9 +4,7 @@
  * stage it is not asking for anything — like schedule meeting, follow up").
  *
  * Every action records what it captured (`client_opportunities.step_details`,
- * by stage key; migration 0240), may write the client's own record where the
- * answer belongs there (KYC verified, the UCC, the mandate), and then moves
- * the journey through advanceOpportunity — so the compliance gates and the
+ * by stage key; migration 0240), and then moves the journey through advanceOpportunity — so the compliance gates and the
  * automatic skips apply exactly as they do to "Move to". An action can also
  * set the next follow-up (setFollowUp: the follow-up IS a task).
  *
@@ -17,9 +15,6 @@
  *                     (the meeting is moved by the Meetings API), log_call
  *   proposal          quote_shared (a quote given outside the CRM)
  *   accepted          record_acceptance
- *   mf_kyc            kyc_verified        (investors.kyc_status = verified)
- *   mf_ucc            ucc_active          (investors.bse_ucc_code)
- *   mf_mandate        mandate_active      (mandate status, reference, limit)
  *   mf_transaction    order_placed        (amount, date, order number) → review
  *   ins_*             form_submitted · underwriting_cleared · policy_issued
  *   gen_executed      executed
@@ -43,7 +38,7 @@ import { advanceOpportunity, setFollowUp, type Actor, type Prerequisite } from "
 
 export const STEP_ACTIONS = [
   "log_call", "schedule_meeting", "reschedule_meeting", "meeting_done", "quote_shared", "record_acceptance",
-  "assign_ops", "kyc_verified", "ucc_active", "mandate_active", "order_placed",
+  "assign_ops", "order_placed",
   "form_submitted", "underwriting_cleared", "policy_issued", "executed", "move",
 ] as const;
 export type StepAction = (typeof STEP_ACTIONS)[number];
@@ -56,9 +51,6 @@ export type StepInput = {
   meetingId?: string | null;
   assigneeId?: string | null;
   dueOn?: string | null;
-  uccCode?: string | null;
-  mandateRef?: string | null;
-  mandateAmount?: number | null;
   amount?: number | null;
   orderNo?: string | null;
   formNo?: string | null;
@@ -73,9 +65,6 @@ export type StepResult =
 
 /** Back-office steps whose work can be handed to an operations person. */
 export const OPS_STEPS: Record<string, string> = {
-  mf_kyc: "Verify KYC",
-  mf_ucc: "Create the UCC",
-  mf_mandate: "Register the SIP mandate",
   mf_transaction: "Place the order",
   ins_proposal_form: "Submit the proposal form",
   ins_underwriting: "Track underwriting / medicals",
@@ -90,9 +79,6 @@ const ACTION_STAGES: Record<Exclude<StepAction, "move" | "assign_ops">, string[]
   meeting_done: ["discussion"],
   quote_shared: ["proposal"],
   record_acceptance: ["accepted"],
-  kyc_verified: ["mf_kyc"],
-  ucc_active: ["mf_ucc"],
-  mandate_active: ["mf_mandate"],
   order_placed: ["mf_transaction"],
   form_submitted: ["ins_proposal_form"],
   underwriting_cleared: ["ins_underwriting"],
@@ -242,49 +228,6 @@ export async function runStepAction(tx: Tx, actor: Actor, id: string, input: Ste
         meta: { opportunityStepOf: opp.id, opportunityStep: stage },
       } as any);
       return stay({ assigneeId: input.assigneeId, assigneeName: who.name, dueOn: input.dueOn }, "step_assigned");
-    }
-
-    case "kyc_verified": {
-      await tx.execute(sql`
-        UPDATE investors SET kyc_status = 'verified', kyc_validated_at = ${on}::date, updated_at = now()
-         WHERE id = ${opp.investorId}::uuid AND tenant_id = ${opp.tenantId}::uuid
-      `);
-      await recordAudit(tx, {
-        tenantId: opp.tenantId, actorUserId: actor.userId, action: "investor.update", entityType: "investor",
-        entityId: opp.investorId, after: { kycStatus: "verified", kycValidatedAt: on, via: "opportunity" },
-      } as any);
-      return move(`KYC verified on ${formatDate(on)}`);
-    }
-
-    case "ucc_active": {
-      const code = (input.uccCode ?? "").trim().toUpperCase();
-      if (!code) return fail("Enter the UCC.");
-      await tx.execute(sql`
-        UPDATE investors SET bse_ucc_code = ${code}, updated_at = now()
-         WHERE id = ${opp.investorId}::uuid AND tenant_id = ${opp.tenantId}::uuid
-      `);
-      await recordAudit(tx, {
-        tenantId: opp.tenantId, actorUserId: actor.userId, action: "investor.update", entityType: "investor",
-        entityId: opp.investorId, after: { bseUccCode: code, via: "opportunity" },
-      } as any);
-      return move(`UCC ${code} active`, { uccCode: code });
-    }
-
-    case "mandate_active": {
-      const ref = (input.mandateRef ?? "").trim();
-      if (!ref) return fail("Enter the mandate reference.");
-      const limit = input.mandateAmount != null && input.mandateAmount > 0 ? input.mandateAmount : null;
-      await tx.execute(sql`
-        UPDATE investors
-           SET mandate_status = 'active', mandate_ref_no = ${ref},
-               mandate_amount = COALESCE(${limit}::numeric, mandate_amount), updated_at = now()
-         WHERE id = ${opp.investorId}::uuid AND tenant_id = ${opp.tenantId}::uuid
-      `);
-      await recordAudit(tx, {
-        tenantId: opp.tenantId, actorUserId: actor.userId, action: "investor.update", entityType: "investor",
-        entityId: opp.investorId, after: { mandateStatus: "active", mandateRefNo: ref, mandateAmount: limit, via: "opportunity" },
-      } as any);
-      return move(`Mandate ${ref} active${limit ? ` (limit ${formatMoney(limit)})` : ""}`, { mandateRef: ref, mandateAmount: limit });
     }
 
     case "order_placed": {

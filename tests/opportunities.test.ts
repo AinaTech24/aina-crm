@@ -69,15 +69,22 @@ describe("gates", () => {
   });
 
   it("an MF transaction needs KYC, a UCC and, for a SIP, a mandate that covers it", () => {
-    expect(gateFor("mf_transaction", opp(), facts()).every((p) => p.satisfied)).toBe(true);
-    expect(gateFor("mf_transaction", opp(), facts({ kycVerified: false, kycStatus: "expired" })).some((p) => !p.satisfied)).toBe(true);
-    expect(gateFor("mf_transaction", opp({ expectedValue: "50000" }), facts()).some((p) => !p.satisfied)).toBe(true);
-    expect(gateFor("mf_transaction", opp({ investmentMode: "lumpsum", expectedValue: "500000" }), facts({ mandateStatus: "none" })).every((p) => p.satisfied)).toBe(true);
+    const accepted = { proposal: { id: "p", status: "accepted", type: "mutual_fund" } } as Partial<Facts>;
+    expect(gateFor("mf_transaction", opp(), facts(accepted)).every((p) => p.satisfied)).toBe(true);
+    expect(gateFor("mf_transaction", opp(), facts({ ...accepted, kycVerified: false, kycStatus: "expired" })).some((p) => !p.satisfied)).toBe(true);
+    expect(gateFor("mf_transaction", opp(), facts({ ...accepted, hasUcc: false })).some((p) => !p.satisfied)).toBe(true);
+    expect(gateFor("mf_transaction", opp({ expectedValue: "50000" }), facts(accepted)).some((p) => !p.satisfied)).toBe(true);
+    expect(gateFor("mf_transaction", opp({ investmentMode: "lumpsum", expectedValue: "500000" }), facts({ ...accepted, mandateStatus: "none" })).every((p) => p.satisfied)).toBe(true);
+  });
+
+  it("KYC, UCC and mandate are not steps of the MF journey (2026-10-17)", () => {
+    expect(nextStage("mf", "accepted")).toBe("mf_transaction");
+    expect(OPPORTUNITY_STAGES.map((s) => s.key)).not.toContain("mf_kyc");
   });
 });
 
 describe("proposal approval and transaction review", () => {
-  const stepsAfterAccepted = ["mf_kyc", "ins_proposal_form", "gen_executed"];
+  const stepsAfterAccepted = ["mf_transaction", "ins_proposal_form", "gen_executed"];
   it("waits for the client to approve the proposal before the step after Client accepted", () => {
     for (const t of stepsAfterAccepted) {
       expect(gateFor(t, opp(), facts()).some((p) => !p.satisfied), t).toBe(true);
@@ -110,16 +117,11 @@ describe("proposal approval and transaction review", () => {
 describe("skips", () => {
   it("skips what an existing MF client already has", () => {
     const o = opp();
-    expect(skipReason("mf_kyc", o, facts())).not.toBeNull();
-    expect(skipReason("mf_ucc", o, facts())).not.toBeNull();
-    expect(skipReason("mf_mandate", o, facts())).not.toBeNull();
     expect(skipReason("suitability", o, facts())).not.toBeNull();
   });
 
   it("never skips a stage that is not on file", () => {
     const o = opp();
-    expect(skipReason("mf_kyc", o, facts({ kycVerified: false }))).toBeNull();
-    expect(skipReason("mf_mandate", o, facts({ mandateStatus: "pending" }))).toBeNull();
     expect(skipReason("proposal", o, facts())).toBeNull();
     expect(skipReason("identified", o, facts())).toBeNull();
     expect(skipReason("discussion", o, facts())).toBeNull();

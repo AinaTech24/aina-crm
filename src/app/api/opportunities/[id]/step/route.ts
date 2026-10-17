@@ -1,7 +1,7 @@
 /**
  * POST /api/opportunities/[id]/step — one of the current step's actions
  * (lib/opportunities/steps.ts): log a call, link a scheduled meeting, meeting
- * done, record acceptance, KYC / UCC / mandate done, order placed, hand the
+ * done, record acceptance, order placed, policy issued, hand the
  * step to operations … each with what it asks for and an optional next
  * follow-up date.
  *
@@ -27,9 +27,6 @@ const Body = z.object({
   meetingId: z.string().uuid().nullish(),
   assigneeId: z.string().uuid().nullish(),
   dueOn: day.nullish(),
-  uccCode: z.string().trim().max(40).nullish(),
-  mandateRef: z.string().trim().max(60).nullish(),
-  mandateAmount: z.coerce.number().nonnegative().max(1e12).nullish(),
   amount: z.coerce.number().nonnegative().max(1e12).nullish(),
   orderNo: z.string().trim().max(60).nullish(),
   formNo: z.string().trim().max(60).nullish(),

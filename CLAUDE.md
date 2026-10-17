@@ -247,12 +247,15 @@ the client page's Overview tab.
   us", and the owner gets a follow-up task (closed with the opportunity).
 - **The journey is a blueprint** (subject_type `opportunity`, module
   `opportunities`): identified → discussion → suitability → proposal → accepted
-  → the product branch (MF: KYC → UCC → mandate → transaction; insurance:
-  proposal form → underwriting → issued; general: executed) → won. Lost from
-  any open stage, with a reason and an optional revisit task.
-- **Skips**: a stage the client already satisfies (KYC verified, UCC on record,
-  lumpsum or a covering mandate, a sent / accepted proposal, a recorded
-  transaction or policy) is passed automatically with a history remark. The
+  → the product branch (MF: transaction → review; insurance: proposal form →
+  underwriting → issued; general: executed) → won. Lost from any open stage,
+  with a reason and an optional revisit task. **KYC, UCC and mandate are not
+  steps** (removed at the firm's request 2026-10-17, migration 0241 — they are
+  client onboarding); do not put them back. They remain a gate on
+  Transaction placed.
+- **Skips**: a stage the client already satisfies (a current risk profile or
+  needs analysis, a sent / accepted proposal, a recorded transaction or
+  policy) is passed automatically with a history remark. The
   people steps (identified, discussion) are never skipped — except when a
   proposal has been shared, which proves they happened.
 - **Gates, never bypassed**: an MF proposal needs a client-CONFIRMED risk
@@ -296,14 +299,12 @@ the client page's Overview tab.
   `StepActions.tsx`): Need identified → Log call (no answer stays, with a
   retry date) or Schedule meeting (made through the Meetings API, linked as
   `meeting_id`; completing it in Meetings moves the journey on); Discussion →
-  Meeting done / Reschedule; Client accepted, KYC verified, UCC active (code),
-  Mandate active (ref, limit), Order placed (amount, date, order no.), and the
-  insurance and general steps each record their facts on the client and in
+  Meeting done / Reschedule; Client accepted, Order placed (amount, date,
+  order no.), and the insurance and general steps each record their facts in
   `step_details`. Back-office steps can be handed to an operations person
   ("Assign to operations": a task with `meta.opportunityStepOf`, not the
   follow-up). Every pop-up offers the next follow-up date and no notes box.
-  Gates still apply; KYC / UCC / mandate buttons stay clickable because they
-  record the fact the gate asks for.
+  Gates still apply.
 - **Follow-ups ARE tasks.** An opportunity's next follow-up is its earliest
   open task with `meta.opportunityId` — there is no column. The follow-up date
   chosen at creation is the first task's due date (10:00 IST; default two
