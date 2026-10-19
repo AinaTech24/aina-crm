@@ -473,7 +473,7 @@ function NewInvestorPageInner() {
           </div>
           <Field label="Date of onboarding" type="date" value={form.onboardedAt} onChange={(v) => set("onboardedAt", v)} />
           {adult && <Field label="Anniversary date" type="date" value={form.anniversaryDate} onChange={(v) => set("anniversaryDate", v)} />}
-          <Field label="Date of demise" type="date" value={form.dateOfDemise} onChange={(v) => set("dateOfDemise", v)} />
+          <Field label="Date of death (demise)" type="date" value={form.dateOfDemise} onChange={(v) => set("dateOfDemise", v)} />
           <Field label="Last meeting date" type="date" value={form.lastReviewAt} onChange={(v) => set("lastReviewAt", v)} />
           <Field label="Next meeting date" type="date" future value={form.nextReviewAt} onChange={(v) => set("nextReviewAt", v)} />
           {reviewFromFamily ? (

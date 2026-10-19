@@ -33,7 +33,7 @@ import { registerNomineePanDocs } from "@/lib/investors/nominee-docs";
 import { recomputeFamilyHealthForInvestor } from "@/lib/families/health-persist";
 import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
 import { getClientHealth } from "@/lib/metrics/health";
-import { applyDemise, clearDemise, demiseDateError, type DemiseEffects } from "@/lib/investors/demise";
+import { applyDemise, applyInactive, clearDemise, demiseDateError, type DemiseEffects } from "@/lib/investors/demise";
 import { clientsHoldingMoney, holdersMessage } from "@/lib/investors/holds-money";
 import {
   investors,
@@ -626,6 +626,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const hadDemise = before.dateOfDemise ?? null;
       if (demiseDay && demiseDay !== hadDemise) {
         demise = await applyDemise(tx, { tenantId: session.tenantId, investorId: id, actorUserId: session.userId, day: demiseDay });
+      } else if (parse.data.status === "inactive" && before.status !== "inactive" && !before.mergedIntoId) {
+        // Marked Inactive by hand: the client stops transacting.
+        demise = await applyInactive(tx, { tenantId: session.tenantId, investorId: id, actorUserId: session.userId });
       } else if (demiseDay === null && hadDemise) {
         await clearDemise(tx, { tenantId: session.tenantId, investorId: id, actorUserId: session.userId });
       }

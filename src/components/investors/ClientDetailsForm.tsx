@@ -438,7 +438,7 @@ export function ClientDetailsForm({
         {adult && <Field label="Anniversary">
           {(id) => <DateField id={id} value={f.anniversaryDate} onChange={(e) => set("anniversaryDate", e.target.value)} className="w-full" />}
         </Field>}
-        <Field label="Date of demise" hint="Saving a date marks the client Inactive, stops their active SIPs and cancels pending orders. Clear it to undo the status.">
+        <Field label="Date of death (demise)" hint="Saving a date marks the client Inactive, stops their active SIPs and cancels pending orders. Clear it to undo the status.">
           {(id) => <DateField id={id} value={f.dateOfDemise} onChange={(e) => set("dateOfDemise", e.target.value)} className="w-full" />}
         </Field>
       </FieldSection>

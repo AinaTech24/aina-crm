@@ -40,21 +40,19 @@ export function demiseDateError(day: string, dob?: string | null, today = indiaT
 
 export type DemiseEffects = { sipsStopped: number; ordersCancelled: number; statusChanged: boolean };
 
-/** Apply a newly recorded date of demise. Call after the investor row is written. */
-export async function applyDemise(
-  tx: Tx, args: { tenantId: string; investorId: string; actorUserId: string | null; day: string },
-): Promise<DemiseEffects> {
-  const { tenantId, investorId, actorUserId, day } = args;
-  const status = await tx.execute(sql`
-    UPDATE investors SET status = 'inactive', updated_at = now()
-     WHERE id = ${investorId}::uuid AND tenant_id = ${tenantId}::uuid
-       AND status IN ('active', 'dormant', 'redemption_risk')
-    RETURNING id
-  `);
+/**
+ * Stop a client's activity in the CRM: their live SIPs become Stopped (the
+ * reason goes into the remarks) and orders still waiting are Cancelled. Shared
+ * by a recorded demise and by marking a client Inactive by hand.
+ */
+async function stopClientActivity(
+  tx: Tx, args: { tenantId: string; investorId: string; reason: string },
+): Promise<Pick<DemiseEffects, "sipsStopped" | "ordersCancelled">> {
+  const { tenantId, investorId, reason } = args;
   const sips = await tx.execute(sql`
     UPDATE sips
        SET status = 'stopped', updated_at = now(),
-           remarks = left('Stopped — client deceased on ' || ${day}::text || COALESCE(' · ' || NULLIF(remarks, ''), ''), 500)
+           remarks = left(${reason}::text || COALESCE(' · ' || NULLIF(remarks, ''), ''), 500)
      WHERE tenant_id = ${tenantId}::uuid AND investor_id = ${investorId}::uuid
        AND status IN ('active', 'paused', 'pending')
     RETURNING id
@@ -66,10 +64,38 @@ export async function applyDemise(
     RETURNING id
   `);
   if (sips.rows.length) await refreshActiveSipAmount(tx, { investorIds: [investorId] });
-  const effects = { sipsStopped: sips.rows.length, ordersCancelled: orders.rows.length, statusChanged: status.rows.length > 0 };
+  return { sipsStopped: sips.rows.length, ordersCancelled: orders.rows.length };
+}
+
+/** Apply a newly recorded date of demise. Call after the investor row is written. */
+export async function applyDemise(
+  tx: Tx, args: { tenantId: string; investorId: string; actorUserId: string | null; day: string },
+): Promise<DemiseEffects> {
+  const { tenantId, investorId, actorUserId, day } = args;
+  const status = await tx.execute(sql`
+    UPDATE investors SET status = 'inactive', updated_at = now()
+     WHERE id = ${investorId}::uuid AND tenant_id = ${tenantId}::uuid
+       AND status IN ('active', 'dormant', 'redemption_risk')
+    RETURNING id
+  `);
+  const stopped = await stopClientActivity(tx, { tenantId, investorId, reason: `Stopped — client deceased on ${day}` });
+  const effects = { ...stopped, statusChanged: status.rows.length > 0 };
   await recordAudit(tx, {
     tenantId, actorUserId, action: "investor.demise_recorded", entityType: "investor", entityId: investorId,
     after: { dateOfDemise: day, ...effects },
+  });
+  return effects;
+}
+
+/** A client was marked Inactive by hand: stop their SIPs and cancel pending orders. */
+export async function applyInactive(
+  tx: Tx, args: { tenantId: string; investorId: string; actorUserId: string | null },
+): Promise<DemiseEffects> {
+  const stopped = await stopClientActivity(tx, { ...args, reason: "Stopped — client marked inactive" });
+  const effects = { ...stopped, statusChanged: true };
+  await recordAudit(tx, {
+    tenantId: args.tenantId, actorUserId: args.actorUserId, action: "investor.marked_inactive",
+    entityType: "investor", entityId: args.investorId, after: effects,
   });
   return effects;
 }

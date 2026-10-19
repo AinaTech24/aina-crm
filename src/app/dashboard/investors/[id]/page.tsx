@@ -87,6 +87,7 @@ import { BlueprintStatusKV } from "@/components/investors/BlueprintStatusKV";
 import { ReviewCadenceEditor } from "@/components/investors/ReviewCadenceEditor";
 import { PortalAccessButton } from "@/components/investors/PortalAccessButton";
 import { RecordBusinessImpact } from "@/components/investors/RecordBusinessImpact";
+import { ClientActiveToggle } from "@/components/investors/ClientActiveToggle";
 import { ClientSummaryStrip } from "@/components/investors/ClientSummaryStrip";
 import { ClientReadinessStrip } from "@/components/investors/ClientReadinessStrip";
 import { PanReveal } from "@/components/investors/PanReveal";
@@ -521,6 +522,9 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           <>
             <LogActivityButton subject={{ type: "investor", id: inv.id, name: inv.name, phone: inv.phone }} label="Log call / visit" variant="primary" />
             <SendTemplateButtons type="investor" id={inv.id} name={inv.name} email={inv.email} phone={inv.whatsappPhone || inv.phone} />
+            {(can(session.roles, "investor.edit.all", session.permissions) || can(session.roles, "investor.edit.assigned", session.permissions)) && (
+              <ClientActiveToggle investorId={inv.id} name={inv.name} status={inv.status ?? null} />
+            )}
             <RecordMenu>
               <Link href={`/dashboard/review-meetings/new?investorId=${inv.id}`} className={MENU_ITEM}>
                 <CalendarPlus className={MENU_ICON} /> Schedule review meeting
@@ -732,7 +736,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           {/* Portfolio allocation — derives from already-loaded folios */}
           <RelatedListSection moduleKey="investors-detail" sectionKey="allocation">
             <div className="space-y-4">
-              <PortfolioAllocation folios={data.folios as any} />
+              <PortfolioAllocation folios={data.folios as any} holdings={v.holdings} />
               {showRisk && <SuitabilityCard suitability={suitability} />}
             </div>
           </RelatedListSection>
@@ -906,7 +910,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
             <KV label={typeKind === "huf" ? "Date formed" : clientTypeDef(inv.investorCategory).formedLabel ?? "Date formed"} value={typeDetails.entity?.formedOn ? formatDate(typeDetails.entity.formedOn) : "—"} />
           )}
           <KV label="Client since" value={inv.onboardedAt ? formatDate(inv.onboardedAt) : "—"} edit={{ id: inv.id, field: "onboardedAt", type: "date", value: inv.onboardedAt ? String(inv.onboardedAt).slice(0, 10) : "", nullable: true }} />
-          <KV label="Date of demise" value={inv.dateOfDemise ? formatDate(inv.dateOfDemise) : "—"} edit={{ id: inv.id, field: "dateOfDemise", type: "date", value: inv.dateOfDemise ? String(inv.dateOfDemise).slice(0, 10) : "", nullable: true }} />
+          <KV label="Date of death (demise)" value={inv.dateOfDemise ? formatDate(inv.dateOfDemise) : "—"} edit={{ id: inv.id, field: "dateOfDemise", type: "date", value: inv.dateOfDemise ? String(inv.dateOfDemise).slice(0, 10) : "", nullable: true }} />
           {adult && <KV label="Anniversary" value={inv.anniversaryDate ? formatDate(inv.anniversaryDate) : "—"} edit={{ id: inv.id, field: "anniversaryDate", type: "date", value: inv.anniversaryDate ? String(inv.anniversaryDate).slice(0, 10) : "", nullable: true }} />}
         </Group>
 
