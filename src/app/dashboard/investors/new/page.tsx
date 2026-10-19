@@ -97,6 +97,7 @@ function NewInvestorPageInner() {
     rmId: "" as string | null | "",
     onboardedAt: "",
     anniversaryDate: "",
+    dateOfDemise: "",
     lastReviewAt: "", // Last Meeting Date
     nextReviewAt: "", // Next Meeting Date
     reviewFrequency: "",
@@ -297,6 +298,7 @@ function NewInvestorPageInner() {
           })(),
           onboardedAt: u(form.onboardedAt),
           anniversaryDate: adult ? u(form.anniversaryDate) : undefined,
+          dateOfDemise: u(form.dateOfDemise),
           lastReviewAt: u(form.lastReviewAt),
           nextReviewAt: u(form.nextReviewAt),
           reviewFrequency: reviewFromFamily ? undefined : form.reviewFrequency || undefined,
@@ -471,6 +473,7 @@ function NewInvestorPageInner() {
           </div>
           <Field label="Date of onboarding" type="date" value={form.onboardedAt} onChange={(v) => set("onboardedAt", v)} />
           {adult && <Field label="Anniversary date" type="date" value={form.anniversaryDate} onChange={(v) => set("anniversaryDate", v)} />}
+          <Field label="Date of demise" type="date" value={form.dateOfDemise} onChange={(v) => set("dateOfDemise", v)} />
           <Field label="Last meeting date" type="date" value={form.lastReviewAt} onChange={(v) => set("lastReviewAt", v)} />
           <Field label="Next meeting date" type="date" future value={form.nextReviewAt} onChange={(v) => set("nextReviewAt", v)} />
           {reviewFromFamily ? (

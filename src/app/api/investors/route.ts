@@ -28,6 +28,7 @@ import { applyRiskCategory, RISK_CATEGORIES } from "@/lib/risk-profile/apply";
 import { cleanUccCodes } from "@/lib/investors/ucc";
 import { investors, eventsOutbox } from "@/db/schema";
 import { familyHeadRmId } from "@/lib/families/head-rm";
+import { applyDemise, demiseDateError } from "@/lib/investors/demise";
 
 export const dynamic = "force-dynamic";
 
@@ -86,6 +87,7 @@ const CreateBody = z.object({
   maritalStatus: z.string().optional(),
   modeOfHolding: z.string().optional(),
   anniversaryDate: z.string().optional(),
+  dateOfDemise: z.string().optional(),
   birthPlace: z.string().optional(),
   motherName: z.string().optional(),
   mobileRelation: z.string().optional(),
@@ -201,6 +203,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
     }
     const body = parse.data;
+    if (body.dateOfDemise) {
+      const bad = demiseDateError(body.dateOfDemise.slice(0, 10), body.dob);
+      if (bad) return NextResponse.json({ error: bad, field: "dateOfDemise" }, { status: 400 });
+    }
 
     // A minor is filed the way the registrar import files one (lib/rta/import.ts):
     // MINOR:<own PAN>, or — with no PAN of their own — MINOR:<guardian PAN>:<NAME>,
@@ -316,6 +322,7 @@ export async function POST(req: NextRequest) {
           maritalStatus: body.maritalStatus || null,
           modeOfHolding: singleHoldingOnly(body.investorCategory) ? "Single" : body.modeOfHolding || null,
           anniversaryDate: body.anniversaryDate || null,
+          dateOfDemise: body.dateOfDemise || null,
           birthPlace: body.birthPlace || null,
           motherName: body.motherName || null,
           mobileRelation: body.mobileRelation || null,
@@ -367,6 +374,11 @@ export async function POST(req: NextRequest) {
         after: { name: body.name, pan: storedPan, segmentTag: body.segmentTag },
         ...clientMeta,
       });
+
+      // A client entered with a date of demise starts Inactive.
+      if (body.dateOfDemise) {
+        await applyDemise(tx, { tenantId: session.tenantId, investorId: id, actorUserId: session.userId, day: body.dateOfDemise.slice(0, 10) });
+      }
 
       // Register each nominee's PAN file as a client document.
       if (canNominate(body.investorCategory)) await registerNomineePanDocs(tx, session.tenantId, id, body.nominees, session.userId);

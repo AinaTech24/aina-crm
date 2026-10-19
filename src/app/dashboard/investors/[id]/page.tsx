@@ -562,6 +562,15 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           last meeting, next review, risk, open work, insurance — above the
           deeper sections. Streams in on its own. */}
       <Suspense fallback={<div className="card-surface h-24 animate-pulse" aria-hidden />}>
+        {(inv as any).dateOfDemise && (
+          <div role="status" className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">
+            <span className="font-semibold text-destructive">Deceased — {formatDate((inv as any).dateOfDemise)}.</span>{" "}
+            <span className="text-muted-foreground">
+              The client is Inactive; their SIPs were stopped and pending orders cancelled when the date was recorded.
+              Processed transactions stay as the registrar's history.
+            </span>
+          </div>
+        )}
         <ClientSummaryStrip
           session={session}
           investorId={inv.id}
@@ -897,6 +906,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
             <KV label={typeKind === "huf" ? "Date formed" : clientTypeDef(inv.investorCategory).formedLabel ?? "Date formed"} value={typeDetails.entity?.formedOn ? formatDate(typeDetails.entity.formedOn) : "—"} />
           )}
           <KV label="Client since" value={inv.onboardedAt ? formatDate(inv.onboardedAt) : "—"} edit={{ id: inv.id, field: "onboardedAt", type: "date", value: inv.onboardedAt ? String(inv.onboardedAt).slice(0, 10) : "", nullable: true }} />
+          <KV label="Date of demise" value={(inv as any).dateOfDemise ? formatDate((inv as any).dateOfDemise) : "—"} edit={{ id: inv.id, field: "dateOfDemise", type: "date", value: (inv as any).dateOfDemise ? String((inv as any).dateOfDemise).slice(0, 10) : "", nullable: true }} />
           {adult && <KV label="Anniversary" value={inv.anniversaryDate ? formatDate(inv.anniversaryDate) : "—"} edit={{ id: inv.id, field: "anniversaryDate", type: "date", value: inv.anniversaryDate ? String(inv.anniversaryDate).slice(0, 10) : "", nullable: true }} />}
         </Group>
 

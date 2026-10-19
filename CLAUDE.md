@@ -291,6 +291,11 @@ the client page's Overview tab.
   creates a "client won" task (`meta.wonOpportunityId`, so closing does not
   complete it); reject needs a reason, returns to Transaction placed with a fix
   task, and the rejected transaction no longer counts in `loadFacts`.
+- **RTA data check** (2026-10-19, migration 0240). Approving an MF transaction
+  no longer wins the client: it moves to `rta_check` and creates a high-priority
+  task (`meta.opportunityId` + `rtaCheck: true`) to check the transaction against
+  the RTA data. **Won** is gated on that task being completed (`gateFor("won")`);
+  the "client won" task is created at that point (`createWonTask`).
 - **Follow-ups ARE tasks.** An opportunity's next follow-up is its earliest
   open task with `meta.opportunityId` — there is no column. The follow-up date
   chosen at creation is the first task's due date (10:00 IST; default two
@@ -311,6 +316,20 @@ the client page's Overview tab.
   board has a "Later" column and tile. Started from the card ("Client wants it
   later") or the New opportunity dialog (Now / Later). Diwali dates are a
   table in later-core — add the next year as the calendar rolls on.
+
+## Date of demise — a client who has died
+
+`investors.date_of_demise` (migration 0241), on every client type: the client
+form, Add client and the inline edit on the client page. Recording one
+(`lib/investors/demise.ts`, called by the investor PATCH / POST in the same
+transaction) marks the client **Inactive** (not Closed / Exited — they may
+still hold units pending transmission, so AUM keeps counting), **stops** their
+Active / Paused / Pending SIPs (remarks "Stopped — client deceased on …") and
+**cancels** orders still Pending / Submitted. Processed transactions are the
+registrar's history and are never deleted. Audited as `investor.demise_recorded`.
+Clearing the date returns an Inactive client to Active; SIPs stay stopped. The
+RTA SIP import (`processSipBook`) does not turn a stopped SIP of a deceased
+client back to Active. The client page shows a "Deceased" banner.
 
 ## Moving folios between two clients
 
