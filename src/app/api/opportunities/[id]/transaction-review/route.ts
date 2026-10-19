@@ -1,6 +1,6 @@
 /**
  * POST /api/opportunities/[id]/transaction-review
- *   { decision: "approve", remarks? }   → client won; a "client won" task is created
+ *   { decision: "approve", remarks? }   → moves to "RTA data check"; a task is created to check the RTA data
  *   { decision: "reject", remarks }     → back to "Transaction placed"; reason required
  *
  * Only valid while the opportunity stands at "Approve / reject transaction".

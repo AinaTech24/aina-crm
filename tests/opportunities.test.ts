@@ -73,6 +73,10 @@ describe("gates", () => {
     expect(gateFor("mf_transaction", opp(), facts({ kycVerified: false, kycStatus: "expired" })).some((p) => !p.satisfied)).toBe(true);
     expect(gateFor("mf_transaction", opp({ expectedValue: "50000" }), facts()).some((p) => !p.satisfied)).toBe(true);
     expect(gateFor("mf_transaction", opp({ investmentMode: "lumpsum", expectedValue: "500000" }), facts({ mandateStatus: "none" })).every((p) => p.satisfied)).toBe(true);
+    // Won (MF) waits for the RTA data check task to be completed.
+    expect(gateFor("won", opp(), facts({ rtaCheck: null })).some((p) => !p.satisfied)).toBe(true);
+    expect(gateFor("won", opp(), facts({ rtaCheck: { id: "t", status: "open" } })).some((p) => !p.satisfied)).toBe(true);
+    expect(gateFor("won", opp(), facts({ rtaCheck: { id: "t", status: "completed" } })).every((p) => p.satisfied)).toBe(true);
   });
 });
 
@@ -90,13 +94,18 @@ describe("proposal approval and transaction review", () => {
 
   it("an MF journey ends Transaction placed → Approve / reject transaction → Won", () => {
     expect(nextStage("mf", "mf_transaction")).toBe("txn_review");
-    expect(nextStage("mf", "txn_review")).toBe("won");
+    expect(nextStage("mf", "txn_review")).toBe("rta_check");
+    expect(nextStage("mf", "rta_check")).toBe("won");
     const t = new Set(opportunityTransitions().map((x) => `${x.from}>${x.to}`));
     expect(t.has("txn_review>mf_transaction")).toBe(true); // a rejection goes back
     expect(t.has("txn_review>lost")).toBe(true);
+    expect(t.has("txn_review>rta_check")).toBe(true);
+    expect(t.has("rta_check>won")).toBe(true);
+    expect(t.has("txn_review>won")).toBe(false); // approval no longer wins the client
   });
 
   it("never skips the review: a person approves or rejects", () => {
+    expect(skipReason("rta_check", opp(), facts({ transaction: { id: "t", orderDate: null, amount: 1 } }))).toBeNull();
     expect(skipReason("txn_review", opp(), facts({ transaction: { id: "t", orderDate: null, amount: 1 } }))).toBeNull();
   });
 
