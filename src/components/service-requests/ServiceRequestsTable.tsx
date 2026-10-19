@@ -14,11 +14,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2, X, UserCog, RefreshCw, Ban } from "lucide-react";
+import { Loader2, X, UserCog, RefreshCw, Ban, Trash2 } from "lucide-react";
 import { RowActions } from "@/components/common/RowActions";
 import { RmSelector } from "@/components/common/RmSelector";
 import { Avatar } from "@/components/ui/Avatar";
 import { formatDate } from "@/lib/utils";
+import { useToast } from "@/components/ui/Toast";
 
 const TYPE_LABEL: Record<string, string> = {
   nominee_update: "Nominee Update", bank_update: "Bank Update", mobile_update: "Mobile Update",
@@ -75,10 +76,13 @@ const PRIORITY_TONE: Record<string, string> = {
   urgent: "text-rose-600", high: "text-amber-600", normal: "text-foreground", low: "text-muted-foreground",
 };
 
-export function ServiceRequestsTable({ rows }: { rows: any[] }) {
+/** `canDelete`: the viewer holds service_request.delete (lib/service-requests/delete.ts).
+ *  A complaint is never offered for deletion — it can only be closed. */
+export function ServiceRequestsTable({ rows, canDelete = false }: { rows: any[]; canDelete?: boolean }) {
   const router = useRouter();
+  const toast = useToast();
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [bulk, setBulk] = useState<null | "assign" | "status" | "close">(null);
+  const [bulk, setBulk] = useState<null | "assign" | "status" | "close" | "delete">(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [assignRm, setAssignRm] = useState<string | null>(null);
@@ -102,6 +106,10 @@ export function ServiceRequestsTable({ rows }: { rows: any[] }) {
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) { setErr(j.error ?? `Failed (${res.status})`); return; }
+      if (bulk === "delete") {
+        const kept = Number(j.complaintsSkipped ?? 0);
+        toast.success(`Deleted ${j.deleted ?? 0} ticket(s).${kept ? ` ${kept} complaint(s) kept: complaints can only be closed.` : ""}`);
+      }
       setBulk(null); setSelected(new Set()); router.refresh();
     } finally { setBusy(false); }
   }
@@ -125,6 +133,9 @@ export function ServiceRequestsTable({ rows }: { rows: any[] }) {
           <button onClick={() => setBulk("assign")} className="btn-ghost text-xs inline-flex items-center gap-1"><UserCog className="size-3.5" /> Assign</button>
           <button onClick={() => setBulk("status")} className="btn-ghost text-xs inline-flex items-center gap-1"><RefreshCw className="size-3.5" /> Set status</button>
           <button onClick={() => setBulk("close")} className="btn-ghost text-xs inline-flex items-center gap-1 text-rose-600"><Ban className="size-3.5" /> Close</button>
+          {canDelete && (
+            <button onClick={() => setBulk("delete")} className="btn-ghost text-xs inline-flex items-center gap-1 text-rose-600"><Trash2 className="size-3.5" /> Delete</button>
+          )}
           <button onClick={() => setSelected(new Set())} className="text-xs text-muted-foreground hover:underline ml-auto">Clear</button>
         </div>
       )}
@@ -137,6 +148,9 @@ export function ServiceRequestsTable({ rows }: { rows: any[] }) {
             </select>
           )}
           {bulk === "close" && <span className="text-rose-600">Close {selected.size} ticket(s).</span>}
+          {bulk === "delete" && (
+            <span className="text-rose-600">Permanently delete {selected.size} ticket(s)? This cannot be undone. Complaints are kept.</span>
+          )}
           <button onClick={runBulk} disabled={busy} className="btn-primary text-xs inline-flex items-center gap-1">
             {busy && <Loader2 className="size-3.5 animate-spin" />} Apply to {selected.size}
           </button>
@@ -209,7 +223,12 @@ export function ServiceRequestsTable({ rows }: { rows: any[] }) {
                   </td>
                   <td data-col="attachments" className="py-3 text-right tabular-nums text-muted-foreground">{sr.attach_count > 0 ? sr.attach_count : "—"}</td>
                   <td data-col="actions" className="px-4 py-3 text-right">
-                    <RowActions editHref={`/dashboard/service-requests/${sr.id}`} deleteUrl={`/api/service-requests/${sr.id}`} itemLabel="ticket" itemName={sr.ticket_no} verb="Close" deleteIcon={Ban} />
+                    <div className="inline-flex items-center justify-end gap-1">
+                      {canDelete && sr.type !== "complaint" && (
+                        <RowActions inline deleteUrl={`/api/service-requests/${sr.id}?permanent=1`} itemLabel="ticket" itemName={sr.ticket_no} verb="Delete" permanent />
+                      )}
+                      <RowActions editHref={`/dashboard/service-requests/${sr.id}`} deleteUrl={`/api/service-requests/${sr.id}`} itemLabel="ticket" itemName={sr.ticket_no} verb="Close" deleteIcon={Ban} />
+                    </div>
                   </td>
                 </tr>
               );

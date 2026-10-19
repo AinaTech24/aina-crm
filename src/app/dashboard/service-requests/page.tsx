@@ -301,7 +301,7 @@ export default async function ServiceRequestsPage({
         }
       />
 
-      <ServiceRequestsTable rows={result.rows} />
+      <ServiceRequestsTable rows={result.rows} canDelete={can(session.roles, "service_request.delete", session.permissions)} />
     </div>
   );
 }

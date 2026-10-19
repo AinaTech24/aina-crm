@@ -4,6 +4,8 @@
  *   GET  /api/investors/[id]/opportunities   open first, then recently closed
  *   POST /api/investors/[id]/opportunities   start one
  *        { product, expectedValue?, investmentMode?, source?, notes?, ownerId?, coOwnerId?, sourceLeadId?, followUpOn? }
+ *        ownerId: who it is assigned to — must be in GET's `assignees`
+ *        (lib/opportunities/assignees.ts); they get the follow-up and a notification.
  *        followUpOn (YYYY-MM-DD): when the owner's first follow-up task falls due.
  *        later { revisitOn, reason, money? }: the client wants it, but not yet —
  *        started parked (lib/opportunities/later.ts) instead of a follow-up.
@@ -22,6 +24,7 @@ import { canWorkOpportunities, requireWorkOpportunities } from "@/lib/opportunit
 import { createOpportunity, listOpportunities } from "@/lib/opportunities/journey";
 import { isOpportunityProduct, OPPORTUNITY_SOURCES } from "@/lib/opportunities/products";
 import { LaterBody, parkOpportunity } from "@/lib/opportunities/later";
+import { assertAssignable, notifyOpportunityOwner, opportunityAssignees } from "@/lib/opportunities/assignees";
 
 export const dynamic = "force-dynamic";
 
@@ -54,7 +57,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const { id } = await params;
     if (!uuid.safeParse(id).success) return NextResponse.json({ error: "Not found" }, { status: 404 });
     const canWork = canWorkOpportunities(session);
-    const { items, staff } = await withTenant(session.tenantId, async (tx) => {
+    const { items, staff, assignees } = await withTenant(session.tenantId, async (tx) => {
       if (!(await loadViewableInvestor(tx, session, id))) throw Object.assign(new Error("Not found"), { status: 404 });
       const items = await listOpportunities(tx, session.tenantId, { investorId: id });
       // Who can own or co-own one — only for someone who can start one.
@@ -66,9 +69,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
              ORDER BY name LIMIT 300`)).rows as Array<{ id: string; name: string; roles: string[] }>)
             .map((u) => ({ id: u.id, name: u.name.replace(/\s*\([^)]*\)\s*$/, ""), insurance: (u.roles ?? []).includes("insurance_team") }))
         : [];
-      return { items, staff };
+      // Who it can be assigned to: may see this client, in the viewer's branch if they are locked to one.
+      const assignees = canWork ? await opportunityAssignees(tx, session, id) : [];
+      return { items, staff, assignees };
     }, ctx(session));
-    return NextResponse.json({ items, staff, canWork });
+    return NextResponse.json({ items, staff, assignees, me: session.userId, canWork });
   } catch (err) {
     return handleApiError(err);
   }
@@ -86,17 +91,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
     const result = await withTenant(session.tenantId, async (tx) => {
       if (!(await loadViewableInvestor(tx, session, id))) throw Object.assign(new Error("Not found"), { status: 404 });
-      for (const u of [parsed.data.ownerId, parsed.data.coOwnerId]) {
-        if (!u) continue;
+      if (parsed.data.ownerId) await assertAssignable(tx, session, id, parsed.data.ownerId);
+      if (parsed.data.coOwnerId) {
         const ok = (await tx.execute(
-          sql`SELECT 1 FROM users WHERE id = ${u}::uuid AND tenant_id = ${session.tenantId}::uuid AND status = 'active'`,
+          sql`SELECT 1 FROM users WHERE id = ${parsed.data.coOwnerId}::uuid AND tenant_id = ${session.tenantId}::uuid AND status = 'active'`,
         )).rows.length;
-        if (!ok) throw Object.assign(new Error("The chosen owner is not an active user in this firm."), { status: 400 });
+        if (!ok) throw Object.assign(new Error("The chosen co-owner is not an active user in this firm."), { status: 400 });
       }
       const { later, ...input } = parsed.data;
       const actor = { tenantId: session.tenantId, userId: session.userId };
       const r = await createOpportunity(tx, actor, { investorId: id, ...input });
       if (r.created && later) await parkOpportunity(tx, actor, r.opportunity, later);
+      if (r.created && r.opportunity.ownerId) await notifyOpportunityOwner(tx, session, r.opportunity.id, r.opportunity.ownerId);
       const [view] = await listOpportunities(tx, session.tenantId, { ids: [r.opportunity.id] });
       return { opportunity: view, created: r.created };
     }, ctx(session));

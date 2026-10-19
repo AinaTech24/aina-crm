@@ -62,6 +62,18 @@ const Body = z.object({
   mandateAccountMasked: z.string().max(40).optional(),
   mandateAmount: z.number().nonnegative().optional(),
   mandateRef: z.string().max(60).optional(),
+  /** The step's task in the Tasks module (the engine creates it): who it goes
+   *  to, when it is due, and its wording. All optional. */
+  task: z
+    .object({
+      assigneeId: z.string().uuid().optional(),
+      dueAt: z.string().optional(),
+      title: z.string().max(300).optional(),
+      description: z.string().max(2000).optional(),
+      type: z.string().max(60).optional(),
+      priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
+    })
+    .optional(),
 });
 
 /** Store the activated UCC on the client master (the lead's converted investor,
@@ -192,6 +204,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: "invalid body", issues: parsed.error.issues }, { status: 400 });
     }
     const { remarks, force, fields, callBackAt, uccNumber, mandateBank, mandateIfsc, mandateAccountMasked, mandateAmount, mandateRef } = parsed.data;
+    const journeyTask = parsed.data.task
+      ? { ...parsed.data.task, dueAt: parsed.data.task.dueAt && !isNaN(new Date(parsed.data.task.dueAt).getTime()) ? new Date(parsed.data.task.dueAt) : undefined }
+      : undefined;
 
     // Validate the target stage. normalizeLeadStage() falls back to "new" for
     // unrecognized input — detect that silent coercion and 400, instead of
@@ -228,6 +243,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           actorRoles: session.roles ?? [],
           remarks: remarks ?? `Forced move via Kanban drag.`,
           systemBypass: true,
+          task: journeyTask,
           ...clientMeta,
         });
       }
@@ -237,6 +253,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         actorUserId: session.userId,
         actorRoles: session.roles ?? [],
         remarks,
+        task: journeyTask,
         ...clientMeta,
       });
       if (first.ok) {
@@ -322,6 +339,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           remarks: isFinal ? remarks : `Auto-skipped en route to ${toStageKey}`,
           systemBypass: true,
           suppressAutomations: !isFinal,
+          task: isFinal ? journeyTask : undefined,
           ...clientMeta,
         });
         if (!last.ok) return last;

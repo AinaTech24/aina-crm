@@ -79,6 +79,7 @@ export function cleanPlanPayload<T extends Record<string, any>>(p: T): T {
       name: (text(l.name) || "Loan").slice(0, 200),
       value: Math.max(0, num(l.value)),
       ...(l.monthlyEmi !== undefined && l.monthlyEmi !== null && l.monthlyEmi !== "" ? { monthlyEmi: Math.max(0, num(l.monthlyEmi)) } : {}),
+      ...(l.tenureMonths !== undefined && l.tenureMonths !== null && l.tenureMonths !== "" ? { tenureMonths: Math.max(0, Math.round(num(l.tenureMonths))) } : {}),
     }));
 
   out.emergencyFundTargetMonths = Math.round(num(p.emergencyFundTargetMonths) || 6);

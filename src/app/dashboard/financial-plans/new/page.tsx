@@ -1,7 +1,7 @@
 "use client";
 
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
-import { useEffect, useMemo, useState, Suspense } from "react";
+import { useEffect, useMemo, useRef, useState, Suspense } from "react";
 import { notify } from "@/components/ui/Toast";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -28,6 +28,7 @@ import { recommendedLifeCover, financialAssetsTotal } from "@/lib/financial-plan
 import { FACT_FIND_GOAL_RETURN, planFromFactFind } from "@/lib/financial-plans/from-fact-find";
 import { formatDate } from "@/lib/format";
 import { cleanPlanPayload, describeIssues, planProblems, STEP_NAMES } from "@/lib/financial-plans/payload";
+import type { PlanFromCrm } from "@/lib/financial-plans/from-crm";
 
 type Recipient = { id: string; name: string; kind?: "investor" | "lead" };
 
@@ -44,6 +45,7 @@ type Liability = {
   name: string;
   value: number;
   monthlyEmi?: number;
+  tenureMonths?: number;
 };
 
 type Goal = {
@@ -89,6 +91,12 @@ function PlanFormContent() {
   const [fromFactFind, setFromFactFind] = useState<{ id: string; name: string; status: string; at: string | null; undatedGoals: number } | null>(null);
 
   // Multi-step State
+  // "Filled from the CRM" (lib/financial-plans/from-crm.ts): picking an
+  // existing client on a NEW health check brings in what the firm already
+  // holds. What the RM typed is never replaced; what the last pick filled is.
+  const [crmFill, setCrmFill] = useState<{ name: string; found: PlanFromCrm["found"] } | null>(null);
+  const [crmLoading, setCrmLoading] = useState(false);
+  const crmFilled = useRef<{ scalars: Record<string, unknown>; assets: Asset[]; goals: Goal[]; children: Child[] }>({ scalars: {}, assets: [], goals: [], children: [] });
   const [step, setStep] = useState(1);
   const [busy, setBusy] = useState(false);
   const [loadingPlan, setLoadingPlan] = useState(false);
@@ -214,6 +222,57 @@ function PlanFormContent() {
       .catch((e) => setErr(e.message))
       .finally(() => setLoadingPlan(false));
   }, [discoveryId]);
+
+  async function fillFromCrm(investorId: string | null, name: string) {
+    if (editId || discoveryId) return;
+    const prev = crmFilled.current;
+    // Take back what the previous pick filled (rows by identity, values only
+    // while they are still what was filled), so a second pick swaps, not adds.
+    setAssets((a) => a.filter((x) => !prev.assets.includes(x)));
+    setGoals((g) => g.filter((x) => !prev.goals.includes(x)));
+    setChildren((c) => (c === prev.children ? [] : c));
+    crmFilled.current = { scalars: {}, assets: [], goals: [], children: [] };
+    setCrmFill(null);
+    if (!investorId) return;
+    setCrmLoading(true);
+    try {
+      const res = await fetch(`/api/financial-plans/prefill?investorId=${investorId}`, { cache: "no-store" });
+      if (!res.ok) return;
+      const { prefill: p } = (await res.json()) as { prefill: PlanFromCrm };
+      const next = crmFilled.current;
+      // A value is filled when blank, or when it still holds what the last pick put there.
+      const fill = <T,>(key: string, current: T, value: T | undefined, set: (v: T) => void) => {
+        if (value === undefined) return;
+        if (current === undefined || current === prev.scalars[key]) {
+          set(value);
+          next.scalars[key] = value;
+        }
+      };
+      fill("clientAge", clientAge, p.clientAge, (v) => setClientAge(v));
+      fill("spouseAge", spouseAge, p.spouseAge, (v) => setSpouseAge(v));
+      fill("lifeSa", lifeInsuranceSumAssured, p.lifeInsuranceSumAssured, (v) => setLifeInsuranceSumAssured(v));
+      fill("lifePremium", lifeInsuranceAnnualPremium, p.lifeInsuranceAnnualPremium, (v) => setLifeInsuranceAnnualPremium(v));
+      fill("healthSa", healthInsuranceSumAssured, p.healthInsuranceSumAssured, (v) => setHealthInsuranceSumAssured(v));
+      fill("healthPremium", healthInsuranceAnnualPremium, p.healthInsuranceAnnualPremium, (v) => setHealthInsuranceAnnualPremium(v));
+      if (p.riskProfile && (riskProfile === "moderate" || riskProfile === prev.scalars.riskProfile)) {
+        setRiskProfile(p.riskProfile);
+        next.scalars.riskProfile = p.riskProfile;
+      }
+      if (p.children.length && (children.length === 0 || children === prev.children)) {
+        setChildren(p.children);
+        next.children = p.children;
+      }
+      const assetRows: Asset[] = p.assets.map((a) => ({ ...a }));
+      const goalRows: Goal[] = p.goals.map((g) => ({ ...g }));
+      next.assets = assetRows;
+      next.goals = goalRows;
+      if (assetRows.length) setAssets((a) => [...a, ...assetRows]);
+      if (goalRows.length) setGoals((g) => [...g, ...goalRows]);
+      setCrmFill({ name, found: p.found });
+    } finally {
+      setCrmLoading(false);
+    }
+  }
 
   // Calculations
   const surplus = useMemo(() => {
@@ -668,11 +727,23 @@ function PlanFormContent() {
                 displayName={recipient?.name ?? null}
                 includeLeads
                 displayKind={recipient?.kind}
-                onSelect={(id, name, kind) => setRecipient({ id, name, kind: kind ?? "investor" })}
-                onClear={() => setRecipient(null)}
+                onSelect={(id, name, kind) => {
+                  setRecipient({ id, name, kind: kind ?? "investor" });
+                  void fillFromCrm((kind ?? "investor") === "investor" ? id : null, name);
+                }}
+                onClear={() => {
+                  setRecipient(null);
+                  void fillFromCrm(null, "");
+                }}
                 placeholder="Search client or lead by name, PAN, mobile…"
               />
             </label>
+            {crmLoading && (
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="size-3.5 animate-spin" aria-hidden /> Bringing in this client&apos;s records…
+              </p>
+            )}
+            {!crmLoading && crmFill && <CrmFillNote name={crmFill.name} found={crmFill.found} />}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <label className="block">
@@ -956,6 +1027,14 @@ function PlanFormContent() {
                           value={l.monthlyEmi || ""}
                           onChange={(e) => patchLiability(i, { monthlyEmi: e.target.value ? Number(e.target.value) : undefined })}
                           className="input-base text-xs py-1"
+                        />
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder="Loan tenure (months)"
+                          value={l.tenureMonths || ""}
+                          onChange={(e) => patchLiability(i, { tenureMonths: e.target.value ? Number(e.target.value) : undefined })}
+                          className="input-base text-xs py-1 col-span-2"
                         />
                       </div>
                     </div>
@@ -1700,6 +1779,29 @@ function PlanFormContent() {
         )}
       </div>
     </div>
+  );
+}
+
+/** What came in from the CRM, in one line, so the RM knows what to check. */
+function CrmFillNote({ name, found }: { name: string; found: PlanFromCrm["found"] }) {
+  const parts = [
+    found.mfSchemes ? `mutual funds ${formatINR(found.mfValue)} (${found.mfSchemes} scheme${found.mfSchemes === 1 ? "" : "s"})` : "",
+    found.fds ? `${found.fds} FD${found.fds === 1 ? "" : "s"} ${formatINR(found.fdValue)}` : "",
+    found.lifePolicies ? `${found.lifePolicies} life polic${found.lifePolicies === 1 ? "y" : "ies"}` : "",
+    found.healthPolicies ? `${found.healthPolicies} health polic${found.healthPolicies === 1 ? "y" : "ies"}` : "",
+    found.goals ? `${found.goals} goal${found.goals === 1 ? "" : "s"}` : "",
+    found.family ? "family" : "",
+  ].filter(Boolean);
+  return (
+    <p className="rounded-lg bg-secondary/70 px-3 py-2 text-xs text-muted-foreground">
+      {parts.length ? (
+        <>
+          <span className="font-medium text-foreground">Filled from {name}&apos;s records:</span> {parts.join(" · ")}. Check each step before saving.
+        </>
+      ) : (
+        <>Nothing on file for {name} yet — fill in the details by hand.</>
+      )}
+    </p>
   );
 }
 

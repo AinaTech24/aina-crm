@@ -57,6 +57,16 @@ export const MERGE_FIELDS: MergeField[] = [
   { token: "transaction.folio_number", label: "Folio number", example: "12345678/00", category: "Transaction" },
   { token: "transaction.rejection_reason", label: "Rejection reason", example: "Insufficient balance", category: "Transaction" },
 
+  // ── Meeting (emails sent from a meeting: scheduled, reminder, minutes) ────
+  // Flat keys — filled from the meeting record by the workflow-rule email
+  // action (lib/workflow-rules/actions.ts enrichmentVars).
+  { token: "meeting_held_on", label: "Meeting date", example: "15 Oct 2026", category: "Meeting" },
+  { token: "meeting_when", label: "Meeting date & time", example: "15 Oct 2026, 11:30 am", category: "Meeting" },
+  { token: "meeting_agenda", label: "Meeting agenda", example: "Portfolio review and SIP top-up", category: "Meeting" },
+  { token: "minutes", label: "Minutes of meeting", example: "We reviewed your portfolio and agreed to raise the monthly SIP.", category: "Meeting" },
+  { token: "rm_name", label: "Met with (RM)", example: "Priya Mehta", category: "Meeting" },
+  { token: "meeting_join", label: "Online joining line", example: "Join online: https://meet.example.com/abc", category: "Meeting" },
+
   // ── Tenant (MFD firm) ─────────────────────────────────────────────────────
   { token: "tenant.legalName", label: "Legal name", example: "Demo Wealth Advisors LLP", category: "Firm" },
   { token: "tenant.displayName", label: "Brand name", example: "Demo Wealth", category: "Firm" },

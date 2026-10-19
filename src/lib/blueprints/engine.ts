@@ -46,6 +46,7 @@ import {
   stageFlavour,
 } from "./lead_to_client";
 import { checkPrerequisites } from "./prerequisites";
+import { createJourneyTask, isOnboardingStage, type JourneyTaskInput, type JourneyTaskResult } from "./journey-task";
 
 const MODULE = "leads";
 
@@ -211,6 +212,9 @@ export interface TransitionOptions {
    *  intermediate hops of a multi-stage walk so only the FINAL target fires
    *  its recipes (a passed-through stage shouldn't trigger sends). */
   suppressAutomations?: boolean;
+  /** What the person moving the step chose for the step's task (assignee, due
+   *  date, wording). Optional — the engine fills the rest. */
+  task?: JourneyTaskInput;
   /** Threaded into the audit_log row for forensics. */
   ipAddress?: string | null;
   userAgent?: string | null;
@@ -223,6 +227,8 @@ export interface TransitionResult {
   code?: "no_transition" | "role" | "prereq" | "terminal" | "stage_not_found";
   fromStage?: string;
   toStage?: string;
+  /** What the step's task in the Tasks module came to (client onboarding steps). */
+  task?: JourneyTaskResult;
 }
 
 export async function transitionTo(
@@ -431,6 +437,32 @@ export async function transitionTo(
     }
   }
 
+  // Client onboarding → Tasks module. Entering a client-phase step (not a
+  // pass-through hop, not a terminal) opens a task for the step's owner. Leaving
+  // a step does NOT close its task: it stays open until the assignee completes
+  // it in the Tasks module (the firm's rule of 2026-10-17). Retry stages with
+  // their own task (mandate_reject) skip.
+  let journeyTask: JourneyTaskResult | undefined;
+  if (
+    !opts.suppressAutomations &&
+    isOnboardingStage(toStageKey, toStage.stageOrder) &&
+    disposition === "in_progress" &&
+    stageFlavour(toStageKey) !== "terminal_failure" &&
+    stageFlavour(toStageKey) !== "terminal_success" &&
+    toStageKey !== "mandate_reject"
+  ) {
+    journeyTask = await createJourneyTask(tx, {
+      tenantId,
+      leadId,
+      stageKey: toStageKey,
+      stageName: toStage.stageName,
+      ownerRole: toStage.ownerRole ?? null,
+      slaDays: toStage.slaDays ?? null,
+      actorUserId: opts.actorUserId ?? null,
+      input: opts.task,
+    });
+  }
+
   // Entering a route's own step records the route (exchange / physical), so the
   // journey bar shows that path only (getStage).
   const route = routeOfStage(toStageKey);
@@ -440,7 +472,7 @@ export async function transitionTo(
     );
   }
 
-  return { ok: true, fromStage: currentStageKey, toStage: toStageKey };
+  return { ok: true, fromStage: currentStageKey, toStage: toStageKey, task: journeyTask };
 }
 
 // ── Read helpers for the UI ─────────────────────────────────────────────

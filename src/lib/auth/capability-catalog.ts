@@ -90,6 +90,7 @@ export const CAPABILITY_CATALOG: Record<Capability, CapabilityMeta> = {
   "service_request.view.all": { group: "Tasks & Service", label: "View all service requests" },
   "service_request.view.assigned": { group: "Tasks & Service", label: "View assigned service requests" },
   "service_request.manage": { group: "Tasks & Service", label: "Manage service requests" },
+  "service_request.delete": { group: "Tasks & Service", label: "Delete service requests permanently", hint: "Irreversible. Complaints can only be closed, never deleted" },
   "complaint.manage": { group: "Tasks & Service", label: "Manage complaints" },
 
   // ── Documents & Onboarding ──────────────────────────────────────────────

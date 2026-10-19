@@ -31,6 +31,7 @@
  */
 
 import { sql, type SQL } from "drizzle-orm";
+import { riskExpiresOnSql } from "@/lib/risk-profile/expiry";
 import type { Tx } from "@/db/client";
 import {
   asInList, FINANCIAL_TASK_TYPES, LEAD_CLOSED_STAGES, num, PROPOSAL_LIVE,
@@ -206,7 +207,7 @@ export async function loadRmLedger(
       COUNT(*) FILTER (WHERE risk_profile IS NULL)::int                      AS risk_pending,
       COUNT(*) FILTER (WHERE COALESCE(risk_profile_provisional, false))::int AS risk_provisional,
       COUNT(*) FILTER (WHERE risk_profile IS NOT NULL AND risk_profile_signed_at IS NOT NULL
-                         AND risk_profile_signed_at < now() - interval '1 year')::int AS risk_due
+                         AND ${riskExpiresOnSql("x")} < CURRENT_DATE)::int AS risk_due
       FROM (SELECT bc.*, (${w.today}::date - last_contact_at::date) AS d FROM bc) x
      GROUP BY bucket
   `)).rows as Array<Record<string, unknown>>;

@@ -39,10 +39,46 @@ const WORD: Record<string, string> = {
 };
 const OPTION_WORDS = new Set(["growth", "idcw", "bonus", "payout", "reinvest"]);
 
+/**
+ * Registrar files reach us with the apostrophe of "Children's" in three states:
+ * a plain ', a typographic ’ (U+2019) and UTF-8 bytes read as Windows-1252
+ * ("â€™", or "â" plus two invisible C1 characters). Left alone the last two
+ * survive as a stray "a" / "s" token — "Axis Childrenâs Fund" keyed as
+ * "children s" and never met AMFI's "Children's" ("childrens"). Fold all
+ * three to a plain apostrophe, which the key then drops.
+ */
+// Built from code points so the source stays plain ASCII (an editor or a tool
+// that "helpfully" rewrites escapes would turn this into the very bytes it matches).
+const cp = (...n: number[]) => String.fromCharCode(...n);
+// a-circumflex (0xE2), then up to two of what UTF-8 leaves behind: C1 controls
+// 0x80-0xBF, euro 0x20AC, the quote/trademark glyphs cp1252 maps them to.
+const MOJIBAKE_QUOTE = new RegExp(
+  cp(0xe2) + "[" + cp(0x80) + "-" + cp(0xbf) + cp(0x20ac) + cp(0x2018) + "-" + cp(0x201e) + cp(0x2122, 0x2dc, 0x153, 0x161, 0x203a) + "]{0,2}",
+  "g",
+);
+// Typographic quotes, modifier apostrophe, acute accent, backtick.
+const CURLY_QUOTE = new RegExp("[" + cp(0x2018, 0x2019, 0x201a, 0x201b, 0x2bc, 0xb4) + "`]", "g");
+
+function foldQuotes(s: string): string {
+  return s.replace(MOJIBAKE_QUOTE, "'").replace(CURLY_QUOTE, "'");
+}
+
+/**
+ * The fund house's first word as the AMFI master would spell it ("Reliance
+ * Large Cap" -> "nippon", "IDFC ..." -> "bandhan"), for telling one house's
+ * schemes from another's.
+ */
+export function schemeHouse(raw: string | null | undefined): string {
+  let s = foldQuotes(String(raw ?? "").toLowerCase()).replace(/'/g, "").replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ");
+  for (const [re, to] of HOUSE) s = s.replace(re, to);
+  return s.trim().split(" ")[0] ?? "";
+}
+
 export type SchemeKey = { tokens: string; direct: boolean };
 
 export function schemeNameKey(raw: string | null | undefined): SchemeKey | null {
   let s = String(raw ?? "").toLowerCase();
+  s = foldQuotes(s);
   // "(formerly …)", "(erstwhile …)", "(scheme has two segregated portfolios)":
   // drop the bracket only — AMFI writes the plan and option AFTER it. A
   // bracket the registrar cut off before closing runs to the end.
@@ -54,6 +90,10 @@ export function schemeNameKey(raw: string | null | undefined): SchemeKey | null 
   for (const [re, to] of HOUSE) s = s.replace(re, to);
   // "multi cap" / "mid cap" / "flexi cap" … are written both ways.
   s = s.replace(/\b(multi|mid|small|large|flexi|micro|focused)\s+cap\b/g, "$1cap");
+  // "Dividend Yield" is a fund style (ICICI, UTI, Templeton, Aditya Birla Sun
+  // Life, Tata), not the IDCW option: left alone it reads as one, suppresses the
+  // implied Growth, and the fund never meets its own Growth row.
+  s = s.replace(/\bdividend\s+yield\b/g, "dividendyield");
   s = s.replace(/\bpay\s+out\b/g, "payout");
   s = s.replace(/\bincome distribution (cum )?capital withdrawal\b/g, "idcw");
   const toks = new Set<string>();

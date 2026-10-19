@@ -24,6 +24,12 @@
  *                     does not count.
  *   → mf_transaction  KYC verified, a UCC on record, and for a SIP an active
  *                     mandate.
+ *   → the step after  the client has APPROVED the proposal (it is "accepted");
+ *     "Client accepted" until then the journey waits at "Client accepted", and
+ *                     moves on by itself the moment the approval arrives.
+ *   txn_review        MF only: operations approves or rejects the transaction
+ *                     (decideTransaction). Approved → a task is created and the
+ *                     client is won; rejected → back to "Transaction placed".
  *
  * ── Skips (automatic, each with a history row saying why) ─────────────────
  *   suitability       the gate above is already met
@@ -62,7 +68,7 @@ import { formatDate, formatMoney } from "@/lib/format";
 import {
   isCrossSellProduct, productLabel, productPipeline, proposalTypesFor, type OpportunityPipeline, type OpportunitySource,
 } from "./products";
-import { isClosedStage, nextStage, OPPORTUNITY_PATHS, stageName, type OpportunityStageKey } from "./stages";
+import { AFTER_ACCEPTED, isClosedStage, nextStage, OPPORTUNITY_PATHS, stageName, type OpportunityStageKey } from "./stages";
 import { resumeOpportunity } from "./later";
 import { INFLOW_SOURCE_LABELS, type InflowSourceType } from "@/db/schema";
 
@@ -83,6 +89,8 @@ export type Prerequisite = {
 // proposal awaiting the RM's revision — it counts as sent.
 const PROPOSAL_SENT = new Set(["sent", "viewed", "changes_requested", "accepted", "partially_approved", "executed"]);
 const PROPOSAL_ACCEPTED = new Set(["accepted", "partially_approved", "executed"]);
+/** History remark that marks a rejected transaction (read back by loadFacts). */
+const TXN_REJECTED_PREFIX = "Transaction rejected";
 const POLICY_ISSUED = new Set(["active", "claim_filed", "claim_settled"]);
 
 /* ─────────────────────────────── facts ─────────────────────────────── */
@@ -140,12 +148,24 @@ export async function loadFacts(tx: Tx, opp: ClientOpportunity): Promise<Facts> 
 
   let transaction: Facts["transaction"] = null;
   if (opp.pipeline === "mf") {
+    // A transaction operations rejected does not count again: only one booked
+    // after the rejection moves the journey on.
+    const rejectedAt = ((await tx.execute(sql`
+      SELECT max(h.exited_at) AS at
+        FROM blueprint_stage_history h
+        JOIN blueprint_instances bi ON bi.id = h.instance_id
+       WHERE bi.tenant_id = ${opp.tenantId}::uuid AND bi.subject_type = 'opportunity'
+         AND bi.subject_id = ${opp.id}::uuid AND h.stage_key = 'txn_review'
+         AND h.remarks LIKE ${TXN_REJECTED_PREFIX + "%"}
+    `)).rows[0] as { at: string | Date | null } | undefined)?.at ?? null;
+    const afterRejection = rejectedAt ? sql`AND created_at >= ${new Date(rejectedAt).toISOString()}::timestamptz` : sql``;
     const r = (await tx.execute(sql`
       SELECT id, order_date, amount FROM transactions
        WHERE tenant_id = ${opp.tenantId}::uuid AND investor_id = ${opp.investorId}::uuid
          AND type IN ('purchase', 'sip', 'lumpsum') AND direction = 'inflow'
          AND status NOT IN ('rejected', 'cancelled', 'failed')
          AND COALESCE(order_date, created_at::date) >= (${opp.createdAt.toISOString()}::timestamptz AT TIME ZONE 'Asia/Kolkata')::date
+         ${afterRejection}
        ORDER BY COALESCE(order_date, created_at::date) ASC
        LIMIT 1
     `)).rows[0] as { id: string; order_date: string | null; amount: string | null } | undefined;
@@ -211,6 +231,16 @@ export function gateFor(target: string, opp: ClientOpportunity, f: Facts): Prere
       label: "Needs analysis recorded (income and cover needed)",
       satisfied: hasNeedsAnalysis(opp.needsAnalysis),
       hint: "Record it on this opportunity before sharing a quote.",
+    }];
+  }
+  if (AFTER_ACCEPTED.has(target)) {
+    const status = f.proposal?.status ?? null;
+    return [{
+      label: "The client has approved the proposal",
+      satisfied: !!status && PROPOSAL_ACCEPTED.has(status),
+      hint: !f.proposal ? "No proposal has been shared yet."
+        : "Waiting for the client — the journey moves on as soon as they approve it.",
+      cta: f.proposal ? { href: `/dashboard/proposals/${f.proposal.id}`, label: "Open proposal" } : undefined,
     }];
   }
   if (target === "mf_transaction") {
@@ -443,6 +473,9 @@ export async function advanceOpportunity(tx: Tx, actor: Actor, id: string, input
     return { ok: true, stage: "lost", skipped: [] };
   }
 
+  if (current === "txn_review") {
+    return { ok: false, error: "Approve or reject the transaction — approving wins the client.", status: 409 };
+  }
   const target = input.to ?? nextStage(opp.pipeline as OpportunityPipeline, current);
   if (!target) return { ok: false, error: "This journey has no next step.", status: 409 };
   if (target !== nextStage(opp.pipeline as OpportunityPipeline, current)) {
@@ -468,6 +501,72 @@ export async function advanceOpportunity(tx: Tx, actor: Actor, id: string, input
   }
   const { stage, skipped } = await autoSkip(tx, actor, opp, facts, target);
   return { ok: true, stage, skipped };
+}
+
+/**
+ * Operations' decision on the transaction an MF opportunity placed.
+ *
+ *   approve  The client is won. A task is created for the owner — "client won,
+ *            confirm and welcome" — and, unlike the opportunity's own
+ *            follow-ups, it stays open when the opportunity closes (it carries
+ *            meta.wonOpportunityId, not opportunityId).
+ *   reject   A reason is required. The journey goes back to "Transaction
+ *            placed" and the owner gets a high-priority task to fix and place
+ *            it again; the rejected transaction no longer counts (loadFacts).
+ */
+export async function decideTransaction(
+  tx: Tx, actor: Actor, id: string, input: { decision: "approve" | "reject"; remarks?: string },
+): Promise<{ ok: true; stage: string } | { ok: false; error: string; status: number }> {
+  const opp = await loadOpp(tx, actor.tenantId, id);
+  if (!opp) return { ok: false, error: "Opportunity not found", status: 404 };
+  if (opp.status !== "open") return { ok: false, error: `This opportunity is already ${opp.status}.`, status: 409 };
+  const inst = await ensureInstanceFor(tx, actor.tenantId, "opportunity", opp.id);
+  if (inst.currentStageKey !== "txn_review") {
+    return { ok: false, error: "There is no transaction waiting for approval on this opportunity.", status: 409 };
+  }
+  const remarks = input.remarks?.trim() || "";
+  const inv = (await tx.execute(sql`SELECT name FROM investors WHERE id = ${opp.investorId}::uuid`)).rows[0] as { name: string } | undefined;
+  const clientName = inv?.name ?? "client";
+  const product = productLabel(opp.product);
+  const base = {
+    tenantId: opp.tenantId, subjectType: "investor", subjectId: opp.investorId, relatedInvestorId: opp.investorId,
+    type: "follow_up", status: "open", assigneeId: opp.ownerId ?? actor.userId, createdById: actor.userId,
+  };
+
+  if (input.decision === "reject") {
+    if (!remarks) return { ok: false, error: "Say why the transaction was rejected.", status: 400 };
+    const r = await transitionPoly(tx, actor.tenantId, "opportunity", opp.id, "mf_transaction", {
+      actorUserId: actor.userId, remarks: `${TXN_REJECTED_PREFIX} — ${remarks}`, finalStatus: "in_progress",
+    });
+    if (!r.ok) return { ok: false, error: (r as any).reason ?? "Could not reject", status: 409 };
+    await tx.insert(tasks).values({
+      ...base, title: `${product} transaction rejected — fix and place again for ${clientName}`, description: remarks,
+      priority: "high", dueAt: new Date(Date.now() + 864e5), meta: { opportunityId: opp.id, transactionRejected: true },
+    } as any);
+    await recordAudit(tx, {
+      tenantId: opp.tenantId, actorUserId: actor.userId, action: "opportunity.transaction_rejected",
+      entityType: "opportunity", entityId: opp.id, after: { reason: remarks },
+    } as any);
+    return { ok: true, stage: "mf_transaction" };
+  }
+
+  const r = await transitionPoly(tx, actor.tenantId, "opportunity", opp.id, "won", {
+    actorUserId: actor.userId, remarks: remarks ? `Transaction approved — ${remarks}` : "Transaction approved",
+    finalStatus: "completed",
+  });
+  if (!r.ok) return { ok: false, error: (r as any).reason ?? "Could not approve", status: 409 };
+  await closeOpportunity(tx, actor, opp, "won");
+  // After the close, so closing the opportunity does not complete it.
+  await tx.insert(tasks).values({
+    ...base, title: `${clientName} won — ${product}: confirm the allotment and welcome the client`,
+    description: remarks || null, priority: "normal", dueAt: new Date(Date.now() + 864e5),
+    meta: { wonOpportunityId: opp.id },
+  } as any);
+  await recordAudit(tx, {
+    tenantId: opp.tenantId, actorUserId: actor.userId, action: "opportunity.transaction_approved",
+    entityType: "opportunity", entityId: opp.id, after: { remarks: remarks || null },
+  } as any);
+  return { ok: true, stage: "won" };
 }
 
 /** Walk forward over every stage the client already satisfies. */

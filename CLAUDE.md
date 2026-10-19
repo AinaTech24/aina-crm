@@ -281,6 +281,16 @@ the client page's Overview tab.
   Each opens `/dashboard/opportunities/[id]`, where the journey runs: the same
   `OpportunityCard` the client page uses, plus history, details (Edit), the
   client and its tasks. "New opportunity" there picks the client.
+- **Proposal approval, then transaction review** (2026-10-16, migration 0239).
+  The step after "Client accepted" is gated on the client having APPROVED the
+  proposal (`AFTER_ACCEPTED` in stages.ts); until then the journey waits, and
+  `onProposalEvent("accepted")` moves it on by itself. An MF journey now ends
+  Transaction placed → **Approve / reject transaction** (`txn_review`) → Won,
+  and is never skipped or advanced generically: `decideTransaction` /
+  `POST /api/opportunities/[id]/transaction-review`. Approve wins the client and
+  creates a "client won" task (`meta.wonOpportunityId`, so closing does not
+  complete it); reject needs a reason, returns to Transaction placed with a fix
+  task, and the rejected transaction no longer counts in `loadFacts`.
 - **Follow-ups ARE tasks.** An opportunity's next follow-up is its earliest
   open task with `meta.opportunityId` — there is no column. The follow-up date
   chosen at creation is the first task's due date (10:00 IST; default two
@@ -301,6 +311,16 @@ the client page's Overview tab.
   board has a "Later" column and tile. Started from the card ("Client wants it
   later") or the New opportunity dialog (Now / Later). Diwali dates are a
   table in later-core — add the next year as the calendar rolls on.
+
+## Moving folios between two clients
+
+Clients list → select exactly two → **Merge** (bulk bar) opens
+`FolioTransferDialog`: pick the direction, tick the folios (their schemes are
+listed), optionally move their transactions and SIPs, and confirm
+(`/api/investors/folio-transfer`, `lib/investors/folio-transfer.ts`; owner /
+branch head, merge scope, a PAN clash needs an explicit tick). The unit is the
+folio — a folio belongs to one client, so schemes inside it travel with it. To
+fold a whole duplicate record away use Merge Clients (`mergeInvestors`).
 
 ## Meetings — attendees and action items
 
@@ -354,6 +374,38 @@ Bank / corporate / NBFC / post-office FDs a client placed through the firm —
 - **Access follows the client** (`investorScopeSql` / `loadViewableInvestor`);
   writes need `investor.edit.*`. Soft delete (`deleted_at`).
 
+## KYC status from the KRA (NSE MF Invest)
+
+Each firm connects its OWN NSE MF Invest (NMF II) API user at Settings →
+Integrations ("NSE MF Invest — KYC status", owner only): Login User ID,
+member code, API Secret, API Member License Key, Live / UAT. Stored encrypted
+in `tenant_integrations` (provider `nse_mf`); the secrets are write-only.
+Code: `src/lib/kyc/` (nse-auth · nse-status · nse-client · credentials ·
+refresh), migration 0237.
+
+- **NSE must whitelist the server's IP** against that user (up to 4 per user;
+  production's Elastic IP, shown on the card, `NSE_EGRESS_IP` overrides). A 403
+  is the keys or the IP. KYC_CHECK answers only in Live.
+- **Auth** (`nse-auth.ts`, protocol v1.9.6 pp. 5–6): AES-128 of
+  `secret|nonce` keyed by PBKDF2(license key, salt), sent as
+  `base64(iv::salt::cipher)`. The PBKDF2 iteration count (1000) and hash
+  (SHA-1) are AesUtil's — the spec does not print them; they are the first
+  thing to check if a correct key set gets 403 from a whitelisted IP.
+- **The remark is the meaning** (`nse-status.ts`): Validated → verified,
+  Registered → registered, Under process / Not available → pending, On hold →
+  hold, Rejected → rejected, Deactivate / Incomplete / CVL MF KYC →
+  re_kyc_required. Service down, a failed call, an unknown remark or an answer
+  for another PAN NEVER changes the status — it is recorded in `kyc_checks`
+  and nothing else.
+- **Every answer is history**: a `kyc_checks` row; a change also writes audit
+  `investor.kyc_from_kra` and the event `investor.kyc_status_changed`.
+  `investors.kyc_status_remark` / `kyc_checked_at` / `kra_name` show on the
+  client page ("KRA check", with Check now for whoever may edit the client).
+- **Nightly** `kyc-status-refresh` (02:30 UTC = 08:00 IST): firms with the
+  daily refresh on; live clients with a valid PAN, oldest check first, every
+  3 days until verified then every 30; 400 a firm a night, one call at a
+  time, outside any transaction; a refused login stops the firm's run.
+
 ## Website complaint form
 
 Each firm gets one public link, `/complaint/<token>` (`tenants.complaint_form_token`,
@@ -381,6 +433,33 @@ form for your website" (`/dashboard/complaints/website-form`). Code:
 - The monthly complaint disclosure page was removed at the firm's request
   (2026-10-01); `/dashboard/complaints/disclosure` redirects to the register.
   Do not restore it.
+
+## Service request form — email never opens a ticket
+
+A client asks for a service through the firm's **service request form**
+(`/service-request/<token>`, `tenants.service_form_token`, migration 0238), sent
+by link or put on the website: Service Requests → ⋯ → "Service request form for
+clients" (`/dashboard/service-requests/website-form`). Code:
+`src/lib/service-requests/` (`web-submission.ts` reads the form, `web-form.ts`
+the rest), `POST /api/public/service-requests/[token]`, and
+`PATCH /api/service-requests/website-form` (`service_request.manage`: switch
+off, or replace the link).
+
+- **The service chosen opens a request** (the API still takes up to 6) through
+  `openServiceRequest`, so each has its own service ID (`SR-YYYY-NNNNN`), shown
+  on the thank-you page. The same client re-sending the same service within a
+  day gets the open request's ID back, not a second ticket.
+- **Linked to a client only when the email or mobile typed matches exactly one
+  live client**; it then goes to that client's RM, else the owner (both
+  notified). The acknowledgement is sent only when the EMAIL matched. The form
+  asks no PAN or folio. "Other" opens a box for what the client needs. Abuse controls as the
+  complaint form: 20/hour per IP, 120/hour per link, honeypot.
+- **Incoming email does NOT open a service request** (the firm's decision of
+  2026-10-16). It once did, and the firm's own "SIP INSTALLMENT REMINDER" mail
+  — whose footer says "bank account" — opened 332 "Bank update" tickets at one
+  firm (483 in ten days, 474 escalated). Do not put `imap-poller` → ticket back.
+  `scripts/close-auto-email-tickets.ts` (dry run; `--tenant`, `--apply`) closes
+  the ones already in a register, never one a person has touched.
 
 ## Creating a family
 
@@ -481,6 +560,51 @@ the imports and every label; never copy the enum again.
   `investor.details_from_family`. The investor PATCH ignores a member's
   address (head has one) and review frequency (family has one); the forms show
   both as "from the family".
+
+## Financial Health Check — filled from the CRM
+
+Picking an existing client on a NEW health check (`/dashboard/financial-plans/new`,
+not an edit, not "start from a fact-find") fills it from what the firm already
+holds (2026-10-17): `GET /api/financial-plans/prefill?investorId=`
+(`financial_plan.view` + `loadViewableInvestor`) over
+`lib/financial-plans/from-crm.ts`.
+
+- Profiling: age from DOB; spouse's age and children from the family when the
+  client is its head or the head's spouse; the risk profile.
+- Assets: mutual funds summed by class — AMFI category (`withSchemeCategories`)
+  read with `classifyScheme`, gold by name, hybrid as "other" — and live FDs
+  as debt.
+- Protection: in-force life (term, endowment, money-back, ULIP, other life) and
+  health (health, critical illness, group health) sum assured + annual premium.
+- Goals: live goals with the Goals module's current value and existing SIP; a
+  goal kept in future rupees comes at 0% inflation (as the fact-find import).
+- Only blanks are filled; a second pick swaps what the first one filled; what
+  the RM typed stays. Income, expenses and loans are not CRM records.
+
+## A client who leaves — Exited, not deleted
+
+The firm's question of 2026-10-15: a client with no AUM or no business today
+may come back, so deleting them (Trash, erased after 30 days) means typing
+everything in again. Instead:
+
+- **Mark as exited** (client page → More, or bulk "Update a field" →
+  Status): the record keeps its history, family, RM, notes and documents,
+  leaves the client list (`live=1`, the list's default — "N exited clients are
+  hidden — show", `?exited=1`; a name search or a status filter still finds
+  them) and every dashboard count (`aliveClient`). The Delete confirmation
+  says so.
+- **Coming back is automatic**: after every RTA import a dormant / closed /
+  exited client with an inflow transaction (purchase, SIP instalment) in the
+  last 45 days dated on or after the day they left is Active again, audited
+  `investor.reactivated`, and their RM is told "… is back"
+  (`lib/investors/client-return.ts`). Redemptions never count.
+- **Dates**: a trigger (migration 0235) writes `exited_at` when a status
+  becomes closed / exited and `dormant_since` for dormant, on every write
+  path, and clears them when the client returns.
+- **Adding the same PAN again** never makes a second client:
+  `POST /api/investors` answers 409 with `existing` (`existingClientForPan`,
+  merges followed; a client outside the viewer's book has no name), and Add
+  client offers Reactivate (exited), Restore (in the Trash) or Open.
 
 ## Booked business vs the RTA
 
@@ -1365,6 +1489,42 @@ and can be served from any Node host.
 For staging or longer-lived environments, run `next start` behind a
 process supervisor (pm2 / systemd / Docker `restart: unless-stopped`)
 so the OS handles crash recovery for you.
+
+### How a push reaches production — the verified artifact (2026-10-15)
+
+The production box **never builds**. A push to `main` runs ONE workflow
+(`.github/workflows/deploy.yml`, "Deploy to AWS (EC2)"):
+
+```
+CI once (ci-core.yml) → build the slim image on a standard arm64 runner
+  → runtime-files gate → docker save | zstd + manifest
+  → S3 verified/<commit>/<runId>-<attempt>/  (OIDC role aina-crm-github-deploy: PutObject only)
+  → SSM → box: disk gate → download → artifact-verify.sh → docker load
+  → migrate → schema guard → blue/green switch  (scripts/artifact-deploy.sh, run-deploy-artifact.sh)
+```
+
+- **Only CI can create a verified artifact; the box can only read it.** The GitHub
+  role has `s3:PutObject` on `verified/*` (no Delete); the instance role has
+  `s3:GetObject` on `verified/*` (no Put, no List). Keys carry the full commit SHA and
+  run id + attempt, so a key is never reused (a re-run bumps the attempt).
+- **The box refuses** a wrong commit, failed CI, shadow flag, wrong architecture, a
+  stale artifact (> 14 days) or any SHA-256 mismatch — against the manifest AND
+  against the digest the build job passes inside the SSM command.
+- **Disk gate** (`scripts/disk-gate.sh`) aborts before any download/load; the log
+  prints CURRENT FREE / REQUIRED FREE / ARTIFACT SIZE / IMAGE SIZE / SAFETY HEADROOM.
+- **Every deploy measures itself** (`scripts/deploy-sampler.py`): the workflow log ends
+  with `=== DEPLOY METRICS ===` (host RAM, swap, dockerd RSS, container peaks, disk,
+  durations). A normal deploy takes ~1 minute on the box.
+- **Anything the image needs at runtime must be IN the image.** The old on-box
+  `COPY . .` silently carried untracked files (`rds-ca.pem` — the first verified
+  deploy failed on it, safely). The build job has a gate for the files production
+  needs; add to it when the box starts depending on another file.
+- **Emergency path**: `deploy-legacy.yml` (manual) still builds on the server. Docs-,
+  mobile-, terraform-, artifacts- and reports-only pushes do not deploy.
+- Pushes to a branch run `ci.yml` (cancelled by a newer push); `main` is validated by
+  the deploy workflow, never twice. Don't dispatch a deploy while another one is
+  *pending*: GitHub keeps only the newest pending run per concurrency group and
+  cancels the older one.
 
 ### Production change control — one change at a time
 

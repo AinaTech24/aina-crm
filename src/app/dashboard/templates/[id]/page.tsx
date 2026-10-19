@@ -1,10 +1,12 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 import { ChevronLeft, MessageCircle, Mail, MessageSquare, AlertCircle, FileText, CheckCircle2, ShieldAlert } from "lucide-react";
 import { withTenant } from "@/db/client";
-import { templates, templateVersions } from "@/db/schema";
+import { templates, templateVersions, whatsappTemplates } from "@/db/schema";
+import { canUseVersion, cannotUseReason } from "@/lib/templates/version-use";
+import { UseVersionButton } from "./UseVersionButton";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
@@ -62,13 +64,30 @@ export default async function TemplateDetailPage({
       ver = allVersions[0];
     }
 
-    return { tpl, ver, allVersions };
+    // WhatsApp: Meta's approval is recorded per key, not on the version row.
+    let metaApproved = false;
+    if (tpl.channel === "whatsapp") {
+      metaApproved = !!(await tx
+        .select({ id: whatsappTemplates.id })
+        .from(whatsappTemplates)
+        .where(and(eq(whatsappTemplates.metaTemplateName, tpl.key), eq(whatsappTemplates.metaStatus, "APPROVED")))
+        .limit(1))[0];
+    }
+
+    return { tpl, ver, allVersions, metaApproved };
   });
 
   if (!data) notFound();
-  const { tpl, ver, allVersions } = data;
+  const { tpl, ver, allVersions, metaApproved } = data;
 
   const hasApproveRole = can(session.roles, "template.approve", session.permissions);
+  // "Use this version" — only with edit rights, and never on a paused or
+  // archived template (switching would quietly resume it).
+  const canSwitch =
+    allVersions.length > 1 &&
+    can(session.roles, "template.edit", session.permissions) &&
+    tpl.status !== "archived" &&
+    tpl.status !== "paused";
   const Icon = channelIcons[tpl.channel as keyof typeof channelIcons] ?? MessageSquare;
 
   return (
@@ -140,15 +159,15 @@ export default async function TemplateDetailPage({
                 const isSelected = v.id === ver.id;
                 const isActive = v.id === tpl.currentVersionId;
                 return (
-                  <Link
+                  <div
                     key={v.id}
-                    href={`/dashboard/templates/${tpl.id}?v=${v.versionNumber}`}
-                    className={`block p-3 rounded-lg border transition-all ${
+                    className={`p-3 rounded-lg border transition-all ${
                       isSelected
                         ? "bg-secondary border-primary/50 text-foreground shadow-sm font-medium"
                         : "hover:bg-secondary/50 border-transparent text-muted-foreground"
                     }`}
                   >
+                  <Link href={`/dashboard/templates/${tpl.id}?v=${v.versionNumber}`} className="block">
                     <div className="flex justify-between items-center gap-1.5">
                       <span className="font-semibold text-xs text-foreground">Version {v.versionNumber}</span>
                       {isActive && (
@@ -168,6 +187,17 @@ export default async function TemplateDetailPage({
                       )}
                     </div>
                   </Link>
+                  {canSwitch && (
+                    <UseVersionButton
+                      templateId={tpl.id}
+                      versionId={v.id}
+                      versionNumber={v.versionNumber}
+                      isActive={isActive && tpl.status === "approved"}
+                      usable={canUseVersion(tpl.channel, v.approvalStatus, metaApproved)}
+                      reason={cannotUseReason(v.approvalStatus)}
+                    />
+                  )}
+                  </div>
                 );
               })}
             </div>

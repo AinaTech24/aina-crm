@@ -57,6 +57,7 @@ export const financialPlans = pgTable(
       name: string;
       value: number;
       monthlyEmi?: number;
+      tenureMonths?: number;
     }[]>().default([]),
 
     // Emergency Fund & Insurance

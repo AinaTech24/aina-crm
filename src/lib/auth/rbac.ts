@@ -109,6 +109,7 @@ export type Capability =
   | "service_request.view.all"
   | "service_request.view.assigned"
   | "service_request.manage"
+  | "service_request.delete"
   | "complaint.manage"
   // Review meetings
   | "review_meeting.manage.all"
@@ -232,6 +233,8 @@ const MATRIX: Record<Capability, Role[]> = {
   "service_request.view.all": ["back_office", "ops", "compliance", "service_team"],
   "service_request.view.assigned": ["rm", "insurance_team"],
   "service_request.manage": ["back_office", "ops", "service_team"],
+  // Permanent deletion: the owner (implicit) and anyone it is granted to.
+  "service_request.delete": [],
   "complaint.manage": ["compliance", "back_office", "ops", "service_team"],
 
   // Review meetings — back_office plans for all, RM runs assigned

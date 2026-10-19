@@ -91,6 +91,29 @@ export interface DispatchResult {
     findings?: ComplianceResult["findings"] };
 }
 
+/** The person an automatic send goes out as: the client's RM, or a lead's owner. Undefined when there is none. */
+async function ownerOfRecipient(tx: Tx, input: DispatchInput): Promise<string | undefined> {
+  if (input.investorId) {
+    const r = await tx.execute(sql`SELECT rm_id::text AS id FROM investors WHERE id = ${input.investorId}::uuid AND tenant_id = ${input.tenantId}::uuid LIMIT 1`);
+    return ((r.rows[0] as { id?: string | null } | undefined)?.id) ?? undefined;
+  }
+  if (input.leadId) {
+    const r = await tx.execute(sql`SELECT owner_id::text AS id FROM leads WHERE id = ${input.leadId}::uuid AND tenant_id = ${input.tenantId}::uuid LIMIT 1`);
+    return ((r.rows[0] as { id?: string | null } | undefined)?.id) ?? undefined;
+  }
+  return undefined;
+}
+
+/** The firm's (first) active owner, for an automatic send nobody else can carry. */
+async function firmOwnerId(tx: Tx, tenantId: string): Promise<string | undefined> {
+  const r = await tx.execute(sql`
+    SELECT id::text AS id FROM users
+     WHERE tenant_id = ${tenantId}::uuid AND status = 'active' AND 'owner' = ANY(roles)
+     ORDER BY created_at LIMIT 1
+  `);
+  return ((r.rows[0] as { id?: string } | undefined)?.id) ?? undefined;
+}
+
 export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchResult> {
   const communicationId = uuid();
 
@@ -625,7 +648,34 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
       // One resolver decides the sender: the acting RM's own mailbox → the firm
       // mailbox (SMTP / OAuth) → Resend with the firm's sender identity. OAuth
       // mailboxes get a freshly-minted access token inside resolveEmailSender.
-      const sender = await resolveEmailSender(tx, input.tenantId, input.actorUserId);
+      //
+      // An automatic send (a workflow rule, a stage automation) has no one acting,
+      // so it goes as the client's own relationship manager (a lead's owner): their
+      // mailbox, their name, replies to them. Without this a firm whose only
+      // connected mailbox is a person's — Nimesh C Shah's is the owner's — could
+      // never send an automatic email, and it fell through to Resend, which has
+      // no platform key on production (15 Oct 2026).
+      //
+      // If that RM has no mailbox either, and the firm has no firm-wide mailbox or
+      // Resend key, the automatic send goes through the firm OWNER's mailbox, so one
+      // RM without a mailbox does not stop the firm's automatic email.
+      const senderUserId = input.actorUserId ?? (await ownerOfRecipient(tx, input));
+      let sender = await resolveEmailSender(tx, input.tenantId, senderUserId);
+      if (!input.actorUserId && !sender.smtp?.host && !sender.apiKey && !process.env.RESEND_API_KEY) {
+        const ownerId = await firmOwnerId(tx, input.tenantId);
+        if (ownerId && ownerId !== senderUserId) {
+          const viaOwner = await resolveEmailSender(tx, input.tenantId, ownerId);
+          if (viaOwner.smtp?.host) sender = viaOwner;
+        }
+      }
+      // Nothing can send: say so BEFORE the delivery is marked as sent, so the
+      // row reads "no email account connected", not "provider outcome unknown;
+      // reconciliation required" — nothing reached any provider.
+      if (!sender.smtp?.host && !sender.apiKey && !process.env.RESEND_API_KEY) {
+        throw new Error(
+          "No email account is connected for this firm. Connect one in Settings → Email (the firm's mailbox, or the relationship manager's own), then send again."
+        );
+      }
       await markSending();
       adapterResult = await emailAdapter.send({
         tenantId: input.tenantId,

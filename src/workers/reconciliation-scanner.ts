@@ -22,7 +22,7 @@
  * transaction therefore fires its event exactly once, ever — re-runs and
  * widened windows are safe no-ops at the write layer.
  *
- * Schedule: a self-scheduled daily tick at 07:30 local (after the 07:00 NAV
+ * Schedule: a self-scheduled daily tick at 07:30 local (after the 06:00 NAV
  * refresh, so valuations are fresh). First run processes the trailing 2 days;
  * pass `sinceDays` to widen (used by tests / back-fills).
  */

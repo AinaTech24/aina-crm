@@ -150,7 +150,10 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "deploy_artifacts"
   }
 }
 
-# Releases are disposable: kept 14 days.
+# Releases are disposable: kept 14 days. Verified artifacts (CI-built images, verified/<sha>/<run>/)
+# are kept 30 days: a recovery window well past the 14-day age limit artifact-verify.sh enforces by
+# default (an older one needs ARTIFACT_MAX_AGE_DAYS set deliberately). Rollback itself uses the
+# mfd-app:prev-* image tags on the box, not S3.
 resource "aws_s3_bucket_lifecycle_configuration" "deploy_artifacts" {
   bucket = aws_s3_bucket.deploy_artifacts.id
   rule {
@@ -161,6 +164,19 @@ resource "aws_s3_bucket_lifecycle_configuration" "deploy_artifacts" {
     }
     expiration {
       days = 14
+    }
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 1
+    }
+  }
+  rule {
+    id     = "expire-verified-30d"
+    status = "Enabled"
+    filter {
+      prefix = "verified/"
+    }
+    expiration {
+      days = 30
     }
     abort_incomplete_multipart_upload {
       days_after_initiation = 1
@@ -187,6 +203,29 @@ resource "aws_s3_bucket_policy" "deploy_artifacts" {
             "aws:SecureTransport" : "false"
           }
         }
+      }
+    ]
+  })
+}
+
+# ── Verified artifacts (2026-10-14): the box deploys a pre-built image ───────────
+# CI builds the slim image on a GitHub arm64 runner and uploads it under the bucket's
+# verified/ prefix. THIS role may write ONLY there (one action, one prefix). It is a
+# separate inline policy on the GitHub role alone: the laptop role (manual_deploy) and the
+# AinaDeploy permission set cannot write to verified/, so everything the box accepts as
+# "verified" came from the CI build job. The box's artifact-verify.sh additionally checks
+# the SHA-256 against the digest the workflow reports over SSM.
+resource "aws_iam_role_policy" "github_deploy_verified_write" {
+  name = "aina-crm-verified-artifacts-write"
+  role = aws_iam_role.github_deploy.id
+  policy = jsonencode({
+    "Version" : "2012-10-17",
+    "Statement" : [
+      {
+        "Sid" : "WriteVerifiedArtifactsOnly",
+        "Effect" : "Allow",
+        "Action" : "s3:PutObject",
+        "Resource" : "arn:aws:s3:::aina-crm-deploy-artifacts-972971302420/verified/*"
       }
     ]
   })

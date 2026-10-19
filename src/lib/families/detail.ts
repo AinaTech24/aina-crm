@@ -19,7 +19,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { families, investors, users } from "@/db/schema";
 import type { SessionUser } from "@/lib/auth/session";
 import { loadViewableFamily } from "./access";
-import { isLiveMember, isNextGenProspect, hasNominee } from "./health";
+import { isLiveMember, isNextGenProspect, nominationApplies, nomineeGap } from "./health";
 
 export async function loadFamilyDetail(tx: any, session: SessionUser, familyId: string) {
   if (!(await loadViewableFamily(tx, session, familyId))) return null;
@@ -56,7 +56,9 @@ export async function loadFamilyDetail(tx: any, session: SessionUser, familyId: 
 
   const totalAum = live.reduce((s, m) => s + Number(m.aum ?? 0), 0);
   const totalSip = live.reduce((s, m) => s + Number(m.activeSipAmount ?? 0), 0);
-  const withNominee = live.filter((m) => hasNominee(m as any)).length;
+  // Only individuals nominate: an HUF, minor or entity is never a gap.
+  const nominating = live.filter((m) => nominationApplies(m));
+  const withNominee = nominating.filter((m) => !nomineeGap(m)).length;
   const nextGen = live.filter((m) => isNextGenProspect(m as any));
 
   return {
@@ -72,7 +74,7 @@ export async function loadFamilyDetail(tx: any, session: SessionUser, familyId: 
       totalSip,
       memberCount: live.length,
       membersWithNominee: withNominee,
-      nomineePct: live.length ? Math.round((withNominee / live.length) * 100) : 0,
+      nomineePct: nominating.length ? Math.round((withNominee / nominating.length) * 100) : 100,
     },
   };
 }

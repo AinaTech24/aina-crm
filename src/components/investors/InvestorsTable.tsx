@@ -15,7 +15,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { ArrowDown, ArrowUp, ArrowUpDown, PencilLine } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, GitMerge, PencilLine } from "lucide-react";
 import { RowActions } from "@/components/common/RowActions";
 import { RmSelector } from "@/components/common/RmSelector";
 import { formatINR } from "@/lib/utils";
@@ -28,6 +28,7 @@ import { FloatingBulkBar } from "@/components/common/FloatingBulkBar";
 import { InvestorSidePeek, type SidePeekInvestor } from "@/components/investors/InvestorSidePeek";
 import { MassUpdateDialog, type MassUpdateOptions } from "@/components/investors/MassUpdateDialog";
 import { notify } from "@/components/ui/Toast";
+import { FolioTransferDialog } from "@/components/investors/FolioTransferDialog";
 
 export type InvestorTableRow = {
   id: string;
@@ -98,6 +99,7 @@ export function InvestorsTable({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [massOpen, setMassOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
 
   /** "Update a field" — returns an error message for the dialog, or null. */
   async function applyMassUpdate(field: string, value: string | null): Promise<string | null> {
@@ -434,16 +436,37 @@ export function InvestorsTable({
         busy={busy}
         error={err}
         customActions={
-          massUpdate ? (
+          <>
+            {massUpdate && (
+              <button
+                type="button"
+                onClick={() => setMassOpen(true)}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-secondary/80 hover:bg-secondary text-foreground transition-colors"
+              >
+                <PencilLine className="size-3.5" /> Update a field
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => setMassOpen(true)}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-secondary/80 hover:bg-secondary text-foreground transition-colors"
+              disabled={selected.size !== 2}
+              title={selected.size === 2 ? "Move folios from one of these clients to the other" : "Select exactly two clients to merge"}
+              onClick={() => setTransferOpen(true)}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-secondary/80 hover:bg-secondary text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <PencilLine className="size-3.5" /> Update a field
+              <GitMerge className="size-3.5" /> Merge
             </button>
-          ) : undefined
+          </>
         }
+      />
+      <FolioTransferDialog
+        open={transferOpen}
+        onOpenChange={setTransferOpen}
+        ids={[...selected]}
+        onDone={(m) => {
+          notify.success(m);
+          setSelected(new Set());
+          router.refresh();
+        }}
       />
       {massUpdate && (
         <MassUpdateDialog

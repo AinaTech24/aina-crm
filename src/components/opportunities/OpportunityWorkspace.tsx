@@ -51,7 +51,11 @@ export function OpportunityJourney({ o, canWork, staff }: { o: OpportunityView; 
   );
 }
 
-export function OpportunityDetailsCard({ o, canWork, staff }: { o: OpportunityView; canWork: boolean; staff: Staff[] }) {
+export function OpportunityDetailsCard({ o, canWork, staff, assignees }: {
+  o: OpportunityView; canWork: boolean; staff: Staff[];
+  /** Who the owner can be changed to (lib/opportunities/assignees.ts). */
+  assignees: Staff[];
+}) {
   const [editing, setEditing] = useState(false);
   const rows: Array<[string, React.ReactNode]> = [
     ["Expected", o.expectedValue == null ? "—" : `${formatMoney(o.expectedValue)}${o.investmentMode === "sip" ? " a month (SIP)" : o.investmentMode === "lumpsum" ? " lumpsum" : ""}`],
@@ -85,12 +89,12 @@ export function OpportunityDetailsCard({ o, canWork, staff }: { o: OpportunityVi
           </div>
         )}
       </dl>
-      {editing && <EditDialog o={o} staff={staff} onClose={() => setEditing(false)} />}
+      {editing && <EditDialog o={o} staff={staff} assignees={assignees} onClose={() => setEditing(false)} />}
     </Card>
   );
 }
 
-function EditDialog({ o, staff, onClose }: { o: OpportunityView; staff: Staff[]; onClose: () => void }) {
+function EditDialog({ o, staff, assignees, onClose }: { o: OpportunityView; staff: Staff[]; assignees: Staff[]; onClose: () => void }) {
   const router = useRouter();
   const [value, setValue] = useState(o.expectedValue == null ? "" : String(o.expectedValue));
   const [mode, setMode] = useState<"" | "sip" | "lumpsum">(o.investmentMode ?? "");
@@ -107,7 +111,7 @@ function EditDialog({ o, staff, onClose }: { o: OpportunityView; staff: Staff[];
         body: JSON.stringify({
           expectedValue: value.trim() ? Number(value.replace(/[^0-9.]/g, "")) : null,
           ...(o.pipeline === "mf" ? { investmentMode: mode || null } : {}),
-          ...(ownerId ? { ownerId } : {}),
+          ...(ownerId && ownerId !== o.ownerId ? { ownerId } : {}),
           coOwnerId: coOwnerId || null,
           notes: notes.trim() || null,
         }),
@@ -127,7 +131,7 @@ function EditDialog({ o, staff, onClose }: { o: OpportunityView; staff: Staff[];
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Edit {o.productLabel}</DialogTitle>
-          <DialogDescription>Changing the owner moves nothing already on someone's list; new follow-ups go to the new owner.</DialogDescription>
+          <DialogDescription>A new owner takes over the follow-up.</DialogDescription>
         </DialogHeader>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <Field label={o.pipeline === "mf" && mode === "sip" ? "SIP amount a month (₹)" : o.pipeline === "insurance" ? "Expected premium (₹)" : "Expected amount (₹)"} optional>
@@ -147,8 +151,8 @@ function EditDialog({ o, staff, onClose }: { o: OpportunityView; staff: Staff[];
           <Field label="Owner">
             {(id, d) => (
               <SelectField id={id} aria-describedby={d} value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className="w-full">
-                {!staff.some((s) => s.id === ownerId) && ownerId && <option value={ownerId}>{o.ownerName ?? "Current owner"}</option>}
-                {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                {o.ownerId && !assignees.some((s) => s.id === o.ownerId) && <option value={o.ownerId}>{o.ownerName ?? "Current owner"}</option>}
+                {assignees.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </SelectField>
             )}
           </Field>

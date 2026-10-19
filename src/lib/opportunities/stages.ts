@@ -4,7 +4,7 @@
  * here, the engine (journey.ts) walks it, and the tests read it.
  *
  *   identified → discussion → suitability → proposal → accepted
- *      ├─ mf         mf_kyc → mf_ucc → mf_mandate → mf_transaction
+ *      ├─ mf         mf_kyc → mf_ucc → mf_mandate → mf_transaction → txn_review
  *      ├─ insurance  ins_proposal_form → ins_underwriting → ins_issued
  *      └─ general    gen_executed                   (no suitability stage)
  *   → won.   "lost" is reachable from every open stage.
@@ -24,7 +24,7 @@ export const OPPORTUNITY_MODULE = "opportunities";
 
 export type OpportunityStageKey =
   | "identified" | "discussion" | "suitability" | "proposal" | "accepted"
-  | "mf_kyc" | "mf_ucc" | "mf_mandate" | "mf_transaction"
+  | "mf_kyc" | "mf_ucc" | "mf_mandate" | "mf_transaction" | "txn_review"
   | "ins_proposal_form" | "ins_underwriting" | "ins_issued"
   | "gen_executed" | "won" | "lost";
 
@@ -53,23 +53,26 @@ export const OPPORTUNITY_STAGES: SeedStage[] = [
     description: "Needed for a SIP. Skipped for a lumpsum, or when an active mandate covers the amount." },
   { key: "mf_transaction", name: "Transaction placed", order: 9, ownerRole: "back_office", requiredFields: [], slaDays: 3,
     allowedActions: ["place_order"], description: "Done when the purchase or SIP appears on the client." },
-  { key: "ins_proposal_form", name: "Proposal form submitted", order: 10, ownerRole: "sales", requiredFields: [], slaDays: 5,
+  { key: "txn_review", name: "Approve / reject transaction", order: 10, ownerRole: "back_office", requiredFields: [], slaDays: 2,
+    allowedActions: ["approve_transaction", "reject_transaction"],
+    description: "Operations checks the transaction. Approved: a task is created and the client is won. Rejected: it goes back to Transaction placed with a task to fix it." },
+  { key: "ins_proposal_form", name: "Proposal form submitted", order: 11, ownerRole: "sales", requiredFields: [], slaDays: 5,
     allowedActions: ["submit_proposal_form"], description: "The insurer's proposal form is filled and submitted." },
-  { key: "ins_underwriting", name: "Underwriting / medicals", order: 11, ownerRole: "sales", requiredFields: [], slaDays: 15,
+  { key: "ins_underwriting", name: "Underwriting / medicals", order: 12, ownerRole: "sales", requiredFields: [], slaDays: 15,
     allowedActions: ["track_medicals"], description: "Medicals and insurer questions." },
-  { key: "ins_issued", name: "Policy issued", order: 12, ownerRole: "sales", requiredFields: [], slaDays: 3,
+  { key: "ins_issued", name: "Policy issued", order: 13, ownerRole: "sales", requiredFields: [], slaDays: 3,
     allowedActions: ["record_policy"], description: "Done when the issued policy is recorded on the client." },
-  { key: "gen_executed", name: "Executed", order: 13, ownerRole: "back_office", requiredFields: [], slaDays: 7,
+  { key: "gen_executed", name: "Executed", order: 14, ownerRole: "back_office", requiredFields: [], slaDays: 7,
     allowedActions: ["record_execution"], description: "The account is opened or the investment made." },
-  { key: "won", name: "Won — held with us", order: 14, ownerRole: "sales", requiredFields: [], allowedActions: [],
+  { key: "won", name: "Won — held with us", order: 15, ownerRole: "sales", requiredFields: [], allowedActions: [],
     flavour: "terminal_success" },
-  { key: "lost", name: "Lost", order: 15, ownerRole: "sales", requiredFields: [], allowedActions: [],
+  { key: "lost", name: "Lost", order: 16, ownerRole: "sales", requiredFields: [], allowedActions: [],
     flavour: "terminal_failure" },
 ];
 
 /** The stages an opportunity of each pipeline walks, in order. */
 export const OPPORTUNITY_PATHS: Record<OpportunityPipeline, OpportunityStageKey[]> = {
-  mf: ["identified", "discussion", "suitability", "proposal", "accepted", "mf_kyc", "mf_ucc", "mf_mandate", "mf_transaction", "won"],
+  mf: ["identified", "discussion", "suitability", "proposal", "accepted", "mf_kyc", "mf_ucc", "mf_mandate", "mf_transaction", "txn_review", "won"],
   insurance: ["identified", "discussion", "suitability", "proposal", "accepted", "ins_proposal_form", "ins_underwriting", "ins_issued", "won"],
   general: ["identified", "discussion", "proposal", "accepted", "gen_executed", "won"],
 };
@@ -87,6 +90,8 @@ export function opportunityTransitions(): Array<{ from: string; to: string; name
       out.push({ from: path[i], to: path[i + 1], name: name(path[i + 1]) });
     }
   }
+  // A rejected transaction goes back to be placed again.
+  out.push({ from: "txn_review", to: "mf_transaction", name: "Transaction rejected — place again" });
   for (const s of OPPORTUNITY_STAGES) {
     if (s.key === "won" || s.key === "lost") continue;
     out.push({ from: s.key, to: "lost", name: "Lost" });
@@ -104,5 +109,8 @@ export function nextStage(pipeline: OpportunityPipeline, current: string): Oppor
 export function stageName(key: string): string {
   return OPPORTUNITY_STAGES.find((s) => s.key === key)?.name ?? key;
 }
+
+/** The step right after "Client accepted" — entering it needs the client's approval of the proposal. */
+export const AFTER_ACCEPTED: ReadonlySet<string> = new Set(["mf_kyc", "ins_proposal_form", "gen_executed"]);
 
 export const isClosedStage = (key: string) => key === "won" || key === "lost";

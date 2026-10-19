@@ -96,3 +96,22 @@ describe("findClusters — SimilarName", () => {
     expect(kinds([rec({ name: "BEHNAZ PORAS DASTUR", pan: "AAAPD1111A", dob: "1970-01-01" }), rec({ name: "Behnaz Porus Dastur", dob: "1990-01-01" })])).toEqual([]);
   });
 });
+
+describe("findClusters — PanTypo", () => {
+  it("pairs one person under two PANs one character apart (Nimesh C Shah's Dipak Rana)", () => {
+    expect(kinds([
+      rec({ name: "DIPAK KASHIRAM RANA", pan: "AAUPR8108G", phone: "9820005153", email: "d.rana@gmail.com", dob: "1971-11-01" }),
+      rec({ name: "DIPAK RANA", pan: "AAUPR8108Q", phone: "9820005153", email: "d.rana@gmail.com" }),
+    ])).toEqual(["PanTypo:2"]);
+  });
+
+  it("stays apart without a shared contact, with a different first name, a different birth date, or a minor", () => {
+    expect(kinds([rec({ name: "DIPAK RANA", pan: "AAUPR8108G" }), rec({ name: "DIPAK RANA", pan: "AAUPR8108Q" })])).toEqual([]);
+    expect(kinds([rec({ name: "ANIL SHAH", pan: "AAAPS1111A", phone: "9820001111" }), rec({ name: "TEJAS SHAH", pan: "AAAPS1111B", phone: "9820001111" })]))
+      .toEqual(["Phone:2"]);
+    expect(kinds([rec({ name: "DIPAK RANA", pan: "AAUPR8108G", dob: "1971-11-01", phone: "9820005153" }), rec({ name: "DIPAK RANA", pan: "AAUPR8108Q", dob: "1980-01-01", phone: "9820005153" })]))
+      .toEqual(["Phone:2"]);
+    expect(kinds([rec({ name: "DIPAK RANA", pan: "AAUPR8108G", phone: "9820005153", is_minor: true }), rec({ name: "DIPAK RANA", pan: "AAUPR8108Q", phone: "9820005153" })]))
+      .toEqual(["Phone:2"]);
+  });
+});

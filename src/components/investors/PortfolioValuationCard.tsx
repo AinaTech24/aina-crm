@@ -102,8 +102,8 @@ export function PortfolioValuationCard({
           <Info className="size-3.5 mt-0.5 shrink-0" />
           <span>
             {unpricedSchemes} scheme{unpricedSchemes > 1 ? "s" : ""} ({formatINR(Math.round(unpricedInvested))} invested)
-            couldn&apos;t be priced — no matching AMFI scheme code. Returns above exclude these.
-            Importing folios with AMFI codes / ISINs resolves them automatically.
+            couldn&apos;t be priced: no NAV is published for them (a segregated portfolio) or the
+            scheme isn&apos;t matched to AMFI yet. Returns above exclude these.
           </span>
         </div>
       )}

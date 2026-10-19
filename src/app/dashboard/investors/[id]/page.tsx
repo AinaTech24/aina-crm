@@ -1,4 +1,5 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
+import { riskProfileLapsed } from "@/lib/risk-profile/expiry";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
@@ -51,6 +52,7 @@ import { ReferralSection } from "@/components/investors/ReferralSection";
 import { CustomFieldsCard } from "@/components/common/CustomFieldsCard";
 import { RiskProfilePdfButtons } from "@/components/risk-profile/RiskProfileName";
 import { SendRiskProfileLinkButton } from "@/components/risk-profile/SendRiskProfileLinkButton";
+import { UploadRiskProfileButton } from "@/components/risk-profile/UploadRiskProfileButton";
 import { loadTenantLicense } from "@/lib/auth/license";
 import { isFieldAllowed } from "@/lib/auth/field-gate";
 import { InvestorBlueprintStageBar } from "@/components/investors/InvestorBlueprintStageBar";
@@ -75,6 +77,8 @@ import { RecordNotes } from "@/components/common/RecordNotes";
 import { InvestorAvatarEditor } from "@/components/investors/InvestorAvatarEditor";
 import { EmailRelatedList } from "@/components/comms/EmailRelatedList";
 import { can } from "@/lib/auth/rbac";
+import { ClientExitButton } from "@/components/investors/ClientExitButton";
+import { KycCheckButton } from "@/components/investors/KycCheckButton";
 import { WhatsAppRelatedList } from "@/components/comms/WhatsAppRelatedList";
 import { InvestorDetailTabs } from "@/components/investors/InvestorDetailTabs";
 import { EditClientDetailsLink } from "@/components/investors/EditClientDetailsLink";
@@ -210,6 +214,16 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
   const showNominee = isFieldAllowed(license, "investor", "nominee_name") || isFieldAllowed(license, "investor", "nominee");
   const showBank = isFieldAllowed(license, "investor", "bank_account_number_masked") || isFieldAllowed(license, "investor", "bank");
   const showRm = isFieldAllowed(license, "investor", "rm_id") || isFieldAllowed(license, "investor", "rm");
+
+  // The firm's NSE MF Invest connection: the KYC status can be fetched from the KRA (lib/kyc/).
+  const nseKyc = showKyc
+    ? await withTenant(session.tenantId, async (tx) => {
+        const r = await tx.execute(sql`SELECT 1 FROM tenant_integrations
+           WHERE tenant_id = ${session.tenantId}::uuid AND provider = 'nse_mf' AND user_id IS NULL AND is_active LIMIT 1`);
+        return r.rows.length > 0;
+      })
+    : false;
+  const canCheckKyc = can(session.roles, "investor.edit.all", session.permissions) || can(session.roles, "investor.edit.assigned", session.permissions);
 
   const data = await withTenant(session.tenantId, async (tx) => {
     // Data scope: a client outside the viewer's book (or no client capability
@@ -417,9 +431,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
   );
   const suitability = assessSuitability((inv as any).riskProfile ?? null, exposure.equityPct, exposure.classifiedPct);
   const isRiskProfileMissing = !inv.riskProfile;
-  const isRiskProfileExpired = inv.riskProfileSignedAt
-    ? new Date(inv.riskProfileSignedAt).getTime() < Date.now() - 365 * 24 * 60 * 60 * 1000
-    : false;
+  const isRiskProfileExpired = riskProfileLapsed(inv);
 
   // Profile fields still blank, beyond the compliance items the checklist
   // already tracks as pills (KYC, risk profile, nominee, bank).
@@ -521,6 +533,9 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
               <ChangeLogButton entityType="investor" entityId={inv.id} triggerClassName={MENU_ITEM} />
               <RelatedListsManager moduleKey="investors-detail" sections={INVESTOR_DETAIL_SECTIONS} triggerClassName={MENU_ITEM} />
               <RecordMenuSeparator />
+              {(can(session.roles, "investor.edit.all", session.permissions) || can(session.roles, "investor.edit.assigned", session.permissions)) && (
+                <ClientExitButton investorId={inv.id} name={inv.name} status={inv.status ?? null} />
+              )}
               <RowActions
                 menuItem
                 deleteUrl={`/api/investors/${inv.id}`}
@@ -528,6 +543,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
                 itemName={inv.name}
                 verb="Delete"
                 redirectTo="/dashboard/investors"
+                confirmNote="A deleted client is erased for good after 30 days in the Trash. If they may come back, use Mark as exited instead — nothing is lost."
               />
             </RecordMenu>
           </>
@@ -950,6 +966,19 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
 
         <Group title="Compliance status">
           {showKyc && <Status label="KYC status" value={inv.kycStatus} good={inv.kycStatus === "verified"} />}
+          {showKyc && (nseKyc || inv.kycCheckedAt) && (
+            <KV
+              label="KRA check"
+              node={
+                <KycCheckButton
+                  investorId={inv.id}
+                  remark={inv.kycStatusRemark ?? null}
+                  checkedAt={inv.kycCheckedAt ? new Date(inv.kycCheckedAt).toISOString() : null}
+                  canCheck={nseKyc && canCheckKyc && !!inv.pan}
+                />
+              }
+            />
+          )}
           <KV label="Residential status" value={inv.residencyStatus ?? "—"} cap edit={{ id: inv.id, field: "residencyStatus", type: "select", options: RESIDENCY_OPTS, value: inv.residencyStatus ?? "", nullable: true }} />
           <KV label="Tax status" value={inv.taxStatus ?? "—"} />
           {adult && <KV label="PAN–Aadhaar link" value={inv.panAadhaarLinkStatus ?? "—"} cap edit={{ id: inv.id, field: "panAadhaarLinkStatus", type: "select", options: PAN_AADHAAR_OPTS, value: inv.panAadhaarLinkStatus ?? "", nullable: true }} />}
@@ -1044,6 +1073,9 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
             </h2>
             <div className="flex items-center gap-3">
               <SendRiskProfileLinkButton investorId={inv.id} />
+              {can(session.roles, "risk_profile.manage", session.permissions) && inv.investorCategory !== "minor" && (
+                <UploadRiskProfileButton initialClient={{ id: inv.id, name: inv.name }} appearance="link" />
+              )}
               <Link
                 href={`/dashboard/risk-profiles/new?investorId=${inv.id}`}
                 className="text-xs font-semibold text-primary hover:underline"

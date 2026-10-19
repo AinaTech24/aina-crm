@@ -33,6 +33,11 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const q = (url.searchParams.get("q") ?? "").trim();
     if (q.length < 2) return NextResponse.json({ groups: [] });
+    // `modules=clients,leads` limits the search to those groups (the palette's
+    // module picker); absent means every group. Unknown names match nothing.
+    const modulesParam = url.searchParams.get("modules");
+    const only = modulesParam ? new Set(modulesParam.split(",").map((m) => m.trim()).filter(Boolean)) : null;
+    const wants = (name: string) => !only || only.has(name);
 
     const like = `%${q}%`;
     const likeUpper = `%${q.toUpperCase()}%`;
@@ -67,7 +72,7 @@ export async function GET(req: NextRequest) {
       // route is six hand-written queries the schema guard cannot check.
       const group = async (name: string, q: SQL): Promise<unknown[]> => {
         // The person typed on: the browser dropped this search, so stop here.
-        if (req.signal.aborted) return [];
+        if (req.signal.aborted || !wants(name)) return [];
         try {
           return (await tx.transaction(async (sp) => sp.execute(q))).rows;
         } catch (err) {

@@ -10,6 +10,7 @@
  */
 
 import { sql } from "drizzle-orm";
+import { riskProfileLapsed } from "@/lib/risk-profile/expiry";
 import type { withTenant } from "@/db/client";
 import { asInList, num, PROPOSAL_LIVE, SR_CLOSED, TASK_DEAD, taskIsAbout } from "@/lib/dashboard/my/window";
 
@@ -47,7 +48,7 @@ export async function loadClientSummary(tx: Tx, tenantId: string, investorId: st
            upper(NULLIF(btrim(i.client_category), ''))                                 AS category,
            u.name                                                                      AS rm,
            i.aum::numeric AS aum, i.active_sip_amount::numeric AS sip, i.next_review_at,
-           i.risk_profile, i.risk_profile_signed_at,
+           i.risk_profile, i.risk_profile_signed_at, i.risk_profile_expires_on, i.risk_profile_expiry_for,
            COALESCE(i.risk_profile_provisional, false)                                 AS provisional,
            (SELECT MAX(m.meeting_date) FROM review_meetings m
              WHERE m.investor_id = i.id AND m.status = 'completed')                    AS last_meeting,
@@ -76,9 +77,14 @@ export async function loadClientSummary(tx: Tx, tenantId: string, investorId: st
 
   const str = (v: unknown) => (v == null || v === "" ? null : String(v));
   const signed = str(r.risk_profile_signed_at);
-  // A signed profile is re-done a year after signing — the same rule as the
-  // dashboards' "Due for review".
-  const stale = signed != null && Date.parse(signed) < Date.now() - 365 * 864e5;
+  // A signed profile is re-done when it lapses — a year after signing, or the
+  // "Expire On" date an uploaded one states (lib/risk-profile/expiry.ts) — the
+  // same rule as the dashboards' "Due for review".
+  const stale = riskProfileLapsed({
+    riskProfileSignedAt: signed,
+    riskProfileExpiresOn: str(r.risk_profile_expires_on),
+    riskProfileExpiryFor: str(r.risk_profile_expiry_for),
+  });
   const risk: ClientSummary["risk"] = r.risk_profile == null ? "Not completed"
     : r.provisional === true ? "Provisional"
     : stale ? "Due for review"

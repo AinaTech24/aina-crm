@@ -59,7 +59,10 @@ export async function ensureDocCollectionTemplate(tenantId: string, userId: stri
       await tx.insert(templates).values({
         id: tplId, tenantId, key: DOC_TEMPLATE_KEY, channel: "whatsapp",
         name: "Document Collection", description: "KYC document upload request",
-        category: "utility", locale: "en", status: "draft", currentVersionId: verId,
+        // "en-IN", not "en": dispatch() looks a template up in "en-IN", and the Meta
+        // import files its copy there — under "en" the import found no match and
+        // added a second, positional copy (Nimesh C Shah, 8–9 Oct 2026).
+        category: "utility", locale: "en-IN", status: "draft", currentVersionId: verId,
       } as any);
       await tx.insert(templateVersions).values({
         id: verId, templateId: tplId, tenantId, versionNumber: 1,
