@@ -506,7 +506,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const datePatch: Record<string, unknown> = {};
       const demiseDay = parse.data.dateOfDemise === undefined ? undefined : (parse.data.dateOfDemise || "").slice(0, 10) || null;
       if (demiseDay) {
-        const bad = demiseDateError(demiseDay, (parse.data.dob as string | undefined) ?? ((before as any).dob as string | null));
+        const bad = demiseDateError(demiseDay, (parse.data.dob as string | undefined) ?? before.dob);
         if (bad) return { badDemise: bad } as const;
       }
       if (demiseDay !== undefined) datePatch.dateOfDemise = demiseDay;
@@ -623,7 +623,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // A newly recorded date of demise stops the client's SIPs and pending
       // orders; clearing it (a mistake) makes an Inactive client Active again.
       let demise: DemiseEffects | undefined;
-      const hadDemise = ((before as any).dateOfDemise as string | null) ?? null;
+      const hadDemise = before.dateOfDemise ?? null;
       if (demiseDay && demiseDay !== hadDemise) {
         demise = await applyDemise(tx, { tenantId: session.tenantId, investorId: id, actorUserId: session.userId, day: demiseDay });
       } else if (demiseDay === null && hadDemise) {

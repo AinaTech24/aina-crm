@@ -70,7 +70,7 @@ export async function applyDemise(
   await recordAudit(tx, {
     tenantId, actorUserId, action: "investor.demise_recorded", entityType: "investor", entityId: investorId,
     after: { dateOfDemise: day, ...effects },
-  } as any);
+  });
   return effects;
 }
 
@@ -85,5 +85,5 @@ export async function clearDemise(
   await recordAudit(tx, {
     tenantId: args.tenantId, actorUserId: args.actorUserId, action: "investor.demise_cleared",
     entityType: "investor", entityId: args.investorId, after: { dateOfDemise: null },
-  } as any);
+  });
 }
