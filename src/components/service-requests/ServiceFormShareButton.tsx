@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * "Request form" on the Service Requests page — opens a pop-up with the firm's
+ * "Service form" on the Service Requests page — opens a pop-up with the firm's
  * service request link, ready to send to a client (copy, WhatsApp, email).
  * What the client fills in arrives in the list below as an open request.
  * Link and on/off: GET/PATCH /api/service-requests/website-form; the full page
@@ -58,7 +58,7 @@ export function ServiceFormShareButton() {
   return (
     <>
       <Button variant="secondary" icon={<ClipboardList className="size-4" aria-hidden />} onClick={show}>
-        Request form
+        Service form
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-lg">

@@ -12,6 +12,7 @@ import { dateRangeCond } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
 import { MoreMenu } from "@/components/common/MoreMenu";
+import { ServiceFormShareButton } from "@/components/service-requests/ServiceFormShareButton";
 import { buttonClass } from "@/components/ui/button-class";
 import { srPastSlaSql, srWhere } from "@/lib/metrics";
 import { serviceRequestScopeSql, srClientVisibleSql } from "@/lib/service-requests/access";
@@ -74,6 +75,9 @@ export default async function ServiceRequestsPage({
   const session = await requireSession();
   // The firm's public complaint link — for whoever runs the firm's tickets.
   const canSeeComplaintForm = (["service_request.view.all", "service_request.manage", "compliance.view"] as const)
+    .some((cap) => can(session.roles, cap, session.permissions));
+  // The service request form link for clients — same rule as its own page.
+  const canSeeServiceForm = (["service_request.view.all", "service_request.manage"] as const)
     .some((cap) => can(session.roles, cap, session.permissions));
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
@@ -203,6 +207,7 @@ export default async function ServiceRequestsPage({
               ]}
             />
           )}
+          {canSeeServiceForm && <ServiceFormShareButton />}
           <ExportButton module="service-requests" />
           <Link href="/dashboard/service-requests/new" className={buttonClass("primary")}>
             <Plus className="size-4" /> New request
