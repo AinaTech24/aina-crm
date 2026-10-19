@@ -65,6 +65,7 @@ import { clientOpportunities, eventsOutbox, tasks, type ClientOpportunity, type 
 import { blueprintStageHistory } from "@/db/schema";
 import { ensureInstanceFor, transitionPoly } from "@/lib/blueprints/poly-engine";
 import { recordAudit } from "@/lib/audit";
+import { createNotification } from "@/lib/notifications/create";
 import { formatDate, formatMoney } from "@/lib/format";
 import {
   isCrossSellProduct, productLabel, productPipeline, proposalTypesFor, type OpportunityPipeline, type OpportunitySource,
@@ -539,7 +540,8 @@ export async function advanceOpportunity(tx: Tx, actor: Actor, id: string, input
  *            it again; the rejected transaction no longer counts (loadFacts).
  */
 export async function decideTransaction(
-  tx: Tx, actor: Actor, id: string, input: { decision: "approve" | "reject"; remarks?: string },
+  tx: Tx, actor: Actor, id: string,
+  input: { decision: "approve" | "reject"; remarks?: string; assigneeId?: string; dueOn?: string },
 ): Promise<{ ok: true; stage: string } | { ok: false; error: string; status: number }> {
   const opp = await loadOpp(tx, actor.tenantId, id);
   if (!opp) return { ok: false, error: "Opportunity not found", status: 404 };
@@ -580,11 +582,23 @@ export async function decideTransaction(
   });
   if (!r.ok) return { ok: false, error: (r as any).reason ?? "Could not approve", status: 409 };
   // The task that gates "won": it carries opportunityId so it shows as the next follow-up.
+  // Assigned to whoever the approver picked (default: the opportunity's owner), due the day they chose.
+  const assignee = input.assigneeId || base.assigneeId;
+  const dueAt = input.dueOn ? followUpDue(input.dueOn) : new Date(Date.now() + 864e5);
   await tx.insert(tasks).values({
-    ...base, title: `RTA data check — ${clientName}, ${product}: confirm the transaction in the RTA data`,
+    ...base, assigneeId: assignee, title: `RTA data check — ${clientName}, ${product}: confirm the transaction in the RTA data`,
     description: "Check the transaction / RTA status (CAMS or KFintech). Complete this task to mark the opportunity won.",
-    priority: "high", dueAt: new Date(Date.now() + 864e5), meta: { opportunityId: opp.id, rtaCheck: true },
+    priority: "high", dueAt, meta: { opportunityId: opp.id, rtaCheck: true },
   } as any);
+  if (assignee && assignee !== actor.userId) {
+    await createNotification(tx, {
+      tenantId: opp.tenantId, userId: assignee, kind: "task.assigned",
+      title: `RTA data check — ${clientName}, ${product}`,
+      body: `Check the transaction against the RTA data · due ${formatDate(dueAt.toISOString(), "dayMonth")}`,
+      linkUrl: `/dashboard/opportunities/${opp.id}`, severity: "info",
+      meta: { opportunity_id: opp.id, assigned_by: actor.userId },
+    });
+  }
   await recordAudit(tx, {
     tenantId: opp.tenantId, actorUserId: actor.userId, action: "opportunity.transaction_approved",
     entityType: "opportunity", entityId: opp.id, after: { remarks: remarks || null },

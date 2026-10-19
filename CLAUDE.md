@@ -294,7 +294,9 @@ the client page's Overview tab.
 - **RTA data check** (2026-10-19, migration 0240). Approving an MF transaction
   no longer wins the client: it moves to `rta_check` and creates a high-priority
   task (`meta.opportunityId` + `rtaCheck: true`) to check the transaction against
-  the RTA data. **Won** is gated on that task being completed (`gateFor("won")`);
+  the RTA data, assigned to whoever the approver picks in the Approve dialog
+  (default the opportunity's owner; the assignee is notified) and due the day they
+  choose (default tomorrow). **Won** is gated on that task being completed (`gateFor("won")`);
   the "client won" task is created at that point (`createWonTask`).
 - **Follow-ups ARE tasks.** An opportunity's next follow-up is its earliest
   open task with `meta.opportunityId` — there is no column. The follow-up date
