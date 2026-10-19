@@ -334,24 +334,16 @@ export function AuthScreen({
               </form>
             )}
 
-            {/* ── Toggle (in-place, no navigation) ── */}
-            <div className="mt-6 pt-6 border-t border-border text-center text-sm text-muted-foreground">
-              {mode === "login" ? (
-                <>
-                  Don&apos;t have a workspace yet?{" "}
-                  <button type="button" onClick={() => switchMode("signup")} className="text-primary font-semibold hover:underline">
-                    Create one
-                  </button>
-                </>
-              ) : (
-                <>
-                  Already have an account?{" "}
-                  <button type="button" onClick={() => switchMode("login")} className="text-primary font-semibold hover:underline">
-                    Sign in
-                  </button>
-                </>
-              )}
-            </div>
+            {/* Self-serve sign-up is closed: workspaces are created by Aina, so
+                the login screen offers no "Create one" link. */}
+            {mode === "signup" && (
+              <div className="mt-6 pt-6 border-t border-border text-center text-sm text-muted-foreground">
+                Already have an account?{" "}
+                <button type="button" onClick={() => switchMode("login")} className="text-primary font-semibold hover:underline">
+                  Sign in
+                </button>
+              </div>
+            )}
 
             {mode === "signup" && (
               <p className="mt-4 text-2xs text-muted-foreground text-center leading-relaxed">
