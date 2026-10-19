@@ -82,7 +82,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const clientMeta = clientMetaFromHeaders(req.headers);
     const result = await withTenant(session.tenantId, async (tx) => {
-      await assertFamilyEditable(tx, session, familyId);
+      await assertFamilyEditable(tx, session, familyId, "create");
       const fam = (await tx.select().from(families).where(eq(families.id, familyId)).limit(1))[0];
       if (!fam) throw Object.assign(new Error("family not found"), { status: 404 });
 
@@ -195,7 +195,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     const out = await withTenant(session.tenantId, async (tx) => {
-      await assertFamilyEditable(tx, session, familyId);
+      await assertFamilyEditable(tx, session, familyId, "edit");
       const fam = (await tx.select().from(families).where(eq(families.id, familyId)).limit(1))[0];
       const [m] = await tx
         .select({ id: investors.id, familyRole: investors.familyRole })
@@ -260,7 +260,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
     const clientMeta = clientMetaFromHeaders(req.headers);
     const removed = await withTenant(session.tenantId, async (tx) => {
-      await assertFamilyEditable(tx, session, familyId);
+      await assertFamilyEditable(tx, session, familyId, "delete");
       const rows = await tx
         .update(investors)
         .set({ familyId: null, familyRole: null, updatedAt: new Date() } as any)

@@ -20,6 +20,7 @@ import { ALL_CAPABILITIES, type Capability } from "./rbac";
 /** Display groups, in the order the form renders them. */
 export const CAPABILITY_GROUP_ORDER = [
   "Clients & Households",
+  "Family Mapping",
   "Leads",
   "Transactions & Operations",
   "Tasks & Service",
@@ -66,6 +67,10 @@ export const CAPABILITY_CATALOG: Record<Capability, CapabilityMeta> = {
   "family.edit": { group: "Clients & Households", label: "Edit households", hint: "Rename, set the primary client, add and remove members" },
   "family.manage": { group: "Clients & Households", label: "Create & edit households (legacy)", legacy: true },
   "family.delete": { group: "Clients & Households", label: "Delete households", hint: "Unlinks every client in the household" },
+  "family.map.view": { group: "Family Mapping", label: "View family mapping", hint: "See households, their members and the unmapped clients" },
+  "family.map.create": { group: "Family Mapping", label: "Map clients into families", hint: "Add a client to a household, or start one from the mapping screen" },
+  "family.map.edit": { group: "Family Mapping", label: "Update family mapping", hint: "Change a member's relationship or make someone the head" },
+  "family.map.delete": { group: "Family Mapping", label: "Remove clients from families", hint: "Unmap a client from a household" },
 
   // ── Leads ───────────────────────────────────────────────────────────────
   "lead.view.all": { group: "Leads", label: "View all leads" },

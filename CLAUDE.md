@@ -489,6 +489,13 @@ head, the name and notes — nothing else (the firm's request, 2026-10-02).
   a default, not a lock — a member's RM can be changed on their record. Only
   `rm_id` moves (as the client page and bulk Assign RM do), and each change is
   audited as `investor.rm_from_family_head`.
+- **Family mapping has its own permissions** (2026-10-19, "Family Mapping" group
+  in Customize Access Permissions): `family.map.view` / `.create` / `.edit` /
+  `.delete` — see families, add a client to a family, change a member's
+  relationship or head, remove a client. Each is accepted ALONGSIDE the older
+  household caps (`family.edit` …, `lib/families/access.ts` `MAP_CAPS`), so a
+  customised user who could map before still can. Deleting a whole household
+  stays `family.delete`.
 - **Members take the head's address and the family's review frequency** the
   same way (`lib/families/shared-details.ts`, 2026-10-13; see "Client types").
 - Do not put Category, Relationship Manager, Review frequency or First
