@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { can } from "@/lib/auth/rbac";
 import { CAPABILITY_CATALOG, CAPABILITY_GROUP_ORDER } from "@/lib/auth/capability-catalog";
-import { canMapFamilies } from "@/lib/families/access";
+import { canMapFamilies, canMapFamily, mapScope, viewsAssignedFamiliesOnly } from "@/lib/families/access";
 import type { SessionUser } from "@/lib/auth/session";
 
 const MAP_CAPS = ["family.map.view", "family.map.create", "family.map.edit", "family.map.delete"] as const;
@@ -36,3 +36,41 @@ describe("family mapping permissions", () => {
     for (const a of ["create", "edit", "delete"] as const) expect(canMapFamilies(legacy, a)).toBe(true);
   });
 });
+
+describe("assigned-only family mapping", () => {
+  const me = "user-1";
+  const mine = (roles: string[], permissions: string[]) => ({ roles, permissions, userId: me }) as unknown as SessionUser;
+
+  it("is in the picker and no role has it by default", () => {
+    for (const c of ["family.map.view_assigned", "family.map.edit_assigned"] as const) {
+      expect(CAPABILITY_CATALOG[c]?.group, c).toBe("Family Mapping");
+      for (const role of ["rm", "back_office", "ops", "branch_head", "compliance",]) {
+        expect(can([role], c), `${role} ${c}`).toBe(false);
+      }
+    }
+  });
+
+  it("view: assigned-only applies when it is ticked INSTEAD of the all-families permission", () => {
+    expect(viewsAssignedFamiliesOnly(mine(["rm"], ["investor.view.assigned", "family.map.view_assigned"]))).toBe(true);
+    expect(viewsAssignedFamiliesOnly(mine(["rm"], ["family.map.view", "family.map.view_assigned"]))).toBe(false);
+    expect(viewsAssignedFamiliesOnly(mine(["rm"], []))).toBe(false); // role defaults: unchanged
+  });
+
+  it("edit: assigned-only editors may act only on households they are the RM of", () => {
+    const editor = mine(["rm"], ["family.map.view_assigned", "family.map.edit_assigned", "investor.edit.assigned", "family.edit"]);
+    for (const a of ["create", "edit", "delete"] as const) {
+      expect(mapScope(editor, a), a).toBe("assigned");
+      expect(canMapFamily(editor, a, me), a).toBe(true);
+      expect(canMapFamily(editor, a, "someone-else"), a).toBe(false);
+      expect(canMapFamily(editor, a, null), a).toBe(false);
+      expect(canMapFamilies(editor, a), a).toBe(false); // cannot start households anywhere
+    }
+  });
+
+  it("edit: the all-families permission still wins, and role defaults are unchanged", () => {
+    expect(mapScope(mine(["rm"], ["family.map.edit", "family.map.edit_assigned"]), "edit")).toBe("all");
+    expect(mapScope(mine(["rm"], []), "delete")).toBe("all");
+    expect(mapScope(mine(["compliance"], []), "edit")).toBeNull();
+  });
+});
+

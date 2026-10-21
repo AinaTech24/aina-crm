@@ -522,6 +522,15 @@ head, the name and notes — nothing else (the firm's request, 2026-10-02).
   household caps (`family.edit` …, `lib/families/access.ts` `MAP_CAPS`), so a
   customised user who could map before still can. Deleting a whole household
   stays `family.delete`.
+  **Assigned only** (2026-10-21): `family.map.view_assigned` ("View assigned families only")
+  and `family.map.edit_assigned` ("Edit assigned families only") limit a person to the
+  households they are the RM of (`families.rm_id`, which follows the head's RM) — the way to
+  give ~10 named people access without opening the whole book. They are opt-in (no role has
+  them): tick them INSTEAD of "View family mapping" / the three mapping permissions. When
+  ticked without their all-families twin they win over the older household and client caps
+  (`viewsAssignedFamiliesOnly`, `mapScope`, `canMapFamily` in `families/access.ts`); the
+  family list and every route go through `familyScopeSql` / `assertFamilyEditable`, so a
+  household that is not theirs is not found. Starting a new household stays `family.map.create`.
 - **Members take the head's address and the family's review frequency** the
   same way (`lib/families/shared-details.ts`, 2026-10-13; see "Client types").
 - Do not put Category, Relationship Manager, Review frequency or First

@@ -35,7 +35,7 @@ import { FamilyPortfolioAllocation } from "@/components/families/FamilyPortfolio
 import { FamilyTouchpoints } from "@/components/families/FamilyTouchpoints";
 import { EngageNextGenButton } from "@/components/families/EngageNextGenButton";
 import { FamilyTreeVisualizer } from "@/components/families/FamilyTreeVisualizer";
-import { canEditFamilies, canMapFamilies } from "@/lib/families/access";
+import { canEditFamilies, canMapFamily } from "@/lib/families/access";
 import { goalProjection, loadFamilyDetail } from "@/lib/families/detail";
 import { familyReviewState, hasNominee, isLiveMember } from "@/lib/families/health";
 import { familyReviewFrequencyLabel } from "@/lib/families/cadence";
@@ -179,9 +179,9 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
   const familyName = family.familyName ?? family.headName;
   const canEdit = canEditFamilies(session);
   // Family mapping has its own add / update / remove permissions.
-  const canMapAdd = canMapFamilies(session, "create");
-  const canMapEdit = canMapFamilies(session, "edit");
-  const canMapRemove = canMapFamilies(session, "delete");
+  const canMapAdd = canMapFamily(session, "create", family.rmId);
+  const canMapEdit = canMapFamily(session, "edit", family.rmId);
+  const canMapRemove = canMapFamily(session, "delete", family.rmId);
   // Merging clients is the owner's tool (Merge Clients).
   const canMerge = can(session.roles, "dashboard.view.owner", session.permissions);
   const canDelete = can(session.roles, "family.delete", session.permissions) || can(session.roles, "investor.edit.all", session.permissions);

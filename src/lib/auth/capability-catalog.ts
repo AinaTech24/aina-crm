@@ -68,6 +68,8 @@ export const CAPABILITY_CATALOG: Record<Capability, CapabilityMeta> = {
   "family.manage": { group: "Clients & Households", label: "Create & edit households (legacy)", legacy: true },
   "family.delete": { group: "Clients & Households", label: "Delete households", hint: "Unlinks every client in the household" },
   "family.map.view": { group: "Family Mapping", label: "View family mapping", hint: "See households, their members and the unmapped clients" },
+  "family.map.view_assigned": { group: "Family Mapping", label: "View assigned families only", hint: "Only households the person is the RM of. Tick this INSTEAD of “View family mapping”" },
+  "family.map.edit_assigned": { group: "Family Mapping", label: "Edit assigned families only", hint: "Add, change and remove members of households the person is the RM of. Tick this INSTEAD of the three permissions below" },
   "family.map.create": { group: "Family Mapping", label: "Map clients into families", hint: "Add a client to a household, or start one from the mapping screen" },
   "family.map.edit": { group: "Family Mapping", label: "Update family mapping", hint: "Change a member's relationship or make someone the head" },
   "family.map.delete": { group: "Family Mapping", label: "Remove clients from families", hint: "Unmap a client from a household" },

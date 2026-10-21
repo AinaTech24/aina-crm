@@ -98,6 +98,8 @@ export type Capability =
   // things a person can do there. Each is ADDITIVE to the household caps above
   // (access.ts accepts either), so nobody who could map before loses it.
   | "family.map.view"
+  | "family.map.view_assigned"
+  | "family.map.edit_assigned"
   | "family.map.create"
   | "family.map.edit"
   | "family.map.delete"
@@ -223,6 +225,10 @@ const MATRIX: Record<Capability, Role[]> = {
   "family.delete": ["back_office", "ops"],
   // Family mapping: same people as before, so default behaviour is unchanged.
   "family.map.view": ["rm", "back_office", "ops", "branch_head", "compliance", "insurance_team", "service_team"],
+  // "…assigned" limits the group's view / edit to families the person is the RM of. Opt-in per user
+  // (tick it instead of the all-families permission), so no role has it by default.
+  "family.map.view_assigned": [],
+  "family.map.edit_assigned": [],
   "family.map.create": ["rm", "back_office", "ops", "branch_head"],
   "family.map.edit": ["rm", "back_office", "ops", "branch_head"],
   "family.map.delete": ["rm", "back_office", "ops", "branch_head"],
