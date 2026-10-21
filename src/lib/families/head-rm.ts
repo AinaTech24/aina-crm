@@ -43,7 +43,7 @@ export async function applyHeadRmToMembers(
     familyId: string;
     onlyInvestorIds?: string[];
     actorUserId: string | null;
-    reason: "mapped_to_family" | "head_changed" | "families_merged";
+    reason: "mapped_to_family" | "head_changed" | "families_merged" | "head_rm_changed" | "family_mapping_stage";
     clientMeta?: Record<string, unknown>;
   }
 ): Promise<HeadRmResult> {
@@ -91,4 +91,41 @@ export async function applyHeadRmToMembers(
        AND rm_id IS DISTINCT FROM ${headRmId}::uuid`);
 
   return { headRmId, reassigned: rows.length };
+}
+
+/**
+ * Bring one client's family in line with its head's RM:
+ *   - the client heads a family  → every member takes the head's RM (the head's
+ *     RM was just changed, or the head reached the Family Mapping step);
+ *   - the client is a member     → only this client takes the head's RM (they
+ *     reached the Family Mapping step);
+ *   - no family                  → nothing to do.
+ * A plain edit of a MEMBER's RM never comes through here — a member's RM stays
+ * a default, not a lock (see the header).
+ */
+export async function syncFamilyRmForInvestor(
+  tx: any,
+  args: {
+    tenantId: string;
+    investorId: string;
+    actorUserId: string | null;
+    reason: "head_rm_changed" | "family_mapping_stage";
+    /** `head` limits it to a client who heads their family (an RM change on a member must not pull them back). */
+    only?: "head";
+    clientMeta?: Record<string, unknown>;
+  }
+): Promise<HeadRmResult | null> {
+  const r = await tx.execute(sql`
+    SELECT i.family_id, (f.primary_investor_id = i.id) AS is_head
+      FROM investors i
+      JOIN families f ON f.id = i.family_id AND f.tenant_id = i.tenant_id
+     WHERE i.id = ${args.investorId}::uuid AND i.tenant_id = ${args.tenantId}::uuid
+     LIMIT 1`);
+  const row = ((r.rows ?? [])[0] ?? null) as { family_id: string; is_head: boolean } | null;
+  if (!row) return null;
+  if (row.is_head) {
+    return applyHeadRmToMembers(tx, { ...args, familyId: row.family_id });
+  }
+  if (args.only === "head") return null;
+  return applyHeadRmToMembers(tx, { ...args, familyId: row.family_id, onlyInvestorIds: [args.investorId] });
 }

@@ -83,13 +83,13 @@ describe("details from the head", () => {
   it("lets an explicit value from an API caller win", () => {
     const d = familyDetailsFromHead({
       head,
-      explicit: { rmId: "chosen-rm", familyCategory: "NRI", reviewFrequency: "monthly", firstMeetingDate: "2026-10-20" },
+      explicit: { rmId: "chosen-rm", familyCategory: "NRI", reviewFrequency: "monthly", firstMeetingDate: "2099-10-20" },
       creator,
       firmReviewFrequency: "annual",
       now,
     });
-    expect(d).toMatchObject({ rmId: "chosen-rm", familyCategory: "NRI", reviewFrequency: "monthly", firstMeetingDate: "2026-10-20" });
+    expect(d).toMatchObject({ rmId: "chosen-rm", familyCategory: "NRI", reviewFrequency: "monthly", firstMeetingDate: "2099-10-20" });
     // An explicit schedule is computed as asked, not copied from the head.
-    expect(d.nextReviewAt?.toISOString().slice(0, 10)).toBe("2026-10-20");
+    expect(d.nextReviewAt?.toISOString().slice(0, 10)).toBe("2099-10-20");
   });
 });

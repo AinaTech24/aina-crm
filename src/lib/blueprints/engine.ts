@@ -26,6 +26,7 @@ import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { recomputeLeadScore } from "@/lib/leads/recompute";
 import { recordAudit } from "@/lib/audit";
+import { syncFamilyRmForInvestor } from "@/lib/families/head-rm";
 import {
   blueprintDefinitions,
   blueprintStages,
@@ -461,6 +462,20 @@ export async function transitionTo(
       actorUserId: opts.actorUserId ?? null,
       input: opts.task,
     });
+  }
+
+  // Family Mapping: the family is served by its head's RM (lib/families/head-rm.ts).
+  // When the client reaches this step, the head's RM goes to every member — or, for a
+  // member, to this client. Not on a pass-through hop.
+  if (!opts.suppressAutomations && toStageKey === "family_mapping") {
+    const inv = (await tx.execute(
+      sql`SELECT converted_investor_id AS id FROM leads WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid`,
+    )).rows[0] as { id: string | null } | undefined;
+    if (inv?.id) {
+      await syncFamilyRmForInvestor(tx, {
+        tenantId, investorId: inv.id, actorUserId: opts.actorUserId ?? null, reason: "family_mapping_stage",
+      });
+    }
   }
 
   // Entering a route's own step records the route (exchange / physical), so the
