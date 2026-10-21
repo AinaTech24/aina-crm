@@ -25,12 +25,24 @@
 
 import { sql, type SQL } from "drizzle-orm";
 import type { SessionUser } from "@/lib/auth/session";
-import { can, requireAny } from "@/lib/auth/rbac";
+import { can, requireAny, type Capability } from "@/lib/auth/rbac";
 import { canViewAllInvestors, investorScopeSql, isDataScopeRestricted } from "@/lib/investors/access";
 import { isBranchScoped } from "@/lib/leads/access";
 
-const VIEW_CAPS = ["family.view", "investor.view.all", "investor.view.assigned"] as const;
+const VIEW_CAPS = ["family.view", "family.map.view", "investor.view.all", "investor.view.assigned"] as const;
 const EDIT_CAPS = ["family.edit", "family.manage", "investor.edit.all", "investor.edit.assigned"] as const;
+
+/** What each family-mapping action needs: its own capability, or any household edit capability (as before). */
+export type MapAction = "create" | "edit" | "delete";
+const MAP_CAPS: Record<MapAction, readonly Capability[]> = {
+  create: ["family.map.create", ...EDIT_CAPS],
+  edit: ["family.map.edit", ...EDIT_CAPS],
+  delete: ["family.map.delete", ...EDIT_CAPS],
+};
+
+export function canMapFamilies(session: SessionUser, action: MapAction) {
+  return MAP_CAPS[action].some((c) => can(session.roles, c, session.permissions));
+}
 
 /** Throws 403 when the caller may not see families at all. */
 export function requireFamilyView(session: SessionUser) {
@@ -91,8 +103,11 @@ export async function loadViewableFamily(tx: any, session: SessionUser, familyId
 }
 
 /** Throws 404 unless the family is visible and the caller may edit families. */
-export async function assertFamilyEditable(tx: any, session: SessionUser, familyId: string): Promise<void> {
-  requireFamilyEdit(session);
+export async function assertFamilyEditable(
+  tx: any, session: SessionUser, familyId: string, mapAction?: MapAction,
+): Promise<void> {
+  if (mapAction) requireAny(session.roles, [...MAP_CAPS[mapAction]], session.permissions);
+  else requireFamilyEdit(session);
   if (!(await loadViewableFamily(tx, session, familyId))) {
     throw Object.assign(new Error("family not found"), { status: 404 });
   }

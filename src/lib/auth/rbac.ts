@@ -94,6 +94,13 @@ export type Capability =
   // the picker (see capability-catalog.ts) so nobody grants it fresh.
   | "family.manage"
   | "family.delete"
+  // Family mapping — grouping clients into households, split into the four
+  // things a person can do there. Each is ADDITIVE to the household caps above
+  // (access.ts accepts either), so nobody who could map before loses it.
+  | "family.map.view"
+  | "family.map.create"
+  | "family.map.edit"
+  | "family.map.delete"
   // Leads
   | "lead.view.all"
   | "lead.view.assigned"
@@ -214,6 +221,11 @@ const MATRIX: Record<Capability, Role[]> = {
   "family.edit": ["rm", "back_office", "ops", "branch_head"],
   "family.manage": ["rm", "back_office", "ops", "branch_head"],
   "family.delete": ["back_office", "ops"],
+  // Family mapping: same people as before, so default behaviour is unchanged.
+  "family.map.view": ["rm", "back_office", "ops", "branch_head", "compliance", "insurance_team", "service_team"],
+  "family.map.create": ["rm", "back_office", "ops", "branch_head"],
+  "family.map.edit": ["rm", "back_office", "ops", "branch_head"],
+  "family.map.delete": ["rm", "back_office", "ops", "branch_head"],
 
   // Leads — marketing + owner own pipeline; RM works assigned.
   "lead.view.all": ["marketing", "branch_head", "compliance", "back_office", "ops"],
