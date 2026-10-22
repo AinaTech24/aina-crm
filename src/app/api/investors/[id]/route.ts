@@ -33,7 +33,7 @@ import { registerNomineePanDocs } from "@/lib/investors/nominee-docs";
 import { recomputeFamilyHealthForInvestor } from "@/lib/families/health-persist";
 import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
 import { getClientHealth } from "@/lib/metrics/health";
-import { syncFamilyRmForInvestor } from "@/lib/families/head-rm";
+import { setFamilyRmFromClient } from "@/lib/families/head-rm";
 import { applyDemise, applyInactive, clearDemise, demiseDateError, type DemiseEffects } from "@/lib/investors/demise";
 import { clientsHoldingMoney, holdersMessage } from "@/lib/investors/holds-money";
 import {
@@ -621,10 +621,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // re-score the family this investor belongs to (no-op if unlinked).
       await recomputeFamilyHealthForInvestor(tx, id);
 
-      // A family head's new RM is every member's new RM (a member's own RM change stays theirs).
-      if (parse.data.rmId !== undefined && parse.data.rmId !== before.rmId) {
-        await syncFamilyRmForInvestor(tx, {
-          tenantId: session.tenantId, investorId: id, actorUserId: session.userId, reason: "head_rm_changed", only: "head",
+      // A family has one RM: a new RM on any member is the whole family's new RM.
+      if (parse.data.rmId && parse.data.rmId !== before.rmId) {
+        await setFamilyRmFromClient(tx, {
+          tenantId: session.tenantId, investorId: id, rmId: parse.data.rmId, actorUserId: session.userId,
         });
       }
 

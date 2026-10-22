@@ -25,7 +25,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { investors, users } from "@/db/schema";
-import { syncFamilyRmForInvestor } from "@/lib/families/head-rm";
+import { setFamilyRmFromClient } from "@/lib/families/head-rm";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { purgeInvestorsChunk, PURGE_REQUEST_MAX, PURGE_TX_CHUNK } from "@/lib/investors/purge";
 import { applyBulkField, BulkFieldError } from "@/lib/investors/bulk-update";
@@ -231,11 +231,11 @@ export async function POST(req: NextRequest) {
       } else {
         updated = await tx.update(investors).set(patch as any).where(scope).returning({ id: investors.id });
       }
-      // Assigning a family head's RM assigns it to the whole family.
-      if (action === "assign") {
+      // A family has one RM: assigning an RM to any member assigns it to the whole family.
+      if (action === "assign" && patch.rmId) {
         for (const u of updated) {
-          await syncFamilyRmForInvestor(tx, {
-            tenantId: session.tenantId, investorId: u.id, actorUserId: session.userId, reason: "head_rm_changed", only: "head",
+          await setFamilyRmFromClient(tx, {
+            tenantId: session.tenantId, investorId: u.id, rmId: patch.rmId, actorUserId: session.userId,
           });
         }
       }

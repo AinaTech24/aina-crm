@@ -510,9 +510,10 @@ head, the name and notes — nothing else (the firm's request, 2026-10-02).
   a default, not a lock — a member's RM can be changed on their record. Only
   `rm_id` moves (as the client page and bulk Assign RM do), and each change is
   audited as `investor.rm_from_family_head`.
-  The head's RM also reaches the family when it changes on the head's own record
-  or by bulk Assign RM (`syncFamilyRmForInvestor`, reason `head_rm_changed` — a
-  MEMBER's own RM edit is never pulled back), and when a client reaches the
+  A family has ONE RM (2026-10-22): changing the RM of ANY member — head or not — on
+  the client's record or by bulk Assign RM gives the head and every member the same RM,
+  and the family (`setFamilyRmFromClient`, reason `family_rm_changed`; clearing an RM
+  does not propagate). The head's RM also reaches the family when a client reaches the
   **Family Mapping** step of the onboarding journey (`blueprints/engine.ts`,
   reason `family_mapping_stage`: a head's whole family, or a member alone).
 - **Family mapping has its own permissions** (2026-10-19, "Family Mapping" group
