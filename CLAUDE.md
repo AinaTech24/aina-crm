@@ -513,7 +513,8 @@ head, the name and notes — nothing else (the firm's request, 2026-10-02).
   A family has ONE RM (2026-10-22): changing the RM of ANY member — head or not — on
   the client's record or by bulk Assign RM gives the head and every member the same RM,
   and the family (`setFamilyRmFromClient`, reason `family_rm_changed`; clearing an RM
-  does not propagate). The head's RM also reaches the family when a client reaches the
+  does not propagate). Editing the **Family RM** in the family's Details tab
+  (`PATCH /api/families/[id]`) does the same through `setFamilyRm`. The head's RM also reaches the family when a client reaches the
   **Family Mapping** step of the onboarding journey (`blueprints/engine.ts`,
   reason `family_mapping_stage`: a head's whole family, or a member alone).
 - **Family mapping has its own permissions** (2026-10-19, "Family Mapping" group

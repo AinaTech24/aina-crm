@@ -154,7 +154,28 @@ export async function setFamilyRmFromClient(
      WHERE id = ${args.investorId}::uuid AND tenant_id = ${args.tenantId}::uuid`);
   const familyId = ((f.rows ?? [])[0] as { family_id: string | null } | undefined)?.family_id ?? null;
   if (!familyId) return { familyId: null, reassigned: 0 };
+  const r = await setFamilyRm(tx, { ...args, familyId, changedOn: args.investorId });
+  return { familyId, reassigned: r.reassigned };
+}
 
+/**
+ * The same rule when the RM is changed on the family itself (Family page →
+ * Details → Edit): the head and every live member take the new RM, and so does
+ * the family row.
+ */
+export async function setFamilyRm(
+  tx: any,
+  args: {
+    tenantId: string;
+    familyId: string;
+    rmId: string;
+    actorUserId: string | null;
+    /** The client whose record was edited, when the change started on one. */
+    changedOn?: string;
+    clientMeta?: Record<string, unknown>;
+  }
+): Promise<{ reassigned: number }> {
+  const { familyId } = args;
   const before = await tx.execute(sql`
     SELECT id, rm_id FROM investors
      WHERE family_id = ${familyId}::uuid AND tenant_id = ${args.tenantId}::uuid
@@ -174,7 +195,12 @@ export async function setFamilyRmFromClient(
         entityType: "investor",
         entityId: r.id,
         before: { rmId: r.rm_id },
-        after: { rmId: args.rmId, familyId, reason: "family_rm_changed", changedOn: args.investorId },
+        after: {
+          rmId: args.rmId,
+          familyId,
+          reason: "family_rm_changed",
+          ...(args.changedOn ? { changedOn: args.changedOn } : { changedOn: "family" }),
+        },
         ...(args.clientMeta ?? {}),
       });
     }
@@ -183,5 +209,5 @@ export async function setFamilyRmFromClient(
     UPDATE families SET rm_id = ${args.rmId}::uuid, updated_at = now()
      WHERE id = ${familyId}::uuid AND tenant_id = ${args.tenantId}::uuid
        AND rm_id IS DISTINCT FROM ${args.rmId}::uuid`);
-  return { familyId, reassigned: rows.length };
+  return { reassigned: rows.length };
 }
