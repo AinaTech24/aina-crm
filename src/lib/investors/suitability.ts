@@ -36,7 +36,13 @@ export function assessSuitability(
     return { severity: "unknown", message: "No signed risk profile on file — capture one to enable suitability checks.", equityPct, profile: null, band: null };
   }
   if (equityPct == null || classifiedPct < 25) {
-    return { severity: "unknown", message: "Not enough classified holdings to assess suitability yet.", equityPct, profile, band };
+    // Say WHICH it is — the fix differs: no holdings at all (import the client's
+    // folios) vs holdings whose scheme category is unknown (refresh the AMFI master).
+    const message =
+      equityPct == null && classifiedPct === 0
+        ? "None of this client's holdings could be classified as equity or debt - either no mutual fund holdings are on file for them, or their schemes have no known category."
+        : `Only ${Math.round(classifiedPct)}% of this client's holdings could be classified as equity or debt (at least 25% is needed to state an equity share).`;
+    return { severity: "unknown", message, equityPct, profile, band };
   }
 
   const e = Math.round(equityPct);
