@@ -19,6 +19,8 @@ const config: Config = {
       fontFamily: {
         sans: ["var(--font-inter)", "ui-sans-serif", "system-ui", "sans-serif"],
         display: ["var(--font-inter)", "ui-sans-serif", "system-ui", "sans-serif"],
+        // The public website's display face (loaded on the homepage only).
+        brand: ["var(--font-brand)", "Georgia", "serif"],
       },
       fontSize: {
         /**
@@ -42,6 +44,27 @@ const config: Config = {
         base: ["1rem", { lineHeight: "1.5rem" }],              // 16px — emphasis (unchanged)
       },
       colors: {
+        /**
+         * The public website's palette — the Aina logo's crimson and deep teal
+         * on warm cream. Fixed values on purpose: the marketing site is the
+         * brand, not a tenant theme, so it must not follow --primary.
+         */
+        site: {
+          ink: "#032b2b",
+          "ink-2": "#0b3b3a",
+          "ink-3": "#13504e",
+          crimson: "#b71a20",
+          "crimson-deep": "#931318",
+          rose: "#ff9d92",
+          cream: "#f7f2ea",
+          paper: "#fffdf9",
+          sand: "#e7ddcf",
+          text: "#12302f",
+          muted: "#5d6e6c",
+          mint: "#2a9d78",
+          "mint-soft": "#7fd9b8",
+          gold: "#c4861a",
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
@@ -183,6 +206,14 @@ const config: Config = {
           "0%, 100%": { transform: "translateY(0)" },
           "50%": { transform: "translateY(-4px)" },
         },
+        marquee: {
+          from: { transform: "translateX(0)" },
+          to: { transform: "translateX(-50%)" },
+        },
+        "feed-in": {
+          from: { opacity: "0", transform: "translateY(-10px) scale(0.98)" },
+          to: { opacity: "1", transform: "translateY(0) scale(1)" },
+        },
       },
       animation: {
         "fade-in": "fade-in 220ms ease-out",
@@ -193,6 +224,8 @@ const config: Config = {
         "pulse-glow": "pulse-glow 2.2s ease-in-out infinite",
         shimmer: "shimmer 2.4s linear infinite",
         float: "float 3s ease-in-out infinite",
+        marquee: "marquee 45s linear infinite",
+        "feed-in": "feed-in 500ms cubic-bezier(0.22, 1, 0.36, 1)",
       },
     },
   },

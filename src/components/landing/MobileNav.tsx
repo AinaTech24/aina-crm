@@ -17,7 +17,7 @@ export function MobileNav({ links, demoUrl }: { links: [string, string][]; demoU
         aria-label={open ? "Close menu" : "Open menu"}
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="grid size-9 place-items-center rounded-lg hover:bg-secondary text-foreground/80"
+        className="grid size-10 place-items-center rounded-full hover:bg-site-sand/60 text-site-text"
       >
         {open ? <X className="size-5" /> : <Menu className="size-5" />}
       </button>
@@ -26,8 +26,7 @@ export function MobileNav({ links, demoUrl }: { links: [string, string][]; demoU
         <>
           <div className="fixed inset-0 top-16 z-40 bg-black/30" onClick={() => setOpen(false)} />
           <div
-            className="absolute left-0 right-0 top-16 z-50 border-b border-border/60 shadow-lg"
-            style={{ backgroundColor: "hsl(var(--background))" }}
+            className="absolute left-0 right-0 top-16 z-50 border-b border-site-sand bg-site-cream shadow-lg"
           >
             <nav className="max-w-7xl mx-auto px-6 py-4 flex flex-col">
               {links.map(([label, href]) => (
@@ -35,13 +34,13 @@ export function MobileNav({ links, demoUrl }: { links: [string, string][]; demoU
                   key={href}
                   href={href}
                   onClick={() => setOpen(false)}
-                  className="py-3 text-sm font-semibold text-foreground/80 hover:text-primary border-b border-border/30 last:border-0"
+                  className="py-3 text-base font-semibold text-site-text hover:text-site-crimson border-b border-site-sand last:border-0"
                 >
                   {label}
                 </a>
               ))}
               <div className="flex flex-col gap-2.5 pt-4">
-                <Link href="/login" onClick={() => setOpen(false)} className="btn-secondary justify-center text-sm">
+                <Link href="/login" onClick={() => setOpen(false)} className="rounded-full border border-site-sand bg-site-paper py-3 text-center text-sm font-bold text-site-text">
                   Log in
                 </Link>
                 <a
@@ -49,7 +48,7 @@ export function MobileNav({ links, demoUrl }: { links: [string, string][]; demoU
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => setOpen(false)}
-                  className="btn-primary justify-center text-sm"
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-site-crimson py-3 text-sm font-bold text-white"
                 >
                   Book a demo <ArrowRight className="size-4" />
                 </a>

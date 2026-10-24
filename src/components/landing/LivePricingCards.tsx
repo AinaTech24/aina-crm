@@ -58,7 +58,7 @@ export function LivePricingCards({ initial }: { initial: LandingPlan[] }) {
   }, []);
 
   return (
-    <div className="mt-16 grid sm:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch max-w-6xl mx-auto">
+    <div className="mt-14 grid sm:grid-cols-2 lg:grid-cols-3 gap-5 items-stretch max-w-6xl mx-auto">
       {plans.map((p) => {
         const custom = p.isCustom;
         // Self-serve sign-up is closed: a card still pointing at /signup (the
@@ -67,88 +67,72 @@ export function LivePricingCards({ initial }: { initial: LandingPlan[] }) {
         const cta = toSignup
           ? { href: DEMO_URL, label: /trial|sign ?up/i.test(p.ctaLabel) || !p.ctaLabel ? "Book a demo" : p.ctaLabel }
           : { href: p.ctaHref, label: p.ctaLabel };
+        const dark = p.featured;
+        const external = /^https?:/.test(cta.href);
+        const btn = `mt-8 w-full inline-flex items-center justify-center gap-2 rounded-full py-3 text-sm font-bold transition ${
+          dark ? "bg-site-crimson text-white hover:bg-site-crimson-deep" : "bg-site-ink text-white hover:bg-site-ink-2"
+        }`;
         return (
           <div
             key={p.name}
-            className={`glass-card rounded-2xl p-6 sm:p-8 flex flex-col relative border ${
-              p.featured
-                ? "border-2 border-red-500 bg-red-500/[0.04] animate-premium-aurora"
-                : custom
-                  ? "border-2 border-primary/60 bg-primary/[0.03]"
-                  : "border-border/60"
+            className={`relative flex flex-col rounded-3xl p-6 sm:p-8 ${
+              dark ? "bg-site-ink text-white shadow-2xl lg:-my-3" : "bg-site-paper text-site-text ring-1 ring-site-sand"
             }`}
           >
-            {p.featured && (
-              <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-red-600 text-white text-2xs uppercase font-bold tracking-widest px-3 py-1 rounded-full ring-2 ring-red-300 animate-premium-badge-shine">
-                {p.badgeLabel || "Most Popular"}
-              </span>
+            {(p.featured || custom || p.discountBadge) && (
+              <div className="absolute -top-3 left-6 flex gap-2">
+                {(p.featured || custom) && (
+                  <span className={`rounded-full px-3 py-1 text-2xs font-bold uppercase tracking-widest ${p.featured ? "bg-site-crimson text-white" : "bg-site-ink text-white"}`}>
+                    {p.badgeLabel || (p.featured ? "Most popular" : "Enterprise")}
+                  </span>
+                )}
+                {p.discountBadge && (
+                  <span className="rounded-full bg-site-mint px-2.5 py-1 text-2xs font-bold uppercase tracking-wide text-white">{p.discountBadge}</span>
+                )}
+              </div>
             )}
-            {custom && !p.featured && (
-              <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-2xs uppercase font-bold tracking-widest px-3 py-1 rounded-full ring-2 ring-primary/30">
-                {p.badgeLabel || "Enterprise"}
-              </span>
-            )}
-            {p.discountBadge && (
-              <span className="absolute -top-3 right-3 z-10 bg-emerald-600 text-white text-2xs uppercase font-bold tracking-wide px-2.5 py-1 rounded-full ring-2 ring-emerald-200 shadow-sm">
-                {p.discountBadge}
-              </span>
-            )}
-            <h3 className="font-extrabold text-xl text-foreground">{p.name}</h3>
+            <h3 className="font-brand text-2xl">{p.name}</h3>
             {/* Two lines at most; the full tagline is the hover title. */}
             {p.tagline && (
-              <p className="text-xs text-muted-foreground mt-2 leading-relaxed line-clamp-2" title={p.tagline}>{p.tagline}</p>
+              <p className={`mt-2 text-sm leading-relaxed line-clamp-2 ${dark ? "text-white/65" : "text-site-muted"}`} title={p.tagline}>{p.tagline}</p>
             )}
 
-            <div className="mt-4 pt-4 border-t border-border/40">
+            <div className={`mt-5 pt-5 border-t ${dark ? "border-white/10" : "border-site-sand"}`}>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-4xl font-extrabold tracking-tight tabular-nums">{custom ? p.priceLabel || "Let's talk" : p.priceLabel}</span>
+                {p.unitLabel && <span className={`text-sm font-semibold ${dark ? "text-white/60" : "text-site-muted"}`}>{p.unitLabel}</span>}
+              </div>
               {custom ? (
-                <>
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="text-3xl font-extrabold text-foreground">{p.priceLabel || "Let's talk"}</span>
-                    {p.unitLabel && <span className="text-sm text-muted-foreground font-semibold">{p.unitLabel}</span>}
-                  </div>
-                  <div className="mt-1.5 text-sm text-muted-foreground font-medium">
-                    Custom-quoted for your firm — <span className="font-bold text-foreground">self-hosted</span> on your own server.
-                  </div>
-                  <div className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-secondary/70 border border-border/50 px-2 py-1 text-2xs font-semibold text-muted-foreground">
-                    <Phone className="size-3" /> Talk to us for a tailored plan
-                  </div>
-                </>
+                <p className={`mt-2 text-sm ${dark ? "text-white/65" : "text-site-muted"}`}>
+                  Custom-quoted for your firm — <span className="font-bold">self-hosted</span> on your own server.
+                </p>
               ) : (
                 <>
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="text-3xl font-extrabold text-foreground">{p.priceLabel}</span>
-                    {p.unitLabel && <span className="text-sm text-muted-foreground font-semibold">{p.unitLabel}</span>}
-                  </div>
                   {p.setupLabel && (
-                    <div className="mt-1.5 text-sm text-muted-foreground font-medium">
-                      + {p.setupOriginalLabel && (
-                        <span className="line-through text-muted-foreground/60 font-semibold mr-1">{p.setupOriginalLabel}</span>
-                      )}
-                      <span className="font-bold text-foreground">{p.setupLabel}</span> one-time setup (per firm)
-                    </div>
+                    <p className={`mt-2 text-sm ${dark ? "text-white/65" : "text-site-muted"}`}>
+                      +{" "}
+                      {p.setupOriginalLabel && <span className="line-through opacity-60 mr-1">{p.setupOriginalLabel}</span>}
+                      <span className="font-bold">{p.setupLabel}</span> one-time setup (per firm)
+                    </p>
                   )}
                   {p.seatsLabel && (
-                    <div className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-secondary/70 border border-border/50 px-2 py-1 text-2xs font-semibold text-muted-foreground tabular-nums">
+                    <span className={`mt-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-2xs font-semibold tabular-nums ${dark ? "bg-white/10 text-white/70" : "bg-site-cream text-site-muted"}`}>
                       <Users2 className="size-3" /> {p.seatsLabel}
-                    </div>
+                    </span>
                   )}
                 </>
               )}
             </div>
 
-            {p.inheritsLabel && <p className="mt-5 text-sm font-bold text-foreground">{p.inheritsLabel}</p>}
-            <FeatureList features={p.features} />
+            {p.inheritsLabel && <p className="mt-6 text-sm font-bold">{p.inheritsLabel}</p>}
+            <FeatureList features={p.features} dark={dark} />
 
-            {custom || cta.href.startsWith("tel:") || /^https?:/.test(cta.href) ? (
-              <a
-                href={cta.href}
-                {...(/^https?:/.test(cta.href) ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-                className={`mt-8 w-full ${p.featured ? "btn-primary !bg-red-600 hover:!bg-red-700" : "btn-primary"} font-bold py-3 text-center justify-center shadow-md inline-flex items-center gap-2`}
-              >
+            {custom || cta.href.startsWith("tel:") || external ? (
+              <a href={cta.href} {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})} className={btn}>
                 {cta.href.startsWith("tel:") && <Phone className="size-4" />} {cta.label}
               </a>
             ) : (
-              <Link href={cta.href} className={`mt-8 w-full ${p.featured ? "btn-primary !bg-red-600 hover:!bg-red-700" : "btn-secondary"} font-bold py-3 text-center justify-center shadow-md`}>
+              <Link href={cta.href} className={btn}>
                 {cta.label}
               </Link>
             )}
@@ -163,7 +147,7 @@ export function LivePricingCards({ initial }: { initial: LandingPlan[] }) {
  *  does not turn its card into a wall of text. */
 const SHOWN = 6;
 
-function FeatureList({ features }: { features: string[] }) {
+function FeatureList({ features, dark }: { features: string[]; dark?: boolean }) {
   const [all, setAll] = useState(false);
   const shown = all ? features : features.slice(0, SHOWN);
   const hidden = features.length - SHOWN;
@@ -171,8 +155,8 @@ function FeatureList({ features }: { features: string[] }) {
     <div className="mt-5 flex-grow">
       <ul className="flex flex-col gap-2.5">
         {shown.map((f) => (
-          <li key={f} className="flex items-start gap-2.5 text-xs text-muted-foreground font-medium">
-            <Check className="size-3.5 text-emerald-600 mt-0.5 shrink-0" />
+          <li key={f} className={`flex items-start gap-2.5 text-sm ${dark ? "text-white/80" : "text-site-text/80"}`}>
+            <Check className={`size-4 mt-0.5 shrink-0 ${dark ? "text-site-mint-soft" : "text-site-mint"}`} />
             <span>{f}</span>
           </li>
         ))}
@@ -182,7 +166,7 @@ function FeatureList({ features }: { features: string[] }) {
           type="button"
           onClick={() => setAll((v) => !v)}
           aria-expanded={all}
-          className="mt-3 min-h-6 text-xs font-semibold text-primary hover:underline"
+          className={`mt-3 min-h-6 text-sm font-semibold hover:underline ${dark ? "text-site-rose" : "text-site-crimson"}`}
         >
           {all ? "Show less" : `+ ${hidden} more`}
         </button>
