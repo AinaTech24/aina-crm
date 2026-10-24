@@ -8,6 +8,7 @@ import { RoleDashboards } from "@/components/landing/RoleDashboards";
 import { LivePractice } from "@/components/landing/LivePractice";
 import { FaqAccordion } from "@/components/landing/FaqAccordion";
 import { ContactList, SiteFooter, SiteHeader } from "@/components/landing/SiteChrome";
+import { WhatsAppWidget } from "@/components/landing/WhatsAppWidget";
 import { brandFont } from "@/lib/landing/font";
 import { DEMO_URL } from "@/lib/landing/links";
 import { HOME_FAQS } from "@/lib/landing/faqs";
@@ -291,6 +292,7 @@ export default function Home() {
       </section>
 
       <SiteFooter />
+      <WhatsAppWidget />
     </main>
   );
 }

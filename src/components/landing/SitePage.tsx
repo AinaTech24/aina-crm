@@ -3,6 +3,7 @@ import { ArrowRight, ChevronRight } from "lucide-react";
 import { brandFont } from "@/lib/landing/font";
 import { DEMO_URL } from "@/lib/landing/links";
 import { SiteFooter, SiteHeader } from "@/components/landing/SiteChrome";
+import { WhatsAppWidget } from "@/components/landing/WhatsAppWidget";
 
 /** Page shell for the public site's inner pages: brand font, header, breadcrumb, footer. */
 export function SitePage({ crumbs, jsonLd, children }: { crumbs?: [string, string][]; jsonLd?: object; children: React.ReactNode }) {
@@ -38,6 +39,7 @@ export function SitePage({ crumbs, jsonLd, children }: { crumbs?: [string, strin
         </div>
       </section>
       <SiteFooter />
+      <WhatsAppWidget />
     </main>
   );
 }

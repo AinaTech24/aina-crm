@@ -1,4 +1,13 @@
-import { Fraunces } from "next/font/google";
+import { Plus_Jakarta_Sans } from "next/font/google";
 
-/** The public website's display face — a warm serif against the logo's crimson and teal. */
-export const brandFont = Fraunces({ subsets: ["latin"], variable: "--font-brand", style: ["normal", "italic"], display: "swap" });
+/**
+ * The public website's heading face — Plus Jakarta Sans, a clean geometric sans
+ * (body text stays Inter, from the root layout). Weight and emphasis styling
+ * for `.font-brand` live in globals.css ("Public website headings").
+ */
+export const brandFont = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  variable: "--font-brand",
+  weight: ["500", "600", "700", "800"],
+  display: "swap",
+});

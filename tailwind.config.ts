@@ -19,8 +19,8 @@ const config: Config = {
       fontFamily: {
         sans: ["var(--font-inter)", "ui-sans-serif", "system-ui", "sans-serif"],
         display: ["var(--font-inter)", "ui-sans-serif", "system-ui", "sans-serif"],
-        // The public website's display face (loaded on the homepage only).
-        brand: ["var(--font-brand)", "Georgia", "serif"],
+        // The public website's heading face (Plus Jakarta Sans, loaded on the marketing pages only).
+        brand: ["var(--font-brand)", "var(--font-inter)", "ui-sans-serif", "system-ui", "sans-serif"],
       },
       fontSize: {
         /**

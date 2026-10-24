@@ -772,7 +772,11 @@ contact details are shared (`components/landing/SiteChrome.tsx`,
   (`src/app/sitemap.ts`) picks them up. Keep every claim true of the product.
 - Self-serve sign-up is closed: CTAs book a demo (`DEMO_URL`), never `/signup`.
 - The site palette is fixed (`site-*` colours in `tailwind.config.ts`, the logo's
-  crimson and teal) and must not follow a tenant's `--primary`.
+  crimson and teal) and must not follow a tenant's `--primary`. Headings are
+  `font-brand` (Plus Jakarta Sans, `lib/landing/font.ts`; weight in globals.css),
+  body text Inter.
+- The Vartify WhatsApp chat button (`components/landing/WhatsAppWidget.tsx`)
+  loads on the website pages only, never inside the CRM.
 
 ## Webhook handlers
 
