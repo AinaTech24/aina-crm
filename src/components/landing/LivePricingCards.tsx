@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Check, Phone, Users2 } from "lucide-react";
 import type { LandingPlan } from "@/lib/landing/packages";
+import { DEMO_URL } from "@/lib/landing/links";
 
 const POLL_MS = 20_000;
 
@@ -60,6 +61,12 @@ export function LivePricingCards({ initial }: { initial: LandingPlan[] }) {
     <div className="mt-16 grid sm:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch max-w-6xl mx-auto">
       {plans.map((p) => {
         const custom = p.isCustom;
+        // Self-serve sign-up is closed: a card still pointing at /signup (the
+        // fallback plans, or an admin-saved card) asks for a demo instead.
+        const toSignup = !p.ctaHref || p.ctaHref.startsWith("/signup");
+        const cta = toSignup
+          ? { href: DEMO_URL, label: /trial|sign ?up/i.test(p.ctaLabel) || !p.ctaLabel ? "Book a demo" : p.ctaLabel }
+          : { href: p.ctaHref, label: p.ctaLabel };
         return (
           <div
             key={p.name}
@@ -132,13 +139,17 @@ export function LivePricingCards({ initial }: { initial: LandingPlan[] }) {
             {p.inheritsLabel && <p className="mt-5 text-sm font-bold text-foreground">{p.inheritsLabel}</p>}
             <FeatureList features={p.features} />
 
-            {custom || p.ctaHref.startsWith("tel:") || /^https?:/.test(p.ctaHref) ? (
-              <a href={p.ctaHref} className={`mt-8 w-full ${p.featured ? "btn-primary !bg-red-600 hover:!bg-red-700" : "btn-primary"} font-bold py-3 text-center justify-center shadow-md inline-flex items-center gap-2`}>
-                {p.ctaHref.startsWith("tel:") && <Phone className="size-4" />} {p.ctaLabel}
+            {custom || cta.href.startsWith("tel:") || /^https?:/.test(cta.href) ? (
+              <a
+                href={cta.href}
+                {...(/^https?:/.test(cta.href) ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                className={`mt-8 w-full ${p.featured ? "btn-primary !bg-red-600 hover:!bg-red-700" : "btn-primary"} font-bold py-3 text-center justify-center shadow-md inline-flex items-center gap-2`}
+              >
+                {cta.href.startsWith("tel:") && <Phone className="size-4" />} {cta.label}
               </a>
             ) : (
-              <Link href={p.ctaHref || "/signup"} className={`mt-8 w-full ${p.featured ? "btn-primary !bg-red-600 hover:!bg-red-700" : "btn-secondary"} font-bold py-3 text-center justify-center shadow-md`}>
-                {p.ctaLabel}
+              <Link href={cta.href} className={`mt-8 w-full ${p.featured ? "btn-primary !bg-red-600 hover:!bg-red-700" : "btn-secondary"} font-bold py-3 text-center justify-center shadow-md`}>
+                {cta.label}
               </Link>
             )}
           </div>

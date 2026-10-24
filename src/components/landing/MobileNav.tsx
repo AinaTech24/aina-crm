@@ -4,22 +4,14 @@ import { useState } from "react";
 import Link from "next/link";
 import { Menu, X, ArrowRight } from "lucide-react";
 
-const LINKS: [string, string][] = [
-  ["Features", "#features"],
-  ["Calculators", "#calculators"],
-  ["How It Works", "#how-it-works"],
-  ["Pricing", "#pricing"],
-  ["FAQ", "#faq"],
-];
-
 /**
  * Mobile hamburger menu for the landing nav — the desktop link row is hidden
- * below md, so without this phones get no in-page navigation. Closes on link tap.
+ * below lg, so without this phones get no in-page navigation. Closes on link tap.
  */
-export function MobileNav({ communityUrl }: { communityUrl: string }) {
+export function MobileNav({ links, demoUrl }: { links: [string, string][]; demoUrl: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="md:hidden">
+    <div className="lg:hidden">
       <button
         type="button"
         aria-label={open ? "Close menu" : "Open menu"}
@@ -38,7 +30,7 @@ export function MobileNav({ communityUrl }: { communityUrl: string }) {
             style={{ backgroundColor: "hsl(var(--background))" }}
           >
             <nav className="max-w-7xl mx-auto px-6 py-4 flex flex-col">
-              {LINKS.map(([label, href]) => (
+              {links.map(([label, href]) => (
                 <a
                   key={href}
                   href={href}
@@ -53,13 +45,13 @@ export function MobileNav({ communityUrl }: { communityUrl: string }) {
                   Log in
                 </Link>
                 <a
-                  href={communityUrl}
+                  href={demoUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => setOpen(false)}
                   className="btn-primary justify-center text-sm"
                 >
-                  Join Community <ArrowRight className="size-4" />
+                  Book a demo <ArrowRight className="size-4" />
                 </a>
               </div>
             </nav>

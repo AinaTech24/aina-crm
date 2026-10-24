@@ -1,23 +1,23 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import {
-  ShieldCheck, TrendingUp, Brain, BarChart3, Lock, ArrowRight, Calculator, Clock, Star, Check,
-  MessageSquare, Zap, Upload, Rocket, Users2, Building2, User, CalendarDays, Repeat, Target,
-  Sparkles, Layers, FileText, type LucideIcon,
+  ShieldCheck, ArrowRight, Check, X, MessageSquare, Zap, Upload, Users2, Building2, User,
+  Lock, Target, Sparkles, FileText, ListChecks, Scale, Link2, LayoutDashboard,
+  Network, Briefcase, Inbox, Umbrella, PiggyBank, KeyRound, ScrollText, Fingerprint,
+  ChevronRight, BadgeCheck, CalendarDays, Repeat, Phone, type LucideIcon,
 } from "lucide-react";
 import { loadLandingPlans } from "@/lib/landing/packages";
 import { CountUp } from "@/components/landing/CountUp";
 import { FaqAccordion } from "@/components/landing/FaqAccordion";
 import { MobileNav } from "@/components/landing/MobileNav";
 import { LivePricingCards } from "@/components/landing/LivePricingCards";
+import { RoleDashboards } from "@/components/landing/RoleDashboards";
+import { COMMUNITY_URL, DEMO_URL } from "@/lib/landing/links";
 
 // Re-render at most once a minute so admin-managed pricing cards go live without
 // a rebuild. Admin saves also fire an on-demand revalidatePath("/") for instant
 // reflection (see /api/super-admin/landing-packages); this is the safety net.
 export const revalidate = 60;
-
-/** WhatsApp community — primary "Join Our Community" CTA across the page. */
-const COMMUNITY_URL = "https://chat.whatsapp.com/C6ttmFYUtxHA7GYna5YGcN";
 
 /* ─────────────────────────────────────────────────────────────────────────
    SEO — written around what Indian MFDs actually type into Google:
@@ -28,7 +28,7 @@ const COMMUNITY_URL = "https://chat.whatsapp.com/C6ttmFYUtxHA7GYna5YGcN";
 export const metadata: Metadata = {
   title: "Aina CRM for Mutual Fund Distributors | MFD CRM Software for Compliance, Client Servicing & Growth",
   description:
-    "Aina CRM is a complete CRM and practice operating system for Mutual Fund Distributors. Manage DDQ compliance, client data, SIP rejections, review meetings, lead tracking, team tasks, MIS reports, marketing, automation and AI-powered business growth from one platform.",
+    "Aina CRM is the practice operating system for Mutual Fund Distributors: CAMS & KFintech imports matched to the right client, families with one RM, opportunities from first call to RTA-confirmed, six role dashboards, compliance-checked WhatsApp & email, service requests, insurance, FDs and AI — one platform.",
   keywords: [
     "CRM for Mutual Fund Distributors",
     "MFD CRM software",
@@ -36,6 +36,7 @@ export const metadata: Metadata = {
     "CRM for MFD",
     "DDQ compliance for MFD",
     "SIP rejection tracking software",
+    "CAMS KFintech import software",
     "client servicing CRM for MFD",
     "MFD business automation",
     "mutual fund distributor software",
@@ -46,14 +47,14 @@ export const metadata: Metadata = {
     type: "website",
     title: "Aina CRM — Practice Operating System for Mutual Fund Distributors",
     description:
-      "A complete CRM for MFDs: DDQ compliance, client data, SIP-rejection follow-ups, review meetings, team tasks, MIS, marketing and AI — one structured platform.",
+      "Nothing slips, audits are a download, and your numbers agree with the RTA. One system for clients, families, business, servicing, compliance and your team.",
     siteName: "Aina CRM",
   },
   twitter: {
     card: "summary_large_image",
     title: "Aina CRM — Practice Operating System for MFDs",
     description:
-      "Run your MFD practice with more control, less manual work: compliance, client data, servicing, reporting, marketing and AI in one platform.",
+      "One system for your MFD practice: clean client book, every follow-up a task, booked business checked against CAMS & KFintech, compliance on every message.",
   },
 };
 
@@ -61,27 +62,31 @@ export const metadata: Metadata = {
 const FAQS = [
   {
     q: "What is Aina CRM?",
-    a: "A CRM and practice operating system built only for Mutual Fund Distributors — client data, compliance, reviews, service requests, team tasks, reporting and marketing in one platform.",
+    a: "A CRM and practice operating system built only for Mutual Fund Distributors — client and family records, business and RTA data, opportunities, service requests, compliance, team dashboards, communication and automation in one platform.",
   },
   {
-    q: "Who is Aina CRM for?",
-    a: "Individual ARN holders, growing firms with RM or ops teams, and larger MFD practices. If you run on Excel, memory and WhatsApp today, it replaces all three.",
+    q: "Do I have to type my clients in again?",
+    a: "No. We import your CAMS and KFintech history — folios, holdings, transactions and SIPs. Each registrar row is matched to the right client by PAN, so a client you already have never gets a duplicate, and families are linked as they load.",
   },
   {
-    q: "How does Aina CRM help with DDQ compliance?",
-    a: "DDQ files, checklists, complaint registers, consent and risk-profile records stay organised continuously — so an audit is a download, not a scramble.",
+    q: "Can each RM see only their own clients?",
+    a: "Yes, if you want it. Access is set per person: the whole firm, one branch, a team, or only their own book. Dashboards, lists, exports and search all follow the same rule.",
   },
   {
-    q: "Can it reduce missed follow-ups?",
-    a: "Yes. Reviews, service requests, SIP rejections and lead follow-ups sit in one tracked queue with reminders and escalations, so fewer things slip.",
+    q: "How does Aina CRM help with DDQ and audits?",
+    a: "Every WhatsApp, email and SMS passes an 11-rule compliance check before it leaves. Consent, risk profiles (confirmed by the client's own OTP), complaints with their SLA, and an audit trail of every change are kept as you work — so an audit is a download, not a scramble.",
   },
   {
-    q: "Does it support marketing and lead generation?",
-    a: "Yes — content calendar, WhatsApp and email creatives, landing pages and lead capture, with a compliance check on every creative before it goes out.",
+    q: "How are business figures kept honest?",
+    a: "Operations books the business the day it happens; the CAMS / KFintech feed confirms it days later. Aina links the two line by line and flags anything rejected, mismatched or not found, so your targets and incentives rest on numbers that agree with the registrar.",
   },
   {
-    q: "Does Aina CRM include AI?",
-    a: "Yes. Ask-your-data queries, email drafting, meeting summaries, lead qualification and campaign ideas — practical AI for daily practice management.",
+    q: "Does Aina CRM execute mutual fund transactions?",
+    a: "No. Aina is a practice-management, analytics and communication platform for distributors. Transactions are placed on your usual platforms; Aina tracks them through to the RTA.",
+  },
+  {
+    q: "Does it include AI and calculators?",
+    a: "Yes — an assistant that answers questions about your own book, drafts emails and summarises meetings, plus 60+ client-ready calculators with branded PDFs.",
   },
 ];
 
@@ -95,17 +100,17 @@ const JSON_LD = {
       applicationCategory: "BusinessApplication",
       operatingSystem: "Web",
       description:
-        "Mutual fund software for Indian distributors (MFDs): CAMS/KFintech auto-import, live AUM & family XIRR, SIP bounce recovery on WhatsApp, AMFI/SEBI-compliant messaging, 60+ financial calculators, branded reports and MIS.",
+        "Practice operating system for Indian Mutual Fund Distributors (MFDs): CAMS/KFintech imports matched by PAN, family mapping with one RM, opportunity journeys to RTA confirmation, six role dashboards, AMFI/SEBI-aware messaging, service requests, insurance and FD tracking, calculators and AI.",
       offers: { "@type": "AggregateOffer", priceCurrency: "INR", lowPrice: "9999", highPrice: "14999", offerCount: "3", priceValidUntil: "2026-12-31" },
       featureList: [
-        "Dynamic CAMS & KFintech file import with 3-way reconciliation",
-        "Live AUM, portfolio valuation and family XIRR from daily AMFI NAVs",
-        "SIP tracking with instant bounce alerts and WhatsApp recovery",
+        "CAMS & KFintech import with PAN-based client matching and family linking",
+        "Booked business reconciled line by line against the RTA feed",
+        "Opportunity journey from first call to RTA data check, with gates",
+        "Six role dashboards: Owner, Branch Head, RM, Operations, Insurance, Claims",
         "11-rule AMFI/SEBI compliance gate on WhatsApp, email and SMS",
-        "60+ client-ready financial calculators with branded PDF output",
-        "AI churn radar, cross-sell finder and tax-harvesting suggestions",
-        "Trail & commission reconciliation, practice P&L and MIS reports",
-        "Role-based multi-user access with row-level data isolation",
+        "Login-free client links: risk profile, feedback, service request, complaint",
+        "Insurance, claims and fixed deposit tracking with renewal and maturity reminders",
+        "Role-based access with row-level data isolation per firm",
       ],
     },
     {
@@ -140,296 +145,257 @@ export default async function Home() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/aina-logo.png" alt="Aina CRM — mutual fund software for distributors" className="h-8 w-auto object-contain shrink-0" />
           </Link>
-          <nav className="hidden md:flex items-center gap-7 text-sm font-semibold text-muted-foreground">
-            <a href="#features" className="hover:text-primary transition-colors">Features</a>
-            <a href="#calculators" className="hover:text-primary transition-colors">Calculators</a>
-            <a href="#how-it-works" className="hover:text-primary transition-colors">How It Works</a>
-            <a href="#pricing" className="hover:text-primary transition-colors">Pricing</a>
-            <Link href="/knowledge-base" className="hover:text-primary transition-colors">KAIZEN</Link>
-            <a href="#faq" className="hover:text-primary transition-colors">FAQ</a>
+          <nav className="hidden lg:flex items-center gap-7 text-sm font-semibold text-muted-foreground">
+            {NAV.map(([label, href]) =>
+              href.startsWith("#") ? (
+                <a key={href} href={href} className="hover:text-primary transition-colors">{label}</a>
+              ) : (
+                <Link key={href} href={href} className="hover:text-primary transition-colors">{label}</Link>
+              )
+            )}
           </nav>
-          <div className="hidden md:flex items-center gap-3">
+          <div className="hidden lg:flex items-center gap-3">
             <Link href="/login" className="text-sm font-semibold px-4 py-2 rounded-lg hover:bg-secondary text-foreground/80 hover:text-foreground transition-all">
               Log in
             </Link>
-            <a href={COMMUNITY_URL} target="_blank" rel="noopener noreferrer" className="btn-primary text-sm font-semibold shadow-glow-navy">
-              Join Community <ArrowRight className="size-4" />
+            <a href={DEMO_URL} target="_blank" rel="noopener noreferrer" className="btn-primary text-sm font-semibold shadow-glow-navy">
+              Book a demo <ArrowRight className="size-4" />
             </a>
           </div>
-          <MobileNav communityUrl={COMMUNITY_URL} />
+          <MobileNav links={NAV} demoUrl={DEMO_URL} />
         </div>
       </header>
 
       {/* ───────────────────────── Hero ─────────────────────────
-          One line of promise, one line of scope, two buttons — the product
-          mock on the right does the explaining. */}
+          The promise in outcomes, then the product as it actually looks: the
+          Owner Dashboard's headline tiles and its "needs attention" list. */}
       <section className="relative pt-10 pb-16 lg:pt-16 lg:pb-24 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 grid lg:grid-cols-12 gap-12 lg:gap-8 items-center">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 h-96 bg-gradient-to-b from-primary/10 via-primary/5 to-transparent"
+        />
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 grid lg:grid-cols-12 gap-12 lg:gap-8 items-center">
           <div className="lg:col-span-6 flex flex-col items-start text-left">
-            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/5 px-3.5 py-1.5 text-xs font-semibold text-emerald-700 mb-6">
-              <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-              Built only for Indian MFDs
+            <span className="inline-flex items-center gap-2 rounded-full border border-success/20 bg-success/5 px-3.5 py-1.5 text-xs font-semibold text-success mb-6">
+              <span className="size-2 rounded-full bg-success animate-pulse" />
+              Built only for Indian Mutual Fund Distributors
             </span>
 
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-tight text-foreground text-balance">
-              Run your MFD practice on{" "}
-              <span className="text-primary">one system</span>.
+              Every client, every SIP, every follow-up — <span className="text-primary">on one system</span>.
             </h1>
 
-            <p className="mt-5 text-lg text-muted-foreground">
-              Clients · Compliance · SIPs · Reports
+            <p className="mt-5 text-lg text-muted-foreground max-w-xl">
+              Aina CRM runs your MFD practice end to end: a clean client book from CAMS &amp; KFintech, business that
+              agrees with the registrar, every promise turned into a task, and compliance on every message.
             </p>
 
             <div className="mt-8 flex flex-wrap gap-3 w-full sm:w-auto">
-              <a href={COMMUNITY_URL} target="_blank" rel="noopener noreferrer" className="btn-primary text-base px-7 py-3 w-full sm:w-auto justify-center">
-                Join Our Community <ArrowRight className="size-5" />
+              <a href={DEMO_URL} target="_blank" rel="noopener noreferrer" className="btn-primary text-base px-7 py-3 w-full sm:w-auto justify-center">
+                Book a demo <ArrowRight className="size-5" />
               </a>
-              <Link href="/signup" className="btn-secondary text-base px-7 py-3 w-full sm:w-auto justify-center">
-                Start free trial
-              </Link>
+              <a href={COMMUNITY_URL} target="_blank" rel="noopener noreferrer" className="btn-secondary text-base px-7 py-3 w-full sm:w-auto justify-center">
+                Join the MFD community
+              </a>
             </div>
 
             <div className="mt-10 flex flex-wrap gap-2.5">
-              <TrustChip icon={ShieldCheck} tone="text-emerald-600" label="AMFI & SEBI-aware" />
-              <TrustChip icon={Lock} tone="text-primary" label="DPDP-ready" />
-              <TrustChip icon={Clock} tone="text-amber-600" label="Live in a day" />
+              <TrustChip icon={ShieldCheck} tone="text-success" label="AMFI & SEBI-aware" />
+              <TrustChip icon={Lock} tone="text-primary" label="Your data isolated" />
+              <TrustChip icon={Upload} tone="text-warning" label="CAMS & KFintech ready" />
             </div>
           </div>
 
-          {/* Product mock */}
           <div className="lg:col-span-6 w-full flex justify-center lg:justify-end">
-            <div className="relative w-full max-w-md">
-            <div className="glass-card rounded-2xl w-full p-5 relative border border-border/50 shadow-2xl flex flex-col gap-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="pulse-dot" />
-                  <span className="text-2xs font-bold uppercase tracking-wider text-muted-foreground">Your practice, live</span>
-                </div>
-                <span className="text-2xs font-semibold bg-emerald-500/10 text-emerald-700 px-2 py-0.5 rounded-full">NAVs synced</span>
-              </div>
-
-              <div>
-                <span className="text-xs text-muted-foreground font-medium">AUM</span>
-                <div className="text-4xl font-extrabold tabular-nums tracking-tight text-foreground">₹4.28 Cr</div>
-                <div className="flex items-center gap-1 text-xs text-emerald-600 font-semibold mt-0.5">
-                  <TrendingUp className="size-3.5" /> 16.4% family XIRR
-                </div>
-              </div>
-
-              <div className="h-20 w-full">
-                <svg viewBox="0 0 400 100" className="w-full h-full overflow-visible" aria-hidden>
-                  <defs>
-                    <linearGradient id="hero-area" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.18" />
-                      <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0" />
-                    </linearGradient>
-                  </defs>
-                  <path d="M0,90 C50,85 70,60 100,65 C130,70 160,40 190,45 C220,50 250,25 280,30 C310,35 340,10 400,5 L400,100 L0,100 Z" fill="url(#hero-area)" />
-                  <path d="M0,90 C50,85 70,60 100,65 C130,70 160,40 190,45 C220,50 250,25 280,30 C310,35 340,10 400,5" fill="none" stroke="hsl(var(--primary))" strokeWidth="3.5" strokeLinecap="round" />
-                  <circle cx="400" cy="5" r="5" fill="hsl(var(--primary))" />
-                </svg>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2.5">
-                <MockStat icon={Repeat} tone="text-primary" value="1,240" label="Live SIPs" />
-                <MockStat icon={Brain} tone="text-rose-500" value="3" label="At risk" />
-                <MockStat icon={ShieldCheck} tone="text-emerald-600" value="100%" label="Compliant" />
-              </div>
-
-              <div className="rounded-xl bg-secondary/60 p-3 flex items-center gap-2.5">
-                <span className="text-2xs font-bold rounded-full bg-rose-500/10 text-rose-600 px-2 py-0.5">SIP bounced</span>
-                <ArrowRight className="size-3.5 text-muted-foreground shrink-0" />
-                <span className="text-2xs font-bold rounded-full bg-emerald-500/10 text-emerald-700 px-2 py-0.5 inline-flex items-center gap-1">
-                  <MessageSquare className="size-3" /> WhatsApp sent
-                </span>
-              </div>
-            </div>
-            <div className="hidden lg:flex absolute -left-10 -bottom-7 z-30 items-center gap-2.5 rounded-xl border border-border/60 bg-card px-3.5 py-2.5 shadow-xl">
-              <span className="size-8 rounded-full bg-emerald-500/10 grid place-items-center">
-                <FileText className="size-4 text-emerald-600" />
-              </span>
-              <div className="leading-tight">
-                <div className="text-2xs font-bold text-foreground">Family review ready</div>
-                <div className="text-2xs text-muted-foreground">Branded PDF</div>
-              </div>
-            </div>
-
-            </div>
+            <HeroDashboard />
           </div>
         </div>
       </section>
 
       {/* ───────────────────── Numbers ───────────────────── */}
       <section className="border-y border-border/40 bg-secondary/20 relative z-10 py-10">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 grid grid-cols-2 md:grid-cols-4 gap-y-8 md:divide-x md:divide-border/50">
-          <Stat value={60} suffix="+" label="Calculators" />
-          <Stat value={13900} suffix="+" label="Schemes valued daily" />
-          <Stat value={40} suffix="+" label="Automations" />
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 grid grid-cols-2 md:grid-cols-5 gap-y-8 md:divide-x md:divide-border/50">
+          <Stat value={6} label="Role dashboards" />
           <Stat value={11} label="Compliance checks" />
+          <Stat value={40} suffix="+" label="Ready automations" />
+          <Stat value={13900} suffix="+" label="Schemes valued daily" />
+          <Stat value={60} suffix="+" label="Client calculators" />
         </div>
       </section>
 
-      {/* ───────────────────── Features (bento) ─────────────────────
-          A name and a picture per area — no paragraphs. */}
-      <section id="features" className="py-20 lg:py-24 relative z-10 scroll-mt-16">
+      {/* ───────────────────── The value ─────────────────────
+          Outcomes first, each backed by what the product actually does. */}
+      <section id="value" className="py-20 lg:py-24 relative z-10 scroll-mt-16">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
-          <SectionTitle eyebrow="Features" title="Everything your firm runs on" />
-
-          <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Tile icon={ShieldCheck} tone="bg-emerald-500/10 text-emerald-600" title="DDQ & compliance" wide>
-              <div className="flex items-center gap-4">
-                <div className="relative size-16 shrink-0">
-                  <svg viewBox="0 0 36 36" className="size-16 -rotate-90" aria-hidden>
-                    <circle cx="18" cy="18" r="15.5" fill="none" stroke="hsl(var(--border))" strokeWidth="3.5" />
-                    <circle cx="18" cy="18" r="15.5" fill="none" stroke="#059669" strokeWidth="3.5" strokeDasharray="97.4 97.4" strokeLinecap="round" />
-                  </svg>
-                  <span className="absolute inset-0 grid place-items-center text-xs font-extrabold text-emerald-700">100%</span>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {["ARN / EUIN", "Disclaimer", "Consent", "Opt-out", "Risk profile"].map((t) => (
-                    <span key={t} className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 text-emerald-700 text-2xs font-semibold px-2 py-0.5">
-                      <Check className="size-3" /> {t}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </Tile>
-
-            <Tile icon={Repeat} tone="bg-rose-500/10 text-rose-500" title="SIP bounce recovery">
-              <div className="flex flex-col gap-1.5">
-                <span className="self-start text-2xs font-bold rounded-full bg-rose-500/10 text-rose-600 px-2 py-0.5">Mandate failed</span>
-                <span className="self-start text-2xs font-bold rounded-full bg-emerald-500/10 text-emerald-700 px-2 py-0.5">Reminder sent ✓</span>
-              </div>
-            </Tile>
-
-            <Tile icon={Users2} tone="bg-primary/10 text-primary" title="Family portfolios">
-              <div className="flex items-center justify-between">
-                <div className="flex -space-x-2">
-                  {["RS", "PS", "AS", "KS"].map((n, i) => (
-                    <span key={n} className={`size-7 rounded-full grid place-items-center text-2xs font-bold text-white ring-2 ring-card ${AVATAR_BG[i]}`}>{n}</span>
-                  ))}
-                </div>
-                <span className="text-sm font-extrabold tabular-nums text-foreground">₹1.8 Cr</span>
-              </div>
-            </Tile>
-
-            <Tile icon={CalendarDays} tone="bg-amber-500/10 text-amber-600" title="Reviews & meetings">
-              <div className="grid grid-cols-7 gap-1">
-                {Array.from({ length: 14 }).map((_, i) => (
-                  <span key={i} className={`h-3 rounded-sm ${[2, 5, 9, 12].includes(i) ? "bg-amber-500" : "bg-secondary"}`} />
-                ))}
-              </div>
-            </Tile>
-
-            <Tile icon={BarChart3} tone="bg-primary/10 text-primary" title="MIS reports">
-              <div className="flex items-end gap-1.5 h-12">
-                {[35, 55, 45, 70, 60, 85, 100].map((h, i) => (
-                  <span key={i} className="flex-1 rounded-t bg-primary/70" style={{ height: `${h}%` }} />
-                ))}
-              </div>
-            </Tile>
-
-            <Tile icon={Sparkles} tone="bg-violet-500/10 text-violet-600" title="AI assistant" wide>
-              <div className="flex flex-col gap-1.5">
-                <span className="self-end max-w-xs rounded-2xl rounded-br-sm bg-secondary px-3 py-1.5 text-xs text-foreground">
-                  Who needs a review this month?
+          <SectionTitle
+            eyebrow="What you get"
+            title="Six things your practice gains on day one"
+            lead="Not a list of screens — the outcomes your clients, your team and your auditor will notice."
+          />
+          <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {VALUES.map((v) => (
+              <article key={v.title} className="rounded-2xl border border-border/60 bg-card p-6 flex flex-col gap-4 hover:shadow-lg hover:-translate-y-0.5 transition-all">
+                <span className={`size-11 rounded-xl grid place-items-center ${v.tone}`}>
+                  <v.icon className="size-5" />
                 </span>
-                <span className="self-start max-w-xs rounded-2xl rounded-bl-sm bg-violet-500/10 px-3 py-1.5 text-xs font-semibold text-violet-700">
-                  12 clients · 3 overdue
-                </span>
-              </div>
-            </Tile>
-
-            <Tile icon={Target} tone="bg-primary/10 text-primary" title="Leads & opportunities">
-              <div className="flex flex-col gap-1">
-                {[100, 72, 48, 30].map((w, i) => (
-                  <span key={i} className="h-2.5 rounded-full bg-primary/60" style={{ width: `${w}%` }} />
-                ))}
-              </div>
-            </Tile>
-
-            <Tile icon={MessageSquare} tone="bg-emerald-500/10 text-emerald-600" title="WhatsApp & email">
-              <div className="flex flex-col gap-1.5">
-                <span className="self-start rounded-2xl rounded-bl-sm bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-800">Happy birthday, Riya! 🎉</span>
-                <span className="self-start text-2xs font-semibold text-muted-foreground">✓✓ Read</span>
-              </div>
-            </Tile>
-
-            <Tile icon={Layers} tone="bg-amber-500/10 text-amber-600" title="Every product">
-              <div className="flex flex-wrap gap-1.5">
-                {["Mutual funds", "Insurance", "Fixed deposits", "NPS", "PMS / AIF", "Bonds"].map((t) => (
-                  <span key={t} className="rounded-full border border-border/70 bg-background px-2.5 py-1 text-2xs font-semibold text-foreground/80">{t}</span>
-                ))}
-              </div>
-            </Tile>
-
-            <Tile icon={Upload} tone="bg-primary/10 text-primary" title="CAMS & KFintech import">
-              <div className="flex flex-col items-start gap-1.5 text-2xs font-semibold">
-                <span className="rounded-lg border border-border/70 bg-background px-2.5 py-1.5">RTA files</span>
-                <ArrowRight className="size-3.5 text-muted-foreground rotate-90 ml-3" />
-                <span className="rounded-lg bg-primary/10 text-primary px-2.5 py-1.5">Folios · SIPs · Families</span>
-              </div>
-            </Tile>
+                <div>
+                  <h3 className="text-lg font-extrabold tracking-tight text-foreground">{v.title}</h3>
+                  <p className="mt-1.5 text-sm text-muted-foreground leading-relaxed">{v.body}</p>
+                </div>
+                <ul className="mt-auto flex flex-col gap-1.5 border-t border-border/50 pt-4">
+                  {v.proof.map((p) => (
+                    <li key={p} className="flex items-start gap-2 text-xs text-foreground/80">
+                      <Check className="size-3.5 mt-0.5 shrink-0 text-success" /> {p}
+                    </li>
+                  ))}
+                </ul>
+              </article>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* ───────────────────── Calculators ───────────────────── */}
-      <section id="calculators" className="py-20 lg:py-24 bg-secondary/20 border-y border-border/40 relative z-10 scroll-mt-16">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
-          <div>
-            <div className="text-6xl sm:text-7xl font-extrabold tracking-tight text-primary tabular-nums">60+</div>
-            <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-foreground text-balance">
-              Calculators clients remember
-            </h2>
-            <div className="mt-5 flex flex-wrap gap-2">
-              <TrustChip icon={FileText} tone="text-primary" label="Branded PDF" />
-              <TrustChip icon={MessageSquare} tone="text-emerald-600" label="Share on WhatsApp" />
-              <TrustChip icon={ShieldCheck} tone="text-amber-600" label="Disclaimer built in" />
-            </div>
-          </div>
+      {/* ───────────────────── The journey ─────────────────────
+          The opportunity blueprint, as the CRM runs it. */}
+      <section id="journey" className="py-20 lg:py-24 bg-secondary/20 border-y border-border/40 relative z-10 scroll-mt-16">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          <SectionTitle
+            eyebrow="From first call to RTA-confirmed"
+            title="Every sale follows the same safe path"
+            lead="An existing client asking for a new SIP, insurance or an FD becomes an opportunity on their record — never a duplicate lead. Each step has an owner, a follow-up date and, where it matters, a gate."
+          />
 
-          <div className="flex flex-col gap-4">
-            <div className="rounded-2xl bg-card border border-border/60 shadow-lg p-5">
-              <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                <Calculator className="size-4 text-primary" /> SIP planner
-              </div>
-              <div className="mt-3 flex items-end justify-between gap-4">
-                <div>
-                  <div className="text-xs text-muted-foreground">₹25,000 / month · 20 years</div>
-                  <div className="text-3xl font-extrabold tabular-nums text-foreground mt-1">₹2.3 Cr</div>
+          <ol className="mt-12 grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {JOURNEY.map((s, i) => (
+              <li key={s.title} className="relative rounded-2xl border border-border/60 bg-card p-4 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="size-7 rounded-full bg-primary text-primary-foreground text-xs font-extrabold grid place-items-center">{i + 1}</span>
+                  {s.gate && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 text-warning px-2 py-0.5 text-2xs font-bold">
+                      <Lock className="size-3" /> Gate
+                    </span>
+                  )}
                 </div>
-                <div className="flex items-end gap-1 h-14">
-                  {[12, 18, 26, 36, 50, 68, 92].map((h, i) => (
-                    <span key={i} className="w-3 rounded-t bg-primary/70" style={{ height: `${h}%` }} />
+                <h3 className="text-sm font-bold text-foreground">{s.title}</h3>
+                <p className="text-xs text-muted-foreground leading-snug">{s.body}</p>
+              </li>
+            ))}
+          </ol>
+
+          <p className="mt-5 text-center text-sm text-muted-foreground">
+            Insurance and FDs take their own branch (proposal form → underwriting → issued, or executed). A client who
+            wants it <span className="font-semibold text-foreground">later</span> is parked, not lost — and a lost one
+            keeps its reason.
+          </p>
+
+          <div className="mt-8 grid md:grid-cols-3 gap-4">
+            <JourneyNote icon={BadgeCheck} title="Steps already done are skipped" body="KYC verified, UCC on record, a mandate that covers the SIP — the journey passes them and notes why." />
+            <JourneyNote icon={CalendarDays} title="“After Diwali” is a real answer" body="Park it with a revisit date. One reminder reaches the RM ahead of time; overdue ones reach the branch head." />
+            <JourneyNote icon={Target} title="Cross-sell you can measure" body="Products per client counted from what records prove — AUM, in-force policies, live FDs." />
+          </div>
+        </div>
+      </section>
+
+      {/* ───────────────────── Role dashboards ───────────────────── */}
+      <section id="dashboards" className="py-20 lg:py-24 relative z-10 scroll-mt-16">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          <SectionTitle
+            eyebrow="Six role dashboards"
+            title="Everyone opens to their own work"
+            lead="Seeing a dashboard never widens what it counts: each person's figures follow their access — the firm, a branch, their team or only themselves."
+          />
+          <RoleDashboards />
+        </div>
+      </section>
+
+      {/* ───────────────────── Modules ───────────────────── */}
+      <section id="features" className="py-20 lg:py-24 bg-secondary/20 border-y border-border/40 relative z-10 scroll-mt-16">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          <SectionTitle eyebrow="Everything in one place" title="What the platform covers" />
+          <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {MODULES.map((m) => (
+              <article key={m.title} className="rounded-2xl border border-border/60 bg-card p-5 flex flex-col gap-4">
+                <div className="flex items-center gap-3">
+                  <span className={`size-10 rounded-xl grid place-items-center shrink-0 ${m.tone}`}>
+                    <m.icon className="size-5" />
+                  </span>
+                  <h3 className="font-bold text-sm text-foreground">{m.title}</h3>
+                </div>
+                <ul className="flex flex-col gap-1.5">
+                  {m.items.map((it) => (
+                    <li key={it} className="flex items-start gap-1.5 text-xs text-foreground/80">
+                      <ChevronRight className="size-3.5 mt-0.5 shrink-0 text-primary" /> {it}
+                    </li>
                   ))}
-                </div>
-              </div>
-              <p className="mt-3 text-2xs text-muted-foreground">Illustration only. Mutual fund investments are subject to market risks.</p>
+                </ul>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ───────────────────── Before / after ───────────────────── */}
+      <section className="py-20 lg:py-24 relative z-10">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6">
+          <SectionTitle eyebrow="The difference" title="From Excel, memory and WhatsApp — to a system" />
+          <div className="mt-12 rounded-2xl border border-border/60 bg-card overflow-hidden">
+            <div className="hidden sm:grid grid-cols-12 bg-secondary/60 px-5 py-3 text-2xs font-bold uppercase tracking-wider text-muted-foreground">
+              <span className="col-span-3">Moment</span>
+              <span className="col-span-4">Without a system</span>
+              <span className="col-span-5">With Aina CRM</span>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {["Step-up SIP", "Goal planner", "Retirement", "Insurance IRR", "Tax regime", "Capital gains"].map((n) => (
-                <span key={n} className="rounded-xl border border-border/60 bg-background px-3 py-2.5 text-xs font-semibold text-foreground/85 inline-flex items-center gap-1.5">
-                  <Calculator className="size-3.5 text-primary shrink-0" /> {n}
-                </span>
+            <ul className="divide-y divide-border/60">
+              {COMPARE.map((c) => (
+                <li key={c.moment} className="grid sm:grid-cols-12 gap-2 sm:gap-0 px-5 py-4 items-start">
+                  <span className="sm:col-span-3 text-sm font-bold text-foreground">{c.moment}</span>
+                  <span className="sm:col-span-4 flex items-start gap-2 text-sm text-muted-foreground sm:pr-4">
+                    <X className="size-4 mt-0.5 shrink-0 text-destructive" /> {c.before}
+                  </span>
+                  <span className="sm:col-span-5 flex items-start gap-2 text-sm text-foreground/90">
+                    <Check className="size-4 mt-0.5 shrink-0 text-success" /> {c.after}
+                  </span>
+                </li>
               ))}
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      {/* ───────────────────── Trust & compliance ───────────────────── */}
+      <section id="trust" className="py-20 lg:py-24 relative z-10 scroll-mt-16">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          <div className="rounded-3xl bg-foreground text-background px-6 py-12 sm:p-12 lg:p-14 grid lg:grid-cols-12 gap-10">
+            <div className="lg:col-span-5">
+              <span className="text-2xs font-bold uppercase tracking-widest text-background/60">Compliance &amp; trust</span>
+              <h2 className="mt-3 text-3xl sm:text-4xl font-extrabold tracking-tight text-balance">
+                Compliance is not a setting. There is no bypass.
+              </h2>
+              <p className="mt-4 text-sm text-background/70 leading-relaxed">
+                Every outbound message goes through the same gate, every change is recorded, and each firm&apos;s data is
+                walled off at the database — not just hidden in the screen.
+              </p>
             </div>
+            <ul className="lg:col-span-7 grid sm:grid-cols-2 gap-4">
+              {TRUST.map((t) => (
+                <li key={t.title} className="rounded-2xl bg-background/5 border border-background/10 p-4">
+                  <t.icon className="size-5 text-background/80" />
+                  <h3 className="mt-3 text-sm font-bold">{t.title}</h3>
+                  <p className="mt-1 text-xs text-background/65 leading-relaxed">{t.body}</p>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       </section>
 
       {/* ───────────────────── How it works ───────────────────── */}
       <section id="how-it-works" className="py-20 lg:py-24 relative z-10 scroll-mt-16">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6">
-          <SectionTitle eyebrow="How it works" title="Live in a day" />
-          <ol className="mt-14 grid md:grid-cols-3 gap-10 md:gap-6 relative">
-            <span aria-hidden className="hidden md:block absolute top-8 border-t-2 border-dashed border-border" style={{ left: "17%", right: "17%" }} />
-            {[
-              { icon: Upload, title: "Upload RTA files" },
-              { icon: Zap, title: "Switch on automations" },
-              { icon: Rocket, title: "Grow your AUM" },
-            ].map((s, i) => (
-              <li key={s.title} className="relative flex flex-col items-center text-center gap-4">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          <SectionTitle eyebrow="Getting started" title="We set it up with you" />
+          <ol className="mt-14 grid sm:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-6 relative">
+            <span aria-hidden className="hidden lg:block absolute top-8 border-t-2 border-dashed border-border" style={{ left: "12%", right: "12%" }} />
+            {STEPS.map((s, i) => (
+              <li key={s.title} className="relative flex flex-col items-center text-center gap-3">
                 <span className="relative size-16 rounded-2xl bg-primary text-primary-foreground grid place-items-center shadow-lg">
                   <s.icon className="size-7" />
                   <span className="absolute -top-2 -right-2 size-6 rounded-full bg-card border border-border text-2xs font-extrabold text-foreground grid place-items-center">
@@ -437,23 +403,10 @@ export default async function Home() {
                   </span>
                 </span>
                 <h3 className="font-bold text-base text-foreground">{s.title}</h3>
+                <p className="text-sm text-muted-foreground max-w-xs">{s.body}</p>
               </li>
             ))}
           </ol>
-        </div>
-      </section>
-
-      {/* ───────────────────── Why Aina ───────────────────── */}
-      <section className="pb-20 lg:pb-24 relative z-10">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {WHY_AINA.map((w) => (
-            <div key={w.title} title={w.body} className="rounded-2xl border border-border/50 bg-secondary/30 p-5 flex flex-col items-start gap-3">
-              <span className="size-10 rounded-xl grid place-items-center bg-primary/10 text-primary">
-                <w.icon className="size-5" />
-              </span>
-              <h3 className="font-bold text-sm text-foreground">{w.title}</h3>
-            </div>
-          ))}
         </div>
       </section>
 
@@ -486,9 +439,9 @@ export default async function Home() {
 
           <div className="mt-6 flex flex-wrap justify-center gap-2.5">
             <TrustChip icon={Lock} tone="text-primary" label="Data isolation" />
-            <TrustChip icon={ShieldCheck} tone="text-emerald-600" label="Compliance gate" />
+            <TrustChip icon={ShieldCheck} tone="text-success" label="Compliance gate" />
             <TrustChip icon={MessageSquare} tone="text-primary" label="Your own WhatsApp & email" />
-            <TrustChip icon={Zap} tone="text-amber-600" label="Free updates" />
+            <TrustChip icon={Zap} tone="text-warning" label="Free updates" />
           </div>
 
           <p className="text-center text-2xs text-muted-foreground mt-6 max-w-xl mx-auto">
@@ -514,9 +467,6 @@ export default async function Home() {
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {TESTIMONIALS.map((t) => (
               <figure key={t.name} className="rounded-2xl border border-border/50 bg-card p-6 flex flex-col gap-4">
-                <div className="flex gap-0.5 text-amber-500">
-                  {Array.from({ length: 5 }).map((_, i) => <Star key={i} className="size-4 fill-current" />)}
-                </div>
                 <blockquote className="text-sm text-foreground/85 leading-relaxed flex-grow">“{t.quote}”</blockquote>
                 <figcaption className="text-xs">
                   <span className="font-bold text-foreground">{t.name}</span>
@@ -531,16 +481,19 @@ export default async function Home() {
       {/* ───────────────────────── Final CTA ───────────────────────── */}
       <section className="pb-20 max-w-6xl mx-auto px-4 sm:px-6 relative z-10 w-full">
         <div className="rounded-3xl bg-primary px-6 py-12 sm:p-14 text-center shadow-2xl">
-          <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white text-balance">
-            Ready to run a system-driven practice?
+          <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-primary-foreground text-balance">
+            See your own practice on Aina CRM
           </h2>
+          <p className="mt-3 text-primary-foreground/80 max-w-xl mx-auto">
+            A 30-minute walkthrough on WhatsApp or a call — your questions, your workflow.
+          </p>
           <div className="mt-8 flex flex-wrap gap-3 justify-center">
-            <a href={COMMUNITY_URL} target="_blank" rel="noopener noreferrer" className="rounded-xl bg-white text-foreground hover:bg-white/90 px-7 py-3 text-base font-bold transition-all shadow-md inline-flex items-center gap-2">
-              Join the Community <ArrowRight className="size-5" />
+            <a href={DEMO_URL} target="_blank" rel="noopener noreferrer" className="rounded-xl bg-card text-foreground hover:bg-card/90 px-7 py-3 text-base font-bold transition-all shadow-md inline-flex items-center gap-2">
+              Book a demo <ArrowRight className="size-5" />
             </a>
-            <Link href="/signup" className="rounded-xl border border-white/30 bg-white/10 text-white hover:bg-white/15 px-7 py-3 text-base font-bold transition-all">
-              Start free trial
-            </Link>
+            <a href="tel:+918200770942" className="rounded-xl border border-primary-foreground/30 bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/15 px-7 py-3 text-base font-bold transition-all inline-flex items-center gap-2">
+              <Phone className="size-5" /> Call us
+            </a>
           </div>
         </div>
       </section>
@@ -552,9 +505,12 @@ export default async function Home() {
             <div className="col-span-2 lg:col-span-1">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/aina-logo.png" alt="Aina CRM" className="h-9 w-auto object-contain shrink-0" />
+              <p className="mt-4 text-sm text-muted-foreground max-w-xs">
+                The practice operating system for Mutual Fund Distributors.
+              </p>
             </div>
-            <FooterCol title="Product" links={[["Features", "#features"], ["Calculators", "#calculators"], ["How it works", "#how-it-works"], ["KAIZEN", "/knowledge-base"]]} />
-            <FooterCol title="Get started" links={[["Pricing", "#pricing"], ["Start free trial", "/signup"], ["Log in", "/login"]]} />
+            <FooterCol title="Product" links={[["What you get", "#value"], ["Opportunity journey", "#journey"], ["Role dashboards", "#dashboards"], ["Features", "#features"], ["KAIZEN", "/knowledge-base"]]} />
+            <FooterCol title="Get started" links={[["Pricing", "#pricing"], ["Book a demo", DEMO_URL], ["Join the community", COMMUNITY_URL], ["Log in", "/login"]]} />
             <FooterCol title="Legal" links={[["Privacy", "/privacy"], ["Terms", "/terms"], ["Refunds", "/refund"], ["FAQ", "#faq"]]} />
           </div>
 
@@ -580,31 +536,171 @@ export default async function Home() {
 
 /* ───────────────────────── Static data ───────────────────────── */
 
-const AVATAR_BG = ["bg-primary", "bg-emerald-600", "bg-amber-500", "bg-violet-600"];
+const NAV: [string, string][] = [
+  ["What you get", "#value"],
+  ["Journey", "#journey"],
+  ["Dashboards", "#dashboards"],
+  ["Features", "#features"],
+  ["Pricing", "#pricing"],
+  ["KAIZEN", "/knowledge-base"],
+  ["FAQ", "#faq"],
+];
 
-/** Honest differentiators (real product facts). The title is all that shows;
- *  the sentence is the card's hover title. */
-const WHY_AINA = [
+/** The outcomes. Every proof line is something the product does today. */
+const VALUES: { icon: LucideIcon; tone: string; title: string; body: string; proof: string[] }[] = [
+  {
+    icon: ListChecks,
+    tone: "bg-primary/10 text-primary",
+    title: "Nothing falls through",
+    body: "Every promise becomes a task with an owner and a due date — and the overdue ones climb to the person who can fix them.",
+    proof: [
+      "Opportunity follow-ups and revisit reminders",
+      "Meeting action items become tasks on save",
+      "SIP rejections and RTA checks open their own follow-up",
+    ],
+  },
   {
     icon: ShieldCheck,
-    title: "Compliance built in",
-    body: "Every WhatsApp, email and SMS passes an 11-rule AMFI/SEBI gate — ARN/EUIN, disclaimers, consent and opt-out.",
+    tone: "bg-success/10 text-success",
+    title: "Audit-ready, every day",
+    body: "The records a DDQ asks for are kept as you work, not assembled the week before the audit.",
+    proof: [
+      "11-rule check on every WhatsApp, email and SMS",
+      "Risk profile confirmed by the client's own OTP",
+      "Complaint register with its 21-day SLA, full audit trail",
+    ],
   },
   {
-    icon: MessageSquare,
-    title: "Your WhatsApp, your cost",
-    body: "Connect your own WhatsApp, SMS and email — no per-message markup from us.",
-  },
-  {
-    icon: Lock,
-    title: "Your data stays yours",
-    body: "Row-level isolation (DPDP-ready), 2FA, backups — each RM sees only their own book.",
+    icon: Scale,
+    tone: "bg-warning/10 text-warning",
+    title: "Numbers that agree with the RTA",
+    body: "Business booked by operations is checked line by line against the CAMS and KFintech feed — so targets and incentives rest on facts.",
+    proof: [
+      "Each line marked confirmed, mismatch, rejected or not found",
+      "Targets count booked business, incentives what the RTA processed",
+      "A rejected SIP never silently inflates a past month",
+    ],
   },
   {
     icon: Users2,
-    title: "Built with ARN holders",
-    body: "Designed around the real MFD day — RTA imports, family reviews, SIP recovery.",
+    tone: "bg-brand-violet/10 text-brand-violet",
+    title: "A clean client book",
+    body: "One record per person, the right fields for each type of investor, and families that move together.",
+    proof: [
+      "RTA rows matched by PAN — no duplicate clients",
+      "A family has one RM; change it once, everyone follows",
+      "Individual, Minor, HUF, NRI, Company, Trust — each with its own fields",
+    ],
   },
+  {
+    icon: Link2,
+    tone: "bg-primary/10 text-primary",
+    title: "Clients served without a login",
+    body: "Send a link; the client does the rest on their phone, and the answer lands on their record.",
+    proof: [
+      "Risk profile questionnaire and feedback (NPS) links",
+      "Service request form with an SR number for every request",
+      "A complaint form for your own website",
+    ],
+  },
+  {
+    icon: LayoutDashboard,
+    tone: "bg-success/10 text-success",
+    title: "Every role sees its own work",
+    body: "Owner, branch head, RM, operations, insurance and claims each open to the dashboard built for their day.",
+    proof: [
+      "Access by firm, branch, team or own book",
+      "Each card opens onto the exact rows it counts",
+      "A missing figure says “—”, never a misleading ₹0",
+    ],
+  },
+];
+
+const JOURNEY: { title: string; body: string; gate?: boolean }[] = [
+  { title: "Identified & discussed", body: "The interest is logged on the client's record with a first follow-up date." },
+  { title: "Suitability", body: "Mutual funds need a client-confirmed risk profile from the last 12 months.", gate: true },
+  { title: "Proposal approved", body: "Shared with the client; the journey moves on only when they approve.", gate: true },
+  { title: "KYC · UCC · mandate", body: "Checked against the records; steps already satisfied are passed.", gate: true },
+  { title: "Transaction placed", body: "Recorded against the opportunity it answers." },
+  { title: "Approve or reject", body: "A reviewer approves, or rejects with a reason and a fix task." },
+  { title: "RTA data check", body: "A task to confirm the transaction against CAMS / KFintech.", gate: true },
+  { title: "Won", body: "Cross-sell updated, a client-won task created, the RM credited." },
+];
+
+const MODULES: { icon: LucideIcon; tone: string; title: string; items: string[] }[] = [
+  {
+    icon: Users2,
+    tone: "bg-primary/10 text-primary",
+    title: "Clients & families",
+    items: ["Client 360 summary on every record", "Family mapping with one RM", "KYC status from the KRA", "Exited clients kept, return automatically", "Folio transfer and client merge"],
+  },
+  {
+    icon: Upload,
+    tone: "bg-warning/10 text-warning",
+    title: "RTA & business",
+    items: ["CAMS & KFintech import", "Live AUM from daily NAVs", "SIP book and SIP rejections", "Business entries checked against the RTA", "Brokerage statements"],
+  },
+  {
+    icon: Target,
+    tone: "bg-success/10 text-success",
+    title: "Growth",
+    items: ["Leads board with SOP stages", "Opportunities and cross-sell", "Proposals the client approves", "FY targets with phasing", "Lead capture forms"],
+  },
+  {
+    icon: Inbox,
+    tone: "bg-brand-violet/10 text-brand-violet",
+    title: "Servicing",
+    items: ["Service requests with SLA clocks", "Complaints, routed to compliance", "Review meetings and attendees", "Review schedules per family", "Tasks with reminders and escalation"],
+  },
+  {
+    icon: MessageSquare,
+    tone: "bg-success/10 text-success",
+    title: "Communication",
+    items: ["WhatsApp, email and SMS", "Sent from your own mailbox", "Email designer: your logo, the RM's signature", "40+ ready automations", "Campaigns and segments"],
+  },
+  {
+    icon: Umbrella,
+    tone: "bg-primary/10 text-primary",
+    title: "Insurance & claims",
+    items: ["Policy register, life and general", "Renewals due and retention", "Claims desk with document checklist", "Insurance targets by line"],
+  },
+  {
+    icon: PiggyBank,
+    tone: "bg-warning/10 text-warning",
+    title: "Fixed deposits & more",
+    items: ["FDs with maturity maths", "Maturity reminders 15 days ahead", "Renewals linked to the original", "NPS, PMS, AIF and bonds bookings"],
+  },
+  {
+    icon: Sparkles,
+    tone: "bg-brand-violet/10 text-brand-violet",
+    title: "Planning & AI",
+    items: ["Financial health check filled from the CRM", "Risk profile vs suitability", "60+ calculators with branded PDFs", "AI assistant on your own book"],
+  },
+];
+
+const COMPARE = [
+  { moment: "A client says “call me after Diwali”", before: "Remembered by one RM, maybe.", after: "Parked with a revisit date; a reminder reaches the RM a week before." },
+  { moment: "A SIP bounces", before: "Found weeks later in a statement.", after: "Flagged from the RTA feed with a follow-up task on the client." },
+  { moment: "RTA files are loaded", before: "Duplicate clients, broken families.", after: "Matched by PAN; history follows the folio to the right client." },
+  { moment: "Month-end business review", before: "Each RM's own spreadsheet.", after: "Booked business, already checked against CAMS and KFintech." },
+  { moment: "A client needs a risk profile", before: "Paper form, signatures, scanning.", after: "A login-free link; the client confirms with their own OTP." },
+  { moment: "The DDQ audit", before: "A week of searching inboxes.", after: "Consent, compliance checks and the audit trail — already recorded." },
+];
+
+const TRUST: { icon: LucideIcon; title: string; body: string }[] = [
+  { icon: ShieldCheck, title: "11-rule message gate", body: "ARN / EUIN, disclaimers, guaranteed-return language, consent and opt-out — checked before anything is sent." },
+  { icon: Fingerprint, title: "Consent per channel", body: "Opt-outs always block; marketing needs a recorded consent. Every send keeps its snapshot." },
+  { icon: Lock, title: "Firm-level data isolation", body: "Row-level security in the database keeps each firm's data apart on every query." },
+  { icon: Network, title: "Per-person access", body: "Whole firm, a branch, a team or only their own clients — set for each user." },
+  { icon: KeyRound, title: "Secrets stay secret", body: "Integration keys are encrypted and write-only; sign-in supports two-factor authentication." },
+  { icon: ScrollText, title: "Every change on record", body: "Client edits, RM reassignments, sends and decisions are written to an audit trail." },
+];
+
+const STEPS: { icon: LucideIcon; title: string; body: string }[] = [
+  { icon: Upload, title: "Bring your data", body: "We import your CAMS & KFintech history and match it to clients and families." },
+  { icon: Users2, title: "Set up your team", body: "Branches, roles and exactly what each person may see and do." },
+  { icon: Repeat, title: "Switch on automations", body: "Connect your WhatsApp and email; turn on the reminders you want." },
+  { icon: Briefcase, title: "Run the practice", body: "Everyone works from their dashboard; you watch the whole firm." },
 ];
 
 /** Real, attributable client quotes only — leave empty until you have them. */
@@ -612,11 +708,109 @@ const TESTIMONIALS: { quote: string; name: string; detail: string }[] = [];
 
 /* ───────────────────────── Helper components ───────────────────────── */
 
-function SectionTitle({ eyebrow, title }: { eyebrow: string; title: string }) {
+/** The Owner Dashboard as it looks in the CRM — headline tiles, then what
+ *  needs attention. Sample figures, labelled as such. */
+function HeroDashboard() {
   return (
-    <div className="text-center max-w-2xl mx-auto">
+    <div className="relative w-full max-w-lg sm:mt-16 sm:mb-14 lg:my-0">
+      <div className="rounded-2xl w-full border border-border/60 bg-card shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
+          <span className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg bg-secondary/70 px-2.5 py-1.5 text-xs font-bold text-foreground">
+            <LayoutDashboard className="size-3.5 text-primary" /> Owner Dashboard ▾
+          </span>
+          <div className="flex items-center gap-1.5 whitespace-nowrap">
+            <span className="hidden sm:inline rounded-full bg-secondary/70 px-2.5 py-1 text-2xs font-semibold text-foreground/80">This FY</span>
+            <span className="text-2xs font-semibold text-muted-foreground">Sample data</span>
+          </div>
+        </div>
+
+        <div className="p-4 grid grid-cols-2 gap-2.5">
+          <HeroTile label="AUM" value="₹48.6 Cr" note="Balance today" />
+          <HeroTile label="SIP book" value="₹38.2 L" note="Per month · balance today" />
+          <HeroTile label="Net business" value="₹2.1 Cr" note="Booked · RTA-checked" />
+          <HeroTile label="New clients" value="42 / 60" note="vs FY target" />
+        </div>
+
+        <div className="px-4 pb-4">
+          <div className="rounded-xl border border-border/60">
+            <div className="px-3 py-2 text-2xs font-bold uppercase tracking-wider text-muted-foreground border-b border-border/60">
+              Needs attention
+            </div>
+            <ul className="divide-y divide-border/60">
+              <HeroRow icon={Repeat} label="SIP rejections to follow up" count="6" alarm />
+              <HeroRow icon={ListChecks} label="Follow-ups overdue" count="3" alarm />
+              <HeroRow icon={CalendarDays} label="Reviews due this week" count="14" />
+              <HeroRow icon={Scale} label="RTA checks pending" count="2" />
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div className="hidden sm:flex absolute -left-8 -bottom-14 items-center gap-2.5 rounded-xl border border-border/60 bg-card px-3.5 py-2.5 shadow-xl">
+        <span className="size-8 rounded-full bg-success/10 grid place-items-center">
+          <ShieldCheck className="size-4 text-success" />
+        </span>
+        <div className="leading-tight">
+          <div className="text-2xs font-bold text-foreground">Compliance check passed</div>
+          <div className="text-2xs text-muted-foreground">WhatsApp · 11 of 11 rules</div>
+        </div>
+      </div>
+      <div className="hidden sm:flex absolute right-6 -top-16 items-center gap-2.5 rounded-xl border border-border/60 bg-card px-3.5 py-2.5 shadow-xl">
+        <span className="size-8 rounded-full bg-primary/10 grid place-items-center">
+          <FileText className="size-4 text-primary" />
+        </span>
+        <div className="leading-tight">
+          <div className="text-2xs font-bold text-foreground">Risk profile confirmed</div>
+          <div className="text-2xs text-muted-foreground">by the client&apos;s OTP</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HeroTile({ label, value, note }: { label: string; value: string; note: string }) {
+  return (
+    <div className="rounded-xl bg-secondary/70 p-3">
+      <div className="text-2xs font-semibold text-muted-foreground">{label}</div>
+      <div className="mt-1 text-xl font-extrabold tabular-nums text-foreground">{value}</div>
+      <div className="mt-0.5 text-2xs text-muted-foreground">{note}</div>
+    </div>
+  );
+}
+
+function HeroRow({ icon: Icon, label, count, alarm }: { icon: LucideIcon; label: string; count: string; alarm?: boolean }) {
+  return (
+    <li className="flex items-center justify-between gap-3 px-3 py-2.5">
+      <span className="inline-flex items-center gap-2 text-xs text-foreground/85">
+        <Icon className="size-3.5 text-muted-foreground" /> {label}
+      </span>
+      <span className={`min-w-7 rounded-full px-2 py-0.5 text-center text-2xs font-extrabold tabular-nums ${alarm ? "bg-destructive/10 text-destructive" : "bg-secondary text-foreground/80"}`}>
+        {count}
+      </span>
+    </li>
+  );
+}
+
+function JourneyNote({ icon: Icon, title, body }: { icon: LucideIcon; title: string; body: string }) {
+  return (
+    <div className="rounded-2xl bg-card border border-border/60 p-5 flex gap-3">
+      <span className="size-9 rounded-xl bg-primary/10 text-primary grid place-items-center shrink-0">
+        <Icon className="size-4" />
+      </span>
+      <div>
+        <h3 className="text-sm font-bold text-foreground">{title}</h3>
+        <p className="mt-1 text-xs text-muted-foreground leading-relaxed">{body}</p>
+      </div>
+    </div>
+  );
+}
+
+function SectionTitle({ eyebrow, title, lead }: { eyebrow: string; title: string; lead?: string }) {
+  return (
+    <div className="text-center max-w-3xl mx-auto">
       <span className="text-2xs font-bold uppercase tracking-widest text-primary">{eyebrow}</span>
       <h2 className="mt-3 text-3xl sm:text-4xl font-extrabold tracking-tight text-foreground text-balance">{title}</h2>
+      {lead && <p className="mt-4 text-base text-muted-foreground text-balance">{lead}</p>}
     </div>
   );
 }
@@ -626,42 +820,6 @@ function TrustChip({ icon: Icon, tone, label }: { icon: LucideIcon; tone: string
     <span className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-3 py-1.5 text-xs font-semibold text-foreground/80">
       <Icon className={`size-3.5 ${tone}`} /> {label}
     </span>
-  );
-}
-
-function MockStat({ icon: Icon, tone, value, label }: { icon: LucideIcon; tone: string; value: string; label: string }) {
-  return (
-    <div className="rounded-xl bg-secondary/60 p-2.5">
-      <Icon className={`size-4 ${tone}`} />
-      <div className="mt-2 text-base font-extrabold tabular-nums text-foreground leading-none">{value}</div>
-      <div className="mt-1 text-2xs text-muted-foreground font-medium">{label}</div>
-    </div>
-  );
-}
-
-function Tile({
-  icon: Icon,
-  tone,
-  title,
-  wide,
-  children,
-}: {
-  icon: LucideIcon;
-  tone: string;
-  title: string;
-  wide?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <article className={`group rounded-2xl border border-border/60 bg-card p-5 flex flex-col gap-5 hover:shadow-lg hover:-translate-y-0.5 transition-all ${wide ? "sm:col-span-2" : ""}`}>
-      <div className="flex items-center gap-3">
-        <span className={`size-10 rounded-xl grid place-items-center shrink-0 ${tone}`}>
-          <Icon className="size-5" />
-        </span>
-        <h3 className="font-bold text-sm text-foreground">{title}</h3>
-      </div>
-      <div className="mt-auto">{children}</div>
-    </article>
   );
 }
 
@@ -678,7 +836,7 @@ function PriceChip({ icon: Icon, label, price }: { icon: LucideIcon; label: stri
 
 function Stat({ value, suffix, label }: { value: number; suffix?: string; label: string }) {
   return (
-    <div className="text-center flex flex-col items-center justify-center">
+    <div className="text-center flex flex-col items-center justify-center px-2">
       <div className="text-3xl sm:text-4xl font-extrabold tracking-tight text-primary tabular-nums">
         <CountUp value={value} suffix={suffix} />
       </div>
@@ -694,9 +852,15 @@ function FooterCol({ title, links }: { title: string; links: [string, string][] 
       <ul className="mt-4 flex flex-col gap-2.5">
         {links.map(([label, href]) => (
           <li key={label}>
-            <Link href={href} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-              {label}
-            </Link>
+            {/^https?:/.test(href) ? (
+              <a href={href} target="_blank" rel="noopener noreferrer" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                {label}
+              </a>
+            ) : (
+              <Link href={href} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                {label}
+              </Link>
+            )}
           </li>
         ))}
       </ul>
