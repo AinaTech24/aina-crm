@@ -26,6 +26,7 @@ import { familyScopeSql, requireFamilyView, canEditFamilies } from "@/lib/famili
 import { LIVE_MEMBER_JOIN } from "@/lib/families/live";
 import { investorScopeSql } from "@/lib/investors/access";
 import { aliveClient } from "@/lib/metrics/scope";
+import { needsNomineeSql } from "@/lib/investors/type-rules";
 
 export const dynamic = "force-dynamic";
 
@@ -97,7 +98,7 @@ export default async function FamiliesPage({
 
     // Member-level conditions go in HAVING via boolean aggregates over LIVE members.
     const having: any[] = [];
-    if (qf.nominee_gap) having.push(sql`BOOL_OR(i.id IS NOT NULL AND (i.nominee_name IS NULL OR i.nominee_name = '')) = true`);
+    if (qf.nominee_gap) having.push(sql`BOOL_OR(i.id IS NOT NULL AND ${needsNomineeSql("i")}) = true`);
     if (qf.has_minor) having.push(sql`BOOL_OR(i.is_minor = true) = true`);
     if (qf.hni) having.push(sql`BOOL_OR(i.segment_tag = 'HNI') = true`);
     if (qf.single) having.push(sql`COUNT(i.id) = 1`);
@@ -188,6 +189,7 @@ export default async function FamiliesPage({
     type MemberRow = {
       id: string; family_id: string; name: string | null; status: string | null;
       dob: string | null; is_minor: boolean | null; kyc_status: string | null; nominee_name: string | null;
+      investor_category: string | null; type_details: any;
       nominees: unknown; risk_profile: string | null; risk_profile_signed_at: string | null;
       aum: string | null; active_sip_amount: string | null;
     };
@@ -196,7 +198,7 @@ export default async function FamiliesPage({
     const membersByFamily = new Map<string, MemberForHealth[]>();
     if (pageIds.length) {
       const mem = await tx.execute(sql`
-        SELECT id, family_id, name, status, dob, is_minor, kyc_status, nominee_name, nominees,
+        SELECT id, family_id, name, status, dob, is_minor, kyc_status, nominee_name, nominees, investor_category, type_details,
                risk_profile, risk_profile_signed_at, aum, active_sip_amount
           FROM investors i
          WHERE ${aliveClient("i")} AND family_id IN (${sql.join(pageIds.map((id) => sql`${id}::uuid`), sql`, `)})
@@ -207,6 +209,7 @@ export default async function FamiliesPage({
         list.push({
           id: String(m.id), name: m.name, status: m.status, dob: m.dob, isMinor: m.is_minor,
           kycStatus: m.kyc_status, nomineeName: m.nominee_name, nominees: m.nominees,
+          investorCategory: m.investor_category, typeDetails: m.type_details,
           riskProfile: m.risk_profile, riskProfileSignedAt: m.risk_profile_signed_at,
           aum: m.aum, activeSipAmount: m.active_sip_amount,
         });

@@ -18,6 +18,7 @@ import { activeClientSql } from "./clients";
 import { getRiskProfileCounts } from "./risk";
 import { clientRecordWhere, clientWhere, cleanIds, type MetricScope } from "./scope";
 import { inOrder } from "./in-order";
+import { needsNomineeSql, panAadhaarGapSql } from "@/lib/investors/type-rules";
 
 const today = sql`(now() AT TIME ZONE 'Asia/Kolkata')::date`;
 
@@ -77,9 +78,9 @@ export async function getComplianceGaps(tx: Tx, scope: MetricScope): Promise<Com
     () => getRiskProfileCounts(tx, scope),
     () => tx.execute(sql`
       SELECT
-        COUNT(*) FILTER (WHERE i.nominee_name IS NULL OR btrim(i.nominee_name) = '')::int AS nominee,
+        COUNT(*) FILTER (WHERE ${needsNomineeSql("i")})::int AS nominee,
         COUNT(*) FILTER (WHERE i.kyc_status IS NULL OR i.kyc_status NOT IN ('validated', 'registered', 'verified'))::int AS kyc,
-        COUNT(*) FILTER (WHERE i.pan_aadhaar_link_status = 'not_linked' OR i.pan_aadhaar_link_status IS NULL)::int AS pan_aadhaar,
+        COUNT(*) FILTER (WHERE ${panAadhaarGapSql("i")})::int AS pan_aadhaar,
         COUNT(*) FILTER (WHERE NOT EXISTS (
           SELECT 1 FROM consents c WHERE c.investor_id = i.id AND c.scope IN ('marketing', 'all') AND c.status = 'granted' AND c.revoked_at IS NULL
         ))::int AS consent

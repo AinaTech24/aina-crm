@@ -50,7 +50,7 @@ export type RequestType = {
   checklist: string[];
 };
 
-export const REQUEST_TYPES: RequestType[] = [
+const REQUEST_TYPE_LIST: RequestType[] = [
   // ── Financial ──
   {
     key: "purchase", label: "Purchase (lumpsum)", category: "financial", fields: ["mode"],
@@ -169,6 +169,19 @@ export const REQUEST_TYPES: RequestType[] = [
     checklist: [],
   },
 ];
+
+/**
+ * The last sub-task of EVERY request, financial or not: once the work is done
+ * the data the registrar (CAMS / KFintech) holds is checked against it —
+ * the transaction, folio, nominee, bank or contact change really shows there.
+ * Added here, not in each list above, so a new request type cannot forget it.
+ */
+export const RTA_DATA_CHECK = "RTA data check";
+
+export const REQUEST_TYPES: RequestType[] = REQUEST_TYPE_LIST.map((r) => ({
+  ...r,
+  checklist: r.checklist.includes(RTA_DATA_CHECK) ? r.checklist : [...r.checklist, RTA_DATA_CHECK],
+}));
 
 export const REQUEST_TYPE_BY_KEY: Record<string, RequestType> = Object.fromEntries(REQUEST_TYPES.map((r) => [r.key, r]));
 

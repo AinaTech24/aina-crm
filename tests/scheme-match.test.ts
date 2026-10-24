@@ -9,7 +9,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { lookupNav, normSchemeName, type NavIndex } from "@/lib/finance/scheme-match";
+import { buildNavIndex, indexName, lookupNav, lookupNavFuzzyByWords, normSchemeName, type NavIndex, type NavSourceRow } from "@/lib/finance/scheme-match";
+import { schemeNameKey } from "@/lib/finance/scheme-name-key";
 import { describeRun } from "../src/workers/scheduler-state";
 
 const entry = (code: string, nav: number) => ({ code, nav, navDate: "2026-09-29" });
@@ -70,6 +71,264 @@ describe("lookupNav", () => {
   it("does not blow up on a leg with neither code nor name", () => {
     expect(lookupNav(index, null, null)).toBeNull();
     expect(lookupNav(index, "", "")).toBeNull();
+  });
+});
+
+// ── Holdings the NAV master could not price (Oct 2026 audit: ~1,000 legs, Rs 26.8 Cr) ──
+
+const row = (
+  code: string,
+  name: string,
+  nav: number,
+  extra: Partial<NavSourceRow> = {},
+): NavSourceRow => ({ scheme_code: code, scheme_name: name, nav, nav_date: "2026-10-15", ...extra });
+
+describe("schemeNameKey — registrar spellings", () => {
+  const cp = (...n: number[]) => String.fromCharCode(...n);
+  const plain = schemeNameKey("Axis Children's Fund - Regular Plan - Growth");
+
+  it("reads the mojibake'd apostrophe (UTF-8 read as cp1252) as the apostrophe it was", () => {
+    // Three states a registrar file arrives in: C1 bytes kept, euro-sign form, curly quote.
+    for (const bad of [
+      "Axis Children" + cp(0xe2, 0x80, 0x99) + "s Fund - Regular Plan - Growth",
+      "Axis Children" + cp(0xe2, 0x20ac, 0x2122) + "s Fund - Regular Plan - Growth",
+      "Axis Children" + cp(0x2019) + "s Fund - Regular Plan - Growth",
+    ]) {
+      expect(schemeNameKey(bad)).toEqual(plain);
+    }
+    expect(plain?.tokens).toContain("childrens");
+  });
+
+  it("leaves 'Dividend Yield' funds as Growth funds, not IDCW ones", () => {
+    const k = schemeNameKey("ICICI Prudential Dividend Yield Fund - Growth");
+    expect(k?.tokens).toContain("growth");
+    expect(k?.tokens).not.toContain("idcw");
+    // ...while a real dividend OPTION still reads as IDCW.
+    expect(schemeNameKey("ICICI Prudential Dividend Yield Fund - Dividend")?.tokens).toContain("idcw");
+  });
+});
+
+describe("indexName — borrow mfapi's full name only for a blank AMFI row", () => {
+  it("fills a row whose Plan/Option columns were empty", () => {
+    expect(indexName("Motilal Oswal Large Cap Fund", "Motilal Oswal Large Cap Fund - Direct Plan - Growth Option")).toBe(
+      "Motilal Oswal Large Cap Fund - Direct Plan - Growth Option",
+    );
+  });
+  it("keeps AMFI's own name when it already states plan or option", () => {
+    expect(indexName("X Fund - Regular Plan - Growth", "X Fund - Direct Plan - IDCW")).toBe("X Fund - Regular Plan - Growth");
+  });
+  it("refuses a different scheme under the same code", () => {
+    expect(indexName("Motilal Oswal Large Cap Fund", "Motilal Oswal Midcap Fund - Direct Plan - Growth")).toBe(
+      "Motilal Oswal Large Cap Fund",
+    );
+  });
+});
+
+describe("Motilal Oswal — AMFI rows with empty Plan/Option", () => {
+  const BLANK = "Motilal Oswal Large Cap Fund";
+  const motilal = [
+    row("152001", BLANK, 20.0, { isin: "INF247L01AA1", alt_name: "Motilal Oswal Large Cap Fund - Regular Plan - Growth Option" }),
+    row("152002", BLANK, 20.2, { isin: "INF247L01AB9", alt_name: "Motilal Oswal Large Cap Fund - Direct Plan - Growth Option" }),
+    row("152003", BLANK, 15.0, { isin: "INF247L01AC7", alt_name: "Motilal Oswal Large Cap Fund - Regular Plan - IDCW Option" }),
+    row("152004", BLANK, 15.3, { isin: "INF247L01AD5", alt_name: "Motilal Oswal Large Cap Fund - Direct Plan - IDCW Option" }),
+  ];
+
+  it("tells regular from direct and growth from IDCW once mfapi's name is borrowed", () => {
+    const idx = buildNavIndex(motilal);
+    // 127LCGP is the registrar's code; a statement NAV a few weeks old is not enough
+    // to separate regular (20.0) from direct (20.2) on its own — the name must.
+    expect(lookupNav(idx, "127LCGP", "Motilal Oswal Large Cap Fund - Regular Plan - Growth", 19.4)).toMatchObject({ code: "152001" });
+    expect(lookupNav(idx, "127LCDP", "Motilal Oswal Large Cap Fund - Direct Plan - Growth", 19.6)).toMatchObject({ code: "152002" });
+    expect(lookupNav(idx, "127LCRI", "Motilal Oswal Large Cap Fund - Regular Plan - IDCW", 14.6)).toMatchObject({ code: "152003" });
+  });
+
+  it("prices straight from the leg's ISIN, whatever the name says", () => {
+    const idx = buildNavIndex(motilal);
+    expect(lookupNav(idx, "127LCGP", "MO Large Cap", null, "inf247l01ab9")).toMatchObject({ code: "152002", via: "isin" });
+  });
+
+  it("with no mfapi name and no ISIN, REFUSES rather than guess regular vs direct", () => {
+    const idx = buildNavIndex(motilal.map((r) => ({ ...r, alt_name: null, isin: null })));
+    // Regular 20.0 and direct 20.2 are 1% apart; a statement's NAV cannot choose.
+    expect(lookupNav(idx, "127LCGP", "Motilal Oswal Large Cap Fund - Regular Plan - Growth", 20.1)).toBeNull();
+    expect(lookupNav(idx, "127LCGP", "Motilal Oswal Large Cap Fund - Regular Plan - Growth", 19.0)).toBeNull();
+  });
+});
+
+describe("renamed funds — the registrar still prints the old name", () => {
+  const idx = buildNavIndex([
+    row("120001", "ICICI Prudential Dividend Yield Fund - Growth", 40.0),
+    row("120002", "ICICI Prudential Dividend Yield Fund - Direct Plan - Growth", 43.0),
+    row("120003", "ICICI Prudential Dividend Yield Fund - IDCW", 22.0),
+    row("120004", "ICICI Prudential Equity & Debt Fund - Growth", 41.0),
+    row("120005", "ICICI Prudential Value Fund - Growth", 39.0),
+    row("130001", "Kotak Global Emerging Market Overseas Equity Active FOF - Growth", 35.5),
+    row("130002", "Kotak Global Emerging Market Fund - Growth", 36.0),
+    row("130003", "Kotak Global Innovation Fund of Fund - Growth", 35.0),
+    row("140001", "Old Bridge Focused Fund - Regular Plan - Growth", 14.0),
+    row("140002", "Old Bridge Focused Fund - Direct Plan - Growth", 14.6),
+    row("140003", "Old Bridge Hybrid Fund - Regular Plan - Growth", 14.1),
+    // A big house: enough schemes that "icici prudential" is recognised as the house's name.
+    ...Array.from({ length: 14 }, (_, i) => row(String(150000 + i), `ICICI Prudential Filler${i} Fund - Growth`, 100 + i)),
+  ]);
+
+  it("ICICI Prudential Dividend Yield Equity Fund -> Dividend Yield Fund", () => {
+    expect(lookupNav(idx, "P2373", "ICICI Prudential Dividend Yield Equity Fund - Growth", 39.5)).toMatchObject({ code: "120001" });
+  });
+  it("Kotak ... Omni FOF -> ... Active FOF, not the lookalike funds beside it", () => {
+    expect(
+      lookupNav(idx, "K143", "Kotak Global Emerging Market Overseas Equity Omni FOF - Regular Plan - Growth", 35.2),
+    ).toMatchObject({ code: "130001" });
+  });
+  it("Old Bridge Focused Equity Fund -> Focused Fund, regular plan only", () => {
+    expect(lookupNav(idx, "139FEGP", "Old Bridge Focused Equity Fund - Regular Plan - Growth", 13.8)).toMatchObject({ code: "140001" });
+  });
+
+  it("refuses a genuine tie between two lookalike schemes", () => {
+    const tie = buildNavIndex([
+      row("1", "Old Bridge Focused Fund - Regular Plan - Growth", 14.0),
+      row("2", "Old Bridge Equity Fund - Regular Plan - Growth", 14.1),
+    ]);
+    expect(lookupNav(tie, "139FEGP", "Old Bridge Focused Equity Fund - Regular Plan - Growth", 13.8)).toBeNull();
+  });
+  it("still prices the rename when the house's other funds dominate the index", () => {
+    expect(lookupNav(idx, "P2373", "ICICI Prudential Dividend Yield Equity Fund - Growth", 39.5)).toMatchObject({ code: "120001" });
+  });
+  it("reads a Reliance-era registrar name as Nippon India", () => {
+    const n = buildNavIndex([
+      row("10", "Nippon India Large Cap Fund - Growth", 80),
+      row("11", "Nippon India Small Cap Fund - Growth", 160),
+    ]);
+    expect(lookupNav(n, "RLCGP", "Reliance Large Cap Equity Fund - Growth", 78)).toMatchObject({ code: "10" });
+  });
+  it("the by-words rename match will not take a same-house fund that merely has a similar NAV", () => {
+    // 41.0 and 39.0 are ICICI funds near this NAV, but they are other funds. (The
+    // older, looser lookupNavFuzzy runs first in lookupNav and is kept as it is: it
+    // prices Axis Bluechip -> Axis Large Cap on a NAV equal to the statement's.)
+    expect(lookupNavFuzzyByWords(idx, "ICICI Prudential Quant Fund - Growth", 40.0)).toBeNull();
+  });
+  it("needs the statement's NAV to attempt a rename match at all", () => {
+    expect(lookupNav(idx, "P2373", "ICICI Prudential Dividend Yield Equity Fund - Growth", null)).toBeNull();
+  });
+  it("refuses when the statement NAV is nowhere near the renamed scheme", () => {
+    expect(lookupNav(idx, "P2373", "ICICI Prudential Dividend Yield Equity Fund - Growth", 90)).toBeNull();
+  });
+});
+
+describe("one price, several options", () => {
+  it("accepts candidates that are the same NAV — which one cannot change the value", () => {
+    // HDFC Multi-Asset Active FOF: Regular Growth and Regular IDCW both 19.042.
+    const idx = buildNavIndex([
+      row("148901", "HDFC Multi-Asset Active FOF - Regular Plan - Growth Option", 19.042),
+      row("148900", "HDFC Multi-Asset Active FOF - Regular Plan - IDCW Option", 19.042),
+      row("148903", "HDFC Multi-Asset Active FOF - Direct Plan - Growth Option", 20.26),
+    ]);
+    const hit = lookupNav(idx, "HAARGR", "HDFC Multi-Asset Active Fund of Funds Regular Growth", 18.995);
+    expect(hit?.nav).toBe(19.042);
+  });
+  it("Axis Children's lock-in / no-lock-in twins (25.4945 vs 25.4914) price from either", () => {
+    const idx = buildNavIndex([
+      row("135759", "Axis Children's Fund - Regular Plan - Growth Option", 25.4945),
+      row("135766", "Axis Children's Fund - Regular Plan - Growth Option", 25.4914),
+      row("135761", "Axis Children's Fund - Regular Plan - IDCW Option", 23.4994),
+    ]);
+    const cp = (...n: number[]) => String.fromCharCode(...n);
+    const hit = lookupNav(idx, "128CGGL", "Axis Children" + cp(0xe2, 0x80, 0x99) + "s Fund - Compulsory Lock-In-Regular Growth", 25.4417);
+    expect(hit?.nav).toBeGreaterThan(25.49);
+    expect(hit?.nav).toBeLessThan(25.5);
+  });
+  it("but never a regular plan's NAV chosen out of a regular/direct spread", () => {
+    // Regular 12.2291, direct 12.581: 2.9% apart, and a stale statement NAV of 12.6372
+    // sits nearer the DIRECT price. Refused, not guessed.
+    const idx = buildNavIndex(
+      [
+        ["152794", 12.229], ["152795", 12.2291], ["152796", 12.581], ["152797", 12.5802],
+      ].map(([c, n]) => row(String(c), "Motilal Oswal Business Cycle Fund", Number(n))),
+    );
+    expect(lookupNav(idx, "127BCGP", "Motilal Oswal Business Cycle Fund-Regular Plan", 12.6372)).toBeNull();
+  });
+});
+
+describe("rename match guards", () => {
+  const idx = buildNavIndex([
+    row("1", "Old Bridge Focused Fund - Regular Plan - Regular Growth", 13.04),
+    row("2", "Old Bridge Focused Fund - Regular Plan - Regular IDCW", 13.04),
+    row("3", "Old Bridge Hybrid Fund - Regular Plan - Regular Growth", 13.1),
+  ]);
+  it("a Growth holding is not matched to an IDCW option", () => {
+    // Without the option check the two Focused rows tie and nothing prices.
+    expect(lookupNav(idx, "139FEGP", "Old Bridge Focused Equity Fund - Regular - Growth", 13.04)).toMatchObject({ code: "1" });
+  });
+  it("skips a scheme whose NAV stopped publishing months ago", () => {
+    const stale = buildNavIndex([
+      row("10", "Aditya Birla Sun Life Low Duration Fund - Institutional - Daily IDCW", 100, { nav_date: "2026-06-19" }),
+      // A big, live house, so that "aditya birla sun life" reads as the house's name.
+      ...Array.from({ length: 14 }, (_, i) => row(String(20 + i), `Aditya Birla Sun Life Sector${i} Fund - Daily IDCW`, 100.1)),
+    ]);
+    expect(lookupNavFuzzyByWords(stale, "Aditya Birla Sun Life Low Duration Fund - Daily IDCW-Regular Plan", 99.97)).toBeNull();
+  });
+});
+
+describe("ISIN", () => {
+  it("matches either ISIN column of a scheme", () => {
+    const idx = buildNavIndex([row("111", "Some Fund - Growth", 10, { isin: "INF000A01011", isin_reinvest: "INF000A01029" })]);
+    expect(lookupNav(idx, "ZZ1", "anything", null, "INF000A01029")).toMatchObject({ code: "111", via: "isin" });
+    expect(lookupNav(idx, "ZZ1", "anything", null, " inf000a01011 ")).toMatchObject({ code: "111", via: "isin" });
+  });
+  it("falls through to the name when the ISIN is unknown", () => {
+    const idx = buildNavIndex([row("111", "Some Fund - Growth", 10, { isin: "INF000A01011" })]);
+    expect(lookupNav(idx, "ZZ1", "Some Fund - Growth", null, "INF999Z99999")).toMatchObject({ code: "111", via: "name" });
+  });
+  it("ignores junk that is not an ISIN", () => {
+    const idx = buildNavIndex([row("111", "Some Fund - Growth", 10, { isin: "-", isin_reinvest: "N.A." })]);
+    expect(idx.byIsin?.size).toBe(0);
+  });
+  it("refuses an ISIN two live codes claim with different NAVs", () => {
+    const idx = buildNavIndex([
+      row("111", "Fund A - Growth", 10, { isin: "INF000A01011" }),
+      row("222", "Fund B - Growth", 55, { isin: "INF000A01011" }),
+    ]);
+    expect(lookupNav(idx, "ZZ1", "no such fund", null, "INF000A01011")).toBeNull();
+  });
+  it("takes the newer-dated code when a re-coded scheme shares its ISIN", () => {
+    const idx = buildNavIndex([
+      row("111", "Fund A - Growth", 10, { isin: "INF000A01011", nav_date: "2025-01-01" }),
+      row("222", "Fund A - Growth ", 12, { isin: "INF000A01011", nav_date: "2026-10-15" }),
+    ]);
+    expect(lookupNav(idx, "ZZ1", "x", null, "INF000A01011")).toMatchObject({ code: "222" });
+  });
+});
+
+describe("mfapi.in as a second source", () => {
+  const idx = buildNavIndex(
+    [row("100", "Union Large Cap Fund - Growth", 50)],
+    [
+      row("900", "Union Low Duration Fund - Regular Plan - Growth Option", 2450),
+      row("901", "Kotak Low Duration Fund - Regular Plan - Growth", 3300, { isin: "INF174K01AA3" }),
+      row("100", "Union Large Cap Fund - Growth", 49, { nav_date: "2026-10-01" }),
+    ],
+  );
+
+  it("prices a scheme AMFI does not list, and says so", () => {
+    expect(lookupNav(idx, "UKLORG", "Union Low Duration Fund - Regular Plan - Growth Option", 2430)).toMatchObject({
+      code: "900",
+      nav: 2450,
+      via: "mfapi",
+    });
+    expect(lookupNav(idx, "K205G", "anything", null, "INF174K01AA3")).toMatchObject({ code: "901", via: "mfapi" });
+  });
+  it("never overrides a price AMFI can give", () => {
+    expect(lookupNav(idx, "ZZ", "Union Large Cap Fund - Growth", 50)).toMatchObject({ code: "100", nav: 50, via: "name" });
+  });
+  it("still applies the statement-NAV plausibility check", () => {
+    // A fund whose mfapi NAV is 2450 cannot be a holding the statement carries at 300.
+    expect(lookupNav(idx, "UKLORG", "Union Low Duration Fund - Regular Plan - Growth Option", 300)).toBeNull();
+  });
+  it("leaves a scheme neither source knows unpriced", () => {
+    expect(lookupNav(idx, "RMFSTGP", "Nippon India Short Duration Fund - Growth", 50)).toBeNull();
+  });
+  it("is absent when there is nothing extra", () => {
+    expect(buildNavIndex([row("1", "A - Growth", 1)]).fallback).toBeUndefined();
   });
 });
 

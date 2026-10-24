@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from "react";
-import { View, Pressable, StyleSheet } from "react-native";
+import { View, Pressable, StyleSheet, ScrollView } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { palette, radius, spacing, fontSize } from "../../theme/tokens";
 import { useBrand } from "../../theme/brand";
@@ -23,6 +23,7 @@ export function SelectField({
   onChange,
   placeholder = "Select…",
   required,
+  disabled = false,
 }: {
   label: string;
   value: string | null;
@@ -30,6 +31,7 @@ export function SelectField({
   onChange: (v: string) => void;
   placeholder?: string;
   required?: boolean;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const { brand, brandDark } = useBrand();
@@ -41,7 +43,7 @@ export function SelectField({
         {label}
         {required ? <Text style={{ color: palette.danger }}> *</Text> : null}
       </Text>
-      <Pressable style={styles.control} onPress={() => setOpen(true)}>
+      <Pressable disabled={disabled} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }} style={[styles.control, disabled && { opacity: 0.5 }]} onPress={() => setOpen(true)}>
         <Text style={{ color: selected ? palette.ink : palette.faint, fontSize: fontSize.md, flex: 1 }}>
           {selected?.label ?? placeholder}
         </Text>
@@ -49,10 +51,12 @@ export function SelectField({
       </Pressable>
 
       <BottomSheet visible={open} onClose={() => setOpen(false)} title={label}>
-        <View style={{ gap: spacing.xs }}>
+        <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ gap: spacing.xs }} keyboardShouldPersistTaps="handled">
           {options.map((o) => (
             <Pressable
               key={o.value}
+              accessibilityRole="button"
+              accessibilityState={{ selected: o.value === value }}
               style={styles.option}
               onPress={() => {
                 onChange(o.value);
@@ -65,7 +69,7 @@ export function SelectField({
               {o.value === value ? <Feather name="check" size={18} color={brand} /> : null}
             </Pressable>
           ))}
-        </View>
+        </ScrollView>
       </BottomSheet>
     </View>
   );
@@ -83,6 +87,7 @@ const styles = StyleSheet.create({
     backgroundColor: palette.surface,
   },
   option: {
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",

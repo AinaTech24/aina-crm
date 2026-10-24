@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from "react";
-import { View, ScrollView, Pressable, Linking, StyleSheet } from "react-native";
+import { View, ScrollView, Pressable, StyleSheet } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
@@ -32,19 +32,25 @@ import { palette, radius, spacing, fontWeight } from "../../../../src/theme/toke
 import { toneColors } from "../../../../src/theme";
 import { asIcon } from "../../../../src/lib/icons";
 import { errorMessage } from "../../../../src/lib/errors";
+import { startCall } from "../../../../src/features/activities/callAndLog";
+import { CallLoggingCard } from "../../../../src/features/activities/CallLoggingCard";
 
 function useDebounced<T>(value: T, delay = 350): T {
   const [v, setV] = useState(value);
   useEffect(() => { const t = setTimeout(() => setV(value), delay); return () => clearTimeout(t); }, [value, delay]);
   return v;
 }
-const call = (phone?: string | null) => { if (phone) Linking.openURL(`tel:${phone}`).catch(() => {}); };
+const call = (a: Activity) => {
+  if (a.subject_phone && a.subject_id && (a.subject_type === "lead" || a.subject_type === "investor")) {
+    void startCall({ subjectType: a.subject_type, subjectId: a.subject_id, name: a.subject_name || "Client", phone: a.subject_phone });
+  }
+};
 
 function ActivityCard({ a, onPress, onLong }: { a: Activity; onPress: () => void; onLong: () => void }) {
   const km = kindMeta(a.kind);
   const { fg, bg } = toneColors(km.tone);
   const ob = a.status ? outcomeBadge(a.status) : null;
-  const dur = a.duration_sec ? `${Math.round(a.duration_sec / 60)}m` : "";
+  const dur = a.duration_sec == null ? "" : a.duration_sec >= 60 ? `${Math.floor(a.duration_sec / 60)}m ${a.duration_sec % 60}s` : `${a.duration_sec}s`;
   return (
     <Card onPress={onPress} onLongPress={onLong} style={{ marginBottom: spacing.md }}>
       <View style={{ flexDirection: "row", gap: spacing.md }}>
@@ -64,8 +70,8 @@ function ActivityCard({ a, onPress, onLong }: { a: Activity; onPress: () => void
             {a.owner_name ? <Text variant="caption" tone="faint">· {a.owner_name}</Text> : null}
           </View>
         </View>
-        {a.subject_phone ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Call" onPress={() => call(a.subject_phone)} hitSlop={8} style={styles.callBtn}><Feather name="phone" size={15} color={palette.brand} /></Pressable>
+        {a.subject_phone && a.subject_id && ["lead", "investor"].includes(a.subject_type || "") ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={`Call back ${a.subject_name || "client"}`} onPress={(event) => { event.stopPropagation(); call(a); }} hitSlop={8} style={styles.callBtn}><Feather name="phone" size={18} color={palette.brand} /></Pressable>
         ) : null}
       </View>
     </Card>
@@ -87,14 +93,19 @@ function StatTile({ icon, tone, label, value }: { icon: string; tone: string; la
 export default function ActivitiesList({ embedded = false }: { embedded?: boolean }) {
   const router = useRouter();
   const [search, setSearch] = useState("");
-  const [kind, setKind] = useState("");
+  const [kind, setKind] = useState(embedded ? "call" : "");
+  const [callView, setCallView] = useState("all");
   const [filters, setFilters] = useState<UiActivityFilters>({ ...EMPTY_ACTIVITY_FILTERS });
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editRow, setEditRow] = useState<Activity | null>(null);
   const [checkinOpen, setCheckinOpen] = useState(false);
   const debounced = useDebounced(search);
 
-  const apiFilters = useMemo(() => ({ q: debounced, kind, mine: filters.mine ? "1" : "", from: filters.from, to: filters.to }), [debounced, kind, filters]);
+  const apiFilters = useMemo(() => ({ q: debounced, kind, mine: filters.mine ? "1" : "", from: filters.from, to: filters.to,
+    direction: kind === "call" && ["inbound", "outbound"].includes(callView) ? callView as "inbound" | "outbound" : undefined,
+    status: kind === "call" && callView === "missed" ? "no_answer" : undefined,
+    needsNotes: kind === "call" && callView === "notes" ? "1" : undefined,
+  }), [debounced, kind, filters, callView]);
   const { data, isLoading, isError, error, refetch, isRefetching } = useActivities(apiFilters);
   const rows = data?.activities ?? [];
   const stats = data?.stats;
@@ -107,11 +118,12 @@ export default function ActivitiesList({ embedded = false }: { embedded?: boolea
 
   const header = (
     <View style={{ gap: spacing.md, paddingBottom: spacing.sm }}>
+      <CallLoggingCard />
       {stats ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
-          <StatTile icon="activity" tone={palette.brand} label="Activities" value={stats.total ?? 0} />
+          {!embedded ? <StatTile icon="activity" tone={palette.brand} label="Activities" value={stats.total ?? 0} /> : null}
           <StatTile icon="phone" tone={palette.info} label="Calls today" value={stats.calls_today ?? 0} />
-          <StatTile icon="map-pin" tone={palette.violet} label="Visits (7d)" value={stats.visits_week ?? 0} />
+          {!embedded ? <StatTile icon="map-pin" tone={palette.violet} label="Visits (7d)" value={stats.visits_week ?? 0} /> : null}
           <StatTile icon="corner-up-right" tone={palette.warning} label="Follow-ups due" value={stats.followups_due ?? 0} />
         </ScrollView>
       ) : null}
@@ -123,17 +135,20 @@ export default function ActivitiesList({ embedded = false }: { embedded?: boolea
         </Pressable>
         {activeCount > 0 ? <Pressable onPress={() => setFilters({ ...EMPTY_ACTIVITY_FILTERS })} hitSlop={8}><Text variant="caption" style={{ color: palette.danger }}>Clear</Text></Pressable> : null}
         <View style={{ flex: 1 }} />
-        <Pressable style={styles.checkinBtn} onPress={() => setCheckinOpen(true)}>
+        {!embedded ? <Pressable style={styles.checkinBtn} onPress={() => setCheckinOpen(true)}>
           <Feather name="map-pin" size={15} color={palette.white} />
           <Text style={{ fontWeight: fontWeight.semibold, color: palette.white }}>Check in</Text>
-        </Pressable>
+        </Pressable> : null}
       </View>
-      <View style={styles.chips}>
+      {!embedded ? <View style={styles.chips}>
         <Chip label="All" selected={kind === ""} onPress={() => setKind("")} />
         {ACTIVITY_KINDS.map((k) => (
           <Chip key={k.value} label={k.label} selected={kind === k.value} onPress={() => setKind(kind === k.value ? "" : k.value)} />
         ))}
-      </View>
+      </View> : null}
+      {kind === "call" ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
+        {[{ key: "all", label: "All calls" }, { key: "inbound", label: "Incoming" }, { key: "outbound", label: "Outgoing" }, { key: "missed", label: "Not answered" }, { key: "notes", label: "Needs notes" }].map(option => <Chip key={option.key} label={option.label} selected={callView === option.key} onPress={() => setCallView(option.key)} />)}
+      </ScrollView> : null}
     </View>
   );
 
@@ -215,5 +230,5 @@ const styles = StyleSheet.create({
   checkinBtn: { flexDirection: "row", alignItems: "center", gap: spacing.xs, backgroundColor: palette.violet, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   icon: { width: 40, height: 40, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
-  callBtn: { width: 34, height: 34, borderRadius: radius.pill, backgroundColor: palette.brandLight, alignItems: "center", justifyContent: "center", alignSelf: "center" },
+  callBtn: { width: 48, height: 48, borderRadius: radius.pill, backgroundColor: palette.brandLight, alignItems: "center", justifyContent: "center", alignSelf: "center" },
 });

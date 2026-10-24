@@ -117,4 +117,5 @@ export * from "./business_impacts";
 export * from "./family_master";
 export * from "./api_mutation_receipts";
 export * from "./delivery-recovery";
+export * from "./kyc_checks";
 export * from "./practice";

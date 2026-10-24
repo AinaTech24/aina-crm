@@ -39,7 +39,11 @@ import {
   type CanonicalMandateRow,
   type CanonicalAumRow,
 } from "./parsers";
+import { registrarSipState } from "./sip-registrar-status";
 import { clientIdForFolio, clientIdForPan, followMerges, resolvePanClients, type ClientHint } from "./client-match";
+
+// A registrar reason this import wrote earlier, replaced (not stacked) on the next report.
+const REG_PREFIX_RE = "^(CAMS|KFintech|Registrar): [^·]*( · ceased [^·]*)?( · )?";
 
 /**
  * Resolve an investor by PAN first, then by an existing folio number. Most RTA
@@ -818,6 +822,11 @@ async function processSipBook(
       skipped++;
       continue;
     }
+    // What the registrar says (KFintech's Status column, a CAMS cease date and
+    // remark) is recorded as a LABEL the SIP book shows — never acted on: the
+    // firm's decision of 9 Oct 2026 (Attitude Financial). Only a CAMS cease
+    // date stops a SIP, as before (lib/rta/sip-registrar-status).
+    const reg = registrarSipState(r, args.source, todayIst);
     const sipStatus: "active" | "stopped" = r.ceaseDate && r.ceaseDate <= todayIst ? "stopped" : "active";
 
     // The folio + scheme are what actually key a SIP. PAN is NOT required:
@@ -1001,6 +1010,16 @@ async function processSipBook(
               `)).rows.length > 0
             : false;
           if (!resumed) {
+            // Closed here already; label it with what the registrar says
+            // ("KFintech: Terminated by Investor"). The status stays as it is.
+            if (reg.reason) {
+              await tx.execute(sql`
+                UPDATE sips
+                   SET updated_at = now(),
+                       remarks = left(${reg.reason} || COALESCE(' · ' || NULLIF(regexp_replace(COALESCE(remarks, ''), ${REG_PREFIX_RE}, ''), ''), ''), 500)
+                 WHERE id = ${c.id}::uuid AND COALESCE(remarks, '') NOT LIKE ${reg.reason + "%"}
+              `);
+            }
             await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
             skipped++;
             continue;
@@ -1025,7 +1044,12 @@ async function processSipBook(
               start_date = COALESCE(${r.startDate ?? null}::date, start_date),
               end_date = COALESCE(${r.endDate ?? null}::date, end_date),
               mandate_id = COALESCE(${mandateId ?? null}::uuid, mandate_id),
-              status = ${sipStatus},
+              -- A deceased client's SIP stays stopped in the CRM (lib/investors/demise.ts).
+              status = CASE WHEN ${sipStatus}::text = 'active'
+                             AND EXISTS (SELECT 1 FROM investors dz WHERE dz.id = sips.investor_id AND dz.date_of_demise IS NOT NULL)
+                            THEN sips.status ELSE ${sipStatus}::text END,
+              remarks = CASE WHEN ${reg.reason ?? null}::text IS NULL THEN NULLIF(regexp_replace(COALESCE(remarks, ''), ${REG_PREFIX_RE}, ''), '')
+                             ELSE left(${reg.reason ?? null}::text || COALESCE(' · ' || NULLIF(regexp_replace(COALESCE(remarks, ''), ${REG_PREFIX_RE}, ''), ''), ''), 500) END,
               updated_at = now()
           WHERE id = ${existingId}::uuid
         `);

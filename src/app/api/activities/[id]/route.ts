@@ -53,6 +53,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 const Patch = z.object({
   subject: z.string().max(200).nullable().optional(),
   notes: z.string().max(4000).nullable().optional(),
+  expectedNotes: z.string().max(4000).nullable().optional(),
   status: z.enum(ACTIVITY_STATUSES).nullable().optional(),
   direction: z.enum(ACTIVITY_DIRECTIONS).nullable().optional(),
   durationSec: z.number().int().min(0).max(86400).nullable().optional(),
@@ -71,7 +72,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const result = await withIdempotentMutation(session, req, parse.data, async (tx) => {
         const before = (
-          await tx.select().from(activities).where(and(eq(activities.id, id), eq(activities.tenantId, session.tenantId), session.mobile ? mobileActivityScope(session, "activities") : undefined)).limit(1)
+          await tx.select().from(activities).where(and(eq(activities.id, id), eq(activities.tenantId, session.tenantId), session.mobile ? mobileActivityScope(session, "activities") : undefined)).limit(1).for("update")
         )[0];
         if (!before) return null;
         if (!isManager && before.ownerUserId !== session.userId) return "forbidden" as const;
@@ -81,6 +82,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
         const patch: any = { updatedAt: new Date() };
         const d = parse.data;
+        if (d.expectedNotes !== undefined && d.expectedNotes !== before.notes) {
+          throw Object.assign(new Error("Call notes changed while you were saving. Review the latest notes and try again; your summary draft is preserved."), { status: 409 });
+        }
         if (d.subject !== undefined) patch.subject = d.subject;
         if (d.notes !== undefined) patch.notes = d.notes;
         if (d.status !== undefined) patch.status = d.status;

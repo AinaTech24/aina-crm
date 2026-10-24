@@ -97,7 +97,7 @@ export default async function SopDetailPage({ params }: { params: Promise<{ id: 
            AND h.position_id IN (${sql.join(positionIds.map((p) => sql`${p}::uuid`), sql`, `)})
          GROUP BY u.id, u.name
          ORDER BY u.name
-      `)).rows as any[]).map((r) => ({ name: String(r.name), acked: !!r.acked }));
+      `)).rows as Array<{ name: string; acked: boolean | null }>).map((r) => ({ name: String(r.name), acked: !!r.acked }));
     }
 
     return { sop, versions, current, acks, myAck, links, templates, positions, srMaster, holders };
@@ -173,8 +173,8 @@ export default async function SopDetailPage({ params }: { params: Promise<{ id: 
             Published {data.current.publishedAt ? formatDate(data.current.publishedAt) : "—"}
           </p>
           <div className="mt-3">
-            {typeof (data.current.body as any)?.markdown === "string" ? (
-              <SopMarkdown markdown={(data.current.body as any).markdown} />
+            {typeof (data.current.body as { markdown?: unknown } | null)?.markdown === "string" ? (
+              <SopMarkdown markdown={(data.current.body as { markdown: string }).markdown} />
             ) : (
               <div className="text-sm whitespace-pre-wrap">{JSON.stringify(data.current.body, null, 2)}</div>
             )}

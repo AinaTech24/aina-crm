@@ -70,6 +70,12 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/** Make http(s) URLs in already-escaped text clickable (mail apps do not all
+ *  auto-link, and a client link that is not tappable is a link not sent). */
+function linkify(escaped: string): string {
+  return escaped.replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" style="color:#1d4ed8">${u}</a>`);
+}
+
 /** Build the final email — resolves {{name}}/{{arn_*}}, appends the mandatory
  *  MF disclaimer + the firm's ARN signature, and produces a safe HTML body. */
 function buildEmailContent(
@@ -97,7 +103,7 @@ function buildEmailContent(
 
   const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1a1a1a;line-height:1.55">
   ${emailLogoHeaderHtml(tenantRow?.logoUrl, tenantRow?.displayName ?? tenantRow?.legalName)}
-  <p style="white-space:pre-wrap;margin:0 0 16px">${escapeHtml(bodyText)}</p>
+  <p style="white-space:pre-wrap;margin:0 0 16px">${linkify(escapeHtml(bodyText))}</p>
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0"/>
   <p style="font-size:12px;color:#6b7280;margin:0 0 4px">${escapeHtml(MF_DISCLAIMER)}</p>
   ${signature ? `<p style="font-size:12px;color:#6b7280;margin:0">${escapeHtml(signature)}</p>` : ""}

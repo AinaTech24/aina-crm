@@ -32,7 +32,9 @@ export default async function PlatformSettingsPage() {
   });
 
   const env: Record<string, "Configured" | "Stub" | "Missing"> = {
-    db: process.env.DATABASE_URL ? "Configured" : "Missing",
+    // The app connects as mfd_app (APP_DATABASE_URL); the master DATABASE_URL
+    // lives only in the migrate service since 2026-10-09.
+    db: process.env.APP_DATABASE_URL || process.env.DATABASE_URL ? "Configured" : "Missing",
     redis: process.env.REDIS_URL ? "Configured" : "Missing",
     vartify: process.env.VARTIFY_API_TOKEN && !process.env.VARTIFY_API_TOKEN.includes("xxx") ? "Configured" : "Stub",
     msg91: process.env.MSG91_AUTH_KEY && !process.env.MSG91_AUTH_KEY.includes("xxx") ? "Configured" : "Stub",

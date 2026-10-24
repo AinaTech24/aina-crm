@@ -56,6 +56,26 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 }
 
+const REASONS: Record<string, string> = {
+  skipped_consent: "Not sent - the client has opted out of this channel, or marketing consent is not recorded.",
+  skipped_compliance: "Not sent - blocked by the compliance check.",
+  skipped_session: "Not sent - the WhatsApp session with this client is not active.",
+  skipped_rate_limit: "Not sent - the sending rate limit was reached. Try again shortly.",
+  skipped_quota: "Not sent - the monthly message quota is used up.",
+  skipped_frequency_cap: "Not sent - this client was messaged too recently.",
+  skipped_no_contact: "Not sent - no valid address for this client (missing or suppressed).",
+  template_not_approved: "Not sent - the template is not approved.",
+};
+
+function dispatchFailureMessage(r: { status: string; error?: string; skipped?: { reason: string; detail?: string } }): string {
+  if (r.status === "failed") return r.error ? `The email could not be sent: ${r.error}` : "The message could not be sent.";
+  const reason = r.skipped?.reason ?? "";
+  // A render error carries the real cause (e.g. no holdings to compare); the others have a standard line.
+  if (reason === "render_error") return r.skipped?.detail ?? "The message could not be prepared.";
+  const base = REASONS[reason] ?? `Not sent (${reason || "skipped"}).`;
+  return reason === "skipped_consent" && r.skipped?.detail ? r.skipped.detail : base;
+}
+
 const PostBody = z.object({
   channel: z.enum(["whatsapp", "email", "sms"]),
   templateKey: z.string(),
@@ -139,6 +159,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
     const result = outcome.sent;
 
+    // dispatch() reports a skipped or failed send as a normal RESULT (the audit row
+    // is written either way), so it used to come back as HTTP 200 and the popup
+    // showed "dispatched successfully" for an email that never left. Say what
+    // happened, with the reason, so the RM can act on it.
+    if (result.status === "skipped" || result.status === "failed") {
+      return NextResponse.json({ ...result, error: dispatchFailureMessage(result) }, { status: 422 });
+    }
     return NextResponse.json(result);
   } catch (err: any) {
     return handleApiError(err);

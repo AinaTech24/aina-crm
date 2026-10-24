@@ -170,6 +170,7 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
           content:
             "Hi {{client_name}},\n\nThank you for giving your valuable time to {{rm_name}}. It was a pleasure speaking with you. Here is a quick summary of what we discussed:",
         },
+        { type: "text", content: "Meeting held on: {{meeting_held_on}}\nAgenda: {{meeting_agenda}}" },
         { type: "text", content: "{{minutes}}" },
         {
           type: "text",
@@ -178,7 +179,7 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
         },
       ],
       textFallback:
-        "Hi {{client_name}}, thank you for your time with {{rm_name}}. Minutes of our meeting:\n\n{{minutes}}\n\n— {{tenant_display_name}}",
+        "Hi {{client_name}}, thank you for your time with {{rm_name}} on {{meeting_held_on}}.\n\nAgenda: {{meeting_agenda}}\n\nMinutes of our meeting:\n\n{{minutes}}\n\n— {{tenant_display_name}}",
     },
     variables: [{ key: "client_name", type: "string", source: "investor.name", fallback: "there" }],
   },

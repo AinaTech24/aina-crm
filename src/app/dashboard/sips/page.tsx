@@ -158,6 +158,9 @@ export default async function SipsPage({
       );
     }
     if (statusFilter.length) conds.push(inArray(sips.status, statusFilter as any));
+    // reg=ended — SIPs whose registrar register says they ended (a label the
+    // import records; lib/rta/sip-registrar-status), whatever their status here.
+    if (sp.reg === "ended") conds.push(sql`${sips.remarks} ~ '^(CAMS|KFintech|Registrar): '`);
     if (freqFilter.length) conds.push(inArray(sips.frequency, freqFilter as any));
     const dr = dateRangeCond(sp, "created", "sips.created_at");
     if (dr) conds.push(dr);
@@ -274,6 +277,8 @@ export default async function SipsPage({
               presets={[
                 { id: "active", name: "Active SIPs", params: "status=active" },
                 { id: "stopped", name: "Stopped / Rejected", params: "status=stopped,rejected" },
+                { id: "ended", name: "Ended (with reason)", params: "status=stopped,rejected,completed" },
+                { id: "registrar-ended", name: "Registrar says ended", params: "reg=ended" },
                 { id: "monthly", name: "Monthly SIPs", params: "frequency=monthly&status=active" },
                 { id: "paused", name: "Paused", params: "status=paused" },
               ]}
@@ -370,10 +375,21 @@ export default async function SipsPage({
                         <span className="text-muted-foreground">—</span>
                       )}
                     </td>
-                    <td data-col="status" className="py-3">
+                    <td data-col="status" className="py-3 max-w-[220px]">
                       <span className={`chip ${STATUS_TONE[sip.status] ?? ""}`}>
                         {STATUS_LABEL[sip.status] ?? sip.status}
                       </span>
+                      {/* What the registrar's register says ("KFintech: Terminated by
+                          Investor") — a label, shown even on a SIP still active here
+                          (amber then: the registrar disagrees). lib/rta/sip-registrar-status. */}
+                      {sip.remarks && (sip.status !== "active" || /^(CAMS|KFintech|Registrar): /.test(sip.remarks)) && (
+                        <div
+                          className={`text-2xs mt-1 truncate ${sip.status === "active" ? "text-amber-700" : "text-muted-foreground"}`}
+                          title={sip.remarks}
+                        >
+                          {sip.remarks.split(" · ").slice(0, 2).join(" · ")}
+                        </div>
+                      )}
                     </td>
                     <td data-col="rm" className="py-3 text-xs">{rmName ?? "—"}</td>
                     <td data-col="remarks" className="py-3 pr-4 text-xs text-muted-foreground max-w-[160px] truncate">

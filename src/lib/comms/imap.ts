@@ -10,6 +10,7 @@
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { describeMailError } from "./connection-error";
+import { errorRef } from "@/lib/observability/log-safe";
 
 export interface ImapConfig {
   host: string;
@@ -234,7 +235,8 @@ export async function processUnseenMailback(
           try {
             await handler(msg);
           } catch (e) {
-            console.error(`[rta-inbox] handler error uid=${msg.uid}: ${(e as Error).message}`);
+            // Class + code only: a failed query's message carries its parameters.
+            console.error(`[rta-inbox] handler error uid=${msg.uid}: ${errorRef(e)}`);
           }
           try {
             await client.messageFlagsAdd(String(msg.uid), ["\\Seen"], { uid: true });

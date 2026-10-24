@@ -14,7 +14,11 @@ import { execSync } from "node:child_process";
  * i.e. at BUILD time, not per request.
  */
 function resolveBuildStamp(): { sha: string | null; builtAt: string } {
-  let sha: string | null = null;
+  // A CI / Docker build has no .git: the image build passes the commit it was
+  // built from (Dockerfile ARG BUILD_GIT_SHA), so /api/health names the exact
+  // commit that is running.
+  let sha: string | null = process.env.BUILD_GIT_SHA?.trim().slice(0, 12) || null;
+  if (sha) return { sha, builtAt: new Date().toISOString() };
   try {
     sha = execSync("git rev-parse --short HEAD", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim() || null;
   } catch {

@@ -8,6 +8,7 @@
  */
 
 import { create } from "zustand";
+import { onAccountChange } from "../lib/accountScope";
 
 export interface CallIntent {
   subjectType: "investor" | "lead";
@@ -28,3 +29,4 @@ export const useCallIntent = create<CallIntentState>((set) => ({
   arm: (i) => set({ pending: { ...i, armedAt: Date.now() } }),
   clear: () => set({ pending: null }),
 }));
+onAccountChange(() => useCallIntent.getState().clear());

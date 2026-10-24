@@ -4,6 +4,8 @@ import { ShieldCheck, AlertTriangle, UserX, IndianRupee } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatINR } from "@/lib/utils";
+import { needsNomineeSql } from "@/lib/investors/type-rules";
+import { canNominate } from "@/lib/investors/client-types";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +39,7 @@ export default async function NominationTrackerPage() {
     async (tx) => {
       const rowsRes = await tx.execute(sql`
         SELECT i.id, i.name, i.segment_tag, i.rm_id, i.kyc_status,
-               i.nominee_name,
+               i.nominee_name, i.investor_category, ${needsNomineeSql("i")} AS needs_nominee,
                COALESCE(SUM(f.aum::numeric), 0) AS aum
         FROM investors i
         LEFT JOIN folios f ON f.investor_id = i.id AND f.closed_at IS NULL
@@ -53,11 +55,13 @@ export default async function NominationTrackerPage() {
   const rmName = new Map<string, string>();
   for (const r of data.rms) rmName.set(r.id, r.name);
 
-  const hasNominee = (n: string | null | undefined) => !!(n && String(n).trim());
-  const total = data.rows.length;
-  const withNominee = data.rows.filter((r) => hasNominee(r.nominee_name)).length;
-  const missing = data.rows
-    .filter((r) => !hasNominee(r.nominee_name))
+  // Only individuals nominate (SEBI): an HUF, a minor or an entity is not
+  // counted, and a recorded opt-out is not a gap (lib/investors/type-rules).
+  const nominating = data.rows.filter((r) => canNominate(r.investor_category));
+  const total = nominating.length;
+  const withNominee = nominating.filter((r) => r.needs_nominee !== true).length;
+  const missing = nominating
+    .filter((r) => r.needs_nominee === true)
     .map((r) => ({
       id: r.id,
       name: r.name,

@@ -279,7 +279,7 @@ export function parseReverseFeed(text: string, refPrefix = "feed"): CanonicalTra
       const v = cols[dateIdx];
       if (v) samples.push(v.trim());
     }
-    dateOrder = detectDateOrder(samples);
+    dateOrder = detectDateOrder(samples, { usClock: refPrefix === "cams" });
   }
 
   for (let i = dataStart; i < lines.length; i++) {
@@ -351,16 +351,41 @@ export type DateOrder = "dmy" | "mdy";
  * a day, so it pins the layout; if nothing in the sample disambiguates we keep
  * the Indian D/M/Y default. Bounded — a few hundred rows settle it in practice.
  */
-export function detectDateOrder(samples: Iterable<string | undefined>): DateOrder {
+export function detectDateOrder(
+  samples: Iterable<string | undefined>,
+  opts: { today?: string; usClock?: boolean } = {},
+): DateOrder {
   let dayFirst = 0;
   let monthFirst = 0;
+  let clocked = 0;
+  let dmyFuture = 0;
+  let mdyFuture = 0;
+  // A trade is never dated after tomorrow (IST, with a day's slack).
+  const limit = opts.today ?? new Date(Date.now() + 5.5 * 36e5 + 864e5).toISOString().slice(0, 10);
+  const iso = (y: string, mon: number, day: number) => `${y}-${String(mon).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
   for (const raw of samples) {
-    const m = (raw ?? "").trim().match(/^(\d{1,2})[-/](\d{1,2})[-/]\d{4}/);
+    const s = (raw ?? "").trim();
+    const m = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
     if (!m) continue;
-    if (+m[1] > 12) dayFirst++;
-    if (+m[2] > 12) monthFirst++;
+    const a = +m[1], b = +m[2];
+    if (a > 12) dayFirst++;
+    if (b > 12) monthFirst++;
+    if (/\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)\s*$/i.test(s)) clocked++;
+    if (a <= 12 && b <= 12) {
+      if (iso(m[3], b, a) > limit) dmyFuture++;
+      if (iso(m[3], a, b) > limit) mdyFuture++;
+    }
   }
-  return monthFirst > dayFirst ? "mdy" : "dmy";
+  if (dayFirst || monthFirst) return monthFirst > dayFirst ? "mdy" : "dmy";
+  // Nothing in the column is over 12 — a DAILY feed of trades from the 1st–12th
+  // of a month. Read D/M/Y, CAMS's month-first CSV put 255 Anmol Money and
+  // Sandeep Garg trades (Rs 1.11 Cr) of 11 Aug in November and of 12 Aug / 12 Oct
+  // in December (found 15 Oct 2026). Two more clues:
+  // CAMS writes M/D/Y with a clock ("8/11/2026 12:00:00 AM"), and a trade
+  // cannot be in the future.
+  if (opts.usClock && clocked > 0) return "mdy";
+  if (dmyFuture > 0 && mdyFuture === 0) return "mdy";
+  return "dmy";
 }
 
 function normalizeDate(d: string | undefined, order: DateOrder = "dmy"): string {

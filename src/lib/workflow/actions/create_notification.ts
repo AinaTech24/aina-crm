@@ -19,6 +19,7 @@
 
 import { v4 as uuid } from "uuid";
 import { sql } from "drizzle-orm";
+import { boundTextArray } from "@/lib/sql/bound-array";
 import { notifications } from "@/db/schema";
 import { resolveExpression } from "../context";
 import type { ActionHandler } from "./index";
@@ -114,7 +115,7 @@ export async function resolveRecipients(
       SELECT id FROM users
       WHERE tenant_id = ${ctx.tenantId}
         AND status = 'active'
-        AND roles && ${sql.raw(`ARRAY[${roles.map((r) => `'${escapeSql(r)}'`).join(",")}]::text[]`)}
+        AND roles && ${boundTextArray(roles)}
     `);
     for (const r of rows.rows as any[]) ids.add(String(r.id));
   }
@@ -124,8 +125,4 @@ export async function resolveRecipients(
 
 function looksLikeUuid(s: any): boolean {
   return typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
-}
-
-function escapeSql(s: string): string {
-  return s.replace(/'/g, "''");
 }

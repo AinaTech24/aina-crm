@@ -18,6 +18,8 @@ import { requireSession } from "@/lib/auth/session";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { recomputeFamilyHealth } from "@/lib/families/health-persist";
 import { familyScopeSql } from "@/lib/families/access";
+import { applyHeadRmToMembers } from "@/lib/families/head-rm";
+import { applyFamilySharedDetails } from "@/lib/families/shared-details";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +45,13 @@ export async function POST(req: NextRequest) {
         const famScope = await familyScopeSql(tx, session, "f");
         const both = await tx.execute(sql`SELECT f.id FROM families f WHERE f.tenant_id = ${session.tenantId}::uuid AND f.id IN (${survivorId}::uuid, ${loserId}::uuid) AND ${famScope}`);
         if (both.rows.length !== 2) return { error: "one or both families not found" as const };
+
+        // Who moves, and whether the survivor already has a head — for the RM
+        // rule below (lib/families/head-rm).
+        const moving = ((await tx.execute(sql`
+          SELECT id FROM investors WHERE family_id = ${loserId}::uuid AND tenant_id = ${session.tenantId}::uuid`)).rows as Array<{ id: string }>).map((r) => r.id);
+        const survivorHead = ((await tx.execute(sql`
+          SELECT primary_investor_id FROM families WHERE id = ${survivorId}::uuid AND tenant_id = ${session.tenantId}::uuid`)).rows[0] as any)?.primary_investor_id ?? null;
 
         const tcols = await tx.execute(sql`
           SELECT table_name FROM information_schema.columns
@@ -81,6 +90,27 @@ export async function POST(req: NextRequest) {
           FROM families l WHERE s.id = ${survivorId}::uuid AND l.id = ${loserId}::uuid AND s.tenant_id = ${session.tenantId}::uuid
         `);
         await tx.execute(sql`DELETE FROM families WHERE id = ${loserId}::uuid AND tenant_id = ${session.tenantId}::uuid`);
+
+        // RM follows the head: the members who moved take the survivor head's
+        // RM; if the survivor had no head and just adopted the loser's, every
+        // member follows that new head.
+        await applyHeadRmToMembers(tx, {
+          tenantId: session.tenantId,
+          familyId: survivorId,
+          onlyInvestorIds: survivorHead ? moving : undefined,
+          actorUserId: session.userId,
+          reason: survivorHead ? "families_merged" : "head_changed",
+          clientMeta: meta,
+        });
+        // …and the head's address and the family's review frequency.
+        await applyFamilySharedDetails(tx, {
+          tenantId: session.tenantId,
+          familyId: survivorId,
+          onlyInvestorIds: survivorHead ? moving : undefined,
+          actorUserId: session.userId,
+          reason: survivorHead ? "families_merged" : "head_changed",
+          clientMeta: meta,
+        });
 
         // The survivor just absorbed the loser's members — re-score it so its
         // health band, member count and AUM rollup reflect the merged household

@@ -18,7 +18,7 @@
  * CRM.
  *
  * Pure data, no I/O. `appliesTo` attaches each SOP to where the work happens
- * (sop_links, migration 0234): a core process (PRACTICE_PROCESSES), a position
+ * (sop_links, migration 0245): a core process (PRACTICE_PROCESSES), a position
  * (DEFAULT_POSITIONS key — stored as the firm's position id at install), a
  * task type, a service-request type or a journey stage ("lead:<stageKey>").
  */

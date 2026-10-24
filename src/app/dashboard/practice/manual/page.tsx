@@ -88,7 +88,10 @@ export default async function MyOperationsManualPage() {
             JOIN sop_versions v ON v.id = s.current_version_id AND v.tenant_id = s.tenant_id
            WHERE s.tenant_id = ${tid}::uuid AND s.deleted_at IS NULL
              AND s.required_roles && ARRAY[${sql.join(session.roles.map((r) => sql`${r}`), sql`, `)}]::text[]
-        `)).rows as any[])
+        `)).rows as Array<{
+          sop_id: string; title: string; category: string | null; version_id: string;
+          version_number: number | string; markdown: string | null; required_roles: string[] | null;
+        }>)
       : [];
 
     const sops = new Map<string, ManualSop>();

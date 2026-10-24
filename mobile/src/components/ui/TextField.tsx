@@ -19,6 +19,7 @@ export function TextField({
   keyboardType,
   autoCapitalize = "sentences",
   secureTextEntry,
+  disabled,
 }: {
   label: string;
   value: string;
@@ -30,6 +31,7 @@ export function TextField({
   keyboardType?: KeyboardTypeOptions;
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
   secureTextEntry?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <View style={{ marginBottom: spacing.lg }}>
@@ -39,6 +41,8 @@ export function TextField({
       </Text>
       <TextInput
         style={[styles.input, multiline && styles.multiline, error && { borderColor: palette.danger }]}
+        editable={!disabled}
+        accessibilityLabel={label}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}

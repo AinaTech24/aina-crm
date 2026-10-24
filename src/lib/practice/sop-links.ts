@@ -2,7 +2,7 @@
  * SOPs where the work happens (The E-Myth Revisited: the operations manual
  * lives INSIDE the work, not in a library nobody opens).
  *
- * An SOP is attached to a target through `sop_links` (migration 0234). A
+ * An SOP is attached to a target through `sop_links` (migration 0245). A
  * target is a (kind, key) pair:
  *
  *   task_type        key = tasks.type                    e.g. "kyc_renewal"
@@ -265,7 +265,10 @@ export async function linkedSopsFor(tx: Tx, tenantId: string, targets: SopTarget
      ORDER BY s.title
   `);
   const bySop = new Map<string, LinkedSop>();
-  for (const row of r.rows as any[]) {
+  for (const row of r.rows as Array<{
+    target_kind: SopLinkKind; target_key: string; sop_id: string; key: string; title: string;
+    category: string | null; version_id: string; version_number: number | string; markdown: string | null;
+  }>) {
     let s = bySop.get(row.sop_id);
     if (!s) {
       s = {
@@ -293,9 +296,9 @@ export async function loadLinkLabelNames(tx: Tx, tenantId: string): Promise<Link
     await tx.execute(sql`SELECT key, label FROM master_values WHERE tenant_id = ${tenantId}::uuid AND master_type = 'service_request_type'`),
   ];
   return {
-    positions: new Map((pos.rows as any[]).map((r) => [String(r.id), String(r.title)])),
-    templates: new Map((tpl.rows as any[]).map((r) => [String(r.id), String(r.name)])),
-    srTypes: new Map((sr.rows as any[]).map((r) => [String(r.key), String(r.label)])),
+    positions: new Map((pos.rows as Array<{ id: string; title: string }>).map((r) => [String(r.id), String(r.title)])),
+    templates: new Map((tpl.rows as Array<{ id: string; name: string }>).map((r) => [String(r.id), String(r.name)])),
+    srTypes: new Map((sr.rows as Array<{ key: string; label: string }>).map((r) => [String(r.key), String(r.label)])),
   };
 }
 
@@ -306,7 +309,7 @@ export async function positionIdsOf(tx: Tx, tenantId: string, userId: string | n
     SELECT position_id FROM practice_position_holders
      WHERE tenant_id = ${tenantId}::uuid AND user_id = ${userId}::uuid
   `);
-  return (r.rows as any[]).map((x) => x.position_id as string);
+  return (r.rows as Array<{ position_id: string }>).map((x) => x.position_id);
 }
 
 /** The current stage of the journey a task is about (lead / service request / its subject). */
@@ -324,7 +327,7 @@ async function currentStageForTask(tx: Tx, tenantId: string, task: TaskLike): Pr
        AND (subject_type, subject_id) IN (${sql.join(subjects.map(([t, id]) => sql`(${t}::text, ${id}::uuid)`), sql`, `)})
      LIMIT 1
   `);
-  const row = (r.rows as any[])[0];
+  const row = (r.rows as Array<{ subject_type: string; current_stage_key: string }>)[0];
   return row ? blueprintStageKey(row.subject_type, row.current_stage_key) : null;
 }
 
@@ -338,7 +341,7 @@ async function srTypeForTask(tx: Tx, tenantId: string, task: TaskLike): Promise<
   const r = await tx.execute(sql`
     SELECT type FROM service_requests WHERE tenant_id = ${tenantId}::uuid AND id = ${srId}::uuid LIMIT 1
   `);
-  return ((r.rows as any[])[0]?.type as string | undefined) ?? null;
+  return (r.rows as Array<{ type: string }>)[0]?.type ?? null;
 }
 
 /**
@@ -374,7 +377,7 @@ export async function processesOwnedBy(
   const r = await tx.execute(sql`
     SELECT process_key, owner_position_id FROM practice_process_settings WHERE tenant_id = ${tenantId}::uuid
   `);
-  const setting = new Map<string, string | null>((r.rows as any[]).map((x) => [x.process_key, x.owner_position_id ?? null]));
+  const setting = new Map<string, string | null>((r.rows as Array<{ process_key: string; owner_position_id: string | null }>).map((x) => [x.process_key, x.owner_position_id ?? null]));
   const ids = new Set(positions.map((p) => p.id));
   const keys = new Set(positions.map((p) => p.key));
   return PRACTICE_PROCESSES.filter((p) => {

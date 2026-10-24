@@ -25,10 +25,12 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { investors, users } from "@/db/schema";
+import { setFamilyRmFromClient } from "@/lib/families/head-rm";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { purgeInvestorsChunk, PURGE_REQUEST_MAX, PURGE_TX_CHUNK } from "@/lib/investors/purge";
 import { applyBulkField, BulkFieldError } from "@/lib/investors/bulk-update";
 import { investorScopeCondition } from "@/lib/investors/access";
+import { clientsHoldingMoney, holdersMessage, type MoneyHolder } from "@/lib/investors/holds-money";
 
 export const dynamic = "force-dynamic";
 
@@ -205,10 +207,19 @@ export async function POST(req: NextRequest) {
         break;
     }
 
+    let kept: MoneyHolder[] = [];
     const count = await withTenant(session.tenantId, async (tx) => {
+      // A client who still holds money with the registrar is not deleted
+      // (lib/investors/holds-money.ts) — the rest of the selection is.
+      let targets = ids ?? [];
+      if (action === "delete") {
+        kept = await clientsHoldingMoney(tx, session.tenantId, await inScope(tx, targets));
+        const keep = new Set(kept.map((k) => k.id));
+        targets = targets.filter((id) => !keep.has(id));
+      }
       // Tenant predicate (defense-in-depth) — a destructive bulk op must never
       // touch another firm's clients even if RLS is bypassed (superuser role).
-      const scope = and(eq(investors.tenantId, session.tenantId), inArray(investors.id, ids ?? []), await investorScopeCondition(tx, session));
+      const scope = and(eq(investors.tenantId, session.tenantId), inArray(investors.id, targets), await investorScopeCondition(tx, session));
       let updated: { id: string }[];
       if (action === "delete") {
         // Soft delete into the Trash bin — preserves all related data.
@@ -220,19 +231,31 @@ export async function POST(req: NextRequest) {
       } else {
         updated = await tx.update(investors).set(patch as any).where(scope).returning({ id: investors.id });
       }
+      // A family has one RM: assigning an RM to any member assigns it to the whole family.
+      if (action === "assign" && patch.rmId) {
+        for (const u of updated) {
+          await setFamilyRmFromClient(tx, {
+            tenantId: session.tenantId, investorId: u.id, rmId: patch.rmId, actorUserId: session.userId,
+          });
+        }
+      }
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,
         action: `investor.bulk_${action}`,
         entityType: "investor",
         entityId: session.tenantId,
-        after: { action, value: value ?? null, count: updated.length, ids: ids ?? [] } as any,
+        after: { action, value: value ?? null, count: updated.length, ids: targets, ...(kept.length ? { keptHoldingMoney: kept.map((k) => k.id) } : {}) } as any,
         ...meta,
       });
       return updated.length;
     });
 
-    return NextResponse.json({ ok: true, updated: count });
+    return NextResponse.json({
+      ok: true,
+      updated: count,
+      ...(kept.length ? { kept: kept.map((k) => ({ id: k.id, name: k.name })), keptMessage: holdersMessage(kept) } : {}),
+    });
   } catch (err: any) {
     return handleApiError(err);
   }

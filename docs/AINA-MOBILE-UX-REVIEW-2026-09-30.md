@@ -1,6 +1,6 @@
 # Aina CRM mobile — UI, UX and function review
 
-Reviewed 30 September 2026. Scope: current mobile screen code, navigation, forms and related API behavior. This is a source and workflow review, not a physical-phone usability test. Recommendations are not implemented by this review. Existing uncommitted work was preserved.
+Reviewed 30 September 2026. Scope: current mobile screen code, navigation, forms and related API behavior. This is a source and workflow review, not a physical-phone usability test. This document records the original findings; implementation status is tracked in AINA-MOBILE-UX-IMPLEMENTATION.md. Existing uncommitted work was preserved.
 
 ## Recommended direction
 

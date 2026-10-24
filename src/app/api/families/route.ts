@@ -26,6 +26,7 @@ import { onClientFamilyMapped } from "@/lib/families/journey";
 import { familyScopeSql, requireFamilyView } from "@/lib/families/access";
 import { LIVE_MEMBER_JOIN } from "@/lib/families/live";
 import { WEALTH_BANDS, bandBounds, type WealthBand } from "@/lib/families/wealth-band";
+import { needsNomineeSql } from "@/lib/investors/type-rules";
 
 const PAGE_SIZE = 50;
 
@@ -96,7 +97,7 @@ export async function GET(req: NextRequest) {
         if (qf.red_health) where.push(sql`f.health_band = 'red'`);
 
         const having: any[] = [];
-        if (qf.nominee_gap) having.push(sql`BOOL_OR(i.id IS NOT NULL AND (i.nominee_name IS NULL OR i.nominee_name = '')) = true`);
+        if (qf.nominee_gap) having.push(sql`BOOL_OR(i.id IS NOT NULL AND ${needsNomineeSql("i")}) = true`);
         if (qf.has_minor) having.push(sql`BOOL_OR(i.is_minor = true) = true`);
         if (qf.hni) having.push(sql`BOOL_OR(i.segment_tag = 'HNI') = true`);
         if (qf.single) having.push(sql`COUNT(i.id) = 1`);
@@ -121,7 +122,7 @@ export async function GET(req: NextRequest) {
             f.created_at, f.updated_at,
             u.name AS rm_name,
             COUNT(i.id)::int AS member_count,
-            COUNT(i.id) FILTER (WHERE (i.nominee_name IS NULL OR i.nominee_name = ''))::int AS nominee_gap_count,
+            COUNT(i.id) FILTER (WHERE ${needsNomineeSql("i")})::int AS nominee_gap_count,
             COUNT(i.id) FILTER (WHERE i.kyc_status = 'verified')::int AS kyc_verified_count,
             COALESCE(SUM(i.aum::numeric), 0)::numeric AS family_aum,
             COALESCE(SUM(i.active_sip_amount::numeric), 0)::numeric AS family_sip,
@@ -151,7 +152,7 @@ export async function GET(req: NextRequest) {
           WITH fam AS (
             SELECT f.id, f.primary_investor_id, f.rm_id, f.next_review_at, f.health_band,
               COUNT(i.id) AS active_members,
-              COUNT(i.id) FILTER (WHERE (i.nominee_name IS NULL OR i.nominee_name = '')) AS nominee_gap,
+              COUNT(i.id) FILTER (WHERE ${needsNomineeSql("i")}) AS nominee_gap,
               COALESCE(SUM(i.aum::numeric), 0) AS family_aum,
               COALESCE(SUM(i.active_sip_amount::numeric), 0) AS family_sip,
               BOOL_OR(i.segment_tag = 'HNI') AS has_hni,
@@ -211,7 +212,7 @@ export async function POST(req: NextRequest) {
     // A household is grouped by whoever services it: an RM builds families out
     // of their own book, so investor.edit.assigned is enough. Requiring
     // .edit.all here blocked every RM and team member from creating one.
-    requireAny(session.roles, ["family.create", "family.manage", "investor.edit.all", "investor.edit.assigned"], session.permissions);
+    requireAny(session.roles, ["family.create", "family.map.create", "family.manage", "investor.edit.all", "investor.edit.assigned"], session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
 
     const parse = Body.safeParse(await req.json().catch(() => ({})));

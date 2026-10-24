@@ -19,7 +19,7 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { handleApiError } from "@/lib/api/error-handler";
-import { SOP_LINK_KINDS } from "@/db/schema/practice";
+import { SOP_LINK_KINDS, type SopLinkKind } from "@/db/schema/practice";
 import { canManagePractice } from "@/lib/practice/access";
 import { PROCESS_BY_KEY } from "@/lib/practice/catalog";
 import {
@@ -52,10 +52,10 @@ export async function GET(req: NextRequest) {
            ORDER BY target_kind, created_at
         `);
         const names = await loadLinkLabelNames(tx, session.tenantId);
-        return (r.rows as any[]).map((row) => ({
-          id: row.id as string,
-          targetKind: row.target_kind as string,
-          targetKey: row.target_key as string,
+        return (r.rows as Array<{ id: string; target_kind: SopLinkKind; target_key: string }>).map((row) => ({
+          id: row.id,
+          targetKind: row.target_kind,
+          targetKey: row.target_key,
           label: linkTargetLabel(row.target_kind, row.target_key, names),
         }));
       }, opts(session));
@@ -118,7 +118,7 @@ export async function POST(req: NextRequest) {
         RETURNING id
       `);
       if (ins.rows.length) {
-        const id = (ins.rows[0] as any).id as string;
+        const id = (ins.rows[0] as { id: string }).id;
         await recordAudit(tx, {
           tenantId: session.tenantId,
           actorUserId: session.userId,
@@ -135,7 +135,7 @@ export async function POST(req: NextRequest) {
          WHERE tenant_id = ${session.tenantId}::uuid AND sop_id = ${sopId}::uuid
            AND target_kind = ${targetKind} AND target_key = ${targetKey}
       `);
-      return { id: (existing.rows[0] as any).id as string, created: false };
+      return { id: (existing.rows[0] as { id: string }).id, created: false };
     }, opts(session));
 
     if ("error" in result) return NextResponse.json({ error: result.error }, { status: result.status });
@@ -158,7 +158,7 @@ export async function DELETE(req: NextRequest) {
         DELETE FROM sop_links WHERE id = ${id}::uuid AND tenant_id = ${session.tenantId}::uuid
         RETURNING sop_id, target_kind, target_key
       `);
-      const row = r.rows[0] as any;
+      const row = r.rows[0] as { sop_id: string; target_kind: string; target_key: string } | undefined;
       if (!row) return false;
       await recordAudit(tx, {
         tenantId: session.tenantId,

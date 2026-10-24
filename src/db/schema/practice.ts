@@ -1,5 +1,5 @@
 /**
- * The practice as a system (The E-Myth Revisited) — migration 0234.
+ * The practice as a system (The E-Myth Revisited) — migration 0245.
  * See src/lib/practice/ for what reads and writes these.
  */
 

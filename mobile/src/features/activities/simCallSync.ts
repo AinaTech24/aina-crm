@@ -2,12 +2,15 @@ import { AppState, PermissionsAndroid, Platform } from "react-native";
 import Constants from "expo-constants";
 import callLog, { type SimCall } from "../../../modules/aina-call-log";
 import { api } from "../../api/client";
-import { getAccountScope } from "../../lib/accountScope";
+import { create } from "zustand";
+import { getAccountScope, onAccountChange } from "../../lib/accountScope";
 import { storageGet, storageSet } from "../../lib/storage";
+import { bulkGet, bulkSet } from "../../lib/bulkStorage";
 import { usePrefs } from "../../state/prefs";
 import { useOfflineQueue } from "../../lib/offlineQueue";
 import { queryClient } from "../../api/queryClient";
 import { callBody, indexContacts, matchIndexed, type CallContact } from "./callMatching";
+import { advanceCallImport, callIdentity, callReadFrom, parseCallImportState } from "./callImportState";
 
 /** False in the Play Store build, which ships without READ_CALL_LOG (app.config.ts). */
 const callLogEnabled = Constants.expoConfig?.extra?.callLogEnabled !== false;
@@ -32,6 +35,8 @@ async function contactIndex(owner: string, generation: number, fresh: boolean) {
 }
 const RELEVANT_TYPES = [1, 2, 3, 5]; // incoming, outgoing, missed, rejected
 export async function enableSimCalls(): Promise<boolean> {
+  const scope = getAccountScope();
+  if (!scope.owner) throw new Error("Sign in before enabling call logging.");
   if (!simCallsAvailable) {
     throw new Error(callLogEnabled ? "SIM call import requires the Android APK." : "SIM call import isn't available in this version of the app.");
   }
@@ -40,30 +45,52 @@ export async function enableSimCalls(): Promise<boolean> {
     buttonPositive: "Allow", buttonNegative: "Not now",
   });
   if (granted !== PermissionsAndroid.RESULTS.GRANTED) return false;
-  const owner = getAccountScope().owner;
-  if (!owner) return false;
-  await storageSet(`sim_since.${owner}`, String(Date.now()));
+  if (getAccountScope().generation !== scope.generation) throw new Error("Account changed. Enable logging for the signed-in account.");
+  const optedInAt = Date.now();
+  await bulkSet(`sim_import_v2.${scope.owner}`, JSON.stringify({ cursor: optedInAt, seen: {} }));
+  await storageSet(`sim_since.${scope.owner}`, String(optedInAt));
+  await storageSet(`sim_opted_in.${scope.owner}`, String(optedInAt));
+  if (getAccountScope().generation !== scope.generation) return false;
+  await storageSet(`sim_enabled.${scope.owner}`, "true");
+  if (getAccountScope().generation !== scope.generation) return false;
   usePrefs.getState().set("autoLogCalls", true);
   return true;
 }
+export const useCallSyncStatus = create<{ checkedAt: number | null; matched: number; skipped: number; error: string | null; busy: boolean }>(() => ({ checkedAt: null, matched: 0, skipped: 0, error: null, busy: false }));
+onAccountChange(() => { contactCache = null; useCallSyncStatus.setState({ checkedAt: null, matched: 0, skipped: 0, error: null, busy: false }); });
+export async function callPermissionGranted() { return simCallsAvailable && await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_CALL_LOG); }
 let syncing = false;
 export async function syncSimCalls() {
   const scope = getAccountScope();
   if (syncing || !scope.owner || !usePrefs.getState().autoLogCalls || !simCallsAvailable) return;
-  const current = () => getAccountScope().generation === scope.generation && usePrefs.getState().autoLogCalls;
+  const sameAccount = () => getAccountScope().generation === scope.generation;
+  const current = () => sameAccount() && usePrefs.getState().autoLogCalls;
   syncing = true;
+  useCallSyncStatus.setState({ busy: true, error: null });
   try {
-    if (!await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_CALL_LOG)) return;
+    if (!await callPermissionGranted()) throw new Error("Call-log permission is blocked. Enable it in phone settings, or turn automatic logging off.");
     const key = `sim_since.${scope.owner}`;
     const saved = await storageGet(key);
     // New users explicitly opt in; never import pre-consent history.
-    if (!saved) return;
-    const since = Number(saved);
-    if (!Number.isFinite(since)) throw new Error("Invalid call sync position");
+    if (!saved) throw new Error("Turn automatic logging off and on to start a new sync session.");
+    const cursor = Number(saved);
+    if (!Number.isFinite(cursor) || cursor < 0) throw new Error("Invalid call sync position");
+    const stateKey = `sim_import_v2.${scope.owner}`;
+    const state = parseCallImportState(await bulkGet(stateKey), cursor);
+    // An older build did not keep the opt-in time. Its last cursor is the safe
+    // lower boundary: never reach into unconfirmed pre-consent history.
+    const savedOptIn = await storageGet(`sim_opted_in.${scope.owner}`);
+    const optedInAt = Number(savedOptIn ?? cursor);
+    if (!Number.isFinite(optedInAt) || optedInAt < 0) throw new Error("Invalid call-logging consent position");
+    if (!current()) return;
+    if (savedOptIn === null) await storageSet(`sim_opted_in.${scope.owner}`, String(optedInAt));
+    const since = callReadFrom(state, optedInAt);
     const until = Date.now() - 15_000; // allow Android to finish writing the call
-    if (until <= since) return;
+    if (until <= since) { useCallSyncStatus.setState({ checkedAt: Date.now(), matched: 0, skipped: 0 }); return; }
     const calls = await callLog!.readCalls(since, until);
-    const relevant = calls.filter((c) => RELEVANT_TYPES.includes(c.type));
+    if (calls.length >= 5000 && calls[calls.length - 1].date <= since) throw new Error("Android returned too many calls at the same time. Call history needs manual review; the sync position has been preserved.");
+    if (!current()) return;
+    const relevant = calls.filter((c) => RELEVANT_TYPES.includes(c.type) && !(callIdentity(c) in state.seen));
     const matched: { call: SimCall; contact: CallContact }[] = [];
     if (relevant.length > 0) {
       let { index, fetched } = await contactIndex(scope.owner, scope.generation, false);
@@ -73,7 +100,7 @@ export async function syncSimCalls() {
         if (contact) matched.push({ call, contact });
         return !contact;
       });
-      if (unmatched.length > 0 && !fetched) {
+      if (unmatched.length > 0 && !fetched && Date.now() - (contactCache?.at ?? 0) >= 60_000) {
         ({ index } = await contactIndex(scope.owner, scope.generation, true));
         if (!current()) return;
         unmatched = unmatched.filter((call) => {
@@ -90,15 +117,29 @@ export async function syncSimCalls() {
       if (!current()) return;
       await useOfflineQueue.getState().enqueue({ method: "POST", path: "/api/activities", body: callBody(call, contact), label: "SIM call",
         requestId: `sim_${device}_${call.id}_${Math.trunc(call.date)}` });
-      await useOfflineQueue.getState().flush();
+      if (!current()) return;
+      // Mark only AFTER the queue has durably stored the call. Queue failures
+      // leave the cursor unchanged, allowing the next check to retry safely.
+      state.seen[callIdentity(call)] = call.date;
+      await bulkSet(stateKey, JSON.stringify(state));
+      if (!current()) return;
+      if (useOfflineQueue.getState().items.length >= 80) await useOfflineQueue.getState().flush();
     }
     if (!current()) return;
     // Inclusive replay at the page boundary is safe because call IDs are stable.
-    await storageSet(key, String(calls.length >= 5000 ? calls[calls.length - 1].date : until));
+    const advanced = advanceCallImport(state, until, calls);
+    // Keep the old cursor for backwards-compatible installs; the durable v2
+    // state is authoritative for this version.
+    await bulkSet(stateKey, JSON.stringify(advanced));
+    if (!current()) return;
+    await storageSet(key, String(advanced.cursor));
+    if (!current()) return;
     // Only when something was logged — this runs every 30s, and an unconditional
     // invalidation made the Activities list refetch on every tick.
+    useCallSyncStatus.setState({ checkedAt: Date.now(), matched: matched.length, skipped: relevant.length - matched.length, error: null });
     if (matched.length > 0) queryClient.invalidateQueries({ queryKey: ["activities"] });
-  } finally { syncing = false; }
+    await useOfflineQueue.getState().flush();
+  } catch (error) { if (current()) useCallSyncStatus.setState({ error: error instanceof Error ? error.message : "Call sync failed" }); throw error; } finally { syncing = false; if (sameAccount()) useCallSyncStatus.setState({ busy: false }); }
 }
 export function watchSimCalls() {
   const run = () => { void syncSimCalls().catch(() => {}); };

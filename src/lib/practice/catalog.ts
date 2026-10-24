@@ -8,7 +8,7 @@
  * The Practice Systems Map scores the firm on exactly those four things.
  *
  * Pure data, no I/O: safe to import from server and client code alike.
- * Per-firm settings live in the tables of migration 0234 (db/schema/practice.ts).
+ * Per-firm settings live in the tables of migration 0245 (db/schema/practice.ts).
  */
 
 /** How a process is measured. Each key is implemented in lib/practice/measures.ts. */

@@ -12,7 +12,20 @@
  *   • NameContact — the same name and a shared email or mobile (phone,
  *                   alternate or WhatsApp, last ten digits);
  *   • Name        — the same name (two words or more) with nothing on either
- *                   record that tells them apart.
+ *                   record that tells them apart;
+ *   • SimilarName — a record WITHOUT a PAN beside a PAN client whose name is
+ *                   another spelling of it (similarNames): what a registrar
+ *                   report with no PAN column leaves behind when it spells
+ *                   the name its own way. Added 14 Oct 2026 — Nimesh C Shah
+ *                   had "Behnaz Porus Dastur" beside "BEHNAZ PORAS DASTUR",
+ *                   "KIRITKUMAR MOHANLAL SHAH" beside "KIRIT KUMAR MOHANLAL
+ *                   SHAH", none of which an exact name could pair. Only a
+ *                   suggestion: a person merges.
+ *   • PanTypo     — two valid PANs one character apart on the same person
+ *                   (a shared email, mobile or date of birth, and one name
+ *                   containing or respelling the other): a registrar's
+ *                   mistyped PAN. The one exception to "two valid PANs are
+ *                   two people" below. Added 15 Oct 2026. Only a suggestion.
  *
  * Until 8 Oct 2026 only the first two existed. A registrar import that left a
  * placeholder beside the real client ("RAMILABEN NARENDRAKUMAR SHAH" twice,
@@ -50,7 +63,7 @@ export type ClusterMember = {
   rm_name: string | null;
 };
 
-export type ClusterKind = "PAN" | "NameDob" | "NameContact" | "Name" | "Phone" | "Email";
+export type ClusterKind = "PAN" | "NameDob" | "NameContact" | "Name" | "SimilarName" | "PanTypo" | "Phone" | "Email";
 export type DuplicateCluster = { kind: ClusterKind; gkey: string; members: ClusterMember[] };
 
 /** The duplicate rules in order, with the label each page shows. */
@@ -59,10 +72,29 @@ export const DUPLICATE_RULES = [
   ["NameDob", "Same name + date of birth"],
   ["NameContact", "Same name + phone / email"],
   ["Name", "Same name"],
+  ["SimilarName", "Similar name, one without PAN"],
+  ["PanTypo", "PAN one character apart"],
 ] as const;
 
 const VALID_PAN = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
-const RULE_ORDER: Record<ClusterKind, number> = { PAN: 0, NameDob: 1, NameContact: 2, Name: 3, Email: 4, Phone: 5 };
+const RULE_ORDER: Record<ClusterKind, number> = { PAN: 0, NameDob: 1, NameContact: 2, Name: 3, SimilarName: 4, PanTypo: 5, Email: 6, Phone: 7 };
+
+/** Valid PANs that differ in exactly one character. */
+export function panOneApart(a: string, b: string): boolean {
+  if (a.length !== 10 || b.length !== 10 || a === b) return false;
+  let diff = 0;
+  for (let i = 0; i < 10; i++) if (a[i] !== b[i] && ++diff > 1) return false;
+  return diff === 1;
+}
+
+/** One name is the other with words left out, in order of writing ignored:
+ *  "DIPAK RANA" and "DIPAK KASHIRAM RANA". At least two words on the shorter
+ *  side, so one shared word ("RANA") is never enough. */
+function nameContained(a: string | null | undefined, b: string | null | undefined): boolean {
+  const wa = nameWords(a), wb = nameWords(b);
+  const [s, l] = wa.length <= wb.length ? [wa, wb] : [wb, wa];
+  return s.length >= 2 && s.every((w) => l.includes(w));
+}
 
 type Row = {
   id: string; name: string | null; pan: string | null; phone: string | null; alternate_phone: string | null;
@@ -83,6 +115,64 @@ function mobileKey(v: string | null): string | null {
 function emailKey(v: string | null): string | null {
   const e = String(v ?? "").trim().toLowerCase();
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e) ? e : null;
+}
+
+/** A name's words for spelling comparison, in the order written, each once
+ *  (an AUM statement writes "Dipak Kashiram Rana Huf (Huf)"). */
+function nameWords(name: string | null | undefined): string[] {
+  const words = String(name ?? "").toUpperCase().replace(/[^A-Z0-9\s]/g, " ").split(/\s+/).filter(Boolean);
+  const kept = new Set(nameMatchKey(words.join(" ")).split(" "));
+  return [...new Set(words.filter((w) => kept.has(w)))];
+}
+
+/** At most one letter inserted, removed or changed. */
+function oneEditApart(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0, j = 0, edits = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++edits > 1) return false;
+    if (a.length > b.length) i++;
+    else if (b.length > a.length) j++;
+    else { i++; j++; }
+  }
+  return edits + (a.length - i) + (b.length - j) <= 1;
+}
+
+/**
+ * Two spellings of one person's name, as a registrar and a firm write it:
+ *  - the same letters with the spaces moved — "KIRITKUMAR MOHANLAL SHAH" and
+ *    "Kirit Kumar Mohanlal Shah";
+ *  - or word for word the same, at least two words identical, the rest each
+ *    one letter off ("Porus" / "Poras", "Natvarlal" / "Natwarlal") or an
+ *    initial standing for a word ("Nital J Mehta" / "Nital Jignesh Mehta").
+ * A different first name is a different person ("Anila Bhupendra Shah" and
+ * "Tejas Bhupendra Shah"), so that never matches. Pure; exported for tests.
+ */
+export function similarNames(a: string | null | undefined, b: string | null | undefined): boolean {
+  const wa = nameWords(a), wb = nameWords(b);
+  if (!wa.length || !wb.length) return false;
+  const compact = (w: string[]) => w.join("");
+  if (compact(wa).length >= 8 && compact(wa) === compact(wb)) return true;
+  if (compact([...wa].sort()) === compact([...wb].sort()) && wa.length >= 2) return true;
+  if (wa.length !== wb.length || wa.length < 2) return false;
+  const rest = [...wb];
+  let exact = 0;
+  const pending: string[] = [];
+  for (const w of wa) {
+    const k = rest.indexOf(w);
+    if (k >= 0) { rest.splice(k, 1); exact++; } else pending.push(w);
+  }
+  if (exact < 2) return false;
+  for (const w of pending) {
+    const k = rest.findIndex((o) =>
+      (w.length === 1 && o.length > 1 && o[0] === w) || (o.length === 1 && w.length > 1 && w[0] === o) ||
+      (w.length >= 4 && o.length >= 4 && w[0] === o[0] && oneEditApart(w, o)));
+    if (k < 0) return false;
+    rest.splice(k, 1);
+  }
+  return true;
 }
 
 /** Nothing on the records tells them apart: at most one valid PAN, at most one date of birth. */
@@ -153,6 +243,58 @@ export function findClusters(rows: Row[]): Array<{ kind: ClusterKind; gkey: stri
   for (const [nk, rs] of groupBy(recs, (r) => r.nkey || null)) {
     if (nk.split(" ").length < 2 || !compatible(rs)) continue;
     push("Name", label(rs), rs);
+  }
+
+  // Similar name: a record with no PAN beside a PAN client spelt another way.
+  // Candidates share a whole word, or the same letters run together.
+  {
+    const withPan = recs.filter((r) => r.vpan && r.nkey);
+    const byWord = new Map<string, Rec[]>();
+    const byCompact = new Map<string, Rec[]>();
+    for (const r of withPan) {
+      const ws = nameWords(r.name);
+      for (const w of ws) if (w.length >= 3) byWord.set(w, [...(byWord.get(w) ?? []), r]);
+      byCompact.set(ws.join(""), [...(byCompact.get(ws.join("")) ?? []), r]);
+    }
+    for (const r of recs) {
+      if (r.vpan || !r.nkey || String(r.pan ?? "").trim()) continue;
+      const ws = nameWords(r.name);
+      const cands = new Map<string, Rec>();
+      for (const c of byCompact.get(ws.join("")) ?? []) cands.set(c.id, c);
+      for (const w of ws) if (w.length >= 3) for (const c of byWord.get(w) ?? []) cands.set(c.id, c);
+      for (const c of cands.values()) {
+        if (c.is_minor !== r.is_minor || c.nkey === r.nkey) continue;
+        if (!similarNames(r.name, c.name) || !compatible([r, c])) continue;
+        push("SimilarName", `${String(c.name ?? "").trim()} · ${String(r.name ?? "").trim()}`, [c, r]);
+      }
+    }
+  }
+
+  // PAN one character apart: one registrar's mistyped PAN made a second client
+  // ("DIPAK KASHIRAM RANA" AAUPR8108G, KYC-verified, ₹1.09 Cr, and "DIPAK
+  // RANA" AAUPR8108Q from a KFintech folio, one mobile and email between them —
+  // Nimesh C Shah, 15 Oct 2026). Two different valid PANs are otherwise two
+  // people, so this needs the same person on every other count: a shared
+  // email, mobile or date of birth, one name containing or respelling the
+  // other, no conflicting date of birth, and no minor. Only a suggestion.
+  {
+    const adults = recs.filter((r) => r.vpan && r.nkey && !r.is_minor);
+    const byMask = new Map<string, Rec[]>();
+    for (const r of adults) for (let k = 0; k < 10; k++) {
+      const m = `${k}:${r.vpan!.slice(0, k)}_${r.vpan!.slice(k + 1)}`;
+      byMask.set(m, [...(byMask.get(m) ?? []), r]);
+    }
+    for (const rs of byMask.values()) {
+      if (rs.length < 2) continue;
+      for (let i = 0; i < rs.length; i++) for (let j = i + 1; j < rs.length; j++) {
+        const a = rs[i], b = rs[j];
+        if (!panOneApart(a.vpan!, b.vpan!)) continue;
+        if (a.dob && b.dob && a.dob !== b.dob) continue;
+        const contact = (a.emailKey && a.emailKey === b.emailKey) || a.mobiles.some((m) => b.mobiles.includes(m)) || (!!a.dob && a.dob === b.dob);
+        const names = a.nkey === b.nkey || nameContained(a.name, b.name) || similarNames(a.name, b.name);
+        if (contact && names) push("PanTypo", `${String(a.name ?? "").trim()} · ${a.vpan} / ${b.vpan}`, [a, b]);
+      }
+    }
   }
 
   // Shared contact under different names: information only.

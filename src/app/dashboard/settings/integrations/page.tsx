@@ -5,6 +5,7 @@ import { ChevronLeft, Webhook, Check, AlertCircle, ExternalLink } from "lucide-r
 import VartifyConnectCard from "./VartifyConnectCard";
 import { ZohoIntegrationCard } from "@/components/integrations/ZohoIntegrationCard";
 import { RtaMailbackCard } from "@/components/integrations/RtaMailbackCard";
+import { NseMfKycCard } from "@/components/integrations/NseMfKycCard";
 import { StatusChip } from "@/components/common/StatusChip";
 
 const INTEGRATIONS = [
@@ -15,8 +16,8 @@ const INTEGRATIONS = [
     setupSteps: ["Get BSE membership (₹50K one-time setup)", "Add credentials in your tenant config", "We orchestrate orders on your behalf"],
   },
   {
-    name: "NSE NMF II",
-    desc: "Alternative to BSE for transaction execution.",
+    name: "NSE NMF II — transactions",
+    desc: "Alternative to BSE for transaction execution. (KYC status by PAN is the NSE MF Invest card above.)",
     envCheck: () => false,
     setupSteps: ["NSE registration required", "Per-tenant credentials"],
   },
@@ -56,6 +57,9 @@ export default function IntegrationsPage() {
 
       {/* Self-serve: direct RTA mailback auto-import via email forwarding. */}
       <RtaMailbackCard />
+
+      {/* Self-serve: the firm's own NSE MF Invest keys — KYC status by PAN from the KRA. */}
+      <NseMfKycCard />
 
       <div className="grid grid-cols-1 gap-3">
         {INTEGRATIONS.map((i) => {

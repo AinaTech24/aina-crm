@@ -4,7 +4,7 @@ export type MergeHubTab = "suggestions" | "merge" | "history";
 
 export const MERGE_HUB_TABS: Array<{ key: MergeHubTab; label: string; hint: string }> = [
   { key: "suggestions", label: "Suggested duplicates", hint: "Records the CRM thinks are the same person. Compare them and merge, or mark them as not duplicates." },
-  { key: "merge", label: "Merge by search", hint: "Find the records yourself, pick them, then compare and merge." },
+  { key: "merge", label: "Merge by search", hint: "Search the main client, then the client to merge into it." },
   { key: "history", label: "Merge history", hint: "Every merge, who made it and why. Anything merged by mistake can be undone here." },
 ];
 

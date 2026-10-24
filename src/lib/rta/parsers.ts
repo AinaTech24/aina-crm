@@ -69,6 +69,12 @@ export type CanonicalSipRow = {
   registrationType?: string;
   /** The scheme money is transferred INTO — only an STP has one (CAMS TARGET_SCH). */
   targetScheme?: string;
+  /** The registrar's own status for the registration (KFintech MFSD243 "Status": Live SIP, Terminated…). */
+  registrarStatus?: string;
+  /** KFintech's TerminateDate — shown with the status, never used to close the SIP. */
+  registrarEndDate?: string;
+  /** Why it stopped, in the registrar's words (CAMS WBR49 / KFintech MFSD230 REMARKS). */
+  registrarRemark?: string;
 };
 
 export type CanonicalMandateRow = {
@@ -196,10 +202,15 @@ const DEFAULT_SIP_BOOK_MAP = {
 };
 
 const SIP_BOOK_ALIASES: Record<string, string[]> = {
-  pan: ["PAN", "INV_PAN", "PAN_NO", "PAN NO", "PAN_NUM", "PAN NUM", "INVPAN", "PAN_NUMBER"],
-  folioNumber: ["FOLIO", "FOLIO_NO", "FOLIO_NUM", "FOLIONO", "FOLIO NO", "FOLIO NUM", "FOLIONUM", "FOL_NO"],
+  pan: ["PAN", "INV_PAN", "PAN_NO", "PAN NO", "PAN_NUM", "PAN NUM", "INVPAN", "PAN_NUMBER", "PAN_PEKRN"],
+  // KFintech's MFSD230 ("SIP/STP Report") names the folio ACNO and the scheme
+  // SCHDESC. With no folio column recognised the header was not detected at
+  // all, the positional fallback read column 1 (AGENT, the ARN) as the folio,
+  // and every row failed "Folio ARN-… not found" (Attitude Financial, 9 Oct
+  // 2026: 879 of 879 rows).
+  folioNumber: ["FOLIO", "FOLIO_NO", "FOLIO_NUM", "FOLIONO", "FOLIO NO", "FOLIO NUM", "FOLIONUM", "FOL_NO", "FOLIOCHK", "ACNO", "AC_NO"],
   schemeCode: ["SCH_CODE", "SCHEME_CODE", "SCHEME CODE", "PRODUCT_CODE", "PRODUCT CODE", "SCHCOD", "PRODCODE", "SCH_CD"],
-  schemeName: ["SCH_NAME", "SCHEME_NAME", "SCHEME NAME", "PRODUCT_NAME", "PRODUCT NAME", "SCHNAME", "PRODNAME"],
+  schemeName: ["SCH_NAME", "SCHEME_NAME", "SCHEME NAME", "PRODUCT_NAME", "PRODUCT NAME", "SCHNAME", "PRODNAME", "SCHDESC", "SCH_DESC"],
   // AUTO_AMOUNT / PERIODICITY / PERIOD_DAY are the CAMS WBR49 ("Systematic
   // Registration") spellings. Without them the header lookup found nothing and
   // — because resolveHeader returns ONLY what it detected, never merged with the
@@ -215,12 +226,20 @@ const SIP_BOOK_ALIASES: Record<string, string[]> = {
   startDate: ["START_DATE", "SIP_START_DATE", "FROM_DATE", "FROM DATE", "START DATE"],
   endDate: ["END_DATE", "SIP_END_DATE", "TO_DATE", "TO DATE", "END DATE"],
   nextInstallmentAt: ["NEXT_DEBIT_DATE", "NEXT_INSTALLMENT_DATE", "NEXT_DUE_DATE", "NEXT_DATE", "NEXT_DEBIT", "NEXT_DT"],
-  mandateRefNo: ["MANDATE_ID", "UMRN", "MANDATE_REF", "MANDATE_REF_NO", "MANDATE REF", "UMRN_NO"],
+  mandateRefNo: ["MANDATE_ID", "UMRN", "MANDATE_REF", "MANDATE_REF_NO", "MANDATE REF", "UMRN_NO", "ECSNO", "ECS_NO"],
   // A registration report lists cancelled and finished SIPs too. Without the
   // cease date every row imported as 'active', and the SIP book counted SIPs
   // that stopped years ago.
   ceaseDate: ["CEASE_DATE", "CEASED_DATE", "SIP_CEASE_DATE", "CANCEL_DATE", "CANCELLATION_DATE", "TERMINATION_DATE"],
-  registrationType: ["AUT_TRNTYP", "AUTO_TRNTYP", "AUTO_TRN_TYPE", "REGISTRATION_TYPE"],
+  // What the registrar says the registration is, and why it stopped
+  // (lib/rta/sip-registrar-status.ts). Optional columns: never required for a
+  // row to be read.
+  registrarStatus: ["STATUS", "SIP_STATUS", "REG_STATUS", "REGISTRATION_STATUS"],
+  registrarEndDate: ["TERMINATEDATE", "TERMINATE_DATE"],
+  registrarRemark: ["REMARKS", "REMARK", "CEASE_REASON", "TERMINATION_REASON"],
+  // KFintech MFSD230 calls it TRTYPE (SIP / STP / SWP): the STP and SWP rows
+  // stay out of the SIP book, as CAMS's do.
+  registrationType: ["AUT_TRNTYP", "AUTO_TRNTYP", "AUTO_TRN_TYPE", "REGISTRATION_TYPE", "TRTYPE", "TR_TYPE"],
   targetScheme: ["TARGET_SCH", "TARGET_SCHEME", "TARGET_SCHEME_CODE", "TO_SCHEME"],
 };
 
@@ -256,10 +275,16 @@ const DEFAULT_AUM_STATEMENT_MAP = {
   aumValue: 6
 };
 
+// CAMS's newer report layouts ("…C" files, and the WBR22 "AuM on a specific
+// date by Scheme by Investor" of 9 Oct 2026) name the folio FOLIOCHK and the
+// PAN PAN_PEKRN. Neither was known here, so the header went undetected, the
+// positional fallback read PRODUCT_CODE as the folio, and Attitude Financial
+// got 182 clients called "Folio HHRERP", "Folio P3289"… holding Rs 3.95 Cr
+// that was each scheme's total, not anyone's holding.
 const AUM_STATEMENT_ALIASES: Record<string, string[]> = {
-  pan: ["PAN", "INV_PAN", "PAN_NO", "PAN NO", "PAN_NUM", "PAN NUM", "INVPAN", "PAN_NUMBER", "PAN NUMBER"],
+  pan: ["PAN", "INV_PAN", "PAN_NO", "PAN NO", "PAN_NUM", "PAN NUM", "INVPAN", "PAN_NUMBER", "PAN NUMBER", "PAN_PEKRN"],
   investorName: ["INV_NAME", "INVNAME", "INVESTOR_NAME", "INVESTOR NAME", "INV NAME", "NAME", "HOLDER_NAME", "FIRST_HOLDER"],
-  folioNumber: ["FOLIO", "FOLIO_NO", "FOLIO_NUM", "FOLIONO", "FOLIO NO", "FOLIO NUM", "FOLIONUM", "FOL_NO", "ACCOUNT NUMBER", "SCHEME_FOLIO_NUMBER"],
+  folioNumber: ["FOLIO", "FOLIO_NO", "FOLIO_NUM", "FOLIONO", "FOLIO NO", "FOLIO NUM", "FOLIONUM", "FOL_NO", "FOLIOCHK", "ACCOUNT NUMBER", "SCHEME_FOLIO_NUMBER"],
   schemeCode: ["SCH_CODE", "SCHEME_CODE", "SCHEME CODE", "PRODUCT_CODE", "PRODUCT CODE", "SCHCOD", "PRODCODE", "SCH_CD", "PRODUCT"],
   schemeName: ["SCH_NAME", "SCHEME_NAME", "SCHEME NAME", "PRODUCT_NAME", "PRODUCT NAME", "SCHNAME", "PRODNAME", "FUND DESCRIPTION"],
   units: ["UNITS", "UNIT", "QTY", "QUANTITY", "NO_OF_UNITS", "NO OF UNITS", "UNIT_BAL", "BALANCE_UNITS", "CURRENT_UNITS", "CLOS_BAL"],
@@ -411,6 +436,7 @@ export function parseSipBook(
   if (!lines.length) return out;
   const delim = getDelimiter(source, lines[0]);
   const { start, indexMap } = resolveHeader(lines[0] ?? "", delim, SIP_BOOK_ALIASES, DEFAULT_SIP_BOOK_MAP);
+  assertKnownLayout(start, lines[0] ?? "", delim, "SIP register");
 
   // CAMS calls the scheme-name column plainly `SCHEME`, which is too generic to
   // sit in SIP_BOOK_ALIASES: buildHeaderIndexMap takes the FIRST header matching
@@ -426,7 +452,8 @@ export function parseSipBook(
     const line = lines[i].trim();
     if (!line) continue;
     const cols = splitLine(line, delim);
-    const maxIdx = Math.max(...Object.values(indexMap));
+    // The optional status columns never decide whether a row is long enough.
+    const maxIdx = Math.max(...Object.entries(indexMap).filter(([k]) => !OPTIONAL_SIP_COLUMNS.has(k)).map(([, v]) => v));
     if (cols.length <= maxIdx) continue;
 
     const val = (field: string) => cols[indexMap[field as keyof typeof indexMap]]?.trim() ?? "";
@@ -449,10 +476,15 @@ export function parseSipBook(
       ceaseDate: realDate(val("ceaseDate")),
       registrationType: val("registrationType") || undefined,
       targetScheme: val("targetScheme") || undefined,
+      registrarStatus: val("registrarStatus") || undefined,
+      registrarEndDate: realDate(val("registrarEndDate")),
+      registrarRemark: val("registrarRemark") || undefined,
     });
   }
   return out;
 }
+
+const OPTIONAL_SIP_COLUMNS = new Set(["registrarStatus", "registrarRemark", "registrarEndDate"]);
 
 /**
  * A date that means something. A blank spreadsheet cell comes out as Excel's
@@ -516,6 +548,7 @@ export function parseAumStatement(
   if (!lines.length) return out;
   const delim = getDelimiter(source, lines[0]);
   const { start, indexMap } = resolveHeader(lines[0] ?? "", delim, AUM_STATEMENT_ALIASES, DEFAULT_AUM_STATEMENT_MAP);
+  assertKnownLayout(start, lines[0] ?? "", delim, "AUM statement");
 
   for (let i = start; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -561,6 +594,27 @@ function getDelimiter(_source: string, text: string): string {
  * which failed on CAMS files that don't print the words "PAN"/"AUM"/"BROKERAGE".
  * Falls back to the positional default map when no header is recognised.
  */
+/**
+ * A first line made of column NAMES that resolveHeader could not place means a
+ * layout this importer does not know. Reading it by position anyway put scheme
+ * codes in the folio column and created a client per scheme (Attitude
+ * Financial, 9 Oct 2026); and the ARN in the folio column of a KFintech SIP
+ * report. Refuse instead, naming the columns, so the file is marked failed and
+ * the layout gets added. A file with no header row at all still reads by
+ * position.
+ */
+export class UnknownRtaLayoutError extends Error {}
+function assertKnownLayout(start: number, firstLine: string, delim: string, what: string): void {
+  if (start !== 0) return;
+  const cells = splitLine(firstLine, delim).map((c) => c.trim()).filter(Boolean);
+  if (cells.length < 3) return;
+  const named = cells.filter((c) => /^[A-Za-z][A-Za-z0-9 _./()&-]*$/.test(c) && !/^\d/.test(c));
+  if (named.length / cells.length < 0.8) return;
+  throw new UnknownRtaLayoutError(
+    `Unrecognised ${what} layout — no folio or PAN column among: ${cells.slice(0, 8).join(", ")}${cells.length > 8 ? ", …" : ""}. Nothing was imported.`
+  );
+}
+
 function resolveHeader(
   firstLine: string,
   delim: string,

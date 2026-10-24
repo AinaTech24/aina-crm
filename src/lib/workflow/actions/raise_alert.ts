@@ -1,5 +1,6 @@
 import { v4 as uuid } from "uuid";
 import { sql } from "drizzle-orm";
+import { boundUuidArray } from "@/lib/sql/bound-array";
 import { auditLog, notifications } from "@/db/schema";
 import { resolveExpression } from "../context";
 import { resolveRecipients } from "./create_notification";
@@ -77,7 +78,7 @@ export const raiseAlertHandler: ActionHandler<any> = {
       const rows = await tx.execute(sql`
         SELECT email FROM users
         WHERE tenant_id = ${ctx.tenantId}
-          AND id = ANY(${sql.raw(`ARRAY[${recipientIds.map((r) => `'${r.replace(/'/g, "''")}'`).join(",")}]::uuid[]`)})
+          AND id = ANY(${boundUuidArray(recipientIds)})
           AND email IS NOT NULL
       `);
       for (const r of rows.rows as any[]) {

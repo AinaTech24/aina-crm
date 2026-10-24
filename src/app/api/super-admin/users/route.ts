@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
 import bcrypt from "bcryptjs";
 import { sql } from "drizzle-orm";
+import { boundTextArray } from "@/lib/sql/bound-array";
 import { z } from "zod";
 import { withPlatformAdmin } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
       const existing = await tx.execute(sql`SELECT 1 FROM users WHERE lower(email) = ${email} LIMIT 1`);
       if (existing.rows.length > 0) return true;
 
-      const rolesLiteral = sql.raw(`ARRAY['${body.role}']::text[]`);
+      const rolesLiteral = boundTextArray([body.role]);
       await tx.execute(sql`
         INSERT INTO users (id, tenant_id, email, name, password_hash, roles, status, activated_at, created_at, updated_at)
         VALUES (${id}, ${PLATFORM_TENANT_ID}::uuid, ${email}, ${body.name},

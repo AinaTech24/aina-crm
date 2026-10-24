@@ -16,21 +16,26 @@ import { require as requireCap, requireAny, can } from "@/lib/auth/rbac";
 import { assertActiveLicense, assertModuleEnabled, assertInvestorQuota } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { buildInvestorConditions } from "@/lib/investors/list-filters";
-import { investorScopeCondition } from "@/lib/investors/access";
+import { investorScopeCondition, investorScopeSql } from "@/lib/investors/access";
+import { existingClientForPan } from "@/lib/investors/client-return";
 import { healthFields } from "@/lib/investors/health";
 import { NomineesArray } from "@/lib/investors/nominee";
 import { ReferralsArray } from "@/lib/investors/referral";
 import { registerNomineePanDocs } from "@/lib/investors/nominee-docs";
+import { CLIENT_TYPE_KEYS, TypeDetailsSchema, canNominate, cleanTypeDetails, singleHoldingOnly } from "@/lib/investors/client-types";
 import { loadCustomFieldDefs, sanitizeCustomFields } from "@/lib/custom-fields/values";
 import { applyRiskCategory, RISK_CATEGORIES } from "@/lib/risk-profile/apply";
 import { cleanUccCodes } from "@/lib/investors/ucc";
 import { investors, eventsOutbox } from "@/db/schema";
+import { familyHeadRmId } from "@/lib/families/head-rm";
+import { applyDemise, demiseDateError } from "@/lib/investors/demise";
 
 export const dynamic = "force-dynamic";
 
 const CreateBody = z.object({
   name: z.string().min(2).max(200),
-  pan: z.string().regex(/^[A-Z]{5}[0-9]{4}[A-Z]$/, "invalid PAN"),
+  // Required, except for a minor filed under the guardian's PAN (below).
+  pan: z.union([z.string().trim().toUpperCase().regex(/^[A-Z]{5}[0-9]{4}[A-Z]$/, "invalid PAN"), z.literal("")]).optional(),
   nominees: NomineesArray,
   referrals: ReferralsArray,
   email: z.string().email().optional().or(z.literal("")),
@@ -42,9 +47,11 @@ const CreateBody = z.object({
   occupation: z.string().optional(),
   incomeRange: z.string().optional(),
   segmentTag: z.enum(["HNI", "Affluent", "Retail", "NRI", "Corporate"]).optional(),
-  investorCategory: z
-    .enum(["individual", "huf", "corporate", "company", "trust", "nri", "minor", "other"])
-    .default("individual"),
+  investorCategory: z.enum(CLIENT_TYPE_KEYS).default("individual"),
+  /** What the client type adds (guardian, Karta, entity, NRI…) — lib/investors/client-types.ts. */
+  typeDetails: TypeDetailsSchema.optional(),
+  /** A minor's guardian who is a client too (else found by the guardian PAN). */
+  guardianInvestorId: z.string().uuid().optional(),
   rmId: z.string().uuid().optional(),
   familyId: z.string().uuid().optional(),
   bseUccCode: z.string().optional(),
@@ -80,6 +87,7 @@ const CreateBody = z.object({
   maritalStatus: z.string().optional(),
   modeOfHolding: z.string().optional(),
   anniversaryDate: z.string().optional(),
+  dateOfDemise: z.string().optional(),
   birthPlace: z.string().optional(),
   motherName: z.string().optional(),
   mobileRelation: z.string().optional(),
@@ -195,6 +203,43 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
     }
     const body = parse.data;
+    if (body.dateOfDemise) {
+      const bad = demiseDateError(body.dateOfDemise.slice(0, 10), body.dob);
+      if (bad) return NextResponse.json({ error: bad, field: "dateOfDemise" }, { status: 400 });
+    }
+
+    // A minor is filed the way the registrar import files one (lib/rta/import.ts):
+    // MINOR:<own PAN>, or — with no PAN of their own — MINOR:<guardian PAN>:<NAME>,
+    // so a later import finds this client instead of creating a second one.
+    const typedPan = (body.pan ?? "").trim().toUpperCase();
+    let storedPan: string;
+    if (body.investorCategory === "minor") {
+      const gp = (body.typeDetails?.guardian?.pan ?? "").trim().toUpperCase();
+      if (typedPan) storedPan = `MINOR:${typedPan}`;
+      else if (gp) storedPan = `MINOR:${gp}:${body.name.toUpperCase().replace(/[^A-Z0-9]/g, "")}`;
+      else return NextResponse.json({ error: "A minor needs their own PAN or the guardian's PAN.", field: "pan" }, { status: 400 });
+    } else {
+      if (!typedPan) return NextResponse.json({ error: "PAN is required.", field: "pan" }, { status: 400 });
+      storedPan = typedPan;
+    }
+
+    // A PAN already in the CRM is never a second client. Someone who left
+    // (Exited / Closed) is brought back, someone in the Trash restored — with
+    // their history, family and documents — rather than typed in again
+    // (lib/investors/client-return.ts).
+    const existing = await withTenant(session.tenantId, async (tx) => {
+      const visible = await investorScopeSql(tx, session, "i2").catch(() => sql`FALSE`);
+      return existingClientForPan(tx, session.tenantId, storedPan, visible);
+    }, { userId: session.userId, branchId: session.branchId ?? undefined, roles: session.roles });
+    if (existing) {
+      const error =
+        existing.state === "trash"
+          ? "This client was deleted and is in the Trash. Restore them to bring back their history."
+          : existing.state === "exited"
+            ? "This client is already in the CRM, marked as exited. Reactivate them instead of adding them again."
+            : "A client with this PAN already exists.";
+      return NextResponse.json({ error, field: "pan", existing }, { status: 409 });
+    }
 
     const id = uuid();
     const clientMeta = clientMetaFromHeaders(req.headers);
@@ -203,6 +248,35 @@ export async function POST(req: NextRequest) {
       const cfDefs = await loadCustomFieldDefs(tx, session.tenantId, "investor");
       const customFields = sanitizeCustomFields(cfDefs, body.customFields);
 
+      // Assigned-only callers may only create into their own book, so a
+      // supplied rmId is ignored for them. A client created straight into a
+      // family takes the family head's RM by default (lib/families/head-rm),
+      // unless someone allowed to choose the RM chose one.
+      let rmId = (canAssignAnyRm ? body.rmId : undefined) ?? session.userId;
+      if (body.familyId && canAssignAnyRm && !body.rmId) rmId = (await familyHeadRmId(tx, body.familyId)) ?? rmId;
+
+      // A minor's guardian as a client: the one picked, else the client whose
+      // PAN is the guardian PAN. The minor then carries the guardian's risk
+      // profile (a database rule, migration 0234).
+      let guardianInvestorId: string | null = null;
+      if (body.investorCategory === "minor") {
+        if (body.guardianInvestorId) {
+          const ok = (await tx.execute(sql`
+            SELECT 1 FROM investors WHERE id = ${body.guardianInvestorId}::uuid
+              AND tenant_id = ${session.tenantId}::uuid AND deleted_at IS NULL`)).rows.length;
+          if (ok) guardianInvestorId = body.guardianInvestorId;
+        } else {
+          const gp = String(body.typeDetails?.guardian?.pan ?? "").trim().toUpperCase();
+          if (gp) {
+            const g = (await tx.execute(sql`
+              SELECT id FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND pan = ${gp}
+                AND deleted_at IS NULL AND merged_into_id IS NULL
+              ORDER BY dedup_pan DESC LIMIT 1`)).rows[0] as { id: string } | undefined;
+            guardianInvestorId = g?.id ?? null;
+          }
+        }
+      }
+
       const inserted = await tx
         .insert(investors)
         .values({
@@ -210,26 +284,29 @@ export async function POST(req: NextRequest) {
           tenantId: session.tenantId,
           branchId: session.branchId,
           name: body.name,
-          pan: body.pan,
+          pan: storedPan,
           email: body.email || null,
           phone: body.phone || null,
           whatsappPhone: body.whatsappPhone || null,
           dob: body.dob || null,
           gender: body.gender ?? null,
           occupation: body.occupation || null,
+          incomeRange: body.incomeRange || null,
           employerName: body.employerName || null,
           segmentTag: body.segmentTag,
           investorCategory: body.investorCategory,
           clientCategory: body.clientCategory ?? null,
           // Nominees — store the array + mirror the first into legacy columns.
-          nominees: body.nominees ?? [],
+          // Only an individual can nominate (lib/investors/client-types.ts).
+          nominees: canNominate(body.investorCategory) ? body.nominees ?? [] : [],
+          typeDetails: cleanTypeDetails(body.investorCategory, body.typeDetails),
+          isMinor: body.investorCategory === "minor",
+          guardianInvestorId,
           referrals: body.referrals ?? [],
-          nomineeName: body.nominees?.[0]?.name || null,
-          nomineeRelation: body.nominees?.[0]?.relation || null,
-          nomineeDob: body.nominees?.[0]?.dob || null,
-          // Assigned-only callers may only create into their own book, so a
-        // supplied rmId is ignored for them.
-        rmId: (canAssignAnyRm ? body.rmId : undefined) ?? session.userId,
+          nomineeName: (canNominate(body.investorCategory) && body.nominees?.[0]?.name) || null,
+          nomineeRelation: (canNominate(body.investorCategory) && body.nominees?.[0]?.relation) || null,
+          nomineeDob: (canNominate(body.investorCategory) && body.nominees?.[0]?.dob) || null,
+          rmId,
           familyId: body.familyId ?? null,
           address: body.address,
           notes: body.notes,
@@ -243,8 +320,9 @@ export async function POST(req: NextRequest) {
           aadhaarLast4: body.aadhaarLast4 || null,
           // Personal
           maritalStatus: body.maritalStatus || null,
-          modeOfHolding: body.modeOfHolding || null,
+          modeOfHolding: singleHoldingOnly(body.investorCategory) ? "Single" : body.modeOfHolding || null,
           anniversaryDate: body.anniversaryDate || null,
+          dateOfDemise: body.dateOfDemise || null,
           birthPlace: body.birthPlace || null,
           motherName: body.motherName || null,
           mobileRelation: body.mobileRelation || null,
@@ -293,12 +371,17 @@ export async function POST(req: NextRequest) {
         action: "investor.create",
         entityType: "investor",
         entityId: id,
-        after: { name: body.name, pan: body.pan, segmentTag: body.segmentTag },
+        after: { name: body.name, pan: storedPan, segmentTag: body.segmentTag },
         ...clientMeta,
       });
 
+      // A client entered with a date of demise starts Inactive.
+      if (body.dateOfDemise) {
+        await applyDemise(tx, { tenantId: session.tenantId, investorId: id, actorUserId: session.userId, day: body.dateOfDemise.slice(0, 10) });
+      }
+
       // Register each nominee's PAN file as a client document.
-      await registerNomineePanDocs(tx, session.tenantId, id, body.nominees, session.userId);
+      if (canNominate(body.investorCategory)) await registerNomineePanDocs(tx, session.tenantId, id, body.nominees, session.userId);
 
       // Risk profile chosen on the form → create a risk_profile_responses record
       // + cache it on the investor row (no-op if not provided).

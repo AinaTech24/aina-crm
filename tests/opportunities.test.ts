@@ -73,6 +73,46 @@ describe("gates", () => {
     expect(gateFor("mf_transaction", opp(), facts({ kycVerified: false, kycStatus: "expired" })).some((p) => !p.satisfied)).toBe(true);
     expect(gateFor("mf_transaction", opp({ expectedValue: "50000" }), facts()).some((p) => !p.satisfied)).toBe(true);
     expect(gateFor("mf_transaction", opp({ investmentMode: "lumpsum", expectedValue: "500000" }), facts({ mandateStatus: "none" })).every((p) => p.satisfied)).toBe(true);
+    // Won (MF) waits for the RTA data check task to be completed.
+    expect(gateFor("won", opp(), facts({ rtaCheck: null })).some((p) => !p.satisfied)).toBe(true);
+    expect(gateFor("won", opp(), facts({ rtaCheck: { id: "t", status: "open" } })).some((p) => !p.satisfied)).toBe(true);
+    expect(gateFor("won", opp(), facts({ rtaCheck: { id: "t", status: "completed" } })).every((p) => p.satisfied)).toBe(true);
+  });
+});
+
+describe("proposal approval and transaction review", () => {
+  const stepsAfterAccepted = ["mf_kyc", "ins_proposal_form", "gen_executed"];
+  it("waits for the client to approve the proposal before the step after Client accepted", () => {
+    for (const t of stepsAfterAccepted) {
+      expect(gateFor(t, opp(), facts()).some((p) => !p.satisfied), t).toBe(true);
+      const sent = facts({ proposal: { id: "p", status: "sent", type: "mutual_fund" } });
+      expect(gateFor(t, opp(), sent).some((p) => !p.satisfied), t).toBe(true);
+      const ok = facts({ proposal: { id: "p", status: "accepted", type: "mutual_fund" } });
+      expect(gateFor(t, opp(), ok).every((p) => p.satisfied), t).toBe(true);
+    }
+  });
+
+  it("an MF journey ends Transaction placed → Approve / reject transaction → Won", () => {
+    expect(nextStage("mf", "mf_transaction")).toBe("txn_review");
+    expect(nextStage("mf", "txn_review")).toBe("rta_check");
+    expect(nextStage("mf", "rta_check")).toBe("won");
+    const t = new Set(opportunityTransitions().map((x) => `${x.from}>${x.to}`));
+    expect(t.has("txn_review>mf_transaction")).toBe(true); // a rejection goes back
+    expect(t.has("txn_review>lost")).toBe(true);
+    expect(t.has("txn_review>rta_check")).toBe(true);
+    expect(t.has("rta_check>won")).toBe(true);
+    expect(t.has("txn_review>won")).toBe(false); // approval no longer wins the client
+  });
+
+  it("never skips the review: a person approves or rejects", () => {
+    expect(skipReason("rta_check", opp(), facts({ transaction: { id: "t", orderDate: null, amount: 1 } }))).toBeNull();
+    expect(skipReason("txn_review", opp(), facts({ transaction: { id: "t", orderDate: null, amount: 1 } }))).toBeNull();
+  });
+
+  it("seeded stage orders are a strict sequence", () => {
+    const orders = OPPORTUNITY_STAGES.map((s) => s.order);
+    expect(new Set(orders).size).toBe(orders.length);
+    expect(orders).toEqual([...orders].sort((a, b) => a - b));
   });
 });
 

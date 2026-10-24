@@ -6,6 +6,8 @@
  * (the same shape the detail page already loads from drizzle).
  */
 
+import { needsNominee, typeHas } from "@/lib/investors/type-rules";
+
 export type HealthBand = "green" | "amber" | "red";
 
 export type InvestorForHealth = {
@@ -20,6 +22,10 @@ export type InvestorForHealth = {
   fatcaExpiryAt?: Date | string | null;
   fatcaStatus?: string | null;
   nomineeName?: string | null;
+  /** The client type and its details decide whether a nominee or a PAN–Aadhaar link applies. */
+  investorCategory?: string | null;
+  nominees?: unknown;
+  typeDetails?: import("@/lib/investors/client-types").ClientTypeDetails | null;
   bankAccountNumberMasked?: string | null;
   panAadhaarLinkStatus?: string | null;
   riskProfile?: string | null;
@@ -151,10 +157,11 @@ export function clientHealth(
     }
   }
 
-  // 4. PAN-Aadhaar
+  // 4. PAN-Aadhaar — an adult individual's PAN only (lib/investors/type-rules.ts)
   if (
-    inv.panAadhaarLinkStatus === "not_linked" ||
-    inv.panAadhaarLinkStatus === "pending"
+    typeHas.adultFields(inv.investorCategory) &&
+    (inv.panAadhaarLinkStatus === "not_linked" ||
+    inv.panAadhaarLinkStatus === "pending")
   ) {
     factors.push({
       key: "pan_aadhaar",
@@ -185,8 +192,8 @@ export function clientHealth(
     score -= 5;
   }
 
-  // 6. Nominee
-  if (!inv.nomineeName || inv.nomineeName.trim() === "") {
+  // 6. Nominee — only a type that can nominate, and not after an opt-out
+  if (needsNominee(inv)) {
     factors.push({
       key: "nominee",
       label: "Nominee missing",

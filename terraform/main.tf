@@ -15,10 +15,6 @@ data "aws_subnets" "default" {
   }
 }
 
-# Amazon Linux 2023, ARM64 (matches the t4g Graviton instance).
-data "aws_ssm_parameter" "al2023" {
-  name = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64"
-}
 
 resource "random_id" "suffix" {
   byte_length = 3
@@ -38,6 +34,10 @@ resource "aws_key_pair" "deploy" {
 }
 
 # ── Security groups ─────────────────────────────────────────────────────────
+# The description still mentions SSH because a security group's description
+# cannot change without REPLACING the group (and with it the RDS rule that
+# references it). Port 22 itself is closed: administration is SSM-only since
+# 2026-10-07.
 resource "aws_security_group" "web" {
   name        = "${var.project}-web"
   description = "web: 80/443 public, SSH from operator IP only"
@@ -57,14 +57,6 @@ resource "aws_security_group" "web" {
     to_port     = 443
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    description = "SSH (operator only)"
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = [var.ssh_cidr]
   }
 
   egress {
@@ -109,23 +101,44 @@ resource "aws_s3_bucket_public_access_block" "uploads" {
   restrict_public_buckets = true
 }
 
-# Cost hygiene (no data loss — same objects, cheaper tier + cleanup):
-#  - move objects to Intelligent-Tiering after 90 days (auto hot/cold, no
-#    retrieval fees — safe for documents that may be re-opened later)
-#  - delete abandoned multipart uploads (presigned PUTs that never completed)
+# The production rules (set 2026-10-07): RTA mailback files that SES drops
+# under rta-inbound*/ are transient — gone after 30 days, old versions after
+# 1 day; everything else keeps old versions 30 days (versioning is ON), clears
+# expired delete markers and abandoned multipart uploads. A lifecycle
+# configuration REPLACES the bucket's whole rule set, so every rule is here.
 resource "aws_s3_bucket_lifecycle_configuration" "uploads" {
-  bucket = aws_s3_bucket.uploads.id
+  bucket                                 = aws_s3_bucket.uploads.id
+  transition_default_minimum_object_size = "all_storage_classes_128K"
+
+  dynamic "rule" {
+    for_each = ["rta-inbound", "rta-inbound-held", "rta-inbound-failed"]
+    content {
+      id     = "${rule.value}-30d"
+      status = "Enabled"
+      filter {
+        prefix = "${rule.value}/"
+      }
+      expiration {
+        days = 30
+      }
+      noncurrent_version_expiration {
+        noncurrent_days = 1
+      }
+    }
+  }
 
   rule {
-    id     = "intelligent-tiering-cold-objects"
+    id     = "noncurrent-versions-30d"
     status = "Enabled"
-    filter {}
-
-    transition {
-      days          = 90
-      storage_class = "INTELLIGENT_TIERING"
+    filter {
+      prefix = ""
     }
-
+    expiration {
+      expired_object_delete_marker = true
+    }
+    noncurrent_version_expiration {
+      noncurrent_days = 30
+    }
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
     }
@@ -196,22 +209,42 @@ resource "aws_db_instance" "main" {
   final_snapshot_identifier = "${var.project}-db-final-${random_id.suffix.hex}"
   deletion_protection       = true
   apply_immediately         = true
+
+  # Performance Insights, free tier (7 days), enabled 2026-10-07.
+  performance_insights_enabled          = true
+  performance_insights_retention_period = 7
 }
 
 # ── Web/worker box + stable public IP ────────────────────────────────────────
 resource "aws_instance" "web" {
-  ami                    = data.aws_ssm_parameter.al2023.value
+  # Pinned to the AMI the box was built from. It used to read the "latest
+  # AL2023" SSM parameter, which changes whenever Amazon publishes an image —
+  # and a changed AMI REPLACES the instance. The OS is patched in place (dnf);
+  # moving to a new AMI is a deliberate rebuild, never a side effect of plan.
+  ami                    = var.web_ami_id
   instance_type          = var.instance_type
   subnet_id              = data.aws_subnets.default.ids[0]
   vpc_security_group_ids = [aws_security_group.web.id]
   key_name               = aws_key_pair.deploy.key_name
   iam_instance_profile   = aws_iam_instance_profile.ec2.name
-  user_data              = file("${path.module}/user-data.sh")
+  # CRLF-proof: a Windows checkout turns the script's line endings into CRLF,
+  # which reads as a different user_data and REPLACES the instance. The box was
+  # built from the LF version.
+  user_data = replace(file("${path.module}/user-data.sh"), "\r\n", "\n")
 
   root_block_device {
     volume_size = var.root_volume_gb
     volume_type = "gp3"
     encrypted   = true
+    # The daily DLM snapshot policy (monitoring.tf) selects volumes by this
+    # tag — removing it silently stops the root volume's backups.
+    # default_tags do not reach root-volume tags, so the volume's own tags are
+    # listed here as they are in production.
+    tags = {
+      "aina-backup" = "daily"
+      "Project"     = var.project
+      "ManagedBy"   = "terraform"
+    }
   }
 
   tags = { Name = "${var.project}-web" }

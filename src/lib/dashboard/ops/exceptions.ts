@@ -14,6 +14,7 @@ import {
   assigneeFilter, clientScope, FINANCIAL_KINDS, inList, istDay, KIND_LABEL, num, numOrNull, opsBase, opsFilter, PENDING_LABEL,
   selfOnly, STATUS_LABEL, str, type OpsWindow, type Row, type Tx,
 } from "./window";
+import { missingAdultTextSql, missingDobSql } from "@/lib/investors/type-rules";
 
 const SIP_OPEN = sql`('pending', 'client_contacted', 'bank_issue', 'mandate_issue')`;
 const OPEN_SR = sql`('open', 'in_progress', 'escalated', 'waiting_customer')`;
@@ -447,10 +448,10 @@ export async function loadClientMaster(tx: Tx, w: OpsWindow): Promise<{ clients:
            COUNT(*) FILTER (WHERE NULLIF(btrim(COALESCE(i.pan, '')), '') IS NULL)::int AS pan,
            COUNT(*) FILTER (WHERE NULLIF(btrim(COALESCE(i.phone, '')), '') IS NULL)::int AS phone,
            COUNT(*) FILTER (WHERE NULLIF(btrim(COALESCE(i.email, '')), '') IS NULL)::int AS email,
-           COUNT(*) FILTER (WHERE i.dob IS NULL)::int AS dob,
+           COUNT(*) FILTER (WHERE ${missingDobSql("i")})::int AS dob,
            COUNT(*) FILTER (WHERE NULLIF(btrim(COALESCE(i.client_category, '')), '') IS NULL)::int AS category,
-           COUNT(*) FILTER (WHERE NULLIF(btrim(COALESCE(i.occupation, '')), '') IS NULL)::int AS occupation,
-           COUNT(*) FILTER (WHERE NULLIF(btrim(COALESCE(i.employer_name, '')), '') IS NULL)::int AS employer,
+           COUNT(*) FILTER (WHERE ${missingAdultTextSql("i", "occupation")})::int AS occupation,
+           COUNT(*) FILTER (WHERE ${missingAdultTextSql("i", "employer_name")})::int AS employer,
            COUNT(*) FILTER (WHERE i.family_id IS NULL)::int AS family
       FROM investors i
      WHERE i.tenant_id = ${w.tenantId}::uuid AND i.deleted_at IS NULL AND i.merged_into_id IS NULL

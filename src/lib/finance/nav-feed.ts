@@ -219,6 +219,26 @@ export async function upsertNavs(records: NavRecord[]): Promise<number> {
 }
 
 /**
+ * How many of these records differ from what scheme_nav already holds (a new
+ * scheme, a new NAV or a new NAV date). AMFI publishes through the evening and
+ * overnight, so the feed is fetched several times a day; a fetch that changes
+ * nothing needs no AUM recompute.
+ */
+export async function countChangedNavs(records: NavRecord[]): Promise<number> {
+  const rows = await withSystem(async (tx) => {
+    const r = await tx.execute(sql`SELECT scheme_code, nav::float8 AS nav, to_char(nav_date, 'YYYY-MM-DD') AS nav_date FROM scheme_nav`);
+    return r.rows as Array<{ scheme_code: string; nav: number; nav_date: string | null }>;
+  });
+  const held = new Map(rows.map((r) => [String(r.scheme_code), r]));
+  let changed = 0;
+  for (const rec of records) {
+    const h = held.get(rec.schemeCode);
+    if (!h || Math.abs(Number(h.nav) - rec.nav) > 1e-9 || h.nav_date !== rec.navDate) changed++;
+  }
+  return changed;
+}
+
+/**
  * Minimum plausible scheme count in a healthy AMFI feed. The real feed carries
  * ~14k schemes; anything under this means the upstream format moved or the
  * download was truncated, NOT that India lost its mutual funds.
@@ -238,6 +258,8 @@ export const NAV_FEED_MIN_RECORDS = Number(process.env.NAV_FEED_MIN_RECORDS ?? 1
 export async function refreshNav(): Promise<{
   fetched: number;
   written: number;
+  /** Schemes whose NAV or NAV date differs from what scheme_nav held. */
+  changed: number;
   navDate: string | null;
 }> {
   const body = await fetchNavAll();
@@ -251,8 +273,9 @@ export async function refreshNav(): Promise<{
     );
   }
 
+  const changed = await countChangedNavs(records);
   const written = await upsertNavs(records);
   // Most-common nav date across the feed (sanity field for logs).
   const navDate = records.length ? records[records.length - 1].navDate : null;
-  return { fetched: records.length, written, navDate };
+  return { fetched: records.length, written, changed, navDate };
 }

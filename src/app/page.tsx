@@ -1,36 +1,32 @@
 import Link from "next/link";
 import type { Metadata } from "next";
+import { Fraunces } from "next/font/google";
 import {
-  ShieldCheck, TrendingUp, Brain, GitBranch,
-  MessageSquare, BarChart3, Lock, ArrowRight, Check, Calculator,
-  Clock, Star,
-  ShieldAlert, Zap, CheckCircle2, ChevronRight, Upload, Cog, Rocket,
-  Users2, Building2, User,
+  ArrowRight, ArrowDown, Phone, ShieldCheck, Lock, Fingerprint, ScrollText, Check, Upload, Clock,
+  ListChecks, Scale, type LucideIcon,
 } from "lucide-react";
 import { loadLandingPlans } from "@/lib/landing/packages";
-import { CountUp } from "@/components/landing/CountUp";
 import { FaqAccordion } from "@/components/landing/FaqAccordion";
 import { MobileNav } from "@/components/landing/MobileNav";
 import { LivePricingCards } from "@/components/landing/LivePricingCards";
+import { RoleDashboards } from "@/components/landing/RoleDashboards";
+import { LivePractice } from "@/components/landing/LivePractice";
+import { BeforeAfter } from "@/components/landing/BeforeAfter";
+import { COMMUNITY_URL, DEMO_URL } from "@/lib/landing/links";
 
 // Re-render at most once a minute so admin-managed pricing cards go live without
 // a rebuild. Admin saves also fire an on-demand revalidatePath("/") for instant
 // reflection (see /api/super-admin/landing-packages); this is the safety net.
 export const revalidate = 60;
 
-/** WhatsApp community — primary "Join Our Community" CTA across the page. */
-const COMMUNITY_URL = "https://chat.whatsapp.com/C6ttmFYUtxHA7GYna5YGcN";
+/** The site's display face — a warm serif against the logo's crimson and teal. */
+const brandFont = Fraunces({ subsets: ["latin"], variable: "--font-brand", style: ["normal", "italic"], display: "swap" });
 
-/* ─────────────────────────────────────────────────────────────────────────
-   SEO — written around what Indian MFDs actually type into Google:
-   "mutual fund software for distributors", "MFD CRM India", "CAMS KFintech
-   import software", "SIP tracking software", "mutual fund distributor app",
-   "AMFI compliant WhatsApp", "trail commission reconciliation".
-   ───────────────────────────────────────────────────────────────────────── */
+/* SEO — written around what Indian MFDs actually type into Google. */
 export const metadata: Metadata = {
   title: "Aina CRM for Mutual Fund Distributors | MFD CRM Software for Compliance, Client Servicing & Growth",
   description:
-    "Aina CRM is a complete CRM and practice operating system for Mutual Fund Distributors. Manage DDQ compliance, client data, SIP rejections, review meetings, lead tracking, team tasks, MIS reports, marketing, automation and AI-powered business growth from one platform.",
+    "Aina CRM is the CRM built only for India's Mutual Fund Distributors: CAMS & KFintech imports matched to the right client, every follow-up a task, business checked against the RTA, six role dashboards and compliance on every WhatsApp, email and SMS.",
   keywords: [
     "CRM for Mutual Fund Distributors",
     "MFD CRM software",
@@ -38,7 +34,7 @@ export const metadata: Metadata = {
     "CRM for MFD",
     "DDQ compliance for MFD",
     "SIP rejection tracking software",
-    "client servicing CRM for MFD",
+    "CAMS KFintech import software",
     "MFD business automation",
     "mutual fund distributor software",
     "MFD practice management system",
@@ -46,44 +42,38 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",
-    title: "Aina CRM — Practice Operating System for Mutual Fund Distributors",
-    description:
-      "A complete CRM for MFDs: DDQ compliance, client data, SIP-rejection follow-ups, review meetings, team tasks, MIS, marketing and AI — one structured platform.",
+    title: "Aina CRM — Every client. Every SIP. Handled.",
+    description: "The CRM built only for mutual fund distributors. Nothing slips, audits stay ready, and your numbers match the RTA.",
     siteName: "Aina CRM",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Aina CRM — Practice Operating System for MFDs",
-    description:
-      "Run your MFD practice with more control, less manual work: compliance, client data, servicing, reporting, marketing and AI in one platform.",
+    title: "Aina CRM — Every client. Every SIP. Handled.",
+    description: "The CRM built only for mutual fund distributors. Nothing slips, audits stay ready, and your numbers match the RTA.",
   },
 };
 
 /* FAQ content doubles as the FAQPage rich-snippet source — keep both in sync. */
 const FAQS = [
   {
-    q: "What is Aina CRM?",
-    a: "A CRM and practice operating system built only for Mutual Fund Distributors — client data, compliance, reviews, service requests, team tasks, reporting and marketing in one platform.",
+    q: "Do I have to type my clients in again?",
+    a: "No. We import your CAMS and KFintech history — folios, transactions and SIPs — and match every row to the right client by PAN, so nobody is duplicated and families link as they load.",
   },
   {
-    q: "Who is Aina CRM for?",
-    a: "Individual ARN holders, growing firms with RM or ops teams, and larger MFD practices. If you run on Excel, memory and WhatsApp today, it replaces all three.",
+    q: "Can each RM see only their own clients?",
+    a: "Yes, if you want it. Access is set per person — the whole firm, a branch, a team or only their own book — and every dashboard, list and export follows it.",
   },
   {
-    q: "How does Aina CRM help with DDQ compliance?",
-    a: "DDQ files, checklists, complaint registers, consent and risk-profile records stay organised continuously — so an audit is a download, not a scramble.",
+    q: "How does it help with DDQ and audits?",
+    a: "Every WhatsApp, email and SMS passes an 11-rule compliance check before it leaves. Consent, OTP-confirmed risk profiles, complaints and an audit trail of every change are recorded as you work.",
   },
   {
-    q: "Can it reduce missed follow-ups?",
-    a: "Yes. Reviews, service requests, SIP rejections and lead follow-ups sit in one tracked queue with reminders and escalations, so fewer things slip.",
+    q: "How do my business numbers stay honest?",
+    a: "Operations books business the day it happens; the CAMS / KFintech feed confirms it days later. Aina links the two line by line and flags anything rejected, mismatched or missing.",
   },
   {
-    q: "Does it support marketing and lead generation?",
-    a: "Yes — content calendar, WhatsApp and email creatives, landing pages and lead capture, with a compliance check on every creative before it goes out.",
-  },
-  {
-    q: "Does Aina CRM include AI?",
-    a: "Yes. Ask-your-data queries, email drafting, meeting summaries, lead qualification and campaign ideas — practical AI for daily practice management.",
+    q: "Does Aina place mutual fund transactions?",
+    a: "No. Aina is a practice-management, analytics and communication platform. You transact on your usual platforms; Aina follows each one through to the RTA.",
   },
 ];
 
@@ -97,17 +87,17 @@ const JSON_LD = {
       applicationCategory: "BusinessApplication",
       operatingSystem: "Web",
       description:
-        "Mutual fund software for Indian distributors (MFDs): CAMS/KFintech auto-import, live AUM & family XIRR, SIP bounce recovery on WhatsApp, AMFI/SEBI-compliant messaging, 60+ financial calculators, branded reports and MIS.",
+        "CRM and practice operating system for Indian Mutual Fund Distributors (MFDs): CAMS/KFintech imports matched by PAN, families with one RM, opportunity journeys to RTA confirmation, six role dashboards, AMFI/SEBI-aware messaging, service requests, insurance and FD tracking, calculators and AI.",
       offers: { "@type": "AggregateOffer", priceCurrency: "INR", lowPrice: "9999", highPrice: "14999", offerCount: "3", priceValidUntil: "2026-12-31" },
       featureList: [
-        "Dynamic CAMS & KFintech file import with 3-way reconciliation",
-        "Live AUM, portfolio valuation and family XIRR from daily AMFI NAVs",
-        "SIP tracking with instant bounce alerts and WhatsApp recovery",
+        "CAMS & KFintech import with PAN-based client matching and family linking",
+        "Booked business reconciled line by line against the RTA feed",
+        "Opportunity journey from first call to RTA data check",
+        "Six role dashboards: Owner, Branch Head, RM, Operations, Insurance, Claims",
         "11-rule AMFI/SEBI compliance gate on WhatsApp, email and SMS",
-        "60+ client-ready financial calculators with branded PDF output",
-        "AI churn radar, cross-sell finder and tax-harvesting suggestions",
-        "Trail & commission reconciliation, practice P&L and MIS reports",
-        "Role-based multi-user access with row-level data isolation",
+        "Login-free client links: risk profile, feedback, service request, complaint",
+        "Insurance, claims and fixed deposit tracking",
+        "Role-based access with row-level data isolation per firm",
       ],
     },
     {
@@ -118,11 +108,7 @@ const JSON_LD = {
     },
     {
       "@type": "FAQPage",
-      mainEntity: FAQS.map((f) => ({
-        "@type": "Question",
-        name: f.q,
-        acceptedAnswer: { "@type": "Answer", text: f.a },
-      })),
+      mainEntity: FAQS.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })),
     },
   ],
 };
@@ -132,524 +118,287 @@ export default async function Home() {
   // hardcoded fallback so the public page never breaks.
   const plans = await loadLandingPlans();
   return (
-    <main className="min-h-screen flex flex-col bg-background relative overflow-x-clip">
+    <main className={`${brandFont.variable} min-h-screen flex flex-col bg-site-cream text-site-text relative overflow-x-clip`}>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }} />
 
       {/* ───────────────────────── Nav ───────────────────────── */}
-      <header className="sticky top-0 z-50 border-b border-border/40 bg-background/75 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto px-6 flex items-center justify-between h-16">
+      <header className="sticky top-0 z-50 bg-site-cream/85 backdrop-blur-xl border-b border-site-sand/70">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between h-16">
           <Link href="/" className="inline-flex items-center hover:opacity-90 transition-opacity">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/aina-logo.png" alt="Aina CRM — mutual fund software for distributors" className="h-8 w-auto object-contain shrink-0" />
+            <img src="/aina-logo.png" alt="Aina CRM — mutual fund software for distributors" className="h-9 w-auto object-contain shrink-0" />
           </Link>
-          <nav className="hidden md:flex items-center gap-7 text-sm font-semibold text-muted-foreground">
-            <a href="#features" className="hover:text-primary transition-colors">Features</a>
-            <a href="#calculators" className="hover:text-primary transition-colors">Calculators</a>
-            <a href="#how-it-works" className="hover:text-primary transition-colors">How It Works</a>
-            <a href="#pricing" className="hover:text-primary transition-colors">Pricing</a>
-            <Link href="/knowledge-base" className="hover:text-primary transition-colors">KAIZEN</Link>
-            <a href="#faq" className="hover:text-primary transition-colors">FAQ</a>
+          <nav className="hidden lg:flex items-center gap-8 text-sm font-semibold text-site-muted">
+            {NAV.map(([label, href]) =>
+              href.startsWith("#") ? (
+                <a key={href} href={href} className="hover:text-site-crimson transition-colors">{label}</a>
+              ) : (
+                <Link key={href} href={href} className="hover:text-site-crimson transition-colors">{label}</Link>
+              )
+            )}
           </nav>
-          <div className="hidden md:flex items-center gap-3">
-            <Link href="/login" className="text-sm font-semibold px-4 py-2 rounded-lg hover:bg-secondary text-foreground/80 hover:text-foreground transition-all">
+          <div className="hidden lg:flex items-center gap-2">
+            <Link href="/login" className="rounded-full px-4 py-2 text-sm font-semibold text-site-text hover:bg-site-sand/60 transition">
               Log in
             </Link>
-            <a href={COMMUNITY_URL} target="_blank" rel="noopener noreferrer" className="btn-primary text-sm font-semibold shadow-glow-navy">
-              Join Community <ArrowRight className="size-4" />
+            <a href={DEMO_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-full bg-site-crimson px-5 py-2.5 text-sm font-bold text-white hover:bg-site-crimson-deep transition">
+              Book a demo <ArrowRight className="size-4" />
             </a>
           </div>
-          <MobileNav communityUrl={COMMUNITY_URL} />
+          <MobileNav links={NAV} demoUrl={DEMO_URL} />
         </div>
       </header>
 
       {/* ───────────────────────── Hero ───────────────────────── */}
-      <section className="relative pt-4 pb-20 lg:pt-8 lg:pb-28 z-10">
-        <div className="max-w-7xl mx-auto px-6 grid lg:grid-cols-12 gap-12 lg:gap-8 items-center">
-          {/* Copy */}
-          <div className="lg:col-span-7 flex flex-col items-start text-left">
-            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/5 px-3.5 py-1.5 text-xs font-semibold text-emerald-700 mb-6">
-              <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-              Built only for Indian MFDs · AMFI & SEBI-aware · DPDP-ready data isolation
+      <section className="relative">
+        <div aria-hidden className="pointer-events-none absolute -top-40 -left-40 size-96 rounded-full bg-site-crimson/10 blur-3xl" />
+        <div aria-hidden className="pointer-events-none absolute top-40 -right-40 size-96 rounded-full bg-site-ink/10 blur-3xl" />
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 pt-12 pb-20 lg:pt-20 lg:pb-28 grid lg:grid-cols-12 gap-14 lg:gap-10 items-center">
+          <div className="lg:col-span-7">
+            <span className="inline-flex items-center gap-2 rounded-full bg-site-paper px-3.5 py-1.5 text-xs font-bold text-site-text ring-1 ring-site-sand">
+              <span className="size-1.5 rounded-full bg-site-crimson" /> Built only for India&apos;s mutual fund distributors
             </span>
-
-            <h1 className="text-4xl sm:text-5xl lg:text-[3.6rem] font-extrabold tracking-tight leading-[1.08] text-foreground">
-              Run your MFD practice with{" "}
-              <span className="text-primary">more control, less manual work</span>.
+            <h1 className="mt-7 font-brand text-5xl sm:text-6xl xl:text-7xl leading-none tracking-tight text-site-ink text-balance">
+              Every client.<br />Every SIP.<br />
+              <em className="text-site-crimson">Handled.</em>
             </h1>
-
-            <p className="mt-6 text-lg text-muted-foreground leading-relaxed max-w-xl">
-              Clients, compliance, SIP follow-ups, reviews and reports — one structured
-              platform your whole team runs on, instead of Excel, memory and WhatsApp.
+            <p className="mt-7 max-w-xl text-lg sm:text-xl text-site-muted leading-relaxed">
+              One calm place for your clients, families, business, team and compliance — so you can spend the day with people, not spreadsheets.
             </p>
+            <div className="mt-9 flex flex-col sm:flex-row gap-3">
+              <a href={DEMO_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 rounded-full bg-site-crimson px-8 py-4 text-base font-bold text-white shadow-lg shadow-site-crimson/25 hover:bg-site-crimson-deep transition">
+                Book a demo <ArrowRight className="size-5" />
+              </a>
+              <a href="#promises" className="inline-flex items-center justify-center gap-2 rounded-full px-6 py-4 text-base font-bold text-site-ink hover:bg-site-sand/60 transition">
+                See what changes <ArrowDown className="size-5" />
+              </a>
+            </div>
+            <dl className="mt-12 grid grid-cols-2 sm:grid-cols-4 gap-6 max-w-xl">
+              {HERO_FACTS.map(([n, l]) => (
+                <div key={l}>
+                  <dt className="sr-only">{l}</dt>
+                  <dd className="font-brand text-3xl text-site-ink">{n}</dd>
+                  <dd className="mt-1 text-xs font-semibold text-site-muted leading-snug">{l}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+          <div className="lg:col-span-5 flex justify-center lg:justify-end">
+            <LivePractice />
+          </div>
+        </div>
+      </section>
 
-            {/* "No more" proof bullets — three sharpest pains, one each */}
-            <ul className="mt-6 flex flex-col gap-2.5 text-sm font-medium text-foreground/85">
-              {[
-                "No more scattered Excel & WhatsApp",
-                "No more missed reviews or follow-ups",
-                "No more last-minute DDQ stress",
-              ].map((t) => (
-                <li key={t} className="flex items-start gap-2">
-                  <CheckCircle2 className="size-4 text-emerald-600 mt-0.5 shrink-0" />
-                  {t}
+      {/* ───────────────────── Marquee ───────────────────── */}
+      <section aria-label="What Aina handles" className="bg-site-ink py-5 overflow-hidden">
+        <div className="flex w-max animate-marquee motion-reduce:animate-none">
+          {[0, 1].map((k) => (
+            <ul key={k} aria-hidden={k === 1} className="flex shrink-0 items-center">
+              {MARQUEE.map((w) => (
+                <li key={w} className="flex items-center gap-8 pr-8 font-brand text-xl sm:text-2xl text-white/85 whitespace-nowrap">
+                  {w} <span className="size-1.5 rounded-full bg-site-crimson" />
                 </li>
               ))}
             </ul>
+          ))}
+        </div>
+      </section>
 
-            <div className="mt-8 flex flex-wrap gap-4 w-full sm:w-auto">
-              <a href={COMMUNITY_URL} target="_blank" rel="noopener noreferrer" className="btn-primary text-base px-7 py-3 w-full sm:w-auto justify-center">
-                Join Our Community <ArrowRight className="size-5" />
-              </a>
-              <Link href="/signup" className="btn-secondary text-base px-7 py-3 w-full sm:w-auto justify-center">
-                Start free trial
-              </Link>
-            </div>
-
-            <div className="mt-9 pt-7 border-t border-border/60 w-full">
-              <div className="flex flex-wrap items-center gap-x-7 gap-y-3 text-xs font-semibold text-muted-foreground">
-                <span className="inline-flex items-center gap-2">
-                  <ShieldCheck className="size-4 text-emerald-600" /> AMFI &amp; SEBI-aware by design
-                </span>
-                <span className="inline-flex items-center gap-2">
-                  <Lock className="size-4 text-primary" /> DPDP-ready data isolation
-                </span>
-                <span className="inline-flex items-center gap-2">
-                  <Clock className="size-4 text-amber-600" /> Live within a day
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Live dashboard mock */}
-          <div className="lg:col-span-5 relative w-full flex justify-center">
-            {/* Floating proof toast — depth + story */}
-            <div className="hidden lg:flex absolute -left-8 -bottom-5 z-20 items-center gap-2.5 rounded-xl border border-border/60 bg-card/95 backdrop-blur px-3.5 py-2.5 shadow-xl animate-fade-in">
-              <span className="size-8 rounded-full bg-emerald-500/10 grid place-items-center">
-                <CheckCircle2 className="size-4 text-emerald-600" />
-              </span>
-              <div className="leading-tight">
-                <div className="text-2xs font-bold text-foreground">Sharma family review ready</div>
-                <div className="text-2xs text-muted-foreground">Branded PDF · 16.9% family XIRR</div>
-              </div>
-            </div>
-
-            <div className="glass-card rounded-2xl w-full max-w-[460px] p-5 relative border border-white/20 shadow-2xl flex flex-col gap-4">
-              <div className="flex items-center justify-between border-b border-border/40 pb-3">
-                <div className="flex items-center gap-2">
-                  <span className="pulse-dot" />
-                  <span className="text-2xs font-bold uppercase tracking-wider text-muted-foreground">Your practice, live</span>
-                </div>
-                <span className="text-2xs font-medium bg-emerald-500/10 text-emerald-600 px-2 py-0.5 rounded border border-emerald-500/20">
-                  AMFI NAVs synced
-                </span>
-              </div>
-
-              <div>
-                <span className="text-xs text-muted-foreground font-medium">Assets Under Management</span>
-                <div className="text-3xl sm:text-4xl font-extrabold tabular-nums tracking-tight mt-1 text-foreground">
-                  ₹4,28,16,500
-                </div>
-                <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-semibold mt-1">
-                  <TrendingUp className="size-3.5" />
-                  <span>▲ ₹58.4L unrealised gain · 16.42% family XIRR</span>
+      {/* ───────────────────── Three promises ───────────────────── */}
+      <section id="promises" className="py-24 lg:py-32 scroll-mt-16">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          <Heading kicker="Day one" title={<>Three things <em className="text-site-crimson">change</em> the day you switch on.</>} />
+          <div className="mt-14 grid lg:grid-cols-3 gap-5">
+            <PromiseCard icon={ListChecks} title="Nothing slips." line="Every promise becomes a task with an owner and a date. Overdue ones climb to someone who can fix them.">
+              <div className="rounded-2xl bg-site-paper p-4 ring-1 ring-site-sand">
+                <div className="text-xs font-bold text-site-text">Follow up · Riya&apos;s bounced SIP</div>
+                <div className="mt-3 flex flex-wrap items-center gap-1.5 text-2xs font-bold">
+                  <span className="rounded-full bg-site-cream px-2.5 py-1 text-site-muted">Due today</span>
+                  <ArrowRight className="size-3 text-site-muted" />
+                  <span className="rounded-full bg-site-crimson/10 px-2.5 py-1 text-site-crimson">2 days overdue</span>
+                  <ArrowRight className="size-3 text-site-muted" />
+                  <span className="rounded-full bg-site-ink px-2.5 py-1 text-white">Branch head told</span>
                 </div>
               </div>
-
-              <div className="h-20 w-full mt-1 relative">
-                <svg viewBox="0 0 400 100" className="w-full h-full overflow-visible" aria-hidden>
-                  <defs>
-                    <linearGradient id="gradient-area" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="rgb(31, 61, 59)" stopOpacity="0.25" />
-                      <stop offset="100%" stopColor="rgb(31, 61, 59)" stopOpacity="0.0" />
-                    </linearGradient>
-                    <linearGradient id="gradient-line" x1="0" y1="0" x2="1" y2="0">
-                      <stop offset="0%" stopColor="hsl(var(--brand-navy))" />
-                      <stop offset="50%" stopColor="hsl(var(--primary))" />
-                      <stop offset="100%" stopColor="hsl(var(--primary))" />
-                    </linearGradient>
-                  </defs>
-                  <line x1="0" y1="20" x2="400" y2="20" stroke="rgba(0,0,0,0.03)" strokeWidth="1" />
-                  <line x1="0" y1="50" x2="400" y2="50" stroke="rgba(0,0,0,0.03)" strokeWidth="1" />
-                  <line x1="0" y1="80" x2="400" y2="80" stroke="rgba(0,0,0,0.03)" strokeWidth="1" />
-                  <path d="M0,90 C50,85 70,60 100,65 C130,70 160,40 190,45 C220,50 250,25 280,30 C310,35 340,10 400,5 L400,100 L0,100 Z" fill="url(#gradient-area)" />
-                  <path d="M0,90 C50,85 70,60 100,65 C130,70 160,40 190,45 C220,50 250,25 280,30 C310,35 340,10 400,5" fill="none" stroke="url(#gradient-line)" strokeWidth="3.5" strokeLinecap="round" />
-                  <circle cx="400" cy="5" r="5" fill="hsl(var(--primary))" />
-                  <circle cx="400" cy="5" r="10" fill="none" stroke="hsl(var(--primary))" strokeOpacity="0.4" strokeWidth="2" />
-                </svg>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 mt-1">
-                <div className="rounded-xl border border-border/50 bg-secondary/35 p-3 flex flex-col justify-between hover-glow-cyan transition-all">
-                  <div className="flex justify-between items-center">
-                    <Brain className="size-4.5 text-rose-500 shrink-0" />
-                    <span className="pulse-warning-dot" />
-                  </div>
-                  <div className="mt-3">
-                    <span className="text-2xs font-bold text-muted-foreground uppercase tracking-wider block">Churn Radar</span>
-                    <span className="text-xs font-bold text-foreground mt-0.5 block leading-tight">3 at-risk clients</span>
-                    <span className="text-2xs text-muted-foreground block mt-0.5">Retention scripts ready</span>
-                  </div>
+            </PromiseCard>
+            <PromiseCard icon={ShieldCheck} title="Audit-ready. Always." line="Every message is checked before it leaves, and every change is on record — the DDQ stops being a fire drill.">
+              <div className="rounded-2xl bg-site-paper p-4 ring-1 ring-site-sand flex items-center gap-4">
+                <div className="relative size-16 shrink-0">
+                  <svg viewBox="0 0 36 36" className="size-16 -rotate-90" aria-hidden>
+                    <circle cx="18" cy="18" r="15.5" fill="none" stroke="#e7ddcf" strokeWidth="3.5" />
+                    <circle cx="18" cy="18" r="15.5" fill="none" stroke="#2a9d78" strokeWidth="3.5" strokeDasharray="97.4 97.4" strokeLinecap="round" />
+                  </svg>
+                  <span className="absolute inset-0 grid place-items-center text-2xs font-extrabold text-site-mint">11/11</span>
                 </div>
-                <div className="rounded-xl border border-border/50 bg-secondary/35 p-3 flex flex-col justify-between hover-glow-cyan transition-all">
-                  <div className="flex justify-between items-center">
-                    <ShieldCheck className="size-4.5 text-emerald-600 shrink-0" />
-                    <span className="size-2 rounded-full bg-emerald-500" />
-                  </div>
-                  <div className="mt-3">
-                    <span className="text-2xs font-bold text-muted-foreground uppercase tracking-wider block">Compliance Gate</span>
-                    <span className="text-xs font-bold text-foreground mt-0.5 block leading-tight">100% compliant</span>
-                    <span className="text-2xs text-muted-foreground block mt-0.5">ARN on every message</span>
-                  </div>
+                <ul className="flex flex-wrap gap-1.5">
+                  {["ARN / EUIN", "Disclaimer", "Consent", "Opt-out"].map((t) => (
+                    <li key={t} className="inline-flex items-center gap-1 rounded-full bg-site-mint/10 px-2 py-0.5 text-2xs font-bold text-site-mint">
+                      <Check className="size-3" /> {t}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </PromiseCard>
+            <PromiseCard icon={Scale} title="Numbers match the RTA." line="Business your team books is checked line by line against CAMS & KFintech — targets and incentives rest on facts.">
+              <div className="rounded-2xl bg-site-paper p-4 ring-1 ring-site-sand">
+                <MatchBar label="Booked" value="₹2.10 Cr" width="w-full" tone="bg-site-ink" />
+                <MatchBar label="RTA confirmed" value="₹2.06 Cr" width="w-11/12" tone="bg-site-mint" />
+                <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-site-crimson/10 px-2.5 py-1 text-2xs font-bold text-site-crimson">
+                  1 line rejected · flagged
                 </div>
               </div>
-
-              <div className="rounded-xl bg-brand-navy-light/70 border border-brand-navy/15 p-3 flex items-start gap-2.5">
-                <ShieldAlert className="size-4.5 text-brand-navy shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-2xs font-bold text-brand-navy-deep uppercase tracking-wider">SIP bounce caught</span>
-                    <span className="text-2xs bg-brand-navy text-white px-1.5 py-0.5 rounded font-bold uppercase">Auto-recovery</span>
-                  </div>
-                  <p className="text-2xs text-muted-foreground mt-0.5 leading-snug">
-                    Mandate failed for <strong className="text-foreground">Sharma family</strong> — compliant WhatsApp reminder already queued.
-                  </p>
-                </div>
-              </div>
-            </div>
+            </PromiseCard>
           </div>
         </div>
       </section>
 
-      {/* ───────────────────── Stats strip ───────────────────── */}
-      <section className="border-y border-border/40 bg-secondary/20 relative z-10 py-12">
-        <div className="max-w-7xl mx-auto px-6">
-          <p className="text-center text-2xs font-bold uppercase tracking-[0.2em] text-muted-foreground mb-8">
-            Purpose-built for the Indian MFD practice
-          </p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-y-8 md:divide-x md:divide-border/50">
-            <Stat value={60} suffix="+" label="Client-ready financial calculators" />
-            <Stat value={13900} suffix="+" label="AMFI schemes valued daily" />
-            <Stat value={40} suffix="+" label="Ready-made automation recipes" />
-            <Stat value={11} suffix=" rules" label="Compliance checks on every send" />
-          </div>
+      {/* ───────────────────── Role dashboards ───────────────────── */}
+      <section id="dashboards" className="relative bg-site-ink text-white py-24 lg:py-32 scroll-mt-16 overflow-hidden">
+        <div aria-hidden className="pointer-events-none absolute -top-32 -right-32 size-96 rounded-full bg-site-ink-3 blur-3xl" />
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6">
+          <Heading dark kicker="Six role dashboards" title={<>One CRM. <em className="text-site-rose">Six ways</em> to see it.</>} />
+          <RoleDashboards />
         </div>
       </section>
 
-      {/* ───────────────────── Core features ───────────────────── */}
-      <section id="features" className="py-20 bg-secondary/15 border-y border-border/40 relative z-10">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center max-w-2xl mx-auto">
-            <span className="chip bg-brand-navy-light text-primary">Your whole practice, one system</span>
-            <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-foreground">
-              Everything an MFD firm runs on
-            </h2>
-            <p className="mt-3 text-muted-foreground">
-              Six pillars. One login. No more stitching tools together.
-            </p>
-          </div>
+      {/* ───────────────────── Before / after ───────────────────── */}
+      <section className="py-24 lg:py-32">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6">
+          <Heading kicker="Flip the switch" title={<>Same day. <em className="text-site-crimson">Different</em> practice.</>} />
+          <BeforeAfter />
+        </div>
+      </section>
 
-          <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {CORE_FEATURES.map((f, i) => (
-              <article key={f.title} className="group glass-card hover-glow-cyan rounded-xl p-6 border border-border/40 hover:shadow-lg transition-all flex flex-col justify-between relative overflow-hidden">
-                <span className="absolute top-3 right-4 text-3xl font-black tabular-nums text-foreground/[0.06] group-hover:text-primary/15 transition-colors select-none">
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <div>
-                  <div className={`size-11 rounded-lg grid place-items-center ${f.bg} shrink-0`}>
-                    <f.icon className={`size-5.5 ${f.fg}`} />
+      {/* ───────────────────── Everything else + trust ───────────────────── */}
+      <section id="features" className="bg-site-paper py-24 lg:py-28 scroll-mt-16 border-y border-site-sand">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 grid lg:grid-cols-2 gap-16">
+          <div>
+            <Heading left kicker="And the rest" title="Everything else your firm runs on." />
+            <ul className="mt-8 flex flex-wrap gap-2">
+              {EVERYTHING.map((t) => (
+                <li key={t} className="rounded-full bg-site-cream px-4 py-2 text-sm font-semibold text-site-text ring-1 ring-site-sand">{t}</li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <Heading left kicker="Compliance & trust" title={<>Compliance isn&apos;t a setting. <em className="text-site-crimson">There&apos;s no bypass.</em></>} />
+            <ul className="mt-8 grid sm:grid-cols-2 gap-x-6 gap-y-7">
+              {TRUST.map((t) => (
+                <li key={t.title} className="flex gap-3">
+                  <span className="size-10 shrink-0 rounded-2xl bg-site-ink text-white grid place-items-center">
+                    <t.icon className="size-5" />
+                  </span>
+                  <div>
+                    <h3 className="text-sm font-bold text-site-text">{t.title}</h3>
+                    <p className="mt-1 text-sm text-site-muted leading-snug">{t.body}</p>
                   </div>
-                  <h3 className="font-bold mt-4 text-[15px] text-foreground flex items-center gap-2">
-                    {f.title}
-                    {f.badge && (
-                      <span className={`text-2xs font-bold px-2 py-0.5 rounded-full ${f.badgeBg} ${f.badgeFg}`}>{f.badge}</span>
-                    )}
-                  </h3>
-                  <p className="text-xs text-muted-foreground mt-2 leading-relaxed">{f.benefit}</p>
-                </div>
-                <div className="mt-4 pt-3 border-t border-border/30 flex items-center justify-between text-2xs font-bold text-muted-foreground">
-                  <span>Impact: <strong className="text-foreground">{f.impact}</strong></span>
-                  <ChevronRight className="size-3.5 text-muted-foreground" />
-                </div>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ───────────────────── Calculators spotlight ───────────────────── */}
-      <section id="calculators" className="py-20 lg:py-28 max-w-7xl mx-auto px-6 relative z-10">
-        <Spotlight
-          eyebrow="60+ financial calculators for MFDs"
-          title="Win the meeting with calculators clients remember"
-          body="Every illustration prints as a branded PDF with the client's name — and shares to WhatsApp in one click."
-          points={[
-            "Scheme returns prefill live from real funds",
-            "Save scenarios per client, reload at the next review",
-            "Your logo, ARN and market-risk disclaimer built in",
-          ]}
-          accent="from-amber-500/10 to-amber-500/2"
-        >
-          <div className="w-full grid grid-cols-2 gap-2.5">
-            {[
-              ["SIP 360° Planner", "₹25k/mo → ₹2.3 Cr in 20y"],
-              ["Step-Up SIP", "10%/yr step-up = 2.5× corpus"],
-              ["Insurance IRR", "That plan is really 5.36%"],
-              ["Capital Gains Tax", "LTCG with CII indexation"],
-              ["Old vs New Regime", "Save ₹89,700 this year"],
-              ["FIRE Number", "Financially free at 50"],
-            ].map(([name, hook]) => (
-              <div key={name} className="rounded-xl border border-border/50 bg-background/80 p-3 shadow-sm">
-                <div className="flex items-center gap-1.5">
-                  <Calculator className="size-3.5 text-primary shrink-0" />
-                  <span className="text-2xs font-bold text-foreground leading-tight">{name}</span>
-                </div>
-                <p className="text-2xs text-muted-foreground mt-1 leading-snug">{hook}</p>
-              </div>
-            ))}
-          </div>
-        </Spotlight>
-      </section>
-
-      {/* ───────────────────── How it works ───────────────────── */}
-      <section id="how-it-works" className="py-20 lg:py-28 bg-secondary/15 border-y border-border/40 relative z-10">
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="text-center max-w-2xl mx-auto">
-            <span className="chip bg-brand-navy-light text-primary">Live in a day, not a quarter</span>
-            <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-foreground">How your firm moves to Aina</h2>
-            <p className="mt-3 text-muted-foreground text-sm">
-              No migration project, no consultants. Your RTA exports are the migration.
-            </p>
-          </div>
-
-          <div className="mt-14 grid md:grid-cols-3 gap-6">
-            {[
-              {
-                icon: Upload,
-                step: "1",
-                title: "Drop your CAMS / KFintech files",
-                body: "Your RTA exports are the migration — AUM, SIP book and families appear ready-to-use.",
-              },
-              {
-                icon: Cog,
-                step: "2",
-                title: "Switch on the automations",
-                body: "Pick from 40+ ready recipes — SIP-bounce recovery, review reminders, KYC drives. Every send passes the compliance gate.",
-              },
-              {
-                icon: Rocket,
-                step: "3",
-                title: "Spend your day growing AUM",
-                body: "Each morning starts with a what-to-do-next list. The back office runs itself.",
-              },
-            ].map((s) => (
-              <div key={s.step} className="glass-card rounded-xl p-6 flex flex-col gap-3 border border-border/50 hover-glow-cyan transition-all">
-                <div className="flex items-center gap-3">
-                  <div className="size-9 rounded-lg bg-primary/15 text-primary font-extrabold text-sm flex items-center justify-center border border-primary/30">{s.step}</div>
-                  <s.icon className="size-5 text-primary" />
-                </div>
-                <h3 className="font-bold text-[15px] text-foreground">{s.title}</h3>
-                <p className="text-xs text-muted-foreground leading-relaxed">{s.body}</p>
-              </div>
-            ))}
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       </section>
 
       {/* ───────────────────────── Pricing ───────────────────────── */}
-      <section id="pricing" className="py-20 lg:py-28 relative z-10 max-w-6xl mx-auto px-6">
-        <div className="text-center max-w-2xl mx-auto">
-          <span className="chip bg-amber-500/10 text-amber-700 border border-amber-500/20">
-            Founding member pricing
-          </span>
-          <h2 className="mt-4 text-3xl sm:text-4xl font-extrabold tracking-tight text-foreground">
-            Flat, honest pricing — your bill doesn&apos;t grow with your AUM
-          </h2>
-          <p className="mt-3 text-muted-foreground">
-            One-time setup, then a flat per-user yearly fee. No per-client charges. No AUM-linked fees.
+      <section id="pricing" className="py-24 lg:py-32 scroll-mt-16">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          <Heading kicker="Founding member pricing" title={<>Flat pricing. <em className="text-site-crimson">No AUM fees.</em></>} />
+          <LivePricingCards initial={plans} />
+          <p className="mt-10 flex items-center justify-center gap-2 text-center text-sm text-site-muted">
+            <Upload className="size-4 shrink-0 text-site-crimson" />
+            <span><span className="font-bold text-site-text">RTA data import</span> (one-time): ₹10,000 individual ARN · ₹20,000 corporate ARN</span>
+          </p>
+          <p className="mt-3 text-center text-2xs text-site-muted max-w-xl mx-auto">
+            Billed annually, minimum 3 users. Setup is a one-time, per-firm fee. Training, customisation &amp; marketing services are quoted separately. Taxes as applicable.
           </p>
         </div>
-
-        <LivePricingCards initial={plans} />
-
-        {/* RTA data-import add-on */}
-        <div className="mt-8 rounded-2xl border-2 border-primary/25 bg-primary/[0.03] px-6 py-6 sm:px-8 max-w-4xl mx-auto">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-5">
-            <div className="flex items-center gap-3.5 sm:min-w-[240px]">
-              <div className="size-11 rounded-xl bg-primary/15 text-primary flex items-center justify-center border border-primary/30 shrink-0">
-                <Upload className="size-5" />
-              </div>
-              <div>
-                <h3 className="font-extrabold text-lg text-foreground leading-tight">RTA Data Import</h3>
-                <p className="text-2xs text-muted-foreground font-semibold mt-0.5">One-time onboarding add-on</p>
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground leading-relaxed sm:flex-1">
-              We import your full historical book from CAMS &amp; KFintech RTA files — folios, holdings,
-              transactions &amp; capital gains — so you go live with clean, complete data from day one.
-            </p>
-            <div className="grid grid-cols-2 gap-3 sm:min-w-[300px]">
-              <div className="rounded-xl border border-border/60 bg-background/60 px-4 py-3 text-center">
-                <div className="inline-flex items-center gap-1.5 text-2xs font-bold uppercase tracking-wide text-muted-foreground">
-                  <User className="size-3.5 text-primary" /> Individual ARN
-                </div>
-                <div className="mt-1 text-2xl font-extrabold text-foreground tabular-nums">₹10,000</div>
-              </div>
-              <div className="rounded-xl border border-border/60 bg-background/60 px-4 py-3 text-center">
-                <div className="inline-flex items-center gap-1.5 text-2xs font-bold uppercase tracking-wide text-muted-foreground">
-                  <Building2 className="size-3.5 text-primary" /> Corporate ARN
-                </div>
-                <div className="mt-1 text-2xl font-extrabold text-foreground tabular-nums">₹20,000</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-10 rounded-2xl border border-border/50 bg-secondary/20 px-6 py-5 max-w-4xl mx-auto">
-          <div className="text-2xs font-bold uppercase tracking-[0.18em] text-muted-foreground text-center mb-3.5">
-            Every plan includes
-          </div>
-          <div className="flex flex-wrap justify-center gap-x-7 gap-y-2.5 text-xs font-semibold text-foreground/80">
-            <span className="inline-flex items-center gap-1.5"><Lock className="size-3.5 text-primary" /> Row-level data isolation</span>
-            <span className="inline-flex items-center gap-1.5"><ShieldCheck className="size-3.5 text-emerald-600" /> AMFI/SEBI compliance gate</span>
-            <span className="inline-flex items-center gap-1.5"><MessageSquare className="size-3.5 text-brand-navy" /> Your own WhatsApp / email accounts — no per-message markup</span>
-            <span className="inline-flex items-center gap-1.5"><Zap className="size-3.5 text-amber-600" /> Free product updates</span>
-          </div>
-        </div>
-
-        <p className="text-center text-xs text-muted-foreground mt-6 max-w-xl mx-auto">
-          * Billed annually, minimum 3 users. Setup is a one-time, per-firm fee. Training, customisation &amp; marketing services are quoted separately. Taxes as applicable.
-        </p>
       </section>
 
       {/* ───────────────────────── FAQ ───────────────────────── */}
-      <section id="faq" className="py-20 lg:py-28 bg-secondary/10 border-t border-border/40 relative z-10">
-        <div className="max-w-4xl mx-auto px-6">
-          <div className="text-center max-w-2xl mx-auto mb-14">
-            <span className="chip bg-brand-navy-light text-primary">Questions MFDs ask us</span>
-            <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-foreground">
-              Frequently asked questions
-            </h2>
+      <section id="faq" className="pb-24 lg:pb-32 scroll-mt-16">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 grid lg:grid-cols-12 gap-10">
+          <div className="lg:col-span-4">
+            <Heading left kicker="FAQ" title="Questions MFDs ask us." />
+            <p className="mt-4 text-sm text-site-muted">
+              Something else?{" "}
+              <a href={COMMUNITY_URL} target="_blank" rel="noopener noreferrer" className="font-bold text-site-crimson hover:underline">
+                Ask the MFD community
+              </a>
+              .
+            </p>
           </div>
-
-          <FaqAccordion items={FAQS} />
-        </div>
-      </section>
-
-      {/* "Who is it for" was a whole section repeating the hero's message —
-          folded into a single FAQ entry instead. */}
-
-      {/* ───────────────────── Why MFDs choose Aina ───────────────────── */}
-      <section className="py-16 lg:py-20 bg-secondary/15 border-y border-border/40 relative z-10">
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="text-center max-w-2xl mx-auto">
-            <span className="chip bg-brand-navy-light text-primary">Why MFDs choose Aina</span>
-            <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-foreground">
-              Not a generic CRM bent to fit — built for the MFD practice
-            </h2>
-          </div>
-          <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {WHY_AINA.map((w) => (
-              <div key={w.title} className="glass-card rounded-xl p-6 border border-border/40 flex flex-col gap-3">
-                <div className="size-11 rounded-lg grid place-items-center bg-primary/10 text-primary shrink-0">
-                  <w.icon className="size-5.5" />
-                </div>
-                <h3 className="font-bold text-[15px] text-foreground">{w.title}</h3>
-                <p className="text-xs text-muted-foreground leading-relaxed">{w.body}</p>
-              </div>
-            ))}
+          <div className="lg:col-span-8">
+            <FaqAccordion items={FAQS} />
           </div>
         </div>
       </section>
 
-      {/* ───────────────────── Testimonials (real quotes only) ─────────────────────
-          Renders only when TESTIMONIALS has entries — we never ship fabricated
-          social proof. Populate the array with real, attributable MFD quotes. */}
+      {/* ───────────── Testimonials — real, attributable quotes only ─────────────
+          Renders only when TESTIMONIALS has entries; never fabricated. */}
       {TESTIMONIALS.length > 0 && (
-        <section className="py-16 lg:py-20 relative z-10 max-w-6xl mx-auto px-6">
-          <div className="text-center max-w-2xl mx-auto">
-            <span className="chip bg-brand-navy-light text-primary">What MFDs say</span>
-            <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-foreground">
-              Trusted by distributors who run on Aina
-            </h2>
-          </div>
-          <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {TESTIMONIALS.map((t) => (
-              <figure key={t.name} className="glass-card rounded-xl p-6 border border-border/40 flex flex-col gap-4">
-                <div className="flex gap-0.5 text-amber-500">
-                  {Array.from({ length: 5 }).map((_, i) => <Star key={i} className="size-4 fill-current" />)}
-                </div>
-                <blockquote className="text-sm text-foreground/85 leading-relaxed flex-grow">“{t.quote}”</blockquote>
-                <figcaption className="text-xs">
-                  <span className="font-bold text-foreground">{t.name}</span>
-                  <span className="text-muted-foreground"> · {t.detail}</span>
-                </figcaption>
-              </figure>
-            ))}
-          </div>
+        <section className="pb-24 max-w-6xl mx-auto px-4 sm:px-6 grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          {TESTIMONIALS.map((t) => (
+            <figure key={t.name} className="rounded-3xl bg-site-paper p-7 ring-1 ring-site-sand">
+              <blockquote className="font-brand text-xl leading-snug text-site-ink">“{t.quote}”</blockquote>
+              <figcaption className="mt-5 text-sm">
+                <span className="font-bold">{t.name}</span>
+                <span className="text-site-muted"> · {t.detail}</span>
+              </figcaption>
+            </figure>
+          ))}
         </section>
       )}
 
       {/* ───────────────────────── Final CTA ───────────────────────── */}
-      <section className="py-20 max-w-6xl mx-auto px-6 relative z-10">
-        <div className="rounded-2xl bg-primary p-8 sm:p-14 text-center relative overflow-hidden shadow-2xl">
-          <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
-            Ready to run a system-driven practice?
-          </h2>
-          <p className="mt-4 text-white/80 text-base max-w-xl mx-auto leading-relaxed">
-            Stop running your firm on memory, Excel and WhatsApp — bring it all into one platform.
-          </p>
-          <div className="mt-8 flex flex-wrap gap-4 justify-center">
-            <a href={COMMUNITY_URL} target="_blank" rel="noopener noreferrer" className="rounded-xl bg-white text-brand-navy-deep hover:bg-white/90 px-8 py-3 text-base font-bold transition-all hover:scale-[1.01] active:scale-[0.99] shadow-md inline-flex items-center gap-2">
-              Join the Aina CRM Community <ArrowRight className="size-5" />
-            </a>
-            <Link href="/signup" className="rounded-xl border border-white/20 bg-white/5 text-white hover:bg-white/10 px-8 py-3 text-base font-bold transition-all shadow-sm">
-              Start free trial
-            </Link>
-          </div>
-          <div className="mt-7 flex flex-wrap justify-center gap-x-6 gap-y-2 text-xs font-semibold text-white/70">
-            <span className="inline-flex items-center gap-1.5"><CheckCircle2 className="size-3.5" /> Built only for Indian MFDs</span>
-            <span className="inline-flex items-center gap-1.5"><CheckCircle2 className="size-3.5" /> Your RTA exports are the migration</span>
-            <span className="inline-flex items-center gap-1.5"><CheckCircle2 className="size-3.5" /> Live within a day</span>
+      <section className="px-4 sm:px-6 pb-6">
+        <div className="relative max-w-7xl mx-auto overflow-hidden rounded-3xl bg-site-ink px-6 py-20 sm:py-24 text-center">
+          <div aria-hidden className="pointer-events-none absolute -top-48 left-1/2 -translate-x-1/2 size-96 rounded-full bg-site-ink-3 blur-3xl" />
+          <div className="relative">
+            <h2 className="font-brand text-4xl sm:text-6xl leading-tight text-white text-balance">
+              See <em className="text-site-rose">your</em> practice on Aina.
+            </h2>
+            <p className="mt-5 text-lg text-white/65 inline-flex items-center gap-2">
+              <Clock className="size-5" /> 30 minutes. Your clients, your questions.
+            </p>
+            <div className="mt-10 flex flex-col sm:flex-row gap-3 justify-center">
+              <a href={DEMO_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 rounded-full bg-site-crimson px-8 py-4 text-base font-bold text-white hover:bg-site-crimson-deep transition">
+                Book a demo <ArrowRight className="size-5" />
+              </a>
+              <a href="tel:+918200770942" className="inline-flex items-center justify-center gap-2 rounded-full bg-white/10 px-8 py-4 text-base font-bold text-white ring-1 ring-white/20 hover:bg-white/15 transition">
+                <Phone className="size-5" /> +91 82007 70942
+              </a>
+            </div>
           </div>
         </div>
       </section>
 
       {/* ───────────────────────── Footer ───────────────────────── */}
-      <footer className="border-t border-border/40 bg-secondary/20 relative z-10">
-        <div className="max-w-7xl mx-auto px-6 py-16">
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-10">
-            <div>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/aina-logo.png" alt="Aina CRM" className="h-9 w-auto object-contain shrink-0" />
-              <p className="text-xs text-muted-foreground mt-4 leading-relaxed max-w-xs">
-                Mutual fund software for distributors in India — CRM, CAMS/KFintech import,
-                SIP &amp; AUM tracking, compliant WhatsApp and MIS. Built by Aina Tech Services LLP.
-              </p>
-            </div>
-            <FooterCol title="For MFDs" links={[["Feature tour", "#features"], ["Financial calculators", "#calculators"], ["How it works", "#how-it-works"], ["Pricing", "#pricing"]]} />
-            <FooterCol title="Get started" links={[["Pricing plans", "#pricing"], ["Start free trial", "/signup"], ["Log in", "/login"]]} />
-            <FooterCol title="Trust & compliance" links={[["AMFI/SEBI compliance gate", "#features"], ["Data security (DPDP)", "#faq"], ["FAQs", "#faq"]]} />
-          </div>
-
-          <div className="mt-14 pt-8 border-t border-border/40 flex flex-col lg:flex-row justify-between gap-4 text-2xs text-muted-foreground leading-relaxed">
-            <span>
-              © {new Date().getFullYear()}{" "}
-              <a
-                href="https://ainatech.in"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-semibold text-foreground/70 hover:text-primary transition-colors"
-              >
-                Aina Tech Services LLP
-              </a>
-              . All rights reserved.
-            </span>
-            <span className="max-w-2xl lg:text-right">
-              Disclaimer: Mutual fund investments are subject to market risks. Read all scheme-related
-              documents carefully. Aina CRM provides practice-management, analytics and communication
-              tools for distributors and does not execute mutual fund transactions.
-            </span>
-          </div>
+      <footer className="max-w-7xl mx-auto w-full px-4 sm:px-6 py-10">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/aina-logo.png" alt="Aina CRM" className="h-9 w-auto object-contain self-start" />
+          <nav className="flex flex-wrap gap-x-6 gap-y-2 text-sm font-semibold text-site-muted">
+            {FOOTER.map(([label, href]) =>
+              /^https?:/.test(href) ? (
+                <a key={label} href={href} target="_blank" rel="noopener noreferrer" className="hover:text-site-crimson transition-colors">{label}</a>
+              ) : (
+                <Link key={label} href={href} className="hover:text-site-crimson transition-colors">{label}</Link>
+              )
+            )}
+          </nav>
+        </div>
+        <div className="mt-8 pt-6 border-t border-site-sand flex flex-col lg:flex-row justify-between gap-4 text-2xs text-site-muted leading-relaxed">
+          <span>
+            © {new Date().getFullYear()}{" "}
+            <a href="https://ainatech.in" target="_blank" rel="noopener noreferrer" className="font-semibold text-site-text hover:text-site-crimson">
+              Aina Tech Services LLP
+            </a>
+            . All rights reserved.
+          </span>
+          <span className="max-w-2xl lg:text-right">
+            Mutual fund investments are subject to market risks. Read all scheme-related documents carefully. Aina CRM provides
+            practice-management, analytics and communication tools for distributors and does not execute mutual fund transactions.
+          </span>
         </div>
       </footer>
     </main>
@@ -658,84 +407,48 @@ export default async function Home() {
 
 /* ───────────────────────── Static data ───────────────────────── */
 
-/** Six pillars, one line each. Every card copy fits in a single breath —
- *  the detail lives in the product, not the landing page. */
-const CORE_FEATURES = [
-  {
-    icon: ShieldCheck,
-    title: "Compliance & DDQ readiness",
-    benefit: "DDQ files, consents, registers and risk records stay organised all year — not assembled the night before an audit.",
-    bg: "bg-emerald-500/10",
-    fg: "text-emerald-600",
-    impact: "Audit-ready, always",
-  },
-  {
-    icon: Users2,
-    title: "Clean client data",
-    benefit: "De-duplicated masters, family mapping and missing-KYC reports — one book your whole team trusts.",
-    bg: "bg-brand-navy-light/70",
-    fg: "text-primary",
-    impact: "One source of truth",
-  },
-  {
-    icon: Zap,
-    title: "Servicing on autopilot",
-    benefit: "SIP-bounce recovery, review reminders and renewal trackers run themselves — every message compliance-checked.",
-    bg: "bg-amber-500/10",
-    fg: "text-amber-600",
-    impact: "Less manual chasing",
-  },
-  {
-    icon: BarChart3,
-    title: "Reporting & MIS",
-    benefit: "Daily SIP, redemption, net-sales and RM-wise reports — live, without anyone compiling Excel.",
-    bg: "bg-brand-navy-light/70",
-    fg: "text-brand-navy",
-    impact: "Run the firm by numbers",
-  },
-  {
-    icon: Rocket,
-    title: "Marketing & lead capture",
-    benefit: "Content calendar, WhatsApp & email creatives and landing pages — consistently visible, always compliant.",
-    bg: "bg-rose-500/10",
-    fg: "text-rose-500",
-    impact: "Stay top of mind",
-  },
-  {
-    icon: Brain,
-    title: "AI business assistant",
-    benefit: "Ask your book anything, draft client emails, summarise meetings — practical AI for the daily practice.",
-    bg: "bg-rose-500/10",
-    fg: "text-rose-500",
-    badge: "AI-powered",
-    badgeBg: "bg-rose-500/15",
-    badgeFg: "text-rose-700",
-    impact: "Work smarter",
-  },
+const NAV: [string, string][] = [
+  ["What changes", "#promises"],
+  ["Dashboards", "#dashboards"],
+  ["Features", "#features"],
+  ["Pricing", "#pricing"],
+  ["KAIZEN", "/knowledge-base"],
+  ["FAQ", "#faq"],
 ];
 
-/** Honest differentiators (real product facts — not fabricated proof). */
-const WHY_AINA = [
-  {
-    icon: ShieldCheck,
-    title: "Compliance built in, not bolted on",
-    body: "Every WhatsApp, email and SMS passes an 11-rule AMFI/SEBI gate — ARN/EUIN, disclaimers, consent and opt-out — so your audit pack assembles itself.",
-  },
-  {
-    icon: MessageSquare,
-    title: "Your WhatsApp, your cost",
-    body: "Connect your own WhatsApp, SMS and email. Messaging stays in your name with no per-message markup from us.",
-  },
-  {
-    icon: Lock,
-    title: "Your data stays yours",
-    body: "Row-level isolation (DPDP-ready), 2FA, backups and staff-exit access removal — each RM sees only their own book.",
-  },
-  {
-    icon: Users2,
-    title: "Built with working ARN holders",
-    body: "Designed around the real MFD day — CAMS/KFintech imports, family reviews, SIP recovery — not a generic CRM bent to fit.",
-  },
+const HERO_FACTS: [string, string][] = [
+  ["6", "role dashboards"],
+  ["11", "compliance checks per message"],
+  ["40+", "ready automations"],
+  ["60+", "client calculators"],
+];
+
+const MARQUEE = [
+  "CAMS & KFintech", "SIPs", "Families", "Opportunities", "Insurance", "Fixed deposits", "WhatsApp",
+  "Email", "Service requests", "Reviews", "Compliance", "Targets",
+];
+
+const EVERYTHING = [
+  "Client 360", "Family mapping", "KYC from the KRA", "Leads", "Opportunities", "Proposals", "Risk profiles",
+  "SIP rejections", "Business entries", "Brokerage", "Service requests", "Complaints", "Meetings", "Tasks",
+  "Insurance & claims", "Fixed deposits", "Campaigns", "Email designer", "Health check", "60+ calculators", "AI assistant",
+];
+
+const TRUST: { icon: LucideIcon; title: string; body: string }[] = [
+  { icon: ShieldCheck, title: "11-rule message check", body: "ARN, disclaimers, return claims, consent and opt-out — before anything sends." },
+  { icon: Fingerprint, title: "Consent per channel", body: "An opt-out always blocks. Marketing needs a recorded yes." },
+  { icon: Lock, title: "Walled at the database", body: "Each firm's data is isolated on every query, not just hidden on screen." },
+  { icon: ScrollText, title: "Every change on record", body: "Edits, sends and decisions written to an audit trail." },
+];
+
+const FOOTER: [string, string][] = [
+  ["Pricing", "#pricing"],
+  ["KAIZEN", "/knowledge-base"],
+  ["Community", COMMUNITY_URL],
+  ["Log in", "/login"],
+  ["Privacy", "/privacy"],
+  ["Terms", "/terms"],
+  ["Refunds", "/refund"],
 ];
 
 /** Real, attributable client quotes only — leave empty until you have them. */
@@ -743,69 +456,42 @@ const TESTIMONIALS: { quote: string; name: string; detail: string }[] = [];
 
 /* ───────────────────────── Helper components ───────────────────────── */
 
-function Stat({ value, suffix, label }: { value: number; suffix?: string; label: string }) {
+function Heading({ kicker, title, dark, left }: { kicker: string; title: React.ReactNode; dark?: boolean; left?: boolean }) {
   return (
-    <div className="text-center flex flex-col items-center justify-center">
-      <div className="text-2xl sm:text-3xl font-extrabold tracking-tight text-primary tabular-nums">
-        <CountUp value={value} suffix={suffix} />
-      </div>
-      <div className="text-xs text-muted-foreground font-semibold mt-1.5 max-w-[180px]">{label}</div>
+    <div className={left ? "" : "text-center max-w-3xl mx-auto"}>
+      <span className={`text-xs font-bold uppercase tracking-widest ${dark ? "text-site-rose" : "text-site-crimson"}`}>{kicker}</span>
+      <h2 className={`mt-4 font-brand text-4xl sm:text-5xl leading-tight tracking-tight text-balance ${dark ? "text-white" : "text-site-ink"}`}>
+        {title}
+      </h2>
     </div>
   );
 }
 
-function Spotlight({
-  eyebrow,
-  title,
-  body,
-  points,
-  accent,
-  reverse,
-  children,
-}: {
-  eyebrow: string;
-  title: string;
-  body: string;
-  points: string[];
-  accent: string;
-  reverse?: boolean;
-  children: React.ReactNode;
-}) {
+function PromiseCard({ icon: Icon, title, line, children }: { icon: LucideIcon; title: string; line: string; children: React.ReactNode }) {
   return (
-    <div className={`grid lg:grid-cols-2 gap-10 lg:gap-16 items-center ${reverse ? "lg:[&>*:first-child]:order-2" : ""}`}>
+    <article className="group rounded-3xl bg-site-sand/40 p-6 sm:p-7 flex flex-col gap-6 hover:bg-site-sand/60 transition-colors">
+      <span className="size-12 rounded-2xl bg-site-ink text-white grid place-items-center group-hover:bg-site-crimson transition-colors">
+        <Icon className="size-6" />
+      </span>
       <div>
-        <span className="chip bg-brand-navy-light text-primary">{eyebrow}</span>
-        <h2 className="mt-4 text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground leading-tight">{title}</h2>
-        <p className="mt-4 text-muted-foreground leading-relaxed">{body}</p>
-        <ul className="mt-6 flex flex-col gap-3">
-          {points.map((pt) => (
-            <li key={pt} className="flex items-start gap-2.5 text-sm font-medium text-foreground/85">
-              <CheckCircle2 className="size-4.5 text-emerald-600 mt-0.5 shrink-0" />
-              {pt}
-            </li>
-          ))}
-        </ul>
+        <h3 className="font-brand text-3xl text-site-ink">{title}</h3>
+        <p className="mt-3 text-base text-site-muted leading-relaxed">{line}</p>
       </div>
-      <div className={`relative rounded-2xl bg-secondary/40 p-6 sm:p-10 flex items-center justify-center border border-border/30`}>
-        {children}
-      </div>
-    </div>
+      <div className="mt-auto">{children}</div>
+    </article>
   );
 }
 
-function FooterCol({ title, links }: { title: string; links: [string, string][] }) {
+function MatchBar({ label, value, width, tone }: { label: string; value: string; width: string; tone: string }) {
   return (
-    <div>
-      <h4 className="text-xs font-bold uppercase tracking-wider text-foreground/70">{title}</h4>
-      <ul className="mt-4 flex flex-col gap-2.5">
-        {links.map(([label, href]) => (
-          <li key={label}>
-            <Link href={href} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-              {label}
-            </Link>
-          </li>
-        ))}
-      </ul>
+    <div className="mb-2.5">
+      <div className="flex justify-between text-2xs font-bold">
+        <span className="text-site-muted">{label}</span>
+        <span className="text-site-text tabular-nums">{value}</span>
+      </div>
+      <div className="mt-1 h-2 rounded-full bg-site-cream">
+        <div className={`h-2 rounded-full ${tone} ${width}`} />
+      </div>
     </div>
   );
 }

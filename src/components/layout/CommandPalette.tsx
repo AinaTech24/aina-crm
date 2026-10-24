@@ -37,6 +37,9 @@ import {
   BarChart3,
   HeartHandshake,
   Shield,
+  ChevronDown,
+  Check,
+  LayoutGrid,
   type LucideIcon,
   PhoneCall,
 } from "lucide-react";
@@ -44,6 +47,8 @@ import { openLogActivity } from "@/lib/activities/contact-log";
 import { ICONS } from "./CustomizableNav";
 import { ALL_REPORTS, reportHaystack } from "@/lib/reports/catalog";
 import { formatDate, formatMoney, humanise } from "@/lib/format";
+import { buttonClass } from "@/components/ui/button-class";
+import { MENU_ITEM } from "@/components/ui/menu-item-class";
 
 type PaletteNavItem = {
   href: string;
@@ -138,6 +143,31 @@ const RECORD_CHIP: Record<string, string> = {
   requests: "Service request", policies: "Policy", folios: "Folio", sips: "SIP", documents: "Document",
 };
 
+/**
+ * What the picker beside the search box can narrow the palette to. `id` is the
+ * result section's id; `groups` the /api/search groups behind it (none for the
+ * pages and reports, which match locally). `page` is the menu entry the module
+ * belongs to: the module is offered only when the viewer's menu has it, so the
+ * picker never lists a module the viewer cannot open. (The API gates the rows
+ * themselves by capability and book either way.)
+ */
+const MODULES: Array<{ id: string; label: string; noun: string; icon: LucideIcon; groups: string[]; page?: string }> = [
+  { id: "clients", label: "Clients", noun: "clients", icon: Users, groups: ["investors"], page: "/dashboard/investors" },
+  { id: "leads", label: "Leads", noun: "leads", icon: Sparkles, groups: ["leads"], page: "/dashboard/leads" },
+  { id: "families", label: "Families", noun: "families", icon: HeartHandshake, groups: ["families"], page: "/dashboard/families" },
+  { id: "tasks", label: "Tasks", noun: "tasks", icon: ListChecks, groups: ["tasks"], page: "/dashboard/tasks" },
+  { id: "meetings", label: "Meetings", noun: "meetings", icon: Calendar, groups: ["meetings"], page: "/dashboard/review-meetings" },
+  { id: "requests", label: "Service requests", noun: "service requests", icon: LifeBuoy, groups: ["serviceRequests"], page: "/dashboard/service-requests" },
+  { id: "policies", label: "Insurance policies", noun: "policies", icon: Shield, groups: ["policies"], page: "/dashboard/insurance" },
+  { id: "folios", label: "Folios", noun: "folios", icon: FileText, groups: ["folios"], page: "/dashboard/investors" },
+  { id: "sips", label: "SIPs", noun: "SIPs", icon: Repeat, groups: ["sips"], page: "/dashboard/sips" },
+  { id: "documents", label: "Documents", noun: "documents", icon: FolderArchive, groups: ["documents"], page: "/dashboard/documents" },
+  { id: "nav", label: "Pages", noun: "pages", icon: ArrowRight, groups: [] },
+  { id: "reports", label: "Reports", noun: "reports", icon: BarChart3, groups: [] },
+];
+const ALL_MODULES = { id: "all", label: "All Modules", noun: "clients, leads, tasks, meetings or pages", icon: LayoutGrid, groups: [] as string[] };
+const MODULE_STORAGE_KEY = "aina_palette_module";
+
 /** `count` is the number of matches behind the rows shown (header badge). */
 type Section = { id: string; label: string; icon: LucideIcon; rows: Row[]; count?: number };
 
@@ -150,14 +180,37 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
   const [results, setResults] = useState<SearchResults>({});
   const [busy, setBusy] = useState(false);
   const [recentRecords, setRecentRecords] = useState<RecentRecord[]>([]);
+  const [moduleId, setModuleId] = useState("all");
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerQ, setPickerQ] = useState("");
+  const [pickerActive, setPickerActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const pickerInputRef = useRef<HTMLInputElement>(null);
+  const pickerListRef = useRef<HTMLDivElement>(null);
+
+  const availableModules = useMemo(() => {
+    const pages = new Set(navItems.map((n) => n.href));
+    return MODULES.filter((m) => !m.page || pages.has(m.page));
+  }, [navItems]);
+  // A remembered module the viewer no longer has falls back to All.
+  const currentModule = availableModules.find((m) => m.id === moduleId) ?? ALL_MODULES;
+  const pickerRows = useMemo(() => {
+    const needle = pickerQ.trim().toLowerCase();
+    return [ALL_MODULES, ...availableModules].filter((m) => !needle || m.label.toLowerCase().includes(needle));
+  }, [availableModules, pickerQ]);
 
   useEffect(() => {
     setMounted(true);
     try {
       const saved = localStorage.getItem(RECENT_STORAGE_KEY);
       if (saved) setRecentRecords(JSON.parse(saved).slice(0, 5));
+    } catch {
+      // ignore storage error
+    }
+    try {
+      const m = localStorage.getItem(MODULE_STORAGE_KEY);
+      if (m) setModuleId(m);
     } catch {
       // ignore storage error
     }
@@ -190,6 +243,7 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
     setQ("");
     setResults({});
     setActive(0);
+    setPickerOpen(false);
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const t = setTimeout(() => inputRef.current?.focus(), 10);
@@ -201,7 +255,9 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
 
   // Debounced search
   useEffect(() => {
-    if (!open || q.trim().length < 2) {
+    // Pages and reports match locally; no round-trip for them.
+    const remote = currentModule.id === "all" || currentModule.groups.length > 0;
+    if (!open || q.trim().length < 2 || !remote) {
       setResults({});
       setBusy(false);
       return;
@@ -213,7 +269,8 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
     const t = setTimeout(async () => {
       setBusy(true);
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: ctrl.signal });
+        const scope = currentModule.groups.length > 0 ? `&modules=${currentModule.groups.join(",")}` : "";
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}${scope}`, { signal: ctrl.signal });
         const j = await res.json();
         if (!cancelled) setResults(j);
       } catch {
@@ -227,7 +284,54 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
       clearTimeout(t);
       ctrl.abort();
     };
-  }, [q, open]);
+  }, [q, open, currentModule]);
+
+  // Focus the picker's box on open; keep its highlighted row in view.
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const t = setTimeout(() => pickerInputRef.current?.focus(), 10);
+    return () => clearTimeout(t);
+  }, [pickerOpen]);
+  useEffect(() => {
+    pickerListRef.current?.querySelector<HTMLElement>('[data-active="true"]')?.scrollIntoView({ block: "nearest" });
+  }, [pickerActive, pickerOpen]);
+
+  function chooseModule(id: string) {
+    setModuleId(id);
+    try {
+      localStorage.setItem(MODULE_STORAGE_KEY, id);
+    } catch {
+      // ignore
+    }
+    setPickerOpen(false);
+    setPickerQ("");
+    setActive(0);
+    setTimeout(() => inputRef.current?.focus(), 10);
+  }
+
+  function closePicker() {
+    setPickerOpen(false);
+    setPickerQ("");
+    setTimeout(() => inputRef.current?.focus(), 10);
+  }
+
+  function onPickerKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setPickerActive((i) => (i + 1) % Math.max(1, pickerRows.length));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setPickerActive((i) => (i - 1 + pickerRows.length) % Math.max(1, pickerRows.length));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (pickerRows[pickerActive]) chooseModule(pickerRows[pickerActive].id);
+    } else if (e.key === "Escape") {
+      // Closes the picker only; the palette stays open.
+      e.preventDefault();
+      e.stopPropagation();
+      closePicker();
+    }
+  }
 
   const saveRecent = (row: Row, chip?: string) => {
     if (row.key.startsWith("act:") || row.key.startsWith("nav:") || row.key.startsWith("report:") || row.key.startsWith("all:")) return;
@@ -263,8 +367,11 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
       return [{ id: "actions", label: "Quick Actions", icon: Zap, rows: actionRows }];
     }
 
+    const only = currentModule.id !== "all";
     const recentRows: Row[] = (needle === "" && recentRecords.length > 0)
-      ? recentRecords.map((r) => ({
+      ? recentRecords
+        .filter((r) => !only || (RECORD_CHIP[currentModule.id] != null && r.chip === RECORD_CHIP[currentModule.id]))
+        .map((r) => ({
           key: r.id,
           href: r.href,
           title: r.title,
@@ -281,7 +388,7 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
           n.label.toLowerCase().includes(cleanNeedle) ||
           n.defaultGroup.toLowerCase().includes(cleanNeedle)
       )
-      .slice(0, cleanNeedle ? 8 : 6)
+      .slice(0, only ? 12 : cleanNeedle ? 8 : 6)
       .map((n) => ({
         key: `nav:${n.href}`,
         href: n.href,
@@ -451,8 +558,10 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
     if (reportRows.length > 0) {
       out.push({ id: "reports", label: "Reports", icon: BarChart3, rows: reportRows });
     }
+    // One module picked: only its own section (and the recents of its kind).
+    if (only) return out.filter((s) => s.id === currentModule.id || s.id === "recent");
     return out;
-  }, [q, navItems, results, recentRecords]);
+  }, [q, navItems, results, recentRecords, currentModule]);
 
   const flatRows = useMemo(() => sections.flatMap((s) => s.rows), [sections]);
 
@@ -505,10 +614,76 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
       />
 
       {/* Palette Container */}
-      <div className="relative w-full max-w-2xl bg-card border border-border rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-scale-in text-foreground">
+      <div className={`relative w-full max-w-2xl bg-card border border-border rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-scale-in text-foreground ${pickerOpen ? "min-h-96" : ""}`}>
         {/* Search bar */}
-        <div className="flex items-center gap-3 px-4 py-3.5 border-b border-border bg-card">
-          <Search className="size-4 text-muted-foreground shrink-0" />
+        <div className="relative flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 border-b border-border bg-card">
+          <button
+            type="button"
+            onClick={() => {
+              setPickerOpen((v) => !v);
+              setPickerQ("");
+              setPickerActive(Math.max(0, [ALL_MODULES, ...availableModules].findIndex((m) => m.id === currentModule.id)));
+            }}
+            aria-haspopup="listbox"
+            aria-expanded={pickerOpen}
+            aria-label={`Search in: ${currentModule.label}`}
+            className={buttonClass("secondary", "sm", "shrink-0 max-w-32 sm:max-w-44 min-w-0")}
+          >
+            <span className="truncate">{currentModule.label}</span>
+            <ChevronDown className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${pickerOpen ? "rotate-180" : ""}`} />
+          </button>
+          {pickerOpen && (
+            <>
+              <div className="fixed inset-0 z-10" onMouseDown={closePicker} />
+              <div
+                className="absolute left-3 sm:left-4 top-full z-20 mt-1 w-64 max-w-[calc(100%-1.5rem)] rounded-xl border border-border bg-card p-2 shadow-xl"
+                onKeyDown={onPickerKeyDown}
+              >
+                <div className="flex items-center gap-2 rounded-lg border border-border px-2.5 h-8 focus-within:border-primary">
+                  <Search className="size-3.5 text-muted-foreground shrink-0" />
+                  <input
+                    ref={pickerInputRef}
+                    type="text"
+                    value={pickerQ}
+                    onChange={(e) => {
+                      setPickerQ(e.target.value);
+                      setPickerActive(0);
+                    }}
+                    aria-label="Search modules"
+                    placeholder="Search Modules"
+                    className="w-full bg-transparent border-0 outline-hidden text-sm placeholder:text-muted-foreground focus:ring-0"
+                  />
+                </div>
+                <div ref={pickerListRef} role="listbox" aria-label="Modules" className="mt-1.5 max-h-60 overflow-y-auto space-y-0.5">
+                  {pickerRows.length === 0 ? (
+                    <div className="px-2.5 py-3 text-sm text-muted-foreground">No modules</div>
+                  ) : (
+                    pickerRows.map((m, i) => {
+                      const selected = m.id === currentModule.id;
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          role="option"
+                          aria-selected={selected}
+                          data-active={i === pickerActive}
+                          onClick={() => chooseModule(m.id)}
+                          onMouseEnter={() => setPickerActive(i)}
+                          className={`${MENU_ITEM} ${i === pickerActive ? "bg-secondary text-foreground" : ""}`}
+                        >
+                          <span className="size-4 shrink-0 grid place-items-center">
+                            {selected && <Check className="size-4 text-primary" />}
+                          </span>
+                          <span className="truncate">{m.label}</span>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+          <Search className="hidden sm:block size-4 text-muted-foreground shrink-0" />
           <input
             ref={inputRef}
             type="text"
@@ -518,9 +693,13 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
               setActive(0);
             }}
             onKeyDown={onKeyDown}
-            aria-label="Search clients, leads, tasks, meetings and pages"
-            placeholder="Search clients, leads, tasks, meetings or pages (type > for actions)…"
-            className="w-full bg-transparent border-0 outline-hidden text-sm placeholder:text-muted-foreground focus:ring-0"
+            aria-label={`Search ${currentModule.noun}`}
+            placeholder={
+              currentModule.id === "all"
+                ? "Search clients, leads, tasks, meetings or pages (type > for actions)…"
+                : `Search ${currentModule.noun}…`
+            }
+            className="w-full min-w-0 bg-transparent border-0 outline-hidden text-sm placeholder:text-muted-foreground focus:ring-0"
           />
           {busy ? (
             <Loader2 className="size-4 animate-spin text-brand-cyan shrink-0" />
@@ -535,8 +714,16 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
         <div ref={listRef} className="max-h-[60vh] overflow-y-auto p-2 space-y-3 text-xs">
           {flatRows.length === 0 ? (
             <div className="py-12 text-center text-muted-foreground">
-              <p className="text-sm font-medium">No results found for “{q}”</p>
-              <p className="text-xs text-muted-foreground mt-1">Try a client name, PAN, mobile, folio number or a page name.</p>
+              {q.trim() === "" ? (
+                <p className="text-sm font-medium">Start typing to search {currentModule.noun}</p>
+              ) : (
+                <>
+                  <p className="text-sm font-medium">No results found for “{q}”</p>
+                  {currentModule.id === "all" && (
+                    <p className="text-xs text-muted-foreground mt-1">Try a client name, PAN, mobile, folio number or a page name.</p>
+                  )}
+                </>
+              )}
             </div>
           ) : (
             sections.map((section) => (

@@ -259,7 +259,17 @@ export async function loadClientLinkTokens(
       // assessSuitability keys off the canonical `investors.risk_profile` enum,
       // not the (firm-customisable) band label shown to the client.
       const { category: riskProfile } = await resolveCanonicalProfile(tx, tenantId, subjectId);
-      const s = assessSuitability(riskProfile, exposure.equityPct, exposure.classifiedPct);
+      let s = assessSuitability(riskProfile, exposure.equityPct, exposure.classifiedPct);
+      // Name the actual gap — the RM's popup shows this when the send is refused.
+      if (s.severity === "unknown" && s.profile) {
+        const legs = folioRows.reduce((n, f) => n + (f.schemes?.length ?? 0), 0);
+        const detail = folioRows.length === 0
+          ? "No folio found for this client - no mutual fund holdings are on file."
+          : legs === 0
+            ? "This client's folios have no schemes (no mutual fund holdings or values) on file."
+            : null;
+        if (detail) s = { ...s, message: detail };
+      }
 
       out["suitability.status"] = s.severity;
       out["suitability.summary"] = s.message;

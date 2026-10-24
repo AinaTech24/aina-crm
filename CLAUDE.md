@@ -281,6 +281,23 @@ the client page's Overview tab.
   Each opens `/dashboard/opportunities/[id]`, where the journey runs: the same
   `OpportunityCard` the client page uses, plus history, details (Edit), the
   client and its tasks. "New opportunity" there picks the client.
+- **Proposal approval, then transaction review** (2026-10-16, migration 0239).
+  The step after "Client accepted" is gated on the client having APPROVED the
+  proposal (`AFTER_ACCEPTED` in stages.ts); until then the journey waits, and
+  `onProposalEvent("accepted")` moves it on by itself. An MF journey now ends
+  Transaction placed → **Approve / reject transaction** (`txn_review`) → Won,
+  and is never skipped or advanced generically: `decideTransaction` /
+  `POST /api/opportunities/[id]/transaction-review`. Approve wins the client and
+  creates a "client won" task (`meta.wonOpportunityId`, so closing does not
+  complete it); reject needs a reason, returns to Transaction placed with a fix
+  task, and the rejected transaction no longer counts in `loadFacts`.
+- **RTA data check** (2026-10-19, migration 0240). Approving an MF transaction
+  no longer wins the client: it moves to `rta_check` and creates a high-priority
+  task (`meta.opportunityId` + `rtaCheck: true`) to check the transaction against
+  the RTA data, assigned to whoever the approver picks in the Approve dialog
+  (default the opportunity's owner; the assignee is notified) and due the day they
+  choose (default tomorrow). **Won** is gated on that task being completed (`gateFor("won")`);
+  the "client won" task is created at that point (`createWonTask`).
 - **Follow-ups ARE tasks.** An opportunity's next follow-up is its earliest
   open task with `meta.opportunityId` — there is no column. The follow-up date
   chosen at creation is the first task's due date (10:00 IST; default two
@@ -301,6 +318,30 @@ the client page's Overview tab.
   board has a "Later" column and tile. Started from the card ("Client wants it
   later") or the New opportunity dialog (Now / Later). Diwali dates are a
   table in later-core — add the next year as the calendar rolls on.
+
+## Date of demise — a client who has died
+
+`investors.date_of_demise` (migration 0241), on every client type: the client
+form, Add client and the inline edit on the client page. Recording one
+(`lib/investors/demise.ts`, called by the investor PATCH / POST in the same
+transaction) marks the client **Inactive** (not Closed / Exited — they may
+still hold units pending transmission, so AUM keeps counting), **stops** their
+Active / Paused / Pending SIPs (remarks "Stopped — client deceased on …") and
+**cancels** orders still Pending / Submitted. Processed transactions are the
+registrar's history and are never deleted. Audited as `investor.demise_recorded`.
+Clearing the date returns an Inactive client to Active; SIPs stay stopped. The
+RTA SIP import (`processSipBook`) does not turn a stopped SIP of a deceased
+client back to Active. The client page shows a "Deceased" banner.
+
+## Moving folios between two clients
+
+Clients list → select exactly two → **Merge** (bulk bar) opens
+`FolioTransferDialog`: pick the direction, tick the folios (their schemes are
+listed), optionally move their transactions and SIPs, and confirm
+(`/api/investors/folio-transfer`, `lib/investors/folio-transfer.ts`; owner /
+branch head, merge scope, a PAN clash needs an explicit tick). The unit is the
+folio — a folio belongs to one client, so schemes inside it travel with it. To
+fold a whole duplicate record away use Merge Clients (`mergeInvestors`).
 
 ## Daily habits — the cues that bring people back (2026-10-08)
 
@@ -331,7 +372,7 @@ action easy, the result satisfying.
 Built from *The E-Myth Revisited*: help the owner work ON the firm, not just
 in it. Sidebar group **Practice**: Practice Systems (owner, branch head,
 compliance) and the Operations Manual (the SOP library, open to everyone).
-Migration 0234; schema `db/schema/practice.ts`; code `src/lib/practice/`;
+Migration 0245; schema `db/schema/practice.ts`; code `src/lib/practice/`;
 pages `/dashboard/practice/*` with `PracticeNav`; access `lib/practice/access.ts`
 (`canViewPractice` to see, `canManagePractice` — owner / settings.users — to change).
 
@@ -420,6 +461,38 @@ Bank / corporate / NBFC / post-office FDs a client placed through the firm —
 - **Access follows the client** (`investorScopeSql` / `loadViewableInvestor`);
   writes need `investor.edit.*`. Soft delete (`deleted_at`).
 
+## KYC status from the KRA (NSE MF Invest)
+
+Each firm connects its OWN NSE MF Invest (NMF II) API user at Settings →
+Integrations ("NSE MF Invest — KYC status", owner only): Login User ID,
+member code, API Secret, API Member License Key, Live / UAT. Stored encrypted
+in `tenant_integrations` (provider `nse_mf`); the secrets are write-only.
+Code: `src/lib/kyc/` (nse-auth · nse-status · nse-client · credentials ·
+refresh), migration 0237.
+
+- **NSE must whitelist the server's IP** against that user (up to 4 per user;
+  production's Elastic IP, shown on the card, `NSE_EGRESS_IP` overrides). A 403
+  is the keys or the IP. KYC_CHECK answers only in Live.
+- **Auth** (`nse-auth.ts`, protocol v1.9.6 pp. 5–6): AES-128 of
+  `secret|nonce` keyed by PBKDF2(license key, salt), sent as
+  `base64(iv::salt::cipher)`. The PBKDF2 iteration count (1000) and hash
+  (SHA-1) are AesUtil's — the spec does not print them; they are the first
+  thing to check if a correct key set gets 403 from a whitelisted IP.
+- **The remark is the meaning** (`nse-status.ts`): Validated → verified,
+  Registered → registered, Under process / Not available → pending, On hold →
+  hold, Rejected → rejected, Deactivate / Incomplete / CVL MF KYC →
+  re_kyc_required. Service down, a failed call, an unknown remark or an answer
+  for another PAN NEVER changes the status — it is recorded in `kyc_checks`
+  and nothing else.
+- **Every answer is history**: a `kyc_checks` row; a change also writes audit
+  `investor.kyc_from_kra` and the event `investor.kyc_status_changed`.
+  `investors.kyc_status_remark` / `kyc_checked_at` / `kra_name` show on the
+  client page ("KRA check", with Check now for whoever may edit the client).
+- **Nightly** `kyc-status-refresh` (02:30 UTC = 08:00 IST): firms with the
+  daily refresh on; live clients with a valid PAN, oldest check first, every
+  3 days until verified then every 30; 400 a firm a night, one call at a
+  time, outside any transaction; a refused login stops the firm's run.
+
 ## Website complaint form
 
 Each firm gets one public link, `/complaint/<token>` (`tenants.complaint_form_token`,
@@ -448,6 +521,33 @@ form for your website" (`/dashboard/complaints/website-form`). Code:
   (2026-10-01); `/dashboard/complaints/disclosure` redirects to the register.
   Do not restore it.
 
+## Service request form — email never opens a ticket
+
+A client asks for a service through the firm's **service request form**
+(`/service-request/<token>`, `tenants.service_form_token`, migration 0238), sent
+by link or put on the website: Service Requests → ⋯ → "Service request form for
+clients" (`/dashboard/service-requests/website-form`). Code:
+`src/lib/service-requests/` (`web-submission.ts` reads the form, `web-form.ts`
+the rest), `POST /api/public/service-requests/[token]`, and
+`PATCH /api/service-requests/website-form` (`service_request.manage`: switch
+off, or replace the link).
+
+- **The service chosen opens a request** (the API still takes up to 6) through
+  `openServiceRequest`, so each has its own service ID (`SR-YYYY-NNNNN`), shown
+  on the thank-you page. The same client re-sending the same service within a
+  day gets the open request's ID back, not a second ticket.
+- **Linked to a client only when the email or mobile typed matches exactly one
+  live client**; it then goes to that client's RM, else the owner (both
+  notified). The acknowledgement is sent only when the EMAIL matched. The form
+  asks no PAN or folio. "Other" opens a box for what the client needs. Abuse controls as the
+  complaint form: 20/hour per IP, 120/hour per link, honeypot.
+- **Incoming email does NOT open a service request** (the firm's decision of
+  2026-10-16). It once did, and the firm's own "SIP INSTALLMENT REMINDER" mail
+  — whose footer says "bank account" — opened 332 "Bank update" tickets at one
+  firm (483 in ten days, 474 escalated). Do not put `imap-poller` → ticket back.
+  `scripts/close-auto-email-tickets.ts` (dry run; `--tenant`, `--apply`) closes
+  the ones already in a register, never one a person has touched.
+
 ## Creating a family
 
 The New family form (`/dashboard/families/new`, `NewFamilyForm`) asks for the
@@ -467,8 +567,154 @@ head, the name and notes — nothing else (the firm's request, 2026-10-02).
   With no head: the creator, their branch, the firm's default cadence. Every
   create path (this form, Map Family, the unmapped-client and suggestion
   panels) goes through `POST /api/families`, so all of them get this.
+- **The family's RM is the head's RM, and members follow it by default**
+  (`lib/families/head-rm.ts`, the firm's rule of 2026-10-09). Mapping a
+  client into a family gives them the head's RM; making someone head gives
+  every member the new head's RM; merging families gives the moved members the
+  survivor head's RM; a client created straight into a family gets the head's
+  RM unless an RM was chosen (an own-book-only creator keeps their own). It is
+  a default, not a lock — a member's RM can be changed on their record. Only
+  `rm_id` moves (as the client page and bulk Assign RM do), and each change is
+  audited as `investor.rm_from_family_head`.
+  A family has ONE RM (2026-10-22): changing the RM of ANY member — head or not — on
+  the client's record or by bulk Assign RM gives the head and every member the same RM,
+  and the family (`setFamilyRmFromClient`, reason `family_rm_changed`; clearing an RM
+  does not propagate). Editing the **Family RM** in the family's Details tab
+  (`PATCH /api/families/[id]`) does the same through `setFamilyRm`. The head's RM also reaches the family when a client reaches the
+  **Family Mapping** step of the onboarding journey (`blueprints/engine.ts`,
+  reason `family_mapping_stage`: a head's whole family, or a member alone).
+- **Family mapping has its own permissions** (2026-10-19, "Family Mapping" group
+  in Customize Access Permissions): `family.map.view` / `.create` / `.edit` /
+  `.delete` — see families, add a client to a family, change a member's
+  relationship or head, remove a client. Each is accepted ALONGSIDE the older
+  household caps (`family.edit` …, `lib/families/access.ts` `MAP_CAPS`), so a
+  customised user who could map before still can. Deleting a whole household
+  stays `family.delete`.
+  **Assigned only** (2026-10-21): `family.map.view_assigned` ("View assigned families only")
+  and `family.map.edit_assigned` ("Edit assigned families only") limit a person to the
+  households they are the RM of (`families.rm_id`, which follows the head's RM) — the way to
+  give ~10 named people access without opening the whole book. They are opt-in (no role has
+  them): tick them INSTEAD of "View family mapping" / the three mapping permissions. When
+  ticked without their all-families twin they win over the older household and client caps
+  (`viewsAssignedFamiliesOnly`, `mapScope`, `canMapFamily` in `families/access.ts`); the
+  family list and every route go through `familyScopeSql` / `assertFamilyEditable`, so a
+  household that is not theirs is not found. Starting a new household stays `family.map.create`.
+- **Members take the head's address and the family's review frequency** the
+  same way (`lib/families/shared-details.ts`, 2026-10-13; see "Client types").
 - Do not put Category, Relationship Manager, Review frequency or First
   meeting date back on the create form.
+
+## Client types — the client master follows the type
+
+`investors.investor_category` is the CLIENT TYPE, and the client master asks
+for what that type of investor needs (`src/lib/investors/client-types.ts`,
+the firm's request of 2026-10-12; extra details in `investors.type_details`,
+migration 0233). One list — keys, labels, rules — for the forms, the APIs,
+the imports and every label; never copy the enum again.
+
+| Type | Adds | Holding | Nomination |
+|---|---|---|---|
+| Individual · NRI · Sole proprietor · Other | personal details; NRI: country, overseas address, tax residency, foreign TIN, NRE/NRO; proprietor: business name | single / joint | **yes**, or a recorded opt-out |
+| Minor | guardian (name, PAN, relation, DOB, contact); turns-18 date; DOB required, must be under 18 | single | **no** |
+| HUF | Karta (name, PAN, DOB, contact), date formed, coparceners | single | **no** |
+| Company · LLP · Partnership · Trust · Society/AOP/BOI (+ legacy Corporate) | date and number of incorporation / registration, nature of business, net worth, FATCA/CRS class (+GIIN), authorised signatories, beneficial owners | single | **no** |
+
+- **Only individuals nominate** (SEBI; the firm's rule). Both APIs ignore a
+  nominee list for any other type — and never delete nominees already on
+  file. A type that cannot hold jointly is saved as Single; Minor sets
+  `is_minor`.
+- `cleanTypeDetails(type, details)` keeps only what the type uses, so a
+  record switched from HUF to Individual sheds its Karta.
+- An HUF's or entity's formation date lives in `type_details.entity.formedOn`,
+  not `dob` — a company has no birthday.
+- Registrar tax-status text becomes a type through
+  `clientTypeFromTaxStatus` (CAMS, KFintech, Excel import): "Partnership
+  Firm", "LLP", "Sole Proprietorship", "Society" are their own types now, not
+  "company". The client book's "corporate" bucket counts company, corporate,
+  LLP, partnership and society/AOP.
+- `/dashboard/investors/new?type=minor` opens Add client ready for a type.
+- **A minor's risk profile IS the guardian's** (2026-10-13, migration 0234).
+  The minor links the guardian's client record
+  (`investors.guardian_investor_id`: picked in the Guardian section, else
+  found by the guardian PAN typed), and two triggers keep the category, score,
+  signed date and provisional flag equal to the guardian's — on any write path.
+  The forms show it read-only for a minor and never send `riskProfile`.
+- **Dropdowns, not free text** (lists in client-types.ts): tax status by type
+  (`taxStatusOptions`, defaulted on a type change), marital status, income
+  range, household type (Individual · Family · Company · HUF). `withCurrent`
+  keeps an imported value the list lacks.
+- **Pincode → city / state only in RTA imports** (2026-10-14, the firm's
+  call after a day of form auto-fill that overwrote typed cities with India
+  Post districts): the forms never fill from the pincode. `importRtaFolios`
+  completes a registrar row that has a pincode and a BLANK (or "NA" / "-")
+  city or state (`lib/pincode/fill.ts`, India Post via `lookupPincode`);
+  nothing written is ever replaced. Do not put form auto-fill back.
+- **Each type sees only its own fields** (2026-10-14), on the client page as
+  in the forms: personal fields for a person or minor, adult fields
+  (marital status, occupation, employer, PAN–Aadhaar link, anniversary) for
+  an individual, the type's own card (Guardian · Karta & coparceners ·
+  Entity + signatories / owners · Overseas details · Business), and the
+  Nomination section only where `canNominate`. Every "missing" count —
+  health score, completeness, compliance gaps, data-quality cards, list
+  `gaps=` filters, quick filters, family filters, data hygiene, the
+  assistant — goes through `lib/investors/type-rules.ts` (`needsNomineeSql`,
+  `missingDobSql`, `panAadhaarGapSql`, `missingAdultTextSql`); never write
+  `nominee_name IS NULL` or `dob IS NULL` as a gap again.
+- **Removed from the client master at the firm's request (2026-10-13)**: CKYC
+  expiry and FATCA expiry (neither expires) and Service tier (the review
+  frequency says the same). The columns stay; do not put the fields back.
+- **What the family owns is not asked again** (`lib/families/shared-details.ts`):
+  a member's address is the head's, and every member's review frequency is the
+  family's. Applied with the head's RM (mapping, head change, merge) and when
+  the head's address or the family's cadence changes; audited as
+  `investor.details_from_family`. The investor PATCH ignores a member's
+  address (head has one) and review frequency (family has one); the forms show
+  both as "from the family".
+
+## Financial Health Check — filled from the CRM
+
+Picking an existing client on a NEW health check (`/dashboard/financial-plans/new`,
+not an edit, not "start from a fact-find") fills it from what the firm already
+holds (2026-10-17): `GET /api/financial-plans/prefill?investorId=`
+(`financial_plan.view` + `loadViewableInvestor`) over
+`lib/financial-plans/from-crm.ts`.
+
+- Profiling: age from DOB; spouse's age and children from the family when the
+  client is its head or the head's spouse; the risk profile.
+- Assets: mutual funds summed by class — AMFI category (`withSchemeCategories`)
+  read with `classifyScheme`, gold by name, hybrid as "other" — and live FDs
+  as debt.
+- Protection: in-force life (term, endowment, money-back, ULIP, other life) and
+  health (health, critical illness, group health) sum assured + annual premium.
+- Goals: live goals with the Goals module's current value and existing SIP; a
+  goal kept in future rupees comes at 0% inflation (as the fact-find import).
+- Only blanks are filled; a second pick swaps what the first one filled; what
+  the RM typed stays. Income, expenses and loans are not CRM records.
+
+## A client who leaves — Exited, not deleted
+
+The firm's question of 2026-10-15: a client with no AUM or no business today
+may come back, so deleting them (Trash, erased after 30 days) means typing
+everything in again. Instead:
+
+- **Mark as exited** (client page → More, or bulk "Update a field" →
+  Status): the record keeps its history, family, RM, notes and documents,
+  leaves the client list (`live=1`, the list's default — "N exited clients are
+  hidden — show", `?exited=1`; a name search or a status filter still finds
+  them) and every dashboard count (`aliveClient`). The Delete confirmation
+  says so.
+- **Coming back is automatic**: after every RTA import a dormant / closed /
+  exited client with an inflow transaction (purchase, SIP instalment) in the
+  last 45 days dated on or after the day they left is Active again, audited
+  `investor.reactivated`, and their RM is told "… is back"
+  (`lib/investors/client-return.ts`). Redemptions never count.
+- **Dates**: a trigger (migration 0235) writes `exited_at` when a status
+  becomes closed / exited and `dormant_since` for dormant, on every write
+  path, and clears them when the client returns.
+- **Adding the same PAN again** never makes a second client:
+  `POST /api/investors` answers 409 with `existing` (`existingClientForPan`,
+  merges followed; a client outside the viewer's book has no name), and Add
+  client offers Reactivate (exited), Restore (in the Trash) or Open.
 
 ## Booked business vs the RTA
 
@@ -532,6 +778,25 @@ client).
 - **Duplicates already in a book**: `tsx scripts/repair-rta-duplicates.ts
   --tenant <id>` (dry run; `--apply`, `--placeholders`). It is heavy on a large
   book, so run it out of hours.
+- **An empty PAN-less placeholder goes to the Trash on its own**
+  (`lib/rta/placeholder-sweep.ts`, 2026-10-14): after every RTA import and in
+  the nightly ops scan, a `NOPAN:` client older than an hour that holds
+  nothing, that no row refers to (every `investor_id` / `subject_id` /
+  `entity_id`-style column, found from the schema) and that no person ever
+  edited is trashed (restorable) and loses its key. Nimesh C Shah had 130 —
+  the AUM statement's spelling of clients the folio master had already
+  adopted. A placeholder that holds anything stays: Merge Clients suggests
+  its PAN twin under "Similar name, one without PAN" (`similarNames` in
+  `lib/investors/duplicate-clusters.ts`: spaces moved, one letter off, an
+  initial for a word — never a different first name), and a person merges.
+- **A client who holds money with the registrar is never in the Trash**
+  (`lib/investors/holds-money.ts`, 2026-10-14): a folio with a value or an
+  active SIP. Delete (one or bulk) keeps them and says why — merge a
+  duplicate, mark a leaver Closed / Exited; every purge (by hand, Empty Trash,
+  the 30-day retention purge) skips them; after each RTA import and nightly,
+  one found in the Trash is restored (audit `investor.restore`, reason
+  `holds_money_with_registrar`). Nimesh's "Thakor Rushin Jitendrabhai"
+  (₹28.33 L) had been bulk-deleted with his PAN-less twin.
 
 ## Webhook handlers
 
@@ -1335,6 +1600,42 @@ For staging or longer-lived environments, run `next start` behind a
 process supervisor (pm2 / systemd / Docker `restart: unless-stopped`)
 so the OS handles crash recovery for you.
 
+### How a push reaches production — the verified artifact (2026-10-15)
+
+The production box **never builds**. A push to `main` runs ONE workflow
+(`.github/workflows/deploy.yml`, "Deploy to AWS (EC2)"):
+
+```
+CI once (ci-core.yml) → build the slim image on a standard arm64 runner
+  → runtime-files gate → docker save | zstd + manifest
+  → S3 verified/<commit>/<runId>-<attempt>/  (OIDC role aina-crm-github-deploy: PutObject only)
+  → SSM → box: disk gate → download → artifact-verify.sh → docker load
+  → migrate → schema guard → blue/green switch  (scripts/artifact-deploy.sh, run-deploy-artifact.sh)
+```
+
+- **Only CI can create a verified artifact; the box can only read it.** The GitHub
+  role has `s3:PutObject` on `verified/*` (no Delete); the instance role has
+  `s3:GetObject` on `verified/*` (no Put, no List). Keys carry the full commit SHA and
+  run id + attempt, so a key is never reused (a re-run bumps the attempt).
+- **The box refuses** a wrong commit, failed CI, shadow flag, wrong architecture, a
+  stale artifact (> 14 days) or any SHA-256 mismatch — against the manifest AND
+  against the digest the build job passes inside the SSM command.
+- **Disk gate** (`scripts/disk-gate.sh`) aborts before any download/load; the log
+  prints CURRENT FREE / REQUIRED FREE / ARTIFACT SIZE / IMAGE SIZE / SAFETY HEADROOM.
+- **Every deploy measures itself** (`scripts/deploy-sampler.py`): the workflow log ends
+  with `=== DEPLOY METRICS ===` (host RAM, swap, dockerd RSS, container peaks, disk,
+  durations). A normal deploy takes ~1 minute on the box.
+- **Anything the image needs at runtime must be IN the image.** The old on-box
+  `COPY . .` silently carried untracked files (`rds-ca.pem` — the first verified
+  deploy failed on it, safely). The build job has a gate for the files production
+  needs; add to it when the box starts depending on another file.
+- **Emergency path**: `deploy-legacy.yml` (manual) still builds on the server. Docs-,
+  mobile-, terraform-, artifacts- and reports-only pushes do not deploy.
+- Pushes to a branch run `ci.yml` (cancelled by a newer push); `main` is validated by
+  the deploy workflow, never twice. Don't dispatch a deploy while another one is
+  *pending*: GitHub keeps only the newest pending run per concurrency group and
+  cancels the older one.
+
 ### Production change control — one change at a time
 
 Since 2026-10-09 (the firm's rule) only ONE session or person changes
@@ -1356,12 +1657,15 @@ bash scripts/prod-change.sh history
   `rollback-bluegreen.sh` take and release it themselves (released only when
   `/api/health` answers 200; a failed deploy releases it only if the colour
   still serving is healthy). A deploy waits up to 30 minutes for the lock.
-- **No administrator key for a deploy.** `manual-deploy.sh` and
-  `prod-change.sh` first swap the laptop's identity for short-lived
-  credentials of the role `aina-crm-manual-deploy`
-  (`scripts/aws-deploy-role.sh`): upload under the artifacts bucket's
-  `releases/` and SSM commands on the production instance, nothing else (no
-  RDS, IAM, security groups or other buckets).
+- **No administrator key for a deploy, and no long-lived AWS key at all.**
+  `manual-deploy.sh` and `prod-change.sh` use the SSO profile
+  `aina-deploy` (IAM Identity Center permission set AinaDeploy, 1-hour
+  credentials, MFA at login; `scripts/aws-deploy-role.sh`): upload under the
+  artifacts bucket's `releases/` and SSM commands on the production instance,
+  nothing else (no RDS, IAM, security groups or other buckets). Sign in first
+  with `aws sso login --profile aina-deploy`. Infrastructure work uses
+  `--profile aina-admin` (AinaInfraAdmin) and read-only monitoring
+  `--profile aina-ops` (AinaOpsReadOnly).
 - **A deploy inside a wider change**: take the lock under a space-free session
   name, then `DEPLOY_SESSION=<that name> FORCE=1 bash scripts/manual-deploy.sh
   <sha>`; `ssm-deploy.sh` sees `held-by` and deploys under it without
@@ -1369,6 +1673,24 @@ bash scripts/prod-change.sh history
 - Every acquire / release is appended to `~/prod-change.log` with the change,
   the session and the start time. `force-release` exists for a human clearing
   a dead session's lock, and is logged as such.
+
+### Database roles in production
+
+The web app and the worker connect ONLY as `mfd_app` (`APP_DATABASE_URL`):
+no superuser, no BYPASSRLS, so Row-Level Security is enforced on every
+query. Since 2026-10-09 neither container even receives the master login.
+
+- `mfd_master` (`DATABASE_URL`) lives in `~/app/.env.migrate` on the box
+  (mode 600) and only the `migrate` compose service loads it — the deploy's
+  migrate, type-check and schema-guard steps.
+- A maintenance script that needs DDL or the master (anything reading
+  `process.env.DATABASE_URL` directly: apply-migration, migrate-tolerant,
+  check-rls, verify-rls-isolation, provision-app-role, cleanup-ahpal-rta,
+  reset-tenant-book, diagnose-rta-mailback) runs as a one-off, under the
+  change lock:
+  `docker compose -f docker-compose.prod.yml run --rm migrate npx tsx scripts/<x>.ts`.
+  `docker exec app-worker-1 …` gives you `mfd_app` only.
+- Never add `DATABASE_URL` back to `.env.production`.
 
 ### Health check
 

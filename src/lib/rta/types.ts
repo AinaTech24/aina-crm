@@ -9,7 +9,8 @@
 
 export type RtaSource = "kfintech" | "cams" | "unknown";
 
-export type InvestorCategory = "individual" | "huf" | "minor" | "nri" | "company" | "trust" | "other";
+/** The client types (lib/investors/client-types.ts) — partnership, LLP, sole proprietorship, society / AOP too. */
+export type InvestorCategory = import("@/lib/investors/client-types").ClientType;
 export type Residency = "indian_resident" | "nri" | "oci" | "pio" | "foreign_national";
 
 export type RtaScheme = {

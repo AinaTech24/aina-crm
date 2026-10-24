@@ -22,6 +22,8 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, requireAny, can } from "@/lib/auth/rbac";
 import { cleanUccCodes } from "@/lib/investors/ucc";
 import { isMinorKey, ownPan } from "@/lib/investors/pan-display";
+import { CLIENT_TYPE_KEYS, TypeDetailsSchema, canNominate, cleanTypeDetails, singleHoldingOnly } from "@/lib/investors/client-types";
+import { applyFamilySharedDetails, familyHeadedBy, familySharedDetails } from "@/lib/families/shared-details";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { healthFields } from "@/lib/investors/health";
 import { computeNextReview } from "@/lib/investors/review-cadence";
@@ -31,6 +33,9 @@ import { registerNomineePanDocs } from "@/lib/investors/nominee-docs";
 import { recomputeFamilyHealthForInvestor } from "@/lib/families/health-persist";
 import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
 import { getClientHealth } from "@/lib/metrics/health";
+import { setFamilyRmFromClient } from "@/lib/families/head-rm";
+import { applyDemise, applyInactive, clearDemise, demiseDateError, type DemiseEffects } from "@/lib/investors/demise";
+import { clientsHoldingMoney, holdersMessage } from "@/lib/investors/holds-money";
 import {
   investors,
   folios,
@@ -92,7 +97,12 @@ const Patch = z.object({
   // Client photo — storage key (general kind) or external URL; "" clears it.
   avatarUrl: z.string().max(500).nullable().optional(),
   segmentTag: z.enum(["HNI", "Affluent", "Retail", "NRI", "Corporate"]).optional(),
-  investorCategory: z.enum(["individual", "huf", "corporate", "company", "trust", "nri", "minor", "other"]).optional(),
+  investorCategory: z.enum(CLIENT_TYPE_KEYS).optional(),
+  /** What the client type adds (guardian, Karta, entity, NRI…) — lib/investors/client-types.ts. */
+  typeDetails: TypeDetailsSchema.nullish(),
+  /** A minor's guardian, when the guardian is a client too. Their risk
+   *  profile becomes the minor's (migration 0234). */
+  guardianInvestorId: z.string().uuid().nullable().optional(),
   rmId: z.string().uuid().optional(),
   // Client-service preferences
   statementCadence: z.enum(["off", "monthly", "quarterly"]).optional(),
@@ -184,6 +194,9 @@ const Patch = z.object({
   // handler); anniversaryDate is a plain date column (accepts YYYY-MM-DD).
   onboardedAt: z.string().nullable().optional(),
   anniversaryDate: z.string().nullable().optional(),
+  // Date of demise (any client type). Recording one stops the client's SIPs and
+  // pending orders — lib/investors/demise.ts.
+  dateOfDemise: z.string().nullable().optional(),
   // ── Fields the client-details card shows but the edit modal couldn't reach.
   //    Free-text (not enums) where RTA imports supply arbitrary values, so an
   //    imported record round-trips through the editor without being mangled.
@@ -393,7 +406,68 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         mirror.bankAccountNumberMasked = b0?.accountMasked ?? null;
         mirror.bankIfsc = b0?.ifsc ?? null;
       }
-      const merged = { ...before, ...fields, ...panPatch, ...mirror };
+      // The client type decides what the record may hold
+      // (lib/investors/client-types.ts). Only an individual can nominate: for
+      // a minor, an HUF or an entity a nominee list is not written — and what
+      // is already on file is left alone, not deleted. A minor is flagged as
+      // one, and a type that cannot hold jointly holds singly.
+      const nextType = (parse.data.investorCategory ?? (before as any).investorCategory ?? "individual") as string;
+      const nominating = canNominate(nextType);
+      if (!nominating) {
+        for (const k of ["nominees", "nomineeName", "nomineeRelation", "nomineeDob"] as const) {
+          delete (fields as any)[k];
+          delete mirror[k];
+        }
+      }
+      const typePatch: Record<string, unknown> = {};
+      if (parse.data.typeDetails !== undefined || parse.data.investorCategory !== undefined) {
+        typePatch.typeDetails = cleanTypeDetails(nextType, (parse.data.typeDetails ?? (before as any).typeDetails) as any);
+      }
+      delete (fields as any).typeDetails;
+      if (parse.data.investorCategory !== undefined) {
+        typePatch.isMinor = nextType === "minor";
+        if (singleHoldingOnly(nextType)) typePatch.modeOfHolding = "Single";
+      }
+
+      // A minor's guardian as a client: the one picked, else the client whose
+      // PAN is the guardian PAN typed. The minor then carries the guardian's
+      // risk profile (a database rule, migration 0234).
+      delete (fields as any).guardianInvestorId;
+      if (nextType === "minor") {
+        let gid: string | null | undefined = parse.data.guardianInvestorId;
+        if (gid) {
+          const ok = (await tx.execute(sql`
+            SELECT 1 FROM investors WHERE id = ${gid}::uuid AND tenant_id = ${session.tenantId}::uuid
+              AND id <> ${id}::uuid AND deleted_at IS NULL`)).rows.length;
+          if (!ok) gid = undefined;
+        } else if (gid === undefined && !(before as any).guardianInvestorId) {
+          const gp = String(((typePatch.typeDetails ?? (before as any).typeDetails) as any)?.guardian?.pan ?? "").trim().toUpperCase();
+          if (gp) {
+            const g = (await tx.execute(sql`
+              SELECT id FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND pan = ${gp}
+                AND id <> ${id}::uuid AND deleted_at IS NULL AND merged_into_id IS NULL
+              ORDER BY dedup_pan DESC LIMIT 1`)).rows[0] as { id: string } | undefined;
+            gid = g?.id;
+          }
+        }
+        if (gid !== undefined) typePatch.guardianInvestorId = gid;
+      }
+
+      // What the family owns is not the member's to edit: the head's address
+      // (for a member) and the family's review frequency (for everyone in it).
+      // lib/families/shared-details.ts keeps them in step.
+      if ((before as any).familyId) {
+        const shared = await familySharedDetails(tx, (before as any).familyId);
+        if (shared.address && shared.headId !== id) delete (fields as any).address;
+        if (shared.reviewFrequency) {
+          for (const k of ["reviewFrequency", "reviewFrequencyDays"] as const) {
+            delete (fields as any)[k];
+            delete (parse.data as any)[k];
+          }
+        }
+      }
+
+      const merged = { ...before, ...fields, ...panPatch, ...mirror, ...typePatch };
       const health = healthFields(merged as any);
 
       // When the review cadence changes (preset OR custom days), re-derive the
@@ -431,6 +505,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // onboardedAt is a timestamp column — coerce the YYYY-MM-DD string to a
       // Date (Drizzle's date column takes anniversaryDate as a string directly).
       const datePatch: Record<string, unknown> = {};
+      const demiseDay = parse.data.dateOfDemise === undefined ? undefined : (parse.data.dateOfDemise || "").slice(0, 10) || null;
+      if (demiseDay) {
+        const bad = demiseDateError(demiseDay, (parse.data.dob as string | undefined) ?? before.dob);
+        if (bad) return { badDemise: bad } as const;
+      }
+      if (demiseDay !== undefined) datePatch.dateOfDemise = demiseDay;
       if (parse.data.onboardedAt !== undefined) {
         datePatch.onboardedAt = parse.data.onboardedAt ? new Date(parse.data.onboardedAt) : null;
       }
@@ -443,6 +523,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           ...reviewPatch,
           ...datePatch,
           ...mirror,
+          ...typePatch,
           ...(parse.data.uccCodes !== undefined ? { uccCodes: cleanUccCodes(parse.data.uccCodes) } : {}),
           updatedAt: new Date(),
           ...(touchingKyc
@@ -456,6 +537,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // Re-score with the full inputs (the open-SR-breach flag included), so the
       // stored score equals what the client page and the drawer show.
       await getClientHealth(tx, session.tenantId, id);
+
+      // A family head's new address is every member's new address.
+      if ((fields as any).address !== undefined) {
+        const headed = await familyHeadedBy(tx, session.tenantId, id);
+        if (headed) {
+          await applyFamilySharedDetails(tx, {
+            tenantId: session.tenantId, familyId: headed, actorUserId: session.userId, reason: "head_address_changed",
+          });
+        }
+      }
 
       // Advance the lead-to-client blueprint when this edit is the real-world
       // signal for a journey milestone (UCC activated / mandate registered).
@@ -524,15 +615,38 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       });
 
       // Register any newly-uploaded nominee PAN files as client documents.
-      await registerNomineePanDocs(tx, session.tenantId, id, parse.data.nominees, session.userId);
+      if (nominating) await registerNomineePanDocs(tx, session.tenantId, id, parse.data.nominees, session.userId);
 
       // A member's KYC/nominee/risk/etc. feeds its family's health too —
       // re-score the family this investor belongs to (no-op if unlinked).
       await recomputeFamilyHealthForInvestor(tx, id);
 
-      return after[0];
+      // A family has one RM: a new RM on any member is the whole family's new RM.
+      if (parse.data.rmId && parse.data.rmId !== before.rmId) {
+        await setFamilyRmFromClient(tx, {
+          tenantId: session.tenantId, investorId: id, rmId: parse.data.rmId, actorUserId: session.userId,
+        });
+      }
+
+      // A newly recorded date of demise stops the client's SIPs and pending
+      // orders; clearing it (a mistake) makes an Inactive client Active again.
+      let demise: DemiseEffects | undefined;
+      const hadDemise = before.dateOfDemise ?? null;
+      if (demiseDay && demiseDay !== hadDemise) {
+        demise = await applyDemise(tx, { tenantId: session.tenantId, investorId: id, actorUserId: session.userId, day: demiseDay });
+      } else if (parse.data.status === "inactive" && before.status !== "inactive" && !before.mergedIntoId) {
+        // Marked Inactive by hand: the client stops transacting.
+        demise = await applyInactive(tx, { tenantId: session.tenantId, investorId: id, actorUserId: session.userId });
+      } else if (demiseDay === null && hadDemise) {
+        await clearDemise(tx, { tenantId: session.tenantId, investorId: id, actorUserId: session.userId });
+      }
+
+      return demise ? { ...after[0], demise } : after[0];
     });
 
+    if (result && typeof result === "object" && "badDemise" in result) {
+      return NextResponse.json({ error: (result as { badDemise: string }).badDemise, field: "dateOfDemise" }, { status: 400 });
+    }
     if (result === "bad_rm") return NextResponse.json({ error: "selected RM is not a user in this firm" }, { status: 400 });
     if (result === "bad_pan") return NextResponse.json({ error: "PAN should look like ABCDE1234F.", field: "pan" }, { status: 400 });
     if (result === "pan_locked")
@@ -571,6 +685,12 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         .where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId), scope))
         .limit(1);
       if (!inv) return "not_found" as const;
+
+      // A client who still holds money with the registrar is never trashed or
+      // purged (lib/investors/holds-money.ts): a duplicate is merged, a client
+      // who left is marked Closed / Exited.
+      const holders = await clientsHoldingMoney(tx, session.tenantId, [id]);
+      if (holders.length) return { holds: holdersMessage(holders) };
 
       if (!purge) {
         // ── Soft delete → Trash bin. Preserves the whole owned-data subgraph so
@@ -640,6 +760,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       return "ok" as const;
     });
     if (outcome === "not_found") return NextResponse.json({ error: "not found" }, { status: 404 });
+    if (typeof outcome === "object") return NextResponse.json({ error: outcome.holds, holdsMoney: true }, { status: 409 });
     return NextResponse.json({ ok: true, trashed: outcome === "trashed" });
   } catch (err: any) {
     return handleApiError(err);

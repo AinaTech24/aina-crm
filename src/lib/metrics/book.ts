@@ -56,7 +56,7 @@ export const KYC_STATUS_LABEL: Record<string, string> = {
 
 /** Family head / member / individual / corporate, over an investors alias. */
 export function clientTypeSql(tenantId: string, alias = "i"): SQL {
-  return sql`CASE WHEN ${col(alias, "investor_category")} IN ('corporate', 'company') THEN 'corporate'
+  return sql`CASE WHEN ${col(alias, "investor_category")} IN ('corporate', 'company', 'llp', 'partnership', 'aop_boi') THEN 'corporate'
     WHEN ${col(alias, "id")} IN (SELECT f.primary_investor_id FROM families f
       WHERE f.tenant_id = ${tenantId}::uuid AND f.primary_investor_id IS NOT NULL) THEN 'head'
     WHEN ${col(alias, "family_id")} IS NOT NULL THEN 'member'

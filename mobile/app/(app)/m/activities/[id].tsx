@@ -73,7 +73,7 @@ export default function ActivityDetail() {
   const saveEdit = () => {
     update.mutate(
       { notes: notesVal, status: outcomeVal || null },
-      { onSuccess: () => { toast.success("Activity updated"); setEditOpen(false); } }
+      { onSuccess: (saved) => { if (saved !== null) toast.success("Activity updated"); setEditOpen(false); } }
     );
   };
   const remove = () => {
@@ -92,7 +92,6 @@ export default function ActivityDetail() {
         right={<Pressable accessibilityRole="button" accessibilityLabel="Edit activity" onPress={() => setEditOpen(true)} hitSlop={8} style={styles.editBtn}><Feather name="edit-2" size={15} color={palette.white} /></Pressable>}
       />
       <Screen scroll padded contentStyle={{ paddingTop: spacing.lg, paddingBottom: spacing["3xl"] }}>
-        {a.kind === "call" ? <CallSummary activityId={aid} existingNotes={a.notes} /> : null}
         {/* Hero */}
         <Card>
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
@@ -144,6 +143,7 @@ export default function ActivityDetail() {
         ) : null}
 
         {a.owner_name ? <Text variant="caption" tone="faint" style={{ marginTop: spacing.md }}>Logged by {a.owner_name}</Text> : null}
+        {a.kind === "call" ? <CallSummary key={aid} activityId={aid} existingNotes={a.notes} subjectId={a.subject_id} subjectType={a.subject_type} name={a.subject_name} /> : null}
 
         {/* Client timeline */}
         {a.subject_id ? (

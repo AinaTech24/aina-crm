@@ -1,4 +1,5 @@
 import { assertInvestorAccess } from "@/lib/investors/access";
+import { riskProfileLapsed } from "@/lib/risk-profile/expiry";
 /**
  * Quarterly / Annual review report for a single investor.
  *
@@ -304,8 +305,8 @@ export default async function ReviewReportPage({
             {(!inv.riskProfile || !inv.riskProfileSignedAt) && (
               <li>Complete your Risk Profile assessment (SEBI compliance requires signed profile).</li>
             )}
-            {inv.riskProfileSignedAt && new Date(inv.riskProfileSignedAt).getTime() < Date.now() - 365 * 24 * 60 * 60 * 1000 && (
-              <li>Renew your annual Risk Profile assessment (last completed &gt;1 year ago).</li>
+            {riskProfileLapsed(inv) && (
+              <li>Renew your Risk Profile assessment (the last one has expired).</li>
             )}
             {goalsRows.some((g) => Number(g.progressPct ?? 0) < 50) && (
               <li>Some goals are tracking behind — let's discuss a top-up.</li>

@@ -24,6 +24,8 @@ import { familyHealthFields } from "@/lib/families/health";
 import { nextFamilyReview } from "@/lib/families/cadence";
 import { loadViewableFamily, assertFamilyEditable } from "@/lib/families/access";
 import { HEAD_ROLE } from "@/lib/families/roles";
+import { applyFamilySharedDetails } from "@/lib/families/shared-details";
+import { setFamilyRm } from "@/lib/families/head-rm";
 
 export const dynamic = "force-dynamic";
 
@@ -173,6 +175,33 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         } as any)
         .where(and(eq(families.id, id), eq(families.tenantId, session.tenantId)))
         .returning();
+      // A new review frequency or a new head: members follow (the family's
+      // cadence for everyone, the head's address for the members).
+      const headMoved = !!parse.data.primaryInvestorId && parse.data.primaryInvestorId !== before.primaryInvestorId;
+      const cadenceMoved = parse.data.reviewFrequency !== undefined && parse.data.reviewFrequency !== before.reviewFrequency;
+      if (headMoved || cadenceMoved) {
+        await applyFamilySharedDetails(tx, {
+          tenantId: session.tenantId,
+          familyId: id,
+          actorUserId: session.userId,
+          reason: headMoved ? "head_changed" : "family_review_changed",
+          clientMeta,
+        });
+      }
+      // A family has ONE RM: the head and every member take the new one.
+      // (Clearing the RM does not propagate.) Runs whenever an RM is sent, not only
+      // when it differs from the family row: a family already saved with a new RM
+      // while its members kept the old one is put right by saving it again. It only
+      // touches members whose RM differs, so an unrelated edit changes nothing.
+      if (parse.data.rmId) {
+        await setFamilyRm(tx, {
+          tenantId: session.tenantId,
+          familyId: id,
+          rmId: parse.data.rmId,
+          actorUserId: session.userId,
+          clientMeta,
+        });
+      }
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,

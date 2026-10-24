@@ -98,6 +98,9 @@ type Col = {
 };
 
 const isOpen = (h: Holding) => h.netUnits > 0.0005 || (h.currentValue ?? 0) > 0;
+/** Side-pocketed debt ("… Segregated Portfolio 2"): no NAV is published, so it
+ *  can never be priced — say so instead of a bare dash. */
+const SEGREGATED = /segregat/i;
 
 export function HoldingsTable({
   holdings,
@@ -201,7 +204,16 @@ export function HoldingsTable({
         </>
       ),
     },
-    { key: "value", label: "Current value", align: "right", has: () => true, cell: ({ h }) => <span className="font-medium">{fmtMoney(h.currentValue)}</span>, total: (x) => fmtMoney(x.current) },
+    {
+      key: "value", label: "Current value", align: "right", has: () => true,
+      cell: ({ h }) =>
+        h.currentValue == null && SEGREGATED.test(h.schemeName ?? "") ? (
+          <span className="text-muted-foreground" title="Segregated portfolio: the fund house and AMFI publish no NAV for it">No NAV</span>
+        ) : (
+          <span className="font-medium" title={h.currentValue == null ? "Not priced: no matching AMFI scheme yet" : undefined}>{fmtMoney(h.currentValue)}</span>
+        ),
+      total: (x) => fmtMoney(x.current),
+    },
     {
       key: "gain", label: "Gain", align: "right", has: (r) => !!r.h.hasTxns && r.h.gain != null,
       cell: ({ h }) => (h.hasTxns ? <Money v={h.gain} /> : dash),

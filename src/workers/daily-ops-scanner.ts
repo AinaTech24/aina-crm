@@ -47,15 +47,19 @@
  */
 
 import { eq, sql } from "drizzle-orm";
+import { riskExpiresOnSql } from "@/lib/risk-profile/expiry";
 import { withSystem, withTenant } from "@/db/client";
 import { readSoftDeleteRetentionDays } from "@/lib/platform/retention";
 import { recomputeAllHealth } from "@/lib/investors/health-persist";
 import { refreshActiveSipAmount } from "@/lib/metrics/sip";
 import { recomputeAllFamilyHealth } from "@/lib/families/health-persist";
 import { recomputeAllGoals } from "@/lib/goal-planning/recompute";
-import { recomputeCombinedAum, revalueAllFolios } from "@/lib/finance/aum-persist";
 import { matchProposalExecutions } from "@/lib/proposals/execution";
+import { checkRtaFeedHealth } from "@/lib/rta/feed-health";
+import { waitForAumRefresh } from "./aum-refresh";
 import { matchBookedBusiness } from "@/lib/business/rta-match";
+import { retireEmptyPlaceholders } from "@/lib/rta/placeholder-sweep";
+import { holdsMoneySql, restoreTrashedHolders } from "@/lib/investors/holds-money";
 import { syncRtaJourneys } from "@/lib/blueprints/rta-route";
 import { completeExpiredSips } from "@/lib/finance/sip-lifecycle";
 import { eventsOutbox, investors, folios, suitabilityMatrixEntries } from "@/db/schema";
@@ -88,17 +92,6 @@ interface ScanResult {
   familyHealthScored: number;
   /** Goals whose progress/required-SIP/status were refreshed this run. */
   goalsRecomputed: number;
-  /** Investors whose stored AUM was re-valued against live NAV this run. */
-  aumRevalued: number;
-  /** Folios whose holdings were repriced at live NAV this run. */
-  foliosRevalued: number;
-  /** Holdings that could be priced by neither AMFI code nor scheme name, and
-   *  the rupee value sitting in them. A book can only go stale through this
-   *  number, so it is carried all the way out to scheduler_state. */
-  legsUnpriced: number;
-  legsUnpricedValue: number;
-  /** Clients left at their previous AUM because a holding could not be priced. */
-  aumSkippedUnpriced: number;
   /** `goal.drift` events emitted this run (one per investor with a behind goal). */
   goalDrift: number;
   /** `insurance.premium_due` events emitted (one per investor at a milestone). */
@@ -122,6 +115,8 @@ interface ScanResult {
   /** Booked business lines checked against the RTA, and those flagged (not found / rejected / mismatch). */
   rtaLinesChecked: number;
   rtaLinesFlagged: number;
+  placeholdersRetired: number;
+  holdersRestored: number;
   durationMs: number;
 }
 
@@ -174,11 +169,6 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
     healthScored: 0,
     familyHealthScored: 0,
     goalsRecomputed: 0,
-    aumRevalued: 0,
-    foliosRevalued: 0,
-    legsUnpriced: 0,
-    legsUnpricedValue: 0,
-    aumSkippedUnpriced: 0,
     goalDrift: 0,
     premiumDue: 0,
     policyLapsed: 0,
@@ -191,6 +181,8 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
     automationAlerts: 0,
     rtaLinesChecked: 0,
     rtaLinesFlagged: 0,
+    placeholdersRetired: 0,
+    holdersRestored: 0,
     durationMs: 0,
   };
 
@@ -377,7 +369,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
         WHERE risk_profile_signed_at IS NOT NULL
           AND status = 'active'
           AND deleted_at IS NULL
-          AND risk_profile_signed_at < CURRENT_DATE - INTERVAL '365 days'
+          AND ${riskExpiresOnSql("investors")} < CURRENT_DATE
       `);
       result.riskExpired = riskRows.rows.length;
       for (const row of riskRows.rows as Array<{
@@ -685,27 +677,11 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
       result.goalsRecomputed = goalsRes.recomputed;
 
       // ── Live AUM revaluation ──────────────────────────────────────────
-      // The headline audit fix: investors.aum (firm/RM AUM, tiering, exports,
-      // AI briefs) and the folio rollup (review report, commission-expected)
-      // were stored at import and never repriced. Revalue both against the
-      // live AMFI NAV feed nightly so every surface agrees with today's NAV.
-      // Folios first (so their repriced values are available), then investors.
-      const folioVal = await revalueAllFolios(tx);
-      result.foliosRevalued = folioVal.folios;
-      result.legsUnpriced = folioVal.unpriced;
-      result.legsUnpricedValue = folioVal.unpricedValue;
-      const aumVal = await recomputeCombinedAum(tx);
-      result.aumRevalued = aumVal.updated;
-      result.aumSkippedUnpriced = aumVal.skippedUnpriced;
-      // A firm whose holdings cannot be priced is the one failure mode that
-      // looks identical to "nothing changed today". Say so per tenant.
-      if (folioVal.unpriced > 0) {
-        console.warn(
-          `[daily-ops] tenant ${tenantId}: ${folioVal.unpriced} holding(s) could not be priced ` +
-            `(Rs ${Math.round(folioVal.unpricedValue / 100000)} lakh); ` +
-            `priced ${folioVal.pricedByCode} by code, ${folioVal.pricedByName} by name`
-        );
-      }
+      // No longer here. It ran inside this one transaction, so an error in any
+      // of the sections around it rolled the firm's AUM back, and it ran on the
+      // scan's clock rather than after the NAV download. It is its own job now:
+      // src/workers/aum-refresh.ts, chained after the 06:00 NAV refresh. The
+      // milestone and protection-gap sections below read the AUM it saved.
 
       // ── Proposals: did the client invest what they accepted? ──────────
       // Matches accepted proposals to the purchases the RTA feed has brought
@@ -719,6 +695,16 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
         }
       } catch (e) {
         console.warn(`[daily-ops] tenant ${tenantId}: proposal execution matching failed:`, (e as Error)?.message);
+      }
+
+      // ── RTA feed health: has this firm's registrar data stopped? ───────
+      // Files that no saved password opens, or no mail at all for a week, tell
+      // the owners (lib/rta/feed-health.ts). Its own savepoint.
+      try {
+        const alerts = await tx.transaction((sp) => checkRtaFeedHealth(sp, tenantId));
+        if (alerts > 0) console.log(`[daily-ops] tenant ${tenantId}: ${alerts} RTA feed alert(s) sent`);
+      } catch (e) {
+        console.warn(`[daily-ops] tenant ${tenantId}: RTA feed health check failed:`, (e as Error)?.message);
       }
 
       // ── CS5: AUM "moments that matter" ────────────────────────────────
@@ -1268,6 +1254,22 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
     console.error("[daily-ops] matching booked business failed for", tenantId, (e as Error)?.message);
   }
 
+  // ── Registrar placeholders left holding nothing go to the Trash, so a client
+  // never shows twice — once with a PAN, once without (lib/rta/placeholder-sweep.ts).
+  try {
+    result.placeholdersRetired = await withTenant(tenantId, (tx) => retireEmptyPlaceholders(tx, tenantId), { roles: ["system"] });
+  } catch (e) {
+    console.error("[daily-ops] retiring empty placeholders failed for", tenantId, (e as Error)?.message);
+  }
+
+  // ── A client in the Trash who still holds money with the registrar comes
+  // back (lib/investors/holds-money.ts) — before the retention purge can erase them.
+  try {
+    result.holdersRestored = await withTenant(tenantId, (tx) => restoreTrashedHolders(tx, tenantId), { roles: ["system"] });
+  } catch (e) {
+    console.error("[daily-ops] restoring money-holding clients failed for", tenantId, (e as Error)?.message);
+  }
+
   // ── Physical route: forms with the RTA settle from the feed (lib/blueprints/rta-route.ts).
   try {
     await withTenant(tenantId, (tx) => syncRtaJourneys(tx, tenantId), { roles: ["system"] });
@@ -1290,6 +1292,10 @@ export async function runDailyOpsScan(): Promise<{
   failedTenants: string[];
   durationMs: number;
 }> {
+  // The milestone and protection-gap sections read the AUM the NAV job saves; if
+  // that is mid-run in this process (a restart ran both catch-ups together), let
+  // it finish rather than read half-updated figures.
+  await waitForAumRefresh();
   const startedAt = Date.now();
 
   // ── Auto-purge: permanently remove soft-deleted tenants whose retention
@@ -1330,9 +1336,11 @@ export async function runDailyOpsScan(): Promise<{
     const due = await withSystem(async (tx) => {
       const days = await readSoftDeleteRetentionDays(tx as any);
       const r = await tx.execute(sql`
-        SELECT id, tenant_id FROM investors
+        SELECT id, tenant_id FROM investors i
         WHERE deleted_at IS NOT NULL
           AND deleted_at < now() - make_interval(days => ${days})
+          -- Never erase a client who still holds money with the registrar.
+          AND NOT ${holdsMoneySql("i")}
         LIMIT 200
       `);
       return r.rows as Array<{ id: string; tenant_id: string }>;
@@ -1381,11 +1389,6 @@ export async function runDailyOpsScan(): Promise<{
     healthScored: 0,
     familyHealthScored: 0,
     goalsRecomputed: 0,
-    aumRevalued: 0,
-    foliosRevalued: 0,
-    legsUnpriced: 0,
-    legsUnpricedValue: 0,
-    aumSkippedUnpriced: 0,
     goalDrift: 0,
     premiumDue: 0,
     policyLapsed: 0,
@@ -1398,6 +1401,8 @@ export async function runDailyOpsScan(): Promise<{
     automationAlerts: 0,
     rtaLinesChecked: 0,
     rtaLinesFlagged: 0,
+    placeholdersRetired: 0,
+    holdersRestored: 0,
   };
   // Each tenant scan is fully independent (its own withTenant tx, RLS-scoped to
   // that tenant's rows), so they can run concurrently without lock contention.
@@ -1426,11 +1431,6 @@ export async function runDailyOpsScan(): Promise<{
       totals.healthScored += r.healthScored;
       totals.familyHealthScored += r.familyHealthScored;
       totals.goalsRecomputed += r.goalsRecomputed;
-      totals.aumRevalued += r.aumRevalued;
-      totals.foliosRevalued += r.foliosRevalued;
-      totals.legsUnpriced += r.legsUnpriced;
-      totals.legsUnpricedValue += r.legsUnpricedValue;
-      totals.aumSkippedUnpriced += r.aumSkippedUnpriced;
       totals.goalDrift += r.goalDrift;
       totals.premiumDue += r.premiumDue;
       totals.policyLapsed += r.policyLapsed;
@@ -1442,6 +1442,8 @@ export async function runDailyOpsScan(): Promise<{
       totals.automationAlerts += r.automationAlerts;
       totals.rtaLinesChecked += r.rtaLinesChecked;
       totals.rtaLinesFlagged += r.rtaLinesFlagged;
+      totals.placeholdersRetired += r.placeholdersRetired;
+      totals.holdersRestored += r.holdersRestored;
   };
   const worker = async () => {
     for (;;) {

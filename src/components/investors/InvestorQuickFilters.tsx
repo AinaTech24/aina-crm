@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { riskExpiresOnSql } from "@/lib/risk-profile/expiry";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
 import { investorScopeSql } from "@/lib/investors/access";
+import { needsNomineeSql } from "@/lib/investors/type-rules";
 
 /**
  * Quick-filter chip strip for the Investors list page.
@@ -16,7 +18,7 @@ import { investorScopeSql } from "@/lib/investors/access";
  *   - tier_a=1            → service_tier = 'A'
  *   - reviews_due=1       → next_review_at <= now()
  *   - kyc_expiring=1      → ckyc_expiry < +30d OR kyc_status in (expired/re_kyc)
- *   - no_nominee=1        → nominee_name IS NULL/''
+ *   - no_nominee=1        → needs a nominee and has none (lib/investors/type-rules.ts)
  *   - dormant=1           → last_transaction_at < -180d
  *   - rp_stale=1          → risk_profile_signed_at < -365d OR NULL
  *   - birthday_week=1     → dob (mm-dd) in next 7 days
@@ -54,7 +56,7 @@ export async function InvestorQuickFilters({
             )
           )::int AS kyc_expiring,
           COUNT(*) FILTER (
-            WHERE status = 'active' AND (nominee_name IS NULL OR nominee_name = '')
+            WHERE status = 'active' AND ${needsNomineeSql("")}
           )::int AS no_nominee,
           COUNT(*) FILTER (
             WHERE status = 'active'
@@ -62,7 +64,7 @@ export async function InvestorQuickFilters({
           )::int AS dormant,
           COUNT(*) FILTER (
             WHERE status = 'active'
-              AND (risk_profile_signed_at IS NULL OR risk_profile_signed_at < now() - interval '365 days')
+              AND (risk_profile_signed_at IS NULL OR ${riskExpiresOnSql("investors")} < CURRENT_DATE)
           )::int AS rp_stale,
           COUNT(*) FILTER (
             WHERE status = 'active' AND dob IS NOT NULL

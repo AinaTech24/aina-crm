@@ -89,8 +89,14 @@ services:
   migrate:
     image: mfd-app:latest
     logging: *default-logging
+    # .env.migrate (mode 600, server only) holds the MASTER DATABASE_URL — the
+    # one credential with DDL. Only this service receives it; web and worker
+    # connect as mfd_app (APP_DATABASE_URL in .env.production). Maintenance
+    # scripts that need the master run as one-offs:
+    #   docker compose -f docker-compose.prod.yml run --rm migrate npx tsx scripts/<x>.ts
     env_file:
       - .env.production
+      - .env.migrate
     command: ["npm", "run", "migrate:all"]
     restart: "no"
     healthcheck:

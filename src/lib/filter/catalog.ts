@@ -142,7 +142,8 @@ export const investorCatalog: SubjectCatalog = {
       type: "enum",
       sql: "inv.investor_category",
       ops: COMMON_ENUM_OPS,
-      enumValues: ["individual", "huf", "corporate", "trust", "nri", "minor", "other"],
+      // lib/investors/client-types.ts
+      enumValues: ["individual", "nri", "minor", "sole_proprietor", "huf", "company", "llp", "partnership", "trust", "aop_boi", "corporate", "other"],
       writable: true,
     },
     {

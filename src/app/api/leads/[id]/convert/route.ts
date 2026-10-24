@@ -25,6 +25,7 @@ import { autoAdvance } from "@/lib/blueprints/auto-advance";
 import { loadEditableLead } from "@/lib/leads/access";
 import { normalizePan } from "@/lib/leads/normalize";
 import { mapKycFieldsToInvestorUpdate } from "@/lib/onboarding/kyc-fields";
+import { CLIENT_TYPE_KEYS } from "@/lib/investors/client-types";
 import {
   leads,
   investors,
@@ -48,9 +49,7 @@ const Body = z.object({
     .optional()
     .or(z.literal("")),
   segmentTag: z.enum(["HNI", "Affluent", "Retail", "NRI", "Corporate"]).default("Retail"),
-  investorCategory: z
-    .enum(["individual", "huf", "corporate", "trust", "nri", "minor", "other"])
-    .default("individual"),
+  investorCategory: z.enum(CLIENT_TYPE_KEYS).default("individual"),
   rmId: z.string().uuid().optional(),
   notes: z.string().optional(),
 });

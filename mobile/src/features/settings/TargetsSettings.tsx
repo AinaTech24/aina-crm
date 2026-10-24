@@ -31,8 +31,8 @@ export function TargetsSettings() {
   const selected = userId || data?.members?.[0]?.id || "";
   const saved = useMemo(() => (data && selected ? data.targets[selected] ?? {} : {}), [data, selected]);
 
-  if (isLoading) return <View style={styles.screen}><ScreenHeader title="Targets & quota" /><LoadingState /></View>;
-  if (isError || !data) return <View style={styles.screen}><ScreenHeader title="Targets & quota" /><ErrorState onRetry={refetch} /></View>;
+  if (isLoading) return <View style={styles.screen}><ScreenHeader title="Annual quotas" /><LoadingState /></View>;
+  if (isError || !data) return <View style={styles.screen}><ScreenHeader title="Annual quotas" /><ErrorState onRetry={refetch} /></View>;
 
   const valOf = (mk: string) => edits[mk] ?? (saved[mk] != null ? String(saved[mk]) : "");
   const dirtyKeys = data.metrics
@@ -57,7 +57,7 @@ export function TargetsSettings() {
 
   return (
     <View style={styles.screen}>
-      <ScreenHeader title="Targets & quota" subtitle={`FY ${data.fiscalYear}`} onBack={() => router.back()} />
+      <ScreenHeader title="Annual quotas" subtitle={`FY ${data.fiscalYear}`} onBack={() => router.back()} />
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing["3xl"] }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <SelectField
           label="Team member"

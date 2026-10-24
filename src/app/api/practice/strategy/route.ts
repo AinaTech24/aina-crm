@@ -90,8 +90,8 @@ export async function PUT(req: NextRequest) {
         action: "practice.strategy.update",
         entityType: "firm_strategy",
         entityId: null,
-        before: before as any,
-        after: saved as any,
+        before,
+        after: saved,
         ...meta,
       });
       return saved;

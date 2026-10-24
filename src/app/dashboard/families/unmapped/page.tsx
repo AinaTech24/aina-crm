@@ -28,6 +28,7 @@ import { InlineEmpty } from "@/components/common/EmptyState";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { Pager } from "@/components/common/Pager";
 import { MapClientActions } from "@/components/families/MapClientActions";
+import { canMapFamilies } from "@/lib/families/access";
 
 export const dynamic = "force-dynamic";
 
@@ -42,10 +43,11 @@ export default async function UnmappedClientsPage({
   const session = await requireSession();
   requireAny(
     session.roles,
-    ["family.view", "investor.view.all", "investor.view.assigned"],
+    ["family.view", "family.map.view", "investor.view.all", "investor.view.assigned"],
     session.permissions
   );
 
+  const canMap = canMapFamilies(session, "create");
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
 
   const { rows, total, mappedCount } = await withTenant(
@@ -174,7 +176,7 @@ export default async function UnmappedClientsPage({
                     <td className="py-3 text-right tabular-nums">{formatINR(Number(i.aum ?? 0))}</td>
                     <td className="pl-4 py-3 text-xs text-muted-foreground">{i.rmName ?? "—"}</td>
                     <td className="px-4 py-3">
-                      <MapClientActions investorId={i.id} investorName={i.name} />
+                      {canMap ? <MapClientActions investorId={i.id} investorName={i.name} /> : null}
                     </td>
                   </tr>
                 ))}

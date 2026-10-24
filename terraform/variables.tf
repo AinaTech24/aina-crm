@@ -8,11 +8,18 @@ variable "project" {
   default = "mfd-growth-os"
 }
 
-# Web/worker box. t4g.medium = 2 vCPU / 4 GB ARM (Graviton) — cheap + ample
-# headroom for Next.js + worker + redis + caddy on one host.
+# Web/worker box: what production runs (2 vCPU / 8 GB ARM). A smaller size is
+# a deliberate, approved resize — not a default.
 variable "instance_type" {
   type    = string
-  default = "t4g.medium"
+  default = "t4g.large"
+}
+
+# The AMI production was built from (Amazon Linux 2023, arm64). Changing it
+# REPLACES the instance — see main.tf.
+variable "web_ami_id" {
+  type    = string
+  default = "ami-067770fe0500a2d57"
 }
 
 variable "root_volume_gb" {
@@ -20,11 +27,10 @@ variable "root_volume_gb" {
   default = 40
 }
 
-# Managed Postgres. db.t4g.micro is free-tier-eligible for the first 12 months
-# on a new account, then ~₹1k/mo. Bump to db.t4g.small when you outgrow it.
+# Managed Postgres: production is db.t4g.small (resized 2026-10-08, approved).
 variable "db_instance_class" {
   type    = string
-  default = "db.t4g.micro"
+  default = "db.t4g.small"
 }
 
 variable "db_allocated_storage" {
@@ -38,7 +44,7 @@ variable "db_allocated_storage" {
 # baseline. 0/equal-to-allocated disables autoscaling.
 variable "db_max_allocated_storage" {
   type    = number
-  default = 200
+  default = 100
 }
 
 # Monthly cost guardrail. AWS Budgets emails at 80% (actual) and 100%
@@ -48,10 +54,11 @@ variable "monthly_budget_usd" {
   default = "60"
 }
 
-# Where budget alerts go. Leave blank to skip creating the budget alarm.
+# Where budget alerts go. Blank = no budget. Production has NO AWS Budget yet;
+# setting this creates one (an AWS change — approve it first).
 variable "budget_alert_email" {
   type    = string
-  default = "pritesh@ainatech.in"
+  default = ""
 }
 
 variable "db_name" {
@@ -64,13 +71,13 @@ variable "db_username" {
   default = "mfd_master"
 }
 
-# Only this CIDR may SSH to the box. Set to <your-public-ip>/32 in tfvars.
-variable "ssh_cidr" {
-  type        = string
-  description = "CIDR allowed to SSH (e.g. 49.36.117.249/32)"
-}
-
 variable "public_key_path" {
   type    = string
   default = "~/.ssh/mfd-deploy.pub"
+}
+
+# Where CloudWatch alarms are emailed (SNS subscription, monitoring.tf).
+variable "alert_email" {
+  type    = string
+  default = "pritesh@ainatech.in"
 }

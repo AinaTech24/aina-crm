@@ -22,6 +22,7 @@ import { leadCreatedInSql, leadOpenSql, leadStageKeySql, leadWhere, textList, ri
 import { RISK_BUCKETS, riskBucketCaseSql, riskBucketSql, type RiskBucket } from "@/lib/risk-profile/buckets";
 import { d, dIst, dt, userName } from "../helpers";
 import type { ExportModule } from "../types";
+import { needsNomineeSql } from "@/lib/investors/type-rules";
 
 // ── Shared bits ─────────────────────────────────────────────────────────────
 
@@ -200,7 +201,7 @@ export const familiesExport: ExportModule = {
              COALESCE(SUM(i.aum::numeric), 0) AS aum,
              COALESCE(SUM(i.active_sip_amount::numeric), 0) AS sip,
              COUNT(i.id) FILTER (WHERE i.is_minor = true)::int AS minors,
-             BOOL_OR(i.id IS NOT NULL AND (i.nominee_name IS NULL OR i.nominee_name = '')) AS nominee_gap,
+             BOOL_OR(i.id IS NOT NULL AND ${needsNomineeSql("i")}) AS nominee_gap,
              BOOL_OR(i.is_minor = true) AS has_minor,
              BOOL_OR(i.segment_tag = 'HNI') AS has_hni
         FROM investors i WHERE ${LIVE_MEMBER_JOIN}

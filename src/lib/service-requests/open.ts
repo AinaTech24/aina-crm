@@ -56,6 +56,8 @@ export type OpenServiceRequest = {
   complaintSource?: string | null;
   scoresRefNo?: string | null;
   remarks?: string | null;
+  /** Who asked, when there is no client record to show (public form). */
+  requesterName?: string | null;
   /** The first timeline entry: who opened it (a user id, or a label the
    *  timeline shows as "system") and a sentence about how. */
   createdBy: { by: string; note: string };
@@ -105,6 +107,7 @@ export async function openServiceRequest(
     complaintSource: input.type === "complaint" ? (input.complaintSource ?? "direct") : null,
     scoresRefNo: input.scoresRefNo ?? null,
     remarks: input.remarks ?? null,
+    requesterName: input.requesterName ?? null,
     timeline: [
       {
         at: new Date().toISOString(),

@@ -1,4 +1,5 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
+import { riskProfileLapsed } from "@/lib/risk-profile/expiry";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
@@ -51,6 +52,7 @@ import { ReferralSection } from "@/components/investors/ReferralSection";
 import { CustomFieldsCard } from "@/components/common/CustomFieldsCard";
 import { RiskProfilePdfButtons } from "@/components/risk-profile/RiskProfileName";
 import { SendRiskProfileLinkButton } from "@/components/risk-profile/SendRiskProfileLinkButton";
+import { UploadRiskProfileButton } from "@/components/risk-profile/UploadRiskProfileButton";
 import { loadTenantLicense } from "@/lib/auth/license";
 import { isFieldAllowed } from "@/lib/auth/field-gate";
 import { InvestorBlueprintStageBar } from "@/components/investors/InvestorBlueprintStageBar";
@@ -75,6 +77,8 @@ import { RecordNotes } from "@/components/common/RecordNotes";
 import { InvestorAvatarEditor } from "@/components/investors/InvestorAvatarEditor";
 import { EmailRelatedList } from "@/components/comms/EmailRelatedList";
 import { can } from "@/lib/auth/rbac";
+import { ClientExitButton } from "@/components/investors/ClientExitButton";
+import { KycCheckButton } from "@/components/investors/KycCheckButton";
 import { WhatsAppRelatedList } from "@/components/comms/WhatsAppRelatedList";
 import { InvestorDetailTabs } from "@/components/investors/InvestorDetailTabs";
 import { EditClientDetailsLink } from "@/components/investors/EditClientDetailsLink";
@@ -83,6 +87,7 @@ import { BlueprintStatusKV } from "@/components/investors/BlueprintStatusKV";
 import { ReviewCadenceEditor } from "@/components/investors/ReviewCadenceEditor";
 import { PortalAccessButton } from "@/components/investors/PortalAccessButton";
 import { RecordBusinessImpact } from "@/components/investors/RecordBusinessImpact";
+import { ClientActiveToggle } from "@/components/investors/ClientActiveToggle";
 import { ClientSummaryStrip } from "@/components/investors/ClientSummaryStrip";
 import { ClientReadinessStrip } from "@/components/investors/ClientReadinessStrip";
 import { PanReveal } from "@/components/investors/PanReveal";
@@ -98,6 +103,10 @@ import { assetClassExposure } from "@/lib/investors/asset-class";
 import { withSchemeCategories } from "@/lib/investors/scheme-categories";
 import { assessSuitability } from "@/lib/investors/suitability";
 import { getClientHealth } from "@/lib/metrics/health";
+import {
+  CLIENT_TYPE_KEYS, FATCA_ENTITY_CLASSES, GUARDIAN_RELATIONS, NRI_ACCOUNT_TYPES, canNominate, clientTypeDef, clientTypeLabel,
+  hasAdultDetails, hasPersonalDetails, majorityDate, singleHoldingOnly, type ClientTypeDetails,
+} from "@/lib/investors/client-types";
 import {
   RelatedListsContainer,
   RelatedListsManager,
@@ -207,6 +216,16 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
   const showNominee = isFieldAllowed(license, "investor", "nominee_name") || isFieldAllowed(license, "investor", "nominee");
   const showBank = isFieldAllowed(license, "investor", "bank_account_number_masked") || isFieldAllowed(license, "investor", "bank");
   const showRm = isFieldAllowed(license, "investor", "rm_id") || isFieldAllowed(license, "investor", "rm");
+
+  // The firm's NSE MF Invest connection: the KYC status can be fetched from the KRA (lib/kyc/).
+  const nseKyc = showKyc
+    ? await withTenant(session.tenantId, async (tx) => {
+        const r = await tx.execute(sql`SELECT 1 FROM tenant_integrations
+           WHERE tenant_id = ${session.tenantId}::uuid AND provider = 'nse_mf' AND user_id IS NULL AND is_active LIMIT 1`);
+        return r.rows.length > 0;
+      })
+    : false;
+  const canCheckKyc = can(session.roles, "investor.edit.all", session.permissions) || can(session.roles, "investor.edit.assigned", session.permissions);
 
   const data = await withTenant(session.tenantId, async (tx) => {
     // Data scope: a client outside the viewer's book (or no client capability
@@ -398,6 +417,13 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
   if (!data) notFound();
 
   const inv = data.investor;
+  // The client type decides which details this page shows (lib/investors/client-types.ts):
+  // a company has no gender, a minor no employer, only an individual nominates.
+  const typeKind = clientTypeDef(inv.investorCategory).kind;
+  const personal = hasPersonalDetails(inv.investorCategory);
+  const adult = hasAdultDetails(inv.investorCategory);
+  const nominates = canNominate(inv.investorCategory);
+  const typeDetails = ((inv as any).typeDetails ?? {}) as ClientTypeDetails;
   // Derived client-360 insights (all from already-loaded data).
   const completeness = clientCompleteness(inv as any);
   // Holdings stored without a category take it from the AMFI master, so this
@@ -407,9 +433,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
   );
   const suitability = assessSuitability((inv as any).riskProfile ?? null, exposure.equityPct, exposure.classifiedPct);
   const isRiskProfileMissing = !inv.riskProfile;
-  const isRiskProfileExpired = inv.riskProfileSignedAt
-    ? new Date(inv.riskProfileSignedAt).getTime() < Date.now() - 365 * 24 * 60 * 60 * 1000
-    : false;
+  const isRiskProfileExpired = riskProfileLapsed(inv);
 
   // Profile fields still blank, beyond the compliance items the checklist
   // already tracks as pills (KYC, risk profile, nominee, bank).
@@ -502,6 +526,9 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           <>
             <LogActivityButton subject={{ type: "investor", id: inv.id, name: inv.name, phone: inv.phone }} label="Log call / visit" variant="primary" />
             <SendTemplateButtons type="investor" id={inv.id} name={inv.name} email={inv.email} phone={inv.whatsappPhone || inv.phone} />
+            {(can(session.roles, "investor.edit.all", session.permissions) || can(session.roles, "investor.edit.assigned", session.permissions)) && (
+              <ClientActiveToggle investorId={inv.id} name={inv.name} status={inv.status ?? null} />
+            )}
             <RecordMenu>
               <Link href={`/dashboard/review-meetings/new?investorId=${inv.id}`} className={MENU_ITEM}>
                 <CalendarPlus className={MENU_ICON} /> Schedule review meeting
@@ -514,6 +541,9 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
               <ChangeLogButton entityType="investor" entityId={inv.id} triggerClassName={MENU_ITEM} />
               <RelatedListsManager moduleKey="investors-detail" sections={INVESTOR_DETAIL_SECTIONS} triggerClassName={MENU_ITEM} />
               <RecordMenuSeparator />
+              {(can(session.roles, "investor.edit.all", session.permissions) || can(session.roles, "investor.edit.assigned", session.permissions)) && (
+                <ClientExitButton investorId={inv.id} name={inv.name} status={inv.status ?? null} />
+              )}
               <RowActions
                 menuItem
                 deleteUrl={`/api/investors/${inv.id}`}
@@ -521,6 +551,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
                 itemName={inv.name}
                 verb="Delete"
                 redirectTo="/dashboard/investors"
+                confirmNote="A deleted client is erased for good after 30 days in the Trash. If they may come back, use Mark as exited instead — nothing is lost."
               />
             </RecordMenu>
           </>
@@ -539,6 +570,15 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           last meeting, next review, risk, open work, insurance — above the
           deeper sections. Streams in on its own. */}
       <Suspense fallback={<div className="card-surface h-24 animate-pulse" aria-hidden />}>
+        {inv.dateOfDemise && (
+          <div role="status" className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">
+            <span className="font-semibold text-destructive">Deceased — {formatDate(inv.dateOfDemise)}.</span>{" "}
+            <span className="text-muted-foreground">
+              The client is Inactive; their SIPs were stopped and pending orders cancelled when the date was recorded.
+              Processed transactions stay as the registrar's history.
+            </span>
+          </div>
+        )}
         <ClientSummaryStrip
           session={session}
           investorId={inv.id}
@@ -700,7 +740,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           {/* Portfolio allocation — derives from already-loaded folios */}
           <RelatedListSection moduleKey="investors-detail" sectionKey="allocation">
             <div className="space-y-4">
-              <PortfolioAllocation folios={data.folios as any} />
+              <PortfolioAllocation folios={data.folios as any} holdings={v.holdings} />
               {showRisk && <SuitabilityCard suitability={suitability} />}
             </div>
           </RelatedListSection>
@@ -862,17 +902,23 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
 
         <Group title="Identity">
           {showPan && <KV label="PAN" node={inv.pan ? <PanReveal pan={inv.pan} /> : null} />}
-          <KV label="Name" value={inv.name} edit={{ id: inv.id, field: "name", value: inv.name ?? "" }} />
+          <KV label={typeKind === "huf" ? "HUF name" : typeKind === "entity" ? "Entity name" : typeKind === "minor" ? "Minor's name" : "Name"} value={inv.name} edit={{ id: inv.id, field: "name", value: inv.name ?? "" }} />
           <KV label="Name as per PAN" value={inv.nameAsPerPan ?? "—"} edit={{ id: inv.id, field: "nameAsPerPan", value: inv.nameAsPerPan ?? "", nullable: true }} />
-          {showDob && <KV label="Date of birth" value={inv.dob ? formatDate(inv.dob) : "—"} edit={{ id: inv.id, field: "dob", type: "date", value: inv.dob ? String(inv.dob).slice(0, 10) : "", nullable: true }} />}
-          <KV label="Gender" value={inv.gender === "M" ? "Male" : inv.gender === "F" ? "Female" : inv.gender === "O" ? "Other" : "—"} edit={{ id: inv.id, field: "gender", type: "select", options: GENDER_OPTS, value: inv.gender ?? "", nullable: true }} />
-          <KV label="Marital status" value={inv.maritalStatus ?? "—"} cap />
-          <KV label="Mother's name" value={inv.motherName ?? "—"} />
-          <KV label="Place of birth" value={inv.birthPlace ?? "—"} />
-          <KV label="Aadhaar (last 4)" value={inv.aadhaarLast4 ? `••••${inv.aadhaarLast4}` : "—"} mono edit={{ id: inv.id, field: "aadhaarLast4", value: inv.aadhaarLast4 ?? "", nullable: true, maxLength: 4, placeholder: "1234" }} />
+          {showDob && personal && <KV label="Date of birth" value={inv.dob ? formatDate(inv.dob) : "—"} edit={{ id: inv.id, field: "dob", type: "date", value: inv.dob ? String(inv.dob).slice(0, 10) : "", nullable: true }} />}
+          {personal && <KV label="Gender" value={inv.gender === "M" ? "Male" : inv.gender === "F" ? "Female" : inv.gender === "O" ? "Other" : "—"} edit={{ id: inv.id, field: "gender", type: "select", options: GENDER_OPTS, value: inv.gender ?? "", nullable: true }} />}
+          {adult && <KV label="Marital status" value={inv.maritalStatus ?? "—"} cap />}
+          {personal && <KV label="Mother's name" value={inv.motherName ?? "—"} />}
+          {personal && <KV label="Place of birth" value={inv.birthPlace ?? "—"} />}
+          {personal && <KV label="Aadhaar (last 4)" value={inv.aadhaarLast4 ? `••••${inv.aadhaarLast4}` : "—"} mono edit={{ id: inv.id, field: "aadhaarLast4", value: inv.aadhaarLast4 ?? "", nullable: true, maxLength: 4, placeholder: "1234" }} />}
+          {(typeKind === "huf" || typeKind === "entity") && (
+            <KV label={typeKind === "huf" ? "Date formed" : clientTypeDef(inv.investorCategory).formedLabel ?? "Date formed"} value={typeDetails.entity?.formedOn ? formatDate(typeDetails.entity.formedOn) : "—"} />
+          )}
           <KV label="Client since" value={inv.onboardedAt ? formatDate(inv.onboardedAt) : "—"} edit={{ id: inv.id, field: "onboardedAt", type: "date", value: inv.onboardedAt ? String(inv.onboardedAt).slice(0, 10) : "", nullable: true }} />
-          <KV label="Anniversary" value={inv.anniversaryDate ? formatDate(inv.anniversaryDate) : "—"} edit={{ id: inv.id, field: "anniversaryDate", type: "date", value: inv.anniversaryDate ? String(inv.anniversaryDate).slice(0, 10) : "", nullable: true }} />
+          <KV label="Date of death (demise)" value={inv.dateOfDemise ? formatDate(inv.dateOfDemise) : "—"} edit={{ id: inv.id, field: "dateOfDemise", type: "date", value: inv.dateOfDemise ? String(inv.dateOfDemise).slice(0, 10) : "", nullable: true }} />
+          {adult && <KV label="Anniversary" value={inv.anniversaryDate ? formatDate(inv.anniversaryDate) : "—"} edit={{ id: inv.id, field: "anniversaryDate", type: "date", value: inv.anniversaryDate ? String(inv.anniversaryDate).slice(0, 10) : "", nullable: true }} />}
         </Group>
+
+        <ClientTypeGroups kind={typeKind} type={inv.investorCategory} dob={inv.dob ? String(inv.dob).slice(0, 10) : null} details={typeDetails} guardianId={(inv as any).guardianInvestorId ?? null} showPan={showPan} />
 
         <Group title="Contact">
           {showPhone && <KV label="Mobile" value={inv.phone ?? "—"} edit={{ id: inv.id, field: "phone", type: "tel", value: inv.phone ?? "" }} />}
@@ -922,13 +968,13 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
         </Group>
 
         <Group title="Profile">
-          <KV label="Occupation" value={inv.occupation ?? "—"} edit={{ id: inv.id, field: "occupation", value: inv.occupation ?? "", nullable: true }} />
-          <KV label="Employer" value={inv.employerName ?? "—"} edit={{ id: inv.id, field: "employerName", value: inv.employerName ?? "", nullable: true }} />
-          <KV label="Income range" value={inv.incomeRange ?? "—"} edit={{ id: inv.id, field: "incomeRange", value: inv.incomeRange ?? "", nullable: true, placeholder: "e.g. 10–25L" }} />
-          <KV label="Entity type" value={(inv.investorCategory ?? "—").replace("corporate", "Company")} cap edit={{ id: inv.id, field: "investorCategory", type: "select", options: ENTITY_OPTS, value: inv.investorCategory ?? "" }} />
-          {showSegment && <KV label="Client type" value={inv.segmentTag ?? "—"} edit={{ id: inv.id, field: "segmentTag", type: "select", options: SEGMENT_OPTS, value: inv.segmentTag ?? "" }} />}
+          {adult && <KV label="Occupation" value={inv.occupation ?? "—"} edit={{ id: inv.id, field: "occupation", value: inv.occupation ?? "", nullable: true }} />}
+          {adult && <KV label="Employer" value={inv.employerName ?? "—"} edit={{ id: inv.id, field: "employerName", value: inv.employerName ?? "", nullable: true }} />}
+          <KV label={personal ? "Income range" : "Gross annual income"} value={inv.incomeRange ?? "—"} edit={{ id: inv.id, field: "incomeRange", value: inv.incomeRange ?? "", nullable: true, placeholder: "e.g. 10–25L" }} />
+          <KV label="Client type" value={inv.investorCategory ? clientTypeLabel(inv.investorCategory) : "—"} edit={{ id: inv.id, field: "investorCategory", type: "select", options: ENTITY_OPTS, value: inv.investorCategory ?? "" }} />
+          {showSegment && <KV label="Segment" value={inv.segmentTag ?? "—"} edit={{ id: inv.id, field: "segmentTag", type: "select", options: SEGMENT_OPTS, value: inv.segmentTag ?? "" }} />}
           <KV label="Client category" value={inv.clientCategory ?? "—"} edit={{ id: inv.id, field: "clientCategory", type: "select", options: CATEGORY_OPTS, value: inv.clientCategory ?? "", nullable: true }} />
-          <KV label="Mode of holding" value={inv.modeOfHolding ?? "—"} cap />
+          <KV label="Mode of holding" value={singleHoldingOnly(inv.investorCategory) ? "Single" : inv.modeOfHolding ?? "—"} cap />
           <KV label="Household type" value={inv.householdType ?? "—"} />
           <KV label="Family head name" value={inv.familyOwnerName ?? "—"} />
           <KV label="Referral client" value={inv.referralClientName ?? "—"} />
@@ -938,15 +984,26 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
 
         <Group title="Compliance status">
           {showKyc && <Status label="KYC status" value={inv.kycStatus} good={inv.kycStatus === "verified"} />}
+          {showKyc && (nseKyc || inv.kycCheckedAt) && (
+            <KV
+              label="KRA check"
+              node={
+                <KycCheckButton
+                  investorId={inv.id}
+                  remark={inv.kycStatusRemark ?? null}
+                  checkedAt={inv.kycCheckedAt ? new Date(inv.kycCheckedAt).toISOString() : null}
+                  canCheck={nseKyc && canCheckKyc && !!inv.pan}
+                />
+              }
+            />
+          )}
           <KV label="Residential status" value={inv.residencyStatus ?? "—"} cap edit={{ id: inv.id, field: "residencyStatus", type: "select", options: RESIDENCY_OPTS, value: inv.residencyStatus ?? "", nullable: true }} />
           <KV label="Tax status" value={inv.taxStatus ?? "—"} />
-          <KV label="PAN–Aadhaar link" value={inv.panAadhaarLinkStatus ?? "—"} cap edit={{ id: inv.id, field: "panAadhaarLinkStatus", type: "select", options: PAN_AADHAAR_OPTS, value: inv.panAadhaarLinkStatus ?? "", nullable: true }} />
+          {adult && <KV label="PAN–Aadhaar link" value={inv.panAadhaarLinkStatus ?? "—"} cap edit={{ id: inv.id, field: "panAadhaarLinkStatus", type: "select", options: PAN_AADHAAR_OPTS, value: inv.panAadhaarLinkStatus ?? "", nullable: true }} />}
           <KV label="CKYC number" value={inv.ckycNumber ?? "—"} mono edit={{ id: inv.id, field: "ckycNumber", value: inv.ckycNumber ?? "", nullable: true }} />
-          <KV label="CKYC expiry" value={inv.ckycExpiryAt ? formatDate(inv.ckycExpiryAt) : "—"} edit={{ id: inv.id, field: "ckycExpiryAt", type: "date", value: inv.ckycExpiryAt ? String(inv.ckycExpiryAt).slice(0, 10) : "", nullable: true }} />
           <KV label="KYC validated" value={inv.kycValidatedAt ? formatDate(inv.kycValidatedAt) : "—"} edit={{ id: inv.id, field: "kycValidatedAt", type: "date", value: inv.kycValidatedAt ? String(inv.kycValidatedAt).slice(0, 10) : "", nullable: true }} />
           <KV label="KRA" value={inv.kraName ?? "—"} />
           <KV label="FATCA status" value={inv.fatcaStatus ?? "—"} cap />
-          <KV label="FATCA expiry" value={inv.fatcaExpiryAt ? formatDate(inv.fatcaExpiryAt) : "—"} />
           {showRisk && <Status label="Risk profile" value={inv.riskProfile ?? "not_assessed"} good={!!inv.riskProfile && !!inv.riskProfileSignedAt} />}
           {showPan && <KV label="UCC (BSE)" value={inv.bseUccCode ?? "—"} mono edit={{ id: inv.id, field: "bseUccCode", value: inv.bseUccCode ?? "", nullable: true }} />}
           {showPan && <KV label="CAN (NSE)" value={inv.nseCanCode ?? "—"} mono edit={{ id: inv.id, field: "nseCanCode", value: inv.nseCanCode ?? "", nullable: true }} />}
@@ -968,7 +1025,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           </Group>
         )}
 
-        {(inv.secondHolderFirstName || inv.secondHolderLastName || inv.secondHolderOccupation || inv.secondHolderCompanyName || inv.secondHolderBirthPlace || inv.secondHolderMotherName || inv.secondHolderMaritalStatus) && (
+        {!singleHoldingOnly(inv.investorCategory) && (inv.secondHolderFirstName || inv.secondHolderLastName || inv.secondHolderOccupation || inv.secondHolderCompanyName || inv.secondHolderBirthPlace || inv.secondHolderMotherName || inv.secondHolderMaritalStatus) && (
           <Group title="Second / joint holder">
             <KV label="Name" value={[inv.secondHolderFirstName, inv.secondHolderLastName].filter(Boolean).join(" ") || "—"} />
             <KV label="Occupation" value={inv.secondHolderOccupation ?? "—"} />
@@ -983,7 +1040,6 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           <KV label="Total lumpsum" value={formatINR(data.totalLumpsum)} sub="Successful purchases" />
           {showInflow && <KV label="Lifetime inflow" value={formatINR(Number(inv.lifetimeInflow ?? 0))} />}
           {showInflow && <KV label="Lifetime outflow" value={formatINR(Number(inv.lifetimeOutflow ?? 0))} />}
-          <KV label="Service tier" value={inv.serviceTier ?? "—"} />
           <KV label="Last transaction" value={inv.lastTransactionAt ? formatRelative(inv.lastTransactionAt) : "Never"} />
           {showStatus && (
             <Status
@@ -1009,8 +1065,9 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
       </div>
       </RelatedListSection>
 
-      {/* Nominees — dedicated, editable section (multi-nominee) */}
-      {showNominee && (
+      {/* Nominees — dedicated, editable section (multi-nominee). Only an
+          individual nominates; for anyone else the section is not shown. */}
+      {showNominee && nominates && (
         <RelatedListSection moduleKey="investors-detail" sectionKey="nominees">
           <div id="rel-nominees" className="scroll-mt-24">
             <NomineeSection
@@ -1034,6 +1091,9 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
             </h2>
             <div className="flex items-center gap-3">
               <SendRiskProfileLinkButton investorId={inv.id} />
+              {can(session.roles, "risk_profile.manage", session.permissions) && inv.investorCategory !== "minor" && (
+                <UploadRiskProfileButton initialClient={{ id: inv.id, name: inv.name }} appearance="link" />
+              )}
               <Link
                 href={`/dashboard/risk-profiles/new?investorId=${inv.id}`}
                 className="text-xs font-semibold text-primary hover:underline"
@@ -1249,7 +1309,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
         investorId={inv.id}
         kyc={showKyc ? inv.kycStatus === "verified" : null}
         risk={showRisk ? (isRiskProfileMissing ? "missing" : isRiskProfileExpired ? "expired" : "ok") : null}
-        nominee={showNominee ? !!inv.nomineeName || ((inv.nominees as any[] | null)?.length ?? 0) > 0 : null}
+        nominee={showNominee && nominates ? !!inv.nomineeName || ((inv.nominees as any[] | null)?.length ?? 0) > 0 || !!typeDetails.nominationOptOut : null}
         bank={showBank ? !!(inv.bankAccountNumberMasked || inv.bankName) : null}
         emailVerified={inv.email ? !!inv.emailVerifiedAt : null}
         phoneVerified={inv.phone ? !!inv.phoneVerifiedAt : null}
@@ -1378,11 +1438,104 @@ function ConsentChip({ label, granted }: { label: string; granted: boolean }) {
 /** Master-record group header + 3-col grid for KV rows. */
 // Option sets for the inline-editable selects — mirror the PATCH zod enums.
 const GENDER_OPTS = [{ value: "M", label: "Male" }, { value: "F", label: "Female" }, { value: "O", label: "Other" }];
-const ENTITY_OPTS = ([["individual", "Individual"], ["huf", "HUF"], ["nri", "NRI"], ["company", "Company"], ["corporate", "Corporate (legacy)"], ["trust", "Trust"], ["minor", "Minor"], ["other", "Other"]] as const).map(([value, label]) => ({ value, label }));
+// The client types and their labels: lib/investors/client-types.ts.
+const ENTITY_OPTS = CLIENT_TYPE_KEYS.map((value) => ({ value, label: clientTypeLabel(value) }));
 const SEGMENT_OPTS = ["HNI", "Affluent", "Retail", "NRI", "Corporate"].map((v) => ({ value: v, label: v }));
 const CATEGORY_OPTS = ["A", "B", "C", "D"].map((v) => ({ value: v, label: `Category ${v}` }));
 const RESIDENCY_OPTS = ([["indian_resident", "Indian resident"], ["nri", "NRI"], ["oci", "OCI"], ["pio", "PIO"], ["foreign_national", "Foreign national"]] as const).map(([value, label]) => ({ value, label }));
 const PAN_AADHAAR_OPTS = ([["linked", "Linked"], ["not_linked", "Not linked"], ["pending", "Pending"], ["not_applicable", "Not applicable"]] as const).map(([value, label]) => ({ value, label }));
+
+/**
+ * What only this type of client has: a minor's guardian, an HUF's Karta and
+ * coparceners, an entity's incorporation, signatories and beneficial owners,
+ * an NRI's overseas details, a proprietor's business. Nothing for a plain
+ * individual.
+ */
+function ClientTypeGroups({
+  kind, type, dob, details, guardianId, showPan,
+}: {
+  kind: "person" | "minor" | "huf" | "entity";
+  type: string | null;
+  dob: string | null;
+  details: ClientTypeDetails;
+  guardianId: string | null;
+  showPan: boolean;
+}) {
+  const pan = (v?: string | null) => (v ? (showPan ? <PanReveal pan={v} /> : "••••••••••") : null);
+  const day = (v?: string | null) => (v ? formatDate(v) : "—");
+  const label = <T extends readonly (readonly [string, string])[]>(list: T, v?: string | null) => list.find(([k]) => k === v)?.[1] ?? "—";
+  if (kind === "minor") {
+    const g = details.guardian ?? {};
+    const turns18 = majorityDate(dob);
+    return (
+      <Group title="Guardian">
+        <KV label="Guardian" node={g.name ? (guardianId ? <Link href={`/dashboard/investors/${guardianId}`} className="hover:underline">{g.name}</Link> : g.name) : null} sub={guardianId ? "Risk profile is the guardian's" : undefined} />
+        <KV label="Relationship" value={label(GUARDIAN_RELATIONS, g.relation)} />
+        <KV label="Guardian's PAN" node={pan(g.pan)} />
+        <KV label="Guardian's date of birth" value={day(g.dob)} />
+        <KV label="Guardian's mobile" value={g.mobile ?? "—"} />
+        <KV label="Guardian's email" value={g.email ?? "—"} />
+        <KV label="Turns 18 on" value={turns18 ? formatDate(turns18) : "—"} />
+      </Group>
+    );
+  }
+  if (kind === "huf") {
+    const k = details.karta ?? {};
+    const cps = details.coparceners ?? [];
+    return (
+      <Group title="Karta & coparceners">
+        <KV label="Karta" value={k.name ?? "—"} />
+        <KV label="Karta's PAN" node={pan(k.pan)} />
+        <KV label="Karta's date of birth" value={day(k.dob)} />
+        <KV label="Karta's mobile" value={k.mobile ?? "—"} />
+        <KV label="Karta's email" value={k.email ?? "—"} />
+        <KV label="Coparceners" value={cps.length ? cps.map((c) => [c.name, c.relation].filter(Boolean).join(" · ")).join(", ") : "—"} colSpan={2} />
+      </Group>
+    );
+  }
+  if (kind === "entity") {
+    const e = details.entity ?? {};
+    const def = clientTypeDef(type);
+    const sig = details.signatories ?? [];
+    const ubos = details.ubos ?? [];
+    return (
+      <>
+        <Group title="Entity">
+          <KV label={def.registrationLabel ?? "Registration no."} value={e.registrationNo ?? "—"} mono />
+          <KV label="Place of incorporation" value={e.placeOfIncorporation ?? "—"} />
+          <KV label="Nature of business" value={e.natureOfBusiness ?? "—"} />
+          <KV label="Net worth" value={e.netWorth !== undefined && e.netWorth !== "" ? formatINR(Number(e.netWorth)) : "—"} sub={e.netWorthAsOn ? `as on ${formatDate(e.netWorthAsOn)}` : undefined} />
+          <KV label="FATCA / CRS class" value={label(FATCA_ENTITY_CLASSES, e.fatcaClass)} />
+          {e.giin ? <KV label="GIIN" value={e.giin} mono /> : null}
+        </Group>
+        <Group title="Authorised signatories & beneficial owners">
+          <KV label="Authorised signatories" value={sig.length ? sig.map((x) => [x.name, x.designation].filter(Boolean).join(" · ")).join(", ") : "—"} colSpan={2} />
+          <KV label="Beneficial owners" value={ubos.length ? ubos.map((u) => (u.holdingPct !== undefined && u.holdingPct !== "" ? `${u.name} (${u.holdingPct}%)` : u.name)).join(", ") : "—"} colSpan={2} />
+        </Group>
+      </>
+    );
+  }
+  if (type === "nri") {
+    const n = details.nri ?? {};
+    return (
+      <Group title="Overseas details">
+        <KV label="Country of residence" value={n.countryOfResidence ?? "—"} />
+        <KV label="Tax residency" value={n.taxResidencyCountry ?? "—"} />
+        <KV label="Foreign TIN" value={n.foreignTin ?? "—"} mono />
+        <KV label="Bank account type" value={label(NRI_ACCOUNT_TYPES, n.accountType)} />
+        <KV label="Overseas address" value={n.overseasAddress ?? "—"} colSpan={2} />
+      </Group>
+    );
+  }
+  if (type === "sole_proprietor") {
+    return (
+      <Group title="Business">
+        <KV label="Business name" value={details.businessName ?? "—"} />
+      </Group>
+    );
+  }
+  return null;
+}
 
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
   return (

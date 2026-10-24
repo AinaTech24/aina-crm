@@ -35,6 +35,7 @@ import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import { notify } from "@/components/ui/Toast";
+import { promptDialog } from "@/components/ui/ConfirmProvider";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
 import { formatDate, formatMoney } from "@/lib/format";
 import { OPPORTUNITY_PRODUCTS, productPipeline } from "@/lib/opportunities/products";
@@ -65,6 +66,7 @@ export function OpportunitiesPanel({ investorId, investorName }: { investorId: s
   const params = useSearchParams();
   const [items, setItems] = useState<OpportunityView[] | null>(null);
   const [staff, setStaff] = useState<Staff[]>([]);
+  const [assignees, setAssignees] = useState<{ list: Staff[]; me: string | null }>({ list: [], me: null });
   const [canWork, setCanWork] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState<{ product: string } | null>(null);
@@ -77,6 +79,7 @@ export function OpportunitiesPanel({ investorId, investorName }: { investorId: s
       if (!res.ok) throw new Error(j.error ?? "Could not load opportunities");
       setItems(j.items ?? []);
       setStaff(j.staff ?? []);
+      setAssignees({ list: j.assignees ?? [], me: j.me ?? null });
       setCanWork(!!j.canWork);
       setError(null);
       return (j.items ?? []) as OpportunityView[];
@@ -190,6 +193,7 @@ export function OpportunitiesPanel({ investorId, investorName }: { investorId: s
           initialProduct={creating.product}
           openProducts={openProducts}
           staff={staff}
+          assignees={assignees}
           onClose={() => setCreating(null)}
           onCreated={async () => { setCreating(null); await load(); router.refresh(); }}
         />
@@ -206,10 +210,11 @@ export function OpportunityCard({ o, canWork, staff, onChange, onReload, detailH
   /** "Open" link to the opportunity's own page (on the client page). */
   detailHref?: string;
 }) {
-  const [busy, setBusy] = useState<"advance" | "sync" | null>(null);
+  const [busy, setBusy] = useState<"advance" | "sync" | "approve" | "reject" | null>(null);
   const [blocked, setBlocked] = useState<Prerequisite[] | null>(null);
   const [losing, setLosing] = useState(false);
   const [needsOpen, setNeedsOpen] = useState(false);
+  const [rtaOpen, setRtaOpen] = useState(false);
   const [laterOpen, setLaterOpen] = useState(false);
 
   const gate = blocked ?? o.gate;
@@ -234,6 +239,31 @@ export function OpportunityCard({ o, canWork, staff, onChange, onReload, detailH
       }
       if (j.skipped?.length) notify.success(`Moved on — ${j.skipped.length} step${j.skipped.length === 1 ? "" : "s"} already on file`);
       else notify.success(j.stage === "won" ? "Marked won" : "Moved on");
+      onChange(j.opportunity);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function decide(decision: "approve" | "reject") {
+    let remarks: string | undefined;
+    if (decision === "reject") {
+      const why = await promptDialog({ title: "Why was the transaction rejected?", confirmLabel: "Reject transaction", multiline: true });
+      if (!why) return;
+      remarks = why;
+    }
+    setBusy(decision);
+    try {
+      const res = await fetch(`/api/opportunities/${o.id}/transaction-review`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ decision, remarks }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        notify.error(j.error ?? "Could not record the decision");
+        if (j.opportunity) onChange(j.opportunity);
+        return;
+      }
+      notify.success(decision === "approve" ? "Transaction approved — RTA data check task created" : "Rejected — sent back to Transaction placed");
       onChange(j.opportunity);
     } finally {
       setBusy(null);
@@ -321,7 +351,19 @@ export function OpportunityCard({ o, canWork, staff, onChange, onReload, detailH
 
       {canWork && !o.later && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          {o.next && (
+          {o.status === "open" && o.current.key === "txn_review" && (
+            <>
+              <Button variant="primary" size="sm" loading={busy === "approve"} disabled={busy != null}
+                icon={<Sparkles className="size-4" />} onClick={() => setRtaOpen(true)}>
+                Approve transaction
+              </Button>
+              <Button size="sm" loading={busy === "reject"} disabled={busy != null}
+                icon={<XCircle className="size-4" />} onClick={() => decide("reject")}>
+                Reject transaction
+              </Button>
+            </>
+          )}
+          {o.next && o.current.key !== "txn_review" && (
             <Button variant="primary" size="sm" loading={busy === "advance"} disabled={gateOpen || busy != null}
               icon={o.next.key === "won" ? <Sparkles className="size-4" /> : <ChevronRight className="size-4" />}
               onClick={advance}>
@@ -353,6 +395,7 @@ export function OpportunityCard({ o, canWork, staff, onChange, onReload, detailH
         </div>
       )}
 
+      {rtaOpen && <RtaCheckDialog o={o} onClose={() => setRtaOpen(false)} onDone={(v) => { setRtaOpen(false); onChange(v); }} />}
       {losing && <LostDialog o={o} onClose={() => setLosing(false)} onDone={(v) => { setLosing(false); onChange(v); void onReload(); }} />}
       {laterOpen && <LaterDialog o={o} onClose={() => setLaterOpen(false)} onDone={(v) => { setLaterOpen(false); onChange(v); }} />}
       {needsOpen && <NeedsAnalysisDialog o={o} onClose={() => setNeedsOpen(false)} onDone={(v) => { setNeedsOpen(false); onChange(v); }} />}
@@ -455,21 +498,24 @@ function StageRail({ stages }: { stages: OpportunityView["stages"] }) {
 
 /* ─────────────────────────────── dialogs ─────────────────────────────── */
 
-export function NewOpportunityDialog({ investorId: fixedInvestorId, investorName: fixedInvestorName, initialProduct, openProducts: fixedOpen, staff: fixedStaff, onClose, onCreated }: {
+export function NewOpportunityDialog({ investorId: fixedInvestorId, investorName: fixedInvestorName, initialProduct, openProducts: fixedOpen, staff: fixedStaff, assignees: fixedAssignees, onClose, onCreated }: {
   /** The client — omitted in the Opportunities module, where the dialog picks one. */
   investorId?: string; investorName?: string;
   initialProduct: string; openProducts?: Set<string>; staff?: Staff[];
+  /** Who it may be assigned to (GET …/opportunities `assignees`), and the viewer — the default. */
+  assignees?: { list: Staff[]; me: string | null };
   onClose: () => void; onCreated: (opportunity?: OpportunityView) => void;
 }) {
   const [client, setClient] = useState<{ id: string; name: string } | null>(
     fixedInvestorId ? { id: fixedInvestorId, name: fixedInvestorName ?? "" } : null,
   );
-  // Picked in the module: what that client already has open, and who can co-own.
-  const [picked, setPicked] = useState<{ open: Set<string>; staff: Staff[] } | null>(null);
+  // Picked in the module: what that client already has open, who can co-own, who it can be assigned to.
+  const [picked, setPicked] = useState<{ open: Set<string>; staff: Staff[]; assignees: { list: Staff[]; me: string | null } } | null>(null);
   const [product, setProduct] = useState(initialProduct);
   const [value, setValue] = useState("");
   const [mode, setMode] = useState<"" | "sip" | "lumpsum">("");
   const [coOwnerId, setCoOwnerId] = useState("");
+  const [ownerId, setOwnerId] = useState("");
   const [followUpOn, setFollowUpOn] = useState(istDay(2));
   // "Later": the client wants it, but not yet — started parked.
   const [when, setWhen] = useState<"now" | "later">("now");
@@ -480,7 +526,16 @@ export function NewOpportunityDialog({ investorId: fixedInvestorId, investorName
   const pipeline = product ? productPipeline(product) : null;
   const openProducts = fixedOpen ?? picked?.open ?? new Set<string>();
   const staff = fixedStaff ?? picked?.staff ?? [];
-  const insuranceTeam = useMemo(() => staff.filter((s) => s.insurance), [staff]);
+  const insuranceTeam = useMemo(() => staff.filter((s) => s.insurance && s.id !== ownerId), [staff, ownerId]);
+  const assignTo = fixedAssignees ?? picked?.assignees ?? null;
+
+  // Assigned to the person creating it, unless they can't take this client.
+  useEffect(() => {
+    if (!assignTo) return setOwnerId("");
+    setOwnerId((cur) => assignTo.list.some((s) => s.id === cur) ? cur
+      : assignTo.list.some((s) => s.id === assignTo.me) ? assignTo.me!
+      : assignTo.list[0]?.id ?? "");
+  }, [assignTo]);
 
   async function pickClient(id: string, name: string) {
     setClient({ id, name });
@@ -488,13 +543,14 @@ export function NewOpportunityDialog({ investorId: fixedInvestorId, investorName
     const res = await fetch(`/api/investors/${id}/opportunities`, { cache: "no-store" }).catch(() => null);
     const j = res?.ok ? await res.json().catch(() => ({})) : {};
     const open = new Set<string>(((j.items ?? []) as OpportunityView[]).filter((o) => o.status === "open").map((o) => o.product));
-    setPicked({ open, staff: j.staff ?? [] });
+    setPicked({ open, staff: j.staff ?? [], assignees: { list: j.assignees ?? [], me: j.me ?? null } });
     if (open.has(product)) setProduct("");
   }
 
   async function save() {
     if (!client) return setErr("Pick the client.");
     if (!product) return setErr("Pick a product.");
+    if (!ownerId) return setErr("Pick who it is assigned to.");
     if (when === "now" && followUpOn && followUpOn < istDay()) return setErr("The follow-up date can't be in the past.");
     const laterErr = when === "later" ? laterError(later) : null;
     if (laterErr) return setErr(laterErr);
@@ -508,7 +564,8 @@ export function NewOpportunityDialog({ investorId: fixedInvestorId, investorName
           product,
           expectedValue: value ? Number(value.replace(/[^0-9.]/g, "")) : null,
           investmentMode: pipeline === "mf" && mode ? mode : null,
-          coOwnerId: coOwnerId || null,
+          ownerId,
+          coOwnerId: coOwnerId && coOwnerId !== ownerId ? coOwnerId : null,
           notes: notes.trim() || null,
           source: initialProduct ? "cross_sell" : "manual",
           followUpOn: when === "now" ? followUpOn || null : null,
@@ -521,7 +578,7 @@ export function NewOpportunityDialog({ investorId: fixedInvestorId, investorName
         ? "Already open — showing that one"
         : when === "later"
           ? `Saved for later — back on ${formatDate(later.day)}, with a reminder before it`
-          : `Opportunity started — follow-up on ${formatDate(followUpOn || istDay(2))} is on the owner's list`);
+          : `Opportunity started — follow-up on ${formatDate(followUpOn || istDay(2))} is on ${ownerId === assignTo?.me ? "your" : `${assignTo?.list.find((s) => s.id === ownerId)?.name ?? "the owner"}'s`} list`);
       onCreated(j.opportunity);
     } finally {
       setBusy(false);
@@ -559,6 +616,18 @@ export function NewOpportunityDialog({ investorId: fixedInvestorId, investorName
                   {p.label}{openProducts.has(p.key) ? " — already open" : ""}
                 </option>
               ))}
+            </SelectField>
+            )}
+          </Field>
+          <Field label="Assign to" required>
+            {(id, d) => (
+            <SelectField id={id} aria-describedby={d} value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className="w-full"
+              disabled={!assignTo || assignTo.list.length === 0}>
+              {!assignTo
+                ? <option value="">{client ? "Loading…" : "Pick the client first"}</option>
+                : assignTo.list.length === 0
+                  ? <option value="">Nobody can take this client</option>
+                  : assignTo.list.map((s) => <option key={s.id} value={s.id}>{s.id === assignTo.me ? `${s.name} (me)` : s.name}</option>)}
             </SelectField>
             )}
           </Field>
@@ -617,6 +686,97 @@ export function NewOpportunityDialog({ investorId: fixedInvestorId, investorName
         <DialogFooter>
           <Button onClick={onClose}>Cancel</Button>
           <Button variant="primary" loading={busy} onClick={save}>{when === "later" ? "Save for later" : "Start opportunity"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Approving the transaction opens the RTA data check: a task to check the
+ * transaction against the RTA data is created for whoever is picked here, due
+ * the day chosen. The client is won once that task is completed.
+ */
+function RtaCheckDialog({ o, onClose, onDone }: { o: OpportunityView; onClose: () => void; onDone: (v: OpportunityView) => void }) {
+  const tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
+  const [list, setList] = useState<{ list: Staff[]; me: string | null } | null>(null);
+  const [assigneeId, setAssigneeId] = useState("");
+  const [dueOn, setDueOn] = useState(tomorrow);
+  const [remarks, setRemarks] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const res = await fetch(`/api/investors/${o.investorId}/opportunities`, { cache: "no-store" }).catch(() => null);
+      const j = res?.ok ? await res.json().catch(() => ({})) : {};
+      if (!alive) return;
+      const l: Staff[] = j.assignees ?? [];
+      const me: string | null = j.me ?? null;
+      setList({ list: l, me });
+      // The opportunity's owner by default, else the person approving.
+      setAssigneeId(l.some((s) => s.id === o.ownerId) ? o.ownerId! : l.some((s) => s.id === me) ? me! : l[0]?.id ?? "");
+    })();
+    return () => { alive = false; };
+  }, [o.investorId, o.ownerId]);
+
+  async function save() {
+    if (!dueOn) return notify.error("Pick a due date.");
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/opportunities/${o.id}/transaction-review`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ decision: "approve", assigneeId: assigneeId || undefined, dueOn, remarks: remarks.trim() || undefined }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        notify.error(j.error ?? "Could not approve the transaction");
+        if (j.opportunity) onDone(j.opportunity);
+        return;
+      }
+      notify.success("Transaction approved — RTA data check task created");
+      onDone(j.opportunity);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Approve transaction — RTA data check</DialogTitle>
+          <DialogDescription>
+            A task is created to check this transaction against the RTA data. {o.productLabel} is won once that task is completed.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="mt-4 space-y-3">
+          <Field label="Assign to" required>
+            {(id, d) => (
+            <SelectField id={id} aria-describedby={d} value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} className="w-full"
+              disabled={!list || list.list.length === 0}>
+              {!list
+                ? <option value="">Loading…</option>
+                : list.list.length === 0
+                  ? <option value="">Nobody can take this client</option>
+                  : list.list.map((s) => <option key={s.id} value={s.id}>{s.id === list.me ? `${s.name} (me)` : s.name}</option>)}
+            </SelectField>
+            )}
+          </Field>
+          <Field label="Due date" required>
+            {(id, d) => (
+            <DateField id={id} aria-describedby={d} value={dueOn} onChange={(e) => setDueOn(e.target.value)} min={new Date().toISOString().slice(0, 10)} />
+            )}
+          </Field>
+          <Field label="Note" optional>
+            {(id, d) => (
+            <input id={id} aria-describedby={d} className="input-base" value={remarks} onChange={(e) => setRemarks(e.target.value)} />
+            )}
+          </Field>
+        </div>
+        <DialogFooter>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" loading={busy} disabled={!list} onClick={save}>Approve and create task</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

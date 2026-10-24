@@ -21,7 +21,6 @@ import { ingestInboundBatch, pgErrorOf, type IngestResult, type SanitizedInbound
 import { describeMailError } from "@/lib/comms/connection-error";
 import { tenantIntegrations } from "@/db/schema/tenant_integrations";
 import { communications, investors, leads } from "@/db/schema";
-import { maybeRouteEmailToTicket } from "@/lib/comms/email-to-ticket";
 import { refreshAccessToken, getProviderDef, type OAuthProvider } from "@/lib/comms/oauth";
 import { sql } from "drizzle-orm";
 import { captureError } from "@/lib/observability/capture";
@@ -179,20 +178,10 @@ async function storeMessage(
       .where(and(eq(communications.id, replyToOutboundId), inArray(communications.status, ["sent", "delivered", "read"])));
   }
 
-  // Email → Service Request auto-routing (parity with WhatsApp intake). Its own
-  // savepoint: it swallows its errors, and a swallowed SQL error would
-  // otherwise leave this message's savepoint aborted and lose the email too.
-  await tx
-    .transaction((sp) =>
-      maybeRouteEmailToTicket(sp, {
-        tenantId,
-        investorId,
-        subject: m.subject,
-        text: m.text,
-        messageId: ref,
-      })
-    )
-    .catch(() => undefined);
+  // An email does NOT open a service request. It once did, and the firm's own
+  // reminder mail turned into hundreds of "Bank update" tickets (Nimesh C Shah
+  // Financial Services, Oct 2026). Clients ask for a service on purpose through
+  // the firm's service request form — lib/service-requests/web-form.ts.
 }
 
 type MailboxRow = { id: string; tenantId: string; userId: string | null; encryptedConfig: string };

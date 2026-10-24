@@ -12,26 +12,24 @@ export function FaqAccordion({ items }: { items: { q: string; a: string }[] }) {
   const [open, setOpen] = useState<number | null>(null);
 
   return (
-    <div className="space-y-3">
+    <div className="divide-y divide-site-sand border-y border-site-sand">
       {items.map((f, i) => {
         const isOpen = open === i;
         return (
           <div
             key={i}
-            className={`glass-card rounded-xl border transition-colors ${
-              isOpen ? "border-primary/30" : "border-border/40"
-            }`}
+            className="transition-colors"
           >
             <button
               type="button"
               onClick={() => setOpen(isOpen ? null : i)}
               aria-expanded={isOpen}
-              className="w-full flex items-center justify-between gap-4 p-4 sm:p-5 text-left"
+              className="w-full flex items-center justify-between gap-4 py-5 text-left"
             >
-              <span className="font-bold text-sm sm:text-base text-foreground">{f.q}</span>
+              <span className="font-brand text-lg sm:text-xl text-site-text">{f.q}</span>
               <ChevronDown
                 className={`size-5 shrink-0 transition-transform duration-300 ${
-                  isOpen ? "rotate-180 text-primary" : "text-muted-foreground"
+                  isOpen ? "rotate-180 text-site-crimson" : "text-site-muted"
                 }`}
               />
             </button>
@@ -41,7 +39,7 @@ export function FaqAccordion({ items }: { items: { q: string; a: string }[] }) {
               }`}
             >
               <div className="overflow-hidden">
-                <p className="px-4 sm:px-5 pb-4 sm:pb-5 text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                <p className="pb-5 pr-8 text-sm sm:text-base text-site-muted leading-relaxed">
                   {f.a}
                 </p>
               </div>

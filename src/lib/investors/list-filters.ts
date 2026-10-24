@@ -16,6 +16,7 @@ import { investors } from "@/db/schema";
 import { aliveClient, cleanIds, textList, uuidList } from "@/lib/metrics/scope";
 import { missingDataSql, reviewOverdueSql } from "@/lib/metrics/attention";
 import { investorFieldFilterConds } from "@/lib/investors/field-filters";
+import { missingAdultTextSql, missingDobSql, needsNomineeSql, panAadhaarGapSql } from "@/lib/investors/type-rules";
 
 export type InvestorListParams = Record<string, string | undefined>;
 
@@ -128,13 +129,17 @@ export function buildInvestorConditions(
     if (named.length !== status.length) parts.push(sql`COALESCE(${investors.status}, '') = ''`);
     conditions.push(parts.length === 1 ? parts[0] : or(...parts)!);
   }
+  // live=1 — the client list's default view: a client who left (Closed /
+  // Exited) is kept, not deleted, and stays out of the list until shown.
+  if (sp.live === "1") conditions.push(sql`COALESCE(${investors.status}, '') NOT IN ('closed', 'exited')`);
+
   // ctype — the Client book's "By client type" (lib/metrics/book.ts
   // clientTypeSql, restated over the investors table): corporate, else the
   // family's primary member as head, else another family member, else
   // individual.
   const ctype = csv(sp.ctype).filter((v) => ["head", "member", "individual", "corporate"].includes(v));
   if (ctype.length) {
-    conditions.push(sql`(CASE WHEN ${investors.investorCategory} IN ('corporate', 'company') THEN 'corporate'
+    conditions.push(sql`(CASE WHEN ${investors.investorCategory} IN ('corporate', 'company', 'llp', 'partnership', 'aop_boi') THEN 'corporate'
       WHEN EXISTS (SELECT 1 FROM families f WHERE f.tenant_id = ${investors.tenantId}
                      AND f.primary_investor_id = ${investors.id}) THEN 'head'
       WHEN ${investors.familyId} IS NOT NULL THEN 'member'
@@ -241,7 +246,7 @@ export function buildInvestorConditions(
     )`);
   }
   if (qf.no_nominee) {
-    conditions.push(sql`(${investors.nomineeName} IS NULL OR ${investors.nomineeName} = '')`);
+    conditions.push(needsNomineeSql("investors"));
   }
   if (qf.rp_stale) {
     conditions.push(
@@ -300,11 +305,11 @@ export function buildInvestorConditions(
         conditions.push(sql`(${investors.email} IS NULL OR ${investors.email} = '')`);
         break;
       case "dob":
-        conditions.push(sql`${investors.dob} IS NULL`);
+        conditions.push(missingDobSql("investors"));
         break;
       case "nominee":
-        // Blank means blank after trimming — the compliance card's count.
-        conditions.push(sql`(${investors.nomineeName} IS NULL OR btrim(${investors.nomineeName}) = '')`);
+        // Only a type that can nominate — the compliance card's count (lib/investors/type-rules.ts).
+        conditions.push(needsNomineeSql("investors"));
         break;
       case "bank":
         conditions.push(
@@ -327,16 +332,16 @@ export function buildInvestorConditions(
         conditions.push(sql`${investors.riskProfile} IS NULL`);
         break;
       case "occupation":
-        conditions.push(sql`(${investors.occupation} IS NULL OR btrim(${investors.occupation}) = '')`);
+        conditions.push(missingAdultTextSql("investors", "occupation"));
         break;
       case "employer":
-        conditions.push(sql`(${investors.employerName} IS NULL OR btrim(${investors.employerName}) = '')`);
+        conditions.push(missingAdultTextSql("investors", "employer_name"));
         break;
       case "notes":
         conditions.push(sql`(${investors.notes} IS NULL OR btrim(${investors.notes}) = '')`);
         break;
       case "pan_aadhaar":
-        conditions.push(sql`(${investors.panAadhaarLinkStatus} = 'not_linked' OR ${investors.panAadhaarLinkStatus} IS NULL)`);
+        conditions.push(panAadhaarGapSql("investors"));
         break;
       case "marketing_consent":
         // No marketing consent granted and still in force (lib/metrics/compliance.ts).
