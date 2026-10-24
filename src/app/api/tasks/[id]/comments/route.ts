@@ -20,12 +20,15 @@ import { createNotification } from "@/lib/notifications/create";
 import { tasks, taskComments, users } from "@/db/schema";
 import { notifyWatchers } from "@/lib/tasks/watchers";
 import { taskInScope } from "@/lib/tasks/scope";
+import { escalatedTo } from "@/lib/tasks/escalation-ladder";
 
 export const dynamic = "force-dynamic";
 
 function ownsTask(task: { assigneeId: string | null; createdById: string | null; meta?: unknown }, userId: string): boolean {
   // The person an open "Need information" question is waiting on joins the thread.
-  return task.assigneeId === userId || task.createdById === userId || openInfoRequest(task.meta)?.askedToId === userId;
+  // So does a manager the escalation ladder brought it to.
+  return task.assigneeId === userId || task.createdById === userId || openInfoRequest(task.meta)?.askedToId === userId
+    || escalatedTo(task.meta, userId);
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

@@ -19,6 +19,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
+  BellRing,
   Building2, Database, Users, CreditCard, MessageCircle, Mail, Webhook, ShieldCheck, KeyRound, Palette, UserCircle,
   Target, Network, ClipboardCheck, SlidersHorizontal, Search, X, LayoutTemplate, Boxes, Landmark, Zap, Route,
   ListChecks, Shuffle, MessagesSquare, LayoutDashboard, Gauge, ChevronRight, type LucideIcon,
@@ -61,6 +62,7 @@ const SECTIONS: Section[] = [
   { icon: Zap, title: "Automations", desc: "Rules that send messages and create tasks on their own.", href: "/dashboard/automations", group: "Automation", keywords: "workflows rules triggers actions run history recipes" },
   { icon: Route, title: "Stages & journeys", desc: "Stages, deadlines and required fields for leads, requests and reviews.", href: "/dashboard/settings/blueprints", group: "Automation", keywords: "blueprints pipeline workflow sla" },
   { icon: ListChecks, title: "Task templates", desc: "Predefined tasks with checklists (SOPs).", href: "/dashboard/settings/task-templates", group: "Automation", keywords: "sop checklist" },
+  { icon: BellRing, title: "Escalation", desc: "When overdue tasks reach the manager, branch head and owner.", href: "/dashboard/settings/escalation", group: "Automation", keywords: "overdue escalate ladder manager branch head owner sla" },
 
   { icon: LayoutTemplate, title: "Message templates", desc: "The WhatsApp, email and SMS templates your team and automations send.", href: "/dashboard/templates", group: "Messaging", keywords: "whatsapp email sms template designer approval meta notification journey" },
   { icon: MessagesSquare, title: "Message log", desc: "Every message sent and received, with delivery status.", href: "/dashboard/communications", group: "Messaging", keywords: "communications messages log outbox inbox delivered read failed compose whatsapp email sms cadence responses" },

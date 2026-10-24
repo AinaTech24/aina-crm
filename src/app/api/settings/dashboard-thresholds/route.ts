@@ -12,6 +12,10 @@
  * dashboards read through — so what can be stored and what is honoured are one
  * rule: an unknown key or an out-of-bounds value is dropped, never saved.
  *
+ * The same row also holds the escalation ladder (`escalationLadder`,
+ * lib/tasks/escalation-ladder.ts, Settings → Escalation). Saving or resetting
+ * the thresholds keeps it.
+ *
  * Gated on `settings.dashboard` (owner by default; grantable per user).
  */
 
@@ -71,7 +75,11 @@ export async function PUT(req: NextRequest) {
         INSERT INTO dashboard_settings (tenant_id, settings, updated_by, updated_at)
         VALUES (${session.tenantId}::uuid, ${JSON.stringify(clean)}::jsonb, ${session.userId}::uuid, now())
         ON CONFLICT (tenant_id) DO UPDATE
-          SET settings = EXCLUDED.settings, updated_by = EXCLUDED.updated_by, updated_at = now()
+          SET settings = EXCLUDED.settings
+                || CASE WHEN dashboard_settings.settings ? 'escalationLadder'
+                        THEN jsonb_build_object('escalationLadder', dashboard_settings.settings -> 'escalationLadder')
+                        ELSE '{}'::jsonb END,
+              updated_by = EXCLUDED.updated_by, updated_at = now()
       `);
       return loadDashboardThresholds(tx);
     });
@@ -86,8 +94,16 @@ export async function DELETE() {
     const session = await requireSession();
     requireCap(session.roles, "settings.dashboard", session.permissions);
     await withTenant(session.tenantId, async (tx) => {
-      // Explicit predicate as well as RLS — never a bare DELETE.
-      await tx.execute(sql`DELETE FROM dashboard_settings WHERE tenant_id = ${session.tenantId}::uuid`);
+      // Back to the defaults, keeping the escalation ladder. Explicit predicate
+      // as well as RLS — never a bare DELETE.
+      await tx.execute(sql`
+        UPDATE dashboard_settings
+           SET settings = CASE WHEN settings ? 'escalationLadder'
+                               THEN jsonb_build_object('escalationLadder', settings -> 'escalationLadder')
+                               ELSE '{}'::jsonb END,
+               updated_by = ${session.userId}::uuid, updated_at = now()
+         WHERE tenant_id = ${session.tenantId}::uuid
+      `);
     });
     return NextResponse.json({ ok: true, effective: DEFAULT_DASHBOARD_THRESHOLDS });
   } catch (err) {

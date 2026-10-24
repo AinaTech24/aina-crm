@@ -343,6 +343,29 @@ branch head, merge scope, a PAN clash needs an explicit tick). The unit is the
 folio — a folio belongs to one client, so schemes inside it travel with it. To
 fold a whole duplicate record away use Merge Clients (`mergeInvestors`).
 
+## Overdue tasks — the escalation ladder
+
+Settings → Escalation (`/dashboard/settings/escalation`, 2026-10-24, CEO
+review S4). Rules in `lib/tasks/escalation-ladder.ts`, one pass in
+`lib/tasks/escalation-run.ts`, run every five minutes by the task reminder
+scanner. Stored in `dashboard_settings.settings.escalationLadder` — the
+dashboard-thresholds save and reset keep that key.
+
+- **Off until the firm switches it on**, and then only tasks that fall due
+  AFTER that moment (`activeSince`) climb — never the backlog.
+- A rule per department / task type / priority (most specific wins, else
+  "Everything else", 24 / 48 / 72 h) gives the hours overdue at which a task
+  reaches: L1 the assignee's reporting manager, L2 the branch head(s) of the
+  assignee's branch, L3 the owner(s). A blank hour skips that level.
+- Each level is told once (`task.escalated` notification + audit) and
+  recorded in `tasks.meta.escalation` (`l1`/`l2`/`l3`: at, to; `to`: everyone;
+  `done` once every level is reached). The assignee is never escalated to.
+- While it is on, the scanner's instant "team follow-up overdue" ping to the
+  branch head is not sent — the ladder does that job at the firm's hours.
+- **Escalated to me counts as my own task**: `own()` in `lib/tasks/scope.ts`,
+  the task page and its comments let that person open and discuss it; the
+  Tasks list has the "Escalated to me" flag (`?flag=escalated_to_me`).
+
 ## Daily habits — the cues that bring people back (2026-10-08)
 
 Built from an Atomic Habits review of adoption: make the cue obvious, the

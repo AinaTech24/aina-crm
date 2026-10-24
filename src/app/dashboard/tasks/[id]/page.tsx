@@ -8,6 +8,7 @@ import { can, requireAny } from "@/lib/auth/rbac";
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { TaskDetailPage } from "./TaskDetailPage";
 import { taskInScope } from "@/lib/tasks/scope";
+import { escalatedTo } from "@/lib/tasks/escalation-ladder";
 import { dataWallApplies, investorScopeCondition } from "@/lib/investors/access";
 import { loadViewableLead } from "@/lib/leads/access";
 
@@ -42,7 +43,9 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
       task.createdById === session.userId ||
       taskChecklist(task.meta).some((c) => c.assigneeId === session.userId) ||
       // The person an open "Need information" question is waiting on.
-      openInfoRequest(task.meta)?.askedToId === session.userId;
+      openInfoRequest(task.meta)?.askedToId === session.userId ||
+      // The escalation ladder brought it to me (lib/tasks/escalation-ladder.ts).
+      escalatedTo(task.meta, session.userId);
     if (!canViewAll && !mine) return null;
     // view.all reaches only tasks whose client / lead is in scope.
     if (!(await taskInScope(tx, session, id))) return null;

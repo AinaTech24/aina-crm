@@ -35,7 +35,8 @@ export function canViewAllTasks(session: SessionUser) {
 function own(session: SessionUser, alias: string): SQL {
   const c = (x: string) => sql.raw(`${alias}.${x}`);
   return sql`(${c("assignee_id")} = ${session.userId}::uuid OR ${c("created_by_id")} = ${session.userId}::uuid
-    OR ${c("meta")}->'checklist' @> ${JSON.stringify([{ assigneeId: session.userId }])}::jsonb)`;
+    OR ${c("meta")}->'checklist' @> ${JSON.stringify([{ assigneeId: session.userId }])}::jsonb
+    OR (${c("meta")} -> 'escalation' -> 'to') ? ${session.userId})`;
 }
 
 /** The task's client is visible to the viewer (or it has none). */

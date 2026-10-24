@@ -13,7 +13,7 @@ import { notifications } from "@/db/schema";
 
 // The two daily cues (8 am briefing, 6:30 pm "close your day") go to the phone
 // too: a cue that only reaches an inbox nobody opens before work is no cue.
-const MOBILE_ALERTS = new Set(["task.assigned", "task.subtask_assigned", "task.reminder", "task.overdue", "task.overdue.branch", "meeting.reminder", "task.info_requested", "task.info_answered", "daily_briefing", "day.close"]);
+const MOBILE_ALERTS = new Set(["task.assigned", "task.subtask_assigned", "task.reminder", "task.overdue", "task.overdue.branch", "task.escalated", "meeting.reminder", "task.info_requested", "task.info_answered", "daily_briefing", "day.close"]);
 
 export type NotifySeverity = "info" | "success" | "warning" | "critical";
 
