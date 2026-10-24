@@ -15,58 +15,58 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://crm.ainatech.in";
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "Aina CRM — CRM & Automation for Mutual Fund Distributors",
-    template: "%s · Aina CRM",
+    default: "AINA CRM — CRM Software for Mutual Fund Distributors (MFD) in India",
+    template: "%s · AINA CRM",
   },
   description:
-    "Aina CRM — the all-in-one CRM and automation platform for Indian Mutual Fund Distributors. SEBI-compliant WhatsApp & email automation, live portfolio XIRR, AI churn prediction, SIP tracking, and a guided lead-to-client pipeline — built for ARN-holding firms.",
-  applicationName: "Aina CRM",
-  authors: [{ name: "AINA Technologies" }],
-  creator: "AINA Technologies",
-  publisher: "AINA Technologies",
+    "AINA CRM is CRM software built for Mutual Fund Distributors in India: leads, clients and families, SIPs and transactions, client reviews, team tasks and business dashboards in one place.",
+  applicationName: "AINA CRM",
+  authors: [{ name: "Aina Tech Services LLP", url: "https://ainatech.in" }],
+  creator: "Aina Tech Services LLP",
+  publisher: "Aina Tech Services LLP",
   category: "Business Software",
   keywords: [
-    "MFD CRM",
-    "mutual fund distributor software",
-    "mutual fund CRM India",
-    "ARN software",
-    "SIP tracker",
-    "SEBI compliance software",
-    "AMFI",
-    "WhatsApp automation for MFD",
+    "AINA CRM",
+    "CRM for mutual fund distributors",
+    "MFD CRM software",
     "mutual fund distributor CRM",
-    "MFD practice management",
-    "portfolio tracking India",
-    "financial advisor CRM India",
-    "IFA software",
-    "wealth management CRM",
+    "mutual fund software for distributors",
+    "MFD back office software",
+    "SIP tracking software",
+    "AMFI DDQ compliance",
   ],
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",
-    siteName: "Aina CRM",
-    title: "Aina CRM — CRM & Automation for Mutual Fund Distributors",
+    siteName: "AINA CRM",
+    title: "AINA CRM — CRM Software for Mutual Fund Distributors",
     description:
-      "Run your entire MFD practice on autopilot with Aina CRM — compliant WhatsApp/email automation, live XIRR, AI churn prediction, SIP tracking and more. Built for Indian ARN holders.",
+      "Bring your MFD business together: leads, clients, SIPs, meetings, tasks and business tracking in one CRM built for Mutual Fund Distributors.",
     url: SITE_URL,
     locale: "en_IN",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Aina CRM — CRM & Automation for Mutual Fund Distributors",
+    title: "AINA CRM — CRM Software for Mutual Fund Distributors",
     description:
-      "The practice operating system for Indian MFDs. SEBI-compliant automation, live XIRR, AI churn prediction, SIP tracking and more.",
+      "Bring your MFD business together: leads, clients, SIPs, meetings, tasks and business tracking in one CRM built for Mutual Fund Distributors.",
   },
   robots: {
     index: true,
     follow: true,
     googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1 },
   },
+  // Search Console / Bing Webmaster ownership tags — set the env vars to the
+  // codes those consoles issue (Settings → Ownership verification → HTML tag).
+  verification: {
+    google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION || undefined,
+    other: process.env.NEXT_PUBLIC_BING_SITE_VERIFICATION ? { "msvalidate.01": process.env.NEXT_PUBLIC_BING_SITE_VERIFICATION } : undefined,
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning className={inter.variable}>
+    <html lang="en-IN" suppressHydrationWarning className={inter.variable}>
       {/* suppressHydrationWarning: browser extensions (ColorZilla's
           `cz-shortcut-listen`, Grammarly, etc.) inject attributes onto <body>
           before React hydrates, which would otherwise log a hydration mismatch. */}

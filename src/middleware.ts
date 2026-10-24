@@ -67,6 +67,13 @@ const PUBLIC_PATHS = new Set([
   // scenario, walkthrough and screenshots — with no login anywhere.
   "/knowledge-base",
   "/preview",
+  // The public website's other pages (SEO landing pages and the blog), and the
+  // generated social-share images — without these, link previews on WhatsApp /
+  // LinkedIn and Google's crawler were redirected to /login.
+  "/solutions",
+  "/blog",
+  "/opengraph-image",
+  "/twitter-image",
 ]);
 
 /**
@@ -111,6 +118,8 @@ const PUBLIC_PATH_PREFIXES = [
   "/feedback/",
   "/portal/",
   "/knowledge-base/",
+  "/solutions/",
+  "/blog/",
   // /induction/letter/* — the training confirmation letter. Unauthenticated by
   // design so a member can forward it to a personal inbox; the 32-byte random
   // token IS the authorisation, and the route itself enforces status=passed and

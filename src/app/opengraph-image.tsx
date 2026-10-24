@@ -6,7 +6,7 @@ import { ImageResponse } from "next/og";
  * WhatsApp / LinkedIn render a real preview instead of nothing.
  */
 export const runtime = "nodejs";
-export const alt = "Aina CRM — the practice operating system for Mutual Fund Distributors";
+export const alt = "AINA CRM — CRM software for Mutual Fund Distributors";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -21,7 +21,7 @@ export default function OpengraphImage() {
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
-          background: "#ffffff",
+          background: "#f7f2ea",
           padding: "72px 80px",
           fontFamily: "sans-serif",
         }}
@@ -29,22 +29,22 @@ export default function OpengraphImage() {
         {/* top: wordmark + eyebrow */}
         <div style={{ display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", alignItems: "baseline" }}>
-            <span style={{ fontSize: 64, fontWeight: 800, color: red, letterSpacing: -1 }}>Aina</span>
-            <span style={{ fontSize: 64, fontWeight: 800, color: "#1a1f2b", letterSpacing: -1, marginLeft: 14 }}>CRM</span>
+            <span style={{ fontSize: 64, fontWeight: 800, color: red, letterSpacing: -1 }}>AINA</span>
+            <span style={{ fontSize: 64, fontWeight: 800, color: "#032b2b", letterSpacing: -1, marginLeft: 14 }}>CRM</span>
           </div>
           <div style={{ fontSize: 22, fontWeight: 600, color: "#5b6472", marginTop: 8, letterSpacing: 2, textTransform: "uppercase" }}>
-            Built only for Indian Mutual Fund Distributors
+            CRM software for Mutual Fund Distributors
           </div>
         </div>
 
         {/* middle: headline */}
         <div style={{ display: "flex", flexDirection: "column" }}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0 16px", fontSize: 58, fontWeight: 800, color: "#11151c", lineHeight: 1.15, maxWidth: 1000 }}>
-            <span>Run your MFD practice with</span>
-            <span style={{ color: red }}>more control, less manual work.</span>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "0 16px", fontSize: 58, fontWeight: 800, color: "#032b2b", lineHeight: 1.15, maxWidth: 1000 }}>
+            <span>Your MFD business is growing.</span>
+            <span style={{ color: red }}>Are your systems keeping up?</span>
           </div>
           <div style={{ display: "flex", gap: 16, marginTop: 36, flexWrap: "wrap" }}>
-            {["Compliance & DDQ", "Client servicing", "Automation & AI", "60+ calculators"].map((t) => (
+            {["Leads", "Clients & families", "SIP tracking", "Reviews & tasks", "Business dashboards"].map((t) => (
               <div
                 key={t}
                 style={{
@@ -52,8 +52,8 @@ export default function OpengraphImage() {
                   fontSize: 22,
                   fontWeight: 600,
                   color: "#3a414e",
-                  background: "#f3f4f6",
-                  border: "1px solid #e5e7eb",
+                  background: "#fffdf9",
+                  border: "1px solid #e7ddcf",
                   borderRadius: 999,
                   padding: "10px 22px",
                 }}
@@ -67,7 +67,7 @@ export default function OpengraphImage() {
         {/* bottom: footer bar */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ fontSize: 24, fontWeight: 700, color: red }}>crm.ainatech.in</div>
-          <div style={{ fontSize: 20, color: "#7a828f" }}>AMFI &amp; SEBI-aware · DPDP-ready · Live in a day</div>
+          <div style={{ fontSize: 20, color: "#7a828f" }}>by Aina Tech Services LLP</div>
         </div>
       </div>
     ),

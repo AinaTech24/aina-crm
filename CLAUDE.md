@@ -755,6 +755,25 @@ client).
   `holds_money_with_registrar`). Nimesh's "Thakor Rushin Jitendrabhai"
   (₹28.33 L) had been bulk-deleted with his PAN-less twin.
 
+## The public website and SEO
+
+The marketing site is `/` (`src/app/page.tsx`), `/solutions` + `/solutions/[slug]`
+(one page per search phrase MFDs use — content in `src/lib/landing/solutions.ts`),
+`/blog` + `/blog/[slug]` (`src/lib/landing/blog.ts`), the homepage FAQ
+(`src/lib/landing/faqs.ts`) and KAIZEN (`/knowledge-base`). Header, footer and
+contact details are shared (`components/landing/SiteChrome.tsx`,
+`lib/landing/links.ts` `CONTACT`); structured data comes from
+`lib/landing/jsonld.ts`, so every page describes the company the same way.
+
+- **A new public page needs a middleware entry** (`PUBLIC_PATHS` /
+  `PUBLIC_PATH_PREFIXES`), or crawlers and visitors are sent to `/login` — the
+  generated `/opengraph-image` was, which broke every link preview.
+- Add new solution pages / articles to their data file; the sitemap
+  (`src/app/sitemap.ts`) picks them up. Keep every claim true of the product.
+- Self-serve sign-up is closed: CTAs book a demo (`DEMO_URL`), never `/signup`.
+- The site palette is fixed (`site-*` colours in `tailwind.config.ts`, the logo's
+  crimson and teal) and must not follow a tenant's `--primary`.
+
 ## Webhook handlers
 
 | Provider | Path | Verifies |

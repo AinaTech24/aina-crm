@@ -1,101 +1,68 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { Fraunces } from "next/font/google";
 import {
-  ArrowRight, ArrowDown, Phone, BellOff, FolderOpen, UserCog, Hand, EyeOff, Target, Users, Repeat,
+  ArrowRight, ArrowDown, Phone, Clock, BellOff, FolderOpen, UserCog, Hand, EyeOff, Target, Users, Repeat,
   CalendarDays, ListChecks, BarChart3, X, Check, type LucideIcon,
 } from "lucide-react";
-import { MobileNav } from "@/components/landing/MobileNav";
 import { RoleDashboards } from "@/components/landing/RoleDashboards";
 import { LivePractice } from "@/components/landing/LivePractice";
-import { COMMUNITY_URL, DEMO_URL } from "@/lib/landing/links";
+import { FaqAccordion } from "@/components/landing/FaqAccordion";
+import { ContactList, SiteFooter, SiteHeader } from "@/components/landing/SiteChrome";
+import { brandFont } from "@/lib/landing/font";
+import { DEMO_URL } from "@/lib/landing/links";
+import { HOME_FAQS } from "@/lib/landing/faqs";
+import { BLOG_POSTS, formatPostDate } from "@/lib/landing/blog";
+import { SOLUTION_PAGES } from "@/lib/landing/solutions";
+import { faqLd, graph, organizationLd, softwareLd, websiteLd } from "@/lib/landing/jsonld";
 
-/** The site's display face — a warm serif against the logo's crimson and teal. */
-const brandFont = Fraunces({ subsets: ["latin"], variable: "--font-brand", style: ["normal", "italic"], display: "swap" });
-
-/* SEO — written around what Indian MFDs actually type into Google. */
+/* SEO — the title, H1 and first paragraph carry the phrases MFDs search for:
+   "CRM for mutual fund distributors", "MFD CRM software", "mutual fund
+   software for distributors". Brand last in the title so the phrase leads. */
 export const metadata: Metadata = {
-  title: "AINA CRM — CRM Software Built for Mutual Fund Distributors",
+  title: { absolute: "AINA CRM — CRM Software for Mutual Fund Distributors (MFD) in India" },
   description:
-    "Stop managing leads, client follow-ups, SIPs, meetings and team activities across spreadsheets, WhatsApp and multiple files. AINA CRM is designed around the everyday workflows of Mutual Fund Distributors.",
+    "CRM software built for Mutual Fund Distributors in India. Manage leads, clients, SIPs, client reviews, team tasks and business tracking in one place.",
   keywords: [
+    "AINA CRM",
     "CRM for Mutual Fund Distributors",
     "MFD CRM software",
     "Mutual Fund Distributor CRM",
-    "CRM for MFD",
-    "lead management for MFD",
+    "mutual fund software for distributors",
+    "back office software for mutual fund distributors",
     "SIP tracking software",
-    "client review management",
+    "AMFI DDQ compliance",
+    "client review management for MFD",
     "task management for MFD teams",
-    "mutual fund distributor software",
   ],
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",
-    title: "AINA CRM — Built for Mutual Fund Distributors",
+    url: "/",
+    locale: "en_IN",
+    title: "AINA CRM — CRM Software for Mutual Fund Distributors",
     description: "Your MFD business is growing. Are your systems keeping up? One CRM for leads, clients, SIPs, meetings, tasks and business tracking.",
     siteName: "AINA CRM",
   },
   twitter: {
     card: "summary_large_image",
-    title: "AINA CRM — Built for Mutual Fund Distributors",
+    title: "AINA CRM — CRM Software for Mutual Fund Distributors",
     description: "Your MFD business is growing. Are your systems keeping up? One CRM for leads, clients, SIPs, meetings, tasks and business tracking.",
   },
 };
 
-/** Structured data for Google rich results (Software + Organization). */
-const JSON_LD = {
-  "@context": "https://schema.org",
-  "@graph": [
-    {
-      "@type": "SoftwareApplication",
-      name: "AINA CRM",
-      applicationCategory: "BusinessApplication",
-      operatingSystem: "Web",
-      description: "CRM software designed around the everyday workflows of Mutual Fund Distributors.",
-      featureList: SOLUTIONS_LIST(),
-    },
-    {
-      "@type": "Organization",
-      name: "Aina Tech Services LLP",
-      description: "Developer of AINA CRM — CRM software for Mutual Fund Distributors in India.",
-      brand: "AINA CRM",
-    },
-  ],
-};
+const JSON_LD = graph(
+  organizationLd(),
+  websiteLd(),
+  softwareLd("CRM software designed around the everyday workflows of Mutual Fund Distributors in India.", SOLUTIONS_LIST()),
+  faqLd(HOME_FAQS),
+);
 
 export default function Home() {
   return (
     <main className={`${brandFont.variable} min-h-screen flex flex-col bg-site-cream text-site-text relative overflow-x-clip`}>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }} />
 
-      {/* ───────────────────────── Nav ───────────────────────── */}
-      <header className="sticky top-0 z-50 bg-site-cream/85 backdrop-blur-xl border-b border-site-sand/70">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between h-16">
-          <Link href="/" className="inline-flex items-center hover:opacity-90 transition-opacity">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/aina-logo.png" alt="AINA CRM — CRM software for mutual fund distributors" className="h-9 w-auto object-contain shrink-0" />
-          </Link>
-          <nav className="hidden lg:flex items-center gap-8 text-sm font-semibold text-site-muted">
-            {NAV.map(([label, href]) =>
-              href.startsWith("#") ? (
-                <a key={href} href={href} className="hover:text-site-crimson transition-colors">{label}</a>
-              ) : (
-                <Link key={href} href={href} className="hover:text-site-crimson transition-colors">{label}</Link>
-              )
-            )}
-          </nav>
-          <div className="hidden lg:flex items-center gap-2">
-            <Link href="/login" className="rounded-full px-4 py-2 text-sm font-semibold text-site-text hover:bg-site-sand/60 transition">
-              Log in
-            </Link>
-            <a href={DEMO_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-full bg-site-crimson px-5 py-2.5 text-sm font-bold text-white hover:bg-site-crimson-deep transition">
-              Book a Demo <ArrowRight className="size-4" />
-            </a>
-          </div>
-          <MobileNav links={NAV} demoUrl={DEMO_URL} />
-        </div>
-      </header>
+      <SiteHeader />
 
       {/* ───────────────────────── Hero ───────────────────────── */}
       <section className="relative">
@@ -103,12 +70,15 @@ export default function Home() {
         <div aria-hidden className="pointer-events-none absolute top-40 -right-40 size-96 rounded-full bg-site-ink/10 blur-3xl" />
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 pt-12 pb-20 lg:pt-20 lg:pb-28 grid lg:grid-cols-12 gap-14 lg:gap-10 items-center">
           <div className="lg:col-span-7">
-            <span className="inline-flex items-center gap-2 rounded-full bg-site-paper px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider text-site-text ring-1 ring-site-sand">
-              <span className="size-1.5 rounded-full bg-site-crimson" /> CRM software for Mutual Fund Distributors
-            </span>
-            <h1 className="mt-7 font-brand text-5xl sm:text-6xl leading-none tracking-tight text-site-ink text-balance">
-              Your MFD business is growing.{" "}
-              <em className="text-site-crimson">Are your systems keeping up?</em>
+            {/* The search phrase is part of the H1 (as its first line), styled as the label above the headline. */}
+            <h1>
+              <span className="inline-flex items-center gap-2 rounded-full bg-site-paper px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider text-site-text ring-1 ring-site-sand">
+                <span className="size-1.5 rounded-full bg-site-crimson" /> CRM software for Mutual Fund Distributors
+              </span>
+              <span className="mt-7 block font-brand text-5xl sm:text-6xl leading-none tracking-tight text-site-ink text-balance">
+                Your MFD business is growing.{" "}
+                <em className="text-site-crimson">Are your systems keeping up?</em>
+              </span>
             </h1>
             <p className="mt-7 max-w-xl text-lg text-site-muted leading-relaxed">
               Stop managing leads, client follow-ups, SIPs, meetings, and team activities across spreadsheets, WhatsApp, and multiple files.
@@ -234,6 +204,65 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ───────────────────── Solutions (internal links) ───────────────────── */}
+      <section aria-labelledby="solutions-h" className="pb-24 lg:pb-28">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          <h2 id="solutions-h" className="text-xs font-bold uppercase tracking-widest text-site-crimson">Explore by what you need</h2>
+          <ul className="mt-5 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {SOLUTION_PAGES.map((p) => (
+              <li key={p.slug}>
+                <Link href={`/solutions/${p.slug}`} className="group flex h-full items-start justify-between gap-3 rounded-3xl bg-site-paper p-5 ring-1 ring-site-sand hover:shadow-lg transition">
+                  <span className="font-brand text-lg leading-snug text-site-ink">{p.navLabel}</span>
+                  <ArrowRight className="size-4 mt-1.5 shrink-0 text-site-crimson group-hover:translate-x-0.5 transition" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      {/* ───────────────────── Blog ───────────────────── */}
+      <section id="blog" className="bg-site-paper border-y border-site-sand py-24 lg:py-28 scroll-mt-16">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <Heading left kicker="From the blog" title={<>Guides MFDs <em className="text-site-crimson">actually search for.</em></>} />
+            <Link href="/blog" className="inline-flex items-center gap-1.5 text-sm font-bold text-site-crimson hover:underline">
+              All articles <ArrowRight className="size-4" />
+            </Link>
+          </div>
+          <ul className="mt-12 grid md:grid-cols-3 gap-5">
+            {LATEST_POSTS.map((p) => (
+              <li key={p.slug}>
+                <Link href={`/blog/${p.slug}`} className="group flex h-full flex-col rounded-3xl bg-site-cream p-6 ring-1 ring-site-sand hover:shadow-lg transition">
+                  <span className="text-2xs font-bold uppercase tracking-widest text-site-crimson">{p.category}</span>
+                  <h3 className="mt-3 font-brand text-xl leading-snug text-site-ink">{p.title}</h3>
+                  <span className="mt-auto pt-5 inline-flex items-center gap-1.5 text-xs font-semibold text-site-muted">
+                    <Clock className="size-3.5" /> {p.readMins} min read · {formatPostDate(p.published)}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      {/* ───────────────────── FAQ ───────────────────── */}
+      <section id="faq" className="py-24 lg:py-32 scroll-mt-16">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 grid lg:grid-cols-12 gap-10">
+          <div className="lg:col-span-4">
+            <Heading left kicker="FAQ" title="Questions MFDs ask us." />
+            <p className="mt-4 text-sm text-site-muted">
+              More in the{" "}
+              <Link href="/blog" className="font-bold text-site-crimson hover:underline">blog</Link> and the{" "}
+              <Link href="/knowledge-base" className="font-bold text-site-crimson hover:underline">KAIZEN knowledge base</Link>.
+            </p>
+          </div>
+          <div className="lg:col-span-8">
+            <FaqAccordion items={HOME_FAQS} />
+          </div>
+        </div>
+      </section>
+
       {/* ───────────────────────── Final CTA ───────────────────────── */}
       <section id="demo" className="px-4 sm:px-6 pb-6 scroll-mt-16">
         <div className="relative max-w-7xl mx-auto overflow-hidden rounded-3xl bg-site-ink px-6 py-20 sm:py-24 text-center">
@@ -254,53 +283,21 @@ export default function Home() {
               </a>
             </div>
           </div>
+          <div id="contact" className="relative mt-14 pt-10 border-t border-white/10 max-w-3xl mx-auto text-left scroll-mt-24">
+            <h3 className="text-center text-xs font-bold uppercase tracking-widest text-site-rose">Reach us</h3>
+            <ContactList dark className="mt-6 sm:grid sm:grid-cols-2 sm:gap-x-10" />
+          </div>
         </div>
       </section>
 
-      {/* ───────────────────────── Footer ───────────────────────── */}
-      <footer className="max-w-7xl mx-auto w-full px-4 sm:px-6 py-10">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/aina-logo.png" alt="AINA CRM" className="h-9 w-auto object-contain" />
-            <p className="mt-3 font-brand text-lg text-site-ink">AINA CRM — A smarter way to manage your MFD business.</p>
-          </div>
-          <nav className="flex flex-wrap gap-x-6 gap-y-2 text-sm font-semibold text-site-muted">
-            {FOOTER.map(([label, href]) =>
-              /^https?:/.test(href) ? (
-                <a key={label} href={href} target="_blank" rel="noopener noreferrer" className="hover:text-site-crimson transition-colors">{label}</a>
-              ) : (
-                <Link key={label} href={href} className="hover:text-site-crimson transition-colors">{label}</Link>
-              )
-            )}
-          </nav>
-        </div>
-        <div className="mt-8 pt-6 border-t border-site-sand flex flex-col lg:flex-row justify-between gap-4 text-2xs text-site-muted leading-relaxed">
-          <span>
-            © {new Date().getFullYear()} · Developed by{" "}
-            <a href="https://ainatech.in" target="_blank" rel="noopener noreferrer" className="font-semibold text-site-text hover:text-site-crimson">
-              Aina Tech Services LLP
-            </a>
-          </span>
-          <span className="max-w-2xl lg:text-right">
-            Mutual fund investments are subject to market risks. Read all scheme-related documents carefully. AINA CRM provides
-            practice-management, analytics and communication tools for distributors and does not execute mutual fund transactions.
-          </span>
-        </div>
-      </footer>
+      <SiteFooter />
     </main>
   );
 }
 
 /* ───────────────────────── Content ───────────────────────── */
 
-const NAV: [string, string][] = [
-  ["The problem", "#problem"],
-  ["Features", "#features"],
-  ["Benefits", "#benefits"],
-  ["Why AINA", "#why"],
-  ["KAIZEN", "/knowledge-base"],
-];
+const LATEST_POSTS = [...BLOG_POSTS].sort((a, b) => b.published.localeCompare(a.published)).slice(0, 3);
 
 const PROBLEMS: { icon: LucideIcon; title: string; body: string }[] = [
   { icon: BellOff, title: "Missed follow-ups", body: "Leads and client requests get overlooked." },
@@ -332,16 +329,6 @@ function SOLUTIONS_LIST() {
     "Business Tracking System",
   ];
 }
-
-const FOOTER: [string, string][] = [
-  ["Book a Demo", DEMO_URL],
-  ["Community", COMMUNITY_URL],
-  ["KAIZEN", "/knowledge-base"],
-  ["Log in", "/login"],
-  ["Privacy", "/privacy"],
-  ["Terms", "/terms"],
-  ["Refunds", "/refund"],
-];
 
 /* ───────────────────────── Helper components ───────────────────────── */
 
