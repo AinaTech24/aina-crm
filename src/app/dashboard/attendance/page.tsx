@@ -170,7 +170,12 @@ export default async function AttendancePage({
           <ExportButton module="attendance" />
         </div></>} />
 
-      <ClockWidget today={data.myToday} />
+      {/* The people the Daily Job Tracker is for (the same audience as the
+          morning briefing) land on it after their first clock-in. */}
+      <ClockWidget
+        today={data.myToday}
+        planAfterClockIn={session.roles.some((r) => ["owner", "branch_head", "rm"].includes(r))}
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat icon={CheckCircle2} label="Present today" value={`${s.present_today ?? 0} / ${s.active_employees ?? 0}`} tone="emerald" />

@@ -27,7 +27,7 @@ import {
   sessionCookieForPath,
   type SessionUser,
 } from "./jwt";
-import { isSessionRevoked, isDeviceSessionRevoked } from "./revocation";
+import { isSessionOrDeviceRevoked } from "./revocation";
 
 // Re-export the Edge-safe surface so existing `@/lib/auth/session` imports
 // (signSession in the auth routes, verifySession/SESSION_COOKIE, the type) are
@@ -55,19 +55,18 @@ export const getSession = cache(async (): Promise<SessionUser | null> => {
   const session = await readSession();
   if (!session) return null;
 
-  // Revocation gate. Platform-admin sessions live under the platform tenant;
-  // the lookup is tenant-scoped and works the same for them. Skipped only when
-  // there's no iat (legacy token) — handled inside isSessionRevoked.
-  const revoked = await isSessionRevoked({
+  // Revocation gate: the account (offboarding / forced logout / password reset)
+  // and the device ("log out this device"), plus the last-seen touch for
+  // presence — one transaction (revocation.ts). Platform-admin sessions live
+  // under the platform tenant; the lookup is tenant-scoped and works the same
+  // for them. A token with no iat (legacy) or no sid is treated as revoked.
+  const revoked = await isSessionOrDeviceRevoked({
     userId: session.userId,
     tenantId: session.tenantId,
     iatSeconds: session.iat,
+    sid: session.sid,
   });
   if (revoked) return null;
-
-  // Per-device revocation ("log out this device") + last-seen touch for presence.
-  const deviceRevoked = await isDeviceSessionRevoked({ sid: session.sid, tenantId: session.tenantId, userId: session.userId });
-  if (deviceRevoked) return null;
 
   // Middleware overwrites x-pathname with the actual request URL. Apply the
   // mobile parent-record boundary once per request, including nested routes.

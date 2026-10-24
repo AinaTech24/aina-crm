@@ -25,6 +25,7 @@ import { startRtaInboxPollerWorker } from "./rta-inbox-poller";
 import { startZohoSyncWorker } from "./zoho-sync";
 import { startRtaImportWorker } from "./rta-import-worker";
 import { startDailyBriefingWorker } from "./daily-briefing";
+import { startDayClosePromptWorker } from "./day-close-prompt";
 import { startWeeklyDigestWorker } from "./weekly-digest";
 import { runDailyOpsScan } from "./daily-ops-scanner";
 import { runKycRefresh } from "@/lib/kyc/refresh";
@@ -145,6 +146,8 @@ if (groups.includes("rta")) {
 // a plain interval registration is correct here (not scheduleDaily/local-time).
 if (groups.includes("briefing")) {
   stops.push(startDailyBriefingWorker());
+  // 6:30 PM IST "close your day" nudge (in-app + push) → the Daily Job Tracker.
+  stops.push(startDayClosePromptWorker());
   // Monday "your firm this week" digest for owners/branch heads (9 AM IST).
   stops.push(startWeeklyDigestWorker());
 }

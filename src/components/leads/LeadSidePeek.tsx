@@ -21,6 +21,7 @@ import {
 import { Avatar } from "@/components/ui/Avatar";
 import { formatINR, formatDate } from "@/lib/utils";
 import { leadScoreBand } from "@/lib/leads/scoring";
+import { contactLogAttrs } from "@/lib/activities/contact-log";
 
 export type SidePeekLead = {
   id: string;
@@ -126,6 +127,7 @@ export function LeadSidePeek({
             <div className="flex items-center gap-2 mt-4 pt-3 border-t border-border/60">
               {lead.phone && (
                 <a
+                  {...contactLogAttrs({ type: "lead", id: lead.id, name: lead.name })}
                   href={`tel:${lead.phone}`}
                   className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-secondary text-foreground hover:text-brand-cyan hover:bg-secondary/80 transition-colors"
                 >
@@ -134,6 +136,7 @@ export function LeadSidePeek({
               )}
               {waUrl && (
                 <a
+                  {...contactLogAttrs({ type: "lead", id: lead.id, name: lead.name })}
                   href={waUrl}
                   target="_blank"
                   rel="noopener noreferrer"

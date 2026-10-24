@@ -22,6 +22,7 @@ import { buttonClass } from "@/components/ui/button-class";
 import { OpportunityDetailsCard, OpportunityJourney } from "@/components/opportunities/OpportunityWorkspace";
 import { formatDate, formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { contactLogAttrs } from "@/lib/activities/contact-log";
 
 export const dynamic = "force-dynamic";
 
@@ -128,8 +129,8 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
             </Link>
             <ul className="mt-2 space-y-1.5 text-sm text-muted-foreground">
               {client.rm_name && <li className="flex items-center gap-2"><UserRound className="size-3.5" aria-hidden /> RM {cleanName(client.rm_name)}</li>}
-              {client.phone && <li className="flex items-center gap-2"><Phone className="size-3.5" aria-hidden /> <a href={`tel:${client.phone}`} className="hover:text-foreground">{client.phone}</a></li>}
-              {client.email && <li className="flex items-center gap-2"><Mail className="size-3.5" aria-hidden /> <a href={`mailto:${client.email}`} className="truncate hover:text-foreground">{client.email}</a></li>}
+              {client.phone && <li className="flex items-center gap-2"><Phone className="size-3.5" aria-hidden /> <a {...contactLogAttrs({ type: "investor", id: String(client.id), name: String(client.name) })} href={`tel:${client.phone}`} className="hover:text-foreground">{client.phone}</a></li>}
+              {client.email && <li className="flex items-center gap-2"><Mail className="size-3.5" aria-hidden /> <a {...contactLogAttrs({ type: "investor", id: String(client.id), name: String(client.name) })} href={`mailto:${client.email}`} className="truncate hover:text-foreground">{client.email}</a></li>}
               {client.aum != null && Number(client.aum) > 0 && <li>AUM with you {formatMoney(Number(client.aum))}</li>}
             </ul>
           </section>

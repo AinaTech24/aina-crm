@@ -41,7 +41,9 @@ import {
   Check,
   LayoutGrid,
   type LucideIcon,
+  PhoneCall,
 } from "lucide-react";
+import { openLogActivity } from "@/lib/activities/contact-log";
 import { ICONS } from "./CustomizableNav";
 import { ALL_REPORTS, reportHaystack } from "@/lib/reports/catalog";
 import { formatDate, formatMoney, humanise } from "@/lib/format";
@@ -92,7 +94,10 @@ type RecentRecord = {
  * offered RTA imports and the DDQ from here while the menu correctly hid them.
  * (Create actions are guarded by their own pages.)
  */
-const QUICK_ACTIONS: Array<{ href: string; label: string; sub: string; icon: LucideIcon; page?: string }> = [
+const QUICK_ACTIONS: Array<{ href: string; label: string; sub: string; icon: LucideIcon; page?: string; run?: () => void }> = [
+  // First, because it is the most frequent thing an RM does all day. Opens the
+  // Log activity drawer with a client / lead picker (ActivityLauncher).
+  { href: "#log-call", label: "Log a call", sub: "Call, WhatsApp, visit or note — for any client or lead", icon: PhoneCall, run: () => openLogActivity("call") },
   { href: "/dashboard/leads/new", label: "Add Lead", sub: "New prospect (stages 1–10)", icon: Sparkles },
   { href: "/dashboard/investors/new", label: "Add Client", sub: "New investor (after KYC)", icon: Users },
   { href: "/dashboard/sips/new", label: "Register SIP", sub: "Setup new SIP installment", icon: TrendingUp },
@@ -128,6 +133,8 @@ type Row = {
   sub?: string;
   chip?: string;
   icon: LucideIcon;
+  /** An action that opens something in place instead of navigating. */
+  run?: () => void;
 };
 
 /** The chip a recently visited record carries, by the section it was picked from. */
@@ -354,7 +361,7 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
       (a) =>
         (!a.page || allowedPages.has(a.page)) &&
         (cleanNeedle === "" || a.label.toLowerCase().includes(cleanNeedle) || a.sub.toLowerCase().includes(cleanNeedle))
-    ).map((a) => ({ key: `act:${a.href}`, href: a.href, title: a.label, sub: a.sub, icon: a.icon }));
+    ).map((a) => ({ key: `act:${a.href}`, href: a.href, title: a.label, sub: a.sub, icon: a.icon, run: a.run }));
 
     if (isActionOnly) {
       return [{ id: "actions", label: "Quick Actions", icon: Zap, rows: actionRows }];
@@ -571,6 +578,11 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
   }, [sections]);
 
   function pick(row: Row) {
+    if (row.run) {
+      setOpen(false);
+      row.run();
+      return;
+    }
     saveRecent(row, RECORD_CHIP[sectionOf.get(row.key) ?? ""]);
     setOpen(false);
     router.push(row.href);

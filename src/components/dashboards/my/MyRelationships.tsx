@@ -364,7 +364,7 @@ function NextContactAction({ row }: { row: ContactGap["rows"][number] }) {
   return (
     <span className="inline-flex items-center gap-1.5">
       <span className="font-medium text-foreground">{row.daysSince == null ? "Make first contact" : "Call to reconnect"}</span>
-      <ContactQuickActions phone={row.phone} email={row.email} show={["call", "whatsapp"]} />
+      <ContactQuickActions phone={row.phone} email={row.email} show={["call", "whatsapp"]} logFor={{ type: "investor", id: row.id, name: row.name }} />
     </span>
   );
 }

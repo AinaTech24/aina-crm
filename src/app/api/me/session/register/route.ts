@@ -10,8 +10,6 @@
  */
 
 import { NextResponse } from "next/server";
-import { sql } from "drizzle-orm";
-import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { attachSessionCookie } from "@/lib/auth/issue-session";
 import { handleApiError } from "@/lib/api/error-handler";
@@ -22,23 +20,10 @@ export async function POST() {
   try {
     const s = await requireSession();
 
-    // Already tracked? Just refresh last-seen and return.
-    if (s.sid) {
-      const has = await withTenant(s.tenantId, async (tx) => {
-        const r = await tx.execute(
-          sql`SELECT 1 FROM user_sessions WHERE session_id = ${s.sid} AND revoked_at IS NULL LIMIT 1`
-        );
-        return r.rows.length > 0;
-      });
-      if (has) {
-        await withTenant(s.tenantId, async (tx) => {
-          await tx.execute(
-            sql`UPDATE user_sessions SET last_seen_at = now() WHERE session_id = ${s.sid} AND revoked_at IS NULL`
-          );
-        });
-        return NextResponse.json({ ok: true, registered: false });
-      }
-    }
+    // Already tracked: requireSession has just proved this session's
+    // user_sessions row exists and is live (getSession fails closed without
+    // it) and refreshed last_seen_at, so there is nothing left to do.
+    if (s.sid) return NextResponse.json({ ok: true, registered: false });
 
     // Legacy / untracked session → re-issue with a sid + record the device row.
     const res = NextResponse.json({ ok: true, registered: true });

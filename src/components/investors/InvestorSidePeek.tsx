@@ -24,6 +24,7 @@ import {
 import { Avatar } from "@/components/ui/Avatar";
 import { formatDate, formatINR } from "@/lib/utils";
 import { healthBandClasses } from "@/lib/investors/health";
+import { contactLogAttrs } from "@/lib/activities/contact-log";
 
 export type SidePeekInvestor = {
   id: string;
@@ -146,6 +147,7 @@ export function InvestorSidePeek({
             <div className="flex items-center gap-2 mt-4 pt-3 border-t border-border/60">
               {investor.phone && (
                 <a
+                  {...contactLogAttrs({ type: "investor", id: investor.id, name: investor.name })}
                   href={`tel:${investor.phone}`}
                   className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-secondary text-foreground hover:text-brand-cyan hover:bg-secondary/80 transition-colors"
                 >
@@ -154,6 +156,7 @@ export function InvestorSidePeek({
               )}
               {waUrl && (
                 <a
+                  {...contactLogAttrs({ type: "investor", id: investor.id, name: investor.name })}
                   href={waUrl}
                   target="_blank"
                   rel="noopener noreferrer"
