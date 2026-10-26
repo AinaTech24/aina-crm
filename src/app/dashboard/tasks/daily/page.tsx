@@ -3,17 +3,22 @@ import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
  * Daily Job Tracker (DJT) — a per-RM daily reflection + planning ritual,
  * adopted from the MFD's Excel DJT. The "productive & completed" and
  * "non-productive & incomplete" lists auto-fill from the user's tasks; the RM
- * adds today's focus + key learning / breakdown / breakthrough. Owners can
- * review any team member's day (read-only) via ?user=.
+ * adds today's focus + key learning / breakdown / breakthrough. Meetings held
+ * and follow-ups logged fill in the same way (CEO review S8). A manager can
+ * review the day (read-only, ?user=) of anyone they can see on the dashboards
+ * — their team, their branch or the firm (lib/team/daily-discipline.ts).
  */
 
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { CalendarCheck, ListChecks, CheckCircle2, AlertCircle, TrendingUp, ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarCheck, ListChecks, CheckCircle2, AlertCircle, TrendingUp, ArrowLeft, ChevronLeft, ChevronRight, Users, PhoneCall } from "lucide-react";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { withTenant } from "@/db/client";
-import { loadDailyTracker, suggestFocusFromWorklist, type FocusItem } from "@/lib/daily-tracker";
+import { loadDailyTracker, suggestFocusFromWorklist, todayIst, type FocusItem } from "@/lib/daily-tracker";
+import { resolveDataAccess } from "@/lib/dashboards/team";
+import { canSeePerson } from "@/lib/team/daily-discipline";
+import { buttonClass } from "@/components/ui/button-class";
 import { loadWorklist } from "@/lib/dashboard/my/desk";
 import { buildBookWindow } from "@/lib/dashboard/my/build-window";
 import { loadDashboardThresholds } from "@/lib/dashboard/thresholds";
@@ -43,19 +48,23 @@ export default async function DailyTrackerPage({
   const sp = await searchParams;
   const isOwner = can(session.roles, "dashboard.view.owner", session.permissions);
 
-  const todayISO = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+  const todayISO = todayIst();
   const dateISO =
     typeof sp.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(sp.date) ? sp.date : todayISO;
-  const targetUser = isOwner && sp.user ? sp.user : session.userId;
+  const asked = typeof sp.user === "string" && /^[0-9a-f-]{36}$/i.test(sp.user) ? sp.user : null;
+
+  const { data, name, targetUser, managesOthers } = await withTenant(session.tenantId, async (tx) => {
+    const access = await resolveDataAccess(tx, session);
+    const managesOthers = isOwner || access.kind !== "self";
+    const targetUser =
+      asked && asked !== session.userId && (isOwner || (await canSeePerson(tx, session.tenantId, access, asked))) ? asked : session.userId;
+    const data = await loadDailyTracker(tx as any, session.tenantId, targetUser, dateISO);
+    const nameRow = await tx.execute(sql`SELECT name FROM users WHERE id = ${targetUser}::uuid AND tenant_id = ${session.tenantId}::uuid LIMIT 1`);
+    const name = ((nameRow.rows[0] as any)?.name as string) ?? "—";
+    return { data, name, targetUser, managesOthers };
+  });
   const isSelf = targetUser === session.userId;
   const userQS = !isSelf ? `&user=${targetUser}` : "";
-
-  const { data, name } = await withTenant(session.tenantId, async (tx) => {
-    const data = await loadDailyTracker(tx as any, session.tenantId, targetUser, dateISO);
-    const nameRow = await tx.execute(sql`SELECT name FROM users WHERE id = ${targetUser}::uuid LIMIT 1`);
-    const name = ((nameRow.rows[0] as any)?.name as string) ?? "—";
-    return { data, name };
-  });
 
   const isToday = dateISO === todayISO;
 
@@ -104,7 +113,12 @@ export default async function DailyTrackerPage({
                 <CalendarCheck className="size-5" />
               </span>
               Daily Job Tracker</>} subtitle={<>{isSelf ? "Your day" : <><span className="font-medium text-foreground">{name}</span>'s day</>} · {dateLabel}
-              {isToday && <span className="ml-2 inline-flex items-center rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 text-2xs font-semibold">Today</span>}</>} actions={<>{/* Date navigation */}
+              {isToday && <span className="ml-2 inline-flex items-center rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 text-2xs font-semibold">Today</span>}</>} actions={<>{managesOthers && (
+            <Link href={`/dashboard/tasks/daily/team?date=${dateISO}`} className={buttonClass("secondary", "sm")}>
+              <Users className="size-4" aria-hidden /> Team
+            </Link>
+          )}
+          {/* Date navigation */}
           <div className="inline-flex items-center gap-1 rounded-lg border border-border bg-card p-1">
             <Link href={`/dashboard/tasks/daily?date=${prevISO}${userQS}`} className="btn-icon size-7" title="Previous day" aria-label="Previous day">
               <ChevronLeft className="size-4" />
@@ -166,6 +180,28 @@ export default async function DailyTrackerPage({
             title: t.title,
             rightBadge: t.priority,
           }))}
+        />
+      </div>
+
+      {/* Filled in by the system: meetings held and follow-ups logged the day before. */}
+      <div className="grid md:grid-cols-2 gap-3">
+        <WorkList
+          title="Meetings held"
+          subtitle="yesterday"
+          icon={Users}
+          accent="emerald"
+          count={data.meetingsHeld.length}
+          empty="No meetings completed yesterday."
+          items={data.meetingsHeld.map((m) => ({ id: m.id, title: m.title, right: m.for }))}
+        />
+        <WorkList
+          title="Follow-ups logged"
+          subtitle="yesterday"
+          icon={PhoneCall}
+          accent="emerald"
+          count={data.followUpsLogged.length}
+          empty="No calls or notes logged yesterday."
+          items={data.followUpsLogged.map((a) => ({ id: a.id, title: a.title, right: a.for }))}
         />
       </div>
 

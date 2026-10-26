@@ -454,6 +454,29 @@ pass, the verdict) and `lib/qa/results.ts` (queue, pass rate).
 - Not built yet: enrolling someone in an SOP's induction lesson after N fails
   on that SOP — it needs the SOP link on tasks (S1).
 
+## The daily discipline loop — tracker, reminder, weekly pack
+
+2026-10-26, CEO review S8. Code `lib/daily-tracker.ts` (one person's day)
+and `lib/team/daily-discipline.ts` (team, reminder, pack).
+
+- **The Daily Job Tracker fills itself in**: tasks done and carried over,
+  meetings held (completed, as RM or attendee) and follow-ups logged
+  (activities) the day before. The person adds focus, learning, breakdown.
+  Every day is the INDIA day — `istDay(date)` / `todayIst()`; never compare
+  a timestamptz with a bare `::date` (prod runs on UTC).
+- **Submitted** = the day's row holds a focus item or a reflection
+  (`trackerHasContent` / `HAS_CONTENT`, keep the two in step).
+- **Team tracker** (`/dashboard/tasks/daily/team`) and **Weekly team pack**
+  (`/dashboard/tasks/weekly-pack`, last week by default, Print for the PDF):
+  people follow `resolveDataAccess`; owners are not expected to keep one.
+  A manager may open the tracker of anyone they can see (`canSeePerson`).
+- **One reminder** at the firm's time (Settings → Daily tracker,
+  `dashboard_settings.settings.dailyTracker.remindAt`, off by default), from
+  the task reminder scanner: Monday–Saturday, not on a firm holiday, only to
+  people who have not filled in, once per person-day (`djt.reminder`).
+- The pack has no "SOPs pending" or adherence column yet — they come with
+  S3 / S6.
+
 ## Bottlenecks — where work waits
 
 Reports → "Bottlenecks — Where Work Waits" (`/dashboard/reports/bottlenecks`,

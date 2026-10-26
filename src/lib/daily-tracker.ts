@@ -5,9 +5,24 @@
  * incomplete" work, a key learning, today's plan, plus breakdown/breakthrough.
  * We DERIVE the two work lists from the user's tasks (completed yesterday vs
  * carried-over) and persist only the reflective + planning fields.
+ *
+ * Since 2026-10-26 (CEO review S8) the system also fills in the meetings the
+ * person held and the follow-ups they logged the day before, so they add only
+ * focus, learning and breakdown. Every "day" is the INDIA day (the server runs
+ * on UTC): `istDay(date)` is that date's midnight in Asia/Kolkata. A tracker
+ * is SUBMITTED once its row has a focus item or a reflection.
  */
 
 import { sql } from "drizzle-orm";
+import { attendeeIs } from "@/lib/review-meetings/attendees";
+
+/** Midnight of an India date, as a timestamptz. */
+export const istDay = (dateISO: string) => sql`(${dateISO}::date)::timestamp AT TIME ZONE 'Asia/Kolkata'`;
+
+/** Today's date in India, YYYY-MM-DD. */
+export function todayIst(now = new Date()): string {
+  return now.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+}
 
 type Tx = { execute: (q: any) => Promise<{ rows: any[] }> };
 
@@ -22,7 +37,13 @@ export type DailyTrackerData = {
   completedYesterday: { id: string; title: string; for: string | null; at: string | null }[];
   incompleteCarried: { id: string; title: string; dueAt: string | null; priority: string }[];
   dueToday: { id: string; title: string; priority: string; for: string | null }[];
+  /** Meetings the person held the day before (completed; as the RM or an attendee). */
+  meetingsHeld: { id: string; title: string; for: string | null }[];
+  /** Calls, notes and messages they logged the day before (activities). */
+  followUpsLogged: { id: string; title: string; for: string | null }[];
   productivityPct: number;
+  /** When the tracker was saved with something in it; null = not submitted. */
+  submittedAt: string | null;
 };
 
 export async function loadDailyTracker(
@@ -32,7 +53,7 @@ export async function loadDailyTracker(
   dateISO: string
 ): Promise<DailyTrackerData> {
   const tr = await tx.execute(sql`
-    SELECT key_learning, breakdown, breakthrough, today_focus
+    SELECT key_learning, breakdown, breakthrough, today_focus, updated_at
     FROM daily_trackers
     WHERE tenant_id = ${tenantId}::uuid AND user_id = ${userId}::uuid AND tracker_date = ${dateISO}::date
     LIMIT 1
@@ -46,9 +67,10 @@ export async function loadDailyTracker(
     LEFT JOIN investors i ON i.id = t.related_investor_id
     LEFT JOIN leads l ON l.id = t.related_lead_id
     WHERE t.tenant_id = ${tenantId}::uuid AND t.assignee_id = ${userId}::uuid
+      AND t.deleted_at IS NULL
       AND t.status = 'completed'
-      AND t.completed_at >= (${dateISO}::date - interval '1 day')
-      AND t.completed_at <  ${dateISO}::date
+      AND t.completed_at >= ${istDay(dateISO)} - interval '1 day'
+      AND t.completed_at <  ${istDay(dateISO)}
     ORDER BY t.completed_at DESC
     LIMIT 100
   `);
@@ -58,8 +80,9 @@ export async function loadDailyTracker(
     SELECT id, title, due_at, priority
     FROM tasks
     WHERE tenant_id = ${tenantId}::uuid AND assignee_id = ${userId}::uuid
+      AND deleted_at IS NULL
       AND status IN ('open','in_progress','blocked')
-      AND due_at IS NOT NULL AND due_at < ${dateISO}::date
+      AND due_at IS NOT NULL AND due_at < ${istDay(dateISO)}
     ORDER BY due_at ASC
     LIMIT 100
   `);
@@ -71,9 +94,35 @@ export async function loadDailyTracker(
     LEFT JOIN investors i ON i.id = t.related_investor_id
     LEFT JOIN leads l ON l.id = t.related_lead_id
     WHERE t.tenant_id = ${tenantId}::uuid AND t.assignee_id = ${userId}::uuid
+      AND t.deleted_at IS NULL
       AND t.status IN ('open','in_progress','blocked')
-      AND t.due_at::date = ${dateISO}::date
+      AND t.due_at >= ${istDay(dateISO)} AND t.due_at < ${istDay(dateISO)} + interval '1 day'
     ORDER BY case t.priority when 'urgent' then 0 when 'high' then 1 when 'normal' then 2 else 3 end
+    LIMIT 100
+  `);
+
+  // Meetings held the day before — completed, with this person as the RM or an attendee.
+  const meet = await tx.execute(sql`
+    SELECT m.id, COALESCE(NULLIF(m.subject, ''), initcap(replace(m.meeting_type, '_', ' ')), 'Meeting') AS title, COALESCE(i.name, l.name) AS who
+    FROM review_meetings m
+    LEFT JOIN investors i ON i.id = m.investor_id
+    LEFT JOIN leads l ON l.id = m.lead_id
+    WHERE m.tenant_id = ${tenantId}::uuid AND m.status = 'completed'
+      AND (m.rm_id = ${userId}::uuid OR ${attendeeIs("user", userId)})
+      AND m.meeting_date >= ${istDay(dateISO)} - interval '1 day'
+      AND m.meeting_date <  ${istDay(dateISO)}
+    ORDER BY m.meeting_date
+    LIMIT 100
+  `);
+
+  // Follow-ups logged the day before — calls, notes, messages (activities).
+  const acts = await tx.execute(sql`
+    SELECT a.id, a.kind, a.subject, a.subject_name
+    FROM activities a
+    WHERE a.tenant_id = ${tenantId}::uuid AND a.owner_user_id = ${userId}::uuid
+      AND a.occurred_at >= ${istDay(dateISO)} - interval '1 day'
+      AND a.occurred_at <  ${istDay(dateISO)}
+    ORDER BY a.occurred_at
     LIMIT 100
   `);
 
@@ -96,6 +145,13 @@ export async function loadDailyTracker(
     for: r.investor_name ?? r.lead_name ?? null,
   }));
 
+  const meetingsHeld = meet.rows.map((r: any) => ({ id: String(r.id), title: r.title ?? "Meeting", for: r.who ?? null }));
+  const followUpsLogged = acts.rows.map((r: any) => ({
+    id: String(r.id),
+    title: r.subject || `${String(r.kind ?? "note").replace(/_/g, " ")}`.replace(/^./, (c: string) => c.toUpperCase()),
+    for: r.subject_name ?? null,
+  }));
+
   const denom = completedYesterday.length + incompleteCarried.length;
   const productivityPct = denom > 0 ? Math.round((completedYesterday.length / denom) * 100) : 0;
 
@@ -108,8 +164,16 @@ export async function loadDailyTracker(
     completedYesterday,
     incompleteCarried,
     dueToday,
+    meetingsHeld,
+    followUpsLogged,
     productivityPct,
+    submittedAt: saved && trackerHasContent(saved) && saved.updated_at ? new Date(saved.updated_at).toISOString() : null,
   };
+}
+
+/** A saved tracker counts as submitted once it holds a focus item or a reflection. */
+export function trackerHasContent(row: { key_learning?: string | null; breakdown?: string | null; breakthrough?: string | null; today_focus?: unknown }): boolean {
+  return !!(row.key_learning?.trim() || row.breakdown?.trim() || row.breakthrough?.trim() || (Array.isArray(row.today_focus) && row.today_focus.length));
 }
 
 export async function saveDailyTracker(

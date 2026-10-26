@@ -34,7 +34,7 @@ import {
 export const dynamic = "force-dynamic";
 
 /** Firm settings stored in the same row that are not thresholds. */
-const KEPT_KEYS = ["escalationLadder", "qaSampling"];
+const KEPT_KEYS = ["escalationLadder", "qaSampling", "dailyTracker"];
 const kept = (col: string) => sql`(SELECT COALESCE(jsonb_object_agg(e.key, e.value), '{}'::jsonb)
   FROM jsonb_each(COALESCE(${sql.raw(col)}, '{}'::jsonb)) e WHERE e.key = ANY(${`{${KEPT_KEYS.join(",")}}`}::text[]))`;
 

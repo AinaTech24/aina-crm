@@ -19,7 +19,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  BellRing,
+  BellRing, CalendarCheck,
   Building2, Database, Users, CreditCard, MessageCircle, Mail, Webhook, ShieldCheck, KeyRound, Palette, UserCircle,
   Target, Network, ClipboardCheck, SlidersHorizontal, Search, X, LayoutTemplate, Boxes, Landmark, Zap, Route,
   ListChecks, Shuffle, MessagesSquare, LayoutDashboard, Gauge, ChevronRight, type LucideIcon,
@@ -50,6 +50,7 @@ const SECTIONS: Section[] = [
   { icon: Users, title: "Team & roles", desc: "Invite team members, assign roles, manage seats.", href: "/dashboard/employees", group: "Team", keywords: "users employees invite permissions seats staff" },
   { icon: Network, title: "Teams within a branch", desc: "Group each branch into desks and assign RMs.", href: "/dashboard/settings/desks", group: "Team", keywords: "desks mis" },
   { icon: Target, title: "Targets & quota", desc: "Business and meeting targets per team member.", href: "/dashboard/settings/targets", group: "Team", keywords: "kra goals" },
+  { icon: CalendarCheck, title: "Daily tracker", desc: "When the team is reminded to fill in the Daily Job Tracker.", href: "/dashboard/settings/daily-tracker", group: "Team", keywords: "djt daily job tracker reminder discipline weekly pack" },
   { icon: Shuffle, title: "Auto-assignment rules", desc: "Route new leads and clients to your team automatically.", href: "/dashboard/settings/assignment-rules", group: "Team", keywords: "round robin routing allocate" },
 
   { icon: SlidersHorizontal, title: "Custom fields", desc: "Your own fields on leads and clients.", href: "/dashboard/settings/custom-fields", group: "Clients & data" },
