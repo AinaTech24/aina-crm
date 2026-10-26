@@ -44,7 +44,7 @@ import {
   UploadCloud,
 } from "lucide-react";
 import type { EmailDesignerBody, EmailBlock, EmailTheme } from "@/lib/email-designer/types";
-import { mergeFieldsByCategory, MERGE_FIELDS, type MergeField } from "@/lib/email-designer/merge-fields";
+import { mergeFieldsByCategory, MERGE_FIELDS, FIRM_INTRO_CATEGORY, type MergeField } from "@/lib/email-designer/merge-fields";
 
 type Mode = "designer" | "html";
 type SectionId = "properties" | "blocks" | "theme" | "fields";
@@ -58,6 +58,63 @@ const EXAMPLE_BY_TOKEN: Record<string, string> = Object.fromEntries(
 function resolvePreviewTokens(text: string): string {
   if (!text) return text;
   return text.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (m, tok) => (tok in EXAMPLE_BY_TOKEN ? EXAMPLE_BY_TOKEN[tok] : m));
+}
+
+/**
+ * The fields the firm added itself at Settings → Email introduction
+ * ({{firm.awards}} …). Loaded once per page; the picker lists them under
+ * "Firm introduction" beside the standard ones.
+ */
+let firmFieldsCache: MergeField[] | null = null;
+function useFirmFields(): MergeField[] {
+  const [fields, setFields] = useState<MergeField[]>(firmFieldsCache ?? []);
+  useEffect(() => {
+    if (firmFieldsCache) return;
+    let live = true;
+    fetch("/api/settings/firm-intro")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        const list: MergeField[] = ((j?.customFields ?? []) as Array<{ token: string; label: string; example: string }>).map((c) => ({
+          ...c,
+          category: FIRM_INTRO_CATEGORY,
+        }));
+        firmFieldsCache = list;
+        if (live) setFields(list);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+  return fields;
+}
+
+/** "Show this block only when … has a value" — the block's `showIf`. */
+function ShowIfSelect({ value, onChange }: { value: string | undefined; onChange: (v: string | undefined) => void }) {
+  const uid = useId();
+  const cats = mergeFieldsByCategory(useFirmFields());
+  const known = Object.values(cats).some((fs) => fs.some((f) => f.token === value));
+  return (
+    <div className="pt-1.5 border-t border-border">
+      <label htmlFor={`${uid}-showif`} className="text-2xs text-muted-foreground block">Show this block</label>
+      <select
+        id={`${uid}-showif`}
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value || undefined)}
+        className="input-base text-xs w-full"
+      >
+        <option value="">Always</option>
+        {value && !known && <option value={value}>Only when {value} has a value</option>}
+        {Object.entries(cats).map(([cat, fields]) => (
+          <optgroup key={cat} label={cat}>
+            {fields.map((f) => (
+              <option key={f.token} value={f.token}>Only when {f.label} has a value</option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
+    </div>
+  );
 }
 
 /** Friendly, content-aware label for a block in the Properties list. */
@@ -636,6 +693,9 @@ function BlockList({
                   </div>
                 )}
                 <BlockEditor block={b} onChange={(patch) => onEditBlock(b.id, patch)} />
+                {b.type !== "logo" && (
+                  <ShowIfSelect value={b.showIf} onChange={(v) => onEditBlock(b.id, { showIf: v })} />
+                )}
               </div>
             )}
           </div>
@@ -831,7 +891,7 @@ function ThemePanel({
 }
 
 function MergeFieldPicker({ onPick }: { onPick: (f: MergeField) => void }) {
-  const cats = mergeFieldsByCategory();
+  const cats = mergeFieldsByCategory(useFirmFields());
   const entries = Object.entries(cats);
   // Each category is its own expand/shrink dropdown (first one open by default).
   const [open, setOpen] = useState<Record<string, boolean>>(() =>
@@ -881,7 +941,7 @@ function MergeFieldPicker({ onPick }: { onPick: (f: MergeField) => void }) {
  *  input. preventDefault on mousedown keeps that input focused through the click. */
 function FieldMenu({ onPick }: { onPick: (f: MergeField) => void }) {
   const [open, setOpen] = useState(false);
-  const cats = mergeFieldsByCategory();
+  const cats = mergeFieldsByCategory(useFirmFields());
   return (
     <div className="relative">
       <button

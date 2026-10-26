@@ -18,6 +18,7 @@ import { eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { tenants, users } from "@/db/schema";
 import { MERGE_FIELDS } from "@/lib/email-designer/merge-fields";
+import { firmIntroTokens, readFirmEmailIntro, type FirmEmailIntro } from "@/lib/firm/email-intro";
 
 /**
  * A client-facing sign-off states the firm's REGISTRATION, never the sender's
@@ -107,6 +108,7 @@ export async function loadPreviewContext(tenantId: string, userId?: string | nul
     brandColor: null,
     logoUrl: null,
   };
+  let intro: FirmEmailIntro = {};
   let me: {
     name: string | null;
     email: string | null;
@@ -127,6 +129,7 @@ export async function loadPreviewContext(tenantId: string, userId?: string | nul
           website: tenants.website,
           primaryColor: tenants.primaryColor,
           logoUrl: tenants.logoUrl,
+          emailIntro: tenants.emailIntro,
         })
         .from(tenants)
         .where(eq(tenants.id, tenantId));
@@ -159,6 +162,7 @@ export async function loadPreviewContext(tenantId: string, userId?: string | nul
         brandColor: loaded.t.primaryColor ?? null,
         logoUrl: loaded.t.logoUrl ?? null,
       };
+      intro = readFirmEmailIntro(loaded.t.emailIntro);
     }
     me = loaded.u;
   } catch (e) {
@@ -166,6 +170,13 @@ export async function loadPreviewContext(tenantId: string, userId?: string | nul
   }
 
   const variables = buildSampleVariables();
+  // Once the firm has written its introduction the preview uses exactly that —
+  // a field it left blank drops out, as it will in the real email. Before then
+  // the examples show where each part sits.
+  const own = firmIntroTokens(intro, absolute);
+  if (Object.keys(own).length) {
+    variables.firm = Object.fromEntries(Object.entries(own).map(([k, v]) => [k.slice("firm.".length), v]));
+  }
   if (me) {
     const inv = (variables.investor ??= {}) as Record<string, unknown>;
     if (me.name) inv.rm_name = me.name;

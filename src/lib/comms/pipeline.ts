@@ -44,6 +44,7 @@ import { consumeRateLimit } from "./rate-limit";
 import { loadClientLinkTokens, wantsClientLinkTokens } from "@/lib/comms/client-links";
 import { checkMonthlyQuota } from "./usage";
 import { durableDelivery } from "./durable-delivery";
+import { firmIntroTokens, readFirmEmailIntro } from "@/lib/firm/email-intro";
 
 
 export type DispatchChannel = "whatsapp" | "email" | "sms";
@@ -294,6 +295,11 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
           ? [addr.line1, addr.line2, addr.city, addr.state, addr.pincode].filter(Boolean).join(", ")
           : "",
       });
+      // The firm's own introduction ({{firm.company_intro}}, {{firm.services}},
+      // {{firm.founder_photo_url}}, the firm's custom fields …) from Settings →
+      // Email introduction. A field left blank is absent, so a block shown only
+      // when it has a value drops out instead of printing an empty section.
+      Object.assign(tokens, firmIntroTokens(readFirmEmailIntro(t?.emailIntro), absoluteAppUrl));
 
       // Fill every merge field the BODY references but the template never
       // declared. resolveTokens above only walks the declared `variables`

@@ -10,8 +10,13 @@
  *   - `family.*`       — investor's family (if any)
  *   - `transaction.*`  — the triggering transaction (if any)
  *   - `tenant.*`       — the MFD firm (always available)
+ *   - `firm.*`         — the firm's introduction + its own fields (always available)
  *   - `system.*`       — date, link, etc.
  */
+
+import { FIRM_INTRO_FIELDS } from "@/lib/firm/email-intro";
+
+export const FIRM_INTRO_CATEGORY = "Firm introduction";
 
 export interface MergeField {
   token: string; // "investor.name"
@@ -44,6 +49,9 @@ export const MERGE_FIELDS: MergeField[] = [
   { token: "lead.email", label: "Lead email", example: "anita@example.com", category: "Lead" },
   { token: "lead.stage", label: "Lead stage", example: "Proposal Shared", category: "Lead" },
   { token: "lead.source", label: "Lead source", example: "Referral", category: "Lead" },
+  // Flat keys the lead automations fill from the lead record (lib/workflow-rules/actions.ts scalarVars).
+  { token: "name", label: "Name (in an automation email)", example: "Anita Desai", category: "Lead" },
+  { token: "referred_by_name", label: "Referred by", example: "Rajesh Sharma", category: "Lead" },
 
   // ── Family ────────────────────────────────────────────────────────────────
   { token: "family.family_name", label: "Family name", example: "Sharma Family", category: "Family" },
@@ -75,6 +83,11 @@ export const MERGE_FIELDS: MergeField[] = [
   { token: "tenant.address", label: "Office address", example: "B-205, Andheri East, Mumbai 400069", category: "Firm" },
   { token: "tenant.websiteUrl", label: "Website URL", example: "https://demowealth.in", category: "Firm" },
 
+  // ── Firm introduction (Settings → Email introduction; lib/firm/email-intro.ts) ──
+  // The firm types these once; every email fills them. The firm's own extra
+  // fields join this group in the designer (firm.<their key>).
+  ...FIRM_INTRO_FIELDS.map((f) => ({ token: `firm.${f.key}`, label: f.label, example: f.example, category: FIRM_INTRO_CATEGORY })),
+
   // ── Risk profile (latest signed questionnaire) ────────────────────────────
   { token: "risk.category", label: "Risk category", example: "Aggressive", category: "Risk profile" },
   { token: "risk.score_display", label: "Score (out of max)", example: "32 / 40", category: "Risk profile" },
@@ -103,9 +116,10 @@ export const MERGE_FIELDS: MergeField[] = [
   { token: "system.unsubscribe_url", label: "Unsubscribe link", example: "https://...", category: "System" },
 ];
 
-export function mergeFieldsByCategory(): Record<string, MergeField[]> {
+/** `extra` adds the firm's own fields (Settings → Email introduction). */
+export function mergeFieldsByCategory(extra: MergeField[] = []): Record<string, MergeField[]> {
   const out: Record<string, MergeField[]> = {};
-  for (const f of MERGE_FIELDS) {
+  for (const f of [...MERGE_FIELDS, ...extra]) {
     (out[f.category] ??= []).push(f);
   }
   return out;

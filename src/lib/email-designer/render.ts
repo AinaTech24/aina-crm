@@ -65,7 +65,7 @@ export function renderEmailHtml(body: EmailDesignerBody, ctx: RenderContext): st
   // print it twice. The block still controls height/align — it is the masthead's
   // settings, not a second image.
   const logoBlock = blocks.find((b) => (b as any)?.type === "logo") as any;
-  const bodyBlocks = blocks.filter((b) => (b as any)?.type !== "logo");
+  const bodyBlocks = blocks.filter((b) => (b as any)?.type !== "logo" && blockIsShown(b, ctx));
   const mastheadHtml = renderMasthead(logoBlock, theme, ctx);
   const inner = bodyBlocks
     .map((b) => {
@@ -116,6 +116,7 @@ export function renderEmailText(body: EmailDesignerBody, ctx: RenderContext): st
   const parts: string[] = [];
   if (body.preheader) parts.push(substituteVariables(body.preheader, ctx));
   for (const b of body.blocks ?? []) {
+    if (!blockIsShown(b, ctx)) continue;
     const txt = blockToText(b);
     if (txt) parts.push(substituteVariables(txt, ctx));
   }
@@ -342,6 +343,9 @@ function renderButton(b: any, theme: EmailTheme, ctx: RenderContext): string {
 function renderImage(b: any, theme: EmailTheme, ctx: RenderContext): string {
   if (!b.url) return "";
   const url = substituteVariables(b.url, ctx);
+  // A merge-field image ({{firm.founder_photo_url}}) with nothing on file
+  // draws nothing, never a broken-image box.
+  if (!url.trim()) return "";
   const img = `<img src="${escape(url)}" alt="${escape(b.alt ?? "")}" width="${b.width}" style="max-width:100%;height:auto;border-radius:8px;display:block;margin:0 auto;"/>`;
   const link = b.linkUrl ? `<a href="${escape(substituteVariables(b.linkUrl, ctx))}">${img}</a>` : img;
   return `<div style="text-align:${b.align};margin:14px 0;">${link}</div>`;
@@ -515,8 +519,22 @@ export function substituteVariables(input: string, ctx: RenderContext, htmlEscap
     // the resolved merge VALUE is attacker-influenced (e.g. an investor name) —
     // escape it so a name like `<script>` can't inject. Plain-text contexts pass
     // htmlEscapeValues=false (escaping the whole output happens at the sink).
-    return htmlEscapeValues ? escape(out) : out;
+    // A value typed over several lines (the firm's services, a founder's
+    // introduction) keeps its line breaks in an HTML block.
+    return htmlEscapeValues ? escape(out).replace(/\r?\n/g, "<br>") : out;
   });
+}
+
+/**
+ * A block with `showIf` appears only when that merge field has a value — the
+ * "Our mission" heading and paragraph vanish together for a firm that never
+ * wrote one, instead of leaving a heading over an empty space.
+ */
+export function blockIsShown(block: EmailBlock, ctx: RenderContext): boolean {
+  const path = String(block?.showIf ?? "").replace(/^\{\{\s*|\s*\}\}$/g, "").trim();
+  if (!path) return true;
+  const v = readPath({ ...ctx.variables, tenant: ctx.tenant }, path);
+  return v !== undefined && v !== null && String(v).trim() !== "";
 }
 
 function readPath(obj: Record<string, unknown>, path: string): unknown {

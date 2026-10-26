@@ -42,6 +42,29 @@ const SIGNOFF =
 let _n = 0;
 const b = (block: Omit<EmailBlock, "id">): EmailBlock => ({ id: `s${++_n}`, ...(block as any) });
 
+/**
+ * The firm's introduction from Settings → Email introduction ({{firm.*}}).
+ * Each part shows only when the firm has written it (`showIf`).
+ */
+function firmIntroBlocks(): EmailBlock[] {
+  const id = () => `s${++_n}`;
+  const heading = (text: string, showIf: string): EmailBlock => ({ id: id(), type: "heading", text, level: "h3", align: "left", showIf });
+  const para = (html: string, showIf: string): EmailBlock => ({ id: id(), type: "text", html, align: "left", showIf });
+  return [
+    heading("About {{tenant.displayName}}", "firm.company_intro"),
+    para("{{firm.company_intro}}", "firm.company_intro"),
+    heading("Our services", "firm.services"),
+    para("{{firm.services}}", "firm.services"),
+    heading("Our mission", "firm.mission"),
+    para("{{firm.mission}}", "firm.mission"),
+    heading("Meet our founder", "firm.founder_name"),
+    { id: id(), type: "image", url: "{{firm.founder_photo_url}}", alt: "Our founder", width: 120, align: "left", showIf: "firm.founder_photo_url" },
+    para("<b>{{firm.founder_name}}</b><br>{{firm.founder_designation}}", "firm.founder_name"),
+    para("{{firm.founder_intro}}", "firm.founder_intro"),
+    para("<b>Office timing:</b> {{firm.office_timing}}", "firm.office_timing"),
+  ];
+}
+
 export const STARTER_TEMPLATES: StarterTemplate[] = [
   {
     key: "welcome",
@@ -176,7 +199,7 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
   {
     key: "lead_welcome",
     name: "Lead — Thank You (First Touch)",
-    description: "Sent the first time a lead reaches out — thanks them for taking the first step.",
+    description: "Sent the first time a lead reaches out — thanks them and introduces the firm, its services, mission and founder.",
     category: "transactional",
     body: {
       subject: "Thank you for taking the first step, {{lead.name}} 🙏",
@@ -186,6 +209,7 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
         b({ type: "logo" } as any),
         b({ type: "hero", title: "Thank you for taking the first step!", subtitle: "Your journey to smarter investing begins here.", imageUrl: "", imageAlt: "", align: "center" } as any),
         b({ type: "text", html: "Dear {{lead.name}},<br><br>Thank you for showing interest in <b>{{tenant.displayName}}</b>. Reaching out is the most important step toward your financial goals — and we're honoured you chose to take it with us.<br><br>One of our advisors will connect with you shortly to understand your goals and craft a plan tailored to you. In the meantime, feel free to simply reply to this email with any questions.", align: "left" } as any),
+        ...firmIntroBlocks(),
         b({ type: "button", label: "Explore our services", url: "{{tenant.websiteUrl}}", align: "center", style: "solid", fullWidth: false } as any),
         b({ type: "text", html: "Warm regards,<br>Team {{tenant.displayName}}", align: "left" } as any),
         b({ type: "divider", thickness: 1, color: "#e5e7eb" } as any),

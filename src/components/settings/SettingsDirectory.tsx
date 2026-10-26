@@ -67,6 +67,7 @@ const SECTIONS: Section[] = [
   { icon: ClipboardCheck, title: "QA sampling", desc: "Check a share of each person's completed work every week.", href: "/dashboard/settings/qa-sampling", group: "Automation", keywords: "qa quality check audit sample review pass fail correction" },
 
   { icon: LayoutTemplate, title: "Message templates", desc: "The WhatsApp, email and SMS templates your team and automations send.", href: "/dashboard/templates", group: "Messaging", keywords: "whatsapp email sms template designer approval meta notification journey" },
+  { icon: Mail, title: "Email introduction", desc: "Company intro, services, office timing, mission and founder for client emails.", href: "/dashboard/settings/email-introduction", group: "Messaging", keywords: "about us company intro services office hours timing mission founder photo merge fields variables welcome lead email" },
   { icon: MessagesSquare, title: "Message log", desc: "Every message sent and received, with delivery status.", href: "/dashboard/communications", group: "Messaging", keywords: "communications messages log outbox inbox delivered read failed compose whatsapp email sms cadence responses" },
 
   { icon: MessageCircle, title: "WhatsApp", desc: "Your WhatsApp number and Meta template approvals.", href: "/dashboard/settings/whatsapp", group: "Connections", keywords: "aisensy meta templates connection" },

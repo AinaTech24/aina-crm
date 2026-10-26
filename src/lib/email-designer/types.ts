@@ -71,7 +71,13 @@ export const BLOCK_TYPES = [
 
 export type BlockType = (typeof BLOCK_TYPES)[number];
 
-const baseBlock = { id: z.string(), type: z.string() };
+const baseBlock = {
+  id: z.string(),
+  type: z.string(),
+  /** Show the block only when this merge field has a value ("firm.mission").
+   *  Omitted → always shown. See blockIsShown in render.ts. */
+  showIf: z.string().max(80).optional(),
+};
 
 export const LogoBlock = z.object({
   ...baseBlock,
