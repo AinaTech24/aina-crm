@@ -19,6 +19,7 @@ import { useEffect, useState } from "react";
 import { CheckCircle2, ShieldCheck, Sparkles } from "lucide-react";
 import { BlueprintStageBar } from "@/components/leads/BlueprintStageBar";
 import { MapFamilyHost } from "@/components/families/MapFamilyDialog";
+import { KycRouteDialog } from "@/components/investors/KycRouteDialog";
 
 type ApiData = {
   leadId: string | null;
@@ -36,6 +37,7 @@ type ApiData = {
 export function InvestorBlueprintStageBar({ investorId, investorName }: { investorId: string; investorName?: string }) {
   const [data, setData] = useState<ApiData | null>(null);
   const [err, setErr] = useState(false);
+  const [kycOpen, setKycOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,7 +98,7 @@ export function InvestorBlueprintStageBar({ investorId, investorName }: { invest
         <ol className="flex items-center min-w-max gap-0.5">
           {data.allStages.map((s, i) => (
             <li key={s.key} className="flex items-center">
-              <div className="flex flex-col items-center min-w-[80px]">
+              <StepWrap kyc={s.key === "kyc_validated"} onKyc={() => setKycOpen(true)}>
                 <div
                   className={`size-7 rounded-full grid place-items-center text-2xs font-bold ${
                     s.status === "done"
@@ -116,7 +118,7 @@ export function InvestorBlueprintStageBar({ investorId, investorName }: { invest
                 >
                   {s.name}
                 </span>
-              </div>
+              </StepWrap>
               {i < data.allStages.length - 1 && (
                 <div
                   className={`h-0.5 w-10 mx-0.5 mb-5 ${
@@ -134,9 +136,29 @@ export function InvestorBlueprintStageBar({ investorId, investorName }: { invest
         <span>
           This client was added directly (not converted from a lead), so the
           14-stage Lead → Client journey was skipped. From here, the CRM
-          tracks reviews, transactions, service requests and goals.
+          tracks reviews, transactions, service requests and goals. Click{" "}
+          <button type="button" onClick={() => setKycOpen(true)} className="font-semibold text-foreground underline underline-offset-2">
+            KYC Validated
+          </button>{" "}
+          to start Online or Physical KYC as a task.
         </span>
       </div>
+      {kycOpen && <KycRouteDialog investorId={investorId} investorName={investorName ?? "this client"} onClose={() => setKycOpen(false)} />}
     </div>
+  );
+}
+
+/** A step on the read-only bar; "KYC Validated" is a button that opens the KYC choice. */
+function StepWrap({ kyc, onKyc, children }: { kyc: boolean; onKyc: () => void; children: React.ReactNode }) {
+  if (!kyc) return <div className="flex flex-col items-center min-w-[80px]">{children}</div>;
+  return (
+    <button
+      type="button"
+      onClick={onKyc}
+      title="Choose Online or Physical KYC and create the task"
+      className="flex flex-col items-center min-w-[80px] rounded-lg p-0.5 hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+    >
+      {children}
+    </button>
   );
 }

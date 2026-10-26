@@ -297,7 +297,10 @@ the client page's Overview tab.
   the RTA data, assigned to whoever the approver picks in the Approve dialog
   (default the opportunity's owner; the assignee is notified) and due the day they
   choose (default tomorrow). **Won** is gated on that task being completed (`gateFor("won")`);
-  the "client won" task is created at that point (`createWonTask`).
+  the "client won" task is created at that point (`createWonTask`). The gate's link opens that
+  task itself (`/dashboard/tasks/<id>`), and at the RTA data check step the card offers
+  **Complete RTA data check** (`Prerequisite.completeTaskId`), which completes the task through
+  the ordinary `PATCH /api/tasks/[id]` so it reads completed in the Tasks module too.
 - **Follow-ups ARE tasks.** An opportunity's next follow-up is its earliest
   open task with `meta.opportunityId` — there is no column. The follow-up date
   chosen at creation is the first task's due date (10:00 IST; default two
@@ -318,6 +321,19 @@ the client page's Overview tab.
   board has a "Later" column and tile. Started from the card ("Client wants it
   later") or the New opportunity dialog (Now / Later). Diwali dates are a
   table in later-core — add the next year as the calendar rolls on.
+
+## KYC Validated — Online or Physical KYC
+
+Reaching **KYC Validated** on a client's onboarding journey asks which KYC the
+client will do — **Online** (e-KYC via Aadhaar OTP / DigiLocker) or
+**Physical** (in-person verification) — and creates that high-priority task in
+the Tasks module for the person picked, due the date chosen (2026-10-26).
+Lead-backed journeys ask in the step pop-up (`KYC_MODES` in
+`components/leads/GuidedStageActions.tsx`; the engine's journey task takes the
+chosen title). Every other client — a direct entry or an import, whose journey
+bar is read-only — opens `KycRouteDialog` from the KYC Validated step
+(`components/investors/InvestorBlueprintStageBar.tsx`), which posts the task to
+`/api/tasks` linked to the client.
 
 ## Date of demise — a client who has died
 

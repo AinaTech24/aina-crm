@@ -10,6 +10,7 @@ import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
  *
  * Reuses the shared investor filter builder, so search, RM scope and the
  * per-tenant data-visibility switch behave exactly as they do on Clients.
+ * Tick clients to Delete several at once (to the Trash; see UnmappedClientsTable).
  */
 
 import Link from "next/link";
@@ -17,9 +18,8 @@ import { and, desc, sql } from "drizzle-orm";
 import { HeartHandshake, Users2 } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { requireAny } from "@/lib/auth/rbac";
+import { can, requireAny } from "@/lib/auth/rbac";
 import { investors, users } from "@/db/schema";
-import { formatINR } from "@/lib/utils";
 import { buildInvestorWhere } from "@/lib/investors/list-filters";
 import { investorScopeCondition, investorScopeSql } from "@/lib/investors/access";
 import { aliveClient } from "@/lib/metrics/scope";
@@ -27,7 +27,7 @@ import { buttonClass } from "@/components/ui/button-class";
 import { InlineEmpty } from "@/components/common/EmptyState";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { Pager } from "@/components/common/Pager";
-import { MapClientActions } from "@/components/families/MapClientActions";
+import { UnmappedClientsTable } from "@/components/families/UnmappedClientsTable";
 import { canMapFamilies } from "@/lib/families/access";
 
 export const dynamic = "force-dynamic";
@@ -48,6 +48,9 @@ export default async function UnmappedClientsPage({
   );
 
   const canMap = canMapFamilies(session, "create");
+  // Bulk delete uses /api/investors/bulk, which needs both of these.
+  const canDelete =
+    can(session.roles, "investor.delete", session.permissions) && can(session.roles, "investor.edit.all", session.permissions);
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
 
   const { rows, total, mappedCount } = await withTenant(
@@ -150,39 +153,11 @@ export default async function UnmappedClientsPage({
             message={sp.q ? "No unmapped client matches that search." : "Every client is mapped to a household."}
           />
         ) : (
-          <div className="table-scroll">
-            <table className="w-full text-sm">
-              <thead className="text-xs text-muted-foreground border-b bg-card">
-                <tr>
-                  <th className="text-left font-medium px-4 py-2">Client</th>
-                  <th className="text-left font-medium py-2">PAN</th>
-                  <th className="text-right font-medium py-2">AUM</th>
-                  <th className="text-left font-medium pl-4 py-2">RM</th>
-                  <th className="text-right font-medium px-4 py-2">Map into a household</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {rows.map((i) => (
-                  <tr key={i.id} className="hover:bg-secondary/30">
-                    <td className="px-4 py-3">
-                      <Link href={`/dashboard/investors/${i.id}`} className="font-medium hover:underline">
-                        {i.name}
-                      </Link>
-                      <div className="text-2xs text-muted-foreground">
-                        {[i.phone, i.segmentTag].filter(Boolean).join(" · ") || "—"}
-                      </div>
-                    </td>
-                    <td className="py-3 font-mono text-xs text-muted-foreground">{i.pan ?? "—"}</td>
-                    <td className="py-3 text-right tabular-nums">{formatINR(Number(i.aum ?? 0))}</td>
-                    <td className="pl-4 py-3 text-xs text-muted-foreground">{i.rmName ?? "—"}</td>
-                    <td className="px-4 py-3">
-                      {canMap ? <MapClientActions investorId={i.id} investorName={i.name} /> : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <UnmappedClientsTable
+            rows={rows.map((r) => ({ ...r, aum: r.aum == null ? null : String(r.aum) }))}
+            canMap={canMap}
+            canDelete={canDelete}
+          />
         )}
         {total > 0 && (
           <Pager page={page} totalPages={totalPages} total={total} pageSize={PAGE_SIZE} />

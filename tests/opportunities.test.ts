@@ -77,6 +77,12 @@ describe("gates", () => {
     expect(gateFor("won", opp(), facts({ rtaCheck: null })).some((p) => !p.satisfied)).toBe(true);
     expect(gateFor("won", opp(), facts({ rtaCheck: { id: "t", status: "open" } })).some((p) => !p.satisfied)).toBe(true);
     expect(gateFor("won", opp(), facts({ rtaCheck: { id: "t", status: "completed" } })).every((p) => p.satisfied)).toBe(true);
+    // The link opens the RTA check task itself, and an open one can be completed from the card.
+    const [open] = gateFor("won", opp(), facts({ rtaCheck: { id: "t", status: "open" } }));
+    expect(open.cta?.href).toBe("/dashboard/tasks/t");
+    expect(open.completeTaskId).toBe("t");
+    expect(gateFor("won", opp(), facts({ rtaCheck: { id: "t", status: "completed" } }))[0].completeTaskId).toBeUndefined();
+    expect(gateFor("won", opp(), facts({ rtaCheck: null }))[0].completeTaskId).toBeUndefined();
   });
 });
 

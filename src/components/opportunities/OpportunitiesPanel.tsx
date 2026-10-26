@@ -35,7 +35,7 @@ import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import { notify } from "@/components/ui/Toast";
-import { promptDialog } from "@/components/ui/ConfirmProvider";
+import { confirmDialog, promptDialog } from "@/components/ui/ConfirmProvider";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
 import { formatDate, formatMoney } from "@/lib/format";
 import { OPPORTUNITY_PRODUCTS, productPipeline } from "@/lib/opportunities/products";
@@ -210,7 +210,7 @@ export function OpportunityCard({ o, canWork, staff, onChange, onReload, detailH
   /** "Open" link to the opportunity's own page (on the client page). */
   detailHref?: string;
 }) {
-  const [busy, setBusy] = useState<"advance" | "sync" | "approve" | "reject" | null>(null);
+  const [busy, setBusy] = useState<"advance" | "sync" | "approve" | "reject" | "rta" | null>(null);
   const [blocked, setBlocked] = useState<Prerequisite[] | null>(null);
   const [losing, setLosing] = useState(false);
   const [needsOpen, setNeedsOpen] = useState(false);
@@ -265,6 +265,41 @@ export function OpportunityCard({ o, canWork, staff, onChange, onReload, detailH
       }
       notify.success(decision === "approve" ? "Transaction approved — RTA data check task created" : "Rejected — sent back to Transaction placed");
       onChange(j.opportunity);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** The open RTA data check task (current step "RTA data check"), if any. */
+  const rtaTaskId = o.status === "open" && o.current.key === "rta_check"
+    ? gate.find((p) => p.completeTaskId)?.completeTaskId
+    : undefined;
+
+  /** Complete the RTA data check task from here — the same task API the Tasks
+   *  module uses — then reload the card, so "Mark won" becomes available. */
+  async function completeRtaCheck() {
+    if (!rtaTaskId) return;
+    const ok = await confirmDialog({
+      title: "Complete the RTA data check?",
+      message: "Confirm the transaction matches the RTA data (CAMS / KFintech). The task is marked completed and the opportunity can then be marked won.",
+      confirmLabel: "Complete RTA data check",
+    });
+    if (!ok) return;
+    setBusy("rta");
+    try {
+      const res = await fetch(`/api/tasks/${rtaTaskId}`, {
+        method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: "completed" }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        notify.error(j.error ?? "Could not complete the task");
+        return;
+      }
+      setBlocked(null);
+      const r = await fetch(`/api/opportunities/${o.id}`);
+      const v = await r.json().catch(() => ({}));
+      if (v.opportunity) onChange(v.opportunity);
+      notify.success("RTA data check completed — you can now mark it won.");
     } finally {
       setBusy(null);
     }
@@ -363,8 +398,14 @@ export function OpportunityCard({ o, canWork, staff, onChange, onReload, detailH
               </Button>
             </>
           )}
+          {rtaTaskId && (
+            <Button variant="primary" size="sm" loading={busy === "rta"} disabled={busy != null}
+              icon={<CheckCircle2 className="size-4" />} onClick={completeRtaCheck}>
+              Complete RTA data check
+            </Button>
+          )}
           {o.next && o.current.key !== "txn_review" && (
-            <Button variant="primary" size="sm" loading={busy === "advance"} disabled={gateOpen || busy != null}
+            <Button variant={rtaTaskId ? "secondary" : "primary"} size="sm" loading={busy === "advance"} disabled={gateOpen || busy != null}
               icon={o.next.key === "won" ? <Sparkles className="size-4" /> : <ChevronRight className="size-4" />}
               onClick={advance}>
               {o.next.key === "won" ? "Mark won" : `Move to: ${o.next.name}`}

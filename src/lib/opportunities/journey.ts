@@ -85,6 +85,9 @@ export type Prerequisite = {
   satisfied: boolean;
   hint?: string;
   cta?: { href: string; label: string };
+  /** An open task that, once completed, satisfies this prerequisite — the card
+   *  offers a "Complete" button for it (the RTA data check). */
+  completeTaskId?: string;
 };
 
 // "changes_requested" (proposal redesign, migration 0225) is still a shared
@@ -264,7 +267,11 @@ export function gateFor(target: string, opp: ClientOpportunity, f: Facts): Prere
       label: "The RTA data check task is completed",
       satisfied: f.rtaCheck?.status === "completed",
       hint: f.rtaCheck ? "Check the transaction against the RTA data, then complete the task." : "The RTA data check task has not been created yet.",
-      cta: { href: "/dashboard/tasks", label: "Open tasks" },
+      // The task itself, not the whole task list.
+      cta: f.rtaCheck
+        ? { href: `/dashboard/tasks/${f.rtaCheck.id}`, label: "Open task" }
+        : { href: "/dashboard/tasks?status=open", label: "Open tasks" },
+      completeTaskId: f.rtaCheck && f.rtaCheck.status !== "completed" && f.rtaCheck.status !== "cancelled" ? f.rtaCheck.id : undefined,
     }];
   }
   if (target === "mf_transaction") {
