@@ -103,6 +103,7 @@ export const REPORTS: ReportGroup[] = [
       { key: "branch_business", label: "Branch-wise Business", icon: "Briefcase", desc: "Business by branch", aliases: ["branch wise", "location wise"] },
       { key: "aum_status", label: "AUM Status (branch-wise)", icon: "BarChart3", href: "/dashboard/reports/metric/aum", desc: "AUM totals by branch", aliases: ["AUM", "AUM report", "AUM summary", "branch AUM", "assets under management"] },
       { key: "team_productivity", label: "Team Productivity", icon: "Users", desc: "Activity and output across the team" },
+      { key: "bottlenecks", label: "Bottlenecks — Where Work Waits", icon: "Clock", href: "/dashboard/reports/bottlenecks", desc: "Time in each journey stage and task type, by branch and person", aliases: ["bottleneck", "stuck", "TAT", "turnaround", "cycle time", "stage time", "delay", "onboarding stuck", "mandate pending"] },
     ]
   },
   {

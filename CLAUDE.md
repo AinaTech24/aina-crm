@@ -432,6 +432,23 @@ pages `/dashboard/practice/*` with `PracticeNav`; access `lib/practice/access.ts
   A bare `require(…)` in a route makes Next's bundler treat it as CommonJS and
   every request 500s; `check:rbac` accepts `requireCap(`.
 
+## Bottlenecks — where work waits
+
+Reports → "Bottlenecks — Where Work Waits" (`/dashboard/reports/bottlenecks`,
+2026-10-26, CEO review S10). Loaders `lib/reports/bottlenecks.ts`, maths
+`bottlenecks-core.ts` (pure, tested).
+
+- Two journeys keep stage history: Lead → client (`lead_stage_history`, the
+  sales SOP and the onboarding) and Opportunities (`blueprint_stage_history`).
+  A new journey with history needs its own branch in `loadStays`.
+- Per stage: stays that FINISHED in the period give the typical (median) and
+  slowest-10% wait; open stays of running cases give "in it now". A stage
+  with no transition onward is never "waiting". A won lead whose onboarding
+  never started IS waiting (Won Lead has onward steps).
+- Person = the case's owner, branch = the lead's / client's branch; what the
+  viewer sees is `resolveDataAccess` (firm / branch / team / own), as on the
+  dashboards. Tasks: creation → done by type, by assignee.
+
 ## Meetings — attendees and action items
 
 `review_meetings` (the Meetings module). Two rules since 2026-10-01:
