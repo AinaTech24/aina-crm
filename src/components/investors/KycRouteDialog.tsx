@@ -38,12 +38,22 @@ export function KycRouteDialog({ investorId, investorName, onClose }: { investor
   useEffect(() => {
     let alive = true;
     (async () => {
+      type EmpResponse = { employees?: Staff[]; rows?: Staff[]; data?: Staff[] };
+      type OppResponse = { me?: string | null };
+      const getJson = async <T,>(url: string): Promise<T> => {
+        try {
+          const r = await fetch(url, { cache: "no-store" });
+          return (r.ok ? await r.json() : {}) as T;
+        } catch {
+          return {} as T;
+        }
+      };
       const [emp, opp] = await Promise.all([
-        fetch("/api/employees?limit=200", { cache: "no-store" }).then((r) => (r.ok ? r.json() : {})).catch(() => ({})),
-        fetch(`/api/investors/${investorId}/opportunities`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : {})).catch(() => ({})),
+        getJson<EmpResponse>("/api/employees?limit=200"),
+        getJson<OppResponse>(`/api/investors/${investorId}/opportunities`),
       ]);
       if (!alive) return;
-      const raw = (emp.employees ?? emp.rows ?? emp.data ?? []) as Array<{ id: string; name?: string | null }>;
+      const raw: Array<{ id: string; name?: string | null }> = emp.employees ?? emp.rows ?? emp.data ?? [];
       const list: Staff[] = raw.map((u) => ({ id: u.id, name: u.name ?? "—" }));
       setStaff(list);
       const me: string | null = opp.me ?? null;
