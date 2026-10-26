@@ -125,6 +125,11 @@ export const tenants = pgTable(
     /** Household defaults — see FamilySettings in schema/family_master.ts. */
     familySettings: jsonb("family_settings").$type<Record<string, unknown>>().notNull().default({}),
 
+    /** Company intro, services, office timing, mission, founder and the firm's own
+     *  fields, filled into client emails as {{firm.*}} (migration 0246,
+     *  lib/firm/email-intro.ts). Edited at Settings → Email introduction. */
+    emailIntro: jsonb("email_intro").$type<Record<string, unknown>>().notNull().default({}),
+
     /** Age → risk-category bands for bulk provisional profiling. NULL = use the
      *  product defaults in src/lib/risk-profile/age-bands.ts. */
     riskAgeBands: jsonb("risk_age_bands").$type<Array<{ upTo: number | null; category: string }>>(),

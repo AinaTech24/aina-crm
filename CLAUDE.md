@@ -217,11 +217,36 @@ Prefer the block over hand-writing "Warm regards, {{investor.rm_name}}" in a
 text block: the block also carries the image and contact details, and one
 template then signs correctly for whichever RM owns the client.
 
+### The firm's introduction: `{{firm.*}}`
+
+Settings → Email introduction (`tenants.email_intro`, migration 0246,
+`src/lib/firm/email-intro.ts`, 2026-10-26) holds what a firm says about
+itself: `firm.company_intro`, `firm.services` (one per line, sent as
+bullets), `firm.office_timing`, `firm.mission`, `firm.founder_name`,
+`firm.founder_designation`, `firm.founder_photo_url` (an uploaded image, made
+absolute on send) and `firm.founder_intro` — plus up to 20 fields the firm
+names itself, each `{{firm.<slug of its name>}}` ("Awards" → `firm.awards`).
+`dispatch()` fills them on every send, the designer preview uses the firm's
+own values once it has any, and the designer's picker lists the firm's own
+fields under "Firm introduction".
+
+- **A blank field is absent, not empty.** Give a block `showIf: "firm.mission"`
+  (the designer's "Show this block" control) and it drops out of the email —
+  heading and text together — for a firm that never wrote one. An image whose
+  URL resolves to nothing draws nothing.
+- **The new-lead welcome uses all of it** (`leadWelcomeBody` in
+  `lib/templates/starters.ts`, template keys `lead_welcome` /
+  `lead_welcome_referral`, sent by the "Welcome email to a new lead"
+  automation). Migration 0246 moved every firm's UNEDITED copy to it as a new
+  version; a copy the firm had edited was left alone. Changing the body later
+  needs its own upgrade migration in the same shape (point the drift check in
+  `tests/firm-email-intro.test.ts` at it) — never edit an applied one.
+
 Two constraints worth knowing before authoring a template:
 
 - **Merge values are HTML-escaped.** A token carrying markup (`<li>…</li>`)
   prints its own tags to the client. Emit plain text and let the block do the
-  formatting.
+  formatting. A value typed over several lines keeps its line breaks.
 - **Every public form path needs a `PUBLIC_PATH_PREFIXES` entry** in
   `src/middleware.ts`, or the link 307s the client to `/login`.
 

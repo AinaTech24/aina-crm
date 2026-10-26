@@ -5,7 +5,8 @@
  * turn a rule on without first hand-authoring a template.
  *
  * Pure data (no DB imports). Email bodies use the EmailTemplateBody shape the
- * email renderer understands ({subject, blocks:[{type,...}], textFallback}).
+ * email renderer understands ({subject, blocks:[{type,...}], textFallback}), or
+ * a designer-mode body ({mode: "designer", …}) like the new-lead welcome.
  * Tokens: {{tenant_display_name}} / {{tenant_arn}} etc. are auto-injected from
  * the tenant; record fields (e.g. {{name}}, {{referred_by_name}}) are passed by
  * the workflow-rules send action.
@@ -31,26 +32,58 @@ export interface StarterTemplate {
   variables: StarterVar[];
 }
 
+/**
+ * The new-lead welcome (2026-10-26, the firm's request): thanks the lead, then
+ * introduces the firm — company intro, services, mission, the founder with
+ * photo, office timing — from Settings → Email introduction ({{firm.*}},
+ * lib/firm/email-intro.ts). Every introduction block carries `showIf`, so a
+ * part the firm has not written is left out rather than printed empty.
+ * Designer-mode, so a firm can restyle it in the template designer.
+ */
+export function leadWelcomeBody(referral: boolean): Record<string, unknown> {
+  const section = (id: string, title: string, field: string, html: string) => [
+    { id: `${id}h`, type: "heading", text: title, level: "h3", align: "left", showIf: field },
+    { id: `${id}t`, type: "text", html, align: "left", showIf: field },
+  ];
+  const thanks = referral
+    ? "Thank you for connecting with <b>{{tenant.displayName}}</b> — and a special thank-you to {{referred_by_name}}, who introduced you to us. We're grateful for the introduction."
+    : "Thank you for connecting with <b>{{tenant.displayName}}</b>. We're glad to have the chance to help you with your investments.";
+  return {
+    mode: "designer",
+    subject: "Thank you for connecting with {{tenant.displayName}}",
+    preheader: "A little about who we are, and what happens next.",
+    blocks: [
+      { id: "lw1", type: "logo" },
+      { id: "lw2", type: "hero", title: "Welcome, {{name}}", subtitle: "Thank you for reaching out to us.", imageUrl: "", imageAlt: "", align: "center" },
+      {
+        id: "lw3",
+        type: "text",
+        align: "left",
+        html: `Dear {{name}},<br><br>${thanks}<br><br>One of our advisors will reach out to you shortly to understand your goals. If you have any questions in the meantime, just reply to this email.`,
+      },
+      ...section("lw4", "About {{tenant.displayName}}", "firm.company_intro", "{{firm.company_intro}}"),
+      ...section("lw5", "Our services", "firm.services", "{{firm.services}}"),
+      ...section("lw6", "Our mission", "firm.mission", "{{firm.mission}}"),
+      { id: "lw7h", type: "heading", text: "Meet our founder", level: "h3", align: "left", showIf: "firm.founder_name" },
+      { id: "lw7p", type: "image", url: "{{firm.founder_photo_url}}", alt: "Our founder", width: 120, align: "left", showIf: "firm.founder_photo_url" },
+      { id: "lw7n", type: "text", html: "<b>{{firm.founder_name}}</b><br>{{firm.founder_designation}}", align: "left", showIf: "firm.founder_name" },
+      { id: "lw7t", type: "text", html: "{{firm.founder_intro}}", align: "left", showIf: "firm.founder_intro" },
+      { id: "lw8", type: "text", html: "<b>Office timing:</b> {{firm.office_timing}}", align: "left", showIf: "firm.office_timing" },
+      { id: "lw9", type: "text", html: "Warm regards,<br>Team {{tenant.displayName}}", align: "left" },
+    ],
+    // The footer carries the ARN and the mutual-fund risk disclaimer.
+    footer: { includeArn: true, includeAddress: true, includeUnsubscribe: true },
+  };
+}
+
 export const STARTER_TEMPLATES: StarterTemplate[] = [
   {
     key: "lead_welcome",
     channel: "email",
     category: "transactional",
     name: "Lead welcome — thank you for connecting",
-    description: "Sent to a new lead with no referral.",
-    body: {
-      subject: "Thank you for connecting with {{tenant_display_name}}",
-      blocks: [
-        { type: "header", title: "Thank you for connecting 🙏" },
-        {
-          type: "text",
-          content:
-            "Hi {{name}},\n\nThank you for connecting with {{tenant_display_name}}. We're glad to have the chance to help you with your investments.\n\nOne of our advisors will reach out to you shortly to understand your goals. If you have any questions in the meantime, just reply to this email.\n\nWarm regards,\n{{tenant_display_name}}",
-        },
-      ],
-      textFallback:
-        "Hi {{name}}, thank you for connecting with {{tenant_display_name}}. One of our advisors will reach out to you shortly.",
-    },
+    description: "Sent to a new lead with no referral. Introduces the firm from Settings → Email introduction.",
+    body: leadWelcomeBody(false),
     variables: [{ key: "name", type: "string", source: "lead.name", fallback: "there" }],
   },
   {
@@ -58,20 +91,8 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
     channel: "email",
     category: "transactional",
     name: "Lead welcome — referred by a client",
-    description: "Sent to a new lead who came from a client referral; names the referrer.",
-    body: {
-      subject: "Thank you for connecting with {{tenant_display_name}}",
-      blocks: [
-        { type: "header", title: "Thank you for connecting 🙏" },
-        {
-          type: "text",
-          content:
-            "Hi {{name}},\n\nThank you for connecting with {{tenant_display_name}} — and a special thank-you to {{referred_by_name}}, who referred you to us. We're grateful for the introduction.\n\nOne of our advisors will reach out shortly to understand your goals. Feel free to reply to this email anytime.\n\nWarm regards,\n{{tenant_display_name}}",
-        },
-      ],
-      textFallback:
-        "Hi {{name}}, thank you for connecting with {{tenant_display_name}} — and thanks to {{referred_by_name}} for referring you. An advisor will reach out shortly.",
-    },
+    description: "Sent to a new lead who came from a client referral; names the referrer and introduces the firm.",
+    body: leadWelcomeBody(true),
     variables: [
       { key: "name", type: "string", source: "lead.name", fallback: "there" },
       { key: "referred_by_name", type: "string", source: "lead.referred_by_name" },
