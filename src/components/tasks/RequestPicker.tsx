@@ -48,8 +48,16 @@ export type RequestValues = {
   amount: string;
   folio: string;
   mode: "" | "online" | "offline";
+  /** KYC / KYC update only: which KYC the client will do. */
+  kycMode: "" | "online" | "physical";
   rows: RowValues[];
 };
+
+/** The two ways a client's KYC is done (the task says which). */
+export const KYC_MODES: Array<{ key: "online" | "physical"; label: string; hint: string }> = [
+  { key: "online", label: "Online KYC", hint: "e-KYC via Aadhaar OTP / DigiLocker" },
+  { key: "physical", label: "Physical KYC", hint: "In-person verification (IPV)" },
+];
 
 let rowSeq = 0;
 export const emptyRow = (): RowValues => ({
@@ -68,7 +76,7 @@ export const emptyRow = (): RowValues => ({
   frequency: "monthly",
 });
 
-export const EMPTY_REQUEST: RequestValues = { amount: "", folio: "", mode: "", rows: [] };
+export const EMPTY_REQUEST: RequestValues = { amount: "", folio: "", mode: "", kycMode: "", rows: [] };
 
 /** Parse a typed rupee / unit figure ("5,00,000" → 500000); null when blank or bad. */
 export const num = (s: string): number | null => {
@@ -92,6 +100,7 @@ export function RequestPicker({
   values,
   onCategory,
   onRequest,
+  onKycMode,
   onValues,
 }: {
   category: TaskCategory;
@@ -99,6 +108,8 @@ export function RequestPicker({
   values: RequestValues;
   onCategory: (c: TaskCategory) => void;
   onRequest: (key: string) => void;
+  /** Called when the KYC mode buttons are used, so the form can retitle the task. */
+  onKycMode: (mode: "online" | "physical") => void;
   onValues: (v: RequestValues) => void;
 }) {
   const req = requestKey ? REQUEST_TYPE_BY_KEY[requestKey] : undefined;
@@ -141,6 +152,34 @@ export function RequestPicker({
               options={[["", "Select a request…"], ...requestTypesFor(category).map((r) => [r.key, r.label] as [string, string])]}
             />
           </label>
+
+          {req?.key === "kyc_renewal" && (
+            <div role="radiogroup" aria-label="Which KYC">
+              <div className="mb-1 text-xs font-medium">
+                Which KYC? <span className="text-destructive">*</span>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {KYC_MODES.map((m) => {
+                  const on = values.kycMode === m.key;
+                  return (
+                    <button
+                      key={m.key}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      onClick={() => onKycMode(m.key)}
+                      className={`rounded-lg border px-3 py-2 text-left transition ${
+                        on ? "border-primary bg-primary/10" : "border-border bg-card hover:bg-secondary"
+                      }`}
+                    >
+                      <div className="text-sm font-semibold">{m.label}</div>
+                      <div className="text-2xs text-muted-foreground">{m.hint}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {req && req.rowFields.length > 0 && (
             <div className="space-y-2">

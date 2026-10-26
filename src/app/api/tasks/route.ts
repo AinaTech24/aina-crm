@@ -101,6 +101,8 @@ const Body = z.object({
             units: z.number().min(0).optional(),
             allUnits: z.boolean().optional(),
             folio: z.string().max(60).optional(),
+      /** KYC / KYC update: which KYC the client will do. */
+      kycMode: z.enum(["online", "physical"]).optional(),
             sipDay: z.string().regex(/^([1-9]|[12]\d|2[0-8])$/).optional(),
             frequency: z.enum(["weekly", "monthly", "quarterly", "half_yearly", "yearly"]).optional(),
           }),

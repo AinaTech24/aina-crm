@@ -34,7 +34,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
-import { EMPTY_REQUEST, RequestPicker, emptyRow, num, type RequestValues } from "@/components/tasks/RequestPicker";
+import { EMPTY_REQUEST, KYC_MODES, RequestPicker, emptyRow, num, type RequestValues } from "@/components/tasks/RequestPicker";
 import { REQUEST_TYPE_BY_KEY, categoryOfType, type TaskCategory } from "@/lib/tasks/request-types";
 import { notify } from "@/components/ui/Toast";
 import { RmSelector } from "@/components/common/RmSelector";
@@ -175,15 +175,18 @@ export default function NewTaskPage() {
     setForm((s) => ({ ...s, [k]: v }));
   }
 
-  /** The title a request suggests — "Redemption — Rajesh Patel". */
-  const autoTitle = (key: string, client: string) => {
+  /** The title a request suggests — "Redemption — Rajesh Patel". A KYC names
+   *  the KYC the client will do: "Online KYC — Rajesh Patel". */
+  const autoTitle = (key: string, client: string, kycMode: RequestValues["kycMode"] = requestValues.kycMode) => {
     const r = REQUEST_TYPE_BY_KEY[key];
-    return r ? (client ? `${r.label} — ${client}` : r.label) : "";
+    if (!r) return "";
+    const label = key === "kyc_renewal" && kycMode ? KYC_MODES.find((m) => m.key === kycMode)?.label ?? r.label : r.label;
+    return client ? `${label} — ${client}` : label;
   };
   /** Still the suggested title (or empty) — so a request change may replace it.
    *  A title the user typed, or a template's, is never overwritten. */
-  const titleIsAuto = (title: string, key: string, client: string) =>
-    !titleTouched && (!title.trim() || title === autoTitle(key, client));
+  const titleIsAuto = (title: string, key: string, client: string, kycMode: RequestValues["kycMode"] = requestValues.kycMode) =>
+    !titleTouched && (!title.trim() || title === autoTitle(key, client, kycMode));
 
   function changeCategory(c: TaskCategory) {
     if (c === category) return;
@@ -206,16 +209,19 @@ export default function NewTaskPage() {
     const prev = requestKey;
     setRequestKey(key);
     const r = REQUEST_TYPE_BY_KEY[key];
-    // A request with scheme rows starts with one row; one without has none.
+    const prevMode = requestValues.kycMode;
+    // A request with scheme rows starts with one row; one without has none. The
+    // KYC choice belongs to the KYC request only.
     setRequestValues((v) => ({
       ...v,
+      kycMode: "",
       rows: r?.rowFields.length ? (v.rows.length ? v.rows : [emptyRow()]) : [],
     }));
     setForm((s) => ({
       ...s,
       type: key || "follow_up",
       customType: "",
-      title: titleIsAuto(s.title, prev, s.relatedInvestorName) ? autoTitle(key, s.relatedInvestorName) : s.title,
+      title: titleIsAuto(s.title, prev, s.relatedInvestorName, prevMode) ? autoTitle(key, s.relatedInvestorName, "") : s.title,
     }));
     // The request's checklist fills an empty list, or replaces the one the
     // previous request put in — never one the user or a template wrote.
@@ -228,6 +234,16 @@ export default function NewTaskPage() {
         setAutoChecklistKey(null);
       }
     }
+  }
+
+  /** Online or Physical KYC: recorded on the task, and named in an untouched title. */
+  function changeKycMode(mode: "online" | "physical") {
+    const prevMode = requestValues.kycMode;
+    setRequestValues((v) => ({ ...v, kycMode: mode }));
+    setForm((s) => ({
+      ...s,
+      title: titleIsAuto(s.title, requestKey, s.relatedInvestorName, prevMode) ? autoTitle(requestKey, s.relatedInvestorName, mode) : s.title,
+    }));
   }
 
   function pickClient(id: string, name: string) {
@@ -258,6 +274,10 @@ export default function NewTaskPage() {
         setErr("Pick the client this request is for.");
         return;
       }
+    }
+    if (requestKey === "kyc_renewal" && !requestValues.kycMode) {
+      setErr("Choose Online KYC or Physical KYC.");
+      return;
     }
     const amount = num(requestValues.amount);
     if (req?.fields.includes("amount") && requestValues.amount.trim() && amount == null) {
@@ -334,6 +354,7 @@ export default function NewTaskPage() {
         else if (rowTotal > 0) payload.boValue = rowTotal;
         if (hasF("mode") && requestValues.mode) payload.boChannel = requestValues.mode;
         payload.request = {
+          ...(req.key === "kyc_renewal" && requestValues.kycMode ? { kycMode: requestValues.kycMode } : {}),
           ...(hasF("folio") && requestValues.folio.trim() ? { folio: requestValues.folio.trim() } : {}),
           ...(rows.length
             ? {
@@ -479,31 +500,6 @@ export default function NewTaskPage() {
 
       {/* ── The three facts that make a task: what, for whom, by when. ── */}
       <div className="card-surface p-5 space-y-4">
-        <RequestPicker
-          category={category}
-          requestKey={requestKey}
-          values={requestValues}
-          onCategory={changeCategory}
-          onRequest={changeRequest}
-          onValues={setRequestValues}
-        />
-
-        <label className="block">
-          <div className="text-xs font-medium mb-1">
-            What needs doing <span className="text-rose-600">*</span>
-          </div>
-          <input
-            value={form.title}
-            autoFocus
-            onChange={(e) => {
-              setTitleTouched(true);
-              set("title", e.target.value);
-            }}
-            placeholder="e.g. Call Ramesh about the SIP top-up"
-            className="input-base text-base py-2.5"
-          />
-        </label>
-
         <div className="block">
           <div className="text-xs font-medium mb-1">
             For client{" "}
@@ -521,6 +517,31 @@ export default function NewTaskPage() {
             placeholder="Search clients by name, PAN or phone…"
           />
         </div>
+
+        <label className="block">
+          <div className="text-xs font-medium mb-1">
+            What needs doing <span className="text-rose-600">*</span>
+          </div>
+          <input
+            value={form.title}
+            onChange={(e) => {
+              setTitleTouched(true);
+              set("title", e.target.value);
+            }}
+            placeholder="e.g. Call Ramesh about the SIP top-up"
+            className="input-base text-base py-2.5"
+          />
+        </label>
+
+        <RequestPicker
+          category={category}
+          requestKey={requestKey}
+          values={requestValues}
+          onCategory={changeCategory}
+          onRequest={changeRequest}
+          onKycMode={changeKycMode}
+          onValues={setRequestValues}
+        />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="block">
