@@ -21,9 +21,20 @@ import {
   FileSignature,
   X,
   Phone,
+  PhoneCall,
 } from "lucide-react";
+import { openLogActivity } from "@/lib/activities/contact-log";
 
-const ACTIONS = [
+const ACTIONS: Array<{ href: string; label: string; sub: string; icon: typeof Plus; tone: string; logActivity?: boolean }> = [
+  {
+    // Opens the Log activity drawer in place (ActivityLauncher).
+    href: "#log-call",
+    label: "Log a Call",
+    sub: "Call, WhatsApp, visit or note",
+    icon: PhoneCall,
+    tone: "emerald",
+    logActivity: true,
+  },
   {
     href: "/dashboard/leads/new",
     label: "Add Lead",
@@ -124,21 +135,23 @@ export function QuickCreateFab() {
               const Icon = a.icon;
               return (
                 <li key={a.href}>
-                  <Link
-                    href={a.href}
-                    onClick={() => setOpen(false)}
-                    className="flex items-start gap-3 px-3 py-2.5 hover:bg-secondary/70 transition-colors"
-                  >
-                    <div className={`size-9 rounded-lg grid place-items-center flex-shrink-0 ${TONE_BG[a.tone]}`}>
-                      <Icon className="size-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium leading-tight">{a.label}</div>
-                      <div className="text-2xs text-muted-foreground mt-0.5 leading-snug">
-                        {a.sub}
-                      </div>
-                    </div>
-                  </Link>
+                  {a.logActivity ? (
+                    <button
+                      type="button"
+                      onClick={() => { setOpen(false); openLogActivity("call"); }}
+                      className="flex w-full items-start gap-3 px-3 py-2.5 text-left hover:bg-secondary/70 transition-colors"
+                    >
+                      <FabItemBody icon={Icon} tone={a.tone} label={a.label} sub={a.sub} />
+                    </button>
+                  ) : (
+                    <Link
+                      href={a.href}
+                      onClick={() => setOpen(false)}
+                      className="flex items-start gap-3 px-3 py-2.5 hover:bg-secondary/70 transition-colors"
+                    >
+                      <FabItemBody icon={Icon} tone={a.tone} label={a.label} sub={a.sub} />
+                    </Link>
+                  )}
                 </li>
               );
             })}
@@ -155,5 +168,19 @@ export function QuickCreateFab() {
         {open ? <X className="size-6" /> : <Plus className="size-6" />}
       </button>
     </div>
+  );
+}
+
+function FabItemBody({ icon: Icon, tone, label, sub }: { icon: typeof Plus; tone: string; label: string; sub: string }) {
+  return (
+    <>
+      <div className={`size-9 rounded-lg grid place-items-center flex-shrink-0 ${TONE_BG[tone]}`}>
+        <Icon className="size-4" />
+      </div>
+      <div className="min-w-0">
+        <div className="text-sm font-medium leading-tight">{label}</div>
+        <div className="text-2xs text-muted-foreground mt-0.5 leading-snug">{sub}</div>
+      </div>
+    </>
   );
 }

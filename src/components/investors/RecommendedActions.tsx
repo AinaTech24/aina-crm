@@ -53,7 +53,7 @@ export async function RecommendedActions({
                   <div className="text-2xs text-muted-foreground truncate">{a.reason}</div>
                 </div>
                 {a.impactInr > 0 && <div className="text-xs font-semibold tabular-nums text-emerald-700 shrink-0">{inr(a.impactInr)}</div>}
-                <ContactQuickActions phone={phone ?? a.phone} email={email ?? a.email} message={a.type === "birthday_today" ? `Dear ${firstName}, wishing you a very Happy Birthday! 🎂` : `Hi ${firstName}, `} show={["whatsapp", "call"]} size={14} />
+                <ContactQuickActions phone={phone ?? a.phone} email={email ?? a.email} message={a.type === "birthday_today" ? `Dear ${firstName}, wishing you a very Happy Birthday! 🎂` : `Hi ${firstName}, `} show={["whatsapp", "call"]} size={14} logFor={{ type: "investor", id: investorId, name }} />
               </li>
             );
           })}

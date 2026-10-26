@@ -117,6 +117,10 @@ const Body = z.object({
       allUnits: z.boolean().optional(),
     })
     .optional(),
+  /** The task template the form applied — stored in meta.templateId so the
+   *  template's SOPs ("How we do this") reach the task. Kept only when the
+   *  template is this firm's. */
+  templateId: z.string().uuid().optional(),
 });
 
 /**
@@ -298,6 +302,11 @@ export async function POST(req: NextRequest) {
           throw Object.assign(new Error("a sub-task assignee is not in this firm"), { status: 400 });
         }
       }
+      // The template must be this firm's; an unknown id is simply not recorded.
+      const templateId = body.templateId
+        && (await tx.execute(sql`SELECT 1 FROM task_templates WHERE id = ${body.templateId}::uuid AND tenant_id = ${session.tenantId}::uuid`)).rows.length
+        ? body.templateId
+        : null;
 
       // Internal SLA target derived from priority (overridable later in the editor).
       const slaHours = SLA_HOURS_BY_PRIORITY[body.priority] ?? 72;
@@ -369,6 +378,7 @@ export async function POST(req: NextRequest) {
             if (Object.keys(r).length) m.request = r;
           }
           if (booking?.booked) m.businessEntryId = booking.entryId;
+          if (templateId) m.templateId = templateId;
           return Object.keys(m).length ? m : undefined;
         })(),
       } as any);

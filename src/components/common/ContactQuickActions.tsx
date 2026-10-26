@@ -12,9 +12,13 @@
  *
  * Drop-in:
  *   <ContactQuickActions phone={i.phone} email={i.email} message={`Hi ${i.name},`} />
+ *
+ * Pass `logFor` (the client or lead) and a tap also asks "How did it go?" and
+ * logs the touchpoint in one more tap (ActivityLauncher, lib/activities/contact-log).
  */
 
 import { MessageCircle, MessageSquare, Mail, Phone } from "lucide-react";
+import { contactLogAttrs, type ContactLogSubject } from "@/lib/activities/contact-log";
 
 /** Keep digits only; assume a bare 10-digit number is Indian (+91) for wa.me. */
 function waNumber(phone: string): string {
@@ -32,6 +36,7 @@ export function ContactQuickActions({
   size = 14,
   className = "",
   show = ["whatsapp", "sms", "email", "call"],
+  logFor,
 }: {
   phone?: string | null;
   email?: string | null;
@@ -40,18 +45,22 @@ export function ContactQuickActions({
   size?: number;
   className?: string;
   show?: Array<"whatsapp" | "sms" | "email" | "call">;
+  /** The client / lead this contact is with — enables the one-tap log prompt. */
+  logFor?: ContactLogSubject | null;
 }) {
   const hasPhone = !!phone && phone.replace(/\D/g, "").length >= 7;
   const hasEmail = !!email && email.includes("@");
   const enc = (s?: string) => encodeURIComponent(s ?? "");
   // Don't let a click bubble to a row-level <Link>/navigation.
   const stop = (e: React.MouseEvent) => e.stopPropagation();
+  const log = contactLogAttrs(logFor);
   const cls = "inline-grid place-items-center size-6 rounded hover:bg-secondary text-muted-foreground transition-colors";
 
   return (
     <span className={`inline-flex items-center gap-0.5 ${className}`} onClick={stop}>
       {show.includes("whatsapp") && hasPhone && (
         <a
+          {...log}
           href={`https://wa.me/${waNumber(phone!)}${message ? `?text=${enc(message)}` : ""}`}
           target="_blank"
           rel="noopener noreferrer"
@@ -64,6 +73,7 @@ export function ContactQuickActions({
       )}
       {show.includes("sms") && hasPhone && (
         <a
+          {...log}
           href={`sms:${phone}${message ? `?body=${enc(message)}` : ""}`}
           className={`${cls} hover:text-blue-600`}
           title="SMS"
@@ -74,6 +84,7 @@ export function ContactQuickActions({
       )}
       {show.includes("email") && hasEmail && (
         <a
+          {...log}
           href={`mailto:${email}${subject || message ? `?subject=${enc(subject)}&body=${enc(message)}` : ""}`}
           className={`${cls} hover:text-violet-600`}
           title="Email"
@@ -84,6 +95,7 @@ export function ContactQuickActions({
       )}
       {show.includes("call") && hasPhone && (
         <a
+          {...log}
           href={`tel:${phone}`}
           className={`${cls} hover:text-foreground`}
           title="Call"

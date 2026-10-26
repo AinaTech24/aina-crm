@@ -131,3 +131,22 @@ export async function saveDailyTracker(
       updated_at = now()
   `);
 }
+
+/**
+ * Today's focus, suggested from the top of the RM's worklist (overdue first,
+ * then due today — the order loadWorklist already sorts by). An empty plan is
+ * the hardest one to start, so the tracker offers these in one tap.
+ */
+export function suggestFocusFromWorklist(
+  items: Array<{ action: string; client: string | null; clientId: string | null; leadId: string | null; taskId: string | null; bucket: string }>,
+  n = 3,
+): FocusItem[] {
+  return items
+    .filter((i) => i.bucket !== "tomorrow")
+    .slice(0, n)
+    .map((i) => ({
+      text: i.client ? `${i.action} — ${i.client}` : i.action,
+      ...(i.taskId ? { taskId: i.taskId } : {}),
+      forType: i.clientId ? "client" : i.leadId ? "lead" : "other",
+    }));
+}

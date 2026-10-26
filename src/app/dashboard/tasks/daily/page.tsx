@@ -13,7 +13,10 @@ import { CalendarCheck, ListChecks, CheckCircle2, AlertCircle, TrendingUp, Arrow
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { withTenant } from "@/db/client";
-import { loadDailyTracker } from "@/lib/daily-tracker";
+import { loadDailyTracker, suggestFocusFromWorklist, type FocusItem } from "@/lib/daily-tracker";
+import { loadWorklist } from "@/lib/dashboard/my/desk";
+import { buildBookWindow } from "@/lib/dashboard/my/build-window";
+import { loadDashboardThresholds } from "@/lib/dashboard/thresholds";
 import { DailyTrackerForm } from "@/components/tasks/DailyTrackerForm";
 
 export const dynamic = "force-dynamic";
@@ -54,13 +57,36 @@ export default async function DailyTrackerPage({
     return { data, name };
   });
 
+  const isToday = dateISO === todayISO;
+
+  // An empty plan for today: offer the top of the worklist as the plan, in one
+  // tap. Best-effort — a failure here only means no suggestions.
+  let suggested: FocusItem[] = [];
+  if (isSelf && isToday && data.todayFocus.length === 0) {
+    try {
+      suggested = await withTenant(
+        session.tenantId,
+        async (tx) => {
+          const t = await loadDashboardThresholds(tx);
+          const { w } = buildBookWindow({
+            scope: { kind: "rm", userId: session.userId }, staff: [session.userId], possessive: "My", period: "mtd",
+          });
+          const { items } = await loadWorklist(tx, w, t, dateISO);
+          return suggestFocusFromWorklist(items);
+        },
+        { userId: session.userId, branchId: session.branchId ?? undefined, roles: session.roles }
+      );
+    } catch {
+      suggested = [];
+    }
+  }
+
   const dateLabel = new Date(dateISO + "T00:00:00").toLocaleDateString("en-IN", {
     weekday: "long",
     day: "2-digit",
     month: "short",
     year: "numeric",
   });
-  const isToday = dateISO === todayISO;
   const prevISO = addDays(dateISO, -1);
   const nextISO = addDays(dateISO, 1);
   const pct = Math.max(0, Math.min(100, Number(data.productivityPct) || 0));
@@ -154,6 +180,7 @@ export default async function DailyTrackerPage({
           todayFocus: data.todayFocus,
         }}
         dueToday={data.dueToday}
+        suggested={suggested}
       />
     </div>
   );

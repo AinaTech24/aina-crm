@@ -104,28 +104,44 @@ const BOOK_ARRAY_LISTS: [string, SQL][] = [["tag", sql`investors.tags`]];
  * Load the pick lists for the viewer's book (`bookWhere` = the page's access
  * scope, not deleted, not merged), plus families and branches. One round
  * trip; at most 200 values per list.
+ *
+ * The book is read ONCE into a materialized CTE and every list groups that.
+ * It used to be one subquery per list — 26 scans of the investors table on
+ * every Clients page load (~210 ms of a ~440 ms page at 6,000 clients).
  */
 export async function loadInvestorFilterOptions(tx: any, tenantId: string, bookWhere: SQL): Promise<InvestorFilterOptions> {
+  const cols = [
+    ...BOOK_TEXT_LISTS.map(([, expr], i) => sql`btrim(${expr}) AS ${sql.raw(`c${i}`)}`),
+    ...BOOK_ARRAY_LISTS.map(([, expr], i) => sql`CASE WHEN jsonb_typeof(${expr}) = 'array' THEN ${expr} ELSE '[]'::jsonb END AS ${sql.raw(`a${i}`)}`),
+  ];
   const parts = [
-    ...BOOK_TEXT_LISTS.map(([key, expr]) => sql`
-      (SELECT ${key}::text AS f, lower(btrim(${expr})) AS v, min(btrim(${expr})) AS l
-       FROM investors WHERE ${bookWhere} AND btrim(COALESCE(${expr}, '')) <> ''
-       GROUP BY 2 ORDER BY 3 LIMIT 200)`),
-    ...BOOK_ARRAY_LISTS.map(([key, expr]) => sql`
+    ...BOOK_TEXT_LISTS.map(([key], i) => {
+      const c = sql.raw(`c${i}`);
+      return sql`
+      (SELECT ${key}::text AS f, lower(${c}) AS v, min(${c}) AS l
+       FROM book WHERE COALESCE(${c}, '') <> ''
+       GROUP BY 2 ORDER BY 3 LIMIT 200)`;
+    }),
+    ...BOOK_ARRAY_LISTS.map(([key], i) => sql`
       (SELECT ${key}::text AS f, e AS v, e AS l
-       FROM investors, jsonb_array_elements_text(CASE WHEN jsonb_typeof(${expr}) = 'array' THEN ${expr} ELSE '[]'::jsonb END) AS e
-       WHERE ${bookWhere} AND btrim(e) <> ''
+       FROM book, jsonb_array_elements_text(${sql.raw(`a${i}`)}) AS e
+       WHERE btrim(e) <> ''
        GROUP BY e ORDER BY e LIMIT 200)`),
     // A family reads as its name, else "<head> Family" (families.family_name is optional).
     sql`(SELECT 'fam'::text AS f, fm.id::text AS v,
                 COALESCE(NULLIF(btrim(fm.family_name), ''), fm.head_name || ' Family') AS l
          FROM families fm
          WHERE fm.tenant_id = ${tenantId}::uuid
-           AND EXISTS (SELECT 1 FROM investors WHERE ${bookWhere} AND investors.family_id = fm.id)
+           AND fm.id IN (SELECT family_id FROM book)
          ORDER BY 3 LIMIT 200)`,
     sql`(SELECT 'branch'::text AS f, id::text AS v, name AS l FROM branches WHERE tenant_id = ${tenantId}::uuid ORDER BY name LIMIT 200)`,
   ];
-  const res = await tx.execute(sql.join(parts, sql` UNION ALL `));
+  const res = await tx.execute(sql`
+    WITH book AS MATERIALIZED (
+      SELECT investors.family_id, ${sql.join(cols, sql`, `)}
+      FROM investors WHERE ${bookWhere}
+    )
+    ${sql.join(parts, sql` UNION ALL `)}`);
   const out: InvestorFilterOptions = {};
   for (const r of res.rows as { f: string; v: string; l: string }[]) {
     // Stored codes (snake_case, lower case) read as words; free text keeps the

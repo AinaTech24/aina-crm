@@ -26,7 +26,11 @@ function hhmm(iso: string | null): string {
   return new Date(iso).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" });
 }
 
-export function ClockWidget({ today }: { today: Today }) {
+export function ClockWidget({ today, planAfterClockIn = false }: {
+  today: Today;
+  /** The day's first clock-in opens the Daily Job Tracker (habit stacking). */
+  planAfterClockIn?: boolean;
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
@@ -68,6 +72,12 @@ export function ClockWidget({ today }: { today: Today }) {
       });
       if (!res.ok) { const j = await res.json().catch(() => ({})); notify.error(j.error ?? "Punch failed"); return; }
       notify.success(action === "in" ? "Clocked in" : "Clocked out");
+      // The first clock-in of the day opens the day plan, so planning rides on
+      // a habit people already have instead of being one more thing to remember.
+      if (action === "in" && punches.length === 0 && planAfterClockIn) {
+        router.push("/dashboard/tasks/daily");
+        return;
+      }
       router.refresh();
     } finally {
       setBusy(false);

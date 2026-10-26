@@ -7,6 +7,7 @@
 
 import React from "react";
 import { View, Pressable, StyleSheet, ActivityIndicator } from "react-native";
+import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { Screen } from "../../../../src/components/ui/Screen";
 import { Card } from "../../../../src/components/ui/Card";
@@ -32,6 +33,7 @@ export default function Attendance() {
   const me = useMe();
   const { data, isLoading, isRefetching, refetch } = useAttendance();
   const clock = useClock();
+  const router = useRouter();
   const [tab, setTab] = React.useState<"me" | "team">("me");
   const [busy, setBusy] = React.useState(false);
 
@@ -52,6 +54,9 @@ export default function Attendance() {
   const doneForDay = !!todayRow?.clock_in_at && !!todayRow?.clock_out_at;
 
   const punch = async (action: "in" | "out") => {
+    // The day's FIRST clock-in goes straight to the day plan: one habit
+    // stacked on another, so planning is never a separate thing to remember.
+    const firstInToday = action === "in" && !todayRow?.clock_in_at;
     setBusy(true);
     // Location is a nicety — never block the punch on it.
     const loc = await getCheckinLocation().catch(() => null);
@@ -61,6 +66,7 @@ export default function Attendance() {
         onSuccess: (r) => {
           if (r?.error) return toast.error(r.error);
           toast.success(action === "in" ? "Clocked in — have a good day" : "Clocked out");
+          if (firstInToday) router.push("/m/daily" as any);
         },
         onError: (e: any) => toast.error(e?.body?.error || "Couldn't record that"),
         onSettled: () => setBusy(false),

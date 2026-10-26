@@ -113,6 +113,7 @@ import {
   RelatedListSection,
   type RelatedListDef,
 } from "@/components/common/RelatedLists";
+import { contactLogAttrs } from "@/lib/activities/contact-log";
 
 /**
  * The page's sections, in default order, grouped by the tab that shows them.
@@ -461,10 +462,12 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
   const hasPortfolio = holdingsCount > 0 || data.txCount > 0 || data.folios.length > 0;
   const v = data.valuation;
 
+  // A tap on Call / Email / WhatsApp asks "how did it go?" (ActivityLauncher).
+  const logAttrs = contactLogAttrs({ type: "investor", id: inv.id, name: inv.name });
   const contactRow = (
     <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
       {showPhone && inv.phone && (
-        <a href={`tel:${inv.phone}`} className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground">
+        <a {...logAttrs} href={`tel:${inv.phone}`} className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground">
           <Phone className="size-4" /> {formatPhone(inv.phone)}
           {!isValidIndianMobile(inv.phone) && (
             <span
@@ -477,12 +480,13 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
         </a>
       )}
       {showEmail && inv.email && (
-        <a href={`mailto:${inv.email}`} className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground">
+        <a {...logAttrs} href={`mailto:${inv.email}`} className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground">
           <Mail className="size-4" /> {inv.email}
         </a>
       )}
       {showPhone && (inv.whatsappPhone || inv.phone) && (
         <a
+          {...logAttrs}
           href={`https://wa.me/${(inv.whatsappPhone ?? inv.phone ?? "").replace(/[^\d]/g, "")}`}
           target="_blank"
           rel="noreferrer"

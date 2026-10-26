@@ -23,7 +23,9 @@ export async function SetupChecklist({ tenantId }: { tenantId: string }) {
           EXISTS (SELECT 1 FROM investors WHERE tenant_id = ${tenantId}::uuid AND deleted_at IS NULL) AS has_clients,
           (SELECT count(*) FROM users WHERE tenant_id = ${tenantId}::uuid AND deleted_at IS NULL) > 1 AS has_team,
           EXISTS (SELECT 1 FROM whatsapp_numbers WHERE tenant_id = ${tenantId}::uuid) AS has_wa,
-          EXISTS (SELECT 1 FROM workflow_rules WHERE tenant_id = ${tenantId}::uuid AND enabled = true) AS has_rules
+          EXISTS (SELECT 1 FROM workflow_rules WHERE tenant_id = ${tenantId}::uuid AND enabled = true) AS has_rules,
+          EXISTS (SELECT 1 FROM practice_position_holders WHERE tenant_id = ${tenantId}::uuid) AS has_positions,
+          (SELECT count(*) FROM sops WHERE tenant_id = ${tenantId}::uuid AND deleted_at IS NULL) >= 5 AS has_manual
       `);
       return (res.rows[0] ?? {}) as Record<string, boolean>;
     });
@@ -32,6 +34,9 @@ export async function SetupChecklist({ tenantId }: { tenantId: string }) {
       { key: "team", label: "Invite your team", hint: "RMs and back office get their own logins and task lists.", href: "/dashboard/employees", done: !!r.has_team },
       { key: "whatsapp", label: "Connect WhatsApp", hint: "Send birthday wishes, reminders and updates from your own number.", href: "/dashboard/settings/whatsapp", done: !!r.has_wa },
       { key: "automation", label: "Switch on your first automation", hint: "SIP-bounce recovery and review reminders run on their own.", href: "/dashboard/automations", done: !!r.has_rules },
+      // Working ON the practice (lib/practice): the jobs, then the manual.
+      { key: "positions", label: "Set up your positions", hint: "Organise the firm by jobs, not people, and see which ones only you fill.", href: "/dashboard/practice/positions", done: !!r.has_positions },
+      { key: "manual", label: "Install your operations manual", hint: "Start from the standard MFD SOPs and call scripts, then edit them to fit.", href: "/dashboard/sops", done: !!r.has_manual },
     ];
   } catch {
     return null;
