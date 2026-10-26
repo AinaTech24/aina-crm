@@ -72,9 +72,8 @@ type TransitionTask = {
   dueInDays: number;
 };
 const TASK_ON_TRANSITION: Record<string, TransitionTask> = {
-  // KYC Validated asks which KYC to do next (Online or Physical) and creates that
-  // task — the title comes from the choice (KYC_MODES), not from here.
-  kyc_validated: { title: "Complete the client's KYC", type: "kyc_renewal", department: "compliance", priority: "high", dueInDays: 1 },
+  // Fresh KYC: the pop-up also asks Online or Physical KYC (KYC_MODES), and the
+  // task's title follows that choice — the title here is the fallback.
   kyc_registered: { title: "Register fresh KYC with the KRA", type: "kyc_renewal", department: "compliance", priority: "high", dueInDays: 2 },
   modify_kyc: { title: "Correct & resubmit KYC (address / bank / nominee)", type: "kyc_renewal", department: "compliance", priority: "high", dueInDays: 2 },
   physical_kyc: { title: "Complete physical KYC / IPV (in-person verification)", type: "kyc_renewal", department: "operations", priority: "high", dueInDays: 3 },
@@ -82,10 +81,10 @@ const TASK_ON_TRANSITION: Record<string, TransitionTask> = {
   mandate_create: { title: "Register the SIP mandate (NACH / e-mandate)", type: "follow_up", department: "operations", priority: "high", dueInDays: 3 },
 };
 
-/** The KYC route picked at "KYC Validated" — it names the task that is created. */
+/** The KYC route picked when a FRESH KYC is registered — it names the task that is created. */
 const KYC_MODES = {
-  online: { label: "Online KYC", hint: "e-KYC via Aadhaar OTP / DigiLocker", title: "Online KYC — e-KYC via Aadhaar OTP / DigiLocker" },
-  physical: { label: "Physical KYC", hint: "In-person verification (IPV) with documents", title: "Physical KYC — in-person verification (IPV)" },
+  online: { label: "Online KYC", hint: "e-KYC via Aadhaar OTP / DigiLocker", title: "Online KYC (fresh) — e-KYC via Aadhaar OTP / DigiLocker" },
+  physical: { label: "Physical KYC", hint: "In-person verification (IPV) with documents", title: "Physical KYC (fresh) — in-person verification (IPV)" },
 } as const;
 type KycMode = keyof typeof KYC_MODES;
 
@@ -476,8 +475,8 @@ export function GuidedStageActions({
         // saving that artefact auto-advances the stage and fills required fields
         // like LastContactAt. So we deliberately do NOT intercept them here even
         // when the target stage lists missing fields — the dialog supplies them.
-        // (No step is in NO_NOTES_STAGES today; "KYC Validated" opens the pop-up
-        // to choose Online / Physical KYC — see KYC_MODES.)
+        // "KYC Validated" asks for nothing: one click sets the client's KYC
+        // status to verified (server, blueprint/advance) and moves on.
         if (action.behaviour.kind === "advance_only" && NO_NOTES_STAGES.has(action.targetStage) && !(pre.missingFields ?? []).length) {
           const moved = await advance(action.targetStage, `Action: ${action.label}`);
           if (!moved) {
@@ -614,8 +613,8 @@ export function GuidedStageActions({
     // Task-creating transitions (KYC, UCC, Mandate, …) require an assignee — we
     // auto-create the pre-filled task for them after the stage moves.
     const taskSpec = TASK_ON_TRANSITION[transitioningAction.targetStage];
-    const isKycValidated = transitioningAction.targetStage === "kyc_validated";
-    if (isKycValidated && !kycMode) {
+    const isFreshKyc = transitioningAction.targetStage === "kyc_registered";
+    if (isFreshKyc && !kycMode) {
       setError("Choose Online KYC or Physical KYC.");
       return;
     }
@@ -666,11 +665,11 @@ export function GuidedStageActions({
             ? {
                 assigneeId: taskAssigneeId,
                 dueAt: taskDueAt ? new Date(taskDueAt).toISOString() : undefined,
-                title: isKycValidated && kycMode ? KYC_MODES[kycMode].title : taskSpec.title,
+                title: isFreshKyc && kycMode ? KYC_MODES[kycMode].title : taskSpec.title,
                 type: taskSpec.type,
                 priority: taskSpec.priority,
-                description: isKycValidated && kycMode
-                  ? `${KYC_MODES[kycMode].label} chosen at "KYC Validated" (${KYC_MODES[kycMode].hint}).`
+                description: isFreshKyc && kycMode
+                  ? `${KYC_MODES[kycMode].label} chosen for the client's fresh KYC (${KYC_MODES[kycMode].hint}).`
                   : `Auto-created on the "${transitioningAction.targetStage.replace(/_/g, " ")}" transition.`,
               }
             : undefined,
@@ -985,8 +984,8 @@ export function GuidedStageActions({
               </div>
             )}
 
-            {/* KYC Validated — which KYC to do next; the task is named after it. */}
-            {transitioningAction.targetStage === "kyc_validated" && (
+            {/* Fresh KYC — which KYC the client will do; the task is named after it. */}
+            {transitioningAction.targetStage === "kyc_registered" && (
               <fieldset className="space-y-2">
                 <legend className="text-xs text-foreground font-medium">
                   Which KYC does the client want? <span className="text-rose-500">*</span>
@@ -1038,7 +1037,7 @@ export function GuidedStageActions({
                   />
                 </div>
                 <p className="text-2xs text-muted-foreground">
-                  We&apos;ll create a high-priority task — &ldquo;{transitioningAction.targetStage === "kyc_validated" && kycMode
+                  We&apos;ll create a high-priority task — &ldquo;{transitioningAction.targetStage === "kyc_registered" && kycMode
                     ? KYC_MODES[kycMode].title
                     : TASK_ON_TRANSITION[transitioningAction.targetStage].title}&rdquo; — assigned to them, and notify them.
                 </p>
@@ -1294,10 +1293,10 @@ function toLocalInput(ms: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T10:00`;
 }
 
-/** Steps that move in one click, with no pop-up — the click itself is the
- *  record. (KYC Validated used to be one; since 2026-10-26 it opens the pop-up
- *  to pick Online / Physical KYC and create that task.) */
-const NO_NOTES_STAGES = new Set<string>([]);
+/** Steps that move in one click, with no "Transition notes" pop-up — the click
+ *  itself is the record (KYC Validated also sets the client's KYC status). The
+ *  Online / Physical KYC question belongs to a FRESH KYC (kyc_registered). */
+const NO_NOTES_STAGES = new Set(["kyc_validated"]);
 
 /**
  * "Create Proposal" says what the click will do once a proposal exists: a

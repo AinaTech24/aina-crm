@@ -98,7 +98,7 @@ export function InvestorBlueprintStageBar({ investorId, investorName }: { invest
         <ol className="flex items-center min-w-max gap-0.5">
           {data.allStages.map((s, i) => (
             <li key={s.key} className="flex items-center">
-              <StepWrap kyc={s.key === "kyc_validated"} onKyc={() => setKycOpen(true)}>
+              <StepWrap kyc={s.key === "kyc_registered"} onKyc={() => setKycOpen(true)}>
                 <div
                   className={`size-7 rounded-full grid place-items-center text-2xs font-bold ${
                     s.status === "done"
@@ -138,9 +138,9 @@ export function InvestorBlueprintStageBar({ investorId, investorName }: { invest
           14-stage Lead → Client journey was skipped. From here, the CRM
           tracks reviews, transactions, service requests and goals. Click{" "}
           <button type="button" onClick={() => setKycOpen(true)} className="font-semibold text-foreground underline underline-offset-2">
-            KYC Validated
+            KYC Registered
           </button>{" "}
-          to start Online or Physical KYC as a task.
+          to start a fresh Online or Physical KYC as a task.
         </span>
       </div>
       {kycOpen && <KycRouteDialog investorId={investorId} investorName={investorName ?? "this client"} onClose={() => setKycOpen(false)} />}
@@ -148,14 +148,14 @@ export function InvestorBlueprintStageBar({ investorId, investorName }: { invest
   );
 }
 
-/** A step on the read-only bar; "KYC Validated" is a button that opens the KYC choice. */
+/** A step on the read-only bar; "KYC Registered" (fresh KYC) is a button that opens the KYC choice. */
 function StepWrap({ kyc, onKyc, children }: { kyc: boolean; onKyc: () => void; children: React.ReactNode }) {
   if (!kyc) return <div className="flex flex-col items-center min-w-[80px]">{children}</div>;
   return (
     <button
       type="button"
       onClick={onKyc}
-      title="Choose Online or Physical KYC and create the task"
+      title="Fresh KYC: choose Online or Physical KYC and create the task"
       className="flex flex-col items-center min-w-[80px] rounded-lg p-0.5 hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
     >
       {children}

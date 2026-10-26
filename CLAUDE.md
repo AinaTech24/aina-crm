@@ -322,18 +322,21 @@ the client page's Overview tab.
   later") or the New opportunity dialog (Now / Later). Diwali dates are a
   table in later-core — add the next year as the calendar rolls on.
 
-## KYC Validated — Online or Physical KYC
+## Fresh KYC — Online or Physical KYC
 
-Reaching **KYC Validated** on a client's onboarding journey asks which KYC the
-client will do — **Online** (e-KYC via Aadhaar OTP / DigiLocker) or
-**Physical** (in-person verification) — and creates that high-priority task in
-the Tasks module for the person picked, due the date chosen (2026-10-26).
+When a client needs a **fresh KYC** ("Register Fresh KYC" / the KYC Registered
+step of the onboarding journey), the app asks which KYC the client will do —
+**Online** (e-KYC via Aadhaar OTP / DigiLocker) or **Physical** (in-person
+verification) — and creates that high-priority task in the Tasks module for the
+person picked, due the date chosen (2026-10-26). **KYC Validated** asks nothing:
+one click marks the KYC verified and moves on (the firm's correction — a
+validated KYC has nothing left to choose).
 Lead-backed journeys ask in the step pop-up (`KYC_MODES` in
-`components/leads/GuidedStageActions.tsx`; the engine's journey task takes the
-chosen title). Every other client — a direct entry or an import, whose journey
-bar is read-only — opens `KycRouteDialog` from the KYC Validated step
-(`components/investors/InvestorBlueprintStageBar.tsx`), which posts the task to
-`/api/tasks` linked to the client.
+`components/leads/GuidedStageActions.tsx`, on `kyc_registered`; the engine's
+journey task takes the chosen title). Every other client — a direct entry or an
+import, whose journey bar is read-only — opens `KycRouteDialog` from the KYC
+Registered step (`components/investors/InvestorBlueprintStageBar.tsx`), which
+posts the task to `/api/tasks` linked to the client.
 
 ## Date of demise — a client who has died
 

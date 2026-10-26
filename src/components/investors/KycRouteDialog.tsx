@@ -1,13 +1,14 @@
 "use client";
 
 /**
- * "KYC Validated" on a client's onboarding journey: which KYC does the client
- * want — Online (e-KYC via Aadhaar OTP / DigiLocker) or Physical (in-person
- * verification)? The choice becomes a high-priority task in the Tasks module,
+ * A FRESH KYC on a client's onboarding journey ("KYC Registered"): which KYC
+ * does the client want — Online (e-KYC via Aadhaar OTP / DigiLocker) or
+ * Physical (in-person verification)? A KYC that is already validated has
+ * nothing left to choose, so this is not asked there. The choice becomes a high-priority task in the Tasks module,
  * assigned to the person picked here and linked to the client.
  *
  * Lead-backed journeys ask the same in GuidedStageActions (KYC_MODES) when the
- * step is entered; this dialog is the entry point for every other client — a
+ * fresh-KYC step is entered; this dialog is the entry point for every other client — a
  * direct entry or an import, whose journey bar is otherwise read-only.
  */
 
@@ -75,8 +76,8 @@ export function KycRouteDialog({ investorId, investorName, onClose }: { investor
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          title: `${r.label} — ${investorName}`,
-          description: `${r.label} chosen at "KYC Validated" (${r.hint}).`,
+          title: `${r.label} (fresh KYC) — ${investorName}`,
+          description: `${r.label} chosen for the client's fresh KYC (${r.hint}).`,
           type: "kyc_renewal",
           department: "compliance",
           priority: "high",
@@ -104,7 +105,7 @@ export function KycRouteDialog({ investorId, investorName, onClose }: { investor
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>KYC Validated — which KYC?</DialogTitle>
+          <DialogTitle>Fresh KYC — which KYC?</DialogTitle>
           <DialogDescription>
             Choose how {investorName} will complete KYC. A task is created in the Tasks module for the person you pick.
           </DialogDescription>
