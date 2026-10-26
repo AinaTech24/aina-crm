@@ -925,6 +925,47 @@ contact details are shared (`components/landing/SiteChrome.tsx`,
 - The Vartify WhatsApp chat button (`components/landing/WhatsAppWidget.tsx`)
   loads on the website pages only, never inside the CRM.
 
+## Required WhatsApp templates — made and sent to Meta on connect
+
+When a firm saves its Vartify key (Settings → Integrations, owner), the CRM
+creates the **required template set** and sends every one to Meta for approval
+(2026-10-26). Catalogue `lib/templates/whatsapp-catalogue.ts` (pure data:
+UTILITY — SIP registered / rejected / debit reminder, mandate expiry, KYC,
+risk-profile link, meetings, documents, service request, premium; MARKETING —
+birthday, festival, start-a-SIP, review, tax-saving, insurance check, referral,
+check-in, investor session). Provisioning `lib/templates/whatsapp-provision.ts`.
+
+- **Creation is idempotent per firm**: key `wa_*`, (tenant, key, whatsapp,
+  en-IN); a submission is *claimed* with one UPDATE (`external_status`
+  SUBMITTING) so the connect call, the button and the worker can never send the
+  same template twice; a name Vartify already has counts as sent.
+- **Where it runs**: the connect POST fires it after the response
+  (`POST /api/settings/integrations/vartify`); `…/vartify/templates` GET lists
+  each template's state, POST (owner) creates what is missing and re-sends
+  what failed. The 15-minute `vartify-template-sync` worker only RE-SENDS
+  existing drafts that failed (after 6 h) — it never creates, so an archived
+  template is not brought back.
+- **Status is the existing one**: `templates.status` draft → pending_approval →
+  approved | rejected; the version's `external_status` PENDING / FAILED and
+  `rejection_reason` (Meta's, or the send error). The worker now also writes
+  Meta's verdict onto the version (`approved_external` / `rejected`).
+- **Rules every body follows** (pinned by `tests/whatsapp-catalogue.test.ts`,
+  which also runs the compliance gate): no variable first, last or touching
+  another; variables declared in order of first use (a send fills Meta's
+  positional {{1}}… from that list); a real `example` for each; marketing
+  carries the AMFI market-risk line and "Reply STOP to opt out"; no returns.
+- **Variables are the CRM's own merge fields** (`investor.first_name`,
+  `investor.rm_name`, `transaction.*`, `link.risk_profile`) plus
+  `firm_sign_off` — "Legal name (ARN-123456)" from `lib/comms/firm-sign-off.ts`,
+  which the pipeline now also fills as `arn_no` / `arn_name` (the recipes
+  referenced them but nothing set them). Anything else (`meeting_date`,
+  `document_name`…) is passed by the workflow or the compose form.
+- **"Fetch from WhatsApp" keeps our variables**: a version whose body has
+  `autoProvisioned` takes Meta's status from an import but keeps its named
+  variables (`whatsapp-template-import.ts`).
+- To add a template: append to `WHATSAPP_TEMPLATES`; firms get it from the
+  panel's "Send the rest to Meta" button (existing firms are not auto-backfilled).
+
 ## Webhook handlers
 
 | Provider | Path | Verifies |

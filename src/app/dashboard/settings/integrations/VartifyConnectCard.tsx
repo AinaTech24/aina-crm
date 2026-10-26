@@ -3,6 +3,7 @@
 import { useId, useEffect, useState } from "react";
 import { Check, AlertCircle, Loader2, MessageCircle, RefreshCw } from "lucide-react";
 import { confirmDialog } from "@/components/ui/ConfirmProvider";
+import RequiredWhatsappTemplates from "./RequiredWhatsappTemplates";
 
 type Status = {
   connected: boolean;
@@ -33,6 +34,9 @@ export default function VartifyConnectCard() {
   const [webhookUrl, setWebhookUrl] = useState("");
   const [defaultLanguage, setDefaultLanguage] = useState("en_US");
 
+  // Set when the firm has just connected: the templates panel opens and watches
+  // the required templates being created and sent to Meta.
+  const [watchSince, setWatchSince] = useState(0);
   const [verify, setVerify] = useState<Verify | null>(null);
   const [verifying, setVerifying] = useState(false);
 
@@ -87,7 +91,11 @@ export default function VartifyConnectCard() {
         setStatus(data);
         setApiKey("");
         setEditing(false);
-        setMsg({ kind: "ok", text: "Vartify connected. WhatsApp sends now use this key." });
+        setMsg({
+          kind: "ok",
+          text: "Vartify connected. We are creating your required WhatsApp templates and sending them to Meta for approval.",
+        });
+        setWatchSince(Date.now());
       }
     } catch {
       setMsg({ kind: "err", text: "Network error — please try again" });
@@ -211,9 +219,9 @@ export default function VartifyConnectCard() {
                     </div>
                   )}
                   <p className="text-xs text-muted-foreground mt-1.5">
-                    WhatsApp templates are created &amp; approved in the Vartify console — Vartify’s API has no
-                    “create template” endpoint, so templates made in the CRM are <span className="font-medium">not</span>{" "}
-                    sent to Meta. Author them in Vartify → wait for Meta approval → “Fetch from WhatsApp”.{" "}
+                    Your required WhatsApp templates are created and sent to Meta for approval automatically. Templates you
+                    make yourself in Templates can be submitted from there, or authored in the Vartify console and brought
+                    in with “Fetch from WhatsApp”.{" "}
                     <a href="https://wapi.ainatech.in" target="_blank" rel="noopener noreferrer" className="text-brand-cyan-deep underline">
                       Open Vartify console ↗
                     </a>
@@ -225,6 +233,8 @@ export default function VartifyConnectCard() {
                 </div>
               ) : null}
             </div>
+
+            <RequiredWhatsappTemplates canManage watchSince={watchSince} />
           </div>
         ) : (
           <>

@@ -34,6 +34,7 @@ import {
 import { runComplianceChecks, missingMandatoryLines, type ComplianceResult } from "./compliance";
 import { resolveTokens, resolveTokenPath, renderTemplateText, type VariableDef } from "./tokens";
 import { consentDecision } from "./consent-rule";
+import { firmSignOffTokens } from "./firm-sign-off";
 import { whatsappAdapter, whatsappProviderId } from "./adapters/whatsapp";
 import { emailAdapter } from "./adapters/resend";
 import { smsAdapter } from "./adapters/msg91";
@@ -283,6 +284,9 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
         tenant_name: t?.legalName ?? "",
         tenant_display_name: t?.displayName ?? "",
         tenant_arn: t?.arn ?? "",
+        // Closing identity (name + ARN) and the pieces the recipes already
+        // reference as {{arn_no}} / {{arn_name}} — these were never filled.
+        ...firmSignOffTokens({ legalName: t?.legalName, displayName: t?.displayName, arn: t?.arn }),
         euin: t?.principalEuin ?? "",
         firm_website: t?.website ?? "",
         brand_color: t?.primaryColor ?? "",

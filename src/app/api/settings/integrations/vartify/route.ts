@@ -6,7 +6,8 @@
  * stored, encrypted credentials. Only an owner can manage firm-level keys.
  *
  *   GET    → connection status (masked key, never the secret)
- *   POST   → save / update { apiKey, webhookUrl?, defaultLanguage? }
+ *   POST   → save / update { apiKey, webhookUrl?, defaultLanguage? }, then create
+ *            the required WhatsApp templates and submit them to Meta
  *   DELETE → disconnect (soft-disable)
  */
 
@@ -20,6 +21,7 @@ import {
   disableTenantIntegration,
 } from "@/lib/comms/integrations";
 import { handleApiError } from "@/lib/api/error-handler";
+import { provisionWhatsappTemplates } from "@/lib/templates/whatsapp-provision";
 
 export const dynamic = "force-dynamic";
 
@@ -74,10 +76,19 @@ export async function POST(req: NextRequest) {
       await upsertTenantIntegration(tx, session.tenantId, "vartify", config);
     });
 
+    // Connecting is the moment the firm needs its templates: create the required
+    // utility + marketing set and send every one to Meta for approval. It runs
+    // after the response (about twenty calls to Vartify) — progress shows in
+    // Settings → Integrations and the Templates screen, and anything that fails
+    // is retried by the sync worker.
+    void provisionWhatsappTemplates({ tenantId: session.tenantId, userId: session.userId }).catch((err) =>
+      console.error("[vartify] template provisioning failed:", err)
+    );
+
     const status = await withTenant(session.tenantId, async (tx) =>
       getTenantIntegrationStatus(tx, session.tenantId, "vartify")
     );
-    return NextResponse.json({ ok: true, ...status });
+    return NextResponse.json({ ok: true, ...status, templatesStarted: true });
   } catch (err) {
     return handleApiError(err);
   }
