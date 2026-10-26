@@ -1818,26 +1818,28 @@ are both responsive, or 503 if the DB is unreachable. Used by
 - **Investor mobile app** (React Native)
 - **Video session suite**
 - **AI assistant Tier 2 RAG** (per-tenant vector index)
-- **Per-tenant SMS (MSG91/DLT) self-serve config** — the comms pipeline reads a
-  per-tenant `msg91` integration but there's no settings UI/API to set it, so
-  every tenant falls back to the shared env DLT key. DLT registration is
-  per-entity in India, so this needs a settings page before SMS scales per-firm.
 - **RTA bulk-import client-count quota** — `assertInvestorQuota` is enforced on
   the interactive create paths (manual / CSV commit / lead-convert), but the RTA
   master importer (`src/lib/rta/import.ts`) creates investors mid-pipeline with
   folio/family linking and is NOT yet capped; enforce there carefully so the
   linkage isn't broken.
-- **Workflow send durability (outbox)** — `dispatch()` still performs the
-  external adapter call inside the workflow step's DB transaction. A rollback
-  after a successful send can't be recorded, so a re-run may double-send. The
-  `startRun` active-subject unique index (migration 0124) removes the most
-  common duplicate-run source; the full fix is to commit the `queued` row, send
-  OUTSIDE any open tx, then commit status (the campaign dispatcher already does
-  this — mirror it in the runner).
 
 These have clear hooks in the schema and architecture; pick them up in roadmap order (see README "What's left").
 
 ### Already built (commercial readiness)
+
+- **Send durability** — every outbound goes through the delivery ledger
+  (`lib/comms/durable-delivery.ts`, `communication_deliveries`), which commits
+  on its OWN transaction, keyed by a key stable across retries
+  (`wf:<run>:<node>:<step>` for a workflow send). A step that rolls back after
+  the provider accepted the message finds "sent" on retry and never sends
+  again; a send interrupted mid-call is marked "unknown" for reconciliation,
+  never re-sent. Pinned by `tests/durable-delivery.test.ts`. (This was listed
+  as deferred long after it shipped.)
+- **Per-firm SMS sender** — Settings → Integrations → MSG91 SMS (owner only):
+  the firm's own MSG91 auth key and 6-character DLT header, stored encrypted
+  in `tenant_integrations` (provider `msg91`); without it SMS falls back to
+  the platform's shared key and sender.
 
 - **Authentication** — fully wired: JWT (HS256) sessions verified in Edge
   middleware with a DB revocation check, separate MFD vs platform-admin cookies,

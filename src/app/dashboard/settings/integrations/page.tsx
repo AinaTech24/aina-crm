@@ -6,6 +6,7 @@ import VartifyConnectCard from "./VartifyConnectCard";
 import { ZohoIntegrationCard } from "@/components/integrations/ZohoIntegrationCard";
 import { RtaMailbackCard } from "@/components/integrations/RtaMailbackCard";
 import { NseMfKycCard } from "@/components/integrations/NseMfKycCard";
+import { Msg91ConnectCard } from "@/components/integrations/Msg91ConnectCard";
 import { StatusChip } from "@/components/common/StatusChip";
 
 const INTEGRATIONS = [
@@ -49,6 +50,9 @@ export default function IntegrationsPage() {
 <PageHeaderCard title={<><Webhook className="size-5" /> Integrations</>} />
 {/* Self-serve: the firm connects its own WhatsApp sender once. */}
       <VartifyConnectCard />
+
+      {/* Self-serve: the firm's own DLT-registered SMS sender. */}
+      <Msg91ConnectCard />
 
       {/* Self-serve: connect the firm's Zoho CRM (one-way record sync). */}
       <Suspense fallback={null}>
