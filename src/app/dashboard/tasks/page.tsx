@@ -303,9 +303,12 @@ export default async function TasksPage({
       <PageHeaderCard
         title={<><ListChecks className="size-6 text-muted-foreground" /> Tasks</>}
         actions={
-          <Link href="/dashboard/tasks/new" className={buttonClass("primary")}>
-            <Plus className="size-4" /> New task
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/dashboard/tasks/qa" className={buttonClass("secondary")}>QA queue</Link>
+            <Link href="/dashboard/tasks/new" className={buttonClass("primary")}>
+              <Plus className="size-4" /> New task
+            </Link>
+          </div>
         }
       />
 

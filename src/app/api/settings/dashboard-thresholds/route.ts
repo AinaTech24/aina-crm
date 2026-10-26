@@ -12,9 +12,10 @@
  * dashboards read through — so what can be stored and what is honoured are one
  * rule: an unknown key or an out-of-bounds value is dropped, never saved.
  *
- * The same row also holds the escalation ladder (`escalationLadder`,
- * lib/tasks/escalation-ladder.ts, Settings → Escalation). Saving or resetting
- * the thresholds keeps it.
+ * The same row also holds other firm settings — the escalation ladder
+ * (`escalationLadder`, lib/tasks/escalation-ladder.ts) and QA sampling
+ * (`qaSampling`, lib/qa/sampling.ts). Saving or resetting the thresholds
+ * keeps every key in KEPT_KEYS.
  *
  * Gated on `settings.dashboard` (owner by default; grantable per user).
  */
@@ -31,6 +32,11 @@ import {
 } from "@/lib/dashboard/thresholds";
 
 export const dynamic = "force-dynamic";
+
+/** Firm settings stored in the same row that are not thresholds. */
+const KEPT_KEYS = ["escalationLadder", "qaSampling"];
+const kept = (col: string) => sql`(SELECT COALESCE(jsonb_object_agg(e.key, e.value), '{}'::jsonb)
+  FROM jsonb_each(COALESCE(${sql.raw(col)}, '{}'::jsonb)) e WHERE e.key = ANY(${`{${KEPT_KEYS.join(",")}}`}::text[]))`;
 
 const Body = z.object({ settings: z.record(z.string(), z.unknown()) });
 
@@ -75,10 +81,7 @@ export async function PUT(req: NextRequest) {
         INSERT INTO dashboard_settings (tenant_id, settings, updated_by, updated_at)
         VALUES (${session.tenantId}::uuid, ${JSON.stringify(clean)}::jsonb, ${session.userId}::uuid, now())
         ON CONFLICT (tenant_id) DO UPDATE
-          SET settings = EXCLUDED.settings
-                || CASE WHEN dashboard_settings.settings ? 'escalationLadder'
-                        THEN jsonb_build_object('escalationLadder', dashboard_settings.settings -> 'escalationLadder')
-                        ELSE '{}'::jsonb END,
+          SET settings = EXCLUDED.settings || ${kept("dashboard_settings.settings")},
               updated_by = EXCLUDED.updated_by, updated_at = now()
       `);
       return loadDashboardThresholds(tx);
@@ -94,13 +97,11 @@ export async function DELETE() {
     const session = await requireSession();
     requireCap(session.roles, "settings.dashboard", session.permissions);
     await withTenant(session.tenantId, async (tx) => {
-      // Back to the defaults, keeping the escalation ladder. Explicit predicate
-      // as well as RLS — never a bare DELETE.
+      // Back to the defaults, keeping the other firm settings (KEPT_KEYS).
+      // Explicit predicate as well as RLS — never a bare DELETE.
       await tx.execute(sql`
         UPDATE dashboard_settings
-           SET settings = CASE WHEN settings ? 'escalationLadder'
-                               THEN jsonb_build_object('escalationLadder', settings -> 'escalationLadder')
-                               ELSE '{}'::jsonb END,
+           SET settings = ${kept("settings")},
                updated_by = ${session.userId}::uuid, updated_at = now()
          WHERE tenant_id = ${session.tenantId}::uuid
       `);

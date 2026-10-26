@@ -432,6 +432,28 @@ pages `/dashboard/practice/*` with `PracticeNav`; access `lib/practice/access.ts
   A bare `require(…)` in a route makes Next's bundler treat it as CommonJS and
   every request 500s; `check:rbac` accepts `requireCap(`.
 
+## QA sampling — a check of completed work
+
+Settings → QA sampling and Tasks → QA queue (`/dashboard/tasks/qa`,
+2026-10-26, CEO review S7). Code `lib/qa/sampling.ts` (settings, the weekly
+pass, the verdict) and `lib/qa/results.ts` (queue, pass rate).
+
+- **Off until the firm switches it on.** Then every week (the task reminder
+  scanner, any pass from Monday) a share of each person's tasks completed the
+  week BEFORE (Mon–Mon IST; firm-set %, rounded up; chosen types or all) is
+  picked — deterministic per week (md5 order), never twice for a person-week.
+- **A check is a task** (`qa_review`, meta `qaOf` / `qaDoerId` / `qaWeek`) for
+  the person's reporting manager, else their branch head, else an owner —
+  never the doer. It escalates under the ladder like any task.
+- **The verdict** (`POST /api/qa/reviews/[id]`, the checker or an owner):
+  closes the check (meta.qa), stamps the task checked (meta.qaResult); a Fail
+  needs a reason and gives the doer a `qa_correction` task. Audited
+  `task.qa_reviewed`. Pass rate = passes ÷ checks with a verdict.
+- Stored in `dashboard_settings.settings.qaSampling`; the thresholds save and
+  reset keep it (`KEPT_KEYS` in that route — add any new key stored there).
+- Not built yet: enrolling someone in an SOP's induction lesson after N fails
+  on that SOP — it needs the SOP link on tasks (S1).
+
 ## Bottlenecks — where work waits
 
 Reports → "Bottlenecks — Where Work Waits" (`/dashboard/reports/bottlenecks`,
