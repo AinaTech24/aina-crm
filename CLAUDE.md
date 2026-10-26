@@ -1818,11 +1818,6 @@ are both responsive, or 503 if the DB is unreachable. Used by
 - **Investor mobile app** (React Native)
 - **Video session suite**
 - **AI assistant Tier 2 RAG** (per-tenant vector index)
-- **RTA bulk-import client-count quota** — `assertInvestorQuota` is enforced on
-  the interactive create paths (manual / CSV commit / lead-convert), but the RTA
-  master importer (`src/lib/rta/import.ts`) creates investors mid-pipeline with
-  folio/family linking and is NOT yet capped; enforce there carefully so the
-  linkage isn't broken.
 
 These have clear hooks in the schema and architecture; pick them up in roadmap order (see README "What's left").
 
@@ -1836,6 +1831,12 @@ These have clear hooks in the schema and architecture; pick them up in roadmap o
   again; a send interrupted mid-call is marked "unknown" for reconciliation,
   never re-sent. Pinned by `tests/durable-delivery.test.ts`. (This was listed
   as deferred long after it shipped.)
+- **Client limit vs the registrar** (the firm's decision of 2026-10-26):
+  clients added by hand, CSV or lead conversion stop at `packages.maxInvestors`
+  (`assertInvestorQuota`); an RTA import is NEVER cut short — the registrar's
+  book is the firm's real data. After every RTA import a firm over its limit is
+  told (`lib/billing/client-limit.ts`, each owner once a day,
+  `plan.client_limit`) and Billing shows how far over it is.
 - **Per-firm SMS sender** — Settings → Integrations → MSG91 SMS (owner only):
   the firm's own MSG91 auth key and 6-character DLT header, stored encrypted
   in `tenant_integrations` (provider `msg91`); without it SMS falls back to

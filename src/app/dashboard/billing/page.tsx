@@ -228,7 +228,9 @@ function UsageRow({ icon: Icon, label, m, unit }: { icon: any; label: string; m:
       <div className="h-2 rounded-full bg-secondary overflow-hidden mt-1.5">
         <div className={`h-full rounded-full ${tone}`} style={{ width: `${pct ?? 4}%` }} />
       </div>
-      {pct != null && pct >= 90 && (
+      {m.limit != null && m.used > m.limit ? (
+        <div className="text-2xs text-rose-600 mt-0.5">{fmt(m.used - m.limit)} over your plan — upgrade to add more</div>
+      ) : pct != null && pct >= 90 && (
         <div className="text-2xs text-rose-600 mt-0.5">{pct}% used — approaching your plan limit</div>
       )}
     </div>
