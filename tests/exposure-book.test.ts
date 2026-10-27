@@ -33,12 +33,12 @@ describe.skipIf(!TEST_DB)("loadExposureBook", () => {
     await q(sql`INSERT INTO tenants (id, legal_name, display_name, arn) VALUES (${tenant}::uuid, 'Exposure Test', 'Exposure Test', ${"ARN-EX-" + tenant.slice(0, 6)})`);
     await q(sql`INSERT INTO investors (id, tenant_id, name, status) VALUES (${ledgerOnly}::uuid, ${tenant}::uuid, 'Ledger Only', 'active'), (${nothing}::uuid, ${tenant}::uuid, 'No Holdings', 'active')`);
     await q(sql`INSERT INTO scheme_nav (scheme_code, scheme_name, nav, nav_date, scheme_category) VALUES
-      (${eqCode}, 'Exposure Test Flexi Cap Fund', 20, current_date, 'Equity Scheme - Flexi Cap Fund'),
-      (${debtCode}, 'Exposure Test Liquid Fund', 5000, current_date, 'Debt Scheme - Liquid Fund')`);
+      (${eqCode}, 'Exposure Test Flexi Cap Fund - Growth', 20, current_date, 'Equity Scheme - Flexi Cap Fund'),
+      (${debtCode}, 'Exposure Test Liquid Fund - Growth', 5000, current_date, 'Debt Scheme - Liquid Fund')`);
     const folio = ((await q(sql`INSERT INTO folios (tenant_id, investor_id, folio_number, amc_code, amc_name) VALUES (${tenant}::uuid, ${ledgerOnly}::uuid, 'EX/1', 'EX', 'EX') RETURNING id`)).rows[0] as { id: string }).id;
     await q(sql`INSERT INTO transactions (tenant_id, investor_id, folio_id, folio_number, type, direction, amount, units, order_date, scheme_code, scheme_name, amc_name, status) VALUES
-      (${tenant}::uuid, ${ledgerOnly}::uuid, ${folio}::uuid, 'EX/1', 'purchase', 'inflow', 10000, 400, current_date - 60, ${eqCode}, 'Exposure Test Flexi Cap Fund', 'Exposure', 'processed'),
-      (${tenant}::uuid, ${ledgerOnly}::uuid, ${folio}::uuid, 'EX/1', 'purchase', 'inflow', 5000, 1, current_date - 40, ${debtCode}, 'Exposure Test Liquid Fund', 'Exposure', 'processed')`);
+      (${tenant}::uuid, ${ledgerOnly}::uuid, ${folio}::uuid, 'EX/1', 'purchase', 'inflow', 10000, 400, current_date - 60, ${'R' + eqCode}, 'Exposure Test - Flexi Cap Fund - Regular Plan Growth', 'Exposure', 'processed'),
+      (${tenant}::uuid, ${ledgerOnly}::uuid, ${folio}::uuid, 'EX/1', 'purchase', 'inflow', 5000, 1, current_date - 40, ${'R' + debtCode}, 'Exposure Test - Liquid Fund - Regular Plan Growth', 'Exposure', 'processed')`);
   });
 
   afterAll(async () => {
@@ -49,7 +49,7 @@ describe.skipIf(!TEST_DB)("loadExposureBook", () => {
     await q(sql`DELETE FROM tenants WHERE id = ${tenant}::uuid`);
   });
 
-  it("reads a ledger-only client's holdings, with the AMFI master's categories", async () => {
+  it("reads a ledger-only client's holdings, with categories found through the registrar's own spelling of each scheme", async () => {
     const book = await withSystem((tx) => load(tx, tenant, ledgerOnly));
     const e = exposureOf(book as never);
     expect(e.classifiedPct).toBe(100);
