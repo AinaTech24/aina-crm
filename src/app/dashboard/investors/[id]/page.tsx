@@ -63,6 +63,7 @@ import { FamilySnapshot } from "@/components/investors/FamilySnapshot";
 import { StatementActions } from "@/components/investors/StatementActions";
 import { WealthStoryButton } from "@/components/investors/WealthStoryButton";
 import { valueInvestor } from "@/lib/finance/valuation";
+import { loadExposureBook } from "@/lib/investors/exposure-book";
 import { ChurnRiskCard } from "@/components/investors/ChurnRiskCard";
 import { churnForInvestor } from "@/lib/churn/scan";
 import { TransactionLedger } from "@/components/investors/TransactionLedger";
@@ -100,7 +101,6 @@ import { buttonClass } from "@/components/ui/button-class";
 import { MENU_ICON, MENU_ITEM } from "@/components/ui/menu-item-class";
 import { clientCompleteness } from "@/lib/investors/completeness";
 import { assetClassExposure } from "@/lib/investors/asset-class";
-import { withSchemeCategories } from "@/lib/investors/scheme-categories";
 import { assessSuitability } from "@/lib/investors/suitability";
 import { getClientHealth } from "@/lib/metrics/health";
 import {
@@ -429,7 +429,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
   // Holdings stored without a category take it from the AMFI master, so this
   // equity share matches the suitability email and the proposal builder.
   const exposure = assetClassExposure(
-    (await withTenant(session.tenantId, (tx) => withSchemeCategories(tx, data.folios as any))) as any
+    (await withTenant(session.tenantId, (tx) => loadExposureBook(tx, session.tenantId, id, data.valuation))) as any
   );
   const suitability = assessSuitability((inv as any).riskProfile ?? null, exposure.equityPct, exposure.classifiedPct);
   const isRiskProfileMissing = !inv.riskProfile;

@@ -272,22 +272,15 @@ export async function loadClientLinkTokens(
   // ── Portfolio vs profile: the mismatch template's subject matter ────────
   if (want.suitability && subjectType === "investor") {
     try {
-      const [{ assessSuitability }, { assetClassExposure }, { folios: foliosTable }] = await Promise.all([
+      const [{ assessSuitability }, { assetClassExposure }] = await Promise.all([
         import("@/lib/investors/suitability"),
         import("@/lib/investors/asset-class"),
-        import("@/db/schema"),
       ]);
-      const { withSchemeCategories } = await import("@/lib/investors/scheme-categories");
-      // Holdings stored without a category take it from the AMFI master —
-      // without that, most of a book can be "unclassified" and the email
-      // printed an equity share from a sliver of it beside an empty list.
-      const folioRows = await withSchemeCategories(
-        tx,
-        await tx
-          .select({ aum: foliosTable.aum, schemes: foliosTable.schemes })
-          .from(foliosTable)
-          .where(and(eq(foliosTable.tenantId, tenantId), eq(foliosTable.investorId, subjectId)))
-      );
+      // The same holdings the client page shows: the live valuation (which
+      // covers a client whose holdings come only from transactions), else the
+      // stored folios — each with AMFI categories filled in.
+      const { loadExposureBook } = await import("@/lib/investors/exposure-book");
+      const folioRows = await loadExposureBook(tx, tenantId, subjectId);
 
       const exposure = assetClassExposure(folioRows as any);
       // assessSuitability keys off the canonical `investors.risk_profile` enum,

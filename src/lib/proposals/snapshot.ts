@@ -18,7 +18,7 @@
  * belong to investors). That is reported as such, never as zeros.
  */
 
-import { withSchemeCategories } from "@/lib/investors/scheme-categories";
+import { loadExposureBook } from "@/lib/investors/exposure-book";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { folios, goals, investors, leads, families } from "@/db/schema";
 import { loadClientSummary } from "@/lib/investors/summary";
@@ -101,13 +101,7 @@ async function investorSnapshot(tx: Tx, tenantId: string, investorId: string): P
   const summary = await loadClientSummary(tx, tenantId, investorId);
   // Holdings stored without a category take it from the AMFI master, so the
   // equity share here matches the client page and the suitability email.
-  const folioRows = await withSchemeCategories(
-    tx,
-    await tx
-      .select({ aum: folios.aum, schemes: folios.schemes })
-      .from(folios)
-      .where(and(eq(folios.tenantId, tenantId), eq(folios.investorId, investorId)))
-  );
+  const folioRows = await loadExposureBook(tx, tenantId, investorId);
   const exposure = assetClassExposure(folioRows as any);
   const suit = assessSuitability(inv.riskProfile ?? null, exposure.equityPct, exposure.classifiedPct);
 
