@@ -23,11 +23,34 @@ import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { shareTokens } from "@/db/schema";
 import { createShareToken, type ShareTokenKind } from "@/lib/share-tokens";
+import { assetClassOf } from "@/lib/investors/asset-class";
 
 /** Merge-token namespaces this module can fill. */
 export const CLIENT_LINK_NAMESPACES = ["risk.", "suitability.", "link."] as const;
 
 /** Does this template body reference anything we can fill? */
+/**
+ * The schemes that hold value but whose asset class is still unknown after the
+ * AMFI master and the name were tried — named, so the RM knows exactly which
+ * fund to categorise. Null when there are none to name.
+ */
+export function unclassifiedSchemes(
+  folios: Array<{ schemes?: Array<{ schemeName?: string | null; category?: string | null; value?: number | null }> | null }>
+): string | null {
+  const names = new Set<string>();
+  for (const f of folios) {
+    for (const sc of f.schemes ?? []) {
+      if (assetClassOf(sc.category ?? undefined) !== "other") continue;
+      if (!(Number(sc.value ?? 0) > 0)) continue;
+      names.add(String(sc.schemeName ?? "").trim() || "an unnamed scheme");
+    }
+  }
+  if (!names.size) return null;
+  const list = [...names];
+  const shown = list.slice(0, 4).join("; ");
+  return `Could not tell equity from debt for: ${shown}${list.length > 4 ? ` and ${list.length - 4} more` : ""}. Their category is missing and the AMFI scheme list has no match - set the scheme category, then send again.`;
+}
+
 export function wantsClientLinkTokens(bodyStr: string): {
   risk: boolean;
   suitability: boolean;
@@ -267,7 +290,9 @@ export async function loadClientLinkTokens(
           ? "No folio found for this client - no mutual fund holdings are on file."
           : legs === 0
             ? "This client's folios have no schemes (no mutual fund holdings or values) on file."
-            : null;
+            : exposure.total === 0
+              ? "This client's folios hold no value right now (units redeemed or no balance on file), so there is no equity share to state."
+              : unclassifiedSchemes(folioRows);
         if (detail) s = { ...s, message: detail };
       }
 
