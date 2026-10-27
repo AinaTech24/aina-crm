@@ -1,49 +1,32 @@
 import { describe, expect, it } from "vitest";
-import { categoryFromName } from "@/lib/investors/scheme-categories";
-import { assetClassOf, assetClassExposure } from "@/lib/investors/asset-class";
 import { unclassifiedSchemes } from "@/lib/comms/client-links";
 
-describe("category from the scheme name", () => {
-  it("reads the class a name states and nothing it does not", () => {
-    expect(categoryFromName("HDFC Liquid Fund - Direct Plan - Growth")).toMatch(/^Debt/);
-    expect(categoryFromName("Parag Parikh Flexi Cap Fund - Regular")).toMatch(/^Equity/);
-    expect(categoryFromName("ICICI Prudential Balanced Advantage Fund")).toMatch(/^Hybrid/);
-    expect(categoryFromName("Some Opportunities Fund")).toBeNull();
-    expect(categoryFromName("")).toBeNull();
-    expect(categoryFromName(null)).toBeNull();
-  });
-
-  it("gives a category the exposure maths understands", () => {
-    expect(assetClassOf(categoryFromName("Axis Liquid Fund") ?? undefined)).toBe("defensive");
-    expect(assetClassOf(categoryFromName("Mirae Asset Large Cap Fund") ?? undefined)).toBe("equity");
-    expect(assetClassOf(categoryFromName("SBI Equity Hybrid Fund") ?? undefined)).toBe("hybrid");
-  });
-
-  it("lets a book of unknown-category schemes be classified from names", () => {
-    const folios = [
-      { aum: 100, schemes: [
-        { category: categoryFromName("Mirae Asset Large Cap Fund") ?? undefined, value: 60 },
-        { category: categoryFromName("Axis Liquid Fund") ?? undefined, value: 40 },
-      ] },
-    ];
-    const e = assetClassExposure(folios);
-    expect(Math.round(e.equityPct ?? -1)).toBe(60);
-    expect(e.classifiedPct).toBe(100);
-  });
-});
-
 describe("naming the schemes that cannot be classified", () => {
-  it("lists only valued schemes with no usable category", () => {
+  it("lists only valued schemes that are neither equity, hybrid nor debt, with their category", () => {
     const msg = unclassifiedSchemes([
-      { schemes: [
+      { aum: 14000, schemes: [
         { schemeName: "Mystery Fund A", category: "", value: 5000 },
+        { schemeName: "Gold FoF", category: "Other Scheme - FoF Domestic", value: 3000 },
         { schemeName: "Known Equity Fund", category: "Equity: Large Cap", value: 9000 },
         { schemeName: "Empty Fund", category: "", value: 0 },
       ] },
     ]);
-    expect(msg).toContain("Mystery Fund A");
+    expect(msg).toContain("Mystery Fund A (no category)");
+    expect(msg).toContain("Gold FoF (category: Other Scheme - FoF Domestic)");
     expect(msg).not.toContain("Known Equity Fund");
     expect(msg).not.toContain("Empty Fund");
+  });
+
+  it("counts a folio whose schemes carry no value of their own, as the exposure maths does", () => {
+    const msg = unclassifiedSchemes([
+      { aum: 100000, schemes: [{ schemeName: "Fund X", category: null }, { schemeName: "Fund Y", category: null }] },
+    ]);
+    expect(msg).toContain("Fund X");
+    expect(msg).toContain("Fund Y");
+  });
+
+  it("says nothing for a folio with no value at all", () => {
+    expect(unclassifiedSchemes([{ aum: 0, schemes: [{ schemeName: "Fund X", category: null }] }])).toBeNull();
   });
 
   it("says nothing when every valued scheme is classified", () => {

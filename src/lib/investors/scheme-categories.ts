@@ -15,12 +15,6 @@
  * name two schemes share with DIFFERENT categories is left alone rather than
  * guessed.
  *
- * A scheme the master does not know either (a delisted or renamed fund, a
- * registrar spelling that matches nothing) is classified from its NAME, as the
- * risk-drift report already does — "… Liquid Fund" is debt, "… Flexi Cap Fund"
- * is equity — and a name that says nothing stays unclassified. The category it
- * is given says where it came from.
- *
  * Returns copies; the stored folios are not changed.
  */
 
@@ -28,24 +22,11 @@ import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { assetClassOf } from "@/lib/investors/asset-class";
 import { normSchemeName } from "@/lib/finance/scheme-match";
-import { classifyScheme } from "@/lib/reports/risk-drift";
 
 type Leg = { schemeCode?: string | null; schemeName?: string | null; isin?: string | null; category?: string | null; [k: string]: unknown };
 type FolioLike = { schemes?: Leg[] | null; [k: string]: unknown };
 
 const needsCategory = (l: Leg) => assetClassOf(l.category ?? undefined) === "other";
-
-/** A category read from the scheme's own name, or null when the name does not say. */
-export function categoryFromName(schemeName: string | null | undefined): string | null {
-  const name = String(schemeName ?? "").trim();
-  if (!name) return null;
-  switch (classifyScheme(name)) {
-    case "equity": return "Equity (from scheme name)";
-    case "debt": return "Debt (from scheme name)";
-    case "hybrid": return "Hybrid (from scheme name)";
-    default: return null;
-  }
-}
 
 export async function withSchemeCategories<F extends FolioLike>(tx: Tx, folios: F[]): Promise<F[]> {
   const legs = folios.flatMap((f) => (f.schemes ?? []).filter(needsCategory));
@@ -91,7 +72,7 @@ export async function withSchemeCategories<F extends FolioLike>(tx: Tx, folios: 
     byCode.get(String(l.schemeCode ?? "").trim()) ??
     byIsin.get(String(l.isin ?? "").trim().toUpperCase()) ??
     byName.get(normSchemeName(l.schemeName)) ??
-    categoryFromName(l.schemeName);
+    null;
 
   return folios.map((f) =>
     f.schemes?.some(needsCategory)
