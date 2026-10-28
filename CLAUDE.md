@@ -250,6 +250,35 @@ Two constraints worth knowing before authoring a template:
 - **Every public form path needs a `PUBLIC_PATH_PREFIXES` entry** in
   `src/middleware.ts`, or the link 307s the client to `/login`.
 
+### Emailing a client about ONE record — a rejected SIP, a switch / STP / SWP
+
+An **Email** button on SIP Rejections (rows still being worked) and on the
+Transactions screen (processed switch / STP / SWP rows) posts to
+`POST /api/investors/[id]/record-email` (`{ kind, recordId }`). The values come
+from THAT record (`lib/comms/record-email.ts`), not the template's auto-fill,
+which reads the client's most recent transaction. A value the record lacks is
+sent as "—": `dispatch()` treats a blank caller variable as "not supplied" and
+fills it from the newest record, which would print another record's folio.
+
+- The emails are the designer starters `sip_rejection` and `switch_stp_swp`
+  (`RECORD_EMAIL_TEMPLATE_KEYS`), installed as the firm's own approved templates
+  the first time they are used (`installEmailStarters`); a template the firm
+  archived is left alone. A transactional email, so it goes unless the client
+  opted out, through the compliance gate, from the RM's own mailbox when
+  connected. The key is stable for ten minutes, so a double click sends once.
+- A switch confirmation is refused unless the transaction is processed /
+  successful; a SIP-rejection email unless the rejection is open (pending,
+  client contacted, bank or mandate issue).
+- **A workflow's email step installs these too** (`ensureEmailStarter`, in
+  `send_email`) — only these two and the old names in `EMAIL_STARTER_ALIASES`
+  (the "SIP rejection follow-up" recipe once named `sip_rejection_mandate_expired_email`,
+  a template that never existed; a firm's installed copy keeps that name). An
+  explicit list, never "any starter": what installs here is approved with nobody's
+  sign-off. The recipe now passes the triggering rejection's scheme / amount /
+  reason / date.
+- Recipe `defaultTemplates` are NOT installed anywhere: the recipe's WhatsApp
+  templates still have to exist in the firm for its WhatsApp steps to send.
+
 ### Adding a new compliance rule
 
 Append a function to `ALL_RULES` in `src/lib/comms/compliance.ts`. Each rule is `(ctx) => ComplianceFinding[]`. Severity `block` stops sends; `warn` shows in UI but allows; `info` is logged.

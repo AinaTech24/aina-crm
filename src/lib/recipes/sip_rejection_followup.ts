@@ -51,8 +51,22 @@ export const sipRejectionFollowupRecipe: RecipeDef = {
         category: "transactional",
       }),
       n("send_email_mandate", "send_email", {
-        templateKey: "sip_rejection_mandate_expired_email",
-        variables: { name: "subject.name", scheme: "event.scheme_name" },
+        // The vendor's "SIP — Rejection / Failed Installment" email; the send step
+        // installs it for a firm that has never opened it. The details are the
+        // rejection that STARTED this run — passed here, because left to the
+        // template they come from the client's newest rejection, which may be a
+        // different one. Anything the event does not carry (the folio) falls back
+        // to that newest record.
+        templateKey: "sip_rejection",
+        variables: {
+          name: "subject.name",
+          scheme: "event.scheme_name",
+          "transaction.scheme_name": "event.scheme_name",
+          "transaction.amount": "event.amount",
+          "transaction.rejection_reason": "event.reason",
+          "transaction.reason": "event.reason",
+          "transaction.transaction_date": "event.order_date",
+        },
         category: "transactional",
       }),
       n("task_mandate", "create_task", {

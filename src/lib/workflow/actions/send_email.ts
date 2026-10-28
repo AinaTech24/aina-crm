@@ -1,4 +1,5 @@
 import { dispatch } from "@/lib/comms/pipeline";
+import { ensureEmailStarter } from "@/lib/templates/install-client-emails";
 import { resolveExpression, resolveRecord } from "../context";
 import type { ActionHandler } from "./index";
 
@@ -25,6 +26,11 @@ export const sendEmailHandler: ActionHandler<any> = {
       cfg.fromAddress === "record_owner" && ctx.subjectType === "investor"
         ? (ctx.subject?.rm_id ?? ctx.subject?.rmId ?? undefined)
         : undefined;
+
+    // A step may name one of the vendor's starter emails (e.g. "sip_rejection")
+    // the firm has never opened in Templates — install it, rather than fail the
+    // run with "template not found".
+    await ensureEmailStarter(tx, ctx.tenantId, cfg.templateKey);
 
     const result = await dispatch(tx, {
       tenantId: ctx.tenantId,

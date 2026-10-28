@@ -36,16 +36,48 @@ export const CLIENT_EMAIL_TEMPLATE_KEYS = [
   "risk_profile_request",
 ] as const;
 
+/**
+ * Emails sent about one RECORD of a client's — a rejected SIP, a switch / STP /
+ * SWP — from the SIP Rejections and Transactions screens. Installed the first
+ * time one is sent (installEmailStarters), not at signup.
+ */
+export const RECORD_EMAIL_TEMPLATE_KEYS = ["sip_rejection", "switch_stp_swp"] as const;
+
+/**
+ * Names a published workflow may still carry for a starter email. The "SIP
+ * rejection follow-up" recipe once named `sip_rejection_mandate_expired_email`,
+ * a template that never existed; a firm's installed copy of the workflow keeps
+ * that name (published versions are immutable), so it resolves to the starter
+ * now and is installed under the name the workflow uses.
+ */
+export const EMAIL_STARTER_ALIASES: Record<string, string> = {
+  sip_rejection_mandate_expired_email: "sip_rejection",
+};
+
 export async function installClientEmailTemplates(
   tx: Tx,
   tenantId: string,
   userId?: string | null
 ): Promise<{ installed: string[]; skipped: string[] }> {
+  return installEmailStarters(tx, tenantId, CLIENT_EMAIL_TEMPLATE_KEYS, userId);
+}
+
+/**
+ * Install designer starters, by key, as the firm's own approved email templates.
+ * Idempotent: a key the firm already has — in any status, so one it archived
+ * stays archived — is left alone.
+ */
+export async function installEmailStarters(
+  tx: Tx,
+  tenantId: string,
+  keys: readonly string[],
+  userId?: string | null
+): Promise<{ installed: string[]; skipped: string[] }> {
   const installed: string[] = [];
   const skipped: string[] = [];
 
-  for (const key of CLIENT_EMAIL_TEMPLATE_KEYS) {
-    const starter = STARTER_TEMPLATES.find((s) => s.key === key);
+  for (const key of keys) {
+    const starter = STARTER_TEMPLATES.find((s) => s.key === (EMAIL_STARTER_ALIASES[key] ?? key));
     if (!starter) continue;
 
     const existing = await tx
@@ -99,4 +131,18 @@ export async function installClientEmailTemplates(
   }
 
   return { installed, skipped };
+}
+
+/**
+ * A workflow's email step names a template the firm may never have made. When the
+ * name is one of the record emails (or an old name for one), install it on the
+ * spot. An explicit list, not "any starter": whatever is installed here is
+ * approved with nobody's sign-off, so a starter added later must be opted in.
+ * Returns whether the key is one of these.
+ */
+export async function ensureEmailStarter(tx: Tx, tenantId: string, key: string): Promise<boolean> {
+  const wanted = EMAIL_STARTER_ALIASES[key] ? [key] : (RECORD_EMAIL_TEMPLATE_KEYS as readonly string[]).includes(key) ? [key] : [];
+  if (!wanted.length) return false; // not ours — and no query for it
+  await installEmailStarters(tx, tenantId, wanted, null);
+  return true;
 }

@@ -592,7 +592,6 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
           { label: "Reason", value: "{{transaction.rejection_reason}}" },
         ] } as any),
         b({ type: "text", html: "<b>What you can do:</b><br>• Ensure sufficient balance in your bank account<br>• Check that your bank mandate (NACH) is active<br>• Reply to this email and we'll help you resolve it<br><br>Missing one installment won't derail your goals, but staying consistent matters. We'll make sure the next one goes through smoothly.", align: "left" } as any),
-        b({ type: "button", label: "Talk to your advisor", url: "{{system.dashboard_url}}", align: "center", style: "solid", fullWidth: false } as any),
         b({ type: "text", html: SIGNOFF, align: "left" } as any),
         b({ type: "text", html: AMFI_DISCLAIMER, align: "left", variant: "note" } as any),
       ],
