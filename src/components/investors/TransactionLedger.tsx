@@ -8,6 +8,7 @@
  */
 
 import { formatINR, formatDate } from "@/lib/utils";
+import { EmailRecordButton } from "@/components/comms/EmailRecordButton";
 
 type Tx = {
   id: string;
@@ -54,7 +55,18 @@ function statusTone(s: string): string {
   return "bg-amber-50 text-amber-700"; // pending / submitted
 }
 
-export function TransactionLedger({ transactions, total }: { transactions: Tx[]; total: number }) {
+export function TransactionLedger({
+  transactions,
+  total,
+  investorId,
+  clientName,
+}: {
+  transactions: Tx[];
+  total: number;
+  /** With these, a processed switch / STP / SWP row can be emailed to the client. */
+  investorId?: string;
+  clientName?: string | null;
+}) {
   return (
     <div className="border rounded-lg bg-card p-5">
       <div className="font-semibold mb-3 flex items-center justify-between">
@@ -106,9 +118,20 @@ export function TransactionLedger({ transactions, total }: { transactions: Tx[];
                       {amt > 0 ? `${isOut ? "−" : "+"}${formatINR(amt)}` : "—"}
                     </td>
                     <td className="py-2.5 pl-4">
-                      <span className={`text-2xs px-1.5 py-0.5 rounded-full capitalize ${statusTone(t.status)}`}>
-                        {t.status}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-2xs px-1.5 py-0.5 rounded-full capitalize ${statusTone(t.status)}`}>
+                          {t.status}
+                        </span>
+                        {investorId && ["switch", "stp", "swp"].includes(t.type) && ["processed", "successful"].includes(t.status) && (
+                          <EmailRecordButton
+                            investorId={investorId}
+                            kind="transaction"
+                            recordId={t.id}
+                            clientName={clientName ?? null}
+                            summary={`${TYPE_LABEL[t.type] ?? t.type} · ${t.schemeName ?? "scheme"}${amt > 0 ? ` · ${formatINR(amt)}` : ""}`}
+                          />
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );

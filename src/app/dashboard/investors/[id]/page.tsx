@@ -848,7 +848,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
 
           {/* Transaction ledger — recent purchases / redemptions / SIPs / switches */}
           <RelatedListSection moduleKey="investors-detail" sectionKey="transactions">
-            <TransactionLedger transactions={data.recentTransactions as any} total={data.txCount} />
+            <TransactionLedger transactions={data.recentTransactions as any} total={data.txCount} investorId={id} clientName={inv.name} />
           </RelatedListSection>
 
           {/* Churn-risk scorecard + AI retention play */}
