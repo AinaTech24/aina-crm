@@ -82,6 +82,12 @@ const nextConfig: NextConfig = {
       "@xyflow/react",
     ],
   },
+  // The public home page (/) is the static landing page in public/landing. The old React page at
+  // src/app/page.tsx is left untouched: delete this rewrite to bring it back. Middleware still runs
+  // first, so signed-in visitors are still sent into their app from "/".
+  async rewrites() {
+    return { beforeFiles: [{ source: "/", destination: "/landing/index.html" }], afterFiles: [], fallback: [] };
+  },
   serverExternalPackages: ["pg", "bullmq", "ioredis"],
   images: {
     remotePatterns: [
