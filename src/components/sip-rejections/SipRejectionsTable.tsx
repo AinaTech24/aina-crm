@@ -297,7 +297,7 @@ export function SipRejectionsTable({ rows }: { rows: SipRejectionRow[] }) {
                             ? "bg-muted text-muted-foreground cursor-not-allowed"
                             : "bg-brand-navy hover:bg-brand-navy-deep text-white"
                         }`}
-                        title="Trigger automated WhatsApp alert to client & create RM retry task"
+                        title="Run the SIP rejection follow-up automation & create an RM retry task"
                       >
                         {isRecovering ? (
                           <Loader2 className="size-3 animate-spin" />
