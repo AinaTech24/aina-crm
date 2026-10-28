@@ -705,6 +705,12 @@ off, or replace the link).
   firm (483 in ten days, 474 escalated). Do not put `imap-poller` → ticket back.
   `scripts/close-auto-email-tickets.ts` (dry run; `--tenant`, `--apply`) closes
   the ones already in a register, never one a person has touched.
+  **Service Requests → "Close email requests (N)"** (`lib/service-requests/email-intake.ts`,
+  `/api/service-requests/email-intake`, `service_request.manage`) closes every
+  open, untouched email-opened ticket in one click, nothing deleted; it shows
+  only while some exist. `tests/email-never-opens-request.test.ts` pins that the
+  mailbox poller touches no ticket code and that `createServiceRequest` (the
+  WhatsApp intake's) cannot be given the email channel.
 
 ## Creating a family
 

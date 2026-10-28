@@ -37,7 +37,10 @@ export type CreateSrArgs = {
   tenantId: string;
   investorId: string | null;
   type: string;
-  channel?: "whatsapp" | "email" | "phone" | "in_person" | "form";
+  // Not "email": an email never opens a service request (2026-10-16). This
+  // function is the WhatsApp intake's; a person logging a request they got by
+  // email uses openServiceRequest, which records who opened it.
+  channel?: "whatsapp" | "phone" | "in_person" | "form";
   subject: string;
   description?: string;
   priority?: "low" | "normal" | "high" | "urgent";

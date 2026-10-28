@@ -13,6 +13,7 @@ import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
 import { MoreMenu } from "@/components/common/MoreMenu";
 import { ServiceFormShareButton } from "@/components/service-requests/ServiceFormShareButton";
+import { CloseEmailRequestsButton } from "@/components/service-requests/CloseEmailRequestsButton";
 import { buttonClass } from "@/components/ui/button-class";
 import { srPastSlaSql, srWhere } from "@/lib/metrics";
 import { serviceRequestScopeSql, srClientVisibleSql } from "@/lib/service-requests/access";
@@ -79,6 +80,7 @@ export default async function ServiceRequestsPage({
   // The service request form link for clients — same rule as its own page.
   const canSeeServiceForm = (["service_request.view.all", "service_request.manage"] as const)
     .some((cap) => can(session.roles, cap, session.permissions));
+  const canManageRequests = can(session.roles, "service_request.manage", session.permissions);
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const status = (sp.status ?? "").split(",").filter(Boolean);
@@ -207,6 +209,7 @@ export default async function ServiceRequestsPage({
               ]}
             />
           )}
+          {canManageRequests && <CloseEmailRequestsButton />}
           {canSeeServiceForm && <ServiceFormShareButton />}
           <ExportButton module="service-requests" />
           <Link href="/dashboard/service-requests/new" className={buttonClass("primary")}>
