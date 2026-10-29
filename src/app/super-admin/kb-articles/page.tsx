@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { asc, desc } from "drizzle-orm";
-import { Plus, BookOpen, Eye, EyeOff, ImageIcon, HelpCircle } from "lucide-react";
+import { Plus, BookOpen, Eye, EyeOff, ImageIcon, HelpCircle, FolderTree } from "lucide-react";
 import { withPlatformAdmin } from "@/db/client";
-import { kbArticles } from "@/db/schema";
+import { kbArticles, kbCategories, kbFolders } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { requirePlatform } from "@/lib/auth/rbac";
 
@@ -11,20 +11,27 @@ export const dynamic = "force-dynamic";
 export default async function KbArticlesPage() {
   const session = await requireSession();
   requirePlatform(session.roles, "platform.package.manage");
-  const rows = await withPlatformAdmin(session.userId, async (tx) =>
-    tx.select().from(kbArticles).orderBy(asc(kbArticles.sortOrder), desc(kbArticles.episodeNo)).limit(500)
-  );
+  const { rows, cats, folders } = await withPlatformAdmin(session.userId, async (tx) => ({
+    rows: await tx.select().from(kbArticles).orderBy(asc(kbArticles.sortOrder), desc(kbArticles.episodeNo)).limit(500),
+    cats: await tx.select({ id: kbCategories.id, name: kbCategories.name }).from(kbCategories),
+    folders: await tx.select({ id: kbFolders.id, name: kbFolders.name, categoryId: kbFolders.categoryId }).from(kbFolders),
+  }));
+  const catName = new Map(cats.map((c) => [c.id, c.name]));
+  const folderPath = new Map(folders.map((f) => [f.id, `${catName.get(f.categoryId) ?? "?"} › ${f.name}`]));
 
   return (
     <div className="space-y-6 max-w-5xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="page-title">Knowledge Base — KAIZEN</h1>
+          <h1 className="page-title">Knowledge Base</h1>
           <p className="text-muted-foreground text-sm">
-            Scenario + questions are public; the walkthrough and screenshots need a login. Changes go live immediately.
+            Help-centre guides with screenshots, shown publicly on the website. Organise them into categories and folders; changes go live immediately.
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Link href="/super-admin/kb-articles/structure" className="rounded-md border px-3 py-1.5 text-sm inline-flex items-center gap-1.5 hover:bg-accent">
+            <FolderTree className="size-4" /> Categories &amp; folders
+          </Link>
           <Link href="/knowledge-base" target="_blank" className="rounded-md border px-3 py-1.5 text-sm inline-flex items-center gap-1.5 hover:bg-accent">
             <Eye className="size-4" /> View hub
           </Link>
@@ -39,7 +46,7 @@ export default async function KbArticlesPage() {
           <BookOpen className="size-8 mx-auto text-muted-foreground/50" />
           <div className="mt-2">No articles yet.</div>
           <Link href="/super-admin/kb-articles/new" className="text-primary hover:underline mt-2 inline-block">
-            Write KAIZEN #1 →
+            Write the first article →
           </Link>
         </div>
       ) : (
@@ -60,7 +67,7 @@ export default async function KbArticlesPage() {
                 <div className="min-w-0 flex-1">
                   <div className="font-semibold truncate">{a.title}</div>
                   <div className="text-xs text-muted-foreground truncate mt-0.5">
-                    /{a.slug}
+                    {a.folderId ? folderPath.get(a.folderId) ?? "Unfiled" : "Unfiled"} · /{a.slug}
                     {a.hook ? ` · ${a.hook}` : ""}
                   </div>
                 </div>

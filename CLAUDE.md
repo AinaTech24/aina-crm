@@ -1026,6 +1026,36 @@ check-in, investor session). Provisioning `lib/templates/whatsapp-provision.ts`.
 - To add a template: append to `WHATSAPP_TEMPLATES`; firms get it from the
   panel's "Send the rest to Meta" button (existing firms are not auto-backfilled).
 
+## Knowledge Base — the public help centre
+
+`/knowledge-base` (2026-10-29, migration 0247) is a help centre in the shape of
+a Freshdesk solutions site: **Category → Folder → Article**, all public, no
+login. The super admin runs it at `/super-admin/kb-articles` (articles) and
+`/super-admin/kb-articles/structure` (categories and folders); APIs under
+`/api/super-admin/kb-articles` and `/api/super-admin/kb-structure`.
+
+- **Tables** (platform-level, no tenant_id, no RLS): `kb_categories`,
+  `kb_folders`, and `kb_articles.folder_id`. The old KAIZEN stories were moved
+  into a "KAIZEN › KAIZEN stories" folder by the migration. Deleting a
+  category or folder never deletes articles — they become unfiled.
+- **Public routes**: `/knowledge-base` (home, search box, category cards),
+  `/category/[slug]`, `/folder/[slug]`, `/search?q=`, and the article at
+  `/knowledge-base/[slug]`. `category`, `folder` and `search` are static
+  segments, so an article slug may not be one of them (`KB_RESERVED_SLUGS`).
+  An empty folder or category, and anything unpublished, is not listed; an
+  unfiled article is reachable by search or its own link.
+- **Screenshots sit where the author puts them.** The article body is the
+  Markdown subset in `components/kb/KbMarkdown.tsx`; `![caption](shot:N)` draws
+  the article's Nth uploaded screenshot (1-based) via `/api/kb/image/<id>?i=N-1`.
+  Uploading in the editor inserts that line at the cursor. A screenshot not
+  placed in the text is shown after it. Removing one in the editor renumbers
+  the later `shot:` references.
+- **New content = rows, not code.** Pages are `revalidate = 60`; saves also call
+  `revalidatePath("/knowledge-base", "layout")`.
+- The sidebar ("Articles in this folder", "You may like to read") comes from
+  `loadArticleContext` in `lib/kb/help.ts`; the landing header and footer link
+  to `/knowledge-base`.
+
 ## Webhook handlers
 
 | Provider | Path | Verifies |

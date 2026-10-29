@@ -255,7 +255,7 @@ export default function Home() {
             <p className="mt-4 text-sm text-site-muted">
               More in the{" "}
               <Link href="/blog" className="font-bold text-site-crimson hover:underline">blog</Link> and the{" "}
-              <Link href="/knowledge-base" className="font-bold text-site-crimson hover:underline">KAIZEN knowledge base</Link>.
+              <Link href="/knowledge-base" className="font-bold text-site-crimson hover:underline">knowledge base</Link>.
             </p>
           </div>
           <div className="lg:col-span-8">
