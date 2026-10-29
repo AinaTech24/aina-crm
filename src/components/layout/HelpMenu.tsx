@@ -65,6 +65,13 @@ export function HelpMenu({ whatsNewUnread = 0 }: { whatsNewUnread?: number }) {
               <span className="block text-2xs font-normal text-muted-foreground">ARN, KYC, NAV and more, explained</span>
             </span>
           </Link>
+          <a href="/knowledge-base" target="_blank" rel="noopener noreferrer" onClick={() => setOpen(false)} className={item}>
+            <BookOpen className="size-4 text-muted-foreground" />
+            <span className="flex-1">
+              Knowledge Base
+              <span className="block text-2xs font-normal text-muted-foreground">Step-by-step guides for every module</span>
+            </span>
+          </a>
           <Link href="/dashboard/whats-new" onClick={() => setOpen(false)} className={item}>
             <Sparkles className="size-4 text-muted-foreground" />
             <span className="flex-1">What&apos;s new</span>

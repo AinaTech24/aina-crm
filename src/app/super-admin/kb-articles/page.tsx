@@ -5,6 +5,7 @@ import { withPlatformAdmin } from "@/db/client";
 import { kbArticles, kbCategories, kbFolders } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { requirePlatform } from "@/lib/auth/rbac";
+import { InstallStarterButton } from "@/components/super-admin/InstallStarterButton";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,14 @@ export default async function KbArticlesPage() {
             <Plus className="size-4" /> New article
           </Link>
         </div>
+      </div>
+
+      <div className="rounded-lg border bg-card p-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground max-w-xl">
+          New to this? Add one draft guide per module process (dashboards, tasks, clients, SIPs, automations and more). They stay
+          hidden until you add screenshots and publish them.
+        </p>
+        <InstallStarterButton />
       </div>
 
       {rows.length === 0 ? (

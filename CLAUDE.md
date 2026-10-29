@@ -1052,6 +1052,13 @@ login. The super admin runs it at `/super-admin/kb-articles` (articles) and
   the later `shot:` references.
 - **New content = rows, not code.** Pages are `revalidate = 60`; saves also call
   `revalidatePath("/knowledge-base", "layout")`.
+- **Starter guides** (`lib/kb/starter-guides.ts`, installed by `lib/kb/install-starter.ts`
+  from "Add starter guides" on `/super-admin/kb-articles`): one DRAFT process guide
+  per module area, written from how the product behaves, not from screenshots.
+  The admin adds screenshots and publishes. Installing again only adds what is
+  missing; an edited guide is never overwritten. Add a guide by appending to
+  `GUIDES` and keep every claim true of the product. The in-app Help menu (the
+  top bar "?") links to `/knowledge-base`.
 - The sidebar ("Articles in this folder", "You may like to read") comes from
   `loadArticleContext` in `lib/kb/help.ts`; the landing header and footer link
   to `/knowledge-base`.

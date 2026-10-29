@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { inlineShotNumbers } from "@/lib/kb/shots";
-import { KbBody, KbFolderBody } from "@/lib/kb/schema";
+import { GUIDES, STARTER_FOLDERS } from "@/lib/kb/starter-guides";
+import { KB_RESERVED_SLUGS, KbBody, KbFolderBody } from "@/lib/kb/schema";
 
 describe("help centre", () => {
   it("finds the screenshots an article places inline", () => {
@@ -18,5 +19,16 @@ describe("help centre", () => {
 
   it("needs a category for a folder", () => {
     expect(KbFolderBody.safeParse({ slug: "faqs", name: "FAQs" }).success).toBe(false);
+  });
+
+  it("ships starter guides that are valid, unique and filed in a real folder", () => {
+    const folders = new Set(STARTER_FOLDERS.map((f) => f.slug));
+    const slugs = GUIDES.map((g) => g.slug);
+    expect(new Set(slugs).size).toBe(slugs.length);
+    for (const g of GUIDES) {
+      expect(folders.has(g.folder)).toBe(true);
+      expect(KB_RESERVED_SLUGS.includes(g.slug)).toBe(false);
+      expect(KbBody.safeParse({ slug: g.slug, title: g.title, hook: g.hook, solutionMd: g.body, readMinutes: g.minutes }).success).toBe(true);
+    }
   });
 });
