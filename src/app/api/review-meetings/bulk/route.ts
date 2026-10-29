@@ -3,10 +3,17 @@ import { handleApiError } from "@/lib/api/error-handler";
  * POST /api/review-meetings/bulk — apply one action to many meetings at once.
  *
  * Body: { ids: string[], action, value? }
- *   action = "status"   value = scheduled|completed|rescheduled|cancelled|…
- *          = "assign"   value = userId (uuid) — reassigns the RM
+ *   action = "status"   value = scheduled|confirmed|in_progress|completed|cancelled|no_show
+ *                       ("rescheduled" needs a new date — the meeting page or
+ *                       the Activity tab does that, so it is refused here)
+ *          = "assign"   value = userId (uuid) — reassigns the RM, and the
+ *                       open T-1 reminder task moves with the meeting
  *          = "delete"   (no value) → cancel (status='cancelled'), matching the
  *                       single-record DELETE which cancels rather than purges.
+ *
+ * Cancelling cancels each meeting's open reminder task. Completed / no-show run
+ * the same automations as the single PATCH (lib/review-meetings/complete.ts)
+ * for each meeting that was not already in that status.
  *
  * RBAC: review_meeting.manage.all updates any meeting in the tenant;
  * manage.assigned users may only bulk-edit meetings they own (rmId = them) —
@@ -14,7 +21,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -24,6 +31,7 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { reviewMeetings, users } from "@/db/schema";
 import { REVIEW_MEETING_STATUSES } from "@/db/schema/review_meetings";
 import { meetingScopeSql } from "@/lib/review-meetings/scope";
+import { applyMeetingCompleted, applyMeetingNoShow, cancelMeetingReminders } from "@/lib/review-meetings/complete";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +61,9 @@ export async function POST(req: NextRequest) {
       if (!value || !(REVIEW_MEETING_STATUSES as readonly string[]).includes(value)) {
         return NextResponse.json({ error: "invalid status" }, { status: 400 });
       }
+      if (value === "rescheduled") {
+        return NextResponse.json({ error: "Reschedule a meeting from its page — it needs the new date." }, { status: 400 });
+      }
       patch.status = value;
     } else if (action === "assign") {
       if (!value) return NextResponse.json({ error: "value (userId) required" }, { status: 400 });
@@ -75,11 +86,53 @@ export async function POST(req: NextRequest) {
       // manage.all reaches only meetings whose client / lead is in scope.
       else conds.push(await meetingScopeSql(tx, session, "review_meetings"));
 
+      // Meetings entering completed / no-show: read them before the update so
+      // each one gets the single PATCH's automations against its old row.
+      const entering =
+        patch.status === "completed" || patch.status === "no_show"
+          ? await tx.select().from(reviewMeetings).where(and(...conds, ne(reviewMeetings.status, patch.status)))
+          : [];
+
       const upd = await tx
         .update(reviewMeetings)
         .set(patch)
         .where(and(...conds))
         .returning({ id: reviewMeetings.id });
+      const updIds = upd.map((u) => u.id);
+
+      if (patch.status === "cancelled") {
+        await cancelMeetingReminders(tx, session.tenantId, updIds);
+      }
+      if (patch.status === "completed" && entering.length > 0) {
+        await tx
+          .update(reviewMeetings)
+          .set({ actualEndAt: new Date() } as any)
+          .where(and(eq(reviewMeetings.tenantId, session.tenantId), inArray(reviewMeetings.id, entering.map((m) => m.id))));
+      }
+      for (const before of entering) {
+        if (patch.status === "completed") {
+          await applyMeetingCompleted(tx, {
+            tenantId: session.tenantId,
+            actorId: session.userId,
+            before,
+            reviewedAt: before.meetingDate,
+          });
+        } else {
+          await applyMeetingNoShow(tx, { tenantId: session.tenantId, actorId: session.userId, before });
+        }
+      }
+      // The open T-1 reminder belongs to whoever now runs the meeting.
+      if (action === "assign" && updIds.length > 0) {
+        await tx.execute(sql`
+          UPDATE tasks SET assignee_id = ${value}::uuid, updated_at = now()
+           WHERE tenant_id = ${session.tenantId}::uuid AND status = 'open'
+             AND id IN (
+               SELECT reminder_task_id FROM review_meetings
+                WHERE tenant_id = ${session.tenantId}::uuid AND reminder_task_id IS NOT NULL
+                  AND id IN (${sql.join(updIds.map((i) => sql`${i}::uuid`), sql`, `)})
+             )
+        `);
+      }
 
       await recordAudit(tx, {
         tenantId: session.tenantId,

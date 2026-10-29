@@ -111,6 +111,8 @@ export async function syncActionItemTasks(tx: Tx, args: {
   }
   const fallback = meeting.rmId ?? actorId;
   const assigneeOf = (i: ActionItemIn) => (i.assigneeId && validAssignees.has(i.assigneeId) ? i.assigneeId : fallback);
+  // An undated item is due a week after it is FIRST saved; that date is stored
+  // on the item, and a later save without a date leaves the task's due date be.
   const dueOf = (i: ActionItemIn) => (i.dueAt ? new Date(i.dueAt) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
 
   // Rows removed from the meeting: their still-open tasks are cancelled.
@@ -137,18 +139,21 @@ export async function syncActionItemTasks(tx: Tx, args: {
     if (it.taskId && prevById.has(it.taskId)) {
       // Edit the task only while it is still open, and only the three things
       // this row controls. related_meeting_id pins it to THIS meeting's tasks.
+      const due = it.dueAt ? new Date(it.dueAt) : null;
       await tx.execute(sql`
-        UPDATE tasks SET title = ${title}, assignee_id = ${assigneeId}::uuid, due_at = ${dueOf(it)}, updated_at = now()
+        UPDATE tasks SET title = ${title}, assignee_id = ${assigneeId}::uuid,
+               due_at = COALESCE(${due}::timestamptz, due_at), updated_at = now()
          WHERE tenant_id = ${tenantId}::uuid AND id = ${it.taskId}::uuid AND related_meeting_id = ${meeting.id}::uuid
            AND status NOT IN (${sql.join(DONE.map((s) => sql`${s}`), sql`, `)})
       `);
       if (prevById.get(it.taskId)!.assigneeId !== it.assigneeId && assigneeId !== actorId) {
         notify.push({ userId: assigneeId, title, taskId: it.taskId });
       }
-      out.push({ ...it, title, assigneeId });
+      out.push({ ...it, title, assigneeId, dueAt: it.dueAt ?? prevById.get(it.taskId)!.dueAt });
       continue;
     }
     const taskId = uuid();
+    const due = dueOf(it);
     await tx.insert(tasks).values({
       id: taskId,
       tenantId,
@@ -163,11 +168,12 @@ export async function syncActionItemTasks(tx: Tx, args: {
       description: `Action item from ${args.meetingLabel}.`,
       priority: "normal",
       status: "open",
-      dueAt: dueOf(it),
+      dueAt: due,
       createdById: actorId,
     } as any);
     if (assigneeId !== actorId) notify.push({ userId: assigneeId, title, taskId });
-    out.push({ ...it, title, assigneeId, taskId });
+    // Stored as the India day, like a picked date, so the row never shows the day before.
+    out.push({ ...it, title, assigneeId, taskId, dueAt: it.dueAt ?? new Date(due.getTime() + 330 * 60_000).toISOString().slice(0, 10) });
   }
 
   for (const n of notify) {

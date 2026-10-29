@@ -83,7 +83,7 @@ const meetingHref = (m: Row) => `/dashboard/review-meetings/${m.id}`;
 
 const CANCELLABLE = new Set(["scheduled", "confirmed", "in_progress", "rescheduled"]);
 
-/** Per-row cancel — marks a single meeting cancelled via the bulk endpoint. */
+/** Per-row cancel — the single-meeting DELETE, which cancels the meeting and its T-1 reminder. */
 function CancelMeetingButton({ id, disabled }: { id: string; disabled?: boolean }) {
   const router = useRouter();
   const toast = useToast();
@@ -93,11 +93,7 @@ function CancelMeetingButton({ id, disabled }: { id: string; disabled?: boolean 
   async function doCancel() {
     setBusy(true);
     try {
-      const res = await fetch("/api/review-meetings/bulk", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ids: [id], action: "status", value: "cancelled" }),
-      });
+      const res = await fetch(`/api/review-meetings/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
       toast.success("Meeting cancelled");
       setConfirm(false);
@@ -137,7 +133,8 @@ function CancelMeetingButton({ id, disabled }: { id: string; disabled?: boolean 
 
 function actionsFor(rmOptions: { value: string; label: string }[]): BulkAction[] {
   return [
-    { kind: "status", label: "Set status", options: REVIEW_MEETING_STATUSES.map((s) => [s, s.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase())] as [string, string]) },
+    // "Rescheduled" needs a new date, which a bulk action cannot ask for.
+    { kind: "status", label: "Set status", options: REVIEW_MEETING_STATUSES.filter((s) => s !== "rescheduled").map((s) => [s, s.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase())] as [string, string]) },
     ...(rmOptions.length ? [{ kind: "assign", label: "Reassign RM", options: rmOptions } as BulkAction] : []),
   ];
 }
@@ -246,7 +243,7 @@ export function MeetingsBulkTable({
         m.meeting_notes
           ? m.meeting_notes
           : m.status === "completed"
-            ? <Link href={`/dashboard/review-meetings/${m.id}`} className="italic text-amber-600 hover:underline">Add outcome →</Link>
+            ? null
             : <span className="italic">No notes yet</span>,
     },
     cancelColumn,

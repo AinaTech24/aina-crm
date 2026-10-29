@@ -133,8 +133,9 @@ export function ReviewMeetingDetailEditor({
     (meeting.attendees as Attendee[] | null) ?? []
   );
   const takenAttendees = new Set(attendees.filter((a) => a.kind && a.refId).map((a) => `${a.kind}:${a.refId}`));
+  // Blank unless chosen: the server then takes the client's review cadence.
   const [nextReview, setNextReview] = useState(
-    meeting.nextReviewDate ? String(meeting.nextReviewDate).slice(0, 10) : defaultNextReview()
+    meeting.nextReviewDate ? String(meeting.nextReviewDate).slice(0, 10) : ""
   );
   const [busy, setBusy] = useState(false);
   const [ok, setOk] = useState<string | null>(null);
@@ -249,7 +250,9 @@ export function ReviewMeetingDetailEditor({
                 also.slice(0, 4).join(", ")
               }${also.length > 4 ? ` +${also.length - 4} more` : ""}`;
         setOk(
-          `Marked completed · ${investorName}'s next review set to ${nextReview}${family}.`
+          `Marked completed · ${investorName}'s next review set ${
+            nextReview ? `to ${nextReview}` : "from their review cadence"
+          }${family}.`
         );
       } else {
         setOk("Saved.");
@@ -570,18 +573,12 @@ export function ReviewMeetingDetailEditor({
           className="w-60"
         />
         <p className="text-2xs text-muted-foreground">
-          On completion, the client's <code>nextReviewAt</code> is set to this date and the
-          per-tier auto-cadence recipe takes over.
+          On completion, the client's <code>nextReviewAt</code> is set to this date — or, left
+          blank, from the client's review cadence.
         </p>
       </div>
     </div>
   );
-}
-
-function defaultNextReview(): string {
-  const d = new Date();
-  d.setMonth(d.getMonth() + 6); // 6-month default cadence
-  return d.toISOString().slice(0, 10);
 }
 
 /** ISO/Date → { day: "yyyy-mm-dd", time: "HH:mm" } in local time. */

@@ -5,7 +5,8 @@ import { handleApiError } from "@/lib/api/error-handler";
  *   PATCH  /api/review-meetings/[id]   — update status / notes / action items / next-review
  *   DELETE /api/review-meetings/[id]   — cancel (status='cancelled')
  *
- * Automations on status flip to `completed`:
+ * Automations on status flip to `completed` (lib/review-meetings/complete.ts,
+ * shared with the bulk route):
  *   - Update investor.lastReviewAt = meeting_date and nextReviewAt = nextReviewDate
  *   - Stamp the same review on every other live member of that client's FAMILY
  *     (each keeps their own cadence; contact dates are not propagated) —
@@ -21,7 +22,6 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { v4 as uuid } from "uuid";
 import { eq, and, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
@@ -29,17 +29,14 @@ import { requireSession } from "@/lib/auth/session";
 import { can, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
-import { propagateReviewToFamily, stampFamilyReview, type FamilyPropagationResult } from "@/lib/reviews/family-propagation";
-import { recomputeFamilyHealth } from "@/lib/families/health-persist";
-import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
-import { computeNextReview } from "@/lib/investors/review-cadence";
-import { formatDate } from "@/lib/format";
+import type { FamilyPropagationResult } from "@/lib/reviews/family-propagation";
+import { autoAdvance } from "@/lib/blueprints/auto-advance";
 import { ATTENDEE_KINDS, hasUserAttendee } from "@/lib/review-meetings/attendees";
 import { cleanAttendees, notifyAddedTeam, syncActionItemTasks, type ActionItemIn } from "@/lib/review-meetings/sync";
 import { canSeeMeeting } from "@/lib/review-meetings/scope";
+import { applyMeetingCompleted, applyMeetingNoShow, cancelMeetingReminders } from "@/lib/review-meetings/complete";
 import {
   reviewMeetings,
-  investors,
   leads,
   tasks,
   REVIEW_MEETING_STATUSES,
@@ -230,6 +227,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         !becomingCompleted &&
         newDate != null &&
         newDate.getTime() !== new Date(before.meetingDate).getTime();
+      // "Rescheduled" with a new date (the Activity tab) is a reschedule like
+      // the editor's: the meeting is on again at the new time, so it stays
+      // scheduled — every upcoming view counts only scheduled / confirmed.
+      if (dateChanged && body.status === "rescheduled") patch.status = "scheduled";
       if (dateChanged) {
         patch.rescheduleCount = (before.rescheduleCount ?? 0) + 1;
         if (before.reminderTaskId) {
@@ -245,6 +246,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
 
       await tx.update(reviewMeetings).set(patch).where(and(eq(reviewMeetings.id, id), eq(reviewMeetings.tenantId, session.tenantId)));
+      // Called off here rather than by DELETE: its T-1 reminder goes with it.
+      if (body.status === "cancelled" && before.status !== "cancelled") {
+        await cancelMeetingReminders(tx, session.tenantId, [id]);
+      }
 
       if (cleanedAttendees) {
         await notifyAddedTeam(tx, {
@@ -282,227 +287,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }
       }
 
-      // ─── Automation: propagate review dates to investor on completion ──
+      // ─── Completion / no-show automations (lib/review-meetings/complete.ts,
+      // shared with the bulk route) ─────────────────────────────────────────
       let familyPropagation: FamilyPropagationResult | null = null;
       if (becomingCompleted) {
-        const reviewedAt = patch.meetingDate ?? before.meetingDate;
-        // Link spawned tasks to whichever party this meeting is about — a lead
-        // meeting must NOT create investor-typed tasks with a null subjectId.
-        const taskSubjectType: "investor" | "lead" = before.leadId ? "lead" : "investor";
-        const taskSubjectId = before.leadId ?? before.investorId;
-        // Next review date: an explicit one from the form wins; otherwise derive
-        // it from THIS client's configured review cadence (preset or custom days)
-        // so the reminder reflects what the RM actually set. Falls back to 180
-        // days only when the client has no cadence configured.
-        let nextReviewDate = body.nextReviewDate as string | undefined;
-        if (!nextReviewDate) {
-          let next: Date | null = null;
-          if (before.investorId) {
-            const [iv] = await tx
-              .select({ rf: investors.reviewFrequency, rfd: investors.reviewFrequencyDays })
-              .from(investors)
-              .where(and(eq(investors.id, before.investorId), eq(investors.tenantId, session.tenantId)))
-              .limit(1);
-            next = computeNextReview(new Date(reviewedAt), iv?.rf as any, iv?.rfd as any);
-          }
-          nextReviewDate = (next ?? new Date(Date.now() + 180 * 24 * 60 * 60 * 1000)).toISOString().slice(0, 10);
-        }
-
-        // Only update the investor's review cadence if this meeting was
-        // actually with an investor. Lead-side meetings don't have a
-        // review cycle (leads have a different lifecycle).
-        if (before.investorId) {
-          await tx
-            .update(investors)
-            .set({
-              lastReviewAt: new Date(reviewedAt),
-              nextReviewAt: new Date(nextReviewDate),
-              lastContactAt: new Date(),
-              updatedAt: new Date(),
-            } as any)
-            .where(and(eq(investors.id, before.investorId), eq(investors.tenantId, session.tenantId)));
-
-          // One sitting reviews the household. Without this, every other member
-          // of the family stayed "review overdue" and the RM's due list was
-          // full of people they had just sat with — clearable only by logging a
-          // fake meeting each. Contact dates are NOT propagated and each member
-          // keeps their own cadence; see lib/reviews/family-propagation.ts.
-          familyPropagation = await propagateReviewToFamily(tx, {
-            tenantId: session.tenantId,
-            investorId: before.investorId,
-            reviewedAt: new Date(reviewedAt),
-            explicitNextReview: (body.nextReviewDate as string | undefined) ?? null,
-          });
-        }
-
-        // …and the family's own review dates, so the family stops reading
-        // "review due" the moment its review is done.
-        const reviewedFamilyId = (before as any).familyId ?? familyPropagation?.familyId ?? null;
-        if (reviewedFamilyId) {
-          await stampFamilyReview(tx, {
-            tenantId: session.tenantId,
-            familyId: reviewedFamilyId,
-            reviewedAt: new Date(reviewedAt),
-            explicitNextReview: (body.nextReviewDate as string | undefined) ?? null,
-          });
-          await recomputeFamilyHealth(tx, reviewedFamilyId);
-        }
-
-        // ─── Smart blueprint advance — meeting completed ──────────────
-        // For lead-side meetings, push the blueprint to `meeting_done` so
-        // the user sees their journey progress without a manual click.
-        if (before.leadId) {
-          await autoAdvance(tx, session.tenantId, before.leadId, "meeting.completed", {
-            remarks: `Auto: meeting marked completed on ${formatDate(new Date())}.`,
-          });
-        } else if (before.investorId) {
-          // Client-side meeting completion → if the client was converted
-          // from a lead, advance the source lead's blueprint too (covers
-          // post-conversion review meetings).
-          const leadId = await resolveLeadIdForInvestor(tx, before.investorId);
-          if (leadId) {
-            await autoAdvance(tx, session.tenantId, leadId, "meeting.completed", {
-              remarks: "Auto: client review meeting completed.",
-            });
-          }
-        }
-
-        // ─── Automation: fan out action items into tasks ──────────────
-        // Saved items already carry their task (synced above); this only reaches
-        // rows stored before action items became tasks on save.
-        const items = (syncedItems ?? (before.actionItems as any[] | null) ?? []) as Array<{
-          title: string;
-          assigneeId?: string;
-          dueAt?: string;
-          taskId?: string;
-        }>;
-        // Build the new task rows, then insert them in ONE awaited batch. The
-        // previous code called tx.insert(...) WITHOUT await inside a .map(), so
-        // the inserts were fire-and-forget — the meeting got stamped
-        // "followUpTaskCreated" while the tasks themselves were never reliably
-        // committed. Collect → await → stamp.
-        const newTaskRows: any[] = [];
-        const stamped = items.map((it) => {
-          if (it.taskId) return it; // already created
-          const taskId = uuid();
-          newTaskRows.push({
-            id: taskId,
-            tenantId: session.tenantId,
-            assigneeId: it.assigneeId ?? before.rmId ?? session.userId,
-            subjectType: taskSubjectType,
-            subjectId: taskSubjectId,
-            relatedInvestorId: before.investorId ?? null,
-            relatedLeadId: before.leadId ?? null,
-            relatedMeetingId: id,
-            type: "review_action_item",
-            title: it.title,
-            priority: "normal",
-            status: "open",
-            dueAt: it.dueAt ? new Date(it.dueAt) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-            workflowRunId: null,
-          });
-          return { ...it, taskId };
-        });
-        const createdAny = newTaskRows.length > 0;
-        if (createdAny) {
-          await tx.insert(tasks).values(newTaskRows);
-        }
-        if (createdAny || (body.actionItems && body.actionItems.length > 0)) {
-          await tx
-            .update(reviewMeetings)
-            .set({
-              actionItems: stamped as any,
-              followUpTaskCreated: "true",
-              updatedAt: new Date(),
-            } as any)
-            .where(and(eq(reviewMeetings.id, id), eq(reviewMeetings.tenantId, session.tenantId)));
-        }
-
-        // (The "write up your notes" task is gone with the notes box: the
-        // meeting page no longer has one, so the task could never be done.)
-
-        // ─── Auto-schedule the NEXT review (recurring cadence) ─────────
-        // Reviews recur. On completing a review-category INVESTOR meeting,
-        // create the next scheduled review at nextReviewDate so it shows in
-        // Upcoming + fires its own T-1 reminder — unless a future review is
-        // already on this client's calendar. Best-effort (savepoint) so it can
-        // never fail the completion itself.
-        if (before.category === "review" && before.investorId) {
-          try {
-            await tx.transaction(async (sp) => {
-              const existing = await sp.execute(sql`
-                SELECT 1 FROM review_meetings
-                WHERE tenant_id = ${session.tenantId}::uuid
-                  AND investor_id = ${before.investorId}::uuid
-                  AND category = 'review'
-                  AND status IN ('scheduled', 'confirmed')
-                  AND meeting_date >= now()
-                LIMIT 1
-              `);
-              if (existing.rows.length === 0) {
-                const nextId = uuid();
-                const nextReminderId = uuid();
-                const nextMeetingDate = new Date(`${nextReviewDate}T11:00:00`);
-                await sp.insert(tasks).values({
-                  id: nextReminderId,
-                  tenantId: session.tenantId,
-                  assigneeId: before.rmId ?? session.userId,
-                  subjectType: "investor",
-                  subjectId: before.investorId,
-                  relatedInvestorId: before.investorId,
-                  relatedMeetingId: nextId,
-                  type: "review_meeting_reminder",
-                  title: "Reminder: next portfolio review coming up",
-                  priority: "normal",
-                  status: "open",
-                  dueAt: new Date(nextMeetingDate.getTime() - 24 * 60 * 60 * 1000),
-                } as any);
-                await sp.insert(reviewMeetings).values({
-                  id: nextId,
-                  tenantId: session.tenantId,
-                  investorId: before.investorId,
-                  familyId: before.familyId ?? null,
-                  rmId: before.rmId,
-                  category: "review",
-                  parentMeetingId: before.id,
-                  meetingType: before.meetingType,
-                  subject: "Next review (auto-scheduled)",
-                  meetingDate: nextMeetingDate,
-                  durationMinutes: before.durationMinutes ?? "30",
-                  meetingMode: before.meetingMode,
-                  status: "scheduled",
-                  reminderTaskId: nextReminderId,
-                } as any);
-              }
-            });
-          } catch (e) {
-            console.warn("[review_meeting] auto-next-review skipped:", (e as Error)?.message);
-          }
-        }
-      }
-
-      // ─── No-show → re-engage task ──────────────────────────────────────
-      // Marking a meeting no_show should leave a trail of action: task the RM to
-      // re-engage the client within a day instead of letting it drop silently.
-      if (body.status === "no_show" && before.status !== "no_show") {
-        const reSubjectType: "investor" | "lead" = before.leadId ? "lead" : "investor";
-        const reSubjectId = before.leadId ?? before.investorId;
-        await tx.insert(tasks).values({
-          id: uuid(),
+        familyPropagation = await applyMeetingCompleted(tx, {
           tenantId: session.tenantId,
-          assigneeId: before.rmId ?? session.userId,
-          subjectType: reSubjectType,
-          subjectId: reSubjectId,
-          relatedInvestorId: before.investorId ?? null,
-          relatedLeadId: before.leadId ?? null,
-          relatedMeetingId: id,
-          type: "follow_up",
-          title: "Re-engage — client missed the scheduled meeting",
-          description: "The client didn't attend. Reach out to understand why and reschedule.",
-          priority: "high",
-          status: "open",
-          dueAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        } as any);
+          actorId: session.userId,
+          before,
+          reviewedAt: patch.meetingDate ?? before.meetingDate,
+          explicitNextReview: body.nextReviewDate,
+          items: syncedItems,
+          itemsSent: !!(body.actionItems && body.actionItems.length > 0),
+        });
+      }
+      if (body.status === "no_show" && before.status !== "no_show") {
+        await applyMeetingNoShow(tx, { tenantId: session.tenantId, actorId: session.userId, before });
       }
 
       await recordAudit(tx, {

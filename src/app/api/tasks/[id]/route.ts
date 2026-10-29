@@ -209,6 +209,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
       // edit.all reaches only tasks whose client / lead is in scope.
       if (!(await taskInScope(tx, session, id))) return null;
+      // A moved due date re-arms the overdue alert (as the bulk reschedule does),
+      // so a snoozed task is flagged again when it slips past its new date.
+      if (patch.dueAt instanceof Date && patch.dueAt.getTime() !== (before.dueAt ? new Date(before.dueAt).getTime() : null)) {
+        patch.overdueNotifiedAt = null;
+      }
       // Merge the action-point checklist into meta (read-modify-write inside the
       // tx so we keep any other meta keys the task already carries).
       if (checklist !== undefined) {

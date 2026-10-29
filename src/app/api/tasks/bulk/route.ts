@@ -11,10 +11,15 @@ import { handleApiError } from "@/lib/api/error-handler";
  * RBAC: task.edit.all updates any task in the tenant; task.edit.assigned users
  * may only bulk-edit tasks they own (assignee or creator) — enforced in the
  * WHERE clause so it can never touch someone else's task. Audited once.
+ *
+ * Each task gets what the single PATCH / DELETE give it: a status change keeps
+ * its Business entry in step (syncTaskBusinessEntry), a requires-approval task
+ * the caller may not sign off is sent for approval instead of completing, and
+ * a reassigned task notifies its new assignee (task.assigned).
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -22,6 +27,8 @@ import { can, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { spawnNextOccurrence } from "@/lib/tasks/recurrence";
+import { createNotification } from "@/lib/notifications/create";
+import { syncTaskBusinessEntry } from "@/lib/business/create-entry";
 import { tasks, users } from "@/db/schema";
 import { taskInScopeSql } from "@/lib/tasks/scope";
 
@@ -72,7 +79,7 @@ export async function POST(req: NextRequest) {
       if (!UUID_RE.test(value)) return NextResponse.json({ error: "value must be a user id" }, { status: 400 });
     }
 
-    const count = await withTenant(session.tenantId, async (tx) => {
+    const result = await withTenant(session.tenantId, async (tx) => {
       // A reassignment target must be a user in THIS tenant.
       if (action === "assign") {
         const [u] = await tx
@@ -94,6 +101,14 @@ export async function POST(req: NextRequest) {
         conds.push(await taskInScopeSql(tx, session, "tasks"));
       }
 
+      // Every task as it was, for the per-task follow-ups below.
+      const beforeRows = await tx.select().from(tasks).where(and(...conds));
+      const beforeById = new Map(beforeRows.map((t) => [t.id, t]));
+      const entryCtx = { tenantId: session.tenantId, userId: session.userId, clientMeta: meta };
+      const actorName = async () =>
+        (await tx.select({ name: users.name }).from(users).where(eq(users.id, session.userId)).limit(1))[0]?.name ??
+        "A teammate";
+
       // Bulk delete — soft-delete to Trash (recoverable), matching the single
       // delete. Permanent removal happens from the Trash bin.
       if (action === "delete") {
@@ -102,6 +117,11 @@ export async function POST(req: NextRequest) {
           .set({ deletedAt: new Date(), deletedBy: session.userId, updatedAt: new Date() } as any)
           .where(and(...conds))
           .returning({ id: tasks.id });
+        // Trashing a task cancels the Business entry it booked.
+        for (const r of removed) {
+          const before = beforeById.get(r.id);
+          if (before) await syncTaskBusinessEntry(tx, entryCtx, before, "cancelled");
+        }
         await recordAudit(tx, {
           tenantId: session.tenantId,
           actorUserId: session.userId,
@@ -111,7 +131,39 @@ export async function POST(req: NextRequest) {
           after: { count: removed.length, ids } as any,
           ...meta,
         });
-        return removed.length;
+        return { updated: removed.length, sentForApproval: 0 };
+      }
+
+      // The approval gate (single PATCH): only the task's creator or an
+      // edit.all user may complete a requires-approval task that is not yet
+      // approved. Anyone else's "done" submits it for approval instead.
+      const gated =
+        patch.status === "completed"
+          ? beforeRows.filter(
+              (t) => t.requiresApproval && t.approvalStatus !== "approved" && !(canEditAll || t.createdById === session.userId),
+            )
+          : [];
+      if (gated.length > 0) {
+        const gatedIds = gated.map((t) => t.id);
+        await tx
+          .update(tasks)
+          .set({ approvalStatus: "pending", submittedAt: new Date(), updatedAt: new Date() } as any)
+          .where(and(eq(tasks.tenantId, session.tenantId), inArray(tasks.id, gatedIds)));
+        conds.push(notInArray(tasks.id, gatedIds));
+        const by = await actorName();
+        for (const t of gated) {
+          if (!t.createdById || t.createdById === session.userId) continue;
+          await createNotification(tx, {
+            tenantId: session.tenantId,
+            userId: t.createdById,
+            kind: "task.approval_requested",
+            title: `Approval needed: ${t.title}`,
+            body: `${by} submitted this task for your approval`,
+            severity: "info",
+            linkUrl: "/dashboard/tasks?approval=mine",
+            meta: { task_id: t.id },
+          });
+        }
       }
 
       // Recurring chain-on-completion: capture the in-scope recurring tasks that
@@ -137,19 +189,51 @@ export async function POST(req: NextRequest) {
         await spawnNextOccurrence(tx, t as any, session.userId, meta);
       }
 
+      // A task that booked a Business entry keeps it in step, as on the single
+      // PATCH: completed → confirmed, cancelled → cancelled, reopened → draft.
+      if (patch.status) {
+        for (const u of updated) {
+          const before = beforeById.get(u.id);
+          if (!before || before.status === patch.status) continue;
+          if (patch.status === "completed") await syncTaskBusinessEntry(tx, entryCtx, before, "completed");
+          else if (patch.status === "cancelled") await syncTaskBusinessEntry(tx, entryCtx, before, "cancelled");
+          else if (before.status === "cancelled" || before.status === "completed")
+            await syncTaskBusinessEntry(tx, entryCtx, before, "reopened");
+        }
+      }
+
+      // Reassigned → tell the new assignee, as the single PATCH does.
+      if (action === "assign" && value !== session.userId) {
+        const by = await actorName();
+        for (const u of updated) {
+          const before = beforeById.get(u.id);
+          if (!before || before.assigneeId === value) continue;
+          await createNotification(tx, {
+            tenantId: session.tenantId,
+            userId: value!,
+            kind: "task.assigned",
+            title: `Task assigned: ${before.title}`,
+            body: `${by} assigned this task to you`,
+            linkUrl: "/dashboard/tasks?view=assigned_to_me",
+            severity: "info",
+            meta: { task_id: before.id, assigned_by: session.userId, from_assignee: before.assigneeId },
+          });
+        }
+      }
+
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,
         action: `task.bulk_${action}`,
         entityType: "task",
         entityId: session.tenantId,
-        after: { action, value: value ?? null, count: updated.length, ids } as any,
+        after: { action, value: value ?? null, count: updated.length, sentForApproval: gated.length, ids } as any,
         ...meta,
       });
-      return updated.length;
+      return { updated: updated.length, sentForApproval: gated.length };
     });
 
-    return NextResponse.json({ ok: true, updated: count });
+    return NextResponse.json({ ok: true, ...result });
   } catch (err: any) {
     return handleApiError(err);
   }
