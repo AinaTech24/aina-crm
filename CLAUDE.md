@@ -1031,13 +1031,19 @@ login. The super admin runs it at `/super-admin/kb-articles` (articles) and
   the later `shot:` references.
 - **New content = rows, not code.** Pages are `revalidate = 60`; saves also call
   `revalidatePath("/knowledge-base", "layout")`.
-- **Starter guides** (`lib/kb/starter-guides.ts`, installed by `lib/kb/install-starter.ts`
-  from "Add starter guides" on `/super-admin/kb-articles`): one DRAFT process guide
-  per module area, written from how the product behaves, not from screenshots.
-  The admin adds screenshots and publishes. Installing again only adds what is
-  missing; an edited guide is never overwritten. Add a guide by appending to
-  `GUIDES` and keep every claim true of the product. The in-app Help menu (the
-  top bar "?") links to `/knowledge-base`.
+- **The pages use the new landing theme** (2026-10-29): `app/knowledge-base/layout.tsx` wraps every KB route in
+  the landing navbar / footer (`KbNav`, `KbFooter`) with the scoped styles in `kb.css` (`.kb-site`), never the
+  old `PublicShell`. The home has two tabs — **Knowledge Base** (default: guide cards with a screenshot
+  thumbnail, title and description by category → folder) and **KAIZEN** (`?tab=kaizen`).
+- **Shipped guides** (`lib/kb/guides/*.ts`, aggregated in `lib/kb/starter-guides.ts`): one PUBLISHED guide per
+  module (63), written from the live screens, each with its screenshots. Screenshots are JPEG files in
+  `public/kb/<name>.jpg`, stored on the article as `storageKey: "/kb/<name>.jpg"` (the image route redirects
+  a key starting with `/`); admin-uploaded ones still go through `/api/kb/image/<id>`. They ship by migration
+  **0248** (generated: `npx tsx scripts/gen-kb-guides-migration.ts > drizzle/migrations/0248_kb_starter_guides.sql`)
+  and by "Add module guides" on `/super-admin/kb-articles` (`lib/kb/install-starter.ts`). Neither overwrites a
+  guide an admin edited. To add or change a shipped guide: edit its data file, add the JPEG, and — because
+  migrations are append-only — ship the change in a NEW migration, or just edit it in the admin.
+  `tests/kb-help-centre.test.ts` checks every shot is placed, its file exists and internal links resolve.
 - The sidebar ("Articles in this folder", "You may like to read") comes from
   `loadArticleContext` in `lib/kb/help.ts`; the landing header and footer link
   to `/knowledge-base`.

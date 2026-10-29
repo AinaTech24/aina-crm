@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Wand2 } from "lucide-react";
 
-/** Adds the starter module guides as drafts. Repeating it only adds what is missing. */
+/** Adds the shipped module guides (published, with screenshots). Repeating it only adds what is missing. */
 export function InstallStarterButton() {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -19,7 +19,7 @@ export function InstallStarterButton() {
       if (!res.ok) throw new Error(j.error || `Failed (${res.status})`);
       setMsg(
         j.guidesCreated > 0
-          ? `Added ${j.guidesCreated} draft guide${j.guidesCreated === 1 ? "" : "s"}. Open each, add screenshots and publish.`
+          ? `Added ${j.guidesCreated} guide${j.guidesCreated === 1 ? "" : "s"}, published with their screenshots. Edit any of them here.`
           : "Nothing new to add — every starter guide is already here."
       );
       router.refresh();
@@ -33,7 +33,7 @@ export function InstallStarterButton() {
   return (
     <div className="flex items-center gap-3">
       <button type="button" onClick={run} disabled={busy} className="rounded-md border px-3 py-1.5 text-sm inline-flex items-center gap-1.5 hover:bg-accent disabled:opacity-50">
-        {busy ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />} Add starter guides
+        {busy ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />} Add module guides
       </button>
       {msg && <span className="text-xs text-muted-foreground max-w-xs">{msg}</span>}
     </div>

@@ -9,8 +9,15 @@
 import { and, asc, eq, ilike, or } from "drizzle-orm";
 import { withSystem } from "@/db/client";
 import { kbArticles, kbCategories, kbFolders } from "@/db/schema";
+import { shotUrl } from "@/lib/kb/shots";
 
-export type HelpArticleRef = { id: string; slug: string; title: string; hook: string | null };
+/** `thumb` is the article's first screenshot (the card picture), or null when it has none. */
+export type HelpArticleRef = { id: string; slug: string; title: string; hook: string | null; thumb: string | null };
+
+const thumbOf = (id: string, shots: unknown): string | null => {
+  const first = Array.isArray(shots) ? (shots[0] as { storageKey?: string } | undefined) : undefined;
+  return first?.storageKey ? shotUrl(id, 0, first.storageKey) : null;
+};
 export type HelpFolder = {
   id: string;
   slug: string;
@@ -58,12 +65,15 @@ export async function loadHelpTree(): Promise<HelpCategory[]> {
           folderId: kbArticles.folderId,
           sortOrder: kbArticles.sortOrder,
           episodeNo: kbArticles.episodeNo,
+          screenshots: kbArticles.screenshots,
         })
         .from(kbArticles)
         .where(eq(kbArticles.published, true))
         .limit(3000),
     }));
-    const sorted = [...arts].sort(byOrder);
+    const sorted: ArticleRow[] = arts
+      .map((a) => ({ id: a.id, slug: a.slug, title: a.title, hook: a.hook, folderId: a.folderId, sortOrder: a.sortOrder, episodeNo: a.episodeNo, thumb: thumbOf(a.id, a.screenshots) }))
+      .sort(byOrder);
     return cats
       .map((c) => {
         const fs: HelpFolder[] = folders
@@ -135,9 +145,9 @@ export async function searchHelp(q: string): Promise<HelpArticleRef[]> {
   if (term.length < 2) return [];
   const like = `%${escapeLike(term)}%`;
   try {
-    return await withSystem(async (tx) =>
+    const rows = await withSystem(async (tx) =>
       tx
-        .select({ id: kbArticles.id, slug: kbArticles.slug, title: kbArticles.title, hook: kbArticles.hook })
+        .select({ id: kbArticles.id, slug: kbArticles.slug, title: kbArticles.title, hook: kbArticles.hook, screenshots: kbArticles.screenshots })
         .from(kbArticles)
         .where(
           and(
@@ -153,6 +163,7 @@ export async function searchHelp(q: string): Promise<HelpArticleRef[]> {
         .orderBy(asc(kbArticles.sortOrder), asc(kbArticles.title))
         .limit(50)
     );
+    return rows.map((r) => ({ id: r.id, slug: r.slug, title: r.title, hook: r.hook, thumb: thumbOf(r.id, r.screenshots) }));
   } catch {
     return [];
   }

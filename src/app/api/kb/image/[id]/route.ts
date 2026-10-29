@@ -39,6 +39,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const shot = shots[idx];
     if (!shot?.storageKey) return NextResponse.json({ error: "not found" }, { status: 404 });
 
+    // A shipped screenshot is a static file under /public — no object store involved.
+    if (shot.storageKey.startsWith("/")) {
+      return NextResponse.redirect(new URL(shot.storageKey, req.url), { status: 302 });
+    }
     const url = await presignedGetUrl(shot.storageKey, 600, undefined, true);
     // 302 rather than streaming — storage serves the bytes, we only authorise.
     return NextResponse.redirect(url, { status: 302 });

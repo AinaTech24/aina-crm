@@ -15,6 +15,7 @@ import Link from "next/link";
 import { ArrowLeft, Plus, Trash2, Loader2, Upload, Eye, Bold, Heading2, ListOrdered, List, Link2, ImagePlus } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { KbMarkdown } from "@/components/kb/KbMarkdown";
+import "@/app/knowledge-base/kb.css";
 import type { KbFolderOption } from "@/lib/kb/admin";
 
 export type KbShot = { storageKey: string; caption?: string | null; alt?: string | null };
