@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { loadFolderBySlug } from "@/lib/kb/help";
-import { GuideCard, KbHero } from "@/components/kb/KbBits";
+import { GuideRows, KbHero } from "@/components/kb/KbBits";
 
 export const revalidate = 60;
 
@@ -34,9 +34,7 @@ export default async function KbFolderPage({ params }: { params: Promise<{ slug:
         ]}
       />
       <main className="kb-w kb-main">
-        <div className="kb-grid" style={{ marginTop: 0 }}>
-          {folder.articles.map((a) => <GuideCard key={a.id} a={a} />)}
-        </div>
+        <GuideRows articles={folder.articles} />
       </main>
     </>
   );

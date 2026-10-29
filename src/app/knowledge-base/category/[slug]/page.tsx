@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { loadCategoryBySlug } from "@/lib/kb/help";
-import { GuideCard, KbHero } from "@/components/kb/KbBits";
+import { GuideRows, KbHero } from "@/components/kb/KbBits";
 
 export const revalidate = 60;
 
@@ -36,9 +36,7 @@ export default async function KbCategoryPage({ params }: { params: Promise<{ slu
               <Link href={`/knowledge-base/folder/${f.slug}`}>{f.name}</Link>
               <small>{f.count} {f.count === 1 ? "guide" : "guides"}</small>
             </h3>
-            <div className="kb-grid">
-              {f.articles.map((a) => <GuideCard key={a.id} a={a} />)}
-            </div>
+            <div style={{ marginTop: 16 }}><GuideRows articles={f.articles} /></div>
           </div>
         ))}
       </main>

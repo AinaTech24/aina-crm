@@ -9,7 +9,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { loadHelpTree } from "@/lib/kb/help";
 import { loadKbCards } from "@/lib/kb/articles";
-import { GuideCard, KbHero, KbTabs } from "@/components/kb/KbBits";
+import { CategoryBox, KbHero, KbTabs } from "@/components/kb/KbBits";
 
 export const dynamic = "force-dynamic";
 
@@ -71,23 +71,7 @@ export default async function KnowledgeBasePage({ searchParams }: { searchParams
           <div className="kb-empty">The guides are on their way. Check back shortly.</div>
         ) : (
           guides.map((c) => (
-            <section key={c.id} className="kb-cat">
-              <h2>
-                <Link href={`/knowledge-base/category/${c.slug}`} style={{ textDecoration: "none" }}>{c.name}</Link>
-              </h2>
-              {c.description && <p>{c.description}</p>}
-              {c.folders.map((f) => (
-                <div key={f.id} className="kb-folder">
-                  <h3>
-                    <Link href={`/knowledge-base/folder/${f.slug}`}>{f.name}</Link>
-                    <small>{f.count} {f.count === 1 ? "guide" : "guides"}</small>
-                  </h3>
-                  <div className="kb-grid">
-                    {f.articles.map((a) => <GuideCard key={a.id} a={a} />)}
-                  </div>
-                </div>
-              ))}
-            </section>
+            <CategoryBox key={c.id} name={c.name} description={c.description} href={`/knowledge-base/category/${c.slug}`} folders={c.folders} />
           ))
         )}
       </main>
