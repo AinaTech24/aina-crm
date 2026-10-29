@@ -36,6 +36,10 @@
  *   getSipRejectionSummary  work-summary.ts SIP rejections by recovery status
  *   getPremiumByProduct     insurance-mix.ts new / renewal premium by product
  *   getClaimsByStatus       insurance-mix.ts claims intimated in a period by status
+ *   getStockOn              history.ts      AUM / SIP book as recorded on a date
+ *   getAumBridge, getSipBridge, getAssetClassMix, getClientConcentration,
+ *   getSipRetentionByStart, getAgeBands, getClientGeography
+ *                           book-shape.ts   the dashboards' bridge / treemap / curve / map charts
  */
 
 export * from "./scope";
@@ -58,6 +62,8 @@ export * from "./in-order";
 export * from "./entries";
 export * from "./book";
 export * from "./meetings";
+export * from "./book-shape";
+export * from "./asset-class";
 export * from "./work-summary";
 export * from "./insurance-mix";
 export * from "./opportunities";

@@ -81,6 +81,7 @@ export const SYSTEM_DASHBOARDS: SystemDashboard[] = [
       item("new_clients_category", "M"),
       item("kyc_risk", "M"),
       item("client_book", "L"),
+      item("client_map", "L"),
       item("cross_sell", "L"),
       // Meetings and work
       item("meetings", "L"),

@@ -48,7 +48,8 @@ import { loadDayCounts } from "@/lib/dashboard/ops/queue";
 import {
   loadCarryForward, loadFeedValue, loadSla, loadVolume,
 } from "@/lib/dashboard/ops/flow";
-import { loadRejections, loadSipControl } from "@/lib/dashboard/ops/sip";
+import { loadDebitCalendar, loadRejectionFishbone, loadRejections, loadSipControl } from "@/lib/dashboard/ops/sip";
+import { DebitCalendarPanel, RejectionCausesPanel } from "./ops/OpsRejectionCharts";
 import {
   loadApprovals, loadBackOffice, loadBranchWise, loadFinancialTasks, loadNonFinancialTasks, loadProductivity, loadRmWise, loadTeam,
 } from "@/lib/dashboard/ops/people";
@@ -663,11 +664,15 @@ async function BranchRmBand({ run, w, at }: { run: Run; w: OpsWindow; at: At }) 
 }
 
 async function SipBand({ run, w, hrefs, exportQuery }: { run: Run; w: OpsWindow; hrefs: Hrefs; exportQuery: string }) {
-  const [control, rejections] = await run(async (tx) => [await loadSipControl(tx, w), await loadRejections(tx, w)] as const);
+  const [control, rejections, causes, calendar] = await run(async (tx) => [
+    await loadSipControl(tx, w), await loadRejections(tx, w), await loadRejectionFishbone(tx, w), await loadDebitCalendar(tx, w),
+  ] as const);
   return (
     <>
       <Cell id="sip"><SipControlPanel c={control} periodLabel={w.periodLabel} hrefs={hrefs} /></Cell>
       <Cell><RejectionsPanel d={rejections} periodLabel={w.periodLabel} exportQuery={exportQuery} sla={w.t.sipRejectionSlaDays} /></Cell>
+      {causes.total > 0 && <Cell id="sip-causes"><RejectionCausesPanel f={causes} periodLabel={w.periodLabel} /></Cell>}
+      {calendar.days.some((d) => d.sips || d.rejections) && <Cell id="sip-calendar"><DebitCalendarPanel c={calendar} /></Cell>}
     </>
   );
 }

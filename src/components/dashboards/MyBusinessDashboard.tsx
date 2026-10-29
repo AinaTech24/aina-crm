@@ -48,7 +48,7 @@ import type { Period } from "@/lib/dashboard/period";
 import { loadDashboardThresholds, type DashboardThresholds } from "@/lib/dashboard/thresholds";
 import { clientIds, clientsWhere, loadBookTargets, num, type BookScope, type ClientFilter, type MyWindow } from "@/lib/dashboard/my/window";
 import { buildBookWindow } from "@/lib/dashboard/my/build-window";
-import { loadMonthlySummary, loadMyKpis, loadMyTrend, loadTargetMeters, monthLabels, phaseFraction } from "@/lib/dashboard/my/kpis";
+import { kpiSparks, loadMonthlySummary, loadMyKpis, loadMyTrend, loadTargetMeters, monthLabels, phaseFraction, type MyTrend } from "@/lib/dashboard/my/kpis";
 import { loadClientBook, loadDataQuality, loadReviewDesk, loadRiskDesk } from "@/lib/dashboard/my/clients";
 import {
   loadInsuranceView, loadLeadFunnel, loadMeetingDesk, loadMyQueries, loadMyTasks, loadProposalDesk,
@@ -229,6 +229,8 @@ export async function MyBusinessDashboard({
   // Loaded ONCE and shared: the morning brief reads My Day and the worklist.
   const dayP = run((tx) => loadMyDay(tx, w, t, actionDay));
   const workP = run((tx) => loadWorklist(tx, w, t, actionDay));
+  // The KPI tiles' sparklines and the business trend read the same twelve months.
+  const trendP = run((tx) => loadMyTrend(tx, w));
   dayP.catch(() => {});
   workP.catch(() => {});
 
@@ -326,7 +328,7 @@ export async function MyBusinessDashboard({
 
         {/* Row 4 · §3 KPI strip */}
         <Suspense fallback={<Loading order="kpi" />}>
-          <KpiBand run={run} w={w} periodLabel={periodLabel} />
+          <KpiBand run={run} w={w} periodLabel={periodLabel} trendP={trendP} />
         </Suspense>
 
         {/* Row 5 · §4 targets */}
@@ -363,7 +365,7 @@ export async function MyBusinessDashboard({
 
         {/* Row 11 · trend, §21 investment flow + §20 redemption watch */}
         <Suspense fallback={<Loading order="rest" />}>
-          <FlowBand run={run} w={w} periodLabel={periodLabel} highValue={highValue}
+          <FlowBand run={run} w={w} periodLabel={periodLabel} highValue={highValue} trendP={trendP}
             presetHrefs={HV_PRESETS.map((v) => ({ value: v, href: hrefWith({ hv: String(v) }, "#redemptions") }))}
             customAction={basePath} customHidden={[...base.entries()].filter(([k]) => k !== "hv")} />
         </Suspense>
@@ -441,9 +443,9 @@ async function OverdueBand({ run, w, t }: { run: Run; w: MyWindow; t: DashboardT
   return <Cell order="attention"><NeedsMyAttention cards={cards} /></Cell>;
 }
 
-async function KpiBand({ run, w, periodLabel }: { run: Run; w: MyWindow; periodLabel: string }) {
-  const kpis = await run((tx) => loadMyKpis(tx, w));
-  return <Cell order="kpi"><MyKpiStrip kpis={kpis} periodLabel={periodLabel} title="My business" /></Cell>;
+async function KpiBand({ run, w, periodLabel, trendP }: { run: Run; w: MyWindow; periodLabel: string; trendP: Promise<MyTrend> }) {
+  const [kpis, trend] = await Promise.all([run((tx) => loadMyKpis(tx, w)), trendP]);
+  return <Cell order="kpi"><MyKpiStrip kpis={kpis} periodLabel={periodLabel} title="My business" sparks={kpiSparks(trend)} /></Cell>;
 }
 
 async function TargetsBand({
@@ -544,16 +546,15 @@ async function SipBand({ run, w, periodLabel }: { run: Run; w: MyWindow; periodL
 }
 
 async function FlowBand({
-  run, w, periodLabel, highValue, presetHrefs, customAction, customHidden,
+  run, w, periodLabel, highValue, presetHrefs, customAction, customHidden, trendP,
 }: {
-  run: Run; w: MyWindow; periodLabel: string; highValue: number;
+  run: Run; w: MyWindow; periodLabel: string; highValue: number; trendP: Promise<MyTrend>;
   presetHrefs: Array<{ value: number; href: string }>; customAction: string; customHidden: Array<[string, string]>;
 }) {
-  const [trend, flow, red] = await run(async (tx) => [
-    await loadMyTrend(tx, w),
+  const [trend, [flow, red]] = await Promise.all([trendP, run(async (tx) => [
     await loadFlowByMonth(tx, w),
     await loadRedemptionWatch(tx, w, highValue),
-  ] as const);
+  ] as const)]);
   return (
     <>
       <Cell order="rest">

@@ -10,15 +10,21 @@ import type { ReactNode } from "react";
 import type { Tx } from "@/db/client";
 import {
   getAUM, getSipBook, getStockHistory, getSipHealth, getAumMix, getClientMix, getBrokerage, getAutomationMonth,
-  hasClientFilter, inOrder,
+  getAumBridge, getSipBridge, getAssetClassMix, getSipRetentionByStart, getAgeBands, getClientGeography,
+  hasClientFilter, inOrder, type Bridge,
 } from "@/lib/metrics";
-import { formatCount, formatMoney, formatPercent, pickMoneyScale } from "@/lib/format";
+import { formatCount, formatDate, formatMoney, formatPercent, pickMoneyScale } from "@/lib/format";
 import { loadTenantLicense } from "@/lib/auth/license";
 import { isDashboardWidgetVisible } from "@/config/dashboard-widgets";
 import type { WidgetCtx, WidgetImpl } from "../types";
 import { clientsHref, newClientsHref, sipsHref } from "../links";
 import { Drill } from "../Drill";
 import { StockTrendChart, type StockTrendPoint } from "../StockTrendChart";
+import { WaterfallChart, waterfallLayout, type WaterfallStep } from "../../charts/WaterfallChart";
+import { TreemapChart } from "../../charts/TreemapChart";
+import { MirrorBars } from "../../charts/MirrorBars";
+import { IndiaClientMap } from "../../charts/IndiaClientMap";
+import { CHART } from "@/lib/dashboard/chart-palette";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const monthLabel = (ym: string) => `${MONTHS[Number(ym.slice(5, 7)) - 1]} ${ym.slice(2, 4)}`;
@@ -57,14 +63,33 @@ function ShareRow({ label, amount, pct, scaleFor }: { label: string; amount: num
   );
 }
 
+/** A bridge as waterfall steps, and the line saying where the axis starts. */
+function bridgeSteps(b: Bridge, openLabel: string, closeLabel: string): { steps: WaterfallStep[]; note: string | null } {
+  const steps: WaterfallStep[] = [
+    { label: openLabel, value: b.opening, kind: "total", hint: `Recorded ${formatDate(b.openingDate)}` },
+    ...b.steps.map((x) => ({ label: x.label, value: x.value, kind: "delta" as const, hint: x.hint })),
+    { label: closeLabel, value: b.closing, kind: "total", hint: `As of ${formatDate(b.closingDate)}` },
+  ];
+  const { floor } = waterfallLayout(steps);
+  return { steps, note: floor > 0 ? `Axis starts at ${formatMoney(floor, { decimals: 1 })} so the movement is visible.` : null };
+}
+
+/** "1 Apr" / "Today" for a bridge's two ends. */
+function bridgeEnds(b: Bridge) {
+  const today = new Date(Date.now() + 5.5 * 36e5).toISOString().slice(0, 10);
+  return { open: formatDate(b.openingDate, "dayMonth"), close: b.closingDate === today ? "Today" : formatDate(b.closingDate, "dayMonth") };
+}
+
 /* ─────────────────────────────── Business trend ─────────────────────────────── */
 
 async function businessTrend(tx: Tx, ctx: WidgetCtx) {
-  const [history, aum, sip] = await inOrder(
+  const [history, aum, sip, bridge] = await inOrder(
     () => getStockHistory(tx, ctx.scope, 12),
     () => getAUM(tx, ctx.scope),
     () => getSipBook(tx, ctx.scope),
+    () => getAumBridge(tx, ctx.scope, ctx.period),
   );
+  const aumBridge = bridge ? bridgeSteps(bridge, `AUM ${bridgeEnds(bridge).open}`, `AUM ${bridgeEnds(bridge).close}`) : null;
   const thisMonth = ctx.period.to.slice(0, 7);
   // Recorded month ends, then today's live figure as the current month.
   const points: StockTrendPoint[] = history
@@ -89,10 +114,17 @@ async function businessTrend(tx: Tx, ctx: WidgetCtx) {
           <Drill href={clientsHref(ctx, { sort: "aum", dir: "desc" })} title="Clients, largest AUM first">AUM {formatMoney(aum.aum)}</Drill>
           <Drill href={sipsHref(ctx)} title="Active SIPs">SIP book {formatMoney(sip.monthly)} a month</Drill>
         </p>
+        {aumBridge && (
+          <section className="space-y-1 border-t border-border/60 pt-3">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Where the AUM change came from</h4>
+            <WaterfallChart steps={aumBridge.steps} height={230} />
+            {aumBridge.note && <p className="text-2xs text-muted-foreground">{aumBridge.note}</p>}
+          </section>
+        )}
       </div>
     ),
     subtitle: `Month-end, recorded · ${points.length} months`,
-    info: "AUM and the SIP book on the last recorded day of each month (nightly snapshots), and today's live figure. A balance moves with the market as well as with sales.",
+    info: "AUM and the SIP book on the last recorded day of each month (nightly snapshots), and today's live figure. A balance moves with the market as well as with sales. Where the AUM change came from: AUM recorded the day before the period, the money clients put in net of redemptions as the registrar processed it, and the market move (the rest of the change).",
   };
 }
 
@@ -102,8 +134,14 @@ async function sipHealth(tx: Tx, ctx: WidgetCtx) {
   // The platform can switch SIP persistency off for a firm's package.
   const license = await loadTenantLicense(ctx.tenantId, ctx.session.roles);
   if (!isDashboardWidgetVisible(license.allowedDashboardWidgets, "section.sip_persistency")) return { body: null };
-  const h = await getSipHealth(tx, ctx.scope, ctx.period);
+  const [h, bridge, cohorts] = await inOrder(
+    () => getSipHealth(tx, ctx.scope, ctx.period),
+    () => getSipBridge(tx, ctx.scope, ctx.period),
+    () => getSipRetentionByStart(tx, ctx.scope, 12),
+  );
   if (!h.sips && !h.started && !h.stopped && !h.rejections && !h.cohort1y && !h.cohort3y) return { body: null };
+  const sipBridge = bridge ? bridgeSteps(bridge, bridgeEnds(bridge).open, bridgeEnds(bridge).close) : null;
+  const shownCohorts = cohorts.filter((c) => c.started > 0);
   const change = h.monthAgo != null ? h.monthly - h.monthAgo : null;
   return {
     body: (
@@ -127,18 +165,55 @@ async function sipHealth(tx: Tx, ctx: WidgetCtx) {
             <span className="text-muted-foreground"> · {h.topReasons.map((r) => `${r.reason} (${r.count})`).join(", ")}</span>
           </div>
         )}
+        {sipBridge && (
+          <section className="space-y-1 border-t border-border/60 pt-3">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">How the SIP book moved</h4>
+            <WaterfallChart steps={sipBridge.steps} height={210} />
+            {sipBridge.note && <p className="text-2xs text-muted-foreground">{sipBridge.note}</p>}
+          </section>
+        )}
+        {shownCohorts.length >= 3 && (
+          <section className="space-y-2 border-t border-border/60 pt-3">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Still running today, by start month</h4>
+            <ul className="space-y-1.5">
+              {shownCohorts.map((c) => {
+                const share = (c.active / c.started) * 100;
+                return (
+                  <li key={c.month} className="grid grid-cols-12 items-center gap-2 text-xs"
+                    title={`${monthLabel(c.month)}: ${formatCount(c.active)} of ${formatCount(c.started)} SIPs still active`}>
+                    <span className="col-span-2 text-muted-foreground">{monthLabel(c.month)}</span>
+                    <span className="col-span-8 h-2.5 overflow-hidden rounded-full bg-secondary">
+                      <span className="block h-full rounded-full" style={{ width: `${Math.max(2, share)}%`, background: CHART.indigo }} />
+                    </span>
+                    <span className="col-span-2 text-right tabular-nums">{formatPercent(share, 0)}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
       </div>
     ),
     href: sipsHref(ctx),
     hrefLabel: "SIP book",
-    info: "Persistency: of the SIPs that started 12–15 (or 36–39) months ago, the share still active. Started and stopped count SIPs and SIP stops booked in Business Entries in the period.",
+    info: "Persistency: of the SIPs that started 12–15 (or 36–39) months ago, the share still active. Started and stopped count SIPs and SIP stops booked in Business Entries in the period. How the SIP book moved: the book recorded the day before the period, SIPs and stops booked, and the rest (SIPs that ended or were rejected, registrar updates). Still running: of the SIPs that started each month, the share active today.",
   };
 }
 
 /* ───────────────────────────────── AUM mix ───────────────────────────────── */
 
+const CLASS_COLOUR: Record<string, string> = {
+  Equity: CHART.indigo, Hybrid: CHART.blue, Debt: CHART.teal, "Solution oriented": CHART.purple, Other: CHART.amber,
+  "Category not recorded": CHART.slate,
+};
+
 async function aumMix(tx: Tx, ctx: WidgetCtx) {
-  const m = await getAumMix(tx, ctx.scope);
+  const [m, mix] = await inOrder(
+    () => getAumMix(tx, ctx.scope),
+    () => getAssetClassMix(tx, ctx.scope),
+  );
+  // A treemap where almost nothing is categorised is one grey block.
+  const showTree = mix.total > 0 && mix.classifiedPct >= 20;
   // A split with one bucket, "Not tiered", says nothing about where the money
   // sits — only that categories were never set, which is a record gap.
   const tiered = m.byTier.some((t) => t.key !== "NONE");
@@ -146,6 +221,24 @@ async function aumMix(tx: Tx, ctx: WidgetCtx) {
   const top = m.byAmc[0];
   return {
     body: (
+      <div className="space-y-5">
+      {showTree && (
+        <section className="min-w-0 space-y-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">By asset class and category</h4>
+          <TreemapChart height={240} groups={mix.groups.map((g) => ({
+            name: g.assetClass, color: CLASS_COLOUR[g.assetClass] ?? CHART.slate,
+            children: g.categories.map((c) => ({ name: c.name, value: c.aum })),
+          }))} />
+          <p className="flex flex-wrap gap-x-3 gap-y-1 text-2xs text-muted-foreground">
+            {mix.groups.map((g) => (
+              <span key={g.assetClass} className="inline-flex items-center gap-1.5">
+                <span className="size-2.5 rounded-sm" style={{ background: CLASS_COLOUR[g.assetClass] ?? CHART.slate }} />
+                {g.assetClass} {formatPercent((g.aum / mix.total) * 100, 0)}
+              </span>
+            ))}
+          </p>
+        </section>
+      )}
       <div className="grid gap-5 sm:grid-cols-2">
         {m.byAmc.length > 0 && (
           <section className="min-w-0">
@@ -166,9 +259,10 @@ async function aumMix(tx: Tx, ctx: WidgetCtx) {
           )}
         </section>
       </div>
+      </div>
     ),
     subtitle: top && top.key !== "__rest" && top.pct >= 25 ? `${top.label} holds ${formatPercent(top.pct, 0)} of folio AUM` : undefined,
-    info: "By fund house: folio AUM of live clients, each as a share of the whole folio book. By client category: each client's AUM by their A–D category.",
+    info: "By asset class and category: each scheme holding's value by its AMFI category (from the AMFI NAV file, by ISIN or scheme code), else the category on the registrar file. By fund house: folio AUM of live clients, each as a share of the whole folio book. By client category: each client's AUM by their A–D category.",
     href: clientsHref(ctx, { sort: "aum", dir: "desc" }),
     hrefLabel: "Clients",
   };
@@ -177,8 +271,16 @@ async function aumMix(tx: Tx, ctx: WidgetCtx) {
 /* ──────────────────────────────── Client mix ──────────────────────────────── */
 
 async function clientMix(tx: Tx, ctx: WidgetCtx) {
-  const c = await getClientMix(tx, ctx.scope, ctx.period);
+  const [c, ages] = await inOrder(
+    () => getClientMix(tx, ctx.scope, ctx.period),
+    () => getAgeBands(tx, ctx.scope),
+  );
   if (!c.clients && !c.exits) return { body: null };
+  const people = ages.reduce((a, b) => a + b.clients, 0);
+  const peopleAum = ages.reduce((a, b) => a + b.aum, 0);
+  const dated = ages.filter((b) => !b.gap).reduce((a, b) => a + b.clients, 0);
+  // Under five dated clients an age split is a handful of people.
+  const showAges = dated >= 5 && people > 0;
   return {
     body: (
       <div className="space-y-3">
@@ -198,12 +300,45 @@ async function clientMix(tx: Tx, ctx: WidgetCtx) {
             {c.exitNetInflow > 0 ? `, having put in ${formatMoney(c.exitNetInflow)} net` : ""}.
           </p>
         )}
+        {showAges && (
+          <section className="space-y-2 border-t border-border/60 pt-3">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Book by age</h4>
+            <MirrorBars leftLabel="Share of clients" rightLabel="Share of AUM"
+              rows={ages.filter((b) => b.clients > 0).map((b) => ({
+                label: b.label, gap: b.gap,
+                left: (b.clients / people) * 100,
+                right: peopleAum > 0 ? (b.aum / peopleAum) * 100 : 0,
+              }))} />
+          </section>
+        )}
       </div>
     ),
     subtitle: `${formatCount(c.clients)} live clients`,
     href: clientsHref(ctx),
     hrefLabel: "Clients",
-    info: "Live clients: not closed, not merged. Active: active or redemption risk. New: onboarded in the period. Left: closed in the period; what they had put in is lifetime inflow minus outflow.",
+    info: "Live clients: not closed, not merged. Active: active or redemption risk. New: onboarded in the period. Left: closed in the period; what they had put in is lifetime inflow minus outflow. Book by age: individuals and minors by age today (an HUF or a company has no date of birth), with their share of those clients' AUM.",
+  };
+}
+
+/* ─────────────────────────────── Client map ─────────────────────────────── */
+
+async function clientMap(tx: Tx, ctx: WidgetCtx) {
+  const g = await getClientGeography(tx, ctx.scope);
+  const placed = g.states.reduce((a, s) => a + s.clients, 0);
+  // A map with nobody on it says only that addresses were never typed in.
+  if (!placed) return { body: null };
+  return {
+    body: (
+      <IndiaClientMap
+        states={g.states}
+        cities={g.cities}
+        unplaced={{ clients: g.unplaced.clients, aum: g.unplaced.aum, noCity: g.noCity.clients, noCityAum: g.noCity.aum }}
+      />
+    ),
+    subtitle: `${formatCount(placed)} of ${formatCount(g.clients)} live clients placed on the map`,
+    href: clientsHref(ctx),
+    hrefLabel: "Clients",
+    info: "Live clients by the state and city on their address; a blank state is taken from a known city. A client with no state recorded is listed, not placed. Map outline: svg-maps (mapsvg.com), CC BY 4.0 — drawn before 2019, so Ladakh is shown within Jammu and Kashmir.",
   };
 }
 
@@ -304,6 +439,22 @@ export const practiceWidgets: WidgetImpl[] = [
     },
   },
   { key: "client_mix", render: clientMix },
+  {
+    key: "client_map",
+    render: clientMap,
+    csv: async (tx, ctx) => {
+      const g = await getClientGeography(tx, ctx.scope);
+      return {
+        columns: ["Kind", "Name", "Clients", "AUM"],
+        rows: [
+          ...g.states.map((s) => ["State", s.state, s.clients, s.aum] as Array<string | number | null>),
+          ...g.cities.map((c) => ["City", c.name, c.clients, c.aum] as Array<string | number | null>),
+          ["Not recorded", "State", g.unplaced.clients, g.unplaced.aum],
+          ["Not recorded", "City", g.noCity.clients, g.noCity.aum],
+        ],
+      };
+    },
+  },
   {
     key: "brokerage",
     render: brokerage,

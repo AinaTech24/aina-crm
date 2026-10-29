@@ -17,7 +17,7 @@ import {
   getAUM, getSipBook, getBookedBusiness, getNewClients, getInsurancePremium, getStockMonthAgo, getStockHistory, getTarget,
   getBookByRm, getBookByBranch, getSipBookByRm, getBookedNetByRm, getBookedNetByBranch,
   getNewClientsByRm, getNewClientsByBranch, getOverdueTasksByAssignee, getTargetsByUser, getTargetsByBranch,
-  getBookedMonthlyFlows, hasBookedBusiness, clientWhere, sipMonthlySql, targetPct, getActiveClients,
+  getBookedMonthlyFlows, hasBookedBusiness, clientWhere, sipMonthlySql, targetPct, getActiveClients, getClientConcentration,
   type MetricScope, inOrder,
 } from "@/lib/metrics";
 import { formatCount, formatDate, formatMoney, pickMoneyScale, type MoneyScale } from "@/lib/format";
@@ -26,6 +26,9 @@ import { clientsHref, entriesHref, newClientsHref, qs, sipsHref, tasksHref } fro
 import { Drill } from "../Drill";
 import { MoneyMovementChart, type MoneyPoint } from "../MoneyMovementChart";
 import { Sparkline } from "../Sparkline";
+import { Dumbbell } from "../../charts/Dumbbell";
+import { ConcentrationCurve } from "../../charts/ConcentrationCurve";
+import { phaseFraction } from "@/lib/dashboard/my/kpis";
 import { Initials } from "@/components/dashboards/my/Shared";
 
 /* ─────────────────────────────── pieces ─────────────────────────────── */
@@ -51,7 +54,7 @@ function Change({ cur, prev, inverse = false }: { cur: number; prev: number | nu
 type KpiHue = "indigo" | "violet" | "emerald" | "cyan" | "amber" | "rose";
 
 function KpiTile({
-  label, value, unit, href, info, compare, footer, empty, when, icon, hue = "indigo", progress, spark, className = "",
+  label, value, unit, href, info, compare, footer, empty, when, icon, hue = "indigo", progress, expected, spark, className = "",
 }: {
   label: string;
   value: string;
@@ -69,6 +72,8 @@ function KpiTile({
   hue?: KpiHue;
   /** Share of a target reached, 0–1: drawn as a slim bar under the figure. */
   progress?: number | null;
+  /** Where the year should be today, 0–1 (linear phasing): a tick on that bar. */
+  expected?: number | null;
   /** Recorded month-ends, oldest first — drawn beside the figure from three points up. */
   spark?: number[] | null;
   /** Grid placement. */
@@ -117,8 +122,13 @@ function KpiTile({
         {unit && <span className="dash-kpi-unit">{unit}</span>}
       </div>
       {progress != null && (
-        <div className="dash-bar mt-2.5" aria-hidden>
-          <span style={{ width: `${Math.max(2, Math.min(100, progress * 100))}%` }} />
+        <div className="relative mt-2.5" title={expected != null ? `${Math.round(progress * 100)}% reached · ${Math.round(expected * 100)}% expected by today` : undefined}>
+          <div className="dash-bar" aria-hidden>
+            <span style={{ width: `${Math.max(2, Math.min(100, progress * 100))}%` }} />
+          </div>
+          {expected != null && (
+            <span className="absolute -top-1 h-3.5 w-0.5 -translate-x-1/2 rounded-full bg-foreground" style={{ left: `${Math.min(100, expected * 100)}%` }} aria-hidden />
+          )}
         </div>
       )}
       {(compare || footer || showSpark) && (
@@ -160,13 +170,28 @@ const ROW_LAST = "col-span-12 xl:col-span-4";
 /** The period's own name for comparisons ("vs same period last year"). */
 const YOY = "vs same period last year";
 
+/** The last `n` months up to today's, oldest first ("2026-09"). */
+function lastMonths(today: string, n: number): string[] {
+  const y = Number(today.slice(0, 4));
+  const m = Number(today.slice(5, 7));
+  return Array.from({ length: n }, (_, i) => {
+    const k = y * 12 + (m - 1) - (n - 1 - i);
+    return `${Math.floor(k / 12)}-${String((k % 12) + 1).padStart(2, "0")}`;
+  });
+}
+
+/** Only a FY-to-date view is judged against where the year should be. */
+const isFyPace = (key: string) => key === "fy";
+
 /* ─────────────────────────────── KPI row ─────────────────────────────── */
 
 async function kpiRow(tx: Tx, ctx: WidgetCtx) {
   const s = ctx.scope;
   const p = ctx.period;
   const fy = { from: p.fyStart, to: p.to };
-  const [aum, sip, then, history, biz, newCur, newPrev, newFy, target, ins, counts] = await inOrder(
+  const today = new Date(Date.now() + 5.5 * 36e5).toISOString().slice(0, 10);
+  const yearAgo = `${Number(today.slice(0, 4)) - 1}${today.slice(4, 7)}-01`;
+  const [aum, sip, then, history, biz, newCur, newPrev, newFy, target, ins, counts, monthly] = await inOrder(
     () => getAUM(tx, s),
     () => getSipBook(tx, s),
     () => getStockMonthAgo(tx, s),
@@ -178,8 +203,12 @@ async function kpiRow(tx: Tx, ctx: WidgetCtx) {
     () => getTarget(tx, s, p.fiscalYear, "new_clients"),
     () => getInsurancePremium(tx, s, p, p.prev),
     () => getActiveClients(tx, s),
+    () => getBookedMonthlyFlows(tx, s, { from: yearAgo, to: today }),
   );
   const cur = biz.current;
+  // Twelve months of booked net business, oldest first; a month with nothing booked is 0.
+  const netSpark = biz.hasData ? lastMonths(today, 12).map((m) => monthly.find((f) => f.month === m)?.net ?? 0) : null;
+  const pace = isFyPace(p.key) ? phaseFraction(p.fyStart, today, p.fyStart, ctx.thresholds.targetPhasing) : null;
   const prev = biz.previous;
   const bizInfo = cur
     ? `Gross investment ${money(cur.gross)} · Redemption ${money(cur.redemption)}`
@@ -229,6 +258,7 @@ async function kpiRow(tx: Tx, ctx: WidgetCtx) {
           hue="emerald"
           label="Net business"
           when={flow}
+          spark={netSpark}
           value={money(cur?.net ?? null)}
           href={entriesHref(ctx)}
           info={bizInfo ?? "Gross investment minus redemption, as booked in Business Entries — every product."}
@@ -255,6 +285,7 @@ async function kpiRow(tx: Tx, ctx: WidgetCtx) {
           icon={<UserPlus className="size-4" />}
           hue="cyan"
           progress={isFy && target ? pct ?? 0 : null}
+          expected={isFy && target ? pace : null}
           label="New clients"
           when={flow}
           value={isFy && target ? `${formatCount(newCur)} / ${formatCount(target)}` : formatCount(newCur)}
@@ -413,10 +444,11 @@ async function teamTable(tx: Tx, ctx: WidgetCtx, dashboardHref: string) {
   const s = ctx.scope;
   const p = ctx.period;
   const fy = { from: p.fyStart, to: p.to };
-  const [book, sip, net, netFy, newc, overdue, targets] = await inOrder(
+  const [book, sip, net, netPrev, netFy, newc, overdue, targets] = await inOrder(
     () => getBookByRm(tx, s),
     () => getSipBookByRm(tx, s),
     () => getBookedNetByRm(tx, s, p),
+    () => getBookedNetByRm(tx, s, p.prev),
     () => getBookedNetByRm(tx, s, fy),
     () => getNewClientsByRm(tx, s, p),
     () => getOverdueTasksByAssignee(tx, { tenantId: s.tenantId, rmIds: s.rmIds, branchIds: s.branchIds }),
@@ -471,8 +503,26 @@ async function teamTable(tx: Tx, ctx: WidgetCtx, dashboardHref: string) {
   }
   rows.sort((a, b) => (a.key === "none" ? 1 : b.key === "none" ? -1 : b.aum - a.aum));
   if (!rows.length) return { body: null };
+  // This period against the same period last year, per RM (booked net business).
+  const growth = net.hasData && netPrev.hasData
+    ? rows.filter((r) => r.key !== "none")
+        .filter((r) => (r.net ?? 0) !== 0 || (netPrev.byRm.get(r.key) ?? 0) !== 0)
+        .map((r) => ({ key: r.key, name: r.name, href: r.href, cur: r.net ?? 0, prev: netPrev.byRm.has(r.key) ? netPrev.byRm.get(r.key) ?? 0 : null }))
+        .sort((a, b) => b.cur - a.cur)
+        .slice(0, 12)
+    : [];
   return {
-    body: <TeamTable rows={rows} head="RM" hasLedger={net.hasData} />,
+    body: (
+      <div className="space-y-5">
+        <TeamTable rows={rows} head="RM" hasLedger={net.hasData} />
+        {growth.length >= 2 && (
+          <section className="space-y-2 border-t border-border/60 pt-3">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Net business: this period vs the same period last year</h4>
+            <Dumbbell rows={growth} prevLabel="Same period last year" curLabel="This period" />
+          </section>
+        )}
+      </div>
+    ),
     subtitle: `${formatCount(rows.filter((r) => r.key !== "none").length)} RMs`,
   };
 }
@@ -601,11 +651,25 @@ async function topClientRows(tx: Tx, ctx: WidgetCtx, limit: number) {
 }
 
 async function topClients(tx: Tx, ctx: WidgetCtx) {
-  const rows = await topClientRows(tx, ctx, 10);
+  const [rows, curve] = await inOrder(
+    () => topClientRows(tx, ctx, 10),
+    () => getClientConcentration(tx, ctx.scope),
+  );
   if (!rows.length) return { body: null };
   const scale = pickMoneyScale(rows.map((r) => Number(r.aum)));
+  const top10 = curve?.points.find((x) => x.clientsPct === 10);
   return {
     body: (
+      <div className="space-y-4">
+      {curve && top10 && (
+        <section className="space-y-1">
+          <p className="text-sm">
+            The top 10% of clients hold <span className="font-semibold">{Math.round(top10.aumPct)}%</span> of AUM
+            <span className="text-muted-foreground"> · {formatCount(curve.clients)} clients with money</span>
+          </p>
+          <ConcentrationCurve points={curve.points} height={190} />
+        </section>
+      )}
       <table className="w-full text-sm">
         <thead>
           <tr>
@@ -633,9 +697,11 @@ async function topClients(tx: Tx, ctx: WidgetCtx) {
           ))}
         </tbody>
       </table>
+      </div>
     ),
     href: clientsHref(ctx, { sort: "aum", dir: "desc" }),
     hrefLabel: "All clients",
+    info: "The ten largest relationships by AUM. The curve: clients holding money, largest first, and the share of AUM the top x% of them hold; the straight line is a book where everyone holds the same.",
   };
 }
 

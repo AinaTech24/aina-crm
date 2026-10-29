@@ -1339,6 +1339,26 @@ the rest of the CRM keeps its flat look. Three things it encodes:
 - **Charts are Recharts on `chart-palette.ts`**, including the RM/Branch trend
   and the investment flow — a hand-drawn SVG in a fixed viewBox scales its
   labels with the card width.
+- **The chart set** (2026-10-29, the firm's request for distinctive charts)
+  lives in `components/dashboards/charts/`, data in `lib/metrics/book-shape.ts`:
+  - Owner: AUM bridge (opening → net money in, registrar-processed → market
+    move → now) in Business trend; SIP book bridge (booked added / stopped /
+    other) and "still running today, by start month" in SIP health; asset-class
+    › AMFI-category treemap in AUM mix; concentration curve in Top clients;
+    age bands in Client mix; source → outcome Sankey in Lead sources; RM
+    this-period-vs-last-year dumbbell under the Team table; sparkline on Net
+    business and an "expected by today" tick on the new-clients target bar;
+    and the **Where clients are** card (`client_map`): India shaded by state,
+    a dot per city (`lib/geo/india-map.ts` + `india-places.ts`; CC BY 4.0
+    outline, pre-2019 so Ladakh draws inside J&K).
+  - RM / Branch: a sparkline and a target bar with the pace tick on every KPI
+    tile (`kpiSparks`, one shared `loadMyTrend`); Branch: RM growth dumbbell.
+  - Operations › Rejections: the "Why SIPs bounced" fishbone
+    (`lib/dashboard/ops/rejection-causes.ts`) and the SIP debit calendar.
+  - Insurance Team › Renewals: the 90-day renewal bubble timeline.
+  Each hides itself when its data is thin. SIP survival is "still active
+  today" because the registrar's stop date is not stored — do not draw a
+  month-by-month survival curve until it is.
 - The centres' sticky toolbar is `dash-toolbar` (frosted); the RM jump links
   are `dash-nav`; the page opens on a soft brand wash painted as the content
   pane's background (`.dashboard-content:has(.dash-canvas)`) — never as a

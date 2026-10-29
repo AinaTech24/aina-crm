@@ -43,7 +43,8 @@ import {
   type InsWindow, type Row, type Tx,
 } from "@/lib/dashboard/insurance/window";
 import { branchNames, byDim, loadBiz, loadTrend, pick, userNames } from "@/lib/dashboard/insurance/business";
-import { loadAtRisk, loadRenewalBuckets, loadRetention, retentionOf, type Retention } from "@/lib/dashboard/insurance/renewals";
+import { loadAtRisk, loadRenewalBuckets, loadRenewalTimeline, loadRetention, retentionOf, type Retention } from "@/lib/dashboard/insurance/renewals";
+import { RenewalTimelinePanel } from "./insurance/InsRenewalTimeline";
 import { loadLost } from "@/lib/dashboard/insurance/lost";
 import { loadBookCuts, loadNewClients } from "@/lib/dashboard/insurance/clients";
 import { loadInsuranceProposals, loadIssuance, loadPipeline } from "@/lib/dashboard/insurance/pipeline";
@@ -619,8 +620,15 @@ async function PipelineBand({ run, shared, hrefs }: BandProps) {
 }
 
 async function RenewalBand({ run, w, shared, hrefs }: BandProps) {
-  const b = await shared.buckets;
-  return <Cell order="renewals" id="renewals"><RenewalCommand buckets={b.buckets} pastGrace={b.pastGrace} hrefs={hrefs} /></Cell>;
+  const [b, timeline] = await Promise.all([shared.buckets, run((tx) => loadRenewalTimeline(tx, w))]);
+  return (
+    <Cell order="renewals" id="renewals">
+      <div className="space-y-4">
+        <RenewalCommand buckets={b.buckets} pastGrace={b.pastGrace} hrefs={hrefs} />
+        <RenewalTimelinePanel rows={timeline.rows} total={timeline.total} />
+      </div>
+    </Cell>
+  );
 }
 
 async function RetentionBand({ run, w, hrefs, fyLabel, pyLabel }: BandProps & { fyLabel: string; pyLabel: string }) {

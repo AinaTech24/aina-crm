@@ -11,12 +11,14 @@ import type { Tx } from "@/db/client";
 import { LEAD_PIPELINE } from "@/lib/leads/stages";
 import {
   getLeadStageCounts, getOpenLeads, leadWhere, leadStageKeySql, leadCreatedInSql, summariseLeadCounts,
-  cleanIds, uuidList, LEAD_OPEN_KEYS, inOrder,
+  cleanIds, uuidList, LEAD_OPEN_KEYS, LEAD_WON_KEY, LEAD_LOST_KEY, inOrder,
 } from "@/lib/metrics";
 import { formatCount, formatMoney, formatPercent, humanise } from "@/lib/format";
 import type { WidgetCtx, WidgetImpl } from "../types";
 import { leadsHref } from "../links";
 import { Drill } from "../Drill";
+import { FlowSankey, type SankeyLink, type SankeyNode } from "../../charts/FlowSankey";
+import { CHART } from "@/lib/dashboard/chart-palette";
 import { stripRole } from "./business";
 
 const pct = (x: number | null) => (x == null ? "—" : formatPercent(x * 100, 0));
@@ -167,11 +169,50 @@ async function sourceRows(tx: Tx, ctx: WidgetCtx) {
     .sort((a, b) => b.total - a.total);
 }
 
+/**
+ * The same leads as a flow: each source (the five largest, the rest folded)
+ * into where its leads stand now — Won, past the meeting, before one, Lost.
+ * Only the current stage is recorded, so the middle of the journey is not
+ * drawn as if it were. Null under five leads or with one source.
+ */
+function sourceFlow(rows: Awaited<ReturnType<typeof sourceRows>>): { nodes: SankeyNode[]; links: SankeyLink[] } | null {
+  const total = rows.reduce((a, r) => a + r.total, 0);
+  if (total < 5 || rows.length < 2) return null;
+  const named = rows.filter((r) => r.source !== "unknown").slice(0, 5);
+  const rest = rows.filter((r) => !named.includes(r));
+  const sources = [
+    ...named.map((r, i) => ({ name: humanise(r.source), color: SOURCE_COLOURS[i], rows: [r] })),
+    ...(rest.length ? [{ name: rest.length === 1 && rest[0].source === "unknown" ? "Source not recorded" : "Other sources", color: CHART.slate, rows: rest }] : []),
+  ];
+  const outcomes = [
+    { name: "Won", color: CHART.green, keys: [LEAD_WON_KEY] },
+    { name: "Past the meeting", color: CHART.blue, keys: ["meeting_scheduled", "meeting_done", "proposal_sent"] },
+    { name: "Before a meeting", color: CHART.slate, keys: ["new", "call_done"] },
+    { name: "Lost", color: CHART.red, keys: [LEAD_LOST_KEY] },
+  ];
+  const nodes: SankeyNode[] = [...sources.map((s) => ({ name: s.name, color: s.color })), ...outcomes.map((o) => ({ name: o.name, color: o.color }))];
+  const links: SankeyLink[] = [];
+  sources.forEach((s, si) => outcomes.forEach((o, oi) => {
+    const value = s.rows.reduce((a, r) => a + o.keys.reduce((b, k) => b + (r.byStage[k] ?? 0), 0), 0);
+    if (value > 0) links.push({ source: si, target: sources.length + oi, value });
+  }));
+  // An outcome no lead reached would be a zero-height node: drop it and re-index.
+  const used = new Set(links.flatMap((l) => [l.source, l.target]));
+  const keep = nodes.map((_, i) => i).filter((i) => used.has(i));
+  const at = new Map(keep.map((old, i) => [old, i]));
+  return { nodes: keep.map((i) => nodes[i]), links: links.map((l) => ({ ...l, source: at.get(l.source)!, target: at.get(l.target)! })) };
+}
+
+const SOURCE_COLOURS = [CHART.indigo, CHART.purple, CHART.teal, CHART.amber, CHART.pink];
+
 async function leadSources(tx: Tx, ctx: WidgetCtx) {
   const rows = await sourceRows(tx, ctx);
   if (!rows.length) return { body: null };
+  const flow = sourceFlow(rows);
   return {
     body: (
+      <div className="space-y-4">
+      {flow && <FlowSankey nodes={flow.nodes} links={flow.links} height={Math.max(220, flow.nodes.length * 34)} />}
       <table className="w-full text-sm">
         <thead>
           <tr>
@@ -204,6 +245,7 @@ async function leadSources(tx: Tx, ctx: WidgetCtx) {
           ))}
         </tbody>
       </table>
+      </div>
     ),
     subtitle: `${formatCount(rows.length)} sources`,
   };
