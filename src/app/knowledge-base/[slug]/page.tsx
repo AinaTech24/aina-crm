@@ -1,34 +1,33 @@
 /**
- * PUBLIC KAIZEN article.
+ * PUBLIC help-centre article: breadcrumb, title, the instructions with their
+ * screenshots in place, and a sidebar (print, articles in this folder, more to
+ * read). Older KAIZEN stories keep their "situation" and "questions" sections.
  *
- *   Anyone → the full article: scenario, questions, walkthrough, screenshots.
- *
- * FULLY PUBLIC — scenario, walkthrough and screenshots all render for anonymous
- * visitors. A non-blocking CTA at the end offers the trial.
+ * FULLY PUBLIC — nothing here needs a login. A non-blocking CTA at the end
+ * offers the trial.
  */
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { ArrowLeft, ArrowRight, Clock, HelpCircle, CheckCircle2, ImageIcon } from "lucide-react";
+import { ArrowRight, HelpCircle } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
-import { loadArticle, loadKbCards } from "@/lib/kb/articles";
+import { loadArticle } from "@/lib/kb/articles";
+import { loadArticleContext } from "@/lib/kb/help";
 import { PublicShell } from "@/components/kb/PublicShell";
-import { Markdown } from "@/components/ai/Markdown";
+import { HelpBanner } from "@/components/kb/HelpBits";
+import { KbMarkdown, inlineShotNumbers } from "@/components/kb/KbMarkdown";
+import { PrintButton } from "@/components/kb/PrintButton";
 import { formatDate } from "@/lib/format";
 
 export const revalidate = 60;
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  // Metadata is public-only — never include gated content here.
   const a = await loadArticle(slug);
   if (!a) return { title: "Not found | Aina CRM" };
-  const t = a.seoTitle || `${a.title} | KAIZEN — Aina CRM`;
-  const d =
-    a.seoDescription ||
-    a.hook ||
-    `A real MFD scenario and how Aina CRM handles it — ${a.title}.`;
+  const t = a.seoTitle || `${a.title} | Aina CRM Knowledge Base`;
+  const d = a.seoDescription || a.hook || `How to: ${a.title} — step by step in Aina CRM.`;
   return {
     title: t,
     description: d,
@@ -44,156 +43,127 @@ export default async function KbArticlePage({ params }: { params: Promise<{ slug
   const a = await loadArticle(slug);
   if (!a) notFound();
 
-  const more = (await loadKbCards()).filter((c) => c.slug !== a.slug).slice(0, 4);
+  const { category, folder, inFolder, related } = await loadArticleContext(a.id, a.folderId);
+  // Screenshots the author did not place in the text still show, after it.
+  const placed = inlineShotNumbers(`${a.scenarioMd}\n${a.solutionMd}`);
+  const unplaced = a.screenshots.filter((s) => !placed.has(s.index + 1));
+  const shotRefs = a.screenshots.map((s) => ({ caption: s.caption, alt: s.alt }));
+  const isStory = !!a.scenarioMd.trim() || a.questions.length > 0;
+
+  const crumbs = [
+    { label: "Home", href: "/" },
+    { label: "Knowledge base", href: "/knowledge-base" },
+    ...(category ? [{ label: category.name, href: `/knowledge-base/category/${category.slug}` }] : []),
+    ...(folder ? [{ label: folder.name, href: `/knowledge-base/folder/${folder.slug}` }] : []),
+  ];
 
   return (
     <PublicShell signedIn={signedIn}>
-      <article className="max-w-3xl mx-auto px-6 pt-10 pb-4">
-        <Link
-          href="/knowledge-base"
-          className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5"
-        >
-          <ArrowLeft className="size-4" /> All KAIZEN entries
-        </Link>
+      <HelpBanner
+        title={a.title}
+        crumbs={crumbs}
+        subtitle={`Last updated ${formatDate(new Date(a.updatedAt))}${a.readMinutes ? ` · ${a.readMinutes} min read` : ""}`}
+      />
 
-        <div className="mt-6 flex items-center gap-2 flex-wrap">
-          <span className="text-2xs font-bold uppercase tracking-widest text-primary bg-primary/10 px-2 py-1 rounded-full">
-            {a.series}
-            {a.episodeNo != null ? ` #${a.episodeNo}` : ""}
-          </span>
-          {a.readMinutes ? (
-            <span className="text-2xs text-muted-foreground inline-flex items-center gap-1">
-              <Clock className="size-3" /> {a.readMinutes} min read
-            </span>
-          ) : null}
-          {a.publishedAt ? (
-            <span className="text-2xs text-muted-foreground">
-              {formatDate(new Date(a.publishedAt))}
-            </span>
-          ) : null}
-        </div>
+      <div className="max-w-6xl mx-auto px-6 pt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_16rem] print:block">
+        <article className="min-w-0 rounded-xl border border-border/60 bg-card shadow-sm p-6 sm:p-9 print:border-0 print:shadow-none print:p-0">
+          {a.hook && <p className="text-base font-medium text-foreground/90 leading-relaxed">{a.hook}</p>}
 
-        <h1 className="mt-4 text-3xl sm:text-4xl font-extrabold tracking-tight text-foreground leading-tight">
-          {a.title}
-        </h1>
-        {a.hook && <p className="mt-3 text-lg text-muted-foreground leading-relaxed">{a.hook}</p>}
+          {isStory && (
+            <>
+              {a.scenarioMd.trim() && (
+                <section className="mt-6">
+                  <h2 className="text-xl font-bold text-foreground">The situation</h2>
+                  <KbMarkdown text={a.scenarioMd} articleId={a.id} shots={shotRefs} />
+                </section>
+              )}
+              {a.questions.length > 0 && (
+                <section className="mt-6 rounded-lg border border-border/60 bg-secondary/20 p-5">
+                  <h2 className="text-base font-bold text-foreground">The questions this raises</h2>
+                  <ul className="mt-3 space-y-2">
+                    {a.questions.map((q, i) => (
+                      <li key={i} className="flex items-start gap-2.5 text-[15px] text-foreground/90">
+                        <HelpCircle className="size-4 text-primary mt-1 shrink-0" />
+                        <span>{q}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+              {a.solutionMd.trim() && <h2 className="mt-8 text-xl font-bold text-foreground">How Aina CRM handles it</h2>}
+            </>
+          )}
 
-        {a.modules.length > 0 && (
-          <div className="mt-5 flex flex-wrap gap-1.5">
-            {a.modules.map((m) => (
-              <span key={m} className="text-2xs rounded-full border border-border/60 bg-secondary/40 px-2 py-0.5 text-muted-foreground">
-                {m}
-              </span>
-            ))}
-          </div>
-        )}
+          <KbMarkdown text={a.solutionMd} articleId={a.id} shots={shotRefs} />
 
-        {/* ── PUBLIC: the scenario ── */}
-        <section className="mt-9">
-          <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">The situation</h2>
-          <div className="mt-3 text-[15px] leading-relaxed text-foreground/90">
-            <Markdown text={a.scenarioMd} />
-          </div>
-        </section>
+          {unplaced.map((s) => (
+            <figure key={s.index} className="my-5">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`/api/kb/image/${a.id}?i=${s.index}`}
+                alt={s.alt || s.caption || `${a.title} — screenshot ${s.index + 1}`}
+                className="w-full h-auto rounded-md border border-border/60 bg-white"
+                loading="lazy"
+              />
+              {s.caption && <figcaption className="mt-1.5 text-xs text-muted-foreground">{s.caption}</figcaption>}
+            </figure>
+          ))}
 
-        {/* ── PUBLIC: the questions ── */}
-        {a.questions.length > 0 && (
-          <section className="mt-8 rounded-2xl border border-border/60 bg-secondary/20 p-5 sm:p-6">
-            <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">
-              The questions this raises
-            </h2>
-            <ul className="mt-3 space-y-2.5">
-              {a.questions.map((q, i) => (
-                <li key={i} className="flex items-start gap-2.5 text-[15px] text-foreground/90">
-                  <HelpCircle className="size-4 text-brand-cyan mt-1 shrink-0" />
-                  <span>{q}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
-        {/* ── The answer — PUBLIC, no login required ── */}
-        <section className="mt-10">
-          <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground inline-flex items-center gap-1.5">
-            <CheckCircle2 className="size-4 text-emerald-600" /> How Aina CRM handles it
-          </h2>
-          <div className="mt-3 text-[15px] leading-relaxed text-foreground/90">
-            <Markdown text={a.solutionMd} />
-          </div>
-        </section>
-
-        {a.screenshots.length > 0 && (
-          <section className="mt-10 space-y-6">
-            <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground inline-flex items-center gap-1.5">
-              <ImageIcon className="size-4 text-brand-cyan" /> From inside the product
-            </h2>
-            {a.screenshots.map((s) => (
-              <figure key={s.index} className="rounded-xl border border-border/60 overflow-hidden bg-card">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={`/api/kb/image/${a.id}?i=${s.index}`}
-                  alt={s.alt || s.caption || `${a.title} — screenshot ${s.index + 1}`}
-                  className="w-full h-auto block"
-                  loading="lazy"
-                />
-                {s.caption && (
-                  <figcaption className="text-xs text-muted-foreground px-4 py-2.5 border-t border-border/40">
-                    {s.caption}
-                  </figcaption>
-                )}
-              </figure>
-            ))}
-          </section>
-        )}
-
-        {/* Non-blocking CTA — the article is free; this just offers the next step. */}
-        <div className="mt-10 rounded-2xl border-2 border-primary/25 bg-primary/[0.03] p-6 text-center">
-          <div className="font-bold text-foreground">Want this running on your own book?</div>
-          <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
-            {signedIn
-              ? "Open the module and try it with your own clients."
-              : "Start a free trial and set it up with your own data — no card required."}
-          </p>
-          <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
-            {signedIn ? (
-              <Link href="/dashboard" className="btn-primary text-sm font-semibold">
-                Open my dashboard <ArrowRight className="size-4" />
-              </Link>
-            ) : (
-              <>
-                <Link href="/signup" className="btn-primary text-sm font-semibold">
-                  Start free trial <ArrowRight className="size-4" />
+          <div className="mt-10 rounded-xl border border-primary/25 bg-primary/[0.03] p-6 text-center print:hidden">
+            <div className="font-bold text-foreground">Want this running on your own book?</div>
+            <p className="text-sm text-muted-foreground mt-1">
+              {signedIn ? "Open the module and try it with your own clients." : "Start a free trial and set it up with your own data — no card required."}
+            </p>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+              {signedIn ? (
+                <Link href="/dashboard" className="btn-primary text-sm font-semibold">
+                  Open my dashboard <ArrowRight className="size-4" />
                 </Link>
-                <Link href="/login" className="btn-secondary text-sm font-semibold">Log in</Link>
-              </>
-            )}
+              ) : (
+                <>
+                  <Link href="/signup" className="btn-primary text-sm font-semibold">
+                    Start free trial <ArrowRight className="size-4" />
+                  </Link>
+                  <Link href="/login" className="btn-secondary text-sm font-semibold">Log in</Link>
+                </>
+              )}
+            </div>
           </div>
-        </div>
-      </article>
+        </article>
 
-      {/* More in the series */}
-      {more.length > 0 && (
-        <section className="max-w-3xl mx-auto px-6 mt-14">
-          <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">More in the series</h2>
-          <div className="mt-4 grid sm:grid-cols-2 gap-4">
-            {more.map((c) => (
-              <Link
-                key={c.slug}
-                href={`/knowledge-base/${c.slug}`}
-                className="rounded-xl border border-border/60 bg-card p-4 hover:border-brand-cyan/50 transition-colors"
-              >
-                <span className="text-2xs font-bold uppercase tracking-widest text-primary">
-                  {c.series}
-                  {c.episodeNo != null ? ` #${c.episodeNo}` : ""}
-                </span>
-                <div className="font-semibold text-sm mt-1 leading-snug">{c.title}</div>
-                {c.hook && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{c.hook}</p>}
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
+        <aside className="space-y-6 text-sm print:hidden">
+          <PrintButton />
+          {folder && inFolder.length > 0 && (
+            <div>
+              <h2 className="font-bold text-foreground">Articles in this folder</h2>
+              <ul className="mt-2 space-y-2">
+                {inFolder.map((x) => (
+                  <li key={x.id}>
+                    <Link
+                      href={`/knowledge-base/${x.slug}`}
+                      className={x.id === a.id ? "font-semibold text-foreground" : "text-primary hover:underline"}
+                    >
+                      {x.title}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {related.length > 0 && (
+            <div>
+              <h2 className="font-bold text-foreground">You may like to read</h2>
+              <ul className="mt-2 space-y-2">
+                {related.map((x) => (
+                  <li key={x.id}>
+                    <Link href={`/knowledge-base/${x.slug}`} className="text-primary hover:underline">{x.title}</Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </aside>
+      </div>
     </PublicShell>
   );
 }

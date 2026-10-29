@@ -9,14 +9,37 @@
 
 import { z } from "zod";
 
+/** Static route segments under /knowledge-base — an article slug may not shadow them. */
+export const KB_RESERVED_SLUGS = ["category", "folder", "search"];
+
+const Slug = z
+  .string()
+  .min(2)
+  .max(120)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "slug must be lowercase words separated by single hyphens");
+
+export const KbCategoryBody = z.object({
+  slug: Slug,
+  name: z.string().min(2).max(120),
+  description: z.string().max(400).nullable().optional(),
+  sortOrder: z.number().int().min(0).max(100000).optional(),
+  published: z.boolean().optional(),
+});
+export const KbCategoryPatch = KbCategoryBody.partial();
+
+export const KbFolderBody = KbCategoryBody.extend({ categoryId: z.string().uuid() });
+export const KbFolderPatch = KbFolderBody.partial();
+
 export const KbBody = z.object({
+  folderId: z.string().uuid().nullable().optional(),
   series: z.string().min(1).max(40).optional(),
   episodeNo: z.number().int().min(0).max(10000).nullable().optional(),
   slug: z
     .string()
     .min(3)
     .max(120)
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "slug must be lowercase words separated by single hyphens"),
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "slug must be lowercase words separated by single hyphens")
+    .refine((v) => !KB_RESERVED_SLUGS.includes(v), "that slug is reserved"),
   title: z.string().min(3).max(200),
   hook: z.string().max(400).nullable().optional(),
   scenarioMd: z.string().max(20000).optional(),

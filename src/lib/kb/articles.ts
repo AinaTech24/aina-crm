@@ -40,6 +40,8 @@ export type PublicArticle = {
   seoTitle: string | null;
   seoDescription: string | null;
   publishedAt: Date | null;
+  updatedAt: Date;
+  folderId: string | null;
   solutionMd: string;
   screenshots: Array<KbScreenshot & { index: number }>;
   screenshotCount: number;
@@ -113,6 +115,8 @@ export async function loadArticle(slug: string): Promise<PublicArticle | null> {
       seoTitle: row.seoTitle,
       seoDescription: row.seoDescription,
       publishedAt: row.publishedAt,
+      updatedAt: row.updatedAt,
+      folderId: row.folderId,
       solutionMd: row.solutionMd,
       screenshots: shots.map((s, index) => ({ ...s, index })),
       screenshotCount: shots.length,

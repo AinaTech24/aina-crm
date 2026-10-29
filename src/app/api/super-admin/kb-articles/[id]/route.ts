@@ -44,7 +44,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     const patch: any = { updatedAt: new Date() };
     for (const k of [
-      "series", "episodeNo", "slug", "title", "hook", "scenarioMd", "questions", "solutionMd",
+      "series", "folderId", "episodeNo", "slug", "title", "hook", "scenarioMd", "questions", "solutionMd",
       "screenshots", "modules", "readMinutes", "coverKey", "seoTitle", "seoDescription",
       "published", "sortOrder",
     ] as const) {
@@ -66,7 +66,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
     if (!out) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-    revalidatePath("/knowledge-base");
+    revalidatePath("/knowledge-base", "layout");
     revalidatePath(`/knowledge-base/${out.oldSlug}`);
     if (out.newSlug !== out.oldSlug) revalidatePath(`/knowledge-base/${out.newSlug}`);
     return NextResponse.json({ ok: true, slug: out.newSlug });
@@ -88,7 +88,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
       await tx.delete(kbArticles).where(eq(kbArticles.id, id));
       return r?.slug ?? null;
     });
-    revalidatePath("/knowledge-base");
+    revalidatePath("/knowledge-base", "layout");
     if (slug) revalidatePath(`/knowledge-base/${slug}`);
     return NextResponse.json({ ok: true });
   } catch (err) {
