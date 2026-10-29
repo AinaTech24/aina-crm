@@ -74,6 +74,7 @@ export async function ingestRtaText(tx: Tx, args: IngestArgs): Promise<IngestRes
       source: args.source,
       kind: args.kind,
       text: args.text,
+      importId,
     });
   } catch (e: any) {
     failure = e?.message ?? "Unknown parser error";

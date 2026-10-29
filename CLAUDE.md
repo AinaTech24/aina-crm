@@ -956,6 +956,40 @@ client).
   `holds_money_with_registrar`). Nimesh's "Thakor Rushin Jitendrabhai"
   (₹28.33 L) had been bulk-deleted with his PAN-less twin.
 
+### How a registrar transaction is stored (the 29 Oct 2026 audit)
+
+`lib/rta/process.ts` `processTransactionFeed` + `lib/integrations/cams-feed-parser.ts`:
+
+- **The key is the registrar's number, checked against the folio.** CAMS numbers
+  transactions per AMC, so the bare number collided across AMCs and rewrote the
+  first transaction (6,508 rows found pointing at another folio). The upsert now
+  updates only a row of the SAME folio; a number already used by another folio
+  is stored as `<number>@<folio>`. A file with no number column keys rows on
+  their content (`<src>:nk:<hash>#n`), never their line number.
+- **A reversal is not new money.** A purchase / SIP / reinvest row with negative
+  units or amount (or the word "reversal") is stored `cancelled` with
+  `reason_code` `REVERSAL`, and cancels the transaction it reverses (same folio,
+  scheme, units, amount, ≤120 days before; `reason_code` `REVERSED`, kept on
+  re-import). A switch / STP leg with negative units is the OUT leg (direction),
+  not a reversal.
+- **Folio numbers are unique only within an AMC** — `pickFolioOwner` /
+  `pickFolioForScheme`: one client behind the number → it; several → the AMC
+  (or, for CAMS product codes, the AMC letter) decides; still unclear → the row
+  is held back with a reason, never guessed.
+- **A minor's folio stays the minor's** even when the row carries the
+  guardian's PAN (`chooseClient`), and a "X REP BY Y" row never stands up a
+  client keyed on the guardian's PAN.
+- Every transaction records its file (`rta_import_id`, migration 0252) and the
+  registrar's own type / amount / units text (`raw_feed_row`).
+- **Nothing is dropped quietly:** every data file in a ZIP is imported (the
+  extras become their own import rows); a file with data lines but no readable
+  row is `failed`, not "empty"; partial / failed files are re-run after each
+  master import and nightly (`runRerunJob`; snapshots only when no newer file
+  exists, ≤3 times, ≤20 MB); the password rescan includes password `failed`
+  rows, newest first; a mail whose attachment could not be stored is held and
+  retried, never deleted. The whole-firm passes after an import run only when
+  it landed rows.
+
 ## The public website and SEO
 
 The marketing site is `/` (`src/app/page.tsx`), `/solutions` + `/solutions/[slug]`

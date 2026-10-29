@@ -20,6 +20,7 @@
  *     emit 'transaction.created.<type>' or 'transaction.failed.<reason>' events
  */
 
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { parseCsv } from "@/lib/rta/csv";
 
@@ -43,7 +44,43 @@ export type CanonicalTransaction = {
   status: "successful" | "rejected" | "failed" | "pending";
   reasonCode?: string;
   reasonDescription?: string;
+  /** The registrar reversing an earlier transaction (a bounced instalment,
+   *  a cancelled purchase) — see reversalOf(). Stored, never counted. */
+  isReversal?: boolean;
+  /** What the registrar actually wrote, signs included, kept on the stored
+   *  transaction so a questionable row can be traced back to its file. */
+  raw?: { type: string; desc?: string; sub?: string; amount: string; units: string };
 };
+
+/**
+ * Is this row the registrar REVERSING an earlier transaction?
+ *
+ * A reversal arrives as its own row with its own transaction number and a
+ * negative amount and/or negative units. This parser stores the amount as an
+ * absolute value, so a reversed SIP instalment read as a SECOND purchase:
+ * Sandeep Garg's book held 1,072 lumpsum rows with negative units worth
+ * Rs 31.28 Cr, all counted as new money (29 Oct 2026). A purchase never allots
+ * negative units, so a negative sign on a purchase-type row IS a reversal.
+ *
+ * Switch and STP legs are different: their out-leg legitimately carries
+ * negative units, so for them the sign only settles the DIRECTION (handled by
+ * the caller) and only the word "reversal" marks a reversal.
+ */
+export function reversalOf(
+  type: CanonicalTransaction["type"],
+  direction: "inflow" | "outflow",
+  rawAmount: number,
+  rawUnits: number,
+  textBlob: string,
+): boolean {
+  const saysReversal = /REVERS|\bRVRS|\bREV\b/.test(textBlob.toUpperCase());
+  if (type === "switch" || type === "stp") return saysReversal;
+  const negative = rawAmount < 0 || rawUnits < 0;
+  if ((type === "lumpsum" || type === "sip" || type === "dividend_reinvest") && direction === "inflow") {
+    return negative || saysReversal;
+  }
+  return saysReversal;
+}
 
 const CAMS_TRANSACTION_TYPES: Record<string, CanonicalTransaction["type"]> = {
   PURCHASE: "lumpsum",
@@ -282,6 +319,13 @@ export function parseReverseFeed(text: string, refPrefix = "feed"): CanonicalTra
     dateOrder = detectDateOrder(samples, { usClock: refPrefix === "cams" });
   }
 
+  // A file with no transaction-number column used to key each row on its LINE
+  // NUMBER (`cams_12`), so line 12 of the next such file overwrote line 12 of
+  // this one — a different client's transaction. Key such rows on what they
+  // are instead (folio, scheme, date, type, amount, units, NAV), counting
+  // identical rows so two genuine twins in one file stay two.
+  const seenNatural = new Map<string, number>();
+
   for (let i = dataStart; i < lines.length; i++) {
     const line = lines[i];
     if (!line || !line.trim()) continue;
@@ -291,14 +335,35 @@ export function parseReverseFeed(text: string, refPrefix = "feed"): CanonicalTra
       indexMap[field] === undefined ? "" : (cols[indexMap[field]] ?? "").trim();
 
     const ourType = classifyTransactionType(val("type"), val("typeDesc"), val("typeSub"));
-    const direction = directionFor(ourType, val("type"), val("typeDesc"), val("typeSub"));
+    let direction = directionFor(ourType, val("type"), val("typeDesc"), val("typeSub"));
 
     const folioNumber = val("folioNumber");
     const pan = val("pan");
     if (!folioNumber && !pan) continue; // unusable row
 
+    const amountRaw = val("amount");
+    const unitsRaw = val("units");
+    const amountSigned = parseFloat(amountRaw.replace(/[, ]/g, "")) || 0;
+    const unitsSigned = parseFloat(unitsRaw.replace(/[, ]/g, "")) || 0;
+    // A switch / STP leg whose units are negative is the OUT leg, whatever its
+    // code said: directionFor falls back to "inflow" when the text names no
+    // leg, which booked money leaving a scheme as money entering it.
+    if ((ourType === "switch" || ourType === "stp") && (unitsSigned < 0 || amountSigned < 0)) direction = "outflow";
+    const isReversal = reversalOf(
+      ourType, direction, amountSigned, unitsSigned, `${val("type")} ${val("typeDesc")} ${val("typeSub")}`,
+    );
+
+    const orderDate = normalizeDate(val("orderDate"), dateOrder);
+    let externalRef = val("externalRef");
+    if (!externalRef) {
+      const natural = [folioNumber, val("schemeCode") || val("schemeName"), orderDate, val("type"), amountSigned, unitsSigned, val("nav")].join("|");
+      const n = (seenNatural.get(natural) ?? 0) + 1;
+      seenNatural.set(natural, n);
+      externalRef = `${refPrefix}:nk:${createHash("sha256").update(natural).digest("hex").slice(0, 24)}#${n}`;
+    }
+
     rows.push({
-      externalRef: val("externalRef") || `${refPrefix}_${i}`,
+      externalRef,
       pan,
       folioNumber,
       investorName: val("investorName") || undefined,
@@ -307,12 +372,20 @@ export function parseReverseFeed(text: string, refPrefix = "feed"): CanonicalTra
       schemeName: val("schemeName"),
       type: ourType,
       direction,
-      amount: Math.abs(parseFloat(val("amount").replace(/[, ]/g, "")) || 0),
-      units: parseFloat(val("units").replace(/[, ]/g, "")) || 0,
+      amount: Math.abs(amountSigned),
+      units: unitsSigned,
       nav: parseFloat(val("nav").replace(/[, ]/g, "")) || 0,
-      orderDate: normalizeDate(val("orderDate"), dateOrder),
+      orderDate,
       status: normaliseFeedStatus(val("status")),
       reasonCode: val("reasonCode") || undefined,
+      isReversal,
+      raw: {
+        type: val("type").slice(0, 40),
+        desc: val("typeDesc").slice(0, 60) || undefined,
+        sub: val("typeSub").slice(0, 40) || undefined,
+        amount: amountRaw.slice(0, 30),
+        units: unitsRaw.slice(0, 30),
+      },
     });
   }
   return rows;

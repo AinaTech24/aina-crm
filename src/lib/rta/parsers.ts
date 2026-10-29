@@ -335,9 +335,13 @@ export function parseSipRejectionReport(
       rejectionDate: normaliseDate(val("rejectionDate")) ?? today(),
       amount: parseFloat(val("amount") ?? "0") || 0,
       reasonCode,
+      // `||`, not `??`: a file with no reason-code column gives "" here, and
+      // `"" ?? val("reason")` is "" — every such rejection lost its reason and
+      // was classed "technical".
       reason:
-        (reasonCode && REASON_CODE_MAP[reasonCode]) ??
-        val("reason") ??
+        (reasonCode && REASON_CODE_MAP[reasonCode]) ||
+        val("reason") ||
+        reasonCode ||
         "Unknown",
     });
   }

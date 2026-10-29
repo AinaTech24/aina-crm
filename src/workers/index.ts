@@ -23,7 +23,7 @@ import { startCampaignDispatcherWorker } from "./campaign-dispatcher";
 import { startImapPollerWorker } from "./imap-poller";
 import { startRtaInboxPollerWorker } from "./rta-inbox-poller";
 import { startZohoSyncWorker } from "./zoho-sync";
-import { startRtaImportWorker } from "./rta-import-worker";
+import { startRtaImportWorker, enqueueRerunsForAllFirms } from "./rta-import-worker";
 import { startDailyBriefingWorker } from "./daily-briefing";
 import { startWeeklyDigestWorker } from "./weekly-digest";
 import { runDailyOpsScan } from "./daily-ops-scanner";
@@ -136,6 +136,14 @@ if (groups.includes("mail")) {
   stops.push(startRtaInboxPollerWorker());
 }
 if (groups.includes("zoho")) stops.push(startZohoSyncWorker());
+/**
+ * RTA files that imported only partly — rows waiting on a folio master, or a
+ * worker that died mid-file — are re-run every night (and after each master
+ * import) by rta-import-worker's runRerunJob. 21:45 UTC = 03:15 IST, before the
+ * morning mail arrives.
+ */
+scheduleDaily("rta", "rta-rerun", 21, 45, enqueueRerunsForAllFirms);
+
 if (groups.includes("rta")) {
   stops.push(startRtaImportWorker());
   // FP mailback import shares the "rta" worker group (same import surface).

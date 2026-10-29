@@ -29,14 +29,14 @@ import { decodeRtaToText } from "@/lib/rta/decode";
 import { extractRtaFileFromZip } from "@/lib/rta/unzip";
 // RTA zip is uploaded to S3 (full file, no web-server body cap), parsed, then
 // deleted from S3 immediately — transient, never retained.
-import { getObjectBytes, deleteObject } from "@/lib/storage/s3";
+import { getObjectBytes, deleteObject, putObject } from "@/lib/storage/s3";
 import type { RtaSource, RtaFileKind } from "@/db/schema/rta_imports";
 import { captureError } from "@/lib/observability/capture";
 import { parseRtaCsv, parseRtaRows } from "@/lib/rta";
 import { Q } from "./queues";
 import { importRtaFolios, type RtaImportSummary } from "@/lib/rta/import";
 import { isSpreadsheet, readSpreadsheetToRows } from "@/lib/rta/xls";
-import { RICH_KINDS } from "@/lib/rta/classify-mailback";
+import { RICH_KINDS, classifyMailback } from "@/lib/rta/classify-mailback";
 import { getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config";
 import { matchBookedBusinessAfterImport } from "@/lib/business/rta-match";
 import { retireEmptyPlaceholdersAfterImport } from "@/lib/rta/placeholder-sweep";
@@ -157,14 +157,17 @@ function candidatePasswords(job: { password?: string; passwords?: string[] }): s
 async function openWithAnyPassword(
   buf: Buffer,
   passwords: string[]
-): Promise<{ ok: true; data: Uint8Array; filename: string } | { ok: false; error: any; triedCount: number }> {
+): Promise<
+  | { ok: true; data: Uint8Array; filename: string; others: Array<{ filename: string; data: Uint8Array }> }
+  | { ok: false; error: any; triedCount: number }
+> {
   const tryList = passwords.length ? passwords : [undefined];
   let lastNonPasswordErr: any = null;
   let lastErr: any = null;
   for (const pw of tryList) {
     try {
       const r = await extractRtaFileFromZip(new Uint8Array(buf), pw);
-      return { ok: true, data: r.data, filename: r.filename };
+      return { ok: true, data: r.data, filename: r.filename, others: r.others };
     } catch (e: any) {
       lastErr = e;
       if (!isWrongPasswordError(e?.message)) lastNonPasswordErr = e;
@@ -317,6 +320,11 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
     }
     dataBuf = Buffer.from(opened.data);
     innerName = opened.filename;
+    if (opened.others.length) {
+      await queueUnpackedSiblings(job, opened.others).catch((e) =>
+        captureError("[rta-import] could not queue the other files in a ZIP", e, { importId, tenantId }),
+      );
+    }
   }
 
   // Decode can legitimately REFUSE — a spreadsheet too large to hold in memory
@@ -342,7 +350,7 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
         let outcome;
         let failure: string | null = null;
         try {
-          outcome = await processRtaFile(tx, { tenantId, source, kind, text });
+          outcome = await processRtaFile(tx, { tenantId, source, kind, text, importId });
         } catch (e: any) {
           failure = e?.message ?? "Unknown parser error";
         }
@@ -358,8 +366,18 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
           return;
         }
 
-        const status =
-          outcome.rowsFailed > 0 || outcome.rowsSkipped > 0
+        // A file with real data lines from which the parser read NOTHING is a
+        // layout we do not understand — not an empty report. It used to be
+        // "completed · 0 rows" with the empty-report note below, so a whole
+        // file's transactions vanished looking like success (29 Oct 2026: 19 of
+        // Ahpal's 22 CAMS transaction files). Three lines is the floor so a
+        // trailer like "END OF REPORT" is not mistaken for data.
+        const unreadLines = outcome.rowsTotal === 0 ? dataLineCount(text) : 0;
+        const unreadable = unreadLines >= 3;
+
+        const status = unreadable
+          ? "failed"
+          : outcome.rowsFailed > 0 || outcome.rowsSkipped > 0
             ? outcome.rowsImported === 0
               ? "failed"
               : "partial"
@@ -370,8 +388,10 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
         // legitimately returns a report with only a header row — KFintech's
         // MFSD313 SIP register does it whenever no SIP was registered in the
         // period. Say so, so the next person doesn't have to re-derive it.
-        const emptyNote =
-          outcome.rowsTotal === 0
+        const emptyNote = unreadable
+          ? `The file has ${unreadLines} data lines but none could be read — its layout is not one this importer recognises, so nothing was imported. ` +
+            `First line: ${sanitizeText((text.split(/\r?\n/)[0] ?? "").slice(0, 200))}`
+          : outcome.rowsTotal === 0
             ? "The registrar returned an empty report — a header row and no data. Nothing to import; this is not an error."
             : null;
 
@@ -416,6 +436,101 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
   } catch (e: any) {
     await markFailed(job, e?.message ?? "import failed", { checksum });
   }
+}
+
+/**
+ * The other data files of a ZIP become imports of their own. Their bytes are
+ * already decrypted, so they need no password; each is classified by its own
+ * name, falling back to the parent's report type. A file this firm already
+ * holds (same checksum) is not queued twice, so re-running the parent is safe.
+ */
+async function queueUnpackedSiblings(
+  job: RtaImportJob,
+  others: Array<{ filename: string; data: Uint8Array }>,
+): Promise<void> {
+  for (const o of others) {
+    const bytes = Buffer.from(o.data);
+    if (!bytes.length) continue;
+    const checksum = createHash("sha256").update(bytes).digest("hex");
+    const seen = await withSystem(async (tx) =>
+      (await tx.execute(sql`
+        SELECT 1 FROM rta_file_imports
+         WHERE tenant_id = ${job.tenantId}::uuid AND file_checksum = ${checksum} AND deleted_at IS NULL
+         LIMIT 1`)).rows.length > 0,
+    );
+    if (seen) continue;
+    const cls = classifyMailback(o.filename, null);
+    const source = cls?.source ?? job.source;
+    const kind = cls?.kind ?? job.kind;
+    const safe = o.filename.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80);
+    const key = `tenants/${job.tenantId}/rta/${Date.now()}-unpacked-${safe}`;
+    await putObject(key, bytes, "application/octet-stream");
+    const id = await withSystem(async (tx) => {
+      const r = await tx.execute(sql`
+        INSERT INTO rta_file_imports (
+          tenant_id, source, kind, period_start, period_end,
+          file_name, file_key, file_size_bytes, file_checksum, status, remarks
+        ) VALUES (
+          ${job.tenantId}::uuid, ${source}, ${kind}, current_date, current_date,
+          ${o.filename.slice(0, 250)}, ${key}, ${bytes.length}, ${checksum}, 'uploaded',
+          ${sanitizeText(`Unpacked from ${job.filename}`)}
+        )
+        RETURNING id`);
+      return String((r.rows[0] as { id: string }).id);
+    });
+    await queueImport({ id, source, kind, file_name: o.filename, file_key: key }, job.tenantId, []);
+  }
+}
+
+/** Queue the import of a stored file (feed processor, or the rich engine for masters). */
+async function queueImport(
+  r: { id: string; source: RtaSource; kind: RtaFileKind; file_name: string; file_key: string },
+  tenantId: string,
+  passwords: string[],
+): Promise<void> {
+  const jobOpts = { attempts: 1, removeOnComplete: true, removeOnFail: { age: 3600 } } as const;
+  if (RICH_KINDS.has(r.kind)) {
+    await Q.rtaImport().add(
+      "rich-import",
+      {
+        mode: "rich", importId: r.id, tenantId, key: r.file_key,
+        filename: r.file_name, passwords, rta: r.source, reportType: "",
+        dryRun: false, assignToMe: false, userId: SYSTEM_USER, roles: [],
+      },
+      jobOpts,
+    );
+    return;
+  }
+  await Q.rtaImport().add(
+    "import",
+    {
+      importId: r.id, tenantId, source: r.source, kind: r.kind,
+      key: r.file_key, filename: r.file_name, passwords,
+      userId: SYSTEM_USER, roles: [],
+    },
+    jobOpts,
+  );
+}
+
+/** Did this import actually write anything? Gates the whole-firm passes after a job. */
+async function importLanded(importId?: string): Promise<boolean> {
+  if (!importId) return false;
+  try {
+    return await withSystem(async (tx) => {
+      const r = await tx.execute(sql`SELECT status FROM rta_file_imports WHERE id = ${importId}::uuid`);
+      const st = (r.rows[0] as { status?: string } | undefined)?.status;
+      return st === "completed" || st === "partial";
+    });
+  } catch {
+    return true; // can't tell → run them, as before
+  }
+}
+
+/** Non-blank lines after the header — how much data a file actually carried. */
+function dataLineCount(text: string): number {
+  let n = 0;
+  for (const line of text.split(/\r?\n/)) if (line.trim()) n++;
+  return Math.max(0, n - 1);
 }
 
 /** Byte length of the decoded text (file_size_bytes when the original buffer is freed). */
@@ -531,12 +646,23 @@ async function reapStuckParsing(): Promise<number> {
   const reaped = await withSystem(async (tx) => {
     // (1) Parse started but never finished (worker died/OOM mid-parse).
     // (2) Enqueued but no job exists to run it — only when the queue is idle.
+    // The reason is WRITTEN, not kept-if-blank: every forwarded file already
+    // carries the provenance remark "Auto-imported from forwarded email …", so
+    // COALESCE kept that and a reaped file read as if nothing had gone wrong.
+    // The provenance is kept after the reason. A parse is only declared dead
+    // past the job's own time limit — at 60 minutes a big since-inception file
+    // was failed here while it was still importing (the limit is 180).
+    const parseLimitMin = Math.round(JOB_TIMEOUT_MS / 60_000) + 15;
     const rows = await tx.execute(sql`
       UPDATE rta_file_imports
       SET status = 'failed', parsed_at = COALESCE(parsed_at, now()),
-          remarks = COALESCE(NULLIF(remarks, ''), 'Import didn''t finish — the worker restarted mid-parse. Re-upload to retry.')
+          remarks = left(
+            CASE WHEN status = 'parsing'
+                 THEN 'Import did not finish — the worker restarted or the file ran past the time limit. It is retried automatically (up to 3 times) unless the file is very large.'
+                 ELSE 'Import never started — the queue lost the job. It is retried automatically (up to 3 times) unless the file is very large.' END
+            || COALESCE(' · ' || NULLIF(remarks, ''), ''), 1000)
       WHERE (
-        (status = 'parsing' AND parsed_at IS NOT NULL AND parsed_at < now() - interval '60 minutes')
+        (status = 'parsing' AND parsed_at IS NOT NULL AND parsed_at < now() - make_interval(mins => ${parseLimitMin}::int))
         ${queueBusy ? sql`` : sql`OR (status IN ('uploaded', 'queued') AND created_at < now() - interval '20 minutes')`}
       )
       RETURNING id
@@ -782,8 +908,11 @@ export type RtaRescanJob = {
   source: RtaSource;
 };
 
-/** Bound the work a single rescan does — a busy shared address holds thousands. */
-const RESCAN_MAX_FILES = 1000;
+/**
+ * Bound the work a single rescan does — a busy shared address holds thousands,
+ * and the rescan runs in the import queue, so every firm waits behind it.
+ */
+const RESCAN_MAX_FILES = 300;
 const SYSTEM_USER = "00000000-0000-0000-0000-000000000000";
 
 export async function runRejectedRescanJob(
@@ -796,21 +925,28 @@ export async function runRejectedRescanJob(
   const passwords = passwordsToTry(cfg, job.source);
   if (!passwords.length) return { requeued: 0, stillLocked: 0, scanned: 0 };
 
+  // NEWEST first. Oldest-first re-read the same 1,000 old archives on every
+  // rescan of a busy shared address — files that stay locked stay rejected —
+  // so a firm's recent files were never reached. And `failed` archives that
+  // failed on the PASSWORD are included: one that arrived before any password
+  // was saved is marked failed, not rejected, and saving the first password
+  // never recovered it.
   const rows = await withTenant(job.tenantId, async (tx) => {
     const r = await tx.execute(sql`
       SELECT id, source, kind, file_name, file_key
       FROM rta_file_imports
       WHERE deleted_at IS NULL
-        AND status = 'rejected'
+        AND tenant_id = ${job.tenantId}::uuid
+        AND (status = 'rejected'
+             OR (status = 'failed' AND (remarks ILIKE '%password%' OR remarks ILIKE 'Could not open the zip%')))
         AND file_key IS NOT NULL
-      ORDER BY created_at ASC
+      ORDER BY created_at DESC
       LIMIT ${RESCAN_MAX_FILES}`);
     return r.rows as Array<{ id: string; source: RtaSource; kind: RtaFileKind; file_name: string; file_key: string }>;
   });
 
   let requeued = 0;
   let stillLocked = 0;
-  const jobOpts = { attempts: 1, removeOnComplete: true, removeOnFail: { age: 3600 } } as const;
 
   for (const r of rows) {
     let buf: Buffer;
@@ -836,27 +972,7 @@ export async function runRejectedRescanJob(
         WHERE id = ${r.id}::uuid`);
     });
 
-    if (RICH_KINDS.has(r.kind)) {
-      await Q.rtaImport().add(
-        "rich-import",
-        {
-          mode: "rich", importId: r.id, tenantId: job.tenantId, key: r.file_key,
-          filename: r.file_name, passwords, rta: r.source, reportType: "",
-          dryRun: false, assignToMe: false, userId: SYSTEM_USER, roles: [],
-        },
-        jobOpts
-      );
-    } else {
-      await Q.rtaImport().add(
-        "import",
-        {
-          importId: r.id, tenantId: job.tenantId, source: r.source, kind: r.kind,
-          key: r.file_key, filename: r.file_name, passwords,
-          userId: SYSTEM_USER, roles: [],
-        },
-        jobOpts
-      );
-    }
+    await queueImport(r, job.tenantId, passwords);
     requeued++;
   }
 
@@ -873,6 +989,103 @@ export async function enqueueRejectedRescan(tenantId: string, source: RtaSource)
     { mode: "rescan", tenantId, source } satisfies RtaRescanJob,
     { attempts: 1, removeOnComplete: true, removeOnFail: { age: 3600 } }
   );
+}
+
+/**
+ * Re-run files that imported only partly — or not at all — for a reason that
+ * resolves itself: "folio not found — import the folio master first", "not in
+ * client master", or a worker that died mid-file. Nothing used to revisit them,
+ * so those rows were lost for good (comments here and in importSucceeded said
+ * "re-running the feed picks them up"; nothing ever re-ran it).
+ *
+ * Safe by construction:
+ *  - event files (transactions, SIP rejections) upsert on their own keys, so a
+ *    re-run only adds what was missing;
+ *  - SNAPSHOT files (SIP register, AUM statement, mandate status) are re-run
+ *    only when no newer file of the same report has imported since, so an old
+ *    register can never overwrite a newer one;
+ *  - at most 3 re-runs per file, only files kept in storage, never a file over
+ *    20 MB, newest 40 per firm per run.
+ */
+export type RtaRerunJob = { mode: "rerun"; tenantId: string };
+
+const RERUN_MAX_FILES = 40;
+const RERUN_MAX_BYTES = 20 * 1024 * 1024;
+const SNAPSHOT_KINDS = ["monthly_sip_book", "monthly_aum_statement", "nach_mandate_status", "folio_master_dump", "cas_holdings"];
+
+export async function runRerunJob(job: RtaRerunJob): Promise<{ requeued: number }> {
+  const cfg = await withTenant(job.tenantId, async (tx) => getMailbackPasswords(tx, job.tenantId));
+  const rows = await withTenant(job.tenantId, async (tx) => {
+    const r = await tx.execute(sql`
+      SELECT f.id, f.source, f.kind, f.file_name, f.file_key
+        FROM rta_file_imports f
+       WHERE f.tenant_id = ${job.tenantId}::uuid
+         AND f.deleted_at IS NULL
+         AND f.file_key IS NOT NULL
+         AND f.status IN ('partial', 'failed')
+         AND f.created_at > now() - interval '45 days'
+         AND COALESCE(f.file_size_bytes, 0) < ${RERUN_MAX_BYTES}
+         AND COALESCE((f.summary->>'reruns')::int, 0) < 3
+         AND (f.errors::text ILIKE '%import the folio master first%'
+              OR f.errors::text ILIKE '%not in client master%'
+              OR f.errors::text ILIKE '%not linked to a client%'
+              OR f.errors::text ILIKE '%could not be attached to a client%'
+              OR f.remarks ILIKE 'Import did not finish%'
+              OR f.remarks ILIKE 'Import never started%'
+              OR f.remarks ILIKE 'Import stopped%')
+         AND (f.kind NOT IN (${sql.join(SNAPSHOT_KINDS.map((k) => sql`${k}`), sql`, `)})
+              OR NOT EXISTS (
+                SELECT 1 FROM rta_file_imports n
+                 WHERE n.tenant_id = f.tenant_id AND n.source = f.source AND n.kind = f.kind
+                   AND n.deleted_at IS NULL AND n.created_at > f.created_at
+                   AND n.status IN ('completed', 'partial')))
+       ORDER BY f.created_at DESC
+       LIMIT ${RERUN_MAX_FILES}`);
+    return r.rows as Array<{ id: string; source: RtaSource; kind: RtaFileKind; file_name: string; file_key: string }>;
+  });
+
+  let requeued = 0;
+  for (const r of rows) {
+    await withTenant(job.tenantId, async (tx) => {
+      await tx.execute(sql`
+        UPDATE rta_file_imports
+           SET status = 'uploaded', parsed_at = NULL,
+               remarks = 'Re-run automatically — rows it could not place before may place now',
+               summary = jsonb_set(COALESCE(summary, '{}'::jsonb), '{reruns}',
+                                   to_jsonb(COALESCE((summary->>'reruns')::int, 0) + 1))
+         WHERE id = ${r.id}::uuid`);
+    });
+    await queueImport(r, job.tenantId, passwordsToTry(cfg, r.source));
+    requeued++;
+  }
+  if (requeued) console.log(`[rta-import] re-run ${job.tenantId}: ${requeued} file(s) re-queued`);
+  return { requeued };
+}
+
+/**
+ * Queue a re-run for a firm, collapsed: one waiting job per firm (BullMQ
+ * ignores an add whose jobId is already queued), started after a pause so the
+ * rest of the day's masters land first.
+ */
+export async function enqueueRerun(tenantId: string, delayMs = 15 * 60_000): Promise<void> {
+  await Q.rtaImport().add(
+    "rerun",
+    { mode: "rerun", tenantId } satisfies RtaRerunJob,
+    { jobId: `rta-rerun-${tenantId}`, delay: delayMs, attempts: 1, removeOnComplete: true, removeOnFail: true },
+  );
+}
+
+/** Nightly: queue a re-run for every firm that has a file waiting for one. */
+export async function enqueueRerunsForAllFirms(): Promise<{ firms: number }> {
+  const tenants = await withSystem(async (tx) => {
+    const r = await tx.execute(sql`
+      SELECT DISTINCT tenant_id FROM rta_file_imports
+       WHERE deleted_at IS NULL AND status IN ('partial', 'failed') AND file_key IS NOT NULL
+         AND created_at > now() - interval '45 days'`);
+    return (r.rows as Array<{ tenant_id: string }>).map((x) => String(x.tenant_id));
+  });
+  for (const t of tenants) await enqueueRerun(t, 0);
+  return { firms: tenants.length };
 }
 
 /**
@@ -937,6 +1150,9 @@ export function startRtaImportWorker() {
         if ((job.data as any)?.mode === "rescan") {
           return await runRejectedRescanJob(job.data as RtaRescanJob);
         }
+        if ((job.data as any)?.mode === "rerun") {
+          return await runRerunJob(job.data as RtaRerunJob);
+        }
         // Rich master/holdings import returns its summary (UI polls for it);
         // the feed import updates the rta_file_imports row and returns nothing.
         if ((job.data as any)?.mode === "rich") {
@@ -945,15 +1161,28 @@ export function startRtaImportWorker() {
           const summary = await runRichImportJob(job.data as RichImportJob, (p) => {
             void job.updateProgress(p as any);
           });
-          await matchBookedBusinessAfterImport((job.data as any)?.tenantId);
-          await syncRtaJourneysAfterImport((job.data as any)?.tenantId);
-          await retireEmptyPlaceholdersAfterImport((job.data as any)?.tenantId);
-          await restoreTrashedHoldersAfterImport((job.data as any)?.tenantId);
-          await reactivateReturningClientsAfterImport((job.data as any)?.tenantId);
-          await warnIfOverClientLimitAfterImport((job.data as any)?.tenantId);
+          // The firm-wide passes below are whole-book scans. They used to run
+          // after EVERY job — a rejected archive or a failed file included,
+          // hundreds a day on a busy shared address. Only after real data now.
+          if (summary.ok && !(job.data as RichImportJob).dryRun) {
+            await matchBookedBusinessAfterImport((job.data as any)?.tenantId);
+            await syncRtaJourneysAfterImport((job.data as any)?.tenantId);
+            await retireEmptyPlaceholdersAfterImport((job.data as any)?.tenantId);
+            await restoreTrashedHoldersAfterImport((job.data as any)?.tenantId);
+            await reactivateReturningClientsAfterImport((job.data as any)?.tenantId);
+            await warnIfOverClientLimitAfterImport((job.data as any)?.tenantId);
+            // A client master just landed: files that skipped rows for want
+            // of it can place them now.
+            await enqueueRerun((job.data as any)?.tenantId).catch(() => {});
+          }
           return summary;
         }
         await runRtaImportJob(job.data as RtaImportJob);
+        if (!(await importLanded((job.data as RtaImportJob).importId))) return;
+        const landedKind = (job.data as RtaImportJob).kind;
+        if (landedKind === "folio_master_dump" || landedKind === "cas_holdings") {
+          await enqueueRerun((job.data as RtaImportJob).tenantId).catch(() => {});
+        }
         // New RTA rows can confirm or reject business the team booked
         // (lib/business/rta-match.ts). Best effort — never fails the import.
         await matchBookedBusinessAfterImport((job.data as RtaImportJob).tenantId);
@@ -999,7 +1228,19 @@ export function startRtaImportWorker() {
   );
 
   worker.on("failed", (job, err) => {
-    captureError("[rta-import] job failed", err, { importId: (job?.data as RtaImportJob)?.importId });
+    const importId = (job?.data as RtaImportJob)?.importId;
+    captureError("[rta-import] job failed", err, { importId });
+    // A job that threw or ran past its time limit leaves its row in `parsing`;
+    // record why now instead of waiting for the reaper's generic note.
+    if (importId) {
+      void withSystem(async (tx) => {
+        await tx.execute(sql`
+          UPDATE rta_file_imports
+             SET status = 'failed', parsed_at = now(),
+                 remarks = left(${sanitizeText(`Import stopped: ${err?.message ?? "unknown error"}`)} || COALESCE(' · ' || NULLIF(remarks, ''), ''), 1000)
+           WHERE id = ${importId}::uuid AND status IN ('parsing', 'uploaded')`);
+      }).catch(() => {});
+    }
   });
 
   // Stuck-row reaper, every 5 minutes.

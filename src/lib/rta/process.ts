@@ -120,6 +120,141 @@ function nopanKeyFor(name: string | null, folioNumber: string): string {
 }
 
 /**
+ * One Postgres array literal, bound as ONE parameter. A JS array interpolated
+ * into sql`` expands to a tuple ($1, $2, …), which `::text[]` cannot cast.
+ */
+function pgArray(xs: readonly string[]): string {
+  return `{${xs.map((x) => `"${x.replace(/[\\"]/g, (c) => "\\" + c)}"`).join(",")}}`;
+}
+
+/** A folio number as the registrar means it: case, spaces and slashes ignored. */
+export function folioKey(folio?: string | null): string {
+  return (folio ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+/** One folio row the book already holds under a folio number. */
+export type FolioOwner = { amcCode: string; investorId: string; isMinor: boolean };
+
+/**
+ * Which client a row with this folio number belongs to.
+ *
+ * Folio numbers are unique only WITHIN an AMC. The old lookup took whichever
+ * folio row came back first, so a row for AMC X attached to the client who
+ * holds the same number at AMC Y. Rule: one candidate → it (AMC codes are
+ * spelt differently across a registrar's own reports, so a lone candidate is
+ * not second-guessed); several → the one whose AMC matches; several and none
+ * matches → nobody, so the row is held back with a reason instead of guessed.
+ */
+export function pickFolioOwner(owners: FolioOwner[] | undefined, amcCode?: string | null): FolioOwner | null {
+  if (!owners?.length) return null;
+  const distinct = new Set(owners.map((o) => o.investorId));
+  if (distinct.size === 1) return owners[0];
+  const amc = (amcCode ?? "").trim().toUpperCase();
+  if (!amc) return null;
+  const hit = owners.filter((o) => o.amcCode.trim().toUpperCase() === amc);
+  return new Set(hit.map((o) => o.investorId)).size === 1 ? hit[0] : null;
+}
+
+/**
+ * The client a registrar row belongs to, from its PAN and its folio.
+ *
+ * PAN wins — except over a MINOR's folio. Registrars often print the
+ * guardian's PAN on a minor's rows, so PAN-first moved the minor's
+ * transactions and SIPs onto the guardian's record. A folio already mapped to
+ * a minor stays the minor's.
+ */
+export function chooseClient(panClientId: string | null, folioOwner: FolioOwner | null): string | null {
+  if (folioOwner?.isMinor && panClientId && panClientId !== folioOwner.investorId) return folioOwner.investorId;
+  return panClientId ?? folioOwner?.investorId ?? null;
+}
+
+/** A folio row as the SIP-book and AUM paths read it. */
+export type FolioCandidate = {
+  id: string;
+  investor_id: string | null;
+  amc_code: string | null;
+  amc_name: string | null;
+  rta: string | null;
+  schemes: Array<{ schemeCode?: string; schemeName?: string }> | null;
+};
+
+/**
+ * The folio a SIP-register or AUM-statement row is about, when its report
+ * names no AMC (CAMS WBR22 / WBR49 carry a product code, not an AMC).
+ *
+ * One client behind the number → that folio (the registrar's own one first).
+ * Several clients → the folio that already holds this scheme, else the one
+ * whose AMC code the CAMS product code starts with ("D157" is DSP's, AMC "D").
+ * Still more than one → null: the row is held back with a reason rather than
+ * written onto whichever client happened to come back first.
+ */
+export function pickFolioForScheme(
+  candidates: FolioCandidate[],
+  schemeCode: string,
+  schemeName: string,
+  source: string,
+): { folio: FolioCandidate | null; ambiguous: boolean } {
+  if (!candidates.length) return { folio: null, ambiguous: false };
+  const owners = (list: FolioCandidate[]) => new Set(list.map((c) => c.investor_id ?? ""));
+  const preferSource = (list: FolioCandidate[]) => list.find((c) => c.rta === source) ?? list[0];
+  if (owners(candidates).size === 1) return { folio: preferSource(candidates), ambiguous: false };
+
+  const norm = (s?: string) => (s ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const code = schemeCode.trim().toUpperCase();
+  const name = norm(schemeName);
+  const holding = candidates.filter((c) =>
+    (c.schemes ?? []).some((s) => (code && (s.schemeCode ?? "").toUpperCase() === code) || (name && norm(s.schemeName) === name)),
+  );
+  if (holding.length && owners(holding).size === 1) return { folio: preferSource(holding), ambiguous: false };
+
+  const byAmc = candidates.filter((c) => {
+    const amc = (c.amc_code ?? "").trim().toUpperCase();
+    return !!amc && !!code && code.startsWith(amc);
+  });
+  if (byAmc.length) {
+    // The longest matching AMC code wins ("HLS" before "H").
+    const best = Math.max(...byAmc.map((c) => (c.amc_code ?? "").trim().length));
+    const top = byAmc.filter((c) => (c.amc_code ?? "").trim().length === best);
+    if (owners(top).size === 1) return { folio: preferSource(top), ambiguous: false };
+  }
+  return { folio: null, ambiguous: true };
+}
+
+/**
+ * Every folio the firm holds, keyed by folioKey — read ONCE per file. A
+ * per-row lookup that ignores case and slashes cannot use an index, and the
+ * SIP register runs one lookup per row (4,000+ rows against 15,000 folios).
+ */
+async function loadFolioIndex(tx: Tx, tenantId: string): Promise<Map<string, FolioCandidate[]>> {
+  const r = await tx.execute(sql`
+    SELECT id, investor_id, amc_code, amc_name, rta, schemes, folio_number FROM folios
+     WHERE tenant_id = ${tenantId}::uuid
+     ORDER BY created_at
+  `);
+  const map = new Map<string, FolioCandidate[]>();
+  for (const row of r.rows as Array<FolioCandidate & { folio_number: string }>) {
+    const k = folioKey(row.folio_number);
+    if (!k) continue;
+    const list = map.get(k) ?? [];
+    list.push(row);
+    map.set(k, list);
+  }
+  return map;
+}
+
+/** The live client to file a row under: PAN first, except over a minor's folio (chooseClient). */
+async function clientForRow(tx: Tx, tenantId: string, pan: string | undefined, folioOwnerId: string | null): Promise<string | null> {
+  const panId = pan ? await clientIdForPan(tx, tenantId, pan) : null;
+  const owner = folioOwnerId ? await liveOf(tx, tenantId, folioOwnerId) : null;
+  let ownerIsMinor = false;
+  if (owner && panId && owner !== panId) {
+    const m = await tx.execute(sql`SELECT is_minor FROM investors WHERE tenant_id = ${tenantId}::uuid AND id = ${owner}::uuid`);
+    ownerIsMinor = !!(m.rows[0] as { is_minor?: boolean } | undefined)?.is_minor;
+  }
+  return chooseClient(panId, owner ? { amcCode: "", investorId: owner, isMinor: ownerIsMinor } : null);
+}
+
+/**
  * Bulk-resolve every investor referenced by a feed in TWO queries (by PAN, by
  * existing folio) instead of 1–2 queries per row. Returns lookup maps the row
  * loop consults in memory — the key fix for the per-row N+1 that made large
@@ -130,11 +265,11 @@ async function buildInvestorIndex(
   tx: Tx,
   tenantId: string,
   keys: Array<{ pan?: string; folioNumber?: string; name?: string }>
-): Promise<{ panMap: Map<string, string>; folioMap: Map<string, string> }> {
+): Promise<{ panMap: Map<string, string>; folioOwners: Map<string, FolioOwner[]> }> {
   const pans = [...new Set(keys.map((k) => k.pan?.toUpperCase()).filter(Boolean))] as string[];
   const folios = [...new Set(keys.map((k) => k.folioNumber).filter(Boolean))] as string[];
   const panMap = new Map<string, string>();
-  const folioMap = new Map<string, string>();
+  const folioOwners = new Map<string, FolioOwner[]>();
 
   if (pans.length) {
     // The live client per PAN (the firm's Excel-loaded record included, merges
@@ -150,14 +285,34 @@ async function buildInvestorIndex(
     for (const [p, id] of res.ids) panMap.set(p, id);
   }
   if (folios.length) {
+    // Matched on the folio as the registrar means it (case / spaces / slashes
+    // ignored), with every AMC that holds that number — see pickFolioOwner.
+    const keysWanted = [...new Set(folios.map(folioKey).filter(Boolean))];
     const res = await tx.execute(sql`
-      SELECT investor_id, folio_number FROM folios WHERE tenant_id = ${tenantId}::uuid AND folio_number IN (${sql.join(folios.map((f) => sql`${f}`), sql`, `)})
+      SELECT f.investor_id, f.folio_number, COALESCE(f.amc_code, '') AS amc_code
+        FROM folios f
+       WHERE f.tenant_id = ${tenantId}::uuid AND f.investor_id IS NOT NULL
+         AND regexp_replace(upper(f.folio_number), '[^A-Z0-9]', '', 'g') = ANY(${pgArray(keysWanted)}::text[])
     `);
-    for (const row of res.rows as any[]) if (row.investor_id && !folioMap.has(row.folio_number)) folioMap.set(row.folio_number, String(row.investor_id));
-    const live = await followMerges(tx, tenantId, [...folioMap.values()]);
-    for (const [f, id] of folioMap) folioMap.set(f, live.get(id) ?? id);
+    const rows = res.rows as Array<{ investor_id: string; folio_number: string; amc_code: string }>;
+    const live = await followMerges(tx, tenantId, [...new Set(rows.map((r) => String(r.investor_id)))]);
+    const liveIds = [...new Set(rows.map((r) => live.get(String(r.investor_id)) ?? String(r.investor_id)))];
+    const minors = new Set<string>();
+    if (liveIds.length) {
+      const m = await tx.execute(sql`
+        SELECT id FROM investors WHERE tenant_id = ${tenantId}::uuid AND is_minor AND id = ANY(${pgArray(liveIds)}::uuid[])
+      `);
+      for (const r of m.rows as Array<{ id: string }>) minors.add(String(r.id));
+    }
+    for (const r of rows) {
+      const id = live.get(String(r.investor_id)) ?? String(r.investor_id);
+      const k = folioKey(r.folio_number);
+      const list = folioOwners.get(k) ?? [];
+      list.push({ amcCode: r.amc_code, investorId: id, isMinor: minors.has(id) });
+      folioOwners.set(k, list);
+    }
   }
-  return { panMap, folioMap };
+  return { panMap, folioOwners };
 }
 
 export type ProcessOutcome = {
@@ -175,7 +330,7 @@ export type ProcessOutcome = {
  */
 async function processRtaFileUnsafe(
   tx: Tx,
-  args: { tenantId: string; source: RtaSource; kind: RtaFileKind; text: string }
+  args: { tenantId: string; source: RtaSource; kind: RtaFileKind; text: string; importId?: string }
 ): Promise<ProcessOutcome> {
   // Large RTA files (100k+ rows) processed in one transaction can exceed the
   // 30s pool statement_timeout. Lift it for this import transaction only.
@@ -215,7 +370,7 @@ async function processRtaFileUnsafe(
 
 async function processTransactionFeed(
   tx: Tx,
-  args: { tenantId: string; source: RtaSource; text: string }
+  args: { tenantId: string; source: RtaSource; text: string; importId?: string }
 ): Promise<ProcessOutcome> {
   const rows: CanonicalTransaction[] =
     args.source === "kfintech"
@@ -239,13 +394,27 @@ async function processTransactionFeed(
   //   1. Lift the timeout for THIS import transaction only.
   //   2. Resolve every investor up front in two bulk queries (by PAN, by folio)
   //      into in-memory maps — the loop then does zero resolution round-trips.
-  const { panMap, folioMap } = await buildInvestorIndex(
+  const { panMap, folioOwners } = await buildInvestorIndex(
     tx,
     args.tenantId,
     rows.map((r) => ({ pan: r.pan, folioNumber: r.folioNumber, name: r.investorName }))
   );
-  const resolveFast = (pan?: string, folio?: string): string | null =>
-    (pan && panMap.get(pan.toUpperCase())) || (folio && folioMap.get(folio)) || null;
+  const resolveFast = (pan?: string, folio?: string, amc?: string): string | null =>
+    chooseClient((pan && panMap.get(pan.toUpperCase())) || null, pickFolioOwner(folioOwners.get(folioKey(folio)), amc));
+  /** Several AMCs hold this folio number and none is the row's: never guess. */
+  const ambiguousFolio = (folio: string, amc?: string): boolean => {
+    const owners = folioOwners.get(folioKey(folio));
+    return !!owners && new Set(owners.map((o) => o.investorId)).size > 1 && !pickFolioOwner(owners, amc);
+  };
+  const rememberFolio = (folio: string, amc: string, investorId: string) => {
+    const k = folioKey(folio);
+    const list = folioOwners.get(k) ?? [];
+    if (!list.some((o) => o.investorId === investorId && o.amcCode === amc)) list.push({ amcCode: amc, investorId, isMinor: false });
+    folioOwners.set(k, list);
+  };
+  let reversals = 0;
+  let reversalsMatched = 0;
+  let collisions = 0;
 
   /**
    * (amc_code, folio_number) -> folios.id, resolved at most ONCE per folio.
@@ -279,7 +448,20 @@ async function processTransactionFeed(
     if (r.orderDate > maxDate) maxDate = r.orderDate;
 
     // Resolve from the pre-built maps (no per-row query). PAN first, then folio.
-    let investorId = resolveFast(r.pan, r.folioNumber);
+    let investorId = resolveFast(r.pan, r.folioNumber, r.amcCode);
+    if (!investorId && !(r.pan && isLikelyPan(r.pan)) && ambiguousFolio(r.folioNumber, r.amcCode)) {
+      skipped++;
+      errors.push({
+        row: i + 1,
+        reason: `Folio ${r.folioNumber} is held at more than one AMC in this book and the row's AMC (${r.amcCode || "blank"}) matches none — not attached`,
+      });
+      continue;
+    }
+    // A minor's row printed with the GUARDIAN's PAN ("KAVYAAN GOEL REP BY
+    // GAURAV GOEL" + Gaurav's PAN) must not stand up a client called Kavyaan
+    // keyed on Gaurav's PAN — the guardian's own record would then be that
+    // minor. Such a row falls through to the name-keyed path below.
+    const representedMinor = splitRepresentedBy(r.investorName).isMinor;
 
     // Not in the book yet. If the row carries a valid PAN we can stand the
     // client up from the feed itself rather than dropping the transaction:
@@ -292,7 +474,7 @@ async function processTransactionFeed(
     //
     // VSN Financial Services: one KFintech feed skipped 1,849 rows this way,
     // 1,617 of which carried a PAN and are recoverable here.
-    if (!investorId && isLikelyPan(r.pan)) {
+    if (!investorId && isLikelyPan(r.pan) && !representedMinor) {
       const created = await tx.execute(sql`
         INSERT INTO investors (tenant_id, pan, name, investor_category, kyc_status)
         VALUES (
@@ -309,7 +491,7 @@ async function processTransactionFeed(
         // Feed the maps so the other rows for this client resolve without a
         // second insert — these feeds carry many rows per folio.
         panMap.set(r.pan.toUpperCase(), investorId);
-        folioMap.set(r.folioNumber, investorId);
+        rememberFolio(r.folioNumber, r.amcCode, investorId);
         createdInvestors++;
       }
     }
@@ -343,7 +525,7 @@ async function processTransactionFeed(
       `);
       investorId = await liveOf(tx, args.tenantId, (created.rows[0] as any)?.id ?? null);
       if (investorId) {
-        folioMap.set(r.folioNumber, investorId);
+        rememberFolio(r.folioNumber, r.amcCode, investorId);
         createdInvestors++;
       }
     }
@@ -358,13 +540,13 @@ async function processTransactionFeed(
 
     // Declared outside the try: if this row rolls back, the cache entry it
     // created has to be evicted too (see the catch).
-    const folioKey = `${r.amcCode}::${r.folioNumber}`;
+    const folioCacheKey = `${r.amcCode}::${r.folioNumber}`;
     let cachedFolioThisRow = false;
 
     await tx.execute(sql`SAVEPOINT rta_item`);
     try {
       // Resolve or create folio record — once per folio, not once per row.
-      let folioId = folioIdCache.get(folioKey);
+      let folioId = folioIdCache.get(folioCacheKey);
       if (!folioId) {
         const folioRes = await tx.execute(sql`
           INSERT INTO folios (tenant_id, investor_id, folio_number, amc_code, amc_name, rta)
@@ -374,34 +556,97 @@ async function processTransactionFeed(
         `);
         folioId = (folioRes.rows[0] as any)?.id;
         if (folioId) {
-          folioIdCache.set(folioKey, folioId);
+          folioIdCache.set(folioCacheKey, folioId);
           cachedFolioThisRow = true;
         }
       }
 
-      // UPSERT keyed by (tenant_id, order_id) so re-uploads no-op, but updates status/NAV/units.
-      await tx.execute(sql`
+      // UPSERT keyed by (tenant_id, order_id) so re-uploads no-op, but updates
+      // status/NAV/units — ONLY when the stored row is the same folio.
+      //
+      // A registrar's transaction number is unique within ONE AMC, not across
+      // the firm: CAMS numbers each AMC's transactions separately. Keyed on the
+      // bare number, a second AMC's transaction with the same number landed on
+      // the first one and REWROTE its folio, units and status while keeping its
+      // amount, client and scheme — and the second transaction was never
+      // stored. Found 29 Oct 2026: 6,508 transactions pointing at another
+      // folio, 4,740 of them another client's (Sandeep Garg Rs 20.56 Cr, Ahpal
+      // Rs 9.42 Cr). Now a number already taken by a different folio is stored
+      // under `<number>@<folio>`, which is just as deterministic, so a re-import
+      // of either file still lands on its own row.
+      const status = r.isReversal ? "cancelled" : normaliseStatus(r.status);
+      const reasonCode = r.isReversal ? "REVERSAL" : r.reasonCode ?? null;
+      const reasonDescription = r.isReversal ? "Reversal of an earlier transaction (registrar)" : r.reasonDescription ?? null;
+      const rawRow = JSON.stringify({ ...(r.raw ?? {}), ref: r.externalRef });
+      const fk = folioKey(r.folioNumber);
+      const upsert = (orderId: string) => tx.execute(sql`
         INSERT INTO transactions (
           tenant_id, investor_id, folio_id, folio_number, amc_code, amc_name, scheme_code, scheme_name,
           type, direction, amount, units, nav, order_id, order_date, status,
-          reason_code, reason_description
+          reason_code, reason_description, source_feed, rta_import_id, raw_feed_row
         ) VALUES (
           ${args.tenantId}::uuid, ${investorId}::uuid, ${folioId}::uuid, ${r.folioNumber}, ${r.amcCode}, ${r.amcCode},
           ${r.schemeCode}, ${r.schemeName}, ${r.type}, ${r.direction},
-          ${r.amount}, ${r.units}, ${r.nav}, ${r.externalRef}, ${r.orderDate}::date,
-          ${normaliseStatus(r.status)}, ${r.reasonCode ?? null}, ${r.reasonDescription ?? null}
+          ${r.amount}, ${r.units}, ${r.nav}, ${orderId}, ${r.orderDate}::date,
+          ${status}, ${reasonCode}, ${reasonDescription}, ${rtaEnumVal === "other" ? null : rtaEnumVal},
+          ${args.importId ?? null}::uuid, ${rawRow}::jsonb
         )
         ON CONFLICT (tenant_id, order_id) WHERE order_id IS NOT NULL DO UPDATE SET
           folio_id = EXCLUDED.folio_id,
-          status = EXCLUDED.status,
+          direction = EXCLUDED.direction,
+          -- A transaction a later reversal cancelled stays cancelled when its
+          -- own file is re-read.
+          status = CASE WHEN transactions.reason_code = 'REVERSED' THEN transactions.status ELSE EXCLUDED.status END,
           nav = EXCLUDED.nav,
           units = EXCLUDED.units,
-          reason_code = EXCLUDED.reason_code,
-          reason_description = EXCLUDED.reason_description,
+          reason_code = CASE WHEN transactions.reason_code = 'REVERSED' THEN transactions.reason_code ELSE EXCLUDED.reason_code END,
+          reason_description = CASE WHEN transactions.reason_code = 'REVERSED' THEN transactions.reason_description ELSE EXCLUDED.reason_description END,
+          source_feed = COALESCE(transactions.source_feed, EXCLUDED.source_feed),
+          rta_import_id = EXCLUDED.rta_import_id,
+          raw_feed_row = EXCLUDED.raw_feed_row,
           updated_at = now()
+        WHERE regexp_replace(upper(COALESCE(transactions.folio_number, '')), '[^A-Z0-9]', '', 'g') = ${fk}
+        RETURNING id, (xmax = 0) AS inserted
       `);
+      let res = await upsert(r.externalRef);
+      if (!res.rows.length) {
+        collisions++;
+        res = await upsert(`${r.externalRef}@${fk}`);
+      }
+      const written = res.rows[0] as { id: string; inserted: boolean } | undefined;
+      if (!written) throw new Error(`transaction ${r.externalRef} is already recorded against another folio`);
+
+      // A reversal cancels the transaction it reverses: the latest processed
+      // one in the same folio and scheme with the same units and amount, in the
+      // 120 days before it. Only on first sight, so re-reading the file can
+      // never cancel a second, genuine purchase of the same size.
+      if (r.isReversal && written.inserted) {
+        reversals++;
+        const hit = await tx.execute(sql`
+          UPDATE transactions o
+             SET status = 'cancelled', reason_code = 'REVERSED',
+                 reason_description = ${`Reversed by the registrar (${r.externalRef})`}, updated_at = now()
+           WHERE o.id = (
+             SELECT c.id FROM transactions c
+              WHERE c.tenant_id = ${args.tenantId}::uuid
+                AND c.id <> ${written.id}::uuid
+                AND c.status IN ('processed', 'successful')
+                AND COALESCE(c.reason_code, '') NOT IN ('REVERSAL', 'REVERSED')
+                AND c.type = ${r.type}
+                AND regexp_replace(upper(COALESCE(c.folio_number, '')), '[^A-Z0-9]', '', 'g') = ${fk}
+                AND (c.scheme_code = ${r.schemeCode} OR (${r.schemeCode} = '' AND c.scheme_name = ${r.schemeName}))
+                AND abs(abs(COALESCE(c.units, 0)) - ${Math.abs(r.units)}::numeric) <= 0.001
+                AND abs(c.amount - ${r.amount}::numeric) <= 1
+                AND c.order_date BETWEEN ${r.orderDate}::date - 120 AND ${r.orderDate}::date
+              ORDER BY c.order_date DESC
+              LIMIT 1)
+          RETURNING o.id
+        `);
+        if (hit.rows.length) reversalsMatched++;
+      }
+
       imported++;
-      if (normaliseStatus(r.status) === "processed") {
+      if (status === "processed") {
         const prev = lastTxByInvestor.get(investorId);
         if (!prev || r.orderDate > prev) lastTxByInvestor.set(investorId, r.orderDate);
       }
@@ -413,10 +658,24 @@ async function processTransactionFeed(
       // longer exists. Leaving it would make every later row for the same folio
       // write a transaction pointing at a dead folio_id and fail on the foreign
       // key — turning one bad row into a bad folio.
-      if (cachedFolioThisRow) folioIdCache.delete(folioKey);
+      if (cachedFolioThisRow) folioIdCache.delete(folioCacheKey);
       failed++;
       errors.push({ row: i + 1, reason: e.message ?? "insert failed" });
     }
+  }
+
+  // Not errors — said so the import shows what it decided.
+  if (reversals > 0) {
+    errors.push({
+      row: 0,
+      reason: `${reversals} reversal(s) recorded as cancelled; ${reversalsMatched} of them cancelled the transaction they reverse`,
+    });
+  }
+  if (collisions > 0) {
+    errors.push({
+      row: 0,
+      reason: `${collisions} transaction number(s) were already used by another folio (another AMC's numbering) — stored separately instead of overwriting`,
+    });
   }
 
   // Bump last_transaction_at (forward only) for each affected investor.
@@ -477,7 +736,13 @@ async function processSipRejectionReport(
     const followUp = new Date(new Date(r.rejectionDate).getTime() + 2 * 864e5)
       .toISOString()
       .slice(0, 10);
-    const dedupKey = naturalKeyHash([investorId, r.rejectionDate, r.amount, r.schemeName, r.folioNumber]);
+    // The rejection is the same event whoever its client record is now, so the
+    // client is NOT part of its identity. It used to be: after a merge (or a
+    // folio moved to the right client) the same rejection hashed differently,
+    // was inserted again and re-fired the follow-up, so the client got the
+    // "your SIP bounced" message twice. The NOT EXISTS keeps rows written under
+    // the old key from being duplicated by the new one.
+    const dedupKey = naturalKeyHash(["v2", r.folioNumber, r.rejectionDate, r.amount, r.schemeName]);
     await tx.execute(sql`SAVEPOINT rta_item`);
     try {
       const ins = await tx.execute(sql`
@@ -485,10 +750,18 @@ async function processSipRejectionReport(
           tenant_id, investor_id, rejection_date, rejection_amount,
           rejection_reason, scheme_name, folio_number, amc_name, recovery_status,
           assigned_rm_id, follow_up_date, reason_category, dedup_key
-        ) VALUES (
+        )
+        SELECT
           ${args.tenantId}::uuid, ${investorId}::uuid, ${r.rejectionDate}::date,
           ${r.amount}, ${r.reason}, ${r.schemeName}, ${r.folioNumber}, ${r.amcName}, 'pending',
           ${investorRmId}, ${followUp}::date, ${reasonCode}, ${dedupKey}
+        WHERE NOT EXISTS (
+          SELECT 1 FROM sip_rejections x
+           WHERE x.tenant_id = ${args.tenantId}::uuid
+             AND x.folio_number = ${r.folioNumber}
+             AND x.rejection_date = ${r.rejectionDate}::date
+             AND x.rejection_amount = ${r.amount}::numeric
+             AND COALESCE(x.scheme_name, '') = ${r.schemeName ?? ""}
         )
         ON CONFLICT (tenant_id, dedup_key) DO NOTHING
         RETURNING id
@@ -787,6 +1060,8 @@ async function processSipBook(
 
   // India's today, for reading the registration's dates.
   const todayIst = new Date(Date.now() + 5.5 * 36e5).toISOString().slice(0, 10);
+  /** Every folio in the book, loaded on the first row that needs it. */
+  let folioIndex: Map<string, FolioCandidate[]> | undefined;
 
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
@@ -846,41 +1121,36 @@ async function processSipBook(
 
     // Resolve the folio FIRST: it carries the investor link, so it can identify
     // the client even when the registrar omitted the PAN.
-    const folio = await tx.execute(sql`
-      SELECT id, amc_name, investor_id FROM folios
-      WHERE tenant_id = ${args.tenantId}::uuid AND folio_number = ${r.folioNumber} LIMIT 1
-    `);
-    const folioId = (folio.rows[0] as any)?.id;
-    const amcName = (folio.rows[0] as any)?.amc_name || "Unknown AMC";
-    const folioInvestorId = (folio.rows[0] as any)?.investor_id ?? null;
+    // Every folio holding this number — folio numbers repeat across AMCs, and
+    // the old `LIMIT 1` filed the SIP under whichever came back first.
+    folioIndex ??= await loadFolioIndex(tx, args.tenantId);
+    const picked = pickFolioForScheme(folioIndex.get(folioKey(r.folioNumber)) ?? [], r.schemeCode, r.schemeName, args.source);
+    const folioId = picked.folio?.id;
+    const amcName = picked.folio?.amc_name || "Unknown AMC";
+    const folioInvestorId = picked.folio?.investor_id ?? null;
     if (!folioId) {
       skipped++;
-      errors.push({ row: i + 1, reason: `Folio ${r.folioNumber} not found — import the folio master first` });
+      errors.push({
+        row: i + 1,
+        reason: picked.ambiguous
+          ? `Folio ${r.folioNumber} is held at more than one AMC by different clients and this row does not say which — not filed`
+          : `Folio ${r.folioNumber} not found — import the folio master first`,
+      });
       continue;
     }
 
-    // PAN wins when the registrar supplies one (it is the platform's dedup key);
+    // PAN wins when the registrar supplies one (it is the platform's dedup key)
+    // — except over a minor's folio, whose rows carry the guardian's PAN —
     // otherwise fall back to whoever owns the folio.
     let investorId: string | null = null;
     let rmId: string | null = null;
-    if (r.pan) {
-      const panId = await clientIdForPan(tx, args.tenantId, r.pan);
-      if (panId) {
-        const byPan = await tx.execute(sql`
-          SELECT id, rm_id FROM investors WHERE tenant_id = ${args.tenantId}::uuid AND id = ${panId}::uuid LIMIT 1
-        `);
-        investorId = (byPan.rows[0] as any)?.id ?? null;
-        rmId = (byPan.rows[0] as any)?.rm_id ?? null;
-      }
-    }
-    if (!investorId && folioInvestorId) {
-      const liveOwner = await liveOf(tx, args.tenantId, String(folioInvestorId));
-      const byFolio = await tx.execute(sql`
-        SELECT id, rm_id FROM investors
-        WHERE tenant_id = ${args.tenantId}::uuid AND id = ${liveOwner}::uuid LIMIT 1
+    const chosen = await clientForRow(tx, args.tenantId, r.pan || undefined, folioInvestorId ? String(folioInvestorId) : null);
+    if (chosen) {
+      const who = await tx.execute(sql`
+        SELECT id, rm_id FROM investors WHERE tenant_id = ${args.tenantId}::uuid AND id = ${chosen}::uuid LIMIT 1
       `);
-      investorId = (byFolio.rows[0] as any)?.id ?? null;
-      rmId = (byFolio.rows[0] as any)?.rm_id ?? null;
+      investorId = (who.rows[0] as any)?.id ?? null;
+      rmId = (who.rows[0] as any)?.rm_id ?? null;
     }
     if (!investorId) {
       skipped++;
@@ -1208,9 +1478,24 @@ async function processAumStatement(
     aumRowsGrouped.get(key)!.push(r);
   }
 
+  const folioIndex = await loadFolioIndex(tx, args.tenantId);
+
   for (const [folioNum, fRows] of aumRowsGrouped) {
     const firstRow = fRows[0];
-    let investorId = await resolveInvestorId(tx, args.tenantId, { pan: firstRow.pan, folioNumber: folioNum });
+    // The folio this holding is in — see pickFolioForScheme. This report names
+    // no AMC, and the old lookup took the first folio with the number.
+    const picked = pickFolioForScheme(folioIndex.get(folioKey(folioNum)) ?? [], firstRow.schemeCode, firstRow.schemeName, args.source);
+    if (picked.ambiguous) {
+      skipped += fRows.length;
+      errors.push({
+        row: rows.indexOf(firstRow) + 1,
+        reason: `Folio ${folioNum} is held at more than one AMC by different clients and this report does not say which — not filed`,
+      });
+      continue;
+    }
+    let investorId = picked.folio
+      ? await clientForRow(tx, args.tenantId, firstRow.pan || undefined, picked.folio.investor_id)
+      : await resolveInvestorId(tx, args.tenantId, { pan: firstRow.pan, folioNumber: folioNum });
 
     // Same gap the transaction feed had: the folio is not in the book yet and
     // this report cannot supply a PAN to match on. CAMS WBR22 has NO PAN COLUMN
@@ -1255,10 +1540,12 @@ async function processAumStatement(
     // scheme, not a folio-level AMC — so it is left blank for a later master to
     // fill in, and the ON CONFLICT target below matches the same
     // (tenant, amc_code, folio_number) key the rest of the importer uses.
-    let folio = await tx.execute(sql`
-      SELECT id, schemes FROM folios
-      WHERE tenant_id = ${args.tenantId}::uuid AND folio_number = ${folioNum} LIMIT 1
-    `);
+    let folio = picked.folio
+      ? await tx.execute(sql`SELECT id, schemes FROM folios WHERE id = ${picked.folio.id}::uuid`)
+      : await tx.execute(sql`
+          SELECT id, schemes FROM folios
+          WHERE tenant_id = ${args.tenantId}::uuid AND folio_number = ${folioNum} LIMIT 1
+        `);
     if (!folio.rows[0]) {
       const rtaEnum = args.source === "cams" || args.source === "kfintech" ? args.source : "other";
       await tx.execute(sql`
@@ -1458,7 +1745,7 @@ async function processAumStatement(
 /** Preserve the caller's import-attempt row even if parsing/setup fails in SQL. */
 export async function processRtaFile(
   tx: Tx,
-  args: { tenantId: string; source: RtaSource; kind: RtaFileKind; text: string }
+  args: { tenantId: string; source: RtaSource; kind: RtaFileKind; text: string; importId?: string }
 ): Promise<ProcessOutcome> {
   await tx.execute(sql`SAVEPOINT rta_import`);
   try {

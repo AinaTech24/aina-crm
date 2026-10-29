@@ -87,6 +87,8 @@ export const transactions = pgTable(
       enum: ["manual", "cams", "kfintech", "nse", "mfu", "other", "bse", "import"],
     }),
     rawFeedRow: jsonb("raw_feed_row"),
+    /** The rta_file_imports row this transaction was read from (migration 0252). */
+    rtaImportId: uuid("rta_import_id"),
 
     /** Free-text RM remarks — spec § Module 9. */
     remarks: text("remarks"),

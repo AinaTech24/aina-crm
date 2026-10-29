@@ -123,6 +123,9 @@ type AttachmentLog = {
 
 type InboundOutcome = "imported" | "duplicate" | "confirmation" | "no_attachment" | "unroutable" | "error";
 
+/** Mails with an attachment that could not be stored — kept and retried, never deleted. */
+const mailToRetry = new WeakSet<InboundRawMessage>();
+
 /** Body text we keep for the admin log — enough to identify the mail, not the lot. */
 const BODY_SNIPPET_MAX = 2000;
 
@@ -488,10 +491,29 @@ async function handleMessage(msg: InboundRawMessage): Promise<void> {
     }
 
     const logTail = { ...logBase, attachments: attLogs, queued, duplicates };
+    // An attachment that could not be STORED (S3 or database down) is data we
+    // have not got yet. It used to fall into the "already imported" branch —
+    // logged as a duplicate — and the S3 reader then deleted the mail: the
+    // report was gone with a log row saying nothing was new. Such a mail is now
+    // kept and retried (see pollS3InboundOnce).
+    const ingestErrors = attLogs.filter((a) => a.outcome === "error" && a.source).length;
+    if (ingestErrors > 0) mailToRetry.add(msg);
 
     if (queued > 0) {
-      await logInbound(msg, { ...logTail, outcome: "imported" });
+      await logInbound(msg, {
+        ...logTail,
+        outcome: "imported",
+        reason: ingestErrors ? `${ingestErrors} attachment(s) could not be stored — the mail is kept and retried` : undefined,
+      });
       return; // something imported — done
+    }
+    if (recognised > 0 && ingestErrors > 0) {
+      await logInbound(msg, {
+        ...logTail,
+        outcome: "error",
+        reason: `${ingestErrors} attachment(s) could not be stored — the mail is kept and retried`,
+      });
+      return;
     }
     if (recognised > 0) {
       // Recognised but nothing new to import (all duplicates of prior imports).
@@ -641,7 +663,9 @@ export async function pollS3InboundOnce(): Promise<{ processed: number; held: nu
     try {
       const msg = await readStoredMail(key, processed + 1);
       await handleMessage(msg);
-      if (msg.outcome === "unroutable") {
+      // Unroutable, or an attachment that could not be stored: hold it for
+      // the hourly retry instead of deleting the only copy.
+      if (msg.outcome === "unroutable" || mailToRetry.has(msg)) {
         await moveObject(key, HELD_PREFIX + name);
         held++;
       } else {
@@ -673,7 +697,7 @@ export async function retryHeldS3Inbound(): Promise<{ retried: number; recovered
       const msg = await readStoredMail(key, retried + 1);
       await handleMessage(msg);
       retried++;
-      if (msg.outcome !== "unroutable") {
+      if (msg.outcome !== "unroutable" && !mailToRetry.has(msg)) {
         await deleteObject(key);
         recovered++;
       }
