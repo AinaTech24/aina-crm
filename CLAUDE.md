@@ -450,10 +450,11 @@ action easy, the result satisfying.
   Job Tracker and Next Best Action pages and sidebar items, the 6:30 pm "close
   your day" nudge, the first clock-in opening the tracker, the tracker
   reminder, the Team tracker, the weekly team pack and Settings → Daily
-  tracker. Their addresses redirect (`/dashboard/next-best-action` →
-  Dashboard, `/dashboard/tasks/daily`, `/daily/team`, `/weekly-pack` →
-  Tasks). Kept because other things use them: `lib/nba/engine.ts` (the client
-  page's Recommended actions card, the AI client brief), `lib/daily-tracker.ts`
+  tracker, and the client page's Recommended actions card (same engine,
+  removed the same day). Their addresses redirect (`/dashboard/next-best-action`
+  → Dashboard, `/dashboard/tasks/daily`, `/daily/team`, `/weekly-pack` →
+  Tasks). Kept because other things use them: `lib/nba/engine.ts` (the AI
+  client brief), `lib/daily-tracker.ts`
   + `/api/daily-tracker` + the `daily_trackers` table (the mobile app's
   Daily screen, until a mobile release drops it).
 - **A call is logged in one tap.** Any Call / WhatsApp / SMS / Email launcher

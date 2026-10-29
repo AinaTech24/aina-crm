@@ -42,7 +42,6 @@ import { RowActions } from "@/components/common/RowActions";
 import { RecordMenu, RecordMenuSeparator } from "@/components/common/RecordMenu";
 import { RecordTimeline } from "@/components/common/RecordTimeline";
 import { VerifyContact } from "@/components/investors/VerifyContact";
-import { RecommendedActions } from "@/components/investors/RecommendedActions";
 import { AiClientBrief } from "@/components/investors/AiClientBrief";
 import { BestTimeBadge } from "@/components/investors/BestTimeBadge";
 import { OnboardingWizardButton } from "@/components/investors/OnboardingWizard";
@@ -122,7 +121,6 @@ import { contactLogAttrs } from "@/lib/activities/contact-log";
 const INVESTOR_DETAIL_SECTIONS: RelatedListDef[] = [
   // Overview
   { key: "health", label: "Client health score" },
-  { key: "recommended", label: "Recommended actions" },
   { key: "opportunities", label: "Opportunities — products the client wants next" },
   { key: "summary", label: "Review schedule" },
   { key: "notes", label: "Notes" },
@@ -160,7 +158,7 @@ const INVESTOR_DETAIL_SECTIONS: RelatedListDef[] = [
  */
 function investorDetailTabs(counts: { holdings: number }) {
   return [
-    { key: "overview", label: "Overview", sections: ["health", "recommended", "opportunities", "summary", "notes"] },
+    { key: "overview", label: "Overview", sections: ["health", "opportunities", "summary", "notes"] },
     {
       key: "portfolio",
       label: "Portfolio",
@@ -613,17 +611,6 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           investor={inv as any}
           hasOpenSrBreach={!!data.health?.factors.some((f) => f.key === "sr")}
         />
-      </RelatedListSection>
-
-      {/* Next-Best-Action recommendations for this client (nothing when none) */}
-      <RelatedListSection moduleKey="investors-detail" sectionKey="recommended">
-      <RecommendedActions
-        session={{ tenantId: session.tenantId, userId: session.userId, branchId: session.branchId, roles: session.roles }}
-        investorId={inv.id}
-        name={inv.name}
-        phone={inv.phone}
-        email={inv.email}
-      />
       </RelatedListSection>
 
       {/* Another product this existing client wants — each with its own journey. */}
