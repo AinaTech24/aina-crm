@@ -47,7 +47,6 @@ import {
   IndianRupee,
   Landmark,
   Crosshair,
-  Sparkles,
 } from "lucide-react";
 import { eq, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
@@ -126,23 +125,16 @@ const NAV: NavSection[] = [
       // above the groups; the module kill-switch still hides it, because
       // moduleControls is checked for every item below.
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      // Who to call today and why, ranked by what is at stake (lib/nba). It had
-      // no way in but a typed address; the cue has to be where people look.
-      { href: "/dashboard/next-best-action", label: "Next Best Action", icon: Sparkles,
-        roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
       // My Day was removed 2026-10-01 at the firm's request; /dashboard/command-center
-      // now redirects here.
+      // now redirects here. Next Best Action was removed 2026-10-29 (the firm's
+      // request) and redirects here too — do not put either back.
     ],
   },
   {
     title: "Work",
     items: [
       { href: "/dashboard/tasks", label: "Tasks", icon: ListChecks, module: "tasks" },
-      // Plan the morning, close the evening (lib/daily-tracker). Clocking in and
-      // the 6:30 pm "close your day" nudge both open it.
-      // accessKey: the page is gated as part of Tasks (gatedNavKeyForPath), so
-      // the menu item follows the same grant rather than showing a locked page.
-      { href: "/dashboard/tasks/daily", accessKey: "/dashboard/tasks", label: "Daily Job Tracker", icon: CalendarCheck, module: "tasks" },
+      // The Daily Job Tracker was removed 2026-10-29 at the firm's request — do not put it back.
       { href: "/dashboard/review-meetings", label: "Meetings", icon: Presentation, module: "review_meetings",
         roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
       { href: "/dashboard/service-requests", label: "Service Requests", icon: LifeBuoy, module: "service_requests" },

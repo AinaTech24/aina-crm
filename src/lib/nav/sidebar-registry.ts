@@ -20,10 +20,8 @@ export const SIDEBAR_REGISTRY: SidebarEntry[] = [
   { group: "Home", href: "/dashboard/manage", label: "Manage dashboards" },
   { group: "Home", href: "/dashboard/team", label: "Team Dashboard" },
   { group: "Home", href: "/dashboard/team/scorecard", label: "Team Scorecard" },
-  { group: "Home", href: "/dashboard/next-best-action", label: "Next Best Action" },
   // Work
   { group: "Work", href: "/dashboard/tasks", label: "Tasks" },
-  { group: "Work", href: "/dashboard/tasks/daily", label: "Daily Tracker" },
   { group: "Work", href: "/dashboard/review-meetings", label: "Meetings" },
   { group: "Work", href: "/dashboard/calendar", label: "Calendar" },
   { group: "Work", href: "/dashboard/service-requests", label: "Service Requests" },

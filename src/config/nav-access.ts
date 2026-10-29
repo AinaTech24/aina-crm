@@ -36,7 +36,6 @@ export const NAV_ACCESS_GROUPS: NavAccessGroup[] = [
   {
     title: "Home",
     items: [
-      { key: "/dashboard/next-best-action", label: "Next Best Action" },
     ],
   },
   {
