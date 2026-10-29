@@ -496,8 +496,10 @@ export function GuidedStageActions({
           // The five steps that hand work to someone (fresh KYC, create UCC,
           // register mandate) or record what the client already has (UCC,
           // mandate) always open it: it is where the task is assigned and the
-          // UCC / mandate details are typed.
-          if (!(pre.missingFields ?? []).length && !POPUP_STAGES.has(action.targetStage)) {
+          // UCC / mandate details are typed. The three call loops (Call Back
+          // Later, Call Not Connected, Contact in Future) always open it too:
+          // it is where the next follow-up date is picked.
+          if (!(pre.missingFields ?? []).length && !POPUP_STAGES.has(action.targetStage) && !NEXT_TOUCH_STAGES.has(action.targetStage)) {
             const moved = await advance(action.targetStage, `Action: ${action.label}`);
             if (!moved) {
               setOutcome({ kind: "error", message: "Couldn't move to this step. Please try again." });
