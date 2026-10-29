@@ -54,7 +54,7 @@ export default async function KnowledgeBasePage() {
                   {c.name} <span className="text-muted-foreground">({c.count})</span>
                 </Link>
               </div>
-              <div className="grid md:grid-cols-2 gap-px bg-border/60">
+              <div className="grid md:grid-cols-2 [&>*]:border-border/60 [&>*:not(:first-child)]:border-t md:[&>*:nth-child(2)]:border-t-0 md:[&>*:nth-child(odd)]:border-r">
                 {c.folders.map((f) => (
                   <FolderBlock key={f.id} folder={f} />
                 ))}

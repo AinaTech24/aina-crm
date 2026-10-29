@@ -59,7 +59,7 @@ export function HelpBanner({
 export function FolderBlock({ folder, limit = 3 }: { folder: HelpFolder; limit?: number }) {
   const shown = folder.articles.slice(0, limit);
   return (
-    <div className="bg-card p-5">
+    <div className="p-5">
       <Link
         href={`/knowledge-base/folder/${folder.slug}`}
         className="inline-flex items-center gap-2 font-bold text-foreground hover:text-primary"

@@ -32,7 +32,7 @@ export default async function KbCategoryPage({ params }: { params: Promise<{ slu
         crumbs={[{ label: "Home", href: "/" }, { label: "Knowledge base", href: "/knowledge-base" }, { label: c.name }]}
       />
       <section className="max-w-6xl mx-auto px-6 pt-8">
-        <div className="rounded-xl border border-border/60 bg-card shadow-sm overflow-hidden grid md:grid-cols-2 gap-px bg-border/60">
+        <div className="rounded-xl border border-border/60 bg-card shadow-sm overflow-hidden grid md:grid-cols-2 [&>*]:border-border/60 [&>*:not(:first-child)]:border-t md:[&>*:nth-child(2)]:border-t-0 md:[&>*:nth-child(odd)]:border-r">
           {c.folders.map((f) => (
             <FolderBlock key={f.id} folder={f} limit={5} />
           ))}
