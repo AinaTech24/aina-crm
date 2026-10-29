@@ -10,12 +10,15 @@ export const BUSINESS_GUIDES: StarterGuide[] = [
     shots: [
       { file: "sips", caption: "SIP Book with the monthly SIP book and each client's SIP." },
       { file: "sip-new", caption: "Add SIP: client, scheme, amount, frequency and date." },
+      { file: "nav-sips", caption: "Find it: the highlighted item opens this page." },
     ],
     body: `The SIP Book is the register of every systematic investment plan you service.
 
 ![SIP Book](shot:1)
 
 ## Read the book
+
+![Find it: the highlighted item opens this page.](shot:3)
 
 1. Open **Business → SIP Book**.
 2. The tiles show **Active SIPs**, the **Monthly SIP book** (each SIP converted to its monthly equivalent), **Added this month**, **Stopped this month** and **Expiring (90 days)**.
@@ -44,8 +47,11 @@ export const BUSINESS_GUIDES: StarterGuide[] = [
     shots: [
       { file: "sip-rejections", caption: "Rejections with totals, the recovery summary, reasons and ageing." },
       { file: "rejection-new", caption: "New rejection: client, scheme, amount, reason and follow-up date." },
+      { file: "nav-sip-rejections", caption: "Find it: the highlighted item opens this page." },
     ],
     body: `A SIP that bounces is money that stops flowing. This page makes sure each one is chased.
+
+![Find it: the highlighted item opens this page.](shot:3)
 
 ![SIP Rejections](shot:1)
 
@@ -78,12 +84,14 @@ Rejections also arrive automatically when you import the registrar's SIP rejecti
     title: "SIP At-Risk — save SIPs before they stop",
     hook: "Find SIPs with a dead or expiring mandate, repeated failures or an imminent end date.",
     minutes: 2,
-    shots: [{ file: "sips-at-risk", caption: "SIP At-Risk: at-risk SIPs, monthly inflow at risk and annual trail exposed." }],
+    shots: [{ file: "sips-at-risk", caption: "SIP At-Risk: at-risk SIPs, monthly inflow at risk and annual trail exposed." }, { file: "nav-sips-at-risk", caption: "Find it: the highlighted item opens this page." }],
     body: `The At-risk tab warns you about SIPs that are likely to stop.
 
 ![SIP At-Risk](shot:1)
 
 ## Use it
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Business → SIP Book → At-risk**.
 2. The tiles show the **at-risk SIPs** (split high and medium), the **monthly inflow at risk** and the **annual trail exposed** if they stop.
@@ -97,12 +105,14 @@ When nothing qualifies, the page says "No SIPs at risk".`,
     title: "MF Transactions — the registrar's ledger",
     hook: "Purchases, redemptions, switches and SIP instalments as reported by CAMS and KFintech.",
     minutes: 2,
-    shots: [{ file: "transactions", caption: "MF Transactions, empty until the first registrar file is imported." }],
+    shots: [{ file: "transactions", caption: "MF Transactions, empty until the first registrar file is imported." }, { file: "nav-transactions", caption: "Find it: the highlighted item opens this page." }],
     body: `MF Transactions is the ledger of what the registrar says actually happened.
 
 ![MF Transactions](shot:1)
 
 ## Bring transactions in
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Business → MF Transactions**.
 2. Click **Go to RTA File Imports** to upload the CAMS or KFintech daily transaction feed, or **Import** / **Import from Excel** for a spreadsheet.
@@ -119,12 +129,15 @@ Processed switch, STP and SWP rows have an **Email** button that sends the clien
     shots: [
       { file: "business-entries", caption: "Business Entries, with the dashboard and liquid report one click away." },
       { file: "entry-new", caption: "New entry: client, product and the lines of business." },
+      { file: "nav-business-entries", caption: "Find it: the highlighted item opens this page." },
     ],
     body: `A business entry is the record of work operations did the day an RM asked for it — a lumpsum, SIP, switch, insurance premium, PMS or AIF.
 
 ![Business Entries](shot:1)
 
 ## Log an entry
+
+![Find it: the highlighted item opens this page.](shot:3)
 
 1. Open **Business → Business Entries** and click **New entry** (or **Log your first closing**).
 2. On **New business closing entry**, search the **Client** and choose the **Product type** (Mutual Fund and others), the **Platform** (for example NJ, Motilal, Piper Serica), the **Business date** and the **Relationship manager**.
@@ -154,12 +167,15 @@ Processed switch, STP and SWP rows have an **Email** button that sends the clien
     shots: [
       { file: "fixed-deposits", caption: "Live FDs, amount deposited, and maturities in 30 and 90 days." },
       { file: "fd-new", caption: "Add FD: client, issuer, amount, rate, tenure and dates." },
+      { file: "nav-fixed-deposits", caption: "Find it: the highlighted item opens this page." },
     ],
     body: `Track every fixed deposit a client placed through you and never miss a maturity.
 
 ![Fixed Deposits](shot:1)
 
 ## Add an FD
+
+![Find it: the highlighted item opens this page.](shot:3)
 
 1. Open **Business → Fixed Deposits** and click **Add FD**.
 2. Under **Client**, search the client; the **Relationship manager** defaults to the client's RM.
@@ -182,12 +198,14 @@ Processed switch, STP and SWP rows have an **Email** button that sends the clien
     title: "Expected Inflows — money you can see coming",
     hook: "FD maturities and other expected cash, by month, so you can plan reinvestment conversations.",
     minutes: 2,
-    shots: [{ file: "expected-inflows", caption: "Expected inflows grouped by month, with source, amount and confidence." }],
+    shots: [{ file: "expected-inflows", caption: "Expected inflows grouped by month, with source, amount and confidence." }, { file: "nav-expected-inflows", caption: "Find it: the highlighted item opens this page." }],
     body: `Expected inflows list money a client is likely to have available, so you can talk to them before it lands somewhere else.
 
 ![Expected Inflows](shot:1)
 
 ## Read the page
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Business → Expected Inflows**.
 2. The tiles show the amount **expected in the next 90 days**, the **total upcoming**, inflows whose **date has passed without action**, and what has been **captured**.

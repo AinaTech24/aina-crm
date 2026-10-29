@@ -7,7 +7,7 @@ export const PLANNING_GUIDES: StarterGuide[] = [
     title: "Calculators and meeting packs",
     hook: "SIP, goal, retirement and protection calculators — grouped into ready-made packs for client meetings.",
     minutes: 3,
-    shots: [{ file: "calculators", caption: "Meeting packs on top, then the full calculator library by category." }],
+    shots: [{ file: "calculators", caption: "Meeting packs on top, then the full calculator library by category." }, { file: "nav-calculators", caption: "Find it: the highlighted item opens this page." }],
     body: `The Calculators page gives you the numbers to use in a client conversation.
 
 ![Calculators](shot:1)
@@ -26,6 +26,8 @@ Click the first (blue) calculator to start, then follow the numbered ones.
 
 ## Find any calculator
 
+![Find it: the highlighted item opens this page.](shot:2)
+
 1. Open **Planning Tools → Calculators**.
 2. Type in **Search calculators by name** or scroll the categories (SIP & Wealth Building, Goals & Planning and more).
 3. Click a calculator, enter the client's numbers and read the result.
@@ -40,12 +42,14 @@ Click **Assumptions** (top right) to see and set the return, inflation and other
     title: "Goals — plan and track client goals",
     hook: "Record a client's goal, link holdings to it and see whether the SIP is enough.",
     minutes: 3,
-    shots: [{ file: "goals", caption: "Goals with target, linked value, projection, required SIP and the gap." }],
+    shots: [{ file: "goals", caption: "Goals with target, linked value, projection, required SIP and the gap." }, { file: "nav-goals", caption: "Find it: the highlighted item opens this page." }],
     body: `A goal turns "I want to buy a house" into a target amount, a year and a monthly SIP.
 
 ![Goals](shot:1)
 
 ## Add a goal
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Planning Tools → Goals** and click **New goal**.
 2. Pick the client, the goal type (House, Child Education, Retirement…), the target amount and the target year.
@@ -66,12 +70,14 @@ Use search, sort and filters to focus on clients whose goals are off track.`,
     title: "Financial Health Check",
     hook: "One printable document with a client's cash flow, assets, protection and goals — filled in from what the CRM already holds.",
     minutes: 3,
-    shots: [{ file: "fhc", caption: "Financial Health Check list, before the first check is created." }],
+    shots: [{ file: "fhc", caption: "Financial Health Check list, before the first check is created." }, { file: "nav-fhc", caption: "Find it: the highlighted item opens this page." }],
     body: `A Financial Health Check shows the client where they stand in one document you can print and share.
 
 ![Financial Health Check](shot:1)
 
 ## Create one
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Planning Tools → Financial Health Check** and click **New Health Check**.
 2. Pick an existing client. The check fills itself from the CRM:
@@ -90,12 +96,14 @@ Only blanks are filled in; whatever you type stays. You can also start from a co
     title: "Proposals — branded recommendations for clients",
     hook: "Build a mutual fund, insurance, PMS or AIF proposal, download it as a PDF and track it until accepted.",
     minutes: 3,
-    shots: [{ file: "proposals", caption: "Proposals by status: Draft, Sent, Accepted, Rejected, Expired." }],
+    shots: [{ file: "proposals", caption: "Proposals by status: Draft, Sent, Accepted, Rejected, Expired." }, { file: "nav-proposals", caption: "Find it: the highlighted item opens this page." }],
     body: `A proposal is the branded document you give a client or prospect with your recommendation.
 
 ![Proposals](shot:1)
 
 ## Build and send
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Planning Tools → Proposals** and click **New proposal**.
 2. Choose the recipient (a client or lead), the product type and add the recommendation.
@@ -113,12 +121,14 @@ Only blanks are filled in; whatever you type stays. You can also start from a co
     title: "Insurance — policies register",
     hook: "Record every life, health and general policy a client holds, with sum assured, premium and due dates.",
     minutes: 3,
-    shots: [{ file: "insurance", caption: "The policy register with tabs for Policies, Renewals, Claims, Protection gap and Commission." }],
+    shots: [{ file: "insurance", caption: "The policy register with tabs for Policies, Renewals, Claims, Protection gap and Commission." }, { file: "nav-insurance", caption: "Find it: the highlighted item opens this page." }],
     body: `The Insurance module is one register for every policy you place or service. Its tabs cover the whole insurance process.
 
 ![Policies](shot:1)
 
 ## Add a policy
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Planning Tools → Insurance** and click **New policy**, or **Import** a list.
 2. Choose the client, insurer and plan, the type (term life, health, motor…), sum assured, premium and frequency, and the start date.
@@ -141,12 +151,14 @@ Columns include plan and insurer, type, client, sum assured, premium, frequency,
     title: "Insurance renewals — never let a policy lapse",
     hook: "See what is overdue, due this week or due within 30 days, and chase it in time.",
     minutes: 2,
-    shots: [{ file: "insurance-renewals", caption: "Renewals counts: overdue (in grace), due this week, due in 30 days, lapsing." }],
+    shots: [{ file: "insurance-renewals", caption: "Renewals counts: overdue (in grace), due this week, due in 30 days, lapsing." }, { file: "nav-insurance-renewals", caption: "Find it: the highlighted item opens this page." }],
     body: `The Renewals tab lists policies by how close the premium is.
 
 ![Insurance renewals](shot:1)
 
 ## Work the renewals
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Planning Tools → Insurance** and choose the **Renewals** tab.
 2. Read the four counts: **Overdue (in grace)**, **Due this week**, **Due in 30 days**, **Lapsing (past grace)**.
@@ -160,12 +172,14 @@ Use **Export** to download the list.`,
     title: "Insurance claims — log and follow through",
     hook: "Record a claim, move it through each stage and keep the claim's documents in order.",
     minutes: 3,
-    shots: [{ file: "insurance-claims", caption: "Claims by stage, from Claim Intimated to Settled." }],
+    shots: [{ file: "insurance-claims", caption: "Claims by stage, from Claim Intimated to Settled." }, { file: "nav-insurance-claims", caption: "Find it: the highlighted item opens this page." }],
     body: `The Claims tab tracks a claim from intimation to settlement.
 
 ![Insurance claims](shot:1)
 
 ## Log a claim
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Planning Tools → Insurance → Claims** and click **New claim** (or **Log a claim** on an empty list).
 2. Pick the policy and record the claim details.
@@ -187,12 +201,14 @@ Each claim has a document checklist that follows the product. A claim's next act
     title: "Protection-gap radar",
     hook: "Find clients with no life or health cover, and see an indicative cover needed.",
     minutes: 2,
-    shots: [{ file: "protection-gap", caption: "Clients with no life or health cover, with indicative cover needed and AUM." }],
+    shots: [{ file: "protection-gap", caption: "Clients with no life or health cover, with indicative cover needed and AUM." }, { file: "nav-protection-gap", caption: "Find it: the highlighted item opens this page." }],
     body: `Use this to find the conversations worth having about protection.
 
 ![Protection-gap radar](shot:1)
 
 ## Read the radar
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Planning Tools → Insurance → Protection gap**. Choose **Firm-wide** or **My book**.
 2. Filter by **All gaps**, **Life gap** or **Health gap**.
@@ -207,12 +223,14 @@ A gap means no active or in-progress policy of that type for the client or anyon
     title: "Insurance commission",
     hook: "Premium book by insurer, commission received net of TDS and an estimate of renewal income.",
     minutes: 2,
-    shots: [{ file: "insurance-commission", caption: "Commission by insurer, and the payouts you have recorded." }],
+    shots: [{ file: "insurance-commission", caption: "Commission by insurer, and the payouts you have recorded." }, { file: "nav-insurance-commission", caption: "Find it: the highlighted item opens this page." }],
     body: `The Commission tab shows what the insurance book earns.
 
 ![Insurance commission](shot:1)
 
 ## Record a payout
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Planning Tools → Insurance → Commission**.
 2. Click **Add commission** and enter the insurer, amount, TDS and date of the receipt.

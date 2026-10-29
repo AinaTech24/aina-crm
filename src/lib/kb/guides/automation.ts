@@ -10,12 +10,15 @@ export const AUTOMATION_GUIDES: StarterGuide[] = [
     shots: [
       { file: "automations", caption: "Automations: Rules, Actions and Run history tabs." },
       { file: "automation-new", caption: "New automation: choose a recipe or start from scratch." },
+      { file: "nav-automations", caption: "Find it: the highlighted item opens this page." },
     ],
     body: `Every event in the CRM — a rejected SIP, a redemption, a birthday — can start an automation: a checked sequence of messages and tasks.
 
 ![Automations](shot:1)
 
 ## Start an automation
+
+![Find it: the highlighted item opens this page.](shot:3)
 
 1. Open **Settings → Automations** and click **New automation**.
 2. Pick a recipe: **Birthday wish** (email every active client a birthday greeting on the day), **Welcome email** (welcome each new client as soon as they are added), **SIP bounce follow-up** (give the client's RM a high-priority task to recover it) or **Review reminder** (a task for the RM on each client's next review date). **See all recipes** opens the full library, and **Build from scratch** starts empty.
@@ -42,12 +45,15 @@ Every message an automation sends goes through the same pipeline as a hand-sent 
     shots: [
       { file: "templates", caption: "Message Templates by channel and approval status." },
       { file: "template-new", caption: "New template: name, channel, category and body." },
+      { file: "nav-templates", caption: "Find it: the highlighted item opens this page." },
     ],
     body: `Templates are the approved wording every message is built from.
 
 ![Message Templates](shot:1)
 
 ## Browse
+
+![Find it: the highlighted item opens this page.](shot:3)
 
 1. Open **Settings → Message templates**.
 2. Filter by channel (**All**, **WhatsApp**, **Email**, **SMS**) and by status (**Draft**, **Pending**, **Approved**, **Rejected**), or search by name or key.
@@ -80,12 +86,15 @@ Every message an automation sends goes through the same pipeline as a hand-sent 
     shots: [
       { file: "campaigns", caption: "Marketing Campaigns: active campaigns, leads, meetings, conversions and spend." },
       { file: "campaign-new", caption: "New campaign." },
+      { file: "nav-campaigns", caption: "Find it: the highlighted item opens this page." },
     ],
     body: `Campaigns tie your marketing effort to the leads and clients it brings.
 
 ![Campaigns](shot:1)
 
 ## Create a campaign
+
+![Find it: the highlighted item opens this page.](shot:3)
 
 1. Open **Marketing Campaigns** and click **New campaign**.
 2. Choose the **Campaign type** — **WhatsApp**, **Email** or **Webinar / Seminar** — and give it a **Campaign name** and a **Theme / hook** (for example Tax Saving, SIP Power, NFO Launch, Diwali).
@@ -109,12 +118,15 @@ The tiles show **Active** campaigns and, year to date, **Leads**, **Meetings**, 
     shots: [
       { file: "communications", caption: "Communications with Scheduled, Sent, Delivered, Read and Failed counts." },
       { file: "compose", caption: "Compose: recipient, channel, template and message." },
+      { file: "nav-communications", caption: "Find it: the highlighted item opens this page." },
     ],
     body: `Communications is the log of every WhatsApp, email and SMS the CRM has sent.
 
 ![Communications](shot:1)
 
 ## Send a message
+
+![Find it: the highlighted item opens this page.](shot:3)
 
 1. Open **Settings → Communications** and click **Compose**. The **Compose email** page opens.
 2. Choose the **Recipient**: **Client** (search by name, PAN or mobile) or **Email address**.

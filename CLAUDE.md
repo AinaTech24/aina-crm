@@ -1085,13 +1085,15 @@ login. The super admin runs it at `/super-admin/kb-articles` (articles) and
   old `PublicShell`. The home has two tabs — **Knowledge Base** (default: guide cards with a screenshot
   thumbnail, title and description by category → folder) and **KAIZEN** (`?tab=kaizen`).
 - **Shipped guides** (`lib/kb/guides/*.ts`, aggregated in `lib/kb/starter-guides.ts`): one PUBLISHED guide per
-  module (63), written from the live screens, each with its screenshots. Screenshots are JPEG files in
+  module (63), written from the live screens, each with 2–4 highlighted screenshots. Screenshots are JPEG files in
   `public/kb/<name>.jpg`, stored on the article as `storageKey: "/kb/<name>.jpg"` (the image route redirects
   a key starting with `/`); admin-uploaded ones still go through `/api/kb/image/<id>`. They ship by migration
   **0248** (generated: `npx tsx scripts/gen-kb-guides-migration.ts > drizzle/migrations/0248_kb_starter_guides.sql`)
   and by "Add module guides" on `/super-admin/kb-articles` (`lib/kb/install-starter.ts`). Neither overwrites a
-  guide an admin edited. To add or change a shipped guide: edit its data file, add the JPEG, and — because
-  migrations are append-only — ship the change in a NEW migration, or just edit it in the admin.
+  guide an admin edited. Migration 0250 re-shipped them with highlighted screenshots (numbered red boxes and labels on the controls, plus a
+  "find it in the menu" shot per module). A shipped guide is updated by a later migration only while nobody has edited
+  it (`updated_at = created_at`). To add or change a shipped guide: edit its data file, add the JPEG, regenerate with
+  `scripts/gen-kb-guides-migration.ts` into a NEW migration number (migrations are append-only) — or just edit it in the admin.
   `tests/kb-help-centre.test.ts` checks every shot is placed, its file exists and internal links resolve.
 - The sidebar ("Articles in this folder", "You may like to read") comes from
   `loadArticleContext` in `lib/kb/help.ts`; the landing header and footer link
