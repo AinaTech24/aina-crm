@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { HelpArticleRef } from "@/lib/kb/help";
+import { FolderGuides } from "./FolderBlock";
 
 export type Crumb = { label: string; href?: string };
 
@@ -93,15 +94,7 @@ export function CategoryBox({ name, description, href, folders, preview = 3 }: {
               <FolderIcon />
               <Link href={`/knowledge-base/folder/${f.slug}`}>{f.name}</Link> <small>({f.count})</small>
             </h3>
-            <ul>
-              {f.articles.slice(0, preview).map((a) => (
-                <li key={a.id}>
-                  <DocIcon />
-                  <Link href={`/knowledge-base/${a.slug}`}>{a.title}</Link>
-                </li>
-              ))}
-            </ul>
-            {f.count > preview && <Link className="all" href={`/knowledge-base/folder/${f.slug}`}>View all {f.count}</Link>}
+            <FolderGuides articles={f.articles} preview={preview} />
           </div>
         ))}
       </div>

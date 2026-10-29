@@ -187,3 +187,9 @@
 .kb-box-f li a:hover { text-decoration: underline; }
 .kb-box-f .all { display: inline-block; margin-top: 14px; font-size: 0.86rem; font-weight: 600; color: var(--acc); text-decoration: none; }
 .kb-box-f .all:hover { text-decoration: underline; }
+.kb-more { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 0.35s ease, opacity 0.3s ease; }
+.kb-more.open { grid-template-rows: 1fr; opacity: 1; }
+.kb-more-in { overflow: hidden; min-height: 0; }
+.kb-more-in ul { margin-top: 10px; }
+.kb-box-f .all { background: none; border: 0; padding: 0; font: inherit; font-size: 0.86rem; font-weight: 600; cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { .kb-more { transition: none; } }
