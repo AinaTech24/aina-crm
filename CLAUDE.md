@@ -1090,7 +1090,7 @@ login. The super admin runs it at `/super-admin/kb-articles` (articles) and
   a key starting with `/`); admin-uploaded ones still go through `/api/kb/image/<id>`. They ship by migration
   **0248** (generated: `npx tsx scripts/gen-kb-guides-migration.ts > drizzle/migrations/0248_kb_starter_guides.sql`)
   and by "Add module guides" on `/super-admin/kb-articles` (`lib/kb/install-starter.ts`). Neither overwrites a
-  guide an admin edited. Migration 0250 re-shipped them with highlighted screenshots (numbered red boxes and labels on the controls, plus a
+  guide an admin edited. Migration 0253 re-shipped them with highlighted screenshots (numbered red boxes and labels on the controls, plus a
   "find it in the menu" shot per module). A shipped guide is updated by a later migration only while nobody has edited
   it (`updated_at = created_at`). To add or change a shipped guide: edit its data file, add the JPEG, regenerate with
   `scripts/gen-kb-guides-migration.ts` into a NEW migration number (migrations are append-only) — or just edit it in the admin.
