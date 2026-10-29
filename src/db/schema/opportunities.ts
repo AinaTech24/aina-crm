@@ -48,7 +48,7 @@ export const clientOpportunities = pgTable(
     parkCount: integer("park_count").notNull().default(0),
     /** The money it waits for, when it waits for money. */
     expectedInflowId: uuid("expected_inflow_id").references(() => expectedInflows.id, { onDelete: "set null" }),
-    /** The meeting scheduled from this opportunity (migration 0248). */
+    /** The meeting scheduled from this opportunity (migration 0250). */
     meetingId: uuid("meeting_id"),
     /** What each step recorded, by stage key (lib/opportunities/steps.ts). */
     stepDetails: jsonb("step_details").$type<Record<string, Record<string, unknown>>>().notNull().default({}),

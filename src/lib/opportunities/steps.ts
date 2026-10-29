@@ -4,7 +4,7 @@
  * stage it is not asking for anything — like schedule meeting, follow up").
  *
  * Every action records what it captured (`client_opportunities.step_details`,
- * by stage key; migration 0248), and then moves the journey through advanceOpportunity — so the compliance gates and the
+ * by stage key; migration 0250), and then moves the journey through advanceOpportunity — so the compliance gates and the
  * automatic skips apply exactly as they do to "Move to". An action can also
  * set the next follow-up (setFollowUp: the follow-up IS a task).
  *

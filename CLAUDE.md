@@ -304,7 +304,7 @@ the client page's Overview tab.
   → the product branch (MF: transaction → review → RTA data check; insurance: proposal form →
   underwriting → issued; general: executed) → won. Lost from any open stage,
   with a reason and an optional revisit task. **KYC, UCC and mandate are not
-  steps** (removed at the firm's request 2026-10-17, migration 0249 — they are
+  steps** (removed at the firm's request 2026-10-17, migration 0251 — they are
   client onboarding); do not put them back. They remain a gate on
   Transaction placed.
 - **Skips**: a stage the client already satisfies (a current risk profile or
@@ -348,7 +348,7 @@ the client page's Overview tab.
   creates a "client won" task (`meta.wonOpportunityId`, so closing does not
   complete it); reject needs a reason, returns to Transaction placed with a fix
   task, and the rejected transaction no longer counts in `loadFacts`.
-- **Each step asks for what it needs** (2026-10-17, migration 0248,
+- **Each step asks for what it needs** (2026-10-17, migration 0250,
   `lib/opportunities/steps.ts`, `POST /api/opportunities/[id]/step`,
   `StepActions.tsx`): Need identified → Log call (no answer stays, with a
   retry date) or Schedule meeting (made through the Meetings API, linked as
