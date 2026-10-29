@@ -444,16 +444,18 @@ dashboard-thresholds save and reset keep that key.
 Built from an Atomic Habits review of adoption: make the cue obvious, the
 action easy, the result satisfying.
 
-- **Morning and evening cues.** The 8 am briefing (`workers/daily-briefing.ts`)
-  and the 6:30 pm "close your day" nudge (`workers/day-close-prompt.ts`, rules
-  pure in `lib/habits/day-close.ts`) are both in `MOBILE_ALERTS`, so they reach
-  the phone. The evening one opens the Daily Job Tracker, says what the person
-  did today, and stays quiet for anyone on leave, with no work today, or who
-  already updated today's tracker after 5 pm. Once per user per IST day.
-- **The Daily Job Tracker is in the sidebar** (Work, gated as Tasks), and so is
-  Next Best Action (Home). An empty plan for today offers the top three of the
-  worklist (`suggestFocusFromWorklist`), accepted and saved in one tap. The
-  day's FIRST clock-in (web `ClockWidget`, mobile attendance) opens it.
+- **Morning cue.** The 8 am briefing (`workers/daily-briefing.ts`) is in
+  `MOBILE_ALERTS`, so it reaches the phone.
+- **Removed at the firm's request (2026-10-29) — do not restore:** the Daily
+  Job Tracker and Next Best Action pages and sidebar items, the 6:30 pm "close
+  your day" nudge, the first clock-in opening the tracker, the tracker
+  reminder, the Team tracker, the weekly team pack and Settings → Daily
+  tracker. Their addresses redirect (`/dashboard/next-best-action` →
+  Dashboard, `/dashboard/tasks/daily`, `/daily/team`, `/weekly-pack` →
+  Tasks). Kept because other things use them: `lib/nba/engine.ts` (the client
+  page's Recommended actions card, the AI client brief), `lib/daily-tracker.ts`
+  + `/api/daily-tracker` + the `daily_trackers` table (the mobile app's
+  Daily screen, until a mobile release drops it).
 - **A call is logged in one tap.** Any Call / WhatsApp / SMS / Email launcher
   carrying `contactLogAttrs(subject)` (`lib/activities/contact-log.ts`; or
   `ContactQuickActions logFor=…`, or `announceContact` after a `window.open`)
@@ -526,29 +528,6 @@ pass, the verdict) and `lib/qa/results.ts` (queue, pass rate).
   reset keep it (`KEPT_KEYS` in that route — add any new key stored there).
 - Not built yet: enrolling someone in an SOP's induction lesson after N fails
   on that SOP — it needs the SOP link on tasks (S1).
-
-## The daily discipline loop — tracker, reminder, weekly pack
-
-2026-10-26, CEO review S8. Code `lib/daily-tracker.ts` (one person's day)
-and `lib/team/daily-discipline.ts` (team, reminder, pack).
-
-- **The Daily Job Tracker fills itself in**: tasks done and carried over,
-  meetings held (completed, as RM or attendee) and follow-ups logged
-  (activities) the day before. The person adds focus, learning, breakdown.
-  Every day is the INDIA day — `istDay(date)` / `todayIst()`; never compare
-  a timestamptz with a bare `::date` (prod runs on UTC).
-- **Submitted** = the day's row holds a focus item or a reflection
-  (`trackerHasContent` / `HAS_CONTENT`, keep the two in step).
-- **Team tracker** (`/dashboard/tasks/daily/team`) and **Weekly team pack**
-  (`/dashboard/tasks/weekly-pack`, last week by default, Print for the PDF):
-  people follow `resolveDataAccess`; owners are not expected to keep one.
-  A manager may open the tracker of anyone they can see (`canSeePerson`).
-- **One reminder** at the firm's time (Settings → Daily tracker,
-  `dashboard_settings.settings.dailyTracker.remindAt`, off by default), from
-  the task reminder scanner: Monday–Saturday, not on a firm holiday, only to
-  people who have not filled in, once per person-day (`djt.reminder`).
-- The pack has no "SOPs pending" or adherence column yet — they come with
-  S3 / S6.
 
 ## Bottlenecks — where work waits
 

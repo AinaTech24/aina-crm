@@ -1,61 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  dayCloseBody,
-  dayCloseTitle,
-  inDayCloseWindow,
-  shouldPromptDayClose,
-  type DayCloseCounts,
-} from "@/lib/habits/day-close";
 import { activityBody, channelForHref, contactLogAttrs, OUTCOMES } from "@/lib/activities/contact-log";
 import { suggestFocusFromWorklist } from "@/lib/daily-tracker";
-
-const quiet: DayCloseCounts = {
-  done: 0, openToday: 0, touches: 0, focusTotal: 0, focusDone: 0, closedAlready: false, onLeave: false,
-};
-
-describe("close your day — when", () => {
-  it("opens at 18:30 IST and closes at 20:00", () => {
-    expect(inDayCloseWindow(18, 29)).toBe(false);
-    expect(inDayCloseWindow(18, 30)).toBe(true);
-    expect(inDayCloseWindow(19, 59)).toBe(true);
-    expect(inDayCloseWindow(20, 0)).toBe(false);
-    expect(inDayCloseWindow(8, 45)).toBe(false);
-  });
-
-  it("stays quiet for someone with no work today, on leave, or already closed", () => {
-    expect(shouldPromptDayClose(quiet)).toBe(false);
-    expect(shouldPromptDayClose({ ...quiet, done: 3, onLeave: true })).toBe(false);
-    expect(shouldPromptDayClose({ ...quiet, done: 3, closedAlready: true })).toBe(false);
-  });
-
-  it("prompts anyone who had work, done or not", () => {
-    expect(shouldPromptDayClose({ ...quiet, done: 1 })).toBe(true);
-    expect(shouldPromptDayClose({ ...quiet, openToday: 2 })).toBe(true);
-    expect(shouldPromptDayClose({ ...quiet, touches: 1 })).toBe(true);
-    expect(shouldPromptDayClose({ ...quiet, focusTotal: 3 })).toBe(true);
-  });
-});
-
-describe("close your day — what it says", () => {
-  it("leads with what was done, then what is left", () => {
-    const body = dayCloseBody({ ...quiet, done: 5, touches: 1, focusTotal: 3, focusDone: 2, openToday: 2 });
-    expect(body).toBe(
-      "5 tasks done · 1 client contact logged · 2 of 3 focus items ticked · 2 due today still open. " +
-        "Two minutes: tick what's done, move the rest, note one win.",
-    );
-  });
-
-  it("never prints a zero it has no reason to", () => {
-    const body = dayCloseBody({ ...quiet, done: 1 });
-    expect(body).toBe("1 task done. Two minutes: tick what's done and note one win.");
-    expect(body).not.toMatch(/\b0\b/);
-  });
-
-  it("thanks people only when something was done", () => {
-    expect(dayCloseTitle({ ...quiet, done: 2 })).toMatch(/Good work/);
-    expect(dayCloseTitle({ ...quiet, openToday: 2 })).toBe("Close your day");
-  });
-});
 
 describe("contact log prompt", () => {
   it("knows which launcher opened which channel", () => {

@@ -24,10 +24,6 @@
  *               share of each person's work completed last week becomes a
  *               check for their manager (lib/qa/sampling.ts).
  *
- *   TRACKER    → at the firm's time (Settings → Daily tracker), one reminder
- *               to each person who has not filled in today's Daily Job
- *               Tracker (lib/team/daily-discipline.ts).
- *
  *   LATER      → the reminder of a parked opportunity ("after Diwali") left
  *               overdue for days goes to the client's branch head once
  *               (lib/opportunities/later.ts, meta.escalatedAt dedups).
@@ -46,7 +42,6 @@ import { escalateOverdueRevisits } from "@/lib/opportunities/later";
 import { loadLadder } from "@/lib/tasks/escalation-ladder";
 import { runEscalationLadder } from "@/lib/tasks/escalation-run";
 import { runQaSampling } from "@/lib/qa/sampling";
-import { runTrackerReminders } from "@/lib/team/daily-discipline";
 
 function fmtDue(due: string | Date | null): string {
   if (!due) return "";
@@ -256,12 +251,6 @@ export async function runTaskReminderScan(): Promise<{ overdue: number; reminder
       await withTenant(t, (tx) => runQaSampling(tx, t));
     } catch (err) {
       console.error(`[task-scan] QA sampling failed for tenant ${t}:`, (err as Error).message);
-    }
-    try {
-      // One reminder to fill in today's Daily Job Tracker (lib/team/daily-discipline.ts).
-      await withTenant(t, (tx) => runTrackerReminders(tx, t));
-    } catch (err) {
-      console.error(`[task-scan] tracker reminders failed for tenant ${t}:`, (err as Error).message);
     }
     try {
       escalations += await withTenant(t, (tx) => escalateOverdueRevisits(tx, t));
