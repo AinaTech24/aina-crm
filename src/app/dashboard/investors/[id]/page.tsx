@@ -639,6 +639,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           reviewFrequencyDays={(inv as any).reviewFrequencyDays ?? null}
           lastReviewAt={inv.lastReviewAt ? new Date(inv.lastReviewAt).toISOString() : null}
           nextReviewAt={inv.nextReviewAt ? new Date(inv.nextReviewAt).toISOString() : null}
+          fromFamily={!!data.family?.reviewFrequency}
         />
       </RelatedListSection>
 
