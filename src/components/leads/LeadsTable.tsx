@@ -135,6 +135,8 @@ export function LeadsTable({
         setErr(j.error ?? `Failed (${res.status})`);
         return;
       }
+      // A lead whose journey is finished cannot be moved; say so rather than imply it moved.
+      if (j.skipped) setErr(`${j.skipped} lead${j.skipped === 1 ? "" : "s"} not moved — the journey is already completed.`);
       setSelected(new Set());
       router.refresh();
     } catch (e: any) {

@@ -15,7 +15,8 @@ import { handleApiError } from "@/lib/api/error-handler";
  * Each task gets what the single PATCH / DELETE give it: a status change keeps
  * its Business entry in step (syncTaskBusinessEntry), a requires-approval task
  * the caller may not sign off is sent for approval instead of completing, and
- * a reassigned task notifies its new assignee (task.assigned).
+ * a reassigned task notifies its new assignee (task.assigned), and a status
+ * change tells the creator and the watchers (task.status_changed).
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -29,6 +30,7 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { spawnNextOccurrence } from "@/lib/tasks/recurrence";
 import { createNotification } from "@/lib/notifications/create";
 import { syncTaskBusinessEntry } from "@/lib/business/create-entry";
+import { notifyWatchers } from "@/lib/tasks/watchers";
 import { tasks, users } from "@/db/schema";
 import { taskInScopeSql } from "@/lib/tasks/scope";
 
@@ -199,6 +201,38 @@ export async function POST(req: NextRequest) {
           else if (patch.status === "cancelled") await syncTaskBusinessEntry(tx, entryCtx, before, "cancelled");
           else if (before.status === "cancelled" || before.status === "completed")
             await syncTaskBusinessEntry(tx, entryCtx, before, "reopened");
+        }
+
+        // The creator (when someone else moved it) and the watchers hear of the
+        // change, as on the single PATCH.
+        const human = (st: string) => st.replace(/_/g, " ");
+        const to = patch.status as string;
+        let by: string | null = null;
+        for (const u of updated) {
+          const before = beforeById.get(u.id);
+          if (!before || before.status === to) continue;
+          by ??= await actorName();
+          if (before.createdById && before.createdById !== session.userId) {
+            await createNotification(tx, {
+              tenantId: session.tenantId,
+              userId: before.createdById,
+              kind: "task.status_changed",
+              title: `Task ${human(to)}: ${before.title}`,
+              body: `${by} moved it from “${human(before.status)}” to “${human(to)}”`,
+              linkUrl: "/dashboard/tasks?view=assigned_by_me",
+              severity: to === "completed" ? "success" : to === "blocked" ? "warning" : "info",
+              meta: { task_id: before.id, changed_by: session.userId, from_status: before.status, to_status: to },
+            });
+          }
+          await notifyWatchers(tx, {
+            tenantId: session.tenantId,
+            taskId: before.id,
+            exclude: new Set([session.userId, before.createdById ?? "", before.assigneeId ?? ""]),
+            kind: "task.status_changed",
+            title: `Task ${human(to)}: ${before.title}`,
+            body: `${by} moved it to “${human(to)}”`,
+            severity: to === "completed" ? "success" : "info",
+          });
         }
       }
 

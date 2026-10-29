@@ -11,6 +11,11 @@ import { handleApiError } from "@/lib/api/error-handler";
  *
  * Tenant-scoped via withTenant + RLS; only leads in the caller's tenant are
  * touched. Audited as a single bulk action.
+ *
+ * "stage" and "lost" move each lead's journey (blueprint) the way a Kanban
+ * drag does — an admin override, recorded in its history — so the journey
+ * card and leads.stage never disagree. A lead whose journey refuses the move
+ * (a finished journey) is left as it is and counted in `skipped`.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -24,6 +29,7 @@ import { leads, users, eventsOutbox } from "@/db/schema";
 import { scoreFields } from "@/lib/leads/score";
 import { CANONICAL_LEAD_STAGES } from "@/lib/leads/normalize";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { transitionTo } from "@/lib/blueprints/engine";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -104,16 +110,37 @@ export async function POST(req: NextRequest) {
         break;
     }
 
-    const count = await withTenant(session.tenantId, async (tx) => {
+    const { count, skipped } = await withTenant(session.tenantId, async (tx) => {
+      // Move the journey first; only leads it moved get the rest of the patch.
+      let targetIds = ids;
+      const refused: string[] = [];
+      if (action === "stage" || action === "lost") {
+        const visible = await tx.select({ id: leads.id }).from(leads).where(inArray(leads.id, ids));
+        targetIds = [];
+        for (const { id } of visible) {
+          const moved = await transitionTo(tx, session.tenantId, id, patch.stage, {
+            actorUserId: session.userId,
+            actorRoles: session.roles ?? [],
+            remarks: action === "lost" ? `Bulk-marked not qualified: ${patch.lostReason}` : "Bulk stage change.",
+            systemBypass: true,
+            ...meta,
+          });
+          if (moved.ok) targetIds.push(id);
+          else refused.push(id);
+        }
+      }
+
       // Tenant isolation is enforced by RLS (withTenant sets app.tenant_id);
       // matching the single-lead route convention — scope by id only, never
       // add a redundant tenant_id predicate. RLS guarantees only the caller's
       // tenant's leads are visible/updatable.
-      const updated = await tx
-        .update(leads)
-        .set(patch as any)
-        .where(inArray(leads.id, ids))
-        .returning({ id: leads.id });
+      const updated = targetIds.length
+        ? await tx
+            .update(leads)
+            .set(patch as any)
+            .where(inArray(leads.id, targetIds))
+            .returning({ id: leads.id })
+        : [];
 
       // Re-score affected leads when the action changed a scoring input (stage,
       // follow-up momentum, or marking lost). Owner reassignment doesn't move
@@ -165,13 +192,13 @@ export async function POST(req: NextRequest) {
         action: `lead.bulk_${action}`,
         entityType: "lead",
         entityId: session.tenantId,
-        after: { action, value: value ?? null, count: updated.length, ids } as any,
+        after: { action, value: value ?? null, count: updated.length, ids, skipped: refused } as any,
         ...meta,
       });
-      return updated.length;
+      return { count: updated.length, skipped: refused.length };
     });
 
-    return NextResponse.json({ ok: true, updated: count });
+    return NextResponse.json({ ok: true, updated: count, skipped });
   } catch (err: any) {
     return handleApiError(err);
   }

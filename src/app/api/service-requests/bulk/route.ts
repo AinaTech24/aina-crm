@@ -6,7 +6,8 @@ import { handleApiError } from "@/lib/api/error-handler";
  *   action = "assign"  value = userId (uuid) | null   → reassign
  *          = "status"  value = status enum            → set status
  *          = "close"   (no value)                     → status='closed'
- *            (resolved / closed skip a complaint with no resolution notes, and report it)
+ *            (resolved / closed skip a complaint with no resolution notes, and report it;
+ *             escalated stamps escalated_at and tells the same people the ticket page does)
  *          = "delete"  (no value)                     → delete for good
  *            (service_request.delete; complaints are skipped and reported)
  *
@@ -15,7 +16,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { and, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -25,6 +26,7 @@ import { serviceRequests } from "@/db/schema";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { serviceRequestScopeSql } from "@/lib/service-requests/access";
 import { deleteServiceRequests } from "@/lib/service-requests/delete";
+import { announceServiceRequestEscalation } from "@/lib/service-requests/escalate";
 
 export const dynamic = "force-dynamic";
 
@@ -84,11 +86,36 @@ export async function POST(req: NextRequest) {
             .from(serviceRequests)
             .where(and(inArray(serviceRequests.id, ids), sql`${scope}`, needsNotes))
         : [];
+      // Tickets escalated for the first time — stamped and announced once, as
+      // when "Escalated" is chosen on the ticket itself.
+      const escalating = patch.status === "escalated"
+        ? await tx
+            .select({
+              id: serviceRequests.id, ticketNo: serviceRequests.ticketNo, type: serviceRequests.type,
+              assignedToUserId: serviceRequests.assignedToUserId, investorId: serviceRequests.investorId,
+              timeline: serviceRequests.timeline,
+            })
+            .from(serviceRequests)
+            .where(and(inArray(serviceRequests.id, ids), sql`${scope}`, sql`${serviceRequests.escalatedAt} IS NULL`))
+        : [];
       const updated = await tx
         .update(serviceRequests)
         .set(patch as any)
         .where(and(inArray(serviceRequests.id, ids), sql`${scope}`, closing ? sql`NOT ${needsNotes}` : undefined))
         .returning({ id: serviceRequests.id });
+      for (const sr of escalating) {
+        const timeline = [...(sr.timeline ?? []), { at: now.toISOString(), by: session.userId, event: "escalated", note: "Escalated by hand" }];
+        await tx
+          .update(serviceRequests)
+          .set({ escalatedAt: now, timeline })
+          .where(and(eq(serviceRequests.id, sr.id), eq(serviceRequests.tenantId, session.tenantId)));
+        await announceServiceRequestEscalation(tx, {
+          tenantId: session.tenantId,
+          sr: { id: sr.id, ticketNo: sr.ticketNo, type: sr.type, assignedToUserId: sr.assignedToUserId, investorId: sr.investorId },
+          why: "escalated by hand",
+          eventMeta: { userId: session.userId, source: "manual", bulk: true },
+        });
+      }
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,
