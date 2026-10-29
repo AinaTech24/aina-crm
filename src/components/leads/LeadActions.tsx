@@ -40,6 +40,9 @@ export function LeadActions(props: Props) {
   const [dialog, setDialog] = useState<
     "convert" | "task" | "meeting" | "schedule_meeting" | "activity" | "won_product" | null
   >(null);
+  // "Meeting Done" opens Log activity already set to Meeting, so the journey
+  // reads it as a held meeting (meeting.completed), not a call.
+  const [activityKind, setActivityKind] = useState<"call" | "meeting">("call");
 
   // Listen for "open this dialog please" events emitted by the
   // GuidedStageActions component on the blueprint bar. Lets the
@@ -52,6 +55,7 @@ export function LeadActions(props: Props) {
       switch (detail.kind) {
         case "log_call":
         case "log_past_meeting":
+          setActivityKind(detail.kind === "log_past_meeting" ? "meeting" : "call");
           setDialog("activity");
           break;
         case "schedule_meeting":
@@ -103,7 +107,7 @@ export function LeadActions(props: Props) {
         </button>
       ) : (
         <>
-          <button type="button" onClick={() => setDialog("activity")} className={buttonClass("secondary", "md")}>
+          <button type="button" onClick={() => { setActivityKind("call"); setDialog("activity"); }} className={buttonClass("secondary", "md")}>
             <MessageSquarePlus className="size-4" /> Log activity
           </button>
           <button type="button" onClick={() => setDialog("task")} className={buttonClass("secondary", "md")}>
@@ -122,6 +126,7 @@ export function LeadActions(props: Props) {
         <LogActivityDialog
           leadId={props.leadId}
           leadName={props.leadName}
+          initialType={activityKind}
           onClose={() => setDialog(null)}
           onDone={() => {
             setDialog(null);
@@ -209,15 +214,17 @@ export function LeadActions(props: Props) {
 function LogActivityDialog({
   leadId,
   leadName,
+  initialType = "call",
   onClose,
   onDone,
 }: {
   leadId: string;
   leadName: string;
+  initialType?: "call" | "meeting";
   onClose: () => void;
   onDone: () => void;
 }) {
-  const [activityType, setActivityType] = useState("call");
+  const [activityType, setActivityType] = useState<string>(initialType);
   const [note, setNote] = useState("");
   const [nextFollowUp, setNextFollowUp] = useState("");
   const [busy, setBusy] = useState(false);
