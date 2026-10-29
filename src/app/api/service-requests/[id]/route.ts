@@ -21,8 +21,11 @@ import { sql } from "drizzle-orm";
 import { serviceRequests, eventsOutbox } from "@/db/schema";
 import { canSeeServiceRequest } from "@/lib/service-requests/access";
 import { deleteServiceRequests } from "@/lib/service-requests/delete";
+import { announceServiceRequestEscalation } from "@/lib/service-requests/escalate";
 
 export const dynamic = "force-dynamic";
+
+const NEEDS_NOTES = "A complaint needs resolution notes before it is resolved or closed.";
 
 const Patch = z.object({
   subject: z.string().min(2).max(300).optional(),
@@ -78,6 +81,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const before = (await tx.select().from(serviceRequests).where(and(eq(serviceRequests.id, id), eq(serviceRequests.tenantId, session.tenantId))).limit(1))[0];
       if (!before) return null;
 
+      // A complaint is resolved or closed only with resolution notes — the
+      // Complaint Register's rule, held here so no screen can skip it.
+      const nextStatus = d.status ?? before.status;
+      if (
+        before.type === "complaint" &&
+        (nextStatus === "resolved" || nextStatus === "closed") &&
+        (nextStatus !== before.status || d.resolutionNotes !== undefined) &&
+        !(d.resolutionNotes ?? before.resolutionNotes ?? "").trim()
+      ) {
+        throw Object.assign(new Error(NEEDS_NOTES), { status: 400 });
+      }
+
       const now = new Date();
       const patch: any = { updatedAt: now };
       if (d.subject !== undefined) patch.subject = d.subject;
@@ -96,6 +111,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
       // Stamp resolvedAt the first time it becomes resolved/closed.
       if ((d.status === "resolved" || d.status === "closed") && !before.resolvedAt) patch.resolvedAt = now;
+      // Escalated by hand: stamped and announced once, as the SLA scan does.
+      const escalating = d.status === "escalated" && !before.escalatedAt;
+      if (escalating) patch.escalatedAt = now;
 
       // First-response capture: stamp respondedAt on the first agent action —
       // moving off 'open', adding a note, writing resolution, or explicit mark.
@@ -112,6 +130,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const by = session.userId;
       const entries: Array<{ at: string; by: string; event: string; note?: string }> = [];
       if (d.status && d.status !== before.status) entries.push({ at, by, event: "status", note: `${before.status} → ${d.status}` });
+      if (escalating) entries.push({ at, by, event: "escalated", note: "Escalated by hand" });
       if (firstResponse) entries.push({ at, by, event: "first_response", note: "First response recorded" });
       if (d.timelineNote) entries.push({ at, by, event: "note", note: d.timelineNote });
       if (d.resolutionNotes !== undefined && d.resolutionNotes !== before.resolutionNotes) entries.push({ at, by, event: "resolution", note: "Resolution notes updated" });
@@ -120,6 +139,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (entries.length) patch.timeline = [ ...((before.timeline as any[]) ?? []), ...entries ];
 
       const after = await tx.update(serviceRequests).set(patch).where(and(eq(serviceRequests.id, id), eq(serviceRequests.tenantId, session.tenantId))).returning();
+
+      if (escalating) {
+        await announceServiceRequestEscalation(tx, {
+          tenantId: session.tenantId,
+          sr: {
+            id,
+            ticketNo: before.ticketNo,
+            type: before.type,
+            assignedToUserId: after[0]?.assignedToUserId ?? null,
+            investorId: before.investorId,
+          },
+          why: "escalated by hand",
+          eventMeta: { userId: session.userId, source: "manual" },
+        });
+      }
 
       // Low-CSAT escalation — a 1-2★ rating is a service failure the owner must
       // see immediately. Emit an event + drop a notification to every owner.
@@ -186,9 +220,19 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const clientMeta = clientMetaFromHeaders(req.headers);
     const found = await withTenant(session.tenantId, async (tx) => {
       if (!(await canSeeServiceRequest(tx, session, id))) return false;
+      const before = (await tx.select().from(serviceRequests).where(and(eq(serviceRequests.id, id), eq(serviceRequests.tenantId, session.tenantId))).limit(1))[0];
+      if (!before) return false;
+      if (before.type === "complaint" && before.status !== "closed" && !(before.resolutionNotes ?? "").trim()) {
+        throw Object.assign(new Error(NEEDS_NOTES), { status: 400 });
+      }
+      // Closing stops the TAT clock (kept if already resolved) and says so on the timeline.
+      const now = new Date();
+      const timeline = before.status === "closed"
+        ? before.timeline
+        : [...((before.timeline as any[]) ?? []), { at: now.toISOString(), by: session.userId, event: "status", note: `${before.status} → closed` }];
       await tx
         .update(serviceRequests)
-        .set({ status: "closed", updatedAt: new Date() } as any)
+        .set({ status: "closed", resolvedAt: before.resolvedAt ?? now, timeline, updatedAt: now } as any)
         .where(and(eq(serviceRequests.id, id), eq(serviceRequests.tenantId, session.tenantId)));
       await recordAudit(tx, {
         tenantId: session.tenantId,

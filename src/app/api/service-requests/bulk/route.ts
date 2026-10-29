@@ -6,6 +6,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  *   action = "assign"  value = userId (uuid) | null   → reassign
  *          = "status"  value = status enum            → set status
  *          = "close"   (no value)                     → status='closed'
+ *            (resolved / closed skip a complaint with no resolution notes, and report it)
  *          = "delete"  (no value)                     → delete for good
  *            (service_request.delete; complaints are skipped and reported)
  *
@@ -69,13 +70,24 @@ export async function POST(req: NextRequest) {
         break;
     }
 
-    const count = await withTenant(session.tenantId, async (tx) => {
+    // A complaint is resolved or closed only with resolution notes (the
+    // Complaint Register's rule) — such tickets are left as they are.
+    const closing = patch.status === "resolved" || patch.status === "closed";
+    const needsNotes = sql`(${serviceRequests.type} = 'complaint' AND COALESCE(btrim(${serviceRequests.resolutionNotes}), '') = '')`;
+
+    const { count, complaintsSkipped } = await withTenant(session.tenantId, async (tx) => {
       // Only tickets the caller can see — an id outside their scope is skipped.
       const scope = await serviceRequestScopeSql(tx, session, "service_requests");
+      const skipped = closing
+        ? await tx
+            .select({ id: serviceRequests.id })
+            .from(serviceRequests)
+            .where(and(inArray(serviceRequests.id, ids), sql`${scope}`, needsNotes))
+        : [];
       const updated = await tx
         .update(serviceRequests)
         .set(patch as any)
-        .where(and(inArray(serviceRequests.id, ids), sql`${scope}`))
+        .where(and(inArray(serviceRequests.id, ids), sql`${scope}`, closing ? sql`NOT ${needsNotes}` : undefined))
         .returning({ id: serviceRequests.id });
       await recordAudit(tx, {
         tenantId: session.tenantId,
@@ -83,13 +95,13 @@ export async function POST(req: NextRequest) {
         action: `service_request.bulk_${action}`,
         entityType: "service_request",
         entityId: session.tenantId,
-        after: { action, value: value ?? null, count: updated.length, ids } as any,
+        after: { action, value: value ?? null, count: updated.length, ids, complaintsSkipped: skipped.map((r) => r.id) } as any,
         ...meta,
       });
-      return updated.length;
+      return { count: updated.length, complaintsSkipped: skipped.length };
     });
 
-    return NextResponse.json({ ok: true, updated: count });
+    return NextResponse.json({ ok: true, updated: count, complaintsSkipped });
   } catch (err: any) {
     return handleApiError(err);
   }

@@ -106,6 +106,10 @@ export async function POST(req: NextRequest) {
     const parse = ClaimBody.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
     const b = parse.data;
+    // A settled claim carries its amount and date (the drawer's Record settlement asks for both).
+    if ((b.claimStatus === "settled_fully" || b.claimStatus === "settled_partially") && (!(Number(b.settledAmount) > 0) || !b.settlementDate)) {
+      return NextResponse.json({ error: "A settled claim needs the settled amount and the settlement date." }, { status: 400 });
+    }
     const id = uuid();
     const clientMeta = clientMetaFromHeaders(req.headers);
 

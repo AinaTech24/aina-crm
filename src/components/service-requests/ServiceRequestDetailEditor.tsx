@@ -110,8 +110,15 @@ export function ServiceRequestDetailEditor({
   }
 
   function save(overrideStatus?: string) {
+    const nextStatus = overrideStatus ?? status;
+    // Same rule as the Complaint Register: a complaint closes only with resolution notes.
+    if (isComplaint && (nextStatus === "resolved" || nextStatus === "closed") && nextStatus !== sr.status && !resolutionNotes.trim()) {
+      setOk(null);
+      setErr("A complaint needs resolution notes before it is resolved or closed.");
+      return;
+    }
     const body: any = {
-      status: overrideStatus ?? status,
+      status: nextStatus,
       priority,
       assignedToUserId: assignee || undefined,
       remarks: remarks || undefined,
@@ -197,7 +204,7 @@ export function ServiceRequestDetailEditor({
               </label>
             )}
           </div>
-          <p className="text-2xs text-muted-foreground">Saved with the ticket — feeds the register filter + the monthly disclosure statement.</p>
+          <p className="text-2xs text-muted-foreground">Saved with the ticket — feeds the register filter.</p>
         </div>
       )}
 

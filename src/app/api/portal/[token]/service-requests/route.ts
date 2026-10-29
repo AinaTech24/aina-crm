@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { v4 as uuid } from "uuid";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
-import { eventsOutbox, investors, serviceRequests } from "@/db/schema";
+import { investors, serviceRequests } from "@/db/schema";
 import { resolvePortalAccess } from "@/lib/portal/access";
 import { recordAudit } from "@/lib/audit";
 import { handleApiError } from "@/lib/api/error-handler";
+import { openServiceRequest } from "@/lib/service-requests/open";
+import { createNotification } from "@/lib/notifications/create";
 
 export const dynamic = "force-dynamic";
 
@@ -45,42 +46,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
         );
       if ((open?.count ?? 0) >= 5) return { limited: true as const };
 
-      const [seq] = await tx.execute(sql`
-        SELECT COUNT(*)::int + 1 AS n
-        FROM service_requests
-        WHERE tenant_id = ${access.tenantId}::uuid
-          AND created_at >= date_trunc('year', now())
-      `).then((r) => r.rows as Array<{ n: number }>);
-      const ticketNo = `SR-${new Date().getFullYear()}-${String(Number(seq?.n ?? 1)).padStart(5, "0")}`;
-      const id = uuid();
-      const now = new Date();
-      const slaResolutionAt = new Date(now.getTime() + 7 * 86_400_000);
-      const slaResponseAt = new Date(now.getTime() + 24 * 3_600_000);
-
-      await tx.insert(serviceRequests).values({
-        id,
+      // One way a ticket starts (lib/service-requests/open.ts): ticket number,
+      // the type's SLA clocks, the created event and the client's acknowledgement.
+      const sr = await openServiceRequest(tx, {
         tenantId: access.tenantId,
-        investorId: access.investorId,
-        assignedToUserId: investor.rmId,
-        ticketNo,
         type: parsed.data.type,
         channel: "form",
         subject: parsed.data.subject,
-        description: parsed.data.description,
-        status: "open",
-        priority: "normal",
-        slaResponseAt,
-        slaResolutionAt,
-        timeline: [{ at: now.toISOString(), by: "client_portal", event: "created", note: `Submitted by ${investor.name}` }],
+        description: parsed.data.description ?? null,
+        investorId: access.investorId,
+        assignedToUserId: investor.rmId ?? null,
+        createdBy: { by: "client_portal", note: `Submitted by ${investor.name} through the investor portal.` },
+        eventMeta: { source: "investor_portal", investorId: access.investorId, portalAccessId: access.id },
       });
-      await tx.insert(eventsOutbox).values({
-        tenantId: access.tenantId,
-        kind: "service_request.created",
-        entityType: "service_request",
-        entityId: id,
-        after: { ticketNo, type: parsed.data.type, priority: "normal", source: "investor_portal" },
-        meta: { investorId: access.investorId, portalAccessId: access.id },
-      });
+      const { id, ticketNo } = sr;
+
+      if (investor.rmId) {
+        await createNotification(tx, {
+          tenantId: access.tenantId,
+          userId: investor.rmId,
+          kind: "service_request.portal",
+          title: "New service request from a client's portal",
+          body: `${ticketNo} · ${investor.name} · ${parsed.data.subject}`,
+          linkUrl: `/dashboard/service-requests/${id}`,
+          severity: "info",
+        });
+      }
       await recordAudit(tx, {
         tenantId: access.tenantId,
         actorType: "system",

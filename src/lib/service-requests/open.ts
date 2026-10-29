@@ -1,7 +1,8 @@
 /**
  * Opening a service request — ONE definition for every way a ticket starts:
- * the CRM's own form (POST /api/service-requests) and the firm's public
- * complaint form (POST /api/public/complaints/[token]).
+ * the CRM's own form (POST /api/service-requests), the firm's public
+ * complaint form (POST /api/public/complaints/[token]) and the investor
+ * portal (POST /api/portal/[token]/service-requests).
  *
  * It owns the ticket number, both SLA clocks, the complaint.created /
  * service_request.created event the workflow engine listens for, and the

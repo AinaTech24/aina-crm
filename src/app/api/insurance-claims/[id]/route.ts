@@ -92,6 +92,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const result = await withTenant(session.tenantId, async (tx) => {
       const before = await loadViewableClaim(tx, session, id);
       if (!before) return null;
+      // A claim being set to settled carries its amount and date — what this
+      // request sends, else what the claim already holds.
+      const d = parse.data;
+      if (d.claimStatus === "settled_fully" || d.claimStatus === "settled_partially") {
+        const amount = Number(d.settledAmount ?? before.settledAmount);
+        const date = d.settlementDate !== undefined ? d.settlementDate : before.settlementDate;
+        if (!(amount > 0) || !date) {
+          throw Object.assign(new Error("A settled claim needs the settled amount and the settlement date."), { status: 400 });
+        }
+      }
       // Re-linking: the new client / policy must be in the caller's scope too.
       if (parse.data.investorId && !(await loadViewableInvestor(tx, session, parse.data.investorId))) {
         throw Object.assign(new Error("Client not found"), { status: 404 });
