@@ -79,14 +79,15 @@
 .kb-crumbs a { text-decoration: none; }
 .kb-crumbs a:hover { color: var(--acc); }
 .kb-crumbs span.sep { opacity: 0.5; }
-.kb-search { display: flex; margin-top: 28px; max-width: 560px; background: #fff; border: 1.5px solid var(--edge); border-radius: 999px; box-shadow: var(--sh); overflow: hidden; }
+.kb-row { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-top: 28px; }
+.kb-search { display: flex; flex: 1 1 340px; max-width: 560px; background: #fff; border: 1.5px solid var(--edge); border-radius: 999px; box-shadow: var(--sh); overflow: hidden; }
 .kb-search:focus-within { border-color: var(--ink); }
 .kb-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; padding: 15px 22px; font: inherit; font-size: 0.98rem; color: var(--ink); }
 .kb-search button { border: 0; background: var(--ink); color: #fff; padding: 0 26px; font: inherit; font-weight: 600; cursor: pointer; }
 .kb-search button:hover { background: var(--acc); }
 
 /* ---------- the two tabs ---------- */
-.kb-tabs { display: inline-flex; gap: 2px; padding: 5px; background: #fff; border: 1.5px solid var(--edge); border-radius: 999px; box-shadow: var(--sh); margin-top: 30px; }
+.kb-tabs { display: inline-flex; gap: 2px; padding: 5px; background: #fff; border: 1.5px solid var(--edge); border-radius: 999px; box-shadow: var(--sh); flex: none; }
 .kb-tabs a { padding: 10px 26px; border-radius: 999px; color: var(--mut); text-decoration: none; font-weight: 600; font-size: 0.95rem; transition: color 0.2s, background 0.2s; }
 .kb-tabs a:hover { color: var(--ink); }
 .kb-tabs a.cur { background: var(--ink); color: #fff; }

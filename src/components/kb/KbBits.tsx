@@ -38,13 +38,15 @@ export function KbHero({
         <div className="kb-eyebrow">{eyebrow}</div>
         <h1>{title}</h1>
         {lead && <p className="kb-lead">{lead}</p>}
-        {search && (
-          <form className="kb-search" action="/knowledge-base/search" method="get" role="search">
-            <input name="q" defaultValue={q} placeholder="Search the guides…" aria-label="Search the knowledge base" />
-            <button type="submit">Search</button>
-          </form>
-        )}
-        {children}
+        <div className="kb-row">
+          {search && (
+            <form className="kb-search" action="/knowledge-base/search" method="get" role="search">
+              <input name="q" defaultValue={q} placeholder="Search the guides…" aria-label="Search the knowledge base" />
+              <button type="submit">Search</button>
+            </form>
+          )}
+          {children}
+        </div>
       </div>
     </header>
   );
