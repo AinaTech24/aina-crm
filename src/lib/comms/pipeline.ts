@@ -45,6 +45,7 @@ import { loadClientLinkTokens, wantsClientLinkTokens } from "@/lib/comms/client-
 import { checkMonthlyQuota } from "./usage";
 import { durableDelivery } from "./durable-delivery";
 import { firmIntroTokens, readFirmEmailIntro } from "@/lib/firm/email-intro";
+import { leadSubject } from "@/lib/comms/lead-subject";
 
 
 export type DispatchChannel = "whatsapp" | "email" | "sms";
@@ -148,7 +149,14 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
   // 1 + 2. Resolve template + render  (free-form path skips the template)
   // -----------------------------------------------------------
   const tenantRow = await loadTenant(tx, input.tenantId);
-  const subject = input.investorId ? await loadInvestor(tx, input.investorId) : null;
+  // A lead is a subject too: without it {{lead.name}}, {{lead.phone}} and the
+  // sign-off block went out BLANK on every lead send (only the flat {{name}}
+  // a workflow rule passes was filled).
+  const subject = input.investorId
+    ? await loadInvestor(tx, input.investorId)
+    : input.leadId
+      ? await loadLead(tx, input.tenantId, input.leadId)
+      : null;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let version: any;
@@ -951,6 +959,20 @@ async function loadInvestor(tx: Tx, id: string) {
     enriched.rm_signature_url = "";
   }
   return enriched;
+}
+
+/** The lead a send is about, with its owner as the sign-off (lead-subject.ts). */
+async function loadLead(tx: Tx, tenantId: string, id: string) {
+  const { leads, users } = await import("@/db/schema");
+  const [l] = await tx.select().from(leads).where(and(eq(leads.id, id), eq(leads.tenantId, tenantId)));
+  if (!l) return null;
+  const [owner] = l.ownerId
+    ? await tx
+        .select({ name: users.name, email: users.email, phone: users.phone, signatureUrl: users.signatureUrl })
+        .from(users)
+        .where(eq(users.id, l.ownerId))
+    : [];
+  return leadSubject(l as Record<string, unknown>, owner ?? null, CLIENT_FACING_DESIGNATION, absoluteAppUrl);
 }
 // Format a numeric amount the Indian way (no ₹ — templates add it). Blank if null.
 function fmtAmount(a: unknown): string {
