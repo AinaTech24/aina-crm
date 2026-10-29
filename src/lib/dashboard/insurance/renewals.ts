@@ -237,4 +237,34 @@ export async function loadAtRisk(tx: Tx, w: InsWindow, limit = 50): Promise<{ ro
   };
 }
 
+/* ───────────────────────── renewal timeline ───────────────────────── */
+
+export type RenewalPointRow = { days: number; premium: number; group: string; client: string; product: string };
+
+/**
+ * Every in-force, non-single-premium policy falling due in the next
+ * `horizon` days (today included), with its installment and product group —
+ * the bubble timeline on Renewals. Largest premiums first, at most `limit`.
+ */
+export async function loadRenewalTimeline(tx: Tx, w: InsWindow, horizon = 90, limit = 300): Promise<{ rows: RenewalPointRow[]; total: number }> {
+  const rows = (await tx.execute(sql`
+    WITH pol AS (${polBase(w)}),
+         p AS (SELECT * FROM pol WHERE ${polWhere(w, { nature: false, status: false }, "pol")}
+                 AND status IN (${IN_FORCE}) AND freq <> 'single' AND due IS NOT NULL
+                 AND due BETWEEN ${w.today}::date AND ${w.today}::date + ${horizon}::int)
+    SELECT (p.due - ${w.today}::date)::int AS days, p.inst, p.grp, p.client, p.plan_name, p.policy_type,
+           COUNT(*) OVER () AS total
+      FROM p
+     ORDER BY p.inst DESC
+     LIMIT ${limit}
+  `)).rows as Row[];
+  return {
+    total: rows.length ? num(rows[0].total) : 0,
+    rows: rows.map((r) => ({
+      days: num(r.days), premium: num(r.inst), group: String(r.grp ?? "unclassified"),
+      client: String(r.client ?? "—"), product: String(r.plan_name || r.policy_type || ""),
+    })),
+  };
+}
+
 export { addDays };

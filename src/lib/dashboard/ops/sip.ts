@@ -13,6 +13,8 @@
 
 import { sql } from "drizzle-orm";
 import { clientScope, istDay, num, opsBase, opsFilter, selfOnly, str, type OpsWindow, type Row, type Tx } from "./window";
+import { fishboneFrom, rejectionCause, type Bone } from "./rejection-causes";
+import { aliveClient } from "@/lib/metrics/scope";
 
 const SIP_OPEN = sql`('pending', 'client_contacted', 'bank_issue', 'mandate_issue')`;
 
@@ -227,3 +229,85 @@ export async function loadRejections(tx: Tx, w: OpsWindow, limit = 100): Promise
   };
 }
 
+
+/* ─────────────────────── why SIPs bounced · the debit calendar ─────────────────────── */
+
+export type RejectionFishbone = { total: number; unrecorded: number; bones: Bone[] };
+
+/**
+ * The period's rejections (by rejection date) grouped into causes for the
+ * fishbone — the team's category, else the registrar's words
+ * (lib/dashboard/ops/rejection-causes.ts).
+ */
+export async function loadRejectionFishbone(tx: Tx, w: OpsWindow): Promise<RejectionFishbone> {
+  const self = selfOnly(w);
+  const rows = (await tx.execute(sql`
+    SELECT s.reason_category AS cat, NULLIF(btrim(COALESCE(s.rejection_reason, '')), '') AS reason, COUNT(*)::int AS n
+      FROM sip_rejections s JOIN investors i ON i.id = s.investor_id
+     WHERE s.tenant_id = ${w.tenantId}::uuid AND ${clientScope(w)}
+       ${self ? sql`AND s.assigned_rm_id = ${self}::uuid` : sql``}
+       AND s.rejection_date BETWEEN ${w.from}::date AND ${w.to}::date
+     GROUP BY 1, 2
+  `)).rows as Row[];
+  const counted = rows.map((r) => ({ cause: rejectionCause(str(r.cat), str(r.reason)), count: num(r.n) }));
+  const { bones, unrecorded } = fishboneFrom(counted);
+  return { total: counted.reduce((a, c) => a + c.count, 0), unrecorded, bones };
+}
+
+export type DebitCalendar = {
+  days: Array<{ day: number; amount: number; sips: number; rejections: number }>;
+  /** Active SIPs with no debit day recorded (not drawn). */
+  undated: number;
+  today: number;
+  lastMonth: string;
+};
+
+/**
+ * The SIP debit calendar: each day of the month, the instalments of active
+ * SIPs that fall due on it (sips.sip_date), and the rejections dated that day
+ * last calendar month.
+ */
+export async function loadDebitCalendar(tx: Tx, w: OpsWindow): Promise<DebitCalendar> {
+  const self = selfOnly(w);
+  const due = (await tx.execute(sql`
+    SELECT CASE WHEN btrim(COALESCE(s.sip_date, '')) ~ '^[0-9]{1,2}$' THEN btrim(s.sip_date)::int END AS d,
+           COUNT(*)::int AS n, COALESCE(SUM(s.amount::numeric), 0) AS v
+      FROM sips s JOIN investors i ON i.id = s.investor_id
+     WHERE s.tenant_id = ${w.tenantId}::uuid AND s.status = 'active' AND ${clientScope(w)}
+       AND ${aliveClient("i")}
+       ${self ? sql`AND i.rm_id = ${self}::uuid` : sql``}
+     GROUP BY 1
+  `)).rows as Row[];
+  const bounced = (await tx.execute(sql`
+    SELECT EXTRACT(day FROM s.rejection_date)::int AS d, COUNT(*)::int AS n
+      FROM sip_rejections s JOIN investors i ON i.id = s.investor_id
+     WHERE s.tenant_id = ${w.tenantId}::uuid AND ${clientScope(w)}
+       ${self ? sql`AND s.assigned_rm_id = ${self}::uuid` : sql``}
+       AND s.rejection_date >= (date_trunc('month', ${w.today}::date) - interval '1 month')::date
+       AND s.rejection_date < date_trunc('month', ${w.today}::date)::date
+     GROUP BY 1
+  `)).rows as Row[];
+  const days = Array.from({ length: 31 }, (_, i) => ({ day: i + 1, amount: 0, sips: 0, rejections: 0 }));
+  let undated = 0;
+  for (const r of due) {
+    const d = r.d == null ? null : num(r.d);
+    if (d == null || d < 1 || d > 31) { undated += num(r.n); continue; }
+    days[d - 1].amount += num(r.v);
+    days[d - 1].sips += num(r.n);
+  }
+  for (const r of bounced) {
+    const d = num(r.d);
+    if (d >= 1 && d <= 31) days[d - 1].rejections += num(r.n);
+  }
+  // Days 29–31 only when something is due or bounced on them.
+  const last = days.reduce((a, x) => (x.sips || x.rejections ? x.day : a), 28);
+  const lm = new Date(`${w.today}T00:00:00Z`);
+  lm.setUTCDate(1);
+  lm.setUTCMonth(lm.getUTCMonth() - 1);
+  return {
+    days: days.slice(0, Math.max(28, last)),
+    undated,
+    today: Number(w.today.slice(8, 10)),
+    lastMonth: lm.toLocaleString("en-IN", { month: "long", timeZone: "UTC" }),
+  };
+}

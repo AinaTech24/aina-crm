@@ -171,6 +171,11 @@ export const SYSTEM_WIDGETS: SystemWidgetMeta[] = [
     supports: ["period", ...CLIENT],
   },
   {
+    key: "client_map", title: "Where clients are", category: "Clients", defaultSize: "L", sizes: ["L"],
+    description: "India shaded by clients or AUM per state, a dot per city, and the top states and cities.",
+    supports: CLIENT,
+  },
+  {
     key: "kyc_risk", title: "KYC and risk profile", category: "Compliance", defaultSize: "M", sizes: ["M", "L"],
     description: "Clients by KYC status and by risk-profile status.",
     supports: ["period", ...CLIENT],

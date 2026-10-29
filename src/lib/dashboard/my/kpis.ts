@@ -705,6 +705,21 @@ export type MyTrend = {
 const FY_MONTH_LABELS = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
 
 /**
+ * Each KPI tile's sparkline: this FY's months so far from the trend — money
+ * that moved per month for a flow, the recorded month-end for a balance (a
+ * month never recorded is left out, never drawn as zero).
+ */
+export function kpiSparks(trend: MyTrend): Partial<Record<string, number[]>> {
+  const n = Math.max(0, Math.min(12, trend.monthsElapsed));
+  const out: Partial<Record<string, number[]>> = {};
+  for (const [key, s] of Object.entries(trend.series)) out[key] = s.current.slice(0, n);
+  for (const key of ["aum", "sip_book"] as const) {
+    out[key] = trend.balances[key].current.slice(0, n).filter((v): v is number => v != null);
+  }
+  return out;
+}
+
+/**
  * Month-by-month for this financial year and the last, for every metric at once.
  *
  * All eight metrics are computed in one pass rather than one query per metric,

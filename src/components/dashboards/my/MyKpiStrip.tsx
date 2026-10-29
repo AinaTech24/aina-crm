@@ -27,6 +27,7 @@ import {
 import type { MyKpi } from "@/lib/dashboard/my/kpis";
 import { formatCount, formatMoney, formatPercent } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { Sparkline } from "@/components/dashboards/system/Sparkline";
 
 const ICON: Record<MyKpi["key"], React.ReactNode> = {
   aum: <TrendingUp className="size-4" />,
@@ -87,7 +88,7 @@ function Delta({ kpi }: { kpi: MyKpi }) {
   );
 }
 
-function Tile({ kpi, className }: { kpi: MyKpi; className?: string }) {
+function Tile({ kpi, className, spark }: { kpi: MyKpi; className?: string; spark?: number[] }) {
   const unknown = kpi.value == null;
   const zero = kpi.value === 0;
   const notes = kpi.notes.filter((n) => n.label);
@@ -126,12 +127,22 @@ function Tile({ kpi, className }: { kpi: MyKpi; className?: string }) {
         {fmt(kpi, kpi.value)}
       </div>
 
-      {kpi.compare && !(zero && kpi.compare.abs === 0) && (
-        <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs">
-          <Delta kpi={kpi} />
-          <span className="text-muted-foreground">{kpi.compareLabel}</span>
+      {(kpi.compare && !(zero && kpi.compare.abs === 0)) || (spark && spark.length >= 3) ? (
+        <div className="mt-2.5 flex items-end justify-between gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-2xs">
+            {kpi.compare && !(zero && kpi.compare.abs === 0) && (
+              <>
+                <Delta kpi={kpi} />
+                <span className="text-muted-foreground">{kpi.compareLabel}</span>
+              </>
+            )}
+          </div>
+          {/* This FY's months so far: the shape, not the values. */}
+          {spark && spark.length >= 3 && (
+            <Sparkline values={spark} width={60} height={22} className="shrink-0" style={{ color: "var(--c)" }} />
+          )}
         </div>
-      )}
+      ) : null}
 
       <div className="mt-auto space-y-1 border-t border-border/60 pt-2.5 text-2xs">
         {kpi.fytd != null && (
@@ -159,7 +170,19 @@ function Tile({ kpi, className }: { kpi: MyKpi; className?: string }) {
               {formatPercent(kpi.target.pct * 100, 0)}
             </span>
           </div>
-        ) : (
+        ) : null}
+        {kpi.target && (
+          // The share reached, with a tick where the year should be today.
+          <div className="relative pt-0.5" aria-hidden>
+            <div className="h-1.5 overflow-hidden rounded-full bg-secondary">
+              <div className="h-full rounded-full" style={{ width: `${Math.max(2, Math.min(100, kpi.target.pct * 100))}%`, background: "var(--c)" }} />
+            </div>
+            {kpi.target.pace != null && (
+              <span className="absolute -top-0.5 h-3 w-0.5 -translate-x-1/2 rounded-full bg-foreground" style={{ left: `${Math.min(100, kpi.target.pace * 100)}%` }} />
+            )}
+          </div>
+        )}
+        {kpi.target ? null : (
           notes.length > 0 && (
             <div className="space-y-0.5">
               {notes.slice(0, 2).map((n) => (
@@ -187,10 +210,12 @@ function Tile({ kpi, className }: { kpi: MyKpi; className?: string }) {
 /** Width of a tile on a short last row of 1, 2 or 3 (twelve-column grid, wide screens). */
 const LAST_ROW: Record<number, string> = { 1: "xl:col-span-12", 2: "xl:col-span-6", 3: "xl:col-span-4" };
 
-export function MyKpiStrip({ kpis, periodLabel, title = "My business" }: {
+export function MyKpiStrip({ kpis, periodLabel, title = "My business", sparks }: {
   kpis: MyKpi[];
   periodLabel: string;
   title?: string;
+  /** This FY's months so far, per tile key (kpiSparks). */
+  sparks?: Partial<Record<string, number[]>>;
 }) {
   // Ten tiles sit five to a row. Any other count goes four to a row, and the
   // tiles left over share the last row equally — eleven used to wrap 5 + 5 + 1
@@ -208,7 +233,7 @@ export function MyKpiStrip({ kpis, periodLabel, title = "My business" }: {
       {fives ? (
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
           {kpis.map((k) => (
-            <Tile key={k.key} kpi={k} />
+            <Tile key={k.key} kpi={k} spark={sparks?.[k.key]} />
           ))}
         </div>
       ) : (
@@ -217,7 +242,7 @@ export function MyKpiStrip({ kpis, periodLabel, title = "My business" }: {
             // Two to a row below xl (one per row made eleven tiles 1,600px tall
             // on a phone; three per row at a 1024px screen left one alone), and
             // an odd last tile takes the whole row.
-            <Tile key={k.key} kpi={k} className={cn(
+            <Tile key={k.key} kpi={k} spark={sparks?.[k.key]} className={cn(
               oddLast(i) ? "col-span-12" : "col-span-6",
               i >= lastRowFrom ? LAST_ROW[left] : "xl:col-span-3",
             )} />

@@ -44,7 +44,10 @@
  */
 
 import { Suspense, type ReactNode } from "react";
-import { Lock, UserRound } from "lucide-react";
+import { Lock, TrendingUp, UserRound } from "lucide-react";
+import { Section } from "./my/Shared";
+import { Dumbbell } from "./charts/Dumbbell";
+import { loadBookedByRm } from "@/lib/dashboard/my/booked";
 
 import { withTenant } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
@@ -56,7 +59,7 @@ import type { Period } from "@/lib/dashboard/period";
 import { loadDashboardThresholds, type DashboardThresholds } from "@/lib/dashboard/thresholds";
 import { buildBookWindow } from "@/lib/dashboard/my/build-window";
 import { clientsHref, loadBookTargets, type BookScope, type MyWindow } from "@/lib/dashboard/my/window";
-import { loadMonthlySummary, loadMyKpis, loadTargetMeters, monthLabels, phaseFraction } from "@/lib/dashboard/my/kpis";
+import { kpiSparks, loadMonthlySummary, loadMyKpis, loadMyTrend, loadTargetMeters, monthLabels, phaseFraction } from "@/lib/dashboard/my/kpis";
 import {
   loadClientBook, loadContactGap, loadDataQuality, loadKeyClients,
   loadReviewDesk, loadRiskDesk, type KeyClientSort,
@@ -325,7 +328,7 @@ export async function BranchCommandCentre({
 
         {/* Analysis · investment flow */}
         <Suspense fallback={<Loading order="rest" />}>
-          <FlowBand run={run} w={w} flowH={flowH} rmHref={rmHref}
+          <FlowBand run={run} w={w} flowH={flowH} rmHref={rmHref} ledgerP={ledgerP} oneRm={!!oneRm}
             flowHrefs={{ mtd: hrefWith({ flow: "mtd" }), fytd: hrefWith({ flow: "fytd" }) }} />
         </Suspense>
 
@@ -394,10 +397,10 @@ async function KpiBand({
 }) {
   // Each tile opens its own list (clients, SIPs, transactions), where the
   // viewer's access scope applies.
-  const kpis = await run((tx) => loadMyKpis(tx, w));
+  const [kpis, trend] = await run(async (tx) => [await loadMyKpis(tx, w), await loadMyTrend(tx, w)] as const);
   return (
     <Cell order="kpi">
-      <MyKpiStrip kpis={kpis} periodLabel={periodLabel} title={oneRm ? `${oneRm} — business` : "Branch business"} />
+      <MyKpiStrip kpis={kpis} periodLabel={periodLabel} title={oneRm ? `${oneRm} — business` : "Branch business"} sparks={kpiSparks(trend)} />
     </Cell>
   );
 }
@@ -419,17 +422,40 @@ async function TargetsBand({
 }
 
 async function FlowBand({
-  run, w, flowH, rmHref, flowHrefs,
+  run, w, flowH, rmHref, flowHrefs, ledgerP, oneRm,
 }: {
   run: Run; w: MyWindow; flowH: "mtd" | "fytd"; rmHref: (id: string) => string;
-  flowHrefs: Record<"mtd" | "fytd", string>;
+  flowHrefs: Record<"mtd" | "fytd", string>; ledgerP: Promise<RmLedgerRow[]>; oneRm: boolean;
 }) {
-  const flow = await run((tx) => loadInvestmentFlow(tx, w, flowH));
+  // Each RM's booked net business in the period against the same dates last year.
+  const lastYear = (d: string) => `${Number(d.slice(0, 4)) - 1}${d.slice(4)}`;
+  const [flow, cur, prev, ledger] = await Promise.all([
+    run((tx) => loadInvestmentFlow(tx, w, flowH)),
+    oneRm ? null : run((tx) => loadBookedByRm(tx, w.scope, w.from, w.to)),
+    oneRm ? null : run((tx) => loadBookedByRm(tx, w.scope, lastYear(w.from), lastYear(w.to))),
+    ledgerP,
+  ]);
+  const growth = cur?.ever && prev?.ever
+    ? ledger.filter((r) => r.kind === "person" && r.isRm)
+        .map((r) => ({ key: r.id, name: r.name, href: rmHref(r.id), cur: cur.byRm.get(r.id)?.net ?? 0, prev: prev.byRm.get(r.id)?.net ?? 0 }))
+        .filter((r) => r.cur !== 0 || r.prev !== 0)
+        .sort((a, b) => b.cur - a.cur)
+    : [];
   // Full width: the card it used to share a row with (redemption watch) is gone.
   return (
-    <Cell order="rest">
-      <BranchInvestmentFlow data={flow} hrefs={flowHrefs} rmHref={rmHref} />
-    </Cell>
+    <>
+      <Cell order="rest">
+        <BranchInvestmentFlow data={flow} hrefs={flowHrefs} rmHref={rmHref} />
+      </Cell>
+      {growth.length >= 2 && (
+        <Cell order="rest" id="rm-growth">
+          <Section title="RM growth" icon={<TrendingUp className="size-4" />}
+            note="Net business booked in the selected period, against the same dates last year.">
+            <Dumbbell rows={growth} prevLabel="Same dates last year" curLabel="This period" />
+          </Section>
+        </Cell>
+      )}
+    </>
   );
 }
 

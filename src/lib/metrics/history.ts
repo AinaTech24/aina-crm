@@ -13,27 +13,51 @@ import { cleanIds, hasClientFilter, uuidList, type MetricScope } from "./scope";
 
 export type StockThen = { date: string; aum: number; sip: number } | null;
 
-export async function getStockMonthAgo(tx: Tx, scope: MetricScope): Promise<StockThen> {
+/** Where the slice's balances were recorded, or null when they never were. */
+function snapshotSource(scope: MetricScope): { source: SQL; aumCol: SQL; want: number } | null {
   if (hasClientFilter(scope) || scope.amcs?.length) return null;
   const rms = cleanIds(scope.rmIds);
   const branches = cleanIds(scope.branchIds);
-  let source: SQL;
-  let aumCol: SQL;
   if (!rms.length && !branches.length) {
-    source = sql`firm_snapshots WHERE tenant_id = ${scope.tenantId}::uuid`;
-    aumCol = sql`total_aum`;
-  } else if (rms.length && !branches.length) {
-    source = sql`rm_snapshots WHERE tenant_id = ${scope.tenantId}::uuid AND rm_id IN (${uuidList(rms)})`;
-    aumCol = sql`aum`;
-  } else if (branches.length && !rms.length) {
-    source = sql`branch_snapshots WHERE tenant_id = ${scope.tenantId}::uuid AND branch_id IN (${uuidList(branches)})`;
-    aumCol = sql`aum`;
-  } else {
-    return null;
+    return { source: sql`firm_snapshots WHERE tenant_id = ${scope.tenantId}::uuid`, aumCol: sql`total_aum`, want: 1 };
   }
+  if (rms.length && !branches.length) {
+    return { source: sql`rm_snapshots WHERE tenant_id = ${scope.tenantId}::uuid AND rm_id IN (${uuidList(rms)})`, aumCol: sql`aum`, want: rms.length };
+  }
+  if (branches.length && !rms.length) {
+    return { source: sql`branch_snapshots WHERE tenant_id = ${scope.tenantId}::uuid AND branch_id IN (${uuidList(branches)})`, aumCol: sql`aum`, want: branches.length };
+  }
+  return null;
+}
+
+/**
+ * The balances as recorded at the end of `date` — the last snapshot on or
+ * before it, within `toleranceDays`. The opening of a period's bridge (AUM,
+ * SIP book). Null when that day was never recorded for this slice.
+ */
+export async function getStockOn(tx: Tx, scope: MetricScope, date: string, toleranceDays = 7): Promise<StockThen> {
+  const src = snapshotSource(scope);
+  if (!src) return null;
+  const r = (await tx.execute(sql`
+    WITH days AS (
+      SELECT snapshot_date, SUM(${src.aumCol}) AS aum, SUM(monthly_sip) AS sip, COUNT(*) AS n
+        FROM ${src.source}
+         AND snapshot_date BETWEEN ${date}::date - ${toleranceDays}::int AND ${date}::date
+       GROUP BY snapshot_date
+    )
+    SELECT to_char(snapshot_date, 'YYYY-MM-DD') AS d, aum, sip FROM days
+     WHERE n >= ${src.want}
+     ORDER BY snapshot_date DESC LIMIT 1
+  `)).rows[0] as { d: string; aum: string; sip: string } | undefined;
+  return r ? { date: r.d, aum: Number(r.aum), sip: Number(r.sip) } : null;
+}
+
+export async function getStockMonthAgo(tx: Tx, scope: MetricScope): Promise<StockThen> {
+  const src = snapshotSource(scope);
+  if (!src) return null;
+  const { source, aumCol, want } = src;
   // The recorded day nearest to 30 days ago, within twelve days of it; every
   // RM / branch in the slice must have a row that day or the sum is partial.
-  const want = rms.length || branches.length || 1;
   const r = (await tx.execute(sql`
     WITH days AS (
       SELECT snapshot_date, SUM(${aumCol}) AS aum, SUM(monthly_sip) AS sip, COUNT(*) AS n
