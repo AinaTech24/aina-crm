@@ -91,31 +91,6 @@ If your firm has switched on the escalation ladder (Settings > Escalation), a ta
 If QA sampling is on (Settings > QA sampling), a share of each person's completed tasks is picked every week and a checking task goes to their manager. The checker records Pass or Fail; a Fail needs a reason and gives the doer a correction task. Find them in **Tasks > QA queue**.`,
   },
   {
-    slug: "daily-job-tracker",
-    folder: "guide-work",
-    title: "Filling in the Daily Job Tracker",
-    hook: "A one-minute end-of-day habit: the tracker fills most of itself in.",
-    minutes: 3,
-    body: `**Path:** Sidebar > Work > Daily Tracker
-
-## What fills itself in
-
-For the day before, the tracker already shows the tasks you finished and carried over, the meetings you held and the follow-ups you logged.
-
-## What you add
-
-1. Open **Daily Tracker**.
-2. Write today's **focus**. If your plan is empty, the tracker offers the top three items from your worklist; accept them in one tap.
-3. Add what you **learned** and any **breakdown** of how the day went.
-4. Save. A day counts as submitted once it has a focus item or a reflection.
-
-## Reminders and managers
-
-- Your first clock-in of the day opens the tracker.
-- If your firm has set a reminder time (Settings > Daily tracker), people who have not filled in get one reminder, Monday to Saturday, except on firm holidays.
-- Managers can open the **Team tracker** and the **Weekly team pack** for the people they can see.`,
-  },
-  {
     slug: "meetings-and-action-items",
     folder: "guide-work",
     title: "Scheduling meetings and tracking action items",
