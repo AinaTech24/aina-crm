@@ -10,17 +10,13 @@
 
 import React from "react";
 import Link from "next/link";
+import { inlineShotNumbers } from "@/lib/kb/shots";
 
 export type KbShotRef = { caption?: string | null; alt?: string | null };
 
 const SHOT = /^!\[([^\]]*)\]\(shot:(\d{1,3})\)\s*$/;
 
-/** 1-based screenshot numbers the body places inline. */
-export function inlineShotNumbers(text: string): Set<number> {
-  const out = new Set<number>();
-  for (const m of (text ?? "").matchAll(/!\[[^\]]*\]\(shot:(\d{1,3})\)/g)) out.add(Number(m[1]));
-  return out;
-}
+export { inlineShotNumbers };
 
 function inline(text: string, key: string): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];

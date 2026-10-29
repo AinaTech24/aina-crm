@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inlineShotNumbers } from "@/components/kb/KbMarkdown";
+import { inlineShotNumbers } from "@/lib/kb/shots";
 import { KbBody, KbFolderBody } from "@/lib/kb/schema";
 
 describe("help centre", () => {
