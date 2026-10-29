@@ -44,8 +44,8 @@ export default async function KbArticlesPage() {
 
       <div className="rounded-lg border bg-card p-4 flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground max-w-xl">
-          New to this? Add one draft guide per module process (dashboards, tasks, clients, SIPs, automations and more). They stay
-          hidden until you add screenshots and publish them.
+          The help centre ships with one guide per module (dashboards, tasks, clients, SIPs, automations and more), each with
+          screenshots, already published. Use this to bring back any that are missing; guides you have edited are never overwritten.
         </p>
         <InstallStarterButton />
       </div>

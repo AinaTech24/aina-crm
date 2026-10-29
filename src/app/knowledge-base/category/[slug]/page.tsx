@@ -1,9 +1,8 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import type { Metadata } from "next";
-import { getSession } from "@/lib/auth/session";
 import { loadCategoryBySlug } from "@/lib/kb/help";
-import { PublicShell } from "@/components/kb/PublicShell";
-import { FolderBlock, HelpBanner } from "@/components/kb/HelpBits";
+import { GuideCard, KbHero } from "@/components/kb/KbBits";
 
 export const revalidate = 60;
 
@@ -20,24 +19,29 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function KbCategoryPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const session = await getSession().catch(() => null);
   const c = await loadCategoryBySlug(slug);
   if (!c) notFound();
 
   return (
-    <PublicShell signedIn={!!session}>
-      <HelpBanner
+    <>
+      <KbHero
         title={c.name}
-        subtitle={c.description}
-        crumbs={[{ label: "Home", href: "/" }, { label: "Knowledge base", href: "/knowledge-base" }, { label: c.name }]}
+        lead={c.description}
+        crumbs={[{ label: "Knowledge Base", href: "/knowledge-base" }, { label: c.name }]}
       />
-      <section className="max-w-6xl mx-auto px-6 pt-8">
-        <div className="rounded-xl border border-border/60 bg-card shadow-sm overflow-hidden grid md:grid-cols-2 [&>*]:border-border/60 [&>*:not(:first-child)]:border-t md:[&>*:nth-child(2)]:border-t-0 md:[&>*:nth-child(odd)]:border-r">
-          {c.folders.map((f) => (
-            <FolderBlock key={f.id} folder={f} limit={5} />
-          ))}
-        </div>
-      </section>
-    </PublicShell>
+      <main className="kb-w kb-main">
+        {c.folders.map((f) => (
+          <div key={f.id} className="kb-folder" style={{ marginTop: 0, marginBottom: 44 }}>
+            <h3>
+              <Link href={`/knowledge-base/folder/${f.slug}`}>{f.name}</Link>
+              <small>{f.count} {f.count === 1 ? "guide" : "guides"}</small>
+            </h3>
+            <div className="kb-grid">
+              {f.articles.map((a) => <GuideCard key={a.id} a={a} />)}
+            </div>
+          </div>
+        ))}
+      </main>
+    </>
   );
 }

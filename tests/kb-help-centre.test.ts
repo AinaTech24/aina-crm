@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { inlineShotNumbers } from "@/lib/kb/shots";
 import { GUIDES, STARTER_FOLDERS } from "@/lib/kb/starter-guides";
@@ -29,6 +30,17 @@ describe("help centre", () => {
       expect(folders.has(g.folder)).toBe(true);
       expect(KB_RESERVED_SLUGS.includes(g.slug)).toBe(false);
       expect(KbBody.safeParse({ slug: g.slug, title: g.title, hook: g.hook, solutionMd: g.body, readMinutes: g.minutes }).success).toBe(true);
+    }
+  });
+
+  it("places every screenshot, ships its file, and links only to guides that exist", () => {
+    const slugs = new Set(GUIDES.map((g) => g.slug));
+    for (const g of GUIDES) {
+      const used = [...g.body.matchAll(/!\[[^\]]*\]\(shot:(\d+)\)/g)].map((m) => Number(m[1]));
+      for (const n of used) expect(n >= 1 && n <= g.shots.length, `${g.slug} shot ${n}`).toBe(true);
+      expect(new Set(used).size, `${g.slug}: every shot is placed once`).toBe(g.shots.length);
+      for (const s of g.shots) expect(existsSync(`public/kb/${s.file}.jpg`), `public/kb/${s.file}.jpg`).toBe(true);
+      for (const m of g.body.matchAll(/\]\(\/knowledge-base\/([a-z0-9-]+)\)/g)) expect(slugs.has(m[1]), `${g.slug} -> ${m[1]}`).toBe(true);
     }
   });
 });

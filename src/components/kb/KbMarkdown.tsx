@@ -10,9 +10,9 @@
 
 import React from "react";
 import Link from "next/link";
-import { inlineShotNumbers } from "@/lib/kb/shots";
+import { inlineShotNumbers, shotUrl } from "@/lib/kb/shots";
 
-export type KbShotRef = { caption?: string | null; alt?: string | null };
+export type KbShotRef = { storageKey?: string; caption?: string | null; alt?: string | null };
 
 const SHOT = /^!\[([^\]]*)\]\(shot:(\d{1,3})\)\s*$/;
 
@@ -28,14 +28,14 @@ function inline(text: string, key: string): React.ReactNode[] {
     if (m.index > last) nodes.push(text.slice(last, m.index));
     const k = `${key}-${n++}`;
     if (m[1]) nodes.push(<strong key={k}>{m[2]}</strong>);
-    else if (m[3]) nodes.push(<code key={k} className="px-1 py-0.5 rounded bg-muted text-[0.9em] font-mono">{m[4]}</code>);
+    else if (m[3]) nodes.push(<code key={k}>{m[4]}</code>);
     else if (m[5]) nodes.push(<em key={k}>{m[6]}</em>);
     else {
       const href = m[9];
       if (href.startsWith("/")) {
-        nodes.push(<Link key={k} href={href} className="text-primary font-medium hover:underline">{m[8]}</Link>);
+        nodes.push(<Link key={k} href={href}>{m[8]}</Link>);
       } else if (/^https?:\/\//i.test(href)) {
-        nodes.push(<a key={k} href={href} target="_blank" rel="noreferrer" className="text-primary font-medium hover:underline">{m[8]}</a>);
+        nodes.push(<a key={k} href={href} target="_blank" rel="noreferrer">{m[8]}</a>);
       } else {
         nodes.push(m[0]);
       }
@@ -79,21 +79,16 @@ export function KbMarkdown({
       if (!shot) continue;
       const caption = img[1].trim() || shot.caption || "";
       blocks.push(
-        <figure key={key()} className="my-5">
+        <figure key={key()}>
           {preview ? (
-            <div className="flex h-32 items-center justify-center rounded-md border border-dashed border-border bg-secondary/40 text-xs text-muted-foreground">
-              Screenshot {n}
-            </div>
+            <div className="kb-shot-ph">Screenshot {n}</div>
           ) : (
           // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={`/api/kb/image/${articleId}?i=${n - 1}`}
-            alt={shot.alt || caption || `Screenshot ${n}`}
-            className="w-full h-auto rounded-md border border-border/60 bg-white"
-            loading="lazy"
-          />
+          <a href={shotUrl(articleId, n - 1, shot.storageKey)} target="_blank" rel="noopener noreferrer">
+            <img src={shotUrl(articleId, n - 1, shot.storageKey)} alt={shot.alt || caption || `Screenshot ${n}`} loading="lazy" />
+          </a>
           )}
-          {caption && <figcaption className="mt-1.5 text-xs text-muted-foreground">{caption}</figcaption>}
+          {caption && <figcaption>{caption}</figcaption>}
         </figure>
       );
       continue;
@@ -106,7 +101,7 @@ export function KbMarkdown({
       while (i < lines.length && !/^```\s*$/.test(lines[i])) body.push(lines[i++]);
       if (i < lines.length) i++;
       blocks.push(
-        <pre key={key()} className="my-3 overflow-x-auto rounded-lg bg-muted p-3 text-xs font-mono"><code>{body.join("\n")}</code></pre>
+        <pre key={key()}><code>{body.join("\n")}</code></pre>
       );
       continue;
     }
@@ -114,15 +109,7 @@ export function KbMarkdown({
     const h = line.match(/^(#{1,4})\s+(.*)$/);
     if (h) {
       const lvl = h[1].length;
-      const cls =
-        lvl <= 2
-          ? "mt-8 mb-2 text-xl font-bold text-foreground"
-          : lvl === 3
-          ? "mt-6 mb-1.5 text-base font-bold text-foreground"
-          : "mt-4 mb-1 text-sm font-bold text-foreground";
-      blocks.push(
-        lvl <= 2 ? <h2 key={key()} className={cls}>{inline(h[2], `h${b}`)}</h2> : <h3 key={key()} className={cls}>{inline(h[2], `h${b}`)}</h3>
-      );
+      blocks.push(lvl <= 2 ? <h2 key={key()}>{inline(h[2], `h${b}`)}</h2> : <h3 key={key()}>{inline(h[2], `h${b}`)}</h3>);
       i++;
       continue;
     }
@@ -133,7 +120,7 @@ export function KbMarkdown({
         items.push(<li key={`li${i}`}>{inline(lines[i].replace(ul, ""), `u${i}`)}</li>);
         i++;
       }
-      blocks.push(<ul key={key()} className="list-disc pl-6 my-3 space-y-1.5">{items}</ul>);
+      blocks.push(<ul key={key()}>{items}</ul>);
       continue;
     }
 
@@ -146,7 +133,7 @@ export function KbMarkdown({
         i++;
       }
       // `start` keeps the numbering going when a screenshot sits between steps.
-      blocks.push(<ol key={key()} start={start} className="list-decimal pl-6 my-3 space-y-1.5">{items}</ol>);
+      blocks.push(<ol key={key()} start={start}>{items}</ol>);
       continue;
     }
 
@@ -163,7 +150,7 @@ export function KbMarkdown({
       para.push(lines[i++]);
     }
     blocks.push(
-      <p key={key()} className="my-3">
+      <p key={key()}>
         {para.map((p, idx) => (
           <React.Fragment key={idx}>
             {idx > 0 && <br />}
@@ -174,5 +161,5 @@ export function KbMarkdown({
     );
   }
 
-  return <div className="text-[15px] leading-relaxed text-foreground/90">{blocks}</div>;
+  return <div className="kb-prose">{blocks}</div>;
 }

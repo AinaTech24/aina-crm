@@ -1,9 +1,8 @@
 /**
- * Installs the starter help-centre guides (lib/kb/starter-guides.ts) for the
- * super admin: one category, a folder per area, and a DRAFT article per module
- * process. Idempotent — a category / folder / article that already exists (by
- * slug) is left exactly as it is, so a guide the admin edited is never
- * overwritten and one they deleted comes back only when they install again.
+ * Installs the shipped guides (lib/kb/starter-guides.ts) for the super admin: one category, a
+ * folder per area, and a PUBLISHED article per module, each with its screenshots. Idempotent —
+ * a category / folder / article that already exists (by slug) is left exactly as it is, so a
+ * guide the admin edited is never overwritten. (Migration 0248 does the same on deploy.)
  */
 
 import { eq, sql } from "drizzle-orm";
@@ -53,8 +52,10 @@ export async function installStarterGuides(tx: any): Promise<InstallResult> {
       title: g.title,
       hook: g.hook,
       solutionMd: g.body,
+      screenshots: g.shots.map((s) => ({ storageKey: `/kb/${s.file}.jpg`, caption: s.caption, alt: s.alt ?? s.caption })),
       readMinutes: g.minutes,
-      published: false,
+      published: true,
+      publishedAt: new Date(),
       sortOrder: i,
     });
     guidesCreated++;

@@ -1,68 +1,96 @@
 /**
- * PUBLIC Knowledge Base home — the help centre. Categories as cards, each with
- * its folders and their first articles. Everything is free to read; no login.
- * Structure and content are managed by the AINA super admin
- * (/super-admin/kb-articles).
+ * PUBLIC Knowledge Base home, in the new landing page theme, with two tabs:
+ *   Knowledge Base — step-by-step guides with screenshots (categories → folders → guides)
+ *   KAIZEN         — real situations from an MFD practice and how the CRM handles each
+ * Everything is free to read. Structure and content are managed by the AINA super admin.
  */
 
 import Link from "next/link";
 import type { Metadata } from "next";
-import { BookOpen, Layers } from "lucide-react";
-import { getSession } from "@/lib/auth/session";
 import { loadHelpTree } from "@/lib/kb/help";
-import { PublicShell } from "@/components/kb/PublicShell";
-import { FolderBlock, HelpBanner } from "@/components/kb/HelpBits";
+import { loadKbCards } from "@/lib/kb/articles";
+import { GuideCard, KbHero, KbTabs } from "@/components/kb/KbBits";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Knowledge Base | Aina CRM for Mutual Fund Distributors",
   description:
-    "Step-by-step guides with screenshots for every part of Aina CRM — clients, SIPs, leads, tasks, reports, compliance and more.",
+    "Step-by-step guides with screenshots for every part of Aina CRM, and KAIZEN: real situations from an MFD practice and how the CRM handles each one.",
   alternates: { canonical: "/knowledge-base" },
 };
 
-export default async function KnowledgeBasePage() {
-  const session = await getSession().catch(() => null);
-  const tree = await loadHelpTree();
+export default async function KnowledgeBasePage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
+  const { tab } = await searchParams;
+  const kaizenTab = tab === "kaizen";
+  const [tree, kaizen] = await Promise.all([loadHelpTree(), loadKbCards("KAIZEN")]);
+  // KAIZEN stories have their own tab, so they are not repeated in the guides.
+  const guides = tree.filter((c) => c.slug.toLowerCase() !== "kaizen");
 
   return (
-    <PublicShell signedIn={!!session}>
-      <HelpBanner
-        title="Knowledge base"
-        crumbs={[{ label: "Home", href: "/" }]}
-        subtitle="Step-by-step guides with screenshots for every part of Aina CRM."
-      />
+    <>
+      <KbHero
+        title={kaizenTab ? "KAIZEN — one improvement at a time" : "How to do everything in Aina CRM"}
+        lead={
+          kaizenTab
+            ? "Real situations from an Indian MFD's practice — a missed SIP, a dormant client, an audit query — and exactly how Aina CRM handles each one."
+            : "Step-by-step guides with screenshots for every part of Aina CRM. Find your module, follow the steps."
+        }
+      >
+        <KbTabs current={kaizenTab ? "kaizen" : "guides"} />
+      </KbHero>
 
-      <section className="max-w-6xl mx-auto px-6 -mt-0 pt-8 space-y-6">
-        {tree.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border p-12 text-center">
-            <BookOpen className="size-8 mx-auto text-muted-foreground/50" />
-            <div className="mt-3 font-semibold">The guides are on their way.</div>
-            <p className="text-sm text-muted-foreground mt-1">
-              Check back shortly — or{" "}
-              <Link href="/signup" className="text-primary font-semibold hover:underline">start a free trial</Link>{" "}
-              and explore the product now.
-            </p>
-          </div>
-        ) : (
-          tree.map((c) => (
-            <div key={c.id} className="rounded-xl border border-border/60 bg-card shadow-sm overflow-hidden">
-              <div className="flex items-center gap-3 border-b border-border/60 px-5 py-4">
-                <Layers className="size-6 text-muted-foreground" />
-                <Link href={`/knowledge-base/category/${c.slug}`} className="text-lg font-bold hover:text-primary">
-                  {c.name} <span className="text-muted-foreground">({c.count})</span>
+      <main className="kb-w kb-main">
+        {kaizenTab ? (
+          kaizen.length === 0 ? (
+            <div className="kb-empty">The first KAIZEN entry is on its way.</div>
+          ) : (
+            <div className="kb-grid">
+              {kaizen.map((c) => (
+                <Link key={c.slug} href={`/knowledge-base/${c.slug}`} className="kb-card">
+                  <div className="kb-card-b" style={{ paddingTop: 24 }}>
+                    <span className="kb-tag">
+                      {c.series}
+                      {c.episodeNo != null ? ` #${c.episodeNo}` : ""}
+                      {c.readMinutes ? ` · ${c.readMinutes} min` : ""}
+                    </span>
+                    <h3>{c.title}</h3>
+                    {c.hook && <p>{c.hook}</p>}
+                    {c.questions.length > 0 && (
+                      <ul className="kb-qs">
+                        {c.questions.slice(0, 3).map((q, i) => <li key={i}>{q}</li>)}
+                      </ul>
+                    )}
+                    <span className="more">Read the walkthrough →</span>
+                  </div>
                 </Link>
-              </div>
-              <div className="grid md:grid-cols-2 [&>*]:border-border/60 [&>*:not(:first-child)]:border-t md:[&>*:nth-child(2)]:border-t-0 md:[&>*:nth-child(odd)]:border-r">
-                {c.folders.map((f) => (
-                  <FolderBlock key={f.id} folder={f} />
-                ))}
-              </div>
+              ))}
             </div>
+          )
+        ) : guides.length === 0 ? (
+          <div className="kb-empty">The guides are on their way. Check back shortly.</div>
+        ) : (
+          guides.map((c) => (
+            <section key={c.id} className="kb-cat">
+              <h2>
+                <Link href={`/knowledge-base/category/${c.slug}`} style={{ textDecoration: "none" }}>{c.name}</Link>
+              </h2>
+              {c.description && <p>{c.description}</p>}
+              {c.folders.map((f) => (
+                <div key={f.id} className="kb-folder">
+                  <h3>
+                    <Link href={`/knowledge-base/folder/${f.slug}`}>{f.name}</Link>
+                    <small>{f.count} {f.count === 1 ? "guide" : "guides"}</small>
+                  </h3>
+                  <div className="kb-grid">
+                    {f.articles.map((a) => <GuideCard key={a.id} a={a} />)}
+                  </div>
+                </div>
+              ))}
+            </section>
           ))
         )}
-      </section>
-    </PublicShell>
+      </main>
+    </>
   );
 }
