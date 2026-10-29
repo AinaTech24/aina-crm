@@ -8,11 +8,12 @@ variable "project" {
   default = "mfd-growth-os"
 }
 
-# Web/worker box: what production runs (2 vCPU / 8 GB ARM). A smaller size is
-# a deliberate, approved resize — not a default.
+# Web/worker box: what production runs (2 vCPU / 4 GB ARM since the approved
+# resize of 2026-10-24, scripts/resize-ec2.sh). Changing it is a deliberate,
+# approved resize — not a default.
 variable "instance_type" {
   type    = string
-  default = "t4g.large"
+  default = "t4g.medium"
 }
 
 # The AMI production was built from (Amazon Linux 2023, arm64). Changing it
@@ -51,14 +52,13 @@ variable "db_max_allocated_storage" {
 # (forecast) so spend never surprises you. Budgets themselves are free.
 variable "monthly_budget_usd" {
   type    = string
-  default = "60"
+  default = "90"
 }
 
-# Where budget alerts go. Blank = no budget. Production has NO AWS Budget yet;
-# setting this creates one (an AWS change — approve it first).
+# Where budget alerts go. Blank = no budget. Set 2026-10-26 (user-approved).
 variable "budget_alert_email" {
   type    = string
-  default = ""
+  default = "pritesh@ainatech.in"
 }
 
 variable "db_name" {

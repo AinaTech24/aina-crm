@@ -62,7 +62,10 @@ resource "aws_cloudwatch_metric_alarm" "ec2_disk_high" {
   alarm_actions       = [aws_sns_topic.alerts.arn]
   ok_actions          = [aws_sns_topic.alerts.arn]
   dimensions = {
-    path       = "C:/Program Files/Git/"
+    # "/" — Git Bash once rewrote it to "C:/Program Files/Git/", so the alarm
+    # watched a metric that does not exist and could never fire. Create or
+    # edit CloudWatch dimensions from Windows with MSYS_NO_PATHCONV=1.
+    path       = "/"
     InstanceId = aws_instance.web.id
     fstype     = "xfs"
   }
@@ -284,10 +287,13 @@ resource "aws_iam_role_policy_attachment" "dlm" {
 }
 
 # Daily snapshot of every volume tagged aina-backup=daily (the root volume,
-# main.tf) at 20:30 UTC (02:00 IST); keep 7.
+# main.tf) at 20:30 UTC (02:00 IST); keep 3 (since 2026-10-26 — the box holds
+# no data of its own: the app comes from S3, data lives in RDS and S3). The
+# schedule keeps its old name on purpose: renaming it would orphan the
+# snapshots it already made instead of trimming them.
 resource "aws_dlm_lifecycle_policy" "daily" {
   provider           = aws.as_is
-  description        = "Aina CRM EC2 root volume daily snapshot keep 7"
+  description        = "Aina CRM EC2 root volume daily snapshot keep 3"
   execution_role_arn = aws_iam_role.dlm.arn
   state              = "ENABLED"
 
@@ -310,7 +316,7 @@ resource "aws_dlm_lifecycle_policy" "daily" {
         times         = ["20:30"]
       }
       retain_rule {
-        count = 7
+        count = 3
       }
     }
   }
