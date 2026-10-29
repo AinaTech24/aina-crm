@@ -65,23 +65,62 @@ export function KbTabs({ current }: { current: "guides" | "kaizen" }) {
   );
 }
 
-/** A guide as a card: its first screenshot, the title and the description. */
-export function GuideCard({ a }: { a: HelpArticleRef }) {
+const FolderIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" /></svg>
+);
+const DocIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></svg>
+);
+
+type BoxFolder = { id: string; slug: string; name: string; count: number; articles: HelpArticleRef[] };
+
+/** A category as one box: its folders in two columns, each listing its first guides and a "View all". */
+export function CategoryBox({ name, description, href, folders, preview = 3 }: { name: string; description?: string | null; href: string; folders: BoxFolder[]; preview?: number }) {
+  const total = folders.reduce((n, f) => n + f.count, 0);
   return (
-    <Link href={`/knowledge-base/${a.slug}`} className="kb-card">
-      <div className="kb-thumb">
-        {a.thumb ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={a.thumb} alt="" loading="lazy" />
-        ) : (
-          <span>Guide</span>
-        )}
+    <section className="kb-box">
+      <header className="kb-box-h">
+        <FolderIcon />
+        <div>
+          <h2><Link href={href}>{name}</Link> <small>({total})</small></h2>
+          {description && <p>{description}</p>}
+        </div>
+      </header>
+      <div className="kb-box-g">
+        {folders.map((f) => (
+          <div key={f.id} className="kb-box-f">
+            <h3>
+              <FolderIcon />
+              <Link href={`/knowledge-base/folder/${f.slug}`}>{f.name}</Link> <small>({f.count})</small>
+            </h3>
+            <ul>
+              {f.articles.slice(0, preview).map((a) => (
+                <li key={a.id}>
+                  <DocIcon />
+                  <Link href={`/knowledge-base/${a.slug}`}>{a.title}</Link>
+                </li>
+              ))}
+            </ul>
+            {f.count > preview && <Link className="all" href={`/knowledge-base/folder/${f.slug}`}>View all {f.count}</Link>}
+          </div>
+        ))}
       </div>
-      <div className="kb-card-b">
-        <h3>{a.title}</h3>
-        {a.hook && <p>{a.hook}</p>}
-        <span className="more">Read the guide →</span>
-      </div>
-    </Link>
+    </section>
+  );
+}
+
+/** Guides as rows: title and description, no preview image. */
+export function GuideRows({ articles }: { articles: HelpArticleRef[] }) {
+  return (
+    <ul className="kb-list" style={{ marginTop: 0 }}>
+      {articles.map((a) => (
+        <li key={a.id}>
+          <Link href={`/knowledge-base/${a.slug}`}>
+            <b>{a.title}</b>
+            {a.hook && <span>{a.hook}</span>}
+          </Link>
+        </li>
+      ))}
+    </ul>
   );
 }

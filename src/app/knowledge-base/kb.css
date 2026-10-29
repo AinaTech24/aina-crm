@@ -161,3 +161,29 @@
 .kb-prose figure img, .kb-prose .kb-shot-ph { width: 100%; height: auto; display: block; border-radius: 16px; border: 1.5px solid var(--edge); box-shadow: var(--sh); background: #fff; }
 .kb-prose .kb-shot-ph { height: 9rem; display: flex; align-items: center; justify-content: center; border-style: dashed; color: var(--mut); font-size: 0.85rem; background: var(--soft); }
 .kb-prose figcaption { margin-top: 10px; font-size: 0.85rem; color: var(--mut); text-align: center; }
+
+/* ---------- category box (Investwell-style) ---------- */
+.kb-box { background: #fff; border: 1.5px solid var(--edge); border-radius: 22px; box-shadow: var(--sh); }
+.kb-box + .kb-box { margin-top: 32px; }
+.kb-box-h { display: flex; gap: 14px; align-items: flex-start; padding: 26px 32px; border-bottom: 1.5px solid var(--edge); color: var(--ink); }
+.kb-box-h svg { width: 26px; height: 26px; margin-top: 4px; flex: none; }
+.kb-site .kb-box-h h2 { font-size: 1.45rem; letter-spacing: -0.02em; }
+.kb-box-h h2 a { text-decoration: none; }
+.kb-box-h h2 small, .kb-box-f h3 small { color: var(--mut); font-weight: 500; font-size: 0.8em; }
+.kb-box-h p { margin: 4px 0 0; color: var(--mut); font-size: 0.95rem; }
+.kb-box-g { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 760px) { .kb-box-g { grid-template-columns: 1fr; } }
+.kb-box-f { padding: 26px 32px 28px; border-bottom: 1px solid var(--edge); }
+.kb-box-f:nth-child(odd) { border-right: 1px solid var(--edge); }
+@media (max-width: 760px) { .kb-box-f:nth-child(odd) { border-right: 0; } }
+.kb-box-g .kb-box-f:nth-last-child(-n+2):nth-child(odd), .kb-box-g .kb-box-f:last-child { border-bottom: 0; }
+.kb-site .kb-box-f h3 { display: flex; align-items: center; gap: 10px; font-size: 1.08rem; color: var(--ink); }
+.kb-box-f h3 a { text-decoration: none; }
+.kb-box-f h3 a:hover { color: var(--acc); }
+.kb-box-f ul { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 10px; }
+.kb-box-f li { display: flex; gap: 10px; align-items: flex-start; font-size: 0.93rem; line-height: 1.4; }
+.kb-box-f li svg { flex: none; margin-top: 3px; color: var(--mut); }
+.kb-box-f li a { color: #1d4ed8; text-decoration: none; }
+.kb-box-f li a:hover { text-decoration: underline; }
+.kb-box-f .all { display: inline-block; margin-top: 14px; font-size: 0.86rem; font-weight: 600; color: var(--acc); text-decoration: none; }
+.kb-box-f .all:hover { text-decoration: underline; }
