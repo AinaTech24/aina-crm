@@ -37,6 +37,7 @@ import { formatDate } from "@/lib/format";
 import { ATTENDEE_KINDS, hasUserAttendee } from "@/lib/review-meetings/attendees";
 import { cleanAttendees, notifyAddedTeam, syncActionItemTasks, type ActionItemIn } from "@/lib/review-meetings/sync";
 import { canSeeMeeting } from "@/lib/review-meetings/scope";
+import { onOpportunityMeetingCompleted } from "@/lib/opportunities/steps";
 import {
   reviewMeetings,
   investors,
@@ -366,6 +367,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             });
           }
         }
+
+        // An opportunity whose meeting this is moves past "Discussion / meeting"
+        // (lib/opportunities/steps.ts) — the same as its "Meeting done" button.
+        await onOpportunityMeetingCompleted(tx, { tenantId: session.tenantId, userId: session.userId }, id);
 
         // ─── Automation: fan out action items into tasks ──────────────
         // Saved items already carry their task (synced above); this only reaches

@@ -29,7 +29,7 @@ export const BOARD_COLUMNS = [
   { key: "accepted", label: "Client accepted", stages: ["accepted"] },
   {
     key: "processing", label: "Processing",
-    stages: ["mf_kyc", "mf_ucc", "mf_mandate", "mf_transaction", "txn_review", "rta_check", "ins_proposal_form", "ins_underwriting", "ins_issued", "gen_executed"],
+    stages: ["mf_transaction", "txn_review", "rta_check", "ins_proposal_form", "ins_underwriting", "ins_issued", "gen_executed"],
   },
   // Not a journey step: an open opportunity the client asked to revisit later.
   { key: "later", label: "Later", stages: [] },

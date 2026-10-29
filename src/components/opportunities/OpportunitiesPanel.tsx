@@ -26,7 +26,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle, CalendarClock, Check, CheckCircle2, ChevronDown, ChevronRight, Circle, CircleDashed, ExternalLink,
-  Hourglass, Loader2, Plus, RefreshCw, Sparkles, Target, XCircle,
+  Hourglass, Loader2, Plus, RefreshCw, Sparkles, Target, UserCog, XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -39,8 +39,9 @@ import { confirmDialog, promptDialog } from "@/components/ui/ConfirmProvider";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
 import { formatDate, formatMoney } from "@/lib/format";
 import { OPPORTUNITY_PRODUCTS, productPipeline } from "@/lib/opportunities/products";
-import type { OpportunityView, Prerequisite } from "@/lib/opportunities/journey";
+import type { OpportunityView } from "@/lib/opportunities/journey";
 import { cn } from "@/lib/utils";
+import { StepActions } from "./StepActions";
 import { LaterBanner, LaterDialog, LaterFields, laterError, laterPayload, newLaterDraft, type LaterDraft } from "./LaterControls";
 
 export type Staff = { id: string; name: string; insurance: boolean };
@@ -50,6 +51,7 @@ const istDay = (n = 0) => new Date(Date.now() + 5.5 * 36e5 + n * 864e5).toISOStr
 /** The India day of an instant. */
 const dayOf = (iso: string) => new Date(new Date(iso).getTime() + 5.5 * 36e5).toISOString().slice(0, 10);
 
+const MEETING_MODE: Record<string, string> = { office: "at the office", client_place: "at the client's place", online: "video call", phone: "phone call" };
 const PIPELINE_LABEL = { mf: "Mutual fund", insurance: "Insurance", general: "Other product" } as const;
 const SOURCE_LABEL: Record<string, string> = {
   manual: "Added by hand", cross_sell: "From the Cross-sell card", lead_match: "From a new enquiry",
@@ -210,40 +212,17 @@ export function OpportunityCard({ o, canWork, staff, onChange, onReload, detailH
   /** "Open" link to the opportunity's own page (on the client page). */
   detailHref?: string;
 }) {
-  const [busy, setBusy] = useState<"advance" | "sync" | "approve" | "reject" | "rta" | null>(null);
-  const [blocked, setBlocked] = useState<Prerequisite[] | null>(null);
+  const [busy, setBusy] = useState<"sync" | "approve" | "reject" | "rta" | null>(null);
   const [losing, setLosing] = useState(false);
   const [needsOpen, setNeedsOpen] = useState(false);
   const [rtaOpen, setRtaOpen] = useState(false);
   const [laterOpen, setLaterOpen] = useState(false);
 
-  const gate = blocked ?? o.gate;
+  const gate = o.gate;
   const gateOpen = gate.some((p) => !p.satisfied);
   const daysIn = Math.max(0, Math.floor((Date.now() - new Date(o.current.enteredAt).getTime()) / 864e5));
   const needsAnalysisDue = o.pipeline === "insurance" && (o.current.key === "suitability" || o.next?.key === "proposal")
     && !(o.needsAnalysis && (o.needsAnalysis.coverNeeded != null || o.needsAnalysis.annualIncome != null));
-
-  async function advance() {
-    setBusy("advance");
-    setBlocked(null);
-    try {
-      const res = await fetch(`/api/opportunities/${o.id}/advance`, {
-        method: "POST", headers: { "content-type": "application/json" }, body: "{}",
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        if (j.blocked) setBlocked(j.blocked);
-        notify.error(j.error ?? "Could not move it on");
-        if (j.opportunity) onChange(j.opportunity);
-        return;
-      }
-      if (j.skipped?.length) notify.success(`Moved on — ${j.skipped.length} step${j.skipped.length === 1 ? "" : "s"} already on file`);
-      else notify.success(j.stage === "won" ? "Marked won" : "Moved on");
-      onChange(j.opportunity);
-    } finally {
-      setBusy(null);
-    }
-  }
 
   async function decide(decision: "approve" | "reject") {
     let remarks: string | undefined;
@@ -295,7 +274,6 @@ export function OpportunityCard({ o, canWork, staff, onChange, onReload, detailH
         notify.error(j.error ?? "Could not complete the task");
         return;
       }
-      setBlocked(null);
       const r = await fetch(`/api/opportunities/${o.id}`);
       const v = await r.json().catch(() => ({}));
       if (v.opportunity) onChange(v.opportunity);
@@ -318,6 +296,8 @@ export function OpportunityCard({ o, canWork, staff, onChange, onReload, detailH
     }
   }
 
+  // A held or cancelled meeting is in History; the card shows the one ahead.
+  const meetingAhead = !!o.meeting && ["scheduled", "confirmed", "rescheduled", "in_progress"].includes(o.meeting.status);
   const coOwnerName = o.coOwnerName ?? (o.coOwnerId ? staff.find((s) => s.id === o.coOwnerId)?.name : null);
 
   return (
@@ -359,6 +339,25 @@ export function OpportunityCard({ o, canWork, staff, onChange, onReload, detailH
         : <FollowUpRow o={o} canWork={canWork} onChange={onChange} />)}
 
       {o.notes && <p className="mt-3 text-xs text-muted-foreground">{o.notes}</p>}
+
+      {o.status === "open" && (meetingAhead || o.stepTasks.length > 0) && (
+        <ul className="mt-2 space-y-1 text-xs">
+          {meetingAhead && o.meeting && (
+            <li className="flex items-center gap-1.5 text-foreground">
+              <CalendarClock className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+              <Link href={`/dashboard/review-meetings/${o.meeting.id}`} className="hover:underline">
+                Meeting {formatDate(o.meeting.at, "dateTime")}{o.meeting.mode ? ` · ${MEETING_MODE[o.meeting.mode] ?? o.meeting.mode}` : ""}
+              </Link>
+            </li>
+          )}
+          {o.stepTasks.map((t, i) => (
+            <li key={i} className="flex items-center gap-1.5 text-foreground">
+              <UserCog className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+              <span>{t.title.split(" — ")[0]} · {t.assigneeName ?? "Unassigned"}{t.dueAt ? ` · due ${formatDate(t.dueAt)}` : ""}</span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {gate.length > 0 && o.next && !o.later && (
         <div className={cn("mt-3 rounded-lg px-3 py-2.5", gateOpen ? "bg-warning/10" : "bg-success/10")}>
@@ -404,12 +403,8 @@ export function OpportunityCard({ o, canWork, staff, onChange, onReload, detailH
               Complete RTA data check
             </Button>
           )}
-          {o.next && o.current.key !== "txn_review" && (
-            <Button variant={rtaTaskId ? "secondary" : "primary"} size="sm" loading={busy === "advance"} disabled={gateOpen || busy != null}
-              icon={o.next.key === "won" ? <Sparkles className="size-4" /> : <ChevronRight className="size-4" />}
-              onClick={advance}>
-              {o.next.key === "won" ? "Mark won" : `Move to: ${o.next.name}`}
-            </Button>
+          {o.status === "open" && o.next && o.current.key !== "txn_review" && (
+            <StepActions o={o} staff={staff} gateOpen={gateOpen} onChange={onChange} />
           )}
           {o.pipeline === "insurance" && (needsAnalysisDue || o.needsAnalysis) && (
             <Button size="sm" onClick={() => setNeedsOpen(true)}>

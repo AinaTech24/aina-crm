@@ -301,12 +301,15 @@ the client page's Overview tab.
   us", and the owner gets a follow-up task (closed with the opportunity).
 - **The journey is a blueprint** (subject_type `opportunity`, module
   `opportunities`): identified → discussion → suitability → proposal → accepted
-  → the product branch (MF: KYC → UCC → mandate → transaction; insurance:
-  proposal form → underwriting → issued; general: executed) → won. Lost from
-  any open stage, with a reason and an optional revisit task.
-- **Skips**: a stage the client already satisfies (KYC verified, UCC on record,
-  lumpsum or a covering mandate, a sent / accepted proposal, a recorded
-  transaction or policy) is passed automatically with a history remark. The
+  → the product branch (MF: transaction → review → RTA data check; insurance: proposal form →
+  underwriting → issued; general: executed) → won. Lost from any open stage,
+  with a reason and an optional revisit task. **KYC, UCC and mandate are not
+  steps** (removed at the firm's request 2026-10-17, migration 0249 — they are
+  client onboarding); do not put them back. They remain a gate on
+  Transaction placed.
+- **Skips**: a stage the client already satisfies (a current risk profile or
+  needs analysis, a sent / accepted proposal, a recorded transaction or
+  policy) is passed automatically with a history remark. The
   people steps (identified, discussion) are never skipped — except when a
   proposal has been shared, which proves they happened.
 - **Gates, never bypassed**: an MF proposal needs a client-CONFIRMED risk
@@ -345,6 +348,17 @@ the client page's Overview tab.
   creates a "client won" task (`meta.wonOpportunityId`, so closing does not
   complete it); reject needs a reason, returns to Transaction placed with a fix
   task, and the rejected transaction no longer counts in `loadFacts`.
+- **Each step asks for what it needs** (2026-10-17, migration 0248,
+  `lib/opportunities/steps.ts`, `POST /api/opportunities/[id]/step`,
+  `StepActions.tsx`): Need identified → Log call (no answer stays, with a
+  retry date) or Schedule meeting (made through the Meetings API, linked as
+  `meeting_id`; completing it in Meetings moves the journey on); Discussion →
+  Meeting done / Reschedule; Client accepted, Order placed (amount, date,
+  order no.), and the insurance and general steps each record their facts in
+  `step_details`. Back-office steps can be handed to an operations person
+  ("Assign to operations": a task with `meta.opportunityStepOf`, not the
+  follow-up). Every pop-up offers the next follow-up date and no notes box.
+  Gates still apply.
 - **RTA data check** (2026-10-19, migration 0240). Approving an MF transaction
   no longer wins the client: it moves to `rta_check` and creates a high-priority
   task (`meta.opportunityId` + `rtaCheck: true`) to check the transaction against
